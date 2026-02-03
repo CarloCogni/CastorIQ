@@ -1,0 +1,1 @@
+"""Chat app - conversation management."""
