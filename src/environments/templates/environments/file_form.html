@@ -1,0 +1,61 @@
+{% extends "core/base.html" %}
+{% load crispy_forms_tags %}
+
+{% block title %}{{ title }} - Castor{% endblock %}
+
+{% block content %}
+<div class="flex-grow-1 d-flex align-items-center justify-content-center p-4 bg-body">
+
+    <div style="width: 100%; max-width: 500px;" id="form-card">
+        <div class="card bg-surface border shadow-sm">
+            <div class="card-header bg-transparent border-bottom p-4">
+                <h1 class="h5 fw-bold mb-1">{{ title }}</h1>
+                {% if help_text %}
+                <p class="text-secondary fs-7 mb-0">{{ help_text }}</p>
+                {% endif %}
+            </div>
+
+            <div class="card-body p-4">
+                <form method="post" enctype="multipart/form-data" onsubmit="showProgress()">
+                    {% csrf_token %}
+                    {{ form|crispy }}
+
+                    <div class="d-flex gap-2 mt-4 justify-content-end">
+                        <a href="javascript:history.back()" class="btn btn-outline-secondary">Cancel</a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-cloud-upload me-2"></i>Upload & Process
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div id="progress-card" style="display: none; width: 100%; max-width: 500px; text-align: center;">
+        <div class="card bg-surface border shadow-sm p-5">
+            <div class="mb-4">
+                <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;" role="status"></div>
+            </div>
+            <h3 class="h5 fw-bold mb-2">Processing File...</h3>
+            <p class="text-secondary mb-3">Please wait while we parse the geometry and extract data.</p>
+
+            <div class="progress" style="height: 6px;">
+                <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 100%"></div>
+            </div>
+            <p class="text-secondary fs-8 mt-2">Do not close this window.</p>
+        </div>
+    </div>
+
+</div>
+
+<script>
+function showProgress() {
+    // Hide form, show spinner
+    document.getElementById('form-card').style.display = 'none';
+    document.getElementById('progress-card').style.display = 'block';
+
+    // Allow form submission to continue
+    return true;
+}
+</script>
+{% endblock %}

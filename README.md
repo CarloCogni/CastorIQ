@@ -152,14 +152,15 @@ python manage.py migrate
 
 **Group 4 - Zigurat Institute of Technology**
 
-- Pavla Hornicka (Project Lead)
-- Carlo Cogni (Lead Developer)
-- Islam Mohamed Sabra Ahmed (BIM Specialist)
-- Maria Makri (Strategic Implementation)
-- Erez Bader (UX & Workflow)
+- Pavla Hornicka 
+- Carlo Cogni 
+- Islam Mohamed Sabra Ahmed 
+- Maria Makri 
+- Erez Bader 
 
 ---
 
 ## License
 
-This project is part of the Final Master's Project for the MSc in AI for Architecture & Construction.
+This project is part of the Final Master's Project for the MSc in AI for Architecture & Construction by Zigurat Institute of Technology.
+All rights reserved

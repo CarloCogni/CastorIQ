@@ -1,0 +1,44 @@
+<!--_ask.html-->
+<div class="chat-container">
+    <!-- Messages -->
+    <div class="chat-messages" id="chat-messages">
+        {% for message in messages %}
+        <div class="message message-{{ message.role }}">
+            <div class="message-avatar">
+                {% if message.role == 'user' %}
+                    {{ user.username.0|upper }}
+                {% else %}
+                    <i class="bi bi-building"></i>
+                {% endif %}
+            </div>
+            <div class="message-content">
+                {{ message.content|linebreaks }}
+            </div>
+        </div>
+        {% empty %}
+        <div class="empty-state h-100 d-flex flex-column align-items-center justify-content-center">
+            <i class="bi bi-chat-dots"></i>
+            <h3 class="h5 fw-semibold mb-2">Ask anything about your project</h3>
+            <p class="text-secondary mb-0">Query your IFC models and documents using natural language.</p>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Input -->
+    <div class="chat-input-container">
+        <form method="post" id="ask-form">
+            {% csrf_token %}
+            <div class="input-group">
+                <textarea class="form-control"
+                          name="message"
+                          placeholder="Ask about your IFC model or documents..."
+                          rows="1"
+                          style="resize: none;"
+                          onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault(); this.form.submit();}"></textarea>
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-send"></i>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>

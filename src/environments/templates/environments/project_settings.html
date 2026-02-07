@@ -1,0 +1,348 @@
+<!--&lt;!&ndash;project_settings.html&ndash;&gt;-->
+<!--{% extends "core/base.html" %}-->
+
+<!-- block title %}{{ project.name }} - Castor{% endblock %}-->
+
+<!--{% block content %}-->
+<!--&lt;!&ndash; Sidebar &ndash;&gt;-->
+<!--<aside class="sidebar d-flex flex-column">-->
+<!--    &lt;!&ndash; Sidebar Header &ndash;&gt;-->
+<!--    <div class="p-3 border-bottom">-->
+<!--        <a href="{% url 'projects:list' %}" class="btn btn-link text-secondary text-decoration-none p-0 mb-3 d-inline-flex align-items-center">-->
+<!--            <i class="bi bi-arrow-left me-2"></i>-->
+<!--            Back to Projects-->
+<!--        </a>-->
+<!--        <h2 class="h6 fw-semibold mb-1">{{ project.name }}</h2>-->
+<!--        <p class="text-secondary fs-8 mb-0">{{ project.description|truncatewords:10 }}</p>-->
+<!--    </div>-->
+
+<!--    &lt;!&ndash; IFC Files &ndash;&gt;-->
+<!--    <div class="p-3 border-bottom">-->
+<!--        <div class="d-flex align-items-center justify-content-between mb-2">-->
+<!--            <span class="text-secondary text-uppercase fs-8 fw-semibold letter-spacing-1">IFC Files</span>-->
+<!--            <button class="btn btn-link text-secondary p-0" onclick="document.getElementById('ifc-upload').click()">-->
+<!--                <i class="bi bi-plus-lg"></i>-->
+<!--            </button>-->
+<!--            <input type="file" id="ifc-upload" accept=".ifc" style="display: none;" onchange="uploadIFC(this)">-->
+<!--        </div>-->
+<!--        <div class="d-flex flex-column gap-1">-->
+<!--            {% for ifc in ifc_files %}-->
+<!--            <div class="file-item">-->
+<!--                <div class="file-icon file-icon-ifc">IFC</div>-->
+<!--                <div class="flex-grow-1 min-width-0">-->
+<!--                    <div class="fs-7 fw-medium text-truncate">{{ ifc.name }}</div>-->
+<!--                    <div class="fs-8 text-secondary">{{ ifc.entity_count }} entities</div>-->
+<!--                </div>-->
+<!--                <div class="status-dot status-{{ ifc.status }}"></div>-->
+<!--            </div>-->
+<!--            {% empty %}-->
+<!--            <p class="text-secondary fs-8 py-2 mb-0">No IFC files yet</p>-->
+<!--            {% endfor %}-->
+<!--        </div>-->
+<!--    </div>-->
+
+<!--    &lt;!&ndash; Documents &ndash;&gt;-->
+<!--    <div class="p-3 flex-grow-1">-->
+<!--        <div class="d-flex align-items-center justify-content-between mb-2">-->
+<!--            <span class="text-secondary text-uppercase fs-8 fw-semibold letter-spacing-1">Documents</span>-->
+<!--            <button class="btn btn-link text-secondary p-0" onclick="document.getElementById('doc-upload').click()">-->
+<!--                <i class="bi bi-plus-lg"></i>-->
+<!--            </button>-->
+<!--            <input type="file" id="doc-upload" accept=".pdf,.docx,.txt" style="display: none;" onchange="uploadDocument(this)">-->
+<!--        </div>-->
+<!--        <div class="d-flex flex-column gap-1">-->
+<!--            {% for doc in documents %}-->
+<!--            <div class="file-item">-->
+<!--                <div class="file-icon file-icon-{{ doc.document_type }}">-->
+<!--                    {% if doc.document_type == 'pdf' %}PDF{% elif doc.document_type == 'docx' %}DOC{% else %}TXT{% endif %}-->
+<!--                </div>-->
+<!--                <div class="flex-grow-1 min-width-0">-->
+<!--                    <div class="fs-7 fw-medium text-truncate">{{ doc.name }}</div>-->
+<!--                    <div class="fs-8 text-secondary">{{ doc.get_document_type_display }}</div>-->
+<!--                </div>-->
+<!--                <div class="status-dot status-{{ doc.status }}"></div>-->
+<!--            </div>-->
+<!--            {% empty %}-->
+<!--            <p class="text-secondary fs-8 py-2 mb-0">No documents yet</p>-->
+<!--            {% endfor %}-->
+<!--        </div>-->
+<!--    </div>-->
+<!--</aside>-->
+
+<!--&lt;!&ndash; Main Content &ndash;&gt;-->
+<!--<div class="flex-grow-1 d-flex flex-column">-->
+<!--    &lt;!&ndash; Navbar &ndash;&gt;-->
+<!--    <nav class="navbar navbar-dark bg-surface border-bottom px-4">-->
+<!--        <a href="{% url 'home' %}" class="navbar-brand navbar-brand-castor text-decoration-none">-->
+<!--            <span class="brand-icon">-->
+<!--                <i class="bi bi-building"></i>-->
+<!--            </span>-->
+<!--            Castor-->
+<!--        </a>-->
+<!--        <div class="d-flex align-items-center gap-3">-->
+<!--            <a href="{% url 'projects:settings' project.pk %}" class="btn btn-link text-secondary p-1">-->
+<!--                <i class="bi bi-gear"></i>-->
+<!--            </a>-->
+<!--            <span class="text-secondary fs-7">{{ user.username }}</span>-->
+<!--            <div class="rounded-circle bg-primary d-flex align-items-center justify-content-center text-white fw-semibold" style="width: 36px; height: 36px;">-->
+<!--                {{ user.username.0|upper }}-->
+<!--            </div>-->
+<!--        </div>-->
+<!--    </nav>-->
+
+<!--    &lt;!&ndash; Tabs &ndash;&gt;-->
+<!--    <ul class="nav nav-tabs-custom">-->
+<!--        <li class="nav-item">-->
+<!--            <a class="nav-link {% if active_tab == 'ask' %}active{% endif %}" href="{% url 'projects:ask' project.pk %}">-->
+<!--                <i class="bi bi-chat"></i>-->
+<!--                Ask-->
+<!--            </a>-->
+<!--        </li>-->
+<!--        <li class="nav-item">-->
+<!--            <a class="nav-link {% if active_tab == 'modify' %}active{% endif %}" href="{% url 'projects:modify' project.pk %}">-->
+<!--                <i class="bi bi-pencil"></i>-->
+<!--                Modify-->
+<!--            </a>-->
+<!--        </li>-->
+<!--        <li class="nav-item">-->
+<!--            <a class="nav-link {% if active_tab == 'conflicts' %}active{% endif %}" href="{% url 'projects:conflicts' project.pk %}">-->
+<!--                <i class="bi bi-exclamation-triangle"></i>-->
+<!--                Conflicts-->
+<!--                {% if open_conflict_count %}-->
+<!--                <span class="badge badge-conflicts rounded-pill">{{ open_conflict_count }}</span>-->
+<!--                {% endif %}-->
+<!--            </a>-->
+<!--        </li>-->
+<!--        <li class="nav-item">-->
+<!--            <a class="nav-link {% if active_tab == 'history' %}active{% endif %}" href="{% url 'projects:history' project.pk %}">-->
+<!--                <i class="bi bi-clock-history"></i>-->
+<!--                History-->
+<!--            </a>-->
+<!--        </li>-->
+<!--    </ul>-->
+
+<!--    &lt;!&ndash; Tab Content &ndash;&gt;-->
+<!--    {% if active_tab == 'ask' %}-->
+<!--        {% include "environments/tabs/_ask.html" %}-->
+<!--    {% elif active_tab == 'modify' %}-->
+<!--        {% include "environments/tabs/_modify.html" %}-->
+<!--    {% elif active_tab == 'conflicts' %}-->
+<!--        {% include "environments/tabs/_conflicts.html" %}-->
+<!--    {% elif active_tab == 'history' %}-->
+<!--        {% include "environments/tabs/_history.html" %}-->
+<!--    {% endif %}-->
+<!--</div>-->
+
+<!--{% block extra_js %}-->
+<!--<script>-->
+<!--const csrfToken = '{{ csrf_token }}';-->
+<!--const projectId = '{{ project.pk }}';-->
+
+<!--async function uploadIFC(input) {-->
+<!--    if (!input.files.length) return;-->
+
+<!--    const formData = new FormData();-->
+<!--    formData.append('file', input.files[0]);-->
+
+<!--    try {-->
+<!--        const response = await fetch(`/projects/${projectId}/upload/ifc/`, {-->
+<!--            method: 'POST',-->
+<!--            headers: { 'X-CSRFToken': csrfToken },-->
+<!--            body: formData-->
+<!--        });-->
+
+<!--        if (response.ok) {-->
+<!--            window.location.reload();-->
+<!--        } else {-->
+<!--            const data = await response.json();-->
+<!--            alert(data.error || 'Upload failed');-->
+<!--        }-->
+<!--    } catch (error) {-->
+<!--        alert('Upload failed: ' + error.message);-->
+<!--    }-->
+<!--}-->
+
+<!--async function uploadDocument(input) {-->
+<!--    if (!input.files.length) return;-->
+
+<!--    const formData = new FormData();-->
+<!--    formData.append('file', input.files[0]);-->
+
+<!--    try {-->
+<!--        const response = await fetch(`/projects/${projectId}/upload/document/`, {-->
+<!--            method: 'POST',-->
+<!--            headers: { 'X-CSRFToken': csrfToken },-->
+<!--            body: formData-->
+<!--        });-->
+
+<!--        if (response.ok) {-->
+<!--            window.location.reload();-->
+<!--        } else {-->
+<!--            const data = await response.json();-->
+<!--            alert(data.error || 'Upload failed');-->
+<!--        }-->
+<!--    } catch (error) {-->
+<!--        alert('Upload failed: ' + error.message);-->
+<!--    }-->
+<!--}-->
+<!--</script>-->
+<!--{% endblock %}-->
+<!--{% endblock %}-->
+
+
+{% extends "core/base.html" %}
+{% load crispy_forms_tags %}
+
+{% block title %}Settings: {{ project.name }} - Castor{% endblock %}
+
+{% block content %}
+<aside class="sidebar d-flex flex-column border-end">
+    <div class="p-3 border-bottom">
+        <a href="{% url 'projects:ask' project.pk %}" class="btn btn-link text-secondary text-decoration-none p-0 mb-3 d-inline-flex align-items-center">
+            <i class="bi bi-arrow-left me-2"></i>
+            Back to Dashboard
+        </a>
+        <h2 class="h6 fw-semibold mb-1">{{ project.name }}</h2>
+        <p class="text-secondary fs-8 mb-0">Project Settings</p>
+    </div>
+
+    <div class="p-3">
+        <div class="nav flex-column nav-pills">
+            <a class="nav-link active d-flex align-items-center gap-2" href="#general">
+                <i class="bi bi-gear"></i> General
+            </a>
+            <a class="nav-link d-flex align-items-center gap-2" href="#files">
+                <i class="bi bi-folder"></i> Manage Files
+            </a>
+            <a class="nav-link d-flex align-items-center gap-2 text-danger" href="#danger">
+                <i class="bi bi-exclamation-triangle"></i> Danger Zone
+            </a>
+        </div>
+    </div>
+</aside>
+
+<div class="flex-grow-1 d-flex flex-column bg-body">
+    <nav class="navbar navbar-dark bg-surface border-bottom px-4">
+        <span class="navbar-brand navbar-brand-castor text-decoration-none">
+            Settings
+        </span>
+        <div class="d-flex align-items-center gap-3">
+            <span class="text-secondary fs-7">{{ user.username }}</span>
+            <div class="rounded-circle bg-primary d-flex align-items-center justify-content-center text-white fw-semibold" style="width: 36px; height: 36px;">
+                {{ user.username.0|upper }}
+            </div>
+        </div>
+    </nav>
+
+    <div class="p-4 overflow-auto">
+        <div style="max-width: 800px; margin: 0 auto;">
+
+            <div id="general" class="card bg-surface border mb-5">
+                <div class="card-header bg-transparent border-bottom p-3">
+                    <h5 class="h6 fw-semibold mb-0">General Settings</h5>
+                </div>
+                <div class="card-body p-4">
+                    <form method="post">
+                        {% csrf_token %}
+                        {{ form|crispy }}
+                        <div class="d-flex justify-content-end mt-4">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-check-lg me-2"></i>Save Changes
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div id="files" class="card bg-surface border mb-4">
+                <div class="card-header bg-transparent border-bottom p-3 d-flex justify-content-between align-items-center">
+                    <h5 class="h6 fw-semibold mb-0">IFC Files</h5>
+                    <span class="badge bg-secondary">{{ ifc_files.count }} files</span>
+                </div>
+                <div class="list-group list-group-flush">
+                    {% for ifc in ifc_files %}
+                    <div class="list-group-item bg-transparent d-flex align-items-center justify-content-between p-3">
+                        <div class="d-flex align-items-center gap-3">
+                            <div class="file-icon file-icon-ifc">IFC</div>
+                            <div>
+                                <div class="fw-medium">{{ ifc.name }}</div>
+                                <div class="text-secondary fs-8">
+                                    {{ ifc.entity_count }} entities • Uploaded {{ ifc.created_at|date:"M d, Y" }}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <a href="{% url 'projects:ifc_edit' ifc.pk %}" class="btn btn-sm btn-outline-secondary" title="Edit Details">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                            <a href="{% url 'projects:ifc_delete' ifc.pk %}" class="btn btn-sm btn-outline-danger" title="Delete File">
+                                <i class="bi bi-trash"></i>
+                            </a>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="p-4 text-center text-secondary">
+                        <p class="mb-0">No IFC files uploaded yet.</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="card bg-surface border mb-5">
+                <div class="card-header bg-transparent border-bottom p-3 d-flex justify-content-between align-items-center">
+                    <h5 class="h6 fw-semibold mb-0">Documents</h5>
+                    <span class="badge bg-secondary">{{ documents.count }} files</span>
+                </div>
+                <div class="list-group list-group-flush">
+                    {% for doc in documents %}
+                    <div class="list-group-item bg-transparent d-flex align-items-center justify-content-between p-3">
+                        <div class="d-flex align-items-center gap-3">
+                            <div class="file-icon file-icon-{{ doc.document_type }}">
+                                <i class="bi bi-file-text"></i>
+                            </div>
+                            <div>
+                                <div class="fw-medium">{{ doc.name }}</div>
+                                <div class="text-secondary fs-8">
+                                    {{ doc.get_document_type_display }} • Uploaded {{ doc.created_at|date:"M d, Y" }}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <a href="{% url 'projects:document_edit' doc.pk %}" class="btn btn-sm btn-outline-secondary" title="Edit Details">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                            <a href="{% url 'projects:document_delete' doc.pk %}" class="btn btn-sm btn-outline-danger" title="Delete File">
+                                <i class="bi bi-trash"></i>
+                            </a>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="p-4 text-center text-secondary">
+                        <p class="mb-0">No documents uploaded yet.</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div id="danger" class="card border-danger bg-surface">
+                <div class="card-header bg-danger bg-opacity-10 border-danger text-danger p-3 d-flex align-items-center gap-2">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    <h5 class="h6 fw-semibold mb-0">Danger Zone</h5>
+                </div>
+                <div class="card-body p-4 d-flex align-items-center justify-content-between">
+                    <div>
+                        <h6 class="fw-bold text-danger mb-1">Delete Project</h6>
+                        <p class="text-secondary fs-8 mb-0" style="max-width: 400px;">
+                            Permanently remove this project, including all IFC files, documents, chat history, and modification proposals. This action cannot be undone.
+                        </p>
+                    </div>
+                    <a href="{% url 'projects:delete' project.pk %}" class="btn btn-danger">
+                        Delete Project
+                    </a>
+                </div>
+            </div>
+
+            <div class="mb-5"></div> </div>
+    </div>
+</div>
+{% endblock %}

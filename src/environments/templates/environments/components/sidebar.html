@@ -1,0 +1,132 @@
+<aside class="sidebar d-flex flex-column border-end flex-shrink-0" style="width: 280px; height: 100vh; overflow-y: auto;">
+    <div class="p-3 border-bottom sticky-top bg-surface" style="z-index: 1020;">
+        <a href="{% url 'projects:list' %}" class="text-secondary text-decoration-none fs-8 mb-2 d-inline-block hover-white">
+            <i class="bi bi-arrow-left me-1"></i> Projects
+        </a>
+
+        <div class="d-flex justify-content-between align-items-start">
+            <div class="min-width-0 me-2">
+                <h2 class="h6 fw-bold mb-1 text-truncate" title="{{ project.name }}">{{ project.name }}</h2>
+                <p class="text-secondary fs-8 mb-0 text-truncate">
+                    {{ project.description|default:"No description" }}
+                </p>
+            </div>
+
+            <div class="dropdown flex-shrink-0">
+                <button class="btn btn-link btn-sm text-secondary p-0" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="bi bi-three-dots"></i>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end bg-surface shadow border">
+                    <li><a class="dropdown-item fs-8" href="{% url 'projects:edit' project.pk %}">Edit Project</a></li>
+                    <li><a class="dropdown-item fs-8 text-danger" href="{% url 'projects:delete' project.pk %}">Delete Project</a></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="p-3 border-bottom flex-shrink-0">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+            <span class="text-secondary text-uppercase fs-8 fw-bold letter-spacing-1">IFC Models</span>
+            <button class="btn btn-sm btn-link text-secondary p-0" onclick="document.getElementById('ifc-upload').click()" title="Upload IFC">
+                <i class="bi bi-plus-lg"></i>
+            </button>
+            <input type="file" id="ifc-upload" accept=".ifc" style="display: none;" onchange="uploadIFC(this)">
+        </div>
+
+        <div class="d-flex flex-column gap-1">
+            {% for ifc in ifc_files %}
+            <div class="file-item d-flex align-items-center p-2 rounded justify-content-between group-hover-bg position-relative">
+
+                <div class="d-flex align-items-center min-width-0 gap-2 flex-grow-1">
+                    <div class="position-relative">
+                        <div class="file-icon file-icon-ifc">IFC</div>
+                        <span class="position-absolute top-0 start-100 translate-middle p-1 border border-light rounded-circle status-{{ ifc.status }}"
+                              style="width: 8px; height: 8px;"
+                              title="Status: {{ ifc.get_status_display }}">
+                        </span>
+                    </div>
+
+                    <div class="min-width-0 flex-grow-1">
+                        <div class="fs-7 fw-medium text-truncate" title="{{ ifc.name }}">{{ ifc.name }}</div>
+                        <div class="fs-8 text-secondary d-flex align-items-center gap-2">
+                            <span>{{ ifc.entity_count }} items</span>
+
+                            {% if ifc.unresolved_issue_count %}
+                            <i class="bi bi-exclamation-triangle-fill text-warning"
+                               title="{{ ifc.unresolved_issue_count }} Data Quality Issues"></i>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dropdown flex-shrink-0 ms-1">
+                    <button class="btn btn-link btn-sm py-0 text-secondary"
+                            data-bs-toggle="dropdown"
+                            aria-expanded="false"
+                            data-bs-boundary="viewport">
+                        <i class="bi bi-three-dots-vertical"></i>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end bg-surface shadow border" style="z-index: 9999;">
+                        <li><a class="dropdown-item fs-8" href="{% url 'projects:ifc_edit' ifc.pk %}"><i class="bi bi-pencil me-2"></i>Edit Details</a></li>
+                        <li><a class="dropdown-item fs-8 text-danger" href="{% url 'projects:ifc_delete' ifc.pk %}"><i class="bi bi-trash me-2"></i>Delete</a></li>
+                    </ul>
+                </div>
+            </div>
+            {% empty %}
+            <div class="text-center py-3 border border-dashed rounded text-secondary fs-8">
+                Drop .ifc file here
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="p-3 flex-grow-1">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+            <span class="text-secondary text-uppercase fs-8 fw-bold letter-spacing-1">Documents</span>
+            <button class="btn btn-sm btn-link text-secondary p-0" onclick="document.getElementById('doc-upload').click()" title="Upload Doc">
+                <i class="bi bi-plus-lg"></i>
+            </button>
+            <input type="file" id="doc-upload" accept=".pdf,.docx,.txt" style="display: none;" onchange="uploadDocument(this)">
+        </div>
+
+        <div class="d-flex flex-column gap-1">
+            {% for doc in documents %}
+            <div class="file-item d-flex align-items-center p-2 rounded justify-content-between group-hover-bg position-relative">
+                <div class="d-flex align-items-center min-width-0 gap-2 flex-grow-1">
+                    <div class="position-relative">
+                        <div class="file-icon file-icon-{{ doc.document_type }}">
+                            <i class="bi bi-file-text"></i>
+                        </div>
+                        <span class="position-absolute top-0 start-100 translate-middle p-1 border border-light rounded-circle status-{{ doc.status }}"
+                              style="width: 8px; height: 8px;"
+                              title="Status: {{ doc.get_status_display }}">
+                        </span>
+                    </div>
+
+                    <div class="min-width-0">
+                        <div class="fs-7 fw-medium text-truncate" title="{{ doc.name }}">{{ doc.name }}</div>
+                        <div class="fs-8 text-secondary">{{ doc.get_document_type_display }}</div>
+                    </div>
+                </div>
+
+                <div class="dropdown flex-shrink-0 ms-1">
+                    <button class="btn btn-link btn-sm py-0 text-secondary"
+                            data-bs-toggle="dropdown"
+                            aria-expanded="false"
+                            data-bs-boundary="viewport">
+                        <i class="bi bi-three-dots-vertical"></i>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end bg-surface shadow border" style="z-index: 9999;">
+                        <li><a class="dropdown-item fs-8" href="{% url 'projects:document_edit' doc.pk %}"><i class="bi bi-pencil me-2"></i>Edit Details</a></li>
+                        <li><a class="dropdown-item fs-8 text-danger" href="{% url 'projects:document_delete' doc.pk %}"><i class="bi bi-trash me-2"></i>Delete</a></li>
+                    </ul>
+                </div>
+            </div>
+            {% empty %}
+            <div class="text-center py-3 border border-dashed rounded text-secondary fs-8">
+                Drop PDFs here
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</aside>

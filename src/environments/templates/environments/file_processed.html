@@ -1,0 +1,56 @@
+{% extends "core/base.html" %}
+
+{% block title %}Processing Complete - Castor{% endblock %}
+
+{% block content %}
+<div class="flex-grow-1 d-flex align-items-center justify-content-center p-4 bg-body">
+    <div style="width: 100%; max-width: 450px;">
+
+        <div class="card bg-surface border shadow-sm text-center">
+            <div class="card-body p-5">
+                {% if result.success %}
+                    <div class="mb-4 text-success">
+                        <i class="bi bi-check-circle-fill" style="font-size: 4rem;"></i>
+                    </div>
+                    <h2 class="h4 fw-bold mb-2">Processing Complete!</h2>
+                    <p class="text-secondary mb-4">
+                        <span class="fw-medium text-body">{{ result.filename }}</span> was successfully updated.
+                    </p>
+
+                    {% if result.entity_count %}
+                    <div class="bg-body rounded p-3 mb-4 border d-inline-block text-start" style="min-width: 200px;">
+                        <div class="d-flex justify-content-between mb-1">
+                            <span class="text-secondary fs-7">File Type</span>
+                            <span class="fw-medium fs-7">{{ result.type }}</span>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span class="text-secondary fs-7">Entities Extracted</span>
+                            <span class="fw-medium fs-7 text-primary">{{ result.entity_count }}</span>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                {% else %}
+                    <div class="mb-4 text-danger">
+                        <i class="bi bi-x-circle-fill" style="font-size: 4rem;"></i>
+                    </div>
+                    <h2 class="h4 fw-bold mb-2">Processing Failed</h2>
+                    <p class="text-secondary mb-4">
+                        Something went wrong while parsing <span class="fw-medium text-body">{{ result.filename }}</span>.
+                    </p>
+                    <div class="alert alert-danger fs-7 text-start">
+                        {{ result.error|default:"Unknown error occurred." }}
+                    </div>
+                {% endif %}
+
+                <div>
+                    <a href="{% url 'projects:ask' project.pk %}" class="btn btn-primary w-100">
+                        <i class="bi bi-arrow-left me-2"></i>Back to Dashboard
+                    </a>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}

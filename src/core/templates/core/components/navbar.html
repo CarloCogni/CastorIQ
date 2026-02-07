@@ -1,0 +1,18 @@
+<nav class="navbar navbar-dark bg-surface border-bottom px-4">
+    <a href="{% url 'home' %}" class="navbar-brand navbar-brand-castor text-decoration-none">
+        <span class="brand-icon">
+            <i class="bi bi-building"></i>
+        </span>
+        Castor
+    </a>
+
+    {% if user.is_authenticated %}
+    <div class="d-flex align-items-center gap-3 ms-auto">
+        <span class="text-secondary fs-7">{{ user.username }}</span>
+        <div class="rounded-circle bg-primary d-flex align-items-center justify-content-center text-white fw-semibold" style="width: 36px; height: 36px;">
+            {{ user.username.0|upper }}
+        </div>
+        <a href="#" class="text-secondary opacity-50"><i class="bi bi-gear-fill"></i></a>
+    </div>
+    {% endif %}
+</nav>
