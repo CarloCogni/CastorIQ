@@ -1,0 +1,60 @@
+<!--project_list.html-->
+{% extends "core/base.html" %}
+
+{% block title %}Projects - Castor{% endblock %}
+
+{% block content %}
+
+    <!-- Page Header -->
+<div class="px-4 pb-4 w-100">
+    <div class="d-flex align-items-center justify-content-between py-4">
+        <h1 class="h3 fw-bold mb-0">Projects</h1>
+        <a href="{% url 'projects:create' %}" class="btn btn-primary">
+            <i class="bi bi-plus-lg me-2"></i>New Project
+        </a>
+    </div>
+
+    {% if projects %}
+    <div class="row g-4">
+        {% for project in projects %}
+        <div class="col-12 col-md-6 col-lg-4">
+            <div class="project-card h-100 position-relative group-hover-container">
+                <div class="position-absolute top-0 end-0 p-3 z-2">
+                     <div class="dropdown">
+                        <button class="btn btn-link text-secondary p-0" data-bs-toggle="dropdown">
+                            <i class="bi bi-three-dots-vertical"></i>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end bg-surface shadow border">
+                            <li>
+                                <a class="dropdown-item fs-7" href="{% url 'projects:edit' project.pk %}">
+                                <i class="bi bi-pencil me-2"></i>Edit Details
+                                </a>
+                            </li>
+
+                            <li><hr class="dropdown-divider border-secondary"></li>
+                            <li>
+                                <a class="dropdown-item fs-7 text-danger" href="{% url 'projects:delete' project.pk %}">
+                                <i class="bi bi-trash me-2"></i>Delete Project
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <a href="{% url 'projects:ask' project.pk %}" class="text-decoration-none text-reset h-100 d-flex flex-column">
+                    <h3 class="h5 fw-semibold mb-2 pe-4">{{ project.name }}</h3>
+                    <p class="text-secondary fs-7 mb-3 flex-grow-1">
+                        {{ project.description|default:"No description"|truncatewords:20 }}
+                    </p>
+                    <div class="d-flex flex-wrap gap-3 fs-8 text-secondary mt-auto">
+                        <span><i class="bi bi-box me-1"></i>{{ project.ifc_count }}</span>
+                        <span><i class="bi bi-file-text me-1"></i>{{ project.document_count }}</span>
+                    </div>
+                </a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div></div>
+{% endblock %}

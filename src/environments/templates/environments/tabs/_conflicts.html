@@ -1,0 +1,197 @@
+<!--&lt;!&ndash;_conflicts.html&ndash;&gt;-->
+<!--<div class="flex-grow-1 overflow-auto p-4">-->
+<!--    {% if open_conflicts %}-->
+<!--    <div class="mb-5">-->
+<!--        <h3 class="h6 fw-semibold mb-3">-->
+<!--            Open Conflicts ({{ open_conflicts|length }})-->
+<!--        </h3>-->
+<!--        <div class="d-flex flex-column gap-3">-->
+<!--            {% for conflict in open_conflicts %}-->
+<!--            <div class="card bg-surface border">-->
+<!--                <div class="card-body">-->
+<!--                    <div class="d-flex align-items-center gap-2 mb-2">-->
+<!--                        <span class="badge {% if conflict.severity == 'critical' %}bg-danger{% elif conflict.severity == 'high' %}bg-warning text-dark{% else %}bg-primary{% endif %}">-->
+<!--                            {{ conflict.get_severity_display }}-->
+<!--                        </span>-->
+<!--                        <span class="text-secondary fs-8">{{ conflict.created_at|timesince }} ago</span>-->
+<!--                    </div>-->
+<!--                    <h4 class="h6 fw-semibold mb-2">{{ conflict.title }}</h4>-->
+<!--                    <p class="text-secondary fs-7 mb-3">{{ conflict.description }}</p>-->
+<!--                    <div class="row g-3 mb-3">-->
+<!--                        <div class="col-6">-->
+<!--                            <div class="bg-body rounded p-3">-->
+<!--                                <div class="fs-8 text-secondary mb-1">IFC Value</div>-->
+<!--                                <div class="fs-7 fw-medium">{{ conflict.ifc_value }}</div>-->
+<!--                            </div>-->
+<!--                        </div>-->
+<!--                        <div class="col-6">-->
+<!--                            <div class="bg-body rounded p-3">-->
+<!--                                <div class="fs-8 text-secondary mb-1">Document Value</div>-->
+<!--                                <div class="fs-7 fw-medium">{{ conflict.document_value }}</div>-->
+<!--                            </div>-->
+<!--                        </div>-->
+<!--                    </div>-->
+<!--                    <div class="d-flex gap-2">-->
+<!--                        <button class="btn btn-primary btn-sm">-->
+<!--                            <i class="bi bi-check-lg me-1"></i>-->
+<!--                            Resolve-->
+<!--                        </button>-->
+<!--                        <button class="btn btn-outline-secondary btn-sm">-->
+<!--                            <i class="bi bi-eye-slash me-1"></i>-->
+<!--                            Ignore-->
+<!--                        </button>-->
+<!--                    </div>-->
+<!--                </div>-->
+<!--            </div>-->
+<!--            {% endfor %}-->
+<!--        </div>-->
+<!--    </div>-->
+<!--    {% else %}-->
+<!--    <div class="empty-state h-100 d-flex flex-column align-items-center justify-content-center">-->
+<!--        <i class="bi bi-check-circle text-success"></i>-->
+<!--        <h3 class="h5 fw-semibold mb-2">No conflicts detected</h3>-->
+<!--        <p class="text-secondary mb-0">Your IFC model and documents are in sync.</p>-->
+<!--    </div>-->
+<!--    {% endif %}-->
+
+<!--    {% if resolved_conflicts %}-->
+<!--    <div>-->
+<!--        <h3 class="h6 fw-semibold mb-3">Recently Resolved</h3>-->
+<!--        <div class="d-flex flex-column gap-2">-->
+<!--            {% for conflict in resolved_conflicts %}-->
+<!--            <div class="d-flex align-items-center gap-3 p-3 bg-surface rounded">-->
+<!--                <i class="bi bi-check-circle-fill text-success"></i>-->
+<!--                <span class="flex-grow-1 fs-7">{{ conflict.title }}</span>-->
+<!--                <span class="text-secondary fs-8">{{ conflict.resolved_at|timesince }} ago</span>-->
+<!--            </div>-->
+<!--            {% endfor %}-->
+<!--        </div>-->
+<!--    </div>-->
+<!--    {% endif %}-->
+<!--</div>-->
+
+
+<div class="container-fluid p-0">
+{% if data_issues %}
+    <div class="mb-5">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+            <h3 class="h5 fw-bold mb-0 text-danger">
+                <i class="bi bi-shield-exclamation me-2"></i>Data Quality Issues
+            </h3>
+            <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill">
+                {{ data_issues.count }} Unresolved
+            </span>
+        </div>
+
+        <div class="alert alert-warning d-flex align-items-center mb-3" role="alert">
+            <i class="bi bi-info-circle-fill me-2"></i>
+            <div>
+                These issues prevent the AI from correctly interpreting your model. Please fix these elements in your BIM software (Revit, BlenderBonsai, etc.) and re-upload the file.
+            </div>
+        </div>
+
+        <div class="card border-danger-subtle shadow-sm">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="bg-light">
+                            <tr>
+                                <th class="ps-4" style="width: 10%;">Type</th>
+                                <th style="width: 15%;">File</th>
+                                <th style="width: 20%;">Object Name</th> <th style="width: 20%;">ID & Class</th>
+                                <th class="text-secondary">Issue Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for issue in data_issues %}
+                            <tr>
+                                <td class="ps-4">
+                                    {% if issue.issue_type == 'duplicate_guid' %}
+                                    <span class="badge bg-warning-subtle text-warning border border-warning-subtle">Duplicate GUID</span>
+                                    {% elif issue.issue_type == 'invalid_geometry' %}
+                                    <span class="badge bg-danger-subtle text-danger border border-danger-subtle">Geometry</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">{{ issue.get_issue_type_display }}</span>
+                                    {% endif %}
+                                </td>
+
+                                <td class="fs-7 fw-medium text-dark">{{ issue.ifc_file.name }}</td>
+
+                                <td>
+                                    {% if issue.raw_data.name %}
+                                        <span class="fw-bold text-dark">{{ issue.raw_data.name }}</span>
+                                    {% else %}
+                                        <span class="text-muted fst-italic">Unnamed</span>
+                                    {% endif %}
+                                </td>
+
+                                <td>
+                                    <div class="d-flex flex-column">
+                                        <code class="fs-8 text-primary user-select-all" title="Click to copy">{{ issue.global_id }}</code>
+                                        <span class="fs-8 text-secondary mt-1">{{ issue.ifc_type }}</span>
+                                    </div>
+                                </td>
+
+                                <td class="fs-7 text-secondary">
+                                    {{ issue.description }}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="mb-4">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+            <h3 class="h5 fw-bold mb-0">
+                <i class="bi bi-lightning-charge me-2"></i>Semantic Conflicts
+            </h3>
+            {% if open_conflicts %}
+            <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill">
+                {{ open_conflicts.count }} Open
+            </span>
+            {% endif %}
+        </div>
+
+        {% if open_conflicts %}
+        <div class="row g-3">
+            {% for conflict in open_conflicts %}
+            <div class="col-12">
+                <div class="card shadow-sm border-start border-4 {% if conflict.severity == 'critical' %}border-start-danger{% elif conflict.severity == 'high' %}border-start-warning{% else %}border-start-info{% endif %}">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between mb-2">
+                            <h5 class="card-title h6 fw-bold mb-0">{{ conflict.title }}</h5>
+                            <span class="badge {% if conflict.severity == 'critical' %}bg-danger{% else %}bg-warning{% endif %}">
+                                {{ conflict.get_severity_display }}
+                            </span>
+                        </div>
+                        <p class="card-text fs-7 text-secondary mb-3">{{ conflict.description }}</p>
+
+                        <div class="d-flex gap-3 bg-light rounded p-2 fs-8">
+                            <div class="w-50">
+                                <strong class="d-block text-uppercase text-xs text-secondary mb-1">IFC Value</strong>
+                                <div class="text-dark bg-white border rounded p-2">{{ conflict.ifc_value }}</div>
+                            </div>
+                            <div class="w-50">
+                                <strong class="d-block text-uppercase text-xs text-secondary mb-1">Doc Value</strong>
+                                <div class="text-dark bg-white border rounded p-2">{{ conflict.document_value }}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center py-5 bg-light rounded border border-dashed">
+            <i class="bi bi-check-circle text-success fs-1 mb-2"></i>
+            <h4 class="h6 fw-bold">No Semantic Conflicts</h4>
+            <p class="text-secondary fs-7 mb-0">The AI hasn't detected any discrepancies between your IFC model and documents.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>

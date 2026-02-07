@@ -1,0 +1,46 @@
+{% extends "core/base.html" %}
+{% load crispy_forms_tags %}
+
+{% block title %}
+    {% if form.instance.pk %}Edit {{ form.instance.name }}{% else %}New Project{% endif %} - Castor
+{% endblock %}
+
+{% block content %}
+<div class="flex-grow-1 d-flex align-items-center justify-content-center p-4 bg-body">
+    <div style="width: 100%; max-width: 550px;">
+
+        <div class="card bg-surface border shadow-sm">
+            <div class="card-header bg-transparent border-bottom p-4">
+                <h1 class="h4 fw-bold mb-0">
+                    {% if form.instance.pk %}
+                        Edit Project Details
+                    {% else %}
+                        Create New Project
+                    {% endif %}
+                </h1>
+            </div>
+
+            <div class="card-body p-4">
+                <form method="post">
+                    {% csrf_token %}
+                    {{ form|crispy }}
+
+                    <div class="d-flex gap-2 mt-4 justify-content-end">
+                        {% if form.instance.pk %}
+                            <a href="{% url 'projects:ask' project.pk %}" class="btn btn-outline-secondary">Cancel</a>
+                        {% else %}
+                            <a href="{% url 'projects:list' %}" class="btn btn-outline-secondary">Cancel</a>
+                        {% endif %}
+
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-lg me-2"></i>
+                            {% if form.instance.pk %}Save Changes{% else %}Create Project{% endif %}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}

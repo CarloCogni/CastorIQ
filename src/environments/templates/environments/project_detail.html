@@ -1,0 +1,68 @@
+{% extends "core/base.html" %}
+
+{% block title %}{{ project.name }} - Castor{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Helper for hover effects */
+    .group-hover-container:hover .group-hover-visible { opacity: 1 !important; }
+    .group-hover-container:hover .group-hover-hidden { display: none !important; }
+    .transition-opacity { transition: opacity 0.2s ease; }
+    .btn-xs { font-size: 0.75rem; padding: 2px; }
+</style>
+{% endblock %}
+
+{% block content %}
+    {% include "environments/components/sidebar.html" %}
+
+    <div class="flex-grow-1 d-flex flex-column min-width-0 bg-body">
+
+        <ul class="nav nav-tabs-custom px-4 pt-3 border-bottom">
+            <li class="nav-item">
+                <a class="nav-link {% if active_tab == 'ask' %}active{% endif %}" href="{% url 'projects:ask' project.pk %}">
+                    <i class="bi bi-chat me-2"></i>Ask
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if active_tab == 'modify' %}active{% endif %}" href="{% url 'projects:modify' project.pk %}">
+                    <i class="bi bi-pencil me-2"></i>Modify
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if active_tab == 'conflicts' %}active{% endif %}" href="{% url 'projects:conflicts' project.pk %}">
+                    <i class="bi bi-exclamation-triangle me-2"></i>Conflicts
+                    {% if open_conflict_count %}
+                    <span class="badge badge-conflicts rounded-pill ms-2">{{ open_conflict_count }}</span>
+                    {% endif %}
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if active_tab == 'history' %}active{% endif %}" href="{% url 'projects:history' project.pk %}">
+                    <i class="bi bi-clock-history me-2"></i>History
+                </a>
+            </li>
+        </ul>
+
+        <div class="flex-grow-1 overflow-hidden d-flex flex-column position-relative">
+            {% if active_tab == 'ask' %}
+                {% include "environments/tabs/_ask.html" %}
+            {% elif active_tab == 'modify' %}
+                {% include "environments/tabs/_modify.html" %}
+            {% elif active_tab == 'conflicts' %}
+                {% include "environments/tabs/_conflicts.html" %}
+            {% elif active_tab == 'history' %}
+                {% include "environments/tabs/_history.html" %}
+            {% endif %}
+        </div>
+    </div>
+
+{% block extra_js %}
+<script>
+const csrfToken = '{{ csrf_token }}';
+const projectId = '{{ project.pk }}';
+
+// Keep your existing uploadIFC and uploadDocument functions here
+// ...
+</script>
+{% endblock %}
+{% endblock %}

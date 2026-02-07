@@ -1,0 +1,1 @@
+"""Environments app - workspace management."""
