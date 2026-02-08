@@ -22,6 +22,7 @@ urlpatterns = [
     path("<uuid:pk>/upload/ifc/", views.UploadIFCView.as_view(), name="upload_ifc"),
     path("<uuid:pk>/upload/document/", views.UploadDocumentView.as_view(), name="upload_document"),
     path("<uuid:pk>/processed/", views.FileProcessedView.as_view(), name="file_processed"),
+    path("<uuid:pk>/upload/", views.FileUploadView.as_view(), name="upload"),
 
     # Project CRUD
     path("<uuid:pk>/edit/", views.ProjectUpdateView.as_view(), name="edit"),

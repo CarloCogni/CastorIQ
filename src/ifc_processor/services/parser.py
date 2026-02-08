@@ -8,6 +8,7 @@ import ifcopenshell.util.element as element_util
 from django.db import transaction
 from django.utils import timezone
 from ifc_processor.models import IFCFile, IFCEntity, IFCDataIssue
+from core.exceptions import log_exception
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +119,10 @@ class IFCParser:
         except Exception as e:
             error_msg = f"Failed to parse IFC file: {str(e)}"
             logger.exception(error_msg)
-
+            log_exception(e, severity="critical", extra_context={
+                "ifc_file_id": str(self.ifc_file.id),
+                "file_name": self.ifc_file.name
+            })
             self.ifc_file.status = IFCFile.Status.FAILED
             self.ifc_file.error_message = error_msg
             self.ifc_file.save()
@@ -148,7 +152,7 @@ class IFCParser:
         batch_size = 500
         entities_to_create = []
         issues_to_create = []
-        seen_global_ids = set()
+        seen_global_ids = {}  # Now maps GUID → first element info
         total_processed = 0
 
         for ifc_type in self.RELEVANT_TYPES:
@@ -162,7 +166,8 @@ class IFCParser:
 
                 # ROUTING LOGIC
                 if gid in seen_global_ids:
-                    # ROUTE TO ISSUES
+                    first_element_info = seen_global_ids[gid]
+
                     issue = IFCDataIssue(
                         ifc_file=self.ifc_file,
                         issue_type=IFCDataIssue.IssueType.DUPLICATE_GUID,
@@ -171,9 +176,13 @@ class IFCParser:
                         raw_data={
                             "name": element.Name or "",
                             "properties": properties,
-                            "spatial": spatial_info
+                            "spatial": spatial_info,
+                            # NEW: Store info about BOTH conflicting elements
+                            "first_element_name": first_element_info["name"],
+                            "first_element_type": first_element_info["type"],
+                            "first_element_storey": first_element_info["storey"]
                         },
-                        description=f"Duplicate GlobalID '{gid}' found in {ifc_type}."
+                        description=f"Duplicate GlobalID '{gid}': '{element.Name or 'Unnamed'}' ({element.is_a()}) conflicts with '{first_element_info['name'] or 'Unnamed'}' ({first_element_info['type']})."
                     )
                     issues_to_create.append(issue)
                 else:
@@ -191,8 +200,11 @@ class IFCParser:
                         description=description,
                     )
                     entities_to_create.append(entity)
-                    seen_global_ids.add(gid)
-
+                    seen_global_ids[gid] = {
+                        "name": element.Name or "",
+                        "type": element.is_a(),
+                        "storey": spatial_info.get("building_storey", "")
+                    }
                 # MEMORY MANAGEMENT
                 if len(entities_to_create) >= batch_size:
                     IFCEntity.objects.bulk_create(entities_to_create)

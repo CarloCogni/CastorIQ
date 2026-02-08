@@ -4,11 +4,9 @@ import os
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Count, Q, Prefetch
 from django.shortcuts import get_object_or_404, redirect, render
-from django.urls import reverse_lazy
 from django.views.generic import (
     ListView, DetailView, CreateView, UpdateView, TemplateView, View
 )
-from django.http import JsonResponse
 from .models import Project, ProjectMembership
 from ifc_processor.models import IFCFile, IFCDataIssue
 from documents.models import Document
@@ -18,6 +16,11 @@ from django.urls import reverse_lazy, reverse
 from django.views.generic import DeleteView, UpdateView
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
+import logging
+from django.utils import timezone
+from django.http import JsonResponse
+
+logger = logging.getLogger(__name__)
 
 # --- Mixins ---
 
@@ -410,7 +413,7 @@ class IFCFileDeleteView(ProjectAccessMixin, DeleteView):
 
     def get_success_url(self):
         messages.success(self.request, "IFC file deleted successfully.")
-        return reverse("projects:settings", kwargs={"pk": self.object.project.pk})
+        return reverse("projects:ask", kwargs={"pk": self.object.project.pk})
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -429,7 +432,7 @@ class DocumentDeleteView(ProjectAccessMixin, DeleteView):
 
     def get_success_url(self):
         messages.success(self.request, "Document deleted successfully.")
-        return reverse("projects:settings", kwargs={"pk": self.object.project.pk})
+        return reverse("projects:ask", kwargs={"pk": self.object.project.pk})
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -526,3 +529,126 @@ class FileProcessedView(ProjectAccessMixin, TemplateView):
         # Retrieve results stored in session by the UpdateView
         context['result'] = self.request.session.pop('processing_result', None)
         return context
+
+
+class FileUploadView(ProjectAccessMixin, TemplateView):
+    """Unified upload page for IFC and documents"""
+    template_name = "environments/file_upload.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["project"] = self.get_project()
+        return context
+
+    def post(self, request, pk):
+        """Handle file upload"""
+        project = self.get_project()
+
+        if "file" not in request.FILES:
+            return JsonResponse({"error": "No file provided"}, status=400)
+
+        uploaded_file = request.FILES["file"]
+        file_ext = uploaded_file.name.lower()
+
+        # Route to appropriate handler
+        if file_ext.endswith(".ifc"):
+            return self._handle_ifc_upload(project, uploaded_file)
+        elif file_ext.endswith((".pdf", ".docx", ".txt")):
+            return self._handle_document_upload(project, uploaded_file)
+        else:
+            return JsonResponse({
+                "success": False,
+                "error": f"Unsupported file type: {file_ext}"
+            }, status=400)
+
+    def _handle_ifc_upload(self, project, uploaded_file):
+        """Handle IFC file upload and parsing"""
+        try:
+            # Validate file extension
+            if not uploaded_file.name.lower().endswith(".ifc"):
+                return JsonResponse({
+                    "success": False,
+                    "error": "File must be .ifc"
+                }, status=400)
+
+            # Create IFC file record
+            ifc_file = IFCFile.objects.create(
+                project=project,
+                name=uploaded_file.name,
+                file=uploaded_file,
+                file_hash="",  # Will be calculated
+            )
+
+            # Calculate hash
+            ifc_file.file_hash = ifc_file.calculate_hash()
+            ifc_file.save(update_fields=["file_hash"])
+
+            # Parse the IFC file (synchronous for now)
+            from ifc_processor.services.parser import IFCParser
+            parser = IFCParser(ifc_file)
+            success = parser.parse()
+
+            if success:
+                return JsonResponse({
+                    "success": True,
+                    "file_type": "ifc",
+                    "file_name": ifc_file.name,
+                    "entity_count": ifc_file.entity_count,
+                    "redirect_url": reverse("projects:ask", kwargs={"pk": project.pk})
+                })
+            else:
+                return JsonResponse({
+                    "success": False,
+                    "error": ifc_file.error_message or "Failed to parse IFC file"
+                }, status=400)
+
+        except Exception as e:
+            logger.exception(f"Error uploading IFC file: {e}")
+            return JsonResponse({
+                "success": False,
+                "error": str(e)
+            }, status=500)
+
+    def _handle_document_upload(self, project, uploaded_file):
+        """Handle document (PDF/DOCX/TXT) upload"""
+        try:
+            name = uploaded_file.name.lower()
+
+            # Determine document type
+            if name.endswith(".pdf"):
+                doc_type = Document.DocumentType.PDF
+            elif name.endswith(".docx"):
+                doc_type = Document.DocumentType.DOCX
+            elif name.endswith(".txt"):
+                doc_type = Document.DocumentType.TXT
+            else:
+                doc_type = Document.DocumentType.OTHER
+
+            # Create document record
+            document = Document.objects.create(
+                project=project,
+                name=uploaded_file.name,
+                file=uploaded_file,
+                document_type=doc_type,
+                status=Document.Status.PENDING,
+            )
+
+            # TODO: Trigger async processing when document processor is ready
+            # For now, just mark as completed (no processing yet)
+            document.status = Document.Status.COMPLETED
+            document.processed_at = timezone.now()
+            document.save(update_fields=["status", "processed_at"])
+
+            return JsonResponse({
+                "success": True,
+                "file_type": doc_type,
+                "file_name": document.name,
+                "redirect_url": reverse("projects:ask", kwargs={"pk": project.pk})
+            })
+
+        except Exception as e:
+            logger.exception(f"Error uploading document: {e}")
+            return JsonResponse({
+                "success": False,
+                "error": str(e)
+            }, status=500)

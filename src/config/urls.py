@@ -13,6 +13,7 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/health/", health_check, name="health_check"),
     path("projects/", include("environments.urls")),
+    path("core/", include("core.urls")),
 
     # Authentication
     path("login/", auth_views.LoginView.as_view(), name="login"),

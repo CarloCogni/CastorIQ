@@ -1,0 +1,174 @@
+<!--file_upload.html-->
+{% extends "core/base.html" %}
+
+{% block content %}
+<div class="flex-grow-1 d-flex align-items-center justify-content-center p-4 bg-body">
+    <div style="width: 100%; max-width: 600px;">
+
+        <!-- Upload Zone -->
+        <div class="card bg-surface border shadow-sm">
+            <div class="card-header bg-transparent border-bottom p-4">
+                <h1 class="h5 fw-bold mb-1">Upload Files</h1>
+                <p class="text-secondary fs-7 mb-0">{{ project.name }}</p>
+            </div>
+
+            <div class="card-body p-4">
+                <!-- Drag & Drop Zone -->
+                <div id="drop-zone"
+                     class="border border-2 border-dashed rounded p-5 text-center"
+                     style="cursor: pointer; transition: all 0.2s;">
+                    <i class="bi bi-cloud-upload text-primary" style="font-size: 3rem;"></i>
+                    <h3 class="h6 fw-semibold mt-3 mb-2">Drop files here or click to browse</h3>
+                    <p class="text-secondary fs-7 mb-3">
+                        Supported: <span class="text-accent">.ifc</span>,
+                        <span class="text-primary">.pdf</span>,
+                        <span class="text-warning">.docx</span>
+                    </p>
+                    <input type="file" id="file-input" accept=".ifc,.pdf,.docx,.txt" style="display: none;">
+                </div>
+
+                <!-- Progress Section (hidden initially) -->
+                <div id="progress-section" style="display: none;" class="mt-4">
+                    <div class="d-flex align-items-center gap-3 mb-2">
+                        <i class="bi bi-file-earmark text-accent" style="font-size: 2rem;"></i>
+                        <div class="flex-grow-1">
+                            <div class="fw-medium" id="file-name">filename.ifc</div>
+                            <div class="text-secondary fs-8" id="status-text">Uploading...</div>
+                        </div>
+                    </div>
+
+                    <!-- Progress Bar -->
+                    <div class="progress" style="height: 8px;">
+                        <div id="progress-bar"
+                             class="progress-bar progress-bar-striped progress-bar-animated"
+                             role="progressbar"
+                             style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <!-- Error Section -->
+                <div id="error-section" style="display: none;" class="mt-4">
+                    <div class="alert alert-danger mb-0">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        <span id="error-message"></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card-footer bg-transparent border-top p-4">
+                <a href="{% url 'projects:ask' project.pk %}" class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-left me-2"></i>Back to Project
+                </a>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const progressSection = document.getElementById('progress-section');
+const errorSection = document.getElementById('error-section');
+const csrfToken = '{{ csrf_token }}';
+const uploadUrl = "{% url 'projects:upload' project.pk %}";
+
+// Click to browse
+dropZone.addEventListener('click', () => fileInput.click());
+
+// Drag & Drop handlers
+dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.style.borderColor = 'var(--castor-primary)';
+    dropZone.style.backgroundColor = 'rgba(59, 130, 246, 0.05)';
+});
+
+dropZone.addEventListener('dragleave', () => {
+    dropZone.style.borderColor = '';
+    dropZone.style.backgroundColor = '';
+});
+
+dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.style.borderColor = '';
+    dropZone.style.backgroundColor = '';
+
+    if (e.dataTransfer.files.length > 0) {
+        uploadFile(e.dataTransfer.files[0]);
+    }
+});
+
+// File input change
+fileInput.addEventListener('change', (e) => {
+    if (e.target.files.length > 0) {
+        uploadFile(e.target.files[0]);
+    }
+});
+
+async function uploadFile(file) {
+    // Hide drop zone, show progress
+    dropZone.style.display = 'none';
+    errorSection.style.display = 'none';
+    progressSection.style.display = 'block';
+
+    document.getElementById('file-name').textContent = file.name;
+    document.getElementById('status-text').textContent = 'Uploading...';
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        const xhr = new XMLHttpRequest();
+
+        // Upload progress
+        xhr.upload.addEventListener('progress', (e) => {
+            if (e.lengthComputable) {
+                const percent = (e.loaded / e.total) * 100;
+                document.getElementById('progress-bar').style.width = percent + '%';
+            }
+        });
+
+        // Complete
+        xhr.addEventListener('load', async () => {
+            if (xhr.status === 200) {
+                const response = JSON.parse(xhr.responseText);
+
+                if (response.success) {
+                    // Processing phase
+                    document.getElementById('status-text').textContent = 'Processing...';
+                    document.getElementById('progress-bar').classList.remove('progress-bar-animated');
+
+                    // Wait a bit then redirect
+                    setTimeout(() => {
+                        window.location.href = response.redirect_url;
+                    }, 1000);
+                } else {
+                    showError(response.error || 'Processing failed');
+                }
+            } else {
+                const response = JSON.parse(xhr.responseText);
+                showError(response.error || 'Upload failed');
+            }
+        });
+
+        xhr.addEventListener('error', () => {
+            showError('Network error occurred');
+        });
+
+        xhr.open('POST', uploadUrl);
+        xhr.setRequestHeader('X-CSRFToken', csrfToken);
+        xhr.send(formData);
+
+    } catch (error) {
+        showError(error.message);
+    }
+}
+
+function showError(message) {
+    progressSection.style.display = 'none';
+    errorSection.style.display = 'block';
+    document.getElementById('error-message').textContent = message;
+    dropZone.style.display = 'block';
+}
+</script>
+{% endblock %}

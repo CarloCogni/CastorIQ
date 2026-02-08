@@ -1,3 +1,4 @@
+<!--sidebar.html-->
 <aside class="sidebar d-flex flex-column border-end flex-shrink-0" style="width: 280px; height: 100vh; overflow-y: auto;">
     <div class="p-3 border-bottom sticky-top bg-surface" style="z-index: 1020;">
         <a href="{% url 'projects:list' %}" class="text-secondary text-decoration-none fs-8 mb-2 d-inline-block hover-white">
@@ -27,10 +28,9 @@
     <div class="p-3 border-bottom flex-shrink-0">
         <div class="d-flex align-items-center justify-content-between mb-2">
             <span class="text-secondary text-uppercase fs-8 fw-bold letter-spacing-1">IFC Models</span>
-            <button class="btn btn-sm btn-link text-secondary p-0" onclick="document.getElementById('ifc-upload').click()" title="Upload IFC">
+            <a href="{% url 'projects:upload' project.pk %}" class="btn btn-sm btn-link text-secondary p-0" title="Upload Files">
                 <i class="bi bi-plus-lg"></i>
-            </button>
-            <input type="file" id="ifc-upload" accept=".ifc" style="display: none;" onchange="uploadIFC(this)">
+            </a>
         </div>
 
         <div class="d-flex flex-column gap-1">
@@ -74,7 +74,7 @@
             </div>
             {% empty %}
             <div class="text-center py-3 border border-dashed rounded text-secondary fs-8">
-                Drop .ifc file here
+                Upload .ifc files here
             </div>
             {% endfor %}
         </div>
@@ -83,10 +83,9 @@
     <div class="p-3 flex-grow-1">
         <div class="d-flex align-items-center justify-content-between mb-2">
             <span class="text-secondary text-uppercase fs-8 fw-bold letter-spacing-1">Documents</span>
-            <button class="btn btn-sm btn-link text-secondary p-0" onclick="document.getElementById('doc-upload').click()" title="Upload Doc">
+            <a href="{% url 'projects:upload' project.pk %}" class="btn btn-sm btn-link text-secondary p-0" title="Upload Files">
                 <i class="bi bi-plus-lg"></i>
-            </button>
-            <input type="file" id="doc-upload" accept=".pdf,.docx,.txt" style="display: none;" onchange="uploadDocument(this)">
+            </a>
         </div>
 
         <div class="d-flex flex-column gap-1">
@@ -124,7 +123,7 @@
             </div>
             {% empty %}
             <div class="text-center py-3 border border-dashed rounded text-secondary fs-8">
-                Drop PDFs here
+                Upload PDFs here
             </div>
             {% endfor %}
         </div>

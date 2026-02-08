@@ -413,6 +413,16 @@ I'm continuing development on Castor, a bi-directional LLM assistant for IFC mod
 Current code is attached/below.
 
 Next task: [Describe what you want to build]
+
+---------------------------
+IMPORTANT DEVELOPER's NOTES: I want the code clean ( like Uncle Bob wants ) and efficient. Leave usefull comments in english.
+acted as a super software developer, keeping in mind the Zen of Python.
+As a general rule i'd prefere you pasting here the code in chunk rather than giving me the files directly. I'll make the 
+patch manually in my IDE so that i retain full controll and understanding of what i'm doing.
+Also when it comes to modifying code, be super precise in where and how to modify it ( especially with html) rather then 
+just saying somethign like: "add this, or change that"
+Before starting giving code, explain to me the problem and solution to make sure you understand what I am asking.
+----------------------------
 ```
 
 ---

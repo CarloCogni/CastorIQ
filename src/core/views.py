@@ -14,3 +14,10 @@ def health_check(request):
 def home_view(request):
     """Home page - redirect to projects."""
     return redirect("projects:list")
+
+
+def test_error(request):
+    """Test view to trigger an error - REMOVE IN PRODUCTION"""
+    raise ValueError("This is a test error to verify error logging works! \n #### Hasta la vista Baby!!!! ####")
+
+
