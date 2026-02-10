@@ -302,49 +302,56 @@ class IFCParser:
 
     def _generate_description(self, element, properties: dict, spatial_info: dict) -> str:
         """
-        Generate a semantic description for RAG indexing.
-
-        This description is used for embedding and similarity search.
+        Generate a rich semantic description for RAG indexing.
         """
-        parts = []
+        # 1. CLEAN TYPE: Turn 'IfcWallStandardCase' into 'Wall' and 'Wall Standard Case'
+        raw_type = element.is_a()
+        clean_type = raw_type.replace("Ifc", "")
 
-        # Basic info
-        ifc_type = element.is_a().replace("Ifc", "")
+        # Split camelCase (e.g., WallStandardCase -> Wall Standard Case)
+        # This helps the embedding model understand the words separately
+        import re
+        human_type = re.sub(r'(?<!^)(?=[A-Z])', ' ', clean_type)
+
+        # 2. INTRO: Strong subject statement
+        # "This is a Wall. It is a Wall Standard Case element named Wall-01."
         name = element.Name or "Unnamed"
-        parts.append(f"{ifc_type}: {name}")
+        parts = [f"This is a {clean_type}. It is a {human_type} element named '{name}'"]
 
-        # Location
+        # 3. LOCATION
         location_parts = []
         if spatial_info.get("building"):
-            location_parts.append(f"in {spatial_info['building']}")
+            location_parts.append(f"in building '{spatial_info['building']}'")
         if spatial_info.get("building_storey"):
-            location_parts.append(f"on {spatial_info['building_storey']}")
+            location_parts.append(f"on level '{spatial_info['building_storey']}'")
         if spatial_info.get("space"):
-            location_parts.append(f"in {spatial_info['space']}")
+            location_parts.append(f"inside space '{spatial_info['space']}'")
 
         if location_parts:
-            parts.append(f"Located {', '.join(location_parts)}")
+            parts.append(f"Location: {', '.join(location_parts)}")
 
-        # Key properties (fire rating, material, dimensions, etc.)
+        # 4. KEY PROPERTIES (The "Why")
+        # We explicitly list common properties to catch queries like "fire rated" or "external"
         key_props = []
+        target_keys = [
+            "firerating", "fire_rating", "fire rating",
+            "material", "loadbearing", "load_bearing",
+            "height", "width", "length", "thickness",
+            "area", "volume", "u_value", "u-value",
+            "acoustic", "thermal", "resistance"
+        ]
+
         for key, value in properties.items():
-            key_lower = key.lower()
-            # Look for important properties
-            if any(term in key_lower for term in [
-                "firerating", "fire_rating", "fire rating",
-                "material", "loadbearing", "load_bearing",
-                "height", "width", "length", "thickness",
-                "area", "volume", "u_value", "u-value",
-                "acoustic", "thermal", "resistance"
-            ]):
-                prop_name = key.split(".")[-1]  # Get just the property name
-                key_props.append(f"{prop_name}: {value}")
+            # Check if any target key is part of the property name (case insensitive)
+            if any(t in key.lower() for t in target_keys):
+                # Clean up key name (e.g. 'Pset_WallCommon.LoadBearing' -> 'LoadBearing')
+                simple_key = key.split('.')[-1]
+                key_props.append(f"{simple_key}: {value}")
 
         if key_props:
-            parts.append(f"Properties: {'; '.join(key_props[:5])}")  # Limit to 5
+            parts.append(f"Properties: {', '.join(key_props)}")
 
-        return ". ".join(parts)
-
+        return ". ".join(parts) + "."
 
 def parse_ifc_file(ifc_file_id: str) -> bool:
     """

@@ -1,14 +1,22 @@
+<!--navbar.html-->
+{% load static%}
 <nav class="navbar navbar-dark bg-surface border-bottom px-4">
     <a href="{% url 'home' %}" class="navbar-brand navbar-brand-castor text-decoration-none">
-        <span class="brand-icon">
-            <i class="bi bi-building"></i>
-        </span>
+        <img src="{% static 'images/castor-logo-nobg.png' %}" alt="Castor Logo" height="40" class="me-2">
         Castor
     </a>
 
-    {% if user.is_authenticated %}
+{% if user.is_authenticated %}
     <div class="d-flex align-items-center gap-3 ms-auto">
-        <span class="text-secondary fs-7">{{ user.username }}</span>
+
+        {% if user.is_staff %}
+            <a href="{% url 'admin:index' %}" class="text-secondary fs-7 fw-bold text-decoration-none" title="Go to Admin Panel">
+                {{ user.username }} <i class="bi bi-shield-lock-fill ms-1" style="font-size: 0.8em;"></i>
+            </a>
+        {% else %}
+            <span class="text-secondary fs-7">{{ user.username }}</span>
+        {% endif %}
+
         <div class="rounded-circle bg-primary d-flex align-items-center justify-content-center text-white fw-semibold" style="width: 36px; height: 36px;">
             {{ user.username.0|upper }}
         </div>

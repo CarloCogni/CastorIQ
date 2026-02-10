@@ -1,20 +1,25 @@
 <!--sidebar.html-->
-<aside class="sidebar d-flex flex-column border-end flex-shrink-0" style="width: 280px; height: 100vh; overflow-y: auto;">
+<aside id="project-sidebar" class="sidebar d-flex flex-column border-end flex-shrink-0 bg-surface" style="height: 100vh; overflow-y: auto;">
+
     <div class="p-3 border-bottom sticky-top bg-surface" style="z-index: 1020;">
-        <a href="{% url 'projects:list' %}" class="text-secondary text-decoration-none fs-8 mb-2 d-inline-block hover-white">
-            <i class="bi bi-arrow-left me-1"></i> Projects
-        </a>
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <a href="{% url 'projects:list' %}" class="text-secondary text-decoration-none fs-8 d-inline-block hover-white">
+                <i class="bi bi-arrow-left me-1"></i> Projects
+            </a>
+            <button class="btn btn-link btn-sm text-secondary p-0 d-md-none" onclick="toggleSidebar()">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
 
         <div class="d-flex justify-content-between align-items-start">
-            <div class="min-width-0 me-2">
+            <div class="min-width-0 me-2 flex-grow-1">
                 <h2 class="h6 fw-bold mb-1 text-truncate" title="{{ project.name }}">{{ project.name }}</h2>
                 <p class="text-secondary fs-8 mb-0 text-truncate">
                     {{ project.description|default:"No description" }}
                 </p>
             </div>
-
             <div class="dropdown flex-shrink-0">
-                <button class="btn btn-link btn-sm text-secondary p-0" data-bs-toggle="dropdown" aria-expanded="false">
+                <button class="btn btn-link btn-sm text-secondary p-0" data-bs-toggle="dropdown">
                     <i class="bi bi-three-dots"></i>
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end bg-surface shadow border">
@@ -28,53 +33,52 @@
     <div class="p-3 border-bottom flex-shrink-0">
         <div class="d-flex align-items-center justify-content-between mb-2">
             <span class="text-secondary text-uppercase fs-8 fw-bold letter-spacing-1">IFC Models</span>
-            <a href="{% url 'projects:upload' project.pk %}" class="btn btn-sm btn-link text-secondary p-0" title="Upload Files">
+            <a href="{% url 'projects:upload' project.pk %}" class="btn btn-sm btn-link text-secondary p-0 hover-white">
                 <i class="bi bi-plus-lg"></i>
             </a>
         </div>
 
         <div class="d-flex flex-column gap-1">
             {% for ifc in ifc_files %}
-            <div class="file-item d-flex align-items-center p-2 rounded justify-content-between group-hover-bg position-relative">
+            <div class="file-item d-flex align-items-center p-2 rounded justify-content-between position-relative group"
+                 data-bs-toggle="tooltip"
+                 data-bs-placement="right"
+                 data-bs-title="{{ ifc.name }}"
+                 data-bs-delay='{"show":500, "hide":0}'>
 
                 <div class="d-flex align-items-center min-width-0 gap-2 flex-grow-1">
-                    <div class="position-relative">
-                        <div class="file-icon file-icon-ifc">IFC</div>
-                        <span class="position-absolute top-0 start-100 translate-middle p-1 border border-light rounded-circle status-{{ ifc.status }}"
-                              style="width: 8px; height: 8px;"
-                              title="Status: {{ ifc.get_status_display }}">
-                        </span>
+                    <div class="position-relative flex-shrink-0">
+                        <div class="file-icon file-icon-ifc shadow-sm">IFC</div>
+                        <span class="position-absolute top-0 start-100 translate-middle p-1 border border-light rounded-circle status-{{ ifc.status }}" style="width: 8px; height: 8px;"></span>
                     </div>
 
-                    <div class="min-width-0 flex-grow-1">
-                        <div class="fs-7 fw-medium text-truncate" title="{{ ifc.name }}">{{ ifc.name }}</div>
-                        <div class="fs-8 text-secondary d-flex align-items-center gap-2">
+                    <div class="min-width-0 flex-grow-1 d-flex flex-column justify-content-center">
+                        <a href="{{ ifc.file.url }}" target="_blank" class="d-block fs-7 fw-medium text-truncate file-link text-white-50 hover-text-white">
+                            {{ ifc.name }}
+                        </a>
+                        <div class="fs-8 text-secondary d-flex align-items-center gap-2 mt-1">
                             <span>{{ ifc.entity_count }} items</span>
-
                             {% if ifc.unresolved_issue_count %}
-                            <i class="bi bi-exclamation-triangle-fill text-warning"
-                               title="{{ ifc.unresolved_issue_count }} Data Quality Issues"></i>
+                            <i class="bi bi-exclamation-triangle-fill text-warning" title="Data Issues"></i>
                             {% endif %}
                         </div>
                     </div>
                 </div>
 
-                <div class="dropdown flex-shrink-0 ms-1">
-                    <button class="btn btn-link btn-sm py-0 text-secondary"
-                            data-bs-toggle="dropdown"
-                            aria-expanded="false"
-                            data-bs-boundary="viewport">
+                <div class="dropdown flex-shrink-0 ms-1 opacity-0 group-hover-opacity transition-opacity">
+                    <button class="btn btn-link btn-sm py-0 text-secondary" data-bs-toggle="dropdown">
                         <i class="bi bi-three-dots-vertical"></i>
                     </button>
-                    <ul class="dropdown-menu dropdown-menu-end bg-surface shadow border" style="z-index: 9999;">
-                        <li><a class="dropdown-item fs-8" href="{% url 'projects:ifc_edit' ifc.pk %}"><i class="bi bi-pencil me-2"></i>Edit Details</a></li>
-                        <li><a class="dropdown-item fs-8 text-danger" href="{% url 'projects:ifc_delete' ifc.pk %}"><i class="bi bi-trash me-2"></i>Delete</a></li>
+                    <ul class="dropdown-menu dropdown-menu-end bg-surface shadow border" style="z-index: 1030;">
+                        <li><a class="dropdown-item fs-8" href="{% url 'projects:ifc_edit' ifc.pk %}">Edit</a></li>
+                        <li><a class="dropdown-item fs-8 text-danger" href="{% url 'projects:ifc_delete' ifc.pk %}">Delete</a></li>
                     </ul>
                 </div>
             </div>
             {% empty %}
-            <div class="text-center py-3 border border-dashed rounded text-secondary fs-8">
-                Upload .ifc files here
+            <div class="text-center py-4 border border-dashed border-secondary rounded text-secondary fs-8 opacity-50">
+                <i class="bi bi-cloud-upload d-block fs-5 mb-1"></i>
+                No IFC models
             </div>
             {% endfor %}
         </div>
@@ -83,47 +87,50 @@
     <div class="p-3 flex-grow-1">
         <div class="d-flex align-items-center justify-content-between mb-2">
             <span class="text-secondary text-uppercase fs-8 fw-bold letter-spacing-1">Documents</span>
-            <a href="{% url 'projects:upload' project.pk %}" class="btn btn-sm btn-link text-secondary p-0" title="Upload Files">
+            <a href="{% url 'projects:upload' project.pk %}" class="btn btn-sm btn-link text-secondary p-0 hover-white">
                 <i class="bi bi-plus-lg"></i>
             </a>
         </div>
 
         <div class="d-flex flex-column gap-1">
             {% for doc in documents %}
-            <div class="file-item d-flex align-items-center p-2 rounded justify-content-between group-hover-bg position-relative">
+            <div class="file-item d-flex align-items-center p-2 rounded justify-content-between position-relative group"
+                 data-bs-toggle="tooltip"
+                 data-bs-placement="right"
+                 data-bs-title="{{ doc.name }}"
+                 data-bs-delay='{"show":500, "hide":0}'>
+
                 <div class="d-flex align-items-center min-width-0 gap-2 flex-grow-1">
-                    <div class="position-relative">
-                        <div class="file-icon file-icon-{{ doc.document_type }}">
+
+                    <div class="position-relative flex-shrink-0">
+                        <div class="file-icon file-icon-{{ doc.document_type }} shadow-sm">
                             <i class="bi bi-file-text"></i>
                         </div>
-                        <span class="position-absolute top-0 start-100 translate-middle p-1 border border-light rounded-circle status-{{ doc.status }}"
-                              style="width: 8px; height: 8px;"
-                              title="Status: {{ doc.get_status_display }}">
-                        </span>
+                        <span class="position-absolute top-0 start-100 translate-middle p-1 border border-light rounded-circle status-{{ doc.status }}" style="width: 8px; height: 8px;"></span>
                     </div>
 
-                    <div class="min-width-0">
-                        <div class="fs-7 fw-medium text-truncate" title="{{ doc.name }}">{{ doc.name }}</div>
-                        <div class="fs-8 text-secondary">{{ doc.get_document_type_display }}</div>
+                    <div class="min-width-0 flex-grow-1 d-flex flex-column justify-content-center">
+                        <a href="{{ doc.file.url }}" target="_blank" class="d-block fs-7 fw-medium text-truncate file-link text-white-50 hover-text-white">
+                            {{ doc.name }}
+                        </a>
+                        <div class="fs-8 text-secondary mt-1">{{ doc.get_document_type_display }}</div>
                     </div>
                 </div>
 
-                <div class="dropdown flex-shrink-0 ms-1">
-                    <button class="btn btn-link btn-sm py-0 text-secondary"
-                            data-bs-toggle="dropdown"
-                            aria-expanded="false"
-                            data-bs-boundary="viewport">
+                <div class="dropdown flex-shrink-0 ms-1 opacity-0 group-hover-opacity transition-opacity">
+                    <button class="btn btn-link btn-sm py-0 text-secondary" data-bs-toggle="dropdown">
                         <i class="bi bi-three-dots-vertical"></i>
                     </button>
-                    <ul class="dropdown-menu dropdown-menu-end bg-surface shadow border" style="z-index: 9999;">
-                        <li><a class="dropdown-item fs-8" href="{% url 'projects:document_edit' doc.pk %}"><i class="bi bi-pencil me-2"></i>Edit Details</a></li>
-                        <li><a class="dropdown-item fs-8 text-danger" href="{% url 'projects:document_delete' doc.pk %}"><i class="bi bi-trash me-2"></i>Delete</a></li>
+                    <ul class="dropdown-menu dropdown-menu-end bg-surface shadow border" style="z-index: 1030;">
+                        <li><a class="dropdown-item fs-8" href="{% url 'projects:document_edit' doc.pk %}">Edit</a></li>
+                        <li><a class="dropdown-item fs-8 text-danger" href="{% url 'projects:document_delete' doc.pk %}">Delete</a></li>
                     </ul>
                 </div>
             </div>
             {% empty %}
-            <div class="text-center py-3 border border-dashed rounded text-secondary fs-8">
-                Upload PDFs here
+            <div class="text-center py-4 border border-dashed border-secondary rounded text-secondary fs-8 opacity-50">
+                <i class="bi bi-file-earmark-plus d-block fs-5 mb-1"></i>
+                No documents
             </div>
             {% endfor %}
         </div>

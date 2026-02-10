@@ -1,44 +1,225 @@
 <!--_ask.html-->
-<div class="chat-container">
-    <!-- Messages -->
-    <div class="chat-messages" id="chat-messages">
-        {% for message in messages %}
-        <div class="message message-{{ message.role }}">
-            <div class="message-avatar">
-                {% if message.role == 'user' %}
-                    {{ user.username.0|upper }}
-                {% else %}
-                    <i class="bi bi-building"></i>
-                {% endif %}
-            </div>
-            <div class="message-content">
-                {{ message.content|linebreaks }}
-            </div>
-        </div>
-        {% empty %}
-        <div class="empty-state h-100 d-flex flex-column align-items-center justify-content-center">
-            <i class="bi bi-chat-dots"></i>
-            <h3 class="h5 fw-semibold mb-2">Ask anything about your project</h3>
-            <p class="text-secondary mb-0">Query your IFC models and documents using natural language.</p>
-        </div>
-        {% endfor %}
+{% load static %}
+
+<template id="castor-loader-template">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="50" height="50">
+      <defs>
+        <linearGradient id="crystal-main" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" style="stop-color:#4facfe;stop-opacity:1" />
+          <stop offset="100%" style="stop-color:#00f2fe;stop-opacity:1" />
+        </linearGradient>
+        <linearGradient id="crystal-shadow" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" style="stop-color:#4facfe;stop-opacity:1" />
+          <stop offset="100%" style="stop-color:#330867;stop-opacity:1" />
+        </linearGradient>
+        <linearGradient id="crystal-highlight" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" style="stop-color:#a6c1ee;stop-opacity:0.8" />
+          <stop offset="100%" style="stop-color:#fbc2eb;stop-opacity:0.2" />
+        </linearGradient>
+        <linearGradient id="wood-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" style="stop-color:#795548;stop-opacity:1" />
+          <stop offset="40%" style="stop-color:#A1887F;stop-opacity:1" />
+          <stop offset="100%" style="stop-color:#5D4037;stop-opacity:1" />
+        </linearGradient>
+      </defs>
+      <style>
+        @keyframes bite { 0% { transform: rotate(0deg); } 50% { transform: rotate(15deg); } 100% { transform: rotate(0deg); } }
+        @keyframes head-shake { 0% { transform: rotate(0deg) translateY(0); } 25% { transform: rotate(-2deg) translateY(1px); } 75% { transform: rotate(1deg) translateY(-1px); } 100% { transform: rotate(0deg) translateY(0); } }
+        @keyframes debris-fly { 0% { opacity: 1; transform: translate(0, 0) scale(1) rotate(0deg); } 100% { opacity: 0; transform: translate(-25px, -35px) scale(0.5) rotate(-90deg); } }
+        #beaver-head-group { transform-origin: 100px 100px; animation: head-shake 0.4s infinite linear; }
+        #jaw-assembly { transform-origin: 90px 95px; animation: bite 0.2s infinite alternate ease-in-out; }
+        .chip { opacity: 0; fill: #D7CCC8; }
+        .c1 { animation: debris-fly 0.6s infinite linear; animation-delay: 0.0s; }
+        .c2 { animation: debris-fly 0.6s infinite linear; animation-delay: 0.2s; }
+        .c3 { animation: debris-fly 0.6s infinite linear; animation-delay: 0.4s; }
+      </style>
+      <g transform="translate(40, 110)">
+        <path d="M0,20 L100,10 L100,40 L0,50 Z" fill="url(#wood-gradient)" />
+        <ellipse cx="0" cy="35" rx="5" ry="15" fill="#5D4037" />
+        <path d="M10,0 L110,-10 L110,20 L10,30 Z" fill="url(#wood-gradient)" stroke="#3E2723" stroke-width="1"/>
+        <ellipse cx="10" cy="15" rx="5" ry="15" fill="#8D6E63" />
+      </g>
+      <g id="beaver-head-group">
+        <path d="M50,80 L90,80 L90,130 L40,120 Z" fill="url(#crystal-shadow)" />
+        <g id="jaw-assembly">
+          <path d="M90,95 L140,105 L130,135 L80,125 Z" fill="url(#crystal-main)" stroke="#fff" stroke-width="0.5" stroke-opacity="0.3"/>
+          <path d="M90,95 L130,135 L100,130 Z" fill="url(#crystal-shadow)" opacity="0.6"/>
+          <path d="M135,108 L138,100 L142,102 L139,110 Z" fill="#EEE" />
+        </g>
+        <g id="upper-head">
+          <path d="M60,60 L120,55 L150,85 L90,95 Z" fill="url(#crystal-main)" />
+          <path d="M90,95 L150,85 L140,105 L90,95 Z" fill="url(#crystal-highlight)" opacity="0.9"/>
+          <path d="M60,60 L90,95 L50,80 Z" fill="url(#crystal-shadow)" opacity="0.5" />
+          <path d="M150,85 L160,90 L150,95 Z" fill="#1a237e" />
+          <circle cx="115" cy="75" r="6" fill="#1a237e" />
+          <circle cx="117" cy="73" r="2" fill="white" />
+          <circle cx="75" cy="65" r="10" fill="#30cfd0" stroke="#1a237e" stroke-width="2"/>
+          <circle cx="75" cy="65" r="5" fill="#1a237e" />
+          <rect x="145" y="90" width="8" height="12" fill="white" rx="1" />
+        </g>
+      </g>
+      <g transform="translate(140, 100)">
+        <polygon points="0,0 10,-5 5,5" class="chip c1" />
+        <polygon points="0,0 8,8 -5,5"  class="chip c2" />
+        <polygon points="0,0 12,0 6,10" class="chip c3" />
+      </g>
+    </svg>
+</template>
+
+<div class="d-flex flex-column flex-grow-1 w-100 h-100 position-relative" style="overflow: hidden;">
+
+    <div class="flex-grow-1 overflow-y-auto p-4 min-height-0" id="chat-messages" style="scroll-behavior: smooth;">
+        {% include "environments/components/chat_message_list.html" %}
     </div>
 
-    <!-- Input -->
-    <div class="chat-input-container">
-        <form method="post" id="ask-form">
+    <div id="scroll-btn" class="scroll-bottom-btn" onclick="scrollToBottom()">
+        <i class="bi bi-arrow-down text-secondary"></i>
+    </div>
+
+    <div class="chat-input-container flex-shrink-0 border-top bg-surface p-3">
+        <form id="ask-form"
+          method="post"
+          hx-post="{% url 'projects:ask' project.pk %}"
+          hx-target="#chat-messages"
+          hx-swap="innerHTML">
+
             {% csrf_token %}
+
             <div class="input-group">
                 <textarea class="form-control"
                           name="message"
+                          id="user-input"
                           placeholder="Ask about your IFC model or documents..."
                           rows="1"
-                          style="resize: none;"
-                          onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault(); this.form.submit();}"></textarea>
-                <button type="submit" class="btn btn-primary">
+                          style="resize: none; max-height: 150px;"
+                          required
+                          onkeydown="handleEnter(event)"></textarea>
+
+                <button type="submit" class="btn btn-primary" id="send-btn">
                     <i class="bi bi-send"></i>
                 </button>
+            </div>
+
+            <!-- Scope: subtle, below the input, feels optional -->
+            <div class="d-flex align-items-center gap-2 mt-2">
+                <span class="text-secondary fs-8">Search in:</span>
+
+                <input type="radio" class="btn-check" name="scope" id="scope-auto" value="auto" checked>
+                <label class="btn btn-outline-secondary rounded-pill border-0 fs-8 py-0 px-2"
+                       for="scope-auto"
+                       data-bs-toggle="tooltip"
+                       data-bs-placement="top"
+                       data-bs-title="Search across both IFC models and documents automatically">
+                    <i class="bi bi-stars me-1" style="color: var(--castor-success);"></i>Auto
+                </label>
+
+                <input type="radio" class="btn-check" name="scope" id="scope-ifc" value="ifc">
+                <label class="btn btn-outline-secondary rounded-pill border-0 fs-8 py-0 px-2"
+                       for="scope-ifc"
+                       data-bs-toggle="tooltip"
+                       data-bs-placement="top"
+                       data-bs-title="Only search IFC model entities (walls, doors, properties...)">
+                    <i class="bi bi-box me-1" style="color: var(--castor-accent);"></i>Model
+                </label>
+
+                <input type="radio" class="btn-check" name="scope" id="scope-docs" value="docs">
+                <label class="btn btn-outline-secondary rounded-pill border-0 fs-8 py-0 px-2"
+                       for="scope-docs"
+                       data-bs-toggle="tooltip"
+                       data-bs-placement="top"
+                       data-bs-title="Only search uploaded documents (PDF, DOCX)">
+                    <i class="bi bi-file-text me-1" style="color: var(--castor-primary);"></i>Docs
+                </label>
             </div>
         </form>
     </div>
 </div>
+
+<script>
+    (function() {
+        const chatContainer = document.getElementById('chat-messages');
+        const scrollBtn = document.getElementById('scroll-btn');
+        const form = document.getElementById('ask-form');
+        const input = document.getElementById('user-input');
+
+        // --- FIX: Define the beaver loader variable here ---
+        const beaverLoaderHTML = document.getElementById('castor-loader-template').innerHTML;
+
+        // --- Scroll Logic ---
+
+        // 1. Function to Scroll to Bottom
+        window.scrollToBottom = function() {
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        // 2. Initial Scroll
+        scrollToBottom();
+
+        // 3. Toggle Scroll Button Visibility
+        chatContainer.addEventListener('scroll', function() {
+            // If user is scrolled up more than 100px from bottom, show button
+            const distanceToBottom = chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight;
+
+            if (distanceToBottom > 150) {
+                scrollBtn.classList.add('visible');
+            } else {
+                scrollBtn.classList.remove('visible');
+            }
+        });
+
+        // --- Chat Interaction Logic (HTMX) ---
+        window.handleEnter = function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                htmx.trigger(form, 'submit');
+            }
+        };
+
+        // 4. Optimistic UI: Show message immediately before server responds
+        form.addEventListener('htmx:beforeRequest', function() {
+            const text = input.value.trim();
+            if (!text) return;
+
+            // Generate optimistic HTML
+            const userAvatar = '{{ user.username.0|upper }}';
+
+            // Now this will work because beaverLoaderHTML is defined!
+            const optimisticHTML = `
+                    <div class="message message-user">
+                        <div class="message-avatar">${userAvatar}</div>
+                        <div class="message-content">${text.replace(/\n/g, '<br>')}</div>
+                    </div>
+                    <div class="message message-assistant">
+                        <div class="message-avatar"><i class="bi bi-building"></i></div>
+                        <div class="message-content text-secondary d-flex align-items-center">
+
+                            <div style="width: 50px; height: 50px;">
+                                ${beaverLoaderHTML}
+                            </div>
+
+                            <span class="ms-2 fs-7">Castor is thinking...</span>
+                        </div>
+                    </div>
+                `;
+
+            // Append to list and scroll
+            // Note: This content gets overwritten when the real HTMX response arrives
+            chatContainer.insertAdjacentHTML('beforeend', optimisticHTML);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+
+            // Clear input
+            input.value = '';
+        });
+
+        // 5. After Swap: Scroll to bottom again to show the real response
+        form.addEventListener('htmx:afterSwap', function() {
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            input.focus();
+        });
+
+        // 6. Error Handling
+        form.addEventListener('htmx:responseError', function() {
+            alert("Connection lost. Please try again.");
+        });
+    })();
+</script>

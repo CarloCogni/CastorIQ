@@ -22,7 +22,7 @@ Castor is an intelligent assistant that synchronizes Building Information Models
 | Backend | Django 5.x + Django REST Framework |
 | Database | PostgreSQL 16 + pgvector |
 | LLM | Ollama (Llama 3 8B) |
-| Embeddings | nomic-embed-text |
+| Embeddings | mxbai-embed-large |
 | IFC Processing | IfcOpenShell |
 | Orchestration | LangChain + LangGraph |
 | Package Manager | UV |
@@ -58,8 +58,8 @@ docker compose -f docker/docker-compose.yml up -d
 ```bash
 # Install Ollama from https://ollama.ai
 # Then pull required models:
-ollama pull llama3
-ollama pull nomic-embed-text
+ollama pull llama3.1:8b
+ollama pull mxbai-embed-large
 ```
 
 ### 4. Create Virtual Environment and Install Dependencies

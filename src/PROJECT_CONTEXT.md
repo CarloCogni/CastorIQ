@@ -34,15 +34,15 @@ Castor provides:
 ## 2. Technical Stack
 
 ### Backend
-| Component | Technology | Why                                          |
-|-----------|------------|----------------------------------------------|
-| Framework | Django 5.x | Rapid development, ORM, admin, battle-tested |
-| Database | PostgreSQL 16 + pgvector | Vector similarity search for RAG             |
-| LLM | Ollama (local) with llama3.1:8b | Privacy, no API costs, runs on most PCs      |
-| Embeddings | nomic-embed-text (768 dimensions) | Good quality, runs locally                   |
-| IFC Processing | IfcOpenShell | Industry standard, read AND write IFC        |
-| PDF Processing | PyMuPDF (planned) | Fast, reliable text extraction               |
-| Task Queue | None yet (synchronous) | Could add Celery later for async             |
+| Component | Technology                                   | Why                                          |
+|-----------|----------------------------------------------|----------------------------------------------|
+| Framework | Django 5.x                                   | Rapid development, ORM, admin, battle-tested |
+| Database | PostgreSQL 16 + pgvector                     | Vector similarity search for RAG             |
+| LLM | Ollama (local) with llama3.1:8b              | Privacy, no API costs, runs on most PCs      |
+| Embeddings | mxbai-embed-large (1024 dimensional vectors) | Good quality, runs locally                   |
+| IFC Processing | IfcOpenShell                                 | Industry standard, read AND write IFC        |
+| PDF Processing | PyMuPDF (planned)                            | Fast, reliable text extraction               |
+| Task Queue | None yet (synchronous)                       | Could add Celery later for async             |
 
 ### Frontend
 | Component | Technology | Why |
@@ -171,7 +171,7 @@ Castor/
 ### ❌ Not Started
 - [ ] Document processing (PDF text extraction)
 - [ ] Text chunking strategy
-- [ ] Embeddings service (Ollama nomic-embed-text)
+- [ ] Embeddings service (Ollama mxbai-embed-large)
 - [ ] Vector storage and similarity search
 - [ ] RAG pipeline (retrieval + generation)
 - [ ] Ask tab functionality (end-to-end)
@@ -226,7 +226,7 @@ User Question → Embed → Similarity Search (IFC entities + Document chunks)
 ```
 
 ### Embedding Model
-- **Model:** nomic-embed-text via Ollama
+- **Model:** mxbai-embed-large via Ollama
 - **Dimensions:** 768
 - **Storage:** pgvector extension in PostgreSQL
 
@@ -291,7 +291,7 @@ services:
 ### Ollama Models
 ```bash
 ollama pull llama3.1:8b        # Main LLM (4.9 GB)
-ollama pull nomic-embed-text   # Embeddings (274 MB)
+ollama pull mxbai-embed-large   # Embeddings (274 MB)
 ```
 
 ### Key Environment Variables (.env)
@@ -301,7 +301,7 @@ SECRET_KEY=your-secret-key
 DATABASE_URL=postgres://castor:castor_dev_password@localhost:5432/castor
 OLLAMA_HOST=http://localhost:11434
 OLLAMA_MODEL=llama3.1:8b
-OLLAMA_EMBED_MODEL=nomic-embed-text
+OLLAMA_EMBED_MODEL=mxbai-embed-large
 ```
 
 ### Run Commands
@@ -415,7 +415,12 @@ Current code is attached/below.
 Next task: [Describe what you want to build]
 
 ---------------------------
-IMPORTANT DEVELOPER's NOTES: I want the code clean ( like Uncle Bob wants ) and efficient. Leave usefull comments in english.
+IMPORTANT DEVELOPER's NOTES: I want the code clean ( like Uncle Bob wants ) and efficient, be DRY ( Do not reapeat yourself).
+Leave usefull comments and logging message all in english. AT the beginning of each file always put the name of same 
+file in commments like # environments/view.py, or <!--chat_message_list.html-->.
+Use Negative Space Programming as much as possible with teqniques such as: Disegning by Omission, Clarity thourgh "White Space",
+Minimalist API Desgin, Handling the "Edge" and Removing "Boilerplate" Noise ( For Django would be Context Managers).
+Views and Forms should be "dumb", the business logic should be outside ( Processor class, or processing layer ).
 acted as a super software developer, keeping in mind the Zen of Python.
 As a general rule i'd prefere you pasting here the code in chunk rather than giving me the files directly. I'll make the 
 patch manually in my IDE so that i retain full controll and understanding of what i'm doing.

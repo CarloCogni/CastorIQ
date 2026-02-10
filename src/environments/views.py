@@ -19,6 +19,10 @@ from django.core.exceptions import PermissionDenied
 import logging
 from django.utils import timezone
 from django.http import JsonResponse
+from chat.services.rag_service import RAGService
+from documents.services.document_processor import DocumentProcessor
+from embeddings.services.embedding_service import EmbeddingService
+from ifc_processor.services.processor import IFCProcessingService
 
 logger = logging.getLogger(__name__)
 
@@ -185,12 +189,16 @@ class ProjectTabMixin(ProjectAccessMixin):
 
         return context
 
+
+# ... existing imports ...
+
 class AskView(ProjectTabMixin, TemplateView):
     """Ask tab - query IFC/documents."""
 
     active_tab = "ask"
 
     def get_context_data(self, **kwargs):
+        # ... (Keep existing logic exactly as is) ...
         context = super().get_context_data(**kwargs)
         project = self.get_project()
 
@@ -203,15 +211,58 @@ class AskView(ProjectTabMixin, TemplateView):
             defaults={"title": "New conversation"}
         )
 
-        # Get messages with prefetch
         context["session"] = session
         context["messages"] = (
             session.messages
             .select_related()
             .order_by("created_at")
         )
-
         return context
+
+    def post(self, request, *args, **kwargs):
+        project = self.get_project()
+        user_text = request.POST.get("message", "").strip()
+        scope = request.POST.get("scope", "auto")
+
+        if not user_text:
+            return redirect("projects:ask", pk=project.pk)
+
+        session, _ = ChatSession.objects.get_or_create(
+            project=project,
+            user=request.user,
+            mode=ChatSession.Mode.ASK,
+            is_active=True
+        )
+
+        # Save user message immediately
+        Message.objects.create(session=session, role=Message.Role.USER, content=user_text)
+
+        try:
+            rag = RAGService()
+            answer_text, context_items = rag.generate_answer(project, session, user_text, scope=scope)
+
+            Message.objects.create(
+                session=session,
+                role=Message.Role.ASSISTANT,
+                content=answer_text,
+                retrieved_context=rag._serialize_context(context_items, scope=scope)
+            )
+        except Exception as e:
+            logger.exception(f"RAG generation failed: {e}")
+            Message.objects.create(
+                session=session,
+                role=Message.Role.ASSISTANT,
+                content="⚠️ I encountered an error processing your question. Please check that Ollama is running and try again.",
+            )
+
+        if request.headers.get('HX-Request'):
+            updated_messages = session.messages.select_related().order_by("created_at")
+            return render(request, "environments/components/chat_message_list.html", {
+                "messages": updated_messages,
+                "user": request.user
+            })
+
+        return redirect("projects:ask", pk=project.pk)
 
 class ModifyView(ProjectTabMixin, TemplateView):
     """Modify tab - propose IFC changes."""
@@ -326,68 +377,75 @@ class UploadIFCView(ProjectAccessMixin, View):
         if not uploaded_file.name.lower().endswith(".ifc"):
             return JsonResponse({"error": "File must be .ifc"}, status=400)
 
-        # Create IFC file record
-        ifc_file = IFCFile.objects.create(
-            project=project,
-            name=uploaded_file.name,
-            file=uploaded_file,
-            file_hash="",  # Will be calculated
-        )
+        try:
+            # 1. Create IFC file record
+            ifc_file = IFCFile.objects.create(
+                project=project,
+                name=uploaded_file.name,
+                file=uploaded_file,
+                status=IFCFile.Status.PENDING
+            )
 
-        # Calculate hash
-        ifc_file.file_hash = ifc_file.calculate_hash()
-        ifc_file.save(update_fields=["file_hash"])
+            # 2. Run Pipeline (Hash -> Parse -> Embed)
+            processor = IFCProcessingService(ifc_file)
+            success = processor.run_pipeline()
 
-        # Parse the IFC file (synchronous for now)
-        from ifc_processor.services.parser import IFCParser
-        parser = IFCParser(ifc_file)
-        parser.parse()
+            if success:
+                return JsonResponse({
+                    "id": str(ifc_file.id),
+                    "name": ifc_file.name,
+                    "status": ifc_file.status,
+                    "entity_count": ifc_file.entity_count,
+                })
+            else:
+                return JsonResponse({
+                    "success": False,
+                    "error": ifc_file.error_message or "Processing failed"
+                }, status=400)
 
-        return JsonResponse({
-            "id": str(ifc_file.id),
-            "name": ifc_file.name,
-            "status": ifc_file.status,
-            "entity_count": ifc_file.entity_count,
-        })
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=500)
 
-class UploadDocumentView(ProjectAccessMixin, View):
-    """Handle document upload."""
-
-    def post(self, request, pk):
-        project = self.get_project()
-
-        if "file" not in request.FILES:
-            return JsonResponse({"error": "No file provided"}, status=400)
-
-        uploaded_file = request.FILES["file"]
-        name = uploaded_file.name.lower()
-
-        # Determine document type
-        if name.endswith(".pdf"):
-            doc_type = Document.DocumentType.PDF
-        elif name.endswith(".docx"):
-            doc_type = Document.DocumentType.DOCX
-        elif name.endswith(".txt"):
-            doc_type = Document.DocumentType.TXT
-        else:
-            doc_type = Document.DocumentType.OTHER
-
-        # Create document record
-        document = Document.objects.create(
-            project=project,
-            name=uploaded_file.name,
-            file=uploaded_file,
-            document_type=doc_type,
-        )
-
-        # TODO: Trigger async processing
-
-        return JsonResponse({
-            "id": str(document.id),
-            "name": document.name,
-            "type": document.document_type,
-            "status": document.status,
-        })
+# class UploadDocumentView(ProjectAccessMixin, View):
+#     """Handle document upload."""
+#
+#     def post(self, request, pk):
+#         project = self.get_project()
+#
+#         if "file" not in request.FILES:
+#             return JsonResponse({"error": "No file provided"}, status=400)
+#
+#         uploaded_file = request.FILES["file"]
+#         name = uploaded_file.name.lower()
+#
+#         # Determine document type
+#         if name.endswith(".pdf"):
+#             doc_type = Document.DocumentType.PDF
+#         elif name.endswith(".docx"):
+#             doc_type = Document.DocumentType.DOCX
+#         elif name.endswith(".txt"):
+#             doc_type = Document.DocumentType.TXT
+#         else:
+#             doc_type = Document.DocumentType.OTHER
+#
+#         # Create document record
+#         document = Document.objects.create(
+#             project=project,
+#             name=uploaded_file.name,
+#             file=uploaded_file,
+#             document_type=doc_type,
+#             status=Document.Status.PENDING  # Set to pending initially
+#         )
+#         processor = DocumentProcessor(document)
+#         success = processor.process()
+#
+#         return JsonResponse({
+#             "id": str(document.id),
+#             "name": document.name,
+#             "type": document.document_type,
+#             "status": document.status,
+#             "chunk_count": document.chunk_count  # Return this to UI
+#         })
 
 class ProjectSettingsView(ProjectAccessMixin, UpdateView):
     """Project settings."""
@@ -459,15 +517,12 @@ class IFCFileUpdateView(ProjectAccessMixin, UpdateView):
     def form_valid(self, form):
         # 1. Save the new file
         self.object = form.save(commit=False)
-        self.object.name = self.object.file.name # Auto-sync name
-        self.object.status = IFCFile.Status.PROCESSING
+        self.object.name = self.object.file.name  # Auto-sync name
         self.object.save()
 
-        # 2. Trigger Parsing (Synchronous)
-        # In a real production app, this should be a Celery task
-        from ifc_processor.services.parser import IFCParser
-        parser = IFCParser(self.object)
-        success = parser.parse()
+        # 2. Run Pipeline (Hash -> Parse -> Embed) using the Service
+        processor = IFCProcessingService(self.object)
+        success = processor.run_pipeline()
 
         # 3. Store result for the next page
         self.request.session['processing_result'] = {
@@ -496,6 +551,7 @@ class DocumentUpdateView(ProjectAccessMixin, UpdateView):
         return context
 
     def form_valid(self, form):
+        # 1. Save the new file content
         self.object = form.save(commit=False)
         self.object.name = self.object.file.name
 
@@ -508,14 +564,21 @@ class DocumentUpdateView(ProjectAccessMixin, UpdateView):
         elif ext == '.txt':
             self.object.document_type = Document.DocumentType.TXT
 
-        self.object.status = Document.Status.COMPLETED  # Assume success for docs for now
         self.object.save()
 
+        # 2. Re-process (Extract -> Chunk -> Embed)
+        # This was missing in your original code!
+        processor = DocumentProcessor(self.object)
+        success = processor.process()
+
+        # 3. Store result
         self.request.session['processing_result'] = {
-            'success': True,
+            'success': success,
             'filename': self.object.name,
             'type': self.object.get_document_type_display(),
-            'message': 'Document updated successfully.'
+            'message': 'Document updated and re-indexed successfully.',
+            'chunk_count': self.object.chunk_count,
+            'error': self.object.error_message if not success else None
         }
 
         return redirect("projects:file_processed", pk=self.object.project.pk)
@@ -527,6 +590,7 @@ class FileProcessedView(ProjectAccessMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         # Retrieve results stored in session by the UpdateView
+        context['project'] = self.get_project()
         context['result'] = self.request.session.pop('processing_result', None)
         return context
 
@@ -576,17 +640,12 @@ class FileUploadView(ProjectAccessMixin, TemplateView):
                 project=project,
                 name=uploaded_file.name,
                 file=uploaded_file,
-                file_hash="",  # Will be calculated
+                status=IFCFile.Status.PENDING
             )
 
-            # Calculate hash
-            ifc_file.file_hash = ifc_file.calculate_hash()
-            ifc_file.save(update_fields=["file_hash"])
-
-            # Parse the IFC file (synchronous for now)
-            from ifc_processor.services.parser import IFCParser
-            parser = IFCParser(ifc_file)
-            success = parser.parse()
+            # Run Pipeline
+            processor = IFCProcessingService(ifc_file)
+            success = processor.run_pipeline()
 
             if success:
                 return JsonResponse({
@@ -633,18 +692,23 @@ class FileUploadView(ProjectAccessMixin, TemplateView):
                 status=Document.Status.PENDING,
             )
 
-            # TODO: Trigger async processing when document processor is ready
-            # For now, just mark as completed (no processing yet)
-            document.status = Document.Status.COMPLETED
-            document.processed_at = timezone.now()
-            document.save(update_fields=["status", "processed_at"])
+            # Initialize and run the processor explicitly
+            processor = DocumentProcessor(document)
+            success = processor.process()
 
-            return JsonResponse({
-                "success": True,
-                "file_type": doc_type,
-                "file_name": document.name,
-                "redirect_url": reverse("projects:ask", kwargs={"pk": project.pk})
-            })
+            if success:
+                return JsonResponse({
+                    "success": True,
+                    "file_type": doc_type,
+                    "file_name": document.name,
+                    "redirect_url": reverse("projects:ask", kwargs={"pk": project.pk})
+                })
+            else:
+                return JsonResponse({
+                    "success": False,
+                    "error": document.error_message or "Processing failed"
+                }, status=400)
+            # --- END FIX ---
 
         except Exception as e:
             logger.exception(f"Error uploading document: {e}")

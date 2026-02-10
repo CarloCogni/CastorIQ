@@ -42,10 +42,14 @@ class EmbeddingService:
 
     def embed_query(self, text: str) -> list[float]:
         """Embed a single query string. Used at search time."""
+        if not text:
+            return []
         return self._client.embed_query(text)
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         """Embed a batch of documents. Used at indexing time."""
+        if not texts:
+            return []
         return self._client.embed_documents(texts)
 
     @property

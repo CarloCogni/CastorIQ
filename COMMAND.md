@@ -101,8 +101,8 @@ python manage.py parse_ifc --all-pending --reprocess
 ollama list
 
 # Pull required models (first-time setup)
-ollama pull llama3
-ollama pull nomic-embed-text
+ollama pull llama3.1:8b
+ollama pull mxbai-embed-large
 
 # Start Ollama (if not running)
 ollama serve

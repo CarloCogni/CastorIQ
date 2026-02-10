@@ -120,10 +120,10 @@ REST_FRAMEWORK = {
 # Ollama Configuration
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
-OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
+OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "mxbai-embed-large")
 
 # Vector Configuration
-PGVECTOR_DIMENSIONS = int(os.getenv("PGVECTOR_DIMENSIONS", "768"))
+PGVECTOR_DIMENSIONS = int(os.getenv("PGVECTOR_DIMENSIONS", "1024"))
 
 # File Upload Configuration
 IFC_UPLOAD_DIR = os.getenv("IFC_UPLOAD_DIR", "uploads/ifc")

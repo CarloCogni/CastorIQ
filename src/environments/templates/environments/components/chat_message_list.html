@@ -1,0 +1,212 @@
+<!--chat_message_list.html-->
+{% load static %}
+{% for message in messages %}
+<div class="message message-{{ message.role }}">
+    <div class="message-avatar">
+        {% if message.role == 'user' %}
+            {{ user.username.0|upper }}
+        {% else %}
+            <i class="bi bi-building"></i>
+        {% endif %}
+    </div>
+
+    <div class="message-content position-relative group" id="msg-content-{{ forloop.counter }}">
+
+        <button class="btn-copy-msg"
+                onclick="copyMessage('msg-raw-{{ forloop.counter }}', this)"
+                title="Copy text">
+            <i class="bi bi-copy"></i>
+        </button>
+
+        <textarea id="msg-raw-{{ forloop.counter }}" class="d-none">{{ message.content }}</textarea>
+
+        {% if message.role == 'assistant' and message.retrieved_context.scope %}
+        <div class="mb-2 d-flex align-items-center gap-2">
+            {% if message.retrieved_context.scope == 'ifc' %}
+                <span class="badge rounded-pill fs-8 fw-normal"
+                      style="background-color: rgba(139, 92, 246, 0.15); color: var(--castor-accent);">
+                    <i class="bi bi-box me-1"></i>Model only
+                </span>
+            {% elif message.retrieved_context.scope == 'docs' %}
+                <span class="badge rounded-pill fs-8 fw-normal"
+                      style="background-color: rgba(59, 130, 246, 0.15); color: var(--castor-primary);">
+                    <i class="bi bi-file-text me-1"></i>Documents only
+                </span>
+            {% else %}
+                <span class="badge rounded-pill fs-8 fw-normal"
+                      style="background-color: rgba(16, 185, 129, 0.15); color: var(--castor-success);">
+                    <i class="bi bi-stars me-1"></i>Auto
+                </span>
+            {% endif %}
+            <span class="text-secondary fs-8">{{ message.retrieved_context.source_count }} source{{ message.retrieved_context.source_count|pluralize }}</span>
+        </div>
+        {% endif %}
+
+        <div class="message-text {% if message.role == 'user' %}text-clamp-4{% endif %}"
+             id="msg-text-{{ forloop.counter }}">
+            {{ message.content|linebreaks }}
+        </div>
+
+        {% if message.role == 'user' %}
+        <div class="expand-control d-none" id="expand-ctrl-{{ forloop.counter }}">
+            <div class="expand-toggle" onclick="toggleMessage('msg-text-{{ forloop.counter }}', this)">
+                <i class="bi bi-arrows-expand"></i> Show more
+            </div>
+        </div>
+        {% endif %}
+
+        {% if message.retrieved_context.sources %}
+        <div class="source-panel mt-2 pt-2 border-top border-secondary border-opacity-25">
+            <small class="text-secondary d-flex align-items-center gap-1 mb-2"
+                   style="cursor: default;">
+                <i class="bi bi-diagram-3"></i>
+                Based on {{ message.retrieved_context.source_count }} retrieved excerpt{{ message.retrieved_context.source_count|pluralize }}
+                <span class="opacity-50">— click to inspect</span>
+            </small>
+
+            <div class="d-flex flex-wrap gap-1">
+                {% for item in message.retrieved_context.sources %}
+                <button class="source-badge badge fw-normal fs-8 border btn p-0 px-2"
+                        style="{% if item.type == 'ifc' %}background-color: rgba(139, 92, 246, 0.1); color: var(--castor-accent); border-color: rgba(139, 92, 246, 0.25) !important;{% else %}background-color: rgba(59, 130, 246, 0.1); color: var(--castor-primary); border-color: rgba(59, 130, 246, 0.25) !important;{% endif %}"
+                        onclick="toggleSourceDetail(this, 'src-{{ forloop.parentloop.counter }}-{{ forloop.counter }}')"
+                        title="{{ item.preview }}">
+                    {% if item.type == 'ifc' %}
+                        <i class="bi bi-box me-1"></i>{{ item.name }}
+                        {% if item.storey %}<span class="opacity-75">· {{ item.storey }}</span>{% endif %}
+                    {% else %}
+                        <i class="bi bi-file-text me-1"></i>{{ item.source }}
+                        {% if item.page %}<span class="opacity-75">· p.{{ item.page }}</span>{% endif %}
+                    {% endif %}
+                </button>
+                {% endfor %}
+            </div>
+
+            <!-- Expandable detail cards (one per source, hidden by default) -->
+            {% for item in message.retrieved_context.sources %}
+            <div class="source-detail mt-2 rounded-3 overflow-hidden"
+                 id="src-{{ forloop.parentloop.counter }}-{{ forloop.counter }}"
+                 style="display: none; border: 1px solid {% if item.type == 'ifc' %}rgba(139, 92, 246, 0.3){% else %}rgba(59, 130, 246, 0.3){% endif %};">
+
+                <!-- Header bar -->
+                <div class="px-3 py-2 d-flex align-items-center justify-content-between"
+                     style="background: {% if item.type == 'ifc' %}rgba(139, 92, 246, 0.08){% else %}rgba(59, 130, 246, 0.08){% endif %};">
+                    <div class="d-flex align-items-center gap-2">
+                        {% if item.type == 'ifc' %}
+                        <i class="bi bi-box" style="color: var(--castor-accent);"></i>
+                        <strong class="fs-8" style="color: var(--castor-accent);">{{ item.name }}</strong>
+                        {% else %}
+                        <i class="bi bi-file-text" style="color: var(--castor-primary);"></i>
+                        <strong class="fs-8" style="color: var(--castor-primary);">{{ item.source }}</strong>
+                        {% endif %}
+                    </div>
+                    <button class="btn btn-sm p-0 text-secondary"
+                            onclick="toggleSourceDetail(null, 'src-{{ forloop.parentloop.counter }}-{{ forloop.counter }}')">
+                        <i class="bi bi-x-lg fs-8"></i>
+                    </button>
+                </div>
+
+                <!-- Metadata row -->
+                <div class="px-3 py-2 d-flex flex-wrap gap-3 border-bottom border-secondary border-opacity-10"
+                     style="background: rgba(0,0,0,0.05);">
+                    {% if item.type == 'ifc' %}
+                        <span class="fs-8 text-secondary">
+                            <i class="bi bi-tag me-1"></i>Type: <strong>{{ item.ifc_type }}</strong>
+                        </span>
+                        {% if item.storey %}
+                        <span class="fs-8 text-secondary">
+                            <i class="bi bi-layers me-1"></i>Storey: <strong>{{ item.storey }}</strong>
+                        </span>
+                        {% endif %}
+                        {% if item.global_id %}
+                        <span class="fs-8 text-secondary font-monospace">
+                            <i class="bi bi-fingerprint me-1"></i>{{ item.global_id }}
+                        </span>
+                        {% endif %}
+                    {% else %}
+                        <span class="fs-8 text-secondary">
+                            <i class="bi bi-journal me-1"></i>Document: <strong>{{ item.source }}</strong>
+                        </span>
+                        {% if item.page %}
+                        <span class="fs-8 text-secondary">
+                            <i class="bi bi-bookmark me-1"></i>Page: <strong>{{ item.page }}</strong>
+                        </span>
+                        {% endif %}
+                    {% endif %}
+                </div>
+
+                <!-- Full excerpt -->
+                <div class="px-3 py-2">
+                    <small class="text-secondary d-block mb-1">
+                        <i class="bi bi-quote me-1"></i>Excerpt sent to LLM:
+                    </small>
+                    <div class="fs-8 p-2 rounded"
+                         style="background: rgba(0,0,0,0.1); white-space: pre-wrap; line-height: 1.5; max-height: 200px; overflow-y: auto;">{{ item.full_text }}</div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% empty %}
+<div class="empty-state h-100 d-flex flex-column align-items-center justify-content-center">
+    <i class="bi bi-chat-dots fs-1 mb-3 text-secondary opacity-50"></i>
+    <h3 class="h5 fw-semibold mb-2">Ask anything about your project</h3>
+    <p class="text-secondary mb-0">Query your IFC models and documents using natural language.</p>
+</div>
+{% endfor %}
+
+<script>
+    // Source detail toggle — one open at a time per message
+    function toggleSourceDetail(badgeBtn, detailId) {
+        const detail = document.getElementById(detailId);
+        const panel = detail.closest('.source-panel');
+        const allDetails = panel.querySelectorAll('.source-detail');
+        const allBadges = panel.querySelectorAll('.source-badge');
+        const isOpen = detail.style.display !== 'none';
+
+        // Close all in this message
+        allDetails.forEach(d => d.style.display = 'none');
+        allBadges.forEach(b => b.classList.remove('source-badge-active'));
+
+        // If wasn't open, open it
+        if (!isOpen) {
+            detail.style.display = 'block';
+            if (badgeBtn) badgeBtn.classList.add('source-badge-active');
+            // Smooth scroll into view
+            detail.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    }
+
+    function toggleMessage(elementId, btn) {
+        const textElement = document.getElementById(elementId);
+        if (textElement.classList.contains('text-clamp-4')) {
+            textElement.classList.remove('text-clamp-4');
+            btn.innerHTML = '<i class="bi bi-arrows-collapse"></i> Show less';
+        } else {
+            textElement.classList.add('text-clamp-4');
+            btn.innerHTML = '<i class="bi bi-arrows-expand"></i> Show more';
+        }
+    }
+
+    function copyMessage(rawId, btn) {
+        const rawText = document.getElementById(rawId).value;
+        navigator.clipboard.writeText(rawText).then(() => {
+            const originalIcon = btn.innerHTML;
+            btn.innerHTML = '<i class="bi bi-check2"></i>';
+            setTimeout(() => { btn.innerHTML = originalIcon; }, 2000);
+        });
+    }
+
+    (function initMessageToggles() {
+        const messages = document.querySelectorAll('.message-text.text-clamp-4');
+        messages.forEach(msg => {
+            if (msg.scrollHeight > msg.clientHeight) {
+                const control = msg.nextElementSibling;
+                if (control && control.classList.contains('expand-control')) {
+                    control.classList.remove('d-none');
+                }
+            }
+        });
+    })();
+</script>

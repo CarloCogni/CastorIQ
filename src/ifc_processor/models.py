@@ -179,7 +179,7 @@ class IFCEntity(UUIDModel):
 
     # Vector embedding for similarity search
     embedding = VectorField(
-        dimensions=768,
+        dimensions=1024, #mxbai-embed-large
         null=True,
         blank=True,
     )

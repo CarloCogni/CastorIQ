@@ -3,6 +3,7 @@ from django.contrib import admin, messages
 from .models import IFCFile, IFCEntity, IFCDataIssue
 from django.utils.html import format_html
 import json
+import numpy as np
 
 
 class DataIssueInline(admin.TabularInline):
@@ -86,7 +87,7 @@ class IFCEntityAdmin(admin.ModelAdmin):
     list_display = ('global_id_short', 'ifc_type', 'name', 'building_storey', 'ifc_file')
     list_filter = ('ifc_type', 'building_storey', 'ifc_file__project')
     search_fields = ('global_id', 'name', 'description', 'ifc_file__name')
-    readonly_fields = ('id', 'properties_pretty', 'embedding', 'created_at', 'updated_at')
+    readonly_fields = ('id', 'properties_pretty', 'embedding_preview', 'created_at', 'updated_at')
     list_per_page = 50
     show_full_result_count = False
     list_select_related = ('ifc_file', 'ifc_file__project')
@@ -102,7 +103,8 @@ class IFCEntityAdmin(admin.ModelAdmin):
             'fields': ('properties_pretty', 'description'),
         }),
         ('Embedding', {
-            'fields': ('embedding',),
+            # 2. CHANGE: Replace 'embedding' with 'embedding_preview' here too
+            'fields': ('embedding_preview',),
             'classes': ('collapse',),
         }),
     )
@@ -124,6 +126,26 @@ class IFCEntityAdmin(admin.ModelAdmin):
 
     properties_pretty.short_description = "Properties"
 
+    def embedding_preview(self, obj):
+        """Format the vector embedding for display to avoid Numpy boolean errors."""
+        if obj.embedding is None:
+            return "-"
+
+        # Convert to list if it's a numpy array to make it safe
+        vector = obj.embedding
+        if hasattr(vector, 'tolist'):
+            vector = vector.tolist()
+
+        # Create a short preview
+        preview = f"Vector [{len(vector)} dims]: {vector[:3]}..."
+
+        # Return full vector in a scrollable box (safe string)
+        return format_html(
+            '<div style="max-height: 100px; overflow-y: auto; background: #f8f9fa; padding: 5px; border-radius: 4px; font-family: monospace; font-size: 11px;">{}</div>',
+            str(vector)
+        )
+
+    embedding_preview.short_description = "Embedding Vector"
 
 @admin.register(IFCDataIssue)
 class IFCDataIssueAdmin(admin.ModelAdmin):

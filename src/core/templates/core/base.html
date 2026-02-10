@@ -42,6 +42,7 @@
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             min-height: 100vh;
+            overflow: hidden;
         }
 
         /* Custom scrollbar */
@@ -95,12 +96,63 @@
             background-color: var(--bs-tertiary-bg) !important;
         }
 
-        /* Sidebar */
+        /* 1. Sidebar Transitions */
         .sidebar {
             width: 280px;
-            min-height: 100vh;
+            height: 100%;
             background-color: var(--bs-tertiary-bg);
             border-right: 1px solid var(--bs-border-color);
+            transition: margin-left 0.3s ease-in-out; /* Smooth slide */
+            flex-shrink: 0;
+        }
+
+        /* Class to hide sidebar by pulling it left */
+        .sidebar-collapsed {
+            margin-left: -280px;
+        }
+
+        /* 2. File Links in Sidebar */
+        .file-link {
+            color: inherit;
+            text-decoration: none;
+        }
+        .file-link:hover {
+            color: var(--castor-primary);
+            text-decoration: underline;
+        }
+
+        /* 3. Scroll to Bottom Button */
+        .scroll-bottom-btn {
+            position: absolute;
+            bottom: 80px; /* Above the input bar */
+            left: 50%;
+            transform: translateX(-50%);
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: var(--bs-tertiary-bg);
+            border: 1px solid var(--bs-border-color);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 100;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.2s ease;
+        }
+
+        .scroll-bottom-btn.visible {
+            opacity: 1;
+            visibility: visible;
+            bottom: 90px; /* Slight pop-up animation */
+        }
+
+        .scroll-bottom-btn:hover {
+            background-color: var(--castor-primary);
+            color: white;
+            border-color: var(--castor-primary);
         }
 
         /* Nav tabs custom style */
@@ -365,15 +417,131 @@
         .spin {
             animation: spin 1s linear infinite;
         }
+
+        /* 1. Only show the 3-dots menu when hovering the file row */
+        .group:hover .group-hover-opacity {
+            opacity: 1 !important;
+        }
+        .transition-opacity {
+            transition: opacity 0.2s ease;
+        }
+
+        /* 2. Better text colors */
+        .text-white-50 { color: rgba(255, 255, 255, 0.6) !important; }
+        .hover-text-white:hover { color: #fff !important; text-decoration: none; }
+        .hover-white:hover { color: #fff !important; }
+
+        /* 3. Tweak the file icon to pop less visually */
+        .file-icon {
+            /* Slight background adjustment */
+            box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+        }
+        .min-width-0 {
+            min-width: 0 !important;
+        }
+        .min-height-0 {
+            min-height: 0 !important;
+        }
+        /* 1. Truncation Logic */
+        .text-clamp-4 {
+            display: -webkit-box;
+            -webkit-line-clamp: 4; /* Show max 4 lines */
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        /* 2. Copy Button Visibility */
+        .message-content {
+            position: relative; /* Anchor for absolute buttons */
+            padding-right: 30px; /* Make space for the copy button */
+        }
+
+        .btn-copy-msg {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            padding: 4px;
+            border-radius: 4px;
+            background-color: rgba(0,0,0,0.2);
+            color: inherit;
+            border: none;
+            cursor: pointer;
+        }
+
+        /* Show copy button on hover */
+        .message-content:hover .btn-copy-msg {
+            opacity: 1;
+        }
+
+        /* 3. Expand/Collapse Toggle */
+        .expand-toggle {
+            font-size: 0.75rem;
+            cursor: pointer;
+            margin-top: 0.5rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-weight: 500;
+            opacity: 0.9;
+        }
+
+        .expand-toggle:hover {
+            text-decoration: underline;
+            opacity: 1;
+        }
+        /* Scope pills: color-coded active states */
+        #scope-auto:checked + label {
+            background-color: rgba(16, 185, 129, 0.15) !important;
+            color: var(--castor-success) !important;
+            font-weight: 600;
+        }
+
+        #scope-ifc:checked + label {
+            background-color: rgba(139, 92, 246, 0.15) !important;
+            color: var(--castor-accent) !important;
+            font-weight: 600;
+        }
+
+        #scope-docs:checked + label {
+            background-color: rgba(59, 130, 246, 0.15) !important;
+            color: var(--castor-primary) !important;
+            font-weight: 600;
+        }
+        /* Source badges: interactive states */
+        .source-badge {
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .source-badge:hover {
+            filter: brightness(1.2);
+            transform: translateY(-1px);
+        }
+
+        .source-badge-active {
+            outline: 2px solid currentColor;
+            outline-offset: 1px;
+        }
+
+        /* Source detail card entrance */
+        .source-detail {
+            animation: slideDown 0.2s ease-out;
+        }
+
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-8px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
     </style>
 
     {% block extra_css %}{% endblock %}
 </head>
 <body>
     {% block body %}
-    <div class="d-flex flex-column min-vh-100">
+    <div class="d-flex flex-column vh-100">
         {% include "core/components/navbar.html" %}
-
         <div class="d-flex flex-grow-1 overflow-hidden">
             {% block content %}{% endblock %}
         </div>
@@ -381,6 +549,18 @@
     {% endblock %}
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+    document.addEventListener('DOMContentLoaded', function () {
+        // Initialize all tooltips
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl, {
+                trigger: 'hover', // Only trigger on hover
+                container: 'body' // CRITICAL: This allows it to float outside the sidebar
+            })
+        })
+    });
+    </script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>

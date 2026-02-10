@@ -1,3 +1,4 @@
+<!--project_detail.html-->
 {% extends "core/base.html" %}
 
 {% block title %}{{ project.name }} - Castor{% endblock %}
@@ -15,9 +16,15 @@
 {% block content %}
     {% include "environments/components/sidebar.html" %}
 
-    <div class="flex-grow-1 d-flex flex-column min-width-0 bg-body">
+<div class="flex-grow-1 d-flex flex-column min-width-0 bg-body h-100 overflow-hidden position-relative">
 
-        <ul class="nav nav-tabs-custom px-4 pt-3 border-bottom">
+    <div class="border-bottom bg-body d-flex align-items-center px-3 flex-shrink-0">
+
+        <button class="btn btn-link text-secondary me-2 p-2" onclick="toggleSidebar()" title="Toggle Sidebar">
+            <i class="bi bi-layout-sidebar"></i>
+        </button>
+
+        <ul class="nav nav-tabs-custom border-bottom-0 flex-grow-1">
             <li class="nav-item">
                 <a class="nav-link {% if active_tab == 'ask' %}active{% endif %}" href="{% url 'projects:ask' project.pk %}">
                     <i class="bi bi-chat me-2"></i>Ask
@@ -42,27 +49,83 @@
                 </a>
             </li>
         </ul>
-
-        <div class="flex-grow-1 overflow-hidden d-flex flex-column position-relative">
-            {% if active_tab == 'ask' %}
-                {% include "environments/tabs/_ask.html" %}
-            {% elif active_tab == 'modify' %}
-                {% include "environments/tabs/_modify.html" %}
-            {% elif active_tab == 'conflicts' %}
-                {% include "environments/tabs/_conflicts.html" %}
-            {% elif active_tab == 'history' %}
-                {% include "environments/tabs/_history.html" %}
-            {% endif %}
-        </div>
     </div>
 
+    <div class="flex-grow-1 overflow-hidden d-flex flex-column position-relative">
+        {% if active_tab == 'ask' %}
+            {% include "environments/tabs/_ask.html" %}
+        {% elif active_tab == 'modify' %}
+            {% include "environments/tabs/_modify.html" %}
+        {% elif active_tab == 'conflicts' %}
+            {% include "environments/tabs/_conflicts.html" %}
+        {% elif active_tab == 'history' %}
+            {% include "environments/tabs/_history.html" %}
+        {% endif %}
+    </div>
+
+</div>
 {% block extra_js %}
 <script>
-const csrfToken = '{{ csrf_token }}';
-const projectId = '{{ project.pk }}';
+// Global Sidebar Toggle Function
+function toggleSidebar() {
+    const sidebar = document.getElementById('project-sidebar');
+    sidebar.classList.toggle('sidebar-collapsed');
+}
 
-// Keep your existing uploadIFC and uploadDocument functions here
-// ...
+// Safety checks for upload scripts
+if (typeof csrfToken === 'undefined') { var csrfToken = '{{ csrf_token }}'; }
+if (typeof projectId === 'undefined') { var projectId = '{{ project.pk }}'; }
+
+// Sidebar Upload Functions
+async function uploadIFC(input) {
+    if (!input.files.length) return;
+
+    const formData = new FormData();
+    formData.append('file', input.files[0]);
+
+    try {
+        const response = await fetch(`/projects/${projectId}/upload/ifc/`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': csrfToken },
+            body: formData
+        });
+
+        if (response.ok) {
+            window.location.reload();
+        } else {
+            const data = await response.json();
+            alert(data.error || 'Upload failed');
+        }
+    } catch (error) {
+        console.error(error);
+        alert('Upload failed: ' + error.message);
+    }
+}
+
+async function uploadDocument(input) {
+    if (!input.files.length) return;
+
+    const formData = new FormData();
+    formData.append('file', input.files[0]);
+
+    try {
+        const response = await fetch(`/projects/${projectId}/upload/document/`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': csrfToken },
+            body: formData
+        });
+
+        if (response.ok) {
+            window.location.reload();
+        } else {
+            const data = await response.json();
+            alert(data.error || 'Upload failed');
+        }
+    } catch (error) {
+        console.error(error);
+        alert('Upload failed: ' + error.message);
+    }
+}
 </script>
 {% endblock %}
 {% endblock %}
