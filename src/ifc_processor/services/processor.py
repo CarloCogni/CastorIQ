@@ -1,3 +1,4 @@
+# ifc_processor/services/processor.py
 import logging
 from django.db import transaction
 from django.utils import timezone
@@ -7,7 +8,6 @@ from ifc_processor.services.parser import IFCParser
 from embeddings.services.embedding_service import EmbeddingService
 
 logger = logging.getLogger(__name__)
-
 
 class IFCProcessingService:
     """

@@ -30,6 +30,7 @@
         </div>
     </div>
 
+
     <div class="p-3 border-bottom flex-shrink-0">
         <div class="d-flex align-items-center justify-content-between mb-2">
             <span class="text-secondary text-uppercase fs-8 fw-bold letter-spacing-1">IFC Models</span>
@@ -84,7 +85,7 @@
         </div>
     </div>
 
-    <div class="p-3 flex-grow-1">
+    <div class="p-3 border-bottom flex-shrink-0">
         <div class="d-flex align-items-center justify-content-between mb-2">
             <span class="text-secondary text-uppercase fs-8 fw-bold letter-spacing-1">Documents</span>
             <a href="{% url 'projects:upload' project.pk %}" class="btn btn-sm btn-link text-secondary p-0 hover-white">
@@ -135,4 +136,144 @@
             {% endfor %}
         </div>
     </div>
+
+    <!-- Conversations (mode-aware: swaps content based on active tab) -->
+    {% if chat_sessions is not None %}
+    <div class="p-3 flex-grow-1">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+            <div class="d-flex align-items-center gap-2">
+                <span class="text-secondary text-uppercase fs-8 fw-bold letter-spacing-1">Conversations</span>
+                <span class="mode-label mode-label-{{ active_tab }}">{{ active_tab }}</span>
+            </div>
+            <form method="post" action="{% url 'projects:ask' project.pk %}">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="new_session">
+                <button type="submit"
+                        class="btn btn-link btn-sm text-secondary p-0 hover-white"
+                        data-bs-toggle="tooltip"
+                        data-bs-placement="right"
+                        data-bs-title="New conversation">
+                    <i class="bi bi-plus-lg"></i>
+                </button>
+            </form>
+        </div>
+
+        <div class="d-flex flex-column gap-1">
+            {% for session in chat_sessions %}
+            <div class="d-flex align-items-center group-hover-container rounded px-2 py-1 gap-2"
+                 style="min-height: 32px;"
+                 id="session-row-{{ session.pk }}">
+
+                <!-- Mode color indicator -->
+                <div class="conversation-indicator indicator-{{ active_tab }}"></div>
+                <!-- Title (read mode) -->
+                <a href="{% url 'projects:ask_session' project.pk session.pk %}"
+                   class="flex-grow-1 text-decoration-none min-width-0 fs-7
+                          {% if session.pk == active_session_id %}text-white fw-semibold{% else %}text-secondary hover-white{% endif %}"
+                   style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"
+                   id="session-title-{{ session.pk }}">
+                    {{ session.title|truncatechars:30 }}
+                </a>
+
+                <!-- Inline rename form (hidden by default) -->
+                <form method="post"
+                      action="{% url 'projects:rename_session' project.pk session.pk %}"
+                      class="flex-grow-1 d-none min-width-0"
+                      id="session-rename-{{ session.pk }}"
+                      onsubmit="return this.querySelector('input').value.trim() !== ''">
+                    {% csrf_token %}
+                    <input type="text"
+                           name="title"
+                           value="{{ session.title }}"
+                           class="form-control form-control-sm bg-dark border-secondary fs-7 py-0"
+                           style="height: 24px;"
+                           onblur="cancelRename('{{ session.pk }}')"
+                           onkeydown="if(event.key==='Escape') cancelRename('{{ session.pk }}')">
+                </form>
+
+                <!-- 3-dot dropdown (visible on hover) -->
+                    <!-- Around line 153 in sidebar.html, inside the session loop -->
+                    <div class="dropdown flex-shrink-0 ms-1 opacity-0 group-hover-visible transition-opacity">                    <button class="btn btn-link btn-sm py-0 text-secondary"
+                            data-bs-toggle="dropdown">
+                        <i class="bi bi-three-dots-vertical"></i>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end bg-surface shadow border" style="z-index: 1030;">
+                        <li>
+                            <a class="dropdown-item fs-8" href="#"
+                               onclick="event.preventDefault(); startRename('{{ session.pk }}')">
+                                <i class="bi bi-pencil me-2"></i>Rename
+                            </a>
+                        </li>
+                        <li>
+                            <form method="post"
+                                  action="{% url 'projects:delete_session' project.pk session.pk %}"
+                                  onsubmit="return confirm('Delete this conversation?')">
+                                {% csrf_token %}
+                                <button type="submit" class="dropdown-item fs-8 text-danger">
+                                    <i class="bi bi-trash3 me-2"></i>Delete
+                                </button>
+                            </form>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            {% empty %}
+            <span class="text-secondary fs-8 opacity-50 px-2">No conversations yet</span>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <script>
+    function startRename(sessionId) {
+        const titleEl = document.getElementById('session-title-' + sessionId);
+        const formEl = document.getElementById('session-rename-' + sessionId);
+        const inputEl = formEl.querySelector('input[name="title"]');
+
+        titleEl.classList.add('d-none');
+        formEl.classList.remove('d-none');
+        inputEl.focus();
+        inputEl.select();
+
+        // Prevent normal form submit — use fetch instead
+        formEl.onsubmit = async function(e) {
+            e.preventDefault();
+            const newTitle = inputEl.value.trim();
+            if (!newTitle) return;
+
+            try {
+                const resp = await fetch(formEl.action, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': formEl.querySelector('[name=csrfmiddlewaretoken]').value,
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: 'title=' + encodeURIComponent(newTitle),
+                });
+
+                if (resp.ok) {
+                    // Update the visible title in-place
+                    titleEl.textContent = newTitle.length > 30
+                        ? newTitle.substring(0, 27) + '...'
+                        : newTitle;
+                }
+            } catch (err) {
+                console.error('Rename failed:', err);
+            }
+
+            // Hide form, show title
+            cancelRename(sessionId);
+        };
+    }
+
+    function cancelRename(sessionId) {
+        const titleEl = document.getElementById('session-title-' + sessionId);
+        const formEl = document.getElementById('session-rename-' + sessionId);
+
+        formEl.classList.add('d-none');
+        titleEl.classList.remove('d-none');
+    }
+    </script>
 </aside>
+
+

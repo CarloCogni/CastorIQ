@@ -1,0 +1,129 @@
+# writeback/services/filter_engine.py
+"""
+Filter resolution engine for IFC entity selection.
+
+Translates structured filter expressions from the LLM
+into Django ORM queries. No AI here — just query building.
+"""
+
+import logging
+import re
+from typing import Optional
+
+from django.db.models import QuerySet
+
+from ifc_processor.models import IFCEntity
+
+logger = logging.getLogger(__name__)
+
+
+class FilterEngine:
+    """
+    Resolves entity filters against the database.
+
+    Supports:
+        - ifc_type: exact match (e.g. "IfcWall")
+        - storey: exact match on building_storey
+        - property_match: key-value conditions on JSON properties
+        - name_pattern: glob-style name matching (e.g. "D-*")
+        - global_ids: explicit list of entity IDs
+
+    Usage:
+        engine = FilterEngine(project)
+        entities = engine.resolve({
+            "ifc_type": "IfcWall",
+            "property_match": {"Pset_WallCommon.IsExternal": True}
+        })
+    """
+
+    def __init__(self, project):
+        self.project = project
+
+    def resolve(self, filter_spec: dict) -> QuerySet:
+        """
+        Resolve a filter specification to a queryset of IFC entities.
+
+        Args:
+            filter_spec: Dict with optional keys: ifc_type, storey,
+                         property_match, name_pattern, global_ids
+
+        Returns:
+            Filtered IFCEntity queryset.
+
+        Raises:
+            ValueError: If filter matches zero entities.
+        """
+        if not filter_spec:
+            raise ValueError("Empty filter — refusing to match all entities.")
+
+        qs = IFCEntity.objects.filter(
+            ifc_file__project=self.project,
+            ifc_file__status="completed",
+        )
+
+        qs = self._apply_ifc_type(qs, filter_spec.get("ifc_type"))
+        qs = self._apply_storey(qs, filter_spec.get("storey"))
+        qs = self._apply_name_pattern(qs, filter_spec.get("name_pattern"))
+        qs = self._apply_global_ids(qs, filter_spec.get("global_ids"))
+        qs = self._apply_property_match(qs, filter_spec.get("property_match"))
+
+        count = qs.count()
+        if count == 0:
+            raise ValueError(
+                f"Filter matched 0 entities. Filter: {filter_spec}"
+            )
+
+        logger.info(f"Filter resolved to {count} entities: {filter_spec}")
+        return qs
+
+    # ── Individual Filters ─────────────────────────────────
+
+    def _apply_ifc_type(
+        self, qs: QuerySet, ifc_type: Optional[str]
+    ) -> QuerySet:
+        if not ifc_type:
+            return qs
+        # Case-insensitive startswith to catch e.g. IfcWallStandardCase
+        return qs.filter(ifc_type__istartswith=ifc_type)
+
+    def _apply_storey(
+        self, qs: QuerySet, storey: Optional[str]
+    ) -> QuerySet:
+        if not storey:
+            return qs
+        return qs.filter(building_storey__icontains=storey)
+
+    def _apply_name_pattern(
+        self, qs: QuerySet, pattern: Optional[str]
+    ) -> QuerySet:
+        if not pattern:
+            return qs
+        # Convert glob "D-*" to regex "^D\-.*$"
+        regex = "^" + re.escape(pattern).replace(r"\*", ".*") + "$"
+        return qs.filter(name__iregex=regex)
+
+    def _apply_global_ids(
+        self, qs: QuerySet, global_ids: Optional[list]
+    ) -> QuerySet:
+        if not global_ids:
+            return qs
+        return qs.filter(global_id__in=global_ids)
+
+    def _apply_property_match(
+        self, qs: QuerySet, property_match: Optional[dict]
+    ) -> QuerySet:
+        """
+        Filter by JSON property values.
+
+        property_match keys use dot notation: "Pset_WallCommon.IsExternal"
+        which maps to a key inside the properties JSONField.
+        """
+        if not property_match:
+            return qs
+
+        for key, value in property_match.items():
+            # Django JSON __contains lookup:
+            # properties__contains={"Pset_WallCommon.IsExternal": True}
+            qs = qs.filter(properties__contains={key: value})
+
+        return qs

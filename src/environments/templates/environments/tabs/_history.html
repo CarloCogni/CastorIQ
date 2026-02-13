@@ -1,54 +1,222 @@
-<!--_history.html-->
+<!--environments/tabs/_history.html-->
+{% load static %}
+{% load dict_filters %}
 <div class="flex-grow-1 overflow-auto p-4">
     {% if commits %}
-    <div class="card bg-surface border">
-        <div class="card-header bg-transparent border-bottom">
-            <h3 class="h6 fw-semibold mb-0">Commit History</h3>
-        </div>
-        <div class="list-group list-group-flush">
-            {% for commit in commits %}
-            <div class="list-group-item bg-transparent border-bottom d-flex gap-3 p-3">
-                <div class="rounded-circle bg-accent d-flex align-items-center justify-content-center flex-shrink-0" style="width: 40px; height: 40px;">
-                    <i class="bi bi-git text-white"></i>
-                </div>
-                <div class="flex-grow-1 min-width-0">
-                    <div class="d-flex align-items-center gap-2 mb-1">
-                        <code class="fs-8 bg-body px-2 py-1 rounded text-accent">{{ commit.commit_hash|slice:":8" }}</code>
-                        <span class="text-secondary fs-8">{{ commit.created_at|timesince }} ago</span>
-                    </div>
-                    <p class="fw-medium mb-1">{{ commit.message }}</p>
-                    <div class="d-flex gap-3 fs-8 text-secondary">
-                        <span>{{ commit.ifc_file.name }}</span>
-                        {% if commit.entities_modified %}
-                        <span class="text-warning">
-                            <i class="bi bi-pencil me-1"></i>
-                            {{ commit.entities_modified }} modified
-                        </span>
-                        {% endif %}
-                        {% if commit.entities_added %}
-                        <span class="text-success">
-                            <i class="bi bi-plus-lg me-1"></i>
-                            {{ commit.entities_added }} added
-                        </span>
-                        {% endif %}
-                        {% if commit.entities_removed %}
-                        <span class="text-danger">
-                            <i class="bi bi-dash-lg me-1"></i>
-                            {{ commit.entities_removed }} removed
-                        </span>
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h3 class="h6 fw-semibold mb-0">
+            <i class="bi bi-clock-history me-2 text-secondary"></i>
+            Commit History
+            <span class="text-secondary fw-normal ms-2 fs-8">({{ commits|length }} commit{{ commits|length|pluralize }})</span>
+        </h3>
+    </div>
+
+    <div class="d-flex flex-column gap-2">
+        {% for commit in commits %}
+        <div class="card bg-surface border" id="commit-{{ commit.commit_hash|slice:':8' }}">
+            <!-- Commit header row -->
+            <div class="card-body p-3">
+                <div class="d-flex gap-3">
+                    <!-- Git icon with tier color -->
+                    {% with tier=commit.diff_data.tier %}
+<!--                    <div class="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"-->
+<!--                         style="width: 40px; height: 40px;-->
+<!--                                background-color: {% if tier == 1 %}rgba(16, 185, 129, 0.15){% elif tier == 2 %}rgba(249, 115, 22, 0.15){% elif tier == 3 %}rgba(239, 68, 68, 0.15){% else %}rgba(139, 92, 246, 0.15){% endif %};">-->
+<!--                        <i class="bi bi-git"-->
+<!--                           style="color: {% if tier == 1 %}var(&#45;&#45;castor-success){% elif tier == 2 %}#f97316{% elif tier == 3 %}#ef4444{% else %}var(&#45;&#45;castor-accent){% endif %};"></i>-->
+<!--                    </div>-->
+                    <div class="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
+                         style="width: 40px; height: 40px;
+                                background-color: {% if commit.diff_data.operation == 'ROLLBACK' %}rgba(13, 110, 253, 0.1){% else %}rgba(var(--castor-accent-rgb), 0.1){% endif %};">
+                        {% if commit.diff_data.operation == 'ROLLBACK' %}
+                            <i class="bi bi-arrow-counterclockwise text-primary"></i>
+                        {% else %}
+                            {% with tier=commit.diff_data.tier %}
+                            <i class="bi bi-git"
+                               style="color: {% if tier == 1 %}var(--castor-success){% elif tier == 2 %}#f97316{% elif tier == 3 %}#ef4444{% else %}var(--castor-accent){% endif %};"></i>
+                            {% endwith %}
                         {% endif %}
                     </div>
-                </div>
-                <div>
-                    <button class="btn btn-outline-secondary btn-sm">
-                        <i class="bi bi-file-diff me-1"></i>
-                        View Diff
-                    </button>
+                    {% endwith %}
+
+                    <div class="flex-grow-1 min-width-0">
+                        <!-- Top line: hash, tier badge, timestamp -->
+                        <div class="d-flex align-items-center gap-2 mb-1 flex-wrap">
+                            <code class="fs-8 bg-body px-2 py-1 rounded text-accent">{{ commit.commit_hash|slice:":8" }}</code>
+
+                            {% if commit.diff_data.operation == 'ROLLBACK' %}
+                                <span class="badge bg-primary-subtle text-primary border border-primary-subtle fs-9">RESTORE POINT</span>
+                            {% elif forloop.first %}
+                                <span class="badge bg-success-subtle text-success border border-success-subtle fs-9">CURRENT HEAD</span>
+                            {% endif %}
+
+                            {% with tier=commit.diff_data.tier %}
+                            {% if tier %}
+                            <span class="badge rounded-pill text-white fs-9"
+                                  style="background-color: {% if tier == 1 %}var(--castor-success){% elif tier == 2 %}#f97316{% else %}#ef4444{% endif %};">
+                                {% if tier == 1 %}GREEN{% elif tier == 2 %}ORANGE{% elif tier == 3 %}RED{% endif %}
+                            </span>
+                            {% endif %}
+                            {% endwith %}
+
+                            {% if commit.rolled_back %}
+                            <span class="badge bg-danger bg-opacity-10 text-danger fs-9">
+                                <i class="bi bi-x-circle me-1"></i>Superseded
+                            </span>
+                            {% endif %}
+
+                            <span class="text-secondary fs-8 ms-auto">{{ commit.created_at|timesince }} ago</span>
+                        </div>
+
+                        <!-- Commit message -->
+                        {% if commit.diff_data.operation == 'ROLLBACK' %}
+                            <p class="fw-medium mb-1">
+                                <i class="bi bi-arrow-counterclockwise me-1 text-primary"></i>
+                                Restored from
+                                {% if commit.diff_data.restored_from_hash %}
+                                    <code class="bg-body px-2 py-1 rounded text-primary">
+                                        <a href="#commit-{{ commit.diff_data.restored_from_hash|slice:':8' }}"
+                                           class="text-decoration-none text-primary">
+                                            {{ commit.diff_data.restored_from_hash|slice:":8" }}
+                                        </a>
+                                    </code>
+                                {% else %}
+                                    previous state
+                                {% endif %}
+                            </p>
+                            <p class="fs-8 text-secondary mb-1">
+                                Original from {{ commit.diff_data.restored_from_date|default:"unknown time" }}
+                            </p>
+                        {% else %}
+                            <p class="fw-medium mb-1 text-truncate">{{ commit.message }}</p>
+                        {% endif %}
+
+                        <!-- Show if this commit was later restored -->
+                        {% if restored_by %}
+                            {% with restore_hash=restored_by|get_item:commit.commit_hash %}
+                            {% if restore_hash %}
+                            <a href="#commit-{{ restore_hash|slice:':8' }}"
+                               class="badge bg-info-subtle text-info border border-info-subtle fs-9 text-decoration-none commit-link"
+                               title="This version was restored later">
+                                <i class="bi bi-clock-history me-1"></i>Restored
+                            </a>
+                            {% endif %}
+                            {% endwith %}
+                        {% endif %}
+
+                        <!-- Meta row: file, author, entity counts -->
+                        <div class="d-flex gap-3 fs-8 text-secondary flex-wrap">
+                            <span>
+                                <i class="bi bi-file-earmark me-1"></i>{{ commit.ifc_file.name }}
+                            </span>
+                            {% if commit.author %}
+                            <span>
+                                <i class="bi bi-person me-1"></i>{{ commit.author.username }}
+                            </span>
+                            {% endif %}
+                            {% if commit.entities_modified %}
+                            <span class="text-warning">
+                                <i class="bi bi-pencil me-1"></i>{{ commit.entities_modified }} modified
+                            </span>
+                            {% endif %}
+                            {% if commit.entities_added %}
+                            <span class="text-success">
+                                <i class="bi bi-plus-lg me-1"></i>{{ commit.entities_added }} added
+                            </span>
+                            {% endif %}
+                            {% if commit.entities_removed %}
+                            <span class="text-danger">
+                                <i class="bi bi-dash-lg me-1"></i>{{ commit.entities_removed }} removed
+                            </span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- View Diff toggle -->
+<!--                    {% if commit.diff_data.changes %}-->
+<!--                    <div class="flex-shrink-0">-->
+<!--                        <button class="btn btn-outline-secondary btn-sm"-->
+<!--                                onclick="toggleDiff('{{ commit.commit_hash|slice:":8" }}')"-->
+<!--                                id="diff-btn-{{ commit.commit_hash|slice:':8' }}">-->
+<!--                            <i class="bi bi-file-diff me-1"></i>View Diff-->
+<!--                        </button>-->
+<!--                    </div>-->
+<!--                    {% endif %}-->
+<!--                    -->
+                    <div class="flex-shrink-0 d-flex flex-column gap-2" style="width: 100px;">
+
+                        {% if commit.diff_data.changes %}
+                        <button class="btn btn-outline-secondary btn-xs w-100"
+                                onclick="toggleDiff('{{ commit.commit_hash|slice:":8" }}')"
+                                id="diff-btn-{{ commit.commit_hash|slice:':8' }}">
+                            <i class="bi bi-file-diff me-1"></i>Diff
+                        </button>
+                        {% endif %}
+
+                        {% if not forloop.first %}
+                        <form method="post" action="{% url 'projects:restore_commit' project.pk commit.id %}">
+                            {% csrf_token %}
+                            <button type="submit"
+                                    class="btn btn-outline-danger btn-xs w-100"
+                                    title="Revert file to this state"
+                                    onclick="return confirm('⚠️ Restore this version?\n\nThis will create a NEW commit that makes the file look exactly like it did at this point.\n\nAll entities in the database will be re-synced.');">
+                                <i class="bi bi-clock-history me-1"></i>Restore
+                            </button>
+                        </form>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
-            {% endfor %}
+
+            <!-- Expandable diff panel -->
+            {% if commit.diff_data.changes %}
+            <div class="border-top" id="diff-panel-{{ commit.commit_hash|slice:':8' }}" style="display: none;">
+                <div class="p-3">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-borderless mb-0 align-middle">
+                            <thead>
+                                <tr class="text-secondary fs-9">
+                                    <th class="px-2 py-1 fw-semibold">Entity</th>
+                                    <th class="px-2 py-1 fw-semibold">Type</th>
+                                    <th class="px-2 py-1 fw-semibold">Property</th>
+                                    <th class="px-2 py-1 fw-semibold">Before</th>
+                                    <th class="px-2 py-1 fw-semibold">After</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for change in commit.diff_data.changes %}
+                                <tr>
+                                    <td class="px-2 py-1 fs-8">
+                                        <span class="fw-medium">{{ change.name|default:change.entity|truncatechars:20 }}</span>
+                                    </td>
+                                    <td class="px-2 py-1 fs-8 text-secondary">{{ change.ifc_type }}</td>
+                                    <td class="px-2 py-1 fs-8">
+                                        <code class="bg-body px-1 rounded">{{ change.pset }}.{{ change.property }}</code>
+                                    </td>
+                                    <td class="px-2 py-1 fs-8 text-danger font-monospace">
+                                        <del>{{ change.old|default:"—" }}</del>
+                                    </td>
+                                    <td class="px-2 py-1 fs-8 text-success font-monospace fw-medium">
+                                        {{ change.new|default:"—" }}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {% if commit.diff_data.changes|length > 10 %}
+                    <p class="text-secondary fs-9 mt-2 mb-0">
+                        Showing {{ commit.diff_data.changes|length }} change{{ commit.diff_data.changes|length|pluralize }}.
+                    </p>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
         </div>
+        {% endfor %}
     </div>
+
     {% else %}
     <div class="empty-state h-100 d-flex flex-column align-items-center justify-content-center">
         <i class="bi bi-clock-history"></i>
@@ -57,3 +225,71 @@
     </div>
     {% endif %}
 </div>
+
+<script>
+function toggleDiff(hash) {
+    const panel = document.getElementById(`diff-panel-${hash}`);
+    const btn = document.getElementById(`diff-btn-${hash}`);
+    if (!panel) return;
+
+    const isHidden = panel.style.display === 'none';
+    panel.style.display = isHidden ? 'block' : 'none';
+    btn.innerHTML = isHidden
+        ? '<i class="bi bi-chevron-up me-1"></i>Hide Diff'
+        : '<i class="bi bi-file-diff me-1"></i>Diff';
+
+    if (isHidden) {
+        btn.classList.remove('btn-outline-secondary');
+        btn.classList.add('btn-secondary');
+    } else {
+        btn.classList.remove('btn-secondary');
+        btn.classList.add('btn-outline-secondary');
+    }
+}
+
+// Highlight commit when jumping via hash link
+function highlightCommit() {
+    // Remove any existing highlights
+    document.querySelectorAll('.commit-highlight').forEach(el => {
+        el.classList.remove('commit-highlight');
+    });
+
+    // Add highlight to target commit
+    if (window.location.hash) {
+        const target = document.querySelector(window.location.hash);
+        if (target) {
+            target.classList.add('commit-highlight');
+            // Remove highlight after animation
+            setTimeout(() => target.classList.remove('commit-highlight'), 2000);
+        }
+    }
+}
+
+// Highlight on page load and hash change
+window.addEventListener('load', highlightCommit);
+window.addEventListener('hashchange', highlightCommit);
+
+// Handle commit link clicks
+document.addEventListener('click', function(e) {
+    if (e.target.closest('.commit-link')) {
+        setTimeout(highlightCommit, 100);
+    }
+});
+</script>
+
+<style>
+@keyframes commitPulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(13, 110, 253, 0);
+        border-color: var(--bs-border-color);
+    }
+    50% {
+        box-shadow: 0 0 0 8px rgba(13, 110, 253, 0.2);
+        border-color: rgba(13, 110, 253, 0.5);
+    }
+}
+
+.commit-highlight {
+    animation: commitPulse 1s ease-in-out 2;
+}
+</style>

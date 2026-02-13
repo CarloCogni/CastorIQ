@@ -23,6 +23,8 @@ from chat.services.rag_service import RAGService
 from documents.services.document_processor import DocumentProcessor
 from embeddings.services.embedding_service import EmbeddingService
 from ifc_processor.services.processor import IFCProcessingService
+from writeback.models import ModificationProposal
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -186,36 +188,72 @@ class ProjectTabMixin(ProjectAccessMixin):
             )
             .order_by("-created_at")
         )
+        # Chat sessions for sidebar (mode-aware)
+        mode_map = {"ask": ChatSession.Mode.ASK, "modify": ChatSession.Mode.MODIFY}
+        chat_mode = mode_map.get(self.active_tab)
+        if chat_mode:
+            context["chat_sessions"] = (
+                ChatSession.objects
+                .filter(project=project, user=self.request.user, mode=chat_mode)
+                .only("id", "title", "updated_at")
+                .order_by("-updated_at")
+            )
+        else:
+            context["chat_sessions"] = ChatSession.objects.none()
+
+        # Active session ID for sidebar highlight (set by child views)
+        context.setdefault("active_session_id", None)
 
         return context
 
-
-# ... existing imports ...
-
 class AskView(ProjectTabMixin, TemplateView):
-    """Ask tab - query IFC/documents."""
+    """Ask tab — multi-session chat against IFC/documents."""
 
     active_tab = "ask"
 
+    def _get_or_create_session(self, project, user):
+        """Return the most recent Ask session, or create one."""
+        session = (
+            ChatSession.objects
+            .filter(project=project, user=user, mode=ChatSession.Mode.ASK)
+            .order_by("-updated_at")
+            .first()
+        )
+        if not session:
+            session = ChatSession.objects.create(
+                project=project, user=user,
+                mode=ChatSession.Mode.ASK, title="New conversation",
+            )
+        return session
+
+    def _resolve_session(self, project, user):
+        """Resolve session from URL kwarg or fallback to most recent."""
+        session_id = self.kwargs.get("session_id")
+        if session_id:
+            return get_object_or_404(
+                ChatSession,
+                pk=session_id, project=project,
+                user=user, mode=ChatSession.Mode.ASK,
+            )
+        return self._get_or_create_session(project, user)
+
+    def get(self, request, *args, **kwargs):
+        """Redirect bare /ask/ to the most recent session URL."""
+        if "session_id" not in self.kwargs:
+            project = self.get_project()
+            session = self._get_or_create_session(project, request.user)
+            return redirect("projects:ask_session", pk=project.pk, session_id=session.pk)
+        return super().get(request, *args, **kwargs)
+
     def get_context_data(self, **kwargs):
-        # ... (Keep existing logic exactly as is) ...
         context = super().get_context_data(**kwargs)
         project = self.get_project()
-
-        # Get or create active Ask session
-        session, created = ChatSession.objects.get_or_create(
-            project=project,
-            user=self.request.user,
-            mode=ChatSession.Mode.ASK,
-            is_active=True,
-            defaults={"title": "New conversation"}
-        )
+        session = self._resolve_session(project, self.request.user)
 
         context["session"] = session
+        context["active_session_id"] = session.pk
         context["messages"] = (
-            session.messages
-            .select_related()
-            .order_by("created_at")
+            session.messages.select_related().order_by("created_at")
         )
         return context
 
@@ -224,88 +262,338 @@ class AskView(ProjectTabMixin, TemplateView):
         user_text = request.POST.get("message", "").strip()
         scope = request.POST.get("scope", "auto")
 
+        # "New Chat" button — create session and redirect
+        if request.POST.get("action") == "new_session":
+            session = ChatSession.objects.create(
+                project=project, user=request.user,
+                mode=ChatSession.Mode.ASK, title="New conversation",
+            )
+            return redirect("projects:ask_session", pk=project.pk, session_id=session.pk)
+
         if not user_text:
             return redirect("projects:ask", pk=project.pk)
 
-        session, _ = ChatSession.objects.get_or_create(
-            project=project,
-            user=request.user,
-            mode=ChatSession.Mode.ASK,
-            is_active=True
+        session = self._resolve_session(project, request.user)
+
+        # Save user message
+        Message.objects.create(
+            session=session, role=Message.Role.USER, content=user_text,
         )
 
-        # Save user message immediately
-        Message.objects.create(session=session, role=Message.Role.USER, content=user_text)
-
+        # Generate AI response
         try:
             rag = RAGService()
-            answer_text, context_items = rag.generate_answer(project, session, user_text, scope=scope)
-
+            answer_text, context_items = rag.generate_answer(
+                project, session, user_text, scope=scope,
+            )
             Message.objects.create(
                 session=session,
                 role=Message.Role.ASSISTANT,
                 content=answer_text,
-                retrieved_context=rag._serialize_context(context_items, scope=scope)
+                retrieved_context=rag._serialize_context(context_items, scope=scope),
             )
         except Exception as e:
-            logger.exception(f"RAG generation failed: {e}")
+            logger.exception("RAG generation failed for session %s: %s", session.pk, e)
             Message.objects.create(
                 session=session,
                 role=Message.Role.ASSISTANT,
-                content="⚠️ I encountered an error processing your question. Please check that Ollama is running and try again.",
+                content="⚠️ I encountered an error processing your question. "
+                        "Please check that Ollama is running and try again.",
             )
 
-        if request.headers.get('HX-Request'):
+        # Auto-title on first exchange
+        if not session.title or session.title == "New conversation":
+            session.generate_title()
+
+        # HTMX partial response
+        if request.headers.get("HX-Request"):
             updated_messages = session.messages.select_related().order_by("created_at")
             return render(request, "environments/components/chat_message_list.html", {
                 "messages": updated_messages,
-                "user": request.user
+                "user": request.user,
             })
 
+        return redirect("projects:ask_session", pk=project.pk, session_id=session.pk)
+
+class DeleteSessionView(ProjectAccessMixin, View):
+    """Delete a chat session and redirect to Ask tab."""
+
+    def post(self, request, pk, session_id):
+        project = self.get_project()
+        session = get_object_or_404(
+            ChatSession,
+            pk=session_id, project=project, user=request.user,
+        )
+        session.delete()
+        logger.info("Deleted chat session %s for project %s", session_id, pk)
         return redirect("projects:ask", pk=project.pk)
 
+class RenameSessionView(ProjectAccessMixin, View):
+    """Rename a chat session title."""
+
+    def post(self, request, pk, session_id):
+        project = self.get_project()
+        session = get_object_or_404(
+            ChatSession,
+            pk=session_id, project=project, user=request.user,
+        )
+        title = request.POST.get("title", "").strip()
+        if title:
+            session.title = title[:255]
+            session.save(update_fields=["title"])
+            logger.info("Renamed session %s to '%s'", session_id, session.title)
+
+        return JsonResponse({"ok": True, "title": session.title})
+
 class ModifyView(ProjectTabMixin, TemplateView):
-    """Modify tab - propose IFC changes."""
+    """Modify tab — propose, approve, reject IFC modifications."""
 
     active_tab = "modify"
+
+    def _get_or_create_session(self, project, user):
+        session = (
+            ChatSession.objects
+            .filter(project=project, user=user, mode=ChatSession.Mode.MODIFY)
+            .order_by("-updated_at")
+            .first()
+        )
+        if not session:
+            session = ChatSession.objects.create(
+                project=project, user=user,
+                mode=ChatSession.Mode.MODIFY, title="New Modification",
+            )
+        return session
+
+    def _resolve_session(self, project, user):
+        session_id = self.kwargs.get("session_id")
+        if session_id:
+            return get_object_or_404(
+                ChatSession, pk=session_id, project=project,
+                user=user, mode=ChatSession.Mode.MODIFY,
+            )
+        return self._get_or_create_session(project, user)
+
+    def get(self, request, *args, **kwargs):
+        if "session_id" not in self.kwargs:
+            project = self.get_project()
+            session = self._get_or_create_session(project, request.user)
+            return redirect(
+                "projects:modify_session",
+                pk=project.pk, session_id=session.pk,
+            )
+        return super().get(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         project = self.get_project()
-
-        # Get or create active Modify session
-        session, created = ChatSession.objects.get_or_create(
-            project=project,
-            user=self.request.user,
-            mode=ChatSession.Mode.MODIFY,
-            is_active=True,
-            defaults={"title": "New modification"}
-        )
+        session = self._resolve_session(project, self.request.user)
 
         context["session"] = session
+        context["active_session_id"] = session.pk
         context["messages"] = (
             session.messages
-            .select_related()
-            .prefetch_related("proposal")
+            .select_related("proposal", "proposal__git_commit")
             .order_by("created_at")
         )
 
-        # Pending proposals for this user
+        # Pending proposals for the sidebar
+        from writeback.models import ModificationProposal
         context["pending_proposals"] = (
-            project.ifc_files
-            .prefetch_related(
-                Prefetch(
-                    "proposals",
-                    queryset=(
-                        project.ifc_files.model.proposals.rel.related_model.objects
-                        .filter(status="pending")
-                        .select_related("created_by")
-                    )
-                )
+            ModificationProposal.objects
+            .filter(
+                ifc_file__project=project,
+                status=ModificationProposal.Status.PENDING,
             )
+            .select_related("ifc_file")
+            .order_by("-created_at")
         )
 
         return context
+
+    def post(self, request, *args, **kwargs):
+        project = self.get_project()
+        action = request.POST.get("action", "propose")
+
+        # New session — redirect (not JSON)
+        if action == "new_session":
+            session = ChatSession.objects.create(
+                project=project, user=request.user,
+                mode=ChatSession.Mode.MODIFY, title="New Modification",
+            )
+            return redirect(
+                "projects:modify_session",
+                pk=project.pk, session_id=session.pk,
+            )
+
+        # All other actions return JSON
+        dispatch = {
+            "propose": self._handle_propose,
+            "approve": self._handle_approve,
+            "reject": self._handle_reject,
+        }
+        handler = dispatch.get(action)
+        if not handler:
+            return JsonResponse({"status": "error", "message": f"Unknown action: {action}"}, status=400)
+
+        return handler(request, project)
+
+    def _handle_propose(self, request, project):
+        """Classify intent, validate, create proposal — no IFC writes yet."""
+        from writeback.services.modification_service import (
+            ModificationService, ModificationError,
+        )
+
+        user_text = request.POST.get("message", "").strip()
+        if not user_text:
+            return JsonResponse({"status": "error", "message": "Message is required."}, status=400)
+
+        session = self._resolve_session(project, request.user)
+
+        # Save user message
+        user_msg = Message.objects.create(
+            session=session, role=Message.Role.USER, content=user_text,
+        )
+
+        svc = ModificationService(project)
+
+        try:
+            result = svc.propose(user_message=user_text, user=request.user)
+        except ModificationError as e:
+            # Save error as assistant message
+            Message.objects.create(
+                session=session, role=Message.Role.ASSISTANT,
+                content=f"⚠️ {e}",
+            )
+            return JsonResponse({"status": "error", "message": str(e)})
+
+        # Normalize to list for uniform handling
+        proposals = result if isinstance(result, list) else [result]
+        is_chain = isinstance(result, list)
+
+        # Save assistant message
+        explanations = [p.explanation for p in proposals]
+        assistant_msg = Message.objects.create(
+            session=session, role=Message.Role.ASSISTANT,
+            content=" + ".join(explanations) if is_chain else explanations[0],
+        )
+
+        # Link proposals to message
+        for p in proposals:
+            p.message = assistant_msg
+            p.save(update_fields=["message"])
+
+        # Auto-title
+        if session.title == "New Modification":
+            session.title = user_text[:50]
+            session.save(update_fields=["title"])
+
+        # Serialize proposals
+        import json
+        serialized = []
+        for p in proposals:
+            try:
+                diff_preview = json.loads(p.diff_preview)
+            except (json.JSONDecodeError, TypeError):
+                diff_preview = []
+            serialized.append({
+                "id": str(p.id),
+                "tier": p.tier,
+                "operation": p.operation,
+                "explanation": p.explanation,
+                "confidence": p.confidence,
+                "affected_count": p.affected_count,
+                "diff_preview": diff_preview,
+            })
+
+        if is_chain:
+            return JsonResponse({
+                "status": "proposed",
+                "chain": True,
+                "proposals": serialized,
+            })
+
+        return JsonResponse({
+            "status": "proposed",
+            "proposal": serialized[0],
+        })
+
+    def _handle_approve(self, request, project):
+        """Execute an approved proposal — writes to IFC + git commit."""
+        from writeback.models import ModificationProposal
+        from writeback.services.modification_service import (
+            ModificationService, ModificationError,
+        )
+
+        proposal_id = request.POST.get("proposal_id")
+        if not proposal_id:
+            return JsonResponse({"status": "error", "message": "proposal_id is required."}, status=400)
+
+        try:
+            proposal = ModificationProposal.objects.get(
+                id=proposal_id,
+                ifc_file__project=project,
+                status=ModificationProposal.Status.PENDING,
+            )
+        except ModificationProposal.DoesNotExist:
+            return JsonResponse({"status": "error", "message": "Proposal not found or not pending."}, status=404)
+
+        svc = ModificationService(project)
+
+        try:
+            git_commit = svc.execute(proposal)
+        except ModificationError as e:
+            return JsonResponse({"status": "error", "message": str(e)})
+
+        # Save confirmation as assistant message (if proposal has a linked session)
+        if proposal.message and proposal.message.session:
+            Message.objects.create(
+                session=proposal.message.session,
+                role=Message.Role.ASSISTANT,
+                content=(
+                    f"✅ Applied! {proposal.affected_count} entities modified. "
+                    f"Commit: {git_commit.commit_hash[:8]}"
+                ),
+            )
+
+        return JsonResponse({
+            "status": "applied",
+            "commit_hash": git_commit.commit_hash[:8],
+            "entities_modified": proposal.affected_count,
+        })
+
+    def _handle_reject(self, request, project):
+        """Reject a pending proposal."""
+        from writeback.models import ModificationProposal
+        from writeback.services.modification_service import (
+            ModificationService,
+        )
+
+        proposal_id = request.POST.get("proposal_id")
+        if not proposal_id:
+            return JsonResponse({"status": "error", "message": "proposal_id is required."}, status=400)
+
+        try:
+            proposal = ModificationProposal.objects.get(
+                id=proposal_id,
+                ifc_file__project=project,
+                status=ModificationProposal.Status.PENDING,
+            )
+        except ModificationProposal.DoesNotExist:
+            return JsonResponse({"status": "error", "message": "Proposal not found or not pending."}, status=404)
+
+        svc = ModificationService(project)
+        reason = request.POST.get("reason", "")
+        svc.reject(proposal, user=request.user, reason=reason)
+
+        # Save rejection as assistant message
+        if proposal.message and proposal.message.session:
+            Message.objects.create(
+                session=proposal.message.session,
+                role=Message.Role.ASSISTANT,
+                content="❌ Modification rejected. What would you like to do instead?",
+            )
+
+        return JsonResponse({"status": "rejected"})
 
 class ConflictsView(ProjectTabMixin, TemplateView):
     """Conflicts tab - show detected conflicts and data quality issues."""
@@ -352,7 +640,7 @@ class HistoryView(ProjectTabMixin, TemplateView):
         project = self.get_project()
 
         # Get all commits across all IFC files in this project
-        context["commits"] = (
+        commits = (
             GitCommit.objects
             .filter(ifc_file__project=project)
             .select_related("ifc_file", "author")
@@ -360,7 +648,42 @@ class HistoryView(ProjectTabMixin, TemplateView):
             .order_by("-created_at")
         )
 
+        # Build a map: original_commit_hash -> restore_commit_hash
+        restored_by = {}
+        for commit in commits:
+            if commit.diff_data.get('operation') == 'ROLLBACK':
+                restored_from = commit.diff_data.get('restored_from_hash')
+                if restored_from:
+                    restored_by[restored_from] = commit.commit_hash
+
+        context["commits"] = commits
+        context["restored_by"] = restored_by
+
         return context
+
+class RestoreCommitView(LoginRequiredMixin, View):
+    def post(self, request, pk, commit_id):
+        # Get project with owner check
+        project = get_object_or_404(
+            Project.objects.select_related("owner"),
+            pk=pk
+        )
+
+        # Ensure only owner can restore
+        if project.owner != request.user:
+            raise PermissionDenied("Only the project owner can restore commits.")
+
+        from writeback.services.modification_service import ModificationService, ModificationError
+        svc = ModificationService(project)
+
+        try:
+            # This triggers Git Revert + DB Full Re-parse
+            svc.restore_version(commit_id, request.user)
+            messages.success(request, "File restored successfully. Database and embeddings have been re-synced.")
+        except ModificationError as e:
+            messages.error(request, f"Restore failed: {e}")
+
+        return redirect("projects:history", pk=pk)
 
 class UploadIFCView(ProjectAccessMixin, View):
     """Handle IFC file upload."""

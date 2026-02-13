@@ -18,95 +18,41 @@ class ModificationProposal(UUIDModel):
         APPLIED = "applied", "Applied"
         FAILED = "failed", "Failed"
 
+    class Tier(models.IntegerChoices):
+        GREEN = 1, "Tier 1 – Certified Ops (GREEN)"
+        ORANGE = 2, "Tier 2 – Operation Planner (ORANGE)"
+        RED = 3, "Tier 3 – IfcOpenShell Direct (RED)"
+
     # Link to the message that triggered this
-    message = models.OneToOneField(
-        Message,
-        on_delete=models.CASCADE,
-        related_name="proposal",
-        verbose_name="Source Message",
-    )
-
-    ifc_file = models.ForeignKey(
-        IFCFile,
-        on_delete=models.CASCADE,
-        related_name="proposals",
-        verbose_name="IFC File",
-    )
-    created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="created_proposals",
-        verbose_name="Created By",
-    )
-
+    message = models.OneToOneField( Message, on_delete=models.CASCADE, null=True, blank=True, related_name="proposal", verbose_name="Source Message",)
+    ifc_file = models.ForeignKey( IFCFile, on_delete=models.CASCADE, related_name="proposals", verbose_name="IFC File",)
+    created_by = models.ForeignKey( settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="created_proposals", verbose_name="Created By",)
     # The natural language request
-    request_text = models.TextField(
-        verbose_name="Request",
-        help_text="Original natural language modification request",
-    )
-
+    request_text = models.TextField( verbose_name="Request", help_text="Original natural language modification request",)
     # AI explanation of changes
-    explanation = models.TextField(
-        verbose_name="Explanation",
-        help_text="AI-generated explanation of proposed changes",
-    )
-
+    explanation = models.TextField( verbose_name="Explanation", help_text="AI-generated explanation of proposed changes",)
     # Structured changes (list of entity modifications)
-    changes = models.JSONField(
-        default=list,
-        verbose_name="Changes",
-        help_text="Structured list of entity modifications",
-    )
-
+    changes = models.JSONField( default=list, verbose_name="Changes", help_text="Structured list of entity modifications",)
     # Human-readable diff
-    diff_preview = models.TextField(
-        verbose_name="Diff Preview",
-        help_text="Human-readable preview of changes",
-    )
-
+    diff_preview = models.TextField( verbose_name="Diff Preview", help_text="Human-readable preview of changes",)
     # Affected entity count
-    affected_count = models.PositiveIntegerField(
-        default=0,
-        verbose_name="Affected Entities",
-    )
-
+    affected_count = models.PositiveIntegerField( default=0, verbose_name="Affected Entities",)
     # Status tracking
-    status = models.CharField(
-        max_length=20,
-        choices=Status.choices,
-        default=Status.PENDING,
-        db_index=True,
-        verbose_name="Status",
-    )
-
+    status = models.CharField( max_length=20, choices=Status.choices, default=Status.PENDING, db_index=True, verbose_name="Status",)
     # Review info
-    reviewed_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="reviewed_proposals",
-        verbose_name="Reviewed By",
-    )
-    reviewed_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        verbose_name="Reviewed At",
-    )
-    rejection_reason = models.TextField(
-        blank=True,
-        verbose_name="Rejection Reason",
-    )
-
+    reviewed_by = models.ForeignKey( settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="reviewed_proposals", verbose_name="Reviewed By",)
+    reviewed_at = models.DateTimeField( null=True, blank=True, verbose_name="Reviewed At",)
+    rejection_reason = models.TextField( blank=True, verbose_name="Rejection Reason",)
     # Git commit reference (after applying)
-    git_commit = models.OneToOneField(
-        "GitCommit",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="proposal",
-        verbose_name="Git Commit",
-    )
+    git_commit = models.OneToOneField( "GitCommit", on_delete=models.SET_NULL, null=True, blank=True, related_name="proposal", verbose_name="Git Commit",)
+    # ── RSAA Classification (added for Modify mode) ────────
+    tier = models.IntegerField( choices=Tier.choices, null=True, blank=True, verbose_name="RSAA Tier", help_text="1=GREEN (certified), 2=ORANGE (planner), 3=RED (direct)",)
+    operation = models.CharField( max_length=50, blank=True, verbose_name="Operation", help_text="e.g. SET_PROPERTY, ADD_PROPERTY, SET_ATTRIBUTE",)
+    intent_json = models.JSONField( default=dict, blank=True, verbose_name="Intent JSON", help_text="Full parsed intent from the LLM classifier",)
+    filter_spec = models.JSONField( default=dict, blank=True, verbose_name="Filter Spec", help_text="Entity filter used to resolve targets",)
+    confidence = models.FloatField( default=0.0, verbose_name="Confidence", help_text="LLM classification confidence (0.0–1.0)",)
+    error_message = models.TextField( blank=True, verbose_name="Error Message", help_text="Error details if status is 'failed'",)
+    applied_at = models.DateTimeField( null=True, blank=True, verbose_name="Applied At",)
 
     class Meta:
         ordering = ["-created_at"]
@@ -178,7 +124,10 @@ class GitCommit(UUIDModel):
         verbose_name="Diff Data",
         help_text="Detailed diff information as JSON",
     )
-
+    rolled_back = models.BooleanField(
+        default=False,
+        verbose_name="Rolled Back",
+    )
     class Meta:
         ordering = ["-created_at"]
         verbose_name = "Git Commit"

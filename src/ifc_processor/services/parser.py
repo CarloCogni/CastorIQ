@@ -1,3 +1,4 @@
+# ifc_processor/services/parser.py
 """IFC file parsing service using IfcOpenShell."""
 
 import logging

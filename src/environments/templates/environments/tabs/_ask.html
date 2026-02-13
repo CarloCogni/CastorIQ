@@ -79,7 +79,7 @@
     <div class="chat-input-container flex-shrink-0 border-top bg-surface p-3">
         <form id="ask-form"
           method="post"
-          hx-post="{% url 'projects:ask' project.pk %}"
+          hx-post="{% url 'projects:ask_session' project.pk session.pk %}"
           hx-target="#chat-messages"
           hx-swap="innerHTML">
 
@@ -93,7 +93,9 @@
                           rows="1"
                           style="resize: none; max-height: 150px;"
                           required
-                          onkeydown="handleEnter(event)"></textarea>
+                          onkeydown="handleEnter(event)"
+                          oninput="autoGrow(this)">
+                </textarea>
 
                 <button type="submit" class="btn btn-primary" id="send-btn">
                     <i class="bi bi-send"></i>
@@ -136,6 +138,17 @@
 </div>
 
 <script>
+    window.autoGrow = function(el) {
+        el.style.height = 'auto';               // reset to recalculate
+        const maxH = parseInt(el.style.maxHeight, 10) || 200;
+        if (el.scrollHeight > maxH) {
+            el.style.height = maxH + 'px';
+            el.style.overflowY = 'auto';        // scroll when capped
+        } else {
+            el.style.height = el.scrollHeight + 'px';
+            el.style.overflowY = 'hidden';      // no scrollbar while growing
+        }
+    };
     (function() {
         const chatContainer = document.getElementById('chat-messages');
         const scrollBtn = document.getElementById('scroll-btn');
@@ -209,6 +222,8 @@
 
             // Clear input
             input.value = '';
+            input.style.height = 'auto';
+            input.style.overflowY = 'hidden';
         });
 
         // 5. After Swap: Scroll to bottom again to show the real response

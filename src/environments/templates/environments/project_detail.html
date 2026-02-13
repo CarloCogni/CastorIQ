@@ -26,12 +26,12 @@
 
         <ul class="nav nav-tabs-custom border-bottom-0 flex-grow-1">
             <li class="nav-item">
-                <a class="nav-link {% if active_tab == 'ask' %}active{% endif %}" href="{% url 'projects:ask' project.pk %}">
+                <a class="nav-link tab-ask {% if active_tab == 'ask' %}active{% endif %}" href="{% url 'projects:ask' project.pk %}">
                     <i class="bi bi-chat me-2"></i>Ask
                 </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link {% if active_tab == 'modify' %}active{% endif %}" href="{% url 'projects:modify' project.pk %}">
+                <a class="nav-link tab-modify {% if active_tab == 'modify' %}active{% endif %}" href="{% url 'projects:modify' project.pk %}">
                     <i class="bi bi-pencil me-2"></i>Modify
                 </a>
             </li>

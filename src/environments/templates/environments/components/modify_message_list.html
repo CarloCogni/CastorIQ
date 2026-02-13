@@ -1,0 +1,75 @@
+<!--environments/components/modify_message_list.html-->
+{% for message in messages %}
+<div class="message message-{{ message.role }}">
+    <div class="message-avatar"
+         {% if message.role == 'assistant' %}style="background-color: var(--castor-accent);"{% endif %}>
+        {% if message.role == 'user' %}
+            {{ user.username.0|upper }}
+        {% else %}
+            <i class="bi bi-tools"></i>
+        {% endif %}
+    </div>
+
+    <div class="message-content">
+        <div class="message-text mb-2">{{ message.content|linebreaks }}</div>
+
+        {% if message.proposal %}
+        {% with p=message.proposal %}
+        <div class="card border-0 shadow-sm" id="proposal-card-{{ p.id }}">
+            <div class="card-header bg-transparent border-bottom d-flex justify-content-between align-items-center py-2">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge rounded-pill text-white fs-9"
+                          style="background-color: {% if p.tier == 1 %}var(--castor-success, #22c55e){% elif p.tier == 2 %}#f97316{% else %}#ef4444{% endif %}">
+                        Tier {{ p.tier }} – {% if p.tier == 1 %}GREEN{% elif p.tier == 2 %}ORANGE{% else %}RED{% endif %}
+                    </span>
+                    <span class="fs-8 text-secondary">{{ p.operation }}</span>
+                </div>
+                <span class="badge {% if p.status == 'pending' %}bg-warning text-dark{% elif p.status == 'applied' %}bg-success{% elif p.status == 'rejected' %}bg-secondary{% else %}bg-danger{% endif %} fs-9">
+                    {{ p.get_status_display }}
+                </span>
+            </div>
+            <div class="card-body p-3">
+                <p class="fs-8 text-secondary mb-2">
+                    {{ p.affected_count }} entit{{ p.affected_count|pluralize:"y,ies" }} affected
+                    · Confidence: {{ p.confidence|floatformat:0 }}%
+                </p>
+
+                {% if p.status == 'pending' %}
+                <div class="d-flex gap-2" id="proposal-actions-{{ p.id }}">
+                    <button class="btn btn-sm btn-success w-50"
+                            onclick="ModifyChat.approve('{{ p.id }}')">
+                        <i class="bi bi-check-lg me-1"></i>Approve
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary w-50"
+                            onclick="ModifyChat.reject('{{ p.id }}')">
+                        <i class="bi bi-x-lg me-1"></i>Reject
+                    </button>
+                </div>
+                {% elif p.status == 'applied' and p.git_commit %}
+                <span class="badge bg-success">
+                    <i class="bi bi-check-lg me-1"></i>Applied — {{ p.git_commit.commit_hash|truncatechars:11 }}
+                </span>
+                {% elif p.status == 'rejected' %}
+                <span class="badge bg-secondary">Rejected</span>
+                {% elif p.status == 'failed' %}
+                <span class="badge bg-danger">Failed: {{ p.error_message|truncatechars:60 }}</span>
+                {% endif %}
+            </div>
+        </div>
+        {% endwith %}
+        {% endif %}
+    </div>
+</div>
+{% empty %}
+<div class="empty-state h-100 d-flex flex-column align-items-center justify-content-center">
+    <div class="mb-3 text-center p-4 rounded-circle" style="background-color: rgba(139, 92, 246, 0.1);">
+        <i class="bi bi-magic fs-1" style="color: var(--castor-accent);"></i>
+    </div>
+    <h3 class="h5 fw-semibold mb-2">Modify your Model</h3>
+    <p class="text-secondary mb-0 text-center" style="max-width: 400px;">
+        Describe the changes you want to make in natural language.
+        Castor will classify the intent, preview affected entities,
+        and wait for your approval before writing.
+    </p>
+</div>
+{% endfor %}

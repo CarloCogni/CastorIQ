@@ -1,91 +1,618 @@
-<!--modify.html-->
-<div class="chat-container">
-    <!-- Messages -->
-    <div class="chat-messages" id="chat-messages">
-        {% for message in messages %}
-        <div class="message message-{{ message.role }}">
-            <div class="message-avatar">
-                {% if message.role == 'user' %}
-                    {{ user.username.0|upper }}
-                {% else %}
-                    <i class="bi bi-building"></i>
-                {% endif %}
-            </div>
-            <div>
-                <div class="message-content">
-                    {{ message.content|linebreaks }}
-                </div>
+<!--environments/tabs/_modify.html-->
+{% load static %}
 
-                {% if message.has_proposal and message.proposal %}
-                <div class="proposal-card">
-                    <div class="proposal-header d-flex align-items-center gap-2">
-                        <i class="bi bi-pencil-square text-accent"></i>
-                        <span class="fw-medium">Proposed Changes</span>
-                        <span class="text-secondary fs-8">{{ message.proposal.affected_count }} entities affected</span>
-                    </div>
-                    <div class="p-3">
-                        <p class="fs-7 mb-2">{{ message.proposal.explanation }}</p>
-                        <pre class="proposal-diff mb-0">{{ message.proposal.diff_preview }}</pre>
-                    </div>
-                    {% if message.proposal.status == 'pending' %}
-                    <div class="d-flex gap-2 p-3 border-top bg-body">
-                        <button class="btn btn-primary btn-sm" onclick="approveProposal('{{ message.proposal.pk }}')">
-                            <i class="bi bi-check-lg me-1"></i>
-                            Approve
-                        </button>
-                        <button class="btn btn-outline-secondary btn-sm" onclick="rejectProposal('{{ message.proposal.pk }}')">
-                            <i class="bi bi-x-lg me-1"></i>
-                            Reject
-                        </button>
-                    </div>
-                    {% else %}
-                    <div class="p-3 border-top bg-body">
-                        <span class="fs-8 {% if message.proposal.status == 'applied' %}text-success{% else %}text-secondary{% endif %}">
-                            <i class="bi bi-{% if message.proposal.status == 'applied' %}check-circle{% else %}x-circle{% endif %} me-1"></i>
-                            {{ message.proposal.get_status_display }}
-                        </span>
-                    </div>
-                    {% endif %}
-                </div>
-                {% endif %}
-            </div>
-        </div>
-        {% empty %}
-        <div class="empty-state h-100 d-flex flex-column align-items-center justify-content-center">
-            <i class="bi bi-pencil-square"></i>
-            <h3 class="h5 fw-semibold mb-2">Modify your IFC model</h3>
-            <p class="text-secondary mb-0">Describe the changes you want to make in natural language.<br>Castor will propose the modifications for your approval.</p>
-        </div>
-        {% endfor %}
-    </div>
+<template id="castor-loader-template-modify">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="50" height="50">
+      <defs>
+        <linearGradient id="m-crystal-main" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" style="stop-color:#4facfe;stop-opacity:1" />
+          <stop offset="100%" style="stop-color:#00f2fe;stop-opacity:1" />
+        </linearGradient>
+        <linearGradient id="m-crystal-shadow" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" style="stop-color:#4facfe;stop-opacity:1" />
+          <stop offset="100%" style="stop-color:#330867;stop-opacity:1" />
+        </linearGradient>
+        <linearGradient id="m-crystal-highlight" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" style="stop-color:#a6c1ee;stop-opacity:0.8" />
+          <stop offset="100%" style="stop-color:#fbc2eb;stop-opacity:0.2" />
+        </linearGradient>
+        <linearGradient id="m-wood-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" style="stop-color:#795548;stop-opacity:1" />
+          <stop offset="40%" style="stop-color:#A1887F;stop-opacity:1" />
+          <stop offset="100%" style="stop-color:#5D4037;stop-opacity:1" />
+        </linearGradient>
+      </defs>
+      <style>
+        @keyframes m-bite { 0% { transform: rotate(0deg); } 50% { transform: rotate(15deg); } 100% { transform: rotate(0deg); } }
+        @keyframes m-head-shake { 0% { transform: rotate(0deg) translateY(0); } 25% { transform: rotate(-2deg) translateY(1px); } 75% { transform: rotate(1deg) translateY(-1px); } 100% { transform: rotate(0deg) translateY(0); } }
+        @keyframes m-debris-fly { 0% { opacity: 1; transform: translate(0, 0) scale(1) rotate(0deg); } 100% { opacity: 0; transform: translate(-25px, -35px) scale(0.5) rotate(-90deg); } }
+        #m-beaver-head-group { transform-origin: 100px 100px; animation: m-head-shake 0.4s infinite linear; }
+        #m-jaw-assembly { transform-origin: 90px 95px; animation: m-bite 0.2s infinite alternate ease-in-out; }
+        .m-chip { opacity: 0; fill: #D7CCC8; }
+        .m-c1 { animation: m-debris-fly 0.6s infinite linear; animation-delay: 0.0s; }
+        .m-c2 { animation: m-debris-fly 0.6s infinite linear; animation-delay: 0.2s; }
+        .m-c3 { animation: m-debris-fly 0.6s infinite linear; animation-delay: 0.4s; }
+      </style>
+      <g transform="translate(40, 110)">
+        <path d="M0,20 L100,10 L100,40 L0,50 Z" fill="url(#m-wood-gradient)" />
+        <ellipse cx="0" cy="35" rx="5" ry="15" fill="#5D4037" />
+        <path d="M10,0 L110,-10 L110,20 L10,30 Z" fill="url(#m-wood-gradient)" stroke="#3E2723" stroke-width="1"/>
+        <ellipse cx="10" cy="15" rx="5" ry="15" fill="#8D6E63" />
+      </g>
+      <g id="m-beaver-head-group">
+        <path d="M50,80 L90,80 L90,130 L40,120 Z" fill="url(#m-crystal-shadow)" />
+        <g id="m-jaw-assembly">
+          <path d="M90,95 L140,105 L130,135 L80,125 Z" fill="url(#m-crystal-main)" stroke="#fff" stroke-width="0.5" stroke-opacity="0.3"/>
+          <path d="M90,95 L130,135 L100,130 Z" fill="url(#m-crystal-shadow)" opacity="0.6"/>
+          <path d="M135,108 L138,100 L142,102 L139,110 Z" fill="#EEE" />
+        </g>
+        <g id="m-upper-head">
+          <path d="M60,60 L120,55 L150,85 L90,95 Z" fill="url(#m-crystal-main)" />
+          <path d="M90,95 L150,85 L140,105 L90,95 Z" fill="url(#m-crystal-highlight)" opacity="0.9"/>
+          <path d="M60,60 L90,95 L50,80 Z" fill="url(#m-crystal-shadow)" opacity="0.5" />
+          <path d="M150,85 L160,90 L150,95 Z" fill="#1a237e" />
+          <circle cx="115" cy="75" r="6" fill="#1a237e" />
+          <circle cx="117" cy="73" r="2" fill="white" />
+          <circle cx="75" cy="65" r="10" fill="#30cfd0" stroke="#1a237e" stroke-width="2"/>
+          <circle cx="75" cy="65" r="5" fill="#1a237e" />
+          <rect x="145" y="90" width="8" height="12" fill="white" rx="1" />
+        </g>
+      </g>
+      <g transform="translate(140, 100)">
+        <polygon points="0,0 10,-5 5,5" class="m-chip m-c1" />
+        <polygon points="0,0 8,8 -5,5"  class="m-chip m-c2" />
+        <polygon points="0,0 12,0 6,10" class="m-chip m-c3" />
+      </g>
+    </svg>
+</template>
 
-    <!-- Input -->
-    <div class="chat-input-container">
-        <form method="post" id="modify-form">
-            {% csrf_token %}
-            <div class="input-group">
-                <textarea class="form-control"
-                          name="message"
-                          placeholder="Describe the modifications you want to make..."
-                          rows="1"
-                          style="resize: none;"
-                          onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault(); this.form.submit();}"></textarea>
-                <button type="submit" class="btn btn-primary">
-                    <i class="bi bi-send"></i>
+<div class="d-flex w-100 h-100 overflow-hidden">
+
+    <!-- ── Left: Chat Panel ──────────────────────────── -->
+    <div class="d-flex flex-column flex-grow-1 h-100 position-relative">
+
+        <div class="px-4 py-2 border-bottom bg-surface d-flex justify-content-between align-items-center">
+            <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-purple-subtle text-purple rounded-pill">
+                    <i class="bi bi-tools me-1"></i>Modify Mode
+                </span>
+                <span class="text-secondary fs-7">
+                    {{ session.title|default:"New Modification" }}
+                </span>
+                <button class="btn btn-sm btn-ghost-secondary p-1" data-bs-toggle="modal" data-bs-target="#tier1HelpModal" title="Example prompts">
+                    <i class="bi bi-lightbulb fs-6" style="color: var(--castor-accent);"></i>
                 </button>
             </div>
-        </form>
+            <div class="dropdown">
+                <button class="btn btn-sm btn-ghost-secondary" data-bs-toggle="dropdown">
+                    <i class="bi bi-three-dots-vertical"></i>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                    <li>
+                        <form method="post" action="{% url 'projects:delete_session' project.pk session.pk %}">
+                            {% csrf_token %}
+                            <button class="dropdown-item text-danger"
+                                    onclick="return confirm('Delete this modification history?')">
+                                <i class="bi bi-trash me-2"></i>Clear History
+                            </button>
+                        </form>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="flex-grow-1 overflow-y-auto p-4 min-height-0"
+             id="modify-chat-messages"
+             style="scroll-behavior: smooth;">
+            {% include "environments/components/modify_message_list.html" %}
+        </div>
+
+        <div id="modify-scroll-btn" class="scroll-bottom-btn" onclick="ModifyChat.scrollToBottom()">
+            <i class="bi bi-arrow-down text-secondary"></i>
+        </div>
+
+        <div class="chat-input-container flex-shrink-0 border-top bg-surface p-3">
+            <form id="modify-form" onsubmit="return false;">
+                {% csrf_token %}
+                <div class="input-group">
+                    <textarea class="form-control font-monospace fs-7"
+                              name="message"
+                              id="modify-input"
+                              placeholder="Describe changes (e.g. 'Set fire rating of external walls to EI120')..."
+                              rows="1"
+                              style="resize: none; max-height: 150px;"
+                              required
+                              onkeydown="ModifyChat.handleEnter(event)"
+                              oninput="autoGrow(this)"></textarea>
+                    <button type="button" class="btn btn-primary" onclick="ModifyChat.sendMessage()">
+                        <i class="bi bi-magic me-1"></i> Propose
+                    </button>
+                </div>
+                <div class="d-flex align-items-center mt-2">
+                    <span class="text-secondary fs-8">
+                        <i class="bi bi-info-circle me-1"></i>
+                        Changes are drafted as <strong>pending proposals</strong> — nothing writes until you approve.
+                    </span>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ── Right: Pending Proposals Sidebar ──────────── -->
+    <div class="d-flex flex-column h-100 bg-surface-secondary border-start"
+         style="width: 320px; min-width: 320px;"
+         id="pending-sidebar">
+
+        <div class="p-3 border-bottom">
+            <h6 class="fw-semibold mb-0 d-flex align-items-center gap-2">
+                <i class="bi bi-hourglass-split text-warning"></i> Pending Changes
+            </h6>
+        </div>
+
+        <div class="flex-grow-1 overflow-y-auto p-3" id="pending-list">
+            {% for proposal in pending_proposals %}
+            <div class="card mb-2 shadow-sm border-0" id="sidebar-proposal-{{ proposal.id }}">
+                <div class="card-body p-2">
+                    <div class="d-flex justify-content-between align-items-start mb-1">
+                        <span class="badge bg-warning text-dark fs-9">Tier {{ proposal.tier }}</span>
+                        <small class="text-secondary fs-9">{{ proposal.created_at|timesince }} ago</small>
+                    </div>
+                    <p class="mb-2 fs-8 text-dark">{{ proposal.explanation|truncatechars:80 }}</p>
+                    <div class="d-flex gap-1">
+                        <button class="btn btn-xs btn-outline-success w-50"
+                                onclick="ModifyChat.approve('{{ proposal.id }}')" title="Approve">
+                            <i class="bi bi-check-lg"></i>
+                        </button>
+                        <button class="btn btn-xs btn-outline-danger w-50"
+                                onclick="ModifyChat.reject('{{ proposal.id }}')" title="Reject">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            {% empty %}
+            <div class="text-center py-5 text-secondary" id="pending-empty">
+                <i class="bi bi-check-circle fs-1 opacity-25 d-block mb-2"></i>
+                <p class="fs-8 mb-0">No pending proposals.<br>All systems nominal.</p>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="p-3 border-top mt-auto bg-surface">
+            <a href="{% url 'projects:history' project.pk %}" class="btn btn-outline-dark w-100 fs-8">
+                <i class="bi bi-clock-history me-1"></i> View Commit History
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Tier 1 Help Modal -->
+<div class="modal fade" id="tier1HelpModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border-0 shadow">
+
+            <div class="modal-header border-bottom py-3">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge rounded-pill text-white" style="background-color: var(--castor-success, #22c55e);">Tier 1 – GREEN</span>
+                    <h5 class="modal-title fw-semibold mb-0">What can I ask Castor to modify?</h5>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body p-4">
+
+                <p class="text-secondary fs-7 mb-4">
+                    Click any example to paste it into the input. Castor will preview the changes before writing anything.
+                </p>
+
+                <!-- SET_PROPERTY -->
+                <div class="mb-4">
+                    <h6 class="fw-semibold d-flex align-items-center gap-2 mb-3">
+                        <i class="bi bi-pencil-square text-primary"></i> Change a property value
+                        <span class="badge bg-primary-subtle text-primary fs-9">SET_PROPERTY</span>
+                    </h6>
+                    <div class="d-flex flex-column gap-2">
+                        <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
+                            Set the fire rating of all walls to EI120
+                        </button>
+                        <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
+                            Set IsExternal to false for wall "house - outer wall - house front"
+                        </button>
+                        <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
+                            Set ThermalTransmittance to 0.25 for all external walls
+                        </button>
+                        <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
+                            Set Status to "NEW" for all walls
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ADD_PROPERTY -->
+                <div class="mb-4">
+                    <h6 class="fw-semibold d-flex align-items-center gap-2 mb-3">
+                        <i class="bi bi-plus-circle text-success"></i> Add a new property
+                        <span class="badge bg-success-subtle text-success fs-9">ADD_PROPERTY</span>
+                    </h6>
+                    <div class="d-flex flex-column gap-2">
+                        <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
+                            Add FireRating EI90 to all walls
+                        </button>
+                        <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
+                            Add AcousticRating "Class C" to all slabs
+                        </button>
+                        <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
+                            Add a Reference property "REF-001" to door D-01
+                        </button>
+                    </div>
+                    <p class="text-secondary fs-8 mt-2 mb-0">
+                        <i class="bi bi-info-circle me-1"></i>
+                        Standard property sets (Pset_WallCommon, Pset_DoorCommon, etc.) are auto-created if they don't exist yet.
+                    </p>
+                </div>
+
+                <!-- REMOVE_PROPERTY -->
+                <div class="mb-4">
+                    <h6 class="fw-semibold d-flex align-items-center gap-2 mb-3">
+                        <i class="bi bi-dash-circle text-danger"></i> Remove a property
+                        <span class="badge bg-danger-subtle text-danger fs-9">REMOVE_PROPERTY</span>
+                    </h6>
+                    <div class="d-flex flex-column gap-2">
+                        <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
+                            Remove the FireRating property from all internal walls
+                        </button>
+                        <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
+                            Remove AcousticRating from wall W-01
+                        </button>
+                    </div>
+                </div>
+
+                <!-- SET_ATTRIBUTE -->
+                <div class="mb-4">
+                    <h6 class="fw-semibold d-flex align-items-center gap-2 mb-3">
+                        <i class="bi bi-tag text-warning"></i> Rename or change attributes
+                        <span class="badge bg-warning-subtle text-warning fs-9">SET_ATTRIBUTE</span>
+                    </h6>
+                    <div class="d-flex flex-column gap-2">
+                        <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
+                            Rename wall "W-01" to "W-01-Main-Entrance"
+                        </button>
+                        <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
+                            Change the description of door D-05 to "Emergency Exit"
+                        </button>
+                    </div>
+                    <p class="text-secondary fs-8 mt-2 mb-0">
+                        <i class="bi bi-info-circle me-1"></i>
+                        Name, Description, ObjectType, and Tag are direct IFC attributes — not properties inside a Pset.
+                    </p>
+                </div>
+
+                <!-- CHAINED -->
+                <div class="mb-4">
+                    <h6 class="fw-semibold d-flex align-items-center gap-2 mb-3">
+                        <i class="bi bi-link-45deg text-info"></i> Multiple changes at once
+                        <span class="badge bg-info-subtle text-info fs-9">CHAIN</span>
+                    </h6>
+                    <div class="d-flex flex-column gap-2">
+                        <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
+                            Set fire rating to EI120 and IsExternal to true for all walls
+                        </button>
+                        <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
+                            Set Status to "NEW" and LoadBearing to true for all columns
+                        </button>
+                    </div>
+                    <p class="text-secondary fs-8 mt-2 mb-0">
+                        <i class="bi bi-info-circle me-1"></i>
+                        Use "and" to combine simple changes. Each becomes a separate proposal you can approve together.
+                    </p>
+                </div>
+
+                <!-- TIPS -->
+                <div class="alert alert-light border fs-8 mb-0">
+                    <h6 class="fw-semibold fs-8 mb-2"><i class="bi bi-stars me-1"></i> Tips for best results</h6>
+                    <ul class="mb-0 ps-3">
+                        <li>Be specific about entity types — say <strong>"wall"</strong> not "element"</li>
+                        <li>Use exact property names when you know them (e.g. <strong>"FireRating"</strong> not "fire rating")</li>
+                        <li>Specify the floor/level to narrow scope: <strong>"...on Level 1"</strong></li>
+                        <li>Use entity names for single-entity changes: <strong>"wall W-01"</strong></li>
+                        <li>One change at a time works best — or use "and" for simple combos</li>
+                    </ul>
+                </div>
+
+            </div>
+
+            <div class="modal-footer border-top py-2">
+                <span class="text-secondary fs-8 me-auto">
+                    <span class="badge rounded-pill" style="background-color: var(--castor-success, #22c55e);">Tier 1</span>
+                    handles single property/attribute changes.
+                    <strong>Tier 2</strong> (multi-step) and <strong>Tier 3</strong> (structural) coming soon.
+                </span>
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+
+        </div>
     </div>
 </div>
 
 <script>
-async function approveProposal(proposalId) {
-    // TODO: Implement approval
-    alert('Approval coming soon!');
-}
+// Grab beaver loader HTML for the modify tab
+const modifyBeaverLoaderHTML = document.getElementById('castor-loader-template-modify').innerHTML;
 
-async function rejectProposal(proposalId) {
-    // TODO: Implement rejection
-    alert('Rejection coming soon!');
-}
+const ModifyChat = {
+    chatEl: document.getElementById('modify-chat-messages'),
+    inputEl: document.getElementById('modify-input'),
+    csrfToken: '{{ csrf_token }}',
+    sessionUrl: '{% url "projects:modify_session" project.pk session.pk %}',
+    userInitial: '{{ user.username.0|upper }}',
+
+    /* ── Send ─────────────────────────────────────── */
+    handleEnter(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            this.sendMessage();
+        }
+    },
+
+    async sendMessage() {
+        const text = this.inputEl.value.trim();
+        if (!text) return;
+
+        this._appendBubble('user', text);
+        this.inputEl.value = '';
+        this.inputEl.style.height = 'auto';
+        this._showLoader();
+
+        try {
+            const data = await this._post({ action: 'propose', message: text });
+            this._hideLoader();
+
+            if (data.status === 'proposed') {
+                if (data.chain && data.proposals) {
+                    // Approve All button for the chain
+                    const chainIds = data.proposals.map(p => p.id);
+                    const chainBanner = `
+                        <div class="message message-assistant">
+                            <div class="message-avatar" style="background-color: var(--castor-accent);"><i class="bi bi-tools"></i></div>
+                            <div class="message-content">
+                                <div class="alert alert-info fs-8 mb-0 d-flex justify-content-between align-items-center">
+                                    <span><i class="bi bi-link-45deg me-1"></i>Chained operation: ${data.proposals.length} steps</span>
+                                    <button class="btn btn-sm btn-success"
+                                            onclick="ModifyChat.approveChain(${JSON.stringify(chainIds).replace(/"/g, '&quot;')})">
+                                        <i class="bi bi-check-all me-1"></i>Approve All
+                                    </button>
+                                </div>
+                            </div>
+                        </div>`;
+                    this.chatEl.insertAdjacentHTML('beforeend', chainBanner);
+
+                    data.proposals.forEach((p, i) => {
+                        this._appendProposalCard(p, `Step ${i + 1} of ${data.proposals.length}`);
+                    });
+                } else {
+                    this._appendProposalCard(data.proposal);
+                }
+            } else {
+                this._appendBubble('assistant', `⚠️ ${data.message}`);
+            }
+        } catch (err) {
+            this._hideLoader();
+            this._appendBubble('assistant', `❌ Network error: ${err.message}`);
+        }
+    },
+
+    /* ── Approve / Reject ─────────────────────────── */
+    async approve(proposalId) {
+        this._showLoader();
+        try {
+            const data = await this._post({ action: 'approve', proposal_id: proposalId });
+            this._hideLoader();
+
+            if (data.status === 'applied') {
+                this._appendBubble('assistant',
+                    `✅ Applied! ${data.entities_modified} entities modified. Commit: <code>${data.commit_hash}</code>`
+                );
+                this._removeSidebarProposal(proposalId);
+                this._markProposalCard(proposalId, 'applied');
+            } else {
+                this._appendBubble('assistant', `⚠️ ${data.message}`);
+            }
+        } catch (err) {
+            this._hideLoader();
+            this._appendBubble('assistant', `❌ Error: ${err.message}`);
+        }
+    },
+
+    async reject(proposalId) {
+        try {
+            await this._post({ action: 'reject', proposal_id: proposalId });
+            this._appendBubble('assistant', 'Modification rejected. What would you like to do instead?');
+            this._removeSidebarProposal(proposalId);
+            this._markProposalCard(proposalId, 'rejected');
+        } catch (err) {
+            this._appendBubble('assistant', `❌ Error: ${err.message}`);
+        }
+    },
+
+    async approveChain(proposalIds) {
+            this._showLoader();
+            try {
+                for (const pid of proposalIds) {
+                    const data = await this._post({ action: 'approve', proposal_id: pid });
+                    if (data.status === 'applied') {
+                        this._removeSidebarProposal(pid);
+                        this._markProposalCard(pid, 'applied');
+                    } else {
+                        this._hideLoader();
+                        this._appendBubble('assistant',
+                            `⚠️ Chain stopped at step: ${data.message}`
+                        );
+                        return;
+                    }
+                }
+                this._hideLoader();
+                this._appendBubble('assistant',
+                    `✅ Chain complete! All ${proposalIds.length} steps applied.`
+                );
+            } catch (err) {
+                this._hideLoader();
+                this._appendBubble('assistant', `❌ Chain error: ${err.message}`);
+            }
+        },
+
+    /* ── Fetch helper ─────────────────────────────── */
+    async _post(body) {
+        const resp = await fetch(this.sessionUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': this.csrfToken,
+            },
+            body: new URLSearchParams(body),
+        });
+        return resp.json();
+    },
+
+    /* ── DOM helpers ──────────────────────────────── */
+    _appendBubble(role, html) {
+        const wrapper = document.createElement('div');
+        wrapper.className = `message message-${role}`;
+        const avatar = role === 'user'
+            ? `<div class="message-avatar">${this.userInitial}</div>`
+            : `<div class="message-avatar" style="background-color: var(--castor-accent);"><i class="bi bi-tools"></i></div>`;
+        wrapper.innerHTML = `${avatar}<div class="message-content"><div class="message-text">${html}</div></div>`;
+        this.chatEl.appendChild(wrapper);
+        this.scrollToBottom();
+    },
+
+    _appendProposalCard(p, chainLabel = null) {
+        const tierColors = { 1: 'var(--castor-success, #22c55e)', 2: '#f97316', 3: '#ef4444' };
+        const tierLabels = { 1: 'GREEN', 2: 'ORANGE', 3: 'RED' };
+
+        let diffRows = '';
+        if (p.diff_preview && p.diff_preview.length) {
+            diffRows = p.diff_preview.map(r => `
+                <tr>
+                    <td class="px-2 py-1 fs-8">${r.name}</td>
+                    <td class="px-2 py-1 fs-8 text-secondary">${r.ifc_type}</td>
+                    <td class="px-2 py-1 fs-8 font-monospace">${r.field}</td>
+                    <td class="px-2 py-1 fs-8 text-danger"><del>${r.old_value}</del></td>
+                    <td class="px-2 py-1 fs-8 text-success fw-medium">${r.new_value}</td>
+                </tr>
+            `).join('');
+        }
+
+        const card = `
+        <div class="message message-assistant">
+            <div class="message-avatar" style="background-color: var(--castor-accent);"><i class="bi bi-tools"></i></div>
+            <div class="message-content">
+                <div class="message-text mb-2">${p.explanation}</div>
+                <div class="card border-0 shadow-sm" id="proposal-card-${p.id}">
+                    <div class="card-header bg-transparent border-bottom d-flex justify-content-between align-items-center py-2">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge rounded-pill text-white fs-9"
+                                  style="background-color: ${tierColors[p.tier]}">
+                                Tier ${p.tier} – ${tierLabels[p.tier]}
+                            </span>
+                            <span class="fs-8 text-secondary">${p.operation}</span>
+                            ${chainLabel ? `<span class="badge bg-purple-subtle text-purple fs-9">${chainLabel}</span>` : ''}
+                        </div>
+                        <span class="fs-8 text-secondary">
+                            Confidence: ${Math.round(p.confidence)}%
+                        </span>
+                    </div>
+                    <div class="card-body p-3">
+                        ${diffRows ? `
+                        <div class="table-responsive mb-3">
+                            <table class="table table-sm table-borderless mb-0">
+                                <thead><tr class="text-secondary">
+                                    <th class="px-2 py-1 fs-9">Entity</th>
+                                    <th class="px-2 py-1 fs-9">Type</th>
+                                    <th class="px-2 py-1 fs-9">Property</th>
+                                    <th class="px-2 py-1 fs-9">Current</th>
+                                    <th class="px-2 py-1 fs-9">New</th>
+                                </tr></thead>
+                                <tbody>${diffRows}</tbody>
+                            </table>
+                        </div>` : ''}
+                        <p class="fs-8 text-secondary mb-3">
+                            ${p.affected_count} entit${p.affected_count === 1 ? 'y' : 'ies'} will be modified.
+                        </p>
+                        <div class="d-flex gap-2" id="proposal-actions-${p.id}">
+                            <button class="btn btn-sm btn-success w-50"
+                                    onclick="ModifyChat.approve('${p.id}')">
+                                <i class="bi bi-check-lg me-1"></i>Approve
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary w-50"
+                                    onclick="ModifyChat.reject('${p.id}')">
+                                <i class="bi bi-x-lg me-1"></i>Reject
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+
+        this.chatEl.insertAdjacentHTML('beforeend', card);
+        this.scrollToBottom();
+    },
+
+    _showLoader() {
+        const html = `
+        <div class="message message-assistant" id="modify-loader">
+            <div class="message-avatar" style="background-color: var(--castor-accent);"><i class="bi bi-tools"></i></div>
+            <div class="message-content text-secondary d-flex align-items-center">
+                <div style="width: 50px; height: 50px;">
+                    ${modifyBeaverLoaderHTML}
+                </div>
+                <span class="ms-2 fs-7">Castor is thinking…</span>
+            </div>
+        </div>`;
+        this.chatEl.insertAdjacentHTML('beforeend', html);
+        this.scrollToBottom();
+    },
+
+    _hideLoader() {
+        document.getElementById('modify-loader')?.remove();
+    },
+
+    _markProposalCard(proposalId, status) {
+        const actions = document.getElementById(`proposal-actions-${proposalId}`);
+        if (!actions) return;
+        const badge = status === 'applied'
+            ? '<span class="badge bg-success">✓ Applied</span>'
+            : '<span class="badge bg-secondary">Rejected</span>';
+        actions.innerHTML = badge;
+    },
+
+    _removeSidebarProposal(proposalId) {
+        document.getElementById(`sidebar-proposal-${proposalId}`)?.remove();
+        // Show empty state if no more cards
+        const list = document.getElementById('pending-list');
+        if (list && !list.querySelector('.card')) {
+            let empty = document.getElementById('pending-empty');
+            if (!empty) {
+                list.innerHTML = `
+                    <div class="text-center py-5 text-secondary" id="pending-empty">
+                        <i class="bi bi-check-circle fs-1 opacity-25 d-block mb-2"></i>
+                        <p class="fs-8 mb-0">No pending proposals.<br>All systems nominal.</p>
+                    </div>`;
+            }
+        }
+    },
+
+    scrollToBottom() {
+        this.chatEl.scrollTop = this.chatEl.scrollHeight;
+    },
+};
+
+// Auto-scroll on load
+ModifyChat.scrollToBottom();
+
+// Click-to-paste for example prompts
+document.querySelectorAll('.tier1-example').forEach(btn => {
+    btn.addEventListener('click', () => {
+        ModifyChat.inputEl.value = btn.textContent.trim();
+        ModifyChat.inputEl.focus();
+    });
+});
+
 </script>

@@ -534,6 +534,45 @@
             from { opacity: 0; transform: translateY(-8px); }
             to   { opacity: 1; transform: translateY(0); }
         }
+
+        /* Mode-colored active tabs */
+        .nav-tabs-custom .nav-link.active.tab-ask {
+            background-color: var(--castor-primary);
+        }
+
+        .nav-tabs-custom .nav-link.active.tab-modify {
+            background-color: var(--castor-accent);
+        }
+
+        /* Conversation mode indicators */
+        .conversation-indicator {
+            width: 3px;
+            border-radius: 2px;
+            flex-shrink: 0;
+            align-self: stretch;
+        }
+
+        .indicator-ask { background-color: var(--castor-primary); }
+        .indicator-modify { background-color: var(--castor-accent); }
+
+        .mode-label {
+            font-size: 0.625rem;
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .mode-label-ask {
+            background-color: rgba(59, 130, 246, 0.15);
+            color: var(--castor-primary);
+        }
+
+        .mode-label-modify {
+            background-color: rgba(139, 92, 246, 0.15);
+            color: var(--castor-accent);
+        }
     </style>
 
     {% block extra_css %}{% endblock %}
