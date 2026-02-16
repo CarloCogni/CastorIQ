@@ -1,0 +1,131 @@
+{% extends "core/base.html" %}
+{% load static %}
+
+{% block content %}
+<style>
+    /* Dark Mode Overrides for this page */
+    body, .bg-body {
+        background-color: #121212 !important; /* Deep dark background */
+        color: #e0e0e0 !important;
+    }
+
+    /* The Infinite Grid */
+    .loader-grid {
+        display: grid;
+        /* Auto-fit columns: minimum 150px wide, expanding to fill space */
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 1.5rem;
+        padding-bottom: 5rem;
+    }
+
+    /* Dark Card Styling */
+    .loader-card {
+        background-color: #1e1e1e;       /* Slightly lighter than body */
+        border: 1px solid #333;
+        border-radius: 12px;
+        aspect-ratio: 1 / 1;             /* Perfect square */
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .loader-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5); /* Deep shadow */
+        border-color: var(--castor-accent, #0d6efd);
+    }
+
+    /* Container for the SVG */
+    .loader-preview {
+        width: 80px;
+        height: 80px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* Subtle label */
+    .loader-label {
+        margin-top: 1rem;
+        font-size: 0.75rem;
+        color: #6c757d; /* Muted text */
+        font-family: monospace;
+    }
+
+    .loader-card:hover .loader-label {
+        color: #fff;
+    }
+</style>
+
+<div class="container py-5">
+
+    <div class="d-flex justify-content-between align-items-end mb-5 border-bottom border-secondary border-opacity-25 pb-3">
+        <div>
+            <h1 class="fw-bold mb-2 text-white">Loader Gallery</h1>
+            <p class="text-secondary mb-0">
+                Visualizing all <code>castor_loader.html</code> variants in order.
+            </p>
+        </div>
+        <span class="badge border border-secondary text-secondary rounded-pill px-3 py-2" id="count-badge">
+            0 Variants
+        </span>
+    </div>
+
+    <template id="source-template">
+        {% include "loaders/castor_loader.html" %}
+    </template>
+
+    <div class="loader-grid" id="gallery-grid">
+        </div>
+
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const source = document.getElementById('source-template').innerHTML;
+        const grid = document.getElementById('gallery-grid');
+        const countBadge = document.getElementById('count-badge');
+
+        // Create a wrapper to parse the HTML
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = source;
+
+        // Find all variants
+        const variants = wrapper.querySelectorAll('.castor-loader-variant');
+
+        // Update count
+        countBadge.textContent = `${variants.length} Variants`;
+
+        if (variants.length === 0) {
+            grid.innerHTML = `
+                <div class="col-12 text-center py-5 text-secondary">
+                    <i class="bi bi-exclamation-triangle fs-1 mb-3 d-block"></i>
+                    No loaders found in template.
+                </div>`;
+            return;
+        }
+
+        variants.forEach((variant, index) => {
+            // Clone the node
+            const clone = variant.cloneNode(true);
+            clone.style.display = 'block'; // Make visible
+
+            // Create Card
+            const card = document.createElement('div');
+            card.className = 'loader-card';
+
+            card.innerHTML = `
+                <div class="loader-preview">
+                    ${clone.outerHTML}
+                </div>
+                <div class="loader-label">Variant #${index + 1}</div>
+            `;
+
+            grid.appendChild(card);
+        });
+    });
+</script>
+{% endblock %}

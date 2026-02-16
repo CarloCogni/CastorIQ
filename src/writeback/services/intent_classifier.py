@@ -9,11 +9,11 @@ This is the ONLY service that calls the LLM in the Tier 1 flow.
 import json
 import logging
 from typing import Optional
-
 from django.conf import settings
 from langchain_ollama import ChatOllama
 from langchain_core.messages import SystemMessage, HumanMessage
 from .ifc_standard_psets import get_applicable_psets
+from .message_normalizer import normalize as normalize_message
 
 logger = logging.getLogger(__name__)
 
@@ -174,6 +174,8 @@ class IntentClassifier:
         Raises:
             IntentParseError: If LLM output is not valid JSON or missing fields.
         """
+        user_message = normalize_message(user_message)
+
         messages = [
             SystemMessage(content=SYSTEM_PROMPT),
             HumanMessage(content=USER_TEMPLATE.format(

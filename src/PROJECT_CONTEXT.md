@@ -321,7 +321,7 @@ uv run manage.py parse_ifc --all-pending
 
 ## 9. Future Work / Nice-to-Have
 
-### Short Term (For FMP Demo - May 3rd)
+### Short Term 
 - [ ] Complete RAG pipeline
 - [ ] Basic Ask functionality working
 - [ ] Basic Modify functionality with one example

@@ -1,3 +1,4 @@
+# documents/models.py
 """Document models - PDF/DOCX processing."""
 
 from django.db import models

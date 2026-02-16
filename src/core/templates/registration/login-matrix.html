@@ -53,20 +53,17 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            /* Lighter gradient to show more background */
-            background: radial-gradient(circle at center, rgba(0,0,0,0) 0%, rgba(0,0,0,0.4) 100%);
+            background: radial-gradient(circle at center, rgba(0,0,0,0) 0%, rgba(0,0,0,0.6) 100%);
         }
 
         /* Glassmorphism Card */
         .castor-card {
             width: 100%;
             max-width: 420px;
-            /* MORE TRANSPARENT: changed 0.65 to 0.35 */
-            background: rgba(10, 10, 10, 0.35);
-            /* Increased blur to keep text readable */
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            border: 1px solid rgba(79, 172, 254, 0.3);
+            background: rgba(15, 15, 15, 0.65);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(79, 172, 254, 0.3); /* Light blue border */
             border-radius: 16px;
             padding: 2.5rem;
             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
@@ -102,15 +99,14 @@
         }
 
         .form-control {
-            /* More transparent inputs */
-            background: rgba(0, 0, 0, 0.3);
-            border: 1px solid rgba(255, 255, 255, 0.15);
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.1);
             color: #fff;
             padding: 0.75rem 1rem;
         }
 
         .form-control:focus {
-            background: rgba(0, 0, 0, 0.5);
+            background: rgba(0, 0, 0, 0.6);
             border-color: var(--castor-blue-light);
             box-shadow: 0 0 0 4px rgba(79, 172, 254, 0.15);
             color: #fff;
@@ -131,20 +127,12 @@
             color: #000;
         }
 
-        /* Register Button Style */
-        .btn-register {
-            background: transparent;
-            border: 1px solid rgba(255,255,255,0.2);
-            color: rgba(255,255,255,0.7);
-            padding: 0.75rem;
-            font-weight: 500;
-            transition: all 0.3s ease;
-        }
-
-        .btn-register:hover {
-            border-color: rgba(255,255,255,0.5);
-            color: #fff;
-            background: rgba(255,255,255,0.05);
+        /* SVG Loader Animation reused here */
+        .logo-container {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 1.5rem auto;
+            position: relative;
         }
 
         @keyframes fadeIn {
@@ -160,10 +148,42 @@
     <div class="login-overlay">
         <div class="castor-card">
 
-            <div class="text-center mb-4">
-                <img src="{% static 'images/castor-logo-nobg.png' %}" alt="Castor Logo" height="80" class="mb-3">
+            <div class="text-center">
+                <div class="logo-container">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="80" height="80">
+                        <defs>
+                            <linearGradient id="m-crystal-main" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#4facfe;stop-opacity:1" />
+                            <stop offset="100%" style="stop-color:#00f2fe;stop-opacity:1" />
+                            </linearGradient>
+                            <linearGradient id="m-wood-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" style="stop-color:#795548;stop-opacity:1" />
+                            <stop offset="40%" style="stop-color:#A1887F;stop-opacity:1" />
+                            <stop offset="100%" style="stop-color:#5D4037;stop-opacity:1" />
+                            </linearGradient>
+                        </defs>
+                        <style>
+                            @keyframes m-head-shake { 0% { transform: rotate(0deg) translateY(0); } 25% { transform: rotate(-2deg) translateY(1px); } 75% { transform: rotate(1deg) translateY(-1px); } 100% { transform: rotate(0deg) translateY(0); } }
+                            .m-head-group { transform-origin: 100px 100px; animation: m-head-shake 3s infinite linear; }
+                        </style>
+                        <g transform="translate(40, 110)">
+                            <path d="M0,20 L100,10 L100,40 L0,50 Z" fill="url(#m-wood-gradient)" />
+                            <ellipse cx="0" cy="35" rx="5" ry="15" fill="#5D4037" />
+                            <path d="M10,0 L110,-10 L110,20 L10,30 Z" fill="url(#m-wood-gradient)" stroke="#3E2723" stroke-width="1"/>
+                        </g>
+                        <g class="m-head-group">
+                            <g>
+                                <path d="M60,60 L120,55 L150,85 L90,95 Z" fill="url(#m-crystal-main)" />
+                                <path d="M150,85 L160,90 L150,95 Z" fill="#1a237e" />
+                                <circle cx="115" cy="75" r="6" fill="#1a237e" />
+                                <circle cx="117" cy="73" r="2" fill="white" />
+                                <circle cx="75" cy="65" r="10" fill="#30cfd0" stroke="#1a237e" stroke-width="2"/>
+                            </g>
+                        </g>
+                    </svg>
+                </div>
                 <h1 class="h3 mb-1">Castor</h1>
-                <p class="text-white-50 small">Construction Intelligence Platform</p>
+                <p class="text-white-50 small mb-4">Construction Intelligence Platform</p>
             </div>
 
             <form method="post">
@@ -185,15 +205,9 @@
                     <input type="password" name="password" id="id_password" class="form-control" placeholder="••••••••" required>
                 </div>
 
-                <div class="d-grid gap-3">
-                    <button type="submit" class="btn btn-castor rounded-3">
-                        <i class="bi bi-box-arrow-in-right me-2"></i> Initialize Session
-                    </button>
-
-                    <button type="button" class="btn btn-register rounded-3">
-                        Create Account
-                    </button>
-                </div>
+                <button type="submit" class="btn btn-castor w-100 rounded-3">
+                    <i class="bi bi-box-arrow-in-right me-2"></i> Initialize Session
+                </button>
             </form>
 
             <div class="mt-4 text-center">
@@ -217,9 +231,9 @@
         const chars = '0123456789';
 
         let columns = 0;
-        let drops = [];
-        let stack = [];
-        let skyline = [];
+        let drops = []; // Current Y position of the falling drop
+        let stack = []; // Current Height of the "building" at this column (in # of characters from bottom)
+        let skyline = []; // The Max Height this column CAN reach (defines the building shape)
 
         function resize() {
             canvas.width = window.innerWidth;
@@ -232,81 +246,92 @@
 
             // Calculate Skyscraper Shape (Gaussian-ish curve)
             const centerX = columns / 2;
-            const widthVar = columns / 4;
+            const widthVar = columns / 4; // Controls how wide the building is
 
             for (let i = 0; i < columns; i++) {
                 drops[i] = Math.random() * -100; // Start above screen
                 stack[i] = 0; // Start with no building
 
-                // Tower shape logic
+                // Math to create a tower shape in the middle
+                // Max height is 80% of screen height
                 const distFromCenter = Math.abs(i - centerX);
+
+                // Simple pyramid/skyscraper logic
                 let heightFactor = Math.max(0, 1 - (distFromCenter / widthVar));
 
-                // Add some randomness
+                // Add some randomness so it looks like a skyline, not a perfect triangle
                 heightFactor = heightFactor * (0.8 + Math.random() * 0.2);
 
+                // Height in characters
                 const maxChars = Math.floor(canvas.height / fontSize);
                 skyline[i] = Math.floor(maxChars * 0.8 * heightFactor);
             }
         }
 
         function draw() {
-            // 1. Fade effect for trails
+            // 1. Fade effect for the trails
+            // Instead of clearing completely, we draw a semi-transparent black rectangle
+            // This creates the "tail" effect on moving numbers
             ctx.fillStyle = 'rgba(5, 5, 5, 0.1)';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+            // 2. Set Font
             ctx.font = fontSize + 'px ' + fontFamily;
 
             const maxRows = Math.floor(canvas.height / fontSize);
 
-            // Loop through columns
+            // 3. Loop through columns
             for (let i = 0; i < columns; i++) {
 
-                // --- DRAW THE BUILDING (The "Pile") ---
+                // --- DRAW THE STATIC BUILDING (The "Pile") ---
+                // If there is a stack here, draw it solidly
                 if (stack[i] > 0) {
+                    // Draw from bottom up
                     for (let s = 0; s < stack[i]; s++) {
                         const y = canvas.height - (s * fontSize);
 
-                        // Glimmer effect
+                        // Make the building glimmer slightly
                         if (Math.random() > 0.95) {
                             ctx.fillStyle = '#fff';
                         } else {
-                            ctx.fillStyle = colorDim;
+                            ctx.fillStyle = colorDim; // Darker blue for the structure
                         }
 
+                        // We use a fixed character for the building or random?
+                        // Let's use a random char based on position to make it look like data
                         const charIndex = (i + s) % chars.length;
                         ctx.fillText(chars[charIndex], i * fontSize, y);
                     }
                 }
 
-                // --- DRAW THE RAIN ---
+                // --- DRAW THE FALLING RAIN ---
                 const text = chars.charAt(Math.floor(Math.random() * chars.length));
                 const yPos = drops[i] * fontSize;
 
                 // Calculate where the "ground" is for this specific column
+                // It's the bottom of the screen MINUS the current stack height
                 const groundLevel = canvas.height - (stack[i] * fontSize);
 
                 // If drop is above ground, draw it
                 if (yPos < groundLevel) {
-                    ctx.fillStyle = colorSecondary; // Bright Cyan
+                    ctx.fillStyle = colorSecondary; // Bright Cyan for falling text
                     ctx.fillText(text, i * fontSize, yPos);
                 }
 
                 // --- LOGIC: HIT DETECTION ---
                 // If the drop hits the current ground level
-                if (yPos > groundLevel) {
+                if (yPos > groundLevel && Math.random() > 0.9) {
                     // Reset drop to top
                     drops[i] = 0;
 
-                    // BUILD FAST LOGIC:
-                    // Only build if we haven't reached the skyline limit
+                    // Increment the stack height (build the tower)
+                    // BUT only if we haven't reached the skyline limit
                     if (stack[i] < skyline[i]) {
-                        // Increase stack by 4 blocks per hit! (Very fast construction)
-                        stack[i] += 4;
+                        stack[i]++;
                     }
                 }
 
-                // Move drop down (Normal speed)
+                // Move drop down
                 drops[i]++;
             }
         }

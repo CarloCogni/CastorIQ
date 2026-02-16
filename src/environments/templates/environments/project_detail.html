@@ -1,4 +1,4 @@
-<!--project_detail.html-->
+<!--environments/project_detail.html-->
 {% extends "core/base.html" %}
 
 {% block title %}{{ project.name }} - Castor{% endblock %}
@@ -64,6 +64,11 @@
     </div>
 
 </div>
+
+<template id="global-castor-loader">
+    {% include "loaders/castor_loader.html" %}
+</template>
+
 {% block extra_js %}
 <script>
 // Global Sidebar Toggle Function
@@ -93,8 +98,17 @@ async function uploadIFC(input) {
         if (response.ok) {
             window.location.reload();
         } else {
-            const data = await response.json();
-            alert(data.error || 'Upload failed');
+            // Check if the response is actually JSON before parsing
+            const contentType = response.headers.get("content-type");
+            if (contentType && contentType.indexOf("application/json") !== -1) {
+                const data = await response.json();
+                alert(data.error || 'Upload failed');
+            } else {
+                // It's likely HTML (a server error page)
+                const text = await response.text();
+                console.error("Server Error:", text);
+                alert('Upload failed: Server returned an error (check console).');
+            }
         }
     } catch (error) {
         console.error(error);
@@ -125,7 +139,45 @@ async function uploadDocument(input) {
         console.error(error);
         alert('Upload failed: ' + error.message);
     }
-}
+};
+
+/**
+ * 2. CENTRALIZED LOGIC
+ * A single source of truth for generating loader HTML.
+ * Easy to modify: If you want to change from random to sequential, change it here only.
+ */
+window.CastorLoader = {
+    templateId: 'global-castor-loader',
+
+    /**
+     * Returns the HTML string of a single, randomly selected loader variant.
+     */
+    getHTML() {
+        const template = document.getElementById(this.templateId);
+        if (!template) return '<div class="spinner-border"></div>'; // Fallback
+
+        // Create a dummy wrapper to manipulate the DOM
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = template.innerHTML;
+
+        // Find variants
+        const variants = wrapper.querySelectorAll('.castor-loader-variant');
+
+        if (variants.length > 0) {
+            // Pick one random variant
+            const randomIndex = Math.floor(Math.random() * variants.length);
+            const selected = variants[randomIndex];
+
+            // Clean up: Ensure the selected one is visible, others are removed
+            // (Assuming your CSS hides them by default, we force display: block or just return that specific node)
+            selected.style.display = 'block';
+            return selected.outerHTML;
+        }
+
+        // Fallback if no variants structure exists yet (just return whole template)
+        return wrapper.innerHTML;
+    }
+};
 </script>
 {% endblock %}
 {% endblock %}

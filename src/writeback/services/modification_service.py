@@ -20,6 +20,11 @@ from .ifc_writer import Tier1Writer, EntityChange, IFCWriteError
 from .tier1_validator import Tier1Validator, ValidationResult
 from .intent_classifier import IntentClassifier, IntentParseError
 from .ifc_standard_psets import lookup_property, get_applicable_psets
+from writeback.services.guardian_service import GuardianService
+from .tier2_planner import Tier2Planner, PlanGenerationError
+from .tier2_validator import Tier2Validator
+from .tier2_writer import Tier2Writer, PlanStepResult
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +54,9 @@ class ModificationService:
         self.git = GitService(project)
         self.filter_engine = FilterEngine(project)
         self.classifier = IntentClassifier()
-        self.validator = Tier1Validator()
+        self.t1_validator = Tier1Validator()
+        self.t2_planner = Tier2Planner()
+        self.t2_validator = Tier2Validator(project)
 
     # ── Phase 1: Propose ───────────────────────────────────
 
@@ -105,19 +112,30 @@ class ModificationService:
                 return self._propose_chain(
                     classified, user_message, user=user,
                     ifc_file=ifc_file, message_obj=message_obj,
+                    entity_context=entity_context,
                 )
 
             intent = classified
         except IntentParseError as e:
             raise ModificationError(f"Could not understand the request: {e}")
 
-        # 3. Check tier — for now we only handle Tier 1
+        # 3. Check tier — route to appropriate handler
         tier = intent.get("tier", 0)
-        if tier != 1:
+        if tier == 2:
+            return self._propose_tier2(
+                user_message, entity_context, user=user,
+                ifc_file=ifc_file, message_obj=message_obj,
+            )
+        if tier == 3:
             raise ModificationError(
-                f"This request requires Tier {tier} capabilities "
+                f"This request requires Tier 3 capabilities "
                 f"(not yet implemented). "
                 f"Reason: {intent.get('explanation', 'complex operation')}"
+            )
+        if tier != 1:
+            raise ModificationError(
+                f"Unexpected tier: {tier}. "
+                f"Reason: {intent.get('explanation', '?')}"
             )
 
         # 3b. Confidence threshold
@@ -140,16 +158,14 @@ class ModificationService:
         matched_entities = list(matched_qs)
 
         # 5. Validate operation against real entity data
-        validation = self.validator.validate(intent, matched_entities)
+        validation = self.t1_validator.validate(intent, matched_entities)
 
         if not validation.valid:
-            # Auto-fallback: SET_PROPERTY failed because property doesn't
-            # exist → retry as ADD_PROPERTY if it's a standard pset property
+            # Auto-fallback: SET_PROPERTY → ADD_PROPERTY for standard pset properties
             if (
-                intent.get("operation") == "SET_PROPERTY"
-                and "not found on any" in validation.error
+                    intent.get("operation") == "SET_PROPERTY"
+                    and "not found on any" in validation.error
             ):
-                from .ifc_standard_psets import lookup_property
                 pset = intent.get("pset", "")
                 prop = intent.get("property", "")
                 if lookup_property(pset, prop) is not None:
@@ -158,12 +174,16 @@ class ModificationService:
                         f"for {pset}.{prop} (standard property, not yet on entities)"
                     )
                     intent["operation"] = "ADD_PROPERTY"
-                    validation = self.validator.validate(intent, matched_entities)
+                    validation = self.t1_validator.validate(intent, matched_entities)
 
+            # Tier 1 still failing → escalate to Tier 2
             if not validation.valid:
-                raise ModificationError(
-                    f"Validation failed: {validation.error}"
+                logger.info(f"Tier 1 validation failed, escalating to Tier 2: {validation.error}")
+                return self._propose_tier2(
+                    user_message, entity_context, user=user,
+                    ifc_file=ifc_file, message_obj=message_obj,
                 )
+
         # 6. Build diff preview
         diff_preview = self._build_diff_preview(intent, validation.entities)
 
@@ -205,6 +225,11 @@ class ModificationService:
             f"Proposal {proposal.id} created: {intent['operation']} "
             f"on {len(validation.entities)} entities (Tier {tier})"
         )
+        # ── Guardian: cross-reference against project documents ──
+        try:
+            GuardianService().check(proposal)
+        except Exception as e:
+            logger.warning(f"Guardian check failed (non-blocking): {e}")
 
         return proposal
 
@@ -244,7 +269,10 @@ class ModificationService:
 
         # 2. Execute the write operation
         try:
-            changes = self._execute_tier1(proposal)
+            if proposal.tier == 2:
+                changes = self._execute_tier2(proposal)
+            else:
+                changes = self._execute_tier1(proposal)
         except (IFCWriteError, Exception) as e:
             proposal.status = ModificationProposal.Status.FAILED
             proposal.error_message = str(e)
@@ -482,6 +510,87 @@ class ModificationService:
         writer.save()
         return changes
 
+    def _execute_tier2(
+            self, proposal: ModificationProposal
+    ) -> list[EntityChange]:
+        """Execute a Tier 2 plan: iterate steps, using appropriate writer."""
+        plan = proposal.intent_json
+        ifc_path = proposal.ifc_file.file.path
+
+        writer = Tier2Writer(ifc_path)
+        all_changes = []
+
+        for step in plan.get("plan", []):
+            op = step["operation"]
+            params = step["params"]
+            filter_spec = step["filter"]
+
+            # Resolve entities for this step
+            entities = self.filter_engine.resolve(filter_spec)
+            global_ids = list(entities.values_list("global_id", flat=True))
+
+            step_changes = self._execute_tier2_step(
+                writer, op, global_ids, params, entities,
+            )
+            all_changes.extend(step_changes)
+
+        writer.save()
+        return all_changes
+
+    def _execute_tier2_step(
+            self,
+            writer: "Tier2Writer",
+            operation: str,
+            global_ids: list[str],
+            params: dict,
+            entities,
+    ) -> list[EntityChange]:
+        """Execute a single step from a Tier 2 plan."""
+        # Tier 1 operations → delegate to the embedded Tier1Writer
+        if operation == "SET_PROPERTY":
+            return writer.t1.set_property(
+                global_ids, params["pset"], params["property"], params["new_value"],
+            )
+        if operation == "ADD_PROPERTY":
+            return writer.t1.add_property(
+                global_ids, params["pset"], params["property"], params["new_value"],
+            )
+        if operation == "REMOVE_PROPERTY":
+            return writer.t1.remove_property(
+                global_ids, params["pset"], params["property"],
+            )
+        if operation == "SET_ATTRIBUTE":
+            return writer.t1.set_attribute(
+                global_ids, params["attribute"], params["new_value"],
+            )
+        # Tier 2 operations
+        if operation == "ADD_PSET":
+            return writer.add_pset(
+                global_ids, params["pset_name"], params["properties"],
+            )
+        if operation == "REMOVE_PSET":
+            return writer.remove_pset(global_ids, params["pset_name"])
+        if operation == "SET_CLASSIFICATION":
+            return writer.set_classification(
+                global_ids, params["system_name"],
+                params["reference"], params.get("name", ""),
+            )
+        if operation == "SET_MATERIAL":
+            return writer.set_material(global_ids, params["material_name"])
+        if operation == "COPY_PROPERTIES":
+            source = IFCEntity.objects.filter(
+                ifc_file__project=self.project,
+                name__icontains=params["source_name"],
+            ).first()
+            if not source:
+                raise IFCWriteError(f"Source entity '{params['source_name']}' not found")
+            return writer.copy_properties(
+                source.global_id, global_ids,
+                params["pset_name"], params.get("property_names"),
+            )
+
+        raise IFCWriteError(f"Unknown Tier 2 operation: {operation}")
+
     def _build_diff_preview(
         self, intent: dict, entities: list[IFCEntity]
     ) -> list[dict]:
@@ -555,14 +664,14 @@ class ModificationService:
                     f"Could not sync entity {change.global_id} — not in DB"
                 )
 
-    def _propose_chain(self, intents: list, user_message: str, user=None, ifc_file=None, message_obj=None):
+    def _propose_chain(self, intents: list, user_message: str, user=None, ifc_file=None, message_obj=None,
+                       entity_context: str = ""):
         """
         Handle a chain of Tier 1 operations from a single user request.
 
         Creates one proposal per sub-intent, linked by a shared chain_id.
         Returns the list of proposals.
         """
-        import uuid
         chain_id = str(uuid.uuid4())[:8]
         proposals = []
 
@@ -592,7 +701,7 @@ class ModificationService:
             matched_entities = list(matched_qs)
 
             # Validate
-            validation = self.validator.validate(intent, matched_entities)
+            validation = self.t1_validator.validate(intent, matched_entities)
 
             if not validation.valid:
                 # Try SET→ADD fallback
@@ -604,11 +713,15 @@ class ModificationService:
                     prop = intent.get("property", "")
                     if lookup_property(pset, prop) is not None:
                         intent["operation"] = "ADD_PROPERTY"
-                        validation = self.validator.validate(intent, matched_entities)
+                        validation = self.t1_validator.validate(intent, matched_entities)
 
                 if not validation.valid:
-                    raise ModificationError(
-                        f"Chain element {i + 1} validation failed: {validation.error}"
+                    logger.info(
+                        f"Chain element {i + 1} failed Tier 1, escalating to Tier 2: {validation.error}"
+                    )
+                    return self._propose_tier2(
+                        user_message, entity_context, user=user,
+                        ifc_file=ifc_file, message_obj=message_obj,
                     )
 
             # Build diff preview
@@ -634,6 +747,11 @@ class ModificationService:
                 filter_spec=filter_spec,
                 confidence=confidence,
             )
+            try:
+                GuardianService().check(proposal)
+            except Exception as e:
+                logger.warning(f"Guardian check failed (non-blocking): {e}")
+
             proposals.append(proposal)
 
         logger.info(
@@ -642,3 +760,161 @@ class ModificationService:
 
         return proposals
 
+# ── Tier 2: Plan-Based Proposals ───────────────────────
+
+    def _propose_tier2(
+        self,
+        user_message: str,
+        entity_context: str,
+        user=None,
+        ifc_file=None,
+        message_obj=None,
+    ) -> ModificationProposal:
+        """
+        Handle a Tier 2 request: generate plan, validate, create proposal.
+
+        The plan is stored in intent_json. Execution iterates over steps.
+        """
+        # 1. Generate execution plan
+        try:
+            plan = self.t2_planner.generate_plan(user_message, entity_context)
+        except PlanGenerationError as e:
+            raise ModificationError(f"Could not generate plan: {e}")
+
+        # Escalation: planner decided this needs Tier 3
+        if plan.get("tier") == 3:
+            raise ModificationError(
+                f"This request requires Tier 3 capabilities "
+                f"(not yet implemented). "
+                f"Reason: {plan.get('explanation', 'complex operation')}"
+            )
+
+        # 2. Confidence check
+        confidence = plan.get("confidence", 0)
+        if confidence < 60:
+            raise ModificationError(
+                f"Low confidence ({confidence}%). "
+                f"Please be more specific about what you need."
+            )
+
+        # 3. Validate the full plan
+        validation = self.t2_validator.validate_plan(plan)
+        if not validation.valid:
+            raise ModificationError(f"Plan validation failed: {validation.error}")
+
+        # 4. Build diff preview from all steps
+        diff_preview = self._build_tier2_diff_preview(plan, validation)
+
+        # 5. Resolve IFC file from first step's entities
+        if ifc_file is None:
+            first_entities = validation.steps[0].entities
+            if first_entities:
+                ifc_file = first_entities[0].ifc_file
+            else:
+                raise ModificationError("Could not determine target IFC file.")
+
+        # 6. Create proposal
+        proposal = ModificationProposal.objects.create(
+            message=message_obj,
+            ifc_file=ifc_file,
+            created_by=user,
+            request_text=user_message,
+            explanation=plan.get("explanation", ""),
+            changes=plan,
+            diff_preview=json.dumps(diff_preview),
+            affected_count=validation.total_affected,
+            status=ModificationProposal.Status.PENDING,
+            tier=2,
+            operation="PLAN",
+            intent_json=plan,
+            filter_spec={},  # plan has per-step filters
+            confidence=confidence,
+        )
+
+        logger.info(
+            f"Tier 2 proposal {proposal.id}: {len(plan['plan'])} steps, "
+            f"{validation.total_affected} entities"
+        )
+
+        try:
+            GuardianService().check(proposal)
+        except Exception as e:
+            logger.warning(f"Guardian check failed (non-blocking): {e}")
+
+        return proposal
+
+    def _build_tier2_diff_preview(
+        self, plan: dict, validation
+    ) -> list[dict]:
+        """Build a combined diff preview for all steps in a Tier 2 plan."""
+        preview = []
+
+        for step, sv in zip(plan.get("plan", []), validation.steps):
+            op = step.get("operation", "")
+            params = step.get("params", {})
+            step_num = step.get("step", sv.step_index + 1)
+
+            for entity in sv.entities[:20]:  # Cap preview rows per step
+                field_label = self._tier2_field_label(op, params)
+                old_value = self._tier2_old_value(op, params, entity)
+                new_value = self._tier2_new_value(op, params)
+
+                preview.append({
+                    "global_id": entity.global_id,
+                    "name": entity.name or entity.global_id[:8],
+                    "ifc_type": entity.ifc_type,
+                    "field": f"[Step {step_num}] {field_label}",
+                    "old_value": str(old_value),
+                    "new_value": str(new_value),
+                })
+
+        return preview
+
+    @staticmethod
+    def _tier2_field_label(operation: str, params: dict) -> str:
+        if operation in ("SET_PROPERTY", "ADD_PROPERTY", "REMOVE_PROPERTY"):
+            return f"{params.get('pset', '')}.{params.get('property', '')}"
+        if operation == "SET_ATTRIBUTE":
+            return params.get("attribute", "")
+        if operation in ("ADD_PSET", "REMOVE_PSET"):
+            return params.get("pset_name", "")
+        if operation == "SET_CLASSIFICATION":
+            return f"{params.get('system_name', '')}: {params.get('reference', '')}"
+        if operation == "SET_MATERIAL":
+            return f"Material: {params.get('material_name', '')}"
+        if operation == "COPY_PROPERTIES":
+            return f"Copy from {params.get('source_name', '')} → {params.get('pset_name', '')}"
+        return operation
+
+    @staticmethod
+    def _tier2_old_value(operation: str, params: dict, entity) -> str:
+        if operation in ("SET_PROPERTY", "REMOVE_PROPERTY"):
+            key = f"{params.get('pset', '')}.{params.get('property', '')}"
+            return (entity.properties or {}).get(key, "(not set)")
+        if operation == "SET_ATTRIBUTE":
+            attr = params.get("attribute", "")
+            if attr == "Name":
+                return entity.name or "(none)"
+            return "(attribute)"
+        if operation in ("ADD_PROPERTY", "ADD_PSET", "SET_CLASSIFICATION", "SET_MATERIAL"):
+            return "(none)"
+        return "?"
+
+    @staticmethod
+    def _tier2_new_value(operation: str, params: dict) -> str:
+        if operation in ("SET_PROPERTY", "ADD_PROPERTY", "SET_ATTRIBUTE"):
+            return str(params.get("new_value", ""))
+        if operation == "REMOVE_PROPERTY":
+            return "(removed)"
+        if operation == "REMOVE_PSET":
+            return "(removed)"
+        if operation == "ADD_PSET":
+            props = params.get("properties", {})
+            return f"{len(props)} properties"
+        if operation == "SET_CLASSIFICATION":
+            return params.get("reference", "")
+        if operation == "SET_MATERIAL":
+            return params.get("material_name", "")
+        if operation == "COPY_PROPERTIES":
+            return f"from {params.get('source_name', '')}"
+        return "?"

@@ -54,6 +54,31 @@ class ModificationProposal(UUIDModel):
     error_message = models.TextField( blank=True, verbose_name="Error Message", help_text="Error details if status is 'failed'",)
     applied_at = models.DateTimeField( null=True, blank=True, verbose_name="Applied At",)
 
+    # Castor Guardian fields
+    class VerificationStatus(models.TextChoices):
+        PENDING = "pending", "Checking..."
+        VERIFIED = "verified", "Verified"
+        CONFLICT = "conflict", "Conflict Detected"
+        UNKNOWN = "unknown", "No Info Found"
+        FAILED = "failed", "Check Failed"
+
+    # Guardian Fields
+    verification_status = models.CharField(
+        max_length=20,
+        choices=VerificationStatus.choices,
+        default=VerificationStatus.PENDING,
+        db_index=True
+    )
+    verification_result = models.TextField(
+        blank=True,
+        help_text="LLM explanation of the verification check."
+    )
+    verification_source = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Citation (e.g., 'Fire Strategy.pdf, p.14')"
+    )
+
     class Meta:
         ordering = ["-created_at"]
         verbose_name = "Modification Proposal"

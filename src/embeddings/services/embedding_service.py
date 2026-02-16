@@ -1,3 +1,4 @@
+# embeddings/services/embedding_service.py
 """
 Embedding service — model-agnostic vector generation via Ollama.
 

@@ -1,3 +1,4 @@
+# environments/view.py
 """Project views."""
 
 import os
@@ -25,6 +26,10 @@ from embeddings.services.embedding_service import EmbeddingService
 from ifc_processor.services.processor import IFCProcessingService
 from writeback.models import ModificationProposal
 import json
+from writeback.services.modification_service import (
+    ModificationService,
+    ModificationError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -439,10 +444,6 @@ class ModifyView(ProjectTabMixin, TemplateView):
 
     def _handle_propose(self, request, project):
         """Classify intent, validate, create proposal — no IFC writes yet."""
-        from writeback.services.modification_service import (
-            ModificationService, ModificationError,
-        )
-
         user_text = request.POST.get("message", "").strip()
         if not user_text:
             return JsonResponse({"status": "error", "message": "Message is required."}, status=400)
@@ -487,15 +488,14 @@ class ModifyView(ProjectTabMixin, TemplateView):
             session.title = user_text[:50]
             session.save(update_fields=["title"])
 
-        # Serialize proposals
-        import json
         serialized = []
         for p in proposals:
             try:
                 diff_preview = json.loads(p.diff_preview)
             except (json.JSONDecodeError, TypeError):
                 diff_preview = []
-            serialized.append({
+
+            entry = {
                 "id": str(p.id),
                 "tier": p.tier,
                 "operation": p.operation,
@@ -503,7 +503,25 @@ class ModifyView(ProjectTabMixin, TemplateView):
                 "confidence": p.confidence,
                 "affected_count": p.affected_count,
                 "diff_preview": diff_preview,
-            })
+                "guardian": {
+                    "status": p.verification_status,
+                    "result": p.verification_result,
+                    "source": p.verification_source,
+                },
+            }
+
+            # Tier 2: include plan steps for UI
+            if p.tier == 2 and p.intent_json and "plan" in p.intent_json:
+                entry["plan_steps"] = [
+                    {
+                        "step": s.get("step", i + 1),
+                        "operation": s.get("operation", ""),
+                        "explanation": s.get("explanation", ""),
+                    }
+                    for i, s in enumerate(p.intent_json["plan"])
+                ]
+
+            serialized.append(entry)
 
         if is_chain:
             return JsonResponse({

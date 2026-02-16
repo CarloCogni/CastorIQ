@@ -27,7 +27,7 @@
 
                     <div class="d-flex gap-2 mt-4 justify-content-end">
                         {% if form.instance.pk %}
-                            <a href="{% url 'projects:ask' project.pk %}" class="btn btn-outline-secondary">Cancel</a>
+                            <a href="{% url 'projects:ask' form.instance.pk %}" class="btn btn-outline-secondary">Cancel</a>
                         {% else %}
                             <a href="{% url 'projects:list' %}" class="btn btn-outline-secondary">Cancel</a>
                         {% endif %}

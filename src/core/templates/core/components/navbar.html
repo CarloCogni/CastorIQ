@@ -1,5 +1,4 @@
-<!--navbar.html-->
-{% load static%}
+{% load static %}
 <nav class="navbar navbar-dark bg-surface border-bottom px-4">
     <a href="{% url 'home' %}" class="navbar-brand navbar-brand-castor text-decoration-none">
         <img src="{% static 'images/castor-logo-nobg.png' %}" alt="Castor Logo" height="40" class="me-2">
@@ -20,7 +19,18 @@
         <div class="rounded-circle bg-primary d-flex align-items-center justify-content-center text-white fw-semibold" style="width: 36px; height: 36px;">
             {{ user.username.0|upper }}
         </div>
-        <a href="#" class="text-secondary opacity-50"><i class="bi bi-gear-fill"></i></a>
+
+        <a href="#" class="text-secondary opacity-50 hover-white" title="Settings"><i class="bi bi-gear-fill"></i></a>
+
+        <div class="vr bg-secondary opacity-25 mx-1"></div>
+
+        <form action="{% url 'logout' %}" method="post" class="d-inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-link text-secondary opacity-50 hover-white p-0 border-0 text-decoration-none align-baseline" title="Logout">
+                <i class="bi bi-box-arrow-right fs-5"></i>
+            </button>
+        </form>
+
     </div>
-    {% endif %}
+{% endif %}
 </nav>

@@ -87,7 +87,7 @@ USE_TZ = True
 
 # Authentication
 LOGIN_URL = "login"
-LOGIN_REDIRECT_URL = "home"
+LOGIN_REDIRECT_URL = "projects:list"
 LOGOUT_REDIRECT_URL = "login"
 
 # Static files (CSS, JavaScript, Images)

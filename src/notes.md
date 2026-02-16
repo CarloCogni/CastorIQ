@@ -1,10 +1,8 @@
 ### TODO
+_ask and _modify htmls:
+    - PRE-LLM to modify prompt to make it perfect for modification ? 
 
-*** _ask.html
 
-chat it's not opening up. becoming bigger when asking questions in multiple lines. 
-Delete chat. needs to clear up! perhaps have multiple chats? to ask different things and keep things more coherent? 
-to be seen....
-
-model popup to show example on how to write to modify stuff
-PRE-LLM to modify prompt to make it perfect for modification ? 
+### CASTOR GUARDIAN
+in _modify.html right sidebar, whenever prompting to modify something in the html,
+the "guardian" will check into the docs to see if there are any references just ot make sure there are no errors :D
