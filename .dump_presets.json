@@ -1,0 +1,35 @@
+{
+  "_comment": "Presets for dump_context. Edit freely \u2014 this is the single source of truth.",
+  "writeback": {
+    "apps": ["writeback"],
+    "skeleton": true,
+    "full_apps": ["writeback"],
+    "docs": ["writeback",  "guardian"],
+    "compact": true
+  },
+  "overview": {
+    "tree": true,
+    "skeleton": true,
+    "docs": ["all"],
+    "compact": true
+  },
+  "models": {
+    "models_only": true,
+    "docs": ["architecture",  "data-models"],
+    "compact": true
+  },
+  "rag": {
+    "apps": ["embeddings", "documents", "chat"],
+    "skeleton": true,
+    "full_apps": ["embeddings"],
+    "docs": ["rag-pipeline"],
+    "compact": true
+  },
+  "ifc": {
+    "apps": ["ifc_processor"],
+    "skeleton": true,
+    "full_apps": ["ifc_processor"],
+    "docs": ["ifc-processor"],
+    "compact": true
+  }
+}

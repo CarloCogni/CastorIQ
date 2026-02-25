@@ -2,7 +2,6 @@
 """Project URL configuration."""
 
 from django.urls import path
-
 from . import views
 
 app_name = "projects"
@@ -14,9 +13,6 @@ urlpatterns = [
 
     # Project detail/tabs
     path("<uuid:pk>/", views.ProjectDetailView.as_view(), name="detail"),
-    path("<uuid:pk>/modify/", views.ModifyView.as_view(), name="modify"),
-    path("<uuid:pk>/conflicts/", views.ConflictsView.as_view(), name="conflicts"),
-    path("<uuid:pk>/history/", views.HistoryView.as_view(), name="history"),
 
     # Chat session management
     path("<uuid:pk>/ask/", views.AskView.as_view(), name="ask"),
@@ -42,14 +38,4 @@ urlpatterns = [
     path("document/<uuid:pk>/edit/", views.DocumentUpdateView.as_view(), name="document_edit"),
     path("document/<uuid:pk>/delete/", views.DocumentDeleteView.as_view(), name="document_delete"),
 
-# --- MODIFY TAB URLs ---
-    path("<uuid:pk>/modify/", views.ModifyView.as_view(), name="modify"),
-    # 👇 ADD THIS LINE 👇
-    path("<uuid:pk>/modify/<uuid:session_id>/", views.ModifyView.as_view(), name="modify_session"),
-
-    path("<uuid:pk>/conflicts/", views.ConflictsView.as_view(), name="conflicts"),
-    path("<uuid:pk>/history/", views.HistoryView.as_view(), name="history"),
-
-    # restore HISTORY
-path("<uuid:pk>/history/restore/<uuid:commit_id>/", views.RestoreCommitView.as_view(), name="restore_commit"),
 ]

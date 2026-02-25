@@ -1,0 +1,21 @@
+<!--core/templates/core/components/model_status.html-->
+<div class="d-flex align-items-center justify-content-between mb-3">
+    <div>
+        <span class="fs-7 text-secondary">Active model:</span>
+        <span class="fw-semibold ms-1">{{ active_model }}</span>
+        {% if active_model_info %}
+            <span class="family-badge family-{{ active_model_info.family }} ms-2">{{ active_model_info.family }}</span>
+            {% if active_model_info.is_moe %}
+                <span class="family-badge family-unknown ms-1">MoE</span>
+            {% endif %}
+        {% endif %}
+        {% if is_using_default %}
+            <span class="text-secondary fs-8 ms-2">(.env default)</span>
+        {% endif %}
+    </div>
+    {% if just_saved %}
+        <span class="text-success fs-7">
+            <i class="bi bi-check-circle-fill me-1"></i>Saved
+        </span>
+    {% endif %}
+</div>

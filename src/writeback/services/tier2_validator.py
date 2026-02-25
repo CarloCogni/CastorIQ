@@ -274,15 +274,16 @@ class Tier2Validator:
                 added_psets.add(pset)
 
             elif op == "REMOVE_PSET" and pset:
+                if pset in added_psets:
+                    return f"Contradiction: plan removes '{pset}' after adding it."
                 removed_psets.add(pset)
 
             elif op in ("SET_PROPERTY", "ADD_PROPERTY") and pset:
                 if pset in removed_psets:
                     return (
-                        f"Contradiction: plan modifies '{pset}' "
+                        f"Contradiction: plan modifies '{pset}'"
                         f"but it's removed in an earlier step."
                     )
-
         return ""
 
     @staticmethod

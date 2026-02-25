@@ -1,35 +1,32 @@
 # environments/view.py
 """Project views."""
-
 import os
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.db.models import Count, Q, Prefetch
+from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.generic import (
     ListView, DetailView, CreateView, UpdateView, TemplateView, View
 )
-from .models import Project, ProjectMembership
+from .models import Project
 from ifc_processor.models import IFCFile, IFCDataIssue
 from documents.models import Document
 from chat.models import ChatSession, Message
-from writeback.models import Conflict, GitCommit
+from writeback.models import GitCommit
 from django.urls import reverse_lazy, reverse
 from django.views.generic import DeleteView, UpdateView
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
 import logging
-from django.utils import timezone
 from django.http import JsonResponse
 from chat.services.rag_service import RAGService
 from documents.services.document_processor import DocumentProcessor
-from embeddings.services.embedding_service import EmbeddingService
 from ifc_processor.services.processor import IFCProcessingService
-from writeback.models import ModificationProposal
 import json
 from writeback.services.modification_service import (
     ModificationService,
     ModificationError,
 )
+from core.mixins import ProjectTabMixin, ProjectAccessMixin
 
 logger = logging.getLogger(__name__)
 
@@ -44,20 +41,6 @@ class ProjectOwnerRequiredMixin(LoginRequiredMixin):
         if project.owner != self.request.user:
             raise PermissionDenied("Only the project owner can perform this action.")
         return obj
-
-class ProjectAccessMixin(LoginRequiredMixin):
-    """Mixin to check project access."""
-
-    def get_project(self):
-        """Get project with access check."""
-        project = get_object_or_404(
-            Project.objects.select_related("owner"),
-            pk=self.kwargs["pk"]
-        )
-        if not project.user_has_access(self.request.user):
-            from django.core.exceptions import PermissionDenied
-            raise PermissionDenied
-        return project
 
 class ProjectListView(LoginRequiredMixin, ListView):
     """List all projects user has access to."""
@@ -150,67 +133,6 @@ class ProjectDeleteView(ProjectOwnerRequiredMixin, DeleteView):
         context["message"] = "Are you sure you want to delete this project? All IFC files, documents, and chat history will be permanently lost."
         return context
 
-class ProjectTabMixin(ProjectAccessMixin):
-    """Base mixin for project tab views."""
-
-    template_name = "environments/project_detail.html"
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        project = self.get_project()
-
-        # Efficient query for sidebar data
-        context["project"] = project
-        context["active_tab"] = self.active_tab
-
-        # IFC files with status counts
-        context["ifc_files"] = (
-            project.ifc_files
-            .only("id", "name", "status", "created_at", "entity_count")
-            .order_by("-created_at")
-        )
-
-        # Documents with status
-        context["documents"] = (
-            project.documents
-            .only("id", "name", "document_type", "status", "created_at")
-            .order_by("-created_at")
-        )
-
-        # Conflict count for badge
-        context["open_conflict_count"] = (
-            project.conflicts.filter(status="open").count()
-        )
-
-        # inside ProjectTabMixin.get_context_data:
-        context["ifc_files"] = (
-            project.ifc_files
-            .annotate(
-                unresolved_issue_count=Count(
-                    "data_issues",
-                    filter=Q(data_issues__is_resolved=False)
-                )
-            )
-            .order_by("-created_at")
-        )
-        # Chat sessions for sidebar (mode-aware)
-        mode_map = {"ask": ChatSession.Mode.ASK, "modify": ChatSession.Mode.MODIFY}
-        chat_mode = mode_map.get(self.active_tab)
-        if chat_mode:
-            context["chat_sessions"] = (
-                ChatSession.objects
-                .filter(project=project, user=self.request.user, mode=chat_mode)
-                .only("id", "title", "updated_at")
-                .order_by("-updated_at")
-            )
-        else:
-            context["chat_sessions"] = ChatSession.objects.none()
-
-        # Active session ID for sidebar highlight (set by child views)
-        context.setdefault("active_session_id", None)
-
-        return context
-
 class AskView(ProjectTabMixin, TemplateView):
     """Ask tab — multi-session chat against IFC/documents."""
 
@@ -287,7 +209,7 @@ class AskView(ProjectTabMixin, TemplateView):
 
         # Generate AI response
         try:
-            rag = RAGService()
+            rag = RAGService(user=request.user)
             answer_text, context_items = rag.generate_answer(
                 project, session, user_text, scope=scope,
             )
@@ -350,359 +272,6 @@ class RenameSessionView(ProjectAccessMixin, View):
 
         return JsonResponse({"ok": True, "title": session.title})
 
-class ModifyView(ProjectTabMixin, TemplateView):
-    """Modify tab — propose, approve, reject IFC modifications."""
-
-    active_tab = "modify"
-
-    def _get_or_create_session(self, project, user):
-        session = (
-            ChatSession.objects
-            .filter(project=project, user=user, mode=ChatSession.Mode.MODIFY)
-            .order_by("-updated_at")
-            .first()
-        )
-        if not session:
-            session = ChatSession.objects.create(
-                project=project, user=user,
-                mode=ChatSession.Mode.MODIFY, title="New Modification",
-            )
-        return session
-
-    def _resolve_session(self, project, user):
-        session_id = self.kwargs.get("session_id")
-        if session_id:
-            return get_object_or_404(
-                ChatSession, pk=session_id, project=project,
-                user=user, mode=ChatSession.Mode.MODIFY,
-            )
-        return self._get_or_create_session(project, user)
-
-    def get(self, request, *args, **kwargs):
-        if "session_id" not in self.kwargs:
-            project = self.get_project()
-            session = self._get_or_create_session(project, request.user)
-            return redirect(
-                "projects:modify_session",
-                pk=project.pk, session_id=session.pk,
-            )
-        return super().get(request, *args, **kwargs)
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        project = self.get_project()
-        session = self._resolve_session(project, self.request.user)
-
-        context["session"] = session
-        context["active_session_id"] = session.pk
-        context["messages"] = (
-            session.messages
-            .select_related("proposal", "proposal__git_commit")
-            .order_by("created_at")
-        )
-
-        # Pending proposals for the sidebar
-        from writeback.models import ModificationProposal
-        context["pending_proposals"] = (
-            ModificationProposal.objects
-            .filter(
-                ifc_file__project=project,
-                status=ModificationProposal.Status.PENDING,
-            )
-            .select_related("ifc_file")
-            .order_by("-created_at")
-        )
-
-        return context
-
-    def post(self, request, *args, **kwargs):
-        project = self.get_project()
-        action = request.POST.get("action", "propose")
-
-        # New session — redirect (not JSON)
-        if action == "new_session":
-            session = ChatSession.objects.create(
-                project=project, user=request.user,
-                mode=ChatSession.Mode.MODIFY, title="New Modification",
-            )
-            return redirect(
-                "projects:modify_session",
-                pk=project.pk, session_id=session.pk,
-            )
-
-        # All other actions return JSON
-        dispatch = {
-            "propose": self._handle_propose,
-            "approve": self._handle_approve,
-            "reject": self._handle_reject,
-        }
-        handler = dispatch.get(action)
-        if not handler:
-            return JsonResponse({"status": "error", "message": f"Unknown action: {action}"}, status=400)
-
-        return handler(request, project)
-
-    def _handle_propose(self, request, project):
-        """Classify intent, validate, create proposal — no IFC writes yet."""
-        user_text = request.POST.get("message", "").strip()
-        if not user_text:
-            return JsonResponse({"status": "error", "message": "Message is required."}, status=400)
-
-        session = self._resolve_session(project, request.user)
-
-        # Save user message
-        user_msg = Message.objects.create(
-            session=session, role=Message.Role.USER, content=user_text,
-        )
-
-        svc = ModificationService(project)
-
-        try:
-            result = svc.propose(user_message=user_text, user=request.user)
-        except ModificationError as e:
-            # Save error as assistant message
-            Message.objects.create(
-                session=session, role=Message.Role.ASSISTANT,
-                content=f"⚠️ {e}",
-            )
-            return JsonResponse({"status": "error", "message": str(e)})
-
-        # Normalize to list for uniform handling
-        proposals = result if isinstance(result, list) else [result]
-        is_chain = isinstance(result, list)
-
-        # Save assistant message
-        explanations = [p.explanation for p in proposals]
-        assistant_msg = Message.objects.create(
-            session=session, role=Message.Role.ASSISTANT,
-            content=" + ".join(explanations) if is_chain else explanations[0],
-        )
-
-        # Link proposals to message
-        for p in proposals:
-            p.message = assistant_msg
-            p.save(update_fields=["message"])
-
-        # Auto-title
-        if session.title == "New Modification":
-            session.title = user_text[:50]
-            session.save(update_fields=["title"])
-
-        serialized = []
-        for p in proposals:
-            try:
-                diff_preview = json.loads(p.diff_preview)
-            except (json.JSONDecodeError, TypeError):
-                diff_preview = []
-
-            entry = {
-                "id": str(p.id),
-                "tier": p.tier,
-                "operation": p.operation,
-                "explanation": p.explanation,
-                "confidence": p.confidence,
-                "affected_count": p.affected_count,
-                "diff_preview": diff_preview,
-                "guardian": {
-                    "status": p.verification_status,
-                    "result": p.verification_result,
-                    "source": p.verification_source,
-                },
-            }
-
-            # Tier 2: include plan steps for UI
-            if p.tier == 2 and p.intent_json and "plan" in p.intent_json:
-                entry["plan_steps"] = [
-                    {
-                        "step": s.get("step", i + 1),
-                        "operation": s.get("operation", ""),
-                        "explanation": s.get("explanation", ""),
-                    }
-                    for i, s in enumerate(p.intent_json["plan"])
-                ]
-
-            serialized.append(entry)
-
-        if is_chain:
-            return JsonResponse({
-                "status": "proposed",
-                "chain": True,
-                "proposals": serialized,
-            })
-
-        return JsonResponse({
-            "status": "proposed",
-            "proposal": serialized[0],
-        })
-
-    def _handle_approve(self, request, project):
-        """Execute an approved proposal — writes to IFC + git commit."""
-        from writeback.models import ModificationProposal
-        from writeback.services.modification_service import (
-            ModificationService, ModificationError,
-        )
-
-        proposal_id = request.POST.get("proposal_id")
-        if not proposal_id:
-            return JsonResponse({"status": "error", "message": "proposal_id is required."}, status=400)
-
-        try:
-            proposal = ModificationProposal.objects.get(
-                id=proposal_id,
-                ifc_file__project=project,
-                status=ModificationProposal.Status.PENDING,
-            )
-        except ModificationProposal.DoesNotExist:
-            return JsonResponse({"status": "error", "message": "Proposal not found or not pending."}, status=404)
-
-        svc = ModificationService(project)
-
-        try:
-            git_commit = svc.execute(proposal)
-        except ModificationError as e:
-            return JsonResponse({"status": "error", "message": str(e)})
-
-        # Save confirmation as assistant message (if proposal has a linked session)
-        if proposal.message and proposal.message.session:
-            Message.objects.create(
-                session=proposal.message.session,
-                role=Message.Role.ASSISTANT,
-                content=(
-                    f"✅ Applied! {proposal.affected_count} entities modified. "
-                    f"Commit: {git_commit.commit_hash[:8]}"
-                ),
-            )
-
-        return JsonResponse({
-            "status": "applied",
-            "commit_hash": git_commit.commit_hash[:8],
-            "entities_modified": proposal.affected_count,
-        })
-
-    def _handle_reject(self, request, project):
-        """Reject a pending proposal."""
-        from writeback.models import ModificationProposal
-        from writeback.services.modification_service import (
-            ModificationService,
-        )
-
-        proposal_id = request.POST.get("proposal_id")
-        if not proposal_id:
-            return JsonResponse({"status": "error", "message": "proposal_id is required."}, status=400)
-
-        try:
-            proposal = ModificationProposal.objects.get(
-                id=proposal_id,
-                ifc_file__project=project,
-                status=ModificationProposal.Status.PENDING,
-            )
-        except ModificationProposal.DoesNotExist:
-            return JsonResponse({"status": "error", "message": "Proposal not found or not pending."}, status=404)
-
-        svc = ModificationService(project)
-        reason = request.POST.get("reason", "")
-        svc.reject(proposal, user=request.user, reason=reason)
-
-        # Save rejection as assistant message
-        if proposal.message and proposal.message.session:
-            Message.objects.create(
-                session=proposal.message.session,
-                role=Message.Role.ASSISTANT,
-                content="❌ Modification rejected. What would you like to do instead?",
-            )
-
-        return JsonResponse({"status": "rejected"})
-
-class ConflictsView(ProjectTabMixin, TemplateView):
-    """Conflicts tab - show detected conflicts and data quality issues."""
-
-    active_tab = "conflicts"
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        project = self.get_project()
-
-        # 1. Existing Semantic Conflicts
-        context["open_conflicts"] = (
-            project.conflicts
-            .filter(status="open")
-            .select_related("ifc_entity", "ifc_entity__ifc_file")
-            .order_by("-severity", "-created_at")
-        )
-
-        context["resolved_conflicts"] = (
-            project.conflicts
-            .filter(status="resolved")
-            .select_related("resolved_by")
-            .order_by("-resolved_at")[:10]
-        )
-
-        # 2. NEW: Data Quality Issues (Grouped by File)
-        # We fetch all unresolved issues for files in this project
-        context["data_issues"] = (
-            IFCDataIssue.objects
-            .filter(ifc_file__project=project, is_resolved=False)
-            .select_related("ifc_file")
-            .order_by("ifc_file", "issue_type")
-        )
-
-        return context
-
-class HistoryView(ProjectTabMixin, TemplateView):
-    """History tab - Git commit log."""
-
-    active_tab = "history"
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        project = self.get_project()
-
-        # Get all commits across all IFC files in this project
-        commits = (
-            GitCommit.objects
-            .filter(ifc_file__project=project)
-            .select_related("ifc_file", "author")
-            .prefetch_related("proposal")
-            .order_by("-created_at")
-        )
-
-        # Build a map: original_commit_hash -> restore_commit_hash
-        restored_by = {}
-        for commit in commits:
-            if commit.diff_data.get('operation') == 'ROLLBACK':
-                restored_from = commit.diff_data.get('restored_from_hash')
-                if restored_from:
-                    restored_by[restored_from] = commit.commit_hash
-
-        context["commits"] = commits
-        context["restored_by"] = restored_by
-
-        return context
-
-class RestoreCommitView(LoginRequiredMixin, View):
-    def post(self, request, pk, commit_id):
-        # Get project with owner check
-        project = get_object_or_404(
-            Project.objects.select_related("owner"),
-            pk=pk
-        )
-
-        # Ensure only owner can restore
-        if project.owner != request.user:
-            raise PermissionDenied("Only the project owner can restore commits.")
-
-        from writeback.services.modification_service import ModificationService, ModificationError
-        svc = ModificationService(project)
-
-        try:
-            # This triggers Git Revert + DB Full Re-parse
-            svc.restore_version(commit_id, request.user)
-            messages.success(request, "File restored successfully. Database and embeddings have been re-synced.")
-        except ModificationError as e:
-            messages.error(request, f"Restore failed: {e}")
-
-        return redirect("projects:history", pk=pk)
-
 class UploadIFCView(ProjectAccessMixin, View):
     """Handle IFC file upload."""
 
@@ -746,61 +315,6 @@ class UploadIFCView(ProjectAccessMixin, View):
 
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
-
-# class UploadDocumentView(ProjectAccessMixin, View):
-#     """Handle document upload."""
-#
-#     def post(self, request, pk):
-#         project = self.get_project()
-#
-#         if "file" not in request.FILES:
-#             return JsonResponse({"error": "No file provided"}, status=400)
-#
-#         uploaded_file = request.FILES["file"]
-#         name = uploaded_file.name.lower()
-#
-#         # Determine document type
-#         if name.endswith(".pdf"):
-#             doc_type = Document.DocumentType.PDF
-#         elif name.endswith(".docx"):
-#             doc_type = Document.DocumentType.DOCX
-#         elif name.endswith(".txt"):
-#             doc_type = Document.DocumentType.TXT
-#         else:
-#             doc_type = Document.DocumentType.OTHER
-#
-#         # Create document record
-#         document = Document.objects.create(
-#             project=project,
-#             name=uploaded_file.name,
-#             file=uploaded_file,
-#             document_type=doc_type,
-#             status=Document.Status.PENDING  # Set to pending initially
-#         )
-#         processor = DocumentProcessor(document)
-#         success = processor.process()
-#
-#         return JsonResponse({
-#             "id": str(document.id),
-#             "name": document.name,
-#             "type": document.document_type,
-#             "status": document.status,
-#             "chunk_count": document.chunk_count  # Return this to UI
-#         })
-
-class ProjectSettingsView(ProjectAccessMixin, UpdateView):
-    """Project settings."""
-
-    model = Project
-    template_name = "environments/project_settings.html"
-    fields = ["name", "description"]
-    context_object_name = "project"
-
-    def get_object(self):
-        return self.get_project()
-
-    def get_success_url(self):
-        return reverse_lazy("projects:settings", kwargs={"pk": self.object.pk})
 
 class IFCFileDeleteView(ProjectAccessMixin, DeleteView):
     """Delete an IFC file."""
@@ -934,7 +448,6 @@ class FileProcessedView(ProjectAccessMixin, TemplateView):
         context['project'] = self.get_project()
         context['result'] = self.request.session.pop('processing_result', None)
         return context
-
 
 class FileUploadView(ProjectAccessMixin, TemplateView):
     """Unified upload page for IFC and documents"""

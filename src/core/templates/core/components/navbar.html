@@ -20,8 +20,37 @@
             {{ user.username.0|upper }}
         </div>
 
-        <a href="#" class="text-secondary opacity-50 hover-white" title="Settings"><i class="bi bi-gear-fill"></i></a>
+        {% if user.is_staff %}
+            <button
+                id="btn-send-errors"
+                class="btn btn-link text-secondary opacity-50 hover-white p-0 border-0"
+                title="Send Error Logs to Supabase"
+                onclick="sendErrorsToSupabase()"
+            >
+                <i class="bi bi-cloud-arrow-up-fill fs-5"></i>
+            </button>
 
+            <button
+                id="btn-pull-errors"
+                class="btn btn-link text-secondary opacity-50 hover-white p-0 border-0"
+                title="Pull Error Logs from Supabase"
+                onclick="pullErrorsFromSupabase()"
+            >
+                <i class="bi bi-cloud-arrow-down-fill fs-5"></i>
+            </button>
+        {% endif %}
+
+        <a href="{% url 'core:settings' %}" class="d-flex align-items-center gap-2 text-secondary opacity-50 hover-white text-decoration-none" title="Settings — {{ active_llm_model }}">
+            <span class="d-none d-md-inline fs-8 {% if active_llm_info %}{% if active_llm_info.family == 'qwen' %}text-accent{% else %}text-primary{% endif %}{% endif %}"
+                  style="font-weight: 500;">
+                {% if active_llm_info %}
+                    {{ active_llm_info.label }}
+                {% else %}
+                    {{ active_llm_model }}
+                {% endif %}
+            </span>
+            <i class="bi bi-gear-fill"></i>
+        </a>
         <div class="vr bg-secondary opacity-25 mx-1"></div>
 
         <form action="{% url 'logout' %}" method="post" class="d-inline">
@@ -32,5 +61,96 @@
         </form>
 
     </div>
+{% endif %}
+
+{% if user.is_staff %}
+<script>
+function sendErrorsToSupabase() {
+    const btn = document.getElementById('btn-send-errors');
+    const icon = btn.querySelector('i');
+
+    // Show loading state
+    icon.className = 'bi bi-arrow-repeat fs-5 spin-animation';
+    btn.disabled = true;
+
+    fetch("{% url 'core:send_errors_to_supabase' %}", {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+        },
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            icon.className = 'bi bi-cloud-check-fill fs-5';
+            btn.classList.remove('opacity-50');
+            btn.classList.add('text-success');
+            alert(`✅ ${data.sent} error(s) sent to Supabase`);
+        } else {
+            icon.className = 'bi bi-cloud-slash-fill fs-5';
+            btn.classList.add('text-danger');
+            alert(`❌ Failed: ${data.error}`);
+        }
+    })
+    .catch(err => {
+        icon.className = 'bi bi-cloud-slash-fill fs-5';
+        alert('❌ Network error');
+    })
+    .finally(() => {
+        btn.disabled = false;
+        // Reset icon after 3 seconds
+        setTimeout(() => {
+            icon.className = 'bi bi-cloud-arrow-up-fill fs-5';
+            btn.classList.remove('text-success', 'text-danger');
+            btn.classList.add('opacity-50');
+        }, 3000);
+    });
+}
+
+function pullErrorsFromSupabase() {
+    const btn = document.getElementById('btn-pull-errors');
+    const icon = btn.querySelector('i');
+
+    icon.className = 'bi bi-arrow-repeat fs-5 spin-animation';
+    btn.disabled = true;
+
+    fetch("{% url 'core:pull_errors_from_supabase' %}", {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+        },
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            icon.className = 'bi bi-cloud-check-fill fs-5';
+            btn.classList.remove('opacity-50');
+            btn.classList.add('text-success');
+            alert(`✅ ${data.imported} imported, ${data.skipped} skipped`);
+        } else {
+            icon.className = 'bi bi-cloud-slash-fill fs-5';
+            btn.classList.add('text-danger');
+            alert(`❌ Failed: ${data.error}`);
+        }
+    })
+    .catch(err => {
+        icon.className = 'bi bi-cloud-slash-fill fs-5';
+        alert('❌ Network error');
+    })
+    .finally(() => {
+        btn.disabled = false;
+        setTimeout(() => {
+            icon.className = 'bi bi-cloud-arrow-down-fill fs-5';
+            btn.classList.remove('text-success', 'text-danger');
+            btn.classList.add('opacity-50');
+        }, 3000);
+    });
+}
+</script>
+
+<style>
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spin-animation { animation: spin 1s linear infinite; }
+</style>
 {% endif %}
 </nav>

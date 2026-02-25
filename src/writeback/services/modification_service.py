@@ -24,6 +24,10 @@ from writeback.services.guardian_service import GuardianService
 from .tier2_planner import Tier2Planner, PlanGenerationError
 from .tier2_validator import Tier2Validator
 from .tier2_writer import Tier2Writer, PlanStepResult
+from .tier3_planner import Tier3Planner, CodeGenerationError
+from .tier3_executor import Tier3Executor, Tier3ExecutionError
+from .tier3_reviewer import Tier3Reviewer
+
 import uuid
 
 logger = logging.getLogger(__name__)
@@ -49,14 +53,16 @@ class ModificationService:
         svc.execute(proposal)
     """
 
-    def __init__(self, project):
+    def __init__(self, project, user=None):
         self.project = project
         self.git = GitService(project)
         self.filter_engine = FilterEngine(project)
-        self.classifier = IntentClassifier()
+        self.classifier = IntentClassifier(user=user)
         self.t1_validator = Tier1Validator()
-        self.t2_planner = Tier2Planner()
+        self.t2_planner = Tier2Planner(user=user)
         self.t2_validator = Tier2Validator(project)
+        self.t3_planner = Tier3Planner(user=user)
+        self.t3_reviewer = Tier3Reviewer(user=user)
 
     # ── Phase 1: Propose ───────────────────────────────────
 
@@ -127,10 +133,9 @@ class ModificationService:
                 ifc_file=ifc_file, message_obj=message_obj,
             )
         if tier == 3:
-            raise ModificationError(
-                f"This request requires Tier 3 capabilities "
-                f"(not yet implemented). "
-                f"Reason: {intent.get('explanation', 'complex operation')}"
+            return self._propose_tier3(
+                user_message, entity_context, user=user,
+                ifc_file=ifc_file, message_obj=message_obj,
             )
         if tier != 1:
             raise ModificationError(
@@ -269,7 +274,9 @@ class ModificationService:
 
         # 2. Execute the write operation
         try:
-            if proposal.tier == 2:
+            if proposal.tier == 3:
+                changes = self._execute_tier3(proposal)
+            elif proposal.tier == 2:
                 changes = self._execute_tier2(proposal)
             else:
                 changes = self._execute_tier1(proposal)
@@ -355,42 +362,8 @@ class ModificationService:
         proposal.save()
         logger.info(f"Proposal {proposal.id} rejected")
 
-    # ── Rollback ───────────────────────────────────────────
 
-    def rollback(self, git_commit: GitCommit) -> bool:
-        """
-        Rollback a previously applied modification.
-
-        Restores the IFC file to pre-modification state.
-        """
-        if not git_commit.parent_hash:
-            raise ModificationError("No parent commit to rollback to.")
-
-        success = self.git.rollback(
-            git_commit.ifc_file, git_commit.parent_hash
-        )
-
-        if success:
-            git_commit.rolled_back = True
-            git_commit.save()
-
-            # Find the linked proposal and update its status
-            try:
-                proposal = git_commit.proposal  # reverse OneToOne
-                proposal.status = ModificationProposal.Status.FAILED
-                proposal.error_message = "Rolled back by user"
-                proposal.save()
-            except ModificationProposal.DoesNotExist:
-                pass
-
-            logger.info(
-                f"Rolled back commit {git_commit.commit_hash[:8]} "
-                f"to {git_commit.parent_hash[:8]}"
-            )
-
-        return success
-
-        # ─── RESTORE / TIME MACHINE ─────────────────────────────
+     # ───ROLLBACK / RESTORE / TIME MACHINE ─────────────────────────────
 
     def restore_version(self, commit_id: str, user) -> GitCommit:
         """
@@ -783,10 +756,9 @@ class ModificationService:
 
         # Escalation: planner decided this needs Tier 3
         if plan.get("tier") == 3:
-            raise ModificationError(
-                f"This request requires Tier 3 capabilities "
-                f"(not yet implemented). "
-                f"Reason: {plan.get('explanation', 'complex operation')}"
+            return self._propose_tier3(
+                user_message, entity_context, user=user,
+                ifc_file=ifc_file, message_obj=message_obj,
             )
 
         # 2. Confidence check
@@ -918,3 +890,98 @@ class ModificationService:
         if operation == "COPY_PROPERTIES":
             return f"from {params.get('source_name', '')}"
         return "?"
+
+# ── Tier 3 ───────────────────────
+
+    def _propose_tier3(
+            self,
+            user_message: str,
+            entity_context: str,
+            user=None,
+            ifc_file=None,
+            message_obj=None,
+    ) -> ModificationProposal:
+        try:
+            result = self.t3_planner.generate_code(user_message, entity_context)
+        except CodeGenerationError as e:
+            raise ModificationError(f"Code generation failed: {e}")
+
+        confidence = result.get("confidence", 0)
+        if confidence < 50:
+            raise ModificationError(
+                f"Low confidence ({confidence}%). "
+                f"Tier 3 operations are complex — please be very specific "
+                f"about entity types, names, and the exact operation needed. "
+                f"LLM interpretation: {result.get('explanation', '?')}"
+            )
+
+        try:
+            review = self.t3_reviewer.review(
+                user_message=user_message,
+                code=result.get("code", ""),
+                entity_context=entity_context,
+            )
+            result["review"] = review
+        except Exception as e:
+            logger.warning(f"Tier3 code review failed (non-blocking): {e}")
+            result["review"] = Tier3Reviewer._fallback()
+
+        # Resolve IFC file if not provided
+        if ifc_file is None:
+            from ifc_processor.models import IFCFile
+            ifc_file = (
+                IFCFile.objects
+                .filter(project=self.project, status="completed")
+                .order_by("-created_at")
+                .first()
+            )
+            if ifc_file is None:
+                raise ModificationError("No processed IFC file found in this project.")
+
+        proposal = ModificationProposal.objects.create(
+            message=message_obj,
+            ifc_file=ifc_file,
+            created_by=user,
+            request_text=user_message,
+            explanation=result.get("explanation", ""),
+            changes=result,
+            diff_preview=json.dumps([]),  # No entity-level preview for generated code
+            affected_count=0,  # Unknown until execution
+            status=ModificationProposal.Status.PENDING,
+            tier=3,
+            operation="CODE",
+            intent_json=result,
+            filter_spec={},
+            confidence=confidence,
+        )
+
+        logger.info(
+            f"Tier 3 proposal {proposal.id}: code length={len(result.get('code', ''))}, "
+            f"confidence={confidence}%"
+        )
+
+        try:
+            GuardianService().check(proposal)
+        except Exception as e:
+            logger.warning(f"Guardian check failed (non-blocking): {e}")
+
+        return proposal
+
+    def _execute_tier3(self, proposal: ModificationProposal) -> list[EntityChange]:
+        code = proposal.intent_json.get("code", "")
+        if not code:
+            raise IFCWriteError("Proposal has no code to execute")
+
+        ifc_path = proposal.ifc_file.file.path
+        executor = Tier3Executor(ifc_path)
+
+        try:
+            changes = executor.execute(code)
+        except Tier3ExecutionError as e:
+            raise IFCWriteError(f"Tier 3 execution failed: {e}") from e
+
+        # Update affected count now that we know
+        proposal.affected_count = len(changes)
+        proposal.save(update_fields=["affected_count"])
+
+        return changes

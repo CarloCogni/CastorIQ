@@ -1,6 +1,10 @@
 <!--environments/tabs/_modify.html-->
 {% load static %}
 
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+
 <div class="d-flex w-100 h-100 overflow-hidden">
 
     <!-- ── Left: Chat Panel ──────────────────────────── -->
@@ -39,7 +43,7 @@
         <div class="flex-grow-1 overflow-y-auto p-4 min-height-0"
              id="modify-chat-messages"
              style="scroll-behavior: smooth;">
-            {% include "environments/components/modify_message_list.html" %}
+            {% include "writeback/components/modify_message_list.html" %}
         </div>
 
         <div id="modify-scroll-btn" class="scroll-bottom-btn" onclick="ModifyChat.scrollToBottom()">
@@ -373,36 +377,88 @@
                     <!-- ════════════════════════════════════ -->
                     <div class="tab-pane fade" id="tier3-panel" role="tabpanel" aria-labelledby="tier3-tab">
 
-                        <div class="d-flex align-items-center gap-2 mb-3">
+                        <div class="d-flex align-items-center gap-2 mb-1">
                             <span class="badge rounded-pill text-white bg-danger">Tier 3 – RED</span>
                             <span class="text-secondary fs-8">Direct IfcOpenShell scripting. Coming soon.</span>
                         </div>
 
                         <div class="text-center py-5">
-                            <i class="bi bi-code-slash fs-1 text-secondary opacity-25 d-block mb-3"></i>
-                            <h6 class="fw-semibold text-secondary">Under Development</h6>
-                            <p class="text-secondary fs-7 mb-4" style="max-width: 400px; margin: 0 auto;">
-                                Tier 3 will handle advanced operations like entity creation/deletion,
-                                spatial assignments, and relationship management by generating
-                                sandboxed IfcOpenShell Python code.
+                            <p class="text-secondary fs-7 mb-2">
+                                These requests generate IfcOpenShell Python code that runs in a sandboxed environment.
+                                You review the code and type <strong>CONFIRM</strong> before execution. Click any example to try it.
                             </p>
-                            <div class="d-flex flex-column gap-2 mx-auto" style="max-width: 360px;">
-                                <div class="d-flex align-items-center gap-2 text-start p-2 rounded bg-light">
-                                    <i class="bi bi-building text-secondary"></i>
-                                    <span class="fs-8 text-secondary">Create new IfcWall / IfcDoor / IfcSpace entities</span>
+
+                            <!-- Create entities -->
+                            <div class="mb-4">
+                                <h6 class="fw-semibold d-flex align-items-center gap-2 mb-3">
+                                    <i class="bi bi-plus-square text-danger"></i> Create entities
+                                    <span class="badge bg-danger-subtle text-danger fs-9">CREATE</span>
+                                </h6>
+                                <div class="d-flex flex-column gap-2">
+                                    <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
+                                        Create a new IfcSpace called "Office-101" on Level 1
+                                    </button>
+                                    <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
+                                        Create three new IfcZone entities for Fire Zone A, Fire Zone B, and Fire Zone C
+                                    </button>
                                 </div>
-                                <div class="d-flex align-items-center gap-2 text-start p-2 rounded bg-light">
-                                    <i class="bi bi-arrows-move text-secondary"></i>
-                                    <span class="fs-8 text-secondary">Move elements between storeys</span>
+                            </div>
+
+                            <!-- Delete entities -->
+                            <div class="mb-4">
+                                <h6 class="fw-semibold d-flex align-items-center gap-2 mb-3">
+                                    <i class="bi bi-trash text-danger"></i> Delete entities
+                                    <span class="badge bg-danger-subtle text-danger fs-9">DELETE</span>
+                                </h6>
+                                <div class="d-flex flex-column gap-2">
+                                    <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
+                                        Delete all IfcFurnishingElement entities from the model
+                                    </button>
+                                    <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
+                                        Remove all unnamed IfcBuildingElementProxy entities
+                                    </button>
                                 </div>
-                                <div class="d-flex align-items-center gap-2 text-start p-2 rounded bg-light">
-                                    <i class="bi bi-trash text-secondary"></i>
-                                    <span class="fs-8 text-secondary">Delete entities and clean up relationships</span>
+                            </div>
+
+                            <!-- Move / Spatial -->
+                            <div class="mb-4">
+                                <h6 class="fw-semibold d-flex align-items-center gap-2 mb-3">
+                                    <i class="bi bi-arrows-move text-danger"></i> Spatial operations
+                                    <span class="badge bg-danger-subtle text-danger fs-9">SPATIAL</span>
+                                </h6>
+                                <div class="d-flex flex-column gap-2">
+                                    <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
+                                        Move door D-03 from Level 1 to Level 2
+                                    </button>
+                                    <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
+                                        Reassign all windows on Level 0 to Level 1
+                                    </button>
                                 </div>
-                                <div class="d-flex align-items-center gap-2 text-start p-2 rounded bg-light">
-                                    <i class="bi bi-diagram-2 text-secondary"></i>
-                                    <span class="fs-8 text-secondary">Manage spatial containment and aggregation</span>
+                            </div>
+
+                            <!-- Relationships -->
+                            <div class="mb-4">
+                                <h6 class="fw-semibold d-flex align-items-center gap-2 mb-3">
+                                    <i class="bi bi-diagram-2 text-danger"></i> Relationships
+                                    <span class="badge bg-danger-subtle text-danger fs-9">RELATIONSHIPS</span>
+                                </h6>
+                                <div class="d-flex flex-column gap-2">
+                                    <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
+                                        Group all columns under the main building using IfcRelAggregates
+                                    </button>
                                 </div>
+                            </div>
+
+                            <!-- TIPS T3 -->
+                            <div class="alert alert-danger border fs-8 mb-0" style="background: rgba(239,68,68,0.05);">
+                                <h6 class="fw-semibold fs-8 mb-2"><i class="bi bi-shield-exclamation me-1"></i> Safety notes</h6>
+                                <ul class="mb-0 ps-3">
+                                    <li>Generated code runs on a <strong>copy</strong> of your IFC file — the original is safe until you confirm</li>
+                                    <li>A Git snapshot is taken before execution — you can always restore from History</li>
+                                    <li><strong>Read the generated code</strong> before typing CONFIRM</li>
+                                    <li>If the code looks wrong, reject and rephrase your request</li>
+                                    <li>Complex operations may have lower confidence — this is expected</li>
+                                </ul>
                             </div>
                         </div>
 
@@ -431,7 +487,7 @@ const ModifyChat = {
     chatEl: document.getElementById('modify-chat-messages'),
     inputEl: document.getElementById('modify-input'),
     csrfToken: '{{ csrf_token }}',
-    sessionUrl: '{% url "projects:modify_session" project.pk session.pk %}',
+    sessionUrl: '{% url "writeback:modify_session" project.pk session.pk %}',
     userInitial: '{{ user.username.0|upper }}',
 
     /* ── Send ─────────────────────────────────────── */
@@ -626,6 +682,36 @@ const ModifyChat = {
                                     </div>
                                 `).join('')}
                             </div>` : ''}
+                            ${p.review ? `
+                            <div class="mb-3">
+                                <div class="d-flex align-items-center gap-2 mb-2">
+                                    <i class="bi bi-clipboard-check fs-7"></i>
+                                    <h6 class="fs-8 fw-semibold mb-0">Code Review</h6>
+                                    <span class="badge fs-9 ${p.review.verdict === 'ALIGNED' ? 'bg-success' : p.review.verdict === 'PARTIAL' ? 'bg-warning text-dark' : 'bg-danger'}">
+                                        ${p.review.verdict}
+                                    </span>
+                                </div>
+                                <p class="fs-8 text-secondary mb-2">${this._escapeHtml(p.review.summary)}</p>
+                                ${p.review.steps && p.review.steps.length ? `
+                                <ol class="fs-8 text-secondary mb-2 ps-3">
+                                    ${p.review.steps.map(s => `<li class="mb-1">${this._escapeHtml(s.description)}</li>`).join('')}
+                                </ol>` : ''}
+                                ${p.review.warnings && p.review.warnings.length ? `
+                                <div class="d-flex flex-column gap-1">
+                                    ${p.review.warnings.map(w => `
+                                        <div class="fs-8 text-warning">
+                                            <i class="bi bi-exclamation-triangle me-1"></i>${this._escapeHtml(w)}
+                                        </div>`).join('')}
+                                </div>` : ''}
+                            </div>` : ''}
+                            ${p.code ? `
+                            <div class="mb-3">
+                                <h6 class="fs-8 fw-semibold text-danger mb-2">
+                                    <i class="bi bi-code-slash me-1"></i>Generated Code — review before executing
+                                </h6>
+                                <pre class="rounded mb-0"
+                                     style="max-height: 350px; overflow-y: auto;"><code class="language-python hljs">${this._escapeHtml(p.code)}</code></pre>
+                            </div>` : ''}
                         ${diffRows ? `
                         <div class="table-responsive mb-3">
                             <table class="table table-sm table-borderless mb-0">
@@ -644,9 +730,9 @@ const ModifyChat = {
                         </p>
                         ${this._guardianBadgeHTML(p.guardian)}
                         <div class="d-flex gap-2" id="proposal-actions-${p.id}">
-                            <button class="btn btn-sm btn-success w-50"
+                            <button class="btn btn-sm ${p.tier === 3 ? 'btn-danger' : 'btn-success'} w-50"
                                     onclick="ModifyChat.approve('${p.id}')">
-                                <i class="bi bi-check-lg me-1"></i>Approve
+                                <i class="bi ${p.tier === 3 ? 'bi-lightning-charge' : 'bi-check-lg'} me-1"></i>${p.tier === 3 ? 'Execute' : 'Approve'}
                             </button>
                             <button class="btn btn-sm btn-outline-secondary w-50"
                                     onclick="ModifyChat.reject('${p.id}')">
@@ -659,6 +745,13 @@ const ModifyChat = {
         </div>`;
 
         this.chatEl.insertAdjacentHTML('beforeend', card);
+        // Syntax-highlight any code blocks in the new card
+        const newCard = document.getElementById(`proposal-card-${p.id}`);
+        if (newCard) {
+            newCard.querySelectorAll('pre code.language-python').forEach(block => {
+                hljs.highlightElement(block);
+            });
+        }
         this.scrollToBottom();
     },
 
@@ -753,6 +846,11 @@ const ModifyChat = {
         }
         html += `</div></div>`;
         return html;
+    },
+    _escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     },
 };
 

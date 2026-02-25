@@ -10,10 +10,8 @@ Each step in the plan reuses Tier 1 or Tier 2 operations.
 
 import json
 import logging
-
-from django.conf import settings
-from langchain_ollama import ChatOllama
 from langchain_core.messages import SystemMessage, HumanMessage
+from core.llm import get_llm
 
 logger = logging.getLogger(__name__)
 
@@ -179,13 +177,8 @@ class Tier2Planner:
         # plan = {"tier": 2, "plan": [...], "confidence": 85, ...}
     """
 
-    def __init__(self):
-        self.llm = ChatOllama(
-            model=settings.OLLAMA_MODEL,
-            base_url=settings.OLLAMA_HOST,
-            temperature=0.1,
-            format="json",
-        )
+    def __init__(self, user=None):
+        self.llm = get_llm(user=user, temperature=0.1, format_json=True)
 
     def generate_plan(self, user_message: str, entity_context: str) -> dict:
         """

@@ -31,11 +31,12 @@ _PROPERTY_ALIASES: dict[str, str] = {
     "thermal-transmittance": "ThermalTransmittance",
     # Boolean props
     "is external": "IsExternal",
-    "is loadbearing": "IsLoadBearing",
-    "is load bearing": "IsLoadBearing",
-    "load bearing": "IsLoadBearing",
-    "loadbearing": "IsLoadBearing",
-    "load-bearing": "IsLoadBearing",
+    "external": "IsExternal",
+    "is loadbearing": "LoadBearing",
+    "is load bearing": "LoadBearing",
+    "load bearing": "LoadBearing",
+    "loadbearing": "LoadBearing",
+    "load-bearing": "LoadBearing",
     # Common props
     "acoustic rating": "AcousticRating",
     "acoustic-rating": "AcousticRating",

@@ -33,17 +33,60 @@
                     {{ p.affected_count }} entit{{ p.affected_count|pluralize:"y,ies" }} affected
                     · Confidence: {{ p.confidence|floatformat:0 }}%
                 </p>
-
+                {% if p.tier == 3 and p.intent_json.code %}
+                <!-- Code review (Tier 3) -->
+                {% with review=p.intent_json.review %}
+                {% if review %}
+                <div class="mb-3">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <i class="bi bi-clipboard-check fs-7"></i>
+                        <h6 class="fs-8 fw-semibold mb-0">Code Review</h6>
+                        <span class="badge fs-9 {% if review.verdict == 'ALIGNED' %}bg-success{% elif review.verdict == 'PARTIAL' %}bg-warning text-dark{% else %}bg-danger{% endif %}">
+                            {{ review.verdict }}
+                        </span>
+                    </div>
+                    <p class="fs-8 text-secondary mb-2">{{ review.summary }}</p>
+                    {% if review.steps %}
+                    <ol class="fs-8 text-secondary mb-2 ps-3">
+                        {% for step in review.steps %}
+                        <li class="mb-1">{{ step.description }}</li>
+                        {% endfor %}
+                    </ol>
+                    {% endif %}
+                    {% if review.warnings %}
+                    <div class="d-flex flex-column gap-1">
+                        {% for warning in review.warnings %}
+                        <div class="fs-8 text-warning">
+                            <i class="bi bi-exclamation-triangle me-1"></i>{{ warning }}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+                {% endwith %}
+                <!-- Generated code -->
+                <div class="mb-3">
+                    <h6 class="fs-8 fw-semibold text-danger mb-2">
+                        <i class="bi bi-code-slash me-1"></i>Generated Code
+                    </h6>
+                    <pre class="rounded mb-0"
+                         style="max-height: 350px; overflow-y: auto;"><code class="language-python">{{ p.intent_json.code }}</code></pre>
+                </div>
+                {% endif %}
                 {% if p.status == 'pending' %}
-                <div class="d-flex gap-2" id="proposal-actions-{{ p.id }}">
-                    <button class="btn btn-sm btn-success w-50"
-                            onclick="ModifyChat.approve('{{ p.id }}')">
-                        <i class="bi bi-check-lg me-1"></i>Approve
-                    </button>
-                    <button class="btn btn-sm btn-outline-secondary w-50"
-                            onclick="ModifyChat.reject('{{ p.id }}')">
-                        <i class="bi bi-x-lg me-1"></i>Reject
-                    </button>
+                <div id="proposal-actions-{{ p.id }}">
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm {% if p.tier == 3 %}btn-danger{% else %}btn-success{% endif %} w-50"
+                                onclick="ModifyChat.approve('{{ p.id }}')">
+                            <i class="bi {% if p.tier == 3 %}bi-lightning-charge{% else %}bi-check-lg{% endif %} me-1"></i>
+                            {% if p.tier == 3 %}Execute{% else %}Approve{% endif %}
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary w-50"
+                                onclick="ModifyChat.reject('{{ p.id }}')">
+                            <i class="bi bi-x-lg me-1"></i>Reject
+                        </button>
+                    </div>
                 </div>
                 {% elif p.status == 'applied' and p.git_commit %}
                 <span class="badge bg-success">
@@ -74,4 +117,11 @@
 </div>
 {% endfor %}
 
-
+<script>
+    // Highlight any server-rendered code blocks on page load
+    document.querySelectorAll('pre code.language-python').forEach(block => {
+        if (typeof hljs !== 'undefined') {
+            hljs.highlightElement(block);
+        }
+    });
+</script>

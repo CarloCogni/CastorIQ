@@ -4,7 +4,7 @@ from django.contrib.auth.models import User
 from django.contrib import admin
 from django.utils.html import format_html
 from django.utils import timezone
-from .models import ErrorLog
+from .models import ErrorLog, UserLLMConfig
 
 # Unregister the default UserAdmin and register with search_fields
 admin.site.unregister(User)
@@ -26,6 +26,7 @@ class ErrorLogAdmin(admin.ModelAdmin):
         "view_name",
         "user",
         "is_resolved",
+        "sent_to_supabase",
     )
     list_filter = ("severity", "is_resolved", "exception_type", "created_at")
     search_fields = ("message", "exception_type", "stacktrace", "url", "view_name")
@@ -132,3 +133,11 @@ class ErrorLogAdmin(admin.ModelAdmin):
         """Mark selected errors as unresolved"""
         updated = queryset.update(is_resolved=False, resolved_by=None, resolved_at=None)
         self.message_user(request, f"Marked {updated} error(s) as unresolved.")
+
+
+
+@admin.register(UserLLMConfig)
+class UserLLMConfigAdmin(admin.ModelAdmin):
+    list_display = ("user", "active_model", "updated_at")
+    list_filter = ("active_model",)
+    readonly_fields = ("updated_at",)

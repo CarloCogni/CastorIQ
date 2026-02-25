@@ -31,12 +31,12 @@
                 </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link tab-modify {% if active_tab == 'modify' %}active{% endif %}" href="{% url 'projects:modify' project.pk %}">
+                <a class="nav-link tab-modify {% if active_tab == 'modify' %}active{% endif %}" href="{% url 'writeback:modify' project.pk %}">
                     <i class="bi bi-pencil me-2"></i>Modify
                 </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link {% if active_tab == 'conflicts' %}active{% endif %}" href="{% url 'projects:conflicts' project.pk %}">
+                <a class="nav-link {% if active_tab == 'conflicts' %}active{% endif %}" href="{% url 'writeback:conflicts' project.pk %}">
                     <i class="bi bi-exclamation-triangle me-2"></i>Conflicts
                     {% if open_conflict_count %}
                     <span class="badge badge-conflicts rounded-pill ms-2">{{ open_conflict_count }}</span>
@@ -44,7 +44,7 @@
                 </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link {% if active_tab == 'history' %}active{% endif %}" href="{% url 'projects:history' project.pk %}">
+                <a class="nav-link {% if active_tab == 'history' %}active{% endif %}" href="{% url 'writeback:history' project.pk %}">
                     <i class="bi bi-clock-history me-2"></i>History
                 </a>
             </li>
@@ -55,11 +55,11 @@
         {% if active_tab == 'ask' %}
             {% include "environments/tabs/_ask.html" %}
         {% elif active_tab == 'modify' %}
-            {% include "environments/tabs/_modify.html" %}
+            {% include "writeback/tabs/_modify.html" %}
         {% elif active_tab == 'conflicts' %}
-            {% include "environments/tabs/_conflicts.html" %}
+            {% include "writeback/tabs/_conflicts.html" %}
         {% elif active_tab == 'history' %}
-            {% include "environments/tabs/_history.html" %}
+            {% include "writeback/tabs/_history.html" %}
         {% endif %}
     </div>
 

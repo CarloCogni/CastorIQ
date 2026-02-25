@@ -1,0 +1,160 @@
+<!--core/templates/core/model_selector.html-->
+{% load static %}
+
+{% if error %}
+    <div class="alert alert-danger d-flex align-items-center gap-2 fs-7 mb-0">
+        <i class="bi bi-exclamation-triangle-fill"></i>
+        {{ error }}
+    </div>
+
+{% else %}
+
+    <!-- ── Installed Models (selectable) ─────────────────────── -->
+    {% if installed_by_tier %}
+        <p class="text-secondary fs-8 mb-3">
+            <i class="bi bi-check-circle-fill text-success me-1"></i>
+            Models pulled in Ollama — click to activate.
+        </p>
+
+        {% for tier_label, models in installed_by_tier.items %}
+            <div class="tier-divider">{{ tier_label }}</div>
+
+            <div class="d-flex flex-column gap-2 mb-2">
+                {% for m in models %}
+                    <div
+                        class="model-card d-flex align-items-center gap-3 {% if m.tag == active_model %}active{% endif %}"
+                        hx-post="{% url 'core:set_model_api' %}"
+                        hx-vals='{"model_tag": "{{ m.tag }}"}'
+                        hx-target="#model-status"
+                        hx-swap="innerHTML"
+                        hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                        role="button"
+                        title="Switch to {{ m.label }}"
+                    >
+                        <!-- Active indicator -->
+                        <div class="model-active-dot flex-shrink-0"></div>
+
+                        <!-- Info -->
+                        <div class="flex-grow-1 min-width-0">
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                <span class="fw-semibold fs-7">{{ m.label }}</span>
+                                <span class="family-badge family-{{ m.family }}">{{ m.family }}</span>
+                                {% if m.is_moe %}
+                                    <span class="family-badge family-unknown">MoE</span>
+                                {% endif %}
+                                {% if m.supports_thinking %}
+                                    <span class="family-badge family-unknown" title="Supports thinking / non-thinking modes">
+                                        <i class="bi bi-lightbulb-fill" style="font-size: 0.55rem;"></i> think
+                                    </span>
+                                {% endif %}
+                            </div>
+                            <div class="text-secondary fs-8 text-truncate">{{ m.description }}</div>
+                        </div>
+
+                        <!-- VRAM + Size -->
+                        <div class="text-end flex-shrink-0" style="min-width: 80px;">
+                            {% if m.vram_gb %}
+                                <div class="fs-8 fw-semibold">~{{ m.vram_gb }} GB</div>
+                                <div class="text-secondary fs-8">VRAM</div>
+                            {% else %}
+                                <div class="fs-8 text-secondary">{{ m.size_gb }} GB</div>
+                                <div class="text-secondary fs-8">disk</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% endfor %}
+
+        <!-- Reset to default -->
+        <div class="mt-3 pt-3 border-top">
+            <div
+                class="text-secondary fs-8 d-inline-flex align-items-center gap-1"
+                style="cursor: pointer;"
+                hx-post="{% url 'core:set_model_api' %}"
+                hx-vals='{"model_tag": ""}'
+                hx-target="#model-status"
+                hx-swap="innerHTML"
+                hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                role="button"
+            >
+                <i class="bi bi-arrow-counterclockwise"></i>
+                Reset to .env default (<code>{{ default_model }}</code>)
+            </div>
+        </div>
+
+    {% else %}
+        <div class="text-center text-secondary py-3 fs-7">
+            <i class="bi bi-inbox d-block fs-3 mb-2 opacity-50"></i>
+            No models found. Pull a model with <code>ollama pull qwen3:8b</code>
+        </div>
+    {% endif %}
+
+
+    <!-- ── Recommended Models (not yet pulled) ───────────────── -->
+    {% if recommended_by_tier %}
+        <div class="mt-4 pt-3 border-top">
+            <div class="d-flex align-items-center gap-2 mb-3">
+                <i class="bi bi-stars text-warning fs-7"></i>
+                <span class="fw-semibold fs-7">Recommended models</span>
+                <span class="text-secondary fs-8">— not yet pulled</span>
+            </div>
+
+            {% for tier_label, models in recommended_by_tier.items %}
+                <div class="tier-divider">{{ tier_label }}</div>
+
+                <div class="d-flex flex-column gap-2 mb-2">
+                    {% for m in models %}
+                        <div class="model-card d-flex align-items-center gap-3"
+                             style="opacity: 0.6; cursor: default;"
+                             title="Not pulled yet — run the command to install"
+                        >
+                            <!-- Placeholder dot -->
+                            <div class="flex-shrink-0" style="width: 8px; height: 8px; border-radius: 50; border: 1px dashed var(--bs-secondary-color);"></div>
+
+                            <!-- Info -->
+                            <div class="flex-grow-1 min-width-0">
+                                <div class="d-flex align-items-center gap-2 flex-wrap">
+                                    <span class="fw-semibold fs-7">{{ m.label }}</span>
+                                    <span class="family-badge family-{{ m.family }}">{{ m.family }}</span>
+                                    {% if m.is_moe %}
+                                        <span class="family-badge family-unknown">MoE</span>
+                                    {% endif %}
+                                    {% if m.supports_thinking %}
+                                        <span class="family-badge family-unknown">
+                                            <i class="bi bi-lightbulb-fill" style="font-size: 0.55rem;"></i> think
+                                        </span>
+                                    {% endif %}
+                                </div>
+                                <div class="text-secondary fs-8">{{ m.description }}</div>
+                            </div>
+
+                            <!-- VRAM -->
+                            <div class="text-end flex-shrink-0" style="min-width: 80px;">
+                                <div class="fs-8 fw-semibold">~{{ m.vram_gb }} GB</div>
+                                <div class="text-secondary fs-8">VRAM</div>
+                            </div>
+
+                            <!-- Pull command -->
+                            <div class="flex-shrink-0">
+                                <code
+                                    class="fs-8 px-2 py-1 rounded user-select-all"
+                                    style="background-color: var(--bs-body-bg); cursor: copy;"
+                                    title="Click to copy"
+                                    onclick="navigator.clipboard.writeText('ollama pull {{ m.tag }}')"
+                                >ollama pull {{ m.tag }}</code>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endfor %}
+
+            <p class="text-secondary fs-8 mt-3 mb-0">
+                <i class="bi bi-info-circle me-1"></i>
+                After pulling a model, refresh this page to see it in the installed list.
+                VRAM estimates assume Q4_K_M quantization at 8k context.
+            </p>
+        </div>
+    {% endif %}
+
+{% endif %}

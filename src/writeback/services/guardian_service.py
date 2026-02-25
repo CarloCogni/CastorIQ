@@ -13,17 +13,12 @@ This is the "second opinion" that makes Castor bidirectional:
 import json
 import logging
 import re
-from typing import Optional
-
-from django.conf import settings
 from pgvector.django import CosineDistance
-
-from langchain_ollama import ChatOllama
 from langchain_core.messages import SystemMessage, HumanMessage
-
 from documents.models import DocumentChunk
 from embeddings.services.embedding_service import EmbeddingService
 from writeback.models import ModificationProposal
+from core.llm import get_llm
 
 logger = logging.getLogger(__name__)
 
@@ -104,14 +99,9 @@ class GuardianService:
     # Minimum similarity threshold — chunks less relevant than this are skipped
     RELEVANCE_THRESHOLD = 0.45  # cosine distance (lower = more similar)
 
-    def __init__(self):
+    def __init__(self, user=None):
         self.embedding_service = EmbeddingService()
-        self.llm = ChatOllama(
-            model=settings.OLLAMA_MODEL,
-            base_url=settings.OLLAMA_HOST,
-            temperature=0.1,
-            format="json",
-        )
+        self.llm = get_llm(user=user, temperature=0.1, format_json=True)
 
     def check(self, proposal: ModificationProposal) -> ModificationProposal:
         """

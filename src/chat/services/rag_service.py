@@ -1,18 +1,15 @@
+# chat/services/rag_service.py
 import logging
-from typing import List, Dict, Any, Optional
-
-from django.conf import settings
+from typing import List, Any
 from pgvector.django import CosineDistance
-
-from langchain_ollama import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-
 from chat.models import ChatSession, Message
 from ifc_processor.models import IFCEntity
 from documents.models import DocumentChunk, Document
 from embeddings.services.embedding_service import EmbeddingService
 from textwrap import dedent
+from core.llm import get_llm
 
 logger = logging.getLogger(__name__)
 
@@ -50,13 +47,9 @@ class RAGService:
     3. Better context formatting.
     """
 
-    def __init__(self):
+    def __init__(self, user=None):
         self.embedding_service = EmbeddingService()
-        self.llm = ChatOllama(
-            model=settings.OLLAMA_MODEL,
-            base_url=settings.OLLAMA_HOST,
-            temperature=0.2,  # Low temp for factual accuracy
-        )
+        self.llm = get_llm(user=user, temperature=0.2)
 
     def generate_answer(self, project, session: ChatSession, user_text: str, scope: str = "auto") -> tuple[str, list]:
         """Pure retrieval + generation. No DB writes."""
@@ -71,6 +64,7 @@ class RAGService:
             analysis_mode = "Specific Q&A"
 
         project_meta = self._get_project_metadata(project)
+
         answer_text = self._generate_response(
             user_text, context_items, project_meta, analysis_mode, session
         )

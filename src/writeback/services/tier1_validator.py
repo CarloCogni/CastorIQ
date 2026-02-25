@@ -10,7 +10,6 @@ Catches errors BEFORE anything touches the IFC file.
 import logging
 from dataclasses import dataclass
 from difflib import get_close_matches
-from typing import Optional
 from .ifc_standard_psets import is_standard_pset
 
 from ifc_processor.models import IFCEntity
