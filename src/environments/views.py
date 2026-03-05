@@ -1,46 +1,52 @@
 # environments/view.py
 """Project views."""
-import os
-from django.contrib.auth.mixins import LoginRequiredMixin
-from django.db.models import Count, Q
-from django.shortcuts import get_object_or_404, redirect, render
-from django.views.generic import (
-    ListView, DetailView, CreateView, UpdateView, TemplateView, View
-)
-from .models import Project
-from ifc_processor.models import IFCFile, IFCDataIssue
-from documents.models import Document
-from chat.models import ChatSession, Message
-from writeback.models import GitCommit
-from django.urls import reverse_lazy, reverse
-from django.views.generic import DeleteView, UpdateView
-from django.contrib import messages
-from django.core.exceptions import PermissionDenied
+
 import logging
+import os
+
+from django.contrib import messages
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.exceptions import PermissionDenied
+from django.db.models import Count, Q
 from django.http import JsonResponse
-from chat.services.rag_service import RAGService
-from documents.services.document_processor import DocumentProcessor
-from ifc_processor.services.processor import IFCProcessingService
-import json
-from writeback.services.modification_service import (
-    ModificationService,
-    ModificationError,
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse, reverse_lazy
+from django.views.generic import (
+    CreateView,
+    DeleteView,
+    DetailView,
+    ListView,
+    TemplateView,
+    UpdateView,
+    View,
 )
-from core.mixins import ProjectTabMixin, ProjectAccessMixin
+
+from chat.models import ChatSession, Message
+from chat.services.rag_service import RAGService
+from core.mixins import ProjectAccessMixin, ProjectTabMixin
+from documents.models import Document
+from documents.services.document_processor import DocumentProcessor
+from ifc_processor.models import IFCFile
+from ifc_processor.services.processor import IFCProcessingService
+
+from .models import Project
 
 logger = logging.getLogger(__name__)
 
 # --- Mixins ---
 
+
 class ProjectOwnerRequiredMixin(LoginRequiredMixin):
     """Ensure only the project owner can perform this action."""
+
     def get_object(self, queryset=None):
         obj = super().get_object(queryset)
         # Handle both Project objects and objects related to Project (like IFCFile)
-        project = getattr(obj, 'project', obj)
+        project = getattr(obj, "project", obj)
         if project.owner != self.request.user:
             raise PermissionDenied("Only the project owner can perform this action.")
         return obj
+
 
 class ProjectListView(LoginRequiredMixin, ListView):
     """List all projects user has access to."""
@@ -53,29 +59,24 @@ class ProjectListView(LoginRequiredMixin, ListView):
         """Get projects owned by or shared with user."""
         user = self.request.user
         return (
-            Project.objects
-            .filter(
-                Q(owner=user) | Q(collaborators=user),
-                is_archived=False
-            )
+            Project.objects.filter(Q(owner=user) | Q(collaborators=user), is_archived=False)
             .select_related("owner")
             .annotate(
                 ifc_count=Count("ifc_files", distinct=True),
                 document_count=Count("documents", distinct=True),
                 conflict_count=Count(
-                    "conflicts",
-                    filter=Q(conflicts__status="open"),
-                    distinct=True
+                    "conflicts", filter=Q(conflicts__status="open"), distinct=True
                 ),
                 issue_count=Count(
                     "ifc_files__data_issues",
                     filter=Q(ifc_files__data_issues__is_resolved=False),
-                    distinct=True
+                    distinct=True,
                 ),
             )
             .distinct()
             .order_by("-updated_at")
         )
+
 
 class ProjectCreateView(LoginRequiredMixin, CreateView):
     """Create a new project."""
@@ -88,6 +89,7 @@ class ProjectCreateView(LoginRequiredMixin, CreateView):
     def form_valid(self, form):
         form.instance.owner = self.request.user
         return super().form_valid(form)
+
 
 class ProjectDetailView(ProjectAccessMixin, DetailView):
     """Project detail - redirects to Ask tab by default."""
@@ -103,9 +105,11 @@ class ProjectDetailView(ProjectAccessMixin, DetailView):
         """Redirect to Ask tab by default."""
         return redirect("projects:ask", pk=self.kwargs["pk"])
 
+
 # --- Project CRUD ---
 class ProjectUpdateView(ProjectOwnerRequiredMixin, UpdateView):
     """Edit project details (name, description)."""
+
     model = Project
     template_name = "environments/project_form.html"
     fields = ["name", "description"]
@@ -120,8 +124,10 @@ class ProjectUpdateView(ProjectOwnerRequiredMixin, UpdateView):
         context["title"] = f"Edit {self.object.name}"
         return context
 
+
 class ProjectDeleteView(ProjectOwnerRequiredMixin, DeleteView):
     """Delete a project and all associated data."""
+
     model = Project
     template_name = "environments/confirm_delete.html"
     success_url = reverse_lazy("projects:list")
@@ -130,8 +136,11 @@ class ProjectDeleteView(ProjectOwnerRequiredMixin, DeleteView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["title"] = f"Delete Project: {self.object.name}"
-        context["message"] = "Are you sure you want to delete this project? All IFC files, documents, and chat history will be permanently lost."
+        context["message"] = (
+            "Are you sure you want to delete this project? All IFC files, documents, and chat history will be permanently lost."
+        )
         return context
+
 
 class AskView(ProjectTabMixin, TemplateView):
     """Ask tab — multi-session chat against IFC/documents."""
@@ -141,15 +150,16 @@ class AskView(ProjectTabMixin, TemplateView):
     def _get_or_create_session(self, project, user):
         """Return the most recent Ask session, or create one."""
         session = (
-            ChatSession.objects
-            .filter(project=project, user=user, mode=ChatSession.Mode.ASK)
+            ChatSession.objects.filter(project=project, user=user, mode=ChatSession.Mode.ASK)
             .order_by("-updated_at")
             .first()
         )
         if not session:
             session = ChatSession.objects.create(
-                project=project, user=user,
-                mode=ChatSession.Mode.ASK, title="New conversation",
+                project=project,
+                user=user,
+                mode=ChatSession.Mode.ASK,
+                title="New conversation",
             )
         return session
 
@@ -159,8 +169,10 @@ class AskView(ProjectTabMixin, TemplateView):
         if session_id:
             return get_object_or_404(
                 ChatSession,
-                pk=session_id, project=project,
-                user=user, mode=ChatSession.Mode.ASK,
+                pk=session_id,
+                project=project,
+                user=user,
+                mode=ChatSession.Mode.ASK,
             )
         return self._get_or_create_session(project, user)
 
@@ -179,9 +191,7 @@ class AskView(ProjectTabMixin, TemplateView):
 
         context["session"] = session
         context["active_session_id"] = session.pk
-        context["messages"] = (
-            session.messages.select_related().order_by("created_at")
-        )
+        context["messages"] = session.messages.select_related().order_by("created_at")
         return context
 
     def post(self, request, *args, **kwargs):
@@ -192,8 +202,10 @@ class AskView(ProjectTabMixin, TemplateView):
         # "New Chat" button — create session and redirect
         if request.POST.get("action") == "new_session":
             session = ChatSession.objects.create(
-                project=project, user=request.user,
-                mode=ChatSession.Mode.ASK, title="New conversation",
+                project=project,
+                user=request.user,
+                mode=ChatSession.Mode.ASK,
+                title="New conversation",
             )
             return redirect("projects:ask_session", pk=project.pk, session_id=session.pk)
 
@@ -204,14 +216,19 @@ class AskView(ProjectTabMixin, TemplateView):
 
         # Save user message
         Message.objects.create(
-            session=session, role=Message.Role.USER, content=user_text,
+            session=session,
+            role=Message.Role.USER,
+            content=user_text,
         )
 
         # Generate AI response
         try:
             rag = RAGService(user=request.user)
             answer_text, context_items = rag.generate_answer(
-                project, session, user_text, scope=scope,
+                project,
+                session,
+                user_text,
+                scope=scope,
             )
             Message.objects.create(
                 session=session,
@@ -225,7 +242,7 @@ class AskView(ProjectTabMixin, TemplateView):
                 session=session,
                 role=Message.Role.ASSISTANT,
                 content="⚠️ I encountered an error processing your question. "
-                        "Please check that Ollama is running and try again.",
+                "Please check that Ollama is running and try again.",
             )
 
         # Auto-title on first exchange
@@ -235,12 +252,17 @@ class AskView(ProjectTabMixin, TemplateView):
         # HTMX partial response
         if request.headers.get("HX-Request"):
             updated_messages = session.messages.select_related().order_by("created_at")
-            return render(request, "environments/components/chat_message_list.html", {
-                "messages": updated_messages,
-                "user": request.user,
-            })
+            return render(
+                request,
+                "environments/components/chat_message_list.html",
+                {
+                    "messages": updated_messages,
+                    "user": request.user,
+                },
+            )
 
         return redirect("projects:ask_session", pk=project.pk, session_id=session.pk)
+
 
 class DeleteSessionView(ProjectAccessMixin, View):
     """Delete a chat session and redirect to Ask tab."""
@@ -249,11 +271,14 @@ class DeleteSessionView(ProjectAccessMixin, View):
         project = self.get_project()
         session = get_object_or_404(
             ChatSession,
-            pk=session_id, project=project, user=request.user,
+            pk=session_id,
+            project=project,
+            user=request.user,
         )
         session.delete()
         logger.info("Deleted chat session %s for project %s", session_id, pk)
         return redirect("projects:ask", pk=project.pk)
+
 
 class RenameSessionView(ProjectAccessMixin, View):
     """Rename a chat session title."""
@@ -262,7 +287,9 @@ class RenameSessionView(ProjectAccessMixin, View):
         project = self.get_project()
         session = get_object_or_404(
             ChatSession,
-            pk=session_id, project=project, user=request.user,
+            pk=session_id,
+            project=project,
+            user=request.user,
         )
         title = request.POST.get("title", "").strip()
         if title:
@@ -271,6 +298,7 @@ class RenameSessionView(ProjectAccessMixin, View):
             logger.info("Renamed session %s to '%s'", session_id, session.title)
 
         return JsonResponse({"ok": True, "title": session.title})
+
 
 class UploadIFCView(ProjectAccessMixin, View):
     """Handle IFC file upload."""
@@ -293,7 +321,7 @@ class UploadIFCView(ProjectAccessMixin, View):
                 project=project,
                 name=uploaded_file.name,
                 file=uploaded_file,
-                status=IFCFile.Status.PENDING
+                status=IFCFile.Status.PENDING,
             )
 
             # 2. Run Pipeline (Hash -> Parse -> Embed)
@@ -301,23 +329,27 @@ class UploadIFCView(ProjectAccessMixin, View):
             success = processor.run_pipeline()
 
             if success:
-                return JsonResponse({
-                    "id": str(ifc_file.id),
-                    "name": ifc_file.name,
-                    "status": ifc_file.status,
-                    "entity_count": ifc_file.entity_count,
-                })
+                return JsonResponse(
+                    {
+                        "id": str(ifc_file.id),
+                        "name": ifc_file.name,
+                        "status": ifc_file.status,
+                        "entity_count": ifc_file.entity_count,
+                    }
+                )
             else:
-                return JsonResponse({
-                    "success": False,
-                    "error": ifc_file.error_message or "Processing failed"
-                }, status=400)
+                return JsonResponse(
+                    {"success": False, "error": ifc_file.error_message or "Processing failed"},
+                    status=400,
+                )
 
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
 
+
 class IFCFileDeleteView(ProjectAccessMixin, DeleteView):
     """Delete an IFC file."""
+
     model = IFCFile
     template_name = "environments/confirm_delete.html"
 
@@ -331,12 +363,16 @@ class IFCFileDeleteView(ProjectAccessMixin, DeleteView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["title"] = f"Delete File: {self.object.name}"
-        context["message"] = "Are you sure you want to delete this IFC file? All extracted entities and associated chat context will be removed."
+        context["message"] = (
+            "Are you sure you want to delete this IFC file? All extracted entities and associated chat context will be removed."
+        )
         context["cancel_url"] = self.get_success_url()
         return context
 
+
 class DocumentDeleteView(ProjectAccessMixin, DeleteView):
     """Delete a document."""
+
     model = Document
     template_name = "environments/confirm_delete.html"
 
@@ -350,14 +386,18 @@ class DocumentDeleteView(ProjectAccessMixin, DeleteView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["title"] = f"Delete Document: {self.object.name}"
-        context["message"] = "Are you sure you want to delete this document? The AI will no longer be able to reference it."
+        context["message"] = (
+            "Are you sure you want to delete this document? The AI will no longer be able to reference it."
+        )
         context["cancel_url"] = self.get_success_url()
         return context
 
+
 class IFCFileUpdateView(ProjectAccessMixin, UpdateView):
     """Replace an IFC file and re-parse it."""
+
     model = IFCFile
-    fields = ['file']  # ONLY file, name auto-updates
+    fields = ["file"]  # ONLY file, name auto-updates
     template_name = "environments/file_form.html"
 
     def get_project(self):
@@ -366,7 +406,9 @@ class IFCFileUpdateView(ProjectAccessMixin, UpdateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["title"] = f"Replace File: {self.object.name}"
-        context["help_text"] = "Uploading a new file will replace the current model and automatically re-parse all entities."
+        context["help_text"] = (
+            "Uploading a new file will replace the current model and automatically re-parse all entities."
+        )
         return context
 
     def form_valid(self, form):
@@ -380,20 +422,22 @@ class IFCFileUpdateView(ProjectAccessMixin, UpdateView):
         success = processor.run_pipeline()
 
         # 3. Store result for the next page
-        self.request.session['processing_result'] = {
-            'success': success,
-            'filename': self.object.name,
-            'entity_count': self.object.entity_count,
-            'error': self.object.error_message,
-            'type': 'IFC Model'
+        self.request.session["processing_result"] = {
+            "success": success,
+            "filename": self.object.name,
+            "entity_count": self.object.entity_count,
+            "error": self.object.error_message,
+            "type": "IFC Model",
         }
 
         return redirect("projects:file_processed", pk=self.object.project.pk)
 
+
 class DocumentUpdateView(ProjectAccessMixin, UpdateView):
     """Replace a document."""
+
     model = Document
-    fields = ['file']
+    fields = ["file"]
     template_name = "environments/file_form.html"
 
     def get_project(self):
@@ -402,7 +446,9 @@ class DocumentUpdateView(ProjectAccessMixin, UpdateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["title"] = f"Replace Document: {self.object.name}"
-        context["help_text"] = "The document name will be updated automatically to match the new file."
+        context["help_text"] = (
+            "The document name will be updated automatically to match the new file."
+        )
         return context
 
     def form_valid(self, form):
@@ -412,11 +458,11 @@ class DocumentUpdateView(ProjectAccessMixin, UpdateView):
 
         # Re-detect type
         ext = os.path.splitext(self.object.name)[1].lower()
-        if ext == '.pdf':
+        if ext == ".pdf":
             self.object.document_type = Document.DocumentType.PDF
-        elif ext == '.docx':
+        elif ext == ".docx":
             self.object.document_type = Document.DocumentType.DOCX
-        elif ext == '.txt':
+        elif ext == ".txt":
             self.object.document_type = Document.DocumentType.TXT
 
         self.object.save()
@@ -427,30 +473,34 @@ class DocumentUpdateView(ProjectAccessMixin, UpdateView):
         success = processor.process()
 
         # 3. Store result
-        self.request.session['processing_result'] = {
-            'success': success,
-            'filename': self.object.name,
-            'type': self.object.get_document_type_display(),
-            'message': 'Document updated and re-indexed successfully.',
-            'chunk_count': self.object.chunk_count,
-            'error': self.object.error_message if not success else None
+        self.request.session["processing_result"] = {
+            "success": success,
+            "filename": self.object.name,
+            "type": self.object.get_document_type_display(),
+            "message": "Document updated and re-indexed successfully.",
+            "chunk_count": self.object.chunk_count,
+            "error": self.object.error_message if not success else None,
         }
 
         return redirect("projects:file_processed", pk=self.object.project.pk)
 
+
 class FileProcessedView(ProjectAccessMixin, TemplateView):
     """Shows the result of a file processing operation."""
+
     template_name = "environments/file_processed.html"
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         # Retrieve results stored in session by the UpdateView
-        context['project'] = self.get_project()
-        context['result'] = self.request.session.pop('processing_result', None)
+        context["project"] = self.get_project()
+        context["result"] = self.request.session.pop("processing_result", None)
         return context
+
 
 class FileUploadView(ProjectAccessMixin, TemplateView):
     """Unified upload page for IFC and documents"""
+
     template_name = "environments/file_upload.html"
 
     def get_context_data(self, **kwargs):
@@ -474,27 +524,23 @@ class FileUploadView(ProjectAccessMixin, TemplateView):
         elif file_ext.endswith((".pdf", ".docx", ".txt")):
             return self._handle_document_upload(project, uploaded_file)
         else:
-            return JsonResponse({
-                "success": False,
-                "error": f"Unsupported file type: {file_ext}"
-            }, status=400)
+            return JsonResponse(
+                {"success": False, "error": f"Unsupported file type: {file_ext}"}, status=400
+            )
 
     def _handle_ifc_upload(self, project, uploaded_file):
         """Handle IFC file upload and parsing"""
         try:
             # Validate file extension
             if not uploaded_file.name.lower().endswith(".ifc"):
-                return JsonResponse({
-                    "success": False,
-                    "error": "File must be .ifc"
-                }, status=400)
+                return JsonResponse({"success": False, "error": "File must be .ifc"}, status=400)
 
             # Create IFC file record
             ifc_file = IFCFile.objects.create(
                 project=project,
                 name=uploaded_file.name,
                 file=uploaded_file,
-                status=IFCFile.Status.PENDING
+                status=IFCFile.Status.PENDING,
             )
 
             # Run Pipeline
@@ -502,25 +548,27 @@ class FileUploadView(ProjectAccessMixin, TemplateView):
             success = processor.run_pipeline()
 
             if success:
-                return JsonResponse({
-                    "success": True,
-                    "file_type": "ifc",
-                    "file_name": ifc_file.name,
-                    "entity_count": ifc_file.entity_count,
-                    "redirect_url": reverse("projects:ask", kwargs={"pk": project.pk})
-                })
+                return JsonResponse(
+                    {
+                        "success": True,
+                        "file_type": "ifc",
+                        "file_name": ifc_file.name,
+                        "entity_count": ifc_file.entity_count,
+                        "redirect_url": reverse("projects:ask", kwargs={"pk": project.pk}),
+                    }
+                )
             else:
-                return JsonResponse({
-                    "success": False,
-                    "error": ifc_file.error_message or "Failed to parse IFC file"
-                }, status=400)
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": ifc_file.error_message or "Failed to parse IFC file",
+                    },
+                    status=400,
+                )
 
         except Exception as e:
             logger.exception(f"Error uploading IFC file: {e}")
-            return JsonResponse({
-                "success": False,
-                "error": str(e)
-            }, status=500)
+            return JsonResponse({"success": False, "error": str(e)}, status=500)
 
     def _handle_document_upload(self, project, uploaded_file):
         """Handle document (PDF/DOCX/TXT) upload"""
@@ -551,22 +599,21 @@ class FileUploadView(ProjectAccessMixin, TemplateView):
             success = processor.process()
 
             if success:
-                return JsonResponse({
-                    "success": True,
-                    "file_type": doc_type,
-                    "file_name": document.name,
-                    "redirect_url": reverse("projects:ask", kwargs={"pk": project.pk})
-                })
+                return JsonResponse(
+                    {
+                        "success": True,
+                        "file_type": doc_type,
+                        "file_name": document.name,
+                        "redirect_url": reverse("projects:ask", kwargs={"pk": project.pk}),
+                    }
+                )
             else:
-                return JsonResponse({
-                    "success": False,
-                    "error": document.error_message or "Processing failed"
-                }, status=400)
+                return JsonResponse(
+                    {"success": False, "error": document.error_message or "Processing failed"},
+                    status=400,
+                )
             # --- END FIX ---
 
         except Exception as e:
             logger.exception(f"Error uploading document: {e}")
-            return JsonResponse({
-                "success": False,
-                "error": str(e)
-            }, status=500)
+            return JsonResponse({"success": False, "error": str(e)}, status=500)

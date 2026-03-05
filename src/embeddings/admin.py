@@ -1,1 +1,1 @@
-# ambeddings/admin.py
+# embeddings/admin.py

@@ -4,22 +4,35 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('core', '0004_errorlog_original_username'),
+        ("core", "0004_errorlog_original_username"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='LLMConfig',
+            name="LLMConfig",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('active_model', models.CharField(blank=True, default='', help_text='Ollama model tag (e.g. qwen3:14b). Blank = use .env default.', max_length=100, verbose_name='Active Model')),
-                ('updated_at', models.DateTimeField(auto_now=True)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                (
+                    "active_model",
+                    models.CharField(
+                        blank=True,
+                        default="",
+                        help_text="Ollama model tag (e.g. qwen3:14b). Blank = use .env default.",
+                        max_length=100,
+                        verbose_name="Active Model",
+                    ),
+                ),
+                ("updated_at", models.DateTimeField(auto_now=True)),
             ],
             options={
-                'verbose_name': 'LLM Configuration',
-                'verbose_name_plural': 'LLM Configuration',
+                "verbose_name": "LLM Configuration",
+                "verbose_name_plural": "LLM Configuration",
             },
         ),
     ]

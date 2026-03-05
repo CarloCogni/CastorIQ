@@ -21,7 +21,7 @@ import ifcopenshell
 import ifcopenshell.api
 import ifcopenshell.util.element as element_util
 
-from .ifc_writer import Tier1Writer, EntityChange, IFCWriteError
+from .ifc_writer import EntityChange, IFCWriteError, Tier1Writer
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PlanStepResult:
     """Result of executing one step in a Tier 2 plan."""
+
     step_index: int
     operation: str
     changes: list[EntityChange] = field(default_factory=list)
@@ -36,6 +37,7 @@ class PlanStepResult:
 
     @property
     def ok(self) -> bool:
+        """True if the step executed without error."""
         return not self.error
 
 
@@ -61,6 +63,7 @@ class Tier2Writer:
         self.model = self.t1.model
 
     def save(self) -> None:
+        """Persist all changes to the IFC file on disk."""
         self.t1.save()
 
     # ── ADD_PSET ───────────────────────────────────────────
@@ -89,8 +92,7 @@ class Tier2Writer:
                     # Pset exists — add only missing properties
                     pset_element = self.t1._find_pset_element(element, pset_name)
                     new_props = {
-                        k: v for k, v in properties.items()
-                        if k not in existing_psets[pset_name]
+                        k: v for k, v in properties.items() if k not in existing_psets[pset_name]
                     }
                     if not new_props:
                         logger.debug(f"Skipping {gid}: all properties already exist in {pset_name}")
@@ -98,30 +100,38 @@ class Tier2Writer:
                 else:
                     # Create the pset
                     pset_element = ifcopenshell.api.run(
-                        "pset.add_pset", self.model,
-                        product=element, name=pset_name,
+                        "pset.add_pset",
+                        self.model,
+                        product=element,
+                        name=pset_name,
                     )
                     new_props = properties
 
                 # Populate properties
                 if new_props:
                     ifcopenshell.api.run(
-                        "pset.edit_pset", self.model,
-                        pset=pset_element, properties=new_props,
+                        "pset.edit_pset",
+                        self.model,
+                        pset=pset_element,
+                        properties=new_props,
                     )
 
                 for prop_name, prop_value in new_props.items():
-                    changes.append(EntityChange(
-                        global_id=gid,
-                        entity_name=element.Name or "",
-                        ifc_type=element.is_a(),
-                        pset=pset_name,
-                        property=prop_name,
-                        old_value="(none)",
-                        new_value=str(prop_value),
-                    ))
+                    changes.append(
+                        EntityChange(
+                            global_id=gid,
+                            entity_name=element.Name or "",
+                            ifc_type=element.is_a(),
+                            pset=pset_name,
+                            property=prop_name,
+                            old_value="(none)",
+                            new_value=str(prop_value),
+                        )
+                    )
 
-                logger.debug(f"ADD_PSET: {pset_name} on {element.Name or gid} ({len(new_props)} props)")
+                logger.debug(
+                    f"ADD_PSET: {pset_name} on {element.Name or gid} ({len(new_props)} props)"
+                )
 
         except Exception:
             self.model.undo()
@@ -155,27 +165,28 @@ class Tier2Writer:
                     )
 
                 # Record what's being removed
-                removed_props = {
-                    k: v for k, v in existing_psets[pset_name].items()
-                    if k != "id"
-                }
+                removed_props = {k: v for k, v in existing_psets[pset_name].items() if k != "id"}
 
                 pset_element = self.t1._find_pset_element(element, pset_name)
                 ifcopenshell.api.run(
-                    "pset.remove_pset", self.model,
-                    product=element, pset=pset_element,
+                    "pset.remove_pset",
+                    self.model,
+                    product=element,
+                    pset=pset_element,
                 )
 
                 for prop_name, prop_value in removed_props.items():
-                    changes.append(EntityChange(
-                        global_id=gid,
-                        entity_name=element.Name or "",
-                        ifc_type=element.is_a(),
-                        pset=pset_name,
-                        property=prop_name,
-                        old_value=str(prop_value),
-                        new_value="(removed)",
-                    ))
+                    changes.append(
+                        EntityChange(
+                            global_id=gid,
+                            entity_name=element.Name or "",
+                            ifc_type=element.is_a(),
+                            pset=pset_name,
+                            property=prop_name,
+                            old_value=str(prop_value),
+                            new_value="(removed)",
+                        )
+                    )
 
                 logger.debug(f"REMOVE_PSET: {pset_name} from {element.Name or gid}")
 
@@ -214,22 +225,25 @@ class Tier2Writer:
                 old_value = ", ".join(old_refs) if old_refs else "(none)"
 
                 ifcopenshell.api.run(
-                    "classification.add_reference", self.model,
+                    "classification.add_reference",
+                    self.model,
                     product=element,
                     classification=classification,
                     identification=reference,
                     name=name or reference,
                 )
 
-                changes.append(EntityChange(
-                    global_id=gid,
-                    entity_name=element.Name or "",
-                    ifc_type=element.is_a(),
-                    pset="(classification)",
-                    property=system_name,
-                    old_value=old_value,
-                    new_value=reference,
-                ))
+                changes.append(
+                    EntityChange(
+                        global_id=gid,
+                        entity_name=element.Name or "",
+                        ifc_type=element.is_a(),
+                        pset="(classification)",
+                        property=system_name,
+                        old_value=old_value,
+                        new_value=reference,
+                    )
+                )
 
                 logger.debug(f"SET_CLASSIFICATION: {reference} on {element.Name or gid}")
 
@@ -267,25 +281,29 @@ class Tier2Writer:
                 existing = ifcopenshell.util.element.get_material(element)
                 if existing:
                     ifcopenshell.api.run(
-                        "material.unassign_material", self.model,
+                        "material.unassign_material",
+                        self.model,
                         products=[element],
                     )
 
                 ifcopenshell.api.run(
-                    "material.assign_material", self.model,
+                    "material.assign_material",
+                    self.model,
                     products=[element],
                     material=material,
                 )
 
-                changes.append(EntityChange(
-                    global_id=gid,
-                    entity_name=element.Name or "",
-                    ifc_type=element.is_a(),
-                    pset="(material)",
-                    property="Material",
-                    old_value=old_material,
-                    new_value=material_name,
-                ))
+                changes.append(
+                    EntityChange(
+                        global_id=gid,
+                        entity_name=element.Name or "",
+                        ifc_type=element.is_a(),
+                        pset="(material)",
+                        property="Material",
+                        old_value=old_material,
+                        new_value=material_name,
+                    )
+                )
 
                 logger.debug(f"SET_MATERIAL: {material_name} on {element.Name or gid}")
 
@@ -321,7 +339,8 @@ class Tier2Writer:
 
         source_props = source_psets[pset_name]
         props_to_copy = {
-            k: v for k, v in source_props.items()
+            k: v
+            for k, v in source_props.items()
             if k != "id" and (property_names is None or k in property_names)
         }
 
@@ -338,7 +357,8 @@ class Tier2Writer:
             if cls.Name == name:
                 return cls
         return ifcopenshell.api.run(
-            "classification.add_classification", self.model,
+            "classification.add_classification",
+            self.model,
             classification=name,
         )
 
@@ -358,7 +378,8 @@ class Tier2Writer:
             if mat.Name == name:
                 return mat
         return ifcopenshell.api.run(
-            "material.add_material", self.model,
+            "material.add_material",
+            self.model,
             name=name,
         )
 

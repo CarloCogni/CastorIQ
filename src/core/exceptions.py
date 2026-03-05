@@ -1,20 +1,19 @@
 """Custom exception handlers and error logging utilities"""
 
 import logging
-from typing import Optional
 
-from django.conf import settings
 from django.http import HttpRequest
+
 from core.utils import get_full_stack  # Import the magic function
 
 logger = logging.getLogger(__name__)
 
 
 def log_exception(
-        exception: Exception,
-        request: Optional[HttpRequest] = None,
-        severity: str = "error",
-        extra_context: Optional[dict] = None
+    exception: Exception,
+    request: HttpRequest | None = None,
+    severity: str = "error",
+    extra_context: dict | None = None,
 ) -> None:
     """
     Log an exception to the database with FULL context including complete stack trace.
@@ -42,14 +41,16 @@ def log_exception(
 
         # Add request context if available
         if request:
-            error_data.update({
-                "url": request.build_absolute_uri(),
-                "method": request.method,
-                "user": request.user if request.user.is_authenticated else None,
-                "user_agent": request.META.get("HTTP_USER_AGENT", ""),
-                "ip_address": get_client_ip(request),
-                "view_name": request.resolver_match.view_name if request.resolver_match else "",
-            })
+            error_data.update(
+                {
+                    "url": request.build_absolute_uri(),
+                    "method": request.method,
+                    "user": request.user if request.user.is_authenticated else None,
+                    "user_agent": request.META.get("HTTP_USER_AGENT", ""),
+                    "ip_address": get_client_ip(request),
+                    "view_name": request.resolver_match.view_name if request.resolver_match else "",
+                }
+            )
 
             # Collect request data (filter sensitive info)
             request_data = {
@@ -71,7 +72,7 @@ def log_exception(
         logger.exception(f"Failed to log error to database: {e}")
 
 
-def get_client_ip(request: HttpRequest) -> Optional[str]:
+def get_client_ip(request: HttpRequest) -> str | None:
     """Extract client IP from request, handling proxies"""
     x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
     if x_forwarded_for:
@@ -84,10 +85,17 @@ def get_client_ip(request: HttpRequest) -> Optional[str]:
 def _filter_sensitive_data(data: dict) -> dict:
     """Remove sensitive fields from request data"""
     sensitive_keys = {
-        "password", "password1", "password2", "old_password",
-        "new_password", "confirm_password",
-        "csrfmiddlewaretoken", "csrf_token",
-        "api_key", "secret", "token",
+        "password",
+        "password1",
+        "password2",
+        "old_password",
+        "new_password",
+        "confirm_password",
+        "csrfmiddlewaretoken",
+        "csrf_token",
+        "api_key",
+        "secret",
+        "token",
     }
 
     filtered = {}

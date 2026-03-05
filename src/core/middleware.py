@@ -1,6 +1,7 @@
 """Custom middleware for error logging"""
 
 from django.utils.deprecation import MiddlewareMixin
+
 from .exceptions import log_exception
 
 
@@ -23,12 +24,7 @@ class ErrorLoggingMiddleware(MiddlewareMixin):
             severity = "critical"
 
         # Log to database - get_full_stack() will capture everything
-        log_exception(
-            exception,
-            request=request,
-            severity=severity
-        )
+        log_exception(exception, request=request, severity=severity)
 
         # Return None to let Django handle the exception normally
         return None
-

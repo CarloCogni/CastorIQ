@@ -137,7 +137,7 @@ class DocumentChunk(UUIDModel):
 
     # Vector embedding
     embedding = VectorField(
-        dimensions=1024,  #mxbai-embed-large
+        dimensions=1024,  # mxbai-embed-large
         null=True,
         blank=True,
     )

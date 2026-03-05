@@ -5,15 +5,14 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('documents', '0002_alter_document_options_alter_documentchunk_options_and_more'),
+        ("documents", "0002_alter_document_options_alter_documentchunk_options_and_more"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='documentchunk',
-            name='embedding',
+            model_name="documentchunk",
+            name="embedding",
             field=pgvector.django.vector.VectorField(blank=True, dimensions=1024, null=True),
         ),
     ]

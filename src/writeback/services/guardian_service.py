@@ -13,12 +13,14 @@ This is the "second opinion" that makes Castor bidirectional:
 import json
 import logging
 import re
+
+from langchain_core.messages import HumanMessage, SystemMessage
 from pgvector.django import CosineDistance
-from langchain_core.messages import SystemMessage, HumanMessage
+
+from core.llm import get_llm
 from documents.models import DocumentChunk
 from embeddings.services.embedding_service import EmbeddingService
 from writeback.models import ModificationProposal
-from core.llm import get_llm
 
 logger = logging.getLogger(__name__)
 
@@ -127,9 +129,13 @@ class GuardianService:
                 proposal.verification_status = ModificationProposal.VerificationStatus.UNKNOWN
                 proposal.verification_result = "No relevant information found in project documents."
                 proposal.verification_source = ""
-                proposal.save(update_fields=[
-                    "verification_status", "verification_result", "verification_source",
-                ])
+                proposal.save(
+                    update_fields=[
+                        "verification_status",
+                        "verification_result",
+                        "verification_source",
+                    ]
+                )
                 logger.info(f"Guardian: no relevant docs for proposal {proposal.id}")
                 return proposal
 
@@ -149,9 +155,13 @@ class GuardianService:
             proposal.verification_result = verdict.get("explanation", "")
             proposal.verification_source = verdict.get("source_detail", "")
 
-            proposal.save(update_fields=[
-                "verification_status", "verification_result", "verification_source",
-            ])
+            proposal.save(
+                update_fields=[
+                    "verification_status",
+                    "verification_result",
+                    "verification_source",
+                ]
+            )
 
             logger.info(
                 f"Guardian verdict for proposal {proposal.id}: "
@@ -224,16 +234,14 @@ class GuardianService:
             return []
 
         chunks = list(
-            DocumentChunk.objects
-            .filter(
+            DocumentChunk.objects.filter(
                 document__project=project,
                 document__status="completed",
                 embedding__isnull=False,
             )
             .select_related("document")
             .annotate(distance=CosineDistance("embedding", query_vector))
-            .order_by("distance")
-            [:top_k]
+            .order_by("distance")[:top_k]
         )
 
         # Filter by relevance threshold
@@ -260,8 +268,7 @@ class GuardianService:
         excerpts = []
         for chunk in chunks:
             excerpts.append(
-                f"[{chunk.document.name}, Page {chunk.page_number or '?'}]\n"
-                f"{chunk.content}"
+                f"[{chunk.document.name}, Page {chunk.page_number or '?'}]\n{chunk.content}"
             )
         doc_excerpts = "\n\n---\n\n".join(excerpts) if excerpts else "(none)"
 
@@ -274,14 +281,16 @@ class GuardianService:
 
         messages = [
             SystemMessage(content=GUARDIAN_SYSTEM_PROMPT),
-            HumanMessage(content=GUARDIAN_USER_TEMPLATE.format(
-                ifc_type=intent.get("filter", {}).get("ifc_type", "Unknown"),
-                operation=intent.get("operation", proposal.operation),
-                property_or_attribute=prop_or_attr,
-                new_value=intent.get("new_value", "N/A"),
-                explanation=proposal.explanation,
-                doc_excerpts=doc_excerpts,
-            )),
+            HumanMessage(
+                content=GUARDIAN_USER_TEMPLATE.format(
+                    ifc_type=intent.get("filter", {}).get("ifc_type", "Unknown"),
+                    operation=intent.get("operation", proposal.operation),
+                    property_or_attribute=prop_or_attr,
+                    new_value=intent.get("new_value", "N/A"),
+                    explanation=proposal.explanation,
+                    doc_excerpts=doc_excerpts,
+                )
+            ),
         ]
 
         response = self.llm.invoke(messages)

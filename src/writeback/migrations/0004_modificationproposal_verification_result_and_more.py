@@ -4,25 +4,39 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('writeback', '0003_gitcommit_rolled_back_and_more'),
+        ("writeback", "0003_gitcommit_rolled_back_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='modificationproposal',
-            name='verification_result',
-            field=models.TextField(blank=True, help_text='LLM explanation of the verification check.'),
+            model_name="modificationproposal",
+            name="verification_result",
+            field=models.TextField(
+                blank=True, help_text="LLM explanation of the verification check."
+            ),
         ),
         migrations.AddField(
-            model_name='modificationproposal',
-            name='verification_source',
-            field=models.CharField(blank=True, help_text="Citation (e.g., 'Fire Strategy.pdf, p.14')", max_length=255),
+            model_name="modificationproposal",
+            name="verification_source",
+            field=models.CharField(
+                blank=True, help_text="Citation (e.g., 'Fire Strategy.pdf, p.14')", max_length=255
+            ),
         ),
         migrations.AddField(
-            model_name='modificationproposal',
-            name='verification_status',
-            field=models.CharField(choices=[('pending', 'Checking...'), ('verified', 'Verified'), ('conflict', 'Conflict Detected'), ('unknown', 'No Info Found'), ('failed', 'Check Failed')], db_index=True, default='pending', max_length=20),
+            model_name="modificationproposal",
+            name="verification_status",
+            field=models.CharField(
+                choices=[
+                    ("pending", "Checking..."),
+                    ("verified", "Verified"),
+                    ("conflict", "Conflict Detected"),
+                    ("unknown", "No Info Found"),
+                    ("failed", "Check Failed"),
+                ],
+                db_index=True,
+                default="pending",
+                max_length=20,
+            ),
         ),
     ]

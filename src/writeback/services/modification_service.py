@@ -10,31 +10,34 @@ Business logic lives here. Views stay thin.
 
 import json
 import logging
-from django.utils import timezone
-from ifc_processor.models import IFCEntity
-from writeback.models import ModificationProposal, GitCommit
-from ifc_processor.services.processor import IFCProcessingService
-from .git_service import GitService
-from .filter_engine import FilterEngine
-from .ifc_writer import Tier1Writer, EntityChange, IFCWriteError
-from .tier1_validator import Tier1Validator, ValidationResult
-from .intent_classifier import IntentClassifier, IntentParseError
-from .ifc_standard_psets import lookup_property, get_applicable_psets
-from writeback.services.guardian_service import GuardianService
-from .tier2_planner import Tier2Planner, PlanGenerationError
-from .tier2_validator import Tier2Validator
-from .tier2_writer import Tier2Writer, PlanStepResult
-from .tier3_planner import Tier3Planner, CodeGenerationError
-from .tier3_executor import Tier3Executor, Tier3ExecutionError
-from .tier3_reviewer import Tier3Reviewer
-
 import uuid
+
+from django.utils import timezone
+
+from ifc_processor.models import IFCEntity
+from ifc_processor.services.processor import IFCProcessingService
+from writeback.models import GitCommit, ModificationProposal
+from writeback.services.guardian_service import GuardianService
+
+from .filter_engine import FilterEngine
+from .git_service import GitService
+from .ifc_standard_psets import lookup_property
+from .ifc_writer import EntityChange, IFCWriteError, Tier1Writer
+from .intent_classifier import IntentClassifier, IntentParseError
+from .tier1_validator import Tier1Validator
+from .tier2_planner import PlanGenerationError, Tier2Planner
+from .tier2_validator import Tier2Validator
+from .tier2_writer import Tier2Writer
+from .tier3_executor import Tier3ExecutionError, Tier3Executor
+from .tier3_planner import CodeGenerationError, Tier3Planner
+from .tier3_reviewer import Tier3Reviewer
 
 logger = logging.getLogger(__name__)
 
 
 class ModificationError(Exception):
     """User-facing error for modification failures."""
+
     pass
 
 
@@ -116,8 +119,11 @@ class ModificationService:
             # Handle chained operations
             if isinstance(classified, list):
                 return self._propose_chain(
-                    classified, user_message, user=user,
-                    ifc_file=ifc_file, message_obj=message_obj,
+                    classified,
+                    user_message,
+                    user=user,
+                    ifc_file=ifc_file,
+                    message_obj=message_obj,
                     entity_context=entity_context,
                 )
 
@@ -129,28 +135,23 @@ class ModificationService:
         tier = intent.get("tier", 0)
         if tier == 2:
             return self._propose_tier2(
-                user_message, entity_context, user=user,
-                ifc_file=ifc_file, message_obj=message_obj,
+                user_message,
+                entity_context,
+                user=user,
+                ifc_file=ifc_file,
+                message_obj=message_obj,
             )
         if tier == 3:
             return self._propose_tier3(
-                user_message, entity_context, user=user,
-                ifc_file=ifc_file, message_obj=message_obj,
+                user_message,
+                entity_context,
+                user=user,
+                ifc_file=ifc_file,
+                message_obj=message_obj,
             )
         if tier != 1:
             raise ModificationError(
-                f"Unexpected tier: {tier}. "
-                f"Reason: {intent.get('explanation', '?')}"
-            )
-
-        # 3b. Confidence threshold
-        confidence = intent.get("confidence", 0)
-        if confidence < 60:
-            raise ModificationError(
-                f"Low confidence ({confidence}%). "
-                f"Please be more specific. For example, use exact property "
-                f"names and entity types. "
-                f"LLM interpretation: {intent.get('explanation', '?')}"
+                f"Unexpected tier: {tier}. Reason: {intent.get('explanation', '?')}"
             )
 
         # 4. Resolve entity filter
@@ -167,10 +168,7 @@ class ModificationService:
 
         if not validation.valid:
             # Auto-fallback: SET_PROPERTY → ADD_PROPERTY for standard pset properties
-            if (
-                    intent.get("operation") == "SET_PROPERTY"
-                    and "not found on any" in validation.error
-            ):
+            if intent.get("operation") == "SET_PROPERTY" and "not found on any" in validation.error:
                 pset = intent.get("pset", "")
                 prop = intent.get("property", "")
                 if lookup_property(pset, prop) is not None:
@@ -181,20 +179,39 @@ class ModificationService:
                     intent["operation"] = "ADD_PROPERTY"
                     validation = self.t1_validator.validate(intent, matched_entities)
 
-            # Tier 1 still failing → escalate to Tier 2
+            # Tier 1 still failing
             if not validation.valid:
+                # Type/enum errors are user errors — surface them directly
+                if "not found on any" not in validation.error:
+                    raise ModificationError(validation.error)
+                # "Not found" error → escalate to Tier 2
                 logger.info(f"Tier 1 validation failed, escalating to Tier 2: {validation.error}")
                 return self._propose_tier2(
-                    user_message, entity_context, user=user,
-                    ifc_file=ifc_file, message_obj=message_obj,
+                    user_message,
+                    entity_context,
+                    user=user,
+                    ifc_file=ifc_file,
+                    message_obj=message_obj,
                 )
+
+        # 5b. Combined confidence + groundedness gate (post-validation)
+        confidence = intent.get("confidence", 0)
+        groundedness = validation.groundedness_score
+        effective = min(confidence, groundedness) if groundedness > 0 else confidence
+        if effective < 60:
+            raise ModificationError(
+                f"Low confidence ({effective}% effective: LLM={confidence}%, "
+                f"registry={groundedness}%). Please be more specific. "
+                f"For example, use exact property names and entity types. "
+                f"LLM interpretation: {intent.get('explanation', '?')}"
+            )
 
         # 6. Build diff preview
         diff_preview = self._build_diff_preview(intent, validation.entities)
 
         # 6b. Warn if SET_ATTRIBUTE hits multiple entities (likely unintended rename)
         operation = intent.get("operation", "")
-        MAX_NUM_ENTITIES = 10
+        MAX_NUM_ENTITIES = 10  # noqa: N806
         if operation == "SET_ATTRIBUTE" and len(validation.entities) > MAX_NUM_ENTITIES:
             raise ModificationError(
                 f"SET_ATTRIBUTE would affect {len(validation.entities)} entities. "
@@ -262,8 +279,7 @@ class ModificationService:
             ModificationProposal.Status.APPROVED,
         ):
             raise ModificationError(
-                f"Proposal {proposal.id} is '{proposal.status}', "
-                f"expected 'pending' or 'approved'."
+                f"Proposal {proposal.id} is '{proposal.status}', expected 'pending' or 'approved'."
             )
 
         ifc_file = proposal.ifc_file
@@ -340,8 +356,7 @@ class ModificationService:
         self._sync_entity_properties(changes, ifc_file)
 
         logger.info(
-            f"Proposal {proposal.id} applied → commit {commit_hash[:8]} "
-            f"({len(changes)} changes)"
+            f"Proposal {proposal.id} applied → commit {commit_hash[:8]} ({len(changes)} changes)"
         )
 
         return git_commit
@@ -362,8 +377,7 @@ class ModificationService:
         proposal.save()
         logger.info(f"Proposal {proposal.id} rejected")
 
-
-     # ───ROLLBACK / RESTORE / TIME MACHINE ─────────────────────────────
+    # ───ROLLBACK / RESTORE / TIME MACHINE ─────────────────────────────
 
     def restore_version(self, commit_id: str, user) -> GitCommit:
         """
@@ -405,9 +419,9 @@ class ModificationService:
             diff_data={
                 "operation": "ROLLBACK",
                 "restored_from_hash": target_commit.commit_hash,
-                "restored_from_date": str(target_commit.created_at)
+                "restored_from_date": str(target_commit.created_at),
             },
-            rolled_back=True
+            rolled_back=True,
         )
 
         # 5. DB Synchronization (The Heavy Lifting)
@@ -436,9 +450,7 @@ class ModificationService:
 
     # ── Internals ──────────────────────────────────────────
 
-    def _execute_tier1(
-        self, proposal: ModificationProposal
-    ) -> list[EntityChange]:
+    def _execute_tier1(self, proposal: ModificationProposal) -> list[EntityChange]:
         """Execute a Tier 1 operation on the IFC file."""
         intent = proposal.intent_json
         ifc_path = proposal.ifc_file.file.path
@@ -483,9 +495,7 @@ class ModificationService:
         writer.save()
         return changes
 
-    def _execute_tier2(
-            self, proposal: ModificationProposal
-    ) -> list[EntityChange]:
+    def _execute_tier2(self, proposal: ModificationProposal) -> list[EntityChange]:
         """Execute a Tier 2 plan: iterate steps, using appropriate writer."""
         plan = proposal.intent_json
         ifc_path = proposal.ifc_file.file.path
@@ -503,7 +513,11 @@ class ModificationService:
             global_ids = list(entities.values_list("global_id", flat=True))
 
             step_changes = self._execute_tier2_step(
-                writer, op, global_ids, params, entities,
+                writer,
+                op,
+                global_ids,
+                params,
+                entities,
             )
             all_changes.extend(step_changes)
 
@@ -511,42 +525,56 @@ class ModificationService:
         return all_changes
 
     def _execute_tier2_step(
-            self,
-            writer: "Tier2Writer",
-            operation: str,
-            global_ids: list[str],
-            params: dict,
-            entities,
+        self,
+        writer: "Tier2Writer",
+        operation: str,
+        global_ids: list[str],
+        params: dict,
+        entities,
     ) -> list[EntityChange]:
         """Execute a single step from a Tier 2 plan."""
         # Tier 1 operations → delegate to the embedded Tier1Writer
         if operation == "SET_PROPERTY":
             return writer.t1.set_property(
-                global_ids, params["pset"], params["property"], params["new_value"],
+                global_ids,
+                params["pset"],
+                params["property"],
+                params["new_value"],
             )
         if operation == "ADD_PROPERTY":
             return writer.t1.add_property(
-                global_ids, params["pset"], params["property"], params["new_value"],
+                global_ids,
+                params["pset"],
+                params["property"],
+                params["new_value"],
             )
         if operation == "REMOVE_PROPERTY":
             return writer.t1.remove_property(
-                global_ids, params["pset"], params["property"],
+                global_ids,
+                params["pset"],
+                params["property"],
             )
         if operation == "SET_ATTRIBUTE":
             return writer.t1.set_attribute(
-                global_ids, params["attribute"], params["new_value"],
+                global_ids,
+                params["attribute"],
+                params["new_value"],
             )
         # Tier 2 operations
         if operation == "ADD_PSET":
             return writer.add_pset(
-                global_ids, params["pset_name"], params["properties"],
+                global_ids,
+                params["pset_name"],
+                params["properties"],
             )
         if operation == "REMOVE_PSET":
             return writer.remove_pset(global_ids, params["pset_name"])
         if operation == "SET_CLASSIFICATION":
             return writer.set_classification(
-                global_ids, params["system_name"],
-                params["reference"], params.get("name", ""),
+                global_ids,
+                params["system_name"],
+                params["reference"],
+                params.get("name", ""),
             )
         if operation == "SET_MATERIAL":
             return writer.set_material(global_ids, params["material_name"])
@@ -558,15 +586,15 @@ class ModificationService:
             if not source:
                 raise IFCWriteError(f"Source entity '{params['source_name']}' not found")
             return writer.copy_properties(
-                source.global_id, global_ids,
-                params["pset_name"], params.get("property_names"),
+                source.global_id,
+                global_ids,
+                params["pset_name"],
+                params.get("property_names"),
             )
 
         raise IFCWriteError(f"Unknown Tier 2 operation: {operation}")
 
-    def _build_diff_preview(
-        self, intent: dict, entities: list[IFCEntity]
-    ) -> list[dict]:
+    def _build_diff_preview(self, intent: dict, entities: list[IFCEntity]) -> list[dict]:
         """
         Build a diff preview for the UI without touching the IFC file.
 
@@ -591,20 +619,20 @@ class ModificationService:
             else:
                 old_value = "?"
 
-            preview.append({
-                "global_id": entity.global_id,
-                "name": entity.name or entity.global_id[:8],
-                "ifc_type": entity.ifc_type,
-                "field": f"{pset}.{prop}" if pset else attribute,
-                "old_value": str(old_value),
-                "new_value": str(new_value) if operation != "REMOVE_PROPERTY" else "(removed)",
-            })
+            preview.append(
+                {
+                    "global_id": entity.global_id,
+                    "name": entity.name or entity.global_id[:8],
+                    "ifc_type": entity.ifc_type,
+                    "field": f"{pset}.{prop}" if pset else attribute,
+                    "old_value": str(old_value),
+                    "new_value": str(new_value) if operation != "REMOVE_PROPERTY" else "(removed)",
+                }
+            )
 
         return preview
 
-    def _sync_entity_properties(
-        self, changes: list[EntityChange], ifc_file
-    ) -> None:
+    def _sync_entity_properties(self, changes: list[EntityChange], ifc_file) -> None:
         """
         Update entity properties in the database after a successful write.
 
@@ -633,12 +661,17 @@ class ModificationService:
                 entity.save(update_fields=["properties", "name"])
 
             except IFCEntity.DoesNotExist:
-                logger.warning(
-                    f"Could not sync entity {change.global_id} — not in DB"
-                )
+                logger.warning(f"Could not sync entity {change.global_id} — not in DB")
 
-    def _propose_chain(self, intents: list, user_message: str, user=None, ifc_file=None, message_obj=None,
-                       entity_context: str = ""):
+    def _propose_chain(
+        self,
+        intents: list,
+        user_message: str,
+        user=None,
+        ifc_file=None,
+        message_obj=None,
+        entity_context: str = "",
+    ):
         """
         Handle a chain of Tier 1 operations from a single user request.
 
@@ -656,21 +689,12 @@ class ModificationService:
                     f"All chained operations must be Tier 1."
                 )
 
-            confidence = intent.get("confidence", 0)
-            if confidence < 60:
-                raise ModificationError(
-                    f"Chain element {i + 1} has low confidence ({confidence}%). "
-                    f"Please be more specific."
-                )
-
             # Resolve filter
             filter_spec = intent.get("filter", {})
             try:
                 matched_qs = self.filter_engine.resolve(filter_spec)
             except ValueError as e:
-                raise ModificationError(
-                    f"Chain element {i + 1} filter error: {e}"
-                )
+                raise ModificationError(f"Chain element {i + 1} filter error: {e}")
             matched_entities = list(matched_qs)
 
             # Validate
@@ -679,8 +703,8 @@ class ModificationService:
             if not validation.valid:
                 # Try SET→ADD fallback
                 if (
-                        intent.get("operation") == "SET_PROPERTY"
-                        and "not found on any" in validation.error
+                    intent.get("operation") == "SET_PROPERTY"
+                    and "not found on any" in validation.error
                 ):
                     pset = intent.get("pset", "")
                     prop = intent.get("property", "")
@@ -689,13 +713,32 @@ class ModificationService:
                         validation = self.t1_validator.validate(intent, matched_entities)
 
                 if not validation.valid:
+                    # Type/enum errors are user errors — surface them directly
+                    if "not found on any" not in validation.error:
+                        raise ModificationError(
+                            f"Chain element {i + 1} validation failed: {validation.error}"
+                        )
                     logger.info(
                         f"Chain element {i + 1} failed Tier 1, escalating to Tier 2: {validation.error}"
                     )
                     return self._propose_tier2(
-                        user_message, entity_context, user=user,
-                        ifc_file=ifc_file, message_obj=message_obj,
+                        user_message,
+                        entity_context,
+                        user=user,
+                        ifc_file=ifc_file,
+                        message_obj=message_obj,
                     )
+
+            # Combined confidence + groundedness gate (post-validation)
+            confidence = intent.get("confidence", 0)
+            groundedness = validation.groundedness_score
+            effective = min(confidence, groundedness) if groundedness > 0 else confidence
+            if effective < 60:
+                raise ModificationError(
+                    f"Chain element {i + 1} has low confidence ({effective}% effective: "
+                    f"LLM={confidence}%, registry={groundedness}%). "
+                    f"Please be more specific."
+                )
 
             # Build diff preview
             diff_preview = self._build_diff_preview(intent, validation.entities)
@@ -727,13 +770,11 @@ class ModificationService:
 
             proposals.append(proposal)
 
-        logger.info(
-            f"Chain {chain_id}: created {len(proposals)} proposals"
-        )
+        logger.info(f"Chain {chain_id}: created {len(proposals)} proposals")
 
         return proposals
 
-# ── Tier 2: Plan-Based Proposals ───────────────────────
+    # ── Tier 2: Plan-Based Proposals ───────────────────────
 
     def _propose_tier2(
         self,
@@ -757,16 +798,18 @@ class ModificationService:
         # Escalation: planner decided this needs Tier 3
         if plan.get("tier") == 3:
             return self._propose_tier3(
-                user_message, entity_context, user=user,
-                ifc_file=ifc_file, message_obj=message_obj,
+                user_message,
+                entity_context,
+                user=user,
+                ifc_file=ifc_file,
+                message_obj=message_obj,
             )
 
         # 2. Confidence check
         confidence = plan.get("confidence", 0)
         if confidence < 60:
             raise ModificationError(
-                f"Low confidence ({confidence}%). "
-                f"Please be more specific about what you need."
+                f"Low confidence ({confidence}%). Please be more specific about what you need."
             )
 
         # 3. Validate the full plan
@@ -815,9 +858,7 @@ class ModificationService:
 
         return proposal
 
-    def _build_tier2_diff_preview(
-        self, plan: dict, validation
-    ) -> list[dict]:
+    def _build_tier2_diff_preview(self, plan: dict, validation) -> list[dict]:
         """Build a combined diff preview for all steps in a Tier 2 plan."""
         preview = []
 
@@ -831,14 +872,16 @@ class ModificationService:
                 old_value = self._tier2_old_value(op, params, entity)
                 new_value = self._tier2_new_value(op, params)
 
-                preview.append({
-                    "global_id": entity.global_id,
-                    "name": entity.name or entity.global_id[:8],
-                    "ifc_type": entity.ifc_type,
-                    "field": f"[Step {step_num}] {field_label}",
-                    "old_value": str(old_value),
-                    "new_value": str(new_value),
-                })
+                preview.append(
+                    {
+                        "global_id": entity.global_id,
+                        "name": entity.name or entity.global_id[:8],
+                        "ifc_type": entity.ifc_type,
+                        "field": f"[Step {step_num}] {field_label}",
+                        "old_value": str(old_value),
+                        "new_value": str(new_value),
+                    }
+                )
 
         return preview
 
@@ -891,15 +934,15 @@ class ModificationService:
             return f"from {params.get('source_name', '')}"
         return "?"
 
-# ── Tier 3 ───────────────────────
+    # ── Tier 3 ───────────────────────
 
     def _propose_tier3(
-            self,
-            user_message: str,
-            entity_context: str,
-            user=None,
-            ifc_file=None,
-            message_obj=None,
+        self,
+        user_message: str,
+        entity_context: str,
+        user=None,
+        ifc_file=None,
+        message_obj=None,
     ) -> ModificationProposal:
         try:
             result = self.t3_planner.generate_code(user_message, entity_context)
@@ -929,9 +972,9 @@ class ModificationService:
         # Resolve IFC file if not provided
         if ifc_file is None:
             from ifc_processor.models import IFCFile
+
             ifc_file = (
-                IFCFile.objects
-                .filter(project=self.project, status="completed")
+                IFCFile.objects.filter(project=self.project, status="completed")
                 .order_by("-created_at")
                 .first()
             )

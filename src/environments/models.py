@@ -12,18 +12,49 @@ class Project(UUIDModel):
     Each project has its own Git repository for version control.
     """
 
-    name = models.CharField(max_length=255,db_index=True,verbose_name="Project Name",help_text="A descriptive name for the project",)
-    description = models.TextField(blank=True,verbose_name="Description",help_text="Brief description of the project scope and purpose",)
+    name = models.CharField(
+        max_length=255,
+        db_index=True,
+        verbose_name="Project Name",
+        help_text="A descriptive name for the project",
+    )
+    description = models.TextField(
+        blank=True,
+        verbose_name="Description",
+        help_text="Brief description of the project scope and purpose",
+    )
 
     # Owner and collaborators
-    owner = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.CASCADE,related_name="owned_projects",verbose_name="Owner",help_text="The user who created and owns this project",)
-    collaborators = models.ManyToManyField(settings.AUTH_USER_MODEL,related_name="collaborated_projects",blank=True,verbose_name="Collaborators",help_text="Users who can access and work on this project",)
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="owned_projects",
+        verbose_name="Owner",
+        help_text="The user who created and owns this project",
+    )
+    collaborators = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        related_name="collaborated_projects",
+        blank=True,
+        verbose_name="Collaborators",
+        help_text="Users who can access and work on this project",
+    )
 
     # Git repository path for IFC versioning
-    git_repo_path = models.CharField(max_length=500,blank=True,verbose_name="Git Repository Path",help_text="Local path to the Git repository for version control",)
+    git_repo_path = models.CharField(
+        max_length=500,
+        blank=True,
+        verbose_name="Git Repository Path",
+        help_text="Local path to the Git repository for version control",
+    )
 
     # Project status
-    is_archived = models.BooleanField(default=False,db_index=True,verbose_name="Archived",help_text="Archived projects are hidden from the main list",)
+    is_archived = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name="Archived",
+        help_text="Archived projects are hidden from the main list",
+    )
 
     class Meta:
         ordering = ["-created_at"]

@@ -10,18 +10,17 @@ VRAM estimates assume Q4_K_M quantization at 8k context.
 """
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass(frozen=True)
 class ModelInfo:
-    label: str                  # Human-readable display name
-    family: str                 # llama | qwen | deepseek | mistral | ...
-    vram_gb: float              # Approximate VRAM needed (Q4_K_M, 8k ctx)
-    tier: str                   # lite | standard | performance | high_end | workstation
-    description: str            # One-liner for the UI tooltip
-    supports_thinking: bool = False   # Qwen3 thinking/non-thinking mode
-    is_moe: bool = False        # Mixture-of-Experts (activated params < total)
+    label: str  # Human-readable display name
+    family: str  # llama | qwen | deepseek | mistral | ...
+    vram_gb: float  # Approximate VRAM needed (Q4_K_M, 8k ctx)
+    tier: str  # lite | standard | performance | high_end | workstation
+    description: str  # One-liner for the UI tooltip
+    supports_thinking: bool = False  # Qwen3 thinking/non-thinking mode
+    is_moe: bool = False  # Mixture-of-Experts (activated params < total)
 
 
 # ── Tier boundaries ──────────────────────────────────────────
@@ -32,15 +31,14 @@ class ModelInfo:
 # workstation:  > 24 GB  (A6000, multi-GPU)
 
 VRAM_TIERS = {
-    "lite":        {"max_gb": 6,  "label": "Lite (≤ 6 GB)"},
-    "standard":    {"max_gb": 8,  "label": "Standard (≤ 8 GB)"},
+    "lite": {"max_gb": 6, "label": "Lite (≤ 6 GB)"},
+    "standard": {"max_gb": 8, "label": "Standard (≤ 8 GB)"},
     "performance": {"max_gb": 12, "label": "Performance (≤ 12 GB)"},
-    "high_end":    {"max_gb": 24, "label": "High-End (≤ 24 GB)"},
+    "high_end": {"max_gb": 24, "label": "High-End (≤ 24 GB)"},
     "workstation": {"max_gb": 999, "label": "Workstation (48 GB+)"},
 }
 
 MODEL_REGISTRY: dict[str, ModelInfo] = {
-
     # ── Lite ─────────────────────────────────────────────────
     "qwen3:0.6b": ModelInfo(
         label="Qwen3 0.6B",
@@ -65,7 +63,6 @@ MODEL_REGISTRY: dict[str, ModelInfo] = {
         tier="lite",
         description="Compact Meta model. Good baseline for constrained hardware.",
     ),
-
     # ── Standard ─────────────────────────────────────────────
     "qwen3:4b": ModelInfo(
         label="Qwen3 4B",
@@ -90,7 +87,6 @@ MODEL_REGISTRY: dict[str, ModelInfo] = {
         description="Strong reasoning + 100 language support. Great 8B option.",
         supports_thinking=True,
     ),
-
     # ── Performance ──────────────────────────────────────────
     "qwen3:14b": ModelInfo(
         label="Qwen3 14B",
@@ -109,7 +105,6 @@ MODEL_REGISTRY: dict[str, ModelInfo] = {
         supports_thinking=True,
         is_moe=True,
     ),
-
     # ── High-End ─────────────────────────────────────────────
     "qwen3:32b": ModelInfo(
         label="Qwen3 32B",
@@ -135,7 +130,6 @@ MODEL_REGISTRY: dict[str, ModelInfo] = {
         tier="workstation",
         description="Meta's flagship. Needs 48 GB+ VRAM.",
     ),
-
     # ── Workstation ──────────────────────────────────────────
     "qwen3:235b-a22b": ModelInfo(
         label="Qwen3 235B-A22B (MoE)",
@@ -149,7 +143,7 @@ MODEL_REGISTRY: dict[str, ModelInfo] = {
 }
 
 
-def get_model_info(ollama_tag: str) -> Optional[ModelInfo]:
+def get_model_info(ollama_tag: str) -> ModelInfo | None:
     """Look up model metadata by Ollama tag. Returns None if unknown."""
     return MODEL_REGISTRY.get(ollama_tag)
 
@@ -157,8 +151,4 @@ def get_model_info(ollama_tag: str) -> Optional[ModelInfo]:
 def get_models_for_tier(tier: str) -> dict[str, ModelInfo]:
     """Return all registry models at or below a given VRAM tier."""
     max_gb = VRAM_TIERS.get(tier, {}).get("max_gb", 0)
-    return {
-        tag: info
-        for tag, info in MODEL_REGISTRY.items()
-        if info.vram_gb <= max_gb
-    }
+    return {tag: info for tag, info in MODEL_REGISTRY.items() if info.vram_gb <= max_gb}

@@ -1,15 +1,17 @@
 # chat/services/rag_service.py
 import logging
-from typing import List, Any
-from pgvector.django import CosineDistance
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
-from chat.models import ChatSession, Message
-from ifc_processor.models import IFCEntity
-from documents.models import DocumentChunk, Document
-from embeddings.services.embedding_service import EmbeddingService
 from textwrap import dedent
+from typing import Any
+
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from pgvector.django import CosineDistance
+
+from chat.models import ChatSession, Message
 from core.llm import get_llm
+from documents.models import Document, DocumentChunk
+from embeddings.services.embedding_service import EmbeddingService
+from ifc_processor.models import IFCEntity
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +38,6 @@ SYSTEM_PROMPT = dedent("""\
 """)
 
 
-
 class RAGService:
     """
     RAG Service with Intent-Aware Retrieval.
@@ -51,10 +52,20 @@ class RAGService:
         self.embedding_service = EmbeddingService()
         self.llm = get_llm(user=user, temperature=0.2)
 
-    def generate_answer(self, project, session: ChatSession, user_text: str, scope: str = "auto") -> tuple[str, list]:
+    def generate_answer(
+        self, project, session: ChatSession, user_text: str, scope: str = "auto"
+    ) -> tuple[str, list]:
         """Pure retrieval + generation. No DB writes."""
-        is_summary_request = any(w in user_text.lower() for w in
-                                 ['summarize', 'summary', 'overview', 'explain the document', 'what is this file'])
+        is_summary_request = any(
+            w in user_text.lower()
+            for w in [
+                "summarize",
+                "summary",
+                "overview",
+                "explain the document",
+                "what is this file",
+            ]
+        )
 
         if is_summary_request and scope != "ifc":
             context_items = self._retrieve_summary_context(project)
@@ -71,7 +82,7 @@ class RAGService:
 
         return answer_text, context_items
 
-    def _retrieve_vector_context(self, project, query: str, scope: str) -> List[Any]:
+    def _retrieve_vector_context(self, project, query: str, scope: str) -> list[Any]:
         """Standard Vector Search for specific queries."""
         query_vector = self.embedding_service.embed_query(query)
         if not query_vector:
@@ -83,19 +94,17 @@ class RAGService:
         # We fetch slightly more candidates to ensure quality
         if scope in ["auto", "ifc"]:
             ifc_hits = list(
-                IFCEntity.objects
-                .filter(ifc_file__project=project, embedding__isnull=False)
-                .annotate(distance=CosineDistance('embedding', query_vector))
-                .order_by('distance')[:5]
+                IFCEntity.objects.filter(ifc_file__project=project, embedding__isnull=False)
+                .annotate(distance=CosineDistance("embedding", query_vector))
+                .order_by("distance")[:5]
             )
 
         if scope in ["auto", "docs"]:
             doc_hits = list(
-                DocumentChunk.objects
-                .filter(document__project=project, embedding__isnull=False)
-                .select_related('document')
-                .annotate(distance=CosineDistance('embedding', query_vector))
-                .order_by('distance')[:5]
+                DocumentChunk.objects.filter(document__project=project, embedding__isnull=False)
+                .select_related("document")
+                .annotate(distance=CosineDistance("embedding", query_vector))
+                .order_by("distance")[:5]
             )
 
         # Merge and sort by relevance (distance)
@@ -104,7 +113,7 @@ class RAGService:
 
         return results[:8]  # Return top 8 mixed results
 
-    def _retrieve_summary_context(self, project) -> List[DocumentChunk]:
+    def _retrieve_summary_context(self, project) -> list[DocumentChunk]:
         """
         Retrieval Strategy for Summaries:
         Vector search is bad at "summarize this".
@@ -118,13 +127,9 @@ class RAGService:
 
         for doc in documents:
             # Get first 3 chunks (Introduction / Preamble)
-            head_chunks = list(
-                doc.chunks.all().order_by('chunk_index')[:3]
-            )
+            head_chunks = list(doc.chunks.all().order_by("chunk_index")[:3])
             # Get last 2 chunks (Conclusion / Signatures / Schedules)
-            tail_chunks = list(
-                doc.chunks.all().order_by('-chunk_index')[:2]
-            )
+            tail_chunks = list(doc.chunks.all().order_by("-chunk_index")[:2])
 
             summary_chunks.extend(head_chunks)
             summary_chunks.extend(tail_chunks)
@@ -134,8 +139,8 @@ class RAGService:
 
     def _get_project_metadata(self, project) -> str:
         """Generates the 'God View' of the project files."""
-        ifc_files = project.ifc_files.filter(status='completed').values_list('name', flat=True)
-        docs = project.documents.filter(status='completed').values_list('name', flat=True)
+        ifc_files = project.ifc_files.filter(status="completed").values_list("name", flat=True)
+        docs = project.documents.filter(status="completed").values_list("name", flat=True)
 
         meta_parts = []
         if ifc_files:
@@ -148,43 +153,43 @@ class RAGService:
     def _serialize_context(self, context_items, scope: str = "auto") -> dict:
         """Convert retrieval results to JSON for UI display."""
         sources = []
-        sorted_items = sorted(
-            context_items,
-            key=lambda x: 0 if isinstance(x, DocumentChunk) else 1
-        )
+        sorted_items = sorted(context_items, key=lambda x: 0 if isinstance(x, DocumentChunk) else 1)
 
         for item in sorted_items:
             if isinstance(item, IFCEntity):
-                sources.append({
-                    "type": "ifc",
-                    "id": str(item.id),
-                    "name": item.name or item.ifc_type,
-                    "ifc_type": item.ifc_type,
-                    "storey": item.building_storey or "",
-                    "global_id": item.global_id or "",
-                    "preview": (item.description[:120] + "...")
-                             if len(item.description) > 120
-                             else item.description,
-                    "full_text": item.description,
-                })
+                sources.append(
+                    {
+                        "type": "ifc",
+                        "id": str(item.id),
+                        "name": item.name or item.ifc_type,
+                        "ifc_type": item.ifc_type,
+                        "storey": item.building_storey or "",
+                        "global_id": item.global_id or "",
+                        "preview": (item.description[:120] + "...")
+                        if len(item.description) > 120
+                        else item.description,
+                        "full_text": item.description,
+                    }
+                )
             elif isinstance(item, DocumentChunk):
-                sources.append({
-                    "type": "doc",
-                    "id": str(item.id),
-                    "source": item.document.name,
-                    "page": item.page_number,
-                    "preview": (item.content[:120] + "...")
-                             if len(item.content) > 120
-                             else item.content,
-                    "full_text": item.content,
-                })
+                sources.append(
+                    {
+                        "type": "doc",
+                        "id": str(item.id),
+                        "source": item.document.name,
+                        "page": item.page_number,
+                        "preview": (item.content[:120] + "...")
+                        if len(item.content) > 120
+                        else item.content,
+                        "full_text": item.content,
+                    }
+                )
 
         return {
             "scope": scope,
             "source_count": len(sources),
             "sources": sources,
         }
-
 
     def _generate_response(
         self,
@@ -240,16 +245,17 @@ class RAGService:
         prompt = ChatPromptTemplate.from_template(template)
         chain = prompt | self.llm | StrOutputParser()
 
-        return chain.invoke({
-            "system_prompt": SYSTEM_PROMPT,
-            "analysis_mode": analysis_mode,
-            "mode_instruction": mode_instruction,
-            "project_meta": project_meta,
-            "context_str": context_str,
-            "history_block": history_block,
-            "question": query,
-        })
-
+        return chain.invoke(
+            {
+                "system_prompt": SYSTEM_PROMPT,
+                "analysis_mode": analysis_mode,
+                "mode_instruction": mode_instruction,
+                "project_meta": project_meta,
+                "context_str": context_str,
+                "history_block": history_block,
+                "question": query,
+            }
+        )
 
     def _format_context(self, context_items: list) -> str:
         """Format retrieved IFC entities and document chunks into prompt text."""
@@ -266,14 +272,14 @@ class RAGService:
                 )
             elif isinstance(item, DocumentChunk):
                 parts.append(
-                    f"[DOC: {item.document.name} — Page {item.page_number or '?'}]\n"
-                    f"{item.content}"
+                    f"[DOC: {item.document.name} — Page {item.page_number or '?'}]\n{item.content}"
                 )
 
         return "\n\n---\n\n".join(parts)
 
-
-    def _format_history(self, session: ChatSession, max_exchanges: int = 3, max_chars_per_msg: int = 300) -> str:
+    def _format_history(
+        self, session: ChatSession, max_exchanges: int = 3, max_chars_per_msg: int = 300
+    ) -> str:
         """
         Format recent conversation history for context.
 
@@ -285,9 +291,9 @@ class RAGService:
         Token budget: ~800 tokens for 3 exchanges at 300 chars each.
         """
         recent_msgs = list(
-            session.messages
-            .filter(role__in=[Message.Role.USER, Message.Role.ASSISTANT])
-            .order_by('-created_at')[:max_exchanges * 2]
+            session.messages.filter(role__in=[Message.Role.USER, Message.Role.ASSISTANT]).order_by(
+                "-created_at"
+            )[: max_exchanges * 2]
         )
 
         if not recent_msgs:

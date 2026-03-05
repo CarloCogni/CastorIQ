@@ -22,11 +22,11 @@ def get_full_stack() -> str:
         del stack[-1]
 
     # Build the traceback string
-    trc = 'Traceback (most recent call last):\n'
-    stackstr = trc + ''.join(traceback.format_list(stack))
+    trc = "Traceback (most recent call last):\n"
+    stackstr = trc + "".join(traceback.format_list(stack))
 
     if exc is not None:
         # Append the exception info, removing duplicate "Traceback" header
-        stackstr += '  ' + traceback.format_exc().lstrip(trc)
+        stackstr += "  " + traceback.format_exc().lstrip(trc)
 
     return stackstr

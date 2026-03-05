@@ -2,7 +2,9 @@
 
 import json
 import logging
-from langchain_core.messages import SystemMessage, HumanMessage
+
+from langchain_core.messages import HumanMessage, SystemMessage
+
 from core.llm import get_llm
 
 logger = logging.getLogger(__name__)
@@ -71,7 +73,7 @@ Review the code against the user's request. Return JSON only.
 
 
 class Tier3Reviewer:
-
+    """LLM-powered code review that explains generated Tier 3 code in plain English."""
     def __init__(self, user=None):
         self.llm = get_llm(user=user, temperature=0.1, format_json=True)
 
@@ -84,11 +86,13 @@ class Tier3Reviewer:
         """Review generated Tier 3 code against the original user request."""
         messages = [
             SystemMessage(content=REVIEWER_SYSTEM_PROMPT),
-            HumanMessage(content=REVIEWER_USER_TEMPLATE.format(
-                user_message=user_message,
-                code=code,
-                entity_context=entity_context,
-            )),
+            HumanMessage(
+                content=REVIEWER_USER_TEMPLATE.format(
+                    user_message=user_message,
+                    code=code,
+                    entity_context=entity_context,
+                )
+            ),
         ]
 
         response = self.llm.invoke(messages)

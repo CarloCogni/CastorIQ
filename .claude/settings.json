@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd src*)",
+      "Bash(uv run*)",
+      "Bash(ruff *)",
+      "Bash(pytest*)",
+      "Bash(git *)",
+      "Bash(docker compose*)",
+      "Bash(cat *)",
+      "Bash(ls *)",
+      "Bash(find *)",
+      "Bash(grep *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(wc *)",
+      "Bash(diff *)",
+      "Bash(ollama *)",
+      "Bash(python *)",
+      "Bash(pip *)",
+      "Read(*)",
+      "Write(src/**)",
+      "Write(docs/**)",
+      "Write(scripts/**)",
+      "Write(tests/**)",
+      "Write(docker/**)"
+    ],
+    "deny": [
+      "Bash(rm -rf /)",
+      "Bash(docker compose*down -v*)",
+      "Write(.env)"
+    ]
+  }
+}

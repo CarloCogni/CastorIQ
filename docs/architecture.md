@@ -101,12 +101,12 @@ Proposes IFC modifications through a Risk-Stratified Autonomous Action (RSAA) fr
 
 A guardian layer that cross-references every modification proposal against the project's document corpus before presenting it for approval. Advises the user of confirming or conflicting requirements — never blocks.
 
-→ **[Full documentation](rav.md)**
+→ **[Full documentation](writeback/rav.md)**
 
 
 ## Database Models
 
-→ **[Full documentation](data-model.md)** *(detailed relationships and field reference)*
+→ **[Full documentation](data-models.md)** *(detailed relationships and field reference)*
 
 ### Summary
 

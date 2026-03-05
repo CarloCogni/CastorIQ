@@ -1,7 +1,9 @@
 import json
 import logging
 import re
-from langchain_core.messages import SystemMessage, HumanMessage
+
+from langchain_core.messages import HumanMessage, SystemMessage
+
 from core.llm import get_llm
 
 logger = logging.getLogger(__name__)
@@ -152,18 +154,20 @@ Generate self-contained IfcOpenShell code to fulfill this request. Return JSON o
 
 
 class Tier3Planner:
-
+    """Generates sandboxed IfcOpenShell Python code from natural language requests."""
     def __init__(self, user=None):
         self.llm = get_llm(user=user, temperature=0.1, format_json=True)
 
-
     def generate_code(self, user_message: str, entity_context: str) -> dict:
+        """Invoke LLM to produce a modify_ifc() function. Returns validated JSON with code, explanation, confidence."""
         messages = [
             SystemMessage(content=TIER3_SYSTEM_PROMPT),
-            HumanMessage(content=TIER3_USER_TEMPLATE.format(
-                user_message=user_message,
-                entity_context=entity_context,
-            )),
+            HumanMessage(
+                content=TIER3_USER_TEMPLATE.format(
+                    user_message=user_message,
+                    entity_context=entity_context,
+                )
+            ),
         ]
 
         response = self.llm.invoke(messages)
@@ -195,23 +199,17 @@ class Tier3Planner:
             raise CodeGenerationError("Response must be a JSON object")
 
         if result.get("tier") != 3:
-            raise CodeGenerationError(
-                f"Expected tier 3, got {result.get('tier')}"
-            )
+            raise CodeGenerationError(f"Expected tier 3, got {result.get('tier')}")
 
         code = result.get("code", "")
         if not code or not isinstance(code, str):
             raise CodeGenerationError("Response must include non-empty 'code' string")
 
         if "def modify_ifc" not in code:
-            raise CodeGenerationError(
-                "Code must define a 'modify_ifc' function"
-            )
+            raise CodeGenerationError("Code must define a 'modify_ifc' function")
 
         if "return" not in code:
-            raise CodeGenerationError(
-                "Function must return a result dict"
-            )
+            raise CodeGenerationError("Function must return a result dict")
 
         # Safety: check for forbidden patterns
         self._check_forbidden_patterns(code)
@@ -229,24 +227,24 @@ class Tier3Planner:
     def _check_forbidden_patterns(code: str) -> None:
         """Reject code with obviously dangerous patterns."""
         forbidden = [
-            (r'\bimport\s+os\b', "import os"),
-            (r'\bimport\s+sys\b', "import sys"),
-            (r'\bimport\s+subprocess\b', "import subprocess"),
-            (r'\bimport\s+shutil\b', "import shutil"),
-            (r'\bimport\s+pathlib\b', "import pathlib"),
-            (r'\bimport\s+socket\b', "import socket"),
-            (r'\bimport\s+urllib\b', "import urllib"),
-            (r'\bimport\s+http\b', "import http"),
-            (r'\bimport\s+requests\b', "import requests"),
-            (r'\b__import__\s*\(', "__import__()"),
-            (r'\bexec\s*\(', "exec()"),
-            (r'\beval\s*\(', "eval()"),
-            (r'\bcompile\s*\(', "compile()"),
-            (r'\bglobals\s*\(', "globals()"),
-            (r'\bgetattr\s*\(', "getattr()"),
-            (r'\bsetattr\s*\(', "setattr()"),
-            (r'(?<!\w)open\s*\(', "open()"),
-            (r'\bmodel\.write\b', "model.write() — saving is handled externally"),
+            (r"\bimport\s+os\b", "import os"),
+            (r"\bimport\s+sys\b", "import sys"),
+            (r"\bimport\s+subprocess\b", "import subprocess"),
+            (r"\bimport\s+shutil\b", "import shutil"),
+            (r"\bimport\s+pathlib\b", "import pathlib"),
+            (r"\bimport\s+socket\b", "import socket"),
+            (r"\bimport\s+urllib\b", "import urllib"),
+            (r"\bimport\s+http\b", "import http"),
+            (r"\bimport\s+requests\b", "import requests"),
+            (r"\b__import__\s*\(", "__import__()"),
+            (r"\bexec\s*\(", "exec()"),
+            (r"\beval\s*\(", "eval()"),
+            (r"\bcompile\s*\(", "compile()"),
+            (r"\bglobals\s*\(", "globals()"),
+            (r"\bgetattr\s*\(", "getattr()"),
+            (r"\bsetattr\s*\(", "setattr()"),
+            (r"(?<!\w)open\s*\(", "open()"),
+            (r"\bmodel\.write\b", "model.write() — saving is handled externally"),
         ]
 
         for pattern, label in forbidden:
@@ -258,4 +256,5 @@ class Tier3Planner:
 
 
 class CodeGenerationError(Exception):
+    """Raised when the LLM produces invalid or unsafe code."""
     pass

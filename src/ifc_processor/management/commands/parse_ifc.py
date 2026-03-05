@@ -42,16 +42,16 @@ class Command(BaseCommand):
 
             if ifc_file.status == IFCFile.Status.COMPLETED and not options["reprocess"]:
                 self.stdout.write(
-                    self.style.WARNING(
-                        f"File already processed. Use --reprocess to re-parse."
-                    )
+                    self.style.WARNING("File already processed. Use --reprocess to re-parse.")
                 )
                 return
 
             self._parse_file(ifc_file)
 
         else:
-            self.stdout.write(self.style.WARNING("No IFC file specified. Use --all-pending or provide an ID."))
+            self.stdout.write(
+                self.style.WARNING("No IFC file specified. Use --all-pending or provide an ID.")
+            )
 
             # Show available files
             files = IFCFile.objects.all()[:10]
@@ -68,13 +68,9 @@ class Command(BaseCommand):
 
         if success:
             self.stdout.write(
-                self.style.SUCCESS(
-                    f"✓ Parsed {ifc_file.name}: {parser.entities_created} entities"
-                )
+                self.style.SUCCESS(f"✓ Parsed {ifc_file.name}: {parser.entities_created} entities")
             )
         else:
             self.stdout.write(
-                self.style.ERROR(
-                    f"✗ Failed to parse {ifc_file.name}: {ifc_file.error_message}"
-                )
+                self.style.ERROR(f"✗ Failed to parse {ifc_file.name}: {ifc_file.error_message}")
             )

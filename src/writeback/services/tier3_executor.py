@@ -6,15 +6,13 @@ import shutil
 import signal
 import tempfile
 import traceback
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 import ifcopenshell
 import ifcopenshell.api
 import ifcopenshell.util.element
 
-from .ifc_writer import EntityChange, IFCWriteError
+from .ifc_writer import EntityChange
 
 logger = logging.getLogger(__name__)
 
@@ -23,11 +21,14 @@ MAX_CODE_LENGTH = 15_000
 
 
 class Tier3ExecutionError(Exception):
+    """Raised when Tier 3 code execution fails at any safety layer."""
     pass
 
 
 class Tier3TimeoutError(Tier3ExecutionError):
+    """Raised when generated code exceeds the execution timeout."""
     pass
+
 
 
 class Tier3Executor:
@@ -91,9 +92,7 @@ class Tier3Executor:
             raise
         except Exception as e:
             logger.exception(f"Tier3 execution failed: {e}")
-            raise Tier3ExecutionError(
-                f"Code execution failed: {type(e).__name__}: {e}"
-            ) from e
+            raise Tier3ExecutionError(f"Code execution failed: {type(e).__name__}: {e}") from e
         finally:
             # Clean up temp file
             try:
@@ -109,6 +108,7 @@ class Tier3Executor:
 
         # Close the file descriptor — we only need the path
         import os
+
         os.close(fd)
 
         tmp_path = Path(tmp_str)
@@ -123,42 +123,36 @@ class Tier3Executor:
             raise Tier3ExecutionError("Code is empty or not a string")
 
         if len(code) > MAX_CODE_LENGTH:
-            raise Tier3ExecutionError(
-                f"Code too long ({len(code)} chars, max {MAX_CODE_LENGTH})"
-            )
+            raise Tier3ExecutionError(f"Code too long ({len(code)} chars, max {MAX_CODE_LENGTH})")
 
         if "def modify_ifc" not in code:
-            raise Tier3ExecutionError(
-                "Code must define a 'modify_ifc' function"
-            )
+            raise Tier3ExecutionError("Code must define a 'modify_ifc' function")
 
         # Same forbidden patterns as planner — defence in depth
         forbidden = [
-            (r'\bimport\s+os\b', "import os"),
-            (r'\bimport\s+sys\b', "import sys"),
-            (r'\bimport\s+subprocess\b', "import subprocess"),
-            (r'\bimport\s+shutil\b', "import shutil"),
-            (r'\bimport\s+pathlib\b', "import pathlib"),
-            (r'\bimport\s+socket\b', "import socket"),
-            (r'\bimport\s+urllib\b', "import urllib"),
-            (r'\bimport\s+http\b', "import http"),
-            (r'\bimport\s+requests\b', "import requests"),
-            (r'\b__import__\s*\(', "__import__()"),
-            (r'\bexec\s*\(', "exec()"),
-            (r'\beval\s*\(', "eval()"),
-            (r'\bcompile\s*\(', "compile()"),
-            (r'\bglobals\s*\(', "globals()"),
-            (r'\bgetattr\s*\(', "getattr()"),
-            (r'\bsetattr\s*\(', "setattr()"),
-            (r'(?<!\w)open\s*\(', "open()"),
-            (r'\bmodel\.write\b', "model.write()"),
+            (r"\bimport\s+os\b", "import os"),
+            (r"\bimport\s+sys\b", "import sys"),
+            (r"\bimport\s+subprocess\b", "import subprocess"),
+            (r"\bimport\s+shutil\b", "import shutil"),
+            (r"\bimport\s+pathlib\b", "import pathlib"),
+            (r"\bimport\s+socket\b", "import socket"),
+            (r"\bimport\s+urllib\b", "import urllib"),
+            (r"\bimport\s+http\b", "import http"),
+            (r"\bimport\s+requests\b", "import requests"),
+            (r"\b__import__\s*\(", "__import__()"),
+            (r"\bexec\s*\(", "exec()"),
+            (r"\beval\s*\(", "eval()"),
+            (r"\bcompile\s*\(", "compile()"),
+            (r"\bglobals\s*\(", "globals()"),
+            (r"\bgetattr\s*\(", "getattr()"),
+            (r"\bsetattr\s*\(", "setattr()"),
+            (r"(?<!\w)open\s*\(", "open()"),
+            (r"\bmodel\.write\b", "model.write()"),
         ]
 
         for pattern, label in forbidden:
             if re.search(pattern, code):
-                raise Tier3ExecutionError(
-                    f"Code contains forbidden pattern: {label}"
-                )
+                raise Tier3ExecutionError(f"Code contains forbidden pattern: {label}")
 
     def _build_restricted_globals(self) -> dict:
         """
@@ -203,23 +197,56 @@ class Tier3Executor:
 
         allowed = [
             # Types
-            "True", "False", "None",
-            "int", "float", "str", "bool", "bytes",
-            "list", "dict", "tuple", "set", "frozenset",
+            "True",
+            "False",
+            "None",
+            "int",
+            "float",
+            "str",
+            "bool",
+            "bytes",
+            "list",
+            "dict",
+            "tuple",
+            "set",
+            "frozenset",
             "type",
             # Iteration & ranges
-            "range", "enumerate", "zip", "map", "filter",
-            "sorted", "reversed", "iter", "next",
+            "range",
+            "enumerate",
+            "zip",
+            "map",
+            "filter",
+            "sorted",
+            "reversed",
+            "iter",
+            "next",
             # Length & membership
-            "len", "min", "max", "sum", "abs", "round",
-            "any", "all",
+            "len",
+            "min",
+            "max",
+            "sum",
+            "abs",
+            "round",
+            "any",
+            "all",
             # String & repr
-            "repr", "str", "format", "print",
-            "isinstance", "issubclass",
-            "id", "hash",
+            "repr",
+            "str",
+            "format",
+            "print",
+            "isinstance",
+            "issubclass",
+            "id",
+            "hash",
             # Exceptions
-            "Exception", "ValueError", "TypeError", "KeyError",
-            "IndexError", "AttributeError", "RuntimeError",
+            "Exception",
+            "ValueError",
+            "TypeError",
+            "KeyError",
+            "IndexError",
+            "AttributeError",
+            "RuntimeError",
             "StopIteration",
         ]
 
@@ -236,7 +263,11 @@ class Tier3Executor:
             for allowed_name, mod in allowed_modules.items():
                 if mod is None:
                     continue
-                if name == allowed_name or name.startswith(allowed_name + ".") or allowed_name.startswith(name + "."):
+                if (
+                    name == allowed_name
+                    or name.startswith(allowed_name + ".")
+                    or allowed_name.startswith(name + ".")
+                ):
                     is_allowed = True
                     break
 
@@ -273,7 +304,7 @@ class Tier3Executor:
         return safe
 
     # Custom __import__ that only allows whitelisted modules
-    def _restricted_import(name, globals=None, locals=None, fromlist=(), level=0):
+    def _restricted_import(name, globals=None, locals=None, fromlist=(), level=0):  # noqa: N805
         globals = globals or {}
         allowed_modules = globals.get("_allowed_modules", {})
 
@@ -282,7 +313,11 @@ class Tier3Executor:
         for allowed_name in allowed_modules:
             if allowed_modules[allowed_name] is None:
                 continue
-            if name == allowed_name or name.startswith(allowed_name + ".") or allowed_name.startswith(name + "."):
+            if (
+                name == allowed_name
+                or name.startswith(allowed_name + ".")
+                or allowed_name.startswith(name + ".")
+            ):
                 is_allowed = True
                 break
 
@@ -312,7 +347,7 @@ class Tier3Executor:
         raise ImportError(
             f"Import '{name}' resolved but module not available. "
             f"Allowed: {', '.join(k for k, v in allowed_modules.items() if v is not None)}"
-            )
+        )
 
     def _run_sandboxed(self, code: str, model) -> dict:
         """
@@ -331,10 +366,9 @@ class Tier3Executor:
         # Set timeout (Unix only — on Windows this is a no-op)
         old_handler = None
         try:
+
             def _timeout_handler(signum, frame):
-                raise Tier3TimeoutError(
-                    f"Code execution exceeded {self.timeout}s timeout"
-                )
+                raise Tier3TimeoutError(f"Code execution exceeded {self.timeout}s timeout")
 
             old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
             signal.alarm(self.timeout)
@@ -349,14 +383,10 @@ class Tier3Executor:
             # Extract the function
             modify_fn = local_namespace.get("modify_ifc")
             if modify_fn is None:
-                raise Tier3ExecutionError(
-                    "Code did not define a 'modify_ifc' function"
-                )
+                raise Tier3ExecutionError("Code did not define a 'modify_ifc' function")
 
             if not callable(modify_fn):
-                raise Tier3ExecutionError(
-                    "'modify_ifc' is not callable"
-                )
+                raise Tier3ExecutionError("'modify_ifc' is not callable")
 
             # Call it with the model
             result = modify_fn(model)
@@ -373,9 +403,7 @@ class Tier3Executor:
         except Exception as e:
             tb = traceback.format_exc()
             logger.error(f"Tier3 code execution error:\n{tb}")
-            raise Tier3ExecutionError(
-                f"Code execution error: {type(e).__name__}: {e}"
-            )
+            raise Tier3ExecutionError(f"Code execution error: {type(e).__name__}: {e}")
         finally:
             # Cancel timeout
             try:
@@ -394,45 +422,37 @@ class Tier3Executor:
             )
 
         if "summary" not in result:
-            raise Tier3ExecutionError(
-                "Return dict must include 'summary' key"
-            )
+            raise Tier3ExecutionError("Return dict must include 'summary' key")
 
         if "changes" not in result:
-            raise Tier3ExecutionError(
-                "Return dict must include 'changes' key"
-            )
+            raise Tier3ExecutionError("Return dict must include 'changes' key")
 
         changes = result["changes"]
         if not isinstance(changes, list):
-            raise Tier3ExecutionError(
-                f"'changes' must be a list, got {type(changes).__name__}"
-            )
+            raise Tier3ExecutionError(f"'changes' must be a list, got {type(changes).__name__}")
 
         required_keys = {"global_id", "entity_name", "ifc_type", "description"}
         for i, change in enumerate(changes):
             if not isinstance(change, dict):
-                raise Tier3ExecutionError(
-                    f"changes[{i}] must be a dict"
-                )
+                raise Tier3ExecutionError(f"changes[{i}] must be a dict")
             missing = required_keys - set(change.keys())
             if missing:
-                raise Tier3ExecutionError(
-                    f"changes[{i}] missing required keys: {missing}"
-                )
+                raise Tier3ExecutionError(f"changes[{i}] missing required keys: {missing}")
 
     @staticmethod
     def _result_to_changes(result: dict) -> list[EntityChange]:
         """Convert the code's return dicts to EntityChange dataclass instances."""
         changes = []
         for item in result.get("changes", []):
-            changes.append(EntityChange(
-                global_id=str(item.get("global_id", "UNKNOWN")),
-                entity_name=str(item.get("entity_name", "")),
-                ifc_type=str(item.get("ifc_type", "")),
-                pset="(code)",
-                property=str(item.get("description", "")),
-                old_value=str(item.get("old_value", "")),
-                new_value=str(item.get("new_value", "")),
-            ))
+            changes.append(
+                EntityChange(
+                    global_id=str(item.get("global_id", "UNKNOWN")),
+                    entity_name=str(item.get("entity_name", "")),
+                    ifc_type=str(item.get("ifc_type", "")),
+                    pset="(code)",
+                    property=str(item.get("description", "")),
+                    old_value=str(item.get("old_value", "")),
+                    new_value=str(item.get("new_value", "")),
+                )
+            )
         return changes

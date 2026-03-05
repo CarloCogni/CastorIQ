@@ -214,25 +214,45 @@ python manage.py dump_context --grep "FireRating\|fire_rating" --compact
 
 ## 📖 DOCS ONLY — "I need design context, not code"
 
-### 22. All docs + tree
+### 22. All docs, nothing else
 ```bash
-python manage.py dump_context --tree-only --docs all --compact
+python manage.py dump_context --docs-only --compact
 ```
-**When:** Architecture review, planning session, or design discussion. Tree for orientation, all docs for substance.
+**When:** Architecture review, planning session, or design discussion. All docs, zero code, zero tree.
+**Tip:** Add `--tree` if you also want the project tree for orientation.
 
-### 23. Specific docs by name
+### 23. Specific docs only
 ```bash
-python manage.py dump_context --docs architecture conventions
+python manage.py dump_context --docs-only --docs architecture ifc-processor --compact
 ```
-**When:** You need specific docs. No `.md` extension needed, it fuzzy-matches.
+**When:** You need exactly these docs and nothing else. No `.md` extension needed, it fuzzy-matches.
 
-### 24. Writeback subsystem docs
+### 24. Docs + tree (the planning combo)
 ```bash
-python manage.py dump_context --docs writeback
+python manage.py dump_context --docs-only --tree --docs all --compact
 ```
-**When:** Pulls everything under `docs/writeback/` (overview.md, tier1-reference.md). Folder names work as selectors.
+**When:** Full design context — tree for structure, docs for substance. Still no code.
 
-### 25. Docs + models (the design session combo)
+### 25. Writeback subsystem docs
+```bash
+python manage.py dump_context --docs-only --docs writeback
+```
+**When:** Pulls everything under `docs/writeback/`. Folder names work as selectors.
+```
+
+Then bump old 25 to 26 and so on through the rest of the numbering.
+
+Also add `docs_only` to the **Available preset keys** table:
+```
+| `docs_only` | bool | `true` |
+```
+
+And update the **TOKEN BUDGET CHEAT SHEET** — replace the `--tree-only --docs all` row with:
+```
+| `--docs-only` | ~3-8k | ~2.5-6k | Design discussions |
+| `--docs-only --tree` | ~6-10k | ~5-8k | Planning with structure |
+
+### 26. Docs + models (the design session combo)
 ```bash
 python manage.py dump_context --models-only --docs architecture rag-pipeline guardian --compact
 ```

@@ -8,10 +8,13 @@ This is the ONLY service that calls the LLM in the Tier 1 flow.
 
 import json
 import logging
-from langchain_core.messages import SystemMessage, HumanMessage
+
+from langchain_core.messages import HumanMessage, SystemMessage
+
+from core.llm import get_llm
+
 from .ifc_standard_psets import get_applicable_psets
 from .message_normalizer import normalize as normalize_message
-from core.llm import get_llm
 
 logger = logging.getLogger(__name__)
 
@@ -171,10 +174,12 @@ class IntentClassifier:
 
         messages = [
             SystemMessage(content=SYSTEM_PROMPT),
-            HumanMessage(content=USER_TEMPLATE.format(
-                user_message=user_message,
-                entity_context=entity_context,
-            )),
+            HumanMessage(
+                content=USER_TEMPLATE.format(
+                    user_message=user_message,
+                    entity_context=entity_context,
+                )
+            ),
         ]
 
         response = self.llm.invoke(messages)
@@ -183,18 +188,14 @@ class IntentClassifier:
             parsed = json.loads(response.content)
         except json.JSONDecodeError as e:
             logger.error(f"LLM returned invalid JSON: {response.content}")
-            raise IntentParseError(
-                f"Could not parse LLM response as JSON: {e}"
-            ) from e
+            raise IntentParseError(f"Could not parse LLM response as JSON: {e}") from e
 
             # Handle chained operations (LLM returns array)
         if isinstance(parsed, list):
             intents = []
             for i, sub_intent in enumerate(parsed):
                 if not isinstance(sub_intent, dict):
-                    raise IntentParseError(
-                        f"Chain element {i} is not a valid intent object"
-                    )
+                    raise IntentParseError(f"Chain element {i} is not a valid intent object")
                 self._validate_structure(sub_intent)
                 # Normalize confidence on each
                 raw_conf = sub_intent.get("confidence", 0.0)
@@ -235,26 +236,22 @@ class IntentClassifier:
         tier = intent["tier"]
 
         if not isinstance(tier, int) or tier not in (1, 2, 3):
-            raise IntentParseError(
-                f"Invalid tier: {tier}. Must be 1, 2, or 3."
-            )
+            raise IntentParseError(f"Invalid tier: {tier}. Must be 1, 2, or 3.")
 
         if tier == 1:
             required = ["operation", "filter", "confidence", "explanation"]
             missing = [f for f in required if f not in intent]
             if missing:
-                raise IntentParseError(
-                    f"Tier 1 intent missing fields: {missing}"
-                )
+                raise IntentParseError(f"Tier 1 intent missing fields: {missing}")
 
             valid_ops = {
-                "SET_PROPERTY", "ADD_PROPERTY",
-                "REMOVE_PROPERTY", "SET_ATTRIBUTE",
+                "SET_PROPERTY",
+                "ADD_PROPERTY",
+                "REMOVE_PROPERTY",
+                "SET_ATTRIBUTE",
             }
             if intent["operation"] not in valid_ops:
-                raise IntentParseError(
-                    f"Unknown Tier 1 operation: {intent['operation']}"
-                )
+                raise IntentParseError(f"Unknown Tier 1 operation: {intent['operation']}")
 
     def build_entity_context(self, entities) -> str:
         """
@@ -290,6 +287,7 @@ class IntentClassifier:
                     if "." in key:
                         pset_name, prop_name = key.split(".", 1)
                         from .ifc_standard_psets import lookup_property
+
                         info = lookup_property(pset_name, prop_name)
                         if info:
                             type_str, enum_values = info
@@ -326,4 +324,5 @@ class IntentClassifier:
 
 class IntentParseError(Exception):
     """Raised when the LLM output cannot be parsed into a valid intent."""
+
     pass

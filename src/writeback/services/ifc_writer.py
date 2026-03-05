@@ -9,16 +9,20 @@ for safe property modifications. The LLM never touches this code.
 import logging
 from dataclasses import dataclass
 from pathlib import Path
+
 import ifcopenshell
 import ifcopenshell.api
 import ifcopenshell.util.element as element_util
+
 from .ifc_standard_psets import coerce_from_registry, is_standard_pset
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class EntityChange:
     """A single property change applied to one entity."""
+
     global_id: str
     entity_name: str
     ifc_type: str
@@ -27,9 +31,12 @@ class EntityChange:
     old_value: str
     new_value: str
 
+
 class IFCWriteError(Exception):
     """Raised when an IFC write operation fails."""
+
     pass
+
 
 class Tier1Writer:
     """
@@ -105,9 +112,7 @@ class Tier1Writer:
                 psets = element_util.get_psets(element)
 
                 if pset not in psets:
-                    raise IFCWriteError(
-                        f"Property set '{pset}' not found on {element.Name or gid}"
-                    )
+                    raise IFCWriteError(f"Property set '{pset}' not found on {element.Name or gid}")
 
                 real_prop = self._resolve_property_name(psets[pset], prop)
                 if real_prop is None:
@@ -156,21 +161,23 @@ class Tier1Writer:
                         f"Failed to set '{pset}.{real_prop}' on {element.Name or gid}: {e}"
                     ) from e
 
-                changes.append(EntityChange(
-                    global_id=gid,
-                    entity_name=element.Name or "",
-                    ifc_type=element.is_a(),
-                    pset=pset,
-                    property=prop,
-                    old_value=str(old_value),
-                    new_value=str(coerced_value),
-                ))
+                changes.append(
+                    EntityChange(
+                        global_id=gid,
+                        entity_name=element.Name or "",
+                        ifc_type=element.is_a(),
+                        pset=pset,
+                        property=prop,
+                        old_value=str(old_value),
+                        new_value=str(coerced_value),
+                    )
+                )
 
                 logger.debug(
                     f"SET_PROPERTY: {element.Name or gid} "
                     f"{pset}.{prop}: {old_value} → {coerced_value}"
                 )
-        except Exception as e:
+        except Exception:
             self.model.undo()
             raise
 
@@ -231,16 +238,18 @@ class Tier1Writer:
                     properties={prop: coerced_value},
                 )
 
-                changes.append(EntityChange(
-                    global_id=gid,
-                    entity_name=element.Name or "",
-                    ifc_type=element.is_a(),
-                    pset=pset,
-                    property=prop,
-                    old_value="(none)",
-                    new_value=str(coerced_value),
-                ))
-        except Exception as e:
+                changes.append(
+                    EntityChange(
+                        global_id=gid,
+                        entity_name=element.Name or "",
+                        ifc_type=element.is_a(),
+                        pset=pset,
+                        property=prop,
+                        old_value="(none)",
+                        new_value=str(coerced_value),
+                    )
+                )
+        except Exception:
             self.model.undo()
             raise
         return changes
@@ -278,16 +287,18 @@ class Tier1Writer:
                     properties={prop: None},  # None removes the property
                 )
 
-                changes.append(EntityChange(
-                    global_id=gid,
-                    entity_name=element.Name or "",
-                    ifc_type=element.is_a(),
-                    pset=pset,
-                    property=prop,
-                    old_value=str(old_value),
-                    new_value="(removed)",
-                ))
-        except Exception as e:
+                changes.append(
+                    EntityChange(
+                        global_id=gid,
+                        entity_name=element.Name or "",
+                        ifc_type=element.is_a(),
+                        pset=pset,
+                        property=prop,
+                        old_value=str(old_value),
+                        new_value="(removed)",
+                    )
+                )
+        except Exception:
             self.model.undo()
             raise
         return changes
@@ -321,16 +332,18 @@ class Tier1Writer:
                     attributes={attribute: value},
                 )
 
-                changes.append(EntityChange(
-                    global_id=gid,
-                    entity_name=element.Name or "",
-                    ifc_type=element.is_a(),
-                    pset="(attribute)",
-                    property=attribute,
-                    old_value=str(old_value) if old_value else "(none)",
-                    new_value=str(value),
-                ))
-        except Exception as e:
+                changes.append(
+                    EntityChange(
+                        global_id=gid,
+                        entity_name=element.Name or "",
+                        ifc_type=element.is_a(),
+                        pset="(attribute)",
+                        property=attribute,
+                        old_value=str(old_value) if old_value else "(none)",
+                        new_value=str(value),
+                    )
+                )
+        except Exception:
             self.model.undo()
             raise
         return changes
@@ -381,9 +394,15 @@ class Tier1Writer:
                     return value
                 return str(value).strip().lower() in ("true", "1", "yes")
 
-            if type_name in ("IfcReal", "IfcFloat", "IfcThermalTransmittanceMeasure",
-                             "IfcLengthMeasure", "IfcAreaMeasure", "IfcVolumeMeasure",
-                             "IfcPositiveLengthMeasure"):
+            if type_name in (
+                "IfcReal",
+                "IfcFloat",
+                "IfcThermalTransmittanceMeasure",
+                "IfcLengthMeasure",
+                "IfcAreaMeasure",
+                "IfcVolumeMeasure",
+                "IfcPositiveLengthMeasure",
+            ):
                 try:
                     return float(value)
                 except (ValueError, TypeError):

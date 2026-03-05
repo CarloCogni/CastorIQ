@@ -6,26 +6,43 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('auth', '0012_alter_user_first_name_max_length'),
-        ('core', '0005_llmconfig'),
+        ("auth", "0012_alter_user_first_name_max_length"),
+        ("core", "0005_llmconfig"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='UserLLMConfig',
+            name="UserLLMConfig",
             fields=[
-                ('user', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, primary_key=True, related_name='llm_config', serialize=False, to=settings.AUTH_USER_MODEL)),
-                ('active_model', models.CharField(blank=True, default='', help_text='Ollama model tag (e.g. qwen3:14b). Blank = use .env default.', max_length=100, verbose_name='Active Model')),
-                ('updated_at', models.DateTimeField(auto_now=True)),
+                (
+                    "user",
+                    models.OneToOneField(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        primary_key=True,
+                        related_name="llm_config",
+                        serialize=False,
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "active_model",
+                    models.CharField(
+                        blank=True,
+                        default="",
+                        help_text="Ollama model tag (e.g. qwen3:14b). Blank = use .env default.",
+                        max_length=100,
+                        verbose_name="Active Model",
+                    ),
+                ),
+                ("updated_at", models.DateTimeField(auto_now=True)),
             ],
             options={
-                'verbose_name': 'User LLM Configuration',
-                'verbose_name_plural': 'User LLM Configurations',
+                "verbose_name": "User LLM Configuration",
+                "verbose_name_plural": "User LLM Configurations",
             },
         ),
         migrations.DeleteModel(
-            name='LLMConfig',
+            name="LLMConfig",
         ),
     ]

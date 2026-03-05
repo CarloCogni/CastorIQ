@@ -4,15 +4,20 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('core', '0003_errorlog_supabase_id'),
+        ("core", "0003_errorlog_supabase_id"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='errorlog',
-            name='original_username',
-            field=models.CharField(blank=True, default='', help_text='Username from the original machine (for cross-machine imports)', max_length=150, verbose_name='Original Username'),
+            model_name="errorlog",
+            name="original_username",
+            field=models.CharField(
+                blank=True,
+                default="",
+                help_text="Username from the original machine (for cross-machine imports)",
+                max_length=150,
+                verbose_name="Original Username",
+            ),
         ),
     ]

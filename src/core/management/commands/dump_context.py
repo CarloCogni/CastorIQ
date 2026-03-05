@@ -1,5 +1,5 @@
 # core/management/commands/dump_context.py
-"""
+r"""
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║                     CASTOR — dump_context Management Command               ║
 ║               Smart Project Context Dumper for LLM-Assisted Development    ║
@@ -20,6 +20,7 @@ QUICK REFERENCE:
     │  python manage.py dump_context --skeleton          AST skeletons only │
     │  python manage.py dump_context --tree              Project tree only  │
     │  python manage.py dump_context --docs all          Include all docs   │
+    │  python manage.py dump_context --docs-only         Docs only, no code │
     │  python manage.py dump_context --diff HEAD~3       Changed files only │
     │  python manage.py dump_context --grep FireRating   Files with pattern │
     │  python manage.py dump_context --preset writeback  Named preset       │
@@ -53,35 +54,41 @@ USAGE EXAMPLES:
        $ python manage.py dump_context --docs writeback
        Includes docs from docs/ by name, folder, or all. No .md needed.
 
-    7. GIT DIFF MODE (only changed files):
+    7. DOCS ONLY (no code at all):
+       $ python manage.py dump_context --docs-only
+       $ python manage.py dump_context --docs-only --docs architecture ifc-processor
+       $ python manage.py dump_context --docs-only --compact
+       Like --tree-only but for docs. If no --docs specified, includes all.
+
+    8. GIT DIFF MODE (only changed files):
        $ python manage.py dump_context --diff HEAD~3
        $ python manage.py dump_context --diff main
        Only includes files that changed since a git ref. Perfect for
        "here's what I changed, help me debug" sessions.
 
-    8. GREP MODE (files containing a pattern):
+    9. GREP MODE (files containing a pattern):
        $ python manage.py dump_context --grep ModificationProposal
        Only includes Python files that contain the pattern. Combine with
        --skeleton for everything else.
 
-    9. MODELS ONLY:
+    10. MODELS ONLY:
        $ python manage.py dump_context --models-only
 
-    10. FULL CODE FOR ONE APP, SKELETON FOR THE REST:
+    11. FULL CODE FOR ONE APP, SKELETON FOR THE REST:
         $ python manage.py dump_context --apps writeback --full-apps writeback
         Full code for writeback, AST skeletons for everything else.
 
-    11. PRESETS (named combos):
+    12. PRESETS (named combos):
         $ python manage.py dump_context --preset writeback
         $ python manage.py dump_context --preset overview
         $ python manage.py dump_context --preset models
         See BUILT-IN PRESETS below, or define custom ones in .dump_presets.json
 
-    12. TOKEN ESTIMATION:
+    13. TOKEN ESTIMATION:
         $ python manage.py dump_context --estimate
         $ python manage.py dump_context --estimate --apps writeback
 
-    13. LIST PRESETS:
+    14. LIST PRESETS:
         $ python manage.py dump_context --list-presets
 
 COMBINING FLAGS — REAL WORKFLOW EXAMPLES:
@@ -152,7 +159,6 @@ import logging
 import os
 import re
 import subprocess
-import textwrap
 from datetime import datetime
 from pathlib import Path
 
@@ -163,6 +169,7 @@ logger = logging.getLogger(__name__)
 
 
 # ── Token Estimation ───────────────────────────────────────────────────────
+
 
 def estimate_tokens(text: str) -> int:
     """Rough token estimate: ~1 token per 4 characters for code."""
@@ -178,6 +185,7 @@ def format_tokens(count: int) -> str:
 
 # ── AST Skeleton Extraction ───────────────────────────────────────────────
 
+
 def extract_skeleton(file_path: str) -> str:
     """
     Extract an AST skeleton from a Python file.
@@ -188,7 +196,7 @@ def extract_skeleton(file_path: str) -> str:
     while cutting ~80% of the tokens.
     """
     try:
-        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+        with open(file_path, encoding="utf-8", errors="ignore") as f:
             source = f.read()
     except Exception:
         return f"# Could not read {file_path}\n"
@@ -210,19 +218,19 @@ def extract_skeleton(file_path: str) -> str:
             for alias in node.names:
                 imports.append(alias.name)
         elif isinstance(node, ast.ImportFrom):
-            module = node.module or ''
-            names = ', '.join(a.name for a in node.names)
+            module = node.module or ""
+            names = ", ".join(a.name for a in node.names)
             imports.append(f"from {module} import {names}")
     if imports:
         if len(imports) <= 10:
             for imp in imports:
-                if not imp.startswith('from'):
+                if not imp.startswith("from"):
                     lines.append(f"import {imp}")
                 else:
                     lines.append(imp)
         else:
             for imp in imports[:8]:
-                if not imp.startswith('from'):
+                if not imp.startswith("from"):
                     lines.append(f"import {imp}")
                 else:
                     lines.append(imp)
@@ -272,8 +280,11 @@ def _extract_function(node, source: str, indent: int = 0) -> str:
             decorators.append(f"{prefix}@{dec_seg}")
 
     docstring = ""
-    if (node.body and isinstance(node.body[0], ast.Expr) and
-            isinstance(node.body[0].value, (ast.Constant, ast.Str))):
+    if (
+        node.body
+        and isinstance(node.body[0], ast.Expr)
+        and isinstance(node.body[0].value, (ast.Constant, ast.Str))
+    ):
         doc_value = node.body[0].value
         if isinstance(doc_value, ast.Constant):
             raw_doc = str(doc_value.value)
@@ -310,12 +321,13 @@ def _extract_class(node, source: str) -> str:
 
     lines.append(f"class {node.name}{bases_str}:")
 
-    if (node.body and isinstance(node.body[0], ast.Expr) and
-            isinstance(node.body[0].value, (ast.Constant, ast.Str))):
+    if (
+        node.body
+        and isinstance(node.body[0], ast.Expr)
+        and isinstance(node.body[0].value, (ast.Constant, ast.Str))
+    ):
         doc_value = node.body[0].value
-        raw_doc = (
-            str(doc_value.value) if isinstance(doc_value, ast.Constant) else doc_value.s
-        )
+        raw_doc = str(doc_value.value) if isinstance(doc_value, ast.Constant) else doc_value.s
         if len(raw_doc) > 150:
             raw_doc = raw_doc[:147] + "..."
         lines.append(f'    """{raw_doc}"""')
@@ -362,6 +374,7 @@ def _extract_class(node, source: str) -> str:
 
 # ── Project Tree Generator ────────────────────────────────────────────────
 
+
 def generate_project_tree(
     root_dir: Path,
     ignore_dirs: set,
@@ -381,8 +394,17 @@ def generate_project_tree(
         ...
     """
     lines = []
-    _tree_walk(root_dir, root_dir, ignore_dirs, ignore_files, include_exts,
-               lines, prefix="", max_depth=max_depth, current_depth=0)
+    _tree_walk(
+        root_dir,
+        root_dir,
+        ignore_dirs,
+        ignore_files,
+        include_exts,
+        lines,
+        prefix="",
+        max_depth=max_depth,
+        current_depth=0,
+    )
     return "\n".join(lines)
 
 
@@ -410,7 +432,7 @@ def _tree_walk(
     # Filter entries
     filtered = []
     for entry in entries:
-        if entry.name.startswith('.') and entry.name not in ('.env.example',):
+        if entry.name.startswith(".") and entry.name not in (".env.example",):
             continue
         if entry.is_dir():
             if entry.name in ignore_dirs:
@@ -422,22 +444,33 @@ def _tree_walk(
             filtered.append(entry)
 
     for i, entry in enumerate(filtered):
-        is_last = (i == len(filtered) - 1)
+        is_last = i == len(filtered) - 1
         connector = "└── " if is_last else "├── "
         child_prefix = prefix + ("    " if is_last else "│   ")
 
         if entry.is_dir():
             lines.append(f"{prefix}{connector}{entry.name}/")
-            _tree_walk(entry, root, ignore_dirs, ignore_files, include_exts,
-                       lines, child_prefix, max_depth, current_depth + 1)
+            _tree_walk(
+                entry,
+                root,
+                ignore_dirs,
+                ignore_files,
+                include_exts,
+                lines,
+                child_prefix,
+                max_depth,
+                current_depth + 1,
+            )
         else:
             # File metadata
             meta = ""
             ext = entry.suffix.lower()
-            if ext in include_exts or ext in {'.md', '.txt', '.cfg', '.toml', '.yml', '.yaml'}:
+            if ext in include_exts or ext in {".md", ".txt", ".cfg", ".toml", ".yml", ".yaml"}:
                 try:
-                    content = entry.read_text(encoding='utf-8', errors='ignore')
-                    line_count = content.count('\n') + (1 if content and not content.endswith('\n') else 0)
+                    content = entry.read_text(encoding="utf-8", errors="ignore")
+                    line_count = content.count("\n") + (
+                        1 if content and not content.endswith("\n") else 0
+                    )
                     tokens = estimate_tokens(content)
                     meta = f"  ({line_count} lines, ~{format_tokens(tokens)} tokens)"
                 except Exception:
@@ -447,6 +480,7 @@ def _tree_walk(
 
 
 # ── Compact Tree Generator ─────────────────────────────────────────────────
+
 
 def generate_compact_tree(
     root_dir: Path,
@@ -470,8 +504,13 @@ def generate_compact_tree(
     """
     lines = []
     _compact_tree_walk(
-        root_dir, ignore_dirs, ignore_files, include_exts,
-        lines, depth=0, max_depth=max_depth,
+        root_dir,
+        ignore_dirs,
+        ignore_files,
+        include_exts,
+        lines,
+        depth=0,
+        max_depth=max_depth,
     )
     return "\n".join(lines)
 
@@ -496,25 +535,30 @@ def _compact_tree_walk(
         return
 
     for entry in entries:
-        if entry.name.startswith('.') and entry.name not in ('.env.example',):
+        if entry.name.startswith(".") and entry.name not in (".env.example",):
             continue
         if entry.is_dir():
             if entry.name in ignore_dirs:
                 continue
             lines.append(f"{'  ' * depth}{entry.name}/")
             _compact_tree_walk(
-                entry, ignore_dirs, ignore_files, include_exts,
-                lines, depth + 1, max_depth,
+                entry,
+                ignore_dirs,
+                ignore_files,
+                include_exts,
+                lines,
+                depth + 1,
+                max_depth,
             )
         else:
             if entry.name in ignore_files:
                 continue
             meta = ""
             ext = entry.suffix.lower()
-            if ext in include_exts or ext in {'.md', '.txt', '.cfg', '.toml', '.yml', '.yaml'}:
+            if ext in include_exts or ext in {".md", ".txt", ".cfg", ".toml", ".yml", ".yaml"}:
                 try:
-                    content = entry.read_text(encoding='utf-8', errors='ignore')
-                    lc = content.count('\n') + (1 if content and not content.endswith('\n') else 0)
+                    content = entry.read_text(encoding="utf-8", errors="ignore")
+                    lc = content.count("\n") + (1 if content and not content.endswith("\n") else 0)
                     tok = estimate_tokens(content)
                     meta = f"  {lc} lines  ~{format_tokens(tok)} tok"
                 except Exception:
@@ -523,6 +567,7 @@ def _compact_tree_walk(
 
 
 # ── Text Compression (--compact) ──────────────────────────────────────────
+
 
 def strip_comments(source: str) -> str:
     """
@@ -544,8 +589,11 @@ def strip_comments(source: str) -> str:
     docstring_lines = set()
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Module)):
-            if (node.body and isinstance(node.body[0], ast.Expr) and
-                    isinstance(node.body[0].value, (ast.Constant, ast.Str))):
+            if (
+                node.body
+                and isinstance(node.body[0], ast.Expr)
+                and isinstance(node.body[0].value, (ast.Constant, ast.Str))
+            ):
                 doc_node = node.body[0]
                 for line_no in range(doc_node.lineno, doc_node.end_lineno + 1):
                     docstring_lines.add(line_no)
@@ -561,17 +609,17 @@ def strip_comments(source: str) -> str:
         stripped = _strip_inline_comment(line)
 
         # Skip pure comment lines
-        if stripped.strip() == '':
+        if stripped.strip() == "":
             # Was this a comment-only line? (original had content)
-            if line.strip() and line.strip().startswith('#'):
+            if line.strip() and line.strip().startswith("#"):
                 continue
             # Keep blank lines (collapsed separately)
-            result_lines.append('')
+            result_lines.append("")
             continue
 
         result_lines.append(stripped)
 
-    return '\n'.join(result_lines)
+    return "\n".join(result_lines)
 
 
 def _strip_line_comments(source: str) -> str:
@@ -579,10 +627,10 @@ def _strip_line_comments(source: str) -> str:
     lines = []
     for line in source.splitlines():
         stripped = _strip_inline_comment(line)
-        if stripped.strip() == '' and line.strip().startswith('#'):
+        if stripped.strip() == "" and line.strip().startswith("#"):
             continue
         lines.append(stripped)
-    return '\n'.join(lines)
+    return "\n".join(lines)
 
 
 def _strip_inline_comment(line: str) -> str:
@@ -598,14 +646,14 @@ def _strip_inline_comment(line: str) -> str:
     i = 0
     while i < len(line):
         ch = line[i]
-        if ch == '\\' and i + 1 < len(line):
+        if ch == "\\" and i + 1 < len(line):
             i += 2  # skip escaped character
             continue
         if ch == '"' and not in_single:
             in_double = not in_double
         elif ch == "'" and not in_double:
             in_single = not in_single
-        elif ch == '#' and not in_single and not in_double:
+        elif ch == "#" and not in_single and not in_double:
             return line[:i].rstrip()
         i += 1
     return line
@@ -613,10 +661,11 @@ def _strip_inline_comment(line: str) -> str:
 
 def collapse_blank_lines(text: str) -> str:
     """Collapse multiple consecutive blank lines into a single one."""
-    return re.sub(r'\n{3,}', '\n\n', text)
+    return re.sub(r"\n{3,}", "\n\n", text)
 
 
 # ── Git Diff ──────────────────────────────────────────────────────────────
+
 
 def get_git_changed_files(project_root: Path, ref: str) -> set[str]:
     """
@@ -626,36 +675,44 @@ def get_git_changed_files(project_root: Path, ref: str) -> set[str]:
     """
     try:
         result = subprocess.run(
-            ['git', 'diff', '--name-only', ref],
-            capture_output=True, text=True, cwd=project_root,
+            ["git", "diff", "--name-only", ref],
+            capture_output=True,
+            text=True,
+            cwd=project_root,
         )
         if result.returncode != 0:
             # Try as a branch comparison
             result = subprocess.run(
-                ['git', 'diff', '--name-only', f'{ref}...HEAD'],
-                capture_output=True, text=True, cwd=project_root,
+                ["git", "diff", "--name-only", f"{ref}...HEAD"],
+                capture_output=True,
+                text=True,
+                cwd=project_root,
             )
         if result.returncode != 0:
             raise CommandError(
                 f"Git diff failed: {result.stderr.strip()}\n"
                 f"Make sure '{ref}' is a valid git ref (branch, tag, or HEAD~N)."
             )
-        files = {f.strip() for f in result.stdout.strip().split('\n') if f.strip()}
+        files = {f.strip() for f in result.stdout.strip().split("\n") if f.strip()}
 
         # Also include uncommitted changes
         staged = subprocess.run(
-            ['git', 'diff', '--name-only', '--cached'],
-            capture_output=True, text=True, cwd=project_root,
+            ["git", "diff", "--name-only", "--cached"],
+            capture_output=True,
+            text=True,
+            cwd=project_root,
         )
         if staged.returncode == 0:
-            files |= {f.strip() for f in staged.stdout.strip().split('\n') if f.strip()}
+            files |= {f.strip() for f in staged.stdout.strip().split("\n") if f.strip()}
 
         unstaged = subprocess.run(
-            ['git', 'diff', '--name-only'],
-            capture_output=True, text=True, cwd=project_root,
+            ["git", "diff", "--name-only"],
+            capture_output=True,
+            text=True,
+            cwd=project_root,
         )
         if unstaged.returncode == 0:
-            files |= {f.strip() for f in unstaged.stdout.strip().split('\n') if f.strip()}
+            files |= {f.strip() for f in unstaged.stdout.strip().split("\n") if f.strip()}
 
         return files
     except FileNotFoundError:
@@ -664,10 +721,11 @@ def get_git_changed_files(project_root: Path, ref: str) -> set[str]:
 
 # ── Grep ──────────────────────────────────────────────────────────────────
 
+
 def file_matches_grep(file_path: Path, pattern: str) -> bool:
     """Check if a file contains a regex pattern."""
     try:
-        content = file_path.read_text(encoding='utf-8', errors='ignore')
+        content = file_path.read_text(encoding="utf-8", errors="ignore")
         return bool(re.search(pattern, content))
     except Exception:
         return False
@@ -706,7 +764,7 @@ DEFAULT_PRESETS = {
     },
 }
 
-PRESETS_FILENAME = '.dump_presets.json'
+PRESETS_FILENAME = ".dump_presets.json"
 
 
 def _get_presets_path(project_root: Path) -> Path:
@@ -717,7 +775,7 @@ def _get_presets_path(project_root: Path) -> Path:
 def init_presets(project_root: Path) -> Path:
     """Create the presets JSON file with defaults. Returns the file path."""
     config_path = _get_presets_path(project_root)
-    with open(config_path, 'w') as f:
+    with open(config_path, "w") as f:
         json.dump(DEFAULT_PRESETS, f, indent=2)
     return config_path
 
@@ -736,17 +794,18 @@ def load_presets(project_root: Path) -> dict:
         logger.info(f"Created {PRESETS_FILENAME} with default presets.")
 
     try:
-        with open(config_path, 'r') as f:
+        with open(config_path) as f:
             all_data = json.load(f)
     except (json.JSONDecodeError, OSError) as e:
         logger.warning(f"Could not load {PRESETS_FILENAME}: {e} — using defaults.")
         all_data = dict(DEFAULT_PRESETS)
 
     # Filter out meta keys (keys starting with '_')
-    return {k: v for k, v in all_data.items() if not k.startswith('_')}
+    return {k: v for k, v in all_data.items() if not k.startswith("_")}
 
 
 # ── Docs Resolver ─────────────────────────────────────────────────────────
+
 
 def resolve_docs(docs_dir: Path, doc_names: list[str]) -> list[Path]:
     """
@@ -769,7 +828,7 @@ def resolve_docs(docs_dir: Path, doc_names: list[str]) -> list[Path]:
     all_md_files = list(docs_dir.rglob("*.md"))
 
     for name in doc_names:
-        name_clean = name.replace('.md', '').strip()
+        name_clean = name.replace(".md", "").strip()
 
         # Check if it's a directory name
         candidate_dir = docs_dir / name_clean
@@ -809,35 +868,36 @@ def resolve_docs(docs_dir: Path, doc_names: list[str]) -> list[Path]:
 
 # ── Output Naming ─────────────────────────────────────────────────────────
 
+
 def generate_output_filename(options: dict) -> str:
     """Generate a descriptive timestamped filename based on active options."""
     timestamp = datetime.now().strftime("%Y-%m-%d__%H-%M-%S")
     parts = ["dump-context"]
 
-    if options.get('preset'):
+    if options.get("preset"):
         parts.append(f"preset-{options['preset']}")
     else:
-        if options.get('compact'):
+        if options.get("compact"):
             parts.append("compact")
-        if options.get('tree'):
+        if options.get("tree"):
             parts.append("tree")
-        if options.get('skeleton'):
+        if options.get("skeleton"):
             parts.append("skeleton")
-        if options.get('models_only'):
+        if options.get("models_only"):
             parts.append("models")
-        if options.get('apps'):
-            parts.append("-".join(options['apps'][:3]))
-            if len(options['apps']) > 3:
+        if options.get("apps"):
+            parts.append("-".join(options["apps"][:3]))
+            if len(options["apps"]) > 3:
                 parts.append(f"+{len(options['apps']) - 3}more")
-        if options.get('diff'):
-            ref = options['diff'].replace('~', '').replace('/', '-')
+        if options.get("diff"):
+            ref = options["diff"].replace("~", "").replace("/", "-")
             parts.append(f"diff-{ref}")
-        if options.get('grep'):
+        if options.get("grep"):
             # Sanitize grep pattern for filename
-            safe = re.sub(r'[^a-zA-Z0-9_-]', '', options['grep'][:20])
+            safe = re.sub(r"[^a-zA-Z0-9_-]", "", options["grep"][:20])
             parts.append(f"grep-{safe}")
-        if options.get('docs'):
-            if options['docs'] == ['all']:
+        if options.get("docs"):
+            if options["docs"] == ["all"]:
                 parts.append("docs-all")
             else:
                 parts.append(f"docs-{len(options['docs'])}")
@@ -848,122 +908,192 @@ def generate_output_filename(options: dict) -> str:
 
 # ── Main Command ──────────────────────────────────────────────────────────
 
+
 class Command(BaseCommand):
     help = (
-        'Smart project context dumper for LLM-assisted development.\n'
-        'Run with --help for full usage, or read the module docstring for examples.'
+        "Smart project context dumper for LLM-assisted development.\n"
+        "Run with --help for full usage, or read the module docstring for examples."
     )
 
     # ── Configuration ──────────────────────────────────────────────────
-    INCLUDE_EXTS = {'.py', '.html', '.css', '.js', '.json', '.md'}
+    INCLUDE_EXTS = {".py", ".html", ".css", ".js", ".json", ".md"}
 
     IGNORE_DIRS = {
-        '__pycache__', 'migrations', '.git', '.venv', 'venv', 'env',
-        'static', 'staticfiles', 'media', 'node_modules',
-        '.idea', '.vscode', '_output',
+        "__pycache__",
+        "migrations",
+        ".git",
+        ".venv",
+        "venv",
+        "env",
+        "static",
+        "staticfiles",
+        "media",
+        "node_modules",
+        ".idea",
+        ".vscode",
+        "_output",
     }
 
     IGNORE_FILES = {
-        'db.sqlite3', '.env', 'poetry.lock', 'uv.lock',
-        'package-lock.json', 'project_context.txt',
+        "db.sqlite3",
+        ".env",
+        "poetry.lock",
+        "uv.lock",
+        "package-lock.json",
+        "project_context.txt",
     }
 
     def add_arguments(self, parser):
         # ── Filtering ──
         parser.add_argument(
-            '--apps', nargs='+', type=str, default=None,
-            help='Only include these Django app directories. E.g.: --apps writeback chat',
+            "--apps",
+            nargs="+",
+            type=str,
+            default=None,
+            help="Only include these Django app directories. E.g.: --apps writeback chat",
         )
         parser.add_argument(
-            '--skeleton', action='store_true', default=False,
-            help='AST skeleton mode: extract class/function signatures only (~80%% smaller).',
+            "--skeleton",
+            action="store_true",
+            default=False,
+            help="AST skeleton mode: extract class/function signatures only (~80%% smaller).",
         )
         parser.add_argument(
-            '--full-apps', nargs='+', type=str, default=None,
-            help='When combined with --skeleton, these apps get FULL code instead of skeletons.',
+            "--full-apps",
+            nargs="+",
+            type=str,
+            default=None,
+            help="When combined with --skeleton, these apps get FULL code instead of skeletons.",
         )
         parser.add_argument(
-            '--models-only', action='store_true', default=False,
-            help='Only include models.py from each app.',
+            "--models-only",
+            action="store_true",
+            default=False,
+            help="Only include models.py from each app.",
         )
         parser.add_argument(
-            '--files', nargs='+', type=str, default=None,
-            help='Only include files with these exact names. E.g.: --files views.py serializers.py',
+            "--files",
+            nargs="+",
+            type=str,
+            default=None,
+            help="Only include files with these exact names. E.g.: --files views.py serializers.py",
         )
         parser.add_argument(
-            '--types', nargs='+', type=str, default=None,
-            help='Only include files with these extensions (without dot). E.g.: --types py html',
+            "--types",
+            nargs="+",
+            type=str,
+            default=None,
+            help="Only include files with these extensions (without dot). E.g.: --types py html",
         )
 
         # ── New features ──
         parser.add_argument(
-            '--tree', action='store_true', default=False,
-            help='Include full project directory tree with line counts and token estimates.',
+            "--tree",
+            action="store_true",
+            default=False,
+            help="Include full project directory tree with line counts and token estimates.",
         )
         parser.add_argument(
-            '--tree-only', action='store_true', default=False,
-            help='Output ONLY the project tree, no code files.',
+            "--tree-only",
+            action="store_true",
+            default=False,
+            help="Output ONLY the project tree, no code files.",
         )
         parser.add_argument(
-            '--tree-depth', type=int, default=10,
-            help='Maximum depth for tree traversal (default: 10).',
+            "--docs-only",
+            action="store_true",
+            default=False,
+            help="Output ONLY documentation files, no code.",
         )
         parser.add_argument(
-            '--docs', nargs='*', default=None,
+            "--tree-depth",
+            type=int,
+            default=10,
+            help="Maximum depth for tree traversal (default: 10).",
+        )
+        parser.add_argument(
+            "--docs",
+            nargs="*",
+            default=None,
             help='Include doc files from docs/. Use "all" for everything, or list names. '
-                 'E.g.: --docs all | --docs architecture writeback',
+            "E.g.: --docs all | --docs architecture writeback",
         )
         parser.add_argument(
-            '--diff', type=str, default=None,
-            help='Only include files changed since this git ref. E.g.: --diff HEAD~3 | --diff main',
+            "--diff",
+            type=str,
+            default=None,
+            help="Only include files changed since this git ref. E.g.: --diff HEAD~3 | --diff main",
         )
         parser.add_argument(
-            '--grep', type=str, default=None,
-            help='Only include files containing this regex pattern. E.g.: --grep ModificationProposal',
+            "--grep",
+            type=str,
+            default=None,
+            help="Only include files containing this regex pattern. E.g.: --grep ModificationProposal",
         )
         parser.add_argument(
-            '--preset', type=str, default=None,
-            help='Use a named preset. E.g.: --preset writeback | --preset overview',
+            "--preset",
+            type=str,
+            default=None,
+            help="Use a named preset. E.g.: --preset writeback | --preset overview",
         )
         parser.add_argument(
-            '--list-presets', action='store_true', default=False,
-            help='List all available presets and exit.',
+            "--list-presets",
+            action="store_true",
+            default=False,
+            help="List all available presets and exit.",
         )
         parser.add_argument(
-            '--init-presets', action='store_true', default=False,
-            help='Reset .dump_presets.json to defaults. WARNING: overwrites existing file.',
+            "--init-presets",
+            action="store_true",
+            default=False,
+            help="Reset .dump_presets.json to defaults. WARNING: overwrites existing file.",
         )
 
         # ── Output control ──
         parser.add_argument(
-            '--compact', action='store_true', default=False,
-            help='Token-saving mode: compact tree, strip comments/docstrings, collapse blanks, '
-                 'shorter headers. Saves ~30-40%% tokens with zero information loss for the LLM.',
+            "--compact",
+            action="store_true",
+            default=False,
+            help="Token-saving mode: compact tree, strip comments/docstrings, collapse blanks, "
+            "shorter headers. Saves ~30-40%% tokens with zero information loss for the LLM.",
         )
         parser.add_argument(
-            '--estimate', action='store_true', default=False,
-            help='Only estimate token count, do not write the output file.',
+            "--estimate",
+            action="store_true",
+            default=False,
+            help="Only estimate token count, do not write the output file.",
         )
         parser.add_argument(
-            '--max-tokens', type=int, default=None,
-            help='Maximum token budget. Output is truncated with a warning if exceeded.',
+            "--max-tokens",
+            type=int,
+            default=None,
+            help="Maximum token budget. Output is truncated with a warning if exceeded.",
         )
         parser.add_argument(
-            '--include-tests', action='store_true', default=False,
-            help='Include test files (excluded by default).',
+            "--include-tests",
+            action="store_true",
+            default=False,
+            help="Include test files (excluded by default).",
         )
         parser.add_argument(
-            '-o', '--output', type=str, default=None,
-            help='Custom output filename. Saved in _output/ directory.',
+            "-o",
+            "--output",
+            type=str,
+            default=None,
+            help="Custom output filename. Saved in _output/ directory.",
         )
         parser.add_argument(
-            '--no-header', action='store_true', default=False,
-            help='Skip the summary header in the output.',
+            "--no-header",
+            action="store_true",
+            default=False,
+            help="Skip the summary header in the output.",
         )
         # -- Admin files --
         parser.add_argument(
-            '--include-admin', action='store_true', default=False,
-            help='Include admin*.py files (excluded by default to save tokens).',
+            "--include-admin",
+            action="store_true",
+            default=False,
+            help="Include admin*.py files (excluded by default to save tokens).",
         )
 
     def handle(self, *args, **options):
@@ -973,21 +1103,19 @@ class Command(BaseCommand):
         project_root = src_dir.parent
 
         # Output directory: alongside the command file
-        output_dir = Path(__file__).parent / '_output'
+        output_dir = Path(__file__).parent / "_output"
         output_dir.mkdir(exist_ok=True)
 
         # ── Init presets ───────────────────────────────────────────────
-        if options['init_presets']:
+        if options["init_presets"]:
             config_path = init_presets(project_root)
-            self.stdout.write(self.style.SUCCESS(
-                f"\n✅ Created {config_path}"
-            ))
+            self.stdout.write(self.style.SUCCESS(f"\n✅ Created {config_path}"))
             self.stdout.write("   Edit this file to add, remove, or modify presets.")
             self.stdout.write("   Keys starting with '_' are ignored (use for comments).\n")
             return
 
         # ── List presets ───────────────────────────────────────────────
-        if options['list_presets']:
+        if options["list_presets"]:
             presets = load_presets(project_root)
             config_path = _get_presets_path(project_root)
             self.stdout.write(self.style.SUCCESS(f"\n📋 Presets from: {config_path}\n"))
@@ -1000,18 +1128,16 @@ class Command(BaseCommand):
             return
 
         # ── Apply preset (if specified) ────────────────────────────────
-        if options['preset']:
+        if options["preset"]:
             presets = load_presets(project_root)
-            preset_name = options['preset']
+            preset_name = options["preset"]
             if preset_name not in presets:
-                available = ', '.join(sorted(presets.keys()))
-                raise CommandError(
-                    f"Unknown preset: '{preset_name}'. Available: {available}"
-                )
+                available = ", ".join(sorted(presets.keys()))
+                raise CommandError(f"Unknown preset: '{preset_name}'. Available: {available}")
             preset = presets[preset_name]
             # Preset values are defaults — CLI flags override
             for key, value in preset.items():
-                opt_key = key.replace('-', '_')
+                opt_key = key.replace("-", "_")
                 # Only apply preset value if CLI didn't set it
                 if opt_key in options:
                     cli_default = self._get_cli_default(opt_key)
@@ -1019,44 +1145,45 @@ class Command(BaseCommand):
                         options[opt_key] = value
 
         # ── Unpack options ─────────────────────────────────────────────
-        apps_filter = options.get('apps')
-        full_apps = set(options.get('full_apps') or [])
-        skeleton_mode = options.get('skeleton', False)
-        models_only = options.get('models_only', False)
-        files_filter = options.get('files')
-        types_filter = options.get('types')
-        include_tree = options.get('tree', False) or options.get('tree_only', False)
-        tree_only = options.get('tree_only', False)
-        tree_depth = options.get('tree_depth', 10)
-        docs_names = options.get('docs')
-        diff_ref = options.get('diff')
-        grep_pattern = options.get('grep')
-        estimate_only = options.get('estimate', False)
-        max_tokens = options.get('max_tokens')
-        compact = options.get('compact', False)
-        include_tests = options.get('include_tests', False)
-        output_name = options.get('output')
-        no_header = options.get('no_header', False)
+        apps_filter = options.get("apps")
+        full_apps = set(options.get("full_apps") or [])
+        skeleton_mode = options.get("skeleton", False)
+        models_only = options.get("models_only", False)
+        files_filter = options.get("files")
+        types_filter = options.get("types")
+        include_tree = options.get("tree", False) or options.get("tree_only", False)
+        tree_only = options.get("tree_only", False)
+        tree_depth = options.get("tree_depth", 10)
+        docs_names = options.get("docs")
+        diff_ref = options.get("diff")
+        grep_pattern = options.get("grep")
+        estimate_only = options.get("estimate", False)
+        max_tokens = options.get("max_tokens")
+        compact = options.get("compact", False)
+        include_tests = options.get("include_tests", False)
+        output_name = options.get("output")
+        no_header = options.get("no_header", False)
+        docs_only = options.get("docs_only", False)
+
+        if docs_only and docs_names is None:
+            docs_names = ["all"]
 
         if not include_tests:
-            self.IGNORE_DIRS.add('tests')
+            self.IGNORE_DIRS.add("tests")
 
         if types_filter:
-            self.INCLUDE_EXTS = {f'.{t.lstrip(".")}' for t in types_filter}
+            self.INCLUDE_EXTS = {f".{t.lstrip('.')}" for t in types_filter}
 
         # ── Resolve git diff files ─────────────────────────────────────
         diff_files = None
         if diff_ref:
             diff_files = get_git_changed_files(project_root, diff_ref)
-            self.stdout.write(
-                f"🔀 Git diff from '{diff_ref}': {len(diff_files)} changed files"
-            )
-
+            self.stdout.write(f"🔀 Git diff from '{diff_ref}': {len(diff_files)} changed files")
 
         # ── Print scan info ────────────────────────────────────────────
         self.stdout.write(f"\n📂 Project root: {project_root}")
         self.stdout.write(f"📂 Source dir:   {src_dir}")
-        if options.get('preset'):
+        if options.get("preset"):
             self.stdout.write(f"📦 Preset: {options['preset']}")
         if apps_filter:
             self.stdout.write(f"📦 Apps filter: {', '.join(apps_filter)}")
@@ -1074,7 +1201,9 @@ class Command(BaseCommand):
         if docs_names is not None:
             self.stdout.write(f"📖 Docs: {docs_names or ['all']}")
         if compact:
-            self.stdout.write("📦 Compact mode (stripped comments, collapsed blanks, short headers)")
+            self.stdout.write(
+                "📦 Compact mode (stripped comments, collapsed blanks, short headers)"
+            )
 
         # ── Collect content ────────────────────────────────────────────
         sections = []
@@ -1084,18 +1213,20 @@ class Command(BaseCommand):
         if include_tree:
             if compact:
                 tree_content = generate_compact_tree(
-                    project_root, self.IGNORE_DIRS, self.IGNORE_FILES,
-                    self.INCLUDE_EXTS, max_depth=tree_depth,
+                    project_root,
+                    self.IGNORE_DIRS,
+                    self.IGNORE_FILES,
+                    self.INCLUDE_EXTS,
+                    max_depth=tree_depth,
                 )
-                sections.append(
-                    f"--- PROJECT TREE ---\n\n"
-                    f"{project_root.name}/\n"
-                    f"{tree_content}\n"
-                )
+                sections.append(f"--- PROJECT TREE ---\n\n{project_root.name}/\n{tree_content}\n")
             else:
                 tree_content = generate_project_tree(
-                    project_root, self.IGNORE_DIRS, self.IGNORE_FILES,
-                    self.INCLUDE_EXTS, max_depth=tree_depth,
+                    project_root,
+                    self.IGNORE_DIRS,
+                    self.IGNORE_FILES,
+                    self.INCLUDE_EXTS,
+                    max_depth=tree_depth,
                 )
                 sections.append(
                     f"{'=' * 70}\n"
@@ -1108,24 +1239,33 @@ class Command(BaseCommand):
         if tree_only:
             # Skip all code scanning, jump to output
             full_output = self._assemble_output(
-                sections, file_count, project_root, options, no_header,
+                sections,
+                file_count,
+                project_root,
+                options,
+                no_header,
             )
             self._write_output(
-                full_output, file_count, output_dir, output_name, options,
-                estimate_only, max_tokens,
+                full_output,
+                file_count,
+                output_dir,
+                output_name,
+                options,
+                estimate_only,
+                max_tokens,
             )
             return
 
         # 2. Documentation files
         if docs_names is not None:
-            docs_dir = project_root / 'docs'
+            docs_dir = project_root / "docs"
             # If --docs with no arguments, treat as "all"
             if not docs_names:
                 docs_names = ["all"]
             doc_paths = resolve_docs(docs_dir, docs_names)
             for doc_path in doc_paths:
                 try:
-                    content = doc_path.read_text(encoding='utf-8', errors='ignore')
+                    content = doc_path.read_text(encoding="utf-8", errors="ignore")
                 except Exception as e:
                     content = f"# Error reading: {e}"
 
@@ -1136,19 +1276,30 @@ class Command(BaseCommand):
 
                 if compact:
                     content = collapse_blank_lines(content)
-                    sections.append(
-                        f"\n--- DOC: {rel} ---\n\n"
-                        f"{content}\n"
-                    )
+                    sections.append(f"\n--- DOC: {rel} ---\n\n{content}\n")
                 else:
-                    sections.append(
-                        f"\n{'=' * 70}\n"
-                        f"📄 DOC: {rel}\n"
-                        f"{'=' * 70}\n\n"
-                        f"{content}\n"
-                    )
+                    sections.append(f"\n{'=' * 70}\n📄 DOC: {rel}\n{'=' * 70}\n\n{content}\n")
                 file_count += 1
                 self.stdout.write(f"  📄 {rel}")
+
+        if docs_only:
+            full_output = self._assemble_output(
+                sections,
+                file_count,
+                project_root,
+                options,
+                no_header,
+            )
+            self._write_output(
+                full_output,
+                file_count,
+                output_dir,
+                output_name,
+                options,
+                estimate_only,
+                max_tokens,
+            )
+            return
 
         # 3. Walk the source code
         for root, dirs, files in os.walk(src_dir):
@@ -1169,8 +1320,6 @@ class Command(BaseCommand):
                 except ValueError:
                     rel_path = file_path
 
-                rel_str = str(rel_path)
-
                 # Also compute path relative to project root for git diff
                 try:
                     rel_from_root = file_path.relative_to(project_root)
@@ -1184,7 +1333,7 @@ class Command(BaseCommand):
                         continue
 
                 # ── Models-only filter ──
-                if models_only and file != 'models.py':
+                if models_only and file != "models.py":
                     continue
 
                 # ── Specific files filter ──
@@ -1192,8 +1341,8 @@ class Command(BaseCommand):
                     continue
 
                 # ── Admin filter ──
-                if not options.get('include_admin', False):
-                    if fnmatch.fnmatch(file, 'admin*.py'):
+                if not options.get("include_admin", False):
+                    if fnmatch.fnmatch(file, "admin*.py"):
                         continue
 
                 # ── Git diff filter ──
@@ -1202,13 +1351,13 @@ class Command(BaseCommand):
                         continue
 
                 # ── Grep filter ──
-                if grep_pattern and ext.lower() == '.py':
+                if grep_pattern and ext.lower() == ".py":
                     if not file_matches_grep(file_path, grep_pattern):
                         continue
 
                 # ── Read content ──
                 try:
-                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    with open(file_path, encoding="utf-8", errors="ignore") as f:
                         content = f.read()
                 except Exception as e:
                     content = f"# Error reading: {e}"
@@ -1218,7 +1367,7 @@ class Command(BaseCommand):
 
                 # ── Skeleton or full? ──
                 use_skeleton = False
-                if skeleton_mode and ext.lower() == '.py':
+                if skeleton_mode and ext.lower() == ".py":
                     parts = rel_path.parts
                     if full_apps and any(app in parts for app in full_apps):
                         use_skeleton = False
@@ -1231,12 +1380,12 @@ class Command(BaseCommand):
                 else:
                     mode_tag = ""
                     # Apply compact optimizations to full code
-                    if compact and ext.lower() == '.py':
+                    if compact and ext.lower() == ".py":
                         content = strip_comments(content)
                     if compact:
                         content = collapse_blank_lines(content)
 
-                line_count = content.count('\n')
+                line_count = content.count("\n")
                 token_est = estimate_tokens(content)
 
                 if compact:
@@ -1255,16 +1404,29 @@ class Command(BaseCommand):
 
         # ── Assemble and write ─────────────────────────────────────────
         full_output = self._assemble_output(
-            sections, file_count, project_root, options, no_header,
+            sections,
+            file_count,
+            project_root,
+            options,
+            no_header,
         )
         self._write_output(
-            full_output, file_count, output_dir, output_name, options,
-            estimate_only, max_tokens,
+            full_output,
+            file_count,
+            output_dir,
+            output_name,
+            options,
+            estimate_only,
+            max_tokens,
         )
 
     def _assemble_output(
-        self, sections: list, file_count: int, project_root: Path,
-        options: dict, no_header: bool,
+        self,
+        sections: list,
+        file_count: int,
+        project_root: Path,
+        options: dict,
+        no_header: bool,
     ) -> str:
         """Assemble all sections into the final output string."""
         if no_header:
@@ -1272,36 +1434,36 @@ class Command(BaseCommand):
 
         # Build a descriptive header
         mode_parts = []
-        if options.get('compact'):
+        if options.get("compact"):
             mode_parts.append("compact")
-        if options.get('tree') or options.get('tree_only'):
+        if options.get("tree") or options.get("tree_only"):
             mode_parts.append("tree")
-        if options.get('skeleton'):
+        if options.get("skeleton"):
             mode_parts.append("skeleton")
-        if options.get('models_only'):
+        if options.get("models_only"):
             mode_parts.append("models-only")
-        if options.get('diff'):
+        if options.get("diff"):
             mode_parts.append(f"diff:{options['diff']}")
-        if options.get('grep'):
+        if options.get("grep"):
             mode_parts.append(f"grep:{options['grep']}")
         if not mode_parts:
             mode_parts.append("full")
 
         header_lines = [
-            f"CASTOR PROJECT CONTEXT DUMP",
+            "CASTOR PROJECT CONTEXT DUMP",
             f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
             f"Mode:      {' + '.join(mode_parts)}",
         ]
-        if options.get('preset'):
+        if options.get("preset"):
             header_lines.append(f"Preset:    {options['preset']}")
-        if options.get('apps'):
+        if options.get("apps"):
             header_lines.append(f"Apps:      {', '.join(options['apps'])}")
-        if options.get('docs') is not None:
+        if options.get("docs") is not None:
             header_lines.append(f"Docs:      {options.get('docs') or ['all']}")
 
         header_lines.append(f"Files:     {file_count}")
 
-        if not options.get('compact'):
+        if not options.get("compact"):
             header_lines.insert(2, f"Project:   {project_root}")
             header_lines.append(f"{'=' * 70}")
 
@@ -1309,32 +1471,37 @@ class Command(BaseCommand):
         return header + "\n" + "\n".join(sections)
 
     def _write_output(
-        self, full_output: str, file_count: int, output_dir: Path,
-        output_name: str | None, options: dict, estimate_only: bool,
+        self,
+        full_output: str,
+        file_count: int,
+        output_dir: Path,
+        output_name: str | None,
+        options: dict,
+        estimate_only: bool,
         max_tokens: int | None,
     ):
         """Handle token estimation, truncation, and file writing."""
         tokens = estimate_tokens(full_output)
         chars = len(full_output)
-        lines_count = full_output.count('\n')
+        lines_count = full_output.count("\n")
 
-        self.stdout.write(f"\n📊 Stats:")
+        self.stdout.write("\n📊 Stats:")
         self.stdout.write(f"   Files:  {file_count}")
         self.stdout.write(f"   Lines:  {lines_count:,}")
         self.stdout.write(f"   Chars:  {chars:,}")
         self.stdout.write(f"   Tokens: ~{tokens:,} (estimated)")
 
         if estimate_only:
-            self.stdout.write(
-                self.style.SUCCESS("\n✅ Estimation complete (no file written).")
-            )
+            self.stdout.write(self.style.SUCCESS("\n✅ Estimation complete (no file written)."))
             return
 
         # Token budget check
         if max_tokens and tokens > max_tokens:
-            self.stdout.write(self.style.WARNING(
-                f"\n⚠️  Output exceeds budget ({tokens:,} > {max_tokens:,} tokens)."
-            ))
+            self.stdout.write(
+                self.style.WARNING(
+                    f"\n⚠️  Output exceeds budget ({tokens:,} > {max_tokens:,} tokens)."
+                )
+            )
             char_budget = max_tokens * 4
             full_output = full_output[:char_budget]
             full_output += (
@@ -1355,11 +1522,11 @@ class Command(BaseCommand):
         output_path = output_dir / filename
 
         try:
-            with open(output_path, 'w', encoding='utf-8') as f:
+            with open(output_path, "w", encoding="utf-8") as f:
                 f.write(full_output)
 
             # Update _latest.txt symlink
-            latest_path = output_dir / '_latest.txt'
+            latest_path = output_dir / "_latest.txt"
             try:
                 if latest_path.exists() or latest_path.is_symlink():
                     latest_path.unlink()
@@ -1368,13 +1535,14 @@ class Command(BaseCommand):
                 # Symlinks may not work on all platforms — fall back to copy
                 try:
                     import shutil
+
                     shutil.copy2(output_path, latest_path)
                 except Exception:
                     pass  # Not critical
 
-            self.stdout.write(self.style.SUCCESS(
-                f"\n✅ Dumped {file_count} files (~{tokens:,} tokens)"
-            ))
+            self.stdout.write(
+                self.style.SUCCESS(f"\n✅ Dumped {file_count} files (~{tokens:,} tokens)")
+            )
             self.stdout.write(self.style.SUCCESS(f"📄 {output_path}"))
             self.stdout.write(f"   Latest: {latest_path}")
 
@@ -1385,26 +1553,26 @@ class Command(BaseCommand):
     def _get_cli_default(key: str):
         """Return the default value for a CLI option (used for preset merging)."""
         defaults = {
-            'apps': None,
-            'skeleton': False,
-            'full_apps': None,
-            'models_only': False,
-            'files': None,
-            'types': None,
-            'tree': False,
-            'tree_only': False,
-            'tree_depth': 10,
-            'docs': None,
-            'diff': None,
-            'grep': None,
-            'estimate': False,
-            'compact': False,
-            'init_presets': False,
-            'max_tokens': None,
-            'include_tests': False,
-            'output': None,
-            'no_header': False,
-            'include_admin': False,
-
+            "apps": None,
+            "skeleton": False,
+            "full_apps": None,
+            "models_only": False,
+            "files": None,
+            "types": None,
+            "tree": False,
+            "tree_only": False,
+            "tree_depth": 10,
+            "docs": None,
+            "docs_only": False,
+            "diff": None,
+            "grep": None,
+            "estimate": False,
+            "compact": False,
+            "init_presets": False,
+            "max_tokens": None,
+            "include_tests": False,
+            "output": None,
+            "no_header": False,
+            "include_admin": False,
         }
         return defaults.get(key)

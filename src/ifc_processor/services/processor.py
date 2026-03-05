@@ -1,13 +1,12 @@
 # ifc_processor/services/processor.py
 import logging
-from django.db import transaction
-from django.utils import timezone
 
-from ifc_processor.models import IFCFile, IFCEntity
-from ifc_processor.services.parser import IFCParser
 from embeddings.services.embedding_service import EmbeddingService
+from ifc_processor.models import IFCEntity, IFCFile
+from ifc_processor.services.parser import IFCParser
 
 logger = logging.getLogger(__name__)
+
 
 class IFCProcessingService:
     """
@@ -43,7 +42,9 @@ class IFCProcessingService:
             # We only embed entities that have a description
             embed_ok = self._generate_embeddings()
             if not embed_ok:
-                logger.warning(f"Embeddings failed for {self.ifc_file.name} — entities parsed but not searchable")
+                logger.warning(
+                    f"Embeddings failed for {self.ifc_file.name} — entities parsed but not searchable"
+                )
                 # File is still "completed" for parsing, but worth noting
 
             return True
@@ -52,7 +53,7 @@ class IFCProcessingService:
             logger.exception(f"Pipeline failed for {self.ifc_file.name}: {e}")
             self.ifc_file.status = IFCFile.Status.FAILED
             self.ifc_file.error_message = str(e)
-            self.ifc_file.save(update_fields=['status', 'error_message'])
+            self.ifc_file.save(update_fields=["status", "error_message"])
             return False
 
     def _generate_embeddings(self) -> bool:
@@ -70,11 +71,10 @@ class IFCProcessingService:
             for entity, vector in zip(entity_list, vectors):
                 entity.embedding = vector
 
-            IFCEntity.objects.bulk_update(entity_list, ['embedding'])
+            IFCEntity.objects.bulk_update(entity_list, ["embedding"])
             logger.info(f"Embedded {len(entity_list)} entities for {self.ifc_file.name}")
             return True
 
         except Exception as e:
             logger.error(f"Embedding generation failed: {e}")
             return False
-

@@ -1,15 +1,19 @@
 # documents/services/document_processor.py
 import logging
 import os
+
 from django.db import transaction
 from django.utils import timezone
+
 # We use LangChain loaders because they are far more robust than raw pypdf
-from langchain_community.document_loaders import PyPDFLoader, TextLoader, Docx2txtLoader
+from langchain_community.document_loaders import Docx2txtLoader, PyPDFLoader, TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+
 from documents.models import Document, DocumentChunk
 from embeddings.services.embedding_service import EmbeddingService
 
 logger = logging.getLogger(__name__)
+
 
 class DocumentProcessor:
     """
@@ -23,16 +27,16 @@ class DocumentProcessor:
 
         # Matches Streamlit config (1000 chars, 200 overlap)
         self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200,
-            separators=["\n\n", "\n", ".", " ", ""]
+            chunk_size=1000, chunk_overlap=200, separators=["\n\n", "\n", ".", " ", ""]
         )
 
     def process(self) -> bool:
+        """Extract text, chunk, embed, and store a document. Returns True on success."""
+
         try:
             logger.info(f"Processing document: {self.document.name}")
             self.document.status = Document.Status.PROCESSING
-            self.document.save(update_fields=['status'])
+            self.document.save(update_fields=["status"])
 
             # 1. Load & Split (The "Streamlit Way")
             lc_docs = self._load_and_split()
@@ -51,20 +55,21 @@ class DocumentProcessor:
             with transaction.atomic():
                 self.document.chunks.all().delete()
 
-
                 db_chunks = []
                 max_page = 0  # Track highest page number
                 for i, (lc_doc, vector) in enumerate(zip(lc_docs, vectors)):
-                    page = lc_doc.metadata.get('page', 0) + 1
+                    page = lc_doc.metadata.get("page", 0) + 1
                     max_page = max(max_page, page)
 
-                    db_chunks.append(DocumentChunk(
-                        document=self.document,
-                        content=lc_doc.page_content,
-                        chunk_index=i,
-                        page_number=page,
-                        embedding=vector
-                    ))
+                    db_chunks.append(
+                        DocumentChunk(
+                            document=self.document,
+                            content=lc_doc.page_content,
+                            chunk_index=i,
+                            page_number=page,
+                            embedding=vector,
+                        )
+                    )
 
                 DocumentChunk.objects.bulk_create(db_chunks)
 
@@ -90,13 +95,13 @@ class DocumentProcessor:
         file_path = self.document.file.path
         ext = os.path.splitext(file_path)[1].lower()
 
-        if ext == '.pdf':
+        if ext == ".pdf":
             loader = PyPDFLoader(file_path)
-        elif ext == '.docx':
+        elif ext == ".docx":
             # Note: Requires `pip install docx2txt`
             loader = Docx2txtLoader(file_path)
-        elif ext == '.txt':
-            loader = TextLoader(file_path, encoding='utf-8')
+        elif ext == ".txt":
+            loader = TextLoader(file_path, encoding="utf-8")
         else:
             raise ValueError(f"Unsupported file type: {ext}")
 

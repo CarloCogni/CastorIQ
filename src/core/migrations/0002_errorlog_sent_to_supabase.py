@@ -4,15 +4,16 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('core', '0001_initial'),
+        ("core", "0001_initial"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='errorlog',
-            name='sent_to_supabase',
-            field=models.BooleanField(db_index=True, default=False, verbose_name='Sent to Supabase'),
+            model_name="errorlog",
+            name="sent_to_supabase",
+            field=models.BooleanField(
+                db_index=True, default=False, verbose_name="Sent to Supabase"
+            ),
         ),
     ]

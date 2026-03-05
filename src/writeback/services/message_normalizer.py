@@ -10,8 +10,8 @@ Cleans up user input BEFORE it hits the LLM:
 No LLM calls. Pure dictionary + regex. Runs in microseconds.
 """
 
-import re
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +97,9 @@ _PROPERTY_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _ENTITY_PATTERN = re.compile(
-    r"\b(" + "|".join(re.escape(k) for k in sorted(_ENTITY_ALIASES, key=len, reverse=True)) + r")\b",
+    r"\b("
+    + "|".join(re.escape(k) for k in sorted(_ENTITY_ALIASES, key=len, reverse=True))
+    + r")\b",
     re.IGNORECASE,
 )
 

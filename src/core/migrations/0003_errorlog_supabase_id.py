@@ -4,15 +4,20 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('core', '0002_errorlog_sent_to_supabase'),
+        ("core", "0002_errorlog_sent_to_supabase"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='errorlog',
-            name='supabase_id',
-            field=models.UUIDField(blank=True, help_text='UUID from Supabase to prevent duplicate imports', null=True, unique=True, verbose_name='Supabase ID'),
+            model_name="errorlog",
+            name="supabase_id",
+            field=models.UUIDField(
+                blank=True,
+                help_text="UUID from Supabase to prevent duplicate imports",
+                null=True,
+                unique=True,
+                verbose_name="Supabase ID",
+            ),
         ),
     ]

@@ -28,11 +28,27 @@ STANDARD_PSETS = {
     },
     # Applies to: Actuator
     "Pset_ActuatorTypeCommon": {
-        "Application": ("enum", ['ENTRYEXITDEVICE', 'FIRESMOKEDAMPERACTUATOR', 'DAMPERACTUATOR', 'VALVEPOSITIONER', 'LAMPACTUATOR', 'SUNBLINDACTUATOR', 'OTHER', 'NOTKNOWN', 'UNSET']),
-        "FailPosition": ("enum", ['FAILOPEN', 'FAILCLOSED', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Application": (
+            "enum",
+            [
+                "ENTRYEXITDEVICE",
+                "FIRESMOKEDAMPERACTUATOR",
+                "DAMPERACTUATOR",
+                "VALVEPOSITIONER",
+                "LAMPACTUATOR",
+                "SUNBLINDACTUATOR",
+                "OTHER",
+                "NOTKNOWN",
+                "UNSET",
+            ],
+        ),
+        "FailPosition": ("enum", ["FAILOPEN", "FAILCLOSED", "OTHER", "NOTKNOWN", "UNSET"]),
         "ManualOverride": ("bool", None),
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
     },
     # Applies to: Actuator
     "Pset_ActuatorTypeLinearActuation": {
@@ -46,8 +62,29 @@ STANDARD_PSETS = {
     },
     # Applies to: Space
     "Pset_AirSideSystemInformation": {
-        "AirSideSystemDistributionType": ("enum", ['SINGLEDUCT', 'DUALDUCT', 'MULTIZONE', 'OTHER', 'NOTKNOWN', 'UNSET']),
-        "AirSideSystemType": ("enum", ['CONSTANTVOLUME', 'CONSTANTVOLUMESINGLEZONE', 'CONSTANTVOLUMEMULTIPLEZONEREHEAT', 'CONSTANTVOLUMEBYPASS', 'VARIABLEAIRVOLUME', 'VARIABLEAIRVOLUMEREHEAT', 'VARIABLEAIRVOLUMEINDUCTION', 'VARIABLEAIRVOLUMEFANPOWERED', 'VARIABLEAIRVOLUMEDUALCONDUIT', 'VARIABLEAIRVOLUMEVARIABLEDIFFUSERS', 'VARIABLEAIRVOLUMEVARIABLETEMPERATURE', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "AirSideSystemDistributionType": (
+            "enum",
+            ["SINGLEDUCT", "DUALDUCT", "MULTIZONE", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
+        "AirSideSystemType": (
+            "enum",
+            [
+                "CONSTANTVOLUME",
+                "CONSTANTVOLUMESINGLEZONE",
+                "CONSTANTVOLUMEMULTIPLEZONEREHEAT",
+                "CONSTANTVOLUMEBYPASS",
+                "VARIABLEAIRVOLUME",
+                "VARIABLEAIRVOLUMEREHEAT",
+                "VARIABLEAIRVOLUMEINDUCTION",
+                "VARIABLEAIRVOLUMEFANPOWERED",
+                "VARIABLEAIRVOLUMEDUALCONDUIT",
+                "VARIABLEAIRVOLUMEVARIABLEDIFFUSERS",
+                "VARIABLEAIRVOLUMEVARIABLETEMPERATURE",
+                "OTHER",
+                "NOTKNOWN",
+                "UNSET",
+            ],
+        ),
         "AirflowSensible": ("real", None),
         "ApplianceDiversity": ("real", None),
         "CoolingTemperatureDelta": ("real", None),
@@ -76,7 +113,7 @@ STANDARD_PSETS = {
     "Pset_AirTerminalBoxTypeCommon": {
         "AirPressureRange": ("real", None),
         "AirflowRateRange": ("real", None),
-        "ArrangementType": ("enum", ['SINGLEDUCT', 'DUALDUCT', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "ArrangementType": ("enum", ["SINGLEDUCT", "DUALDUCT", "OTHER", "NOTKNOWN", "UNSET"]),
         "HasFan": ("bool", None),
         "HasReturnAir": ("bool", None),
         "HasSoundAttenuator": ("bool", None),
@@ -86,15 +123,46 @@ STANDARD_PSETS = {
         "NominalInletAirPressure": ("real", None),
         "OperationTemperatureRange": ("real", None),
         "Reference": ("string", None),
-        "ReheatType": ("enum", ['ELECTRICALREHEAT', 'WATERCOILREHEAT', 'STEAMCOILREHEAT', 'GASREHEAT', 'NONE', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "ReheatType": (
+            "enum",
+            [
+                "ELECTRICALREHEAT",
+                "WATERCOILREHEAT",
+                "STEAMCOILREHEAT",
+                "GASREHEAT",
+                "NONE",
+                "OTHER",
+                "NOTKNOWN",
+                "UNSET",
+            ],
+        ),
         "ReturnAirFractionRange": ("real", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
     },
     # Applies to: AirTerminal
     "Pset_AirTerminalOccurrence": {
         "AirFlowRate": ("real", None),
-        "AirflowType": ("enum", ['SUPPLYAIR', 'RETURNAIR', 'EXHAUSTAIR', 'OTHER', 'NOTKNOWN', 'UNSET']),
-        "Location": ("enum", ['SIDEWALLHIGH', 'SIDEWALLLOW', 'CEILINGPERIMETER', 'CEILINGINTERIOR', 'FLOOR', 'SILL', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "AirflowType": (
+            "enum",
+            ["SUPPLYAIR", "RETURNAIR", "EXHAUSTAIR", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
+        "Location": (
+            "enum",
+            [
+                "SIDEWALLHIGH",
+                "SIDEWALLLOW",
+                "CEILINGPERIMETER",
+                "CEILINGINTERIOR",
+                "FLOOR",
+                "SILL",
+                "OTHER",
+                "NOTKNOWN",
+                "UNSET",
+            ],
+        ),
     },
     # Applies to: AirTerminal
     "Pset_AirTerminalPHistory": {
@@ -113,25 +181,71 @@ STANDARD_PSETS = {
         "AirFlowrateVersusFlowControlElement": ("real", None),
         "CoreSetHorizontal": ("real", None),
         "CoreSetVertical": ("real", None),
-        "CoreType": ("enum", ['SHUTTERBLADE', 'CURVEDBLADE', 'REMOVABLE', 'REVERSIBLE', 'NONE', 'OTHER', 'NOTKNOWN', 'UNSET']),
-        "DischargeDirection": ("enum", ['PARALLEL', 'PERPENDICULAR', 'ADJUSTABLE', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "CoreType": (
+            "enum",
+            [
+                "SHUTTERBLADE",
+                "CURVEDBLADE",
+                "REMOVABLE",
+                "REVERSIBLE",
+                "NONE",
+                "OTHER",
+                "NOTKNOWN",
+                "UNSET",
+            ],
+        ),
+        "DischargeDirection": (
+            "enum",
+            ["PARALLEL", "PERPENDICULAR", "ADJUSTABLE", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "EffectiveArea": ("real", None),
-        "FaceType": ("enum", ['FOURWAYPATTERN', 'SINGLEDEFLECTION', 'DOUBLEDEFLECTION', 'SIGHTPROOF', 'EGGCRATE', 'PERFORATED', 'LOUVERED', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "FaceType": (
+            "enum",
+            [
+                "FOURWAYPATTERN",
+                "SINGLEDEFLECTION",
+                "DOUBLEDEFLECTION",
+                "SIGHTPROOF",
+                "EGGCRATE",
+                "PERFORATED",
+                "LOUVERED",
+                "OTHER",
+                "NOTKNOWN",
+                "UNSET",
+            ],
+        ),
         "FinishColor": ("string", None),
-        "FinishType": ("enum", ['ANNODIZED', 'PAINTED', 'NONE', 'OTHER', 'NOTKNOWN', 'UNSET']),
-        "FlowControlType": ("enum", ['DAMPER', 'BELLOWS', 'NONE', 'OTHER', 'NOTKNOWN', 'UNSET']),
-        "FlowPattern": ("enum", ['LINEARSINGLE', 'LINEARDOUBLE', 'LINEARFOURWAY', 'RADIAL', 'SWIRL', 'DISPLACMENT', 'COMPACTJET', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "FinishType": ("enum", ["ANNODIZED", "PAINTED", "NONE", "OTHER", "NOTKNOWN", "UNSET"]),
+        "FlowControlType": ("enum", ["DAMPER", "BELLOWS", "NONE", "OTHER", "NOTKNOWN", "UNSET"]),
+        "FlowPattern": (
+            "enum",
+            [
+                "LINEARSINGLE",
+                "LINEARDOUBLE",
+                "LINEARFOURWAY",
+                "RADIAL",
+                "SWIRL",
+                "DISPLACMENT",
+                "COMPACTJET",
+                "OTHER",
+                "NOTKNOWN",
+                "UNSET",
+            ],
+        ),
         "HasIntegralControl": ("bool", None),
         "HasSoundAttenuator": ("bool", None),
         "HasThermalInsulation": ("bool", None),
-        "MountingType": ("enum", ['SURFACE', 'FLATFLUSH', 'LAYIN', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "MountingType": ("enum", ["SURFACE", "FLATFLUSH", "LAYIN", "OTHER", "NOTKNOWN", "UNSET"]),
         "NeckArea": ("real", None),
         "NumberOfSlots": ("int", None),
         "Reference": ("string", None),
-        "Shape": ("enum", ['ROUND', 'RECTANGULAR', 'SQUARE', 'SLOT', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Shape": ("enum", ["ROUND", "RECTANGULAR", "SQUARE", "SLOT", "OTHER", "NOTKNOWN", "UNSET"]),
         "SlotLength": ("real", None),
         "SlotWidth": ("real", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "TemperatureRange": ("real", None),
         "ThrowLength": ("real", None),
     },
@@ -147,7 +261,10 @@ STANDARD_PSETS = {
     "Pset_AlarmTypeCommon": {
         "Condition": ("string", None),
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
     },
     # Applies to: Beam
     "Pset_BeamCommon": {
@@ -158,7 +275,10 @@ STANDARD_PSETS = {
         "Roll": ("real", None),
         "Slope": ("real", None),
         "Span": ("real", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "ThermalTransmittance": ("real", None),
     },
     # Applies to: Boiler
@@ -175,17 +295,37 @@ STANDARD_PSETS = {
     },
     # Applies to: Boiler
     "Pset_BoilerTypeCommon": {
-        "EnergySource": ("enum", ['COAL', 'COAL_PULVERIZED', 'ELECTRICITY', 'GAS', 'OIL', 'PROPANE', 'WOOD', 'WOOD_CHIP', 'WOOD_PELLET', 'WOOD_PULVERIZED', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "EnergySource": (
+            "enum",
+            [
+                "COAL",
+                "COAL_PULVERIZED",
+                "ELECTRICITY",
+                "GAS",
+                "OIL",
+                "PROPANE",
+                "WOOD",
+                "WOOD_CHIP",
+                "WOOD_PELLET",
+                "WOOD_PULVERIZED",
+                "OTHER",
+                "NOTKNOWN",
+                "UNSET",
+            ],
+        ),
         "HeatTransferSurfaceArea": ("real", None),
         "IsWaterStorageHeater": ("bool", None),
         "NominalEnergyConsumption": ("real", None),
         "NominalPartLoadRatio": ("real", None),
-        "OperatingMode": ("enum", ['FIXED', 'TWOSTEP', 'MODULATING', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "OperatingMode": ("enum", ["FIXED", "TWOSTEP", "MODULATING", "OTHER", "NOTKNOWN", "UNSET"]),
         "OutletTemperatureRange": ("real", None),
         "PartialLoadEfficiencyCurves": ("real", None),
         "PressureRating": ("real", None),
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "WaterInletTemperatureRange": ("real", None),
         "WaterStorageCapacity": ("real", None),
     },
@@ -212,7 +352,10 @@ STANDARD_PSETS = {
         "IsExternal": ("bool", None),
         "LoadBearing": ("bool", None),
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "ThermalTransmittance": ("real", None),
     },
     # Applies to: BuildingStorey
@@ -251,7 +394,10 @@ STANDARD_PSETS = {
     # Applies to: CableCarrierSegment
     "Pset_CableCarrierSegmentTypeCommon": {
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
     },
     # Applies to: CableSegment
     "Pset_CableSegmentOccurrence": {
@@ -260,11 +406,14 @@ STANDARD_PSETS = {
         "DesignAmbientTemperature": ("real", None),
         "DistanceBetweenParallelCircuits": ("real", None),
         "InstallationMethod": ("string", None),
-        "InstallationMethodFlagEnum": ("enum", ['INDUCT', 'INSOIL', 'ONWALL', 'BELOWCEILING', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "InstallationMethodFlagEnum": (
+            "enum",
+            ["INDUCT", "INSOIL", "ONWALL", "BELOWCEILING", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "IsHorizontalCable": ("bool", None),
         "IsMountedFlatCable": ("bool", None),
         "MaximumCableLength": ("real", None),
-        "MountingMethod": ("enum", ['PERFORATEDTRAY', 'LADDER', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "MountingMethod": ("enum", ["PERFORATEDTRAY", "LADDER", "OTHER", "NOTKNOWN", "UNSET"]),
         "NumberOfParallelCircuits": ("int", None),
         "PowerLoss": ("real", None),
         "SoilConductivity": ("real", None),
@@ -273,7 +422,10 @@ STANDARD_PSETS = {
     # Applies to: CableSegment
     "Pset_CableSegmentTypeCommon": {
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
     },
     # Applies to: Chiller
     "Pset_ChillerPHistory": {
@@ -293,7 +445,10 @@ STANDARD_PSETS = {
         "NominalHeatRejectionRate": ("real", None),
         "NominalPowerConsumption": ("real", None),
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
     },
     # Applies to: Coil
     "Pset_CoilOccurrence": {
@@ -313,17 +468,23 @@ STANDARD_PSETS = {
         "NominalSensibleCapacity": ("real", None),
         "NominalUA": ("real", None),
         "OperationalTemperatureRange": ("real", None),
-        "PlacementType": ("enum", ['FLOOR', 'CEILING', 'UNIT', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "PlacementType": ("enum", ["FLOOR", "CEILING", "UNIT", "OTHER", "NOTKNOWN", "UNSET"]),
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
     },
     # Applies to: Coil
     "Pset_CoilTypeHydronic": {
         "BypassFactor": ("real", None),
-        "CoilConnectionDirection": ("enum", ['LEFT', 'RIGHT', 'OTHER', 'NOTKNOWN', 'UNSET']),
-        "CoilCoolant": ("enum", ['WATER', 'BRINE', 'GLYCOL', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "CoilConnectionDirection": ("enum", ["LEFT", "RIGHT", "OTHER", "NOTKNOWN", "UNSET"]),
+        "CoilCoolant": ("enum", ["WATER", "BRINE", "GLYCOL", "OTHER", "NOTKNOWN", "UNSET"]),
         "CoilFaceArea": ("real", None),
-        "CoilFluidArrangement": ("enum", ['CROSSFLOW', 'CROSSCOUNTERFLOW', 'CROSSPARALLELFLOW', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "CoilFluidArrangement": (
+            "enum",
+            ["CROSSFLOW", "CROSSCOUNTERFLOW", "CROSSPARALLELFLOW", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "FluidPressureRange": ("real", None),
         "HeatExchangeSurfaceArea": ("real", None),
         "PrimarySurfaceArea": ("real", None),
@@ -341,7 +502,10 @@ STANDARD_PSETS = {
         "Reference": ("string", None),
         "Roll": ("real", None),
         "Slope": ("real", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "ThermalTransmittance": ("real", None),
     },
     # Applies to: Compressor
@@ -371,10 +535,30 @@ STANDARD_PSETS = {
         "MaximumPartLoadRatio": ("real", None),
         "MinimumPartLoadRatio": ("real", None),
         "NominalCapacity": ("real", None),
-        "PowerSource": ("enum", ['MOTORDRIVEN', 'ENGINEDRIVEN', 'GASTURBINE', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "PowerSource": (
+            "enum",
+            ["MOTORDRIVEN", "ENGINEDRIVEN", "GASTURBINE", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "Reference": ("string", None),
-        "RefrigerantClass": ("enum", ['CFC', 'HCFC', 'HFC', 'HYDROCARBONS', 'AMMONIA', 'CO2', 'H2O', 'OTHER', 'NOTKNOWN', 'UNSET']),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "RefrigerantClass": (
+            "enum",
+            [
+                "CFC",
+                "HCFC",
+                "HFC",
+                "HYDROCARBONS",
+                "AMMONIA",
+                "CO2",
+                "H2O",
+                "OTHER",
+                "NOTKNOWN",
+                "UNSET",
+            ],
+        ),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
     },
     # Applies to: Beam, BuildingElementProxy, Column, Footing, Member, ...
     "Pset_ConcreteElementGeneral": {
@@ -406,7 +590,10 @@ STANDARD_PSETS = {
     # Applies to: Controller
     "Pset_ControllerTypeCommon": {
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
     },
     # Applies to: Covering
     "Pset_CoveringCommon": {
@@ -418,7 +605,10 @@ STANDARD_PSETS = {
         "FragilityRating": ("string", None),
         "IsExternal": ("bool", None),
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "SurfaceSpreadOfFlame": ("string", None),
         "ThermalTransmittance": ("real", None),
     },
@@ -429,13 +619,16 @@ STANDARD_PSETS = {
         "FireRating": ("string", None),
         "IsExternal": ("bool", None),
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "SurfaceSpreadOfFlame": ("string", None),
         "ThermalTransmittance": ("real", None),
     },
     # Applies to: Damper
     "Pset_DamperOccurrence": {
-        "SizingMethod": ("enum", ['NOMINAL', 'EXACT', 'NOTKNOWN', 'UNSET']),
+        "SizingMethod": ("enum", ["NOMINAL", "EXACT", "NOTKNOWN", "UNSET"]),
     },
     # Applies to: Damper
     "Pset_DamperPHistory": {
@@ -448,9 +641,15 @@ STANDARD_PSETS = {
     },
     # Applies to: Damper
     "Pset_DamperTypeCommon": {
-        "BladeAction": ("enum", ['FOLDINGCURTAIN', 'PARALLEL', 'OPPOSED', 'SINGLE', 'OTHER', 'NOTKNOWN', 'UNSET']),
-        "BladeEdge": ("enum", ['CRIMPED', 'UNCRIMPED', 'OTHER', 'NOTKNOWN', 'UNSET']),
-        "BladeShape": ("enum", ['FLAT', 'FABRICATEDAIRFOIL', 'EXTRUDEDAIRFOIL', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "BladeAction": (
+            "enum",
+            ["FOLDINGCURTAIN", "PARALLEL", "OPPOSED", "SINGLE", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
+        "BladeEdge": ("enum", ["CRIMPED", "UNCRIMPED", "OTHER", "NOTKNOWN", "UNSET"]),
+        "BladeShape": (
+            "enum",
+            ["FLAT", "FABRICATEDAIRFOIL", "EXTRUDEDAIRFOIL", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "BladeThickness": ("real", None),
         "CloseOffRating": ("real", None),
         "FaceArea": ("real", None),
@@ -465,11 +664,17 @@ STANDARD_PSETS = {
         "NominalAirFlowRate": ("real", None),
         "NumberofBlades": ("int", None),
         "OpenPressureDrop": ("real", None),
-        "Operation": ("enum", ['AUTOMATIC', 'MANUAL', 'OTHER', 'NOTKNOWN', 'UNSET']),
-        "Orientation": ("enum", ['VERTICAL', 'HORIZONTAL', 'VERTICALORHORIZONTAL', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Operation": ("enum", ["AUTOMATIC", "MANUAL", "OTHER", "NOTKNOWN", "UNSET"]),
+        "Orientation": (
+            "enum",
+            ["VERTICAL", "HORIZONTAL", "VERTICALORHORIZONTAL", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "Reference": ("string", None),
         "RegeneratedSoundCurve": ("real", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "TemperatureRange": ("real", None),
         "TemperatureRating": ("real", None),
     },
@@ -490,7 +695,10 @@ STANDARD_PSETS = {
         "SecurityRating": ("string", None),
         "SelfClosing": ("bool", None),
         "SmokeStop": ("bool", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "ThermalTransmittance": ("real", None),
         "WaterTightnessRating": ("string", None),
         "WindLoadRating": ("string", None),
@@ -534,7 +742,10 @@ STANDARD_PSETS = {
         "PressureClass": ("real", None),
         "PressureRange": ("real", None),
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "TemperatureRange": ("real", None),
     },
     # Applies to: DuctSegment
@@ -559,18 +770,46 @@ STANDARD_PSETS = {
         "Reference": ("string", None),
         "Reinforcement": ("string", None),
         "ReinforcementSpacing": ("real", None),
-        "Shape": ("enum", ['FLATOVAL', 'RECTANGULAR', 'ROUND', 'OTHER', 'NOTKNOWN', 'UNSET']),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Shape": ("enum", ["FLATOVAL", "RECTANGULAR", "ROUND", "OTHER", "NOTKNOWN", "UNSET"]),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "TemperatureRange": ("real", None),
         "WorkingPressure": ("real", None),
     },
     # Applies to: Actuator, AirTerminal, AirTerminalBox, Alarm, Boiler, ...
     "Pset_ElectricalDeviceCommon": {
-        "ConductorFunction": ("enum", ['PHASE_L1', 'PHASE_L2', 'PHASE_L3', 'NEUTRAL', 'PROTECTIVEEARTH', 'PROTECTIVEEARTHNEUTRAL', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "ConductorFunction": (
+            "enum",
+            [
+                "PHASE_L1",
+                "PHASE_L2",
+                "PHASE_L3",
+                "NEUTRAL",
+                "PROTECTIVEEARTH",
+                "PROTECTIVEEARTHNEUTRAL",
+                "OTHER",
+                "NOTKNOWN",
+                "UNSET",
+            ],
+        ),
         "HasProtectiveEarth": ("bool", None),
         "IK_Code": ("string", None),
         "IP_Code": ("string", None),
-        "InsulationStandardClass": ("enum", ['CLASS0APPLIANCE', 'CLASS0IAPPLIANCE', 'CLASSIAPPLIANCE', 'CLASSIIAPPLIANCE', 'CLASSIIIAPPLIANCE', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "InsulationStandardClass": (
+            "enum",
+            [
+                "CLASS0APPLIANCE",
+                "CLASS0IAPPLIANCE",
+                "CLASSIAPPLIANCE",
+                "CLASSIIAPPLIANCE",
+                "CLASSIIIAPPLIANCE",
+                "OTHER",
+                "NOTKNOWN",
+                "UNSET",
+            ],
+        ),
         "NominalFrequencyRange": ("real", None),
         "NumberOfPoles": ("int", None),
         "PowerFactor": ("real", None),
@@ -586,7 +825,35 @@ STANDARD_PSETS = {
         "FunctionalUnitReference": ("string", None),
         "HazardousWastePerUnit": ("real", None),
         "InertWastePerUnit": ("real", None),
-        "LifeCyclePhase": ("enum", ['ACQUISITION', 'CRADLETOSITE', 'DECONSTRUCTION', 'DISPOSAL', 'DISPOSALTRANSPORT', 'GROWTH', 'INSTALLATION', 'MAINTENANCE', 'MANUFACTURE', 'OCCUPANCY', 'OPERATION', 'PROCUREMENT', 'PRODUCTION', 'PRODUCTIONTRANSPORT', 'RECOVERY', 'REFURBISHMENT', 'REPAIR', 'REPLACEMENT', 'TRANSPORT', 'USAGE', 'WASTE', 'WHOLELIFECYCLE', 'USERDEFINED', 'NOTDEFINED']),
+        "LifeCyclePhase": (
+            "enum",
+            [
+                "ACQUISITION",
+                "CRADLETOSITE",
+                "DECONSTRUCTION",
+                "DISPOSAL",
+                "DISPOSALTRANSPORT",
+                "GROWTH",
+                "INSTALLATION",
+                "MAINTENANCE",
+                "MANUFACTURE",
+                "OCCUPANCY",
+                "OPERATION",
+                "PROCUREMENT",
+                "PRODUCTION",
+                "PRODUCTIONTRANSPORT",
+                "RECOVERY",
+                "REFURBISHMENT",
+                "REPAIR",
+                "REPLACEMENT",
+                "TRANSPORT",
+                "USAGE",
+                "WASTE",
+                "WHOLELIFECYCLE",
+                "USERDEFINED",
+                "NOTDEFINED",
+            ],
+        ),
         "NonHazardousWastePerUnit": ("real", None),
         "NonRenewableEnergyConsumptionPerUnit": ("real", None),
         "PhotochemicalOzoneFormationPerUnit": ("real", None),
@@ -621,13 +888,32 @@ STANDARD_PSETS = {
     },
     # Applies to: Fan
     "Pset_FanOccurrence": {
-        "ApplicationOfFan": ("enum", ['SUPPLYAIR', 'RETURNAIR', 'EXHAUSTAIR', 'COOLINGTOWER', 'OTHER', 'NOTKNOWN', 'UNSET']),
-        "CoilPosition": ("enum", ['DRAWTHROUGH', 'BLOWTHROUGH', 'OTHER', 'NOTKNOWN', 'UNSET']),
-        "DischargeType": ("enum", ['DUCT', 'SCREEN', 'LOUVER', 'DAMPER', 'OTHER', 'NOTKNOWN', 'UNSET']),
-        "FanMountingType": ("enum", ['MANUFACTUREDCURB', 'FIELDERECTEDCURB', 'CONCRETEPAD', 'SUSPENDED', 'WALLMOUNTED', 'DUCTMOUNTED', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "ApplicationOfFan": (
+            "enum",
+            ["SUPPLYAIR", "RETURNAIR", "EXHAUSTAIR", "COOLINGTOWER", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
+        "CoilPosition": ("enum", ["DRAWTHROUGH", "BLOWTHROUGH", "OTHER", "NOTKNOWN", "UNSET"]),
+        "DischargeType": (
+            "enum",
+            ["DUCT", "SCREEN", "LOUVER", "DAMPER", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
+        "FanMountingType": (
+            "enum",
+            [
+                "MANUFACTUREDCURB",
+                "FIELDERECTEDCURB",
+                "CONCRETEPAD",
+                "SUSPENDED",
+                "WALLMOUNTED",
+                "DUCTMOUNTED",
+                "OTHER",
+                "NOTKNOWN",
+                "UNSET",
+            ],
+        ),
         "FractionOfMotorHeatToAirStream": ("real", None),
         "ImpellerDiameter": ("real", None),
-        "MotorPosition": ("enum", ['INAIRSTREAM', 'OUTOFAIRSTREAM', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "MotorPosition": ("enum", ["INAIRSTREAM", "OUTOFAIRSTREAM", "OTHER", "NOTKNOWN", "UNSET"]),
     },
     # Applies to: Fan
     "Pset_FanPHistory": {
@@ -643,9 +929,24 @@ STANDARD_PSETS = {
     },
     # Applies to: Fan
     "Pset_FanTypeCommon": {
-        "CapacityControlType": ("enum", ['INLETVANE', 'VARIABLESPEEDDRIVE', 'BLADEPITCHANGLE', 'TWOSPEED', 'DISCHARGEDAMPER', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "CapacityControlType": (
+            "enum",
+            [
+                "INLETVANE",
+                "VARIABLESPEEDDRIVE",
+                "BLADEPITCHANGLE",
+                "TWOSPEED",
+                "DISCHARGEDAMPER",
+                "OTHER",
+                "NOTKNOWN",
+                "UNSET",
+            ],
+        ),
         "EfficiencyCurve": ("real", None),
-        "MotorDriveType": ("enum", ['DIRECTDRIVE', 'BELTDRIVE', 'COUPLING', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "MotorDriveType": (
+            "enum",
+            ["DIRECTDRIVE", "BELTDRIVE", "COUPLING", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "NominalAirFlowRate": ("real", None),
         "NominalPowerRate": ("real", None),
         "NominalRotationSpeed": ("real", None),
@@ -655,7 +956,10 @@ STANDARD_PSETS = {
         "OperationalCriteria": ("real", None),
         "PressureCurve": ("real", None),
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
     },
     # Applies to: Filter
     "Pset_FilterPHistory": {
@@ -676,19 +980,28 @@ STANDARD_PSETS = {
         "NominalPressureDrop": ("real", None),
         "OperationTemperatureRange": ("real", None),
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "Weight": ("real", None),
     },
     # Applies to: FireSuppressionTerminal
     "Pset_FireSuppressionTerminalTypeCommon": {
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
     },
     # Applies to: Footing
     "Pset_FootingCommon": {
         "LoadBearing": ("bool", None),
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
     },
     # Applies to: Furniture
     "Pset_FurnitureTypeCommon": {
@@ -698,14 +1011,23 @@ STANDARD_PSETS = {
         "NominalHeight": ("real", None),
         "NominalLength": ("real", None),
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "Style": ("string", None),
     },
     # Applies to: HeatExchanger
     "Pset_HeatExchangerTypeCommon": {
-        "Arrangement": ("enum", ['COUNTERFLOW', 'CROSSFLOW', 'PARALLELFLOW', 'MULTIPASS', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Arrangement": (
+            "enum",
+            ["COUNTERFLOW", "CROSSFLOW", "PARALLELFLOW", "MULTIPASS", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
     },
     # Applies to: Interceptor
     "Pset_InterceptorTypeCommon": {
@@ -717,7 +1039,10 @@ STANDARD_PSETS = {
         "NominalBodyWidth": ("real", None),
         "OutletConnectionSize": ("real", None),
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "VentilatingPipeSize": ("real", None),
     },
     # Applies to: Lamp
@@ -726,13 +1051,19 @@ STANDARD_PSETS = {
         "ColorRenderingIndex": ("int", None),
         "ColorTemperature": ("real", None),
         "ContributedLuminousFlux": ("real", None),
-        "LampBallastType": ("enum", ['CONVENTIONAL', 'ELECTRONIC', 'LOWLOSS', 'OTHER', 'RESISTOR', 'NOTKNOWN', 'UNSET']),
-        "LampCompensationType": ("enum", ['CAPACITIVE', 'INDUCTIVE', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "LampBallastType": (
+            "enum",
+            ["CONVENTIONAL", "ELECTRONIC", "LOWLOSS", "OTHER", "RESISTOR", "NOTKNOWN", "UNSET"],
+        ),
+        "LampCompensationType": ("enum", ["CAPACITIVE", "INDUCTIVE", "OTHER", "NOTKNOWN", "UNSET"]),
         "LampMaintenanceFactor": ("real", None),
         "LightEmitterNominalPower": ("real", None),
         "Reference": ("string", None),
         "Spectrum": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
     },
     # Applies to: Site
     "Pset_LandRegistration": {
@@ -742,21 +1073,42 @@ STANDARD_PSETS = {
     },
     # Applies to: LightFixture
     "Pset_LightFixtureTypeCommon": {
-        "LightFixtureMountingType": ("enum", ['CABLESPANNED', 'FREESTANDING', 'POLE_SIDE', 'POLE_TOP', 'RECESSED', 'SURFACE', 'SUSPENDED', 'TRACKMOUNTED', 'OTHER', 'NOTKNOWN', 'UNSET']),
-        "LightFixturePlacingType": ("enum", ['CEILING', 'FLOOR', 'FURNITURE', 'POLE', 'WALL', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "LightFixtureMountingType": (
+            "enum",
+            [
+                "CABLESPANNED",
+                "FREESTANDING",
+                "POLE_SIDE",
+                "POLE_TOP",
+                "RECESSED",
+                "SURFACE",
+                "SUSPENDED",
+                "TRACKMOUNTED",
+                "OTHER",
+                "NOTKNOWN",
+                "UNSET",
+            ],
+        ),
+        "LightFixturePlacingType": (
+            "enum",
+            ["CEILING", "FLOOR", "FURNITURE", "POLE", "WALL", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "MaintenanceFactor": ("real", None),
         "MaximumPlenumSensibleLoad": ("real", None),
         "MaximumSpaceSensibleLoad": ("real", None),
         "NumberOfSources": ("int", None),
         "Reference": ("string", None),
         "SensibleLoadToRadiant": ("real", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "TotalWattage": ("real", None),
     },
     # Applies to: Actuator, AirTerminal, AirTerminalBox, Alarm, Beam, ...
     "Pset_ManufacturerOccurrence": {
         "AcquisitionDate": ("string", None),
-        "AssemblyPlace": ("enum", ['FACTORY', 'OFFSITE', 'SITE', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "AssemblyPlace": ("enum", ["FACTORY", "OFFSITE", "SITE", "OTHER", "NOTKNOWN", "UNSET"]),
         "BarCode": ("string", None),
         "BatchReference": ("string", None),
         "SerialNumber": ("string", None),
@@ -764,7 +1116,7 @@ STANDARD_PSETS = {
     # Applies to: Actuator, AirTerminal, AirTerminalBox, Alarm, Beam, ...
     "Pset_ManufacturerTypeInformation": {
         "ArticleNumber": ("string", None),
-        "AssemblyPlace": ("enum", ['FACTORY', 'OFFSITE', 'SITE', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "AssemblyPlace": ("enum", ["FACTORY", "OFFSITE", "SITE", "OTHER", "NOTKNOWN", "UNSET"]),
         "GlobalTradeItemNumber": ("string", None),
         "Manufacturer": ("string", None),
         "ModelLabel": ("string", None),
@@ -780,7 +1132,10 @@ STANDARD_PSETS = {
         "Roll": ("real", None),
         "Slope": ("real", None),
         "Span": ("real", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "ThermalTransmittance": ("real", None),
     },
     # Applies to: OpeningElement
@@ -789,18 +1144,24 @@ STANDARD_PSETS = {
         "ProtectedOpening": ("bool", None),
         "Purpose": ("string", None),
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
     },
     # Applies to: Outlet
     "Pset_OutletTypeCommon": {
         "IsPluggableOutlet": ("bool", None),
         "NumberOfSockets": ("int", None),
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
     },
     # Applies to: Building
     "Pset_OutsideDesignCriteria": {
-        "BuildingThermalExposure": ("enum", ['LIGHT', 'MEDIUM', 'HEAVY', 'NOTKNOWN', 'UNSET']),
+        "BuildingThermalExposure": ("enum", ["LIGHT", "MEDIUM", "HEAVY", "NOTKNOWN", "UNSET"]),
         "CoolingDesignDay": ("string", None),
         "CoolingDryBulb": ("real", None),
         "CoolingWetBulb": ("real", None),
@@ -816,7 +1177,10 @@ STANDARD_PSETS = {
     "Pset_PileCommon": {
         "LoadBearing": ("bool", None),
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
     },
     # Applies to: PipeSegment
     "Pset_PipeConnectionFlanged": {
@@ -845,7 +1209,10 @@ STANDARD_PSETS = {
         "PressureClass": ("real", None),
         "PressureRange": ("real", None),
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "TemperatureRange": ("real", None),
     },
     # Applies to: PipeSegment
@@ -867,7 +1234,10 @@ STANDARD_PSETS = {
         "OuterDiameter": ("real", None),
         "PressureRange": ("real", None),
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "TemperatureRange": ("real", None),
         "WorkingPressure": ("real", None),
     },
@@ -878,7 +1248,10 @@ STANDARD_PSETS = {
         "IsExternal": ("bool", None),
         "LoadBearing": ("bool", None),
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "ThermalTransmittance": ("real", None),
     },
     # Applies to: Beam, BuildingElementProxy, Column, Footing, Member, ...
@@ -927,7 +1300,7 @@ STANDARD_PSETS = {
     },
     # Applies to: Building, BuildingStorey, Site, Space
     "Pset_PropertyAgreement": {
-        "AgreementType": ("enum", ['ASSIGNMENT', 'LEASE', 'TENANT', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "AgreementType": ("enum", ["ASSIGNMENT", "LEASE", "TENANT", "OTHER", "NOTKNOWN", "UNSET"]),
         "CommencementDate": ("string", None),
         "ConditionCommencement": ("string", None),
         "ConditionTermination": ("string", None),
@@ -944,19 +1317,28 @@ STANDARD_PSETS = {
     "Pset_ProtectiveDeviceBreakerUnitI2TCurve": {
         "BreakerUnitCurve": ("real", None),
         "NominalCurrent": ("real", None),
-        "VoltageLevel": ("enum", ['U230', 'U400', 'U440', 'U525', 'U690', 'U1000', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "VoltageLevel": (
+            "enum",
+            ["U230", "U400", "U440", "U525", "U690", "U1000", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
     },
     # Applies to: ProtectiveDevice
     "Pset_ProtectiveDeviceBreakerUnitI2TFuseCurve": {
         "BreakerUnitFuseBreakingingCurve": ("real", None),
         "BreakerUnitFuseMeltingCurve": ("real", None),
-        "VoltageLevel": ("enum", ['U230', 'U400', 'U440', 'U525', 'U690', 'U1000', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "VoltageLevel": (
+            "enum",
+            ["U230", "U400", "U440", "U525", "U690", "U1000", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
     },
     # Applies to: ProtectiveDevice
     "Pset_ProtectiveDeviceBreakerUnitIPICurve": {
         "BreakerUnitIPICurve": ("real", None),
         "NominalCurrent": ("real", None),
-        "VoltageLevel": ("enum", ['U230', 'U400', 'U440', 'U525', 'U690', 'U1000', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "VoltageLevel": (
+            "enum",
+            ["U230", "U400", "U440", "U525", "U690", "U1000", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
     },
     # Applies to: ProtectiveDevice
     "Pset_ProtectiveDeviceBreakerUnitTypeMotorProtection": {
@@ -965,7 +1347,10 @@ STANDARD_PSETS = {
         "ICU60947": ("real", None),
         "ICW60947": ("real", None),
         "PerformanceClasses": ("string", None),
-        "VoltageLevel": ("enum", ['U230', 'U400', 'U440', 'U525', 'U690', 'U1000', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "VoltageLevel": (
+            "enum",
+            ["U230", "U400", "U440", "U525", "U690", "U1000", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
     },
     # Applies to: ProtectiveDevice
     "Pset_ProtectiveDeviceOccurrence": {
@@ -978,7 +1363,7 @@ STANDARD_PSETS = {
         "LongTimeCurrentSetValue": ("real", None),
         "LongTimeDelay": ("real", None),
         "LongTimeFunction": ("bool", None),
-        "PoleUsage": ("enum", ['1P', '2P', '3P', '4P', '1PN', '3PN', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "PoleUsage": ("enum", ["1P", "2P", "3P", "4P", "1PN", "3PN", "OTHER", "NOTKNOWN", "UNSET"]),
         "ShortTimeCurrentSetValue": ("real", None),
         "ShortTimeFunction": ("bool", None),
         "ShortTimeTrippingTime": ("real", None),
@@ -987,17 +1372,23 @@ STANDARD_PSETS = {
     # Applies to: ProtectiveDevice
     "Pset_ProtectiveDeviceTrippingCurve": {
         "TrippingCurve": ("real", None),
-        "TrippingCurveType": ("enum", ['UPPER', 'LOWER', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "TrippingCurveType": ("enum", ["UPPER", "LOWER", "OTHER", "NOTKNOWN", "UNSET"]),
     },
     # Applies to: ProtectiveDevice
     "Pset_ProtectiveDeviceTypeCommon": {
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
     },
     # Applies to: Pump
     "Pset_PumpOccurrence": {
-        "BaseType": ("enum", ['FRAME', 'BASE', 'NONE', 'OTHER', 'NOTKNOWN', 'UNSET']),
-        "DriveConnectionType": ("enum", ['DIRECTDRIVE', 'BELTDRIVE', 'COUPLING', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "BaseType": ("enum", ["FRAME", "BASE", "NONE", "OTHER", "NOTKNOWN", "UNSET"]),
+        "DriveConnectionType": (
+            "enum",
+            ["DIRECTDRIVE", "BELTDRIVE", "COUPLING", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "ImpellerDiameter": ("real", None),
     },
     # Applies to: Pump
@@ -1017,7 +1408,10 @@ STANDARD_PSETS = {
         "NetPositiveSuctionHead": ("real", None),
         "NominalRotationSpeed": ("real", None),
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "TemperatureRange": ("real", None),
     },
     # Applies to: Railing
@@ -1026,7 +1420,10 @@ STANDARD_PSETS = {
         "Height": ("real", None),
         "IsExternal": ("bool", None),
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
     },
     # Applies to: Ramp
     "Pset_RampCommon": {
@@ -1038,7 +1435,10 @@ STANDARD_PSETS = {
         "Reference": ("string", None),
         "RequiredHeadroom": ("real", None),
         "RequiredSlope": ("real", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "ThermalTransmittance": ("real", None),
     },
     # Applies to: RampFlight
@@ -1048,7 +1448,10 @@ STANDARD_PSETS = {
         "Headroom": ("real", None),
         "Reference": ("string", None),
         "Slope": ("real", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
     },
     # Applies to: Footing
     "Pset_ReinforcementBarCountOfIndependentFooting": {
@@ -1071,7 +1474,7 @@ STANDARD_PSETS = {
         "Description": ("string", None),
         "HoopBarPitch": ("real", None),
         "Reference": ("string", None),
-        "ReinforcementBarType": ("enum", ['RING', 'SPIRAL', 'OTHER', 'USERDEFINED', 'NOTDEFINED']),
+        "ReinforcementBarType": ("enum", ["RING", "SPIRAL", "OTHER", "USERDEFINED", "NOTDEFINED"]),
         "XDirectionTieHoopBarPitch": ("real", None),
         "XDirectionTieHoopCount": ("int", None),
         "YDirectionTieHoopBarPitch": ("real", None),
@@ -1103,7 +1506,10 @@ STANDARD_PSETS = {
     },
     # Applies to: Wall, WallStandardCase
     "Pset_ReinforcementBarPitchOfWall": {
-        "BarAllocationType": ("enum", ['SINGLE', 'DOUBLE', 'ALTERNATE', 'OTHER', 'USERDEFINED', 'NOTDEFINED']),
+        "BarAllocationType": (
+            "enum",
+            ["SINGLE", "DOUBLE", "ALTERNATE", "OTHER", "USERDEFINED", "NOTDEFINED"],
+        ),
         "Description": ("string", None),
         "HorizontalBarPitch": ("real", None),
         "Reference": ("string", None),
@@ -1116,7 +1522,10 @@ STANDARD_PSETS = {
         "FireRating": ("string", None),
         "IsExternal": ("bool", None),
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "ThermalTransmittance": ("real", None),
     },
     # Applies to: SanitaryTerminal
@@ -1126,7 +1535,10 @@ STANDARD_PSETS = {
         "NominalLength": ("real", None),
         "NominalWidth": ("real", None),
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
     },
     # Applies to: Sensor
     "Pset_SensorPHistory": {
@@ -1138,7 +1550,10 @@ STANDARD_PSETS = {
     # Applies to: Sensor
     "Pset_SensorTypeCommon": {
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
     },
     # Applies to: Actuator, AirTerminal, AirTerminalBox, Alarm, Beam, ...
     "Pset_ServiceLife": {
@@ -1164,7 +1579,10 @@ STANDARD_PSETS = {
         "LoadBearing": ("bool", None),
         "PitchAngle": ("real", None),
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "SurfaceSpreadOfFlame": ("string", None),
         "ThermalTransmittance": ("real", None),
     },
@@ -1315,7 +1733,10 @@ STANDARD_PSETS = {
         "Reference": ("string", None),
         "RequiredHeadroom": ("real", None),
         "RiserHeight": ("real", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "ThermalTransmittance": ("real", None),
         "TreadLength": ("real", None),
         "TreadLengthAtInnerSide": ("real", None),
@@ -1331,7 +1752,10 @@ STANDARD_PSETS = {
         "NumberOfTreads": ("int", None),
         "Reference": ("string", None),
         "RiserHeight": ("real", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "TreadLength": ("real", None),
         "TreadLengthAtInnerSide": ("real", None),
         "TreadLengthAtOffset": ("real", None),
@@ -1346,8 +1770,21 @@ STANDARD_PSETS = {
         "NumberOfGangs": ("int", None),
         "Reference": ("string", None),
         "SetPoint": ("int", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
-        "SwitchFunction": ("enum", ['ONOFFSWITCH', 'INTERMEDIATESWITCH', 'DOUBLETHROWSWITCH', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
+        "SwitchFunction": (
+            "enum",
+            [
+                "ONOFFSWITCH",
+                "INTERMEDIATESWITCH",
+                "DOUBLETHROWSWITCH",
+                "OTHER",
+                "NOTKNOWN",
+                "UNSET",
+            ],
+        ),
     },
     # Applies to: SwitchingDevice
     "Pset_SwitchingDeviceTypePHistory": {
@@ -1365,7 +1802,10 @@ STANDARD_PSETS = {
     "Pset_TankOccurrence": {
         "HasLadder": ("bool", None),
         "HasVisualIndicator": ("bool", None),
-        "TankComposition": ("enum", ['COMPLEX', 'ELEMENT', 'PARTIAL', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "TankComposition": (
+            "enum",
+            ["COMPLEX", "ELEMENT", "PARTIAL", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
     },
     # Applies to: Tank
     "Pset_TankPHistory": {
@@ -1375,9 +1815,33 @@ STANDARD_PSETS = {
     },
     # Applies to: Tank
     "Pset_TankTypeCommon": {
-        "AccessType": ("enum", ['NONE', 'LOOSECOVER', 'MANHOLE', 'SECUREDCOVER', 'SECUREDCOVERWITHMANHOLE', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "AccessType": (
+            "enum",
+            [
+                "NONE",
+                "LOOSECOVER",
+                "MANHOLE",
+                "SECUREDCOVER",
+                "SECUREDCOVERWITHMANHOLE",
+                "OTHER",
+                "NOTKNOWN",
+                "UNSET",
+            ],
+        ),
         "EffectiveCapacity": ("real", None),
-        "EndShapeType": ("enum", ['CONCAVECONVEX', 'FLATCONVEX', 'CONVEXCONVEX', 'CONCAVEFLAT', 'FLATFLAT', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "EndShapeType": (
+            "enum",
+            [
+                "CONCAVECONVEX",
+                "FLATCONVEX",
+                "CONVEXCONVEX",
+                "CONCAVEFLAT",
+                "FLATFLAT",
+                "OTHER",
+                "NOTKNOWN",
+                "UNSET",
+            ],
+        ),
         "FirstCurvatureRadius": ("real", None),
         "NominalCapacity": ("real", None),
         "NominalDepth": ("real", None),
@@ -1385,11 +1849,31 @@ STANDARD_PSETS = {
         "NominalWidthOrDiameter": ("real", None),
         "NumberOfSections": ("int", None),
         "OperatingWeight": ("real", None),
-        "PatternType": ("enum", ['HORIZONTALCYLINDER', 'VERTICALCYLINDER', 'RECTANGULAR', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "PatternType": (
+            "enum",
+            ["HORIZONTALCYLINDER", "VERTICALCYLINDER", "RECTANGULAR", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "Reference": ("string", None),
         "SecondCurvatureRadius": ("real", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
-        "StorageType": ("enum", ['ICE', 'WATER', 'RAINWATER', 'WASTEWATER', 'POTABLEWATER', 'FUEL', 'OIL', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
+        "StorageType": (
+            "enum",
+            [
+                "ICE",
+                "WATER",
+                "RAINWATER",
+                "WASTEWATER",
+                "POTABLEWATER",
+                "FUEL",
+                "OIL",
+                "OTHER",
+                "NOTKNOWN",
+                "UNSET",
+            ],
+        ),
     },
     # Applies to: Building, BuildingStorey, Site, Space
     "Pset_ThermalLoadAggregate": {
@@ -1426,12 +1910,34 @@ STANDARD_PSETS = {
         "Reference": ("string", None),
         "SecondaryApparentPower": ("real", None),
         "SecondaryCurrent": ("real", None),
-        "SecondaryCurrentType": ("enum", ['AC', 'DC', 'NOTKNOWN', 'UNSET']),
+        "SecondaryCurrentType": ("enum", ["AC", "DC", "NOTKNOWN", "UNSET"]),
         "SecondaryFrequency": ("real", None),
         "SecondaryVoltage": ("real", None),
         "ShortCircuitVoltage": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
-        "TransformerVectorGroup": ("enum", ['DD0', 'DD6', 'DY5', 'DY11', 'YD5', 'YD11', 'DZ0', 'DZ6', 'YY0', 'YY6', 'YZ5', 'YZ11', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
+        "TransformerVectorGroup": (
+            "enum",
+            [
+                "DD0",
+                "DD6",
+                "DY5",
+                "DY11",
+                "YD5",
+                "YD11",
+                "DZ0",
+                "DZ6",
+                "YY0",
+                "YY6",
+                "YZ5",
+                "YZ11",
+                "OTHER",
+                "NOTKNOWN",
+                "UNSET",
+            ],
+        ),
     },
     # Applies to: TransportElement
     "Pset_TransportElementCommon": {
@@ -1439,12 +1945,18 @@ STANDARD_PSETS = {
         "CapacityWeight": ("real", None),
         "FireExit": ("bool", None),
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
     },
     # Applies to: UnitaryEquipment
     "Pset_UnitaryEquipmentTypeCommon": {
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
     },
     # Applies to: Building
     "Pset_UtilityConsumptionPHistory": {
@@ -1466,11 +1978,61 @@ STANDARD_PSETS = {
         "FlowCoefficient": ("real", None),
         "Reference": ("string", None),
         "Size": ("real", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "TestPressure": ("real", None),
-        "ValveMechanism": ("enum", ['BALL', 'BUTTERFLY', 'CONFIGUREDGATE', 'GLAND', 'GLOBE', 'LUBRICATEDPLUG', 'NEEDLE', 'PARALLELSLIDE', 'PLUG', 'WEDGEGATE', 'OTHER', 'NOTKNOWN', 'UNSET']),
-        "ValveOperation": ("enum", ['DROPWEIGHT', 'FLOAT', 'HYDRAULIC', 'LEVER', 'LOCKSHIELD', 'MOTORIZED', 'PNEUMATIC', 'SOLENOID', 'SPRING', 'THERMOSTATIC', 'WHEEL', 'OTHER', 'NOTKNOWN', 'UNSET']),
-        "ValvePattern": ("enum", ['SINGLEPORT', 'ANGLED_2_PORT', 'STRAIGHT_2_PORT', 'STRAIGHT_3_PORT', 'CROSSOVER_4_PORT', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "ValveMechanism": (
+            "enum",
+            [
+                "BALL",
+                "BUTTERFLY",
+                "CONFIGUREDGATE",
+                "GLAND",
+                "GLOBE",
+                "LUBRICATEDPLUG",
+                "NEEDLE",
+                "PARALLELSLIDE",
+                "PLUG",
+                "WEDGEGATE",
+                "OTHER",
+                "NOTKNOWN",
+                "UNSET",
+            ],
+        ),
+        "ValveOperation": (
+            "enum",
+            [
+                "DROPWEIGHT",
+                "FLOAT",
+                "HYDRAULIC",
+                "LEVER",
+                "LOCKSHIELD",
+                "MOTORIZED",
+                "PNEUMATIC",
+                "SOLENOID",
+                "SPRING",
+                "THERMOSTATIC",
+                "WHEEL",
+                "OTHER",
+                "NOTKNOWN",
+                "UNSET",
+            ],
+        ),
+        "ValvePattern": (
+            "enum",
+            [
+                "SINGLEPORT",
+                "ANGLED_2_PORT",
+                "STRAIGHT_2_PORT",
+                "STRAIGHT_3_PORT",
+                "CROSSOVER_4_PORT",
+                "OTHER",
+                "NOTKNOWN",
+                "UNSET",
+            ],
+        ),
         "WorkingPressure": ("real", None),
     },
     # Applies to: Wall, WallStandardCase
@@ -1483,7 +2045,10 @@ STANDARD_PSETS = {
         "IsExternal": ("bool", None),
         "LoadBearing": ("bool", None),
         "Reference": ("string", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "SurfaceSpreadOfFlame": ("string", None),
         "ThermalTransmittance": ("real", None),
     },
@@ -1513,7 +2078,10 @@ STANDARD_PSETS = {
         "Reference": ("string", None),
         "SecurityRating": ("string", None),
         "SmokeStop": ("bool", None),
-        "Status": ("enum", ['NEW', 'EXISTING', 'DEMOLISH', 'TEMPORARY', 'OTHER', 'NOTKNOWN', 'UNSET']),
+        "Status": (
+            "enum",
+            ["NEW", "EXISTING", "DEMOLISH", "TEMPORARY", "OTHER", "NOTKNOWN", "UNSET"],
+        ),
         "ThermalTransmittance": ("real", None),
         "WaterTightnessRating": ("string", None),
         "WindLoadRating": ("string", None),
@@ -1611,4 +2179,3 @@ def coerce_from_registry(pset_name: str, prop_name: str, value):
 
     # STRING type � return as-is
     return value
-

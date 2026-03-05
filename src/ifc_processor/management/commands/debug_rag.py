@@ -1,8 +1,8 @@
-import logging
-from django.core.management.base import BaseCommand
 from django.conf import settings
-from documents.models import Document, DocumentChunk
+from django.core.management.base import BaseCommand
+
 from chat.services.rag_service import RAGService
+from documents.models import Document
 from embeddings.services.embedding_service import EmbeddingService
 
 
@@ -10,36 +10,38 @@ class Command(BaseCommand):
     help = "Debug RAG pipeline: Check chunks, vectors, and retrieval."
 
     def add_arguments(self, parser):
-        parser.add_argument('query', type=str, help='The test question to ask')
+        parser.add_argument("query", type=str, help="The test question to ask")
 
     def handle(self, *args, **options):
-        query = options['query']
+        query = options["query"]
 
         print("\n" + "=" * 60)
-        print(f"🕵️  RAG DIAGNOSTIC TOOL")
+        print("🕵️  RAG DIAGNOSTIC TOOL")
         print("=" * 60)
 
         # 1. CHECK CONFIG
-        print(f"\n[1] CONFIGURATION")
+        print("\n[1] CONFIGURATION")
         print(f"    • OLLAMA_HOST: {settings.OLLAMA_HOST}")
         print(f"    • MODEL (LLM): {settings.OLLAMA_MODEL}")
         print(f"    • MODEL (EMBED): {settings.OLLAMA_EMBED_MODEL}")
 
         # 2. CHECK EMBEDDING SERVICE
-        print(f"\n[2] TESTING EMBEDDING SERVICE")
+        print("\n[2] TESTING EMBEDDING SERVICE")
         service = EmbeddingService()
         try:
             vec = service.embed_query("test")
-            print(f"    ✅ Embedding generation success.")
+            print("    ✅ Embedding generation success.")
             print(f"    📏 Vector Dimensions: {len(vec)} (Expect 1024 for mxbai)")
             if len(vec) != 1024:
-                print(f"    ⚠️  WARNING: You are using 'mxbai' but vector is {len(vec)}. DB expects 1024.")
+                print(
+                    f"    ⚠️  WARNING: You are using 'mxbai' but vector is {len(vec)}. DB expects 1024."
+                )
         except Exception as e:
             print(f"    ❌ Embedding failed: {e}")
             return
 
         # 3. CHECK DOCUMENTS
-        print(f"\n[3] CHECKING DATABASE CONTENT")
+        print("\n[3] CHECKING DATABASE CONTENT")
         docs = Document.objects.all()
         if not docs.exists():
             print("    ❌ No documents found in DB.")
@@ -52,12 +54,14 @@ class Command(BaseCommand):
             print(f"       • Chunks: {chunk_count}")
 
             if chunk_count == 0:
-                print("       ❌ ERROR: Document is 'Completed' but has 0 chunks. Text extraction failed.")
+                print(
+                    "       ❌ ERROR: Document is 'Completed' but has 0 chunks. Text extraction failed."
+                )
                 continue
 
             # Inspect first chunk
             first = doc.chunks.first()
-            content_preview = first.content[:50].replace('\n', ' ')
+            content_preview = first.content[:50].replace("\n", " ")
             vec_len = len(first.embedding) if first.embedding else 0
 
             print(f"       • Sample Chunk: '{content_preview}...'")

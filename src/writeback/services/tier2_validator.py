@@ -10,15 +10,18 @@ import logging
 from dataclasses import dataclass, field
 
 from ifc_processor.models import IFCEntity
+
 from .filter_engine import FilterEngine
-from .tier1_validator import Tier1Validator, ValidationResult
+from .tier1_validator import Tier1Validator
 from .tier2_planner import TIER1_OPERATIONS
 
 logger = logging.getLogger(__name__)
 
 TIER2_ONLY_OPERATIONS = {
-    "ADD_PSET", "REMOVE_PSET",
-    "SET_CLASSIFICATION", "SET_MATERIAL",
+    "ADD_PSET",
+    "REMOVE_PSET",
+    "SET_CLASSIFICATION",
+    "SET_MATERIAL",
     "COPY_PROPERTIES",
 }
 
@@ -26,6 +29,7 @@ TIER2_ONLY_OPERATIONS = {
 @dataclass
 class StepValidation:
     """Validation result for a single plan step."""
+
     step_index: int
     operation: str
     valid: bool
@@ -36,12 +40,14 @@ class StepValidation:
 @dataclass
 class PlanValidation:
     """Validation result for the entire plan."""
+
     valid: bool
     steps: list[StepValidation] = field(default_factory=list)
     error: str = ""
 
     @property
     def total_affected(self) -> int:
+        """Total entity count across all valid steps."""
         return sum(len(s.entities) for s in self.steps if s.valid)
 
 
@@ -114,8 +120,10 @@ class Tier2Validator:
             entities = list(matched_qs)
         except ValueError as e:
             return StepValidation(
-                step_index=index, operation=operation,
-                valid=False, error=str(e),
+                step_index=index,
+                operation=operation,
+                valid=False,
+                error=str(e),
             )
 
         # Delegate Tier 1 ops to existing validator
@@ -124,7 +132,8 @@ class Tier2Validator:
             intent = self._step_to_intent(operation, params)
             t1_result = self.t1_validator.validate(intent, entities)
             return StepValidation(
-                step_index=index, operation=operation,
+                step_index=index,
+                operation=operation,
                 valid=t1_result.valid,
                 entities=t1_result.entities or [],
                 error=t1_result.error,
@@ -138,19 +147,26 @@ class Tier2Validator:
         if operation in ("SET_CLASSIFICATION", "SET_MATERIAL"):
             # These always succeed if entities matched — minimal pre-validation
             return StepValidation(
-                step_index=index, operation=operation,
-                valid=True, entities=entities,
+                step_index=index,
+                operation=operation,
+                valid=True,
+                entities=entities,
             )
         if operation == "COPY_PROPERTIES":
             return self._validate_copy_properties(index, params, entities)
 
         return StepValidation(
-            step_index=index, operation=operation,
-            valid=False, error=f"Unknown operation: {operation}",
+            step_index=index,
+            operation=operation,
+            valid=False,
+            error=f"Unknown operation: {operation}",
         )
 
     def _validate_add_pset(
-        self, index: int, params: dict, entities: list[IFCEntity],
+        self,
+        index: int,
+        params: dict,
+        entities: list[IFCEntity],
     ) -> StepValidation:
         """ADD_PSET: warn if pset already exists on all entities."""
         pset_name = params.get("pset_name", "")
@@ -158,73 +174,88 @@ class Tier2Validator:
 
         if not pset_name:
             return StepValidation(
-                step_index=index, operation="ADD_PSET",
-                valid=False, error="ADD_PSET requires 'pset_name'",
+                step_index=index,
+                operation="ADD_PSET",
+                valid=False,
+                error="ADD_PSET requires 'pset_name'",
             )
         if not properties:
             return StepValidation(
-                step_index=index, operation="ADD_PSET",
-                valid=False, error="ADD_PSET requires at least one property",
+                step_index=index,
+                operation="ADD_PSET",
+                valid=False,
+                error="ADD_PSET requires at least one property",
             )
 
         # Check how many already have this pset with all the properties
         fully_populated = 0
         for e in entities:
-            if all(
-                f"{pset_name}.{k}" in (e.properties or {})
-                for k in properties
-            ):
+            if all(f"{pset_name}.{k}" in (e.properties or {}) for k in properties):
                 fully_populated += 1
 
         if fully_populated == len(entities):
             return StepValidation(
-                step_index=index, operation="ADD_PSET",
+                step_index=index,
+                operation="ADD_PSET",
                 valid=False,
                 error=f"All {len(entities)} entities already have '{pset_name}' "
-                      f"with all specified properties.",
+                f"with all specified properties.",
             )
 
         return StepValidation(
-            step_index=index, operation="ADD_PSET",
-            valid=True, entities=entities,
+            step_index=index,
+            operation="ADD_PSET",
+            valid=True,
+            entities=entities,
         )
 
     def _validate_remove_pset(
-        self, index: int, params: dict, entities: list[IFCEntity],
+        self,
+        index: int,
+        params: dict,
+        entities: list[IFCEntity],
     ) -> StepValidation:
         pset_name = params.get("pset_name", "")
         if not pset_name:
             return StepValidation(
-                step_index=index, operation="REMOVE_PSET",
-                valid=False, error="REMOVE_PSET requires 'pset_name'",
+                step_index=index,
+                operation="REMOVE_PSET",
+                valid=False,
+                error="REMOVE_PSET requires 'pset_name'",
             )
 
         # At least one entity must have this pset
         has_pset = [
-            e for e in entities
-            if any(k.startswith(f"{pset_name}.") for k in (e.properties or {}))
+            e for e in entities if any(k.startswith(f"{pset_name}.") for k in (e.properties or {}))
         ]
         if not has_pset:
             return StepValidation(
-                step_index=index, operation="REMOVE_PSET",
+                step_index=index,
+                operation="REMOVE_PSET",
                 valid=False,
                 error=f"No matched entities have property set '{pset_name}'.",
             )
 
         return StepValidation(
-            step_index=index, operation="REMOVE_PSET",
-            valid=True, entities=has_pset,
+            step_index=index,
+            operation="REMOVE_PSET",
+            valid=True,
+            entities=has_pset,
         )
 
     def _validate_copy_properties(
-        self, index: int, params: dict, entities: list[IFCEntity],
+        self,
+        index: int,
+        params: dict,
+        entities: list[IFCEntity],
     ) -> StepValidation:
         source_name = params.get("source_name", "")
         pset_name = params.get("pset_name", "")
 
         if not source_name or not pset_name:
             return StepValidation(
-                step_index=index, operation="COPY_PROPERTIES",
+                step_index=index,
+                operation="COPY_PROPERTIES",
                 valid=False,
                 error="COPY_PROPERTIES requires 'source_name' and 'pset_name'",
             )
@@ -238,14 +269,17 @@ class Tier2Validator:
 
         if not source_exists:
             return StepValidation(
-                step_index=index, operation="COPY_PROPERTIES",
+                step_index=index,
+                operation="COPY_PROPERTIES",
                 valid=False,
                 error=f"Source entity '{source_name}' not found in project.",
             )
 
         return StepValidation(
-            step_index=index, operation="COPY_PROPERTIES",
-            valid=True, entities=entities,
+            step_index=index,
+            operation="COPY_PROPERTIES",
+            valid=True,
+            entities=entities,
         )
 
     def _check_consistency(
@@ -281,8 +315,7 @@ class Tier2Validator:
             elif op in ("SET_PROPERTY", "ADD_PROPERTY") and pset:
                 if pset in removed_psets:
                     return (
-                        f"Contradiction: plan modifies '{pset}'"
-                        f"but it's removed in an earlier step."
+                        f"Contradiction: plan modifies '{pset}'but it's removed in an earlier step."
                     )
         return ""
 

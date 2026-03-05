@@ -1,13 +1,13 @@
 # embeddings/management/commands/generate_embeddings.py
 
-import time
 import logging
-from typing import List
+import time
+
 from django.core.management.base import BaseCommand
 from django.db.models import QuerySet
 
-from ifc_processor.models import IFCEntity, IFCFile
 from embeddings.services.embedding_service import EmbeddingService
+from ifc_processor.models import IFCEntity, IFCFile
 
 logger = logging.getLogger(__name__)
 
@@ -59,13 +59,13 @@ class Command(BaseCommand):
 
         # 3. Process in batches
         # We fetch all IDs first to avoid pagination shifts when filtering by isnull=True
-        all_ids = list(queryset.values_list('id', flat=True))
+        all_ids = list(queryset.values_list("id", flat=True))
 
         processed_count = 0
         skipped_count = 0
 
         for i in range(0, len(all_ids), batch_size):
-            chunk_ids = all_ids[i: i + batch_size]
+            chunk_ids = all_ids[i : i + batch_size]
 
             # Process the chunk
             n_embedded, n_skipped = self._process_batch(chunk_ids, service)
@@ -79,10 +79,12 @@ class Command(BaseCommand):
 
         # 4. Final Summary
         duration = time.time() - start_time
-        self.stdout.write(self.style.SUCCESS(
-            f"\n\nComplete! Processed {processed_count} entities "
-            f"({skipped_count} skipped empty descriptions) in {duration:.1f}s."
-        ))
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"\n\nComplete! Processed {processed_count} entities "
+                f"({skipped_count} skipped empty descriptions) in {duration:.1f}s."
+            )
+        )
 
     def _get_target_entities(self, options) -> QuerySet:
         """
@@ -98,7 +100,7 @@ class Command(BaseCommand):
 
         return qs
 
-    def _process_batch(self, entity_ids: List[str], service: EmbeddingService) -> tuple[int, int]:
+    def _process_batch(self, entity_ids: list[str], service: EmbeddingService) -> tuple[int, int]:
         """
         Fetch entities, generate embeddings, and bulk update.
         Returns (number_embedded, number_skipped).
@@ -137,6 +139,5 @@ class Command(BaseCommand):
     def _print_progress(self, current, total, embedded):
         percent = (current / total) * 100
         self.stdout.write(
-            f"\rProcessing: [{current}/{total}] {percent:.1f}% | Embedded: {embedded}",
-            ending=""
+            f"\rProcessing: [{current}/{total}] {percent:.1f}% | Embedded: {embedded}", ending=""
         )

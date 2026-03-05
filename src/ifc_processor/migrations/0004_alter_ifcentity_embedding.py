@@ -5,15 +5,14 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('ifc_processor', '0003_alter_ifcfile_file_ifcdataissue'),
+        ("ifc_processor", "0003_alter_ifcfile_file_ifcdataissue"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='ifcentity',
-            name='embedding',
+            model_name="ifcentity",
+            name="embedding",
             field=pgvector.django.vector.VectorField(blank=True, dimensions=1024, null=True),
         ),
     ]

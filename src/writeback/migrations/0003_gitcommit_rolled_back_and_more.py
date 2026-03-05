@@ -5,56 +5,95 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('chat', '0002_alter_chatsession_options_alter_message_options_and_more'),
-        ('writeback', '0002_alter_conflict_options_alter_gitcommit_options_and_more'),
+        ("chat", "0002_alter_chatsession_options_alter_message_options_and_more"),
+        ("writeback", "0002_alter_conflict_options_alter_gitcommit_options_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='gitcommit',
-            name='rolled_back',
-            field=models.BooleanField(default=False, verbose_name='Rolled Back'),
+            model_name="gitcommit",
+            name="rolled_back",
+            field=models.BooleanField(default=False, verbose_name="Rolled Back"),
         ),
         migrations.AddField(
-            model_name='modificationproposal',
-            name='applied_at',
-            field=models.DateTimeField(blank=True, null=True, verbose_name='Applied At'),
+            model_name="modificationproposal",
+            name="applied_at",
+            field=models.DateTimeField(blank=True, null=True, verbose_name="Applied At"),
         ),
         migrations.AddField(
-            model_name='modificationproposal',
-            name='confidence',
-            field=models.FloatField(default=0.0, help_text='LLM classification confidence (0.0–1.0)', verbose_name='Confidence'),
+            model_name="modificationproposal",
+            name="confidence",
+            field=models.FloatField(
+                default=0.0,
+                help_text="LLM classification confidence (0.0–1.0)",
+                verbose_name="Confidence",
+            ),
         ),
         migrations.AddField(
-            model_name='modificationproposal',
-            name='error_message',
-            field=models.TextField(blank=True, help_text="Error details if status is 'failed'", verbose_name='Error Message'),
+            model_name="modificationproposal",
+            name="error_message",
+            field=models.TextField(
+                blank=True,
+                help_text="Error details if status is 'failed'",
+                verbose_name="Error Message",
+            ),
         ),
         migrations.AddField(
-            model_name='modificationproposal',
-            name='filter_spec',
-            field=models.JSONField(blank=True, default=dict, help_text='Entity filter used to resolve targets', verbose_name='Filter Spec'),
+            model_name="modificationproposal",
+            name="filter_spec",
+            field=models.JSONField(
+                blank=True,
+                default=dict,
+                help_text="Entity filter used to resolve targets",
+                verbose_name="Filter Spec",
+            ),
         ),
         migrations.AddField(
-            model_name='modificationproposal',
-            name='intent_json',
-            field=models.JSONField(blank=True, default=dict, help_text='Full parsed intent from the LLM classifier', verbose_name='Intent JSON'),
+            model_name="modificationproposal",
+            name="intent_json",
+            field=models.JSONField(
+                blank=True,
+                default=dict,
+                help_text="Full parsed intent from the LLM classifier",
+                verbose_name="Intent JSON",
+            ),
         ),
         migrations.AddField(
-            model_name='modificationproposal',
-            name='operation',
-            field=models.CharField(blank=True, help_text='e.g. SET_PROPERTY, ADD_PROPERTY, SET_ATTRIBUTE', max_length=50, verbose_name='Operation'),
+            model_name="modificationproposal",
+            name="operation",
+            field=models.CharField(
+                blank=True,
+                help_text="e.g. SET_PROPERTY, ADD_PROPERTY, SET_ATTRIBUTE",
+                max_length=50,
+                verbose_name="Operation",
+            ),
         ),
         migrations.AddField(
-            model_name='modificationproposal',
-            name='tier',
-            field=models.IntegerField(blank=True, choices=[(1, 'Tier 1 – Certified Ops (GREEN)'), (2, 'Tier 2 – Operation Planner (ORANGE)'), (3, 'Tier 3 – IfcOpenShell Direct (RED)')], help_text='1=GREEN (certified), 2=ORANGE (planner), 3=RED (direct)', null=True, verbose_name='RSAA Tier'),
+            model_name="modificationproposal",
+            name="tier",
+            field=models.IntegerField(
+                blank=True,
+                choices=[
+                    (1, "Tier 1 – Certified Ops (GREEN)"),
+                    (2, "Tier 2 – Operation Planner (ORANGE)"),
+                    (3, "Tier 3 – IfcOpenShell Direct (RED)"),
+                ],
+                help_text="1=GREEN (certified), 2=ORANGE (planner), 3=RED (direct)",
+                null=True,
+                verbose_name="RSAA Tier",
+            ),
         ),
         migrations.AlterField(
-            model_name='modificationproposal',
-            name='message',
-            field=models.OneToOneField(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='proposal', to='chat.message', verbose_name='Source Message'),
+            model_name="modificationproposal",
+            name="message",
+            field=models.OneToOneField(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="proposal",
+                to="chat.message",
+                verbose_name="Source Message",
+            ),
         ),
     ]

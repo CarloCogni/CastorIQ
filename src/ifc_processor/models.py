@@ -1,8 +1,10 @@
 """IFC Processor models - IFC file and entity management."""
 
 import hashlib
+
 from django.db import models
 from pgvector.django import VectorField
+
 from core.models import UUIDModel
 from environments.models import Project
 from ifc_processor.services.validators import IFCFileValidator
@@ -39,7 +41,6 @@ class IFCFile(UUIDModel):
         max_length=500,
         help_text="IFC file (.ifc format)",
         validators=[IFCFileValidator()],
-
     )
     file_hash = models.CharField(
         max_length=64,
@@ -179,7 +180,7 @@ class IFCEntity(UUIDModel):
 
     # Vector embedding for similarity search
     embedding = VectorField(
-        dimensions=1024, #mxbai-embed-large
+        dimensions=1024,  # mxbai-embed-large
         null=True,
         blank=True,
     )
@@ -219,9 +220,7 @@ class IFCDataIssue(UUIDModel):
     ifc_type = models.CharField(max_length=100)
 
     # Store the "rejected" data as JSON so the user can see what was skipped
-    raw_data = models.JSONField(
-        help_text="The properties and metadata of the conflicting element."
-    )
+    raw_data = models.JSONField(help_text="The properties and metadata of the conflicting element.")
 
     description = models.TextField()
     is_resolved = models.BooleanField(default=False)

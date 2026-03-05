@@ -10,7 +10,9 @@ Each step in the plan reuses Tier 1 or Tier 2 operations.
 
 import json
 import logging
-from langchain_core.messages import SystemMessage, HumanMessage
+
+from langchain_core.messages import HumanMessage, SystemMessage
+
 from core.llm import get_llm
 
 logger = logging.getLogger(__name__)
@@ -18,9 +20,15 @@ logger = logging.getLogger(__name__)
 # All operations available to the planner
 TIER2_OPERATIONS = {
     # Inherited from Tier 1
-    "SET_PROPERTY", "ADD_PROPERTY", "REMOVE_PROPERTY", "SET_ATTRIBUTE",
+    "SET_PROPERTY",
+    "ADD_PROPERTY",
+    "REMOVE_PROPERTY",
+    "SET_ATTRIBUTE",
     # New in Tier 2
-    "ADD_PSET", "REMOVE_PSET", "SET_CLASSIFICATION", "SET_MATERIAL",
+    "ADD_PSET",
+    "REMOVE_PSET",
+    "SET_CLASSIFICATION",
+    "SET_MATERIAL",
     "COPY_PROPERTIES",
 }
 
@@ -192,10 +200,12 @@ class Tier2Planner:
         """
         messages = [
             SystemMessage(content=PLANNER_SYSTEM_PROMPT),
-            HumanMessage(content=PLANNER_USER_TEMPLATE.format(
-                user_message=user_message,
-                entity_context=entity_context,
-            )),
+            HumanMessage(
+                content=PLANNER_USER_TEMPLATE.format(
+                    user_message=user_message,
+                    entity_context=entity_context,
+                )
+            ),
         ]
 
         response = self.llm.invoke(messages)
@@ -216,8 +226,7 @@ class Tier2Planner:
             plan["confidence"] = int(raw_conf)
 
         logger.info(
-            f"Tier2 plan: {len(plan.get('plan', []))} steps, "
-            f"confidence={plan['confidence']}%"
+            f"Tier2 plan: {len(plan.get('plan', []))} steps, confidence={plan['confidence']}%"
         )
 
         return plan
@@ -257,8 +266,7 @@ class Tier2Planner:
         op = step["operation"]
         if op not in TIER2_OPERATIONS:
             raise PlanGenerationError(
-                f"{label}: unknown operation '{op}'. "
-                f"Valid: {', '.join(sorted(TIER2_OPERATIONS))}"
+                f"{label}: unknown operation '{op}'. Valid: {', '.join(sorted(TIER2_OPERATIONS))}"
             )
 
         # Validate params per operation
@@ -282,11 +290,10 @@ class Tier2Planner:
         needed = required_params.get(operation, [])
         missing = [p for p in needed if p not in params]
         if missing:
-            raise PlanGenerationError(
-                f"{label} ({operation}): missing params: {missing}"
-            )
+            raise PlanGenerationError(f"{label} ({operation}): missing params: {missing}")
 
 
 class PlanGenerationError(Exception):
     """Raised when the Tier 2 planner produces invalid output."""
+
     pass

@@ -19,8 +19,8 @@ def llm_context(request):
     if not hasattr(request, "user") or not request.user.is_authenticated:
         return {}
 
-    from core.models import UserLLMConfig
     from core.llm_model_registry import get_model_info
+    from core.models import UserLLMConfig
 
     try:
         config = UserLLMConfig.load(request.user)

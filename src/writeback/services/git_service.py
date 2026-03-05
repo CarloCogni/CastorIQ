@@ -9,10 +9,9 @@ creates a traceable commit with semantic diff metadata.
 import logging
 import shutil
 from pathlib import Path
-from typing import Optional
 
 from django.conf import settings
-from git import Repo, InvalidGitRepositoryError
+from git import InvalidGitRepositoryError, Repo
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +33,7 @@ class GitService:
     def __init__(self, project):
         self.project = project
         self.repo_path = Path(settings.MEDIA_ROOT) / "git" / str(project.id)
-        self._repo: Optional[Repo] = None
+        self._repo: Repo | None = None
 
     # ── Repository Management ──────────────────────────────
 
@@ -76,7 +75,7 @@ class GitService:
         """Destination path for an IFC file inside the repo."""
         return self.repo_path / ifc_file.name
 
-    def track_ifc(self, ifc_file) -> Optional[str]:
+    def track_ifc(self, ifc_file) -> str | None:
         """
         Copy an IFC file into the repo and create the initial commit.
 
@@ -104,7 +103,7 @@ class GitService:
         logger.info(f"Tracked {ifc_file.name} → {commit.hexsha[:8]}")
         return commit.hexsha
 
-    def snapshot(self, ifc_file) -> Optional[str]:
+    def snapshot(self, ifc_file) -> str | None:
         """
         Safety snapshot before modification.
 
@@ -123,9 +122,7 @@ class GitService:
         if not self.repo.is_dirty():
             return None
 
-        commit = self.repo.index.commit(
-            f"[SNAPSHOT] Pre-modification state of {ifc_file.name}"
-        )
+        commit = self.repo.index.commit(f"[SNAPSHOT] Pre-modification state of {ifc_file.name}")
 
         logger.info(f"Snapshot {ifc_file.name} → {commit.hexsha[:8]}")
         return commit.hexsha
@@ -169,8 +166,7 @@ class GitService:
         commit = self.repo.index.commit(full_message)
 
         logger.info(
-            f"Committed modification to {ifc_file.name} → {commit.hexsha[:8]} "
-            f"(Tier {tier})"
+            f"Committed modification to {ifc_file.name} → {commit.hexsha[:8]} (Tier {tier})"
         )
         return commit.hexsha
 
@@ -196,9 +192,7 @@ class GitService:
 
             # Commit the rollback
             self.repo.index.add([ifc_file.name])
-            self.repo.index.commit(
-                f"[ROLLBACK] Reverted {ifc_file.name} to {commit_hash[:8]}"
-            )
+            self.repo.index.commit(f"[ROLLBACK] Reverted {ifc_file.name} to {commit_hash[:8]}")
 
             logger.info(f"Rolled back {ifc_file.name} to {commit_hash[:8]}")
             return True

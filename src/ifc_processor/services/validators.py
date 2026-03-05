@@ -2,7 +2,6 @@
 
 import logging
 import os
-from typing import Tuple
 
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import UploadedFile
@@ -20,7 +19,7 @@ IFC_SIGNATURES = [
 ]
 
 
-def validate_ifc_file(file: UploadedFile) -> Tuple[bool, str]:
+def validate_ifc_file(file: UploadedFile) -> tuple[bool, str]:
     """
     Validate that an uploaded file is a valid IFC file.
 
@@ -85,9 +84,9 @@ def _has_valid_ifc_signature(header: bytes) -> bool:
     try:
         # Try UTF-8 first, then latin-1 as fallback
         try:
-            header_str = header.decode('utf-8')
+            header_str = header.decode("utf-8")
         except UnicodeDecodeError:
-            header_str = header.decode('latin-1')
+            header_str = header.decode("latin-1")
 
         header_upper = header_str.upper()
 
@@ -108,6 +107,7 @@ def _has_valid_ifc_signature(header: bytes) -> bool:
                 return True
 
     return False
+
 
 @deconstructible
 class IFCFileValidator:

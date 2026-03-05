@@ -8,7 +8,6 @@ converts strings to float lists.
 """
 
 import logging
-from typing import Optional
 
 from django.conf import settings
 from langchain_ollama import OllamaEmbeddings
@@ -28,8 +27,8 @@ class EmbeddingService:
 
     def __init__(
         self,
-        model: Optional[str] = None,
-        base_url: Optional[str] = None,
+        model: str | None = None,
+        base_url: str | None = None,
     ):
         self._model = model or settings.OLLAMA_EMBED_MODEL
         self._base_url = base_url or settings.OLLAMA_HOST
@@ -55,8 +54,10 @@ class EmbeddingService:
 
     @property
     def model_name(self) -> str:
+        """The Ollama embedding model name."""
         return self._model
 
     @property
     def dimensions(self) -> int:
+        """Vector dimensionality from settings (e.g. 1024)."""
         return settings.PGVECTOR_DIMENSIONS

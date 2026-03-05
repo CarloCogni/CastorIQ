@@ -3,13 +3,14 @@
 
 import logging
 from dataclasses import dataclass, field
-from typing import Optional
+
 import ifcopenshell
 import ifcopenshell.util.element as element_util
 from django.db import transaction
 from django.utils import timezone
-from ifc_processor.models import IFCFile, IFCEntity, IFCDataIssue
+
 from core.exceptions import log_exception
+from ifc_processor.models import IFCDataIssue, IFCEntity, IFCFile
 
 logger = logging.getLogger(__name__)
 
@@ -40,29 +41,38 @@ class IFCParser:
     # Entity types we want to extract (main building elements)
     RELEVANT_TYPES = {
         # Structural
-        "IfcWall", "IfcWallStandardCase",
-        "IfcColumn", "IfcBeam", "IfcSlab",
-        "IfcFooting", "IfcPile", "IfcRoof",
-
+        "IfcWall",
+        "IfcWallStandardCase",
+        "IfcColumn",
+        "IfcBeam",
+        "IfcSlab",
+        "IfcFooting",
+        "IfcPile",
+        "IfcRoof",
         # Architectural
-        "IfcDoor", "IfcWindow",
-        "IfcStair", "IfcStairFlight", "IfcRamp",
-        "IfcCurtainWall", "IfcRailing",
-
+        "IfcDoor",
+        "IfcWindow",
+        "IfcStair",
+        "IfcStairFlight",
+        "IfcRamp",
+        "IfcCurtainWall",
+        "IfcRailing",
         # MEP (Mechanical, Electrical, Plumbing)
-        "IfcFlowTerminal", "IfcFlowSegment",
+        "IfcFlowTerminal",
+        "IfcFlowSegment",
         "IfcDistributionElement",
-        "IfcSanitaryTerminal", "IfcFireSuppressionTerminal",
-
+        "IfcSanitaryTerminal",
+        "IfcFireSuppressionTerminal",
         # Spaces
-        "IfcSpace", "IfcZone",
-
+        "IfcSpace",
+        "IfcZone",
         # Furnishing
-        "IfcFurniture", "IfcFurnishingElement",
-
+        "IfcFurniture",
+        "IfcFurnishingElement",
         # Building elements (generic)
         "IfcBuildingElementProxy",
-        "IfcCovering", "IfcPlate",
+        "IfcCovering",
+        "IfcPlate",
     }
 
     def __init__(self, ifc_file: IFCFile):
@@ -73,7 +83,7 @@ class IFCParser:
             ifc_file: The IFCFile model instance to parse
         """
         self.ifc_file = ifc_file
-        self.ifc_model: Optional[ifcopenshell.file] = None
+        self.ifc_model: ifcopenshell.file | None = None
         self.entities_created = 0
         self.errors: list[str] = []
 
@@ -114,16 +124,22 @@ class IFCParser:
                 self.ifc_file.error_message = ""
                 self.ifc_file.save()
 
-                logger.info(f"Successfully parsed {self.ifc_file.name}: {self.entities_created} entities")
+                logger.info(
+                    f"Successfully parsed {self.ifc_file.name}: {self.entities_created} entities"
+                )
                 return True
 
         except Exception as e:
             error_msg = f"Failed to parse IFC file: {str(e)}"
             logger.exception(error_msg)
-            log_exception(e, severity="critical", extra_context={
-                "ifc_file_id": str(self.ifc_file.id),
-                "file_name": self.ifc_file.name
-            })
+            log_exception(
+                e,
+                severity="critical",
+                extra_context={
+                    "ifc_file_id": str(self.ifc_file.id),
+                    "file_name": self.ifc_file.name,
+                },
+            )
             self.ifc_file.status = IFCFile.Status.FAILED
             self.ifc_file.error_message = error_msg
             self.ifc_file.save()
@@ -181,9 +197,9 @@ class IFCParser:
                             # NEW: Store info about BOTH conflicting elements
                             "first_element_name": first_element_info["name"],
                             "first_element_type": first_element_info["type"],
-                            "first_element_storey": first_element_info["storey"]
+                            "first_element_storey": first_element_info["storey"],
                         },
-                        description=f"Duplicate GlobalID '{gid}': '{element.Name or 'Unnamed'}' ({element.is_a()}) conflicts with '{first_element_info['name'] or 'Unnamed'}' ({first_element_info['type']})."
+                        description=f"Duplicate GlobalID '{gid}': '{element.Name or 'Unnamed'}' ({element.is_a()}) conflicts with '{first_element_info['name'] or 'Unnamed'}' ({first_element_info['type']}).",
                     )
                     issues_to_create.append(issue)
                 else:
@@ -204,7 +220,7 @@ class IFCParser:
                     seen_global_ids[gid] = {
                         "name": element.Name or "",
                         "type": element.is_a(),
-                        "storey": spatial_info.get("building_storey", "")
+                        "storey": spatial_info.get("building_storey", ""),
                     }
                 # MEMORY MANAGEMENT
                 if len(entities_to_create) >= batch_size:
@@ -312,7 +328,8 @@ class IFCParser:
         # Split camelCase (e.g., WallStandardCase -> Wall Standard Case)
         # This helps the embedding model understand the words separately
         import re
-        human_type = re.sub(r'(?<!^)(?=[A-Z])', ' ', clean_type)
+
+        human_type = re.sub(r"(?<!^)(?=[A-Z])", " ", clean_type)
 
         # 2. INTRO: Strong subject statement
         # "This is a Wall. It is a Wall Standard Case element named Wall-01."
@@ -335,24 +352,37 @@ class IFCParser:
         # We explicitly list common properties to catch queries like "fire rated" or "external"
         key_props = []
         target_keys = [
-            "firerating", "fire_rating", "fire rating",
-            "material", "loadbearing", "load_bearing",
-            "height", "width", "length", "thickness",
-            "area", "volume", "u_value", "u-value",
-            "acoustic", "thermal", "resistance"
+            "firerating",
+            "fire_rating",
+            "fire rating",
+            "material",
+            "loadbearing",
+            "load_bearing",
+            "height",
+            "width",
+            "length",
+            "thickness",
+            "area",
+            "volume",
+            "u_value",
+            "u-value",
+            "acoustic",
+            "thermal",
+            "resistance",
         ]
 
         for key, value in properties.items():
             # Check if any target key is part of the property name (case insensitive)
             if any(t in key.lower() for t in target_keys):
                 # Clean up key name (e.g. 'Pset_WallCommon.LoadBearing' -> 'LoadBearing')
-                simple_key = key.split('.')[-1]
+                simple_key = key.split(".")[-1]
                 key_props.append(f"{simple_key}: {value}")
 
         if key_props:
             parts.append(f"Properties: {', '.join(key_props)}")
 
         return ". ".join(parts) + "."
+
 
 def parse_ifc_file(ifc_file_id: str) -> bool:
     """

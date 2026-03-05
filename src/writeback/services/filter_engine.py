@@ -8,7 +8,6 @@ into Django ORM queries. No AI here — just query building.
 
 import logging
 import re
-from typing import Optional
 
 from django.db.models import QuerySet
 
@@ -69,49 +68,37 @@ class FilterEngine:
 
         count = qs.count()
         if count == 0:
-            raise ValueError(
-                f"Filter matched 0 entities. Filter: {filter_spec}"
-            )
+            raise ValueError(f"Filter matched 0 entities. Filter: {filter_spec}")
 
         logger.info(f"Filter resolved to {count} entities: {filter_spec}")
         return qs
 
     # ── Individual Filters ─────────────────────────────────
 
-    def _apply_ifc_type(
-        self, qs: QuerySet, ifc_type: Optional[str]
-    ) -> QuerySet:
+    def _apply_ifc_type(self, qs: QuerySet, ifc_type: str | None) -> QuerySet:
         if not ifc_type:
             return qs
         # Case-insensitive startswith to catch e.g. IfcWallStandardCase
         return qs.filter(ifc_type__istartswith=ifc_type)
 
-    def _apply_storey(
-        self, qs: QuerySet, storey: Optional[str]
-    ) -> QuerySet:
+    def _apply_storey(self, qs: QuerySet, storey: str | None) -> QuerySet:
         if not storey:
             return qs
         return qs.filter(building_storey__icontains=storey)
 
-    def _apply_name_pattern(
-        self, qs: QuerySet, pattern: Optional[str]
-    ) -> QuerySet:
+    def _apply_name_pattern(self, qs: QuerySet, pattern: str | None) -> QuerySet:
         if not pattern:
             return qs
         # Convert glob "D-*" to regex "^D\-.*$"
         regex = "^" + re.escape(pattern).replace(r"\*", ".*") + "$"
         return qs.filter(name__iregex=regex)
 
-    def _apply_global_ids(
-        self, qs: QuerySet, global_ids: Optional[list]
-    ) -> QuerySet:
+    def _apply_global_ids(self, qs: QuerySet, global_ids: list | None) -> QuerySet:
         if not global_ids:
             return qs
         return qs.filter(global_id__in=global_ids)
 
-    def _apply_property_match(
-        self, qs: QuerySet, property_match: Optional[dict]
-    ) -> QuerySet:
+    def _apply_property_match(self, qs: QuerySet, property_match: dict | None) -> QuerySet:
         """
         Filter by JSON property values.
 
