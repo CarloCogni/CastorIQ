@@ -65,3 +65,6 @@ uploads/
 # LLM Context Dump
 project_context.txt
 _output/
+
+# CLAUDE
+.claude/settings.local.json
