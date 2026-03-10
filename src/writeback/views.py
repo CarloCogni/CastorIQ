@@ -18,7 +18,8 @@ from chat.models import ChatSession, Message
 from core.mixins import ProjectTabMixin
 from environments.models import Project
 from ifc_processor.models import IFCDataIssue
-from writeback.models import GitCommit
+from writeback.models import Conflict, GitCommit
+from writeback.services.conflict_scan_service import ConflictScanService
 from writeback.services.modification_service import (
     ModificationError,
     ModificationService,
@@ -335,7 +336,7 @@ class ConflictsView(ProjectTabMixin, TemplateView):
         # 1. Existing Semantic Conflicts
         context["open_conflicts"] = (
             project.conflicts.filter(status="open")
-            .select_related("ifc_entity", "ifc_entity__ifc_file")
+            .select_related("ifc_entity", "ifc_entity__ifc_file", "document_chunk__document")
             .order_by("-severity", "-created_at")
         )
 
@@ -352,6 +353,8 @@ class ConflictsView(ProjectTabMixin, TemplateView):
             .select_related("ifc_file")
             .order_by("ifc_file", "issue_type")
         )
+        last_conflict = project.conflicts.order_by("-created_at").values("created_at").first()
+        context["last_scan_at"] = last_conflict["created_at"] if last_conflict else None
 
         return context
 
@@ -385,6 +388,41 @@ class HistoryView(ProjectTabMixin, TemplateView):
         context["restored_by"] = restored_by
 
         return context
+
+
+class RunScanView(LoginRequiredMixin, View):
+    """POST endpoint to trigger a conflict scan for a project."""
+
+    def post(self, request, pk):
+        project = get_object_or_404(Project.objects.select_related("owner"), pk=pk)
+        if not project.user_has_access(request.user):
+            return JsonResponse({"status": "error", "message": "Access denied."}, status=403)
+
+        skip_low_value = request.POST.get("skip_low_value", "true").lower() != "false"
+        svc = ConflictScanService(project, request.user, skip_low_value=skip_low_value)
+
+        try:
+            stats = svc.full_scan()
+        except Exception as e:
+            logger.exception(f"Conflict scan failed for project {pk}: {e}")
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+        return JsonResponse({"status": "ok", **stats})
+
+
+class DismissConflictView(LoginRequiredMixin, View):
+    """POST endpoint to dismiss a single Conflict record."""
+
+    def post(self, request, pk, conflict_id):
+        project = get_object_or_404(Project.objects.select_related("owner"), pk=pk)
+        if not project.user_has_access(request.user):
+            return JsonResponse({"status": "error", "message": "Access denied."}, status=403)
+
+        conflict = get_object_or_404(Conflict, id=conflict_id, project=project)
+        conflict.status = Conflict.Status.DISMISSED
+        conflict.save(update_fields=["status"])
+
+        return JsonResponse({"status": "dismissed"})
 
 
 class RestoreCommitView(LoginRequiredMixin, View):

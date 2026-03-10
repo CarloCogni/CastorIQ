@@ -1,197 +1,827 @@
-<!-- Conflicts Tab - Minimalist Design -->
-<div class="flex-grow-1 overflow-auto p-4">
+<!-- Conflicts Tab — Sub-tabbed: Data Quality | Semantic Conflicts -->
 
-    <!-- Summary Cards Row -->
-    <div class="row g-3 mb-4">
-        <!-- Data Quality Card -->
-        <div class="col-md-6">
-            <div class="card bg-surface border {% if data_issues %}border-warning{% endif %} h-100">
-                <div class="card-body">
-                    <div class="d-flex align-items-center justify-content-between mb-2">
-                        <h3 class="h6 fw-semibold mb-0">
-                            <i class="bi bi-shield-exclamation text-warning me-2"></i>Data Quality
-                        </h3>
-                        {% if data_issues %}
-                        <span class="badge bg-warning text-dark">{{ data_issues.count }}</span>
-                        {% else %}
-                        <i class="bi bi-check-circle text-success"></i>
-                        {% endif %}
-                    </div>
-                    <p class="text-secondary fs-8 mb-0">
-                        {% if data_issues %}
-                        Issues found during IFC parsing
-                        {% else %}
-                        All IFC data parsed successfully
-                        {% endif %}
-                    </p>
-                </div>
-            </div>
-        </div>
+{# ── Sub-tab navigation ──────────────────────────────────────────── #}
+<div class="border-bottom d-flex align-items-center px-4 py-2 gap-2 flex-shrink-0"
+     style="background-color: var(--bs-tertiary-bg);">
 
-        <!-- Semantic Conflicts Card -->
-        <div class="col-md-6">
-            <div class="card bg-surface border {% if open_conflicts %}border-primary{% endif %} h-100">
-                <div class="card-body">
-                    <div class="d-flex align-items-center justify-content-between mb-2">
-                        <h3 class="h6 fw-semibold mb-0">
-                            <i class="bi bi-lightning-charge text-primary me-2"></i>Semantic Conflicts
-                        </h3>
-                        {% if open_conflicts %}
-                        <span class="badge bg-primary">{{ open_conflicts.count }}</span>
-                        {% else %}
-                        <i class="bi bi-check-circle text-success"></i>
-                        {% endif %}
-                    </div>
-                    <p class="text-secondary fs-8 mb-0">
-                        {% if open_conflicts %}
-                        IFC/Document discrepancies detected
-                        {% else %}
-                        Model and documents are in sync
-                        {% endif %}
-                    </p>
-                </div>
+    <button class="btn btn-sm rounded-pill px-3 py-1 conflict-subtab active"
+            data-subtab="data-quality"
+            onclick="ConflictTabs.switchTo('data-quality')">
+        <i class="bi bi-shield-exclamation me-1"></i>Data Quality
+        {% if data_issues %}
+            <span class="badge rounded-pill ms-1"
+                  style="background-color: var(--castor-warning); color: #000; font-size: 0.65rem;">
+                {{ data_issues.count }}
+            </span>
+        {% else %}
+            <span class="badge rounded-pill ms-1"
+                  style="background-color: rgba(16, 185, 129, 0.2); color: var(--castor-success); font-size: 0.65rem;">
+                <i class="bi bi-check2"></i>
+            </span>
+        {% endif %}
+    </button>
+
+    <button class="btn btn-sm rounded-pill px-3 py-1 conflict-subtab"
+            data-subtab="semantic"
+            onclick="ConflictTabs.switchTo('semantic')">
+        <i class="bi bi-lightning-charge me-1"></i>Semantic Conflicts
+        {% if open_conflicts %}
+            <span class="badge rounded-pill ms-1"
+                  style="background-color: var(--castor-primary); font-size: 0.65rem;">
+                {{ open_conflicts.count }}
+            </span>
+        {% elif last_scan_at %}
+            <span class="badge rounded-pill ms-1"
+                  style="background-color: rgba(16, 185, 129, 0.2); color: var(--castor-success); font-size: 0.65rem;">
+                <i class="bi bi-check2"></i>
+            </span>
+        {% endif %}
+    </button>
+
+    {# ── Help trigger — pushed to the right ── #}
+    <button class="btn btn-sm rounded-pill px-2 py-1 ms-auto conflict-help-btn"
+            data-bs-toggle="modal" data-bs-target="#conflictHelpModal"
+            title="How conflict detection works">
+        <i class="bi bi-question-circle me-1"></i><span class="d-none d-sm-inline">How it works</span>
+    </button>
+</div>
+
+
+<div class="flex-grow-1 overflow-auto">
+
+{# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ #}
+{# SUB-TAB 1 — DATA QUALITY                                         #}
+{# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ #}
+<div id="subtab-data-quality" class="conflict-subtab-panel p-4">
+
+    {% if data_issues %}
+
+    {# ── Contextual banner with clear next steps ── #}
+    <div class="d-flex align-items-start gap-3 rounded-3 p-3 mb-3"
+         style="background-color: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.2);">
+        <i class="bi bi-info-circle text-warning mt-1 flex-shrink-0"></i>
+        <div>
+            <p class="mb-1 fs-7 fw-medium" style="color: var(--castor-warning);">
+                {{ data_issues.count }} issue{{ data_issues.count|pluralize }} found during IFC parsing
+            </p>
+            <p class="text-secondary fs-8 mb-2">
+                These are structural problems in the IFC file itself — they were detected
+                automatically when the file was uploaded. Castor imported what it could,
+                but skipped elements with duplicate GlobalIDs.
+            </p>
+            <div class="d-flex align-items-start gap-2 rounded-2 p-2 fs-8"
+                 style="background-color: rgba(0,0,0,0.15);">
+                <i class="bi bi-wrench text-secondary flex-shrink-0 mt-0"></i>
+                <span class="text-secondary">
+                    <strong class="text-body">How to fix:</strong>
+                    Open the IFC file in your BIM authoring tool (Revit, Bonsai, ArchiCAD…),
+                    resolve the duplicate GlobalIDs, then re-upload the corrected file.
+                    Castor cannot fix these — they must be corrected at the source.
+                </span>
             </div>
         </div>
     </div>
 
-    <!-- Data Quality Issues Section -->
-    {% if data_issues %}
-    <div class="mb-4">
-        <div class="d-flex align-items-center gap-2 mb-3">
-            <h4 class="h6 fw-semibold mb-0">Data Quality Issues</h4>
-            <span class="badge bg-warning text-dark fs-8">{{ data_issues.count }}</span>
-        </div>
+    {# ── Issue list ── #}
+    <div class="d-flex flex-column gap-2">
+        {% for issue in data_issues %}
+        <div class="rounded-3 p-3"
+             style="background-color: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color);">
 
-        <div class="alert alert-warning border-warning fs-7 mb-3" style="background-color: rgba(245, 158, 11, 0.1);">
-            <i class="bi bi-info-circle me-2"></i>
-            Fix these in your BIM software (Revit, BlenderBonsai, etc.) and re-upload the file.
-        </div>
+            <div class="d-flex gap-3 align-items-start">
 
-        <div class="d-flex flex-column gap-2">
-            {% for issue in data_issues %}
-            <div class="card bg-surface border">
-                <div class="card-body p-3">
-                    <div class="d-flex gap-3 align-items-start">
-                        <!-- Type Badge -->
-                        <div class="flex-shrink-0">
-                            {% if issue.issue_type == 'duplicate_guid' %}
-                            <span class="badge bg-warning text-dark fs-8">Duplicate</span>
-                            {% elif issue.issue_type == 'invalid_geometry' %}
-                            <span class="badge bg-danger fs-8">Geometry</span>
-                            {% else %}
-                            <span class="badge bg-secondary fs-8">{{ issue.get_issue_type_display }}</span>
-                            {% endif %}
-                        </div>
+                {# Severity icon #}
+                <div class="flex-shrink-0 d-flex align-items-center justify-content-center rounded-2"
+                     style="width: 36px; height: 36px; background-color: rgba(245, 158, 11, 0.12);">
+                    {% if issue.issue_type == 'duplicate_guid' %}
+                    <i class="bi bi-files text-warning"></i>
+                    {% elif issue.issue_type == 'invalid_geometry' %}
+                    <i class="bi bi-bounding-box text-danger"></i>
+                    {% else %}
+                    <i class="bi bi-exclamation-circle text-secondary"></i>
+                    {% endif %}
+                </div>
 
-                        <!-- Main Content -->
-                        <div class="flex-grow-1 min-width-0">
-                        {% if issue.raw_data.name == issue.raw_data.first_element_name and issue.ifc_type == issue.raw_data.first_element_type %}
-                            <!-- Same elements  -->
-                            <div class="d-flex align-items-baseline gap-2 mb-1">
-                                <span class="fw-medium text-danger">
-                                    {% if issue.raw_data.name %}
-                                        {{ issue.raw_data.name }}
-                                    {% else %}
-                                        <span class="fst-italic">Unnamed</span>
-                                    {% endif %}
-                                </span>
-                                <span class="text-secondary fs-8">{{ issue.ifc_type }}</span>
-                                <span class="badge bg-danger fs-8">× 2+</span>
-                            </div>
-                            <p class="text-secondary fs-7 mb-2">
-                                This element appears multiple times in the IFC file with the same GlobalID.
-                            </p>
-                        {% else %}
-                            <!-- Different elements -->
-                            <div class="d-flex align-items-baseline gap-2 mb-1">
-                                <span class="fw-medium text-danger">
-                                    {% if issue.raw_data.name %}
-                                        {{ issue.raw_data.name }}
-                                    {% else %}
-                                        <span class="fst-italic">Unnamed</span>
-                                    {% endif %}
-                                </span>
-                                <span class="text-secondary fs-8">{{ issue.ifc_type }}</span>
-                                <span class="text-secondary fs-8">↔</span>
-                                <span class="fw-medium text-warning">
-                                    {% if issue.raw_data.first_element_name %}
-                                        {{ issue.raw_data.first_element_name }}
-                                    {% else %}
-                                        <span class="fst-italic">Unnamed</span>
-                                    {% endif %}
-                                </span>
-                                <span class="text-secondary fs-8">{{ issue.raw_data.first_element_type }}</span>
-                            </div>
-                            <p class="text-secondary fs-7 mb-2">
-                                Both elements share GlobalID {{ issue.global_id }}. Only the first was imported.
-                            </p>
-                        {% endif %}
+                <div class="flex-grow-1 min-width-0">
 
-                        <div class="d-flex gap-3 fs-8 text-secondary">
-                            <span><i class="bi bi-file-code me-1"></i>{{ issue.ifc_file.name }}</span>
-                            {% if issue.raw_data.first_element_storey %}
-                            <span><i class="bi bi-building me-1"></i>{{ issue.raw_data.first_element_storey }}</span>
-                            {% endif %}
-                            <code class="text-accent user-select-all" title="Click to copy">{{ issue.global_id }}</code>
-                        </div>
+                    {# ── Same-element duplicate ── #}
+                    {% if issue.raw_data.name == issue.raw_data.first_element_name and issue.ifc_type == issue.raw_data.first_element_type %}
+                    <div class="d-flex align-items-baseline gap-2 flex-wrap mb-1">
+                        <span class="fw-semibold">
+                            {% if issue.raw_data.name %}{{ issue.raw_data.name }}{% else %}<em class="text-secondary">Unnamed</em>{% endif %}
+                        </span>
+                        <span class="text-secondary fs-8">{{ issue.ifc_type }}</span>
+                        <span class="badge fs-8"
+                              style="background-color: rgba(239, 68, 68, 0.15); color: var(--castor-danger);">
+                            Duplicate
+                        </span>
                     </div>
+                    <p class="text-secondary fs-7 mb-2">
+                        This element appears multiple times with the same GlobalID.
+                        Only the first occurrence was imported — duplicates were skipped.
+                    </p>
+
+                    {# ── Cross-element duplicate ── #}
+                    {% else %}
+                    <div class="d-flex align-items-baseline gap-2 flex-wrap mb-1">
+                        <span class="fw-semibold text-warning">
+                            {% if issue.raw_data.name %}{{ issue.raw_data.name }}{% else %}<em class="text-secondary">Unnamed</em>{% endif %}
+                        </span>
+                        <span class="text-secondary fs-8">{{ issue.ifc_type }}</span>
+                        <i class="bi bi-arrow-left-right text-secondary fs-8"></i>
+                        <span class="fw-semibold" style="color: var(--castor-primary);">
+                            {% if issue.raw_data.first_element_name %}{{ issue.raw_data.first_element_name }}{% else %}<em class="text-secondary">Unnamed</em>{% endif %}
+                        </span>
+                        <span class="text-secondary fs-8">{{ issue.raw_data.first_element_type }}</span>
+                    </div>
+                    <p class="text-secondary fs-7 mb-2">
+                        Two different elements share the same GlobalID — only
+                        <strong style="color: var(--castor-primary);">{{ issue.raw_data.first_element_name|default:"the first" }}</strong>
+                        was imported.
+                    </p>
+                    {% endif %}
+
+                    {# Metadata row #}
+                    <div class="d-flex flex-wrap gap-3 fs-8 text-secondary">
+                        <span><i class="bi bi-file-code me-1"></i>{{ issue.ifc_file.name }}</span>
+                        {% if issue.raw_data.first_element_storey %}
+                        <span><i class="bi bi-building me-1"></i>{{ issue.raw_data.first_element_storey }}</span>
+                        {% endif %}
+                        <code class="user-select-all" style="color: var(--castor-accent);">{{ issue.global_id }}</code>
                     </div>
                 </div>
             </div>
-            {% endfor %}
+        </div>
+        {% endfor %}
+    </div>
+
+    {% else %}
+
+    {# ── Empty state: no data issues ── #}
+    <div class="d-flex flex-column align-items-center justify-content-center py-5"
+         style="min-height: 300px;">
+        <div class="rounded-circle d-flex align-items-center justify-content-center mb-3"
+             style="width: 56px; height: 56px; background-color: rgba(16, 185, 129, 0.1);">
+            <i class="bi bi-check-lg" style="font-size: 1.5rem; color: var(--castor-success);"></i>
+        </div>
+        <h5 class="h6 fw-semibold mb-1">Clean IFC Data</h5>
+        <p class="text-secondary fs-7 mb-3" style="max-width: 340px; text-align: center;">
+            No duplicate GlobalIDs or structural issues were found during parsing.
+        </p>
+        <p class="text-secondary fs-8 mb-0" style="max-width: 380px; text-align: center;">
+            This check runs automatically every time you upload an IFC file.
+            If future uploads contain issues, they'll appear here.
+        </p>
+    </div>
+    {% endif %}
+
+</div>{# /subtab-data-quality #}
+
+
+{# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ #}
+{# SUB-TAB 2 — SEMANTIC CONFLICTS                                    #}
+{# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ #}
+<div id="subtab-semantic" class="conflict-subtab-panel d-none p-4">
+
+    {# ── Scan toolbar ── #}
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+        <div class="d-flex align-items-center gap-3">
+            <button id="run-scan-btn" class="btn btn-sm btn-primary rounded-pill px-3"
+                    onclick="ScanEngine.runScan()">
+                <i class="bi bi-radar me-1"></i>Run Scan
+            </button>
+            <label class="form-check d-flex align-items-center gap-2 mb-0 user-select-none"
+                   style="cursor: pointer;">
+                <input class="form-check-input" type="checkbox" id="skip-low-value" checked>
+                <span class="text-secondary fs-8">Skip non-physical elements</span>
+            </label>
+        </div>
+
+        <div class="d-flex align-items-center gap-3">
+            {# Last-scanned timestamp #}
+            {% if last_scan_at %}
+            <span class="text-secondary fs-8">
+                <i class="bi bi-clock me-1"></i>Last scan: {{ last_scan_at|timesince }} ago
+            </span>
+            {% endif %}
+
+            {# Inline loader #}
+            <div id="scan-loader" class="d-none align-items-center gap-2 text-secondary fs-8">
+                <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
+                <span>Scanning entities against documents…</span>
+            </div>
+        </div>
+    </div>
+
+    {# ── Explainer banner — always visible, adapts to state ── #}
+    {% if not last_scan_at %}
+    {# Never scanned — full explainer #}
+    <div class="rounded-3 p-3 mb-4"
+         style="background-color: rgba(59, 130, 246, 0.06); border: 1px solid rgba(59, 130, 246, 0.12);">
+        <div class="d-flex align-items-start gap-3">
+            <i class="bi bi-lightbulb flex-shrink-0 mt-1" style="color: var(--castor-primary);"></i>
+            <div>
+                <p class="fw-medium fs-7 mb-2" style="color: var(--castor-primary);">
+                    What does a scan do?
+                </p>
+                <p class="text-secondary fs-8 mb-2">
+                    Castor cross-references every IFC entity's properties against your uploaded
+                    project documents (specs, schedules, standards…) using AI. It looks for
+                    contradictions — like a wall rated <code>REI 60</code> in the model but
+                    <code>REI 90</code> in the fire safety spec.
+                </p>
+
+                <div class="d-flex flex-column gap-2 fs-8 mb-2">
+                    <div class="d-flex gap-2">
+                        <div class="rounded-2 d-flex align-items-center justify-content-center flex-shrink-0"
+                             style="width: 22px; height: 22px; background-color: rgba(59,130,246,0.1);">
+                            <span style="font-size: 0.65rem; color: var(--castor-primary);">1</span>
+                        </div>
+                        <span class="text-secondary">
+                            <strong class="text-body">Selects entities</strong> — picks IFC elements
+                            to check (physical elements by default, or all).
+                        </span>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <div class="rounded-2 d-flex align-items-center justify-content-center flex-shrink-0"
+                             style="width: 22px; height: 22px; background-color: rgba(59,130,246,0.1);">
+                            <span style="font-size: 0.65rem; color: var(--castor-primary);">2</span>
+                        </div>
+                        <span class="text-secondary">
+                            <strong class="text-body">Finds relevant docs</strong> — uses vector
+                            search to match each entity with the most relevant document sections.
+                        </span>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <div class="rounded-2 d-flex align-items-center justify-content-center flex-shrink-0"
+                             style="width: 22px; height: 22px; background-color: rgba(59,130,246,0.1);">
+                            <span style="font-size: 0.65rem; color: var(--castor-primary);">3</span>
+                        </div>
+                        <span class="text-secondary">
+                            <strong class="text-body">Compares with AI</strong> — the LLM checks whether
+                            properties match requirements and flags contradictions with a severity level.
+                        </span>
+                    </div>
+                </div>
+
+                <div class="d-flex align-items-center gap-2 rounded-2 p-2 fs-8"
+                     style="background-color: rgba(0,0,0,0.15);">
+                    <i class="bi bi-clock-history text-secondary flex-shrink-0"></i>
+                    <span class="text-secondary">
+                        Scan duration depends on project size. A typical scan takes 30 seconds
+                        to a few minutes. You can continue using other tabs while it runs.
+                    </span>
+                </div>
+            </div>
         </div>
     </div>
     {% endif %}
 
-    <!-- Semantic Conflicts Section -->
-    <div>
-        <div class="d-flex align-items-center gap-2 mb-3">
-            <h4 class="h6 fw-semibold mb-0">Semantic Conflicts</h4>
-            {% if open_conflicts %}
-            <span class="badge bg-primary fs-8">{{ open_conflicts.count }}</span>
-            {% endif %}
-        </div>
 
-        {% if open_conflicts %}
-        <div class="d-flex flex-column gap-3">
-            {% for conflict in open_conflicts %}
-            <div class="card bg-surface border-start border-3
-                        {% if conflict.severity == 'critical' %}border-danger{% elif conflict.severity == 'high' %}border-warning{% else %}border-primary{% endif %}">
-                <div class="card-body p-3">
-                    <div class="d-flex justify-content-between align-items-start mb-2">
-                        <h5 class="h6 fw-semibold mb-0">{{ conflict.title }}</h5>
-                        <span class="badge {% if conflict.severity == 'critical' %}bg-danger{% elif conflict.severity == 'high' %}bg-warning text-dark{% else %}bg-primary{% endif %} fs-8">
-                            {{ conflict.get_severity_display }}
-                        </span>
+    {% if open_conflicts %}
+
+    {# ── Results summary bar ── #}
+    <div class="d-flex align-items-center gap-3 mb-3 fs-8">
+        <span class="text-secondary">
+            <strong class="text-body">{{ open_conflicts.count }}</strong> open conflict{{ open_conflicts.count|pluralize }}
+        </span>
+        {% if resolved_conflicts %}
+        <span class="text-secondary">
+            · {{ resolved_conflicts.count }} resolved
+        </span>
+        {% endif %}
+    </div>
+
+    {# ── Conflict list ── #}
+    <div id="conflicts-list" class="d-flex flex-column gap-3">
+        {% for conflict in open_conflicts %}
+        <div class="conflict-card rounded-3 overflow-hidden"
+             style="background-color: var(--bs-tertiary-bg);
+                    border: 1px solid var(--bs-border-color);
+                    border-left: 3px solid {% if conflict.severity == 'critical' %}var(--castor-danger){% elif conflict.severity == 'high' %}var(--castor-warning){% else %}var(--castor-primary){% endif %};"
+             data-dismiss-url="{% url 'writeback:dismiss_conflict' project.pk conflict.id %}">
+
+            <div class="p-3">
+                {# Header: severity + title #}
+                <div class="d-flex align-items-start gap-2 mb-2">
+                    <span class="badge rounded-pill flex-shrink-0 mt-1"
+                          style="font-size: 0.65rem;
+                                 {% if conflict.severity == 'critical' %}
+                                 background-color: rgba(239, 68, 68, 0.15); color: var(--castor-danger);
+                                 {% elif conflict.severity == 'high' %}
+                                 background-color: rgba(245, 158, 11, 0.15); color: var(--castor-warning);
+                                 {% else %}
+                                 background-color: rgba(59, 130, 246, 0.15); color: var(--castor-primary);
+                                 {% endif %}">
+                        {{ conflict.get_severity_display }}
+                    </span>
+                    <h5 class="h6 fw-semibold mb-0 flex-grow-1">{{ conflict.title }}</h5>
+                </div>
+
+                <p class="text-secondary fs-7 mb-3">{{ conflict.description }}</p>
+
+                {# Value comparison — visual "model vs docs" #}
+                <div class="d-flex gap-2 mb-3">
+                    {# IFC side #}
+                    <div class="flex-fill rounded-2 p-2"
+                         style="background-color: var(--bs-body-bg);">
+                        <div class="d-flex align-items-center gap-1 mb-1">
+                            <span class="rounded-1 d-inline-flex align-items-center justify-content-center"
+                                  style="width: 18px; height: 18px; font-size: 0.6rem;
+                                         background-color: rgba(139, 92, 246, 0.15); color: var(--castor-accent);">
+                                <i class="bi bi-box"></i>
+                            </span>
+                            <span class="text-secondary fs-8 text-uppercase fw-semibold">IFC Model</span>
+                        </div>
+                        <code class="fs-7" style="color: var(--castor-warning);">{{ conflict.ifc_value }}</code>
                     </div>
-                    <p class="text-secondary fs-7 mb-3">{{ conflict.description }}</p>
 
-                    <!-- Conflict Values -->
-                    <div class="row g-2">
-                        <div class="col-6">
-                            <div class="bg-body rounded p-2">
-                                <div class="text-secondary fs-8 text-uppercase mb-1">IFC Model</div>
-                                <code class="fs-7 text-warning">{{ conflict.ifc_value }}</code>
+                    {# Arrow #}
+                    <div class="d-flex align-items-center text-secondary px-1">
+                        <i class="bi bi-arrow-left-right"></i>
+                    </div>
+
+                    {# Document side #}
+                    <div class="flex-fill rounded-2 p-2"
+                         style="background-color: var(--bs-body-bg);">
+                        <div class="d-flex align-items-center gap-1 mb-1">
+                            <span class="rounded-1 d-inline-flex align-items-center justify-content-center"
+                                  style="width: 18px; height: 18px; font-size: 0.6rem;
+                                         background-color: rgba(59, 130, 246, 0.15); color: var(--castor-primary);">
+                                <i class="bi bi-file-text"></i>
+                            </span>
+                            <span class="text-secondary fs-8 text-uppercase fw-semibold">Document</span>
+                        </div>
+                        <code class="fs-7" style="color: var(--castor-primary);">{{ conflict.document_value }}</code>
+                    </div>
+                </div>
+
+                {# Source reference #}
+                {% if conflict.document_chunk %}
+                <p class="text-secondary fs-8 mb-3">
+                    <i class="bi bi-quote me-1"></i>
+                    {{ conflict.document_chunk.document.name }}{% if conflict.document_chunk.page_number %}, p.{{ conflict.document_chunk.page_number }}{% endif %}
+                </p>
+                {% endif %}
+
+                {# Actions with contextual labels #}
+                <div class="d-flex gap-2 align-items-center">
+                    {% if conflict.suggested_fix %}
+                    <a class="btn btn-sm btn-outline-primary rounded-pill px-3"
+                       href="{% url 'writeback:modify' project.pk %}?prompt={{ conflict.suggested_fix|urlencode }}"
+                       title="Opens the Modify tab pre-filled with a fix for this conflict">
+                        <i class="bi bi-pencil me-1"></i>Fix in Modify
+                    </a>
+                    {% endif %}
+                    <button class="btn btn-sm btn-outline-secondary rounded-pill px-3"
+                            onclick="ScanEngine.confirmDismiss('{% url 'writeback:dismiss_conflict' project.pk conflict.id %}', this)"
+                            title="Hide this conflict — it won't reappear unless a future scan detects it again">
+                        <i class="bi bi-x-circle me-1"></i>Dismiss
+                    </button>
+
+                    {# Entity link if available #}
+                    {% if conflict.ifc_entity %}
+                    <span class="text-secondary fs-8 ms-auto">
+                        <i class="bi bi-box me-1"></i>{{ conflict.ifc_entity.name|default:conflict.ifc_entity.global_id }}
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    {% elif last_scan_at %}
+    {# ── Empty state: scanned, nothing found ── #}
+    <div class="d-flex flex-column align-items-center justify-content-center py-5"
+         style="min-height: 300px;">
+        <div class="rounded-circle d-flex align-items-center justify-content-center mb-3"
+             style="width: 56px; height: 56px; background-color: rgba(16, 185, 129, 0.1);">
+            <i class="bi bi-check-lg" style="font-size: 1.5rem; color: var(--castor-success);"></i>
+        </div>
+        <h5 class="h6 fw-semibold mb-1">All Clear</h5>
+        <p class="text-secondary fs-7 mb-2" style="max-width: 360px; text-align: center;">
+            The last scan found no contradictions between your IFC model and project documents.
+        </p>
+        <p class="text-secondary fs-8 mb-0" style="max-width: 400px; text-align: center;">
+            Consider re-scanning after uploading new documents or modifying the IFC model,
+            as changes may introduce new mismatches.
+        </p>
+    </div>
+
+    {% else %}
+    {# ── Empty state: never scanned — primary CTA ── #}
+    <div class="d-flex flex-column align-items-center justify-content-center py-4"
+         style="min-height: 220px;">
+        <div class="rounded-circle d-flex align-items-center justify-content-center mb-3"
+             style="width: 56px; height: 56px; background-color: rgba(59, 130, 246, 0.08);">
+            <i class="bi bi-radar" style="font-size: 1.5rem; color: var(--castor-primary); opacity: 0.6;"></i>
+        </div>
+        <h5 class="h6 fw-semibold mb-1">Ready to scan</h5>
+        <p class="text-secondary fs-7 mb-3" style="max-width: 380px; text-align: center;">
+            Run your first scan to check whether IFC model properties match what your project
+            documents specify. Any contradictions will appear here as actionable conflicts.
+        </p>
+        <button class="btn btn-sm btn-primary rounded-pill px-4"
+                onclick="ScanEngine.runScan()">
+            <i class="bi bi-radar me-1"></i>Run First Scan
+        </button>
+    </div>
+    {% endif %}
+
+</div>{# /subtab-semantic #}
+
+</div>{# /overflow-auto #}
+
+
+{# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ #}
+{# SHARED UI: Toast, Modal                                           #}
+{# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ #}
+
+{# ── Toast notification ── #}
+<div id="scan-toast" class="position-fixed bottom-0 end-0 p-3" style="z-index: 1100;">
+    <div class="toast align-items-center border-0" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="d-flex">
+            <div class="toast-body" id="scan-toast-body">Done.</div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+    </div>
+</div>
+
+{# ── Help modal — "How conflict detection works" ── #}
+<div class="modal fade" id="conflictHelpModal" tabindex="-1" aria-labelledby="conflictHelpLabel">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+
+            {# Header #}
+            <div class="modal-header border-bottom px-4 py-3"
+                 style="border-color: var(--bs-border-color) !important;">
+                <div>
+                    <h5 class="modal-title fw-semibold fs-6 mb-0" id="conflictHelpLabel">
+                        <i class="bi bi-signpost-split me-2" style="color: var(--castor-primary);"></i>
+                        How Conflict Detection Works
+                    </h5>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            {# Body #}
+            <div class="modal-body px-4 py-4">
+
+                {# Intro #}
+                <p class="text-secondary fs-7 mb-4" style="max-width: 600px;">
+                    Castor runs two complementary checks to ensure your IFC model is
+                    internally consistent <em>and</em> aligned with your project documents.
+                </p>
+
+                {# ── Two check types side by side ── #}
+                <div class="row g-3 mb-4">
+                    {# Data Quality #}
+                    <div class="col-md-6">
+                        <div class="rounded-3 p-3 h-100"
+                             style="background-color: rgba(245, 158, 11, 0.05);
+                                    border: 1px solid rgba(245, 158, 11, 0.15);">
+                            <div class="d-flex gap-2 align-items-center mb-2">
+                                <div class="rounded-2 d-flex align-items-center justify-content-center"
+                                     style="width: 28px; height: 28px; background-color: rgba(245, 158, 11, 0.12);">
+                                    <i class="bi bi-shield-exclamation" style="font-size: 0.75rem; color: var(--castor-warning);"></i>
+                                </div>
+                                <span class="fw-semibold fs-7" style="color: var(--castor-warning);">Data Quality</span>
+                            </div>
+                            <p class="text-secondary fs-8 mb-2">
+                                Structural problems <strong>inside</strong> your IFC file —
+                                duplicate GlobalIDs, missing attributes, or invalid references.
+                            </p>
+                            <div class="d-flex flex-column gap-1 fs-8 text-secondary">
+                                <span><i class="bi bi-gear me-1" style="color: var(--castor-warning); opacity: 0.7;"></i>
+                                    Runs <strong class="text-body">automatically</strong> on every IFC upload</span>
+                                <span><i class="bi bi-wrench me-1" style="color: var(--castor-warning); opacity: 0.7;"></i>
+                                    Fix in your BIM tool (Revit, Bonsai, ArchiCAD…) and re-upload</span>
+                                <span><i class="bi bi-exclamation-triangle me-1" style="color: var(--castor-warning); opacity: 0.7;"></i>
+                                    Affected elements are skipped during import</span>
                             </div>
                         </div>
-                        <div class="col-6">
-                            <div class="bg-body rounded p-2">
-                                <div class="text-secondary fs-8 text-uppercase mb-1">Document</div>
-                                <code class="fs-7 text-primary">{{ conflict.document_value }}</code>
+                    </div>
+
+                    {# Semantic Conflicts #}
+                    <div class="col-md-6">
+                        <div class="rounded-3 p-3 h-100"
+                             style="background-color: rgba(59, 130, 246, 0.05);
+                                    border: 1px solid rgba(59, 130, 246, 0.15);">
+                            <div class="d-flex gap-2 align-items-center mb-2">
+                                <div class="rounded-2 d-flex align-items-center justify-content-center"
+                                     style="width: 28px; height: 28px; background-color: rgba(59, 130, 246, 0.12);">
+                                    <i class="bi bi-lightning-charge" style="font-size: 0.75rem; color: var(--castor-primary);"></i>
+                                </div>
+                                <span class="fw-semibold fs-7" style="color: var(--castor-primary);">Semantic Conflicts</span>
+                            </div>
+                            <p class="text-secondary fs-8 mb-2">
+                                Contradictions <strong>between</strong> your IFC model and project
+                                documents — e.g. a fire rating mismatch or wrong material spec.
+                            </p>
+                            <div class="d-flex flex-column gap-1 fs-8 text-secondary">
+                                <span><i class="bi bi-hand-index me-1" style="color: var(--castor-primary); opacity: 0.7;"></i>
+                                    Runs <strong class="text-body">on demand</strong> — you trigger the scan</span>
+                                <span><i class="bi bi-cpu me-1" style="color: var(--castor-primary); opacity: 0.7;"></i>
+                                    AI-powered: compares entity properties against doc requirements</span>
+                                <span><i class="bi bi-pencil me-1" style="color: var(--castor-primary); opacity: 0.7;"></i>
+                                    One-click fix through the <strong class="text-body">Modify</strong> pipeline</span>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
-            {% endfor %}
-        </div>
-        {% else %}
-        <div class="empty-state text-center py-5">
-            <i class="bi bi-check-circle text-success opacity-50" style="font-size: 3rem;"></i>
-            <h5 class="h6 fw-semibold mt-3 mb-2">No Conflicts Detected</h5>
-            <p class="text-secondary fs-7 mb-0">Your IFC model and documents are in sync.</p>
-        </div>
-        {% endif %}
-    </div>
 
+                {# ── How a semantic scan works ── #}
+                <div class="mb-4">
+                    <p class="fw-semibold fs-7 mb-2">
+                        <i class="bi bi-radar me-1" style="color: var(--castor-primary);"></i>
+                        What happens during a scan?
+                    </p>
+                    <div class="d-flex flex-column gap-2 fs-8">
+                        <div class="d-flex gap-2 align-items-start">
+                            <div class="rounded-2 d-flex align-items-center justify-content-center flex-shrink-0"
+                                 style="width: 22px; height: 22px; background-color: rgba(59,130,246,0.1);">
+                                <span style="font-size: 0.65rem; color: var(--castor-primary); font-weight: 600;">1</span>
+                            </div>
+                            <span class="text-secondary">
+                                <strong class="text-body">Select entities</strong> —
+                                Castor picks IFC elements to check (physical elements by default,
+                                or all if you uncheck "Skip non-physical elements").
+                            </span>
+                        </div>
+                        <div class="d-flex gap-2 align-items-start">
+                            <div class="rounded-2 d-flex align-items-center justify-content-center flex-shrink-0"
+                                 style="width: 22px; height: 22px; background-color: rgba(59,130,246,0.1);">
+                                <span style="font-size: 0.65rem; color: var(--castor-primary); font-weight: 600;">2</span>
+                            </div>
+                            <span class="text-secondary">
+                                <strong class="text-body">Find relevant documents</strong> —
+                                Vector search matches each entity with the most relevant sections
+                                from your uploaded documents.
+                            </span>
+                        </div>
+                        <div class="d-flex gap-2 align-items-start">
+                            <div class="rounded-2 d-flex align-items-center justify-content-center flex-shrink-0"
+                                 style="width: 22px; height: 22px; background-color: rgba(59,130,246,0.1);">
+                                <span style="font-size: 0.65rem; color: var(--castor-primary); font-weight: 600;">3</span>
+                            </div>
+                            <span class="text-secondary">
+                                <strong class="text-body">AI comparison</strong> —
+                                The LLM checks whether properties match requirements and flags
+                                contradictions with a severity level (critical, high, medium, low).
+                            </span>
+                        </div>
+                        <div class="d-flex gap-2 align-items-start">
+                            <div class="rounded-2 d-flex align-items-center justify-content-center flex-shrink-0"
+                                 style="width: 22px; height: 22px; background-color: rgba(59,130,246,0.1);">
+                                <span style="font-size: 0.65rem; color: var(--castor-primary); font-weight: 600;">4</span>
+                            </div>
+                            <span class="text-secondary">
+                                <strong class="text-body">Results appear here</strong> —
+                                Each conflict shows the IFC value vs. the document value,
+                                with a link to fix it or dismiss it.
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                {# ── Workflow strip ── #}
+                <div class="pt-3" style="border-top: 1px solid var(--bs-border-color);">
+                    <p class="fw-semibold fs-7 mb-2">
+                        <i class="bi bi-arrow-right me-1" style="color: var(--castor-primary);"></i>
+                        Typical workflow
+                    </p>
+                    <div class="d-flex align-items-center gap-2 flex-wrap fs-8">
+                        <span class="badge rounded-pill conflict-flow-step">
+                            <i class="bi bi-cloud-upload me-1"></i>Upload IFC + Docs
+                        </span>
+                        <i class="bi bi-chevron-right text-secondary" style="font-size: 0.6rem;"></i>
+                        <span class="badge rounded-pill conflict-flow-step">
+                            <i class="bi bi-shield-check me-1"></i>Data Quality auto-checked
+                        </span>
+                        <i class="bi bi-chevron-right text-secondary" style="font-size: 0.6rem;"></i>
+                        <span class="badge rounded-pill conflict-flow-step">
+                            <i class="bi bi-radar me-1"></i>Run Semantic Scan
+                        </span>
+                        <i class="bi bi-chevron-right text-secondary" style="font-size: 0.6rem;"></i>
+                        <span class="badge rounded-pill conflict-flow-step">
+                            <i class="bi bi-eye me-1"></i>Review conflicts
+                        </span>
+                        <i class="bi bi-chevron-right text-secondary" style="font-size: 0.6rem;"></i>
+                        <span class="badge rounded-pill conflict-flow-step">
+                            <i class="bi bi-pencil me-1"></i>Fix in Modify
+                        </span>
+                    </div>
+                </div>
+
+                {# ── Tips ── #}
+                <div class="mt-3 pt-3" style="border-top: 1px solid var(--bs-border-color);">
+                    <p class="fw-semibold fs-7 mb-2">
+                        <i class="bi bi-lightbulb me-1" style="color: var(--castor-accent);"></i>
+                        Tips
+                    </p>
+                    <div class="d-flex flex-column gap-1 fs-8 text-secondary">
+                        <span><i class="bi bi-dot"></i>Re-scan after uploading new documents or modifying the IFC model.</span>
+                        <span><i class="bi bi-dot"></i>Dismissed conflicts won't reappear unless a future scan re-detects them.</span>
+                        <span><i class="bi bi-dot"></i>Scan duration depends on project size — typically 30 seconds to a few minutes.</span>
+                        <span><i class="bi bi-dot"></i>"Fix in Modify" opens the Modify tab pre-filled with a suggested correction.</span>
+                    </div>
+                </div>
+
+            </div>{# /modal-body #}
+        </div>
+    </div>
 </div>
+
+{# ── Dismiss confirmation modal ── #}
+<div class="modal fade" id="dismissModal" tabindex="-1">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+            <div class="modal-body text-center p-4">
+                <i class="bi bi-x-circle text-secondary mb-2" style="font-size: 1.5rem;"></i>
+                <p class="fw-medium mb-1">Dismiss this conflict?</p>
+                <p class="text-secondary fs-8 mb-3">It won't appear again unless a future scan re-detects it.</p>
+                <div class="d-flex gap-2 justify-content-center">
+                    <button class="btn btn-sm btn-outline-secondary rounded-pill px-3"
+                            data-bs-dismiss="modal">Cancel</button>
+                    <button class="btn btn-sm btn-danger rounded-pill px-3"
+                            id="confirm-dismiss-btn">Dismiss</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+{# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ #}
+{# STYLES                                                            #}
+{# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ #}
+<style>
+    /* ── Sub-tab pills ── */
+    .conflict-subtab {
+        background: transparent;
+        border: 1px solid var(--bs-border-color);
+        color: var(--bs-secondary-color);
+        font-size: 0.8125rem;
+        font-weight: 500;
+        transition: all 0.15s ease;
+    }
+    .conflict-subtab:hover {
+        background-color: rgba(255, 255, 255, 0.04);
+        color: var(--bs-body-color);
+        border-color: var(--bs-border-color);
+    }
+    .conflict-subtab.active {
+        background-color: rgba(59, 130, 246, 0.12);
+        color: var(--castor-primary);
+        border-color: transparent;
+    }
+
+    /* ── Conflict card hover ── */
+    .conflict-card {
+        transition: border-color 0.15s ease;
+    }
+    .conflict-card:hover {
+        border-color: rgba(255, 255, 255, 0.1) !important;
+    }
+
+    /* ── Flow step badges ── */
+    .conflict-flow-step {
+        background-color: rgba(255, 255, 255, 0.06);
+        color: var(--bs-secondary-color);
+        font-weight: 500;
+        padding: 0.25rem 0.6rem;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    /* ── Help button in subtab bar ── */
+    .conflict-help-btn {
+        background: transparent;
+        border: 1px dashed rgba(59, 130, 246, 0.3);
+        color: var(--castor-primary);
+        font-size: 0.8125rem;
+        font-weight: 500;
+        transition: all 0.15s ease;
+        opacity: 0.8;
+    }
+    .conflict-help-btn:hover {
+        background-color: rgba(59, 130, 246, 0.08);
+        border-style: solid;
+        color: var(--castor-primary);
+        opacity: 1;
+    }
+</style>
+
+
+{# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ #}
+{# SCRIPTS                                                           #}
+{# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ #}
+<script>
+/* ─── Sub-tab controller ─── */
+const ConflictTabs = {
+    switchTo(name) {
+        document.querySelectorAll('.conflict-subtab-panel').forEach(p => p.classList.add('d-none'));
+        document.querySelectorAll('.conflict-subtab').forEach(b => b.classList.remove('active'));
+
+        const panel = document.getElementById('subtab-' + name);
+        if (panel) panel.classList.remove('d-none');
+
+        const btn = document.querySelector(`.conflict-subtab[data-subtab="${name}"]`);
+        if (btn) btn.classList.add('active');
+    }
+};
+
+
+/* ─── Scan engine ─── */
+const ScanEngine = {
+    runScan() {
+        const btn  = document.getElementById('run-scan-btn');
+        const loader = document.getElementById('scan-loader');
+        const skipLowValue = document.getElementById('skip-low-value')?.checked ?? true;
+
+        btn.disabled = true;
+        loader.classList.remove('d-none');
+        loader.classList.add('d-flex');
+
+        const formData = new FormData();
+        formData.append('csrfmiddlewaretoken', this._csrf());
+        formData.append('skip_low_value', skipLowValue ? 'true' : 'false');
+
+        fetch("{% url 'writeback:run_scan' project.pk %}", {
+            method: 'POST',
+            body: formData,
+        })
+        .then(r => r.json())
+        .then(data => {
+            loader.classList.add('d-none');
+            loader.classList.remove('d-flex');
+            btn.disabled = false;
+
+            if (data.status === 'ok') {
+                const parts = [];
+                if (data.scanned)           parts.push(`${data.scanned} entities checked`);
+                if (data.conflicts_found)    parts.push(`${data.conflicts_found} new`);
+                if (data.conflicts_updated)  parts.push(`${data.conflicts_updated} updated`);
+                const msg = parts.length ? parts.join(' · ') : 'No conflicts found.';
+                this._toast('Scan complete — ' + msg);
+                setTimeout(() => window.location.reload(), 1500);
+            } else {
+                this._toast(data.message || 'Scan failed.', 'danger');
+            }
+        })
+        .catch(err => {
+            loader.classList.add('d-none');
+            loader.classList.remove('d-flex');
+            btn.disabled = false;
+            this._toast('Scan request failed: ' + err, 'danger');
+        });
+    },
+
+    _pendingDismiss: { url: null, btn: null },
+
+    confirmDismiss(url, btn) {
+        this._pendingDismiss = { url, btn };
+        const modal = new bootstrap.Modal(document.getElementById('dismissModal'));
+        modal.show();
+
+        const confirmBtn = document.getElementById('confirm-dismiss-btn');
+        const handler = () => {
+            this._doDismiss(this._pendingDismiss.url, this._pendingDismiss.btn);
+            modal.hide();
+            confirmBtn.removeEventListener('click', handler);
+        };
+        confirmBtn.addEventListener('click', handler);
+    },
+
+    _doDismiss(url, btn) {
+        const card = btn.closest('.conflict-card');
+        const formData = new FormData();
+        formData.append('csrfmiddlewaretoken', this._csrf());
+
+        fetch(url, { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'dismissed') {
+                card.style.transition = 'all 0.3s ease';
+                card.style.opacity = '0';
+                card.style.transform = 'translateX(20px)';
+                setTimeout(() => card.remove(), 350);
+            }
+        });
+    },
+
+    _csrf() {
+        return document.cookie.split('; ')
+            .find(r => r.startsWith('csrftoken='))
+            ?.split('=')[1] || '';
+    },
+
+    _toast(message, type = 'success') {
+        const toastEl = document.querySelector('#scan-toast .toast');
+        const body    = document.getElementById('scan-toast-body');
+        toastEl.className = `toast align-items-center text-bg-${type} border-0`;
+        body.textContent  = message;
+        bootstrap.Toast.getOrCreateInstance(toastEl).show();
+    },
+};
+</script>

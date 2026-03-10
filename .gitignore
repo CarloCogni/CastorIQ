@@ -68,3 +68,10 @@ _output/
 
 # CLAUDE
 .claude/settings.local.json
+# Claude Code worktrees
+.claude/worktrees/
+# Worktree-specific env files (auto-generated, should not be committed)
+.env.worktree
+
+# .castor hidden folder for local files to be compressed or extracted
+.castor/

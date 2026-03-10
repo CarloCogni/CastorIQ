@@ -270,6 +270,7 @@ class Conflict(UUIDModel):
         OPEN = "open", "Open"
         RESOLVED = "resolved", "Resolved"
         IGNORED = "ignored", "Ignored"
+        DISMISSED = "dismissed", "Dismissed"
 
     project = models.ForeignKey("environments.Project",on_delete=models.CASCADE,related_name="conflicts",verbose_name="Project",)
     # What's conflicting
@@ -287,6 +288,11 @@ class Conflict(UUIDModel):
     resolved_by = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,related_name="resolved_conflicts",verbose_name="Resolved By",)
     resolved_at = models.DateTimeField(null=True,blank=True,verbose_name="Resolved At",)
     resolution_note = models.TextField(blank=True,verbose_name="Resolution Note",)
+    suggested_fix = models.TextField(
+        blank=True,
+        verbose_name="Suggested Fix",
+        help_text="LLM-generated modify prompt to resolve this conflict",
+    )
 
     class Meta:
         ordering = ["-severity", "-created_at"]
