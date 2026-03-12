@@ -22,7 +22,6 @@ class TimestampedModel(models.Model):
     class Meta:
         abstract = True
 
-
 class UUIDModel(TimestampedModel):
     """Abstract base model with UUID primary key."""
 
@@ -35,7 +34,6 @@ class UUIDModel(TimestampedModel):
 
     class Meta:
         abstract = True
-
 
 class ErrorLog(UUIDModel):
     """Store application errors with full stacktrace for debugging"""
@@ -176,7 +174,6 @@ class ErrorLog(UUIDModel):
     def __str__(self):
         return f"{self.severity.upper()}: {self.message[:50]}"
 
-
 class UserLLMConfig(models.Model):
     """
     Per-user LLM preference.
@@ -214,3 +211,113 @@ class UserLLMConfig(models.Model):
         """Get or create config for a given user."""
         obj, _ = cls.objects.get_or_create(user=user)
         return obj
+
+class TeamNote(UUIDModel):
+    """Cross-machine team notes synced via Supabase."""
+
+    class Category(models.TextChoices):
+        BUG = "bug", "Bug"
+        QUESTION = "question", "Question"
+        SUGGESTION = "suggestion", "Suggestion"
+        TODO = "todo", "To-Do"
+        NOTE = "note", "Note"
+
+    class Priority(models.TextChoices):
+        LOW = "low", "Low"
+        MEDIUM = "medium", "Medium"
+        HIGH = "high", "High"
+        CRITICAL = "critical", "Critical"
+
+    # Content
+    title = models.CharField(
+        max_length=200,
+        verbose_name="Title",
+    )
+    body = models.TextField(
+        verbose_name="Body",
+        help_text="Rich-text HTML content",
+    )
+    category = models.CharField(
+        max_length=20,
+        choices=Category.choices,
+        default=Category.NOTE,
+        db_index=True,
+        verbose_name="Category",
+    )
+    priority = models.CharField(
+        max_length=20,
+        choices=Priority.choices,
+        default=Priority.MEDIUM,
+        db_index=True,
+        verbose_name="Priority",
+    )
+
+    # Context — where was the user when they wrote this?
+    page_url = models.CharField(
+        max_length=500,
+        blank=True,
+        verbose_name="Page URL",
+        help_text="Auto-captured from the browser",
+    )
+    browser_info = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Browser Info",
+        help_text="User agent, screen size, etc.",
+    )
+
+    # Author as plain string — no FK, safe across machines
+    author_username = models.CharField(
+        max_length=150,
+        db_index=True,
+        verbose_name="Author",
+        help_text="Username of the note creator",
+    )
+
+    # Resolution tracking
+    is_resolved = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name="Resolved",
+    )
+    resolved_by = models.CharField(
+        max_length=150,
+        blank=True,
+        verbose_name="Resolved By",
+    )
+    resolved_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Resolved At",
+    )
+    resolution_note = models.TextField(
+        blank=True,
+        verbose_name="Resolution Note",
+    )
+
+    # Supabase sync tracking
+    sent_to_supabase = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name="Sent to Supabase",
+    )
+    supabase_id = models.UUIDField(
+        null=True,
+        blank=True,
+        unique=True,
+        verbose_name="Supabase ID",
+        help_text="UUID from Supabase to prevent duplicate imports",
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Team Note"
+        verbose_name_plural = "Team Notes"
+        indexes = [
+            models.Index(fields=["-created_at", "category"]),
+            models.Index(fields=["is_resolved", "-created_at"]),
+            models.Index(fields=["author_username", "-created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"[{self.category}] {self.title[:50]} — {self.author_username}"

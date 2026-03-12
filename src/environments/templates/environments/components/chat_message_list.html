@@ -1,5 +1,5 @@
 <!--chat_message_list.html-->
-{% load static %}
+{% load static chat_filters %}
 {% for message in messages %}
 <div class="message message-{{ message.role }}">
     <div class="message-avatar">
@@ -44,7 +44,7 @@
 
         <div class="message-text {% if message.role == 'user' %}text-clamp-4{% endif %}"
              id="msg-text-{{ forloop.counter }}">
-            {{ message.content|linebreaks }}
+            {{ message.content|render_markdown }}
         </div>
 
         {% if message.role == 'user' %}

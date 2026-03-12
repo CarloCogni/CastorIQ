@@ -22,6 +22,8 @@ dependencies = [
     "django-extensions>=4.1",
     "langchain-ollama>=1.0.1",
     "langchain-text-splitters>=1.1.0",
+    "channels[daphne]>=4.3.2",
+    "markdown>=3.10.2",
 ]
 
 [project.optional-dependencies]

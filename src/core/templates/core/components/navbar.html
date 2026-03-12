@@ -5,39 +5,49 @@
         Castor
     </a>
 
-{% if user.is_authenticated %}
+    {% if user.is_authenticated %}
     <div class="d-flex align-items-center gap-3 ms-auto">
 
         {% if user.is_staff %}
-            <a href="{% url 'admin:index' %}" class="text-secondary fs-7 fw-bold text-decoration-none" title="Go to Admin Panel">
-                {{ user.username }} <i class="bi bi-shield-lock-fill ms-1" style="font-size: 0.8em;"></i>
-            </a>
+        <a href="{% url 'admin:index' %}" class="text-secondary fs-7 fw-bold text-decoration-none" title="Go to Admin Panel">
+            {{ user.username }} <i class="bi bi-shield-lock-fill ms-1" style="font-size: 0.8em;"></i>
+        </a>
         {% else %}
-            <span class="text-secondary fs-7">{{ user.username }}</span>
+        <span class="text-secondary fs-7">{{ user.username }}</span>
         {% endif %}
 
         <div class="rounded-circle bg-primary d-flex align-items-center justify-content-center text-white fw-semibold" style="width: 36px; height: 36px;">
             {{ user.username.0|upper }}
         </div>
 
+
+        <button
+                class="btn btn-link text-secondary opacity-50 hover-white p-0 border-0"
+                title="Leave a Team Note"
+                data-bs-toggle="modal"
+                data-bs-target="#teamNoteModal"
+        >
+            <i class="bi bi-sticky-fill fs-5"></i>
+        </button>
+
         {% if user.is_staff %}
-            <button
+        <button
                 id="btn-send-errors"
                 class="btn btn-link text-secondary opacity-50 hover-white p-0 border-0"
                 title="Send Error Logs to Supabase"
                 onclick="sendErrorsToSupabase()"
-            >
-                <i class="bi bi-cloud-arrow-up-fill fs-5"></i>
-            </button>
+        >
+            <i class="bi bi-cloud-arrow-up-fill fs-5"></i>
+        </button>
 
-            <button
+        <button
                 id="btn-pull-errors"
                 class="btn btn-link text-secondary opacity-50 hover-white p-0 border-0"
                 title="Pull Error Logs from Supabase"
                 onclick="pullErrorsFromSupabase()"
-            >
-                <i class="bi bi-cloud-arrow-down-fill fs-5"></i>
-            </button>
+        >
+            <i class="bi bi-cloud-arrow-down-fill fs-5"></i>
+        </button>
         {% endif %}
 
         <a href="{% url 'core:settings' %}" class="d-flex align-items-center gap-2 text-secondary opacity-50 hover-white text-decoration-none" title="Settings — {{ active_llm_model }}">
@@ -61,96 +71,285 @@
         </form>
 
     </div>
-{% endif %}
+    {% endif %}
 
-{% if user.is_staff %}
-<script>
-function sendErrorsToSupabase() {
-    const btn = document.getElementById('btn-send-errors');
-    const icon = btn.querySelector('i');
+    {% if user.is_staff %}
+    <script>
+        function sendErrorsToSupabase() {
+            const btn = document.getElementById('btn-send-errors');
+            const icon = btn.querySelector('i');
 
-    // Show loading state
-    icon.className = 'bi bi-arrow-repeat fs-5 spin-animation';
-    btn.disabled = true;
+            icon.className = 'bi bi-arrow-repeat fs-5 spin-animation';
+            btn.disabled = true;
 
-    fetch("{% url 'core:send_errors_to_supabase' %}", {
-        method: 'POST',
-        headers: {
-            'X-CSRFToken': '{{ csrf_token }}',
-        },
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            icon.className = 'bi bi-cloud-check-fill fs-5';
-            btn.classList.remove('opacity-50');
-            btn.classList.add('text-success');
-            alert(`✅ ${data.sent} error(s) sent to Supabase`);
-        } else {
-            icon.className = 'bi bi-cloud-slash-fill fs-5';
-            btn.classList.add('text-danger');
-            alert(`❌ Failed: ${data.error}`);
+            const csrf = '{{ csrf_token }}';
+            const headers = { 'X-CSRFToken': csrf };
+
+            Promise.all([
+                fetch("{% url 'core:send_errors_to_supabase' %}", { method: 'POST', headers }),
+                fetch("{% url 'core:send_notes_to_supabase' %}", { method: 'POST', headers }),
+            ])
+            .then(responses => Promise.all(responses.map(r => r.json())))
+            .then(([errData, noteData]) => {
+                const errOk = errData.success;
+                const noteOk = noteData.success;
+
+                if (errOk && noteOk) {
+                    icon.className = 'bi bi-cloud-check-fill fs-5';
+                    btn.classList.remove('opacity-50');
+                    btn.classList.add('text-success');
+                    alert(`✅ ${errData.sent} error(s), ${noteData.sent} note(s) sent`);
+                } else {
+                    icon.className = 'bi bi-cloud-slash-fill fs-5';
+                    btn.classList.add('text-danger');
+                    const errors = [];
+                    if (!errOk) errors.push(`Errors: ${errData.error}`);
+                    if (!noteOk) errors.push(`Notes: ${noteData.error}`);
+                    alert(`❌ ${errors.join(' | ')}`);
+                }
+            })
+            .catch(() => {
+                icon.className = 'bi bi-cloud-slash-fill fs-5';
+                alert('❌ Network error');
+            })
+            .finally(() => {
+                btn.disabled = false;
+                setTimeout(() => {
+                    icon.className = 'bi bi-cloud-arrow-up-fill fs-5';
+                    btn.classList.remove('text-success', 'text-danger');
+                    btn.classList.add('opacity-50');
+                }, 3000);
+            });
         }
-    })
-    .catch(err => {
-        icon.className = 'bi bi-cloud-slash-fill fs-5';
-        alert('❌ Network error');
-    })
-    .finally(() => {
-        btn.disabled = false;
-        // Reset icon after 3 seconds
-        setTimeout(() => {
-            icon.className = 'bi bi-cloud-arrow-up-fill fs-5';
-            btn.classList.remove('text-success', 'text-danger');
-            btn.classList.add('opacity-50');
-        }, 3000);
-    });
-}
 
-function pullErrorsFromSupabase() {
-    const btn = document.getElementById('btn-pull-errors');
-    const icon = btn.querySelector('i');
+        function pullErrorsFromSupabase() {
+            const btn = document.getElementById('btn-pull-errors');
+            const icon = btn.querySelector('i');
 
-    icon.className = 'bi bi-arrow-repeat fs-5 spin-animation';
-    btn.disabled = true;
+            icon.className = 'bi bi-arrow-repeat fs-5 spin-animation';
+            btn.disabled = true;
 
-    fetch("{% url 'core:pull_errors_from_supabase' %}", {
-        method: 'POST',
-        headers: {
-            'X-CSRFToken': '{{ csrf_token }}',
-        },
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            icon.className = 'bi bi-cloud-check-fill fs-5';
-            btn.classList.remove('opacity-50');
-            btn.classList.add('text-success');
-            alert(`✅ ${data.imported} imported, ${data.skipped} skipped`);
-        } else {
-            icon.className = 'bi bi-cloud-slash-fill fs-5';
-            btn.classList.add('text-danger');
-            alert(`❌ Failed: ${data.error}`);
+            const csrf = '{{ csrf_token }}';
+            const headers = { 'X-CSRFToken': csrf };
+
+            Promise.all([
+                fetch("{% url 'core:pull_errors_from_supabase' %}", { method: 'POST', headers }),
+                fetch("{% url 'core:pull_notes_from_supabase' %}", { method: 'POST', headers }),
+            ])
+            .then(responses => Promise.all(responses.map(r => r.json())))
+            .then(([errData, noteData]) => {
+                const errOk = errData.success;
+                const noteOk = noteData.success;
+
+                if (errOk && noteOk) {
+                    icon.className = 'bi bi-cloud-check-fill fs-5';
+                    btn.classList.remove('opacity-50');
+                    btn.classList.add('text-success');
+                    alert(
+                        `✅ Errors: ${errData.imported} imported, ${errData.skipped} skipped\n` +
+                        `   Notes: ${noteData.imported} imported, ${noteData.skipped} skipped`
+                    );
+                } else {
+                    icon.className = 'bi bi-cloud-slash-fill fs-5';
+                    btn.classList.add('text-danger');
+                    const errors = [];
+                    if (!errOk) errors.push(`Errors: ${errData.error}`);
+                    if (!noteOk) errors.push(`Notes: ${noteData.error}`);
+                    alert(`❌ ${errors.join(' | ')}`);
+                }
+            })
+            .catch(() => {
+                icon.className = 'bi bi-cloud-slash-fill fs-5';
+                alert('❌ Network error');
+            })
+            .finally(() => {
+                btn.disabled = false;
+                setTimeout(() => {
+                    icon.className = 'bi bi-cloud-arrow-down-fill fs-5';
+                    btn.classList.remove('text-success', 'text-danger');
+                    btn.classList.add('opacity-50');
+                }, 3000);
+            });
         }
-    })
-    .catch(err => {
-        icon.className = 'bi bi-cloud-slash-fill fs-5';
-        alert('❌ Network error');
-    })
-    .finally(() => {
-        btn.disabled = false;
-        setTimeout(() => {
-            icon.className = 'bi bi-cloud-arrow-down-fill fs-5';
-            btn.classList.remove('text-success', 'text-danger');
-            btn.classList.add('opacity-50');
-        }, 3000);
-    });
-}
-</script>
+    </script>
 
-<style>
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .spin-animation { animation: spin 1s linear infinite; }
-</style>
-{% endif %}
+    <style>
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spin-animation { animation: spin 1s linear infinite; }
+    </style>
+    {% endif %}
+
+    {% if user.is_authenticated %}
+    <div class="modal fade" id="teamNoteModal" tabindex="-1" aria-labelledby="teamNoteModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content bg-surface border-secondary">
+                <div class="modal-header border-secondary">
+                    <h6 class="modal-title fw-semibold" id="teamNoteModalLabel">
+                        <i class="bi bi-sticky-fill text-warning me-2"></i>New Team Note
+                    </h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+
+                    <!-- Title -->
+                    <div class="mb-3">
+                        <label for="note-title" class="form-label fs-7 fw-semibold">Title</label>
+                        <input type="text" id="note-title" class="form-control form-control-sm bg-dark border-secondary text-light"
+                               placeholder="Short summary of your note" maxlength="200">
+                    </div>
+
+                    <!-- Category pills -->
+                    <div class="mb-3">
+                        <label class="form-label fs-7 fw-semibold">Category</label>
+                        <div class="d-flex flex-wrap gap-2" id="note-category-group">
+                            <input type="radio" class="btn-check" name="note-category" id="cat-note" value="note" checked>
+                            <label class="btn btn-sm btn-outline-secondary rounded-pill px-3" for="cat-note">
+                                <i class="bi bi-chat-text me-1"></i>Note
+                            </label>
+
+                            <input type="radio" class="btn-check" name="note-category" id="cat-bug" value="bug">
+                            <label class="btn btn-sm btn-outline-danger rounded-pill px-3" for="cat-bug">
+                                <i class="bi bi-bug me-1"></i>Bug
+                            </label>
+
+                            <input type="radio" class="btn-check" name="note-category" id="cat-question" value="question">
+                            <label class="btn btn-sm btn-outline-primary rounded-pill px-3" for="cat-question">
+                                <i class="bi bi-question-circle me-1"></i>Question
+                            </label>
+
+                            <input type="radio" class="btn-check" name="note-category" id="cat-suggestion" value="suggestion">
+                            <label class="btn btn-sm btn-outline-info rounded-pill px-3" for="cat-suggestion">
+                                <i class="bi bi-lightbulb me-1"></i>Suggestion
+                            </label>
+
+                            <input type="radio" class="btn-check" name="note-category" id="cat-todo" value="todo">
+                            <label class="btn btn-sm btn-outline-warning rounded-pill px-3" for="cat-todo">
+                                <i class="bi bi-check2-square me-1"></i>To-Do
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Priority pills -->
+                    <div class="mb-3">
+                        <label class="form-label fs-7 fw-semibold">Priority</label>
+                        <div class="d-flex flex-wrap gap-2" id="note-priority-group">
+                            <input type="radio" class="btn-check" name="note-priority" id="pri-low" value="low">
+                            <label class="btn btn-sm btn-outline-secondary rounded-pill px-3" for="pri-low">Low</label>
+
+                            <input type="radio" class="btn-check" name="note-priority" id="pri-medium" value="medium" checked>
+                            <label class="btn btn-sm btn-outline-warning rounded-pill px-3" for="pri-medium">Medium</label>
+
+                            <input type="radio" class="btn-check" name="note-priority" id="pri-high" value="high">
+                            <label class="btn btn-sm btn-outline-danger rounded-pill px-3" for="pri-high">High</label>
+
+                            <input type="radio" class="btn-check" name="note-priority" id="pri-critical" value="critical">
+                            <label class="btn btn-sm btn-outline-danger rounded-pill px-3 fw-bold" for="pri-critical">Critical</label>
+                        </div>
+                    </div>
+
+                    <!-- Rich text editor -->
+                    <div class="mb-3">
+                        <label class="form-label fs-7 fw-semibold">Body</label>
+                        <div id="note-editor" style="height: 180px; background-color: var(--bs-body-bg); border: 1px solid var(--bs-border-color); border-radius: 0.375rem;"></div>
+                    </div>
+
+                    <!-- Page URL badge (auto-filled) -->
+                    <div class="d-flex align-items-center gap-2">
+                        <i class="bi bi-geo-alt text-secondary fs-7"></i>
+                        <span id="note-page-url" class="badge bg-dark border border-secondary text-secondary fs-8 text-truncate" style="max-width: 400px;"></span>
+                    </div>
+
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="btn-submit-note" onclick="submitTeamNote()">
+                        <i class="bi bi-send me-1"></i>Submit Note
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <script>
+        let noteQuill = null;
+
+        // Initialize Quill when modal opens (lazy load)
+        document.getElementById('teamNoteModal').addEventListener('shown.bs.modal', function () {
+            if (!noteQuill) {
+                noteQuill = new Quill('#note-editor', {
+                    theme: 'snow',
+                    placeholder: 'Describe the issue, idea, or note...',
+                    modules: {
+                        toolbar: [
+                            ['bold', 'italic', 'underline', 'strike'],
+                            ['code-block', 'blockquote'],
+                            [{ list: 'ordered' }, { list: 'bullet' }],
+                            ['link'],
+                            ['clean'],
+                        ],
+                    },
+                });
+            }
+            // Auto-fill page URL
+            document.getElementById('note-page-url').textContent = window.location.href;
+        });
+
+        function submitTeamNote() {
+            const btn = document.getElementById('btn-submit-note');
+            const title = document.getElementById('note-title').value.trim();
+            const body = noteQuill ? noteQuill.root.innerHTML : '';
+            const category = document.querySelector('input[name="note-category"]:checked')?.value || 'note';
+            const priority = document.querySelector('input[name="note-priority"]:checked')?.value || 'medium';
+
+            // Guard: require title and non-empty body
+            if (!title) { alert('Please enter a title.'); return; }
+            if (!body || body === '<p><br></p>') { alert('Please enter a body.'); return; }
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="bi bi-arrow-repeat spin me-1"></i>Sending…';
+
+            fetch("{% url 'core:create_team_note' %}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}',
+                },
+                body: JSON.stringify({
+                    title: title,
+                    body: body,
+                    category: category,
+                    priority: priority,
+                    page_url: window.location.href,
+                    browser_info: {
+                        user_agent: navigator.userAgent,
+                        screen: `${screen.width}x${screen.height}`,
+                        language: navigator.language,
+                    },
+                }),
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    // Reset form
+                    document.getElementById('note-title').value = '';
+                    if (noteQuill) noteQuill.setText('');
+                    document.getElementById('cat-note').checked = true;
+                    document.getElementById('pri-medium').checked = true;
+
+                    // Close modal
+                    bootstrap.Modal.getInstance(document.getElementById('teamNoteModal')).hide();
+                    alert('✅ Note saved! Sync to Supabase when ready.');
+                } else {
+                    alert(`❌ ${data.error}`);
+                }
+            })
+            .catch(() => alert('❌ Network error'))
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-send me-1"></i>Submit Note';
+            });
+        }
+    </script>
+
 </nav>

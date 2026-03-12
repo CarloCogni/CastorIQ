@@ -1,78 +1,123 @@
 # writeback/services/conflict_scan_service.py
 """
-Conflict Scan Engine — proactive IFC-vs-document contradiction detector.
+Conflict Scan Engine — document-first IFC-vs-document contradiction detector.
 
-For each IFC entity in a project, uses its existing embedding to find
-semantically relevant document chunks and asks the LLM whether any of
-the entity's current properties contradict the document requirements.
-Found contradictions are stored as Conflict records.
+Strategy: instead of iterating all IFC entities (entity-first), we start from
+document requirement chunks and find the IFC entities they constrain (document-first).
+This drastically reduces LLM calls by only scanning entities actually referenced in
+specification requirements.
 
-Design mirrors guardian_service.py: same LLM factory, same chunk
-formatting, same JSON parse safety. The difference is directionality —
-the Guardian checks a *proposed* change, the Scanner checks *existing*
-entity state.
+Pipeline:
+    1. Gather requirement chunks — filter DocumentChunks by AEC compliance keywords
+    2. Build entity-chunk map — for each req chunk, vector-search top-K IFC entities
+    3. LLM compare — one call per entity that has at least one relevant chunk
+    4. Persist — upsert Conflict records with content_hash deduplication
+
+Design mirrors guardian_service.py: same LLM factory, same chunk formatting,
+same JSON parse safety. The difference is directionality — the Guardian checks a
+*proposed* change, the Scanner checks *existing* entity state.
 """
 
+import hashlib
 import json
 import logging
+from collections import defaultdict
 
+from django.db.models import Q
 from langchain_core.messages import HumanMessage, SystemMessage
 from pgvector.django import CosineDistance
 
 from core.llm import get_llm
 from documents.models import DocumentChunk
 from ifc_processor.models import IFCEntity
-from writeback.models import Conflict
+from writeback.models import Conflict, ScanRun
+from writeback.services.emitters import NullEmitter
 
 logger = logging.getLogger(__name__)
+
+# ────────────────────────────────────────────────────────────
+# AEC compliance requirement keywords for document chunk filtering
+# ────────────────────────────────────────────────────────────
+
+REQUIREMENT_KEYWORDS = [
+    "shall",
+    "must",
+    "required",
+    "minimum",
+    "maximum",
+    "fire rating",
+    "acoustic",
+    "thermal",
+    "u-value",
+    "resistance",
+    "EI",
+    "REI",
+    " R ",
+    " E ",
+    "class",
+    "grade",
+    "performance",
+    "load-bearing",
+    "structural",
+    "compliance",
+    "standard",
+    "regulation",
+]
+
+# Minimum LLM confidence to store a finding
+CONFIDENCE_THRESHOLD = 0.7
 
 # ────────────────────────────────────────────────────────────
 # Scanner LLM Prompts
 # ────────────────────────────────────────────────────────────
 
 SCANNER_SYSTEM_PROMPT = """\
-You are the Castor Conflict Scanner, a BIM/document auditor.
+You are a construction compliance checker.
 
-You receive:
-1. An IFC entity with its current properties (extracted from the BIM model).
-2. DOCUMENT EXCERPTS from the project's specification documents (retrieved by semantic similarity).
+Your task is to compare IFC building model data against technical document requirements.
 
-Your job is to find SPECIFIC CONTRADICTIONS where a document explicitly states a DIFFERENT
-requirement or value than what is currently in the IFC model.
+## Two-step process (MANDATORY):
+Step 1 — EXTRACT: List every specific requirement found in the document excerpts
+         (property name + required value). Ignore vague or general statements.
+Step 2 — COMPARE: For each extracted requirement, look up the same property in the
+         IFC entity's current properties and compare:
+         - Values match or are equivalent → NOT a conflict. Skip it.
+         - Values differ → flag as a conflict.
+         - Property absent in IFC → NOT a conflict (missing data, not contradiction).
+         - Requirement is ambiguous → NOT a conflict (uncertainty, not contradiction).
 
-## Output
+## Critical rules:
+- NEVER flag a property where the IFC value already satisfies the document requirement.
+- ONLY flag when the IFC value is demonstrably DIFFERENT from the document requirement.
+- Assign a confidence score (0.0–1.0). Only include conflicts with confidence >= 0.7.
+- If no genuine conflicts exist, return {"conflicts": []}.
 
-Return ONLY valid JSON (no markdown, no explanation):
-
+## Output format (JSON only, no markdown):
 {
   "conflicts": [
     {
-      "title": "<Short conflict title, 5-10 words>",
-      "description": "<1-2 sentence explanation of the contradiction>",
-      "ifc_value": "<The current value in the IFC model>",
-      "document_value": "<The value required by the document>",
-      "severity": "<one of: low, medium, high, critical>",
-      "suggested_fix": "<A natural language modify request, e.g. 'Set FireRating to EI120 for all external walls on Level 1'>",
-      "source_chunk_index": <0-based index into the provided document excerpts>
+      "property_name": "FireRating",
+      "ifc_value": "EI60",
+      "document_value": "EI120",
+      "title": "Fire rating below requirement",
+      "description": "Wall fire rating is EI60 but specification requires EI120 for corridor partitions.",
+      "severity": "critical",
+      "confidence": 0.92,
+      "suggested_fix": "Set FireRating from EI60 to EI120 for house - outer wall - house front right — required for corridor fire separation (fire safety report, p.1)",
+      "source_chunk_index": 0
     }
   ]
 }
 
-If there are NO conflicts, return: {"conflicts": []}
+For suggested_fix: be specific — include the property name, current IFC value, required value,
+the entity name, and a short reason from the document. Format:
+"Set [Property] from [current] to [required] for [entity name] — [reason from document]"
 
-## Rules
-
-1. Only report GENUINE contradictions — explicit value/requirement differences.
-2. Do NOT report missing properties or absent data — only real contradictions.
-3. Do NOT invent conflicts from vague or ambiguous text.
-4. Be conservative: if unclear, return no conflict.
-5. Severity guide:
-   - critical: fire safety, structural integrity, life safety
-   - high: energy performance, acoustic, accessibility compliance
-   - medium: materials, finishes, stated dimensions
-   - low: labeling, naming conventions, non-critical metadata
-6. The suggested_fix should be a plain English instruction a BIM manager would give.
-7. source_chunk_index must reference a valid index from the provided excerpts (0-based).
+Severity guide:
+  critical — fire safety, structural integrity, life safety
+  high     — energy performance, acoustic, accessibility compliance
+  medium   — materials, finishes, stated dimensions
+  low      — labeling, naming conventions, non-critical metadata
 """
 
 SCANNER_USER_TEMPLATE = """\
@@ -88,25 +133,28 @@ SCANNER_USER_TEMPLATE = """\
 {doc_excerpts}
 
 ## Task
-Identify any SPECIFIC CONTRADICTIONS between the IFC entity's current properties \
-and the document requirements. Return JSON only.
+Apply the two-step process: first extract all specific requirements from the excerpts,
+then compare each against the IFC entity properties above.
+Return JSON only. NEVER flag a property whose IFC value already matches the requirement.
 """
 
 
 class ConflictScanService:
     """
-    Proactive conflict scanner: checks each IFC entity against project documents.
+    Proactive conflict scanner: document-first strategy.
 
-    Uses entity embeddings directly (no extra embed call) to find relevant
-    document chunks, then passes entity properties + chunks to the LLM to
-    detect contradictions. Results are stored as Conflict records.
+    Gathers AEC requirement chunks from documents, finds the IFC entities they
+    constrain via vector similarity, then uses the LLM to detect genuine value
+    contradictions. False-positive protection via two-step LLM prompt + confidence
+    threshold filtering.
 
     Usage:
         svc = ConflictScanService(project, user)
-        stats = svc.full_scan()  # returns dict with counters
+        stats = svc.full_scan(emitter=NullEmitter())
     """
 
-    RELEVANCE_THRESHOLD = 0.45
+    ENTITY_RELEVANCE_THRESHOLD = 0.45
+    ENTITY_TOP_K = 5  # IFC entities to retrieve per requirement chunk
 
     # IFC types that rarely carry property requirements worth checking
     LOW_VALUE_IFC_TYPES = {
@@ -127,113 +175,185 @@ class ConflictScanService:
         self.skip_low_value = skip_low_value
         self.llm = get_llm(user=user, temperature=0.1, format_json=True)
 
-    def full_scan(self) -> dict:
+    def full_scan(self, emitter=None) -> dict:
         """
-        Scan all IFC entities in the project for document contradictions.
+        Run a full conflict scan using the document-first strategy.
 
-        Returns a stats dict: scanned, skipped_no_docs, conflicts_found, conflicts_updated.
+        Emits phase events via emitter for live UI feedback.
+        Creates a ScanRun audit record. Returns a stats dict.
         """
-        has_docs = DocumentChunk.objects.filter(
-            document__project=self.project,
-            document__status="completed",
-            embedding__isnull=False,
-        ).exists()
+        emitter = emitter or NullEmitter()
 
-        if not has_docs:
-            logger.warning(f"Conflict scan: no documents with embeddings in project {self.project.id}")
-            return {
-                "scanned": 0,
-                "skipped_no_docs": 0,
-                "conflicts_found": 0,
-                "conflicts_updated": 0,
-                "error": "No documents with embeddings found in this project.",
-            }
+        scan_run = ScanRun.objects.create(
+            project=self.project,
+            triggered_by=self.user,
+            scan_type=ScanRun.ScanType.FULL,
+            status=ScanRun.Status.RUNNING,
+            llm_model_used=self._get_llm_model_name(),
+        )
 
-        entities = IFCEntity.objects.filter(
-            ifc_file__project=self.project,
-            embedding__isnull=False,
-        ).select_related("ifc_file")
+        emitter.emit("init", "running", "Starting conflict scan…")
 
-        stats = {"scanned": 0, "skipped_no_docs": 0, "conflicts_found": 0, "conflicts_updated": 0}
+        try:
+            stats = self._run(emitter, scan_run)
+        except Exception as e:
+            logger.exception("Conflict scan failed for project %s: %s", self.project.id, e)
+            scan_run.status = ScanRun.Status.FAILED
+            scan_run.error_message = str(e)
+            scan_run.save(update_fields=["status", "error_message"])
+            raise
 
-        for entity in entities:
-            if self.skip_low_value and entity.ifc_type in self.LOW_VALUE_IFC_TYPES:
-                continue
+        scan_run.status = ScanRun.Status.COMPLETED
+        scan_run.entities_scanned = stats["entities_scanned"]
+        scan_run.conflicts_found = stats["conflicts_found"]
+        scan_run.save(update_fields=["status", "entities_scanned", "conflicts_found"])
 
+        return stats
+
+    # ── Pipeline steps ─────────────────────────────────────────────────────────
+
+    def _run(self, emitter, scan_run: ScanRun) -> dict:
+        """Execute the document-first scan pipeline."""
+        # Step 1: gather requirement chunks
+        emitter.emit("requirements", "running", "Loading document requirements…")
+        req_chunks = self._get_requirement_chunks()
+
+        if not req_chunks:
+            emitter.emit(
+                "requirements",
+                "done",
+                "No requirement sections found in documents",
+                {"count": 0},
+            )
+            return {"entities_scanned": 0, "conflicts_found": 0, "conflicts_updated": 0}
+
+        emitter.emit(
+            "requirements",
+            "done",
+            f"Found {len(req_chunks)} requirement sections",
+            {"count": len(req_chunks)},
+        )
+
+        # Step 2: build entity → [chunks] mapping
+        emitter.emit("matching", "running", "Finding relevant IFC entities…")
+        entity_chunk_map = self._build_entity_chunk_map(req_chunks)
+        total = len(entity_chunk_map)
+
+        emitter.emit(
+            "matching",
+            "done",
+            f"{total} entity-document pairs to compare",
+            {"pairs": total},
+        )
+
+        if not entity_chunk_map:
+            return {"entities_scanned": 0, "conflicts_found": 0, "conflicts_updated": 0}
+
+        # Step 3: LLM compare per entity
+        stats = {"entities_scanned": 0, "conflicts_found": 0, "conflicts_updated": 0}
+
+        for i, (entity, chunks) in enumerate(entity_chunk_map.items(), 1):
+            emitter.emit(
+                "compare",
+                "running",
+                f"Comparing entity {i}/{total}…",
+                {"current": i, "total": total},
+            )
             try:
-                chunks = self._find_relevant_chunks(entity)
-                if not chunks:
-                    stats["skipped_no_docs"] += 1
-                    continue
-
                 findings = self._evaluate_entity(entity, chunks)
-                stats["scanned"] += 1
+                stats["entities_scanned"] += 1
 
                 for finding in findings:
                     chunk_idx = finding.get("source_chunk_index", 0)
-                    # Guard against out-of-range indices
                     chunk = chunks[min(chunk_idx, len(chunks) - 1)]
-                    result = self._upsert_conflict(entity, chunk, finding)
+                    result = self._upsert_conflict(entity, chunk, finding, scan_run)
                     if result == "created":
                         stats["conflicts_found"] += 1
                     elif result == "updated":
                         stats["conflicts_updated"] += 1
 
             except Exception:
-                logger.exception(f"Conflict scan failed for entity {entity.id} ({entity})")
+                logger.exception("Conflict scan failed for entity %s (%s)", entity.id, entity)
 
         logger.info(
-            f"Conflict scan complete for project {self.project.id}: "
-            f"scanned={stats['scanned']}, found={stats['conflicts_found']}, "
-            f"updated={stats['conflicts_updated']}, no_docs={stats['skipped_no_docs']}"
+            "Conflict scan complete for project %s: scanned=%d, found=%d, updated=%d",
+            self.project.id,
+            stats["entities_scanned"],
+            stats["conflicts_found"],
+            stats["conflicts_updated"],
         )
         return stats
 
-    def _find_relevant_chunks(self, entity: IFCEntity, top_k: int = 5) -> list[DocumentChunk]:
+    def _get_requirement_chunks(self) -> list[DocumentChunk]:
         """
-        Use the entity's existing embedding to find relevant document chunks.
+        Return document chunks that contain AEC compliance keywords.
 
-        No extra embed call — we reuse the stored 1024d vector directly.
-        Returns chunks sorted by relevance, filtered by threshold.
+        Filters by keyword presence to focus only on specification requirements,
+        avoiding irrelevant descriptive text.
         """
-        chunks = list(
+        q = Q()
+        for kw in REQUIREMENT_KEYWORDS:
+            q |= Q(content__icontains=kw)
+
+        return list(
             DocumentChunk.objects.filter(
                 document__project=self.project,
                 document__status="completed",
                 embedding__isnull=False,
             )
+            .filter(q)
             .select_related("document")
-            .annotate(distance=CosineDistance("embedding", entity.embedding))
-            .order_by("distance")[:top_k]
         )
 
-        relevant = [c for c in chunks if c.distance <= self.RELEVANCE_THRESHOLD]
+    def _build_entity_chunk_map(
+        self, req_chunks: list[DocumentChunk]
+    ) -> dict[IFCEntity, list[DocumentChunk]]:
+        """
+        For each requirement chunk, vector-search top-K IFC entities.
 
-        logger.debug(
-            f"Entity {entity}: {len(chunks)} candidates, "
-            f"{len(relevant)} above threshold ({self.RELEVANCE_THRESHOLD})"
-        )
-        return relevant
+        Returns a mapping entity → [list of relevant chunks], deduplicating
+        entities that appear across multiple chunks.
+        """
+        entity_qs = IFCEntity.objects.filter(
+            ifc_file__project=self.project,
+            embedding__isnull=False,
+        ).select_related("ifc_file")
+
+        if self.skip_low_value:
+            entity_qs = entity_qs.exclude(ifc_type__in=self.LOW_VALUE_IFC_TYPES)
+
+        entity_chunk_map: dict = defaultdict(list)
+
+        for chunk in req_chunks:
+            if chunk.embedding is None:
+                continue
+            nearby = list(
+                entity_qs.annotate(distance=CosineDistance("embedding", chunk.embedding))
+                .filter(distance__lte=self.ENTITY_RELEVANCE_THRESHOLD)
+                .order_by("distance")[: self.ENTITY_TOP_K]
+            )
+            for entity in nearby:
+                entity_chunk_map[entity].append(chunk)
+
+        return dict(entity_chunk_map)
 
     def _evaluate_entity(self, entity: IFCEntity, chunks: list[DocumentChunk]) -> list[dict]:
         """
         One LLM call: given entity properties + relevant chunks, find contradictions.
 
-        Returns a list of finding dicts (may be empty).
+        Filters results by confidence threshold (>= CONFIDENCE_THRESHOLD) before
+        returning to prevent low-confidence guesses from being stored.
         """
-        # Format location string
         location_parts = filter(None, [entity.building_storey, entity.space, entity.building])
         location = ", ".join(location_parts) or "Unassigned"
 
-        # Format properties as readable text
         properties_text = self._format_properties(entity.properties)
 
-        # Format document excerpts
         excerpts = []
         for i, chunk in enumerate(chunks):
             page = chunk.page_number or "?"
             excerpts.append(f"[{i}] [{chunk.document.name}, Page {page}]\n{chunk.content}")
-        doc_excerpts = "\n\n---\n\n".join(excerpts) if excerpts else "(none)"
+        doc_excerpts = "\n\n---\n\n".join(excerpts)
 
         messages = [
             SystemMessage(content=SCANNER_SYSTEM_PROMPT),
@@ -252,90 +372,112 @@ class ConflictScanService:
 
         try:
             result = json.loads(response.content)
-            return result.get("conflicts", [])
+            findings = result.get("conflicts", [])
         except json.JSONDecodeError:
             logger.warning(
-                f"Scanner LLM returned invalid JSON for entity {entity.id}: {response.content[:200]}"
+                "Scanner LLM returned invalid JSON for entity %s: %s",
+                entity.id,
+                response.content[:200],
             )
             return []
 
-    def _upsert_conflict(self, entity: IFCEntity, chunk: DocumentChunk, finding: dict) -> str:
-        """
-        Create or update a Conflict record for this finding.
+        confident = [f for f in findings if f.get("confidence", 0) >= CONFIDENCE_THRESHOLD]
+        skipped = len(findings) - len(confident)
+        if skipped:
+            logger.debug("Filtered %d low-confidence finding(s) for entity %s", skipped, entity.id)
 
-        Match key: (project, ifc_entity, document_chunk, title)
-        - DISMISSED: skip (don't recreate on re-scan)
-        - OPEN: update in place
-        - RESOLVED: create new record
-        - DoesNotExist: create new record
+        return confident
+
+    def _upsert_conflict(
+        self,
+        entity: IFCEntity,
+        chunk: DocumentChunk,
+        finding: dict,
+        scan_run: ScanRun,
+    ) -> str:
+        """
+        Create or update a Conflict record using content_hash deduplication.
+
+        content_hash = SHA-256(entity.id + ":" + chunk.id + ":" + property_name)
+
+        Logic:
+          - content_hash exists as DISMISSED → skip (don't recreate)
+          - content_hash exists as OPEN → update in place
+          - content_hash exists as RESOLVED / not found → create fresh record
 
         Returns 'created', 'updated', or 'skipped'.
         """
+        property_name = finding.get("property_name", "")[:255]
         title = finding.get("title", "Conflict")[:255]
         severity = finding.get("severity", Conflict.Severity.MEDIUM)
 
-        # Validate severity value
         valid_severities = {s.value for s in Conflict.Severity}
         if severity not in valid_severities:
             severity = Conflict.Severity.MEDIUM
 
+        content_hash = hashlib.sha256(
+            f"{entity.id}:{chunk.id}:{property_name}".encode()
+        ).hexdigest()
+
+        common_fields = {
+            "title": title,
+            "description": finding.get("description", ""),
+            "ifc_value": finding.get("ifc_value", ""),
+            "document_value": finding.get("document_value", ""),
+            "severity": severity,
+            "suggested_fix": finding.get("suggested_fix", ""),
+            "confidence": finding.get("confidence", 0.0),
+            "property_name": property_name,
+            "scan_run": scan_run,
+        }
+
+        # Check for DISMISSED — never recreate
+        if Conflict.objects.filter(
+            project=self.project,
+            content_hash=content_hash,
+            status=Conflict.Status.DISMISSED,
+        ).exists():
+            return "skipped"
+
+        # Check for OPEN — update in place
+        existing_open = Conflict.objects.filter(
+            project=self.project,
+            content_hash=content_hash,
+            status=Conflict.Status.OPEN,
+        ).first()
+
+        if existing_open:
+            for field, value in common_fields.items():
+                setattr(existing_open, field, value)
+            existing_open.save(update_fields=list(common_fields.keys()))
+            return "updated"
+
+        # Create fresh record
+        Conflict.objects.create(
+            project=self.project,
+            ifc_entity=entity,
+            document_chunk=chunk,
+            content_hash=content_hash,
+            status=Conflict.Status.OPEN,
+            **common_fields,
+        )
+        return "created"
+
+    # ── Helpers ────────────────────────────────────────────────────────────────
+
+    def _get_llm_model_name(self) -> str:
+        """Return the LLM model name for audit logging."""
         try:
-            existing = Conflict.objects.get(
-                project=self.project,
-                ifc_entity=entity,
-                document_chunk=chunk,
-                title=title,
-            )
+            from core.models import UserLLMConfig
 
-            if existing.status == Conflict.Status.DISMISSED:
-                return "skipped"
+            config = UserLLMConfig.objects.filter(user=self.user).first()
+            if config and config.model_name:
+                return config.model_name
+        except Exception:
+            pass
+        from django.conf import settings
 
-            if existing.status == Conflict.Status.OPEN:
-                existing.description = finding.get("description", "")
-                existing.ifc_value = finding.get("ifc_value", "")
-                existing.document_value = finding.get("document_value", "")
-                existing.severity = severity
-                existing.suggested_fix = finding.get("suggested_fix", "")
-                existing.save(
-                    update_fields=[
-                        "description",
-                        "ifc_value",
-                        "document_value",
-                        "severity",
-                        "suggested_fix",
-                    ]
-                )
-                return "updated"
-
-            # RESOLVED — create a fresh record
-            Conflict.objects.create(
-                project=self.project,
-                ifc_entity=entity,
-                document_chunk=chunk,
-                title=title,
-                description=finding.get("description", ""),
-                ifc_value=finding.get("ifc_value", ""),
-                document_value=finding.get("document_value", ""),
-                severity=severity,
-                suggested_fix=finding.get("suggested_fix", ""),
-                status=Conflict.Status.OPEN,
-            )
-            return "created"
-
-        except Conflict.DoesNotExist:
-            Conflict.objects.create(
-                project=self.project,
-                ifc_entity=entity,
-                document_chunk=chunk,
-                title=title,
-                description=finding.get("description", ""),
-                ifc_value=finding.get("ifc_value", ""),
-                document_value=finding.get("document_value", ""),
-                severity=severity,
-                suggested_fix=finding.get("suggested_fix", ""),
-                status=Conflict.Status.OPEN,
-            )
-            return "created"
+        return getattr(settings, "OLLAMA_MODEL", "unknown")
 
     @staticmethod
     def _format_properties(properties: dict) -> str:

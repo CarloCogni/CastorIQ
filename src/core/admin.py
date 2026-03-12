@@ -5,7 +5,7 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 from django.utils.html import format_html
 
-from .models import ErrorLog, UserLLMConfig
+from .models import ErrorLog, TeamNote, UserLLMConfig
 
 # Unregister the default UserAdmin and register with search_fields
 admin.site.unregister(User)
@@ -153,3 +153,64 @@ class UserLLMConfigAdmin(admin.ModelAdmin):
     list_display = ("user", "active_model", "updated_at")
     list_filter = ("active_model",)
     readonly_fields = ("updated_at",)
+
+
+@admin.register(TeamNote)
+class TeamNoteAdmin(admin.ModelAdmin):
+    """Admin interface for cross-machine team notes."""
+
+    list_display = (
+        "title",
+        "category",
+        "priority",
+        "author_username",
+        "is_resolved",
+        "sent_to_supabase",
+        "created_at",
+    )
+    list_filter = (
+        "category",
+        "priority",
+        "is_resolved",
+        "sent_to_supabase",
+        "author_username",
+    )
+    search_fields = (
+        "title",
+        "body",
+        "author_username",
+        "page_url",
+    )
+    readonly_fields = (
+        "id",
+        "author_username",
+        "page_url",
+        "browser_info",
+        "sent_to_supabase",
+        "supabase_id",
+        "created_at",
+        "updated_at",
+    )
+    list_per_page = 30
+    date_hierarchy = "created_at"
+    list_editable = ("is_resolved",)
+
+    fieldsets = (
+        ("Content", {
+            "fields": ("title", "body", "category", "priority"),
+        }),
+        ("Context", {
+            "fields": ("author_username", "page_url", "browser_info"),
+        }),
+        ("Resolution", {
+            "fields": ("is_resolved", "resolved_by", "resolved_at", "resolution_note"),
+        }),
+        ("Sync", {
+            "classes": ("collapse",),
+            "fields": ("sent_to_supabase", "supabase_id"),
+        }),
+        ("Timestamps", {
+            "classes": ("collapse",),
+            "fields": ("id", "created_at", "updated_at"),
+        }),
+    )

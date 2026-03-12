@@ -3,12 +3,15 @@
 
 import json
 import logging
+from urllib.parse import quote
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
-from django.http import JsonResponse
+from django.http import HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, redirect
+from django.urls import reverse
+from django.utils import timezone
 from django.views.generic import (
     TemplateView,
     View,
@@ -18,8 +21,7 @@ from chat.models import ChatSession, Message
 from core.mixins import ProjectTabMixin
 from environments.models import Project
 from ifc_processor.models import IFCDataIssue
-from writeback.models import Conflict, GitCommit
-from writeback.services.conflict_scan_service import ConflictScanService
+from writeback.models import Conflict, GitCommit, ScanRun
 from writeback.services.modification_service import (
     ModificationError,
     ModificationService,
@@ -64,11 +66,20 @@ class ModifyView(ProjectTabMixin, TemplateView):
         if "session_id" not in self.kwargs:
             project = self.get_project()
             session = self._get_or_create_session(project, request.user)
-            return redirect(
+            redirect_url = reverse(
                 "writeback:modify_session",
-                pk=project.pk,
-                session_id=session.pk,
+                kwargs={"pk": project.pk, "session_id": session.pk},
             )
+            params = []
+            prompt = request.GET.get("prompt", "")
+            if prompt:
+                params.append(f"prompt={quote(prompt)}")
+            conflict_ids = request.GET.get("conflict_ids", "")
+            if conflict_ids:
+                params.append(f"conflict_ids={quote(conflict_ids)}")
+            if params:
+                redirect_url += "?" + "&".join(params)
+            return HttpResponseRedirect(redirect_url)
         return super().get(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
@@ -168,10 +179,20 @@ class ModifyView(ProjectTabMixin, TemplateView):
             content=" + ".join(explanations) if is_chain else explanations[0],
         )
 
-        # Link proposals to message
+        # Link proposals to message and persist conflict link
+        conflict_ids_raw = request.POST.get("conflict_ids", "")
+        linked_ids = (
+            [i.strip() for i in conflict_ids_raw.split(",") if i.strip()]
+            if conflict_ids_raw
+            else []
+        )
         for p in proposals:
             p.message = assistant_msg
-            p.save(update_fields=["message"])
+            if linked_ids:
+                p.linked_conflict_ids = linked_ids
+                p.save(update_fields=["message", "linked_conflict_ids"])
+            else:
+                p.save(update_fields=["message"])
 
         # Auto-title
         if session.title == "New Modification":
@@ -193,6 +214,7 @@ class ModifyView(ProjectTabMixin, TemplateView):
                 "confidence": p.confidence,
                 "affected_count": p.affected_count,
                 "diff_preview": diff_preview,
+                "conflict_ids": ",".join(str(i) for i in p.linked_conflict_ids),
                 "guardian": {
                     "status": p.verification_status,
                     "result": p.verification_result,
@@ -266,6 +288,19 @@ class ModifyView(ProjectTabMixin, TemplateView):
         except ModificationError as e:
             return JsonResponse({"status": "error", "message": str(e)})
 
+        # Auto-resolve linked conflicts
+        resolved_count = 0
+        if proposal.linked_conflict_ids:
+            resolved_count = Conflict.objects.filter(
+                id__in=proposal.linked_conflict_ids,
+                status=Conflict.Status.OPEN,
+            ).update(
+                status=Conflict.Status.RESOLVED,
+                resolved_by=request.user,
+                resolved_at=timezone.now(),
+                resolution_note=f"Resolved by modification commit {git_commit.commit_hash[:8]}",
+            )
+
         # Save confirmation as assistant message (if proposal has a linked session)
         if proposal.message and proposal.message.session:
             Message.objects.create(
@@ -282,6 +317,7 @@ class ModifyView(ProjectTabMixin, TemplateView):
                 "status": "applied",
                 "commit_hash": git_commit.commit_hash[:8],
                 "entities_modified": proposal.affected_count,
+                "resolved_conflicts": resolved_count,
             }
         )
 
@@ -330,33 +366,112 @@ class ConflictsView(ProjectTabMixin, TemplateView):
     active_tab = "conflicts"
 
     def get_context_data(self, **kwargs):
+        from collections import defaultdict
+
         context = super().get_context_data(**kwargs)
         project = self.get_project()
 
-        # 1. Existing Semantic Conflicts
-        context["open_conflicts"] = (
-            project.conflicts.filter(status="open")
-            .select_related("ifc_entity", "ifc_entity__ifc_file", "document_chunk__document")
+        # Status filter
+        status_param = self.request.GET.get("status", "open")
+        valid_statuses = {s.value for s in Conflict.Status}
+        current_status = status_param if status_param in valid_statuses else "open"
+
+        # Counts for pill tabs
+        status_counts = {
+            "open": project.conflicts.filter(status=Conflict.Status.OPEN).count(),
+            "resolved": project.conflicts.filter(status=Conflict.Status.RESOLVED).count(),
+            "ignored": project.conflicts.filter(status=Conflict.Status.IGNORED).count(),
+            "dismissed": project.conflicts.filter(status=Conflict.Status.DISMISSED).count(),
+        }
+
+        raw_conflicts = list(
+            project.conflicts.filter(status=current_status)
+            .select_related(
+                "ifc_entity",
+                "ifc_entity__ifc_file",
+                "document_chunk__document",
+                "resolved_by",
+            )
             .order_by("-severity", "-created_at")
         )
 
-        context["resolved_conflicts"] = (
-            project.conflicts.filter(status="resolved")
-            .select_related("resolved_by")
-            .order_by("-resolved_at")[:10]
+        # Group identical issues (same title + value pair) affecting different entities
+        severity_rank = {"critical": 4, "high": 3, "medium": 2, "low": 1}
+        groups: dict = defaultdict(list)
+        for c in raw_conflicts:
+            key = (c.title, c.ifc_value, c.document_value)
+            groups[key].append(c)
+
+        grouped_conflicts = []
+        for group in groups.values():
+            representative = max(group, key=lambda c: severity_rank.get(c.severity, 0))
+            entities = [c.ifc_entity for c in group if c.ifc_entity]
+            grouped_conflicts.append(
+                {
+                    "representative": representative,
+                    "all_ids": ",".join(str(c.id) for c in group),
+                    "entities": entities,
+                    "count": len(group),
+                    "fix_prompt": self._build_fix_prompt(representative, entities),
+                }
+            )
+        grouped_conflicts.sort(
+            key=lambda g: severity_rank.get(g["representative"].severity, 0),
+            reverse=True,
         )
 
-        # 2. NEW: Data Quality Issues (Grouped by File)
-        # We fetch all unresolved issues for files in this project
+        context["grouped_conflicts"] = grouped_conflicts
+        context["current_status"] = current_status
+        context["status_counts"] = status_counts
+        context["open_conflicts_count"] = status_counts["open"]
+        context["open_conflicts"] = status_counts["open"] > 0  # truthy for sub-tab badge
+        context["has_any_conflicts"] = any(status_counts.values())
         context["data_issues"] = (
             IFCDataIssue.objects.filter(ifc_file__project=project, is_resolved=False)
             .select_related("ifc_file")
             .order_by("ifc_file", "issue_type")
         )
-        last_conflict = project.conflicts.order_by("-created_at").values("created_at").first()
-        context["last_scan_at"] = last_conflict["created_at"] if last_conflict else None
+        context["last_scan_run"] = (
+            ScanRun.objects.filter(project=project, status=ScanRun.Status.COMPLETED)
+            .order_by("-created_at")
+            .first()
+        )
 
         return context
+
+    @staticmethod
+    def _build_fix_prompt(rep, entities: list) -> str:
+        """Build a concise modify prompt. Prefers LLM-generated suggested_fix."""
+        if rep.suggested_fix:
+            return rep.suggested_fix
+        if not rep.property_name:
+            return ""
+
+        names = [e.name or e.global_id for e in entities if e]
+        ifc_type = rep.ifc_entity.ifc_type if rep.ifc_entity else "element"
+
+        if len(names) == 1:
+            entity_clause = f' for {ifc_type} "{names[0]}"'
+        elif names:
+            entity_clause = f" for the following {ifc_type} elements: {', '.join(f'{chr(34)}{n}{chr(34)}' for n in names)}"
+        else:
+            entity_clause = ""
+
+        is_missing = not rep.ifc_value or rep.ifc_value.lower() in {"missing", "none", "null", ""}
+        if is_missing:
+            doc_val = (
+                f" with value {rep.document_value}"
+                if rep.document_value and len(rep.document_value) <= 80
+                else ""
+            )
+            return f"Add {rep.property_name}{doc_val}{entity_clause}. Reason: {rep.description}"
+
+        doc_val = (
+            rep.document_value
+            if rep.document_value and len(rep.document_value) <= 80
+            else rep.property_name
+        )
+        return f"Set {rep.property_name} from {rep.ifc_value} to {doc_val}{entity_clause}. Reason: {rep.description}"
 
 
 class HistoryView(ProjectTabMixin, TemplateView):
@@ -391,23 +506,17 @@ class HistoryView(ProjectTabMixin, TemplateView):
 
 
 class RunScanView(LoginRequiredMixin, View):
-    """POST endpoint to trigger a conflict scan for a project."""
+    """Stub endpoint — conflict scans now run via WebSocket (ScanConsumer)."""
 
     def post(self, request, pk):
-        project = get_object_or_404(Project.objects.select_related("owner"), pk=pk)
-        if not project.user_has_access(request.user):
-            return JsonResponse({"status": "error", "message": "Access denied."}, status=403)
-
-        skip_low_value = request.POST.get("skip_low_value", "true").lower() != "false"
-        svc = ConflictScanService(project, request.user, skip_low_value=skip_low_value)
-
-        try:
-            stats = svc.full_scan()
-        except Exception as e:
-            logger.exception(f"Conflict scan failed for project {pk}: {e}")
-            return JsonResponse({"status": "error", "message": str(e)}, status=500)
-
-        return JsonResponse({"status": "ok", **stats})
+        return JsonResponse(
+            {
+                "status": "error",
+                "message": "Conflict scans run via WebSocket. "
+                "Connect to ws/projects/<id>/conflicts/scan/ instead.",
+            },
+            status=405,
+        )
 
 
 class DismissConflictView(LoginRequiredMixin, View):
@@ -423,6 +532,93 @@ class DismissConflictView(LoginRequiredMixin, View):
         conflict.save(update_fields=["status"])
 
         return JsonResponse({"status": "dismissed"})
+
+
+class BulkDismissView(LoginRequiredMixin, View):
+    """POST endpoint to dismiss a group of Conflict records at once.
+
+    Accepts ``conflict_ids`` (preferred) or ``ids`` for backwards compat.
+    Pass ``conflict_ids=all`` to dismiss every open conflict for the project.
+    """
+
+    def post(self, request, pk):
+        project = get_object_or_404(Project.objects.select_related("owner"), pk=pk)
+        if not project.user_has_access(request.user):
+            return JsonResponse({"status": "error", "message": "Access denied."}, status=403)
+
+        ids_raw = request.POST.get("conflict_ids", "") or request.POST.get("ids", "")
+        qs = project.conflicts.filter(status=Conflict.Status.OPEN)
+        if ids_raw != "all":
+            ids = [i.strip() for i in ids_raw.split(",") if i.strip()]
+            qs = qs.filter(id__in=ids)
+
+        updated = qs.update(status=Conflict.Status.DISMISSED)
+        return JsonResponse({"status": "dismissed", "count": updated})
+
+
+class IgnoreConflictView(LoginRequiredMixin, View):
+    """POST: set a single conflict status to IGNORED."""
+
+    def post(self, request, pk, conflict_id):
+        project = get_object_or_404(Project.objects.select_related("owner"), pk=pk)
+        if not project.user_has_access(request.user):
+            return JsonResponse({"status": "error", "message": "Access denied."}, status=403)
+
+        conflict = get_object_or_404(Conflict, id=conflict_id, project=project)
+        conflict.status = Conflict.Status.IGNORED
+        conflict.save(update_fields=["status"])
+
+        return JsonResponse({"status": "ignored"})
+
+
+class BulkIgnoreView(LoginRequiredMixin, View):
+    """POST: bulk-ignore comma-separated conflict IDs."""
+
+    def post(self, request, pk):
+        project = get_object_or_404(Project.objects.select_related("owner"), pk=pk)
+        if not project.user_has_access(request.user):
+            return JsonResponse({"status": "error", "message": "Access denied."}, status=403)
+
+        ids_raw = request.POST.get("conflict_ids", "") or request.POST.get("ids", "")
+        ids = [i.strip() for i in ids_raw.split(",") if i.strip()]
+        updated = Conflict.objects.filter(
+            project=project, id__in=ids, status=Conflict.Status.OPEN
+        ).update(status=Conflict.Status.IGNORED)
+        return JsonResponse({"status": "ignored", "count": updated})
+
+
+class BulkResolveView(LoginRequiredMixin, View):
+    """POST: manually resolve comma-separated conflict IDs, or all open ones if conflict_ids='all'."""
+
+    def post(self, request, pk):
+        project = get_object_or_404(Project.objects.select_related("owner"), pk=pk)
+        if not project.user_has_access(request.user):
+            return JsonResponse({"status": "error", "message": "Access denied."}, status=403)
+
+        ids_raw = request.POST.get("conflict_ids", "")
+        qs = project.conflicts.filter(status=Conflict.Status.OPEN)
+        if ids_raw != "all":
+            ids = [i.strip() for i in ids_raw.split(",") if i.strip()]
+            qs = qs.filter(id__in=ids)
+
+        updated = qs.update(
+            status=Conflict.Status.RESOLVED,
+            resolved_by=request.user,
+            resolved_at=timezone.now(),
+            resolution_note="Manually resolved",
+        )
+        return JsonResponse({"status": "resolved", "count": updated})
+
+
+class DeleteAllConflictsView(LoginRequiredMixin, View):
+    """POST: permanently delete ALL conflicts for a project (all statuses)."""
+
+    def post(self, request, pk):
+        project = get_object_or_404(Project.objects.select_related("owner"), pk=pk)
+        if not project.user_has_access(request.user):
+            return JsonResponse({"status": "error", "message": "Access denied."}, status=403)
+        deleted, _ = project.conflicts.all().delete()
+        return JsonResponse({"status": "deleted", "count": deleted})
 
 
 class RestoreCommitView(LoginRequiredMixin, View):

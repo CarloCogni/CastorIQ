@@ -31,7 +31,7 @@ VERSION CONTROL STRATEGY:
 import logging
 import os
 from pathlib import Path
-from typing import Any, List
+from typing import Any
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
@@ -87,11 +87,11 @@ class Command(BaseCommand):
         )
         return False
 
-    def _gather_files(self, dropzone_dir: Path) -> List[Path]:
+    def _gather_files(self, dropzone_dir: Path) -> list[Path]:
         """
         Traverse the dropzone directory and collect all target files, ignoring hidden ones.
         """
-        target_files: List[Path] = []
+        target_files: list[Path] = []
         for root, _, files in os.walk(dropzone_dir):
             for file in sorted(files):
                 if file.startswith("."):
@@ -102,7 +102,7 @@ class Command(BaseCommand):
 
     def _process_and_write(
             self,
-            files: List[Path],
+            files: list[Path],
             dropzone_dir: Path,
             output_file: Path,
             project_root: Path
@@ -111,7 +111,7 @@ class Command(BaseCommand):
         Read, compress, and aggregate files, then write the result to the output file.
         """
         logger.info("Scanning Dropzone: %s", dropzone_dir.relative_to(project_root))
-        sections: List[str] = []
+        sections: list[str] = []
         file_count: int = 0
 
         for file_path in files:

@@ -28,9 +28,9 @@
         {% if open_conflicts %}
             <span class="badge rounded-pill ms-1"
                   style="background-color: var(--castor-primary); font-size: 0.65rem;">
-                {{ open_conflicts.count }}
+                {{ open_conflicts_count }}
             </span>
-        {% elif last_scan_at %}
+        {% elif last_scan_run %}
             <span class="badge rounded-pill ms-1"
                   style="background-color: rgba(16, 185, 129, 0.2); color: var(--castor-success); font-size: 0.65rem;">
                 <i class="bi bi-check2"></i>
@@ -198,23 +198,29 @@
         </div>
 
         <div class="d-flex align-items-center gap-3">
-            {# Last-scanned timestamp #}
-            {% if last_scan_at %}
-            <span class="text-secondary fs-8">
-                <i class="bi bi-clock me-1"></i>Last scan: {{ last_scan_at|timesince }} ago
+            {# Last-scanned metadata #}
+            {% if last_scan_run %}
+            <span class="text-secondary fs-8" title="{{ last_scan_run.created_at }}">
+                <i class="bi bi-clock me-1"></i>Last scan: {{ last_scan_run.created_at|timesince }} ago
+                · {{ last_scan_run.entities_scanned }} entities
+                {% if last_scan_run.llm_model_used %}· {{ last_scan_run.llm_model_used }}{% endif %}
             </span>
             {% endif %}
-
-            {# Inline loader #}
-            <div id="scan-loader" class="d-none align-items-center gap-2 text-secondary fs-8">
-                <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
-                <span>Scanning entities against documents…</span>
-            </div>
         </div>
     </div>
 
+    {# ── Live progress tracker — hidden until scan starts ── #}
+    <div id="scan-progress" class="d-none rounded-3 p-3 mb-3"
+         style="background-color: rgba(59, 130, 246, 0.06); border: 1px solid rgba(59, 130, 246, 0.12);">
+        <div class="d-flex align-items-center gap-2 mb-2">
+            <div class="spinner-border spinner-border-sm text-primary" role="status" aria-hidden="true"></div>
+            <span class="text-primary fw-medium fs-7" id="scan-phase-label">Initialising…</span>
+        </div>
+        <div class="d-flex flex-column gap-1" id="scan-phase-steps"></div>
+    </div>
+
     {# ── Explainer banner — always visible, adapts to state ── #}
-    {% if not last_scan_at %}
+    {% if not last_scan_run %}
     {# Never scanned — full explainer #}
     <div class="rounded-3 p-3 mb-4"
          style="background-color: rgba(59, 130, 246, 0.06); border: 1px solid rgba(59, 130, 246, 0.12);">
@@ -278,53 +284,123 @@
     {% endif %}
 
 
-    {% if open_conflicts %}
+    {# ── Status filter pills ── #}
+    {% if has_any_conflicts %}
+    <div class="d-flex gap-2 mb-3 align-items-center flex-wrap">
+        <a class="btn btn-sm rounded-pill {% if current_status == 'open' %}btn-primary{% else %}btn-outline-secondary{% endif %}"
+           href="?status=open">
+            Open
+            <span class="badge rounded-pill ms-1 {% if current_status == 'open' %}bg-white text-dark{% else %}bg-secondary text-white{% endif %}">{{ status_counts.open }}</span>
+        </a>
+        <a class="btn btn-sm rounded-pill {% if current_status == 'resolved' %}btn-success{% else %}btn-outline-secondary{% endif %}"
+           href="?status=resolved">
+            Resolved
+            <span class="badge rounded-pill ms-1 {% if current_status == 'resolved' %}bg-white text-dark{% else %}bg-secondary text-white{% endif %}">{{ status_counts.resolved }}</span>
+        </a>
+        <a class="btn btn-sm rounded-pill {% if current_status == 'ignored' %}btn-warning text-dark{% else %}btn-outline-secondary{% endif %}"
+           href="?status=ignored">
+            Ignored
+            <span class="badge rounded-pill ms-1 {% if current_status == 'ignored' %}bg-white text-dark{% else %}bg-secondary text-white{% endif %}">{{ status_counts.ignored }}</span>
+        </a>
+        <a class="btn btn-sm rounded-pill {% if current_status == 'dismissed' %}btn-secondary{% else %}btn-outline-secondary{% endif %}"
+           href="?status=dismissed">
+            Dismissed
+            <span class="badge rounded-pill ms-1 {% if current_status == 'dismissed' %}bg-white text-dark{% else %}bg-secondary text-white{% endif %}">{{ status_counts.dismissed }}</span>
+        </a>
+        {% if current_status == 'open' and status_counts.open > 0 %}
+        <div class="d-flex gap-2 ms-auto">
+            <button class="btn btn-sm btn-outline-success rounded-pill"
+                    hx-post="{% url 'writeback:bulk_resolve_conflicts' project.pk %}"
+                    hx-vals='{"conflict_ids": "all"}'
+                    hx-confirm="Mark all open conflicts as resolved?"
+                    hx-target="#conflicts-list"
+                    hx-swap="innerHTML">
+                <i class="bi bi-check-all me-1"></i>Resolve All
+            </button>
+            <button class="btn btn-sm btn-outline-secondary rounded-pill"
+                    hx-post="{% url 'writeback:bulk_dismiss' project.pk %}"
+                    hx-vals='{"conflict_ids": "all"}'
+                    hx-confirm="Dismiss all open conflicts? They won't reappear unless re-detected."
+                    hx-target="#conflicts-list"
+                    hx-swap="innerHTML">
+                <i class="bi bi-x-circle me-1"></i>Dismiss All
+            </button>
+        </div>
+        {% endif %}
+        <button class="btn btn-sm btn-outline-danger rounded-pill {% if not current_status == 'open' or not status_counts.open %}ms-auto{% endif %}"
+                hx-post="{% url 'writeback:delete_all_conflicts' project.pk %}"
+                hx-confirm="Permanently delete ALL conflicts (all statuses)? This cannot be undone."
+                hx-on::after-request="window.location.reload()">
+            <i class="bi bi-trash me-1"></i>Delete All
+        </button>
+    </div>
+    {% endif %}
+
+    {% if grouped_conflicts %}
 
     {# ── Results summary bar ── #}
     <div class="d-flex align-items-center gap-3 mb-3 fs-8">
         <span class="text-secondary">
-            <strong class="text-body">{{ open_conflicts.count }}</strong> open conflict{{ open_conflicts.count|pluralize }}
+            <strong class="text-body">{{ grouped_conflicts|length }}</strong> {{ current_status }} conflict{{ grouped_conflicts|length|pluralize }}
         </span>
-        {% if resolved_conflicts %}
-        <span class="text-secondary">
-            · {{ resolved_conflicts.count }} resolved
-        </span>
-        {% endif %}
     </div>
 
-    {# ── Conflict list ── #}
+    {# ── Grouped conflict cards ── #}
     <div id="conflicts-list" class="d-flex flex-column gap-3">
-        {% for conflict in open_conflicts %}
+        {% for group in grouped_conflicts %}
+        {% with rep=group.representative %}
         <div class="conflict-card rounded-3 overflow-hidden"
              style="background-color: var(--bs-tertiary-bg);
                     border: 1px solid var(--bs-border-color);
-                    border-left: 3px solid {% if conflict.severity == 'critical' %}var(--castor-danger){% elif conflict.severity == 'high' %}var(--castor-warning){% else %}var(--castor-primary){% endif %};"
-             data-dismiss-url="{% url 'writeback:dismiss_conflict' project.pk conflict.id %}">
+                    border-left: 3px solid {% if rep.severity == 'critical' %}var(--castor-danger){% elif rep.severity == 'high' %}var(--castor-warning){% else %}var(--castor-primary){% endif %};">
 
             <div class="p-3">
-                {# Header: severity + title #}
+
+                {# Header: severity badge + property_name + title + confidence + entity-count chip #}
                 <div class="d-flex align-items-start gap-2 mb-2">
                     <span class="badge rounded-pill flex-shrink-0 mt-1"
                           style="font-size: 0.65rem;
-                                 {% if conflict.severity == 'critical' %}
+                                 {% if rep.severity == 'critical' %}
                                  background-color: rgba(239, 68, 68, 0.15); color: var(--castor-danger);
-                                 {% elif conflict.severity == 'high' %}
+                                 {% elif rep.severity == 'high' %}
                                  background-color: rgba(245, 158, 11, 0.15); color: var(--castor-warning);
                                  {% else %}
                                  background-color: rgba(59, 130, 246, 0.15); color: var(--castor-primary);
                                  {% endif %}">
-                        {{ conflict.get_severity_display }}
+                        {{ rep.get_severity_display }}
                     </span>
-                    <h5 class="h6 fw-semibold mb-0 flex-grow-1">{{ conflict.title }}</h5>
+                    <div class="flex-grow-1 min-width-0">
+                        <h5 class="h6 fw-semibold mb-0">{{ rep.title }}</h5>
+                        {% if rep.property_name %}
+                        <span class="text-secondary fs-8">
+                            <i class="bi bi-tag me-1"></i>{{ rep.property_name }}
+                        </span>
+                        {% endif %}
+                    </div>
+                    {% if rep.confidence %}
+                    <span class="badge rounded-pill flex-shrink-0"
+                          title="LLM confidence in this finding"
+                          style="background-color: rgba(16, 185, 129, 0.1); color: var(--castor-success);
+                                 border: 1px solid rgba(16, 185, 129, 0.2); font-size: 0.65rem; white-space: nowrap;">
+                        {% widthratio rep.confidence 1 100 %}% conf.
+                    </span>
+                    {% endif %}
+                    {% if group.count > 1 %}
+                    <span class="badge rounded-pill flex-shrink-0"
+                          style="background-color: rgba(255,255,255,0.06); color: var(--bs-secondary-color);
+                                 border: 1px solid rgba(255,255,255,0.08); font-size: 0.65rem; white-space: nowrap;">
+                        {{ group.count }} entities
+                    </span>
+                    {% endif %}
                 </div>
 
-                <p class="text-secondary fs-7 mb-3">{{ conflict.description }}</p>
+                <p class="text-secondary fs-7 mb-3">{{ rep.description }}</p>
 
-                {# Value comparison — visual "model vs docs" #}
+                {# Value comparison #}
                 <div class="d-flex gap-2 mb-3">
+
                     {# IFC side #}
-                    <div class="flex-fill rounded-2 p-2"
-                         style="background-color: var(--bs-body-bg);">
+                    <div class="flex-fill rounded-2 p-2" style="background-color: var(--bs-body-bg);">
                         <div class="d-flex align-items-center gap-1 mb-1">
                             <span class="rounded-1 d-inline-flex align-items-center justify-content-center"
                                   style="width: 18px; height: 18px; font-size: 0.6rem;
@@ -332,8 +408,16 @@
                                 <i class="bi bi-box"></i>
                             </span>
                             <span class="text-secondary fs-8 text-uppercase fw-semibold">IFC Model</span>
+                            {% if rep.ifc_entity %}
+                            <span class="text-secondary fs-8 ms-1">· {{ rep.ifc_entity.ifc_type }}</span>
+                            {% endif %}
                         </div>
-                        <code class="fs-7" style="color: var(--castor-warning);">{{ conflict.ifc_value }}</code>
+                        <code class="fs-7" style="color: var(--castor-warning);">{{ rep.ifc_value }}</code>
+                        {% if group.count == 1 and rep.ifc_entity %}
+                        <div class="text-secondary fs-8 mt-1">
+                            <i class="bi bi-box me-1"></i>{{ rep.ifc_entity.name|default:rep.ifc_entity.global_id }}
+                        </div>
+                        {% endif %}
                     </div>
 
                     {# Arrow #}
@@ -342,90 +426,132 @@
                     </div>
 
                     {# Document side #}
-                    <div class="flex-fill rounded-2 p-2"
-                         style="background-color: var(--bs-body-bg);">
+                    <div class="flex-fill rounded-2 p-2" style="background-color: var(--bs-body-bg);">
                         <div class="d-flex align-items-center gap-1 mb-1">
                             <span class="rounded-1 d-inline-flex align-items-center justify-content-center"
                                   style="width: 18px; height: 18px; font-size: 0.6rem;
                                          background-color: rgba(59, 130, 246, 0.15); color: var(--castor-primary);">
                                 <i class="bi bi-file-text"></i>
                             </span>
-                            <span class="text-secondary fs-8 text-uppercase fw-semibold">Document</span>
+                            <span class="text-secondary fs-8 text-uppercase fw-semibold">Required by</span>
                         </div>
-                        <code class="fs-7" style="color: var(--castor-primary);">{{ conflict.document_value }}</code>
+                        <code class="fs-7" style="color: var(--castor-primary);">{{ rep.document_value }}</code>
+                        {% if rep.document_chunk %}
+                        <div class="text-secondary fs-8 mt-1">
+                            {{ rep.document_chunk.document.name }}{% if rep.document_chunk.page_number %}, p.{{ rep.document_chunk.page_number }}{% endif %}
+                        </div>
+                        {% endif %}
                     </div>
+
                 </div>
 
-                {# Source reference #}
-                {% if conflict.document_chunk %}
-                <p class="text-secondary fs-8 mb-3">
-                    <i class="bi bi-quote me-1"></i>
-                    {{ conflict.document_chunk.document.name }}{% if conflict.document_chunk.page_number %}, p.{{ conflict.document_chunk.page_number }}{% endif %}
-                </p>
+                {# Affected entities list — shown only for grouped conflicts #}
+                {% if group.count > 1 and group.entities %}
+                <div class="mb-3">
+                    <span class="text-secondary fs-8">
+                        <i class="bi bi-collection me-1"></i><strong class="text-body">Affected:</strong>
+                        {% for entity in group.entities %}
+                        <span class="badge rounded-1 ms-1"
+                              style="background-color: rgba(255,255,255,0.05); color: var(--bs-secondary-color);
+                                     border: 1px solid rgba(255,255,255,0.08); font-size: 0.65rem;">
+                            {{ entity.name|default:entity.global_id }}
+                        </span>
+                        {% endfor %}
+                    </span>
+                </div>
                 {% endif %}
 
-                {# Actions with contextual labels #}
+                {# Resolution metadata — shown for non-open statuses #}
+                {% if rep.resolved_at %}
+                <div class="mb-3 fs-8 text-secondary">
+                    <i class="bi bi-check-circle me-1 text-success"></i>
+                    {{ rep.status|capfirst }} {{ rep.resolved_at|timesince }} ago
+                    {% if rep.resolved_by %}&nbsp;by <strong>{{ rep.resolved_by.username }}</strong>{% endif %}
+                    {% if rep.resolution_note %}&nbsp;· {{ rep.resolution_note }}{% endif %}
+                </div>
+                {% endif %}
+
+                {# Actions — only shown for open conflicts #}
+                {% if current_status == 'open' %}
                 <div class="d-flex gap-2 align-items-center">
-                    {% if conflict.suggested_fix %}
+                    {% if group.fix_prompt %}
                     <a class="btn btn-sm btn-outline-primary rounded-pill px-3"
-                       href="{% url 'writeback:modify' project.pk %}?prompt={{ conflict.suggested_fix|urlencode }}"
+                       href="{% url 'writeback:modify' project.pk %}?prompt={{ group.fix_prompt|urlencode }}&conflict_ids={{ group.all_ids|urlencode }}"
                        title="Opens the Modify tab pre-filled with a fix for this conflict">
                         <i class="bi bi-pencil me-1"></i>Fix in Modify
                     </a>
                     {% endif %}
+                    <button class="btn btn-sm btn-outline-warning rounded-pill"
+                            hx-post="{% url 'writeback:bulk_ignore_conflicts' project.pk %}"
+                            hx-vals='{"conflict_ids": "{{ group.all_ids }}"}'
+                            hx-confirm="Ignore {% if group.count > 1 %}all {{ group.count }} conflicts in this group{% else %}this conflict{% endif %}?"
+                            hx-target="closest .conflict-card"
+                            hx-swap="outerHTML"
+                            title="Ignore {% if group.count > 1 %}all {{ group.count }} conflicts in this group{% else %}this conflict{% endif %}">
+                        <i class="bi bi-eye-slash me-1"></i>Ignore
+                    </button>
                     <button class="btn btn-sm btn-outline-secondary rounded-pill px-3"
-                            onclick="ScanEngine.confirmDismiss('{% url 'writeback:dismiss_conflict' project.pk conflict.id %}', this)"
-                            title="Hide this conflict — it won't reappear unless a future scan detects it again">
+                            onclick="ScanEngine.confirmDismiss('{% url 'writeback:bulk_dismiss' project.pk %}', '{{ group.all_ids }}', this)"
+                            title="Dismiss {% if group.count > 1 %}all {{ group.count }} conflicts in this group{% else %}this conflict{% endif %}">
                         <i class="bi bi-x-circle me-1"></i>Dismiss
                     </button>
-
-                    {# Entity link if available #}
-                    {% if conflict.ifc_entity %}
-                    <span class="text-secondary fs-8 ms-auto">
-                        <i class="bi bi-box me-1"></i>{{ conflict.ifc_entity.name|default:conflict.ifc_entity.global_id }}
-                    </span>
-                    {% endif %}
                 </div>
+                {% endif %}{# /current_status == 'open' #}
+
             </div>
         </div>
+        {% endwith %}
         {% endfor %}
     </div>
 
-    {% elif last_scan_at %}
-    {# ── Empty state: scanned, nothing found ── #}
-    <div class="d-flex flex-column align-items-center justify-content-center py-5"
-         style="min-height: 300px;">
-        <div class="rounded-circle d-flex align-items-center justify-content-center mb-3"
-             style="width: 56px; height: 56px; background-color: rgba(16, 185, 129, 0.1);">
-            <i class="bi bi-check-lg" style="font-size: 1.5rem; color: var(--castor-success);"></i>
+    {% elif current_status == 'open' %}
+        {% if last_scan_run %}
+        {# ── Empty state: scanned, nothing found ── #}
+        <div class="d-flex flex-column align-items-center justify-content-center py-5"
+             style="min-height: 300px;">
+            <div class="rounded-circle d-flex align-items-center justify-content-center mb-3"
+                 style="width: 56px; height: 56px; background-color: rgba(16, 185, 129, 0.1);">
+                <i class="bi bi-check-lg" style="font-size: 1.5rem; color: var(--castor-success);"></i>
+            </div>
+            <h5 class="h6 fw-semibold mb-1">All Clear</h5>
+            <p class="text-secondary fs-7 mb-2" style="max-width: 360px; text-align: center;">
+                The last scan found no contradictions between your IFC model and project documents.
+            </p>
+            <div class="d-flex gap-3 fs-8 text-secondary mb-2">
+                <span><i class="bi bi-box me-1"></i>{{ last_scan_run.entities_scanned }} entities checked</span>
+                {% if last_scan_run.llm_model_used %}
+                <span><i class="bi bi-cpu me-1"></i>{{ last_scan_run.llm_model_used }}</span>
+                {% endif %}
+            </div>
+            <p class="text-secondary fs-8 mb-0" style="max-width: 400px; text-align: center;">
+                Consider re-scanning after uploading new documents or modifying the IFC model,
+                as changes may introduce new mismatches.
+            </p>
         </div>
-        <h5 class="h6 fw-semibold mb-1">All Clear</h5>
-        <p class="text-secondary fs-7 mb-2" style="max-width: 360px; text-align: center;">
-            The last scan found no contradictions between your IFC model and project documents.
-        </p>
-        <p class="text-secondary fs-8 mb-0" style="max-width: 400px; text-align: center;">
-            Consider re-scanning after uploading new documents or modifying the IFC model,
-            as changes may introduce new mismatches.
-        </p>
-    </div>
-
+        {% else %}
+        {# ── Empty state: never scanned — primary CTA ── #}
+        <div class="d-flex flex-column align-items-center justify-content-center py-4"
+             style="min-height: 220px;">
+            <div class="rounded-circle d-flex align-items-center justify-content-center mb-3"
+                 style="width: 56px; height: 56px; background-color: rgba(59, 130, 246, 0.08);">
+                <i class="bi bi-radar" style="font-size: 1.5rem; color: var(--castor-primary); opacity: 0.6;"></i>
+            </div>
+            <h5 class="h6 fw-semibold mb-1">Ready to scan</h5>
+            <p class="text-secondary fs-7 mb-3" style="max-width: 380px; text-align: center;">
+                Run your first scan to check whether IFC model properties match what your project
+                documents specify. Any contradictions will appear here as actionable conflicts.
+            </p>
+            <button class="btn btn-sm btn-primary rounded-pill px-4"
+                    onclick="ScanEngine.runScan()">
+                <i class="bi bi-radar me-1"></i>Run First Scan
+            </button>
+        </div>
+        {% endif %}
     {% else %}
-    {# ── Empty state: never scanned — primary CTA ── #}
-    <div class="d-flex flex-column align-items-center justify-content-center py-4"
-         style="min-height: 220px;">
-        <div class="rounded-circle d-flex align-items-center justify-content-center mb-3"
-             style="width: 56px; height: 56px; background-color: rgba(59, 130, 246, 0.08);">
-            <i class="bi bi-radar" style="font-size: 1.5rem; color: var(--castor-primary); opacity: 0.6;"></i>
-        </div>
-        <h5 class="h6 fw-semibold mb-1">Ready to scan</h5>
-        <p class="text-secondary fs-7 mb-3" style="max-width: 380px; text-align: center;">
-            Run your first scan to check whether IFC model properties match what your project
-            documents specify. Any contradictions will appear here as actionable conflicts.
-        </p>
-        <button class="btn btn-sm btn-primary rounded-pill px-4"
-                onclick="ScanEngine.runScan()">
-            <i class="bi bi-radar me-1"></i>Run First Scan
-        </button>
+    {# ── Empty state: no conflicts in this status ── #}
+    <div class="d-flex flex-column align-items-center justify-content-center py-5"
+         style="min-height: 200px;">
+        <p class="text-secondary fs-7 mb-0">No {{ current_status }} conflicts.</p>
     </div>
     {% endif %}
 
@@ -732,71 +858,126 @@ const ConflictTabs = {
 };
 
 
-/* ─── Scan engine ─── */
+/* ─── Scan engine (WebSocket) ─── */
 const ScanEngine = {
+    _ws: null,
+
     runScan() {
-        const btn  = document.getElementById('run-scan-btn');
-        const loader = document.getElementById('scan-loader');
+        const btn = document.getElementById('run-scan-btn');
+        const progress = document.getElementById('scan-progress');
+        const phaseLabel = document.getElementById('scan-phase-label');
+        const phaseSteps = document.getElementById('scan-phase-steps');
         const skipLowValue = document.getElementById('skip-low-value')?.checked ?? true;
 
+        if (this._ws && this._ws.readyState < 2) return; // already running
+
         btn.disabled = true;
-        loader.classList.remove('d-none');
-        loader.classList.add('d-flex');
+        progress.classList.remove('d-none');
+        phaseSteps.innerHTML = '';
+        phaseLabel.textContent = 'Connecting…';
 
-        const formData = new FormData();
-        formData.append('csrfmiddlewaretoken', this._csrf());
-        formData.append('skip_low_value', skipLowValue ? 'true' : 'false');
+        const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const wsUrl = `${proto}://${window.location.host}/ws/projects/{{ project.pk }}/conflicts/scan/`;
+        this._ws = new WebSocket(wsUrl);
 
-        fetch("{% url 'writeback:run_scan' project.pk %}", {
-            method: 'POST',
-            body: formData,
-        })
-        .then(r => r.json())
-        .then(data => {
-            loader.classList.add('d-none');
-            loader.classList.remove('d-flex');
-            btn.disabled = false;
+        this._ws.onopen = () => {
+            phaseLabel.textContent = 'Starting scan…';
+            this._ws.send(JSON.stringify({ action: 'start_scan', skip_low_value: skipLowValue }));
+        };
 
-            if (data.status === 'ok') {
+        this._ws.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+
+            if (msg.type === 'phase') {
+                phaseLabel.textContent = msg.message;
+                const step = this._makeStep(msg);
+                const existing = phaseSteps.querySelector(`[data-phase="${msg.phase}"]`);
+                if (existing) {
+                    existing.replaceWith(step);
+                } else {
+                    phaseSteps.appendChild(step);
+                }
+            } else if (msg.type === 'scan_complete') {
+                const s = msg.stats || {};
                 const parts = [];
-                if (data.scanned)           parts.push(`${data.scanned} entities checked`);
-                if (data.conflicts_found)    parts.push(`${data.conflicts_found} new`);
-                if (data.conflicts_updated)  parts.push(`${data.conflicts_updated} updated`);
-                const msg = parts.length ? parts.join(' · ') : 'No conflicts found.';
-                this._toast('Scan complete — ' + msg);
-                setTimeout(() => window.location.reload(), 1500);
-            } else {
-                this._toast(data.message || 'Scan failed.', 'danger');
+                if (s.entities_scanned)  parts.push(`${s.entities_scanned} entities checked`);
+                if (s.conflicts_found)   parts.push(`${s.conflicts_found} new conflict(s)`);
+                if (s.conflicts_updated) parts.push(`${s.conflicts_updated} updated`);
+                this._toast('Scan complete — ' + (parts.join(' · ') || 'No conflicts found.'));
+            } else if (msg.type === 'done') {
+                this._ws.close();
+                setTimeout(() => {
+                    const url = new URL(window.location.href);
+                    url.searchParams.set('subtab', 'semantic');
+                    window.location.href = url.toString();
+                }, 1200);
+            } else if (msg.type === 'error') {
+                phaseLabel.textContent = 'Scan error';
+                this._toast(msg.message || 'Scan failed.', 'danger');
+                btn.disabled = false;
+                progress.classList.add('d-none');
             }
-        })
-        .catch(err => {
-            loader.classList.add('d-none');
-            loader.classList.remove('d-flex');
+        };
+
+        this._ws.onerror = () => {
+            this._toast('WebSocket error — scan could not start.', 'danger');
             btn.disabled = false;
-            this._toast('Scan request failed: ' + err, 'danger');
-        });
+            progress.classList.add('d-none');
+        };
+
+        this._ws.onclose = (ev) => {
+            if (ev.code === 4001 || ev.code === 4003) {
+                this._toast('Access denied.', 'danger');
+                btn.disabled = false;
+                progress.classList.add('d-none');
+            }
+        };
     },
 
-    _pendingDismiss: { url: null, btn: null },
+    _makeStep(msg) {
+        const div = document.createElement('div');
+        div.dataset.phase = msg.phase;
+        div.className = 'd-flex align-items-center gap-2 fs-8';
 
-    confirmDismiss(url, btn) {
-        this._pendingDismiss = { url, btn };
+        const icon = document.createElement('i');
+        if (msg.status === 'done') {
+            icon.className = 'bi bi-check-circle-fill text-success flex-shrink-0';
+        } else if (msg.status === 'error') {
+            icon.className = 'bi bi-x-circle-fill text-danger flex-shrink-0';
+        } else {
+            icon.className = 'bi bi-circle text-secondary flex-shrink-0';
+        }
+
+        const label = document.createElement('span');
+        label.className = msg.status === 'done' ? 'text-secondary' : 'text-body';
+        label.textContent = msg.message;
+
+        div.appendChild(icon);
+        div.appendChild(label);
+        return div;
+    },
+
+    _pendingDismiss: { url: null, ids: null, btn: null },
+
+    confirmDismiss(url, ids, btn) {
+        this._pendingDismiss = { url, ids, btn };
         const modal = new bootstrap.Modal(document.getElementById('dismissModal'));
         modal.show();
 
         const confirmBtn = document.getElementById('confirm-dismiss-btn');
         const handler = () => {
-            this._doDismiss(this._pendingDismiss.url, this._pendingDismiss.btn);
+            this._doDismiss(this._pendingDismiss.url, this._pendingDismiss.ids, this._pendingDismiss.btn);
             modal.hide();
             confirmBtn.removeEventListener('click', handler);
         };
         confirmBtn.addEventListener('click', handler);
     },
 
-    _doDismiss(url, btn) {
+    _doDismiss(url, ids, btn) {
         const card = btn.closest('.conflict-card');
         const formData = new FormData();
         formData.append('csrfmiddlewaretoken', this._csrf());
+        formData.append('ids', ids);
 
         fetch(url, { method: 'POST', body: formData })
         .then(r => r.json())
@@ -824,4 +1005,14 @@ const ScanEngine = {
         bootstrap.Toast.getOrCreateInstance(toastEl).show();
     },
 };
+
+// Initialise sub-tab from URL param (set by scan reload)
+(function () {
+    const params = new URLSearchParams(window.location.search);
+    const subtab = params.get('subtab');
+    if (subtab) {
+        ConflictTabs.switchTo(subtab);
+        history.replaceState({}, '', window.location.pathname);
+    }
+})();
 </script>

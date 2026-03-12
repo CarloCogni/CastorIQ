@@ -15,6 +15,7 @@ from django.views.generic import TemplateView, View
 
 from core.llm_model_registry import MODEL_REGISTRY, VRAM_TIERS, get_model_info
 from core.models import ErrorLog, UserLLMConfig
+from core.services.team_notes import create_note, pull_notes_from_supabase, push_notes_to_supabase
 
 logger = getLogger(__name__)
 
@@ -380,4 +381,68 @@ class SetModelAPIView(LoginRequiredMixin, View):
                 "is_using_default": not config.active_model,
                 "just_saved": True,
             },
+        )
+
+
+@require_POST
+@login_required
+def create_team_note(request):
+    """Create a new TeamNote from the modal form."""
+    import json
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"success": False, "error": "Invalid JSON"}, status=400)
+
+    title = data.get("title", "").strip()
+    body = data.get("body", "").strip()
+    category = data.get("category", "note")
+    priority = data.get("priority", "medium")
+
+    if not title or not body:
+        return JsonResponse({"success": False, "error": "Title and body are required"}, status=400)
+
+    note = create_note(
+        author_username=request.user.username,
+        title=title,
+        body=body,
+        category=category,
+        priority=priority,
+        page_url=data.get("page_url", ""),
+        browser_info=data.get("browser_info"),
+    )
+
+    return JsonResponse({"success": True, "id": str(note.id)})
+
+
+@require_POST
+@staff_member_required
+def send_notes_to_supabase(request):
+    """Push unsent TeamNotes to Supabase."""
+    try:
+        result = push_notes_to_supabase(developer_name=request.user.username)
+        return JsonResponse({"success": True, **result})
+    except ValueError as e:
+        return JsonResponse({"success": False, "error": str(e)}, status=500)
+    except http_requests.RequestException as e:
+        return JsonResponse(
+            {"success": False, "error": f"Supabase request failed: {e}"},
+            status=502,
+        )
+
+
+@require_POST
+@staff_member_required
+def pull_notes_from_supabase(request):
+    """Pull TeamNotes from Supabase."""
+    try:
+        result = pull_notes_from_supabase(current_developer=request.user.username)
+        return JsonResponse({"success": True, **result})
+    except ValueError as e:
+        return JsonResponse({"success": False, "error": str(e)}, status=500)
+    except http_requests.RequestException as e:
+        return JsonResponse(
+            {"success": False, "error": f"Supabase request failed: {e}"},
+            status=502,
         )

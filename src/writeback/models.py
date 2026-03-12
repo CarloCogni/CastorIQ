@@ -146,6 +146,12 @@ class ModificationProposal(UUIDModel):
         blank=True,
         verbose_name="Applied At",
     )
+    linked_conflict_ids = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name="Linked Conflict IDs",
+        help_text="List of Conflict UUIDs (as strings) linked when this proposal was created via 'Fix in Modify'",
+    )
 
     # Castor Guardian fields
     class VerificationStatus(models.TextChoices):
@@ -257,6 +263,66 @@ class GitCommit(UUIDModel):
         return f"{self.commit_hash[:8]}: {self.message[:50]}"
 
 
+class ScanRun(UUIDModel):
+    """Audit record for a single conflict scan execution."""
+
+    class ScanType(models.TextChoices):
+        FULL = "full", "Full Scan"
+        TARGETED_DOC = "targeted_doc", "Targeted (Document)"
+        TARGETED_IFC = "targeted_ifc", "Targeted (IFC Entity)"
+        POST_MODIFY = "post_modify", "Post-Modification"
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        RUNNING = "running", "Running"
+        COMPLETED = "completed", "Completed"
+        FAILED = "failed", "Failed"
+
+    project = models.ForeignKey(
+        "environments.Project",
+        on_delete=models.CASCADE,
+        related_name="scan_runs",
+        verbose_name="Project",
+    )
+    triggered_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="scan_runs",
+        verbose_name="Triggered By",
+    )
+    scan_type = models.CharField(
+        max_length=20,
+        choices=ScanType.choices,
+        default=ScanType.FULL,
+        verbose_name="Scan Type",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+        verbose_name="Status",
+    )
+    entities_scanned = models.PositiveIntegerField(default=0, verbose_name="Entities Scanned")
+    chunks_compared = models.PositiveIntegerField(default=0, verbose_name="Chunks Compared")
+    conflicts_found = models.PositiveIntegerField(default=0, verbose_name="Conflicts Found")
+    llm_model_used = models.CharField(max_length=100, blank=True, verbose_name="LLM Model Used")
+    error_message = models.TextField(blank=True, verbose_name="Error Message")
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Scan Run"
+        verbose_name_plural = "Scan Runs"
+        indexes = [
+            models.Index(fields=["project", "status", "-created_at"]),
+        ]
+
+    def __str__(self):
+        return f"ScanRun {self.scan_type} [{self.status}] @ {self.created_at:%Y-%m-%d %H:%M}"
+
+
 class Conflict(UUIDModel):
     """A detected conflict between IFC and documents."""
 
@@ -272,26 +338,112 @@ class Conflict(UUIDModel):
         IGNORED = "ignored", "Ignored"
         DISMISSED = "dismissed", "Dismissed"
 
-    project = models.ForeignKey("environments.Project",on_delete=models.CASCADE,related_name="conflicts",verbose_name="Project",)
+    project = models.ForeignKey(
+        "environments.Project",
+        on_delete=models.CASCADE,
+        related_name="conflicts",
+        verbose_name="Project",
+    )
     # What's conflicting
-    ifc_entity = models.ForeignKey("ifc_processor.IFCEntity",on_delete=models.CASCADE,related_name="conflicts",null=True,blank=True,verbose_name="IFC Entity",)
-    document_chunk = models.ForeignKey("documents.DocumentChunk",on_delete=models.CASCADE,related_name="conflicts",null=True,blank=True,verbose_name="Document Chunk",)
+    ifc_entity = models.ForeignKey(
+        "ifc_processor.IFCEntity",
+        on_delete=models.CASCADE,
+        related_name="conflicts",
+        null=True,
+        blank=True,
+        verbose_name="IFC Entity",
+    )
+    document_chunk = models.ForeignKey(
+        "documents.DocumentChunk",
+        on_delete=models.CASCADE,
+        related_name="conflicts",
+        null=True,
+        blank=True,
+        verbose_name="Document Chunk",
+    )
     # Conflict details
-    title = models.CharField(max_length=255,verbose_name="Title",)
-    description = models.TextField(verbose_name="Description",)
+    title = models.CharField(
+        max_length=255,
+        verbose_name="Title",
+    )
+    description = models.TextField(
+        verbose_name="Description",
+    )
     # What the IFC says vs what the document says
-    ifc_value = models.TextField(verbose_name="IFC Value",help_text="Value found in the IFC model",)
-    document_value = models.TextField(verbose_name="Document Value",help_text="Value found in the document",)
-    severity = models.CharField(max_length=20,choices=Severity.choices,default=Severity.MEDIUM,db_index=True,verbose_name="Severity",)
-    status = models.CharField(max_length=20,choices=Status.choices,default=Status.OPEN,db_index=True,verbose_name="Status",)
+    ifc_value = models.TextField(
+        verbose_name="IFC Value",
+        help_text="Value found in the IFC model",
+    )
+    document_value = models.TextField(
+        verbose_name="Document Value",
+        help_text="Value found in the document",
+    )
+    severity = models.CharField(
+        max_length=20,
+        choices=Severity.choices,
+        default=Severity.MEDIUM,
+        db_index=True,
+        verbose_name="Severity",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.OPEN,
+        db_index=True,
+        verbose_name="Status",
+    )
     # Resolution
-    resolved_by = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,related_name="resolved_conflicts",verbose_name="Resolved By",)
-    resolved_at = models.DateTimeField(null=True,blank=True,verbose_name="Resolved At",)
-    resolution_note = models.TextField(blank=True,verbose_name="Resolution Note",)
+    resolved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="resolved_conflicts",
+        verbose_name="Resolved By",
+    )
+    resolved_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Resolved At",
+    )
+    resolution_note = models.TextField(
+        blank=True,
+        verbose_name="Resolution Note",
+    )
     suggested_fix = models.TextField(
         blank=True,
         verbose_name="Suggested Fix",
         help_text="LLM-generated modify prompt to resolve this conflict",
+    )
+    # LLM confidence score (0.0–1.0) — used for false-positive filtering
+    confidence = models.FloatField(
+        default=0.0,
+        verbose_name="Confidence",
+        help_text="LLM confidence in this finding (0.0–1.0)",
+    )
+    # Property that conflicts (e.g. 'FireRating') — for deduplication and display
+    property_name = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="Property Name",
+        help_text="IFC property involved in the conflict",
+    )
+    # Stable deduplication key: SHA-256 of entity.id + chunk.id + property_name
+    content_hash = models.CharField(
+        max_length=64,
+        blank=True,
+        db_index=True,
+        verbose_name="Content Hash",
+        help_text="Deduplication key — SHA-256(entity_id:chunk_id:property_name)",
+    )
+    # Scan run that detected this conflict
+    scan_run = models.ForeignKey(
+        ScanRun,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="conflicts",
+        verbose_name="Scan Run",
     )
 
     class Meta:
@@ -301,6 +453,13 @@ class Conflict(UUIDModel):
         indexes = [
             models.Index(fields=["project", "status", "-severity"]),
             models.Index(fields=["project", "status", "-created_at"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["content_hash"],
+                condition=models.Q(status="open") & ~models.Q(content_hash=""),
+                name="unique_open_conflict_hash",
+            )
         ]
 
     def __str__(self):

@@ -21,6 +21,12 @@
     <!-- HTMX -->
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
 
+    <!-- base.html <head> — ADD after the Bootstrap Icons <link> -->
+
+    <!-- Quill.js Rich Text Editor -->
+    <link href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
+
     <style>
         :root {
             --castor-primary: #3b82f6;
@@ -418,6 +424,26 @@
             animation: spin 1s linear infinite;
         }
 
+        /* Quill dark-theme overrides */
+        .ql-toolbar.ql-snow {
+            border-color: var(--bs-border-color) !important;
+            background-color: var(--bs-tertiary-bg);
+        }
+        .ql-container.ql-snow {
+            border-color: var(--bs-border-color) !important;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.875rem;
+            color: var(--bs-body-color);
+        }
+        .ql-editor.ql-blank::before {
+            color: var(--bs-secondary-color);
+            font-style: normal;
+        }
+        .ql-snow .ql-stroke { stroke: var(--bs-secondary-color); }
+        .ql-snow .ql-fill { fill: var(--bs-secondary-color); }
+        .ql-snow .ql-picker-label { color: var(--bs-secondary-color); }
+
+
         /* 1. Only show the 3-dots menu when hovering the file row */
         .group:hover .group-hover-opacity {
             opacity: 1 !important;
@@ -572,6 +598,40 @@
         .mode-label-modify {
             background-color: rgba(139, 92, 246, 0.15);
             color: var(--castor-accent);
+        }
+
+        /* AI Markdown Typography Fixes */
+        .message-text pre {
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            overflow-x: auto;
+            font-size: 0.875rem;
+            margin: 0.75rem 0;
+        }
+
+        .message-text code {
+            background-color: rgba(0, 0, 0, 0.05);
+            padding: 0.2rem 0.4rem;
+            border-radius: 0.25rem;
+            font-family: monospace;
+        }
+
+        .message-text pre code {
+            background-color: transparent;
+            padding: 0;
+        }
+
+        .message-text table {
+            width: 100%;
+            margin-bottom: 1rem;
+            border-collapse: collapse;
+        }
+
+        .message-text th, .message-text td {
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            padding: 0.5rem;
         }
     </style>
 

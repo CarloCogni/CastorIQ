@@ -1,7 +1,9 @@
+name: castor
+
 services:
   db:
     image: pgvector/pgvector:pg16
-    container_name: castor-db
+    container_name: castor_db
     environment:
       POSTGRES_USER: castor
       POSTGRES_PASSWORD: castor
@@ -28,8 +30,7 @@ services:
       - "5050:80"
     depends_on:
       - db
-    profiles:
-      - tools
+
 
 volumes:
   postgres_data:

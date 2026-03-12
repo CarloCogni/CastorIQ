@@ -300,6 +300,16 @@ Read the relevant skill file before generating code in that domain.
 - HTML changes: Be precise about WHERE. Reference surrounding elements.
 - Always run `ruff check` and `ruff format` after changes.
 
+
+---
+
+### Migrations
+
+**Never hand-write migration files.** Always run `uv run manage.py makemigrations` and let Django generate them. 
+Claude Code edits models, then runs the command — never the other way around.
+
+For custom data migrations, generate the empty file first with `uv run manage.py makemigrations <app> --empty`, 
+then edit the generated file to add `RunPython` logic.
 ---
 
 ## LLM Configuration

@@ -19,6 +19,7 @@ from ifc_processor.services.processor import IFCProcessingService
 from writeback.models import GitCommit, ModificationProposal
 from writeback.services.guardian_service import GuardianService
 
+from .emitters import NullEmitter, PipelineEmitter
 from .filter_engine import FilterEngine
 from .git_service import GitService
 from .ifc_standard_psets import lookup_property
@@ -75,6 +76,7 @@ class ModificationService:
         user,
         ifc_file=None,
         message_obj=None,
+        emitter: PipelineEmitter | None = None,
     ) -> ModificationProposal:
         """
         Classify user intent, validate, and create a pending proposal.
@@ -94,6 +96,8 @@ class ModificationService:
         Raises:
             ModificationError on classification/validation failure.
         """
+        emitter = emitter or NullEmitter()
+
         # 0. Sanity check — do we have any entities?
         all_entities = list(
             IFCEntity.objects.filter(
@@ -112,12 +116,18 @@ class ModificationService:
         entity_context = self.classifier.build_entity_context(all_entities)
 
         # 2. Classify intent via LLM
+        emitter.emit("classify", "running", "Classifying intent…")
         try:
             classified = self.classifier.classify(user_message, entity_context)
 
             # Handle chained operations
-            # Handle chained operations
             if isinstance(classified, list):
+                emitter.emit(
+                    "classify",
+                    "done",
+                    f"Chained operation — {len(classified)} steps",
+                    {"chain": True, "steps": len(classified)},
+                )
                 return self._propose_chain(
                     classified,
                     user_message,
@@ -125,14 +135,27 @@ class ModificationService:
                     ifc_file=ifc_file,
                     message_obj=message_obj,
                     entity_context=entity_context,
+                    emitter=emitter,
                 )
 
             intent = classified
         except IntentParseError as e:
+            emitter.emit("classify", "error", f"Could not understand the request: {e}")
             raise ModificationError(f"Could not understand the request: {e}")
 
         # 3. Check tier — route to appropriate handler
         tier = intent.get("tier", 0)
+        emitter.emit(
+            "classify",
+            "done",
+            f"Tier {tier} — {intent.get('operation', '?')}",
+            {
+                "tier": tier,
+                "operation": intent.get("operation", ""),
+                "confidence": intent.get("confidence", 0),
+            },
+        )
+
         if tier == 2:
             return self._propose_tier2(
                 user_message,
@@ -140,6 +163,7 @@ class ModificationService:
                 user=user,
                 ifc_file=ifc_file,
                 message_obj=message_obj,
+                emitter=emitter,
             )
         if tier == 3:
             return self._propose_tier3(
@@ -148,6 +172,7 @@ class ModificationService:
                 user=user,
                 ifc_file=ifc_file,
                 message_obj=message_obj,
+                emitter=emitter,
             )
         if tier != 1:
             raise ModificationError(
@@ -155,6 +180,7 @@ class ModificationService:
             )
 
         # 4. Resolve entity filter
+        emitter.emit("validate", "running", "Matching entities…")
         filter_spec = intent.get("filter", {})
         try:
             matched_qs = self.filter_engine.resolve(filter_spec)
@@ -183,16 +209,26 @@ class ModificationService:
             if not validation.valid:
                 # Type/enum errors are user errors — surface them directly
                 if "not found on any" not in validation.error:
+                    emitter.emit("validate", "error", validation.error)
                     raise ModificationError(validation.error)
                 # "Not found" error → escalate to Tier 2
                 logger.info(f"Tier 1 validation failed, escalating to Tier 2: {validation.error}")
+                emitter.emit("validate", "done", "Escalating to Tier 2 plan…", {"escalated": True})
                 return self._propose_tier2(
                     user_message,
                     entity_context,
                     user=user,
                     ifc_file=ifc_file,
                     message_obj=message_obj,
+                    emitter=emitter,
                 )
+
+        emitter.emit(
+            "validate",
+            "done",
+            f"{len(validation.entities)} entit{'y' if len(validation.entities) == 1 else 'ies'} matched",
+            {"entities_count": len(validation.entities)},
+        )
 
         # 5b. Combined confidence + groundedness gate (post-validation)
         confidence = intent.get("confidence", 0)
@@ -207,7 +243,9 @@ class ModificationService:
             )
 
         # 6. Build diff preview
+        emitter.emit("diff", "running", "Building change preview…")
         diff_preview = self._build_diff_preview(intent, validation.entities)
+        emitter.emit("diff", "done", "Preview ready", {"rows": len(diff_preview)})
 
         # 6b. Warn if SET_ATTRIBUTE hits multiple entities (likely unintended rename)
         operation = intent.get("operation", "")
@@ -247,11 +285,20 @@ class ModificationService:
             f"Proposal {proposal.id} created: {intent['operation']} "
             f"on {len(validation.entities)} entities (Tier {tier})"
         )
+
         # ── Guardian: cross-reference against project documents ──
+        emitter.emit("guardian", "running", "Checking project documents…")
         try:
             GuardianService().check(proposal)
+            emitter.emit(
+                "guardian",
+                "done",
+                "Document check complete",
+                {"verdict": proposal.verification_status},
+            )
         except Exception as e:
             logger.warning(f"Guardian check failed (non-blocking): {e}")
+            emitter.emit("guardian", "done", "Document check unavailable", {"verdict": "failed"})
 
         return proposal
 
@@ -671,6 +718,7 @@ class ModificationService:
         ifc_file=None,
         message_obj=None,
         entity_context: str = "",
+        emitter: PipelineEmitter | None = None,
     ):
         """
         Handle a chain of Tier 1 operations from a single user request.
@@ -678,6 +726,7 @@ class ModificationService:
         Creates one proposal per sub-intent, linked by a shared chain_id.
         Returns the list of proposals.
         """
+        emitter = emitter or NullEmitter()
         chain_id = str(uuid.uuid4())[:8]
         proposals = []
 
@@ -721,12 +770,16 @@ class ModificationService:
                     logger.info(
                         f"Chain element {i + 1} failed Tier 1, escalating to Tier 2: {validation.error}"
                     )
+                    emitter.emit(
+                        "validate", "done", "Escalating to Tier 2 plan…", {"escalated": True}
+                    )
                     return self._propose_tier2(
                         user_message,
                         entity_context,
                         user=user,
                         ifc_file=ifc_file,
                         message_obj=message_obj,
+                        emitter=emitter,
                     )
 
             # Combined confidence + groundedness gate (post-validation)
@@ -763,10 +816,20 @@ class ModificationService:
                 filter_spec=filter_spec,
                 confidence=confidence,
             )
+            emitter.emit("guardian", "running", f"Checking documents for step {i + 1}…")
             try:
                 GuardianService().check(proposal)
+                emitter.emit(
+                    "guardian",
+                    "done",
+                    "Document check complete",
+                    {"verdict": proposal.verification_status},
+                )
             except Exception as e:
                 logger.warning(f"Guardian check failed (non-blocking): {e}")
+                emitter.emit(
+                    "guardian", "done", "Document check unavailable", {"verdict": "failed"}
+                )
 
             proposals.append(proposal)
 
@@ -783,26 +846,35 @@ class ModificationService:
         user=None,
         ifc_file=None,
         message_obj=None,
+        emitter: PipelineEmitter | None = None,
     ) -> ModificationProposal:
         """
         Handle a Tier 2 request: generate plan, validate, create proposal.
 
         The plan is stored in intent_json. Execution iterates over steps.
         """
+        emitter = emitter or NullEmitter()
+
         # 1. Generate execution plan
+        emitter.emit("plan", "running", "Generating execution plan…")
         try:
             plan = self.t2_planner.generate_plan(user_message, entity_context)
         except PlanGenerationError as e:
+            emitter.emit("plan", "error", f"Plan generation failed: {e}")
             raise ModificationError(f"Could not generate plan: {e}")
 
         # Escalation: planner decided this needs Tier 3
         if plan.get("tier") == 3:
+            emitter.emit(
+                "plan", "done", "Escalating to Tier 3 code generation…", {"escalated": True}
+            )
             return self._propose_tier3(
                 user_message,
                 entity_context,
                 user=user,
                 ifc_file=ifc_file,
                 message_obj=message_obj,
+                emitter=emitter,
             )
 
         # 2. Confidence check
@@ -812,13 +884,32 @@ class ModificationService:
                 f"Low confidence ({confidence}%). Please be more specific about what you need."
             )
 
+        steps_count = len(plan.get("plan", []))
+        emitter.emit(
+            "plan",
+            "done",
+            f"Plan ready — {steps_count} step{'s' if steps_count != 1 else ''}",
+            {"steps_count": steps_count, "confidence": confidence},
+        )
+
         # 3. Validate the full plan
+        emitter.emit("validate", "running", "Validating plan steps…")
         validation = self.t2_validator.validate_plan(plan)
         if not validation.valid:
+            emitter.emit("validate", "error", validation.error)
             raise ModificationError(f"Plan validation failed: {validation.error}")
 
+        emitter.emit(
+            "validate",
+            "done",
+            f"{validation.total_affected} entit{'y' if validation.total_affected == 1 else 'ies'} affected",
+            {"entities_count": validation.total_affected},
+        )
+
         # 4. Build diff preview from all steps
+        emitter.emit("diff", "running", "Building change preview…")
         diff_preview = self._build_tier2_diff_preview(plan, validation)
+        emitter.emit("diff", "done", "Preview ready", {"rows": len(diff_preview)})
 
         # 5. Resolve IFC file from first step's entities
         if ifc_file is None:
@@ -851,10 +942,18 @@ class ModificationService:
             f"{validation.total_affected} entities"
         )
 
+        emitter.emit("guardian", "running", "Checking project documents…")
         try:
             GuardianService().check(proposal)
+            emitter.emit(
+                "guardian",
+                "done",
+                "Document check complete",
+                {"verdict": proposal.verification_status},
+            )
         except Exception as e:
             logger.warning(f"Guardian check failed (non-blocking): {e}")
+            emitter.emit("guardian", "done", "Document check unavailable", {"verdict": "failed"})
 
         return proposal
 
@@ -943,13 +1042,25 @@ class ModificationService:
         user=None,
         ifc_file=None,
         message_obj=None,
+        emitter: PipelineEmitter | None = None,
     ) -> ModificationProposal:
+        emitter = emitter or NullEmitter()
+
+        emitter.emit("codegen", "running", "Generating IfcOpenShell code…")
         try:
             result = self.t3_planner.generate_code(user_message, entity_context)
         except CodeGenerationError as e:
+            emitter.emit("codegen", "error", f"Code generation failed: {e}")
             raise ModificationError(f"Code generation failed: {e}")
 
         confidence = result.get("confidence", 0)
+        emitter.emit(
+            "codegen",
+            "done",
+            f"Code generated ({confidence}% confidence)",
+            {"confidence": confidence, "code_len": len(result.get("code", ""))},
+        )
+
         if confidence < 50:
             raise ModificationError(
                 f"Low confidence ({confidence}%). "
@@ -958,6 +1069,7 @@ class ModificationService:
                 f"LLM interpretation: {result.get('explanation', '?')}"
             )
 
+        emitter.emit("review", "running", "Reviewing generated code…")
         try:
             review = self.t3_reviewer.review(
                 user_message=user_message,
@@ -965,9 +1077,16 @@ class ModificationService:
                 entity_context=entity_context,
             )
             result["review"] = review
+            emitter.emit(
+                "review",
+                "done",
+                f"Code review: {review.get('verdict', '?')}",
+                {"verdict": review.get("verdict")},
+            )
         except Exception as e:
             logger.warning(f"Tier3 code review failed (non-blocking): {e}")
             result["review"] = Tier3Reviewer._fallback()
+            emitter.emit("review", "done", "Code review unavailable", {"verdict": "unknown"})
 
         # Resolve IFC file if not provided
         if ifc_file is None:
@@ -1003,10 +1122,18 @@ class ModificationService:
             f"confidence={confidence}%"
         )
 
+        emitter.emit("guardian", "running", "Checking project documents…")
         try:
             GuardianService().check(proposal)
+            emitter.emit(
+                "guardian",
+                "done",
+                "Document check complete",
+                {"verdict": proposal.verification_status},
+            )
         except Exception as e:
             logger.warning(f"Guardian check failed (non-blocking): {e}")
+            emitter.emit("guardian", "done", "Document check unavailable", {"verdict": "failed"})
 
         return proposal
 
