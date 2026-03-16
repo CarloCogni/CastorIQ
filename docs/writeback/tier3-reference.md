@@ -62,7 +62,7 @@ def modify_ifc(model):
 
 ---
 
-## Pipeline: `Tier3Planner` → `Tier3Executor`
+## Pipeline: `Tier3Planner` → `Tier3Reviewer` → `Tier3Executor`
 
 ### `Tier3Planner` — Code Generation
 
@@ -79,6 +79,14 @@ def modify_ifc(model):
 6. Forbidden pattern scan (see Safety section below)
 
 **Confidence threshold:** 50% (lower than Tier 1/2's 60% because code generation is inherently less deterministic — the real safety net is human review of the generated code).
+
+### `Tier3Reviewer` — LLM Code Review
+
+After `Tier3Planner` generates code, `Tier3Reviewer` (`tier3_reviewer.py`) performs an LLM-driven review pass before the proposal is created.
+
+- Evaluates the generated code for safety issues and logical correctness
+- Review result (verdict + notes) is stored in `proposal.review` and displayed in the approval UI
+- Non-blocking: a failed review produces a warning annotation on the proposal, not a rejection — the human reviewer makes the final call
 
 ### `Tier3Executor` — Sandboxed Execution
 
@@ -185,6 +193,9 @@ Tier3Planner.generate_code()  →  { tier, code, explanation, confidence }
     ▼
 Confidence check  →  reject if < 50%
     │
+    ▼
+Tier3Reviewer.review()  →  safety + correctness check (non-blocking)
+    │                       result stored in proposal.review
     ▼
 ModificationProposal created (tier=3, operation="CODE", intent_json=result)
     │

@@ -109,7 +109,12 @@ Before writing, analyse the IFC and extract:
 7. Element quantities if present
 8. What building elements are COMPLETELY ABSENT that a real building would have
 
-Use ALL of this to write requirements that are precisely tailored to this specific building while maintaining zero IFC vocabulary in the output document.
+Note: If you are provided with images or a text description instead of an actual IFC file, use your reasoning
+ capabilities to deduce what the underlying IFC data structure would likely look like for the building shown, and 
+ generate your test cases based on those deductions.
+
+Use ALL of this to write requirements that are precisely tailored to this specific building while maintaining zero IFC
+ vocabulary in the output document.
 
 Now generate the document.
 ```

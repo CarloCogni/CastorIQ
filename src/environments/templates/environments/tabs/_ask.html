@@ -73,17 +73,7 @@
 </div>
 
 <script>
-    window.autoGrow = function(el) {
-        el.style.height = 'auto';               // reset to recalculate
-        const maxH = parseInt(el.style.maxHeight, 10) || 200;
-        if (el.scrollHeight > maxH) {
-            el.style.height = maxH + 'px';
-            el.style.overflowY = 'auto';        // scroll when capped
-        } else {
-            el.style.height = el.scrollHeight + 'px';
-            el.style.overflowY = 'hidden';      // no scrollbar while growing
-        }
-    };
+
     (function() {
         const chatContainer = document.getElementById('chat-messages');
         const scrollBtn = document.getElementById('scroll-btn');

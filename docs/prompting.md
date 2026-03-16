@@ -18,7 +18,26 @@ I'm continuing development on Castor, a bi-directional LLM assistant for IFC mod
 Current code/context is attached/below.
 
 Next task: [Describe what you want to build]
+......
+---
+DEVELOPER NOTES:
+- Clean code (Uncle Bob), Zen of Python, DRY
+- Negative Space Programming: design by omission, guard clauses over nesting,
+  remove boilerplate with context managers and base classes
+- Docstrings on every module, class, and public method
+- File header comment: # app/path/to/file.py
+- Views and Forms are dumb — business logic in services/ layer
+- Logging (never print), all in English
+- Type hints on signatures and return types
+- select_related / prefetch_related on every queryset
 
+DELIVERY FORMAT:
+- Explain the problem and solution BEFORE writing code
+- Code in focused chunks (not full files) — I patch manually in PyCharm
+- For modifications: show exact location with 3-5 lines of surrounding context
+- For HTML: reference surrounding elements precisely, never "add this somewhere"
+- Ask before touching more than 3 files
+---
 ---
 DEVELOPER NOTES:
 - Clean code (Uncle Bob), Zen of Python, DRY
@@ -233,6 +252,39 @@ Use the context to understand the codebase structure, then focus your
 answer on the specific task. Don't summarize the context back to me.
 
 [paste dump_context output]
+```
+
+
+---
+
+## extra Prompts to have the AI chat to challenge your assumptions/ideas in a constructive way
+
+1. set a skeptical persona
+```
+[full prompt text].
+act as a rigorous, skeptical peer reviewer. your primary objective is to stress-test my reasoning and find the flaws in 
+my logic. do not default to agreeing with me.
+```
+
+2. ban validating language
+```
+[full prompt text].
+strip out all conversational pleasantries, flattery, and validating filler. do not tell me my idea is good. provide a 
+direct, clinical breakdown of my thesis.
+```
+
+3. force mandatory counterarguments
+```
+[full prompt text].
+before you expand on any of my points, you must explicitly list at least three edge cases, logical fallacies, or
+ structural weaknesses in my proposal.
+```
+
+4. use the "assume failure" framework
+```
+[full prompt text].
+assume my thesis is fundamentally flawed or that the system i am proposing will fail. work backward and explain to me 
+exactly why it failed and what assumptions led me astray.
 ```
 
 ---

@@ -52,6 +52,19 @@ Geometric modifications (e.g., "make the wall 20cm thicker") are excluded across
 ```
 User message
     │
+    ├── [WebSocket] → ProposalConsumer._run_pipeline() [sync_to_async]
+    │                       │
+    │                       ▼
+    │              ModificationService.propose(emitter=WebSocketEmitter)
+    │              (phases streamed live to client)
+    │
+    └── [HTTP fallback] → ModifyView._handle_propose()
+                                │
+                                ▼
+                       ModificationService.propose(emitter=NullEmitter)
+```
+
+```
     ▼
 Message Normalizer (aliases → canonical names)
     │
@@ -133,10 +146,22 @@ A static registry (~120 standard property sets) mapping pset → property → ty
 - **Standard pset detection:** Enables auto-creation of missing standard psets in ADD_PROPERTY
 - **Applicable pset hints:** Provides the classifier with available standard psets per entity type
 
+### `PipelineEmitter` — Progress Streaming Protocol
+
+| Component | Role |
+|-----------|------|
+| `PipelineEmitter` | Protocol interface: `emit(phase, status, message, detail=None)` |
+| `NullEmitter` | Silent; default when no WebSocket is available |
+| `WebSocketEmitter` | Bridges emitter → `async_to_sync(send_json)` on the consumer |
+| `CapturingEmitter` | Stores events in list; used in tests |
+
+File: `writeback/services/emitters.py`
+
 ### Writers
 
 - **`Tier1Writer`:** Operates on a single IFC file via IfcOpenShell API. Uses transactions (`begin_transaction` / `undo` on error). Handles SET/ADD/REMOVE_PROPERTY and SET_ATTRIBUTE.
 - **`Tier2Writer`:** Wraps `Tier1Writer` for basic ops, adds `add_pset`, `remove_pset`, `set_classification`, `set_material`, `copy_properties`. Uses find-or-create patterns for classifications and materials.
+- **`Tier3Reviewer`:** LLM code review step in `tier3_reviewer.py`; evaluates safety and correctness of generated Tier 3 code before the proposal is created. Review output stored in `proposal.review`.
 
 ---
 
@@ -171,5 +196,6 @@ Before any modification proposal is presented for approval, the Guardian cross-r
 - **LLM model:** User-selectable via Settings page (persisted in `UserLLMConfig`). Resolved at runtime by `core.llm.get_llm(user)`. All services — RAG, intent classifier, tier planners, reviewers — use this factory. The curated model registry (`core/model_registry.py`) provides VRAM estimates and metadata for the UI. Default fallback: `settings.OLLAMA_MODEL` from `.env`.
 - **Docstring quality** is the #1 factor for classifier reliability (system prompt engineering).
 - **Always validate** LLM output before executing — the classifier, validators, and coercion layer form a three-stage safety net.
-- **Request-scoped:** The modification service is instantiated per-request inside Django views, not as a long-running process.
+- **Request-scoped:** The modification service is instantiated per-request inside either the async WebSocket consumer (primary path, wrapped in `sync_to_async`) or the Django view (HTTP fallback). Both paths are functionally equivalent; the emitter parameter controls whether progress is streamed.
 - **DB sync:** After execution, entity properties and names are synced back to the Django ORM so queries reflect the latest state.
+- **`linked_conflict_ids` flow:** When a user clicks "Fix in Modify" on a conflict card, the modify tab receives `?conflict_ids=<uuid>,<uuid>` URL params and pre-fills the prompt with the suggested fix. The proposal stores `linked_conflict_ids` (JSONField). On approval, `_handle_approve()` bulk-sets all linked conflicts to `status=RESOLVED`.

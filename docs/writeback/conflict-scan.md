@@ -39,6 +39,22 @@ Additionally, each finding includes a `confidence` score (0.0–1.0). Only findi
 
 ---
 
+## Scanner Configuration Constants
+
+All constants live in `writeback/services/conflict_scan_service.py`:
+
+| Constant | Value | Meaning |
+|----------|-------|---------|
+| `CONFIDENCE_THRESHOLD` | `0.7` | Minimum confidence to persist a finding |
+| `ENTITY_RELEVANCE_THRESHOLD` | `0.45` | Cosine distance cutoff for entity–chunk pairing |
+| `ENTITY_TOP_K` | `5` | Max entities per requirement chunk |
+
+Adjust these constants if the deployed LLM is systematically over- or under-confident, or if the entity-to-requirement matching produces too many or too few pairs.
+
+`LOW_VALUE_IFC_TYPES` lists entity types excluded when `skip_low_value=true`: `IfcSpace`, `IfcProject`, `IfcBuilding`, `IfcSite`, `IfcBuildingStorey`, `IfcSystem`, `IfcZone`, and `IfcRelXxx` subtypes. These types rarely carry property values that can conflict with document requirements.
+
+---
+
 ## Scan Lifecycle
 
 Each scan creates a `ScanRun` record:
@@ -113,8 +129,35 @@ Future: post-modify re-scan, triggered automatically after a modification is app
 
 ---
 
+## Conflict Management
+
+### Status Lifecycle
+
+`OPEN` → `RESOLVED` (via "Fix in Modify" approval) | `IGNORED` (manual) | `DISMISSED` (manual, permanent — never recreated by scan)
+
+### Bulk Actions
+
+HTTP views in `writeback/views.py` handle batch operations:
+
+| View | Action |
+|------|--------|
+| `BulkDismissView` | Permanently dismiss; skipped on future scans |
+| `BulkIgnoreView` | Mark as ignored (non-permanent) |
+| `BulkResolveView` | Mark as manually resolved |
+| `DeleteAllConflictsView` | Hard-delete all conflicts for a project |
+
+All bulk views accept `conflict_ids=all` (select all) or a comma-separated list of UUIDs.
+
+### "Fix in Modify" Auto-Resolve
+
+Clicking "Fix in Modify" opens the Modify tab with `?conflict_ids=<uuid>,...` in the URL, pre-filling the prompt with the conflict's `suggested_fix`. On proposal approval, `_handle_approve()` bulk-sets all `linked_conflict_ids` to `RESOLVED`.
+
+### UI Grouping
+
+`ConflictsView` groups conflicts by `(title, ifc_value, document_value)` — the same contradiction affecting multiple entities appears as a single grouped card with an entity count badge.
+
+---
+
 ## Confidence Threshold
 
-`CONFIDENCE_THRESHOLD = 0.7` in `conflict_scan_service.py`.
-
-Rationale: scores below 0.7 indicate the LLM is uncertain whether a genuine contradiction exists. At that confidence level, the risk of a false positive outweighs the benefit of surfacing the finding. Adjust this constant if the LLM used in a deployment tends to be systematically under- or over-confident.
+`CONFIDENCE_THRESHOLD = 0.7` — see Scanner Configuration Constants above for rationale and tuning guidance.

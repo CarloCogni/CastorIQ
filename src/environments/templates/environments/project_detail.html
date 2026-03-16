@@ -71,6 +71,20 @@
 
 {% block extra_js %}
 <script>
+
+// Global Textarea Auto-Grow
+window.autoGrow = function(el) {
+    el.style.height = 'auto';               // reset to recalculate
+    const maxH = parseInt(el.style.maxHeight, 10) || 200;
+    if (el.scrollHeight > maxH) {
+        el.style.height = maxH + 'px';
+        el.style.overflowY = 'auto';        // scroll when capped
+    } else {
+        el.style.height = el.scrollHeight + 'px';
+        el.style.overflowY = 'hidden';      // no scrollbar while growing
+    }
+};
+
 // Global Sidebar Toggle Function
 function toggleSidebar() {
     const sidebar = document.getElementById('project-sidebar');

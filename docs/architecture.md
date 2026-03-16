@@ -17,13 +17,16 @@ The system treats IFC files and documents as two representations of the same pro
                          │  Ask / Modify UI  │
                          └────────┬─────────┘
                                   │
-                                  ▼
-                         ┌──────────────────┐
-                         │ Intent Detection  │
-                         └───────┬──┬───────┘
-                                 │  │
-                    ┌────────────┘  └────────────┐
-                    ▼                             ▼
+                    ┌─────────────┴─────────────┐
+                    │ HTTP (Ask)                 │ WebSocket (Modify / Conflict Scan)
+                    ▼                            ▼
+           ┌────────────────┐           ┌────────────────────┐
+           │ Intent Detection│           │  WS Consumer       │
+           └───────┬────────┘           │  ProposalConsumer  │
+                   │                    │  ScanConsumer      │
+                   │                    └────────┬───────────┘
+                   │                             │ phases streamed live
+                   ▼                             ▼
            ┌────────────────┐           ┌────────────────┐
            │   Ask Mode     │           │  Modify Mode   │
            │  RAG Pipeline  │           │ RSAA Pipeline  │
@@ -57,6 +60,7 @@ The system treats IFC files and documents as two representations of the same pro
 | IFC Processing | IfcOpenShell ≥ 0.7 | Industry standard, read AND write IFC |
 | Agent Orchestration | LangChain + LangGraph | ReAct loop, human-in-the-loop, state management |
 | Git | GitPython | Programmatic version control for IFC files |
+| Async / WebSocket | Django Channels + Daphne | ASGI server, WebSocket consumers, async pipeline streaming |
 
 ### Frontend
 
@@ -97,11 +101,15 @@ Proposes IFC modifications through a Risk-Stratified Autonomous Action (RSAA) fr
 
 → **[Full documentation](writeback/overview.md)**
 
+### Real-Time Layer
+
+WebSocket consumers (`writeback/consumers.py`) are the primary entry points for both the Modify pipeline and Conflict Scan. `ProposalConsumer` wraps `ModificationService.propose()` in `sync_to_async` and streams pipeline phases to the client via `WebSocketEmitter`. `ScanConsumer` does the same for `ConflictScanService.full_scan()`. HTTP views remain as action handlers (approve, reject, dismiss) and fallbacks where WebSocket is unavailable.
+
 ### Retrieval-Augmented Verification (RAV)
 
 A guardian layer that cross-references every modification proposal against the project's document corpus before presenting it for approval. Advises the user of confirming or conflicting requirements — never blocks.
 
-→ **[Full documentation](writeback/rav.md)**
+→ **[Full documentation](writeback/guardian.md)**
 
 
 ## Database Models
@@ -117,7 +125,7 @@ A guardian layer that cross-references every modification proposal against the p
 | ifc_processor | `IFCFile`, `IFCEntity` | Uploaded files, extracted entities with properties + embeddings |
 | documents | `Document`, `DocumentChunk` | Uploaded docs, text chunks with embeddings |
 | chat | `ChatSession`, `Message`, `MessageFeedback` | Conversations, messages, user ratings |
-| writeback | `ModificationProposal`, `GitCommit`, `Conflict` | Proposed changes, version history, inconsistencies |
+| writeback | `ModificationProposal`, `GitCommit`, `Conflict`, `ScanRun` | Proposed changes, version history, inconsistencies, scan audit records |
 
 ## Key Design Decisions
 
@@ -133,7 +141,7 @@ A guardian layer that cross-references every modification proposal against the p
 
 ## Known Limitations
 
-1. **Synchronous processing** — IFC parsing blocks the request (Celery could be added)
+1. **Partially async** — Key pipelines (writeback, conflict scan) are async via ASGI/Daphne with WebSocket streaming. Synchronous blocking remains only in IFC parsing and embedding generation.
 2. **No 3D visualization** — users view complex models in external tools (Blender + Bonsai)
 3. **Local LLM only** — no cloud API option by design (privacy-first). Users choose from locally pulled Ollama models via the Settings page.
 4. **Single-file Git** — Git tracks individual IFC files, not inter-model relationships

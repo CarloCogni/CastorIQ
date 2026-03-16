@@ -249,7 +249,7 @@ class ModificationService:
 
         # 6b. Warn if SET_ATTRIBUTE hits multiple entities (likely unintended rename)
         operation = intent.get("operation", "")
-        MAX_NUM_ENTITIES = 10  # noqa: N806
+        MAX_NUM_ENTITIES = 100  # noqa: N806  # todo: put this in front end so each user can adjust it
         if operation == "SET_ATTRIBUTE" and len(validation.entities) > MAX_NUM_ENTITIES:
             raise ModificationError(
                 f"SET_ATTRIBUTE would affect {len(validation.entities)} entities. "

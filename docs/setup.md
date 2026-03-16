@@ -74,6 +74,8 @@ uv run manage.py runserver 8001
 
 Visit http://localhost:8001
 
+> **ASGI / WebSocket:** Daphne is listed first in `INSTALLED_APPS`, so Django automatically uses it as the ASGI server. WebSocket endpoints (`/ws/...`) for the Modify pipeline and Conflict Scan will be active with the standard `runserver` command — no separate Daphne process required in development.
+
 ---
 
 ## Useful Commands
