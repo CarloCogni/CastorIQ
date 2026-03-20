@@ -39,6 +39,16 @@ USAGE EXAMPLES:
     3. AST SKELETON MODE (signatures only, ~80% smaller):
        $ python manage.py dump_context --skeleton
 
+    3b. SKELETON + SPECIFIC FILES (Targeted HTML context):
+       $ python manage.py dump_context --skeleton --files _ask.html modify.html --compact
+       Dumps structural outlines for all Python code, but includes the full,
+       compacted text of specifically named HTML files.
+
+    3c. SKELETON + WILDCARDS:
+       $ python manage.py dump_context --skeleton --files "*.html"
+       Dumps Python skeletons and the full text of ALL html files. (Note: Use quotes
+       around wildcards to prevent shell expansion).
+
     4. PROJECT TREE (full structure with line counts + token estimates):
        $ python manage.py dump_context --tree
        Shows the entire project directory tree from the repo root.
@@ -1173,6 +1183,9 @@ class Command(BaseCommand):
 
         if types_filter:
             self.INCLUDE_EXTS = {f".{t.lstrip('.')}" for t in types_filter}
+        elif skeleton_mode:
+            # Enforce Python-only scope for skeleton mode unless explicitly overridden
+            self.INCLUDE_EXTS = {".py"}
 
         # ── Resolve git diff files ─────────────────────────────────────
         diff_files = None
@@ -1310,7 +1323,17 @@ class Command(BaseCommand):
                     continue
 
                 _, ext = os.path.splitext(file)
-                if ext.lower() not in self.INCLUDE_EXTS:
+
+                # Check if file matches any explicit pattern (supports wildcards like *.html)
+                is_explicit_file = False
+                if files_filter:
+                    for pattern in files_filter:
+                        if fnmatch.fnmatch(file, pattern):
+                            is_explicit_file = True
+                            break
+
+                # Skip if not explicitly requested AND not in allowed extensions
+                if not is_explicit_file and ext.lower() not in self.INCLUDE_EXTS:
                     continue
 
                 file_path = Path(root) / file

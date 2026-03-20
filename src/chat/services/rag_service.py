@@ -8,7 +8,9 @@ from langchain_core.prompts import ChatPromptTemplate
 from pgvector.django import CosineDistance
 
 from chat.models import ChatSession, Message
-from core.llm import get_llm
+from core.llm import get_llm, resolve_model_name
+from core.token_budget import compute_budget
+from core.token_utils import estimate_tokens
 from documents.models import Document, DocumentChunk
 from embeddings.services.embedding_service import EmbeddingService
 from ifc_processor.models import IFCEntity
@@ -51,11 +53,18 @@ class RAGService:
     def __init__(self, user=None):
         self.embedding_service = EmbeddingService()
         self.llm = get_llm(user=user, temperature=0.2)
+        self.model_name = resolve_model_name(user)
 
     def generate_answer(
         self, project, session: ChatSession, user_text: str, scope: str = "auto"
-    ) -> tuple[str, list]:
-        """Pure retrieval + generation. No DB writes."""
+    ) -> tuple[str, list, float]:
+        """
+        Pure retrieval + generation. No DB writes.
+
+        Returns:
+            Tuple of (answer_text, context_items, utilization_pct) where
+            utilization_pct is the token budget usage as a 0–100 float.
+        """
         is_summary_request = any(
             w in user_text.lower()
             for w in [
@@ -76,11 +85,11 @@ class RAGService:
 
         project_meta = self._get_project_metadata(project)
 
-        answer_text = self._generate_response(
+        answer_text, utilization_pct = self._generate_response(
             user_text, context_items, project_meta, analysis_mode, session
         )
 
-        return answer_text, context_items
+        return answer_text, context_items, utilization_pct
 
     def _retrieve_vector_context(self, project, query: str, scope: str) -> list[Any]:
         """Standard Vector Search for specific queries."""
@@ -198,10 +207,12 @@ class RAGService:
         project_meta: str,
         analysis_mode: str,
         session: ChatSession,
-    ) -> str:
+    ) -> tuple[str, float]:
         """
         Build the full prompt with context, history, and query.
-        Manages token budget for the 8K context window.
+
+        Uses dynamic token budgeting to fit history within the model's
+        context window. Returns both the answer text and utilization %.
         """
 
         # --- 1. Format retrieved context ---
@@ -219,10 +230,33 @@ class RAGService:
                 "Quote relevant values and properties when available."
             )
 
-        # --- 3. Conversation history (last 3 exchanges, budget ~800 tokens) ---
-        history_str = self._format_history(session, max_exchanges=3, max_chars_per_msg=300)
+        # --- 3. Compute preliminary budget (no history) to size history allowance ---
+        prelim = compute_budget(
+            self.model_name,
+            system=SYSTEM_PROMPT,
+            entity_context=context_str,
+        )
+        history_budget_tokens = prelim.remaining_for_injection
 
-        # --- 4. Assemble prompt ---
+        # --- 4. Build history within budget ---
+        history_str = self._build_history_within_budget(session, history_budget_tokens)
+
+        # --- 5. Final budget for logging and utilization reporting ---
+        final_budget = compute_budget(
+            self.model_name,
+            system=SYSTEM_PROMPT,
+            entity_context=context_str,
+            injected=history_str,
+        )
+        logger.debug(
+            "RAG token budget — model=%s util=%.0f%% total=%d/%d",
+            self.model_name,
+            final_budget.utilization_pct,
+            final_budget.total_input,
+            final_budget.max_usable,
+        )
+
+        # --- 6. Assemble prompt ---
         template = (
             "{system_prompt}\n\n"
             "ANALYSIS MODE: {analysis_mode}\n"
@@ -237,7 +271,6 @@ class RAGService:
             "=== ANSWER ==="
         )
 
-        # Only include history block if there IS history
         history_block = ""
         if history_str:
             history_block = f"=== RECENT CONVERSATION ===\n{history_str}\n\n"
@@ -245,7 +278,7 @@ class RAGService:
         prompt = ChatPromptTemplate.from_template(template)
         chain = prompt | self.llm | StrOutputParser()
 
-        return chain.invoke(
+        answer = chain.invoke(
             {
                 "system_prompt": SYSTEM_PROMPT,
                 "analysis_mode": analysis_mode,
@@ -256,6 +289,8 @@ class RAGService:
                 "question": query,
             }
         )
+
+        return answer, final_budget.utilization_pct
 
     def _format_context(self, context_items: list) -> str:
         """Format retrieved IFC entities and document chunks into prompt text."""
@@ -276,6 +311,44 @@ class RAGService:
                 )
 
         return "\n\n---\n\n".join(parts)
+
+    def _build_history_within_budget(self, session: ChatSession, max_history_tokens: int) -> str:
+        """
+        Build conversation history that fits within a token budget.
+
+        Walks messages from most-recent backwards, adding exchanges until
+        the next message would exceed ``max_history_tokens``. This replaces
+        the fixed 3-exchange cap with a token-aware limit.
+        """
+        recent_msgs = list(
+            session.messages.filter(role__in=[Message.Role.USER, Message.Role.ASSISTANT]).order_by(
+                "-created_at"
+            )[:20]
+        )
+
+        if not recent_msgs:
+            return ""
+
+        recent_msgs.reverse()
+
+        lines = []
+        total_tokens = 0
+
+        for msg in recent_msgs:
+            content = msg.content[:500]
+            if len(msg.content) > 500:
+                content += "..."
+            role_label = "USER" if msg.role == Message.Role.USER else "CASTOR"
+            line = f"{role_label}: {content}"
+            msg_tokens = estimate_tokens(line)
+
+            if total_tokens + msg_tokens > max_history_tokens:
+                break
+
+            lines.append(line)
+            total_tokens += msg_tokens
+
+        return "\n".join(lines)
 
     def _format_history(
         self, session: ChatSession, max_exchanges: int = 3, max_chars_per_msg: int = 300

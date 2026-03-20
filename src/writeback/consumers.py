@@ -164,7 +164,11 @@ class ProposalConsumer(AsyncJsonWebsocketConsumer):
             content=" + ".join(explanations) if is_chain else explanations[0],
         )
 
-        linked_ids = [i.strip() for i in conflict_ids_raw.split(",") if i.strip()] if conflict_ids_raw else []
+        linked_ids = (
+            [i.strip() for i in conflict_ids_raw.split(",") if i.strip()]
+            if conflict_ids_raw
+            else []
+        )
         for p in proposals:
             p.message = assistant_msg
             if linked_ids:

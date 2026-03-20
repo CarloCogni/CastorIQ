@@ -596,7 +596,36 @@ const ModifyChat = {
         this.scrollToBottom();
     },
 
+    _renderContextBudget(data) {
+        const pct = data.detail?.utilization_pct ?? 0;
+        const total = data.detail?.total_input ?? 0;
+        const windowSize = data.detail?.context_window ?? 0;
+        const color = pct >= 90 ? 'danger' : pct >= 80 ? 'warning' : pct >= 60 ? 'info' : 'secondary';
+        const html = `
+            <div class="d-flex align-items-center gap-2 mt-1 mb-1 px-1" id="modify-context-budget">
+                <div class="progress flex-grow-1" style="height:3px;">
+                    <div class="progress-bar bg-${color}" style="width:${Math.min(pct, 100)}%"></div>
+                </div>
+                <small class="text-secondary fs-8 flex-shrink-0">
+                    Context: ${pct.toFixed(0)}% (${total.toLocaleString()} / ${windowSize.toLocaleString()} tokens)
+                </small>
+            </div>`;
+        // Insert after progress tracker if present, otherwise append to chat
+        const tracker = document.getElementById('modify-progress-tracker');
+        if (tracker) {
+            tracker.insertAdjacentHTML('afterend', html);
+        } else {
+            this.chatEl.insertAdjacentHTML('beforeend', html);
+        }
+        this.scrollToBottom();
+    },
+
     _updateProgressPhase(data) {
+        if (data.phase === 'context_budget') {
+            this._renderContextBudget(data);
+            return;
+        }
+
         const tracker = document.getElementById('modify-progress-tracker');
         if (!tracker) return;
 

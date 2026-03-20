@@ -253,19 +253,49 @@ class IntentClassifier:
             if intent["operation"] not in valid_ops:
                 raise IntentParseError(f"Unknown Tier 1 operation: {intent['operation']}")
 
-    def build_entity_context(self, entities) -> str:
+    def build_entity_context(self, entities, available_tokens: int | None = None) -> str:
         """
         Build a concise entity summary string for the LLM prompt.
 
-        Groups entities by type and includes sample property sets
-        so the LLM knows what's available.
+        When ``available_tokens`` is provided, automatically selects the
+        appropriate detail tier to stay within budget:
+
+        - **Full** (default): types, sample psets, sample property values,
+          available standard psets. Most informative.
+        - **Trimmed**: types and pset names only — no sample values or
+          available psets. Used when full exceeds 50% of available budget.
+        - **Minimal**: type counts only (``"47 IfcWall, 12 IfcSlab, …"``).
+          Last resort when trimmed still exceeds budget.
+
+        Args:
+            entities:         Iterable of IFCEntity instances.
+            available_tokens: Budget ceiling in tokens. None = always return full.
         """
         if not entities:
             return "(no entities found)"
 
-        # Group by ifc_type
+        if available_tokens is None:
+            return self._build_entity_context_full(entities)
+
+        # Two-pass tier selection: use at most 50% of available budget
+        half_budget = max(1, available_tokens // 2)
+
+        full = self._build_entity_context_full(entities)
+        from core.token_utils import estimate_tokens
+
+        if estimate_tokens(full) <= half_budget:
+            return full
+
+        trimmed = self._build_entity_context_trimmed(entities)
+        if estimate_tokens(trimmed) <= half_budget:
+            return trimmed
+
+        return self._build_entity_context_minimal(entities)
+
+    def _build_entity_context_full(self, entities) -> str:
+        """Full entity context: types, psets, sample property values, available psets."""
         by_type: dict[str, list] = {}
-        for e in entities[:50]:  # Cap at 50 to avoid token overflow
+        for e in entities[:50]:
             by_type.setdefault(e.ifc_type, []).append(e)
 
         lines = []
@@ -273,7 +303,6 @@ class IntentClassifier:
             names = [e.name or e.global_id[:8] for e in group[:5]]
             sample = group[0]
 
-            # Extract pset names from properties JSON keys
             psets = set()
             if sample.properties:
                 for key in sample.properties:
@@ -297,8 +326,6 @@ class IntentClassifier:
                                 hint = f"  ({type_str})"
                     sample_props.append(f"    {key} = {val}{hint}")
 
-            # Show applicable standard psets not yet on this entity
-
             existing_psets = set()
             if sample.properties:
                 for key in sample.properties:
@@ -320,6 +347,40 @@ class IntentClassifier:
             lines.append(line)
 
         return "\n".join(lines)
+
+    def _build_entity_context_trimmed(self, entities) -> str:
+        """Trimmed entity context: types, entity names, and pset names only."""
+        by_type: dict[str, list] = {}
+        for e in entities[:50]:
+            by_type.setdefault(e.ifc_type, []).append(e)
+
+        lines = []
+        for ifc_type, group in by_type.items():
+            names = [e.name or e.global_id[:8] for e in group[:5]]
+            sample = group[0]
+
+            psets = set()
+            if sample.properties:
+                for key in sample.properties:
+                    if "." in key:
+                        psets.add(key.split(".")[0])
+
+            lines.append(
+                f"- {ifc_type} ({len(group)} entities): "
+                f"{', '.join(names)}{'...' if len(group) > 5 else ''}\n"
+                f"  Property sets: {', '.join(sorted(psets)) or '(none)'}"
+            )
+
+        return "\n".join(lines)
+
+    def _build_entity_context_minimal(self, entities) -> str:
+        """Minimal entity context: type counts only."""
+        by_type: dict[str, int] = {}
+        for e in entities[:100]:
+            by_type[e.ifc_type] = by_type.get(e.ifc_type, 0) + 1
+
+        parts = [f"{count} {ifc_type}" for ifc_type, count in by_type.items()]
+        return ", ".join(parts)
 
 
 class IntentParseError(Exception):

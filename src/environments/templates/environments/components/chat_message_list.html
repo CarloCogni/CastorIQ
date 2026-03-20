@@ -156,6 +156,12 @@
 </div>
 {% endfor %}
 
+{% if utilization_pct is not None %}
+<div id="context-bar" hx-swap-oob="innerHTML">
+  {% include "environments/components/_context_bar_inner.html" %}
+</div>
+{% endif %}
+
 <script>
     // Source detail toggle — one open at a time per message
     function toggleSourceDetail(badgeBtn, detailId) {

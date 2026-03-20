@@ -74,6 +74,7 @@ Review the code against the user's request. Return JSON only.
 
 class Tier3Reviewer:
     """LLM-powered code review that explains generated Tier 3 code in plain English."""
+
     def __init__(self, user=None):
         self.llm = get_llm(user=user, temperature=0.1, format_json=True)
 

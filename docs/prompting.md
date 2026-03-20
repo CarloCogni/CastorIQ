@@ -19,25 +19,7 @@ Current code/context is attached/below.
 
 Next task: [Describe what you want to build]
 ......
----
-DEVELOPER NOTES:
-- Clean code (Uncle Bob), Zen of Python, DRY
-- Negative Space Programming: design by omission, guard clauses over nesting,
-  remove boilerplate with context managers and base classes
-- Docstrings on every module, class, and public method
-- File header comment: # app/path/to/file.py
-- Views and Forms are dumb — business logic in services/ layer
-- Logging (never print), all in English
-- Type hints on signatures and return types
-- select_related / prefetch_related on every queryset
 
-DELIVERY FORMAT:
-- Explain the problem and solution BEFORE writing code
-- Code in focused chunks (not full files) — I patch manually in PyCharm
-- For modifications: show exact location with 3-5 lines of surrounding context
-- For HTML: reference surrounding elements precisely, never "add this somewhere"
-- Ask before touching more than 3 files
----
 ---
 DEVELOPER NOTES:
 - Clean code (Uncle Bob), Zen of Python, DRY

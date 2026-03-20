@@ -11,6 +11,110 @@
         <i class="bi bi-arrow-down text-secondary"></i>
     </div>
 
+<!-- Context Rot Info Modal -->
+<div class="modal fade" id="contextRotModal" tabindex="-1" aria-labelledby="contextRotModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content bg-surface border-secondary">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title" id="contextRotModalLabel">
+                    <i class="bi bi-cpu me-2 text-primary"></i>Context Window &amp; LLM Performance
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-secondary small mb-3">
+                    LLMs do not process context uniformly. Performance degrades as the context window fills up —
+                    even on simple retrieval tasks. This is known as <strong class="text-light">Context Rot</strong>.
+                </p>
+
+                <div class="d-flex flex-wrap gap-2 mb-3">
+                    <a href="https://research.trychroma.com/context-rot"
+                       target="_blank" rel="noopener noreferrer"
+                       class="btn btn-sm btn-outline-primary">
+                        <i class="bi bi-file-earmark-text me-1"></i>Chroma Research Paper
+                        <span class="ms-1 text-secondary" style="font-size:0.7rem;">14 Jul 2025</span>
+                    </a>
+                    <a href="https://www.youtube.com/watch?v=XqYhxr0m0n0"
+                       target="_blank" rel="noopener noreferrer"
+                       class="btn btn-sm btn-outline-secondary">
+                        <i class="bi bi-play-circle me-1"></i>Watch Video
+                        <span class="ms-1 text-secondary" style="font-size:0.7rem;">11 Mar 2026</span>
+                    </a>
+                </div>
+
+                <img src="{% static 'images/chroma-llm-context-rot-graph.png' %}"
+                     alt="Context Rot — LLM performance vs. input length graph"
+                     class="img-fluid rounded border border-secondary mb-3 w-100">
+
+                <p class="text-secondary small mb-3">
+                    The graph above (from Chroma's research) shows how leading models — including Claude, GPT-4.1,
+                    Qwen3, and Gemini 2.5 — lose reliability as token count grows. Real-world tasks with ambiguous
+                    queries degrade faster than synthetic benchmarks suggest.
+                </p>
+
+                <p class="text-secondary small mb-2">
+                    <i class="bi bi-lightbulb text-warning me-1"></i>
+                    <strong class="text-light">Practical advice:</strong> responses may degrade above 50% usage.
+                    Start a new session when nearing the limit to maintain quality.
+                </p>
+
+                <div class="mt-3">
+                    <p class="text-secondary small mb-2">
+                        <i class="bi bi-calculator me-1 text-info"></i>
+                        <strong class="text-light">How the % is estimated:</strong>
+                        token count ≈ <code class="text-info">characters ÷ 4</code>, divided by the model's usable budget
+                        (90% of context window − 1,500 tokens reserved for output). This is <em>conservative</em> — IFC data
+                        (GUIDs, long property chains) is token-denser than prose, so actual consumption often exceeds the estimate.
+                    </p>
+
+                    <p class="text-secondary small mb-2">
+                        The bar reflects the <strong class="text-light">full context</strong>: system prompt + RAG-retrieved
+                        chunks + conversation history — not just your last message.
+                    </p>
+
+                    <div class="table-responsive">
+                        <table class="table table-sm table-dark table-bordered text-secondary mb-1" style="font-size: 0.75rem;">
+                            <thead>
+                                <tr class="text-light">
+                                    <th>Model</th>
+                                    <th>Context window</th>
+                                    <th>50% of usable budget</th>
+                                    <th>≈ Words at 50%</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>llama3.1:8b</td>
+                                    <td>8,192 tokens</td>
+                                    <td class="text-warning">~2,900 tokens</td>
+                                    <td>~2,300 words</td>
+                                </tr>
+                                <tr>
+                                    <td>qwen3:32b</td>
+                                    <td>32,768 tokens</td>
+                                    <td class="text-warning">~14,000 tokens</td>
+                                    <td>~11,000 words</td>
+                                </tr>
+                                <tr>
+                                    <td>llama3.1:70b</td>
+                                    <td>128,000 tokens</td>
+                                    <td class="text-warning">~57,000 tokens</td>
+                                    <td>~45,000 words</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <p class="text-secondary mb-0" style="font-size: 0.7rem;">
+                        Usable budget = 90% of context window − 1,500 tokens reserved for output.
+                        50% values above are 50% of that budget, not of the raw window.
+                    </p>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
     <div class="chat-input-container flex-shrink-0 border-top bg-surface p-3">
         <form id="ask-form"
           method="post"
@@ -67,6 +171,19 @@
                        data-bs-title="Only search uploaded documents (PDF, DOCX)">
                     <i class="bi bi-file-text me-1" style="color: var(--castor-primary);"></i>Docs
                 </label>
+
+                <div id="context-bar" class="ms-auto d-flex align-items-center gap-1">
+                    {% if utilization_pct is not None %}{% include "environments/components/_context_bar_inner.html" %}{% endif %}
+                    <button type="button"
+                            class="btn btn-link p-0 ms-1 text-warning"
+                            style="line-height:1; font-size: 0.75rem;"
+                            data-bs-toggle="modal"
+                            data-bs-target="#contextRotModal"
+                            tabindex="-1"
+                            aria-label="Learn about context window usage">
+                        <i class="bi bi-question-circle"></i>
+                    </button>
+                </div>
             </div>
         </form>
     </div>
@@ -79,7 +196,6 @@
         const scrollBtn = document.getElementById('scroll-btn');
         const form = document.getElementById('ask-form');
         const input = document.getElementById('user-input');
-
         // --- Scroll Logic ---
 
         // 1. Function to Scroll to Bottom

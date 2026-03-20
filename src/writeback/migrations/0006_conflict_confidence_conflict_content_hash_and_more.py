@@ -8,68 +8,162 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('documents', '0003_alter_documentchunk_embedding'),
-        ('environments', '0002_alter_project_options_and_more'),
-        ('ifc_processor', '0004_alter_ifcentity_embedding'),
-        ('writeback', '0005_conflict_suggested_fix_alter_conflict_status'),
+        ("documents", "0003_alter_documentchunk_embedding"),
+        ("environments", "0002_alter_project_options_and_more"),
+        ("ifc_processor", "0004_alter_ifcentity_embedding"),
+        ("writeback", "0005_conflict_suggested_fix_alter_conflict_status"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='conflict',
-            name='confidence',
-            field=models.FloatField(default=0.0, help_text='LLM confidence in this finding (0.0–1.0)', verbose_name='Confidence'),
+            model_name="conflict",
+            name="confidence",
+            field=models.FloatField(
+                default=0.0,
+                help_text="LLM confidence in this finding (0.0–1.0)",
+                verbose_name="Confidence",
+            ),
         ),
         migrations.AddField(
-            model_name='conflict',
-            name='content_hash',
-            field=models.CharField(blank=True, db_index=True, help_text='Deduplication key — SHA-256(entity_id:chunk_id:property_name)', max_length=64, verbose_name='Content Hash'),
+            model_name="conflict",
+            name="content_hash",
+            field=models.CharField(
+                blank=True,
+                db_index=True,
+                help_text="Deduplication key — SHA-256(entity_id:chunk_id:property_name)",
+                max_length=64,
+                verbose_name="Content Hash",
+            ),
         ),
         migrations.AddField(
-            model_name='conflict',
-            name='property_name',
-            field=models.CharField(blank=True, help_text='IFC property involved in the conflict', max_length=255, verbose_name='Property Name'),
+            model_name="conflict",
+            name="property_name",
+            field=models.CharField(
+                blank=True,
+                help_text="IFC property involved in the conflict",
+                max_length=255,
+                verbose_name="Property Name",
+            ),
         ),
         migrations.CreateModel(
-            name='ScanRun',
+            name="ScanRun",
             fields=[
-                ('created_at', models.DateTimeField(auto_now_add=True, db_index=True, verbose_name='Created At')),
-                ('updated_at', models.DateTimeField(auto_now=True, verbose_name='Updated At')),
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False, verbose_name='ID')),
-                ('scan_type', models.CharField(choices=[('full', 'Full Scan'), ('targeted_doc', 'Targeted (Document)'), ('targeted_ifc', 'Targeted (IFC Entity)'), ('post_modify', 'Post-Modification')], default='full', max_length=20, verbose_name='Scan Type')),
-                ('status', models.CharField(choices=[('pending', 'Pending'), ('running', 'Running'), ('completed', 'Completed'), ('failed', 'Failed')], db_index=True, default='pending', max_length=20, verbose_name='Status')),
-                ('entities_scanned', models.PositiveIntegerField(default=0, verbose_name='Entities Scanned')),
-                ('chunks_compared', models.PositiveIntegerField(default=0, verbose_name='Chunks Compared')),
-                ('conflicts_found', models.PositiveIntegerField(default=0, verbose_name='Conflicts Found')),
-                ('llm_model_used', models.CharField(blank=True, max_length=100, verbose_name='LLM Model Used')),
-                ('error_message', models.TextField(blank=True, verbose_name='Error Message')),
-                ('project', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='scan_runs', to='environments.project', verbose_name='Project')),
-                ('triggered_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='scan_runs', to=settings.AUTH_USER_MODEL, verbose_name='Triggered By')),
+                (
+                    "created_at",
+                    models.DateTimeField(
+                        auto_now_add=True, db_index=True, verbose_name="Created At"
+                    ),
+                ),
+                ("updated_at", models.DateTimeField(auto_now=True, verbose_name="Updated At")),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "scan_type",
+                    models.CharField(
+                        choices=[
+                            ("full", "Full Scan"),
+                            ("targeted_doc", "Targeted (Document)"),
+                            ("targeted_ifc", "Targeted (IFC Entity)"),
+                            ("post_modify", "Post-Modification"),
+                        ],
+                        default="full",
+                        max_length=20,
+                        verbose_name="Scan Type",
+                    ),
+                ),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("pending", "Pending"),
+                            ("running", "Running"),
+                            ("completed", "Completed"),
+                            ("failed", "Failed"),
+                        ],
+                        db_index=True,
+                        default="pending",
+                        max_length=20,
+                        verbose_name="Status",
+                    ),
+                ),
+                (
+                    "entities_scanned",
+                    models.PositiveIntegerField(default=0, verbose_name="Entities Scanned"),
+                ),
+                (
+                    "chunks_compared",
+                    models.PositiveIntegerField(default=0, verbose_name="Chunks Compared"),
+                ),
+                (
+                    "conflicts_found",
+                    models.PositiveIntegerField(default=0, verbose_name="Conflicts Found"),
+                ),
+                (
+                    "llm_model_used",
+                    models.CharField(blank=True, max_length=100, verbose_name="LLM Model Used"),
+                ),
+                ("error_message", models.TextField(blank=True, verbose_name="Error Message")),
+                (
+                    "project",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="scan_runs",
+                        to="environments.project",
+                        verbose_name="Project",
+                    ),
+                ),
+                (
+                    "triggered_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="scan_runs",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="Triggered By",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Scan Run',
-                'verbose_name_plural': 'Scan Runs',
-                'ordering': ['-created_at'],
+                "verbose_name": "Scan Run",
+                "verbose_name_plural": "Scan Runs",
+                "ordering": ["-created_at"],
             },
         ),
         migrations.AddField(
-            model_name='conflict',
-            name='scan_run',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='conflicts', to='writeback.scanrun', verbose_name='Scan Run'),
+            model_name="conflict",
+            name="scan_run",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="conflicts",
+                to="writeback.scanrun",
+                verbose_name="Scan Run",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='conflict',
+            model_name="conflict",
             constraint=models.UniqueConstraint(
-                condition=models.Q(status='open') & ~models.Q(content_hash=''),
-                fields=('content_hash',),
-                name='unique_open_conflict_hash',
+                condition=models.Q(status="open") & ~models.Q(content_hash=""),
+                fields=("content_hash",),
+                name="unique_open_conflict_hash",
             ),
         ),
         migrations.AddIndex(
-            model_name='scanrun',
-            index=models.Index(fields=['project', 'status', '-created_at'], name='writeback_s_project_c6666e_idx'),
+            model_name="scanrun",
+            index=models.Index(
+                fields=["project", "status", "-created_at"], name="writeback_s_project_c6666e_idx"
+            ),
         ),
     ]

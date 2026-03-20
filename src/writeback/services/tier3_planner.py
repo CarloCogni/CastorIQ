@@ -155,6 +155,7 @@ Generate self-contained IfcOpenShell code to fulfill this request. Return JSON o
 
 class Tier3Planner:
     """Generates sandboxed IfcOpenShell Python code from natural language requests."""
+
     def __init__(self, user=None):
         self.llm = get_llm(user=user, temperature=0.1, format_json=True)
 
@@ -257,4 +258,5 @@ class Tier3Planner:
 
 class CodeGenerationError(Exception):
     """Raised when the LLM produces invalid or unsafe code."""
+
     pass

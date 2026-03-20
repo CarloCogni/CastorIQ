@@ -13,26 +13,41 @@ from django.shortcuts import redirect, render
 from django.views.decorators.http import require_POST
 from django.views.generic import TemplateView, View
 
-from core.llm_model_registry import MODEL_REGISTRY, VRAM_TIERS, get_model_info
+from core.llm_model_registry import (
+    DEFAULT_CONTEXT_WINDOW,
+    MODEL_REGISTRY,
+    VRAM_TIERS,
+    get_model_info,
+)
+from core.token_budget import get_context_window
 from core.models import ErrorLog, UserLLMConfig
 from core.services.team_notes import create_note, pull_notes_from_supabase, push_notes_to_supabase
 
 logger = getLogger(__name__)
 
+
+def _fmt_ctx(tokens: int) -> str:
+    """Format a context window token count as a compact label, e.g. '8k', '32k'."""
+    return f"{tokens // 1024}k" if tokens >= 1024 else str(tokens)
+
+
 def health_check(request):
     """Health check endpoint."""
     return JsonResponse({"status": "healthy", "service": "castor"})
+
 
 @login_required
 def home_view(request):
     """Home page - redirect to projects."""
     return redirect("projects:list")
 
+
 def test_error(request):
     """Test view to trigger an error - REMOVE IN PRODUCTION"""
     raise ValueError(
         "This is a test error to verify error logging works! \n #### Hasta la vista Baby!!!! ####"
     )
+
 
 @user_passes_test(lambda u: u.is_staff)
 def loader_gallery(request):
@@ -42,9 +57,11 @@ def loader_gallery(request):
     """
     return render(request, "loaders/loader_gallery.html")
 
+
 def test_landing_page(request):
     """Test view to trigger an error - REMOVE IN PRODUCTION"""
     return render(request, "registration/login-matrix.html")
+
 
 @require_POST
 @staff_member_required
@@ -109,6 +126,7 @@ def send_errors_to_supabase(request):
     unsent.update(sent_to_supabase=True)
 
     return JsonResponse({"success": True, "sent": count})
+
 
 @require_POST
 @staff_member_required
@@ -218,6 +236,7 @@ def pull_errors_from_supabase(request):
         }
     )
 
+
 class SettingsView(LoginRequiredMixin, TemplateView):
     """System-wide application settings."""
 
@@ -240,6 +259,7 @@ class SettingsView(LoginRequiredMixin, TemplateView):
         context["vram_tiers"] = VRAM_TIERS
 
         return context
+
 
 class OllamaModelsAPIView(LoginRequiredMixin, View):
     """HTMX endpoint: fetch available Ollama models, return HTML partial."""
@@ -292,6 +312,7 @@ class OllamaModelsAPIView(LoginRequiredMixin, View):
                     "description": info.description if info else "Not in Castor registry",
                     "is_moe": info.is_moe if info else False,
                     "supports_thinking": info.supports_thinking if info else False,
+                    "context_window_label": _fmt_ctx(get_context_window(tag)),
                 }
             )
 
@@ -309,6 +330,7 @@ class OllamaModelsAPIView(LoginRequiredMixin, View):
                         "description": info.description,
                         "is_moe": info.is_moe,
                         "supports_thinking": info.supports_thinking,
+                        "context_window_label": _fmt_ctx(info.context_window_size),
                     }
                 )
 
@@ -353,6 +375,7 @@ class OllamaModelsAPIView(LoginRequiredMixin, View):
                 ordered[label] = models
 
         return ordered
+
 
 class SetModelAPIView(LoginRequiredMixin, View):
     """HTMX endpoint: save the user's model choice."""

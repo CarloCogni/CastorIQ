@@ -4,20 +4,34 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('writeback', '0004_modificationproposal_verification_result_and_more'),
+        ("writeback", "0004_modificationproposal_verification_result_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='conflict',
-            name='suggested_fix',
-            field=models.TextField(blank=True, help_text='LLM-generated modify prompt to resolve this conflict', verbose_name='Suggested Fix'),
+            model_name="conflict",
+            name="suggested_fix",
+            field=models.TextField(
+                blank=True,
+                help_text="LLM-generated modify prompt to resolve this conflict",
+                verbose_name="Suggested Fix",
+            ),
         ),
         migrations.AlterField(
-            model_name='conflict',
-            name='status',
-            field=models.CharField(choices=[('open', 'Open'), ('resolved', 'Resolved'), ('ignored', 'Ignored'), ('dismissed', 'Dismissed')], db_index=True, default='open', max_length=20, verbose_name='Status'),
+            model_name="conflict",
+            name="status",
+            field=models.CharField(
+                choices=[
+                    ("open", "Open"),
+                    ("resolved", "Resolved"),
+                    ("ignored", "Ignored"),
+                    ("dismissed", "Dismissed"),
+                ],
+                db_index=True,
+                default="open",
+                max_length=20,
+                verbose_name="Status",
+            ),
         ),
     ]

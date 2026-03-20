@@ -133,8 +133,7 @@ class Tier1Validator:
             except (ValueError, TypeError):
                 return (
                     False,
-                    f"'{value}' is not a valid integer for {pset}.{prop}. "
-                    f"Expected a whole number.",
+                    f"'{value}' is not a valid integer for {pset}.{prop}. Expected a whole number.",
                     value,
                 )
 
@@ -146,8 +145,7 @@ class Tier1Validator:
                 suffix = ", ..." if len(enum_values) > 12 else ""
                 return (
                     False,
-                    f"'{value}' is not a valid value for {pset}.{prop}. "
-                    f"Allowed: {display}{suffix}",
+                    f"'{value}' is not a valid value for {pset}.{prop}. Allowed: {display}{suffix}",
                     value,
                 )
             # Return the correctly-cased original value

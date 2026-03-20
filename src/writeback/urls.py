@@ -22,9 +22,21 @@ urlpatterns = [
         views.IgnoreConflictView.as_view(),
         name="ignore_conflict",
     ),
-    path("<uuid:pk>/conflicts/bulk-ignore/", views.BulkIgnoreView.as_view(), name="bulk_ignore_conflicts"),
-    path("<uuid:pk>/conflicts/bulk-resolve/", views.BulkResolveView.as_view(), name="bulk_resolve_conflicts"),
-    path("<uuid:pk>/conflicts/delete-all/", views.DeleteAllConflictsView.as_view(), name="delete_all_conflicts"),
+    path(
+        "<uuid:pk>/conflicts/bulk-ignore/",
+        views.BulkIgnoreView.as_view(),
+        name="bulk_ignore_conflicts",
+    ),
+    path(
+        "<uuid:pk>/conflicts/bulk-resolve/",
+        views.BulkResolveView.as_view(),
+        name="bulk_resolve_conflicts",
+    ),
+    path(
+        "<uuid:pk>/conflicts/delete-all/",
+        views.DeleteAllConflictsView.as_view(),
+        name="delete_all_conflicts",
+    ),
     path("<uuid:pk>/history/", views.HistoryView.as_view(), name="history"),
     path(
         "<uuid:pk>/history/restore/<uuid:commit_id>/",

@@ -22,13 +22,14 @@ MAX_CODE_LENGTH = 15_000
 
 class Tier3ExecutionError(Exception):
     """Raised when Tier 3 code execution fails at any safety layer."""
+
     pass
 
 
 class Tier3TimeoutError(Tier3ExecutionError):
     """Raised when generated code exceeds the execution timeout."""
-    pass
 
+    pass
 
 
 class Tier3Executor:

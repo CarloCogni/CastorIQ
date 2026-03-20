@@ -11,6 +11,8 @@ VRAM estimates assume Q4_K_M quantization at 8k context.
 
 from dataclasses import dataclass
 
+DEFAULT_CONTEXT_WINDOW = 8192  # Conservative fallback for unknown / offline models
+
 
 @dataclass(frozen=True)
 class ModelInfo:
@@ -19,6 +21,9 @@ class ModelInfo:
     vram_gb: float  # Approximate VRAM needed (Q4_K_M, 8k ctx)
     tier: str  # lite | standard | performance | high_end | workstation
     description: str  # One-liner for the UI tooltip
+    context_window_size: int = (
+        DEFAULT_CONTEXT_WINDOW  # Effective context window (tokens); used as offline fallback
+    )
     supports_thinking: bool = False  # Qwen3 thinking/non-thinking mode
     is_moe: bool = False  # Mixture-of-Experts (activated params < total)
 
@@ -46,6 +51,7 @@ MODEL_REGISTRY: dict[str, ModelInfo] = {
         vram_gb=2.0,
         tier="lite",
         description="Minimal model. Fast but limited reasoning.",
+        context_window_size=32768,
         supports_thinking=True,
     ),
     "qwen3:1.7b": ModelInfo(
@@ -54,6 +60,7 @@ MODEL_REGISTRY: dict[str, ModelInfo] = {
         vram_gb=3.5,
         tier="lite",
         description="Lightweight. Suitable for simple property lookups.",
+        context_window_size=32768,
         supports_thinking=True,
     ),
     "llama3.2:3b": ModelInfo(
@@ -62,6 +69,7 @@ MODEL_REGISTRY: dict[str, ModelInfo] = {
         vram_gb=4.0,
         tier="lite",
         description="Compact Meta model. Good baseline for constrained hardware.",
+        context_window_size=8192,
     ),
     # ── Standard ─────────────────────────────────────────────
     "qwen3:4b": ModelInfo(
@@ -70,6 +78,7 @@ MODEL_REGISTRY: dict[str, ModelInfo] = {
         vram_gb=5.0,
         tier="standard",
         description="Rivals Qwen2.5-72B on some benchmarks despite small size.",
+        context_window_size=32768,
         supports_thinking=True,
     ),
     "llama3.1:8b": ModelInfo(
@@ -78,6 +87,7 @@ MODEL_REGISTRY: dict[str, ModelInfo] = {
         vram_gb=6.5,
         tier="standard",
         description="Castor's original default. Solid all-rounder.",
+        context_window_size=8192,
     ),
     "qwen3:8b": ModelInfo(
         label="Qwen3 8B",
@@ -85,6 +95,7 @@ MODEL_REGISTRY: dict[str, ModelInfo] = {
         vram_gb=6.5,
         tier="standard",
         description="Strong reasoning + 100 language support. Great 8B option.",
+        context_window_size=32768,
         supports_thinking=True,
     ),
     # ── Performance ──────────────────────────────────────────
@@ -94,6 +105,7 @@ MODEL_REGISTRY: dict[str, ModelInfo] = {
         vram_gb=10.0,
         tier="performance",
         description="Excellent reasoning. Sweet spot for 12 GB GPUs.",
+        context_window_size=32768,
         supports_thinking=True,
     ),
     "qwen3:30b-a3b": ModelInfo(
@@ -102,6 +114,7 @@ MODEL_REGISTRY: dict[str, ModelInfo] = {
         vram_gb=10.0,
         tier="performance",
         description="30B knowledge, only 3B activated per token. Best value at 12 GB.",
+        context_window_size=32768,
         supports_thinking=True,
         is_moe=True,
     ),
@@ -112,6 +125,7 @@ MODEL_REGISTRY: dict[str, ModelInfo] = {
         vram_gb=22.0,
         tier="high_end",
         description="Matches Qwen2.5-72B quality. Single RTX 4090 territory.",
+        context_window_size=32768,
         supports_thinking=True,
     ),
     "qwen3.5:35b": ModelInfo(
@@ -120,6 +134,7 @@ MODEL_REGISTRY: dict[str, ModelInfo] = {
         vram_gb=23.0,
         tier="high_end",
         description="Latest (Feb 2026). Native multimodal, hybrid attention.",
+        context_window_size=32768,
         supports_thinking=True,
         is_moe=True,
     ),
@@ -129,6 +144,7 @@ MODEL_REGISTRY: dict[str, ModelInfo] = {
         vram_gb=42.0,
         tier="workstation",
         description="Meta's flagship. Needs 48 GB+ VRAM.",
+        context_window_size=8192,
     ),
     # ── Workstation ──────────────────────────────────────────
     "qwen3:235b-a22b": ModelInfo(
@@ -137,6 +153,7 @@ MODEL_REGISTRY: dict[str, ModelInfo] = {
         vram_gb=60.0,
         tier="workstation",
         description="Frontier-class MoE. Multi-GPU or cloud only.",
+        context_window_size=32768,
         supports_thinking=True,
         is_moe=True,
     ),

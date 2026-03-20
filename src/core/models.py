@@ -22,6 +22,7 @@ class TimestampedModel(models.Model):
     class Meta:
         abstract = True
 
+
 class UUIDModel(TimestampedModel):
     """Abstract base model with UUID primary key."""
 
@@ -34,6 +35,7 @@ class UUIDModel(TimestampedModel):
 
     class Meta:
         abstract = True
+
 
 class ErrorLog(UUIDModel):
     """Store application errors with full stacktrace for debugging"""
@@ -174,6 +176,7 @@ class ErrorLog(UUIDModel):
     def __str__(self):
         return f"{self.severity.upper()}: {self.message[:50]}"
 
+
 class UserLLMConfig(models.Model):
     """
     Per-user LLM preference.
@@ -211,6 +214,7 @@ class UserLLMConfig(models.Model):
         """Get or create config for a given user."""
         obj, _ = cls.objects.get_or_create(user=user)
         return obj
+
 
 class TeamNote(UUIDModel):
     """Cross-machine team notes synced via Supabase."""

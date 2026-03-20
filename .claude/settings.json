@@ -1,4 +1,17 @@
 {
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd C:\\Users\\carlo\\OneDrive\\Documents\\PycharmProjects\\ZIGURAT\\Castor && uv run ruff check src/ tests/ --fix --quiet 2>&1 | head -20; uv run ruff format src/ tests/ --quiet"
+          }
+        ]
+      }
+    ]
+  },
   "permissions": {
     "allow": [
       "Bash(cd src*)",

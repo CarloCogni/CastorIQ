@@ -25,7 +25,6 @@ ALLOWED_HOSTS = ["*"]
 # INTERNAL_IPS = ["127.0.0.1"]
 
 
-
 # =============================================================================
 # Worktree DB auto-detection (MUST be last — overrides DATABASES when active)
 # When running inside a Claude Code worktree with an isolated DB,

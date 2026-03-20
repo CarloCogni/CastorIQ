@@ -52,13 +52,16 @@
                         </div>
 
                         <!-- VRAM + Size -->
-                        <div class="text-end flex-shrink-0" style="min-width: 80px;">
+                        <div class="text-end flex-shrink-0" style="min-width: 90px;">
                             {% if m.vram_gb %}
                                 <div class="fs-8 fw-semibold">~{{ m.vram_gb }} GB</div>
                                 <div class="text-secondary fs-8">VRAM</div>
                             {% else %}
                                 <div class="fs-8 text-secondary">{{ m.size_gb }} GB</div>
                                 <div class="text-secondary fs-8">disk</div>
+                            {% endif %}
+                            {% if m.context_window_label %}
+                                <div class="text-secondary fs-8">{{ m.context_window_label }} ctx</div>
                             {% endif %}
                         </div>
                     </div>
@@ -130,9 +133,12 @@
                             </div>
 
                             <!-- VRAM -->
-                            <div class="text-end flex-shrink-0" style="min-width: 80px;">
+                            <div class="text-end flex-shrink-0" style="min-width: 90px;">
                                 <div class="fs-8 fw-semibold">~{{ m.vram_gb }} GB</div>
                                 <div class="text-secondary fs-8">VRAM</div>
+                                {% if m.context_window_label %}
+                                    <div class="text-secondary fs-8">{{ m.context_window_label }} ctx</div>
+                                {% endif %}
                             </div>
 
                             <!-- Pull command -->

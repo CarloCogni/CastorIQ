@@ -86,7 +86,10 @@ def push_notes_to_supabase(developer_name: str) -> dict[str, Any]:
 
     endpoint = f"{settings.SUPABASE_URL}/rest/v1/team_notes"
     resp = http_requests.post(
-        endpoint, json=payload, headers=_get_supabase_headers(), timeout=15,
+        endpoint,
+        json=payload,
+        headers=_get_supabase_headers(),
+        timeout=15,
     )
     resp.raise_for_status()
 

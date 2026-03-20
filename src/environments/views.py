@@ -22,8 +22,10 @@ from django.views.generic import (
 )
 
 from chat.models import ChatSession, Message
-from chat.services.rag_service import RAGService
+from chat.services.rag_service import SYSTEM_PROMPT, RAGService
+from core.llm import resolve_model_name
 from core.mixins import ProjectAccessMixin, ProjectTabMixin
+from core.token_budget import compute_budget, get_context_window
 from documents.models import Document
 from documents.services.document_processor import DocumentProcessor
 from ifc_processor.models import IFCFile
@@ -32,6 +34,12 @@ from ifc_processor.services.processor import IFCProcessingService
 from .models import Project
 
 logger = logging.getLogger(__name__)
+
+
+def _fmt_ctx(tokens: int) -> str:
+    """Format a context window token count as a compact label, e.g. '8k', '32k'."""
+    return f"{tokens // 1024}k" if tokens >= 1024 else str(tokens)
+
 
 # --- Mixins ---
 
@@ -191,7 +199,16 @@ class AskView(ProjectTabMixin, TemplateView):
 
         context["session"] = session
         context["active_session_id"] = session.pk
-        context["messages"] = session.messages.select_related().order_by("created_at")
+        messages_qs = session.messages.select_related().order_by("created_at")
+        context["messages"] = messages_qs
+
+        if messages_qs.exists():
+            model_name = resolve_model_name(self.request.user)
+            history = [{"role": m.role, "content": m.content} for m in messages_qs]
+            budget = compute_budget(model_name, system=SYSTEM_PROMPT, conversation_history=history)
+            context["utilization_pct"] = budget.utilization_pct
+            context["context_window_label"] = _fmt_ctx(budget.model_context_window)
+
         return context
 
     def post(self, request, *args, **kwargs):
@@ -222,9 +239,10 @@ class AskView(ProjectTabMixin, TemplateView):
         )
 
         # Generate AI response
+        utilization_pct = 0.0
         try:
             rag = RAGService(user=request.user)
-            answer_text, context_items = rag.generate_answer(
+            answer_text, context_items, utilization_pct = rag.generate_answer(
                 project,
                 session,
                 user_text,
@@ -252,12 +270,15 @@ class AskView(ProjectTabMixin, TemplateView):
         # HTMX partial response
         if request.headers.get("HX-Request"):
             updated_messages = session.messages.select_related().order_by("created_at")
+            model_name = resolve_model_name(request.user)
             return render(
                 request,
                 "environments/components/chat_message_list.html",
                 {
                     "messages": updated_messages,
                     "user": request.user,
+                    "utilization_pct": utilization_pct,
+                    "context_window_label": _fmt_ctx(get_context_window(model_name)),
                 },
             )
 
@@ -347,6 +368,46 @@ class UploadIFCView(ProjectAccessMixin, View):
             return JsonResponse({"error": str(e)}, status=500)
 
 
+class IFCFileUpdateView(ProjectAccessMixin, UpdateView):
+    """Replace an IFC file and re-parse it."""
+
+    model = IFCFile
+    fields = ["file"]  # ONLY file, name auto-updates
+    template_name = "environments/file_form.html"
+
+    def get_project(self):
+        return self.get_object().project
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["title"] = f"Replace File: {self.object.name}"
+        context["help_text"] = (
+            "Uploading a new file will replace the current model and automatically re-parse all entities."
+        )
+        return context
+
+    def form_valid(self, form):
+        # 1. Save the new file
+        self.object = form.save(commit=False)
+        self.object.name = self.object.file.name  # Auto-sync name
+        self.object.save()
+
+        # 2. Run Pipeline (Hash -> Parse -> Embed) using the Service
+        processor = IFCProcessingService(self.object)
+        success = processor.run_pipeline()
+
+        # 3. Store result for the next page
+        self.request.session["processing_result"] = {
+            "success": success,
+            "filename": self.object.name,
+            "entity_count": self.object.entity_count,
+            "error": self.object.error_message,
+            "type": "IFC Model",
+        }
+
+        return redirect("projects:file_processed", pk=self.object.project.pk)
+
+
 class IFCFileDeleteView(ProjectAccessMixin, DeleteView):
     """Delete an IFC file."""
 
@@ -391,46 +452,6 @@ class DocumentDeleteView(ProjectAccessMixin, DeleteView):
         )
         context["cancel_url"] = self.get_success_url()
         return context
-
-
-class IFCFileUpdateView(ProjectAccessMixin, UpdateView):
-    """Replace an IFC file and re-parse it."""
-
-    model = IFCFile
-    fields = ["file"]  # ONLY file, name auto-updates
-    template_name = "environments/file_form.html"
-
-    def get_project(self):
-        return self.get_object().project
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context["title"] = f"Replace File: {self.object.name}"
-        context["help_text"] = (
-            "Uploading a new file will replace the current model and automatically re-parse all entities."
-        )
-        return context
-
-    def form_valid(self, form):
-        # 1. Save the new file
-        self.object = form.save(commit=False)
-        self.object.name = self.object.file.name  # Auto-sync name
-        self.object.save()
-
-        # 2. Run Pipeline (Hash -> Parse -> Embed) using the Service
-        processor = IFCProcessingService(self.object)
-        success = processor.run_pipeline()
-
-        # 3. Store result for the next page
-        self.request.session["processing_result"] = {
-            "success": success,
-            "filename": self.object.name,
-            "entity_count": self.object.entity_count,
-            "error": self.object.error_message,
-            "type": "IFC Model",
-        }
-
-        return redirect("projects:file_processed", pk=self.object.project.pk)
 
 
 class DocumentUpdateView(ProjectAccessMixin, UpdateView):

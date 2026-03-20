@@ -1,0 +1,14 @@
+<!-- environments/templates/environments/components/_context_bar_inner.html -->
+{% if utilization_pct >= 90 %}
+  <div class="progress me-1" style="height:3px;width:60px;"><div class="progress-bar bg-danger" style="width:100%"></div></div>
+  <small class="text-danger fs-8 text-nowrap">{{ utilization_pct|floatformat:0 }}% · {{ context_window_label }}</small>
+{% elif utilization_pct >= 80 %}
+  <div class="progress me-1" style="height:3px;width:60px;"><div class="progress-bar" style="width:{{ utilization_pct|floatformat:0 }}%;background-color:#f97316;"></div></div>
+  <small class="fs-8 text-nowrap" style="color:#f97316;">{{ utilization_pct|floatformat:0 }}% · {{ context_window_label }}</small>
+{% elif utilization_pct >= 50 %}
+  <div class="progress me-1" style="height:3px;width:60px;"><div class="progress-bar bg-warning" style="width:{{ utilization_pct|floatformat:0 }}%"></div></div>
+  <small class="text-warning fs-8 text-nowrap">{{ utilization_pct|floatformat:0 }}% · {{ context_window_label }}</small>
+{% else %}
+  <div class="progress me-1" style="height:3px;width:60px;"><div class="progress-bar bg-success" style="width:{{ utilization_pct|floatformat:0 }}%"></div></div>
+  <small class="text-secondary fs-8 text-nowrap">{{ utilization_pct|floatformat:0 }}% · {{ context_window_label }}</small>
+{% endif %}

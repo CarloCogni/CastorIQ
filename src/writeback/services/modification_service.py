@@ -14,6 +14,8 @@ import uuid
 
 from django.utils import timezone
 
+from core.llm import resolve_model_name
+from core.token_budget import compute_budget
 from ifc_processor.models import IFCEntity
 from ifc_processor.services.processor import IFCProcessingService
 from writeback.models import GitCommit, ModificationProposal
@@ -24,6 +26,7 @@ from .filter_engine import FilterEngine
 from .git_service import GitService
 from .ifc_standard_psets import lookup_property
 from .ifc_writer import EntityChange, IFCWriteError, Tier1Writer
+from .intent_classifier import SYSTEM_PROMPT as CLASSIFY_SYSTEM_PROMPT
 from .intent_classifier import IntentClassifier, IntentParseError
 from .tier1_validator import Tier1Validator
 from .tier2_planner import PlanGenerationError, Tier2Planner
@@ -112,8 +115,33 @@ class ModificationService:
                 "Please upload and process an IFC file first."
             )
 
-        # 1. Build entity context for the LLM
-        entity_context = self.classifier.build_entity_context(all_entities)
+        # 1. Build entity context for the LLM — token-aware, two-pass
+        model_name = resolve_model_name(user)
+        prelim_budget = compute_budget(model_name, system=CLASSIFY_SYSTEM_PROMPT)
+        entity_context = self.classifier.build_entity_context(
+            all_entities, available_tokens=prelim_budget.remaining_for_injection
+        )
+        final_budget = compute_budget(
+            model_name, system=CLASSIFY_SYSTEM_PROMPT, entity_context=entity_context
+        )
+        logger.debug(
+            "Modify token budget — model=%s util=%.0f%% total=%d/%d",
+            model_name,
+            final_budget.utilization_pct,
+            final_budget.total_input,
+            final_budget.max_usable,
+        )
+        emitter.emit(
+            "context_budget",
+            "info",
+            f"Context: {final_budget.utilization_pct:.0f}%"
+            f" ({final_budget.total_input:,} / {final_budget.model_context_window:,} tokens)",
+            {
+                "utilization_pct": final_budget.utilization_pct,
+                "total_input": final_budget.total_input,
+                "context_window": final_budget.model_context_window,
+            },
+        )
 
         # 2. Classify intent via LLM
         emitter.emit("classify", "running", "Classifying intent…")

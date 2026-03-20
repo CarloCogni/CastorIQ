@@ -271,6 +271,8 @@ Read the relevant skill file before generating code in that domain.
 | django-service.md | Creating or modifying any service class |
 | ifcopenshell-ops.md | Any IFC file modification code (low-level IfcOpenShell API) |
 | htmx-patterns.md | Adding or modifying interactive UI |
+| testing-skill.md | Writing, updating, or running tests for ANY app or service |
+
 
 ---
 
@@ -299,16 +301,19 @@ Read the relevant skill file before generating code in that domain.
 - Before HTMX interactivity: Read `.claude/skills/htmx-patterns.md`
 - HTML changes: Be precise about WHERE. Reference surrounding elements.
 - Always run `ruff check` and `ruff format` after changes.
+- Before writing or updating tests: Read `.claude/skills/testing-skill.md`
+- After modifying ANY service or model: run `cd src && uv run pytest <app>/tests/ -v -x` and fix any failures before finishing.
+- If a refactor changes a function/class/signature that existing tests depend on: update those tests in the same response. Never leave the test suite broken.
 
 
 ---
 
 ### Migrations
 
-**Never hand-write migration files.** Always run `uv run manage.py makemigrations` and let Django generate them. 
+**Never hand-write migration files.** Always run `uv run src/manage.py makemigrations` and let Django generate them. 
 Claude Code edits models, then runs the command — never the other way around.
 
-For custom data migrations, generate the empty file first with `uv run manage.py makemigrations <app> --empty`, 
+For custom data migrations, generate the empty file first with `uv run src/manage.py makemigrations <app> --empty`, 
 then edit the generated file to add `RunPython` logic.
 ---
 

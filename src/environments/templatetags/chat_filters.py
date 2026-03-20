@@ -23,7 +23,7 @@ def render_markdown(text: str) -> str:
             "tables",  # Supports Markdown tables
             "nl2br",  # Treats single linebreaks as <br>
             "sane_lists",  # Prevents weird list numbering behaviors
-        ]
+        ],
     )
 
     return mark_safe(html_content)

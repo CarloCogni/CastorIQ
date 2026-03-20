@@ -82,8 +82,7 @@ class Command(BaseCommand):
 
         dropzone_dir.mkdir(parents=True, exist_ok=True)
         logger.warning(
-            "Created missing dropzone directory at %s. Drop files there and rerun.",
-            dropzone_dir
+            "Created missing dropzone directory at %s. Drop files there and rerun.", dropzone_dir
         )
         return False
 
@@ -101,11 +100,7 @@ class Command(BaseCommand):
         return target_files
 
     def _process_and_write(
-            self,
-            files: list[Path],
-            dropzone_dir: Path,
-            output_file: Path,
-            project_root: Path
+        self, files: list[Path], dropzone_dir: Path, output_file: Path, project_root: Path
     ) -> None:
         """
         Read, compress, and aggregate files, then write the result to the output file.
@@ -151,12 +146,12 @@ class Command(BaseCommand):
         return collapse_blank_lines(content)
 
     def _write_output(
-            self,
-            output_file: Path,
-            content: str,
-            file_count: int,
-            total_tokens: int,
-            project_root: Path
+        self,
+        output_file: Path,
+        content: str,
+        file_count: int,
+        total_tokens: int,
+        project_root: Path,
     ) -> None:
         """
         Write the aggregated string to the destination file.
@@ -169,7 +164,7 @@ class Command(BaseCommand):
                 "Successfully compressed %d files (~%s tokens total). Saved to: %s",
                 file_count,
                 format_tokens(total_tokens),
-                output_file.relative_to(project_root)
+                output_file.relative_to(project_root),
             )
         except OSError as e:
             logger.error("Error writing output file: %s", e)

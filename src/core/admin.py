@@ -196,21 +196,36 @@ class TeamNoteAdmin(admin.ModelAdmin):
     list_editable = ("is_resolved",)
 
     fieldsets = (
-        ("Content", {
-            "fields": ("title", "body", "category", "priority"),
-        }),
-        ("Context", {
-            "fields": ("author_username", "page_url", "browser_info"),
-        }),
-        ("Resolution", {
-            "fields": ("is_resolved", "resolved_by", "resolved_at", "resolution_note"),
-        }),
-        ("Sync", {
-            "classes": ("collapse",),
-            "fields": ("sent_to_supabase", "supabase_id"),
-        }),
-        ("Timestamps", {
-            "classes": ("collapse",),
-            "fields": ("id", "created_at", "updated_at"),
-        }),
+        (
+            "Content",
+            {
+                "fields": ("title", "body", "category", "priority"),
+            },
+        ),
+        (
+            "Context",
+            {
+                "fields": ("author_username", "page_url", "browser_info"),
+            },
+        ),
+        (
+            "Resolution",
+            {
+                "fields": ("is_resolved", "resolved_by", "resolved_at", "resolution_note"),
+            },
+        ),
+        (
+            "Sync",
+            {
+                "classes": ("collapse",),
+                "fields": ("sent_to_supabase", "supabase_id"),
+            },
+        ),
+        (
+            "Timestamps",
+            {
+                "classes": ("collapse",),
+                "fields": ("id", "created_at", "updated_at"),
+            },
+        ),
     )

@@ -75,3 +75,6 @@ _output/
 
 # .castor hidden folder for local files to be compressed or extracted
 .castor/
+
+# Test Coverage
+htmlcov/
