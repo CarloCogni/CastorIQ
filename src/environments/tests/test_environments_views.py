@@ -791,3 +791,75 @@ class TestAskViewHTMX:
 
         assert response.status_code == 200
         assert b"chat_message_list" not in response.content or response.status_code == 200
+
+
+# -- IFCSchemaConvertView ------------------------------------------------------
+
+
+@pytest.mark.django_db
+class TestIFCSchemaConvertView:
+    """GET/POST /projects/ifc/<pk>/convert/."""
+
+    def test_get_convert_page_returns_200(self, client):
+        """Owner can access the schema conversion page for their IFC file."""
+        from django.urls import reverse
+
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        ifc_file = IFCFileFactory(project=project)
+        _login(client, user)
+
+        response = client.get(reverse("projects:ifc_convert", kwargs={"pk": ifc_file.pk}))
+        assert response.status_code == 200
+        assert response.context["ifc_file"] == ifc_file
+        assert response.context["project"] == project
+
+    def test_get_requires_authentication(self, client):
+        """Unauthenticated GET redirects to login."""
+        from django.urls import reverse
+
+        owner = UserFactory()
+        project = ProjectFactory(owner=owner)
+        ifc_file = IFCFileFactory(project=project)
+
+        response = client.get(reverse("projects:ifc_convert", kwargs={"pk": ifc_file.pk}))
+        assert response.status_code == 302
+        assert "/login/" in response["Location"]
+
+    def test_get_non_member_cannot_access(self, client):
+        """User without project access is denied."""
+        from django.urls import reverse
+
+        owner = UserFactory()
+        project = ProjectFactory(owner=owner)
+        ifc_file = IFCFileFactory(project=project)
+        other = UserFactory()
+        _login(client, other)
+
+        response = client.get(reverse("projects:ifc_convert", kwargs={"pk": ifc_file.pk}))
+        assert response.status_code in (302, 403)
+
+    def test_post_runs_converter_and_renders_result(self, client):
+        """POST mocks IFCSchemaConverterService and returns 200 with result context."""
+        from unittest.mock import MagicMock, patch
+
+        from django.urls import reverse
+
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        ifc_file = IFCFileFactory(project=project)
+        _login(client, user)
+
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.entity_count = 42
+        mock_result.warnings = []
+
+        with patch("ifc_processor.services.schema_converter.IFCSchemaConverterService") as MockSvc:
+            MockSvc.return_value.convert.return_value = mock_result
+            response = client.post(reverse("projects:ifc_convert", kwargs={"pk": ifc_file.pk}))
+
+        assert response.status_code == 200
+        assert response.context["result"] == mock_result
+        MockSvc.assert_called_once_with(ifc_file)
+        MockSvc.return_value.convert.assert_called_once()

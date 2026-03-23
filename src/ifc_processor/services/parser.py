@@ -205,7 +205,15 @@ class IFCParser:
         total_processed = 0
 
         for ifc_type in self.RELEVANT_TYPES:
-            elements = self.ifc_model.by_type(ifc_type)
+            try:
+                elements = self.ifc_model.by_type(ifc_type)
+            except Exception:
+                logger.debug(
+                    "Schema '%s' does not support type '%s' — skipping.",
+                    self.ifc_file.schema_version,
+                    ifc_type,
+                )
+                continue
             for element in elements:
                 gid = element.GlobalId
 

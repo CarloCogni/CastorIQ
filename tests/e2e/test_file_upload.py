@@ -4,9 +4,8 @@ E2E tests for the file upload flow (IFC and documents).
 
 Tests the drag-and-drop / click-to-browse upload UI in file_upload.html:
   - Upload page renders with drop zone and file input
-  - Selecting an IFC file triggers the XHR upload
-  - Progress section appears during upload
-  - Successful upload redirects or shows completion
+  - Selecting an IFC file enqueues it and shows the queue section
+  - Summary section appears after all uploads complete
 
 The server-side IFC processing pipeline is not tested here (that's in
 ifc_processor integration tests). These tests validate the upload UI contract.
@@ -31,8 +30,20 @@ IFC_FIXTURE = (
     / "simple_wall.ifc"
 )
 
+# Mock response matching the real FileUploadView JSON contract
+_MOCK_IFC_RESPONSE = json.dumps(
+    {
+        "success": True,
+        "file_type": "ifc",
+        "file_name": "simple_wall.ifc",
+        "entity_count": 5,
+        "schema_version": "IFC4",
+        "needs_conversion": False,
+    }
+)
 
-# ── Upload page structure ─────────────────────────────────────────────────────
+
+# -- Upload page structure -----------------------------------------------------
 
 
 @pytest.mark.slow
@@ -62,28 +73,26 @@ class TestUploadPageUI:
         assert ".pdf" in accept_attr
         assert ".docx" in accept_attr
 
-    def test_progress_section_initially_hidden(
+    def test_queue_section_initially_hidden(
         self, auth_page: Page, live_server, e2e_project
     ) -> None:
-        """Progress section is hidden before any file is selected."""
+        """File queue section is hidden before any file is selected."""
         auth_page.goto(f"{live_server.url}/projects/{e2e_project.pk}/upload/")
         auth_page.wait_for_load_state("networkidle")
 
-        progress = auth_page.locator("#progress-section")
-        expect(progress).to_be_hidden()
+        expect(auth_page.locator("#queue-section")).to_be_hidden()
 
-    def test_error_section_initially_hidden(
+    def test_summary_section_initially_hidden(
         self, auth_page: Page, live_server, e2e_project
     ) -> None:
-        """Error section is hidden before any upload attempt."""
+        """Summary/result section is hidden before any upload attempt."""
         auth_page.goto(f"{live_server.url}/projects/{e2e_project.pk}/upload/")
         auth_page.wait_for_load_state("networkidle")
 
-        error = auth_page.locator("#error-section")
-        expect(error).to_be_hidden()
+        expect(auth_page.locator("#summary")).to_be_hidden()
 
 
-# ── Upload interaction ────────────────────────────────────────────────────────
+# -- Upload interaction --------------------------------------------------------
 
 
 @pytest.mark.slow
@@ -91,25 +100,25 @@ class TestUploadPageUI:
 class TestIFCUploadInteraction:
     """Test file selection and XHR upload interaction."""
 
-    def test_selecting_ifc_file_shows_progress_section(
+    def test_selecting_ifc_file_shows_queue_section(
         self, auth_page: Page, live_server, e2e_project
     ) -> None:
         """
-        When an IFC file is attached to the file input, the progress section
-        becomes visible (the XHR upload begins).
+        When an IFC file is attached to the file input, the queue section
+        becomes visible as the file is enqueued and XHR upload begins.
 
         The actual upload endpoint is intercepted to avoid real file processing.
         """
         auth_page.goto(f"{live_server.url}/projects/{e2e_project.pk}/upload/")
         auth_page.wait_for_load_state("networkidle")
 
-        # Intercept the upload XHR — return a 200 immediately
+        # Intercept the upload XHR -- return a successful IFC response immediately
         auth_page.route(
             f"**/projects/{e2e_project.pk}/upload/",
             lambda route: route.fulfill(
                 status=200,
                 content_type="application/json",
-                body=json.dumps({"status": "ok", "redirect": f"/projects/{e2e_project.pk}/"}),
+                body=_MOCK_IFC_RESPONSE,
             ),
         )
 
@@ -117,13 +126,13 @@ class TestIFCUploadInteraction:
         assert IFC_FIXTURE.exists(), f"Test fixture missing: {IFC_FIXTURE}"
         auth_page.locator("#file-input").set_input_files(str(IFC_FIXTURE))
 
-        # Progress section should become visible
-        expect(auth_page.locator("#progress-section")).to_be_visible(timeout=3000)
+        # Queue section becomes visible as soon as the file is enqueued
+        expect(auth_page.locator("#queue-section")).to_be_visible(timeout=3000)
 
-    def test_filename_shown_in_progress_section(
+    def test_filename_shown_in_queue_row(
         self, auth_page: Page, live_server, e2e_project
     ) -> None:
-        """The filename label in the progress section shows the uploaded file name."""
+        """The filename label in the queue row shows the uploaded file name."""
         auth_page.goto(f"{live_server.url}/projects/{e2e_project.pk}/upload/")
         auth_page.wait_for_load_state("networkidle")
 
@@ -132,17 +141,20 @@ class TestIFCUploadInteraction:
             lambda route: route.fulfill(
                 status=200,
                 content_type="application/json",
-                body=json.dumps({"status": "ok"}),
+                body=_MOCK_IFC_RESPONSE,
             ),
         )
 
         assert IFC_FIXTURE.exists(), f"Test fixture missing: {IFC_FIXTURE}"
         auth_page.locator("#file-input").set_input_files(str(IFC_FIXTURE))
 
-        expect(auth_page.locator("#file-name")).to_contain_text(IFC_FIXTURE.name, timeout=3000)
+        # Each queue row renders the filename in a .fw-medium.text-truncate div
+        expect(
+            auth_page.locator("#queue-list .fw-medium").first()
+        ).to_contain_text(IFC_FIXTURE.name, timeout=3000)
 
 
-# ── Authentication guard ──────────────────────────────────────────────────────
+# -- Authentication guard ------------------------------------------------------
 
 
 @pytest.mark.slow
