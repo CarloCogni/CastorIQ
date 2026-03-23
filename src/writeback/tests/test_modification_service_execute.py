@@ -1,7 +1,6 @@
 # writeback/tests/test_modification_service_execute.py
 """Tests for ModificationService.execute(), reject(), restore_version(), and helper statics."""
 
-import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -9,7 +8,6 @@ import pytest
 from writeback.models import GitCommit, ModificationProposal
 from writeback.services.modification_service import ModificationError, ModificationService
 from writeback.tests.factories import ModificationProposalFactory
-
 
 # ── Shared mocks ─────────────────────────────────────────────────────────────
 

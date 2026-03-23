@@ -4,10 +4,21 @@ The IFC Processor is Castor's foundation layer. It ingests IFC files, validates 
 
 ## Supported Schemas
 
-- **IFC2x3** — most common in practice, widely exported by Revit, ArchiCAD, etc.
-- **IFC4** — newer standard with richer property definitions
+IfcOpenShell (the IFC parsing engine used by Castor) supports three official schema families:
 
-The processor targets standard schemas, not vendor-specific extensions, to maximise interoperability.
+| Schema | ISO Publication | Status | IfcOpenShell |
+|--------|----------------|--------|--------------|
+| **IFC2X3 TC1** | ISO/PAS 16739:2005 | Official | Full parse + geometry |
+| **IFC4 Add2 TC1** | ISO 16739-1:2018 | Official | Full parse + geometry ← **Castor target** |
+| **IFC4X3 Add2** | ISO 16739-1:2024 | Official (latest) | Full parse (geometry expanding) |
+
+**Castor's pipeline targets IFC4 (IFC4 Add2 TC1)** as the canonical processing schema.
+Files uploaded in IFC2X3 (or any other legacy schema) are stored but not indexed.
+The upload flow detects the schema from the file header before parsing and offers an
+in-app conversion to IFC4 via `IFCSchemaConverterService`.
+
+> Note: "IFC4" in IfcOpenShell maps to IFC4 Add2 TC1, not the retired plain IFC4 (ISO 16739:2013).
+> IFC4X3 support is included but Castor does not yet use it as a pipeline target.
 
 ## Validation
 

@@ -7,7 +7,6 @@ import pytest
 
 from writeback.services.modification_service import ModificationError, ModificationService
 
-
 # ── Shared fixtures ──────────────────────────────────────────────────────────
 
 

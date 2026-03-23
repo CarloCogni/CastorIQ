@@ -1,8 +1,6 @@
 # writeback/tests/test_message_normalizer.py
 """Tests for the deterministic message normalizer — pure regex, no DB."""
 
-import pytest
-
 from writeback.services.message_normalizer import normalize
 
 

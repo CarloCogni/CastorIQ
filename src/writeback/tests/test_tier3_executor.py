@@ -145,7 +145,6 @@ class TestResultToChanges:
 
     def test_converts_result_to_entity_changes(self, tmp_path):
         """Valid result items are converted to EntityChange instances."""
-        from writeback.services.ifc_writer import EntityChange
 
         result = {
             "summary": "done",

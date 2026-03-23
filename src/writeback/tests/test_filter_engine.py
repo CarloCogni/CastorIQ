@@ -2,6 +2,7 @@
 """Tests for FilterEngine.resolve() — the entity safety gate."""
 
 import pytest
+
 from writeback.services.filter_engine import FilterEngine
 
 

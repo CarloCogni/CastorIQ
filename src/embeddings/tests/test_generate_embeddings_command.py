@@ -2,14 +2,12 @@
 """Tests for the generate_embeddings management command — Ollama always mocked."""
 
 from io import StringIO
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from django.core.management import call_command
 
-from ifc_processor.models import IFCEntity
 from ifc_processor.tests.factories import IFCEntityFactory, IFCFileFactory
-
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 

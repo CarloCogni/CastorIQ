@@ -363,8 +363,9 @@ class TestSerializeContext:
 
     def test_serialize_ifc_entity_produces_ifc_type_entry(self, rag_service):
         """IFCEntity in context produces a source entry with type='ifc'."""
-        from ifc_processor.models import IFCEntity
         from unittest.mock import MagicMock
+
+        from ifc_processor.models import IFCEntity
 
         entity = MagicMock(spec=IFCEntity)
         entity.id = "test-id"
@@ -382,8 +383,9 @@ class TestSerializeContext:
 
     def test_serialize_document_chunk_produces_doc_type_entry(self, rag_service):
         """DocumentChunk in context produces a source entry with type='doc'."""
-        from documents.models import DocumentChunk
         from unittest.mock import MagicMock
+
+        from documents.models import DocumentChunk
 
         chunk = MagicMock(spec=DocumentChunk)
         chunk.id = "chunk-id"

@@ -27,8 +27,6 @@ urlpatterns = [
         name="rename_session",
     ),
     # File Uploads
-    path("<uuid:pk>/upload/ifc/", views.UploadIFCView.as_view(), name="upload_ifc"),
-    # path("<uuid:pk>/upload/document/", views.UploadDocumentView.as_view(), name="upload_document"),
     path("<uuid:pk>/processed/", views.FileProcessedView.as_view(), name="file_processed"),
     path("<uuid:pk>/upload/", views.FileUploadView.as_view(), name="upload"),
     # Project CRUD
@@ -37,6 +35,7 @@ urlpatterns = [
     # IFC CRUD
     path("ifc/<uuid:pk>/edit/", views.IFCFileUpdateView.as_view(), name="ifc_edit"),
     path("ifc/<uuid:pk>/delete/", views.IFCFileDeleteView.as_view(), name="ifc_delete"),
+    path("ifc/<uuid:pk>/convert/", views.IFCSchemaConvertView.as_view(), name="ifc_convert"),
     # Document CRUD
     path("document/<uuid:pk>/edit/", views.DocumentUpdateView.as_view(), name="document_edit"),
     path("document/<uuid:pk>/delete/", views.DocumentDeleteView.as_view(), name="document_delete"),

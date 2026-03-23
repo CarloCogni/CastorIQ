@@ -1,8 +1,6 @@
 # environments/tests/test_templatetags.py
 """Tests for environments templatetags — dict_filters and chat_filters."""
 
-import pytest
-
 
 # ── dict_filters.get_item ────────────────────────────────────────────────────
 

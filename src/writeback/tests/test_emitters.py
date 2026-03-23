@@ -1,8 +1,6 @@
 # writeback/tests/test_emitters.py
 """Tests for the pipeline emitter abstractions — no DB required."""
 
-import pytest
-
 from writeback.services.emitters import CapturingEmitter, NullEmitter
 
 
@@ -58,9 +56,6 @@ def test_null_emitter_emit_with_detail_does_not_raise():
 
 def test_websocket_emitter_calls_send_json_with_phase_payload():
     """WebSocketEmitter calls send_json with the correct phase payload."""
-    from unittest.mock import MagicMock
-
-    from asgiref.sync import async_to_sync
 
     events: list = []
 

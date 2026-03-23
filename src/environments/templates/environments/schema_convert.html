@@ -1,0 +1,261 @@
+<!-- environments/templates/environments/schema_convert.html -->
+{% extends "core/base.html" %}
+
+{% block content %}
+<div class="flex-grow-1 d-flex align-items-center justify-content-center p-4 bg-body">
+    <div style="width: 100%; max-width: 600px;">
+
+        <div class="card bg-surface border shadow-sm">
+            <div class="card-header bg-transparent border-bottom p-4">
+                <div class="d-flex align-items-center gap-3">
+                    <i class="bi bi-arrow-repeat text-warning fs-4"></i>
+                    <div>
+                        <h1 class="h5 fw-bold mb-0">Convert to IFC4</h1>
+                        <p class="text-secondary fs-7 mb-0">{{ project.name }}</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card-body p-4">
+
+                <!-- File info (always visible) -->
+                <div class="d-flex align-items-center gap-3 p-3 rounded border mb-4" style="background: var(--bs-body-bg);">
+                    <i class="bi bi-file-earmark-code text-secondary fs-4"></i>
+                    <div class="flex-grow-1 overflow-hidden">
+                        <div class="fw-medium text-truncate">{{ ifc_file.name }}</div>
+                        <div class="d-flex align-items-center gap-2 mt-1">
+                            <span class="badge text-bg-warning" style="font-size: 0.7rem;">
+                                {{ ifc_file.schema_version|default:"Legacy Schema" }}
+                            </span>
+                            {% if ifc_file.entity_count %}
+                            <span class="text-secondary" style="font-size: 0.78rem;">{{ ifc_file.entity_count }} entities</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── STATE A: Pre-conversion form ─────────────────────────── -->
+                <div id="state-form">
+                    <div class="alert alert-warning d-flex gap-2 mb-4">
+                        <i class="bi bi-exclamation-triangle-fill flex-shrink-0 mt-1"></i>
+                        <div>
+                            <div class="fw-semibold mb-1">Conversion caveats</div>
+                            <ul class="mb-0 ps-3 small">
+                                <li>This conversion is <strong>not lossless</strong> — some custom property sets or complex representations may degrade.</li>
+                                <li>The file will be replaced by <strong>{{ ifc_file.name|cut:".ifc" }}-converted.ifc</strong>. You can restore the original from the project's Git history if needed.</li>
+                                <li>Validate the converted model in your authoring tool before using it in production.</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <form id="convert-form" method="post">
+                        {% csrf_token %}
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-warning">
+                                <i class="bi bi-arrow-repeat me-2"></i>Convert to IFC4
+                            </button>
+                            <a href="{% url 'projects:ask' project.pk %}" class="btn btn-outline-secondary">
+                                <i class="bi bi-arrow-left me-2"></i>Back to Project
+                            </a>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- ── STATE B: Converting — live progress ──────────────────── -->
+                <div id="state-progress" class="d-none">
+                    <div class="fw-semibold small text-secondary mb-3">Converting…</div>
+                    <div id="phase-list" class="d-flex flex-column gap-2">
+                        <!-- open -->
+                        <div id="phase-open" class="d-flex align-items-center gap-3 p-2 rounded" style="background: var(--bs-body-bg);">
+                            <span id="phase-open-icon" class="text-secondary" style="width:1.2rem;text-align:center;"><i class="bi bi-dot fs-5"></i></span>
+                            <div class="flex-grow-1">
+                                <div class="small fw-medium">Open source file</div>
+                                <div id="phase-open-msg" class="text-secondary" style="font-size:0.75rem;"></div>
+                            </div>
+                        </div>
+                        <!-- migrate -->
+                        <div id="phase-migrate" class="d-flex align-items-center gap-3 p-2 rounded" style="background: var(--bs-body-bg);">
+                            <span id="phase-migrate-icon" class="text-secondary" style="width:1.2rem;text-align:center;"><i class="bi bi-dot fs-5"></i></span>
+                            <div class="flex-grow-1">
+                                <div class="small fw-medium">Migrate entities</div>
+                                <div id="phase-migrate-msg" class="text-secondary" style="font-size:0.75rem;"></div>
+                            </div>
+                        </div>
+                        <!-- validate -->
+                        <div id="phase-validate" class="d-flex align-items-center gap-3 p-2 rounded" style="background: var(--bs-body-bg);">
+                            <span id="phase-validate-icon" class="text-secondary" style="width:1.2rem;text-align:center;"><i class="bi bi-dot fs-5"></i></span>
+                            <div class="flex-grow-1">
+                                <div class="small fw-medium">Validate model</div>
+                                <div id="phase-validate-msg" class="text-secondary" style="font-size:0.75rem;"></div>
+                            </div>
+                        </div>
+                        <!-- write -->
+                        <div id="phase-write" class="d-flex align-items-center gap-3 p-2 rounded" style="background: var(--bs-body-bg);">
+                            <span id="phase-write-icon" class="text-secondary" style="width:1.2rem;text-align:center;"><i class="bi bi-dot fs-5"></i></span>
+                            <div class="flex-grow-1">
+                                <div class="small fw-medium">Write to disk</div>
+                                <div id="phase-write-msg" class="text-secondary" style="font-size:0.75rem;"></div>
+                            </div>
+                        </div>
+                        <!-- reprocess -->
+                        <div id="phase-reprocess" class="d-flex align-items-center gap-3 p-2 rounded" style="background: var(--bs-body-bg);">
+                            <span id="phase-reprocess-icon" class="text-secondary" style="width:1.2rem;text-align:center;"><i class="bi bi-dot fs-5"></i></span>
+                            <div class="flex-grow-1">
+                                <div class="small fw-medium">Re-index (parse + embed)</div>
+                                <div id="phase-reprocess-msg" class="text-secondary" style="font-size:0.75rem;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── STATE C: Result (success or error) ──────────────────── -->
+                <div id="state-result" class="d-none">
+                    <!-- filled by JS -->
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+(function () {
+    'use strict';
+
+    const projectId  = '{{ project.pk }}';
+    const ifcFileId  = '{{ ifc_file.pk }}';
+    const backUrl    = '{% url "projects:ask" project.pk %}';
+
+    const stateForm     = document.getElementById('state-form');
+    const stateProgress = document.getElementById('state-progress');
+    const stateResult   = document.getElementById('state-result');
+
+    // ── Phase icon helpers ──────────────────────────────────────────────────
+
+    function setPhase(phase, status, message) {
+        const icon = document.getElementById('phase-' + phase + '-icon');
+        const msg  = document.getElementById('phase-' + phase + '-msg');
+        if (!icon) return;
+
+        if (status === 'running') {
+            icon.innerHTML = '<span class="spinner-border spinner-border-sm text-warning" role="status"></span>';
+        } else if (status === 'done') {
+            icon.innerHTML = '<i class="bi bi-check-circle-fill text-success"></i>';
+        } else if (status === 'error') {
+            icon.innerHTML = '<i class="bi bi-x-circle-fill text-danger"></i>';
+        }
+
+        if (msg && message) msg.textContent = message;
+    }
+
+    // ── Result panels ───────────────────────────────────────────────────────
+
+    function showSuccess(result) {
+        const warnings = result.warnings || [];
+        let warningsHtml = '';
+        if (warnings.length) {
+            const items = warnings.map(w =>
+                `<div class="text-secondary small mb-1"><i class="bi bi-dot me-1"></i>${esc(w)}</div>`
+            ).join('');
+            warningsHtml = `
+                <div class="mb-4">
+                    <div class="fw-semibold text-warning small mb-2">
+                        <i class="bi bi-exclamation-triangle me-1"></i>Validation warnings (${warnings.length})
+                    </div>
+                    <div class="border rounded p-3" style="max-height:200px;overflow-y:auto;background:var(--bs-body-bg);">
+                        ${items}
+                    </div>
+                </div>`;
+        }
+        stateResult.innerHTML = `
+            <div class="alert alert-success d-flex gap-2 mb-4">
+                <i class="bi bi-check-circle-fill flex-shrink-0 mt-1"></i>
+                <div>
+                    <div class="fw-semibold mb-1">Conversion successful</div>
+                    <div class="small">
+                        File converted to IFC4 and re-indexed.
+                        ${result.entity_count ? `<strong>${result.entity_count}</strong> entities extracted.` : ''}
+                    </div>
+                </div>
+            </div>
+            ${warningsHtml}
+            <a href="${backUrl}" class="btn btn-primary">
+                <i class="bi bi-arrow-left me-2"></i>Back to Project
+            </a>`;
+    }
+
+    function showError(message) {
+        stateResult.innerHTML = `
+            <div class="alert alert-danger d-flex gap-2 mb-4">
+                <i class="bi bi-x-circle-fill flex-shrink-0 mt-1"></i>
+                <div>
+                    <div class="fw-semibold mb-1">Conversion failed</div>
+                    <div class="small text-break">${esc(message)}</div>
+                </div>
+            </div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-warning" onclick="location.reload()">
+                    <i class="bi bi-arrow-repeat me-2"></i>Try Again
+                </button>
+                <a href="${backUrl}" class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-left me-2"></i>Back to Project
+                </a>
+            </div>`;
+    }
+
+    function esc(str) {
+        return String(str)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // ── WebSocket flow ──────────────────────────────────────────────────────
+
+    document.getElementById('convert-form').addEventListener('submit', function (e) {
+        e.preventDefault();
+
+        const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+        const ws = new WebSocket(`${proto}://${location.host}/ws/projects/${projectId}/ifc/${ifcFileId}/convert/`);
+
+        let finalResult = null;
+
+        // Switch to progress state
+        stateForm.classList.add('d-none');
+        stateProgress.classList.remove('d-none');
+
+        ws.addEventListener('open', function () {
+            ws.send(JSON.stringify({action: 'start_convert'}));
+        });
+
+        ws.addEventListener('message', function (ev) {
+            const msg = JSON.parse(ev.data);
+
+            if (msg.type === 'phase') {
+                setPhase(msg.phase, msg.status, msg.message);
+            } else if (msg.type === 'convert_complete') {
+                finalResult = msg;
+            } else if (msg.type === 'done') {
+                stateProgress.classList.add('d-none');
+                stateResult.classList.remove('d-none');
+                if (finalResult && finalResult.success) {
+                    showSuccess(finalResult);
+                } else {
+                    showError((finalResult && finalResult.error) || 'Unknown error');
+                }
+            } else if (msg.type === 'error') {
+                stateProgress.classList.add('d-none');
+                stateResult.classList.remove('d-none');
+                showError(msg.message);
+            }
+        });
+
+        ws.addEventListener('error', function () {
+            stateProgress.classList.add('d-none');
+            stateResult.classList.remove('d-none');
+            showError('WebSocket connection failed. Please try again.');
+        });
+    });
+}());
+</script>
+{% endblock %}

@@ -7,7 +7,6 @@ import pytest
 
 from writeback.services.ifc_writer import IFCWriteError, Tier1Writer
 
-
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
 
@@ -128,7 +127,7 @@ class TestCoerceForIfcType:
     def _make_writer(self):
         """Minimal writer without real file (for pure coerce tests)."""
         with patch("writeback.services.ifc_writer.ifcopenshell.open", return_value=MagicMock()):
-            import tempfile, os
+            import tempfile
 
             with tempfile.NamedTemporaryFile(suffix=".ifc", delete=False) as f:
                 f.write(b"ISO-10303-21;\nDATA;\nENDSEC;\nEND-ISO-10303-21;")
@@ -218,7 +217,6 @@ class TestSetProperty:
     def test_set_property_missing_pset_raises_ifc_write_error(self, writer, mock_ifc_model):
         """set_property raises IFCWriteError when pset not found on element."""
         model, element, pset_element, prop_entity = mock_ifc_model
-        import ifcopenshell.util.element as element_util
 
         # element has no psets
         with patch(

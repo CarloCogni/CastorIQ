@@ -112,6 +112,11 @@ class IFCFile(UUIDModel):
             sha256.update(chunk)
         return sha256.hexdigest()
 
+    @property
+    def needs_conversion(self) -> bool:
+        """True if this file has a legacy schema requiring conversion to IFC4 before processing."""
+        return bool(self.schema_version) and not self.schema_version.upper().startswith("IFC4")
+
 
 class IFCEntity(UUIDModel):
     """An extracted entity from an IFC file."""

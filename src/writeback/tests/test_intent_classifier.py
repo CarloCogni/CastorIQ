@@ -55,7 +55,7 @@ class TestBuildEntityContext:
 
         class FakeEntity:
             ifc_type = "IfcWall"
-            name = f"Wall"
+            name = "Wall"
             global_id = "GUID"
             properties = {}
 

@@ -1,10 +1,7 @@
 # core/tests/test_llm_model_registry.py
 """Tests for core.llm_model_registry — pure Python, no DB or network."""
 
-import pytest
-
 from core.llm_model_registry import (
-    DEFAULT_CONTEXT_WINDOW,
     MODEL_REGISTRY,
     ModelInfo,
     get_model_info,

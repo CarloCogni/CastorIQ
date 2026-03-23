@@ -2,15 +2,13 @@
 """Tests for the parse_ifc management command — IFCParser always mocked."""
 
 from io import StringIO
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from django.core.management import call_command
 from django.core.management.base import CommandError
 
-from ifc_processor.models import IFCFile
 from ifc_processor.tests.factories import IFCFileFactory
-
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 

@@ -1,14 +1,12 @@
 # writeback/tests/test_tier2_writer.py
 """Tests for Tier2Writer — all IfcOpenShell I/O is mocked."""
 
-from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from writeback.services.ifc_writer import IFCWriteError
 from writeback.services.tier2_writer import PlanStepResult, Tier2Writer
-
 
 # ── Fixtures ────────────────────────────────────────────────────────────────
 

@@ -352,3 +352,89 @@ class ScanConsumer(AsyncJsonWebsocketConsumer):
             return project.user_has_access(self.user)
         except Project.DoesNotExist:
             return False
+
+
+class SchemaConversionConsumer(AsyncJsonWebsocketConsumer):
+    """
+    Async WebSocket consumer that streams the IFC schema conversion pipeline to the browser.
+
+    One consumer instance per conversion page load. Auth handled by AuthMiddlewareStack.
+
+    Protocol:
+        Client → Server:  {"action": "start_convert"}
+        Server → Client:  {"type": "phase", "phase": "<name>", "status": "running|done|error", "message": "…"}
+        Server → Client:  {"type": "convert_complete", "success": true|false, …}
+        Server → Client:  {"type": "error", "message": "<text>"}
+        Server → Client:  {"type": "done"}
+    """
+
+    async def connect(self) -> None:
+        self.user = self.scope["user"]
+        self.project_id = self.scope["url_route"]["kwargs"]["project_id"]
+        self.ifc_file_id = self.scope["url_route"]["kwargs"]["ifc_file_id"]
+
+        if self.user.is_anonymous:
+            await self.close(code=4001)
+            return
+
+        has_access = await self._check_access()
+        if not has_access:
+            await self.close(code=4003)
+            return
+
+        await self.accept()
+        logger.debug(
+            "SchemaConversionConsumer connected: user=%s ifc_file=%s",
+            self.user.username,
+            self.ifc_file_id,
+        )
+
+    async def disconnect(self, close_code: int) -> None:
+        logger.debug(
+            "SchemaConversionConsumer disconnected: user=%s code=%s",
+            getattr(self.user, "username", "?"),
+            close_code,
+        )
+
+    async def receive_json(self, content: dict, **kwargs) -> None:
+        action = content.get("action")
+        if action == "start_convert":
+            await self._handle_start_convert()
+        else:
+            await self.send_json({"type": "error", "message": f"Unknown action: {action}"})
+
+    # ── Private handlers ───────────────────────────────────────────────────────
+
+    async def _handle_start_convert(self) -> None:
+        """Run the conversion pipeline and stream phase events to the client."""
+        try:
+            result = await self._run_conversion()
+        except Exception as e:
+            logger.exception("Schema conversion consumer error: %s", e)
+            await self.send_json({"type": "error", "message": str(e)})
+            await self.send_json({"type": "done"})
+            return
+
+        await self.send_json({"type": "convert_complete", **result})
+        await self.send_json({"type": "done"})
+
+    @sync_to_async
+    def _run_conversion(self) -> dict:
+        """Synchronous conversion execution wrapped for async use."""
+        from ifc_processor.models import IFCFile
+        from ifc_processor.services.schema_converter import IFCSchemaConverterService
+        from writeback.services.emitters import WebSocketEmitter
+
+        ifc_file = IFCFile.objects.select_related("project").get(pk=self.ifc_file_id)
+        emitter = WebSocketEmitter(self.send_json)
+        return IFCSchemaConverterService(ifc_file).convert(emitter=emitter)
+
+    @sync_to_async
+    def _check_access(self) -> bool:
+        from ifc_processor.models import IFCFile
+
+        try:
+            ifc_file = IFCFile.objects.select_related("project__owner").get(pk=self.ifc_file_id)
+            return ifc_file.project.user_has_access(self.user)
+        except IFCFile.DoesNotExist:
+            return False

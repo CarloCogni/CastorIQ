@@ -1,8 +1,6 @@
 # core/tests/test_token_utils.py
 """Tests for core.token_utils — pure Python, no DB required."""
 
-import pytest
-
 from core.token_utils import estimate_messages_tokens, estimate_tokens
 
 

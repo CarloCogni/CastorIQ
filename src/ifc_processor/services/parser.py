@@ -73,6 +73,38 @@ class IFCParser:
         "IfcBuildingElementProxy",
         "IfcCovering",
         "IfcPlate",
+        # Infrastructure — spatial containers (IFC4.3)
+        # IfcFacility / IfcFacilityPart are supertypes omitted intentionally:
+        # by_type() returns subtypes too, so listing both would cause DUPLICATE_GUID issues.
+        "IfcBridge",
+        "IfcBridgePart",
+        "IfcRoad",
+        "IfcRoadPart",
+        "IfcRailway",
+        "IfcRailwayPart",
+        "IfcTunnel",
+        "IfcTunnelPart",
+        "IfcMarineFacility",
+        "IfcMarineFacilityPart",
+        # Infrastructure — physical elements (IFC4.3)
+        # Alignment types (IfcAlignment, IfcAlignmentSegment, etc.) are omitted:
+        # they are geometric/positional constructs with no property sets to index.
+        "IfcCourse",
+        "IfcPavement",
+        "IfcKerb",
+        "IfcSign",
+        "IfcSignal",
+        "IfcTrackElement",
+        "IfcMarking",
+        "IfcEarthworksCut",
+        "IfcEarthworksFill",
+        "IfcBearing",
+        "IfcMooringDevice",
+        "IfcNavigationElement",
+        "IfcConveyorSegment",
+        "IfcLiquidTerminal",
+        "IfcTendonConduit",
+        "IfcVibrationDamper",
     }
 
     def __init__(self, ifc_file: IFCFile):

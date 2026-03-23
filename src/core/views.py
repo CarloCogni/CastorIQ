@@ -14,14 +14,13 @@ from django.views.decorators.http import require_POST
 from django.views.generic import TemplateView, View
 
 from core.llm_model_registry import (
-    DEFAULT_CONTEXT_WINDOW,
     MODEL_REGISTRY,
     VRAM_TIERS,
     get_model_info,
 )
-from core.token_budget import get_context_window
 from core.models import ErrorLog, UserLLMConfig
 from core.services.team_notes import create_note, pull_notes_from_supabase, push_notes_to_supabase
+from core.token_budget import get_context_window
 
 logger = getLogger(__name__)
 

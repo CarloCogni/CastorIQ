@@ -12,7 +12,6 @@ from environments.tests.factories import ProjectFactory, UserFactory
 from ifc_processor.tests.factories import IFCFileFactory
 from writeback.tests.factories import ModificationProposalFactory
 
-
 # ── Helpers ────────────────────────────────────────────────────────────────
 
 

@@ -7,7 +7,6 @@ from channels.testing import WebsocketCommunicator
 
 from writeback.consumers import ProposalConsumer, ScanConsumer
 
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
@@ -92,7 +91,7 @@ class TestProposalConsumerMessages:
 
     async def test_propose_action_with_service_error_returns_error(self, project, user):
         """ModificationService.propose() exception is surfaced as error message."""
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import patch
 
         communicator = _make_communicator(ProposalConsumer, project.id, user)
         connected, _ = await communicator.connect()
@@ -178,7 +177,7 @@ class TestScanConsumerMessages:
 
     async def test_start_scan_action_completes_with_scan_complete_message(self, project, user):
         """start_scan action returns scan_complete and done messages."""
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import patch
 
         communicator = WebsocketCommunicator(
             ScanConsumer.as_asgi(),

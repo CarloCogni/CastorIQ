@@ -1,19 +1,30 @@
-<!--file_upload.html-->
+<!-- environments/templates/environments/file_upload.html -->
 {% extends "core/base.html" %}
 
 {% block content %}
 <div class="flex-grow-1 d-flex align-items-center justify-content-center p-4 bg-body">
-    <div style="width: 100%; max-width: 600px;">
+    <div style="width: 100%; max-width: 640px;">
 
-        <!-- Upload Zone -->
         <div class="card bg-surface border shadow-sm">
             <div class="card-header bg-transparent border-bottom p-4">
                 <h1 class="h5 fw-bold mb-1">Upload Files</h1>
-                <p class="text-secondary fs-7 mb-0">{{ project.name }}</p>
+                <p class="text-secondary fs-7 mb-1">Project: {{ project.name }}</p>
+                <p class="text-secondary fs-7 mb-1">
+                    Drop or select files — each is uploaded and indexed automatically.
+                    Mix <span class="text-accent">.ifc</span> models and
+                    <span class="text-primary">.pdf</span>&thinsp;/&thinsp;<span class="text-warning">.docx</span>&thinsp;/&thinsp;<span class="text-secondary">.txt</span>
+                    documents in the same batch.
+                </p>
+                <p class="text-secondary fs-7 mb-0">
+                    <i class="bi bi-info-circle me-1"></i>
+                    IFC target: <strong class="text-accent">IFC4</strong> and <strong class="text-accent">IFC4.3</strong> (infrastructure).
+                    Older formats (IFC2X3) are accepted but require a one-click schema conversion.
+                </p>
             </div>
 
             <div class="card-body p-4">
-                <!-- Drag & Drop Zone -->
+
+                <!-- Drop Zone — always visible -->
                 <div id="drop-zone"
                      class="border border-2 border-dashed rounded p-5 text-center"
                      style="cursor: pointer; transition: all 0.2s;">
@@ -22,41 +33,41 @@
                     <p class="text-secondary fs-7 mb-3">
                         Supported: <span class="text-accent">.ifc</span>,
                         <span class="text-primary">.pdf</span>,
-                        <span class="text-warning">.docx</span>
+                        <span class="text-warning">.docx</span>,
+                        <span class="text-secondary">.txt</span>
                     </p>
-                    <input type="file" id="file-input" accept=".ifc,.pdf,.docx,.txt" style="display: none;">
+                    <input type="file" id="file-input" accept=".ifc,.pdf,.docx,.txt" multiple style="display: none;">
                 </div>
 
-                <!-- Progress Section (hidden initially) -->
-                <div id="progress-section" style="display: none;" class="mt-4">
-                    <div class="d-flex align-items-center gap-3 mb-2">
-                        <i class="bi bi-file-earmark text-accent" style="font-size: 2rem;"></i>
-                        <div class="flex-grow-1">
-                            <div class="fw-medium" id="file-name">filename.ifc</div>
-                            <div class="text-secondary fs-8" id="status-text">Uploading...</div>
-                        </div>
+                <!-- File Queue -->
+                <div id="queue-section" class="mt-4" style="display: none;">
+                    <div class="fw-semibold fs-7 text-secondary text-uppercase mb-2" style="letter-spacing: 0.05em;">
+                        Queue
                     </div>
+                    <div id="queue-list" class="d-flex flex-column gap-2" style="max-height: 340px; overflow-y: auto;"></div>
+                </div>
 
-                    <!-- Progress Bar -->
-                    <div class="progress" style="height: 8px;">
-                        <div id="progress-bar"
-                             class="progress-bar progress-bar-striped progress-bar-animated"
-                             role="progressbar"
-                             style="width: 0%"></div>
+                <!-- Summary -->
+                <div id="summary" class="mt-4" style="display: none;">
+                    <div class="alert mb-3" id="summary-alert">
+                        <i class="bi me-2" id="summary-icon"></i>
+                        <span id="summary-text"></span>
+                    </div>
+                    <div id="failure-list" class="d-flex flex-column gap-1 mb-3" style="display: none !important;"></div>
+                    <div class="d-flex gap-2 flex-wrap">
+                        <a href="{% url 'projects:ask' project.pk %}" class="btn btn-primary btn-sm">
+                            <i class="bi bi-arrow-left me-2"></i>Back to Project
+                        </a>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="upload-more-btn">
+                            <i class="bi bi-plus-circle me-2"></i>Upload more files
+                        </button>
                     </div>
                 </div>
 
-                <!-- Error Section -->
-                <div id="error-section" style="display: none;" class="mt-4">
-                    <div class="alert alert-danger mb-0">
-                        <i class="bi bi-exclamation-triangle me-2"></i>
-                        <span id="error-message"></span>
-                    </div>
-                </div>
             </div>
 
             <div class="card-footer bg-transparent border-top p-4">
-                <a href="{% url 'projects:ask' project.pk %}" class="btn btn-outline-secondary">
+                <a href="{% url 'projects:ask' project.pk %}" class="btn btn-outline-secondary btn-sm">
                     <i class="bi bi-arrow-left me-2"></i>Back to Project
                 </a>
             </div>
@@ -66,109 +77,278 @@
 </div>
 
 <script>
-const dropZone = document.getElementById('drop-zone');
-const fileInput = document.getElementById('file-input');
-const progressSection = document.getElementById('progress-section');
-const errorSection = document.getElementById('error-section');
-const csrfToken = '{{ csrf_token }}';
-const uploadUrl = "{% url 'projects:upload' project.pk %}";
+(function () {
+    'use strict';
 
-// Click to browse
-dropZone.addEventListener('click', () => fileInput.click());
+    const dropZone    = document.getElementById('drop-zone');
+    const fileInput   = document.getElementById('file-input');
+    const queueSection = document.getElementById('queue-section');
+    const queueList   = document.getElementById('queue-list');
+    const summaryEl   = document.getElementById('summary');
+    const uploadMoreBtn = document.getElementById('upload-more-btn');
 
-// Drag & Drop handlers
-dropZone.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    dropZone.style.borderColor = 'var(--castor-primary)';
-    dropZone.style.backgroundColor = 'rgba(59, 130, 246, 0.05)';
-});
+    const UPLOAD_URL  = "{% url 'projects:upload' project.pk %}";
+    const CSRF_TOKEN  = '{{ csrf_token }}';
 
-dropZone.addEventListener('dragleave', () => {
-    dropZone.style.borderColor = '';
-    dropZone.style.backgroundColor = '';
-});
+    // State
+    let queue = [];          // { file, rowEl, state: 'queued'|'uploading'|'processing'|'done'|'error', result }
+    let processing = false;
 
-dropZone.addEventListener('drop', (e) => {
-    e.preventDefault();
-    dropZone.style.borderColor = '';
-    dropZone.style.backgroundColor = '';
+    // ── Drop zone interactions ────────────────────────────────────────────
 
-    if (e.dataTransfer.files.length > 0) {
-        uploadFile(e.dataTransfer.files[0]);
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.style.borderColor = 'var(--bs-primary)';
+        dropZone.style.backgroundColor = 'rgba(59,130,246,0.05)';
+    });
+
+    dropZone.addEventListener('dragleave', () => resetDropZoneStyle());
+
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        resetDropZoneStyle();
+        enqueueFiles(e.dataTransfer.files);
+    });
+
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            enqueueFiles(e.target.files);
+            fileInput.value = '';   // allow re-selecting same files
+        }
+    });
+
+    uploadMoreBtn.addEventListener('click', resetState);
+
+    function resetDropZoneStyle() {
+        dropZone.style.borderColor = '';
+        dropZone.style.backgroundColor = '';
     }
-});
 
-// File input change
-fileInput.addEventListener('change', (e) => {
-    if (e.target.files.length > 0) {
-        uploadFile(e.target.files[0]);
+    // ── Queue management ─────────────────────────────────────────────────
+
+    function enqueueFiles(files) {
+        summaryEl.style.display = 'none';
+        queueSection.style.display = 'block';
+
+        Array.from(files).forEach(file => {
+            const row = buildRow(file.name);
+            queueList.appendChild(row);
+            queue.push({ file, rowEl: row, state: 'queued', result: null });
+        });
+
+        if (!processing) processQueue();
     }
-});
 
-async function uploadFile(file) {
-    // Hide drop zone, show progress
-    dropZone.style.display = 'none';
-    errorSection.style.display = 'none';
-    progressSection.style.display = 'block';
+    function processQueue() {
+        const next = queue.find(item => item.state === 'queued');
+        if (!next) {
+            processing = false;
+            showSummary();
+            return;
+        }
+        processing = true;
+        uploadItem(next);
+    }
 
-    document.getElementById('file-name').textContent = file.name;
-    document.getElementById('status-text').textContent = 'Uploading...';
+    function uploadItem(item) {
+        setRowState(item, 'uploading');
 
-    const formData = new FormData();
-    formData.append('file', file);
+        const formData = new FormData();
+        formData.append('file', item.file);
 
-    try {
         const xhr = new XMLHttpRequest();
 
-        // Upload progress
         xhr.upload.addEventListener('progress', (e) => {
             if (e.lengthComputable) {
-                const percent = (e.loaded / e.total) * 100;
-                document.getElementById('progress-bar').style.width = percent + '%';
+                const pct = Math.round((e.loaded / e.total) * 100);
+                updateRowProgress(item, pct);
             }
         });
 
-        // Complete
-        xhr.addEventListener('load', async () => {
-            if (xhr.status === 200) {
-                const response = JSON.parse(xhr.responseText);
+        xhr.addEventListener('load', () => {
+            let data;
+            try { data = JSON.parse(xhr.responseText); } catch { data = {}; }
 
-                if (response.success) {
-                    // Processing phase
-                    document.getElementById('status-text').textContent = 'Processing...';
-                    document.getElementById('progress-bar').classList.remove('progress-bar-animated');
-
-                    // Wait a bit then redirect
-                    setTimeout(() => {
-                        window.location.href = response.redirect_url;
-                    }, 1000);
-                } else {
-                    showError(response.error || 'Processing failed');
-                }
+            if (xhr.status === 200 && data.success) {
+                setRowState(item, 'processing');
+                // Simulate brief processing display before marking done
+                setTimeout(() => {
+                    item.result = data;
+                    setRowState(item, 'done');
+                    processQueue();
+                }, 600);
             } else {
-                const response = JSON.parse(xhr.responseText);
-                showError(response.error || 'Upload failed');
+                item.result = { error: data.error || `HTTP ${xhr.status}` };
+                setRowState(item, 'error');
+                processQueue();
             }
         });
 
         xhr.addEventListener('error', () => {
-            showError('Network error occurred');
+            item.result = { error: 'Network error' };
+            setRowState(item, 'error');
+            processQueue();
         });
 
-        xhr.open('POST', uploadUrl);
-        xhr.setRequestHeader('X-CSRFToken', csrfToken);
+        xhr.open('POST', UPLOAD_URL);
+        xhr.setRequestHeader('X-CSRFToken', CSRF_TOKEN);
         xhr.send(formData);
-
-    } catch (error) {
-        showError(error.message);
     }
-}
 
-function showError(message) {
-    progressSection.style.display = 'none';
-    errorSection.style.display = 'block';
-    document.getElementById('error-message').textContent = message;
-    dropZone.style.display = 'block';
-}
+    // ── Row rendering ─────────────────────────────────────────────────────
+
+    function buildRow(fileName) {
+        const row = document.createElement('div');
+        row.className = 'border rounded p-3 d-flex align-items-center gap-3';
+        row.style.transition = 'all 0.2s';
+        row.innerHTML = `
+            <div class="row-icon fs-5 text-secondary"><i class="bi bi-clock"></i></div>
+            <div class="flex-grow-1 overflow-hidden">
+                <div class="fw-medium text-truncate small">${escHtml(fileName)}</div>
+                <div class="row-sub text-secondary" style="font-size:0.78rem;"></div>
+                <div class="row-progress mt-1" style="display:none;">
+                    <div class="progress" style="height:5px;">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated"
+                             role="progressbar" style="width:0%;"></div>
+                    </div>
+                </div>
+            </div>`;
+        return row;
+    }
+
+    function setRowState(item, state) {
+        item.state = state;
+        const row     = item.rowEl;
+        const icon    = row.querySelector('.row-icon');
+        const sub     = row.querySelector('.row-sub');
+        const progWrap = row.querySelector('.row-progress');
+        const bar     = row.querySelector('.progress-bar');
+
+        row.classList.remove('border-success', 'border-danger', 'border-primary', 'border-secondary');
+
+        if (state === 'queued') {
+            icon.innerHTML = '<i class="bi bi-clock text-secondary"></i>';
+            sub.textContent = 'Queued';
+            progWrap.style.display = 'none';
+
+        } else if (state === 'uploading') {
+            row.classList.add('border-primary');
+            icon.innerHTML = '<i class="bi bi-arrow-up-circle text-primary"></i>';
+            sub.textContent = 'Uploading…';
+            progWrap.style.display = 'block';
+            bar.style.width = '0%';
+            bar.className = 'progress-bar progress-bar-striped progress-bar-animated';
+
+        } else if (state === 'processing') {
+            row.classList.add('border-primary');
+            icon.innerHTML = '<span class="spinner-border spinner-border-sm text-primary"></span>';
+            sub.textContent = 'Processing…';
+            progWrap.style.display = 'none';
+
+        } else if (state === 'done') {
+            const d = item.result;
+            if (d.file_type === 'ifc' && d.needs_conversion) {
+                row.classList.add('border-warning');
+                icon.innerHTML = '<i class="bi bi-exclamation-triangle-fill text-warning"></i>';
+                const schemaLabel = escHtml(d.schema_version || 'Legacy');
+                sub.innerHTML = `${schemaLabel} · <a href="${escHtml(d.convert_url)}" class="text-warning fw-semibold">⚠ Needs conversion to IFC4 →</a>`;
+            } else if (d.file_type === 'ifc') {
+                row.classList.add('border-success');
+                icon.innerHTML = '<i class="bi bi-check-circle-fill text-success"></i>';
+                const schemaTag = d.schema_version ? ` · <span class="text-secondary">${escHtml(d.schema_version)}</span>` : '';
+                sub.innerHTML = `IFC${schemaTag} · ${d.entity_count} entities`;
+            } else {
+                row.classList.add('border-success');
+                icon.innerHTML = '<i class="bi bi-check-circle-fill text-success"></i>';
+                sub.textContent = `${d.file_type?.toUpperCase() ?? 'Doc'} · ${d.chunk_count} chunks`;
+            }
+            progWrap.style.display = 'none';
+
+        } else if (state === 'error') {
+            row.classList.add('border-danger');
+            icon.innerHTML = '<i class="bi bi-x-circle-fill text-danger"></i>';
+            sub.textContent = item.result?.error || 'Failed';
+            progWrap.style.display = 'none';
+        }
+    }
+
+    function updateRowProgress(item, pct) {
+        const bar = item.rowEl.querySelector('.progress-bar');
+        if (bar) bar.style.width = pct + '%';
+        const sub = item.rowEl.querySelector('.row-sub');
+        if (sub) sub.textContent = `Uploading… ${pct}%`;
+    }
+
+    // ── Summary ───────────────────────────────────────────────────────────
+
+    function showSummary() {
+        const total     = queue.length;
+        const needsConv = queue.filter(i => i.state === 'done' && i.result?.needs_conversion);
+        const successes = queue.filter(i => i.state === 'done' && !i.result?.needs_conversion);
+        const failures  = queue.filter(i => i.state === 'error');
+
+        const alertEl  = document.getElementById('summary-alert');
+        const iconEl   = document.getElementById('summary-icon');
+        const textEl   = document.getElementById('summary-text');
+        const failList = document.getElementById('failure-list');
+
+        if (failures.length === 0 && needsConv.length === 0) {
+            alertEl.className = 'alert alert-success mb-3';
+            iconEl.className  = 'bi bi-check-circle-fill me-2';
+            textEl.textContent = `${successes.length} of ${total} file${total !== 1 ? 's' : ''} processed successfully.`;
+        } else {
+            alertEl.className = 'alert alert-warning mb-3';
+            iconEl.className  = 'bi bi-exclamation-triangle-fill me-2';
+            let msg = '';
+            if (successes.length > 0) msg += `${successes.length} processed. `;
+            if (needsConv.length > 0) msg += `${needsConv.length} need${needsConv.length === 1 ? 's' : ''} conversion. `;
+            if (failures.length > 0) msg += `${failures.length} failed.`;
+            textEl.textContent = msg.trim();
+        }
+
+        failList.innerHTML = '';
+        const flagged = [...needsConv, ...failures];
+        if (flagged.length > 0) {
+            failList.style.removeProperty('display');
+            needsConv.forEach(item => {
+                const el = document.createElement('div');
+                el.className = 'text-warning small';
+                el.innerHTML = `<i class="bi bi-arrow-repeat me-1"></i><strong>${escHtml(item.file.name)}</strong>: <a href="${escHtml(item.result.convert_url)}" class="text-warning">Convert ${escHtml(item.result.schema_version)} → IFC4</a>`;
+                failList.appendChild(el);
+            });
+            failures.forEach(item => {
+                const el = document.createElement('div');
+                el.className = 'text-danger small';
+                el.innerHTML = `<i class="bi bi-x me-1"></i><strong>${escHtml(item.file.name)}</strong>: ${escHtml(item.result?.error || 'Unknown error')}`;
+                failList.appendChild(el);
+            });
+        } else {
+            failList.style.display = 'none';
+        }
+
+        summaryEl.style.display = 'block';
+    }
+
+    function resetState() {
+        queue = [];
+        processing = false;
+        queueList.innerHTML = '';
+        queueSection.style.display = 'none';
+        summaryEl.style.display = 'none';
+    }
+
+    // ── Utilities ─────────────────────────────────────────────────────────
+
+    function escHtml(str) {
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+}());
 </script>
 {% endblock %}

@@ -2,6 +2,7 @@
 
 import logging
 import os
+import re
 
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import UploadedFile
@@ -17,6 +18,27 @@ IFC_SIGNATURES = [
     b"ISO-10303-21",  # Standard STEP header
     b"FILE_DESCRIPTION",  # Alternative start
 ]
+
+
+def sniff_schema(file_obj) -> str:
+    """Read the FILE_SCHEMA declaration from an IFC file header without full parsing.
+
+    Returns the schema identifier string (e.g. 'IFC4', 'IFC2X3') or empty string
+    if it cannot be determined. Resets the file pointer after reading.
+    """
+    try:
+        chunk = file_obj.read(4096)
+        file_obj.seek(0)
+        if isinstance(chunk, bytes):
+            chunk = chunk.decode("ascii", errors="ignore")
+        match = re.search(
+            r"FILE_SCHEMA\s*\(\s*\(\s*['\"]([^'\"]+)['\"]\s*\)\s*\)",
+            chunk,
+            re.IGNORECASE,
+        )
+        return match.group(1).upper() if match else ""
+    except Exception:
+        return ""
 
 
 def validate_ifc_file(file: UploadedFile) -> tuple[bool, str]:

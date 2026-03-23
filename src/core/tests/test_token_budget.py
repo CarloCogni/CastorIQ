@@ -6,7 +6,6 @@ import pytest
 from core.token_budget import (
     DEFAULT_CONTEXT_WINDOW,
     RESPONSE_RESERVE,
-    SAFETY_RATIO,
     TokenBudget,
     _context_window_cache,
     compute_budget,

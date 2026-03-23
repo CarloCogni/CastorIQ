@@ -1,7 +1,7 @@
 # embeddings/tests/test_embedding_service.py
 """Tests for EmbeddingService — Ollama calls always mocked."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 

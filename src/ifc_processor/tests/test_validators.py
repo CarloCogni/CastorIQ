@@ -7,12 +7,11 @@ import pytest
 from django.core.exceptions import ValidationError
 
 from ifc_processor.services.validators import (
-    IFCFileValidator,
     MAX_IFC_FILE_SIZE,
+    IFCFileValidator,
     _has_valid_ifc_signature,
     validate_ifc_file,
 )
-
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 

@@ -50,17 +50,29 @@
                 <div class="d-flex align-items-center min-width-0 gap-2 flex-grow-1">
                     <div class="position-relative flex-shrink-0">
                         <div class="file-icon file-icon-ifc shadow-sm">IFC</div>
-                        <span class="position-absolute top-0 start-100 translate-middle p-1 border border-light rounded-circle status-{{ ifc.status }}" style="width: 8px; height: 8px;"></span>
+                        {% if ifc.needs_conversion %}
+                        <span class="position-absolute top-0 start-100 translate-middle p-1 border border-light rounded-circle status-pending"
+                              style="width: 8px; height: 8px;" title="Needs conversion to IFC4"></span>
+                        {% else %}
+                        <span class="position-absolute top-0 start-100 translate-middle p-1 border border-light rounded-circle status-{{ ifc.status }}"
+                              style="width: 8px; height: 8px;"></span>
+                        {% endif %}
                     </div>
 
                     <div class="min-width-0 flex-grow-1 d-flex flex-column justify-content-center">
                         <a href="{{ ifc.file.url }}" target="_blank" class="d-block fs-7 fw-medium text-truncate file-link text-white-50 hover-text-white">
                             {{ ifc.name }}
                         </a>
-                        <div class="fs-8 text-secondary d-flex align-items-center gap-2 mt-1">
-                            <span>{{ ifc.entity_count }} items</span>
+                        <div class="fs-8 d-flex align-items-center gap-2 mt-1">
+                            {% if ifc.needs_conversion %}
+                            <a href="{% url 'projects:ifc_convert' ifc.pk %}" class="text-warning text-decoration-none">
+                                <i class="bi bi-arrow-repeat me-1"></i>Convert {{ ifc.schema_version }} → IFC4
+                            </a>
+                            {% else %}
+                            <span class="text-secondary">{{ ifc.entity_count }} items</span>
                             {% if ifc.unresolved_issue_count %}
                             <i class="bi bi-exclamation-triangle-fill text-warning" title="Data Issues"></i>
+                            {% endif %}
                             {% endif %}
                         </div>
                     </div>

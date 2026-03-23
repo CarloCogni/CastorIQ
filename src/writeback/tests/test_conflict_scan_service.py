@@ -2,13 +2,12 @@
 """Tests for ConflictScanService — LLM always mocked, pgvector operations patched."""
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from writeback.models import Conflict, ScanRun
 from writeback.services.conflict_scan_service import ConflictScanService
-
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -94,7 +93,6 @@ class TestGetRequirementChunks:
     def test_returns_chunks_containing_requirement_keywords(self, scan_service, project):
         """Chunks with AEC keywords are returned; non-matching are excluded."""
         from documents.models import Document, DocumentChunk
-        from ifc_processor.tests.factories import IFCFileFactory
 
         # Create a completed document with an embedding
         doc = Document.objects.create(
@@ -146,8 +144,8 @@ class TestUpsertConflict:
 
     def test_upsert_creates_new_conflict(self, scan_service, project, ifc_file):
         """First call creates a new OPEN Conflict record."""
-        from ifc_processor.tests.factories import IFCEntityFactory
         from documents.models import Document, DocumentChunk
+        from ifc_processor.tests.factories import IFCEntityFactory
 
         entity = IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcWall")
         doc = Document.objects.create(
@@ -171,9 +169,9 @@ class TestUpsertConflict:
 
     def test_upsert_updates_existing_open_conflict(self, scan_service, project, ifc_file):
         """Second call with same hash updates the existing OPEN conflict."""
-        from ifc_processor.tests.factories import IFCEntityFactory
+
         from documents.models import Document, DocumentChunk
-        import hashlib
+        from ifc_processor.tests.factories import IFCEntityFactory
 
         entity = IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcWall")
         doc = Document.objects.create(
@@ -205,9 +203,10 @@ class TestUpsertConflict:
 
     def test_upsert_skips_dismissed_conflict(self, scan_service, project, ifc_file):
         """Dismissed conflicts are never recreated."""
-        from ifc_processor.tests.factories import IFCEntityFactory
-        from documents.models import Document, DocumentChunk
         import hashlib
+
+        from documents.models import Document, DocumentChunk
+        from ifc_processor.tests.factories import IFCEntityFactory
 
         entity = IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcWall")
         doc = Document.objects.create(
@@ -252,8 +251,8 @@ class TestEvaluateEntity:
 
     def test_evaluate_entity_returns_findings(self, scan_service, ifc_file):
         """Valid LLM response returns list of conflict dicts."""
-        from ifc_processor.tests.factories import IFCEntityFactory
         from documents.models import Document, DocumentChunk
+        from ifc_processor.tests.factories import IFCEntityFactory
 
         entity = IFCEntityFactory(
             ifc_file=ifc_file,
@@ -278,8 +277,8 @@ class TestEvaluateEntity:
 
     def test_evaluate_entity_invalid_json_returns_empty_list(self, scan_service, ifc_file):
         """If the LLM returns invalid JSON, _evaluate_entity returns [] gracefully."""
-        from ifc_processor.tests.factories import IFCEntityFactory
         from documents.models import Document, DocumentChunk
+        from ifc_processor.tests.factories import IFCEntityFactory
 
         entity = IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcWall")
         doc = Document.objects.create(
@@ -299,8 +298,8 @@ class TestEvaluateEntity:
 
     def test_evaluate_entity_filters_low_confidence_findings(self, scan_service, ifc_file):
         """Findings with confidence < CONFIDENCE_THRESHOLD are excluded."""
-        from ifc_processor.tests.factories import IFCEntityFactory
         from documents.models import Document, DocumentChunk
+        from ifc_processor.tests.factories import IFCEntityFactory
 
         entity = IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcWall")
         doc = Document.objects.create(

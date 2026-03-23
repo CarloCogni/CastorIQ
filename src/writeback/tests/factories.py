@@ -3,8 +3,8 @@
 
 import factory
 
-from ifc_processor.tests.factories import IFCFileFactory
 from environments.tests.factories import UserFactory
+from ifc_processor.tests.factories import IFCFileFactory
 
 
 class ModificationProposalFactory(factory.django.DjangoModelFactory):

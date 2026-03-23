@@ -32,8 +32,8 @@ class TestModificationProposalModel:
 class TestGitCommitModel:
     def test_str_shows_short_hash_and_truncated_message(self):
         """GitCommit.__str__ = '<short_hash>: <message[:50]>'."""
-        from writeback.models import GitCommit
         from ifc_processor.tests.factories import IFCFileFactory
+        from writeback.models import GitCommit
 
         ifc_file = IFCFileFactory()
         commit = GitCommit.objects.create(

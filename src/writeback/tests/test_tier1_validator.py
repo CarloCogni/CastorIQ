@@ -99,7 +99,6 @@ class TestTier1ValidatorSetProperty:
     def test_set_property_real_coercion_valid(self, wall_entities):
         """'0.25' is valid for a real-type property → coerced to float."""
         # Need entities with ThermalTransmittance
-        from ifc_processor.tests.factories import IFCEntityFactory
 
         entity = wall_entities[0]
         entity.properties["Pset_WallCommon.ThermalTransmittance"] = 0.35

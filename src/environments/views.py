@@ -321,53 +321,6 @@ class RenameSessionView(ProjectAccessMixin, View):
         return JsonResponse({"ok": True, "title": session.title})
 
 
-class UploadIFCView(ProjectAccessMixin, View):
-    """Handle IFC file upload."""
-
-    def post(self, request, pk):
-        project = self.get_project()
-
-        if "file" not in request.FILES:
-            return JsonResponse({"error": "No file provided"}, status=400)
-
-        uploaded_file = request.FILES["file"]
-
-        # Validate extension
-        if not uploaded_file.name.lower().endswith(".ifc"):
-            return JsonResponse({"error": "File must be .ifc"}, status=400)
-
-        try:
-            # 1. Create IFC file record
-            ifc_file = IFCFile.objects.create(
-                project=project,
-                name=uploaded_file.name,
-                file=uploaded_file,
-                status=IFCFile.Status.PENDING,
-            )
-
-            # 2. Run Pipeline (Hash -> Parse -> Embed)
-            processor = IFCProcessingService(ifc_file)
-            success = processor.run_pipeline()
-
-            if success:
-                return JsonResponse(
-                    {
-                        "id": str(ifc_file.id),
-                        "name": ifc_file.name,
-                        "status": ifc_file.status,
-                        "entity_count": ifc_file.entity_count,
-                    }
-                )
-            else:
-                return JsonResponse(
-                    {"success": False, "error": ifc_file.error_message or "Processing failed"},
-                    status=400,
-                )
-
-        except Exception as e:
-            return JsonResponse({"error": str(e)}, status=500)
-
-
 class IFCFileUpdateView(ProjectAccessMixin, UpdateView):
     """Replace an IFC file and re-parse it."""
 
@@ -550,13 +503,21 @@ class FileUploadView(ProjectAccessMixin, TemplateView):
             )
 
     def _handle_ifc_upload(self, project, uploaded_file):
-        """Handle IFC file upload and parsing"""
+        """Handle IFC file upload and parsing.
+
+        Schema is detected before the pipeline runs. Legacy (non-IFC4) files are
+        stored but not parsed; the response includes a conversion URL instead.
+        """
+        from ifc_processor.services.validators import sniff_schema
+
         try:
-            # Validate file extension
             if not uploaded_file.name.lower().endswith(".ifc"):
                 return JsonResponse({"success": False, "error": "File must be .ifc"}, status=400)
 
-            # Create IFC file record
+            # Schema guard: detect before running the pipeline
+            schema = sniff_schema(uploaded_file)
+            is_legacy = bool(schema) and not schema.startswith("IFC4")
+
             ifc_file = IFCFile.objects.create(
                 project=project,
                 name=uploaded_file.name,
@@ -564,18 +525,39 @@ class FileUploadView(ProjectAccessMixin, TemplateView):
                 status=IFCFile.Status.PENDING,
             )
 
-            # Run Pipeline
+            if is_legacy:
+                ifc_file.schema_version = schema
+                ifc_file.status = IFCFile.Status.FAILED
+                ifc_file.error_message = (
+                    f"Legacy schema {schema} — conversion to IFC4 required before processing."
+                )
+                ifc_file.save(update_fields=["schema_version", "status", "error_message"])
+                return JsonResponse(
+                    {
+                        "success": True,
+                        "file_type": "ifc",
+                        "file_name": ifc_file.name,
+                        "entity_count": 0,
+                        "schema_version": schema,
+                        "needs_conversion": True,
+                        "convert_url": reverse("projects:ifc_convert", kwargs={"pk": ifc_file.pk}),
+                    }
+                )
+
+            # IFC4 — run pipeline normally
             processor = IFCProcessingService(ifc_file)
             success = processor.run_pipeline()
 
             if success:
+                detected_schema = ifc_file.schema_version or ""
                 return JsonResponse(
                     {
                         "success": True,
                         "file_type": "ifc",
                         "file_name": ifc_file.name,
                         "entity_count": ifc_file.entity_count,
-                        "redirect_url": reverse("projects:ask", kwargs={"pk": project.pk}),
+                        "schema_version": detected_schema,
+                        "needs_conversion": False,
                     }
                 )
             else:
@@ -588,7 +570,7 @@ class FileUploadView(ProjectAccessMixin, TemplateView):
                 )
 
         except Exception as e:
-            logger.exception(f"Error uploading IFC file: {e}")
+            logger.exception("Error uploading IFC file: %s", e)
             return JsonResponse({"success": False, "error": str(e)}, status=500)
 
     def _handle_document_upload(self, project, uploaded_file):
@@ -625,7 +607,7 @@ class FileUploadView(ProjectAccessMixin, TemplateView):
                         "success": True,
                         "file_type": doc_type,
                         "file_name": document.name,
-                        "redirect_url": reverse("projects:ask", kwargs={"pk": project.pk}),
+                        "chunk_count": document.chunk_count,
                     }
                 )
             else:
@@ -638,3 +620,45 @@ class FileUploadView(ProjectAccessMixin, TemplateView):
         except Exception as e:
             logger.exception(f"Error uploading document: {e}")
             return JsonResponse({"success": False, "error": str(e)}, status=500)
+
+
+class IFCSchemaConvertView(ProjectAccessMixin, View):
+    """Dedicated page to convert a legacy IFC schema (e.g. IFC2X3) to IFC4."""
+
+    def get_project(self):
+        """Resolve project via the IFC file's pk kwarg."""
+        ifc_file = get_object_or_404(IFCFile, pk=self.kwargs["pk"])
+        project = ifc_file.project
+        if not project.user_has_access(self.request.user):
+            from django.core.exceptions import PermissionDenied
+
+            raise PermissionDenied
+        return project
+
+    def get(self, request, pk):
+        ifc_file = get_object_or_404(IFCFile, pk=pk)
+        project = self.get_project()
+        return render(
+            request,
+            "environments/schema_convert.html",
+            {
+                "project": project,
+                "ifc_file": ifc_file,
+            },
+        )
+
+    def post(self, request, pk):
+        from ifc_processor.services.schema_converter import IFCSchemaConverterService
+
+        ifc_file = get_object_or_404(IFCFile, pk=pk)
+        project = self.get_project()
+        result = IFCSchemaConverterService(ifc_file).convert()
+        return render(
+            request,
+            "environments/schema_convert.html",
+            {
+                "project": project,
+                "ifc_file": ifc_file,
+                "result": result,
+            },
+        )

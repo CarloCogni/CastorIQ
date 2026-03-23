@@ -10,7 +10,6 @@ from django.urls import reverse
 from environments.tests.factories import ProjectFactory, UserFactory
 from ifc_processor.tests.factories import IFCFileFactory
 
-
 # ── Helpers ────────────────────────────────────────────────────────────────
 
 
@@ -316,7 +315,6 @@ class TestProjectUpdateView:
 
     def test_owner_can_edit_project(self, client):
         """Owner can submit edit form and update project name."""
-        from environments.models import Project
 
         user = UserFactory()
         project = ProjectFactory(owner=user)
@@ -342,68 +340,6 @@ class TestProjectUpdateView:
             {"name": "Hacked", "description": "Bad"},
         )
         assert response.status_code in (302, 403)
-
-
-# ── UploadIFCView ───────────────────────────────────────────────────────────
-
-
-@pytest.mark.django_db
-class TestUploadIFCView:
-    """POST /projects/<pk>/upload/ifc/."""
-
-    def test_upload_no_file_returns_400(self, client):
-        """Missing file returns 400."""
-        user = UserFactory()
-        project = ProjectFactory(owner=user)
-        _login(client, user)
-
-        response = client.post(_project_url("upload_ifc", project.pk))
-        assert response.status_code == 400
-        data = json.loads(response.content)
-        assert "error" in data
-
-    def test_upload_non_ifc_file_returns_400(self, client):
-        """Non-.ifc file returns 400."""
-        from django.core.files.uploadedfile import SimpleUploadedFile
-
-        user = UserFactory()
-        project = ProjectFactory(owner=user)
-        _login(client, user)
-
-        bad_file = SimpleUploadedFile("model.pdf", b"not ifc", content_type="application/pdf")
-        response = client.post(_project_url("upload_ifc", project.pk), {"file": bad_file})
-        assert response.status_code == 400
-
-    def test_upload_valid_ifc_calls_pipeline(self, client):
-        """Valid IFC file triggers pipeline and returns success."""
-        from django.core.files.uploadedfile import SimpleUploadedFile
-
-        user = UserFactory()
-        project = ProjectFactory(owner=user)
-        _login(client, user)
-
-        ifc_content = b"ISO-10303-21;\nDATA;\nENDSEC;\nEND-ISO-10303-21;"
-        ifc_file = SimpleUploadedFile(
-            "model.ifc", ifc_content, content_type="application/octet-stream"
-        )
-
-        with patch("environments.views.IFCProcessingService") as MockProc:
-            instance = MockProc.return_value
-            instance.run_pipeline.return_value = True
-
-            with patch("ifc_processor.models.IFCFile.objects.create") as mock_create:
-                mock_ifc = MagicMock()
-                mock_ifc.id = "test-uuid"
-                mock_ifc.name = "model.ifc"
-                mock_ifc.status = "completed"
-                mock_ifc.entity_count = 10
-                mock_create.return_value = mock_ifc
-
-                response = client.post(_project_url("upload_ifc", project.pk), {"file": ifc_file})
-
-        assert response.status_code == 200
-        data = json.loads(response.content)
-        assert data["entity_count"] == 10
 
 
 # ── FileUploadView ──────────────────────────────────────────────────────────
@@ -467,6 +403,7 @@ class TestFileUploadView:
                 mock_obj.name = "model.ifc"
                 mock_obj.status = "completed"
                 mock_obj.entity_count = 5
+                mock_obj.schema_version = "IFC4"
                 mock_create.return_value = mock_obj
 
                 response = client.post(_project_url("upload", project.pk), {"file": ifc_file})
@@ -474,6 +411,42 @@ class TestFileUploadView:
         data = json.loads(response.content)
         assert data.get("success") is True
         assert data.get("file_type") == "ifc"
+        assert data.get("entity_count") == 5
+        assert data.get("needs_conversion") is False
+        assert "redirect_url" not in data
+
+    def test_post_ifc_legacy_schema_returns_conversion_offer(self, client):
+        """IFC2X3 file is rejected before pipeline with a conversion offer."""
+        import uuid
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        _login(client, user)
+
+        ifc_header = (
+            b"ISO-10303-21;\nHEADER;\n"
+            b"FILE_SCHEMA(('IFC2X3'));\n"
+            b"ENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;"
+        )
+        ifc_file = SimpleUploadedFile(
+            "old.ifc", ifc_header, content_type="application/octet-stream"
+        )
+
+        with patch("ifc_processor.models.IFCFile.objects.create") as mock_create:
+            mock_obj = MagicMock()
+            mock_obj.pk = uuid.uuid4()
+            mock_obj.name = "old.ifc"
+            mock_create.return_value = mock_obj
+
+            response = client.post(_project_url("upload", project.pk), {"file": ifc_file})
+
+        data = json.loads(response.content)
+        assert data.get("success") is True
+        assert data.get("needs_conversion") is True
+        assert data.get("schema_version") == "IFC2X3"
+        assert "convert_url" in data
 
     def test_post_pdf_routes_to_document_handler(self, client):
         """PDF file routes to document upload handler."""
@@ -503,6 +476,8 @@ class TestFileUploadView:
 
         data = json.loads(response.content)
         assert data.get("success") is True
+        assert data.get("chunk_count") == 5
+        assert "redirect_url" not in data
 
 
 # ── FileProcessedView ───────────────────────────────────────────────────────

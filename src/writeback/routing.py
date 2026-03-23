@@ -14,4 +14,8 @@ websocket_urlpatterns = [
         r"ws/projects/(?P<project_id>[0-9a-f-]+)/conflicts/scan/$",
         consumers.ScanConsumer.as_asgi(),
     ),
+    re_path(
+        r"ws/projects/(?P<project_id>[0-9a-f-]+)/ifc/(?P<ifc_file_id>[0-9a-f-]+)/convert/$",
+        consumers.SchemaConversionConsumer.as_asgi(),
+    ),
 ]
