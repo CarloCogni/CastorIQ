@@ -3,7 +3,12 @@
 
 <div class="d-flex flex-column flex-grow-1 w-100 h-100 position-relative" style="overflow: hidden;">
 
-    <div class="flex-grow-1 overflow-y-auto p-4 min-height-0" id="chat-messages" style="scroll-behavior: smooth;">
+    <div class="flex-grow-1 overflow-y-auto p-4 min-height-0"
+         id="chat-messages"
+         style="scroll-behavior: smooth;"
+         data-project-pk="{{ project.pk }}"
+         data-session-pk="{{ session.pk }}"
+         data-messages-url="{% url 'projects:ask_session_messages' project.pk session.pk %}">
         {% include "environments/components/chat_message_list.html" %}
     </div>
 
@@ -120,7 +125,8 @@
           method="post"
           hx-post="{% url 'projects:ask_session' project.pk session.pk %}"
           hx-target="#chat-messages"
-          hx-swap="innerHTML">
+          hx-swap="innerHTML"
+          onsubmit="return AskChat.handleSubmit(event)">
 
             {% csrf_token %}
 
@@ -190,89 +196,237 @@
 </div>
 
 <script>
+/* ── AskChat — WebSocket-based RAG pipeline with HTMX fallback ─────────── */
+const AskChat = {
+    chatEl: null,
+    inputEl: null,
+    userInitial: '{{ user.username.0|upper }}',
 
-    (function() {
-        const chatContainer = document.getElementById('chat-messages');
-        const scrollBtn = document.getElementById('scroll-btn');
-        const form = document.getElementById('ask-form');
-        const input = document.getElementById('user-input');
-        // --- Scroll Logic ---
+    _ws: null,
+    _wsReconnectAttempts: 0,
+    _maxReconnectAttempts: 3,
 
-        // 1. Function to Scroll to Bottom
-        window.scrollToBottom = function() {
-            chatContainer.scrollTop = chatContainer.scrollHeight;
-        }
+    /* ── WebSocket init ──────────────────────────────────────────────────── */
+    initWebSocket() {
+        this.chatEl = document.getElementById('chat-messages');
+        this.inputEl = document.getElementById('user-input');
+        const projectPk = this.chatEl.dataset.projectPk;
+        const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const url = `${proto}//${window.location.host}/ws/projects/${projectPk}/ask/`;
 
-        // 2. Initial Scroll
-        scrollToBottom();
+        this._ws = new WebSocket(url);
 
-        // 3. Toggle Scroll Button Visibility
-        chatContainer.addEventListener('scroll', function() {
-            // If user is scrolled up more than 100px from bottom, show button
-            const distanceToBottom = chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight;
+        this._ws.onopen = () => {
+            this._wsReconnectAttempts = 0;
+        };
 
-            if (distanceToBottom > 150) {
-                scrollBtn.classList.add('visible');
-            } else {
-                scrollBtn.classList.remove('visible');
-            }
-        });
-
-        // --- Chat Interaction Logic (HTMX) ---
-        window.handleEnter = function(e) {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                htmx.trigger(form, 'submit');
+        this._ws.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                this._handleWsMessage(data);
+            } catch (e) {
+                console.error('WS message parse error', e);
             }
         };
 
-        // 4. Optimistic UI: Show message immediately before server responds
-        form.addEventListener('htmx:beforeRequest', function() {
-            const text = input.value.trim();
-            if (!text) return;
+        this._ws.onclose = (event) => {
+            if (event.code !== 1000 && event.code !== 4001 && event.code !== 4003) {
+                this._attemptReconnect();
+            }
+        };
 
-            // Generate optimistic HTML
-            const userAvatar = '{{ user.username.0|upper }}';
+        this._ws.onerror = (err) => {
+            console.warn('WebSocket error:', err);
+        };
+    },
 
-            // REFACTORED: Use the global CastorLoader
-            const loaderHTML = CastorLoader.getHTML();
+    _attemptReconnect() {
+        if (this._wsReconnectAttempts >= this._maxReconnectAttempts) return;
+        this._wsReconnectAttempts++;
+        const delay = Math.pow(2, this._wsReconnectAttempts) * 500;
+        setTimeout(() => this.initWebSocket(), delay);
+    },
 
-            const optimisticHTML = `
-                    <div class="message message-user">
-                        <div class="message-avatar">${userAvatar}</div>
-                        <div class="message-content">${text.replace(/\n/g, '<br>')}</div>
-                    </div>
+    /* ── Message handling ───────────────────────────────────────────────── */
+    _handleWsMessage(data) {
+        switch (data.type) {
+            case 'phase':
+                this._updateProgressPhase(data);
+                break;
+            case 'done':
+                this._hideProgressTracker();
+                htmx.ajax('GET', this.chatEl.dataset.messagesUrl, {
+                    target: '#chat-messages',
+                    swap: 'innerHTML',
+                });
+                break;
+            case 'error':
+                this._hideProgressTracker();
+                this.chatEl.insertAdjacentHTML('beforeend', `
                     <div class="message message-assistant">
                         <div class="message-avatar"><i class="bi bi-building"></i></div>
-                        <div class="message-content text-secondary d-flex align-items-center">
-                            <div style="width: 50px; height: 50px;">
-                                ${loaderHTML}
-                            </div>
-                            <span class="ms-2 fs-7">Castor is thinking...</span>
+                        <div class="message-content text-danger">
+                            <i class="bi bi-exclamation-triangle me-1"></i>${data.message}
                         </div>
-                    </div>
-                `;
+                    </div>`);
+                this.chatEl.scrollTop = this.chatEl.scrollHeight;
+                break;
+        }
+    },
 
-            // Append to list and scroll
-            // Note: This content gets overwritten when the real HTMX response arrives
-            chatContainer.insertAdjacentHTML('beforeend', optimisticHTML);
-            chatContainer.scrollTop = chatContainer.scrollHeight;
+    /* ── Submit / send ──────────────────────────────────────────────────── */
+    handleSubmit(event) {
+        // If WS is open, intercept and use WS path; otherwise let HTMX handle it
+        if (this._ws && this._ws.readyState === WebSocket.OPEN) {
+            event.preventDefault();
+            this.sendMessage();
+            return false;
+        }
+    },
 
-            // Clear input
-            input.value = '';
-            input.style.height = 'auto';
-            input.style.overflowY = 'hidden';
-        });
+    handleEnter(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            if (this._ws && this._ws.readyState === WebSocket.OPEN) {
+                this.sendMessage();
+            } else {
+                htmx.trigger(document.getElementById('ask-form'), 'submit');
+            }
+        }
+    },
 
-        // 5. After Swap: Scroll to bottom again to show the real response
-        form.addEventListener('htmx:afterSwap', function() {
-            chatContainer.scrollTop = chatContainer.scrollHeight;
-            input.focus();
-        });
+    sendMessage() {
+        const text = this.inputEl.value.trim();
+        if (!text) return;
 
-        // 6. Error Handling
-        form.addEventListener('htmx:responseError', function() {
-            alert("Connection lost. Please try again.");
-        });
-    })();
+        const scope = document.querySelector('input[name="scope"]:checked')?.value || 'auto';
+        const sessionPk = this.chatEl.dataset.sessionPk;
+
+        // Optimistic user bubble (htmx:beforeRequest won't fire on WS path)
+        this.chatEl.insertAdjacentHTML('beforeend', `
+            <div class="message message-user">
+                <div class="message-avatar">${this.userInitial}</div>
+                <div class="message-content">${text.replace(/\n/g, '<br>')}</div>
+            </div>`);
+
+        this._showProgressTracker();
+
+        this.inputEl.value = '';
+        this.inputEl.style.height = 'auto';
+        this.inputEl.style.overflowY = 'hidden';
+        this.chatEl.scrollTop = this.chatEl.scrollHeight;
+
+        this._ws.send(JSON.stringify({
+            action: 'ask',
+            message: text,
+            session_id: sessionPk,
+            scope: scope,
+        }));
+    },
+
+    /* ── Progress tracker UI ────────────────────────────────────────────── */
+    _showProgressTracker() {
+        const loaderHTML = CastorLoader.getHTML();
+        const html = `
+        <div class="message message-assistant" id="ask-progress-tracker">
+            <div class="message-avatar"><i class="bi bi-building"></i></div>
+            <div class="message-content">
+                <div class="d-flex align-items-center gap-3">
+                    <div style="width: 50px; height: 50px; flex-shrink: 0;">${loaderHTML}</div>
+                    <div class="d-flex flex-column gap-1 py-1" id="ask-progress-phases"></div>
+                </div>
+            </div>
+        </div>`;
+        this.chatEl.insertAdjacentHTML('beforeend', html);
+        this.chatEl.scrollTop = this.chatEl.scrollHeight;
+    },
+
+    _updateProgressPhase(data) {
+        const tracker = document.getElementById('ask-progress-tracker');
+        if (!tracker) return;
+
+        const phasesEl = document.getElementById('ask-progress-phases');
+        let phaseEl = document.getElementById(`ask-phase-${data.phase}`);
+
+        if (!phaseEl) {
+            phaseEl = document.createElement('div');
+            phaseEl.id = `ask-phase-${data.phase}`;
+            phaseEl.className = 'd-flex align-items-center gap-2 fs-8';
+            phasesEl.appendChild(phaseEl);
+        }
+
+        const icons = {
+            running: '<span class="spinner-border spinner-border-sm text-secondary" style="width:12px;height:12px;"></span>',
+            done:    '<i class="bi bi-check-circle-fill text-success fs-8"></i>',
+            error:   '<i class="bi bi-x-circle-fill text-danger fs-8"></i>',
+        };
+        const icon = icons[data.status] || icons.running;
+        phaseEl.innerHTML = `${icon} <span class="text-secondary">${data.message}</span>`;
+        this.chatEl.scrollTop = this.chatEl.scrollHeight;
+    },
+
+    _hideProgressTracker() {
+        document.getElementById('ask-progress-tracker')?.remove();
+    },
+};
+
+/* ── Scroll + HTMX glue (runs on load) ─────────────────────────────────── */
+(function() {
+    const chatContainer = document.getElementById('chat-messages');
+    const scrollBtn = document.getElementById('scroll-btn');
+    const form = document.getElementById('ask-form');
+
+    window.scrollToBottom = function() {
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    };
+    scrollToBottom();
+
+    chatContainer.addEventListener('scroll', function() {
+        const distanceToBottom = chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight;
+        if (distanceToBottom > 150) {
+            scrollBtn.classList.add('visible');
+        } else {
+            scrollBtn.classList.remove('visible');
+        }
+    });
+
+    // Global handleEnter delegates to AskChat so WS path is respected
+    window.handleEnter = function(e) { AskChat.handleEnter(e); };
+
+    // HTMX fallback path: optimistic UI when WS is not available
+    form.addEventListener('htmx:beforeRequest', function() {
+        const text = document.getElementById('user-input').value.trim();
+        if (!text) return;
+        const loaderHTML = CastorLoader.getHTML();
+        chatContainer.insertAdjacentHTML('beforeend', `
+            <div class="message message-user">
+                <div class="message-avatar">{{ user.username.0|upper }}</div>
+                <div class="message-content">${text.replace(/\n/g, '<br>')}</div>
+            </div>
+            <div class="message message-assistant">
+                <div class="message-avatar"><i class="bi bi-building"></i></div>
+                <div class="message-content text-secondary d-flex align-items-center">
+                    <div style="width: 50px; height: 50px;">${loaderHTML}</div>
+                    <span class="ms-2 fs-7">Castor is thinking...</span>
+                </div>
+            </div>`);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+        const input = document.getElementById('user-input');
+        input.value = '';
+        input.style.height = 'auto';
+        input.style.overflowY = 'hidden';
+    });
+
+    // After any HTMX swap (fallback POST or WS-triggered GET), scroll to bottom
+    form.addEventListener('htmx:afterSwap', function() {
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+        document.getElementById('user-input').focus();
+    });
+
+    form.addEventListener('htmx:responseError', function() {
+        alert("Connection lost. Please try again.");
+    });
+
+    AskChat.initWebSocket();
+})();
 </script>

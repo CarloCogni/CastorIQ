@@ -12,6 +12,7 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.local")
 # Must call get_asgi_application() before importing anything that touches Django ORM
 django_asgi_app = get_asgi_application()
 
+from chat.routing import websocket_urlpatterns as chat_ws  # noqa: E402
 from documents.routing import websocket_urlpatterns as documents_ws  # noqa: E402
 from writeback.routing import websocket_urlpatterns as writeback_ws  # noqa: E402
 
@@ -19,7 +20,7 @@ application = ProtocolTypeRouter(
     {
         "http": django_asgi_app,
         "websocket": AllowedHostsOriginValidator(
-            AuthMiddlewareStack(URLRouter(writeback_ws + documents_ws))
+            AuthMiddlewareStack(URLRouter(writeback_ws + documents_ws + chat_ws))
         ),
     }
 )

@@ -84,6 +84,14 @@ Uncle Bob's clean code. Zen of Python: explicit over implicit, simple over compl
 5. **Ask before large refactors:** If touching more than 3 files, propose the plan first.
 
 ---
+## Review Stance
+
+- **No sycophancy.** Do not validate ideas by default. Skip "great idea" and "that makes sense" filler.
+- **Challenge before implementing.** When I propose an architecture change or refactor, list at least 2-3 weaknesses, edge cases, or failure modes BEFORE writing any code.
+- **Assume-failure lens for design proposals.** If I describe a new system or pattern, first explain how and why it could fail, then proceed only if I confirm.
+- **Direct, clinical tone for reviews.** When reviewing my code or ideas, be blunt. Prioritize signal over diplomacy.
+
+---
 
 ## Skills (.claude/skills/)
 

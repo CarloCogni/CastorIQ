@@ -17,6 +17,11 @@ urlpatterns = [
     path("<uuid:pk>/ask/", views.AskView.as_view(), name="ask"),
     path("<uuid:pk>/ask/<uuid:session_id>/", views.AskView.as_view(), name="ask_session"),
     path(
+        "<uuid:pk>/ask/<uuid:session_id>/messages/",
+        views.AskMessagesView.as_view(),
+        name="ask_session_messages",
+    ),
+    path(
         "<uuid:pk>/ask/<uuid:session_id>/delete/",
         views.DeleteSessionView.as_view(),
         name="delete_session",

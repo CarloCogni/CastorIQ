@@ -286,6 +286,42 @@ class AskView(ProjectTabMixin, TemplateView):
         return redirect("projects:ask_session", pk=project.pk, session_id=session.pk)
 
 
+class AskMessagesView(ProjectTabMixin, View):
+    """
+    Return the rendered message list partial for a session.
+
+    Called via htmx.ajax() after the WebSocket pipeline emits {type: "done"},
+    so the browser can swap in server-rendered messages (including markdown
+    and source badges) without a full page reload.
+    """
+
+    active_tab = "ask"
+
+    def get(self, request, pk, session_id, *args, **kwargs):
+        project = self.get_project()
+        session = get_object_or_404(
+            ChatSession,
+            pk=session_id,
+            project=project,
+            user=request.user,
+            mode=ChatSession.Mode.ASK,
+        )
+        messages_qs = session.messages.select_related().order_by("created_at")
+        model_name = resolve_model_name(request.user)
+        history = [{"role": m.role, "content": m.content} for m in messages_qs]
+        budget = compute_budget(model_name, system=SYSTEM_PROMPT, conversation_history=history)
+        return render(
+            request,
+            "environments/components/chat_message_list.html",
+            {
+                "messages": messages_qs,
+                "user": request.user,
+                "utilization_pct": budget.utilization_pct,
+                "context_window_label": _fmt_ctx(budget.model_context_window),
+            },
+        )
+
+
 class DeleteSessionView(ProjectAccessMixin, View):
     """Delete a chat session and redirect to Ask tab."""
 

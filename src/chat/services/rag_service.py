@@ -3,6 +3,7 @@ import logging
 from textwrap import dedent
 from typing import Any
 
+from django.db.models import Count
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from pgvector.django import CosineDistance
@@ -13,9 +14,10 @@ from core.token_budget import compute_budget
 from core.token_utils import estimate_tokens
 from documents.models import Document, DocumentChunk
 from embeddings.services.embedding_service import EmbeddingService
-from ifc_processor.models import IFCEntity
+from ifc_processor.models import IFCEntity, IFCFile
 
 logger = logging.getLogger(__name__)
+
 
 SYSTEM_PROMPT = dedent("""\
     You are Castor, an AI assistant specialized in BIM (Building Information Modeling) \
@@ -39,15 +41,43 @@ SYSTEM_PROMPT = dedent("""\
     7. If asked about conflicts between IFC and documents, highlight both values clearly.\
 """)
 
+_IFC_INVENTORY_KEYWORDS: frozenset[str] = frozenset(
+    {
+        "what elements",
+        "element types",
+        "what types",
+        "list all",
+        "how many",
+        "what ifc",
+        "building elements",
+        "element count",
+        "inventory",
+        "all elements",
+        "types of elements",
+        "what kind of elements",
+    }
+)
+
+_DOC_SUMMARY_KEYWORDS: frozenset[str] = frozenset(
+    {
+        "summarize",
+        "summary",
+        "overview",
+        "explain the document",
+        "what is this file",
+    }
+)
+
 
 class RAGService:
     """
     RAG Service with Intent-Aware Retrieval.
 
-    Improvements over original:
-    1. Ported the robust Prompt Engineering from the Streamlit prototype.
-    2. Added "Summary Mode" retrieval (fetches Intro + Conclusion chunks instead of vector search).
-    3. Better context formatting.
+    Retrieval is routed by intent and scope:
+    - ifc_inventory + auto/ifc  → aggregate GROUP BY query (every element type represented)
+    - doc_summary + auto        → IFC aggregate + document head/tail chunks
+    - doc_summary + docs        → document head/tail chunks only
+    - specific_qa / fallback    → cosine similarity vector search
     """
 
     def __init__(self, user=None):
@@ -55,41 +85,120 @@ class RAGService:
         self.llm = get_llm(user=user, temperature=0.2)
         self.model_name = resolve_model_name(user)
 
+    @staticmethod
+    def _emit(
+        emitter: Any,
+        phase: str,
+        status: str,
+        message: str,
+        detail: dict[str, Any] | None = None,
+    ) -> None:
+        """Emit a pipeline progress event if an emitter is provided."""
+        if emitter is not None:
+            emitter.emit(phase, status, message, detail)
+
     def generate_answer(
-        self, project, session: ChatSession, user_text: str, scope: str = "auto"
+        self,
+        project,
+        session: ChatSession,
+        user_text: str,
+        scope: str = "auto",
+        emitter: Any = None,
     ) -> tuple[str, list, float]:
         """
         Pure retrieval + generation. No DB writes.
+
+        Args:
+            project: The Project instance to query against.
+            session: The active ChatSession for history context.
+            user_text: The user's natural language question.
+            scope: Search scope — "auto", "ifc", or "docs".
+            emitter: Optional PipelineEmitter for streaming progress events.
 
         Returns:
             Tuple of (answer_text, context_items, utilization_pct) where
             utilization_pct is the token budget usage as a 0–100 float.
         """
-        is_summary_request = any(
-            w in user_text.lower()
-            for w in [
-                "summarize",
-                "summary",
-                "overview",
-                "explain the document",
-                "what is this file",
-            ]
-        )
+        self._emit(emitter, "intent", "running", "Classifying intent...")
+        intent = self._detect_intent(user_text)
+        aggregate_context_str = ""
 
-        if is_summary_request and scope != "ifc":
+        self._emit(emitter, "retrieve", "running", "Retrieving context...")
+
+        if intent in ("ifc_inventory", "doc_summary") and scope == "ifc":
+            # User restricted scope to IFC — any summary/inventory query uses aggregate
+            aggregate_rows = self._retrieve_ifc_aggregate_context(project)
+            if aggregate_rows:
+                aggregate_context_str = self._format_ifc_aggregate_context(aggregate_rows)
+                context_items: list = []
+                analysis_mode = "IFC Inventory Summary"
+            else:
+                context_items = self._retrieve_vector_context(project, user_text, scope)
+                analysis_mode = "Specific Q&A"
+        elif intent == "ifc_inventory" and scope == "auto":
+            aggregate_rows = self._retrieve_ifc_aggregate_context(project)
+            if aggregate_rows:
+                aggregate_context_str = self._format_ifc_aggregate_context(aggregate_rows)
+                context_items = []
+                analysis_mode = "IFC Inventory Summary"
+            else:
+                context_items = self._retrieve_vector_context(project, user_text, scope)
+                analysis_mode = "Specific Q&A"
+        elif intent == "doc_summary" and scope == "auto":
+            # Combined: IFC aggregate + document summary chunks
+            aggregate_rows = self._retrieve_ifc_aggregate_context(project)
+            aggregate_context_str = (
+                self._format_ifc_aggregate_context(aggregate_rows) if aggregate_rows else ""
+            )
+            context_items = self._retrieve_summary_context(project)
+            analysis_mode = "General Summary"
+        elif intent == "doc_summary" and scope == "docs":
             context_items = self._retrieve_summary_context(project)
             analysis_mode = "General Summary"
         else:
             context_items = self._retrieve_vector_context(project, user_text, scope)
             analysis_mode = "Specific Q&A"
 
+        self._emit(emitter, "intent", "done", analysis_mode)
+        retrieve_detail = (
+            f"Found {len(context_items)} result{'s' if len(context_items) != 1 else ''}"
+            if context_items
+            else analysis_mode
+        )
+        self._emit(emitter, "retrieve", "done", retrieve_detail)
+
         project_meta = self._get_project_metadata(project)
 
+        self._emit(emitter, "generate", "running", "Generating answer...")
         answer_text, utilization_pct = self._generate_response(
-            user_text, context_items, project_meta, analysis_mode, session
+            user_text,
+            context_items,
+            project_meta,
+            analysis_mode,
+            session,
+            aggregate_context_str=aggregate_context_str,
         )
+        self._emit(emitter, "generate", "done", "Answer ready")
 
         return answer_text, context_items, utilization_pct
+
+    def _detect_intent(self, user_text: str) -> str:
+        """
+        Classify query into one of three retrieval intents.
+
+        Checks IFC inventory keywords first (more specific than summary keywords).
+
+        Returns:
+            "ifc_inventory"  — aggregate/count questions about IFC element types
+            "doc_summary"    — high-level document overview requests
+            "specific_qa"    — default for targeted questions
+        """
+        lowered = user_text.lower()
+        if any(kw in lowered for kw in _IFC_INVENTORY_KEYWORDS):
+            return "ifc_inventory"
+        if any(kw in lowered for kw in _DOC_SUMMARY_KEYWORDS):
+            return "doc_summary"
+        return "specific_qa"
 
     def _retrieve_vector_context(self, project, query: str, scope: str) -> list[Any]:
         """Standard Vector Search for specific queries."""
@@ -145,6 +254,88 @@ class RAGService:
 
         # Deduplicate just in case
         return list(dict.fromkeys(summary_chunks))
+
+    def _retrieve_ifc_aggregate_context(self, project) -> list[dict]:
+        """
+        Build an aggregate inventory of IFC entities grouped by type.
+
+        Uses GROUP BY instead of cosine similarity so every element type present
+        in the model is represented, not just the top-5 most semantically similar.
+
+        Returns a list of dicts with keys:
+            ifc_type, filename, count,
+            representative_name, representative_storey, representative_properties
+        Returns [] when no completed IFC files exist for the project.
+        """
+        if not project.ifc_files.filter(status=IFCFile.Status.COMPLETED).exists():
+            logger.info("No completed IFC files for project %s — skipping aggregate", project.pk)
+            return []
+
+        type_counts = (
+            IFCEntity.objects.filter(
+                ifc_file__project=project,
+                ifc_file__status=IFCFile.Status.COMPLETED,
+            )
+            .values("ifc_type", "ifc_file__name")
+            .annotate(count=Count("id"))
+            .order_by("ifc_type")
+        )
+
+        results = []
+        for row in type_counts:
+            representative = (
+                IFCEntity.objects.filter(
+                    ifc_file__project=project,
+                    ifc_file__name=row["ifc_file__name"],
+                    ifc_type=row["ifc_type"],
+                )
+                .order_by("name")
+                .first()
+            )
+            results.append(
+                {
+                    "ifc_type": row["ifc_type"],
+                    "filename": row["ifc_file__name"],
+                    "count": row["count"],
+                    "representative_name": representative.name if representative else "",
+                    "representative_storey": representative.building_storey
+                    if representative
+                    else "",
+                    "representative_properties": representative.properties
+                    if representative
+                    else {},
+                }
+            )
+
+        return results
+
+    def _format_ifc_aggregate_context(self, aggregate_rows: list[dict]) -> str:
+        """
+        Format aggregate IFC inventory as a structured text block for the LLM prompt.
+
+        Groups by filename when multiple IFC files exist in the project.
+        Returns a sentinel string when aggregate_rows is empty.
+        """
+        if not aggregate_rows:
+            return "No IFC entities found."
+
+        grouped: dict[str, list[dict]] = {}
+        for row in aggregate_rows:
+            grouped.setdefault(row["filename"], []).append(row)
+
+        sections = ["[IFC INVENTORY SUMMARY]"]
+        for filename, rows in grouped.items():
+            sections.append(f"File: {filename}")
+            for row in rows:
+                line = f"  - {row['ifc_type']}: {row['count']} elements"
+                if row["representative_name"]:
+                    rep = f"representative: '{row['representative_name']}'"
+                    if row["representative_storey"]:
+                        rep += f", {row['representative_storey']}"
+                    line += f" ({rep})"
+                sections.append(line)
+
+        return "\n".join(sections)
 
     def _get_project_metadata(self, project) -> str:
         """Generates the 'God View' of the project files."""
@@ -207,22 +398,37 @@ class RAGService:
         project_meta: str,
         analysis_mode: str,
         session: ChatSession,
+        aggregate_context_str: str = "",
     ) -> tuple[str, float]:
         """
         Build the full prompt with context, history, and query.
 
         Uses dynamic token budgeting to fit history within the model's
         context window. Returns both the answer text and utilization %.
+
+        When aggregate_context_str is provided, it is used as the context block
+        (or prepended to formatted context_items when both are present).
         """
 
         # --- 1. Format retrieved context ---
-        context_str = self._format_context(context_items)
+        if aggregate_context_str and context_items:
+            context_str = aggregate_context_str + "\n\n" + self._format_context(context_items)
+        elif aggregate_context_str:
+            context_str = aggregate_context_str
+        else:
+            context_str = self._format_context(context_items)
 
         # --- 2. Mode-specific instruction ---
         if analysis_mode == "General Summary":
             mode_instruction = (
                 "The user wants a high-level overview. Focus on: document purpose, "
                 "key parties, dates, scope of work, and main obligations or risks."
+            )
+        elif analysis_mode == "IFC Inventory Summary":
+            mode_instruction = (
+                "The user wants an inventory of all element types in the IFC model. "
+                "Present the element types in a structured table or list. "
+                "Include element counts and representative examples where available."
             )
         else:
             mode_instruction = (
