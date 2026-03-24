@@ -29,6 +29,7 @@ This starts PostgreSQL 16 with the pgvector extension on port 5432.
 ```bash
 ollama pull llama3.1:8b          # Main LLM (~4.9 GB)
 ollama pull mxbai-embed-large    # Embedding model (~274 MB)
+ollama pull glm-ocr
 ```
 
 Ollama runs natively (not in Docker) for GPU acceleration.

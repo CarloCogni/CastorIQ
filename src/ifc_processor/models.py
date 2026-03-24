@@ -38,7 +38,7 @@ class IFCFile(UUIDModel):
     file = models.FileField(
         upload_to=ifc_upload_path,
         verbose_name="File",
-        max_length=500,
+        max_length=2_000,
         help_text="IFC file (.ifc format)",
         validators=[IFCFileValidator()],
     )
@@ -136,13 +136,13 @@ class IFCEntity(UUIDModel):
         help_text="Unique IFC GUID",
     )
     ifc_type = models.CharField(
-        max_length=100,
+        max_length=2_000,
         db_index=True,
         verbose_name="IFC Type",
         help_text="e.g., IfcDoor, IfcWall, IfcWindow",
     )
     name = models.CharField(
-        max_length=255,
+        max_length=2_000,
         blank=True,
         db_index=True,
         verbose_name="Name",
@@ -150,19 +150,19 @@ class IFCEntity(UUIDModel):
 
     # Spatial hierarchy
     building = models.CharField(
-        max_length=255,
+        max_length=2_000,
         blank=True,
         verbose_name="Building",
     )
     building_storey = models.CharField(
-        max_length=255,
+        max_length=2_000,
         blank=True,
         db_index=True,
         verbose_name="Building Storey",
         help_text="Floor/level where this entity is located",
     )
     space = models.CharField(
-        max_length=255,
+        max_length=2_000,
         blank=True,
         verbose_name="Space",
         help_text="Room or space containing this entity",

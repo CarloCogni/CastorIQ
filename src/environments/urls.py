@@ -39,4 +39,5 @@ urlpatterns = [
     # Document CRUD
     path("document/<uuid:pk>/edit/", views.DocumentUpdateView.as_view(), name="document_edit"),
     path("document/<uuid:pk>/delete/", views.DocumentDeleteView.as_view(), name="document_delete"),
+    path("document/<uuid:pk>/ocr/", views.DocumentOCRView.as_view(), name="document_ocr"),
 ]

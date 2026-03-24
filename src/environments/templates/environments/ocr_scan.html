@@ -1,0 +1,205 @@
+<!-- environments/templates/environments/ocr_scan.html -->
+{% extends "core/base.html" %}
+
+{% block content %}
+<div class="flex-grow-1 d-flex align-items-center justify-content-center p-4 bg-body">
+    <div style="width: 100%; max-width: 600px;">
+
+        <div class="card bg-surface border shadow-sm">
+            <div class="card-header bg-transparent border-bottom p-4">
+                <div class="d-flex align-items-center gap-3">
+                    <i class="bi bi-eye text-info fs-4"></i>
+                    <div>
+                        <h1 class="h5 fw-bold mb-0">OCR Scan</h1>
+                        <p class="text-secondary fs-7 mb-0">{{ project.name }}</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card-body p-4">
+
+                <!-- Document info (always visible) -->
+                <div class="d-flex align-items-center gap-3 p-3 rounded border mb-4" style="background: var(--bs-body-bg);">
+                    <i class="bi bi-file-earmark-pdf text-secondary fs-4"></i>
+                    <div class="flex-grow-1 overflow-hidden">
+                        <div class="fw-medium text-truncate">{{ document.name }}</div>
+                        <div class="d-flex align-items-center gap-2 mt-1">
+                            {% if document.page_count %}
+                            <span class="text-secondary" style="font-size: 0.78rem;">{{ document.page_count }} pages</span>
+                            {% endif %}
+                            {% if document.ocr_status != "none" %}
+                            <span class="badge {% if document.ocr_status == 'done' %}text-bg-success{% elif document.ocr_status == 'failed' %}text-bg-danger{% else %}text-bg-secondary{% endif %}" style="font-size: 0.7rem;">
+                                OCR {{ document.ocr_status }}
+                            </span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── STATE A: Ready to scan ─────────────────────────────── -->
+                <div id="state-ready">
+                    <div class="alert alert-info d-flex gap-2 mb-4">
+                        <i class="bi bi-info-circle-fill flex-shrink-0 mt-1"></i>
+                        <div class="small">
+                            GLM-OCR renders each page as an image and extracts structured text using a vision model.
+                            All pages will be processed and added alongside any existing text chunks.
+                            {% if document.ocr_status == "done" %}
+                            <div class="mt-1 fw-semibold">A previous scan is on record — running again will append new chunks.</div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button id="start-btn" type="button" class="btn btn-info text-white">
+                            <i class="bi bi-eye me-2"></i>Start OCR scan
+                        </button>
+                        <a href="{% url 'projects:ask' project.pk %}" class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-left me-2"></i>Back to Project
+                        </a>
+                    </div>
+                </div>
+
+                <!-- ── STATE B: Scanning — live progress ─────────────────── -->
+                <div id="state-progress" class="d-none">
+                    <div class="fw-semibold small text-secondary mb-3">
+                        <span class="spinner-border spinner-border-sm me-2 text-info" role="status"></span>Scanning…
+                    </div>
+
+                    <div class="progress mb-2" style="height: 8px;">
+                        <div id="progress-bar" class="progress-bar bg-info" role="progressbar" style="width: 0%"></div>
+                    </div>
+                    <div id="progress-label" class="text-secondary small mb-4">Starting…</div>
+                </div>
+
+                <!-- ── STATE C: Result ───────────────────────────────────── -->
+                <div id="state-result" class="d-none">
+                    <!-- filled by JS -->
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+(function () {
+    'use strict';
+
+    const projectId  = '{{ project.pk }}';
+    const documentId = '{{ document.pk }}';
+    const backUrl    = '{% url "projects:ask" project.pk %}';
+    const scanUrl    = '{% url "projects:document_ocr" document.pk %}';
+
+    const stateReady    = document.getElementById('state-ready');
+    const stateProgress = document.getElementById('state-progress');
+    const stateResult   = document.getElementById('state-result');
+    const progressBar   = document.getElementById('progress-bar');
+    const progressLabel = document.getElementById('progress-label');
+
+    function esc(str) {
+        return String(str)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function showSuccess(chunksCreated, pagesOcrd) {
+        stateResult.innerHTML = `
+            <div class="alert alert-success d-flex gap-2 mb-4">
+                <i class="bi bi-check-circle-fill flex-shrink-0 mt-1"></i>
+                <div>
+                    <div class="fw-semibold mb-1">Scan complete</div>
+                    <div class="small">
+                        <strong>${chunksCreated}</strong> chunk${chunksCreated !== 1 ? 's' : ''} extracted
+                        from <strong>${pagesOcrd}</strong> page${pagesOcrd !== 1 ? 's' : ''}.
+                    </div>
+                </div>
+            </div>
+            <div class="d-flex gap-2">
+                <a href="${backUrl}" class="btn btn-primary">
+                    <i class="bi bi-arrow-left me-2"></i>Back to Project
+                </a>
+                <a href="${scanUrl}" class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-repeat me-2"></i>Run Again
+                </a>
+            </div>`;
+    }
+
+    function showError(message) {
+        stateResult.innerHTML = `
+            <div class="alert alert-danger d-flex gap-2 mb-4">
+                <i class="bi bi-x-circle-fill flex-shrink-0 mt-1"></i>
+                <div>
+                    <div class="fw-semibold mb-1">Scan failed</div>
+                    <div class="small text-break">${esc(message)}</div>
+                </div>
+            </div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-info text-white" onclick="location.reload()">
+                    <i class="bi bi-arrow-repeat me-2"></i>Try Again
+                </button>
+                <a href="${backUrl}" class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-left me-2"></i>Back to Project
+                </a>
+            </div>`;
+    }
+
+    document.getElementById('start-btn').addEventListener('click', function () {
+        stateReady.classList.add('d-none');
+        stateProgress.classList.remove('d-none');
+
+        const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+        const ws = new WebSocket(`${proto}://${location.host}/ws/projects/${projectId}/documents/${documentId}/ocr/`);
+
+        let finalResult = null;
+
+        ws.addEventListener('open', function () {
+            ws.send(JSON.stringify({
+                action: 'run_ocr',
+                document_id: documentId,
+                force_all_pages: true,
+            }));
+        });
+
+        ws.addEventListener('message', function (ev) {
+            const msg = JSON.parse(ev.data);
+
+            if (msg.type === 'ocr_progress') {
+                const pct = msg.total > 0 ? Math.round((msg.page / msg.total) * 100) : 0;
+                progressBar.style.width = pct + '%';
+                progressLabel.textContent = `Page ${msg.page} of ${msg.total}`;
+
+            } else if (msg.type === 'ocr_error') {
+                progressLabel.textContent = `Page ${msg.page}: error — continuing…`;
+
+            } else if (msg.type === 'ocr_complete') {
+                finalResult = msg;
+                progressBar.style.width = '100%';
+                progressLabel.textContent = 'Processing complete…';
+
+            } else if (msg.type === 'ocr_failed') {
+                stateProgress.classList.add('d-none');
+                stateResult.classList.remove('d-none');
+                showError(msg.error || 'Unknown error');
+                ws.close();
+
+            } else if (msg.type === 'done') {
+                stateProgress.classList.add('d-none');
+                stateResult.classList.remove('d-none');
+                if (finalResult) {
+                    showSuccess(finalResult.chunks_created, finalResult.pages_ocrd);
+                } else {
+                    showError('Scan ended without a result.');
+                }
+            }
+        });
+
+        ws.addEventListener('error', function () {
+            stateProgress.classList.add('d-none');
+            stateResult.classList.remove('d-none');
+            showError('WebSocket connection failed. Check that the server is running.');
+        });
+    });
+}());
+</script>
+{% endblock %}

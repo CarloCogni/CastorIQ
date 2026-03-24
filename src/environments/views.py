@@ -4,6 +4,7 @@
 import logging
 import os
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
@@ -480,6 +481,8 @@ class FileUploadView(ProjectAccessMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["project"] = self.get_project()
+        context["ocr_enabled"] = getattr(settings, "GLM_OCR_ENABLED", False)
+        context["ocr_auto_trigger"] = getattr(settings, "GLM_OCR_AUTO_TRIGGER", False)
         return context
 
     def post(self, request, pk):
@@ -602,14 +605,34 @@ class FileUploadView(ProjectAccessMixin, TemplateView):
             success = processor.process()
 
             if success:
-                return JsonResponse(
-                    {
-                        "success": True,
-                        "file_type": doc_type,
-                        "file_name": document.name,
-                        "chunk_count": document.chunk_count,
-                    }
-                )
+                response_data = {
+                    "success": True,
+                    "file_type": doc_type,
+                    "file_name": document.name,
+                    "chunk_count": document.chunk_count,
+                }
+
+                # Signal the frontend to open an OCR WebSocket if auto-trigger is on.
+                # The frontend drives the OCR job; this keeps analyze_document() as a
+                # single dispatch point swappable for .delay() in a future Celery migration.
+                from django.conf import settings
+
+                ocr_enabled = getattr(settings, "GLM_OCR_ENABLED", False)
+                auto_trigger = getattr(settings, "GLM_OCR_AUTO_TRIGGER", False)
+                _pdf_types = (Document.DocumentType.PDF, Document.DocumentType.SCANNED_PDF)
+                if (
+                    ocr_enabled
+                    and document.document_type in _pdf_types
+                    and document.ocr_status == Document.OcrStatus.NONE
+                ):
+                    document.refresh_from_db(fields=["id"])
+                    response_data["ocr_ws_url"] = (
+                        f"ws/projects/{document.project_id}/documents/{document.id}/ocr/"
+                    )
+                    if auto_trigger and document.has_visual_content:
+                        response_data["needs_ocr"] = True
+
+                return JsonResponse(response_data)
             else:
                 return JsonResponse(
                     {"success": False, "error": document.error_message or "Processing failed"},
@@ -660,5 +683,32 @@ class IFCSchemaConvertView(ProjectAccessMixin, View):
                 "project": project,
                 "ifc_file": ifc_file,
                 "result": result,
+            },
+        )
+
+
+class DocumentOCRView(LoginRequiredMixin, View):
+    """Dedicated page to run GLM-OCR on a document."""
+
+    def get(self, request, pk):
+        """Render the OCR scan page for a document."""
+        document = get_object_or_404(
+            Document.objects.select_related("project"),
+            pk=pk,
+        )
+        project = document.project
+        if not project.user_has_access(request.user):
+            raise PermissionDenied
+
+        if not getattr(settings, "GLM_OCR_ENABLED", False):
+            messages.error(request, "OCR subsystem is disabled.")
+            return redirect("projects:detail", pk=project.pk)
+
+        return render(
+            request,
+            "environments/ocr_scan.html",
+            {
+                "document": document,
+                "project": project,
             },
         )

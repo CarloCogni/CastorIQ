@@ -2,6 +2,7 @@
 import logging
 import os
 
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
@@ -41,9 +42,20 @@ class DocumentProcessor:
             # 1. Load & Split (The "Streamlit Way")
             lc_docs = self._load_and_split()
 
-            # SAFETY CHECK: If no text was found, FAIL explicitly.
+            # Zero-text result: flag for OCR rather than failing hard.
+            # Scanned PDFs produce no extractable text — this is not a pipeline error.
             if not lc_docs:
-                raise ValueError("Text extraction returned empty result. Is this a scanned PDF?")
+                logger.info(
+                    "No text extracted from %s — flagging has_visual_content for OCR.",
+                    self.document.name,
+                )
+                self.document.has_visual_content = True
+                self.document.document_type = "scanned_pdf"
+                self.document.status = Document.Status.COMPLETED
+                self.document.chunk_count = 0
+                self.document.processed_at = timezone.now()
+                self.document.save()
+                return True
 
             logger.info(f"Generated {len(lc_docs)} chunks.")
 
@@ -73,9 +85,23 @@ class DocumentProcessor:
 
                 DocumentChunk.objects.bulk_create(db_chunks)
 
+                # Detect sparse pages: flag documents where average chars/page is low.
+                # Only meaningful for PDFs — DOCX/TXT won't contain scanned raster images.
+                if max_page > 0 and self.document.document_type in ("pdf", "scanned_pdf"):
+                    total_chars = sum(len(c.content) for c in db_chunks)
+                    chars_per_page = total_chars / max_page
+                    threshold = getattr(settings, "GLM_OCR_TEXT_DENSITY_THRESHOLD", 50)
+                    if chars_per_page < threshold:
+                        self.document.has_visual_content = True
+                        logger.info(
+                            "Sparse text in %s (%.1f chars/page) — flagging for OCR.",
+                            self.document.name,
+                            chars_per_page,
+                        )
+
                 self.document.status = Document.Status.COMPLETED
                 self.document.chunk_count = len(db_chunks)
-                self.document.page_count = max_page  # <-- ADD THIS
+                self.document.page_count = max_page
                 self.document.processed_at = timezone.now()
                 self.document.save()
 

@@ -131,6 +131,16 @@ OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "mxbai-embed-large")
 # Vector Configuration
 PGVECTOR_DIMENSIONS = int(os.getenv("PGVECTOR_DIMENSIONS", "1024"))
 
+# GLM-OCR Configuration
+# GLM_OCR_ENABLED=False makes the entire subsystem a no-op with zero pipeline side effects.
+GLM_OCR_ENABLED = os.getenv("GLM_OCR_ENABLED", "False").lower() == "true"
+GLM_OCR_MODEL = os.getenv("GLM_OCR_MODEL", "glm-ocr:latest")
+GLM_OCR_OLLAMA_URL = os.getenv("GLM_OCR_OLLAMA_URL", OLLAMA_HOST)
+GLM_OCR_TEXT_DENSITY_THRESHOLD = int(os.getenv("GLM_OCR_TEXT_DENSITY_THRESHOLD", "50"))
+GLM_OCR_AUTO_TRIGGER = os.getenv("GLM_OCR_AUTO_TRIGGER", "True").lower() == "true"
+GLM_OCR_MAX_PAGES_AUTO = int(os.getenv("GLM_OCR_MAX_PAGES_AUTO", "100"))
+GLM_OCR_PAGE_DPI = int(os.getenv("GLM_OCR_PAGE_DPI", "150"))
+
 # File Upload Configuration
 IFC_UPLOAD_DIR = os.getenv("IFC_UPLOAD_DIR", "uploads/ifc")
 DOCUMENT_UPLOAD_DIR = os.getenv("DOCUMENT_UPLOAD_DIR", "uploads/documents")

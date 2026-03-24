@@ -20,12 +20,20 @@ class Document(UUIDModel):
         PDF = "pdf", "PDF"
         DOCX = "docx", "Word Document"
         TXT = "txt", "Text File"
+        SCANNED_PDF = "scanned_pdf", "Scanned PDF"
         OTHER = "other", "Other"
 
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
         PROCESSING = "processing", "Processing"
         COMPLETED = "completed", "Completed"
+        FAILED = "failed", "Failed"
+
+    class OcrStatus(models.TextChoices):
+        NONE = "none", "None"
+        PENDING = "pending", "Pending"
+        PROCESSING = "processing", "Processing"
+        DONE = "done", "Done"
         FAILED = "failed", "Failed"
 
     project = models.ForeignKey(
@@ -35,7 +43,7 @@ class Document(UUIDModel):
         verbose_name="Project",
     )
     name = models.CharField(
-        max_length=255,
+        max_length=1_500,
         db_index=True,
         verbose_name="File Name",
     )
@@ -82,6 +90,38 @@ class Document(UUIDModel):
         verbose_name="Page Count",
     )
 
+    # OCR metadata
+    has_visual_content = models.BooleanField(
+        default=False,
+        verbose_name="Has Visual Content",
+        help_text="Set when initial ingestion detects image-dominant or zero-text pages",
+    )
+    ocr_status = models.CharField(
+        max_length=20,
+        choices=OcrStatus.choices,
+        default=OcrStatus.NONE,
+        db_index=True,
+        verbose_name="OCR Status",
+    )
+    ocr_processed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="OCR Processed At",
+    )
+    ocr_page_count = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="OCR Page Count",
+        help_text="Number of pages processed by OCR",
+    )
+    ocr_engine = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        verbose_name="OCR Engine",
+        help_text="Engine identifier, e.g. 'glm-ocr:latest'",
+    )
+
     class Meta:
         ordering = ["-created_at"]
         verbose_name = "Document"
@@ -98,6 +138,11 @@ class Document(UUIDModel):
 
 class DocumentChunk(UUIDModel):
     """A chunk of text from a document for RAG."""
+
+    class ChunkSource(models.TextChoices):
+        TEXT_PARSER = "text_parser", "Text Parser"
+        GLM_OCR = "glm_ocr", "GLM-OCR"
+        HYBRID = "hybrid", "Hybrid"
 
     document = models.ForeignKey(
         Document,
@@ -133,6 +178,20 @@ class DocumentChunk(UUIDModel):
         null=True,
         blank=True,
         verbose_name="End Character",
+    )
+
+    # Provenance
+    chunk_source = models.CharField(
+        max_length=20,
+        choices=ChunkSource.choices,
+        default=ChunkSource.TEXT_PARSER,
+        db_index=True,
+        verbose_name="Chunk Source",
+    )
+    extracted_from_image = models.BooleanField(
+        default=False,
+        verbose_name="Extracted from Image",
+        help_text="True when this chunk was produced by OCR from a raster image",
     )
 
     # Vector embedding

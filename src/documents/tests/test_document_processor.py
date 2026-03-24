@@ -77,18 +77,25 @@ class TestDocumentProcessorProcess:
         doc.refresh_from_db()
         assert doc.status == Document.Status.COMPLETED
 
-    def test_process_sets_status_to_failed_on_empty_extraction(self, project, mock_embed_service):
-        """Empty text extraction (e.g. scanned PDF) marks document as FAILED."""
-        doc = DocumentFactory(project=project, status="pending", document_type="txt")
+    def test_process_sets_has_visual_content_on_empty_extraction(self, project, mock_embed_service):
+        """Zero text extraction flags the document for OCR instead of failing hard.
+
+        Scanned PDFs produce no extractable text — this is not a pipeline error.
+        The document completes with has_visual_content=True so the OCR subsystem
+        can run as a genuine second pass.
+        """
+        doc = DocumentFactory(project=project, status="pending", document_type="pdf")
 
         processor = _make_processor(doc, mock_embed_service)
         with patch.object(processor, "_load_and_split", return_value=[]):
             result = processor.process()
 
-        assert result is False
+        assert result is True
         doc.refresh_from_db()
-        assert doc.status == Document.Status.FAILED
-        assert doc.error_message != ""
+        assert doc.status == Document.Status.COMPLETED
+        assert doc.has_visual_content is True
+        assert doc.document_type == "scanned_pdf"
+        assert doc.chunk_count == 0
 
     def test_process_stores_correct_chunk_indices(self, project, mock_embed_service):
         """Chunk indices are sequential starting from 0."""

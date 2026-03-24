@@ -5,8 +5,11 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+from django.test import override_settings
 from django.urls import reverse
 
+from documents.models import Document
+from documents.tests.factories import DocumentFactory
 from environments.tests.factories import ProjectFactory, UserFactory
 from ifc_processor.tests.factories import IFCFileFactory
 
@@ -478,6 +481,110 @@ class TestFileUploadView:
         assert data.get("success") is True
         assert data.get("chunk_count") == 5
         assert "redirect_url" not in data
+
+    def test_get_upload_page_has_ocr_context_keys(self, client):
+        """Upload page context always includes ocr_enabled and ocr_auto_trigger."""
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        _login(client, user)
+
+        response = client.get(_project_url("upload", project.pk))
+
+        assert response.status_code == 200
+        assert "ocr_enabled" in response.context
+        assert "ocr_auto_trigger" in response.context
+
+    def test_post_pdf_includes_ocr_ws_url_when_ocr_enabled(self, client):
+        """Upload response includes ocr_ws_url for a PDF when GLM_OCR_ENABLED=True."""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        _login(client, user)
+
+        pdf_file = SimpleUploadedFile(
+            "report.pdf", b"%PDF-1.4 content", content_type="application/pdf"
+        )
+
+        with patch("environments.views.DocumentProcessor") as MockProc:
+            instance = MockProc.return_value
+            instance.process.return_value = True
+
+            with patch("documents.models.Document.objects.create") as mock_create:
+                mock_doc = MagicMock()
+                mock_doc.name = "report.pdf"
+                mock_doc.document_type = Document.DocumentType.PDF
+                mock_doc.ocr_status = Document.OcrStatus.NONE
+                mock_doc.has_visual_content = False
+                mock_doc.chunk_count = 3
+                mock_doc.error_message = None
+                mock_doc.project_id = str(project.pk)
+                mock_doc.id = "aabbcc00-0000-0000-0000-000000000000"
+                mock_create.return_value = mock_doc
+
+                with override_settings(GLM_OCR_ENABLED=True):
+                    response = client.post(_project_url("upload", project.pk), {"file": pdf_file})
+
+        data = json.loads(response.content)
+        assert data.get("success") is True
+        assert "ocr_ws_url" in data
+        assert "needs_ocr" not in data  # auto-trigger off + no visual content
+
+
+# ── DocumentOCRView ──────────────────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+class TestDocumentOCRView:
+    """GET /projects/document/<pk>/ocr/ — OCR dedicated scan page."""
+
+    def test_get_returns_200_when_ocr_enabled(self, client):
+        """Owner can access OCR page when GLM_OCR_ENABLED=True."""
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        doc = DocumentFactory(project=project)
+        _login(client, user)
+
+        with override_settings(GLM_OCR_ENABLED=True):
+            response = client.get(_project_url("document_ocr", doc.pk))
+
+        assert response.status_code == 200
+
+    def test_get_redirects_when_ocr_disabled(self, client):
+        """GET redirects to project detail when GLM_OCR_ENABLED=False."""
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        doc = DocumentFactory(project=project)
+        _login(client, user)
+
+        with override_settings(GLM_OCR_ENABLED=False):
+            response = client.get(_project_url("document_ocr", doc.pk))
+
+        assert response.status_code == 302
+
+    def test_get_requires_login(self, client):
+        """Unauthenticated request is redirected to login."""
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        doc = DocumentFactory(project=project)
+
+        response = client.get(_project_url("document_ocr", doc.pk))
+
+        assert response.status_code == 302
+        assert "/login/" in response["Location"] or "login" in response["Location"]
+
+    def test_get_returns_403_for_non_member(self, client):
+        """User with no project access gets 403."""
+        owner = UserFactory()
+        other = UserFactory()
+        project = ProjectFactory(owner=owner)
+        doc = DocumentFactory(project=project)
+        _login(client, other)
+
+        with override_settings(GLM_OCR_ENABLED=True):
+            response = client.get(_project_url("document_ocr", doc.pk))
+
+        assert response.status_code == 403
 
 
 # ── FileProcessedView ───────────────────────────────────────────────────────

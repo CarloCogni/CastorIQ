@@ -126,7 +126,18 @@
                         <a href="{{ doc.file.url }}" target="_blank" class="d-block fs-7 fw-medium text-truncate file-link text-white-50 hover-text-white">
                             {{ doc.name }}
                         </a>
-                        <div class="fs-8 text-secondary mt-1">{{ doc.get_document_type_display }}</div>
+                        <div class="fs-8 mt-1 d-flex align-items-center gap-2" id="doc-sub-{{ doc.pk }}">
+                            <span class="text-secondary">{{ doc.get_document_type_display }}</span>
+                            {% if doc.ocr_status == 'done' %}
+                            <span class="text-success" title="OCR processed"><i class="bi bi-eye-fill" style="font-size:0.65rem;"></i></span>
+                            {% elif doc.ocr_status == 'failed' %}
+                            <span class="text-danger" title="OCR failed"><i class="bi bi-eye-slash" style="font-size:0.65rem;"></i></span>
+                            {% elif doc.ocr_status == 'processing' or doc.ocr_status == 'pending' %}
+                            <span class="text-warning" title="OCR in progress"><i class="bi bi-eye" style="font-size:0.65rem;"></i></span>
+                            {% elif doc.has_visual_content %}
+                            <span class="text-warning" title="Contains images — OCR available"><i class="bi bi-eye" style="font-size:0.65rem;"></i></span>
+                            {% endif %}
+                        </div>
                     </div>
                 </div>
 
@@ -136,6 +147,15 @@
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end bg-surface shadow border" style="z-index: 1030;">
                         <li><a class="dropdown-item fs-8" href="{% url 'projects:document_edit' doc.pk %}">Edit</a></li>
+                        {% if doc.document_type == 'pdf' or doc.document_type == 'scanned_pdf' or doc.has_visual_content %}
+                        <li>
+                            <a class="dropdown-item fs-8"
+                               href="{% url 'projects:document_ocr' doc.pk %}">
+                                <i class="bi bi-eye me-2"></i>{% if doc.ocr_status == 'done' %}Re-scan OCR{% else %}Run OCR{% endif %}
+                            </a>
+                        </li>
+                        {% endif %}
+                        <li><hr class="dropdown-divider my-1"></li>
                         <li><a class="dropdown-item fs-8 text-danger" href="{% url 'projects:document_delete' doc.pk %}">Delete</a></li>
                     </ul>
                 </div>
@@ -285,6 +305,7 @@
         formEl.classList.add('d-none');
         titleEl.classList.remove('d-none');
     }
+
     </script>
 </aside>
 

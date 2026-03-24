@@ -20,6 +20,19 @@
                     IFC target: <strong class="text-accent">IFC4</strong> and <strong class="text-accent">IFC4.3</strong> (infrastructure).
                     Older formats (IFC2X3) are accepted but require a one-click schema conversion.
                 </p>
+                {% if ocr_enabled %}
+                <p class="text-secondary fs-7 mb-0 mt-2">
+                    <i class="bi bi-eye me-1 text-info"></i>
+                    <strong class="text-info">OCR ready</strong> —
+                    {% if ocr_auto_trigger %}
+                        PDFs with scanned or image-heavy pages are <strong>automatically processed</strong>
+                        with GLM-OCR after upload. A live progress indicator will appear in the file row.
+                    {% else %}
+                        After a PDF is indexed, a <strong class="text-info">Run OCR</strong> button will
+                        appear in the file row. Click it to extract text from image-heavy pages using GLM-OCR.
+                    {% endif %}
+                </p>
+                {% endif %}
             </div>
 
             <div class="card-body p-4">
@@ -54,14 +67,6 @@
                         <span id="summary-text"></span>
                     </div>
                     <div id="failure-list" class="d-flex flex-column gap-1 mb-3" style="display: none !important;"></div>
-                    <div class="d-flex gap-2 flex-wrap">
-                        <a href="{% url 'projects:ask' project.pk %}" class="btn btn-primary btn-sm">
-                            <i class="bi bi-arrow-left me-2"></i>Back to Project
-                        </a>
-                        <button type="button" class="btn btn-outline-secondary btn-sm" id="upload-more-btn">
-                            <i class="bi bi-plus-circle me-2"></i>Upload more files
-                        </button>
-                    </div>
                 </div>
 
             </div>
@@ -85,10 +90,10 @@
     const queueSection = document.getElementById('queue-section');
     const queueList   = document.getElementById('queue-list');
     const summaryEl   = document.getElementById('summary');
-    const uploadMoreBtn = document.getElementById('upload-more-btn');
 
     const UPLOAD_URL  = "{% url 'projects:upload' project.pk %}";
     const CSRF_TOKEN  = '{{ csrf_token }}';
+    const PROJECT_ID  = '{{ project.pk }}';
 
     // State
     let queue = [];          // { file, rowEl, state: 'queued'|'uploading'|'processing'|'done'|'error', result }
@@ -118,8 +123,6 @@
             fileInput.value = '';   // allow re-selecting same files
         }
     });
-
-    uploadMoreBtn.addEventListener('click', resetState);
 
     function resetDropZoneStyle() {
         dropZone.style.borderColor = '';
@@ -172,13 +175,20 @@
             try { data = JSON.parse(xhr.responseText); } catch { data = {}; }
 
             if (xhr.status === 200 && data.success) {
-                setRowState(item, 'processing');
-                // Simulate brief processing display before marking done
-                setTimeout(() => {
-                    item.result = data;
-                    setRowState(item, 'done');
-                    processQueue();
-                }, 600);
+                item.result = data;
+
+                if (data.needs_ocr && data.ocr_ws_url) {
+                    // Document has visual content — start OCR via WebSocket.
+                    // processQueue() is called by openOCRSocket when OCR finishes.
+                    setRowState(item, 'ocr-running');
+                    openOCRSocket(item, data.ocr_ws_url);
+                } else {
+                    setRowState(item, 'processing');
+                    setTimeout(() => {
+                        setRowState(item, 'done');
+                        processQueue();
+                    }, 600);
+                }
             } else {
                 item.result = { error: data.error || `HTTP ${xhr.status}` };
                 setRowState(item, 'error');
@@ -247,6 +257,12 @@
             sub.textContent = 'Processing…';
             progWrap.style.display = 'none';
 
+        } else if (state === 'ocr-running') {
+            row.classList.add('border-info');
+            icon.innerHTML = '<span class="spinner-border spinner-border-sm text-info"></span>';
+            sub.textContent = 'OCR: starting…';
+            progWrap.style.display = 'none';
+
         } else if (state === 'done') {
             const d = item.result;
             if (d.file_type === 'ifc' && d.needs_conversion) {
@@ -262,7 +278,25 @@
             } else {
                 row.classList.add('border-success');
                 icon.innerHTML = '<i class="bi bi-check-circle-fill text-success"></i>';
-                sub.textContent = `${d.file_type?.toUpperCase() ?? 'Doc'} · ${d.chunk_count} chunks`;
+                let label = `${d.file_type?.toUpperCase() ?? 'Doc'} · ${d.chunk_count} chunks`;
+                if (item.ocrResult && item.ocrResult.chunks_created > 0) {
+                    label += ` <span class="text-info">+ ${item.ocrResult.chunks_created} OCR</span>`;
+                    sub.innerHTML = label;
+                } else if (d.ocr_ws_url && !item.ocrTriggered) {
+                    sub.innerHTML = label;
+                    const offerBtn = document.createElement('button');
+                    offerBtn.className = 'btn btn-link btn-sm p-0 text-info fs-8 align-baseline ms-2';
+                    offerBtn.innerHTML = '<i class="bi bi-eye me-1"></i>Run OCR';
+                    offerBtn.addEventListener('click', () => {
+                        item.ocrTriggered = true;
+                        offerBtn.remove();
+                        setRowState(item, 'ocr-running');
+                        openOCRSocket(item, d.ocr_ws_url, null, true);
+                    });
+                    sub.appendChild(offerBtn);
+                } else {
+                    sub.textContent = label;
+                }
             }
             progWrap.style.display = 'none';
 
@@ -347,6 +381,48 @@
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;');
+    }
+
+    // ── OCR WebSocket (auto-trigger 3A) ───────────────────────────────────
+
+    function openOCRSocket(item, ocrWsUrl, completeCallback = processQueue, forceAllPages = false) {
+        item.ocrTriggered = true;
+        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const ws = new WebSocket(`${proto}//${location.host}/${ocrWsUrl}`);
+
+        // Extract document_id from path: ws/projects/<pid>/documents/<did>/ocr/
+        const parts = ocrWsUrl.split('/');
+        const docId = parts[parts.indexOf('documents') + 1];
+
+        const sub  = item.rowEl.querySelector('.row-sub');
+
+        ws.onopen = () => {
+            ws.send(JSON.stringify({ action: 'run_ocr', document_id: docId, force_all_pages: forceAllPages }));
+        };
+
+        ws.onmessage = (e) => {
+            const msg = JSON.parse(e.data);
+            if (msg.type === 'ocr_progress') {
+                if (sub) sub.textContent = `OCR: page ${msg.page} / ${msg.total}`;
+            } else if (msg.type === 'ocr_complete') {
+                item.ocrResult = msg;
+            } else if (msg.type === 'ocr_failed') {
+                item.result = { ...item.result, error: msg.error };
+                setRowState(item, 'error');
+                ws.close();
+                if (completeCallback) completeCallback();
+            } else if (msg.type === 'done') {
+                setRowState(item, 'done');
+                ws.close();
+                if (completeCallback) completeCallback();
+            }
+        };
+
+        ws.onerror = () => {
+            item.result = { ...item.result, error: 'OCR connection failed' };
+            setRowState(item, 'error');
+            if (completeCallback) completeCallback();
+        };
     }
 
 }());
