@@ -4,15 +4,22 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('ifc_processor', '0005_alter_ifcentity_building_and_more'),
+        ("ifc_processor", "0005_alter_ifcentity_building_and_more"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='ifcdataissue',
-            name='issue_type',
-            field=models.CharField(choices=[('duplicate_guid', 'Duplicate GlobalID'), ('invalid_geometry', 'Invalid Geometry'), ('missing_property', 'Missing Required Property'), ('orphaned_element', 'Orphaned Element (No Spatial Placement)')], max_length=50),
+            model_name="ifcdataissue",
+            name="issue_type",
+            field=models.CharField(
+                choices=[
+                    ("duplicate_guid", "Duplicate GlobalID"),
+                    ("invalid_geometry", "Invalid Geometry"),
+                    ("missing_property", "Missing Required Property"),
+                    ("orphaned_element", "Orphaned Element (No Spatial Placement)"),
+                ],
+                max_length=50,
+            ),
         ),
     ]
