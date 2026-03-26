@@ -11,7 +11,7 @@ from django.urls import reverse
 from documents.models import Document
 from documents.tests.factories import DocumentFactory
 from environments.tests.factories import ProjectFactory, UserFactory
-from ifc_processor.tests.factories import IFCFileFactory
+from ifc_processor.tests.factories import IFCEntityFactory, IFCFileFactory
 
 # ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -970,3 +970,346 @@ class TestIFCSchemaConvertView:
         assert response.context["result"] == mock_result
         MockSvc.assert_called_once_with(ifc_file)
         MockSvc.return_value.convert.assert_called_once()
+
+
+# ── ExploreView ───────────────────────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+class TestExploreView:
+    """GET /projects/<pk>/explore/ and /projects/<pk>/explore/ifc/<ifc_id>/."""
+
+    def test_unauthenticated_redirects(self, client):
+        """Unauthenticated GET redirects to login."""
+        project = ProjectFactory()
+        response = client.get(reverse("projects:explore", kwargs={"pk": project.pk}))
+        assert response.status_code == 302
+        assert "login" in response["Location"]
+
+    def test_authenticated_returns_200(self, client):
+        """Owner can access the explore tab."""
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        client.force_login(user)
+
+        response = client.get(reverse("projects:explore", kwargs={"pk": project.pk}))
+        assert response.status_code == 200
+
+    def test_no_completed_ifc_shows_empty_state(self, client):
+        """Project with no completed IFC files leaves selected_ifc as None."""
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        client.force_login(user)
+
+        response = client.get(reverse("projects:explore", kwargs={"pk": project.pk}))
+        assert response.status_code == 200
+        assert response.context["selected_ifc"] is None
+        assert list(response.context["completed_ifc_files"]) == []
+
+    def test_selects_ifc_from_url(self, client):
+        """URL with ifc_id sets selected_ifc to the matching file."""
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        ifc_file = IFCFileFactory(project=project, status="completed")
+        client.force_login(user)
+
+        response = client.get(
+            reverse("projects:explore_ifc", kwargs={"pk": project.pk, "ifc_id": ifc_file.pk})
+        )
+        assert response.status_code == 200
+        assert response.context["selected_ifc"] == ifc_file
+
+    def test_non_member_gets_403(self, client):
+        """User without project access is denied."""
+        owner = UserFactory()
+        other = UserFactory()
+        project = ProjectFactory(owner=owner)
+        client.force_login(other)
+
+        response = client.get(reverse("projects:explore", kwargs={"pk": project.pk}))
+        assert response.status_code in (302, 403)
+
+
+# ── ExploreTreePartial ────────────────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+class TestExploreTreePartial:
+    """GET /projects/<pk>/explore/ifc/<ifc_id>/tree/."""
+
+    def _url(self, project, ifc_file):
+        return reverse("projects:explore_tree", kwargs={"pk": project.pk, "ifc_id": ifc_file.pk})
+
+    def test_unauthenticated_redirects(self, client):
+        """Unauthenticated GET redirects to login."""
+        project = ProjectFactory()
+        ifc_file = IFCFileFactory(project=project, status="completed")
+        response = client.get(self._url(project, ifc_file))
+        assert response.status_code == 302
+        assert "login" in response["Location"]
+
+    def test_no_params_returns_building_level(self, client):
+        """No query params → level='building' in context."""
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        ifc_file = IFCFileFactory(project=project, status="completed")
+        IFCEntityFactory(ifc_file=ifc_file, building="Block A")
+        client.force_login(user)
+
+        response = client.get(self._url(project, ifc_file))
+        assert response.status_code == 200
+        assert response.context["level"] == "building"
+
+    def test_building_param_returns_storey_level(self, client):
+        """?building=X → level='storey' with storeys for that building."""
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        ifc_file = IFCFileFactory(project=project, status="completed")
+        IFCEntityFactory(ifc_file=ifc_file, building="Block A", building_storey="L1")
+        client.force_login(user)
+
+        response = client.get(self._url(project, ifc_file) + "?building=Block+A")
+        assert response.status_code == 200
+        assert response.context["level"] == "storey"
+
+    def test_building_and_storey_params_return_space_level(self, client):
+        """?building=X&storey=Y → level='space' with spaces for that storey."""
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        ifc_file = IFCFileFactory(project=project, status="completed")
+        IFCEntityFactory(
+            ifc_file=ifc_file, building="Block A", building_storey="L1", space="Room 101"
+        )
+        client.force_login(user)
+
+        response = client.get(self._url(project, ifc_file) + "?building=Block+A&storey=L1")
+        assert response.status_code == 200
+        assert response.context["level"] == "space"
+
+    def test_non_member_gets_403(self, client):
+        """User without project access is denied."""
+        owner = UserFactory()
+        other = UserFactory()
+        project = ProjectFactory(owner=owner)
+        ifc_file = IFCFileFactory(project=project, status="completed")
+        client.force_login(other)
+
+        response = client.get(self._url(project, ifc_file))
+        assert response.status_code in (302, 403)
+
+
+# ── ExploreEntitiesPartial ────────────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+class TestExploreEntitiesPartial:
+    """GET /projects/<pk>/explore/ifc/<ifc_id>/entities/."""
+
+    def _url(self, project, ifc_file):
+        return reverse(
+            "projects:explore_entities", kwargs={"pk": project.pk, "ifc_id": ifc_file.pk}
+        )
+
+    def test_unauthenticated_redirects(self, client):
+        """Unauthenticated GET redirects to login."""
+        project = ProjectFactory()
+        ifc_file = IFCFileFactory(project=project, status="completed")
+        response = client.get(self._url(project, ifc_file))
+        assert response.status_code == 302
+        assert "login" in response["Location"]
+
+    def test_returns_all_entities_unfiltered(self, client):
+        """No filters → all entities for the IFC file appear in page_obj."""
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        ifc_file = IFCFileFactory(project=project, status="completed")
+        IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcWall")
+        IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcBeam")
+        client.force_login(user)
+
+        response = client.get(self._url(project, ifc_file))
+        assert response.status_code == 200
+        assert response.context["page_obj"].paginator.count == 2
+
+    def test_filters_by_building(self, client):
+        """?building=X only returns entities assigned to that building."""
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        ifc_file = IFCFileFactory(project=project, status="completed")
+        IFCEntityFactory(ifc_file=ifc_file, building="Block A")
+        IFCEntityFactory(ifc_file=ifc_file, building="Block B")
+        client.force_login(user)
+
+        response = client.get(self._url(project, ifc_file) + "?building=Block+A")
+        assert response.status_code == 200
+        assert response.context["page_obj"].paginator.count == 1
+
+    def test_filters_by_type(self, client):
+        """?type=IfcWall only returns walls."""
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        ifc_file = IFCFileFactory(project=project, status="completed")
+        IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcWall")
+        IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcBeam")
+        client.force_login(user)
+
+        response = client.get(self._url(project, ifc_file) + "?type=IfcWall")
+        assert response.status_code == 200
+        assert response.context["page_obj"].paginator.count == 1
+        assert response.context["active_type"] == "IfcWall"
+
+    def test_available_types_contains_all_distinct_types(self, client):
+        """available_types context includes all distinct ifc_type values."""
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        ifc_file = IFCFileFactory(project=project, status="completed")
+        IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcWall")
+        IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcWall")
+        IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcBeam")
+        client.force_login(user)
+
+        response = client.get(self._url(project, ifc_file))
+        assert set(response.context["available_types"]) == {"IfcWall", "IfcBeam"}
+
+    def test_non_member_gets_403(self, client):
+        """User without project access is denied."""
+        owner = UserFactory()
+        other = UserFactory()
+        project = ProjectFactory(owner=owner)
+        ifc_file = IFCFileFactory(project=project, status="completed")
+        client.force_login(other)
+
+        response = client.get(self._url(project, ifc_file))
+        assert response.status_code in (302, 403)
+
+
+# ── ExploreEntityDetailPartial ────────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+class TestExploreEntityDetailPartial:
+    """GET /projects/<pk>/explore/ifc/<ifc_id>/entity/<entity_id>/."""
+
+    def _url(self, project, ifc_file, entity):
+        return reverse(
+            "projects:explore_entity_detail",
+            kwargs={"pk": project.pk, "ifc_id": ifc_file.pk, "entity_id": entity.pk},
+        )
+
+    def test_unauthenticated_redirects(self, client):
+        """Unauthenticated GET redirects to login."""
+        project = ProjectFactory()
+        ifc_file = IFCFileFactory(project=project, status="completed")
+        entity = IFCEntityFactory(ifc_file=ifc_file)
+        response = client.get(self._url(project, ifc_file, entity))
+        assert response.status_code == 302
+        assert "login" in response["Location"]
+
+    def test_returns_200_with_entity_in_context(self, client):
+        """Owner gets 200 with the correct entity in context."""
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        ifc_file = IFCFileFactory(project=project, status="completed")
+        entity = IFCEntityFactory(ifc_file=ifc_file)
+        client.force_login(user)
+
+        response = client.get(self._url(project, ifc_file, entity))
+        assert response.status_code == 200
+        assert response.context["entity"] == entity
+
+    def test_pset_properties_grouped_into_property_sets(self, client):
+        """Pset_* keys are parsed into property_sets grouped by pset name."""
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        ifc_file = IFCFileFactory(project=project, status="completed")
+        entity = IFCEntityFactory(
+            ifc_file=ifc_file,
+            properties={
+                "Pset_WallCommon.IsExternal": True,
+                "Pset_WallCommon.FireRating": "EI60",
+            },
+        )
+        client.force_login(user)
+
+        response = client.get(self._url(project, ifc_file, entity))
+        assert response.status_code == 200
+        psets = response.context["property_sets"]
+        assert "Pset_WallCommon" in psets
+        assert psets["Pset_WallCommon"]["IsExternal"] is True
+        assert psets["Pset_WallCommon"]["FireRating"] == "EI60"
+
+    def test_qto_properties_grouped_into_quantity_sets(self, client):
+        """Qto_* keys are parsed into quantity_sets grouped by qto name."""
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        ifc_file = IFCFileFactory(project=project, status="completed")
+        entity = IFCEntityFactory(
+            ifc_file=ifc_file,
+            properties={"Qto_WallBaseQuantities.Length": 5.2},
+        )
+        client.force_login(user)
+
+        response = client.get(self._url(project, ifc_file, entity))
+        assert response.status_code == 200
+        qtos = response.context["quantity_sets"]
+        assert "Qto_WallBaseQuantities" in qtos
+        assert qtos["Qto_WallBaseQuantities"]["Length"] == 5.2
+
+    def test_type_properties_grouped_into_type_sets(self, client):
+        """Type.* keys are parsed into type_sets grouped by pset name."""
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        ifc_file = IFCFileFactory(project=project, status="completed")
+        entity = IFCEntityFactory(
+            ifc_file=ifc_file,
+            properties={"Type.Pset_WallCommon.IsExternal": False},
+        )
+        client.force_login(user)
+
+        response = client.get(self._url(project, ifc_file, entity))
+        assert response.status_code == 200
+        tsets = response.context["type_sets"]
+        assert "Pset_WallCommon" in tsets
+        assert tsets["Pset_WallCommon"]["IsExternal"] is False
+
+    def test_bare_key_goes_to_other_group(self, client):
+        """A key with no dot separator lands in property_sets['Other']."""
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        ifc_file = IFCFileFactory(project=project, status="completed")
+        entity = IFCEntityFactory(
+            ifc_file=ifc_file,
+            properties={"GlobalId": "ABC123"},
+        )
+        client.force_login(user)
+
+        response = client.get(self._url(project, ifc_file, entity))
+        assert response.status_code == 200
+        other = response.context["property_sets"].get("Other", {})
+        assert other.get("GlobalId") == "ABC123"
+
+    def test_empty_properties_all_sets_are_empty(self, client):
+        """Entity with no properties yields three empty dicts in context."""
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        ifc_file = IFCFileFactory(project=project, status="completed")
+        entity = IFCEntityFactory(ifc_file=ifc_file, properties={})
+        client.force_login(user)
+
+        response = client.get(self._url(project, ifc_file, entity))
+        assert response.status_code == 200
+        assert response.context["property_sets"] == {}
+        assert response.context["quantity_sets"] == {}
+        assert response.context["type_sets"] == {}
+
+    def test_non_member_gets_403(self, client):
+        """User without project access is denied."""
+        owner = UserFactory()
+        other = UserFactory()
+        project = ProjectFactory(owner=owner)
+        ifc_file = IFCFileFactory(project=project, status="completed")
+        entity = IFCEntityFactory(ifc_file=ifc_file)
+        client.force_login(other)
+
+        response = client.get(self._url(project, ifc_file, entity))
+        assert response.status_code in (302, 403)

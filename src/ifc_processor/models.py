@@ -213,6 +213,7 @@ class IFCDataIssue(UUIDModel):
         DUPLICATE_GUID = "duplicate_guid", "Duplicate GlobalID"
         INVALID_GEOMETRY = "invalid_geometry", "Invalid Geometry"
         MISSING_PROPERTY = "missing_property", "Missing Required Property"
+        ORPHANED_ELEMENT = "orphaned_element", "Orphaned Element (No Spatial Placement)"
 
     ifc_file = models.ForeignKey(
         IFCFile,

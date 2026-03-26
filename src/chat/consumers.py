@@ -6,12 +6,15 @@ AskConsumer — streams the RAG pipeline phases to the browser.
 
 Protocol:
     Client → Server:  {"action": "ask", "message": "<text>", "session_id": "<uuid>", "scope": "auto|ifc|docs"}
+    Client → Server:  {"action": "cancel"}
     Server → Client:  {"type": "phase", "phase": "intent|retrieve|generate", "status": "running|done|error", "message": "..."}
     Server → Client:  {"type": "done"}
+    Server → Client:  {"type": "cancelled"}
     Server → Client:  {"type": "error", "message": "<text>"}
 """
 
 import logging
+import threading
 
 from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
@@ -30,6 +33,7 @@ class AskConsumer(AsyncJsonWebsocketConsumer):
     async def connect(self) -> None:
         self.user = self.scope["user"]
         self.project_id = self.scope["url_route"]["kwargs"]["project_id"]
+        self._cancel_event = threading.Event()
 
         if self.user.is_anonymous:
             await self.close(code=4001)
@@ -58,6 +62,9 @@ class AskConsumer(AsyncJsonWebsocketConsumer):
         action = content.get("action")
         if action == "ask":
             await self._handle_ask(content)
+        elif action == "cancel":
+            self._cancel_event.set()
+            logger.debug("AskConsumer: cancel requested by %s", self.user.username)
         else:
             await self.send_json({"type": "error", "message": f"Unknown action: {action}"})
 
@@ -70,12 +77,20 @@ class AskConsumer(AsyncJsonWebsocketConsumer):
             await self.send_json({"type": "error", "message": "Message is required."})
             return
 
+        # Reset cancel state for each new request
+        self._cancel_event.clear()
+
         session_id = content.get("session_id")
         scope = content.get("scope", "auto")
 
         try:
             await self._run_pipeline(message_text, session_id, scope)
         except Exception as e:
+            from writeback.services.emitters import CancellationError
+
+            if isinstance(e, CancellationError):
+                await self.send_json({"type": "cancelled"})
+                return
             logger.exception("RAG pipeline error: %s", e)
             await self.send_json({"type": "error", "message": str(e)})
             return
@@ -93,7 +108,7 @@ class AskConsumer(AsyncJsonWebsocketConsumer):
         from chat.models import ChatSession, Message
         from chat.services.rag_service import RAGService
         from environments.models import Project
-        from writeback.services.emitters import WebSocketEmitter
+        from writeback.services.emitters import CancellationError, WebSocketEmitter
 
         # Resolve project
         try:
@@ -122,7 +137,7 @@ class AskConsumer(AsyncJsonWebsocketConsumer):
             content=message_text,
         )
 
-        emitter = WebSocketEmitter(self.send_json)
+        emitter = WebSocketEmitter(self.send_json, cancel_event=self._cancel_event)
         rag = RAGService(user=self.user)
 
         try:
@@ -139,6 +154,9 @@ class AskConsumer(AsyncJsonWebsocketConsumer):
                 content=answer_text,
                 retrieved_context=rag._serialize_context(context_items, scope=scope),
             )
+        except CancellationError:
+            logger.debug("RAG pipeline cancelled for user=%s", self.user.username)
+            raise
         except Exception as e:
             Message.objects.create(
                 session=session,

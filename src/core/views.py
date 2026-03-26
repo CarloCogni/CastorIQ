@@ -19,7 +19,13 @@ from core.llm_model_registry import (
     get_model_info,
 )
 from core.models import ErrorLog, UserLLMConfig
-from core.services.team_notes import create_note, pull_notes_from_supabase, push_notes_to_supabase
+from core.services.team_notes import (
+    create_note,
+    push_notes_to_supabase,
+)
+from core.services.team_notes import (
+    pull_notes_from_supabase as svc_pull_notes,
+)
 from core.token_budget import get_context_window
 
 logger = getLogger(__name__)
@@ -459,7 +465,7 @@ def send_notes_to_supabase(request):
 def pull_notes_from_supabase(request):
     """Pull TeamNotes from Supabase."""
     try:
-        result = pull_notes_from_supabase(current_developer=request.user.username)
+        result = svc_pull_notes(current_developer=request.user.username)
         return JsonResponse({"success": True, **result})
     except ValueError as e:
         return JsonResponse({"success": False, "error": str(e)}, status=500)

@@ -48,6 +48,11 @@
                     <i class="bi bi-clock-history me-2"></i>History
                 </a>
             </li>
+            <li class="nav-item">
+                <a class="nav-link {% if active_tab == 'explore' %}active{% endif %}" href="{% url 'projects:explore' project.pk %}">
+                    <i class="bi bi-diagram-3 me-2"></i>Explore
+                </a>
+            </li>
         </ul>
     </div>
 
@@ -60,6 +65,8 @@
             {% include "writeback/tabs/_conflicts.html" %}
         {% elif active_tab == 'history' %}
             {% include "writeback/tabs/_history.html" %}
+        {% elif active_tab == 'explore' %}
+            {% include "ifc_processor/tabs/_explore.html" %}
         {% endif %}
     </div>
 

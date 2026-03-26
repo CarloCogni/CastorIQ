@@ -7,8 +7,10 @@ ScanConsumer     — streams the conflict scan pipeline.
 
 Protocol (ProposalConsumer):
     Client → Server:  {"action": "propose", "message": "<text>", "session_id": "<uuid>"}
+    Client → Server:  {"action": "cancel"}
     Server → Client:  {"type": "phase", "phase": "<name>", "status": "running|done|error", ...}
     Server → Client:  {"type": "proposal", "status": "proposed", "proposal": {...}}
+    Server → Client:  {"type": "cancelled"}
     Server → Client:  {"type": "error", "message": "<text>"}
     Server → Client:  {"type": "done"}
 
@@ -22,6 +24,7 @@ Protocol (ScanConsumer):
 
 import json
 import logging
+import threading
 
 from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
@@ -40,6 +43,7 @@ class ProposalConsumer(AsyncJsonWebsocketConsumer):
     async def connect(self) -> None:
         self.user = self.scope["user"]
         self.project_id = self.scope["url_route"]["kwargs"]["project_id"]
+        self._cancel_event = threading.Event()
 
         if self.user.is_anonymous:
             await self.close(code=4001)
@@ -68,6 +72,9 @@ class ProposalConsumer(AsyncJsonWebsocketConsumer):
         action = content.get("action")
         if action == "propose":
             await self._handle_propose(content)
+        elif action == "cancel":
+            self._cancel_event.set()
+            logger.debug("ProposalConsumer: cancel requested by %s", self.user.username)
         else:
             await self.send_json({"type": "error", "message": f"Unknown action: {action}"})
 
@@ -80,12 +87,20 @@ class ProposalConsumer(AsyncJsonWebsocketConsumer):
             await self.send_json({"type": "error", "message": "Message is required."})
             return
 
+        # Reset cancel state for each new request
+        self._cancel_event.clear()
+
         session_id = content.get("session_id")
         conflict_ids_raw = content.get("conflict_ids", "")
 
         try:
             result, proposals = await self._run_pipeline(message_text, session_id, conflict_ids_raw)
         except Exception as e:
+            from writeback.services.emitters import CancellationError
+
+            if isinstance(e, CancellationError):
+                await self.send_json({"type": "cancelled"})
+                return
             logger.exception("Proposal pipeline error: %s", e)
             await self.send_json({"type": "error", "message": str(e)})
             return
@@ -104,7 +119,7 @@ class ProposalConsumer(AsyncJsonWebsocketConsumer):
         """
         from chat.models import ChatSession, Message
         from environments.models import Project
-        from writeback.services.emitters import WebSocketEmitter
+        from writeback.services.emitters import CancellationError, WebSocketEmitter
         from writeback.services.modification_service import ModificationError, ModificationService
 
         # Resolve project
@@ -134,7 +149,7 @@ class ProposalConsumer(AsyncJsonWebsocketConsumer):
             content=message_text,
         )
 
-        emitter = WebSocketEmitter(self.send_json)
+        emitter = WebSocketEmitter(self.send_json, cancel_event=self._cancel_event)
         svc = ModificationService(project, user=self.user)
 
         try:
@@ -144,6 +159,9 @@ class ProposalConsumer(AsyncJsonWebsocketConsumer):
                 message_obj=user_msg,
                 emitter=emitter,
             )
+        except CancellationError:
+            logger.debug("Proposal pipeline cancelled for user=%s", self.user.username)
+            raise
         except ModificationError as e:
             Message.objects.create(
                 session=session,

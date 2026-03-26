@@ -8,6 +8,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
+from django.core.paginator import Paginator
 from django.db.models import Count, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -29,7 +30,7 @@ from core.mixins import ProjectAccessMixin, ProjectTabMixin
 from core.token_budget import compute_budget, get_context_window
 from documents.models import Document
 from documents.services.document_processor import DocumentProcessor
-from ifc_processor.models import IFCFile
+from ifc_processor.models import IFCEntity, IFCFile
 from ifc_processor.services.processor import IFCProcessingService
 
 from .models import Project
@@ -746,5 +747,202 @@ class DocumentOCRView(LoginRequiredMixin, View):
             {
                 "document": document,
                 "project": project,
+            },
+        )
+
+
+# --- IFC Explorer ---
+
+
+class ExploreView(ProjectTabMixin, TemplateView):
+    """Explore tab — spatial hierarchy browser for IFC entities."""
+
+    active_tab = "explore"
+    template_name = "environments/project_detail.html"
+
+    def get_context_data(self, **kwargs: object) -> dict:
+        context = super().get_context_data(**kwargs)
+        project = self.get_project()
+
+        completed_ifc_files = project.ifc_files.filter(status=IFCFile.Status.COMPLETED).only(
+            "id", "name", "entity_count"
+        )
+
+        # Resolve selected IFC file from URL kwarg or default to first
+        ifc_id = self.kwargs.get("ifc_id")
+        if ifc_id:
+            selected_ifc = get_object_or_404(
+                IFCFile, pk=ifc_id, project=project, status=IFCFile.Status.COMPLETED
+            )
+        else:
+            selected_ifc = completed_ifc_files.first()
+
+        buildings = []
+        if selected_ifc:
+            buildings = list(
+                IFCEntity.objects.filter(ifc_file=selected_ifc)
+                .values("building")
+                .annotate(count=Count("id"))
+                .order_by("building")
+            )
+
+        context["completed_ifc_files"] = completed_ifc_files
+        context["selected_ifc"] = selected_ifc
+        context["buildings"] = buildings
+        return context
+
+
+class ExploreTreePartial(ProjectAccessMixin, View):
+    """HTMX partial: returns tree nodes (buildings/storeys/spaces) for a given IFC file."""
+
+    def get(self, request, pk: str, ifc_id: str) -> object:
+        project = self.get_project()
+        ifc_file = get_object_or_404(
+            IFCFile, pk=ifc_id, project=project, status=IFCFile.Status.COMPLETED
+        )
+
+        building = request.GET.get("building", "")
+        storey = request.GET.get("storey", "")
+
+        base_qs = IFCEntity.objects.filter(ifc_file=ifc_file)
+
+        if building and storey:
+            # Return spaces within this building+storey
+            nodes = list(
+                base_qs.filter(building=building, building_storey=storey)
+                .values("space")
+                .annotate(count=Count("id"))
+                .order_by("space")
+            )
+            level = "space"
+        elif building:
+            # Return storeys within this building
+            nodes = list(
+                base_qs.filter(building=building)
+                .values("building_storey")
+                .annotate(count=Count("id"))
+                .order_by("building_storey")
+            )
+            level = "storey"
+        else:
+            # Return top-level buildings
+            nodes = list(
+                base_qs.values("building").annotate(count=Count("id")).order_by("building")
+            )
+            level = "building"
+
+        return render(
+            request,
+            "ifc_processor/explore/_tree_nodes.html",
+            {
+                "nodes": nodes,
+                "level": level,
+                "ifc_file": ifc_file,
+                "project": project,
+                "current_building": building,
+                "current_storey": storey,
+            },
+        )
+
+
+class ExploreEntitiesPartial(ProjectAccessMixin, View):
+    """HTMX partial: paginated entity table filtered by spatial context and/or type."""
+
+    PAGE_SIZE = 25
+
+    def get(self, request, pk: str, ifc_id: str) -> object:
+        project = self.get_project()
+        ifc_file = get_object_or_404(
+            IFCFile, pk=ifc_id, project=project, status=IFCFile.Status.COMPLETED
+        )
+
+        building = request.GET.get("building", "")
+        storey = request.GET.get("storey", "")
+        space = request.GET.get("space", "")
+        ifc_type = request.GET.get("type", "")
+        page_num = max(1, int(request.GET.get("page", 1) or 1))
+
+        filters: dict = {"ifc_file": ifc_file}
+        if building:
+            filters["building"] = building
+        if storey:
+            filters["building_storey"] = storey
+        if space:
+            filters["space"] = space
+        if ifc_type:
+            filters["ifc_type"] = ifc_type
+
+        qs = (
+            IFCEntity.objects.filter(**filters)
+            .only("id", "global_id", "ifc_type", "name", "building_storey", "space")
+            .order_by("ifc_type", "name")
+        )
+
+        paginator = Paginator(qs, self.PAGE_SIZE)
+        page_obj = paginator.get_page(page_num)
+
+        # Distinct types for filter chips (scoped to building/storey/space selection)
+        type_filter = {k: v for k, v in filters.items() if k != "ifc_type"}
+        available_types = list(
+            IFCEntity.objects.filter(**type_filter)
+            .values_list("ifc_type", flat=True)
+            .distinct()
+            .order_by("ifc_type")
+        )
+
+        return render(
+            request,
+            "ifc_processor/explore/_entity_table.html",
+            {
+                "page_obj": page_obj,
+                "ifc_file": ifc_file,
+                "project": project,
+                "available_types": available_types,
+                "active_type": ifc_type,
+                "current_building": building,
+                "current_storey": storey,
+                "current_space": space,
+            },
+        )
+
+
+class ExploreEntityDetailPartial(ProjectAccessMixin, View):
+    """HTMX partial: property inspector for a single IFC entity."""
+
+    def get(self, request, pk: str, ifc_id: str, entity_id: str) -> object:
+        project = self.get_project()
+        ifc_file = get_object_or_404(IFCFile, pk=ifc_id, project=project)
+        entity = get_object_or_404(IFCEntity, pk=entity_id, ifc_file=ifc_file)
+
+        property_sets: dict = {}
+        quantity_sets: dict = {}
+        type_sets: dict = {}
+
+        for key, value in (entity.properties or {}).items():
+            parts = key.split(".")
+            if parts[0] == "Type" and len(parts) >= 3:
+                pset = parts[1]
+                prop = ".".join(parts[2:])
+                type_sets.setdefault(pset, {})[prop] = value
+            elif parts[0].startswith("Qto_") and len(parts) >= 2:
+                pset = parts[0]
+                prop = ".".join(parts[1:])
+                quantity_sets.setdefault(pset, {})[prop] = value
+            elif len(parts) >= 2:
+                pset = parts[0]
+                prop = ".".join(parts[1:])
+                property_sets.setdefault(pset, {})[prop] = value
+            else:
+                property_sets.setdefault("Other", {})[key] = value
+
+        return render(
+            request,
+            "ifc_processor/explore/_entity_detail.html",
+            {
+                "entity": entity,
+                "project": project,
+                "property_sets": property_sets,
+                "quantity_sets": quantity_sets,
+                "type_sets": type_sets,
             },
         )

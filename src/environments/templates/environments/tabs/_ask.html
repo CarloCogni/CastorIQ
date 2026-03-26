@@ -145,6 +145,12 @@
                 <button type="submit" class="btn btn-primary" id="send-btn">
                     <i class="bi bi-send"></i>
                 </button>
+                <button type="button" class="btn btn-outline-danger" id="stop-btn"
+                        style="display:none;"
+                        title="Stop generation"
+                        onclick="AskChat.stopGeneration()">
+                    <i class="bi bi-stop-circle"></i>
+                </button>
             </div>
 
             <!-- Scope: subtle, below the input, feels optional -->
@@ -205,6 +211,7 @@ const AskChat = {
     _ws: null,
     _wsReconnectAttempts: 0,
     _maxReconnectAttempts: 3,
+    _isProcessing: false,
 
     /* ── WebSocket init ──────────────────────────────────────────────────── */
     initWebSocket() {
@@ -247,6 +254,22 @@ const AskChat = {
         setTimeout(() => this.initWebSocket(), delay);
     },
 
+    /* ── Processing state ───────────────────────────────────────────────── */
+    _setProcessing(state) {
+        this._isProcessing = state;
+        document.getElementById('send-btn').disabled = state;
+        document.getElementById('stop-btn').style.display = state ? 'inline-block' : 'none';
+        if (this.inputEl) this.inputEl.disabled = state;
+    },
+
+    stopGeneration() {
+        if (this._ws && this._ws.readyState === WebSocket.OPEN) {
+            this._ws.send(JSON.stringify({ action: 'cancel' }));
+        }
+        this._setProcessing(false);
+        this._hideProgressTracker();
+    },
+
     /* ── Message handling ───────────────────────────────────────────────── */
     _handleWsMessage(data) {
         switch (data.type) {
@@ -254,13 +277,19 @@ const AskChat = {
                 this._updateProgressPhase(data);
                 break;
             case 'done':
+                this._setProcessing(false);
                 this._hideProgressTracker();
                 htmx.ajax('GET', this.chatEl.dataset.messagesUrl, {
                     target: '#chat-messages',
                     swap: 'innerHTML',
                 });
                 break;
+            case 'cancelled':
+                this._setProcessing(false);
+                this._hideProgressTracker();
+                break;
             case 'error':
+                this._setProcessing(false);
                 this._hideProgressTracker();
                 this.chatEl.insertAdjacentHTML('beforeend', `
                     <div class="message message-assistant">
@@ -310,6 +339,7 @@ const AskChat = {
             </div>`);
 
         this._showProgressTracker();
+        this._setProcessing(true);
 
         this.inputEl.value = '';
         this.inputEl.style.height = 'auto';

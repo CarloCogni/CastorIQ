@@ -1,0 +1,100 @@
+<!--ifc_processor/explore/_entity_table.html-->
+<!--   HTMX partial: paginated, filtered entity table.-->
+<!--   Context: page_obj, ifc_file, project, available_types, active_type,-->
+<!--            current_building, current_storey, current_space -->
+
+{# Build the base filter string to carry across paginator and type chips #}
+{% with base_url=request.path %}
+
+{# ── Type filter chips ── #}
+{% if available_types %}
+<div class="px-3 pt-2 pb-1 border-bottom d-flex flex-wrap gap-1 align-items-center flex-shrink-0 bg-body">
+  <span class="text-secondary small me-1">Type:</span>
+  <a class="badge {% if not active_type %}bg-primary{% else %}bg-secondary bg-opacity-25 text-body{% endif %} text-decoration-none"
+     hx-get="{{ base_url }}?building={{ current_building|urlencode }}&storey={{ current_storey|urlencode }}&space={{ current_space|urlencode }}"
+     hx-target="#explore-entities"
+     hx-swap="innerHTML"
+     style="cursor:pointer;">
+    All
+  </a>
+  {% for t in available_types %}
+  <a class="badge {% if active_type == t %}bg-primary{% else %}bg-secondary bg-opacity-25 text-body{% endif %} text-decoration-none badge-ifc-type"
+     hx-get="{{ base_url }}?building={{ current_building|urlencode }}&storey={{ current_storey|urlencode }}&space={{ current_space|urlencode }}&type={{ t|urlencode }}"
+     hx-target="#explore-entities"
+     hx-swap="innerHTML"
+     style="cursor:pointer;">
+    {{ t }}
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{# ── Entity table ── #}
+{% if page_obj.object_list %}
+<div class="table-responsive">
+  <table class="table table-sm table-hover align-middle mb-0" style="font-size:0.85rem;">
+    <thead class="table-dark sticky-top">
+      <tr>
+        <th style="width:140px;">Type</th>
+        <th>Name</th>
+        <th style="width:120px;">Storey</th>
+        <th style="width:120px;">Space</th>
+        <th style="width:110px;" class="text-secondary">GlobalID</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for entity in page_obj %}
+      <tr class="entity-row"
+          onclick="loadEntityDetail(this, '{% url 'projects:explore_entity_detail' project.pk ifc_file.pk entity.pk %}')"
+          title="{{ entity.global_id }}">
+        <td>
+          <span class="badge bg-primary bg-opacity-10 text-body badge-ifc-type">{{ entity.ifc_type }}</span>
+        </td>
+        <td>{{ entity.name|default:"—" }}</td>
+        <td class="text-secondary">{{ entity.building_storey|default:"—"|truncatechars:18 }}</td>
+        <td class="text-secondary">{{ entity.space|default:"—"|truncatechars:18 }}</td>
+        <td class="text-secondary font-monospace" style="font-size:0.75rem;">{{ entity.global_id|truncatechars:10 }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{# ── Pagination ── #}
+{% if page_obj.has_other_pages %}
+<div class="d-flex align-items-center justify-content-between px-3 py-2 border-top bg-body flex-shrink-0">
+  <span class="small text-secondary">
+    {{ page_obj.start_index }}–{{ page_obj.end_index }} of {{ page_obj.paginator.count }}
+  </span>
+  <div class="d-flex gap-1">
+    {% if page_obj.has_previous %}
+    <button class="btn btn-sm btn-outline-secondary"
+            hx-get="{{ base_url }}?building={{ current_building|urlencode }}&storey={{ current_storey|urlencode }}&space={{ current_space|urlencode }}&type={{ active_type|urlencode }}&page={{ page_obj.previous_page_number }}"
+            hx-target="#explore-entities"
+            hx-swap="innerHTML">
+      <i class="bi bi-chevron-left"></i>
+    </button>
+    {% endif %}
+    <span class="btn btn-sm btn-outline-secondary disabled">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+    {% if page_obj.has_next %}
+    <button class="btn btn-sm btn-outline-secondary"
+            hx-get="{{ base_url }}?building={{ current_building|urlencode }}&storey={{ current_storey|urlencode }}&space={{ current_space|urlencode }}&type={{ active_type|urlencode }}&page={{ page_obj.next_page_number }}"
+            hx-target="#explore-entities"
+            hx-swap="innerHTML">
+      <i class="bi bi-chevron-right"></i>
+    </button>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% else %}
+<div class="d-flex align-items-center justify-content-center p-5 text-secondary">
+  <div class="text-center">
+    <i class="bi bi-inbox fs-2 d-block mb-2 opacity-50"></i>
+    No entities match the current filter.
+  </div>
+</div>
+{% endif %}
+
+{% endwith %}

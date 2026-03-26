@@ -107,6 +107,50 @@ class IFCParser:
         "IfcVibrationDamper",
     }
 
+    # Types excluded from the orphaned-element check.
+    # Includes:
+    #   1. IFC spatial structure elements — they ARE containers, not contained objects.
+    #   2. IFC4.3 infrastructure physical elements — their spatial parents are IfcBridge /
+    #      IfcRoad / etc., not IfcBuilding / IfcBuildingStorey, so _get_spatial_info()
+    #      will always return empty for them even when they are correctly placed.
+    SKIP_ORPHAN_CHECK_TYPES: frozenset[str] = frozenset(
+        {
+            "IfcSite",
+            "IfcBuilding",
+            "IfcBuildingStorey",
+            "IfcSpace",
+            "IfcZone",
+            # IFC4.3 spatial containers
+            "IfcBridge",
+            "IfcBridgePart",
+            "IfcRoad",
+            "IfcRoadPart",
+            "IfcRailway",
+            "IfcRailwayPart",
+            "IfcTunnel",
+            "IfcTunnelPart",
+            "IfcMarineFacility",
+            "IfcMarineFacilityPart",
+            # IFC4.3 physical infrastructure elements
+            "IfcCourse",
+            "IfcPavement",
+            "IfcKerb",
+            "IfcSign",
+            "IfcSignal",
+            "IfcTrackElement",
+            "IfcMarking",
+            "IfcEarthworksCut",
+            "IfcEarthworksFill",
+            "IfcBearing",
+            "IfcMooringDevice",
+            "IfcNavigationElement",
+            "IfcConveyorSegment",
+            "IfcLiquidTerminal",
+            "IfcTendonConduit",
+            "IfcVibrationDamper",
+        }
+    )
+
     def __init__(self, ifc_file: IFCFile):
         """
         Initialize parser with an IFCFile model instance.
@@ -216,6 +260,7 @@ class IFCParser:
                 continue
             for element in elements:
                 gid = element.GlobalId
+                ifc_type_name = element.is_a()
 
                 # DATA PREPARATION
                 spatial_info = self._get_spatial_info(element)
@@ -229,26 +274,67 @@ class IFCParser:
                         ifc_file=self.ifc_file,
                         issue_type=IFCDataIssue.IssueType.DUPLICATE_GUID,
                         global_id=gid,
-                        ifc_type=element.is_a(),
+                        ifc_type=ifc_type_name,
                         raw_data={
                             "name": element.Name or "",
                             "properties": properties,
                             "spatial": spatial_info,
-                            # NEW: Store info about BOTH conflicting elements
                             "first_element_name": first_element_info["name"],
                             "first_element_type": first_element_info["type"],
                             "first_element_storey": first_element_info["storey"],
                         },
-                        description=f"Duplicate GlobalID '{gid}': '{element.Name or 'Unnamed'}' ({element.is_a()}) conflicts with '{first_element_info['name'] or 'Unnamed'}' ({first_element_info['type']}).",
+                        description=f"Duplicate GlobalID '{gid}': '{element.Name or 'Unnamed'}' ({ifc_type_name}) conflicts with '{first_element_info['name'] or 'Unnamed'}' ({first_element_info['type']}).",
                     )
                     issues_to_create.append(issue)
                 else:
+                    # STRUCTURAL VALIDATION — only for elements that will be imported
+                    element_name = element.Name or "Unnamed"
+
+                    if (
+                        not any(
+                            [
+                                spatial_info["building"],
+                                spatial_info["building_storey"],
+                                spatial_info["space"],
+                            ]
+                        )
+                        and ifc_type_name not in self.SKIP_ORPHAN_CHECK_TYPES
+                    ):
+                        issues_to_create.append(
+                            IFCDataIssue(
+                                ifc_file=self.ifc_file,
+                                issue_type=IFCDataIssue.IssueType.ORPHANED_ELEMENT,
+                                global_id=gid,
+                                ifc_type=ifc_type_name,
+                                raw_data={"name": element.Name or ""},
+                                description=(
+                                    f"Element '{element_name}' ({ifc_type_name}) has no spatial "
+                                    "placement — it belongs to no building, floor, or space."
+                                ),
+                            )
+                        )
+
+                    if not properties:
+                        issues_to_create.append(
+                            IFCDataIssue(
+                                ifc_file=self.ifc_file,
+                                issue_type=IFCDataIssue.IssueType.MISSING_PROPERTY,
+                                global_id=gid,
+                                ifc_type=ifc_type_name,
+                                raw_data={"name": element.Name or "", "spatial": spatial_info},
+                                description=(
+                                    f"Element '{element_name}' ({ifc_type_name}) has no property "
+                                    "sets — imported but may not be useful for analysis."
+                                ),
+                            )
+                        )
+
                     # ROUTE TO MAIN ENTITIES
                     description = self._generate_description(element, properties, spatial_info)
                     entity = IFCEntity(
                         ifc_file=self.ifc_file,
                         global_id=gid,
-                        ifc_type=element.is_a(),
+                        ifc_type=ifc_type_name,
                         name=element.Name or "",
                         building=spatial_info.get("building", ""),
                         building_storey=spatial_info.get("building_storey", ""),
@@ -259,7 +345,7 @@ class IFCParser:
                     entities_to_create.append(entity)
                     seen_global_ids[gid] = {
                         "name": element.Name or "",
-                        "type": element.is_a(),
+                        "type": ifc_type_name,
                         "storey": spatial_info.get("building_storey", ""),
                     }
                 # MEMORY MANAGEMENT

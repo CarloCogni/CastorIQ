@@ -21,7 +21,7 @@ from ifc_processor.services.processor import IFCProcessingService
 from writeback.models import GitCommit, ModificationProposal
 from writeback.services.guardian_service import GuardianService
 
-from .emitters import NullEmitter, PipelineEmitter
+from .emitters import CancellationError, NullEmitter, PipelineEmitter
 from .filter_engine import FilterEngine
 from .git_service import GitService
 from .ifc_standard_psets import lookup_property
@@ -324,6 +324,8 @@ class ModificationService:
                 "Document check complete",
                 {"verdict": proposal.verification_status},
             )
+        except CancellationError:
+            raise
         except Exception as e:
             logger.warning(f"Guardian check failed (non-blocking): {e}")
             emitter.emit("guardian", "done", "Document check unavailable", {"verdict": "failed"})

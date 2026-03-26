@@ -458,15 +458,21 @@ class TestConflictsView:
         response = client.get(_conflicts_url(project.pk), {"status": "resolved"})
         assert response.status_code == 200
 
-    def test_get_conflicts_invalid_status_falls_back_to_open(self, client):
-        """Invalid status param falls back to 'open'."""
+    def test_get_conflicts_returns_grouped_by_status(self, client):
+        """Conflicts view provides grouped_by_status dict with all statuses."""
         user = UserFactory()
         project = ProjectFactory(owner=user)
         _login(client, user)
 
-        response = client.get(_conflicts_url(project.pk), {"status": "garbage"})
+        response = client.get(_conflicts_url(project.pk))
         assert response.status_code == 200
-        assert response.context["current_status"] == "open"
+        assert "grouped_by_status" in response.context
+        assert set(response.context["grouped_by_status"].keys()) == {
+            "open",
+            "resolved",
+            "ignored",
+            "dismissed",
+        }
 
     def test_get_conflicts_other_user_forbidden(self, client):
         """User without project access gets 403."""

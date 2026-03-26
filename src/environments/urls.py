@@ -45,4 +45,22 @@ urlpatterns = [
     path("document/<uuid:pk>/edit/", views.DocumentUpdateView.as_view(), name="document_edit"),
     path("document/<uuid:pk>/delete/", views.DocumentDeleteView.as_view(), name="document_delete"),
     path("document/<uuid:pk>/ocr/", views.DocumentOCRView.as_view(), name="document_ocr"),
+    # IFC Explorer
+    path("<uuid:pk>/explore/", views.ExploreView.as_view(), name="explore"),
+    path("<uuid:pk>/explore/ifc/<uuid:ifc_id>/", views.ExploreView.as_view(), name="explore_ifc"),
+    path(
+        "<uuid:pk>/explore/ifc/<uuid:ifc_id>/tree/",
+        views.ExploreTreePartial.as_view(),
+        name="explore_tree",
+    ),
+    path(
+        "<uuid:pk>/explore/ifc/<uuid:ifc_id>/entities/",
+        views.ExploreEntitiesPartial.as_view(),
+        name="explore_entities",
+    ),
+    path(
+        "<uuid:pk>/explore/ifc/<uuid:ifc_id>/entity/<uuid:entity_id>/",
+        views.ExploreEntityDetailPartial.as_view(),
+        name="explore_entity_detail",
+    ),
 ]

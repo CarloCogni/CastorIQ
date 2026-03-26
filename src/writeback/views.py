@@ -371,11 +371,6 @@ class ConflictsView(ProjectTabMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         project = self.get_project()
 
-        # Status filter
-        status_param = self.request.GET.get("status", "open")
-        valid_statuses = {s.value for s in Conflict.Status}
-        current_status = status_param if status_param in valid_statuses else "open"
-
         # Counts for pill tabs
         status_counts = {
             "open": project.conflicts.filter(status=Conflict.Status.OPEN).count(),
@@ -384,44 +379,45 @@ class ConflictsView(ProjectTabMixin, TemplateView):
             "dismissed": project.conflicts.filter(status=Conflict.Status.DISMISSED).count(),
         }
 
-        raw_conflicts = list(
-            project.conflicts.filter(status=current_status)
-            .select_related(
-                "ifc_entity",
-                "ifc_entity__ifc_file",
-                "document_chunk__document",
-                "resolved_by",
-            )
-            .order_by("-severity", "-created_at")
-        )
-
-        # Group identical issues (same title + value pair) affecting different entities
+        # Build grouped conflicts for every status so the template can filter client-side
         severity_rank = {"critical": 4, "high": 3, "medium": 2, "low": 1}
-        groups: dict = defaultdict(list)
-        for c in raw_conflicts:
-            key = (c.title, c.ifc_value, c.document_value)
-            groups[key].append(c)
-
-        grouped_conflicts = []
-        for group in groups.values():
-            representative = max(group, key=lambda c: severity_rank.get(c.severity, 0))
-            entities = [c.ifc_entity for c in group if c.ifc_entity]
-            grouped_conflicts.append(
-                {
-                    "representative": representative,
-                    "all_ids": ",".join(str(c.id) for c in group),
-                    "entities": entities,
-                    "count": len(group),
-                    "fix_prompt": self._build_fix_prompt(representative, entities),
-                }
+        grouped_by_status: dict = {}
+        for conflict_status in Conflict.Status:
+            raw = list(
+                project.conflicts.filter(status=conflict_status.value)
+                .select_related(
+                    "ifc_entity",
+                    "ifc_entity__ifc_file",
+                    "document_chunk__document",
+                    "resolved_by",
+                )
+                .order_by("-severity", "-created_at")
             )
-        grouped_conflicts.sort(
-            key=lambda g: severity_rank.get(g["representative"].severity, 0),
-            reverse=True,
-        )
+            groups: dict = defaultdict(list)
+            for c in raw:
+                key = (c.title, c.ifc_value, c.document_value)
+                groups[key].append(c)
 
-        context["grouped_conflicts"] = grouped_conflicts
-        context["current_status"] = current_status
+            grouped: list = []
+            for group in groups.values():
+                representative = max(group, key=lambda c: severity_rank.get(c.severity, 0))
+                entities = [c.ifc_entity for c in group if c.ifc_entity]
+                grouped.append(
+                    {
+                        "representative": representative,
+                        "all_ids": ",".join(str(c.id) for c in group),
+                        "entities": entities,
+                        "count": len(group),
+                        "fix_prompt": self._build_fix_prompt(representative, entities),
+                    }
+                )
+            grouped.sort(
+                key=lambda g: severity_rank.get(g["representative"].severity, 0),
+                reverse=True,
+            )
+            grouped_by_status[conflict_status.value] = grouped
+
+        context["grouped_by_status"] = grouped_by_status
         context["status_counts"] = status_counts
         context["open_conflicts_count"] = status_counts["open"]
         context["open_conflicts"] = status_counts["open"] > 0  # truthy for sub-tab badge

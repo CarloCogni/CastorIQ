@@ -65,9 +65,10 @@
                 {{ data_issues.count }} issue{{ data_issues.count|pluralize }} found during IFC parsing
             </p>
             <p class="text-secondary fs-8 mb-2">
-                These are structural problems in the IFC file itself — they were detected
-                automatically when the file was uploaded. Castor imported what it could,
-                but skipped elements with duplicate GlobalIDs.
+                Structural problems detected in the IFC file during upload.
+                <strong class="text-body">Duplicate GlobalIDs</strong> cause elements to be skipped entirely.
+                <strong class="text-body">Orphaned elements</strong> and <strong class="text-body">missing property sets</strong>
+                are warnings — those elements were imported, but may behave unexpectedly.
             </p>
             <div class="d-flex align-items-start gap-2 rounded-2 p-2 fs-8"
                  style="background-color: rgba(0,0,0,0.15);">
@@ -75,8 +76,8 @@
                 <span class="text-secondary">
                     <strong class="text-body">How to fix:</strong>
                     Open the IFC file in your BIM authoring tool (Revit, Bonsai, ArchiCAD…),
-                    resolve the duplicate GlobalIDs, then re-upload the corrected file.
-                    Castor cannot fix these — they must be corrected at the source.
+                    resolve the issues at the source, then re-upload the corrected file.
+                    Castor cannot fix structural IFC problems.
                 </span>
             </div>
         </div>
@@ -95,6 +96,10 @@
                      style="width: 36px; height: 36px; background-color: rgba(245, 158, 11, 0.12);">
                     {% if issue.issue_type == 'duplicate_guid' %}
                     <i class="bi bi-files text-warning"></i>
+                    {% elif issue.issue_type == 'orphaned_element' %}
+                    <i class="bi bi-geo-alt text-warning"></i>
+                    {% elif issue.issue_type == 'missing_property' %}
+                    <i class="bi bi-list-ul text-secondary"></i>
                     {% elif issue.issue_type == 'invalid_geometry' %}
                     <i class="bi bi-bounding-box text-danger"></i>
                     {% else %}
@@ -103,6 +108,8 @@
                 </div>
 
                 <div class="flex-grow-1 min-width-0">
+
+                    {% if issue.issue_type == 'duplicate_guid' %}
 
                     {# ── Same-element duplicate ── #}
                     {% if issue.raw_data.name == issue.raw_data.first_element_name and issue.ifc_type == issue.raw_data.first_element_type %}
@@ -114,6 +121,10 @@
                         <span class="badge fs-8"
                               style="background-color: rgba(239, 68, 68, 0.15); color: var(--castor-danger);">
                             Duplicate
+                        </span>
+                        <span class="badge fs-8"
+                              style="background-color: rgba(239, 68, 68, 0.1); color: var(--castor-danger);">
+                            <i class="bi bi-x-circle me-1"></i>Skipped
                         </span>
                     </div>
                     <p class="text-secondary fs-7 mb-2">
@@ -133,6 +144,10 @@
                             {% if issue.raw_data.first_element_name %}{{ issue.raw_data.first_element_name }}{% else %}<em class="text-secondary">Unnamed</em>{% endif %}
                         </span>
                         <span class="text-secondary fs-8">{{ issue.raw_data.first_element_type }}</span>
+                        <span class="badge fs-8"
+                              style="background-color: rgba(239, 68, 68, 0.1); color: var(--castor-danger);">
+                            <i class="bi bi-x-circle me-1"></i>Skipped
+                        </span>
                     </div>
                     <p class="text-secondary fs-7 mb-2">
                         Two different elements share the same GlobalID — only
@@ -141,7 +156,7 @@
                     </p>
                     {% endif %}
 
-                    {# Metadata row #}
+                    {# Duplicate metadata row #}
                     <div class="d-flex flex-wrap gap-3 fs-8 text-secondary">
                         <span><i class="bi bi-file-code me-1"></i>{{ issue.ifc_file.name }}</span>
                         {% if issue.raw_data.first_element_storey %}
@@ -149,6 +164,71 @@
                         {% endif %}
                         <code class="user-select-all" style="color: var(--castor-accent);">{{ issue.global_id }}</code>
                     </div>
+
+                    {% elif issue.issue_type == 'orphaned_element' %}
+
+                    {# ── Orphaned element ── #}
+                    <div class="d-flex align-items-baseline gap-2 flex-wrap mb-1">
+                        <span class="fw-semibold">
+                            {% if issue.raw_data.name %}{{ issue.raw_data.name }}{% else %}<em class="text-secondary">Unnamed</em>{% endif %}
+                        </span>
+                        <span class="text-secondary fs-8">{{ issue.ifc_type }}</span>
+                        <span class="badge fs-8"
+                              style="background-color: rgba(245, 158, 11, 0.15); color: var(--castor-warning);">
+                            <i class="bi bi-check-circle me-1"></i>Imported
+                        </span>
+                    </div>
+                    <p class="text-secondary fs-7 mb-2">
+                        This element has no spatial placement — it belongs to no building, floor, or space.
+                        It was imported, but may not appear in floor-based views.
+                    </p>
+                    <div class="d-flex flex-wrap gap-3 fs-8 text-secondary">
+                        <span><i class="bi bi-file-code me-1"></i>{{ issue.ifc_file.name }}</span>
+                        <code class="user-select-all" style="color: var(--castor-accent);">{{ issue.global_id }}</code>
+                    </div>
+
+                    {% elif issue.issue_type == 'missing_property' %}
+
+                    {# ── Missing property sets ── #}
+                    <div class="d-flex align-items-baseline gap-2 flex-wrap mb-1">
+                        <span class="fw-semibold">
+                            {% if issue.raw_data.name %}{{ issue.raw_data.name }}{% else %}<em class="text-secondary">Unnamed</em>{% endif %}
+                        </span>
+                        <span class="text-secondary fs-8">{{ issue.ifc_type }}</span>
+                        <span class="badge fs-8"
+                              style="background-color: rgba(245, 158, 11, 0.15); color: var(--castor-warning);">
+                            <i class="bi bi-check-circle me-1"></i>Imported
+                        </span>
+                    </div>
+                    <p class="text-secondary fs-7 mb-2">
+                        This element has no property sets. It was imported, but won't
+                        participate in semantic conflict detection or property-based queries.
+                    </p>
+                    <div class="d-flex flex-wrap gap-3 fs-8 text-secondary">
+                        <span><i class="bi bi-file-code me-1"></i>{{ issue.ifc_file.name }}</span>
+                        {% if issue.raw_data.spatial.building_storey %}
+                        <span><i class="bi bi-building me-1"></i>{{ issue.raw_data.spatial.building_storey }}</span>
+                        {% endif %}
+                        <code class="user-select-all" style="color: var(--castor-accent);">{{ issue.global_id }}</code>
+                    </div>
+
+                    {% else %}
+
+                    {# ── Generic fallback ── #}
+                    <div class="d-flex align-items-baseline gap-2 flex-wrap mb-1">
+                        <span class="fw-semibold">
+                            {% if issue.raw_data.name %}{{ issue.raw_data.name }}{% else %}<em class="text-secondary">Unnamed</em>{% endif %}
+                        </span>
+                        <span class="text-secondary fs-8">{{ issue.ifc_type }}</span>
+                    </div>
+                    <p class="text-secondary fs-7 mb-2">{{ issue.description }}</p>
+                    <div class="d-flex flex-wrap gap-3 fs-8 text-secondary">
+                        <span><i class="bi bi-file-code me-1"></i>{{ issue.ifc_file.name }}</span>
+                        <code class="user-select-all" style="color: var(--castor-accent);">{{ issue.global_id }}</code>
+                    </div>
+
+                    {% endif %}
+
                 </div>
             </div>
         </div>
@@ -166,7 +246,7 @@
         </div>
         <h5 class="h6 fw-semibold mb-1">Clean IFC Data</h5>
         <p class="text-secondary fs-7 mb-3" style="max-width: 340px; text-align: center;">
-            No duplicate GlobalIDs or structural issues were found during parsing.
+            No duplicate GlobalIDs, orphaned elements, or missing property sets were found.
         </p>
         <p class="text-secondary fs-8 mb-0" style="max-width: 380px; text-align: center;">
             This check runs automatically every time you upload an IFC file.
@@ -219,8 +299,8 @@
         <div class="d-flex flex-column gap-1" id="scan-phase-steps"></div>
     </div>
 
-    {# ── Explainer banner — always visible, adapts to state ── #}
-    {% if not last_scan_run %}
+    {# ── Explainer banner — shown only when no scan has ever run and no conflicts exist ── #}
+    {% if not last_scan_run and not has_any_conflicts %}
     {# Never scanned — full explainer #}
     <div class="rounded-3 p-3 mb-4"
          style="background-color: rgba(59, 130, 246, 0.06); border: 1px solid rgba(59, 130, 246, 0.12);">
@@ -284,72 +364,138 @@
     {% endif %}
 
 
-    {# ── Status filter pills ── #}
+    {# ── Status filter pills (client-side filtering — no reload) ── #}
     {% if has_any_conflicts %}
     <div class="d-flex gap-2 mb-3 align-items-center flex-wrap">
-        <a class="btn btn-sm rounded-pill {% if current_status == 'open' %}btn-primary{% else %}btn-outline-secondary{% endif %}"
-           href="?status=open">
+        <button class="btn btn-sm rounded-pill conflict-filter-pill btn-primary"
+                data-status="open"
+                onclick="ConflictTabs.filterByStatus('open')">
             Open
-            <span class="badge rounded-pill ms-1 {% if current_status == 'open' %}bg-white text-dark{% else %}bg-secondary text-white{% endif %}">{{ status_counts.open }}</span>
-        </a>
-        <a class="btn btn-sm rounded-pill {% if current_status == 'resolved' %}btn-success{% else %}btn-outline-secondary{% endif %}"
-           href="?status=resolved">
+            <span class="badge rounded-pill ms-1 bg-white text-dark" id="pill-count-open">{{ status_counts.open }}</span>
+        </button>
+        <button class="btn btn-sm rounded-pill conflict-filter-pill btn-outline-secondary"
+                data-status="resolved"
+                onclick="ConflictTabs.filterByStatus('resolved')">
             Resolved
-            <span class="badge rounded-pill ms-1 {% if current_status == 'resolved' %}bg-white text-dark{% else %}bg-secondary text-white{% endif %}">{{ status_counts.resolved }}</span>
-        </a>
-        <a class="btn btn-sm rounded-pill {% if current_status == 'ignored' %}btn-warning text-dark{% else %}btn-outline-secondary{% endif %}"
-           href="?status=ignored">
+            <span class="badge rounded-pill ms-1 bg-secondary text-white" id="pill-count-resolved">{{ status_counts.resolved }}</span>
+        </button>
+        <button class="btn btn-sm rounded-pill conflict-filter-pill btn-outline-secondary"
+                data-status="ignored"
+                onclick="ConflictTabs.filterByStatus('ignored')">
             Ignored
-            <span class="badge rounded-pill ms-1 {% if current_status == 'ignored' %}bg-white text-dark{% else %}bg-secondary text-white{% endif %}">{{ status_counts.ignored }}</span>
-        </a>
-        <a class="btn btn-sm rounded-pill {% if current_status == 'dismissed' %}btn-secondary{% else %}btn-outline-secondary{% endif %}"
-           href="?status=dismissed">
+            <span class="badge rounded-pill ms-1 bg-secondary text-white" id="pill-count-ignored">{{ status_counts.ignored }}</span>
+        </button>
+        <button class="btn btn-sm rounded-pill conflict-filter-pill btn-outline-secondary"
+                data-status="dismissed"
+                onclick="ConflictTabs.filterByStatus('dismissed')">
             Dismissed
-            <span class="badge rounded-pill ms-1 {% if current_status == 'dismissed' %}bg-white text-dark{% else %}bg-secondary text-white{% endif %}">{{ status_counts.dismissed }}</span>
-        </a>
-        {% if current_status == 'open' and status_counts.open > 0 %}
-        <div class="d-flex gap-2 ms-auto">
+            <span class="badge rounded-pill ms-1 bg-secondary text-white" id="pill-count-dismissed">{{ status_counts.dismissed }}</span>
+        </button>
+
+        {# Bulk actions for open status — hidden by JS when another filter is active #}
+        <div id="bulk-open-actions" class="d-flex gap-2 ms-auto{% if not status_counts.open %} d-none{% endif %}">
             <button class="btn btn-sm btn-outline-success rounded-pill"
-                    hx-post="{% url 'writeback:bulk_resolve_conflicts' project.pk %}"
-                    hx-vals='{"conflict_ids": "all"}'
-                    hx-confirm="Mark all open conflicts as resolved?"
-                    hx-target="#conflicts-list"
-                    hx-swap="innerHTML">
+                    onclick="ConflictTabs.bulkAction('{% url 'writeback:bulk_resolve_conflicts' project.pk %}', 'Mark all open conflicts as resolved?')">
                 <i class="bi bi-check-all me-1"></i>Resolve All
             </button>
             <button class="btn btn-sm btn-outline-secondary rounded-pill"
-                    hx-post="{% url 'writeback:bulk_dismiss' project.pk %}"
-                    hx-vals='{"conflict_ids": "all"}'
-                    hx-confirm="Dismiss all open conflicts? They won't reappear unless re-detected."
-                    hx-target="#conflicts-list"
-                    hx-swap="innerHTML">
+                    onclick="ConflictTabs.bulkAction('{% url 'writeback:bulk_dismiss' project.pk %}', 'Dismiss all open conflicts? They won\'t reappear unless re-detected.')">
                 <i class="bi bi-x-circle me-1"></i>Dismiss All
             </button>
         </div>
-        {% endif %}
-        <button class="btn btn-sm btn-outline-danger rounded-pill {% if not current_status == 'open' or not status_counts.open %}ms-auto{% endif %}"
+
+        <button class="btn btn-sm btn-outline-danger rounded-pill"
+                id="delete-all-btn"
                 hx-post="{% url 'writeback:delete_all_conflicts' project.pk %}"
                 hx-confirm="Permanently delete ALL conflicts (all statuses)? This cannot be undone."
-                hx-on::after-request="window.location.reload()">
+                hx-on::after-request="window.location.href = window.location.pathname + '?subtab=semantic'">
             <i class="bi bi-trash me-1"></i>Delete All
         </button>
     </div>
     {% endif %}
 
-    {% if grouped_conflicts %}
-
-    {# ── Results summary bar ── #}
+    {# ── Results summary bar (updated by JS on filter change) ── #}
+    {% if has_any_conflicts %}
     <div class="d-flex align-items-center gap-3 mb-3 fs-8">
         <span class="text-secondary">
-            <strong class="text-body">{{ grouped_conflicts|length }}</strong> {{ current_status }} conflict{{ grouped_conflicts|length|pluralize }}
+            <strong id="conflict-count-label">{{ status_counts.open }}</strong>
+            <span id="conflict-status-label"> open</span>
+            conflict<span id="conflict-plural">{{ status_counts.open|pluralize }}</span>
         </span>
     </div>
+    {% endif %}
 
-    {# ── Grouped conflict cards ── #}
+    {# ── All conflict cards (all statuses rendered; JS shows/hides by data-status) ── #}
     <div id="conflicts-list" class="d-flex flex-column gap-3">
-        {% for group in grouped_conflicts %}
+
+    {# Empty state for "open" when no open conflicts — shown/hidden by JS #}
+    {% if not status_counts.open %}
+    <div class="js-empty-state" data-for-status="open">
+        {% if last_scan_run %}
+        <div class="d-flex flex-column align-items-center justify-content-center py-5"
+             style="min-height: 300px;">
+            <div class="rounded-circle d-flex align-items-center justify-content-center mb-3"
+                 style="width: 56px; height: 56px; background-color: rgba(16, 185, 129, 0.1);">
+                <i class="bi bi-check-lg" style="font-size: 1.5rem; color: var(--castor-success);"></i>
+            </div>
+            <h5 class="h6 fw-semibold mb-1">All Clear</h5>
+            <p class="text-secondary fs-7 mb-2" style="max-width: 360px; text-align: center;">
+                The last scan found no contradictions between your IFC model and project documents.
+            </p>
+            <div class="d-flex gap-3 fs-8 text-secondary mb-2">
+                <span><i class="bi bi-box me-1"></i>{{ last_scan_run.entities_scanned }} entities checked</span>
+                {% if last_scan_run.llm_model_used %}
+                <span><i class="bi bi-cpu me-1"></i>{{ last_scan_run.llm_model_used }}</span>
+                {% endif %}
+            </div>
+            <p class="text-secondary fs-8 mb-0" style="max-width: 400px; text-align: center;">
+                Consider re-scanning after uploading new documents or modifying the IFC model,
+                as changes may introduce new mismatches.
+            </p>
+        </div>
+        {% else %}
+        <div class="d-flex flex-column align-items-center justify-content-center py-4"
+             style="min-height: 220px;">
+            <div class="rounded-circle d-flex align-items-center justify-content-center mb-3"
+                 style="width: 56px; height: 56px; background-color: rgba(59, 130, 246, 0.08);">
+                <i class="bi bi-radar" style="font-size: 1.5rem; color: var(--castor-primary); opacity: 0.6;"></i>
+            </div>
+            <h5 class="h6 fw-semibold mb-1">Ready to scan</h5>
+            <p class="text-secondary fs-7 mb-3" style="max-width: 380px; text-align: center;">
+                Run your first scan to check whether IFC model properties match what your project
+                documents specify. Any contradictions will appear here as actionable conflicts.
+            </p>
+            <button class="btn btn-sm btn-primary rounded-pill px-4"
+                    onclick="ScanEngine.runScan()">
+                <i class="bi bi-radar me-1"></i>Run First Scan
+            </button>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {# Empty states for non-open statuses — shown/hidden by JS #}
+    <div class="js-empty-state d-none" data-for-status="resolved">
+        <div class="d-flex flex-column align-items-center justify-content-center py-5" style="min-height: 200px;">
+            <p class="text-secondary fs-7 mb-0">No resolved conflicts.</p>
+        </div>
+    </div>
+    <div class="js-empty-state d-none" data-for-status="ignored">
+        <div class="d-flex flex-column align-items-center justify-content-center py-5" style="min-height: 200px;">
+            <p class="text-secondary fs-7 mb-0">No ignored conflicts.</p>
+        </div>
+    </div>
+    <div class="js-empty-state d-none" data-for-status="dismissed">
+        <div class="d-flex flex-column align-items-center justify-content-center py-5" style="min-height: 200px;">
+            <p class="text-secondary fs-7 mb-0">No dismissed conflicts.</p>
+        </div>
+    </div>
+
+        {% for conflict_status, groups in grouped_by_status.items %}
+        {% for group in groups %}
         {% with rep=group.representative %}
-        <div class="conflict-card rounded-3 overflow-hidden"
+        <div class="conflict-card js-conflict-card rounded-3 overflow-hidden{% if conflict_status != 'open' %} d-none{% endif %}"
+             data-status="{{ conflict_status }}"
              style="background-color: var(--bs-tertiary-bg);
                     border: 1px solid var(--bs-border-color);
                     border-left: 3px solid {% if rep.severity == 'critical' %}var(--castor-danger){% elif rep.severity == 'high' %}var(--castor-warning){% else %}var(--castor-primary){% endif %};">
@@ -472,7 +618,7 @@
                 {% endif %}
 
                 {# Actions — only shown for open conflicts #}
-                {% if current_status == 'open' %}
+                {% if conflict_status == 'open' %}
                 <div class="d-flex gap-2 align-items-center">
                     {% if group.fix_prompt %}
                     <a class="btn btn-sm btn-outline-primary rounded-pill px-3"
@@ -496,64 +642,15 @@
                         <i class="bi bi-x-circle me-1"></i>Dismiss
                     </button>
                 </div>
-                {% endif %}{# /current_status == 'open' #}
+                {% endif %}{# /conflict_status == 'open' #}
 
             </div>
         </div>
         {% endwith %}
         {% endfor %}
-    </div>
+        {% endfor %}
 
-    {% elif current_status == 'open' %}
-        {% if last_scan_run %}
-        {# ── Empty state: scanned, nothing found ── #}
-        <div class="d-flex flex-column align-items-center justify-content-center py-5"
-             style="min-height: 300px;">
-            <div class="rounded-circle d-flex align-items-center justify-content-center mb-3"
-                 style="width: 56px; height: 56px; background-color: rgba(16, 185, 129, 0.1);">
-                <i class="bi bi-check-lg" style="font-size: 1.5rem; color: var(--castor-success);"></i>
-            </div>
-            <h5 class="h6 fw-semibold mb-1">All Clear</h5>
-            <p class="text-secondary fs-7 mb-2" style="max-width: 360px; text-align: center;">
-                The last scan found no contradictions between your IFC model and project documents.
-            </p>
-            <div class="d-flex gap-3 fs-8 text-secondary mb-2">
-                <span><i class="bi bi-box me-1"></i>{{ last_scan_run.entities_scanned }} entities checked</span>
-                {% if last_scan_run.llm_model_used %}
-                <span><i class="bi bi-cpu me-1"></i>{{ last_scan_run.llm_model_used }}</span>
-                {% endif %}
-            </div>
-            <p class="text-secondary fs-8 mb-0" style="max-width: 400px; text-align: center;">
-                Consider re-scanning after uploading new documents or modifying the IFC model,
-                as changes may introduce new mismatches.
-            </p>
-        </div>
-        {% else %}
-        {# ── Empty state: never scanned — primary CTA ── #}
-        <div class="d-flex flex-column align-items-center justify-content-center py-4"
-             style="min-height: 220px;">
-            <div class="rounded-circle d-flex align-items-center justify-content-center mb-3"
-                 style="width: 56px; height: 56px; background-color: rgba(59, 130, 246, 0.08);">
-                <i class="bi bi-radar" style="font-size: 1.5rem; color: var(--castor-primary); opacity: 0.6;"></i>
-            </div>
-            <h5 class="h6 fw-semibold mb-1">Ready to scan</h5>
-            <p class="text-secondary fs-7 mb-3" style="max-width: 380px; text-align: center;">
-                Run your first scan to check whether IFC model properties match what your project
-                documents specify. Any contradictions will appear here as actionable conflicts.
-            </p>
-            <button class="btn btn-sm btn-primary rounded-pill px-4"
-                    onclick="ScanEngine.runScan()">
-                <i class="bi bi-radar me-1"></i>Run First Scan
-            </button>
-        </div>
-        {% endif %}
-    {% else %}
-    {# ── Empty state: no conflicts in this status ── #}
-    <div class="d-flex flex-column align-items-center justify-content-center py-5"
-         style="min-height: 200px;">
-        <p class="text-secondary fs-7 mb-0">No {{ current_status }} conflicts.</p>
-    </div>
-    {% endif %}
+    </div>{# /conflicts-list #}
 
 </div>{# /subtab-semantic #}
 
@@ -615,8 +712,10 @@
                                 <span class="fw-semibold fs-7" style="color: var(--castor-warning);">Data Quality</span>
                             </div>
                             <p class="text-secondary fs-8 mb-2">
-                                Structural problems <strong>inside</strong> your IFC file —
-                                duplicate GlobalIDs, missing attributes, or invalid references.
+                                Structural problems <strong>inside</strong> your IFC file.
+                                Three checks run on every upload: <strong>duplicate GlobalIDs</strong>
+                                (element skipped), <strong>missing property sets</strong>, and
+                                <strong>missing spatial placement</strong> (element imported with warning).
                             </p>
                             <div class="d-flex flex-column gap-1 fs-8 text-secondary">
                                 <span><i class="bi bi-gear me-1" style="color: var(--castor-warning); opacity: 0.7;"></i>
@@ -845,6 +944,8 @@
 <script>
 /* ─── Sub-tab controller ─── */
 const ConflictTabs = {
+    _currentStatus: 'open',
+
     switchTo(name) {
         document.querySelectorAll('.conflict-subtab-panel').forEach(p => p.classList.add('d-none'));
         document.querySelectorAll('.conflict-subtab').forEach(b => b.classList.remove('active'));
@@ -854,7 +955,69 @@ const ConflictTabs = {
 
         const btn = document.querySelector(`.conflict-subtab[data-subtab="${name}"]`);
         if (btn) btn.classList.add('active');
-    }
+    },
+
+    filterByStatus(status) {
+        this._currentStatus = status;
+
+        // Update pill active states
+        document.querySelectorAll('.conflict-filter-pill').forEach(btn => {
+            const active = btn.dataset.status === status;
+            btn.classList.remove('btn-primary', 'btn-success', 'btn-warning', 'btn-secondary', 'btn-outline-secondary');
+            if (!active) {
+                btn.classList.add('btn-outline-secondary');
+                btn.querySelector('.badge')?.classList.replace('bg-white', 'bg-secondary');
+                btn.querySelector('.badge')?.classList.replace('text-dark', 'text-white');
+            } else {
+                const colorMap = { open: 'btn-primary', resolved: 'btn-success', ignored: 'btn-warning', dismissed: 'btn-secondary' };
+                btn.classList.add(colorMap[status] || 'btn-secondary');
+                btn.querySelector('.badge')?.classList.replace('bg-secondary', 'bg-white');
+                btn.querySelector('.badge')?.classList.replace('text-white', 'text-dark');
+            }
+        });
+
+        // Show/hide conflict cards (use classList to work with Bootstrap d-none !important)
+        let visible = 0;
+        document.querySelectorAll('.js-conflict-card').forEach(card => {
+            const show = card.dataset.status === status;
+            card.classList.toggle('d-none', !show);
+            if (show) visible++;
+        });
+
+        // Show/hide empty states
+        document.querySelectorAll('.js-empty-state').forEach(el => {
+            el.classList.toggle('d-none', el.dataset.forStatus !== status || visible > 0);
+        });
+
+        // Update summary bar
+        const countEl = document.getElementById('conflict-count-label');
+        const statusEl = document.getElementById('conflict-status-label');
+        const pluralEl = document.getElementById('conflict-plural');
+        if (countEl) countEl.textContent = visible;
+        if (statusEl) statusEl.textContent = ' ' + status;
+        if (pluralEl) pluralEl.textContent = visible === 1 ? '' : 's';
+
+        // Show/hide bulk open actions
+        const bulkOpen = document.getElementById('bulk-open-actions');
+        if (bulkOpen) bulkOpen.classList.toggle('d-none', status !== 'open');
+    },
+
+    bulkAction(url, confirmMsg) {
+        if (!confirm(confirmMsg)) return;
+        const fd = new FormData();
+        fd.append('csrfmiddlewaretoken', this._csrf());
+        fd.append('conflict_ids', 'all');
+        fetch(url, { method: 'POST', body: fd })
+            .then(() => {
+                window.location.href = window.location.pathname + '?subtab=semantic';
+            });
+    },
+
+    _csrf() {
+        return document.cookie.split('; ')
+            .find(r => r.startsWith('csrftoken='))
+            ?.split('=')[1] || '';
+    },
 };
 
 
@@ -976,7 +1139,7 @@ const ScanEngine = {
     _doDismiss(url, ids, btn) {
         const card = btn.closest('.conflict-card');
         const formData = new FormData();
-        formData.append('csrfmiddlewaretoken', this._csrf());
+        formData.append('csrfmiddlewaretoken', ConflictTabs._csrf());
         formData.append('ids', ids);
 
         fetch(url, { method: 'POST', body: formData })
@@ -991,12 +1154,6 @@ const ScanEngine = {
         });
     },
 
-    _csrf() {
-        return document.cookie.split('; ')
-            .find(r => r.startsWith('csrftoken='))
-            ?.split('=')[1] || '';
-    },
-
     _toast(message, type = 'success') {
         const toastEl = document.querySelector('#scan-toast .toast');
         const body    = document.getElementById('scan-toast-body');
@@ -1006,7 +1163,7 @@ const ScanEngine = {
     },
 };
 
-// Initialise sub-tab from URL param (set by scan reload)
+// Initialise sub-tab from URL param, then apply status filter
 (function () {
     const params = new URLSearchParams(window.location.search);
     const subtab = params.get('subtab');
@@ -1014,5 +1171,7 @@ const ScanEngine = {
         ConflictTabs.switchTo(subtab);
         history.replaceState({}, '', window.location.pathname);
     }
+    // Always apply initial open filter so counts and empty states are correct
+    ConflictTabs.filterByStatus('open');
 })();
 </script>

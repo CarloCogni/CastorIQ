@@ -65,8 +65,14 @@
                               required
                               onkeydown="ModifyChat.handleEnter(event)"
                               oninput="autoGrow(this)"></textarea>
-                    <button type="button" class="btn btn-primary" onclick="ModifyChat.sendMessage()">
+                    <button type="button" class="btn btn-primary" id="modify-send-btn" onclick="ModifyChat.sendMessage()">
                         <i class="bi bi-magic me-1"></i> Propose
+                    </button>
+                    <button type="button" class="btn btn-outline-danger" id="modify-stop-btn"
+                            style="display:none;"
+                            title="Stop generation"
+                            onclick="ModifyChat.stopGeneration()">
+                        <i class="bi bi-stop-circle"></i>
                     </button>
                 </div>
                 <div class="d-flex align-items-center mt-2">
@@ -493,6 +499,7 @@ const ModifyChat = {
     _ws: null,
     _wsReconnectAttempts: 0,
     _maxReconnectAttempts: 3,
+    _isProcessing: false,
 
     // Conflict IDs linked from "Fix in Modify" — set from URL params on load
     _conflictIds: '',
@@ -537,12 +544,33 @@ const ModifyChat = {
         setTimeout(() => this.initWebSocket(), delay);
     },
 
+    /* ── Processing state ─────────────────────────── */
+    _setProcessing(state) {
+        this._isProcessing = state;
+        document.getElementById('modify-send-btn').disabled = state;
+        document.getElementById('modify-stop-btn').style.display = state ? 'inline-block' : 'none';
+        if (this.inputEl) this.inputEl.disabled = state;
+    },
+
+    stopGeneration() {
+        if (this._ws && this._ws.readyState === WebSocket.OPEN) {
+            this._ws.send(JSON.stringify({ action: 'cancel' }));
+        }
+        this._setProcessing(false);
+        this._hideProgressTracker();
+    },
+
     _handleWsMessage(data) {
         switch (data.type) {
             case 'phase':
                 this._updateProgressPhase(data);
                 break;
+            case 'cancelled':
+                this._setProcessing(false);
+                this._hideProgressTracker();
+                break;
             case 'proposal':
+                this._setProcessing(false);
                 this._hideProgressTracker();
                 if (data.status === 'proposed') {
                     if (data.chain && data.proposals) {
@@ -570,10 +598,12 @@ const ModifyChat = {
                 }
                 break;
             case 'error':
+                this._setProcessing(false);
                 this._hideProgressTracker();
                 this._appendBubble('assistant', `⚠️ ${data.message}`);
                 break;
             case 'done':
+                this._setProcessing(false);
                 this._hideProgressTracker();
                 break;
         }
@@ -695,6 +725,7 @@ const ModifyChat = {
             this.inputEl.value = '';
             this.inputEl.style.height = 'auto';
             this._showProgressTracker();
+            this._setProcessing(true);
 
             const chatEl = document.getElementById('modify-chat-messages');
             const sessionPk = chatEl.dataset.sessionPk;

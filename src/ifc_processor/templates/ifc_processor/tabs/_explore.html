@@ -1,0 +1,132 @@
+<!--ifc_processor/tabs/_explore.html — IFC spatial hierarchy browser -->
+{% load i18n %}
+
+<div class="flex-grow-1 d-flex flex-column overflow-hidden" id="explore-tab">
+
+  {# ── Header: IFC file selector ── #}
+  <div class="border-bottom px-3 py-2 d-flex align-items-center gap-3 flex-shrink-0 bg-body">
+    <span class="text-secondary small fw-semibold text-uppercase letter-spacing-1">
+      <i class="bi bi-box me-1"></i>IFC Model
+    </span>
+    {% if completed_ifc_files %}
+      <div class="dropdown">
+        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
+                data-bs-toggle="dropdown" aria-expanded="false">
+          {% if selected_ifc %}{{ selected_ifc.name }}{% else %}Select a model{% endif %}
+        </button>
+        <ul class="dropdown-menu shadow-sm">
+          {% for ifc_file in completed_ifc_files %}
+            <li>
+              <a class="dropdown-item {% if selected_ifc.pk == ifc_file.pk %}active{% endif %}"
+                 href="{% url 'projects:explore_ifc' project.pk ifc_file.pk %}">
+                {{ ifc_file.name }}
+                <span class="badge bg-secondary ms-1">{{ ifc_file.entity_count }}</span>
+              </a>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+  </div>
+
+  {# ── Main content ── #}
+  {% if not selected_ifc %}
+    {# Empty state #}
+    <div class="flex-grow-1 d-flex align-items-center justify-content-center text-center p-5">
+      <div>
+        <i class="bi bi-box fs-1 text-secondary opacity-50 d-block mb-3"></i>
+        <p class="text-secondary mb-2">No processed IFC models found.</p>
+        <a href="{% url 'projects:upload' project.pk %}" class="btn btn-sm btn-primary">
+          <i class="bi bi-upload me-1"></i>Upload an IFC file
+        </a>
+      </div>
+    </div>
+
+  {% else %}
+    <div class="flex-grow-1 d-flex overflow-hidden">
+
+      {# ── Left: Spatial tree (30%) ── #}
+      <div class="border-end d-flex flex-column overflow-hidden flex-shrink-0"
+           style="width: 260px; min-width: 180px; max-width: 340px;">
+        <div class="px-3 py-2 border-bottom bg-body-secondary flex-shrink-0">
+          <span class="small fw-semibold text-secondary text-uppercase">
+            <i class="bi bi-diagram-3 me-1"></i>Spatial Hierarchy
+          </span>
+        </div>
+        <div class="overflow-auto flex-grow-1 p-2" id="explore-tree">
+          <ul class="list-unstyled mb-0 explore-tree-root">
+            {% include "ifc_processor/explore/_tree_nodes.html" with nodes=buildings level="building" ifc_file=selected_ifc project=project current_building="" current_storey="" only %}
+          </ul>
+        </div>
+      </div>
+
+      {# ── Right: Entity table + detail inspector ── #}
+      <div class="flex-grow-1 d-flex flex-column overflow-hidden">
+
+        {# Entity table (top) #}
+        <div class="flex-grow-1 overflow-auto" id="explore-entities">
+          {# Initial load: all entities for this file #}
+          <div hx-get="{% url 'projects:explore_entities' project.pk selected_ifc.pk %}"
+               hx-trigger="load"
+               hx-target="#explore-entities"
+               hx-swap="innerHTML">
+            <div class="d-flex align-items-center justify-content-center p-5 text-secondary">
+              <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+              Loading entities…
+            </div>
+          </div>
+        </div>
+
+        {# Entity detail inspector (bottom, hidden until row clicked) #}
+        <div id="explore-detail" class="border-top bg-body-secondary" style="display:none; max-height:40%; overflow-y:auto;">
+        </div>
+
+      </div>
+    </div>
+  {% endif %}
+
+</div>
+
+<style>
+  .explore-tree-root { font-size: 0.875rem; }
+  .explore-tree-node { cursor: pointer; border-radius: 4px; padding: 3px 6px; transition: background 0.15s; }
+  .explore-tree-node:hover { background: rgba(59,130,246,0.08); }
+  .explore-tree-node.active { background: rgba(59,130,246,0.15); color: var(--bs-primary); }
+  .explore-tree-children { padding-left: 1.1rem; border-left: 1px solid rgba(255,255,255,0.08); margin-left: 0.5rem; }
+  .entity-row { cursor: pointer; }
+  .entity-row:hover td { background: rgba(59,130,246,0.06) !important; }
+  .entity-row.selected td { background: rgba(59,130,246,0.12) !important; }
+  .badge-ifc-type { font-size: 0.7rem; font-weight: 500; }
+</style>
+
+<script>
+// Filter entity table to the selected node URL, update active highlight
+function exploreFilter(el, url) {
+  document.querySelectorAll('.explore-tree-node').forEach(n => n.classList.remove('active'));
+  el.classList.add('active');
+  htmx.ajax('GET', url, { target: '#explore-entities', swap: 'innerHTML' });
+}
+
+// Load entity detail panel for a clicked row
+function loadEntityDetail(rowEl, url) {
+  document.querySelectorAll('.entity-row').forEach(r => r.classList.remove('selected'));
+  rowEl.classList.add('selected');
+  const detail = document.getElementById('explore-detail');
+  detail.style.display = 'block';
+  htmx.ajax('GET', url, { target: '#explore-detail', swap: 'innerHTML' });
+}
+
+// Switch to Ask tab and pre-fill the textarea with entity context
+function askAboutEntity(name, globalId, ifcType) {
+  const askLink = document.querySelector('.tab-ask');
+  if (askLink) askLink.click();
+  setTimeout(() => {
+    const textarea = document.querySelector('#ask-input, textarea[name="message"]');
+    if (textarea) {
+      textarea.value = 'Tell me about the ' + ifcType + ' named "' + name + '" (GlobalID: ' + globalId + ')';
+      if (window.autoGrow) autoGrow(textarea);
+      textarea.focus();
+    }
+  }, 300);
+}
+</script>

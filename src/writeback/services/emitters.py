@@ -15,9 +15,16 @@ Usage:
 from __future__ import annotations
 
 import logging
+import threading
 from typing import Any, Protocol
 
 logger = logging.getLogger(__name__)
+
+
+class CancellationError(Exception):
+    """Raised when the user requests cancellation of an in-flight pipeline."""
+
+    pass
 
 
 class PipelineEmitter(Protocol):
@@ -58,13 +65,25 @@ class NullEmitter:
 class WebSocketEmitter:
     """Emits phase events to a WebSocket consumer via send_json."""
 
-    def __init__(self, send_json) -> None:
+    def __init__(
+        self,
+        send_json,
+        cancel_event: threading.Event | None = None,
+    ) -> None:
         """
         Args:
             send_json: Async callable from AsyncJsonWebsocketConsumer.
                        Will be called via async_to_sync internally.
+            cancel_event: Optional threading.Event set by the consumer when
+                          the client sends a cancel action. Checked after
+                          every emit — raises CancellationError when set.
         """
         self._send_json = send_json
+        self._cancel_event = cancel_event
+
+    def is_cancelled(self) -> bool:
+        """Return True if the client has requested cancellation."""
+        return self._cancel_event is not None and self._cancel_event.is_set()
 
     def emit(
         self,
@@ -88,6 +107,9 @@ class WebSocketEmitter:
             async_to_sync(self._send_json)(payload)
         except Exception as e:
             logger.warning("WebSocketEmitter send failed: %s", e)
+
+        if self.is_cancelled():
+            raise CancellationError("Pipeline cancelled by user.")
 
 
 class CapturingEmitter:

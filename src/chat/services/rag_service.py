@@ -118,12 +118,18 @@ class RAGService:
         Returns:
             Tuple of (answer_text, context_items, utilization_pct) where
             utilization_pct is the token budget usage as a 0–100 float.
+
+        Raises:
+            CancellationError: If the client cancels mid-pipeline.
         """
+
         self._emit(emitter, "intent", "running", "Classifying intent...")
+        self._check_cancelled(emitter)
         intent = self._detect_intent(user_text)
         aggregate_context_str = ""
 
         self._emit(emitter, "retrieve", "running", "Retrieving context...")
+        self._check_cancelled(emitter)
 
         if intent in ("ifc_inventory", "doc_summary") and scope == "ifc":
             # User restricted scope to IFC — any summary/inventory query uses aggregate
@@ -166,10 +172,12 @@ class RAGService:
             else analysis_mode
         )
         self._emit(emitter, "retrieve", "done", retrieve_detail)
+        self._check_cancelled(emitter)
 
         project_meta = self._get_project_metadata(project)
 
         self._emit(emitter, "generate", "running", "Generating answer...")
+        self._check_cancelled(emitter)  # Last chance to cancel before LLM call
         answer_text, utilization_pct = self._generate_response(
             user_text,
             context_items,
@@ -181,6 +189,14 @@ class RAGService:
         self._emit(emitter, "generate", "done", "Answer ready")
 
         return answer_text, context_items, utilization_pct
+
+    @staticmethod
+    def _check_cancelled(emitter: Any) -> None:
+        """Raise CancellationError if the emitter signals cancellation."""
+        from writeback.services.emitters import CancellationError
+
+        if emitter is not None and hasattr(emitter, "is_cancelled") and emitter.is_cancelled():
+            raise CancellationError("Pipeline cancelled by user.")
 
     def _detect_intent(self, user_text: str) -> str:
         """
