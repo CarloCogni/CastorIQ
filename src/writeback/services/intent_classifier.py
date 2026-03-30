@@ -149,8 +149,8 @@ class IntentClassifier:
         )
     """
 
-    def __init__(self, user=None):
-        self.llm = get_llm(user=user, temperature=0.1, format_json=True)
+    def __init__(self, user=None, temperature: float = 0.1):
+        self.llm = get_llm(user=user, temperature=temperature, format_json=True)
 
     def classify(
         self,

@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     "documents",
     "embeddings",
     "writeback",
+    "metacastor",
 ]
 
 MIDDLEWARE = [

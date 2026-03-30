@@ -1,9 +1,9 @@
 # MetaCastor — Design Brief
 
-**Version:** v0.3 — Failure Memory & Diagnostic Loop added  
-**Date:** March 13, 2026  
-**Author:** Carlo  
-**Status:** Ready for next brainstorming round
+**Version:** v0.4 — Codebase alignment pass
+**Date:** March 26, 2026
+**Author:** Carlo
+**Status:** Pre-implementation review — gaps resolved, ready to build
 
 ---
 
@@ -15,20 +15,64 @@ MetaCastor reasons about Castor's own performance, not about IFC data.
 
 ---
 
+## App Structure — Where MetaCastor Lives
+
+The brief previously left this unspecified. After codebase review, the answer is clear.
+
+**New Django app: `src/metacastor/`**
+
+`writeback` already owns proposals, commits, conflicts, and Git. Adding SkillExample and FailureRecord there violates its scope. `metacastor` is a distinct concern — it reasons about Castor's performance, not IFC data.
+
+```
+src/metacastor/
+    models.py               # SkillExample, FailureRecord
+    services/
+        skill_harvester.py  # hook called on commit success
+        skill_retriever.py  # two-stage retrieval service
+        failure_classifier.py  # deterministic taxonomy + LLM fallback
+        entity_type_extractor.py  # keyword scan for pre-filtering
+    management/
+        commands/
+            seed_skill_bank.py      # cold start from dev_cases.jsonl
+            export_training_data.py # D4
+    eval/
+        run_eval.py
+        eval_cases.jsonl    # frozen
+        dev_cases.jsonl
+        fixtures/
+        axolotl_config.yaml # D4
+```
+
+Import direction: `metacastor` imports from `writeback` and `environments`. Nothing in the existing apps imports from `metacastor` except the injection point in `writeback/services/intent_classifier.py`. No circular imports.
+
+Add `metacastor` to `INSTALLED_APPS` in `config/settings/base.py` (after `writeback`).
+
+---
+
 ## Deliverables (Ordered by execution)
 
 ### 1. Evaluation Baseline (Build FIRST — two days, no more)
 
-**What:** A frozen set of eval cases written *before* any MetaCastor feature exists, committed to Git, never modified after initial commit. This is not a framework — it's a JSONL file and a short script. The tooling comes later; the ground truth comes now.
+**What:** A frozen set of eval cases written *before* any MetaCastor feature exists, committed to Git, never modified 
+after initial commit. This is not a framework — it's a JSONL file and a short script. The tooling comes later;
+the ground truth comes now.
 
-**Why first:** MetaCastor's primary dissertation claim is comparative ("skill bank injection outperforms static prompting"). If the eval cases are authored after the implementation, the comparison is compromised by unconscious bias. The measurement must predate the thing it measures.
+**Why first:** MetaCastor's primary dissertation claim is comparative ("skill bank injection outperforms static prompting").
+If the eval cases are authored after the implementation, the comparison is compromised by unconscious bias.
+The measurement must predate the thing it measures.
 
 **Deliverables:**
 
 1. `eval_cases.jsonl` — 20–30 cases, frozen, committed, never touched during development
 2. `dev_cases.jsonl` — separate file, used freely for iterative tuning, never reported in dissertation
-3. `run_eval.py` — ≤50 lines, loads JSONL, calls IntentClassifier, prints results table
+3. `run_eval.py` — ≤60 lines, loads JSONL, calls IntentClassifier, prints results table
 4. One IFC fixture file per case set (cases are IFC-file-dependent — don't pretend otherwise)
+
+**Location:** All eval artifacts live in `src/metacastor/eval/`. The script is co-located with the data, not at repo root.
+
+**`run_eval.py` requires Django context.** `IntentClassifier` calls `get_llm()` which reads Django settings. 
+The script must call `django.setup()` at the top before any imports from the project. 
+This is one line — it does not make the script a management command. The ≤60 line constraint is still achievable.
 
 **Eval case structure:**
 
@@ -37,14 +81,35 @@ MetaCastor reasons about Castor's own performance, not about IFC data.
     "id": "eval_017",
     "query": "Set the fire rating of all external walls to EI120",
     "ifc_fixture": "fixtures/residential_block.ifc",
-    "tier": "difficulty_tier",
-    "ground_truth_intent": { "...": "..." },
+    "entity_context": "- IfcWall (12 entities): Wall-01...\n  Property sets: Pset_WallCommon\n...",
+    "difficulty_tier": "STANDARD",
+    "ground_truth_intent": {
+        "operation": "SET_PROPERTY",
+        "filter": {"ifc_type": "IfcWall", "property_match": {"Pset_WallCommon.IsExternal": true}},
+        "pset": "Pset_WallCommon",
+        "property": "FireRating",
+        "new_value": "EI120"
+    },
     "ground_truth_post_state": null
 }
 ```
 
-- `tier` is **difficulty tier**, not RSAA tier. Values: `TRIVIAL`, `STANDARD`, `AMBIGUOUS`, `ESCALATION`, `ADVERSARIAL`. Metrics are reported per tier — a 90% overall score that hides 30% on `AMBIGUOUS` is worthless.
-- `ground_truth_post_state` is optional. For 5–10 end-to-end cases, this describes what the IFC file should contain after successful execution. These are worth more than 50 intent-match-only cases.
+**Two critical field decisions vs V01:**
+
+1. **`entity_context` is now a field.** `IntentClassifier.classify()` requires this string — it cannot be left implicit. 
+2. Pre-bake it at case-authoring time using `IntentClassifier.build_entity_context()` on the fixture. 
+3. Frozen cases = frozen context. The alternative (parsing the fixture at eval time) adds ~30 lines and requires a 
+4. running DB write — not worth it.
+
+2. **Key is `difficulty_tier`, not `tier`.** `intent_json` already uses `"tier"` for RSAA tier (1/2/3). Using `"tier"`
+3. for difficulty level in the same JSONL creates a silent collision when computing metrics. `difficulty_tier` is unambiguous.
+
+- `difficulty_tier` values: `TRIVIAL`, `STANDARD`, `AMBIGUOUS`, `ESCALATION`, `ADVERSARIAL`. Metrics are reported 
+- per tier — a 90% overall score that hides 30% on `AMBIGUOUS` is worthless.
+- `ground_truth_post_state` is optional. For 5–10 end-to-end cases, this describes what the IFC file should contain after
+- successful execution. These are worth more than 50 intent-match-only cases.
+- `ground_truth_intent.confidence` should be omitted — exact match only on operation, filter, pset, property. Confidence 
+- scoring is model-dependent and not a ground truth value.
 
 **Case distribution target (not rigid, but avoid skew):**
 
@@ -76,9 +141,11 @@ MetaCastor reasons about Castor's own performance, not about IFC data.
 
 | Step | Time | Output |
 |---|---|---|
-| Select/create 1–2 IFC fixture files covering diverse entity types | 2h | `fixtures/*.ifc` |
+| Create `src/metacastor/` app scaffold, add to INSTALLED_APPS | 30min | App exists |
+| Select/create 1–2 IFC fixture files covering diverse entity types | 2h | `metacastor/eval/fixtures/*.ifc` |
+| Open Django shell, run `IntentClassifier.build_entity_context()` on each fixture, copy output into cases | 1h | `entity_context` strings ready |
 | Author 20–30 eval cases + 10–15 dev cases | 4–6h | `eval_cases.jsonl`, `dev_cases.jsonl` |
-| Write `run_eval.py` | 1h | Script that loads, runs, prints |
+| Write `run_eval.py` with `django.setup()` at top | 1h | Script that loads, runs, prints |
 | Commit everything, tag `eval-baseline-v1` | 10min | Frozen in Git history |
 
 **Rules after commit:**
@@ -90,11 +157,18 @@ MetaCastor reasons about Castor's own performance, not about IFC data.
 
 ### 2. Skill Bank + Few-Shot Injection (Core thesis of MetaCastor)
 
-**What:** A RAG-over-experience system. Instead of retrieving document chunks to answer questions, MetaCastor retrieves past successful interactions to guide the IntentClassifier on the current turn. The RSAA pipeline's structure (tiers, approvals, validators, Guardian) provides implicit supervision — the user never does extra work to train the system.
+**What:** A RAG-over-experience system. Instead of retrieving document chunks to answer questions, MetaCastor retrieves
+past successful interactions to guide the IntentClassifier on the current turn. The RSAA pipeline's structure
+(tiers, approvals, validators, Guardian) provides implicit supervision — the user never does extra work to train the system.
 
-**Why this matters:** The dissertation's primary comparative claim lives here: "dynamic few-shot injection from real usage outperforms static prompt engineering for structured output generation in domain-specific LLM agents."
+**Why this matters:** The dissertation's primary comparative claim lives here: "dynamic few-shot injection from real usage
+outperforms static prompt engineering for structured output generation in domain-specific LLM agents."
 
-**Critical prerequisite:** Before building this, diagnose *why* the IntentClassifier currently fails. Few-shot injection fixes formatting and pattern deficits, not reasoning deficits. If the classifier fails because it can't reason about IFC entity hierarchies, injected examples won't help. Run the eval baseline (Deliverable 1) against the current static prompt first. Categorize failures. Only proceed if the failure mode is "the model doesn't know what good output looks like" rather than "the model can't hold the logic."
+**Critical prerequisite:** Before building this, diagnose *why* the IntentClassifier currently fails. Few-shot injection
+fixes formatting and pattern deficits, not reasoning deficits. If the classifier fails because it can't reason about IFC 
+entity hierarchies, injected examples won't help. Run the eval baseline (Deliverable 1) against the current static prompt first.
+Categorize failures. Only proceed if the failure mode is "the model doesn't know what good output looks like" rather 
+than "the model can't hold the logic."
 
 ---
 
@@ -102,23 +176,55 @@ MetaCastor reasons about Castor's own performance, not about IFC data.
 
 ```python
 class SkillExample(TimestampedModel):
-    project         = ForeignKey(Project)
+    project         = ForeignKey(Project, null=True, blank=True)  # null = global/synthetic
     query_text      = TextField()
-    query_embedding = VectorField(1024)
+    query_embedding = VectorField(1024)         # from EmbeddingService.embed_query()
     intent_json     = JSONField()
-    entity_types    = ArrayField(CharField())   # IFC classes targeted (IfcWall, IfcSlab, etc.)
+    entity_types    = JSONField(default=list)   # IFC classes targeted (IfcWall, IfcSlab, etc.)
     outcome_tier    = IntegerField()            # RSAA tier at resolution
     was_approved    = BooleanField()
     commit_success  = BooleanField()
     is_organic      = BooleanField(default=True) # False for seed/synthetic examples
+    generated_code  = TextField(null=True, blank=True)  # Tier 3 only (Deliverable 5)
     created_at      = DateTimeField(auto_now_add=True)
 ```
+
+**Notes on model decisions:**
+
+- `entity_types` is `JSONField(default=list)`, not `ArrayField(CharField())`. Django's `ArrayField` is PostgreSQL-specific and unused elsewhere in the codebase. The entity-type pre-filter runs in Python (not SQL), so `JSONField` is functionally identical and avoids introducing a new field type. Use `json_field__contains` for ORM filtering if ever needed.
+
+- `project` accepts `null=True`. This enables global synthetic examples (seeded from `dev_cases.jsonl`) that apply to any project. Project-specific organic examples are preferred in retrieval; global examples fill the gap during cold start. Without this, every new project starts from zero even with seeding — seeding would need to run per-project, which is fragile.
+
+- `generated_code` is included now, not added in D5. It's `null` for Tier 1/2. Avoids a second migration later for a trivial field.
 
 **Scoring — binary, not gradient.** A SkillExample enters the retrievable pool if and only if `commit_success = True AND was_approved = True`. Everything else is excluded from retrieval. The original design's 0.0–1.0 six-tier scoring formula is premature optimization — there won't be enough data for fine-grained score distinctions to matter. Binary filter plus recency weighting (prefer recent examples) is simpler and avoids score inflation where trivial SET_PROPERTY operations dominate the high-score band and crowd out harder cases.
 
 **Retrieval mechanism — two-stage filtering:**
 
-1. **Entity type filter (hard gate).** Before cosine similarity, narrow the candidate pool to SkillExamples whose `entity_types` overlap with the current query's target entity types. This prevents cross-domain poisoning — "set fire rating on walls" should not retrieve examples about IfcSpace properties just because the query phrasing is similar. Entity type extraction comes from the current query's filter spec or a lightweight keyword extraction step.
+1. **Entity type filter (hard gate).** Before cosine similarity, narrow the candidate pool to SkillExamples whose `entity_types` overlap with the current query's target entity types. This prevents cross-domain poisoning — "set fire rating on walls" should not retrieve examples about IfcSpace properties just because the query phrasing is similar.
+
+   Entity type extraction is pre-classification — a chicken-and-egg problem (entity types come from classification, but we need them to improve classification). Resolution: a lightweight keyword scan on the raw user message before the LLM call.
+
+   ```python
+   # metacastor/services/entity_type_extractor.py
+   IFC_TYPE_KEYWORDS = {
+       "wall": "IfcWall", "walls": "IfcWall",
+       "door": "IfcDoor", "doors": "IfcDoor",
+       "window": "IfcWindow", "windows": "IfcWindow",
+       "slab": "IfcSlab", "floor": "IfcSlab",
+       "column": "IfcColumn", "columns": "IfcColumn",
+       "beam": "IfcBeam", "beams": "IfcBeam",
+       "space": "IfcSpace", "room": "IfcSpace",
+       # extend as needed: stair, roof, railing, door, etc.
+   }
+
+   def extract_entity_types(user_message: str) -> list[str]:
+       """Extract IFC entity type hints from raw user message pre-classification."""
+       # Match keyword map + detect direct "IfcXxx" mentions via regex
+   ```
+
+   ~20 lines. Falls back to empty list → no pre-filter → all SkillExamples are candidates. An empty filter is safe: it means "no type hints found," not "wrong filter." Slightly more noise, but no incorrect exclusions.
+
 2. **Cosine similarity on query_embedding (ranking).** Within the entity-type-filtered pool, rank by embedding similarity. Return top-K.
 
 **Why entity type filtering matters:** "Set fire rating on all walls" and "set thermal resistance on all walls" are semantically close embeddings but produce completely different intent JSONs (different psets, different properties, different value types). Raw cosine similarity without entity type gating will retrieve confidently wrong examples. This is worse than no injection — it anchors the model to an incorrect pattern.
@@ -127,7 +233,32 @@ class SkillExample(TimestampedModel):
 
 - **Hard cap: K=3.** On llama3.1:8b (8K context), the realistic token budget after system instructions (~2,000), entity context (~1,500), and response reserve (~1,500) leaves ~3,000 tokens. A single SkillExample with truncated intent JSON is 200–400 tokens. K=3 is the safe ceiling. On 32K+ models, K=3 is still sufficient — diminishing returns hit fast with few-shot. Do not build dynamic K computation now; hardcode K=3, test whether K=2 or K=1 performs better.
 - **Example truncation:** Injected intent JSONs are stripped to essential fields only: `operation`, `filter`, `tier`, `confidence`. Full payloads waste tokens without improving few-shot guidance.
-- **Injection point:** Prepended to the IntentClassifier system prompt as labeled examples before the current query.
+- **Injection point:** Appended to the IntentClassifier `SYSTEM_PROMPT` as a labeled few-shot section before the current query. Implementation:
+
+  ```python
+  # In IntentClassifier.classify() — backward-compatible signature change
+  def classify(self, user_message: str, entity_context: str,
+               skill_examples: list[dict] | None = None) -> dict:
+      system_content = SYSTEM_PROMPT
+      if skill_examples:
+          system_content += _format_skill_injection(skill_examples)
+      messages = [SystemMessage(content=system_content), ...]
+  ```
+
+  `skill_examples=None` → existing behavior, zero changes to call sites. The retriever is called in `modification_service.propose()` before the LLM call.
+
+- **Token budget interaction.** Skill injection adds ~600–1200 tokens to the system prompt. The existing `compute_budget()` call in `propose()` must account for this before sizing the entity_context. Retrieve examples first, measure injection tokens, then compute entity context budget:
+
+  ```python
+  skill_examples = skill_retriever.retrieve(user_message, project)
+  injection_tokens = estimate_tokens(_format_skill_injection(skill_examples))
+  prelim_budget = compute_budget(model_name, system=CLASSIFY_SYSTEM_PROMPT,
+                                  extra_system=injection_tokens)
+  entity_context = classifier.build_entity_context(all_entities,
+                                                    available_tokens=prelim_budget.remaining_for_injection)
+  ```
+
+  Entity context will be trimmed more aggressively when examples are injected. This is intentional — few-shot examples are more valuable than extra entity detail on AMBIGUOUS cases.
 
 **Cold start — be honest about it:**
 
@@ -166,12 +297,13 @@ If the delta is only on TRIVIAL cases, the feature is not a contribution. Be pre
 | Step | Dependency | Output |
 |---|---|---|
 | Run eval baseline with current static prompt, categorize failure modes | Deliverable 1 complete | Failure mode report — confirms few-shot is the right intervention |
-| SkillExample model + migration | None | Model in DB |
-| Auto-harvest hook: on successful commit, create SkillExample | Existing RSAA pipeline | Organic data starts accumulating |
-| Seed skill bank from `dev_cases.jsonl` with `is_organic=False` | Deliverable 1 | Cold start mitigation |
-| Entity type extraction from query (lightweight, keyword or filter-spec based) | None | Pre-filter for retrieval |
+| SkillExample model + migration (`makemigrations metacastor`) | None | Model in DB |
+| Auto-harvest hook: call `harvest_skill_example(proposal, git_commit)` in `modification_service.execute()` after `proposal.save(status=APPLIED)` — wrapped in try/except, non-blocking | Existing RSAA pipeline | Organic data starts accumulating |
+| `seed_skill_bank` management command: loads `dev_cases.jsonl`, generates embeddings via `EmbeddingService.embed_query()`, saves with `is_organic=False, project=None` | Deliverable 1 + Ollama running | Cold start mitigation — global examples available to all projects |
+| Entity type extractor: keyword scan + IfcXxx regex, ~20 lines | None | Pre-filter input |
 | Two-stage retriever: entity type filter → cosine similarity → top-3 | SkillExample model + pgvector | Retrieval pipeline |
-| Injection into IntentClassifier system prompt | Retriever | Feature complete |
+| Update `propose()` in modification_service: retrieve examples → compute injection tokens → adjust budget → pass to `classify()` | Retriever + token budget | Budget-aware injection |
+| Injection into IntentClassifier: add `skill_examples` param to `classify()`, backward-compatible | Retriever | Feature complete |
 | Run eval baseline again with injection enabled, compare per-tier deltas | All above | **Primary dissertation result** |
 
 
@@ -185,22 +317,46 @@ If the delta is only on TRIVIAL cases, the feature is not a contribution. Be pre
 
 ---
 
+**Failure scope — what creates a FailureRecord:**
+
+`failure_phase` covers three phases. This is intentional — proposal-phase failures are equally confusing to users and equally worth capturing:
+
+- `VALIDATION` — raised in `propose()` before the proposal is created (empty filter, low confidence gate, IntentParseError). No proposal exists yet.
+- `EXECUTION` — raised in `execute()` after user approval (IFCWriteError, Tier 2 writer errors). Proposal exists at `status=FAILED`.
+- `SANDBOX` — raised in `execute()` specifically by `Tier3ExecutionError`. Proposal exists at `status=FAILED`.
+
+VALIDATION failures have no `proposal_id` to link. EXECUTION and SANDBOX failures link to the failed `ModificationProposal`.
+
+---
+
 **FailureRecord model — simplified, no chain tracking:**
 
 ```python
 class FailureRecord(TimestampedModel):
     project         = ForeignKey(Project)
+    proposal        = ForeignKey(ModificationProposal, null=True, blank=True)  # null for VALIDATION phase
     query_text      = TextField()
     query_embedding = VectorField(1024)
-    intent_json     = JSONField()
+    intent_json     = JSONField()           # empty dict for VALIDATION phase failures
     tier            = IntegerField()
     failure_phase   = CharField()           # VALIDATION | EXECUTION | SANDBOX
     error_type      = CharField()           # from taxonomy below
     error_detail    = TextField()           # raw exception or validation message
     diagnosis       = TextField()           # human-readable explanation
-    ifc_context     = JSONField()           # minimal snapshot of relevant entities
+    ifc_context     = JSONField()           # minimal snapshot (see structure below)
     category        = CharField()           # RETRYABLE | NON_RETRYABLE
 ```
+
+**`ifc_context` minimal snapshot structure:**
+```python
+ifc_context = {
+    "filter_spec": proposal.filter_spec,         # or {} for VALIDATION phase
+    "matched_entity_types": ["IfcWall", ...],     # types from filter result
+    "entity_count": proposal.affected_count,      # 0 for VALIDATION phase
+    "available_psets": ["Pset_WallCommon", ...],  # from sample entity at failure time
+}
+```
+Enough for the diagnosis template and the NON_RETRYABLE guidance message. Not a full entity dump.
 
 Chain-tracking fields (`chain_parent`, `resolution_intent`, `retry_succeeded`, `was_retried`) are intentionally omitted. Multi-step retry chains are over-engineered for MSc scale — analytics will show ~90% of retries are depth=1. Add chain infrastructure later if data justifies it.
 
@@ -228,19 +384,35 @@ NON_RETRYABLE — the file state doesn't support this request
 
 **Classification approach — deterministic primary, LLM fallback:**
 
-**Primary path (instant, reliable):** Map known exception patterns to the failure taxonomy using a deterministic function. This is a ~50-line dictionary lookup, not an LLM call.
+**Primary path (instant, reliable):** Map known exception patterns to the failure taxonomy using a deterministic function. This is a ~50-line lookup, not an LLM call.
+
+Use **substring matching or regex**, not exact equality. Exception messages vary across IfcOpenShell versions and Django validation layers. Exact string equality breaks silently on version upgrades.
 
 ```python
-EXCEPTION_MAP = {
-    ("IfcOpenShell", "not found"):        "NO_MATCHING_ENTITIES",
-    ("FilterEngine", "zero matches"):     "NO_MATCHING_ENTITIES",
-    ("IfcOpenShell", "not of type"):      "SCHEMA_VIOLATION",
-    ("Validation", "property set"):       "MISSING_PSET",
-    ("Validation", "property"):           "MISSING_PROPERTY",
-    ("Validation", "type mismatch"):      "TYPE_MISMATCH",
-    # ... extend as failure patterns emerge
-}
+# (exception_source_pattern, message_substring) → error_type
+# Checked in order — first match wins
+EXCEPTION_PATTERNS: list[tuple[str, str, str]] = [
+    ("FilterEngine", "zero matches",          "NO_MATCHING_ENTITIES"),
+    ("FilterEngine", "no entities",           "NO_MATCHING_ENTITIES"),
+    ("IFCWriteError", "property set",         "MISSING_PSET"),
+    ("IFCWriteError", "property",             "MISSING_PROPERTY"),
+    ("IFCWriteError", "type mismatch",        "TYPE_MISMATCH"),
+    ("IFCWriteError", "not of type",          "SCHEMA_VIOLATION"),
+    ("Tier3ExecutionError", "forbidden",      "OUT_OF_SCOPE"),
+    ("Tier3ExecutionError", "timeout",        "SCHEMA_VIOLATION"),
+    # extend as real failure messages emerge from production usage
+]
+
+def classify_deterministic(exc: Exception) -> str | None:
+    exc_type = type(exc).__name__
+    msg = str(exc).lower()
+    for source, pattern, error_type in EXCEPTION_PATTERNS:
+        if source.lower() in exc_type.lower() and pattern in msg:
+            return error_type
+    return None  # triggers LLM fallback
 ```
+
+**Critical prerequisite before building this:** Read `writeback/services/ifc_writer.py` and `writeback/services/tier3_executor.py` to map real exception types and messages to the taxonomy. The patterns above are illustrative — the actual exception class names and messages must be verified. Do this before writing the taxonomy, not after.
 
 **Fallback (for genuinely unknown exception patterns):** LLM call to classify the failure. Only triggers when deterministic lookup returns no match. This should be rare — most IFC-related failures map to known IfcOpenShell and validation exception patterns.
 
@@ -250,6 +422,42 @@ EXCEPTION_MAP = {
 - **Unknown patterns (LLM fallback):** Lightweight LLM generation call for `diagnosis` string only. Constrained output, small prompt. Acceptable latency trade-off because these are rare.
 
 **Why not full-LLM diagnosis as default:** The diagnostic call happens at failure time — the worst moment for latency. Users expect instant feedback when something breaks, not 5–15 seconds of Ollama inference. Deterministic classification + templated explanation delivers instant response for 80%+ of cases.
+
+---
+
+**Retry UX flow — exact path through the codebase:**
+
+Execution failures happen via HTTP POST (the approve action in `writeback/views.py`), not WebSocket. The retry flow must thread through this path:
+
+```
+1. User submits query → WebSocket propose → PENDING proposal
+2. User clicks Approve → HTTP POST to approve view → execute() called
+3. execute() fails → FailureRecord created → proposal.status = FAILED
+4. Approve view returns JSON: {
+       "status": "failed",
+       "failure_record_id": "<uuid>",
+       "category": "RETRYABLE",
+       "diagnosis": "Pset_WallCommon does not exist...",
+       "guidance": "Consider ADD_PROPERTY instead of SET_PROPERTY."
+   }
+5. _modify.html (HTMX): renders failure card with either:
+   - RETRYABLE: diagnosis text + [Retry with diagnosis] button (pre-fills prompt)
+   - NON_RETRYABLE: guidance text only, no retry button
+6. Retry: user clicks [Retry] → pre-fills the chat input with original query + hidden failure_record_id
+7. WebSocket propose fires with failure_record_id → ProposalConsumer loads FailureRecord
+   → passes failure_context string to modification_service.propose()
+   → propose() passes it to IntentClassifier.classify() as failure_context param
+```
+
+**Changes needed to support this:**
+
+- `writeback/views.py` — `approve_proposal` view: catch `ModificationError`, look up `FailureRecord` by `proposal`, return structured JSON.
+- `writeback/templates/writeback/_modify.html` — render failure card with RETRYABLE/NON_RETRYABLE branching.
+- `ProposalConsumer` — accept `failure_record_id` in the `propose` action payload, load FailureRecord, pass context forward.
+- `modification_service.propose()` — add `failure_context: str | None = None` parameter, inject into classifier call.
+- `IntentClassifier.classify()` — add `failure_context: str | None = None` parameter, prepend context block to system prompt.
+
+All changes are additive and backward-compatible (new optional parameters).
 
 ---
 
@@ -343,14 +551,16 @@ User submits modification → RSAA pipeline → Proposal → User approves → E
 
 | Step | Dependency | Output |
 |---|---|---|
-| FailureRecord model + migration | None | Model in DB |
-| Failure taxonomy constants + deterministic classification function | None | ~50-line mapping function |
-| Hook into RSAA execution failure path: create FailureRecord on failure | Existing RSAA pipeline | Failures start being captured |
-| Templated diagnosis generation for known patterns | Taxonomy | Instant human-readable explanations |
-| LLM fallback for unknown patterns (constrained output, small prompt) | Ollama integration | Coverage for novel failures |
-| UX: RETRYABLE → retry button, NON_RETRYABLE → guidance only | FailureRecord + WebSocket layer | User-facing feature |
-| Single retry injection: failure context block in IntentClassifier prompt | FailureRecord | Retry flow complete |
-| Analytics: failure distribution, retry success rate, classification coverage | FailureRecord data accumulating | Dissertation metrics |
+| Read `ifc_writer.py` + `tier3_executor.py` — map real exception class names and messages to taxonomy | None | Verified EXCEPTION_PATTERNS list |
+| FailureRecord model + migration (`makemigrations metacastor`) | None | Model in DB |
+| `failure_classifier.py`: EXCEPTION_PATTERNS list + `classify_deterministic()` + template strings | Verified patterns | ~80-line service |
+| Hook VALIDATION failures in `propose()`: catch ModificationError before raising, create FailureRecord | None | VALIDATION failures captured |
+| Hook EXECUTION/SANDBOX failures in `execute()` except block: create FailureRecord before re-raising | Taxonomy | EXECUTION/SANDBOX failures captured |
+| LLM fallback for unknown patterns — constrained single-sentence diagnosis, only when `classify_deterministic()` returns None | Ollama integration | Coverage for novel failures |
+| Update `approve_proposal` view: return structured JSON with `failure_record_id`, `category`, `diagnosis` | FailureRecord | Backend complete |
+| `_modify.html`: RETRYABLE failure card with retry button; NON_RETRYABLE guidance card | View change | UX complete |
+| `ProposalConsumer` + `propose()` + `classify()`: add `failure_context` param, inject context block | FailureRecord | Retry flow complete |
+| Analytics: failure distribution, retry success rate, classification coverage | Accumulated data | Dissertation metrics |
 
 --- 
 
@@ -480,14 +690,9 @@ If the colleague generates 1,000+ records, update the narrative with actual resu
 
 **Implementation — extend SkillExample, don't create a new model:**
 
-```python
-# Add to SkillExample (Deliverable 2)
-class SkillExample(TimestampedModel):
-    # ... existing fields ...
-    generated_code  = TextField(null=True, blank=True)  # Tier 3 only: the IfcOpenShell script that succeeded
-```
+`generated_code = TextField(null=True, blank=True)` is already included in the SkillExample model defined in Deliverable 2. No schema change needed in this deliverable — only behavior changes in the harvest hook and retriever.
 
-- On Tier 3 commit success, the auto-harvest hook (Deliverable 2) saves the generated code alongside the standard SkillExample fields.
+- On Tier 3 commit success, the auto-harvest hook (Deliverable 2) saves the generated code alongside the standard SkillExample fields. The Tier 3 planner output must be threaded through `execute()` → `harvest_skill_example()`.
 - Tier 1 and Tier 2 SkillExamples have `generated_code=None`. No impact on existing retrieval.
 
 **Injection — one conditional branch in the skill retriever:**
@@ -546,12 +751,51 @@ The original design assumed "swapping filter criteria is simpler than full funct
 
 | Step | Dependency | Time | Output |
 |---|---|---|---|
-| Add `generated_code` field to SkillExample + migration | Deliverable 2 complete | 30min | Schema update |
-| Modify Tier 3 auto-harvest hook to save generated code on commit success | Deliverable 2 harvest hook | 1h | Code capture |
-| Add conditional branch in skill retriever: if Tier 3 + code exists, include in prompt | Deliverable 2 retriever | 1h | Injection logic |
+| Thread Tier 3 generated code through `execute()` → `harvest_skill_example()` — save on commit success | Deliverable 2 harvest hook | 1h | Code capture |
+| Add conditional branch in skill retriever: if `current_tier == 3` and `retrieved_example.generated_code` exists, include reference in prompt | Deliverable 2 retriever | 1h | Injection logic |
 | Measure Tier 3 success rate delta when data allows | Accumulated Tier 3 data | Ongoing | Dissertation metric |
 
-**Total estimated effort: half a day.** This is a field and a conditional, not a system.
+**Total estimated effort: half a day.** This is two code changes, not a system. No migration needed — the field was included in D2.
 
 ---
+
 ---
+
+## Implementation Reference
+
+### Files Changed by Deliverable
+
+| File | Change | Deliverable |
+|---|---|---|
+| `src/config/settings/base.py` | Add `metacastor` to INSTALLED_APPS | D1 |
+| `src/metacastor/` (new app) | Scaffold | D1 |
+| `src/metacastor/models.py` | SkillExample + FailureRecord | D2, D3 |
+| `src/metacastor/services/skill_harvester.py` | Harvest on commit success | D2 |
+| `src/metacastor/services/skill_retriever.py` | Two-stage retrieval | D2 |
+| `src/metacastor/services/entity_type_extractor.py` | Pre-classification keyword scan | D2 |
+| `src/metacastor/services/failure_classifier.py` | Deterministic taxonomy + LLM fallback | D3 |
+| `src/metacastor/management/commands/seed_skill_bank.py` | Cold start seeding | D2 |
+| `src/metacastor/management/commands/export_training_data.py` | JSONL export | D4 |
+| `src/metacastor/eval/run_eval.py` | Evaluation harness | D1 |
+| `src/metacastor/eval/eval_cases.jsonl` | Frozen eval cases | D1 |
+| `src/metacastor/eval/dev_cases.jsonl` | Dev/tuning cases | D1 |
+| `src/metacastor/eval/axolotl_config.yaml` | QLoRA config | D4 |
+| `src/writeback/services/modification_service.py` | Harvest hook + failure capture hooks | D2, D3 |
+| `src/writeback/services/intent_classifier.py` | Add `skill_examples` + `failure_context` params | D2, D3 |
+| `src/writeback/views.py` | Return `failure_record_id` in failed approve response | D3 |
+| `src/writeback/consumers.py` | Accept `failure_record_id` in propose action | D3 |
+| `src/writeback/templates/writeback/_modify.html` | RETRYABLE/NON_RETRYABLE failure cards | D3 |
+
+### Infrastructure Reused (No New Dependencies)
+
+| Existing component | How MetaCastor uses it |
+|---|---|
+| `pgvector VectorField(1024)` | `SkillExample.query_embedding`, `FailureRecord.query_embedding` |
+| `EmbeddingService.embed_query()` | Embed queries at harvest time and seeding |
+| `TimestampedModel` | Base class for both new models |
+| `environments.Project` FK | Scope SkillExamples per-project (or null=global) |
+| `ModificationProposal.request_text/intent_json/tier/filter_spec` | Harvest source — already stores everything needed |
+| `core/token_budget.py compute_budget()` | Extended to account for injection tokens |
+| `InMemoryChannelLayer` / WebSocket consumers | Retry button triggers new propose action |
+
+No new pip packages, no Celery, no Redis, no new infrastructure of any kind.
