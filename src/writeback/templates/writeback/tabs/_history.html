@@ -2,29 +2,39 @@
 {% load static %}
 {% load dict_filters %}
 <div class="flex-grow-1 overflow-auto p-4">
-    {% if commits %}
-    <div class="d-flex align-items-center justify-content-between mb-3">
+    {% if files_with_history %}
+    <div class="d-flex align-items-center justify-content-between mb-4">
         <h3 class="h6 fw-semibold mb-0">
             <i class="bi bi-clock-history me-2 text-secondary"></i>
             Commit History
-            <span class="text-secondary fw-normal ms-2 fs-8">({{ commits|length }} commit{{ commits|length|pluralize }})</span>
+            <span class="text-secondary fw-normal ms-2 fs-8">({{ total_commits }} commit{{ total_commits|pluralize }})</span>
         </h3>
     </div>
 
-    <div class="d-flex flex-column gap-2">
+    {% for entry in files_with_history %}
+    {% with ifc_file=entry.ifc_file commits=entry.commits restored_by=entry.restored_by %}
+
+    <!-- ── Per-file section header ─────────────────────────────────────── -->
+    <div class="d-flex align-items-center gap-2 mb-2 {% if not forloop.first %}mt-4{% endif %}">
+        <i class="bi bi-file-earmark-code text-accent fs-6"></i>
+        <span class="fw-semibold">{{ ifc_file.name }}</span>
+        {% if ifc_file.schema_version %}
+        <span class="badge bg-body border text-secondary fs-9">{{ ifc_file.schema_version }}</span>
+        {% endif %}
+        {% if ifc_file.entity_count %}
+        <span class="text-secondary fs-8">{{ ifc_file.entity_count }} entities</span>
+        {% endif %}
+        <span class="text-secondary fs-8 ms-1">·</span>
+        <span class="text-secondary fs-8">{{ commits|length }} commit{{ commits|length|pluralize }}</span>
+    </div>
+
+    <div class="d-flex flex-column gap-2 mb-2">
         {% for commit in commits %}
         <div class="card bg-surface border" id="commit-{{ commit.commit_hash|slice:':8' }}">
             <!-- Commit header row -->
             <div class="card-body p-3">
                 <div class="d-flex gap-3">
-                    <!-- Git icon with tier color -->
-                    {% with tier=commit.diff_data.tier %}
-<!--                    <div class="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"-->
-<!--                         style="width: 40px; height: 40px;-->
-<!--                                background-color: {% if tier == 1 %}rgba(16, 185, 129, 0.15){% elif tier == 2 %}rgba(249, 115, 22, 0.15){% elif tier == 3 %}rgba(239, 68, 68, 0.15){% else %}rgba(139, 92, 246, 0.15){% endif %};">-->
-<!--                        <i class="bi bi-git"-->
-<!--                           style="color: {% if tier == 1 %}var(&#45;&#45;castor-success){% elif tier == 2 %}#f97316{% elif tier == 3 %}#ef4444{% else %}var(&#45;&#45;castor-accent){% endif %};"></i>-->
-<!--                    </div>-->
+                    <!-- Git icon with tier / rollback colour -->
                     <div class="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
                          style="width: 40px; height: 40px;
                                 background-color: {% if commit.diff_data.operation == 'ROLLBACK' %}rgba(13, 110, 253, 0.1){% else %}rgba(var(--castor-accent-rgb), 0.1){% endif %};">
@@ -37,7 +47,6 @@
                             {% endwith %}
                         {% endif %}
                     </div>
-                    {% endwith %}
 
                     <div class="flex-grow-1 min-width-0">
                         <!-- Top line: hash, tier badge, timestamp -->
@@ -92,23 +101,18 @@
                         {% endif %}
 
                         <!-- Show if this commit was later restored -->
-                        {% if restored_by %}
-                            {% with restore_hash=restored_by|get_item:commit.commit_hash %}
-                            {% if restore_hash %}
-                            <a href="#commit-{{ restore_hash|slice:':8' }}"
-                               class="badge bg-info-subtle text-info border border-info-subtle fs-9 text-decoration-none commit-link"
-                               title="This version was restored later">
-                                <i class="bi bi-clock-history me-1"></i>Restored
-                            </a>
-                            {% endif %}
-                            {% endwith %}
+                        {% with restore_hash=restored_by|get_item:commit.commit_hash %}
+                        {% if restore_hash %}
+                        <a href="#commit-{{ restore_hash|slice:':8' }}"
+                           class="badge bg-info-subtle text-info border border-info-subtle fs-9 text-decoration-none commit-link"
+                           title="This version was restored later">
+                            <i class="bi bi-clock-history me-1"></i>Restored
+                        </a>
                         {% endif %}
+                        {% endwith %}
 
-                        <!-- Meta row: file, author, entity counts -->
-                        <div class="d-flex gap-3 fs-8 text-secondary flex-wrap">
-                            <span>
-                                <i class="bi bi-file-earmark me-1"></i>{{ commit.ifc_file.name }}
-                            </span>
+                        <!-- Meta row: author, entity counts -->
+                        <div class="d-flex gap-3 fs-8 text-secondary flex-wrap mt-1">
                             {% if commit.author %}
                             <span>
                                 <i class="bi bi-person me-1"></i>{{ commit.author.username }}
@@ -132,19 +136,8 @@
                         </div>
                     </div>
 
-                    <!-- View Diff toggle -->
-<!--                    {% if commit.diff_data.changes %}-->
-<!--                    <div class="flex-shrink-0">-->
-<!--                        <button class="btn btn-outline-secondary btn-sm"-->
-<!--                                onclick="toggleDiff('{{ commit.commit_hash|slice:":8" }}')"-->
-<!--                                id="diff-btn-{{ commit.commit_hash|slice:':8' }}">-->
-<!--                            <i class="bi bi-file-diff me-1"></i>View Diff-->
-<!--                        </button>-->
-<!--                    </div>-->
-<!--                    {% endif %}-->
-<!--                    -->
+                    <!-- Action buttons -->
                     <div class="flex-shrink-0 d-flex flex-column gap-2" style="width: 100px;">
-
                         {% if commit.diff_data.changes %}
                         <button class="btn btn-outline-secondary btn-xs w-100"
                                 onclick="toggleDiff('{{ commit.commit_hash|slice:":8" }}')"
@@ -158,8 +151,8 @@
                             {% csrf_token %}
                             <button type="submit"
                                     class="btn btn-outline-danger btn-xs w-100"
-                                    title="Revert file to this state"
-                                    onclick="return confirm('⚠️ Restore this version?\n\nThis will create a NEW commit that makes the file look exactly like it did at this point.\n\nAll entities in the database will be re-synced.');">
+                                    title="Revert {{ ifc_file.name }} to this state"
+                                    onclick="return confirm('⚠️ Restore {{ ifc_file.name }}?\n\nThis will create a NEW commit that makes the file look exactly like it did at this point.\n\nAll entities in the database will be re-synced.');">
                                 <i class="bi bi-clock-history me-1"></i>Restore
                             </button>
                         </form>
@@ -217,6 +210,9 @@
         {% endfor %}
     </div>
 
+    {% endwith %}
+    {% endfor %}
+
     {% else %}
     <div class="empty-state h-100 d-flex flex-column align-items-center justify-content-center">
         <i class="bi bi-clock-history"></i>
@@ -249,27 +245,22 @@ function toggleDiff(hash) {
 
 // Highlight commit when jumping via hash link
 function highlightCommit() {
-    // Remove any existing highlights
     document.querySelectorAll('.commit-highlight').forEach(el => {
         el.classList.remove('commit-highlight');
     });
 
-    // Add highlight to target commit
     if (window.location.hash) {
         const target = document.querySelector(window.location.hash);
         if (target) {
             target.classList.add('commit-highlight');
-            // Remove highlight after animation
             setTimeout(() => target.classList.remove('commit-highlight'), 2000);
         }
     }
 }
 
-// Highlight on page load and hash change
 window.addEventListener('load', highlightCommit);
 window.addEventListener('hashchange', highlightCommit);
 
-// Handle commit link clicks
 document.addEventListener('click', function(e) {
     if (e.target.closest('.commit-link')) {
         setTimeout(highlightCommit, 100);

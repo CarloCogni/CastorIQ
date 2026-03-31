@@ -1,29 +1,97 @@
 <!--ifc_processor/explore/_entity_table.html-->
 <!--   HTMX partial: paginated, filtered entity table.-->
-<!--   Context: page_obj, ifc_file, project, available_types, active_type,-->
-<!--            current_building, current_storey, current_space -->
+<!--   Context: page_obj, ifc_file, project, type_counts, active_type,-->
+<!--            current_building, current_storey, current_space, current_q -->
 
-{# Build the base filter string to carry across paginator and type chips #}
 {% with base_url=request.path %}
 
-{# ── Type filter chips ── #}
-{% if available_types %}
+{# ── Toolbar: breadcrumb + search + export ── #}
+<div class="px-3 pt-2 pb-2 border-bottom d-flex flex-wrap align-items-center gap-2 flex-shrink-0 bg-body">
+
+  {# Spatial breadcrumb #}
+  <div class="d-flex align-items-center gap-1 small text-secondary flex-grow-1 flex-wrap">
+    <a class="text-decoration-none text-secondary"
+       hx-get="{{ base_url }}"
+       hx-target="#explore-entities"
+       hx-swap="innerHTML"
+       style="cursor:pointer;">
+      <i class="bi bi-house-door"></i> All
+    </a>
+    {% if current_building %}
+      <span class="opacity-40">›</span>
+      <a class="text-decoration-none text-secondary"
+         hx-get="{{ base_url }}?building={{ current_building|urlencode }}&q={{ current_q|urlencode }}"
+         hx-target="#explore-entities"
+         hx-swap="innerHTML"
+         style="cursor:pointer;">
+        {{ current_building }}
+      </a>
+    {% endif %}
+    {% if current_storey %}
+      <span class="opacity-40">›</span>
+      <a class="text-decoration-none text-secondary"
+         hx-get="{{ base_url }}?building={{ current_building|urlencode }}&storey={{ current_storey|urlencode }}&q={{ current_q|urlencode }}"
+         hx-target="#explore-entities"
+         hx-swap="innerHTML"
+         style="cursor:pointer;">
+        {{ current_storey }}
+      </a>
+    {% endif %}
+    {% if current_space %}
+      <span class="opacity-40">›</span>
+      <span class="text-body">{{ current_space }}</span>
+    {% endif %}
+  </div>
+
+  {# Search input #}
+  <div class="d-flex align-items-center gap-1">
+    <div class="input-group input-group-sm" style="width: 200px;">
+      <span class="input-group-text bg-body border-secondary-subtle">
+        <i class="bi bi-search text-secondary" style="font-size:0.75rem;"></i>
+      </span>
+      <input type="search"
+             id="entity-search"
+             class="form-control form-control-sm bg-body border-secondary-subtle"
+             placeholder="Search name or GlobalID…"
+             value="{{ current_q }}"
+             hx-get="{{ base_url }}?building={{ current_building|urlencode }}&storey={{ current_storey|urlencode }}&space={{ current_space|urlencode }}&type={{ active_type|urlencode }}"
+             hx-trigger="input changed delay:300ms, search"
+             hx-target="#explore-entities"
+             hx-swap="innerHTML"
+             name="q"
+             autocomplete="off">
+    </div>
+  </div>
+
+  {# Export CSV #}
+  <a href="{% url 'projects:explore_export' project.pk ifc_file.pk %}?building={{ current_building|urlencode }}&storey={{ current_storey|urlencode }}&space={{ current_space|urlencode }}&type={{ active_type|urlencode }}&q={{ current_q|urlencode }}"
+     class="btn btn-sm btn-outline-secondary"
+     title="Export current filter as CSV"
+     download>
+    <i class="bi bi-download me-1"></i>CSV
+  </a>
+
+</div>
+
+{# ── Type filter chips with counts ── #}
+{% if type_counts %}
 <div class="px-3 pt-2 pb-1 border-bottom d-flex flex-wrap gap-1 align-items-center flex-shrink-0 bg-body">
   <span class="text-secondary small me-1">Type:</span>
   <a class="badge {% if not active_type %}bg-primary{% else %}bg-secondary bg-opacity-25 text-body{% endif %} text-decoration-none"
-     hx-get="{{ base_url }}?building={{ current_building|urlencode }}&storey={{ current_storey|urlencode }}&space={{ current_space|urlencode }}"
+     hx-get="{{ base_url }}?building={{ current_building|urlencode }}&storey={{ current_storey|urlencode }}&space={{ current_space|urlencode }}&q={{ current_q|urlencode }}"
      hx-target="#explore-entities"
      hx-swap="innerHTML"
      style="cursor:pointer;">
     All
   </a>
-  {% for t in available_types %}
-  <a class="badge {% if active_type == t %}bg-primary{% else %}bg-secondary bg-opacity-25 text-body{% endif %} text-decoration-none badge-ifc-type"
-     hx-get="{{ base_url }}?building={{ current_building|urlencode }}&storey={{ current_storey|urlencode }}&space={{ current_space|urlencode }}&type={{ t|urlencode }}"
+  {% for tc in type_counts %}
+  <a class="badge {% if active_type == tc.ifc_type %}bg-primary{% else %}bg-secondary bg-opacity-25 text-body{% endif %} text-decoration-none badge-ifc-type"
+     hx-get="{{ base_url }}?building={{ current_building|urlencode }}&storey={{ current_storey|urlencode }}&space={{ current_space|urlencode }}&type={{ tc.ifc_type|urlencode }}&q={{ current_q|urlencode }}"
      hx-target="#explore-entities"
      hx-swap="innerHTML"
      style="cursor:pointer;">
-    {{ t }}
+    {{ tc.ifc_type }}
+    <span class="ms-1 opacity-75">{{ tc.count }}</span>
   </a>
   {% endfor %}
 </div>
@@ -69,7 +137,7 @@
   <div class="d-flex gap-1">
     {% if page_obj.has_previous %}
     <button class="btn btn-sm btn-outline-secondary"
-            hx-get="{{ base_url }}?building={{ current_building|urlencode }}&storey={{ current_storey|urlencode }}&space={{ current_space|urlencode }}&type={{ active_type|urlencode }}&page={{ page_obj.previous_page_number }}"
+            hx-get="{{ base_url }}?building={{ current_building|urlencode }}&storey={{ current_storey|urlencode }}&space={{ current_space|urlencode }}&type={{ active_type|urlencode }}&q={{ current_q|urlencode }}&page={{ page_obj.previous_page_number }}"
             hx-target="#explore-entities"
             hx-swap="innerHTML">
       <i class="bi bi-chevron-left"></i>
@@ -78,13 +146,17 @@
     <span class="btn btn-sm btn-outline-secondary disabled">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
     {% if page_obj.has_next %}
     <button class="btn btn-sm btn-outline-secondary"
-            hx-get="{{ base_url }}?building={{ current_building|urlencode }}&storey={{ current_storey|urlencode }}&space={{ current_space|urlencode }}&type={{ active_type|urlencode }}&page={{ page_obj.next_page_number }}"
+            hx-get="{{ base_url }}?building={{ current_building|urlencode }}&storey={{ current_storey|urlencode }}&space={{ current_space|urlencode }}&type={{ active_type|urlencode }}&q={{ current_q|urlencode }}&page={{ page_obj.next_page_number }}"
             hx-target="#explore-entities"
             hx-swap="innerHTML">
       <i class="bi bi-chevron-right"></i>
     </button>
     {% endif %}
   </div>
+</div>
+{% else %}
+<div class="d-flex align-items-center justify-content-end px-3 py-2 border-top bg-body flex-shrink-0">
+  <span class="small text-secondary">{{ page_obj.paginator.count }} entities</span>
 </div>
 {% endif %}
 

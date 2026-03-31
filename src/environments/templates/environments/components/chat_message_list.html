@@ -157,9 +157,9 @@
 {% endfor %}
 
 {% if utilization_pct is not None %}
-<div id="context-bar" hx-swap-oob="innerHTML">
+<span id="context-bar-display" hx-swap-oob="innerHTML" class="d-none">
   {% include "environments/components/_context_bar_inner.html" %}
-</div>
+</span>
 {% endif %}
 
 <script>

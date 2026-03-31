@@ -18,6 +18,7 @@ class IFCProcessingService:
 
     def __init__(self, ifc_file: IFCFile):
         self.ifc_file = ifc_file
+        self.git_commit_hash: str | None = None
 
     def run_pipeline(self) -> bool:
         """
@@ -47,6 +48,9 @@ class IFCProcessingService:
                 )
                 # File is still "completed" for parsing, but worth noting
 
+            # 4. Register in Git (initial commit — enables rollback to original)
+            self._register_in_git()
+
             return True
 
         except Exception as e:
@@ -55,6 +59,37 @@ class IFCProcessingService:
             self.ifc_file.error_message = str(e)
             self.ifc_file.save(update_fields=["status", "error_message"])
             return False
+
+    def _register_in_git(self) -> None:
+        """Create the initial Git commit for this IFC file.
+
+        Non-fatal: a Git failure must not prevent the file from being parsed
+        and searchable. Uses a deferred import to avoid a circular dependency
+        (writeback → ifc_processor already exists at module level).
+        """
+        try:
+            from writeback.models import GitCommit
+            from writeback.services.git_service import GitService
+
+            git = GitService(self.ifc_file.project)
+            git.ensure_repo()
+            parent_hash = git.get_parent_hash()
+            commit_hash = git.track_ifc(self.ifc_file)
+            if commit_hash:
+                self.git_commit_hash = commit_hash
+                GitCommit.objects.create(
+                    ifc_file=self.ifc_file,
+                    commit_hash=commit_hash,
+                    parent_hash=parent_hash,
+                    message=f"[TRACK] Add {self.ifc_file.name}",
+                    author=None,
+                    diff_data={"operation": "TRACK"},
+                )
+                logger.info(
+                    f"Initial Git commit for {self.ifc_file.name}: {commit_hash[:8]}"
+                )
+        except Exception as e:
+            logger.error(f"Git tracking failed for {self.ifc_file.name}: {e}")
 
     def _generate_embeddings(self) -> bool:
         """Returns True if embedding succeeded, False otherwise."""

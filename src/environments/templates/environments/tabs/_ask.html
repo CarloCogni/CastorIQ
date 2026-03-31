@@ -185,7 +185,9 @@
                 </label>
 
                 <div id="context-bar" class="ms-auto d-flex align-items-center gap-1">
-                    {% if utilization_pct is not None %}{% include "environments/components/_context_bar_inner.html" %}{% endif %}
+                    <span id="context-bar-display">
+                        {% if utilization_pct is not None %}{% include "environments/components/_context_bar_inner.html" %}{% endif %}
+                    </span>
                     <button type="button"
                             class="btn btn-link p-0 ms-1 text-warning"
                             style="line-height:1; font-size: 0.75rem;"

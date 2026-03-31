@@ -1,6 +1,7 @@
 # metacastor/eval/run_eval.py
 """Evaluation harness for MetaCastor intent classification baseline."""
 
+import argparse
 import json
 import os
 import sys
@@ -13,6 +14,7 @@ import django
 
 django.setup()
 
+from metacastor.services.skill_retriever import retrieve as retrieve_skill_examples  # noqa: E402
 from writeback.services.intent_classifier import IntentClassifier, IntentParseError  # noqa: E402
 
 CASES_FILE = Path(__file__).parent / "eval_cases.jsonl"
@@ -50,6 +52,14 @@ def score_case(result: dict | list, truth: dict) -> dict[str, bool]:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="MetaCastor eval harness.")
+    parser.add_argument(
+        "--inject",
+        action="store_true",
+        help="Enable few-shot injection from the skill bank (D2 mode).",
+    )
+    args = parser.parse_args()
+
     cases = [
         json.loads(line)
         for line in CASES_FILE.read_text(encoding="utf-8").splitlines()
@@ -60,7 +70,10 @@ def main() -> None:
 
     django_settings.OLLAMA_MODEL = EVAL_MODEL
     clf = IntentClassifier(temperature=EVAL_TEMPERATURE)
-    print(f"Model: {EVAL_MODEL}  |  Temperature: {EVAL_TEMPERATURE}  |  Cases: {len(cases)}")
+
+    mode = "D2 (with injection)" if args.inject else "D1 (static prompt)"
+    print(f"Model: {EVAL_MODEL}  |  Temperature: {EVAL_TEMPERATURE}  |  Cases: {len(cases)}  |  Mode: {mode}")
+
     results: dict[str, list[dict]] = {}
     per_case_results: list[dict] = []
 
@@ -68,7 +81,8 @@ def main() -> None:
         difficulty = case["difficulty_tier"]
         results.setdefault(difficulty, [])
         try:
-            intent = clf.classify(case["query"], case["entity_context"])
+            skill_examples = retrieve_skill_examples(case["query"]) if args.inject else []
+            intent = clf.classify(case["query"], case["entity_context"], skill_examples=skill_examples or None)
             scores = score_case(intent, case["ground_truth_intent"])
         except (IntentParseError, Exception):
             scores = {m: False for m in METRICS}
@@ -112,11 +126,13 @@ def main() -> None:
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     now = datetime.now()
     model_slug = EVAL_MODEL.replace(":", "-").replace("/", "-")
-    filename = f"{now.strftime('%Y%m%d_%H%M%S')}_{model_slug}_T{EVAL_TEMPERATURE}.json"
+    inject_suffix = "_injected" if args.inject else ""
+    filename = f"{now.strftime('%Y%m%d_%H%M%S')}_{model_slug}_T{EVAL_TEMPERATURE}{inject_suffix}.json"
     output = {
         "timestamp": now.isoformat(timespec="seconds"),
         "model": EVAL_MODEL,
         "temperature": EVAL_TEMPERATURE,
+        "injection": args.inject,
         "cases_file": CASES_FILE.name,
         "n_cases": n_all,
         "by_tier": by_tier,

@@ -4,7 +4,7 @@
 <div class="flex-grow-1 d-flex flex-column overflow-hidden" id="explore-tab">
 
   {# ── Header: IFC file selector ── #}
-  <div class="border-bottom px-3 py-2 d-flex align-items-center gap-3 flex-shrink-0 bg-body">
+  <div class="border-bottom px-3 py-2 d-flex align-items-center gap-3 flex-shrink-0 bg-body" style="position: relative; z-index: 10;">
     <span class="text-secondary small fw-semibold text-uppercase letter-spacing-1">
       <i class="bi bi-box me-1"></i>IFC Model
     </span>
@@ -45,7 +45,7 @@
   {% else %}
     <div class="flex-grow-1 d-flex overflow-hidden">
 
-      {# ── Left: Spatial tree (30%) ── #}
+      {# ── Left: Spatial tree (260px) ── #}
       <div class="border-end d-flex flex-column overflow-hidden flex-shrink-0"
            style="width: 260px; min-width: 180px; max-width: 340px;">
         <div class="px-3 py-2 border-bottom bg-body-secondary flex-shrink-0">
@@ -60,12 +60,9 @@
         </div>
       </div>
 
-      {# ── Right: Entity table + detail inspector ── #}
+      {# ── Right: Entity table ── #}
       <div class="flex-grow-1 d-flex flex-column overflow-hidden">
-
-        {# Entity table (top) #}
         <div class="flex-grow-1 overflow-auto" id="explore-entities">
-          {# Initial load: all entities for this file #}
           <div hx-get="{% url 'projects:explore_entities' project.pk selected_ifc.pk %}"
                hx-trigger="load"
                hx-target="#explore-entities"
@@ -76,15 +73,31 @@
             </div>
           </div>
         </div>
-
-        {# Entity detail inspector (bottom, hidden until row clicked) #}
-        <div id="explore-detail" class="border-top bg-body-secondary" style="display:none; max-height:40%; overflow-y:auto;">
-        </div>
-
       </div>
+
     </div>
   {% endif %}
 
+</div>
+
+{# ── Entity detail modal ── #}
+<div class="modal fade" id="entityDetailModal" tabindex="-1" aria-labelledby="entityDetailModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header py-2 px-3">
+        <h6 class="modal-title mb-0" id="entityDetailModalLabel">
+          <i class="bi bi-layers me-2 text-primary"></i>Entity Inspector
+        </h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-0" id="entityDetailBody">
+        <div class="d-flex align-items-center justify-content-center p-5 text-secondary">
+          <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+          Loading…
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <style>
@@ -100,24 +113,40 @@
 </style>
 
 <script>
-// Filter entity table to the selected node URL, update active highlight
+// ── Spatial tree filter ──────────────────────────────────────────────────────
 function exploreFilter(el, url) {
   document.querySelectorAll('.explore-tree-node').forEach(n => n.classList.remove('active'));
   el.classList.add('active');
-  htmx.ajax('GET', url, { target: '#explore-entities', swap: 'innerHTML' });
+  // Preserve active search query when switching spatial context
+  const searchInput = document.getElementById('entity-search');
+  const q = searchInput ? searchInput.value.trim() : '';
+  const sep = url.includes('?') ? '&' : '?';
+  const finalUrl = q ? url + sep + 'q=' + encodeURIComponent(q) : url;
+  htmx.ajax('GET', finalUrl, { target: '#explore-entities', swap: 'innerHTML' });
 }
 
-// Load entity detail panel for a clicked row
+// ── Entity detail modal ──────────────────────────────────────────────────────
+let _entityModal = null;
+
 function loadEntityDetail(rowEl, url) {
   document.querySelectorAll('.entity-row').forEach(r => r.classList.remove('selected'));
   rowEl.classList.add('selected');
-  const detail = document.getElementById('explore-detail');
-  detail.style.display = 'block';
-  htmx.ajax('GET', url, { target: '#explore-detail', swap: 'innerHTML' });
+
+  document.getElementById('entityDetailBody').innerHTML =
+    '<div class="d-flex align-items-center justify-content-center p-5 text-secondary">' +
+    '<div class="spinner-border spinner-border-sm me-2" role="status"></div>Loading…</div>';
+
+  if (!_entityModal) {
+    _entityModal = new bootstrap.Modal(document.getElementById('entityDetailModal'));
+  }
+  _entityModal.show();
+
+  htmx.ajax('GET', url, { target: '#entityDetailBody', swap: 'innerHTML' });
 }
 
-// Switch to Ask tab and pre-fill the textarea with entity context
+// ── Cross-tab helpers ────────────────────────────────────────────────────────
 function askAboutEntity(name, globalId, ifcType) {
+  if (_entityModal) _entityModal.hide();
   const askLink = document.querySelector('.tab-ask');
   if (askLink) askLink.click();
   setTimeout(() => {
@@ -129,4 +158,60 @@ function askAboutEntity(name, globalId, ifcType) {
     }
   }, 300);
 }
+
+function modifyEntity(globalId, ifcType, name) {
+  if (_entityModal) _entityModal.hide();
+  const modifyLink = document.querySelector('.tab-modify, [data-tab="modify"]');
+  if (modifyLink) modifyLink.click();
+  setTimeout(() => {
+    const textarea = document.querySelector('#modify-input, textarea[name="modify_message"]');
+    if (textarea) {
+      textarea.value = 'I want to modify the ' + ifcType + ' named "' + name + '" (GlobalID: ' + globalId + ')';
+      if (window.autoGrow) autoGrow(textarea);
+      textarea.focus();
+    }
+  }, 300);
+}
+
+function copyToClipboard(text, btn) {
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<i class="bi bi-check2"></i>';
+    btn.classList.add('btn-success');
+    btn.classList.remove('btn-outline-secondary');
+    setTimeout(() => {
+      btn.innerHTML = orig;
+      btn.classList.remove('btn-success');
+      btn.classList.add('btn-outline-secondary');
+    }, 1500);
+  });
+}
+
+// ── Keyboard navigation ──────────────────────────────────────────────────────
+document.addEventListener('keydown', function(e) {
+  if (document.getElementById('entityDetailModal').classList.contains('show')) return;
+  // Don't hijack when user is typing in search
+  if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+
+  const rows = Array.from(document.querySelectorAll('#explore-entities .entity-row'));
+  if (!rows.length) return;
+
+  const selected = document.querySelector('#explore-entities .entity-row.selected');
+  let idx = rows.indexOf(selected);
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    idx = Math.min(idx + 1, rows.length - 1);
+    rows[idx].click();
+    rows[idx].scrollIntoView({ block: 'nearest' });
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    idx = Math.max(idx - 1, 0);
+    rows[idx].click();
+    rows[idx].scrollIntoView({ block: 'nearest' });
+  } else if (e.key === 'Enter' && selected) {
+    e.preventDefault();
+    selected.click();
+  }
+});
 </script>

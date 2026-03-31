@@ -274,7 +274,10 @@
                 row.classList.add('border-success');
                 icon.innerHTML = '<i class="bi bi-check-circle-fill text-success"></i>';
                 const schemaTag = d.schema_version ? ` · <span class="text-secondary">${escHtml(d.schema_version)}</span>` : '';
-                sub.innerHTML = `IFC${schemaTag} · ${d.entity_count} entities`;
+                const gitTag = d.git_tracked
+                    ? ` · <span class="text-success"><i class="bi bi-git me-1"></i>${escHtml(d.git_commit)}</span>`
+                    : '';
+                sub.innerHTML = `IFC${schemaTag} · ${d.entity_count} entities${gitTag}`;
             } else {
                 row.classList.add('border-success');
                 icon.innerHTML = '<i class="bi bi-check-circle-fill text-success"></i>';

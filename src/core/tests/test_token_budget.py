@@ -95,8 +95,8 @@ def test_compute_budget_falls_back_to_registry_when_ollama_down(monkeypatch):
     """When Ollama is unreachable, compute_budget uses registry value."""
     monkeypatch.setattr("core.token_budget._fetch_context_window_from_ollama", lambda model: None)
     budget = compute_budget("llama3.1:8b", system="Hello")
-    # llama3.1:8b is in registry with context_window_size=8192
-    assert budget.model_context_window == 8192
+    # llama3.1:8b is in registry with context_window_size=128000
+    assert budget.model_context_window == 128000
 
 
 def test_compute_budget_uses_default_when_unknown_model(monkeypatch):

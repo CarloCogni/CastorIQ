@@ -115,21 +115,43 @@ class ModificationService:
                 "Please upload and process an IFC file first."
             )
 
-        # 1. Build entity context for the LLM — token-aware, two-pass
+        # 1. Retrieve skill examples FIRST so injection tokens are known before
+        #    sizing entity context (injection shrinks the available budget).
+        # Local import avoids a circular dependency at module load time
+        # (metacastor imports writeback.models; writeback must not import
+        # metacastor at module level).
+        from metacastor.services.skill_retriever import retrieve as _retrieve_skills
+        from writeback.services.intent_classifier import _format_skill_injection
+
+        try:
+            skill_examples = _retrieve_skills(user_message, project=self.project)
+        except Exception:
+            logger.warning("Skill retrieval failed — proceeding without few-shot injection.")
+            skill_examples = []
+
+        injection_text = _format_skill_injection(skill_examples) if skill_examples else ""
+
+        # 1b. Build entity context — token-aware, two-pass, injection-aware.
         model_name = resolve_model_name(user)
-        prelim_budget = compute_budget(model_name, system=CLASSIFY_SYSTEM_PROMPT)
+        prelim_budget = compute_budget(
+            model_name, system=CLASSIFY_SYSTEM_PROMPT, injected=injection_text
+        )
         entity_context = self.classifier.build_entity_context(
             all_entities, available_tokens=prelim_budget.remaining_for_injection
         )
         final_budget = compute_budget(
-            model_name, system=CLASSIFY_SYSTEM_PROMPT, entity_context=entity_context
+            model_name,
+            system=CLASSIFY_SYSTEM_PROMPT,
+            entity_context=entity_context,
+            injected=injection_text,
         )
         logger.debug(
-            "Modify token budget — model=%s util=%.0f%% total=%d/%d",
+            "Modify token budget — model=%s util=%.0f%% total=%d/%d skill_examples=%d",
             model_name,
             final_budget.utilization_pct,
             final_budget.total_input,
             final_budget.max_usable,
+            len(skill_examples),
         )
         emitter.emit(
             "context_budget",
@@ -146,7 +168,9 @@ class ModificationService:
         # 2. Classify intent via LLM
         emitter.emit("classify", "running", "Classifying intent…")
         try:
-            classified = self.classifier.classify(user_message, entity_context)
+            classified = self.classifier.classify(
+                user_message, entity_context, skill_examples=skill_examples
+            )
 
             # Handle chained operations
             if isinstance(classified, list):
@@ -431,6 +455,11 @@ class ModificationService:
 
         # 7. Sync changed properties back to DB
         self._sync_entity_properties(changes, ifc_file)
+
+        # 8. Harvest skill example — non-blocking, wrapped in harvester's own try/except
+        from metacastor.services.skill_harvester import harvest_skill_example
+
+        harvest_skill_example(proposal, commit_success=True)
 
         logger.info(
             f"Proposal {proposal.id} applied → commit {commit_hash[:8]} ({len(changes)} changes)"

@@ -6,12 +6,14 @@ Each entry maps an Ollama tag to metadata the UI needs.
 Models not in this registry still work — they just show as "Unknown model"
 in the selector (Ollama's /api/tags is the source of truth for availability).
 
-VRAM estimates assume Q4_K_M quantization at 8k context.
+VRAM estimates assume Q4_K_M quantization. Context window sizes reflect
+official model specs and are used as offline fallbacks only — Ollama is
+queried first for live values.
 """
 
 from dataclasses import dataclass
 
-DEFAULT_CONTEXT_WINDOW = 8192  # Conservative fallback for unknown / offline models
+DEFAULT_CONTEXT_WINDOW = 8192  # Last-resort fallback for completely unknown models
 
 
 @dataclass(frozen=True)
@@ -69,7 +71,7 @@ MODEL_REGISTRY: dict[str, ModelInfo] = {
         vram_gb=4.0,
         tier="lite",
         description="Compact Meta model. Good baseline for constrained hardware.",
-        context_window_size=8192,
+        context_window_size=131072,
     ),
     # ── Standard ─────────────────────────────────────────────
     "qwen3:4b": ModelInfo(
@@ -87,7 +89,7 @@ MODEL_REGISTRY: dict[str, ModelInfo] = {
         vram_gb=6.5,
         tier="standard",
         description="Castor's original default. Solid all-rounder.",
-        context_window_size=8192,
+        context_window_size=128000,
     ),
     "qwen3:8b": ModelInfo(
         label="Qwen3 8B",
@@ -144,7 +146,7 @@ MODEL_REGISTRY: dict[str, ModelInfo] = {
         vram_gb=42.0,
         tier="workstation",
         description="Meta's flagship. Needs 48 GB+ VRAM.",
-        context_window_size=8192,
+        context_window_size=131072,
     ),
     # ── Workstation ──────────────────────────────────────────
     "qwen3:235b-a22b": ModelInfo(

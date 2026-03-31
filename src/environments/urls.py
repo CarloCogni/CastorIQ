@@ -63,4 +63,9 @@ urlpatterns = [
         views.ExploreEntityDetailPartial.as_view(),
         name="explore_entity_detail",
     ),
+    path(
+        "<uuid:pk>/explore/ifc/<uuid:ifc_id>/export/",
+        views.ExploreExportView.as_view(),
+        name="explore_export",
+    ),
 ]

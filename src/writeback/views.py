@@ -3,6 +3,7 @@
 
 import json
 import logging
+from itertools import groupby
 from urllib.parse import quote
 
 from django.contrib import messages
@@ -479,24 +480,33 @@ class HistoryView(ProjectTabMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         project = self.get_project()
 
-        # Get all commits across all IFC files in this project
-        commits = (
+        commits_qs = (
             GitCommit.objects.filter(ifc_file__project=project)
             .select_related("ifc_file", "author")
             .prefetch_related("proposal")
-            .order_by("-created_at")
+            .order_by("ifc_file__name", "-created_at")
         )
 
-        # Build a map: original_commit_hash -> restore_commit_hash
-        restored_by = {}
-        for commit in commits:
-            if commit.diff_data.get("operation") == "ROLLBACK":
-                restored_from = commit.diff_data.get("restored_from_hash")
-                if restored_from:
-                    restored_by[restored_from] = commit.commit_hash
+        # Group commits per IFC file so each file has its own history section.
+        files_with_history = []
+        for _file_id, file_commits in groupby(commits_qs, key=lambda c: c.ifc_file_id):
+            file_commits_list = list(file_commits)
+            restored_by = {}
+            for commit in file_commits_list:
+                if commit.diff_data.get("operation") == "ROLLBACK":
+                    restored_from = commit.diff_data.get("restored_from_hash")
+                    if restored_from:
+                        restored_by[restored_from] = commit.commit_hash
+            files_with_history.append(
+                {
+                    "ifc_file": file_commits_list[0].ifc_file,
+                    "commits": file_commits_list,
+                    "restored_by": restored_by,
+                }
+            )
 
-        context["commits"] = commits
-        context["restored_by"] = restored_by
+        context["files_with_history"] = files_with_history
+        context["total_commits"] = commits_qs.count()
 
         return context
 

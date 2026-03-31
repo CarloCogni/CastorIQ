@@ -131,6 +131,39 @@ Parse the user's request into a structured modification intent (JSON only).
 """
 
 
+def _format_skill_injection(examples: list[dict]) -> str:
+    """
+    Format retrieved skill examples as a labeled few-shot block.
+
+    Appended to SYSTEM_PROMPT when skill_examples are available.
+    Each example shows only the essential fields (operation, filter, tier,
+    confidence) to minimise token cost.
+
+    Args:
+        examples: Truncated dicts from skill_retriever.retrieve().
+
+    Returns:
+        Formatted string ready to append to the system prompt.
+    """
+    if not examples:
+        return ""
+
+    lines = ["## Learned Examples (from similar past requests)", ""]
+    for i, ex in enumerate(examples, start=1):
+        lines.append(f"Example {i}:")
+        lines.append(f'Query: "{ex.get("query_text", "")}"')
+        intent_summary = (
+            f'{{"operation": "{ex.get("operation", "")}", '
+            f'"filter": {ex.get("filter", "{}")}, '
+            f'"tier": {ex.get("tier", "")}, '
+            f'"confidence": {ex.get("confidence", "")}}}'
+        )
+        lines.append(f"Intent: {intent_summary}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 class IntentClassifier:
     """
     Classifies user modification requests into structured intents.
@@ -156,13 +189,18 @@ class IntentClassifier:
         self,
         user_message: str,
         entity_context: str,
+        skill_examples: list[dict] | None = None,
     ) -> dict:
         """
         Parse a user's modification request into a structured intent.
 
         Args:
-            user_message: The raw user input (e.g. "Set fire rating to EI120")
+            user_message:   The raw user input (e.g. "Set fire rating to EI120")
             entity_context: Summary of relevant entities from the DB
+            skill_examples: Optional retrieved few-shot examples from the skill
+                            bank. When provided, they are appended to the system
+                            prompt as a labeled few-shot block. None → existing
+                            behaviour, no change to call sites.
 
         Returns:
             Parsed intent dict with tier, operation, filter, etc.
@@ -172,8 +210,13 @@ class IntentClassifier:
         """
         user_message = normalize_message(user_message)
 
+        system_content = SYSTEM_PROMPT
+        if skill_examples:
+            system_content += "\n\n" + _format_skill_injection(skill_examples)
+            logger.debug("Injecting %d skill examples into classifier.", len(skill_examples))
+
         messages = [
-            SystemMessage(content=SYSTEM_PROMPT),
+            SystemMessage(content=system_content),
             HumanMessage(
                 content=USER_TEMPLATE.format(
                     user_message=user_message,

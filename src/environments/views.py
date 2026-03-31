@@ -1,6 +1,7 @@
 # environments/view.py
 """Project views."""
 
+import csv
 import logging
 import os
 
@@ -10,7 +11,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
 from django.db.models import Count, Q
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.views.generic import (
@@ -590,6 +591,7 @@ class FileUploadView(ProjectAccessMixin, TemplateView):
 
             if success:
                 detected_schema = ifc_file.schema_version or ""
+                git_hash = processor.git_commit_hash
                 return JsonResponse(
                     {
                         "success": True,
@@ -598,6 +600,8 @@ class FileUploadView(ProjectAccessMixin, TemplateView):
                         "entity_count": ifc_file.entity_count,
                         "schema_version": detected_schema,
                         "needs_conversion": False,
+                        "git_tracked": bool(git_hash),
+                        "git_commit": git_hash[:8] if git_hash else None,
                     }
                 )
             else:
@@ -860,6 +864,7 @@ class ExploreEntitiesPartial(ProjectAccessMixin, View):
         storey = request.GET.get("storey", "")
         space = request.GET.get("space", "")
         ifc_type = request.GET.get("type", "")
+        q = request.GET.get("q", "").strip()
         page_num = max(1, int(request.GET.get("page", 1) or 1))
 
         filters: dict = {"ifc_file": ifc_file}
@@ -877,16 +882,18 @@ class ExploreEntitiesPartial(ProjectAccessMixin, View):
             .only("id", "global_id", "ifc_type", "name", "building_storey", "space")
             .order_by("ifc_type", "name")
         )
+        if q:
+            qs = qs.filter(Q(name__icontains=q) | Q(global_id__icontains=q))
 
         paginator = Paginator(qs, self.PAGE_SIZE)
         page_obj = paginator.get_page(page_num)
 
-        # Distinct types for filter chips (scoped to building/storey/space selection)
+        # Type chips with counts (scoped to building/storey/space, ignoring active type filter)
         type_filter = {k: v for k, v in filters.items() if k != "ifc_type"}
-        available_types = list(
+        type_counts = list(
             IFCEntity.objects.filter(**type_filter)
-            .values_list("ifc_type", flat=True)
-            .distinct()
+            .values("ifc_type")
+            .annotate(count=Count("id"))
             .order_by("ifc_type")
         )
 
@@ -897,11 +904,12 @@ class ExploreEntitiesPartial(ProjectAccessMixin, View):
                 "page_obj": page_obj,
                 "ifc_file": ifc_file,
                 "project": project,
-                "available_types": available_types,
+                "type_counts": type_counts,
                 "active_type": ifc_type,
                 "current_building": building,
                 "current_storey": storey,
                 "current_space": space,
+                "current_q": q,
             },
         )
 
@@ -946,3 +954,55 @@ class ExploreEntityDetailPartial(ProjectAccessMixin, View):
                 "type_sets": type_sets,
             },
         )
+
+
+class ExploreExportView(ProjectAccessMixin, View):
+    """CSV export of filtered IFC entities."""
+
+    def get(self, request, pk: str, ifc_id: str) -> HttpResponse:
+        project = self.get_project()
+        ifc_file = get_object_or_404(
+            IFCFile, pk=ifc_id, project=project, status=IFCFile.Status.COMPLETED
+        )
+
+        building = request.GET.get("building", "")
+        storey = request.GET.get("storey", "")
+        space = request.GET.get("space", "")
+        ifc_type = request.GET.get("type", "")
+        q = request.GET.get("q", "").strip()
+
+        filters: dict = {"ifc_file": ifc_file}
+        if building:
+            filters["building"] = building
+        if storey:
+            filters["building_storey"] = storey
+        if space:
+            filters["space"] = space
+        if ifc_type:
+            filters["ifc_type"] = ifc_type
+
+        qs = IFCEntity.objects.filter(**filters).order_by("ifc_type", "name")
+        if q:
+            qs = qs.filter(Q(name__icontains=q) | Q(global_id__icontains=q))
+
+        response = HttpResponse(content_type="text/csv")
+        safe_name = ifc_file.name.replace('"', "")
+        response["Content-Disposition"] = f'attachment; filename="{safe_name}_entities.csv"'
+
+        writer = csv.writer(response)
+        writer.writerow(["GlobalID", "Type", "Name", "Building", "Storey", "Space"])
+        for entity in qs.only(
+            "global_id", "ifc_type", "name", "building", "building_storey", "space"
+        ).iterator():
+            writer.writerow(
+                [
+                    entity.global_id,
+                    entity.ifc_type,
+                    entity.name or "",
+                    entity.building or "",
+                    entity.building_storey or "",
+                    entity.space or "",
+                ]
+            )
+
+        return response

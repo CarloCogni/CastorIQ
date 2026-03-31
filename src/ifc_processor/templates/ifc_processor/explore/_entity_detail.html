@@ -2,31 +2,44 @@
 <!--   HTMX partial: property inspector for a single IFC entity.-->
 <!--   Context: entity (IFCEntity), project, property_sets, quantity_sets, type_sets -->
 
-<div class="p-3">
-
-  {# ── Entity header ── #}
-  <div class="d-flex align-items-start justify-content-between mb-3">
+{# ── Entity header ── #}
+<div class="px-3 pt-3 pb-2 border-bottom">
+  <div class="d-flex align-items-start justify-content-between gap-2">
     <div>
       <span class="badge bg-primary me-2">{{ entity.ifc_type }}</span>
-      <strong>{{ entity.name|default:"(unnamed)" }}</strong>
-      <div class="text-secondary small mt-1 font-monospace">{{ entity.global_id }}</div>
-    </div>
-    <div class="d-flex gap-2 flex-shrink-0">
-      <button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('explore-detail').style.display='none';" title="Close">
-        <i class="bi bi-x"></i>
-      </button>
+      <strong class="fs-6">{{ entity.name|default:"(unnamed)" }}</strong>
+      <div class="d-flex align-items-center gap-2 mt-1">
+        <span class="text-secondary small font-monospace">{{ entity.global_id }}</span>
+        <button class="btn btn-sm btn-outline-secondary py-0 px-1" style="font-size:0.7rem; line-height:1.4;"
+                onclick="copyToClipboard('{{ entity.global_id }}', this)" title="Copy GlobalID">
+          <i class="bi bi-clipboard"></i>
+        </button>
+      </div>
     </div>
   </div>
 
   {# ── Spatial path ── #}
   {% if entity.building or entity.building_storey or entity.space %}
-  <div class="mb-3 small text-secondary">
+  <div class="mt-2 small text-secondary">
     <i class="bi bi-geo-alt me-1"></i>
     {% if entity.building %}<span>{{ entity.building }}</span>{% endif %}
     {% if entity.building_storey %}<span class="mx-1 opacity-50">›</span><span>{{ entity.building_storey }}</span>{% endif %}
     {% if entity.space %}<span class="mx-1 opacity-50">›</span><span>{{ entity.space }}</span>{% endif %}
   </div>
   {% endif %}
+</div>
+
+{# ── AI description ── #}
+{% if entity.description %}
+<div class="px-3 py-2 border-bottom" style="background: rgba(59,130,246,0.05);">
+  <div class="small fw-semibold text-primary mb-1">
+    <i class="bi bi-stars me-1"></i>AI Summary
+  </div>
+  <p class="small mb-0 text-body-secondary">{{ entity.description }}</p>
+</div>
+{% endif %}
+
+<div class="p-3">
 
   {# ── Properties (Pset_*) ── #}
   {% if property_sets %}
@@ -109,4 +122,25 @@
     <p class="text-secondary small fst-italic">No properties stored for this entity.</p>
   {% endif %}
 
+</div>
+
+{# ── Action footer ── #}
+<div class="border-top px-3 py-2 d-flex gap-2 bg-body-tertiary flex-shrink-0">
+  <button class="btn btn-sm btn-outline-primary"
+          onclick="askAboutEntity('{{ entity.name|escapejs }}', '{{ entity.global_id }}', '{{ entity.ifc_type }}')"
+          title="Switch to Ask tab and query this element">
+    <i class="bi bi-chat-dots me-1"></i>Ask about this
+  </button>
+  <button class="btn btn-sm btn-outline-warning"
+          onclick="modifyEntity('{{ entity.global_id }}', '{{ entity.ifc_type }}', '{{ entity.name|escapejs }}')"
+          title="Switch to Modify tab with this element pre-filled">
+    <i class="bi bi-pencil me-1"></i>Modify
+  </button>
+  <div class="ms-auto">
+    <button class="btn btn-sm btn-outline-secondary"
+            onclick="copyToClipboard('{{ entity.global_id }}', this)"
+            title="Copy GlobalID to clipboard">
+      <i class="bi bi-clipboard me-1"></i>Copy GlobalID
+    </button>
+  </div>
 </div>

@@ -105,9 +105,17 @@
             <div class="px-4 pt-3 pb-0">
                 <ul class="nav nav-tabs" id="tierHelpTabs" role="tablist">
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link active d-flex align-items-center gap-2 fs-7" id="tier1-tab"
+                        <button class="nav-link active d-flex align-items-center gap-2 fs-7" id="howItWorks-tab"
+                                data-bs-toggle="tab" data-bs-target="#howItWorks-panel" type="button"
+                                role="tab" aria-controls="howItWorks-panel" aria-selected="true">
+                            <i class="bi bi-info-circle"></i>
+                            How It Works
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link d-flex align-items-center gap-2 fs-7" id="tier1-tab"
                                 data-bs-toggle="tab" data-bs-target="#tier1-panel" type="button"
-                                role="tab" aria-controls="tier1-panel" aria-selected="true">
+                                role="tab" aria-controls="tier1-panel" aria-selected="false">
                             <span class="badge rounded-pill text-white" style="background-color: var(--castor-success, #22c55e);">1</span>
                             Property Changes
                         </button>
@@ -125,7 +133,7 @@
                                 data-bs-toggle="tab" data-bs-target="#tier3-panel" type="button"
                                 role="tab" aria-controls="tier3-panel" aria-selected="false">
                             <span class="badge rounded-pill text-white bg-danger">3</span>
-                            Structural
+                            Code Generation
                         </button>
                     </li>
                 </ul>
@@ -135,17 +143,136 @@
                 <div class="tab-content" id="tierHelpTabContent">
 
                     <!-- ════════════════════════════════════ -->
+                    <!-- HOW IT WORKS                        -->
+                    <!-- ════════════════════════════════════ -->
+                    <div class="tab-pane fade show active" id="howItWorks-panel" role="tabpanel" aria-labelledby="howItWorks-tab">
+
+                        <p class="text-secondary fs-7 mb-3">
+                            Castor uses a <strong>Risk-Stratified Autonomous Action (RSAA)</strong> model.
+                            Instead of letting the LLM write directly to your IFC file, every request goes through a structured
+                            safety pipeline with human approval before anything is written.
+                        </p>
+
+                        <!-- Geometry out of scope — always first -->
+                        <div class="alert alert-warning d-flex align-items-start gap-2 fs-8 mb-4">
+                            <i class="bi bi-slash-circle-fill flex-shrink-0 mt-1"></i>
+                            <div>
+                                <strong>Geometry is always out of scope.</strong>
+                                Castor modifies properties, attributes, classifications, and materials only.
+                                It does not move, resize, reshape, or create physical geometry.
+                                The only spatial operation available is <em>level reassignment</em> (Tier 3).
+                            </div>
+                        </div>
+
+                        <!-- Pipeline steps -->
+                        <h6 class="fw-semibold fs-8 mb-3 text-secondary text-uppercase">How every request is processed</h6>
+                        <div class="d-flex flex-column gap-3 mb-4">
+
+                            <div class="d-flex gap-3 align-items-start">
+                                <div class="rounded-circle bg-secondary-subtle text-secondary fw-bold d-flex align-items-center justify-content-center flex-shrink-0" style="width:26px;height:26px;font-size:0.7rem;">1</div>
+                                <div>
+                                    <div class="fw-semibold fs-8">Intent Classification</div>
+                                    <div class="text-secondary fs-8">The LLM reads your message and classifies the intent: which tier, which operation, which entities, which properties, and with what values. It produces structured JSON — the IFC file is not touched.</div>
+                                </div>
+                            </div>
+
+                            <div class="d-flex gap-3 align-items-start">
+                                <div class="rounded-circle bg-secondary-subtle text-secondary fw-bold d-flex align-items-center justify-content-center flex-shrink-0" style="width:26px;height:26px;font-size:0.7rem;">2</div>
+                                <div>
+                                    <div class="fw-semibold fs-8">Validation &amp; Automatic Escalation</div>
+                                    <div class="text-secondary fs-8">Castor validates the intent against your actual IFC data. If validation fails (e.g. property not found, pset missing), it <strong>auto-escalates</strong> to the next tier — always trying the safest tier first.</div>
+                                </div>
+                            </div>
+
+                            <div class="d-flex gap-3 align-items-start">
+                                <div class="rounded-circle bg-secondary-subtle text-secondary fw-bold d-flex align-items-center justify-content-center flex-shrink-0" style="width:26px;height:26px;font-size:0.7rem;">3</div>
+                                <div>
+                                    <div class="fw-semibold fs-8">Guardian Check (RAV)</div>
+                                    <div class="text-secondary fs-8">Before presenting a proposal, Castor cross-checks the intended change against your uploaded technical documents. This is advisory — it flags contradictions but never blocks the proposal.</div>
+                                </div>
+                            </div>
+
+                            <div class="d-flex gap-3 align-items-start">
+                                <div class="rounded-circle bg-primary-subtle text-primary fw-bold d-flex align-items-center justify-content-center flex-shrink-0" style="width:26px;height:26px;font-size:0.7rem;">4</div>
+                                <div>
+                                    <div class="fw-semibold fs-8">Your Approval</div>
+                                    <div class="text-secondary fs-8">You see a <strong>diff preview</strong> (Tier 1 &amp; 2) or <strong>generated code</strong> (Tier 3) before anything is written. Nothing runs without your explicit approval.</div>
+                                </div>
+                            </div>
+
+                            <div class="d-flex gap-3 align-items-start">
+                                <div class="rounded-circle bg-secondary-subtle text-secondary fw-bold d-flex align-items-center justify-content-center flex-shrink-0" style="width:26px;height:26px;font-size:0.7rem;">5</div>
+                                <div>
+                                    <div class="fw-semibold fs-8">Git Snapshot → Execute → Sync</div>
+                                    <div class="text-secondary fs-8">On approval, a Git snapshot of the IFC file is taken, the change executes, then the database is synced. Every approved change is reversible from the History tab.</div>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <!-- Tier summary table -->
+                        <h6 class="fw-semibold fs-8 mb-3 text-secondary text-uppercase">The three tiers</h6>
+                        <div class="table-responsive mb-4">
+                            <table class="table table-sm table-bordered fs-8 mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width:18%;">Tier</th>
+                                        <th>What the LLM does</th>
+                                        <th>What executes</th>
+                                        <th>When used</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><span class="badge text-white" style="background-color:#22c55e;">1 GREEN</span></td>
+                                        <td>Extracts structured intent (JSON) only</td>
+                                        <td>Pre-coded, fully validated handlers — LLM never writes to the file</td>
+                                        <td>Single property or attribute changes</td>
+                                    </tr>
+                                    <tr>
+                                        <td><span class="badge text-white" style="background-color:#f97316;">2 ORANGE</span></td>
+                                        <td>Generates an ordered operation plan (JSON steps)</td>
+                                        <td>Each step validated independently before execution</td>
+                                        <td>Multi-step ops, Pset management, materials, classifications</td>
+                                    </tr>
+                                    <tr>
+                                        <td><span class="badge text-white bg-danger">3 RED</span></td>
+                                        <td>Generates IfcOpenShell Python code</td>
+                                        <td>7-layer sandbox + mandatory human code review</td>
+                                        <td>Entity creation / deletion, spatial ops, relationships</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Key distinction: REMOVE_PROPERTY vs REMOVE_PSET -->
+                        <div class="alert alert-light border fs-8 mb-0">
+                            <h6 class="fw-semibold fs-8 mb-2"><i class="bi bi-lightbulb me-1"></i> Common point of confusion</h6>
+                            <ul class="mb-0 ps-3">
+                                <li><strong>Remove a property</strong> (e.g. "Remove FireRating from all walls") → Tier 1 <code>REMOVE_PROPERTY</code>. The property set survives; only that one key is deleted.</li>
+                                <li><strong>Remove an entire property set</strong> (e.g. "Remove Pset_Maintenance from all doors") → Tier 2 <code>REMOVE_PSET</code>. The whole Pset and all its properties are deleted.</li>
+                            </ul>
+                        </div>
+
+                    </div>
+
+                    <!-- ════════════════════════════════════ -->
                     <!-- TIER 1 — GREEN                      -->
                     <!-- ════════════════════════════════════ -->
-                    <div class="tab-pane fade show active" id="tier1-panel" role="tabpanel" aria-labelledby="tier1-tab">
+                    <div class="tab-pane fade" id="tier1-panel" role="tabpanel" aria-labelledby="tier1-tab">
 
                         <div class="d-flex align-items-center gap-2 mb-3">
                             <span class="badge rounded-pill text-white" style="background-color: var(--castor-success, #22c55e);">Tier 1 – GREEN</span>
-                            <span class="text-secondary fs-8">Single property or attribute changes. Auto-detected.</span>
+                            <span class="text-secondary fs-8">Single property or attribute changes. LLM extracts intent only — pre-coded handlers execute.</span>
                         </div>
 
+<!--                        <div class="alert alert-warning d-flex align-items-center gap-2 fs-8 py-2 mb-3">-->
+<!--                            <i class="bi bi-slash-circle-fill flex-shrink-0"></i>-->
+<!--                            <span><strong>Geometry is out of scope.</strong> Castor works on properties, attributes, classifications, and materials only.</span>-->
+<!--                        </div>-->
+
                         <p class="text-secondary fs-7 mb-4">
-                            Click any example to paste it into the input. Castor will preview the changes before writing anything.
+                            Click any example to paste it into the input. Castor will show a diff preview before writing anything.
                         </p>
 
                         <!-- SET_PROPERTY -->
@@ -206,7 +333,15 @@
                                 <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
                                     Remove AcousticRating from wall W-01
                                 </button>
+                                <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
+                                    Remove the Reference property from all doors on Level 1
+                                </button>
                             </div>
+                            <p class="text-secondary fs-8 mt-2 mb-0">
+                                <i class="bi bi-info-circle me-1"></i>
+                                Removes a single property from within a property set — the Pset itself is preserved.
+                                To remove an <strong>entire property set</strong>, use <strong>Tier 2 → REMOVE_PSET</strong>.
+                            </p>
                         </div>
 
                         <!-- SET_ATTRIBUTE -->
@@ -301,14 +436,22 @@
                         <!-- REMOVE_PSET -->
                         <div class="mb-4">
                             <h6 class="fw-semibold d-flex align-items-center gap-2 mb-3">
-                                <i class="bi bi-folder-minus text-danger"></i> Remove a property set
+                                <i class="bi bi-folder-minus text-danger"></i> Remove an entire property set
                                 <span class="badge bg-danger-subtle text-danger fs-9">REMOVE_PSET</span>
                             </h6>
                             <div class="d-flex flex-column gap-2">
                                 <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
                                     Remove the Pset_Maintenance property set from all doors
                                 </button>
+                                <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
+                                    Remove the Pset_FireCompliance property set from all external walls
+                                </button>
                             </div>
+                            <p class="text-secondary fs-8 mt-2 mb-0">
+                                <i class="bi bi-info-circle me-1"></i>
+                                Removes the <strong>entire property set</strong> and all properties it contains.
+                                To remove only a single property within a Pset, use <strong>Tier 1 → REMOVE_PROPERTY</strong>.
+                            </p>
                         </div>
 
                         <!-- SET_CLASSIFICATION -->
@@ -385,89 +528,91 @@
                     <!-- ════════════════════════════════════ -->
                     <div class="tab-pane fade" id="tier3-panel" role="tabpanel" aria-labelledby="tier3-tab">
 
-                        <div class="d-flex align-items-center gap-2 mb-1">
+                        <div class="d-flex align-items-center gap-2 mb-3">
                             <span class="badge rounded-pill text-white bg-danger">Tier 3 – RED</span>
-                            <span class="text-secondary fs-8">Direct IfcOpenShell scripting. Coming soon.</span>
+                            <span class="text-secondary fs-8">LLM generates IfcOpenShell Python code. 7-layer sandbox + mandatory code review.</span>
                         </div>
 
-                        <div class="text-center py-5">
-                            <p class="text-secondary fs-7 mb-2">
-                                These requests generate IfcOpenShell Python code that runs in a sandboxed environment.
-                                You review the code and type <strong>CONFIRM</strong> before execution. Click any example to try it.
+                        <p class="text-secondary fs-7 mb-4">
+                            These requests generate IfcOpenShell Python code that runs in a sandboxed environment.
+                            You review the generated code and type <strong>CONFIRM</strong> before execution. Click any example to try it.
+                        </p>
+
+                        <!-- Create entities -->
+                        <div class="mb-4">
+                            <h6 class="fw-semibold d-flex align-items-center gap-2 mb-3">
+                                <i class="bi bi-plus-square text-danger"></i> Create entities
+                                <span class="badge bg-danger-subtle text-danger fs-9">CREATE</span>
+                            </h6>
+                            <div class="d-flex flex-column gap-2">
+                                <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
+                                    Create a new IfcSpace called "Office-101" on Level 1
+                                </button>
+                                <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
+                                    Create three new IfcZone entities for Fire Zone A, Fire Zone B, and Fire Zone C
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Delete entities -->
+                        <div class="mb-4">
+                            <h6 class="fw-semibold d-flex align-items-center gap-2 mb-3">
+                                <i class="bi bi-trash text-danger"></i> Delete entities
+                                <span class="badge bg-danger-subtle text-danger fs-9">DELETE</span>
+                            </h6>
+                            <div class="d-flex flex-column gap-2">
+                                <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
+                                    Delete all IfcFurnishingElement entities from the model
+                                </button>
+                                <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
+                                    Remove all unnamed IfcBuildingElementProxy entities
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Spatial operations -->
+                        <div class="mb-4">
+                            <h6 class="fw-semibold d-flex align-items-center gap-2 mb-3">
+                                <i class="bi bi-arrows-move text-danger"></i> Spatial operations
+                                <span class="badge bg-danger-subtle text-danger fs-9">SPATIAL</span>
+                            </h6>
+                            <div class="d-flex flex-column gap-2">
+                                <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
+                                    Move door D-03 from Level 1 to Level 2
+                                </button>
+                                <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
+                                    Reassign all windows on Level 0 to Level 1
+                                </button>
+                            </div>
+                            <p class="text-secondary fs-8 mt-2 mb-0">
+                                <i class="bi bi-info-circle me-1"></i>
+                                Level reassignment is the only spatial operation in scope. Geometry, shape, and placement are not modified.
                             </p>
+                        </div>
 
-                            <!-- Create entities -->
-                            <div class="mb-4">
-                                <h6 class="fw-semibold d-flex align-items-center gap-2 mb-3">
-                                    <i class="bi bi-plus-square text-danger"></i> Create entities
-                                    <span class="badge bg-danger-subtle text-danger fs-9">CREATE</span>
-                                </h6>
-                                <div class="d-flex flex-column gap-2">
-                                    <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
-                                        Create a new IfcSpace called "Office-101" on Level 1
-                                    </button>
-                                    <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
-                                        Create three new IfcZone entities for Fire Zone A, Fire Zone B, and Fire Zone C
-                                    </button>
-                                </div>
+                        <!-- Relationships -->
+                        <div class="mb-4">
+                            <h6 class="fw-semibold d-flex align-items-center gap-2 mb-3">
+                                <i class="bi bi-diagram-2 text-danger"></i> Relationships
+                                <span class="badge bg-danger-subtle text-danger fs-9">RELATIONSHIPS</span>
+                            </h6>
+                            <div class="d-flex flex-column gap-2">
+                                <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
+                                    Group all columns under the main building using IfcRelAggregates
+                                </button>
                             </div>
+                        </div>
 
-                            <!-- Delete entities -->
-                            <div class="mb-4">
-                                <h6 class="fw-semibold d-flex align-items-center gap-2 mb-3">
-                                    <i class="bi bi-trash text-danger"></i> Delete entities
-                                    <span class="badge bg-danger-subtle text-danger fs-9">DELETE</span>
-                                </h6>
-                                <div class="d-flex flex-column gap-2">
-                                    <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
-                                        Delete all IfcFurnishingElement entities from the model
-                                    </button>
-                                    <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
-                                        Remove all unnamed IfcBuildingElementProxy entities
-                                    </button>
-                                </div>
-                            </div>
-
-                            <!-- Move / Spatial -->
-                            <div class="mb-4">
-                                <h6 class="fw-semibold d-flex align-items-center gap-2 mb-3">
-                                    <i class="bi bi-arrows-move text-danger"></i> Spatial operations
-                                    <span class="badge bg-danger-subtle text-danger fs-9">SPATIAL</span>
-                                </h6>
-                                <div class="d-flex flex-column gap-2">
-                                    <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
-                                        Move door D-03 from Level 1 to Level 2
-                                    </button>
-                                    <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
-                                        Reassign all windows on Level 0 to Level 1
-                                    </button>
-                                </div>
-                            </div>
-
-                            <!-- Relationships -->
-                            <div class="mb-4">
-                                <h6 class="fw-semibold d-flex align-items-center gap-2 mb-3">
-                                    <i class="bi bi-diagram-2 text-danger"></i> Relationships
-                                    <span class="badge bg-danger-subtle text-danger fs-9">RELATIONSHIPS</span>
-                                </h6>
-                                <div class="d-flex flex-column gap-2">
-                                    <button class="btn btn-outline-secondary text-start fs-8 tier1-example" data-bs-dismiss="modal">
-                                        Group all columns under the main building using IfcRelAggregates
-                                    </button>
-                                </div>
-                            </div>
-
-                            <!-- TIPS T3 -->
-                            <div class="alert alert-danger border fs-8 mb-0" style="background: rgba(239,68,68,0.05);">
-                                <h6 class="fw-semibold fs-8 mb-2"><i class="bi bi-shield-exclamation me-1"></i> Safety notes</h6>
-                                <ul class="mb-0 ps-3">
-                                    <li>Generated code runs on a <strong>copy</strong> of your IFC file — the original is safe until you confirm</li>
-                                    <li>A Git snapshot is taken before execution — you can always restore from History</li>
-                                    <li><strong>Read the generated code</strong> before typing CONFIRM</li>
-                                    <li>If the code looks wrong, reject and rephrase your request</li>
-                                    <li>Complex operations may have lower confidence — this is expected</li>
-                                </ul>
-                            </div>
+                        <!-- TIPS T3 -->
+                        <div class="alert alert-danger border fs-8 mb-0" style="background: rgba(239,68,68,0.05);">
+                            <h6 class="fw-semibold fs-8 mb-2"><i class="bi bi-shield-exclamation me-1"></i> Safety notes</h6>
+                            <ul class="mb-0 ps-3">
+                                <li>Generated code runs on a <strong>copy</strong> of your IFC file — the original is safe until you confirm</li>
+                                <li>A Git snapshot is taken before execution — you can always restore from History</li>
+                                <li><strong>Read the generated code</strong> before typing CONFIRM</li>
+                                <li>If the code looks wrong, reject and rephrase your request</li>
+                                <li>Complex operations may have lower confidence — this is expected</li>
+                            </ul>
                         </div>
 
                     </div>
@@ -626,35 +771,8 @@ const ModifyChat = {
         this.scrollToBottom();
     },
 
-    _renderContextBudget(data) {
-        const pct = data.detail?.utilization_pct ?? 0;
-        const total = data.detail?.total_input ?? 0;
-        const windowSize = data.detail?.context_window ?? 0;
-        const color = pct >= 90 ? 'danger' : pct >= 80 ? 'warning' : pct >= 60 ? 'info' : 'secondary';
-        const html = `
-            <div class="d-flex align-items-center gap-2 mt-1 mb-1 px-1" id="modify-context-budget">
-                <div class="progress flex-grow-1" style="height:3px;">
-                    <div class="progress-bar bg-${color}" style="width:${Math.min(pct, 100)}%"></div>
-                </div>
-                <small class="text-secondary fs-8 flex-shrink-0">
-                    Context: ${pct.toFixed(0)}% (${total.toLocaleString()} / ${windowSize.toLocaleString()} tokens)
-                </small>
-            </div>`;
-        // Insert after progress tracker if present, otherwise append to chat
-        const tracker = document.getElementById('modify-progress-tracker');
-        if (tracker) {
-            tracker.insertAdjacentHTML('afterend', html);
-        } else {
-            this.chatEl.insertAdjacentHTML('beforeend', html);
-        }
-        this.scrollToBottom();
-    },
-
     _updateProgressPhase(data) {
-        if (data.phase === 'context_budget') {
-            this._renderContextBudget(data);
-            return;
-        }
+        if (data.phase === 'context_budget') return;
 
         const tracker = document.getElementById('modify-progress-tracker');
         if (!tracker) return;
