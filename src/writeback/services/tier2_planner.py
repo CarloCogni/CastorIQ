@@ -85,17 +85,18 @@ Return ONLY valid JSON (no markdown, no explanation):
 
 ## Rules
 
-1. Each step MUST have: operation, filter, params, explanation.
-2. Steps execute in order. Later steps can depend on earlier ones
+1. ONLY include steps that are explicitly required to fulfill what the user asked.
+   Do not infer, add, or "improve" with steps the user did not request.
+2. Each step MUST have: operation, filter, params, explanation.
+3. Steps execute in order. Later steps can depend on earlier ones
    (e.g. ADD_PSET first, then SET_PROPERTY on that pset).
-3. Use the most specific filter possible for each step.
-4. If ALL steps are simple property/attribute changes, this should be Tier 1
-   (chained). Only use Tier 2 if at least one step needs a Tier 2 operation,
-   OR if the decomposition requires LLM reasoning (implicit multi-step).
-5. If the request involves creating/deleting entities or geometry, set tier: 3
+4. Use the most specific filter possible for each step.
+5. If ALL steps are simple property/attribute changes, this should be Tier 1
+   (chained). Only use Tier 2 if at least one step needs a Tier 2 operation.
+6. If the request involves creating/deleting entities or geometry, set tier: 3
    with only "explanation" and "confidence".
-6. Maximum 10 steps per plan.
-7. Be conservative with confidence.
+7. Maximum 10 steps per plan.
+8. Be conservative with confidence.
 
 ## Common Property Sets
 
@@ -134,7 +135,7 @@ Plan:
   "explanation": "Add fire compliance tracking and classification to all external walls"
 }
 
-User: "Assign concrete material to all columns and set them as load bearing"
+User: "Assign concrete material to all walls"
 Plan:
 {
   "tier": 2,
@@ -142,20 +143,37 @@ Plan:
     {
       "step": 1,
       "operation": "SET_MATERIAL",
-      "filter": {"ifc_type": "IfcColumn"},
+      "filter": {"ifc_type": "IfcWall"},
       "params": {"material_name": "Concrete"},
-      "explanation": "Assign concrete material to all columns"
+      "explanation": "Assign concrete material to all walls"
+    }
+  ],
+  "confidence": 0.95,
+  "explanation": "Single material assignment — no additional steps inferred"
+}
+
+User: "Add a fire compliance property set to all structural columns with FS-2026 standard, and classify them under the FireSafety system"
+Plan:
+{
+  "tier": 2,
+  "plan": [
+    {
+      "step": 1,
+      "operation": "ADD_PSET",
+      "filter": {"ifc_type": "IfcColumn"},
+      "params": {"pset_name": "Pset_FireCompliance", "properties": {"Standard": "FS-2026", "Status": "Pending"}},
+      "explanation": "Create fire compliance property set on all columns"
     },
     {
       "step": 2,
-      "operation": "SET_PROPERTY",
+      "operation": "SET_CLASSIFICATION",
       "filter": {"ifc_type": "IfcColumn"},
-      "params": {"pset": "Pset_ColumnCommon", "property": "LoadBearing", "new_value": true},
-      "explanation": "Set all columns as load bearing"
+      "params": {"system_name": "FireSafety", "reference": "FS-2026/SC", "name": "Structural Column Fire Compliance"},
+      "explanation": "Classify columns under fire safety standard"
     }
   ],
-  "confidence": 0.9,
-  "explanation": "Assign concrete material and mark all columns as load bearing"
+  "confidence": 0.88,
+  "explanation": "Add fire compliance tracking and classification to all structural columns"
 }
 """
 

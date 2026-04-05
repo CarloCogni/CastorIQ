@@ -201,8 +201,9 @@
                         </span>
                     </div>
                     <p class="text-secondary fs-7 mb-2">
-                        This element has no property sets. It was imported, but won't
-                        participate in semantic conflict detection or property-based queries.
+                        This element has no property sets. If document specifications require
+                        properties for this element type, the conflict scan will flag it as
+                        non-compliant — compliance cannot be verified from property values alone.
                     </p>
                     <div class="d-flex flex-wrap gap-3 fs-8 text-secondary">
                         <span><i class="bi bi-file-code me-1"></i>{{ issue.ifc_file.name }}</span>

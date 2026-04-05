@@ -83,7 +83,8 @@ Step 2 — COMPARE: For each extracted requirement, look up the same property in
          IFC entity's current properties and compare:
          - Values match or are equivalent → NOT a conflict. Skip it.
          - Values differ → flag as a conflict.
-         - Property absent in IFC → NOT a conflict (missing data, not contradiction).
+         - Property absent in IFC but entity has other properties → NOT a conflict (property may be optional or not applicable to this element).
+         - Entity has NO properties at all (shown as "(no properties)") AND document explicitly requires a specific value for this element type → flag as a conflict: required data is absent. Use ifc_value: "absent (no property sets)", suggested_fix: "Add [PropertyName] = [RequiredValue] to [EntityName] — required by document".
          - Requirement is ambiguous → NOT a conflict (uncertainty, not contradiction).
 
 ## Critical rules:

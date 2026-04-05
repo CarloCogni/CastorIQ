@@ -90,9 +90,11 @@ class ModifyView(ProjectTabMixin, TemplateView):
 
         context["session"] = session
         context["active_session_id"] = session.pk
-        context["messages"] = session.messages.select_related(
-            "proposal", "proposal__git_commit"
-        ).order_by("created_at")
+        context["messages"] = (
+            session.messages.select_related("proposal", "proposal__git_commit")
+            .prefetch_related("proposal__failure_records")
+            .order_by("created_at")
+        )
 
         # Pending proposals for the sidebar
         from writeback.models import ModificationProposal
@@ -282,12 +284,33 @@ class ModifyView(ProjectTabMixin, TemplateView):
                 {"status": "error", "message": "Proposal not found or not pending."}, status=404
             )
 
+        proposal.reviewed_by = request.user
+        proposal.reviewed_at = timezone.now()
+        proposal.save(update_fields=["reviewed_by", "reviewed_at"])
+
         svc = ModificationService(project)
 
         try:
             git_commit = svc.execute(proposal)
         except ModificationError as e:
-            return JsonResponse({"status": "error", "message": str(e)})
+            payload: dict = {"status": "error", "message": str(e)}
+            failure_id = getattr(e, "failure_record_id", None)
+            if failure_id:
+                try:
+                    from metacastor.models import FailureRecord
+
+                    rec = FailureRecord.objects.get(pk=failure_id)
+                    payload["failure"] = {
+                        "id": str(rec.id),
+                        "error_type": rec.error_type,
+                        "category": rec.category,
+                        "diagnosis": rec.diagnosis,
+                        "failure_phase": rec.failure_phase,
+                        "is_retryable": rec.category == "RETRYABLE",
+                    }
+                except Exception:
+                    payload["failure_record_id"] = failure_id
+            return JsonResponse(payload)
 
         # Auto-resolve linked conflicts
         resolved_count = 0

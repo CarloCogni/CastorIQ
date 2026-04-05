@@ -59,7 +59,7 @@ class ProjectTabMixin(ProjectAccessMixin):
                 .order_by("-updated_at")
             )
         else:
-            context["chat_sessions"] = ChatSession.objects.none()
+            context["chat_sessions"] = None
 
         # Active session ID for sidebar highlight (set by child views)
         context.setdefault("active_session_id", None)

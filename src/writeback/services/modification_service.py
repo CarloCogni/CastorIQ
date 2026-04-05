@@ -42,7 +42,9 @@ logger = logging.getLogger(__name__)
 class ModificationError(Exception):
     """User-facing error for modification failures."""
 
-    pass
+    def __init__(self, message: str, failure_record_id: str | None = None) -> None:
+        super().__init__(message)
+        self.failure_record_id = failure_record_id
 
 
 class ModificationService:
@@ -80,6 +82,7 @@ class ModificationService:
         ifc_file=None,
         message_obj=None,
         emitter: PipelineEmitter | None = None,
+        failure_context: str | None = None,
     ) -> ModificationProposal:
         """
         Classify user intent, validate, and create a pending proposal.
@@ -88,10 +91,12 @@ class ModificationService:
         for the user to review and approve.
 
         Args:
-            user_message: Natural language modification request
-            user: The requesting user
-            ifc_file: Specific IFC file (auto-detected if None)
-            message_obj: Optional chat Message to link
+            user_message:    Natural language modification request
+            user:            The requesting user
+            ifc_file:        Specific IFC file (auto-detected if None)
+            message_obj:     Optional chat Message to link
+            failure_context: Optional context string from a prior FailureRecord,
+                             injected into the classifier's system prompt on retry.
 
         Returns:
             ModificationProposal with status=PENDING
@@ -101,7 +106,22 @@ class ModificationService:
         """
         emitter = emitter or NullEmitter()
 
-        # 0. Sanity check — do we have any entities?
+        # 0a. Feasibility pre-check — reject vague requests before any expensive work.
+        from writeback.services.feasibility_checker import FeasibilityChecker
+
+        emitter.emit("feasibility", "running", "Checking request feasibility…")
+        feasibility = FeasibilityChecker(user=user).check(user_message)
+        if not feasibility.feasible:
+            emitter.emit("feasibility", "error", feasibility.reason)
+            self._raise_with_failure_record(
+                ValueError(f"Request too vague: {feasibility.reason}"),
+                phase="VALIDATION",
+                query_text=user_message,
+                intent_json=None,
+            )
+        emitter.emit("feasibility", "done", "Request looks specific enough")
+
+        # 0b. Sanity check — do we have any entities?
         all_entities = list(
             IFCEntity.objects.filter(
                 ifc_file__project=self.project,
@@ -130,6 +150,17 @@ class ModificationService:
             skill_examples = []
 
         injection_text = _format_skill_injection(skill_examples) if skill_examples else ""
+
+        n = len(skill_examples)
+        self._skill_count = n  # consumed by consumer serialization
+        emitter.emit(
+            "skills",
+            "done",
+            f"{n} skill example{'s' if n != 1 else ''} retrieved"
+            if n
+            else "No skill examples found",
+            {"skill_count": n},
+        )
 
         # 1b. Build entity context — token-aware, two-pass, injection-aware.
         model_name = resolve_model_name(user)
@@ -169,7 +200,10 @@ class ModificationService:
         emitter.emit("classify", "running", "Classifying intent…")
         try:
             classified = self.classifier.classify(
-                user_message, entity_context, skill_examples=skill_examples
+                user_message,
+                entity_context,
+                skill_examples=skill_examples,
+                failure_context=failure_context,
             )
 
             # Handle chained operations
@@ -208,6 +242,14 @@ class ModificationService:
             },
         )
 
+        if tier == 0:
+            explanation = intent.get("explanation", "Request is too ambiguous to process.")
+            self._raise_with_failure_record(
+                ValueError(f"Ambiguous request: {explanation}"),
+                phase="VALIDATION",
+                query_text=user_message,
+                intent_json=intent,
+            )
         if tier == 2:
             return self._propose_tier2(
                 user_message,
@@ -262,7 +304,12 @@ class ModificationService:
                 # Type/enum errors are user errors — surface them directly
                 if "not found on any" not in validation.error:
                     emitter.emit("validate", "error", validation.error)
-                    raise ModificationError(validation.error)
+                    self._raise_with_failure_record(
+                        ValueError(validation.error),
+                        phase="VALIDATION",
+                        query_text=user_message,
+                        intent_json=intent,
+                    )
                 # "Not found" error → escalate to Tier 2
                 logger.info(f"Tier 1 validation failed, escalating to Tier 2: {validation.error}")
                 emitter.emit("validate", "done", "Escalating to Tier 2 plan…", {"escalated": True})
@@ -287,11 +334,17 @@ class ModificationService:
         groundedness = validation.groundedness_score
         effective = min(confidence, groundedness) if groundedness > 0 else confidence
         if effective < 60:
-            raise ModificationError(
+            msg = (
                 f"Low confidence ({effective}% effective: LLM={confidence}%, "
                 f"registry={groundedness}%). Please be more specific. "
                 f"For example, use exact property names and entity types. "
                 f"LLM interpretation: {intent.get('explanation', '?')}"
+            )
+            self._raise_with_failure_record(
+                ValueError(msg),
+                phase="VALIDATION",
+                query_text=user_message,
+                intent_json=intent,
             )
 
         # 6. Build diff preview
@@ -406,7 +459,18 @@ class ModificationService:
                 self.git.rollback(ifc_file, parent_hash)
                 logger.warning(f"Auto-rolled back after failure: {e}")
 
-            raise ModificationError(f"Execution failed: {e}")
+            from metacastor.services.failure_classifier import create_failure_record
+
+            failure_rec = create_failure_record(
+                e,
+                phase="EXECUTION",
+                project=self.project,
+                query_text=proposal.request_text,
+                intent_json=proposal.intent_json,
+                proposal=proposal,
+            )
+            failure_id = str(failure_rec.id) if failure_rec else None
+            raise ModificationError(f"Execution failed: {e}", failure_record_id=failure_id)
 
         # 3. Build semantic diff
         diff_data = {
@@ -555,6 +619,40 @@ class ModificationService:
         return new_commit
 
     # ── Internals ──────────────────────────────────────────
+
+    def _raise_with_failure_record(
+        self,
+        exc: Exception,
+        phase: str,
+        query_text: str,
+        intent_json: dict | None,
+        proposal=None,
+    ) -> None:
+        """
+        Create a FailureRecord for exc, then raise ModificationError with its ID.
+
+        Args:
+            exc:        The original exception that caused the failure.
+            phase:      Pipeline phase — "VALIDATION", "EXECUTION", or "SANDBOX".
+            query_text: The user's original query string.
+            intent_json: Parsed intent if available; None for very early failures.
+            proposal:   Associated ModificationProposal, if one was created.
+
+        Raises:
+            ModificationError always.
+        """
+        from metacastor.services.failure_classifier import create_failure_record
+
+        failure_rec = create_failure_record(
+            exc,
+            phase=phase,
+            project=self.project,
+            query_text=query_text,
+            intent_json=intent_json,
+            proposal=proposal,
+        )
+        failure_id = str(failure_rec.id) if failure_rec else None
+        raise ModificationError(str(exc), failure_record_id=failure_id)
 
     def _execute_tier1(self, proposal: ModificationProposal) -> list[EntityChange]:
         """Execute a Tier 1 operation on the IFC file."""
@@ -1120,7 +1218,7 @@ class ModificationService:
             {"confidence": confidence, "code_len": len(result.get("code", ""))},
         )
 
-        if confidence < 50:
+        if confidence < 70:
             raise ModificationError(
                 f"Low confidence ({confidence}%). "
                 f"Tier 3 operations are complex — please be very specific "

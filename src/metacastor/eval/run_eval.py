@@ -72,7 +72,9 @@ def main() -> None:
     clf = IntentClassifier(temperature=EVAL_TEMPERATURE)
 
     mode = "D2 (with injection)" if args.inject else "D1 (static prompt)"
-    print(f"Model: {EVAL_MODEL}  |  Temperature: {EVAL_TEMPERATURE}  |  Cases: {len(cases)}  |  Mode: {mode}")
+    print(
+        f"Model: {EVAL_MODEL}  |  Temperature: {EVAL_TEMPERATURE}  |  Cases: {len(cases)}  |  Mode: {mode}"
+    )
 
     results: dict[str, list[dict]] = {}
     per_case_results: list[dict] = []
@@ -82,7 +84,9 @@ def main() -> None:
         results.setdefault(difficulty, [])
         try:
             skill_examples = retrieve_skill_examples(case["query"]) if args.inject else []
-            intent = clf.classify(case["query"], case["entity_context"], skill_examples=skill_examples or None)
+            intent = clf.classify(
+                case["query"], case["entity_context"], skill_examples=skill_examples or None
+            )
             scores = score_case(intent, case["ground_truth_intent"])
         except (IntentParseError, Exception):
             scores = {m: False for m in METRICS}
@@ -127,7 +131,9 @@ def main() -> None:
     now = datetime.now()
     model_slug = EVAL_MODEL.replace(":", "-").replace("/", "-")
     inject_suffix = "_injected" if args.inject else ""
-    filename = f"{now.strftime('%Y%m%d_%H%M%S')}_{model_slug}_T{EVAL_TEMPERATURE}{inject_suffix}.json"
+    filename = (
+        f"{now.strftime('%Y%m%d_%H%M%S')}_{model_slug}_T{EVAL_TEMPERATURE}{inject_suffix}.json"
+    )
     output = {
         "timestamp": now.isoformat(timespec="seconds"),
         "model": EVAL_MODEL,

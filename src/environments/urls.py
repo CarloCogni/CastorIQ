@@ -39,6 +39,7 @@ urlpatterns = [
     path("<uuid:pk>/delete/", views.ProjectDeleteView.as_view(), name="delete"),
     # IFC CRUD
     path("ifc/<uuid:pk>/edit/", views.IFCFileUpdateView.as_view(), name="ifc_edit"),
+    path("ifc/<uuid:pk>/reparse/", views.IFCReparseView.as_view(), name="ifc_reparse"),
     path("ifc/<uuid:pk>/delete/", views.IFCFileDeleteView.as_view(), name="ifc_delete"),
     path("ifc/<uuid:pk>/convert/", views.IFCSchemaConvertView.as_view(), name="ifc_convert"),
     # Document CRUD
@@ -67,5 +68,27 @@ urlpatterns = [
         "<uuid:pk>/explore/ifc/<uuid:ifc_id>/export/",
         views.ExploreExportView.as_view(),
         name="explore_export",
+    ),
+    # Schedule
+    path("<uuid:pk>/schedule/", views.ScheduleView.as_view(), name="schedule"),
+    path(
+        "<uuid:pk>/schedule/ifc/<uuid:ifc_id>/",
+        views.ScheduleView.as_view(),
+        name="schedule_ifc",
+    ),
+    path(
+        "<uuid:pk>/schedule/ifc/<uuid:ifc_id>/table/",
+        views.ScheduleTablePartial.as_view(),
+        name="schedule_table",
+    ),
+    path(
+        "<uuid:pk>/schedule/ifc/<uuid:ifc_id>/export/",
+        views.ScheduleExportView.as_view(),
+        name="schedule_export",
+    ),
+    path(
+        "<uuid:pk>/schedule/ifc/<uuid:ifc_id>/export/excel/",
+        views.ScheduleExcelExportView.as_view(),
+        name="schedule_export_excel",
     ),
 ]

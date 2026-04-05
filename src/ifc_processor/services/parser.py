@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 
 import ifcopenshell
 import ifcopenshell.util.element as element_util
+import ifcopenshell.util.unit as ifc_unit_util  # noqa: F401 — used in _format_unit_label
 from django.db import transaction
 from django.utils import timezone
 
@@ -13,6 +14,47 @@ from core.exceptions import log_exception
 from ifc_processor.models import IFCDataIssue, IFCEntity, IFCFile
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Unit formatting helpers
+# ---------------------------------------------------------------------------
+
+_SI_PREFIX: dict[str, str] = {
+    "MILLI": "m",
+    "CENTI": "c",
+    "DECI": "d",
+    "KILO": "k",
+    "MEGA": "M",
+}
+
+_SI_NAME: dict[str, str] = {
+    "METRE": "m",
+    "SQUARE_METRE": "m²",
+    "CUBIC_METRE": "m³",
+    "GRAM": "g",
+    "SECOND": "s",
+    "RADIAN": "rad",
+    "DEGREE": "°",
+}
+
+_UNIT_TYPES: tuple[str, ...] = (
+    "LENGTHUNIT",
+    "AREAUNIT",
+    "VOLUMEUNIT",
+    "MASSUNIT",
+    "PLANEANGLEUNIT",
+)
+
+
+def _format_unit_label(unit) -> str:
+    """Convert an IfcUnit entity to a human-readable label string."""
+    if unit.is_a("IfcSIUnit"):
+        prefix = _SI_PREFIX.get(getattr(unit, "Prefix", None) or "", "")
+        name = _SI_NAME.get(unit.Name or "", (unit.Name or "?").lower())
+        return f"{prefix}{name}"
+    if unit.is_a("IfcConversionBasedUnit"):
+        return (unit.Name or "?").lower()
+    return "?"
 
 
 @dataclass
@@ -424,6 +466,13 @@ class IFCParser:
                             key = f"Type.{pset_name}.{prop_name}"
                             if key not in properties:  # Don't override instance props
                                 properties[key] = self._serialize_value(prop_value)
+
+            # Direct dimensional attributes on IfcDoor/IfcWindow (not in psets)
+            if element.is_a("IfcDoor") or element.is_a("IfcWindow"):
+                for attr in ("OverallWidth", "OverallHeight"):
+                    val = getattr(element, attr, None)
+                    if val is not None:
+                        properties[attr] = round(float(val), 4)
 
         except Exception as e:
             logger.debug(f"Could not get properties: {e}")

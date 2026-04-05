@@ -84,6 +84,12 @@
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end bg-surface shadow border" style="z-index: 1030;">
                         <li><a class="dropdown-item fs-8" href="{% url 'projects:ifc_edit' ifc.pk %}">Edit</a></li>
+                        <li>
+                            <a class="dropdown-item fs-8 text-warning" href="{% url 'projects:ifc_reparse' ifc.pk %}">
+                                <i class="bi bi-arrow-clockwise me-2"></i>Reparse
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider my-1"></li>
                         <li><a class="dropdown-item fs-8 text-danger" href="{% url 'projects:ifc_delete' ifc.pk %}">Delete</a></li>
                     </ul>
                 </div>
@@ -177,7 +183,7 @@
                 <span class="text-secondary text-uppercase fs-8 fw-bold letter-spacing-1">Conversations</span>
                 <span class="mode-label mode-label-{{ active_tab }}">{{ active_tab }}</span>
             </div>
-            <form method="post" action="{% url 'projects:ask' project.pk %}">
+            <form method="post" action="{% if active_tab == 'modify' %}{% url 'writeback:modify' project.pk %}{% else %}{% url 'projects:ask' project.pk %}{% endif %}">
                 {% csrf_token %}
                 <input type="hidden" name="action" value="new_session">
                 <button type="submit"
@@ -199,7 +205,7 @@
                 <!-- Mode color indicator -->
                 <div class="conversation-indicator indicator-{{ active_tab }}"></div>
                 <!-- Title (read mode) -->
-                <a href="{% url 'projects:ask_session' project.pk session.pk %}"
+                <a href="{% if active_tab == 'modify' %}{% url 'writeback:modify_session' project.pk session.pk %}{% else %}{% url 'projects:ask_session' project.pk session.pk %}{% endif %}"
                    class="flex-grow-1 text-decoration-none min-width-0 fs-7
                           {% if session.pk == active_session_id %}text-white fw-semibold{% else %}text-secondary hover-white{% endif %}"
                    style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"

@@ -85,9 +85,7 @@ class IFCProcessingService:
                     author=None,
                     diff_data={"operation": "TRACK"},
                 )
-                logger.info(
-                    f"Initial Git commit for {self.ifc_file.name}: {commit_hash[:8]}"
-                )
+                logger.info(f"Initial Git commit for {self.ifc_file.name}: {commit_hash[:8]}")
         except Exception as e:
             logger.error(f"Git tracking failed for {self.ifc_file.name}: {e}")
 

@@ -100,7 +100,7 @@ class TestProposalConsumerMessages:
         from writeback.services.modification_service import ModificationError
 
         with patch(
-            "writeback.consumers.ModificationService",
+            "writeback.services.modification_service.ModificationService",
         ) as mock_svc_cls:
             mock_svc = mock_svc_cls.return_value
             mock_svc.propose.side_effect = ModificationError("No IFC entities found.")
@@ -190,7 +190,7 @@ class TestScanConsumerMessages:
         assert connected
 
         with patch(
-            "writeback.consumers.ConflictScanService",
+            "writeback.services.conflict_scan_service.ConflictScanService",
         ) as mock_svc_cls:
             mock_svc = mock_svc_cls.return_value
             mock_svc.full_scan.return_value = {

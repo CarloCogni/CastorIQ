@@ -399,6 +399,7 @@ class TestFileUploadView:
         with patch("environments.views.IFCProcessingService") as MockProc:
             instance = MockProc.return_value
             instance.run_pipeline.return_value = True
+            instance.git_commit_hash = None
 
             with patch("ifc_processor.models.IFCFile.objects.create") as mock_create:
                 mock_obj = MagicMock()
@@ -810,6 +811,109 @@ class TestIFCFileUpdateView:
 
         response = client.get(reverse("projects:ifc_edit", kwargs={"pk": ifc_file.pk}))
         assert response.status_code == 302
+
+
+# ── IFCReparseView ──────────────────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+class TestIFCReparseView:
+    """GET/POST /projects/ifc/<pk>/reparse/."""
+
+    def test_get_confirmation_page_returns_200(self, client):
+        """Owner sees the reparse confirmation page."""
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        ifc_file = IFCFileFactory(project=project)
+        _login(client, user)
+
+        response = client.get(reverse("projects:ifc_reparse", kwargs={"pk": ifc_file.pk}))
+
+        assert response.status_code == 200
+        assert response.context["ifc_file"] == ifc_file
+        assert response.context["project"] == project
+
+    def test_get_unauthenticated_redirects(self, client):
+        """Unauthenticated GET redirects to login."""
+        owner = UserFactory()
+        project = ProjectFactory(owner=owner)
+        ifc_file = IFCFileFactory(project=project)
+
+        response = client.get(reverse("projects:ifc_reparse", kwargs={"pk": ifc_file.pk}))
+
+        assert response.status_code == 302
+        assert "/login/" in response["Location"]
+
+    def test_get_non_owner_returns_404(self, client):
+        """User who does not own the project gets 404."""
+        owner = UserFactory()
+        other = UserFactory()
+        project = ProjectFactory(owner=owner)
+        ifc_file = IFCFileFactory(project=project)
+        _login(client, other)
+
+        response = client.get(reverse("projects:ifc_reparse", kwargs={"pk": ifc_file.pk}))
+
+        assert response.status_code == 404
+
+    def test_post_runs_pipeline_and_redirects_to_processed(self, client):
+        """POST triggers the processing pipeline and redirects to file_processed."""
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        ifc_file = IFCFileFactory(project=project)
+        _login(client, user)
+
+        with patch("environments.views.IFCProcessingService") as MockProc:
+            instance = MockProc.return_value
+            instance.run_pipeline.return_value = True
+
+            response = client.post(reverse("projects:ifc_reparse", kwargs={"pk": ifc_file.pk}))
+
+        MockProc.assert_called_once_with(ifc_file)
+        instance.run_pipeline.assert_called_once()
+        assert response.status_code == 302
+        assert "processed" in response["Location"]
+
+    def test_post_stores_result_in_session(self, client):
+        """POST stores processing result dict in session for file_processed page."""
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        ifc_file = IFCFileFactory(project=project)
+        _login(client, user)
+
+        with patch("environments.views.IFCProcessingService") as MockProc:
+            instance = MockProc.return_value
+            instance.run_pipeline.return_value = True
+
+            client.post(reverse("projects:ifc_reparse", kwargs={"pk": ifc_file.pk}))
+
+        result = client.session.get("processing_result")
+        assert result is not None
+        assert result["success"] is True
+        assert result["type"] == "IFC Model"
+
+    def test_post_unauthenticated_redirects(self, client):
+        """Unauthenticated POST redirects to login."""
+        owner = UserFactory()
+        project = ProjectFactory(owner=owner)
+        ifc_file = IFCFileFactory(project=project)
+
+        response = client.post(reverse("projects:ifc_reparse", kwargs={"pk": ifc_file.pk}))
+
+        assert response.status_code == 302
+        assert "/login/" in response["Location"]
+
+    def test_post_non_owner_returns_404(self, client):
+        """POST by a user who does not own the project gets 404."""
+        owner = UserFactory()
+        other = UserFactory()
+        project = ProjectFactory(owner=owner)
+        ifc_file = IFCFileFactory(project=project)
+        _login(client, other)
+
+        response = client.post(reverse("projects:ifc_reparse", kwargs={"pk": ifc_file.pk}))
+
+        assert response.status_code == 404
 
 
 # ── DocumentUpdateView ───────────────────────────────────────────────────────

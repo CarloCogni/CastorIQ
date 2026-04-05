@@ -4,6 +4,7 @@
 import csv
 import logging
 import os
+from datetime import datetime
 
 from django.conf import settings
 from django.contrib import messages
@@ -11,7 +12,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
 from django.db.models import Count, Q
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.views.generic import (
@@ -33,6 +34,11 @@ from documents.models import Document
 from documents.services.document_processor import DocumentProcessor
 from ifc_processor.models import IFCEntity, IFCFile
 from ifc_processor.services.processor import IFCProcessingService
+from ifc_processor.services.schedule_service import (
+    IFC_TYPE_CATEGORIES,
+    DoorWindowScheduleService,
+    GenericScheduleService,
+)
 
 from .models import Project
 
@@ -398,6 +404,31 @@ class IFCFileUpdateView(ProjectAccessMixin, UpdateView):
         }
 
         return redirect("projects:file_processed", pk=self.object.project.pk)
+
+
+class IFCReparseView(LoginRequiredMixin, View):
+    """Confirmation page and trigger for reparsing an already-uploaded IFC file."""
+
+    def get(self, request: HttpRequest, pk) -> HttpResponse:
+        ifc_file = get_object_or_404(IFCFile, pk=pk, project__owner=request.user)
+        return render(
+            request,
+            "environments/ifc_reparse_confirm.html",
+            {"ifc_file": ifc_file, "project": ifc_file.project},
+        )
+
+    def post(self, request: HttpRequest, pk) -> HttpResponse:
+        ifc_file = get_object_or_404(IFCFile, pk=pk, project__owner=request.user)
+        processor = IFCProcessingService(ifc_file)
+        success = processor.run_pipeline()
+        request.session["processing_result"] = {
+            "success": success,
+            "filename": ifc_file.name,
+            "entity_count": ifc_file.entity_count,
+            "error": ifc_file.error_message,
+            "type": "IFC Model",
+        }
+        return redirect("projects:file_processed", pk=ifc_file.project.pk)
 
 
 class IFCFileDeleteView(ProjectAccessMixin, DeleteView):
@@ -905,6 +936,7 @@ class ExploreEntitiesPartial(ProjectAccessMixin, View):
                 "ifc_file": ifc_file,
                 "project": project,
                 "type_counts": type_counts,
+                "available_types": [tc["ifc_type"] for tc in type_counts],
                 "active_type": ifc_type,
                 "current_building": building,
                 "current_storey": storey,
@@ -1002,6 +1034,229 @@ class ExploreExportView(ProjectAccessMixin, View):
                     entity.building or "",
                     entity.building_storey or "",
                     entity.space or "",
+                ]
+            )
+
+        return response
+
+
+# --- Dynamic Generic Schedule ---
+
+
+class ScheduleView(ProjectTabMixin, TemplateView):
+    """Schedule tab — dynamic element schedule for a selected IFC model."""
+
+    active_tab = "schedule"
+    template_name = "environments/project_detail.html"
+
+    def get_context_data(self, **kwargs: object) -> dict:
+        context = super().get_context_data(**kwargs)
+        project = self.get_project()
+
+        completed_ifc_files = project.ifc_files.filter(status=IFCFile.Status.COMPLETED).only(
+            "id", "name", "entity_count"
+        )
+
+        ifc_id = self.kwargs.get("ifc_id")
+        if ifc_id:
+            selected_ifc = get_object_or_404(
+                IFCFile, pk=ifc_id, project=project, status=IFCFile.Status.COMPLETED
+            )
+        else:
+            selected_ifc = completed_ifc_files.first()
+
+        # Types pre-selected from Explore "Schedule this type" link (?types=IfcWall,…)
+        preselected_types = [
+            t.strip() for t in self.request.GET.get("types", "").split(",") if t.strip()
+        ]
+
+        available_types: list[dict] = []
+        storeys: list[str] = []
+        if selected_ifc:
+            svc = GenericScheduleService(selected_ifc)
+            available_types = svc.get_available_types()
+            if preselected_types:
+                storeys = svc.get_storeys(preselected_types)
+
+        context.update(
+            {
+                "completed_ifc_files": completed_ifc_files,
+                "selected_ifc": selected_ifc,
+                "available_types": available_types,
+                "type_categories": IFC_TYPE_CATEGORIES,
+                "preselected_types": preselected_types,
+                "storeys": storeys,
+            }
+        )
+        return context
+
+
+class ScheduleTablePartial(ProjectAccessMixin, View):
+    """HTMX partial — schedule tables for selected IFC types."""
+
+    def get(self, request, pk: str, ifc_id: str) -> HttpResponse:
+        project = self.get_project()
+        ifc_file = get_object_or_404(
+            IFCFile, pk=ifc_id, project=project, status=IFCFile.Status.COMPLETED
+        )
+
+        raw = request.GET.get("types", "")
+        ifc_types = [t.strip() for t in raw.split(",") if t.strip()]
+        storey = request.GET.get("storey") or None
+
+        if not ifc_types:
+            return render(request, "ifc_processor/schedule/_no_selection.html", {})
+
+        svc = GenericScheduleService(ifc_file)
+        results = svc.get_schedule(ifc_types, storey=storey)
+
+        return render(
+            request,
+            "ifc_processor/schedule/_schedule_tables.html",
+            {
+                "results": results,
+                "project": project,
+                "ifc_file": ifc_file,
+                "selected_types": ifc_types,
+                "selected_storey": storey or "",
+            },
+        )
+
+
+class ScheduleExcelExportView(ProjectAccessMixin, View):
+    """Excel export — one sheet per IFC type with dynamically discovered columns."""
+
+    def get(self, request, pk: str, ifc_id: str) -> HttpResponse:
+        import openpyxl
+        from openpyxl.styles import Alignment, Font, PatternFill
+
+        project = self.get_project()
+        ifc_file = get_object_or_404(
+            IFCFile, pk=ifc_id, project=project, status=IFCFile.Status.COMPLETED
+        )
+
+        raw = request.GET.get("types", "")
+        ifc_types = [t.strip() for t in raw.split(",") if t.strip()]
+        storey = request.GET.get("storey") or None
+
+        svc = GenericScheduleService(ifc_file)
+        results = svc.get_schedule(ifc_types, storey=storey)
+
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active)  # remove default empty sheet
+
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill("solid", fgColor="1F4E79")
+        center = Alignment(horizontal="center")
+
+        used_names: set[str] = set()
+        for ifc_type, result in results.items():
+            # Excel sheet names: max 31 chars, strip "Ifc" prefix, deduplicate
+            base = ifc_type.replace("Ifc", "")[:28]
+            sheet_name = base
+            suffix = 2
+            while sheet_name in used_names:
+                sheet_name = f"{base[:25]}_{suffix}"
+                suffix += 1
+            used_names.add(sheet_name)
+
+            ws = wb.create_sheet(title=sheet_name)
+
+            # Header row — append "(m)" suffix for normalised dimension columns
+            display_headers = [
+                f"{col.label} (m)" if col.unit == "m" else col.label for col in result.columns
+            ]
+            ws.append(display_headers)
+            for col_idx in range(1, len(display_headers) + 1):
+                cell = ws.cell(row=1, column=col_idx)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = center
+
+            # Data rows
+            for row in result.rows:
+                ws.append(row)
+
+            # Auto-fit column widths
+            for col in ws.columns:
+                max_len = max((len(str(c.value or "")) for c in col), default=10)
+                ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 50)
+
+        response = HttpResponse(
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        safe_name = ifc_file.name.replace('"', "")
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        response["Content-Disposition"] = f'attachment; filename="{safe_name}_schedule_{ts}.xlsx"'
+        wb.save(response)
+        return response
+
+
+class ScheduleExportView(ProjectAccessMixin, View):
+    """CSV export of the door/window schedule for a selected IFC model."""
+
+    def get(self, request, pk: str, ifc_id: str) -> HttpResponse:
+        project = self.get_project()
+        ifc_file = get_object_or_404(
+            IFCFile, pk=ifc_id, project=project, status=IFCFile.Status.COMPLETED
+        )
+
+        element_type = request.GET.get("type", "all")
+        selected_storey = request.GET.get("storey", "")
+
+        svc = DoorWindowScheduleService(ifc_file)
+        rows: list[dict] = []
+        if element_type in ("all", "doors"):
+            for r in svc.get_doors(storey=selected_storey):
+                r["element_type"] = "Door"
+                rows.append(r)
+        if element_type in ("all", "windows"):
+            for r in svc.get_windows(storey=selected_storey):
+                r["element_type"] = "Window"
+                rows.append(r)
+
+        response = HttpResponse(content_type="text/csv")
+        safe_name = ifc_file.name.replace('"', "")
+        response["Content-Disposition"] = (
+            f'attachment; filename="{safe_name}_door_window_schedule.csv"'
+        )
+
+        writer = csv.writer(response)
+        writer.writerow(
+            [
+                "Type",
+                "Mark",
+                "Level",
+                "Room",
+                "Width (m)",
+                "Height (m)",
+                "Fire Rating",
+                "External",
+                "Acoustic Rating",
+                "Security Rating",
+                "Accessible",
+                "U-Value (W/m²K)",
+                "Reference",
+                "GlobalID",
+            ]
+        )
+        for r in rows:
+            writer.writerow(
+                [
+                    r.get("element_type", ""),
+                    r.get("mark", ""),
+                    r.get("level", ""),
+                    r.get("room", ""),
+                    r.get("width", ""),
+                    r.get("height", ""),
+                    r.get("fire_rating", ""),
+                    r.get("is_external", ""),
+                    r.get("acoustic_rating", ""),
+                    r.get("security_rating", ""),
+                    r.get("handicap_accessible", ""),
+                    r.get("thermal_transmittance", ""),
+                    r.get("reference", ""),
+                    r.get("global_id", ""),
                 ]
             )
 

@@ -66,6 +66,12 @@ class IFCFile(UUIDModel):
         blank=True,
         verbose_name="Description",
     )
+    project_units = models.JSONField(
+        null=True,
+        blank=True,
+        verbose_name="Project Units",
+        help_text='Declared units from IfcUnitAssignment, e.g. {"LENGTHUNIT": "mm", "AREAUNIT": "m²"}',
+    )
 
     # Processing status
     status = models.CharField(

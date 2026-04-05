@@ -69,13 +69,14 @@ CRITICAL — read carefully:
 1. Only output Tier 1 if the request is a SINGLE property/attribute change on entities matching a simple filter.
 2. If the request needs multiple different changes, set "tier": 2 and fill only "explanation" and "confidence".
 3. If the request involves creating/deleting entities or spatial operations, set "tier": 3 and fill only "explanation" and "confidence".
-4. Use the entity context provided to determine correct property set and property names.
-5. The filter should be as specific as possible to match only the intended entities.
-6. Be conservative with confidence — if you're unsure about pset/property names, lower it.
-7. Always include "filter" with at least "ifc_type" for Tier 1.
-8. Omit keys that are not relevant (e.g. omit "pset"/"property" for SET_ATTRIBUTE, omit "attribute" for SET_PROPERTY).
-9. When the user says "rename" or "change the name", ALWAYS use SET_ATTRIBUTE with "attribute": "Name".
-10. If the request contains multiple SIMPLE property/attribute changes connected by "and", "also", "plus", or comma-separated, return a JSON ARRAY of intents instead of a single object. Each element follows the same schema. Only do this for Tier 1 operations — if any sub-operation needs Tier 2/3, return the whole request as Tier 2.
+4. If the request is too vague, ambiguous, or impossible to map to a specific IFC operation and target — even after your best interpretation — set "tier": 0 and fill "explanation" with a one-sentence reason the user can act on. Do NOT guess a tier if you cannot determine WHAT to change, on WHICH entities, and to WHAT value. Examples: "change everything", "update the model", "do something to the building", "improve fire safety" (no property or value specified).
+5. Use the entity context provided to determine correct property set and property names.
+6. The filter should be as specific as possible to match only the intended entities.
+7. Be conservative with confidence — if you're unsure about pset/property names, lower it.
+8. Always include "filter" with at least "ifc_type" for Tier 1.
+9. Omit keys that are not relevant (e.g. omit "pset"/"property" for SET_ATTRIBUTE, omit "attribute" for SET_PROPERTY).
+10. When the user says "rename" or "change the name", ALWAYS use SET_ATTRIBUTE with "attribute": "Name".
+11. If the request contains multiple SIMPLE property/attribute changes connected by "and", "also", "plus", or comma-separated, return a JSON ARRAY of intents instead of a single object. Each element follows the same schema. Only do this for Tier 1 operations — if any sub-operation needs Tier 2/3, return the whole request as Tier 2.
 
 ## Examples
 
@@ -190,17 +191,21 @@ class IntentClassifier:
         user_message: str,
         entity_context: str,
         skill_examples: list[dict] | None = None,
+        failure_context: str | None = None,
     ) -> dict:
         """
         Parse a user's modification request into a structured intent.
 
         Args:
-            user_message:   The raw user input (e.g. "Set fire rating to EI120")
-            entity_context: Summary of relevant entities from the DB
-            skill_examples: Optional retrieved few-shot examples from the skill
-                            bank. When provided, they are appended to the system
-                            prompt as a labeled few-shot block. None → existing
-                            behaviour, no change to call sites.
+            user_message:    The raw user input (e.g. "Set fire rating to EI120")
+            entity_context:  Summary of relevant entities from the DB
+            skill_examples:  Optional retrieved few-shot examples from the skill
+                             bank. When provided, they are appended to the system
+                             prompt as a labeled few-shot block. None → existing
+                             behaviour, no change to call sites.
+            failure_context: Optional short context string from a prior FailureRecord.
+                             Injected as a ## Previous Attempt block so the model
+                             can avoid repeating the same mistake on retry.
 
         Returns:
             Parsed intent dict with tier, operation, filter, etc.
@@ -214,6 +219,9 @@ class IntentClassifier:
         if skill_examples:
             system_content += "\n\n" + _format_skill_injection(skill_examples)
             logger.debug("Injecting %d skill examples into classifier.", len(skill_examples))
+        if failure_context:
+            system_content += f"\n\n## Previous Attempt\n{failure_context}\n"
+            logger.debug("Injecting failure context into classifier.")
 
         messages = [
             SystemMessage(content=system_content),

@@ -6,6 +6,14 @@ The write-back system is Castor's core innovation: the ability to modify IFC fil
 
 Always attempt the safest execution tier first. Escalate only when the current tier cannot handle the request. The LLM never exercises more power than the task requires (**Minimal Authority**).
 
+## Pre-Entry Gate: Feasibility Check
+
+Before any tier is attempted, `FeasibilityChecker` runs a focused LLM call (temperature=0) that asks a single binary question: can I determine **which IFC elements** to target, **what property** to modify, and **what value** to set? If any of the three is missing, the request is rejected immediately with a user-facing reason — no skill retrieval, no entity context, no classification.
+
+- **Fails open:** on any LLM error it returns `feasible=True` to avoid blocking valid requests.
+- **Error type:** `REQUEST_TOO_VAGUE` (NON_RETRYABLE) — captured as a `FailureRecord`.
+- **Secondary backstop:** `IntentClassifier` can also return `tier: 0` for requests that pass the pre-check but still cannot be mapped to a specific operation. Captured as `REQUEST_AMBIGUOUS` (RETRYABLE).
+
 ## Three-Tier Escalation
 
 ### Tier 1 — GREEN (Certified Operations)
@@ -66,11 +74,17 @@ User message
 
 ```
     ▼
+FeasibilityChecker (LLM binary gate — specific enough to attempt?)
+    │
+    ├── feasible=False ──► ModificationError (REQUEST_TOO_VAGUE) ──► FailureRecord
+    │
+    ▼
 Message Normalizer (aliases → canonical names)
     │
     ▼
 Intent Classifier (LLM → JSON intent or intent array)
     │
+    ├── tier=0 ──► ModificationError (REQUEST_AMBIGUOUS) ──► FailureRecord
     ├── Single intent, tier=1 ──► Tier 1 Validator ──► Proposal
     ├── Intent array (chain) ──► Validate each ──► Chained Proposals
     ├── Single intent, tier=2 ──► Tier 2 Planner + Validator ──► Proposal
@@ -88,7 +102,9 @@ Proposal returned to user for approval
 
 ### Key Behaviors
 
-- **Confidence threshold:** Proposals below 60% confidence are rejected with a "be more specific" message.
+- **Feasibility gate:** `FeasibilityChecker` runs first. Requests that don't specify a target, property, and value are rejected before any skill retrieval or classification, with a user-facing reason.
+- **Tier 0 rejection:** If `FeasibilityChecker` passes but the classifier still cannot map the request to an operation, it returns `tier: 0` — rejected as `REQUEST_AMBIGUOUS` (RETRYABLE).
+- **Confidence threshold:** Proposals below 60% effective confidence (Tier 1/2) or 70% (Tier 3) are rejected with a "be more specific" message.
 - **Auto-fallback (SET_PROPERTY → ADD_PROPERTY):** If Tier 1 validation fails because a standard pset property doesn't exist on entities yet, the system automatically converts the operation to ADD_PROPERTY and re-validates.
 - **Chain intents:** The classifier can return a JSON array of Tier 1 intents for requests like "Set fire rating to EI120 and IsExternal to true for all walls". Each becomes a separate proposal linked by a chain ID.
 - **Tier 2 escalation:** If any chain element fails Tier 1 validation, the entire request is re-routed to the Tier 2 planner.
@@ -108,6 +124,12 @@ Central service that coordinates the full propose → validate → execute → c
 | `execute()` | Git snapshot → run writer → Git commit → create `GitCommit` → sync DB |
 | `reject()` | Mark proposal as rejected with optional reason |
 | `restore_version()` | Revert to any historical commit, re-parse IFC into DB |
+
+### `FeasibilityChecker` — Pre-Classification Gate
+
+Runs before `IntentClassifier`. Single LLM call (temperature=0, format_json=True) that asks whether the request specifies a target, property, and value. Returns `FeasibilityResult(feasible, reason)`. Fails open on any error.
+
+File: `writeback/services/feasibility_checker.py`
 
 ### `IntentClassifier` — LLM Intent Extraction
 

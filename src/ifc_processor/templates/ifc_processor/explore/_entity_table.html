@@ -77,6 +77,14 @@
 {% if type_counts %}
 <div class="px-3 pt-2 pb-1 border-bottom d-flex flex-wrap gap-1 align-items-center flex-shrink-0 bg-body">
   <span class="text-secondary small me-1">Type:</span>
+  {% if active_type %}
+  <a href="{% url 'projects:schedule_ifc' project.pk ifc_file.pk %}?types={{ active_type|urlencode }}"
+     class="ms-auto btn btn-sm btn-outline-primary py-0"
+     style="font-size:0.75rem;"
+     title="Open schedule for {{ active_type }}">
+    <i class="bi bi-table me-1"></i>Schedule this type
+  </a>
+  {% endif %}
   <a class="badge {% if not active_type %}bg-primary{% else %}bg-secondary bg-opacity-25 text-body{% endif %} text-decoration-none"
      hx-get="{{ base_url }}?building={{ current_building|urlencode }}&storey={{ current_storey|urlencode }}&space={{ current_space|urlencode }}&q={{ current_q|urlencode }}"
      hx-target="#explore-entities"

@@ -44,7 +44,7 @@
              id="modify-chat-messages"
              data-project-pk="{{ project.pk }}"
              data-session-pk="{{ session.pk }}"
-             style="scroll-behavior: smooth;">
+             style="scroll-behavior: smooth; overflow-x: hidden;">
             {% include "writeback/components/modify_message_list.html" %}
         </div>
 
@@ -649,6 +649,9 @@ const ModifyChat = {
     // Conflict IDs linked from "Fix in Modify" — set from URL params on load
     _conflictIds: '',
 
+    // Last submitted query — used by the retry failure card
+    _lastQuery: '',
+
     /* ── WebSocket init ───────────────────────────── */
     initWebSocket() {
         const chatEl = document.getElementById('modify-chat-messages');
@@ -747,6 +750,11 @@ const ModifyChat = {
                 this._hideProgressTracker();
                 this._appendBubble('assistant', `⚠️ ${data.message}`);
                 break;
+            case 'failure':
+                this._setProcessing(false);
+                this._hideProgressTracker();
+                this._appendFailureCard(data.failure, data.message);
+                break;
             case 'done':
                 this._setProcessing(false);
                 this._hideProgressTracker();
@@ -836,6 +844,7 @@ const ModifyChat = {
     sendMessage() {
         const text = this.inputEl.value.trim();
         if (!text) return;
+        this._lastQuery = text;
 
         // If WS is open, use it; fall back to HTTP if disconnected
         if (this._ws && this._ws.readyState === WebSocket.OPEN) {
@@ -917,6 +926,9 @@ const ModifyChat = {
                 );
                 this._removeSidebarProposal(proposalId);
                 this._markProposalCard(proposalId, 'applied');
+            } else if (data.failure) {
+                this._markProposalCard(proposalId, 'failed');
+                this._appendFailureCard(data.failure, data.message);
             } else {
                 this._appendBubble('assistant', `⚠️ ${data.message}`);
             }
@@ -976,6 +988,67 @@ const ModifyChat = {
         return resp.json();
     },
 
+    /* ── Failure card ─────────────────────────────── */
+    _appendFailureCard(failure, errorMessage) {
+        const isRetryable = failure && failure.is_retryable;
+        const borderClass = isRetryable ? 'border-warning' : 'border-danger';
+        const badgeClass = isRetryable ? 'bg-warning text-dark' : 'bg-danger';
+        const badgeLabel = isRetryable ? 'Retryable' : 'Non-Retryable';
+        const errorType = (failure && failure.error_type) ? failure.error_type.replace(/_/g, ' ') : 'Unknown error';
+        const diagnosis = (failure && failure.diagnosis) ? failure.diagnosis : (errorMessage || 'An error occurred.');
+        const failureId = failure && failure.id;
+        const phase = (failure && failure.failure_phase) ? failure.failure_phase : '';
+
+        const retryBtn = (isRetryable && failureId && this._lastQuery) ? `
+            <button class="btn btn-sm btn-outline-warning mt-2"
+                    onclick="ModifyChat.retryFromFailure('${failureId}')">
+                <i class="bi bi-arrow-clockwise me-1"></i>Try again
+            </button>` : '';
+
+        const html = `
+            <div class="message message-assistant">
+                <div class="message-avatar" style="background-color: var(--castor-accent);">
+                    <i class="bi bi-tools"></i>
+                </div>
+                <div class="message-content">
+                    <div class="card ${borderClass} border-2 shadow-sm">
+                        <div class="card-body py-2 px-3">
+                            <div class="d-flex align-items-center gap-2 mb-1">
+                                <i class="bi bi-exclamation-triangle-fill text-warning"></i>
+                                <span class="fw-semibold fs-8">${errorType}</span>
+                                <span class="badge ${badgeClass} ms-auto" style="font-size:.65rem;">${badgeLabel}</span>
+                                ${phase ? `<span class="text-muted" style="font-size:.65rem;">${phase}</span>` : ''}
+                            </div>
+                            <p class="mb-0 text-muted fs-8">${diagnosis}</p>
+                            ${retryBtn}
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        this.chatEl.insertAdjacentHTML('beforeend', html);
+        this.scrollToBottom();
+    },
+
+    retryFromFailure(failureId) {
+        if (!this._lastQuery || !failureId) return;
+        if (!this._ws || this._ws.readyState !== WebSocket.OPEN) {
+            this._appendBubble('assistant', '⚠️ Connection lost — please refresh and try again.');
+            return;
+        }
+        const chatEl = document.getElementById('modify-chat-messages');
+        const sessionPk = chatEl.dataset.sessionPk;
+        this._appendBubble('user', `↩ Retrying: ${this._lastQuery}`);
+        this._showProgressTracker();
+        this._setProcessing(true);
+        this._ws.send(JSON.stringify({
+            action: 'propose_with_retry',
+            message: this._lastQuery,
+            failure_id: failureId,
+            session_id: sessionPk,
+            conflict_ids: this._conflictIds || '',
+        }));
+    },
+
     /* ── DOM helpers ──────────────────────────────── */
     _appendBubble(role, html) {
         const wrapper = document.createElement('div');
@@ -1020,9 +1093,10 @@ const ModifyChat = {
                             <span class="fs-8 text-secondary">${p.operation}</span>
                             ${chainLabel ? `<span class="badge bg-purple-subtle text-purple fs-9">${chainLabel}</span>` : ''}
                         </div>
-                        <span class="fs-8 text-secondary">
-                            Confidence: ${Math.round(p.confidence)}%
-                        </span>
+                        <div class="d-flex align-items-center gap-2">
+                            ${p.skill_count > 0 ? `<span class="badge bg-info-subtle text-info fs-9" title="${p.skill_count} skill example${p.skill_count !== 1 ? 's' : ''} injected"><i class="bi bi-stars me-1"></i>${p.skill_count}</span>` : ''}
+                            <span class="fs-8 text-secondary">Confidence: ${Math.round(p.confidence)}%</span>
+                        </div>
                     </div>
                     <div class="card-body p-3">
                         ${p.plan_steps ? `
@@ -1068,7 +1142,7 @@ const ModifyChat = {
                                     <i class="bi bi-code-slash me-1"></i>Generated Code — review before executing
                                 </h6>
                                 <pre class="rounded mb-0"
-                                     style="max-height: 350px; overflow-y: auto;"><code class="language-python hljs">${this._escapeHtml(p.code)}</code></pre>
+                                     style="max-height: 350px; overflow: auto;"><code class="language-python hljs">${this._escapeHtml(p.code)}</code></pre>
                             </div>` : ''}
                         ${diffRows ? `
                         <div class="table-responsive mb-3">

@@ -65,16 +65,13 @@ def retrieve(user_message: str, project=None, k: int = _K) -> list[dict]:
             was_approved=True,
             commit_success=True,
             query_embedding__isnull=False,
-        )
-        .order_by("-created_at")[:_CANDIDATE_POOL]
+        ).order_by("-created_at")[:_CANDIDATE_POOL]
     )
 
     # Stage 1 — Python-level entity type pre-filter.
     target_types = extract_entity_types(user_message)
     if target_types:
-        candidates = [
-            ex for ex in candidates if any(t in ex.entity_types for t in target_types)
-        ]
+        candidates = [ex for ex in candidates if any(t in ex.entity_types for t in target_types)]
         logger.debug(
             "Entity type filter (%s): %d candidates remaining.",
             target_types,

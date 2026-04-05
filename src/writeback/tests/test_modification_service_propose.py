@@ -40,7 +40,11 @@ def mock_get_llm():
         with patch("writeback.services.tier2_planner.get_llm", return_value=mock_llm):
             with patch("writeback.services.tier3_planner.get_llm", return_value=mock_llm):
                 with patch("writeback.services.tier3_reviewer.get_llm", return_value=mock_llm):
-                    yield mock_llm
+                    with patch(
+                        "writeback.services.feasibility_checker.get_llm",
+                        return_value=mock_llm,
+                    ):
+                        yield mock_llm
 
 
 @pytest.fixture
@@ -113,7 +117,7 @@ class TestProposeHappyPath:
     def test_propose_captures_emitter_phases_in_order(
         self, project, ifc_file, wall_entities, user, mock_get_llm, mock_guardian, mock_git
     ):
-        """CapturingEmitter records classify, validate, diff, and guardian phases."""
+        """CapturingEmitter records feasibility, classify, validate, diff, and guardian phases."""
         intent = _make_tier1_intent()
         emitter = CapturingEmitter()
 
@@ -124,13 +128,14 @@ class TestProposeHappyPath:
             with patch("core.llm.resolve_model_name", return_value="llama3.1:8b"):
                 svc = ModificationService(project, user=user)
                 svc.propose(
-                    "Set fire rating to EI120",
+                    "Set fire rating to EI120 on all walls",
                     user=user,
                     ifc_file=ifc_file,
                     emitter=emitter,
                 )
 
         phases = [e["phase"] for e in emitter.events]
+        assert "feasibility" in phases
         assert "classify" in phases
         assert "validate" in phases
         assert "diff" in phases
@@ -203,6 +208,53 @@ class TestProposeFailureModes:
                 with pytest.raises(ModificationError, match="[Ll]ow confidence"):
                     svc.propose(
                         "Do something vague",
+                        user=user,
+                        ifc_file=ifc_file,
+                    )
+
+    def test_propose_feasibility_rejected_raises_modification_error(
+        self, project, ifc_file, wall_entities, user, mock_get_llm, mock_guardian, mock_git
+    ):
+        """FeasibilityChecker returning feasible=False raises ModificationError before LLM classification."""
+        from writeback.services.feasibility_checker import FeasibilityResult
+
+        with patch(
+            "writeback.services.feasibility_checker.FeasibilityChecker.check",
+            return_value=FeasibilityResult(
+                feasible=False,
+                reason="No target entities or property specified.",
+            ),
+        ):
+            with patch("core.llm.resolve_model_name", return_value="llama3.1:8b"):
+                svc = ModificationService(project, user=user)
+
+                with pytest.raises(ModificationError, match="Request too vague"):
+                    svc.propose(
+                        "change everything",
+                        user=user,
+                        ifc_file=ifc_file,
+                    )
+
+    def test_propose_tier0_from_classifier_raises_modification_error(
+        self, project, ifc_file, wall_entities, user, mock_get_llm, mock_guardian, mock_git
+    ):
+        """Classifier returning tier=0 raises ModificationError with the LLM's explanation."""
+        tier0_intent = {
+            "tier": 0,
+            "explanation": "Cannot determine which entities or property to target.",
+            "confidence": 0,
+        }
+
+        with patch(
+            "writeback.services.intent_classifier.IntentClassifier.classify",
+            return_value=tier0_intent,
+        ):
+            with patch("core.llm.resolve_model_name", return_value="llama3.1:8b"):
+                svc = ModificationService(project, user=user)
+
+                with pytest.raises(ModificationError, match="Ambiguous request"):
+                    svc.propose(
+                        "improve the model somehow",
                         user=user,
                         ifc_file=ifc_file,
                     )

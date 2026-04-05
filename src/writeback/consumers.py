@@ -72,6 +72,8 @@ class ProposalConsumer(AsyncJsonWebsocketConsumer):
         action = content.get("action")
         if action == "propose":
             await self._handle_propose(content)
+        elif action == "propose_with_retry":
+            await self._handle_propose_with_retry(content)
         elif action == "cancel":
             self._cancel_event.set()
             logger.debug("ProposalConsumer: cancel requested by %s", self.user.username)
@@ -97,12 +99,22 @@ class ProposalConsumer(AsyncJsonWebsocketConsumer):
             result, proposals = await self._run_pipeline(message_text, session_id, conflict_ids_raw)
         except Exception as e:
             from writeback.services.emitters import CancellationError
+            from writeback.services.modification_service import ModificationError
 
             if isinstance(e, CancellationError):
                 await self.send_json({"type": "cancelled"})
                 return
             logger.exception("Proposal pipeline error: %s", e)
-            await self.send_json({"type": "error", "message": str(e)})
+            failure_id = (
+                getattr(e, "failure_record_id", None) if isinstance(e, ModificationError) else None
+            )
+            if failure_id:
+                failure_data = await self._load_failure_data(failure_id)
+                await self.send_json(
+                    {"type": "failure", "failure": failure_data, "message": str(e)}
+                )
+            else:
+                await self.send_json({"type": "error", "message": str(e)})
             return
 
         serialized = await self._serialize_result(result, proposals)
@@ -110,7 +122,13 @@ class ProposalConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json({"type": "done"})
 
     @sync_to_async
-    def _run_pipeline(self, message_text: str, session_id: str | None, conflict_ids_raw: str = ""):
+    def _run_pipeline(
+        self,
+        message_text: str,
+        session_id: str | None,
+        conflict_ids_raw: str = "",
+        failure_context: str | None = None,
+    ):
         """
         Synchronous pipeline execution wrapped for async use.
 
@@ -158,6 +176,7 @@ class ProposalConsumer(AsyncJsonWebsocketConsumer):
                 user=self.user,
                 message_obj=user_msg,
                 emitter=emitter,
+                failure_context=failure_context,
             )
         except CancellationError:
             logger.debug("Proposal pipeline cancelled for user=%s", self.user.username)
@@ -187,13 +206,17 @@ class ProposalConsumer(AsyncJsonWebsocketConsumer):
             if conflict_ids_raw
             else []
         )
+        skill_count = getattr(svc, "_skill_count", 0)
         for p in proposals:
             p.message = assistant_msg
+            if p.intent_json is None:
+                p.intent_json = {}
+            p.intent_json["skill_count"] = skill_count
             if linked_ids:
                 p.linked_conflict_ids = linked_ids
-                p.save(update_fields=["message", "linked_conflict_ids"])
+                p.save(update_fields=["message", "linked_conflict_ids", "intent_json"])
             else:
-                p.save(update_fields=["message"])
+                p.save(update_fields=["message", "intent_json"])
 
         # Auto-title
         if session.title == "New Modification":
@@ -201,6 +224,97 @@ class ProposalConsumer(AsyncJsonWebsocketConsumer):
             session.save(update_fields=["title"])
 
         return result, proposals
+
+    async def _handle_propose_with_retry(self, content: dict) -> None:
+        """
+        Re-run the proposal pipeline with failure context injected into the classifier.
+
+        Expected content: {"action": "propose_with_retry", "failure_id": "<uuid>",
+                           "message": "<original query>", "session_id": "<uuid>"}
+        """
+        failure_id = (content.get("failure_id") or "").strip()
+        message_text = (content.get("message") or "").strip()
+
+        if not failure_id or not message_text:
+            await self.send_json(
+                {"type": "error", "message": "failure_id and message are required."}
+            )
+            return
+
+        self._cancel_event.clear()
+        session_id = content.get("session_id")
+        conflict_ids_raw = content.get("conflict_ids", "")
+
+        try:
+            failure_context = await self._build_retry_context(failure_id)
+        except Exception as e:
+            logger.warning("Could not load failure context for retry: %s", e)
+            failure_context = None
+
+        try:
+            result, proposals = await self._run_pipeline(
+                message_text, session_id, conflict_ids_raw, failure_context=failure_context
+            )
+        except Exception as e:
+            from writeback.services.emitters import CancellationError
+            from writeback.services.modification_service import ModificationError
+
+            if isinstance(e, CancellationError):
+                await self.send_json({"type": "cancelled"})
+                return
+            logger.exception("Retry pipeline error: %s", e)
+            failure_id_new = (
+                getattr(e, "failure_record_id", None) if isinstance(e, ModificationError) else None
+            )
+            if failure_id_new:
+                failure_data = await self._load_failure_data(failure_id_new)
+                await self.send_json(
+                    {"type": "failure", "failure": failure_data, "message": str(e)}
+                )
+            else:
+                await self.send_json({"type": "error", "message": str(e)})
+            return
+
+        serialized = await self._serialize_result(result, proposals)
+        await self.send_json({"type": "proposal", **serialized})
+        await self.send_json({"type": "done"})
+
+    @sync_to_async
+    def _load_failure_data(self, failure_id: str) -> dict:
+        """Fetch FailureRecord and return a serialized dict for the client."""
+        from metacastor.models import FailureRecord
+
+        try:
+            rec = FailureRecord.objects.get(pk=failure_id)
+        except FailureRecord.DoesNotExist:
+            return {
+                "id": failure_id,
+                "error_type": "UNKNOWN",
+                "category": "NON_RETRYABLE",
+                "diagnosis": "Error details unavailable.",
+                "failure_phase": "UNKNOWN",
+                "is_retryable": False,
+            }
+        return {
+            "id": str(rec.id),
+            "error_type": rec.error_type,
+            "category": rec.category,
+            "diagnosis": rec.diagnosis,
+            "failure_phase": rec.failure_phase,
+            "is_retryable": rec.category == "RETRYABLE",
+        }
+
+    @sync_to_async
+    def _build_retry_context(self, failure_id: str) -> str | None:
+        """Build failure_context string from a FailureRecord for retry injection."""
+        from metacastor.models import FailureRecord
+        from metacastor.services.failure_classifier import build_failure_context
+
+        try:
+            rec = FailureRecord.objects.get(pk=failure_id)
+            return build_failure_context(rec)
+        except FailureRecord.DoesNotExist:
+            return None
 
     @sync_to_async
     def _serialize_result(self, result, proposals: list) -> dict:
@@ -223,6 +337,7 @@ class ProposalConsumer(AsyncJsonWebsocketConsumer):
                 "affected_count": p.affected_count,
                 "diff_preview": diff_preview,
                 "conflict_ids": ",".join(str(i) for i in p.linked_conflict_ids),
+                "skill_count": (p.intent_json or {}).get("skill_count", 0),
                 "guardian": {
                     "status": p.verification_status,
                     "result": p.verification_result,

@@ -24,9 +24,16 @@
                     </span>
                     <span class="fs-8 text-secondary">{{ p.operation }}</span>
                 </div>
-                <span class="badge {% if p.status == 'pending' %}bg-warning text-dark{% elif p.status == 'applied' %}bg-success{% elif p.status == 'rejected' %}bg-secondary{% else %}bg-danger{% endif %} fs-9">
-                    {{ p.get_status_display }}
-                </span>
+                <div class="d-flex align-items-center gap-2">
+                    {% with sc=p.intent_json.skill_count %}{% if sc %}
+                    <span class="badge bg-info-subtle text-info fs-9" title="{{ sc }} skill example{{ sc|pluralize }} injected">
+                        <i class="bi bi-stars me-1"></i>{{ sc }}
+                    </span>
+                    {% endif %}{% endwith %}
+                    <span class="badge {% if p.status == 'pending' %}bg-warning text-dark{% elif p.status == 'applied' %}bg-success{% elif p.status == 'rejected' %}bg-secondary{% else %}bg-danger{% endif %} fs-9">
+                        {{ p.get_status_display }}
+                    </span>
+                </div>
             </div>
             <div class="card-body p-3">
                 <p class="fs-8 text-secondary mb-2">
@@ -97,6 +104,21 @@
                 {% elif p.status == 'failed' %}
                 <span class="badge bg-danger">Failed: {{ p.error_message|truncatechars:60 }}</span>
                 {% endif %}
+
+                {# Failure records (D3): shown for execution-phase failures linked to this proposal #}
+                {% for fr in p.failure_records.all %}
+                <div class="card border-2 {% if fr.category == 'RETRYABLE' %}border-warning{% else %}border-danger{% endif %} mt-2 shadow-sm">
+                    <div class="card-body py-2 px-3">
+                        <div class="d-flex align-items-center gap-2 mb-1">
+                            <i class="bi bi-exclamation-triangle-fill text-warning"></i>
+                            <span class="fw-semibold fs-8">{{ fr.error_type|lower|title }}</span>
+                            <span class="badge {% if fr.category == 'RETRYABLE' %}bg-warning text-dark{% else %}bg-danger{% endif %} ms-auto" style="font-size:.65rem;">{{ fr.category|title }}</span>
+                            <span class="text-muted" style="font-size:.65rem;">{{ fr.failure_phase }}</span>
+                        </div>
+                        <p class="mb-0 text-muted fs-8">{{ fr.diagnosis }}</p>
+                    </div>
+                </div>
+                {% endfor %}
             </div>
         </div>
         {% endwith %}
