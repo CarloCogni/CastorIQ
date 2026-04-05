@@ -1,0 +1,98 @@
+<!--environments/ifc_reparse_confirm.html-->
+{% extends "core/base.html" %}
+
+{% block title %}Reparse {{ ifc_file.name }} – Castor{% endblock %}
+
+{% block content %}
+<div class="flex-grow-1 d-flex align-items-center justify-content-center p-4 bg-body">
+
+    <!-- ── Confirmation card ── -->
+    <div id="confirm-card" style="width: 100%; max-width: 480px;">
+        <div class="card bg-surface border shadow-sm" style="border-color: rgba(234,179,8,.35) !important;">
+
+            <div class="card-header d-flex align-items-center gap-2 fw-semibold"
+                 style="background: rgba(234,179,8,.08); border-bottom-color: rgba(234,179,8,.25); color: #eab308;">
+                <i class="bi bi-arrow-clockwise"></i>
+                Reparse IFC Model
+            </div>
+
+            <div class="card-body p-4">
+                <p class="fw-medium text-body mb-1 text-truncate" title="{{ ifc_file.name }}">
+                    {{ ifc_file.name }}
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    This will delete all
+                    <span class="fw-semibold text-body">{{ ifc_file.entity_count }}</span>
+                    currently extracted entities and rebuild them from scratch.
+                    Large models may take a few minutes.
+                </p>
+
+                <div class="d-flex gap-2 align-items-start rounded p-3 mb-4 fs-7"
+                     style="background: rgba(234,179,8,.08); border: 1px solid rgba(234,179,8,.25); color: #ca8a04;">
+                    <i class="bi bi-exclamation-triangle-fill mt-1 flex-shrink-0"></i>
+                    <span>Any active modifications referencing current entities will need to be re-evaluated after reparsing.</span>
+                </div>
+
+                <form method="post" id="reparse-form" onsubmit="startReparse(event)">
+                    {% csrf_token %}
+                    <div class="d-flex gap-2 justify-content-end">
+                        <a href="{% url 'projects:detail' project.pk %}" class="btn btn-outline-secondary">
+                            Cancel
+                        </a>
+                        <button type="submit" class="btn fw-semibold" id="submit-btn"
+                                style="background:#eab308; color:#1a1a1a; border-color:#eab308;">
+                            <i class="bi bi-arrow-clockwise me-2"></i>Reparse Now
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Processing card (shown after submit) ── -->
+    <div id="processing-card" style="display:none; width:100%; max-width:480px; text-align:center;">
+        <div class="card bg-surface border shadow-sm p-5">
+
+            <!-- Castor loader -->
+            <div class="d-flex justify-content-center mb-4" id="loader-wrap">
+                {% include "loaders/castor_loader.html" %}
+            </div>
+
+            <h3 class="h5 fw-bold mb-2">Reparsing Model…</h3>
+            <p class="text-secondary mb-0 text-truncate px-3" title="{{ ifc_file.name }}">
+                {{ ifc_file.name }}
+            </p>
+            <p class="text-secondary fs-7 mb-4 mt-1">
+                Extracting entities · generating embeddings · updating index
+            </p>
+
+            <div class="progress mb-2" style="height:5px;">
+                <div class="progress-bar progress-bar-striped progress-bar-animated"
+                     role="progressbar" style="width:100%; background:#eab308;"></div>
+            </div>
+            <p class="text-secondary fs-8 mt-2 mb-0">Do not close this window.</p>
+        </div>
+    </div>
+
+</div>
+
+<script>
+function startReparse(e) {
+    // Swap cards
+    document.getElementById('confirm-card').style.display = 'none';
+    const proc = document.getElementById('processing-card');
+    proc.style.display = 'block';
+
+    // Reveal the first castor loader variant and scale it up
+    const loader = proc.querySelector('.castor-loader-variant');
+    if (loader) {
+        loader.removeAttribute('style');          // clears display:none
+        loader.style.width  = '110px';
+        loader.style.height = '110px';
+    }
+
+    // Let the form submit naturally
+    return true;
+}
+</script>
+{% endblock %}

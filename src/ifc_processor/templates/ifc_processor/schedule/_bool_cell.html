@@ -1,0 +1,2 @@
+{% comment %}Render a boolean property value as an icon. value may be True, False, or None.{% endcomment %}
+{% if value is None %}<span class="text-secondary opacity-50">—</span>{% elif value %}<i class="bi bi-check-circle-fill text-success" title="Yes"></i>{% else %}<i class="bi bi-x-circle text-secondary opacity-50" title="No"></i>{% endif %}

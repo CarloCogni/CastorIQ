@@ -1,0 +1,71 @@
+<!--ifc_processor/schedule/_schedule_tables.html-->
+<!--  HTMX partial: one table section per IFC type.-->
+<!--  Context: results (dict[str, ScheduleResult]), project, ifc_file,-->
+<!--            selected_types (list[str]), selected_storey (str)-->
+{% load i18n schedule_tags %}
+
+{% if not results %}
+  <div class="d-flex align-items-center justify-content-center h-100 p-5 text-center">
+    <div>
+      <i class="bi bi-inbox fs-1 text-secondary opacity-25 d-block mb-3"></i>
+      <p class="text-secondary mb-1">No elements found for the selected types.</p>
+      {% if selected_storey %}<p class="text-secondary small">Try removing the storey filter.</p>{% endif %}
+    </div>
+  </div>
+{% else %}
+  {% for ifc_type, result in results.items %}
+
+    <div {% if not forloop.last %}class="border-bottom"{% endif %}>
+
+      {# ── Section header ── #}
+      <div class="px-3 py-2 bg-body-secondary border-bottom d-flex align-items-center gap-2 flex-shrink-0">
+        <span class="badge bg-primary bg-opacity-90">{{ ifc_type }}</span>
+        <span class="text-secondary small">{{ result.total }} element{{ result.total|pluralize }}</span>
+        {% if selected_storey %}
+          <span class="badge bg-secondary bg-opacity-25 text-body small">{{ selected_storey }}</span>
+        {% endif %}
+      </div>
+
+      {# ── Table ── #}
+      {% if result.rows %}
+      <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0" style="font-size: 0.82rem;">
+          <thead class="table-dark sticky-top">
+            <tr>
+              {% for col in result.columns %}
+              <th style="white-space: nowrap;">
+                {{ col.label }}
+                {% if col.unit == "m" %}<span class="opacity-50 fw-normal ms-1" style="font-size:0.75em;">(m)</span>{% endif %}
+              </th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in result.rows %}
+            <tr>
+              {% for col, val in result.columns|zip_with_row:row %}
+              <td>
+                {% if val is None %}
+                  <span class="text-secondary opacity-40">—</span>
+                {% elif val == True %}
+                  <i class="bi bi-check-circle-fill text-success" title="Yes"></i>
+                {% elif val == False %}
+                  <i class="bi bi-x-circle text-secondary opacity-50" title="No"></i>
+                {% else %}
+                  {{ val }}
+                {% endif %}
+              </td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="px-3 py-4 text-secondary small text-center">No elements found.</div>
+      {% endif %}
+
+    </div>
+
+  {% endfor %}
+{% endif %}
