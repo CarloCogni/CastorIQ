@@ -101,6 +101,20 @@ class Message(UUIDModel):
         help_text="Sources used to generate the response",
     )
 
+    # Conversation compaction
+    is_compaction_summary = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name="Compaction Summary",
+        help_text="Whether this message is a compacted summary of older messages",
+    )
+    compacted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Compacted At",
+        help_text="When this message was summarized into a compaction summary",
+    )
+
     # For modification messages
     has_proposal = models.BooleanField(
         default=False,

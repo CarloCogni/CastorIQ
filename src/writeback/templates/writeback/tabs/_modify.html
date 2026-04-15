@@ -640,6 +640,9 @@ const ModifyChat = {
     sessionUrl: '{% url "writeback:modify_session" project.pk session.pk %}',
     userInitial: '{{ user.username.0|upper }}',
 
+    // Copy-button counter for dynamically appended messages
+    _msgCounter: 1000,
+
     // WebSocket state
     _ws: null,
     _wsReconnectAttempts: 0,
@@ -1056,7 +1059,14 @@ const ModifyChat = {
         const avatar = role === 'user'
             ? `<div class="message-avatar">${this.userInitial}</div>`
             : `<div class="message-avatar" style="background-color: var(--castor-accent);"><i class="bi bi-tools"></i></div>`;
-        wrapper.innerHTML = `${avatar}<div class="message-content"><div class="message-text">${html}</div></div>`;
+        let copyBtn = '';
+        if (role === 'user') {
+            const rawId = `modify-raw-dyn-${this._msgCounter++}`;
+            const escaped = html.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            copyBtn = `<button class="btn-copy-msg" onclick="copyMessage('${rawId}', this)" title="Copy text"><i class="bi bi-copy"></i></button>`
+                     + `<textarea id="${rawId}" class="d-none">${escaped}</textarea>`;
+        }
+        wrapper.innerHTML = `${avatar}<div class="message-content position-relative group">${copyBtn}<div class="message-text">${html}</div></div>`;
         this.chatEl.appendChild(wrapper);
         this.scrollToBottom();
     },
@@ -1285,6 +1295,16 @@ const ModifyChat = {
         return div.innerHTML;
     },
 };
+
+/* Copy message text to clipboard (shared with Ask mode pattern) */
+function copyMessage(rawId, btn) {
+    const rawText = document.getElementById(rawId).value;
+    navigator.clipboard.writeText(rawText).then(() => {
+        const originalIcon = btn.innerHTML;
+        btn.innerHTML = '<i class="bi bi-check2"></i>';
+        setTimeout(() => { btn.innerHTML = originalIcon; }, 2000);
+    });
+}
 
 // Auto-scroll on load and initialise WebSocket
 ModifyChat.scrollToBottom();

@@ -10,13 +10,23 @@ from pgvector.django import CosineDistance
 
 from chat.models import ChatSession, Message
 from core.llm import get_llm, resolve_model_name
-from core.token_budget import compute_budget
+from core.token_budget import compute_budget, compute_retrieval_budget
 from core.token_utils import estimate_tokens
 from documents.models import Document, DocumentChunk
 from embeddings.services.embedding_service import EmbeddingService
 from ifc_processor.models import IFCEntity, IFCFile
 
 logger = logging.getLogger(__name__)
+
+
+def _get_entity_storey_name(entity: IFCEntity) -> str:
+    """Walk the spatial_container chain to find the storey name, or return empty."""
+    node = getattr(entity, "spatial_container", None)
+    while node:
+        if node.spatial_type == "building_storey":
+            return node.entity.name if hasattr(node, "entity") and node.entity else ""
+        node = node.parent
+    return ""
 
 
 SYSTEM_PROMPT = dedent("""\
@@ -81,6 +91,7 @@ class RAGService:
     """
 
     def __init__(self, user=None):
+        self._user = user
         self.embedding_service = EmbeddingService()
         self.llm = get_llm(user=user, temperature=0.2)
         self.model_name = resolve_model_name(user)
@@ -131,6 +142,12 @@ class RAGService:
         self._emit(emitter, "retrieve", "running", "Retrieving context...")
         self._check_cancelled(emitter)
 
+        # Compute dynamic retrieval budget based on available context window
+        history_estimate = self._estimate_session_history_tokens(session)
+        retrieval_budget = compute_retrieval_budget(
+            self.model_name, SYSTEM_PROMPT, history_tokens=history_estimate
+        )
+
         if intent in ("ifc_inventory", "doc_summary") and scope == "ifc":
             # User restricted scope to IFC — any summary/inventory query uses aggregate
             aggregate_rows = self._retrieve_ifc_aggregate_context(project)
@@ -139,7 +156,9 @@ class RAGService:
                 context_items: list = []
                 analysis_mode = "IFC Inventory Summary"
             else:
-                context_items = self._retrieve_vector_context(project, user_text, scope)
+                context_items = self._retrieve_vector_context(
+                    project, user_text, scope, budget_tokens=retrieval_budget
+                )
                 analysis_mode = "Specific Q&A"
         elif intent == "ifc_inventory" and scope == "auto":
             aggregate_rows = self._retrieve_ifc_aggregate_context(project)
@@ -148,7 +167,9 @@ class RAGService:
                 context_items = []
                 analysis_mode = "IFC Inventory Summary"
             else:
-                context_items = self._retrieve_vector_context(project, user_text, scope)
+                context_items = self._retrieve_vector_context(
+                    project, user_text, scope, budget_tokens=retrieval_budget
+                )
                 analysis_mode = "Specific Q&A"
         elif intent == "doc_summary" and scope == "auto":
             # Combined: IFC aggregate + document summary chunks
@@ -162,7 +183,9 @@ class RAGService:
             context_items = self._retrieve_summary_context(project)
             analysis_mode = "General Summary"
         else:
-            context_items = self._retrieve_vector_context(project, user_text, scope)
+            context_items = self._retrieve_vector_context(
+                project, user_text, scope, budget_tokens=retrieval_budget
+            )
             analysis_mode = "Specific Q&A"
 
         self._emit(emitter, "intent", "done", analysis_mode)
@@ -175,6 +198,13 @@ class RAGService:
         self._check_cancelled(emitter)
 
         project_meta = self._get_project_metadata(project)
+
+        # Auto-compact when history consumes too much of the budget
+        if retrieval_budget > 0 and history_estimate > retrieval_budget * 0.8:
+            from chat.services.compaction_service import CompactionService
+
+            compactor = CompactionService(user=self._user)
+            compactor.compact_session(session, emitter=emitter)
 
         self._emit(emitter, "generate", "running", "Generating answer...")
         self._check_cancelled(emitter)  # Last chance to cancel before LLM call
@@ -216,21 +246,41 @@ class RAGService:
             return "doc_summary"
         return "specific_qa"
 
-    def _retrieve_vector_context(self, project, query: str, scope: str) -> list[Any]:
-        """Standard Vector Search for specific queries."""
+    # Retrieval depth guardrails
+    _MIN_CANDIDATES_PER_SOURCE = 8
+    _MAX_CANDIDATES_PER_SOURCE = 30
+
+    def _retrieve_vector_context(
+        self, project, query: str, scope: str, budget_tokens: int = 0
+    ) -> list[Any]:
+        """
+        Budget-aware vector search for specific queries.
+
+        Fetches a generous ceiling of candidates from pgvector, then greedily
+        fills the token budget in relevance order. When ``budget_tokens`` is 0
+        (legacy/fallback), behaves like a fixed top-8 retrieval.
+        """
         query_vector = self.embedding_service.embed_query(query)
         if not query_vector:
             return []
 
-        ifc_hits = []
-        doc_hits = []
+        # Determine how many candidates to fetch per source
+        if budget_tokens > 0:
+            ceiling = min(
+                self._MAX_CANDIDATES_PER_SOURCE,
+                max(self._MIN_CANDIDATES_PER_SOURCE, budget_tokens // 200),
+            )
+        else:
+            ceiling = self._MIN_CANDIDATES_PER_SOURCE
 
-        # We fetch slightly more candidates to ensure quality
+        ifc_hits: list = []
+        doc_hits: list = []
+
         if scope in ["auto", "ifc"]:
             ifc_hits = list(
                 IFCEntity.objects.filter(ifc_file__project=project, embedding__isnull=False)
                 .annotate(distance=CosineDistance("embedding", query_vector))
-                .order_by("distance")[:5]
+                .order_by("distance")[:ceiling]
             )
 
         if scope in ["auto", "docs"]:
@@ -238,14 +288,33 @@ class RAGService:
                 DocumentChunk.objects.filter(document__project=project, embedding__isnull=False)
                 .select_related("document")
                 .annotate(distance=CosineDistance("embedding", query_vector))
-                .order_by("distance")[:5]
+                .order_by("distance")[:ceiling]
             )
 
         # Merge and sort by relevance (distance)
-        results = ifc_hits + doc_hits
-        results.sort(key=lambda x: x.distance)
+        candidates = ifc_hits + doc_hits
+        candidates.sort(key=lambda x: x.distance)
 
-        return results[:8]  # Return top 8 mixed results
+        if budget_tokens <= 0:
+            return candidates[:8]
+
+        # Greedy trim: fill budget in relevance order, skip items that don't fit
+        selected: list = []
+        used_tokens = 0
+        for item in candidates:
+            item_tokens = estimate_tokens(self._format_single_item(item))
+            if used_tokens + item_tokens <= budget_tokens:
+                selected.append(item)
+                used_tokens += item_tokens
+
+        logger.debug(
+            "Dynamic retrieval: %d/%d candidates selected, %d/%d tokens used",
+            len(selected),
+            len(candidates),
+            used_tokens,
+            budget_tokens,
+        )
+        return selected
 
     def _retrieve_summary_context(self, project) -> list[DocumentChunk]:
         """
@@ -314,7 +383,7 @@ class RAGService:
                     "filename": row["ifc_file__name"],
                     "count": row["count"],
                     "representative_name": representative.name if representative else "",
-                    "representative_storey": representative.building_storey
+                    "representative_storey": _get_entity_storey_name(representative)
                     if representative
                     else "",
                     "representative_properties": representative.properties
@@ -379,7 +448,7 @@ class RAGService:
                         "id": str(item.id),
                         "name": item.name or item.ifc_type,
                         "ifc_type": item.ifc_type,
-                        "storey": item.building_storey or "",
+                        "storey": _get_entity_storey_name(item),
                         "global_id": item.global_id or "",
                         "preview": (item.description[:120] + "...")
                         if len(item.description) > 120
@@ -514,47 +583,89 @@ class RAGService:
 
         return answer, final_budget.utilization_pct
 
+    @staticmethod
+    def _format_single_item(item) -> str:
+        """Format a single retrieval result (IFC entity or document chunk) as prompt text."""
+        if isinstance(item, IFCEntity):
+            return (
+                f"[IFC: {item.name or 'Unnamed'} ({item.ifc_type}) — "
+                f"Storey: {_get_entity_storey_name(item) or 'N/A'}]\n"
+                f"{item.description}"
+            )
+        if isinstance(item, DocumentChunk):
+            return f"[DOC: {item.document.name} — Page {item.page_number or '?'}]\n{item.content}"
+        return ""
+
     def _format_context(self, context_items: list) -> str:
         """Format retrieved IFC entities and document chunks into prompt text."""
         if not context_items:
             return "No relevant excerpts found."
 
-        parts = []
-        for item in context_items:
-            if isinstance(item, IFCEntity):
-                parts.append(
-                    f"[IFC: {item.name or 'Unnamed'} ({item.ifc_type}) — "
-                    f"Storey: {item.building_storey or 'N/A'}]\n"
-                    f"{item.description}"
-                )
-            elif isinstance(item, DocumentChunk):
-                parts.append(
-                    f"[DOC: {item.document.name} — Page {item.page_number or '?'}]\n{item.content}"
-                )
+        return "\n\n---\n\n".join(self._format_single_item(item) for item in context_items)
 
-        return "\n\n---\n\n".join(parts)
+    @staticmethod
+    def _estimate_session_history_tokens(session: ChatSession, max_msgs: int = 20) -> int:
+        """
+        Lightweight estimate of how many tokens the conversation history will consume.
+
+        Used to pre-allocate retrieval budget before the full history is formatted.
+        Mirrors the truncation in ``_build_history_within_budget`` (500 chars/msg).
+        """
+        recent = session.messages.filter(
+            role__in=[Message.Role.USER, Message.Role.ASSISTANT],
+            compacted_at__isnull=True,
+        ).order_by("-created_at")[:max_msgs]
+        total = sum(estimate_tokens(m.content[:500]) for m in recent)
+
+        # Add compaction summary tokens if one exists
+        summary = session.messages.filter(
+            role=Message.Role.SYSTEM,
+            is_compaction_summary=True,
+        ).first()
+        if summary:
+            total += estimate_tokens(summary.content)
+
+        return total
 
     def _build_history_within_budget(self, session: ChatSession, max_history_tokens: int) -> str:
         """
         Build conversation history that fits within a token budget.
 
-        Walks messages from most-recent backwards, adding exchanges until
-        the next message would exceed ``max_history_tokens``. This replaces
-        the fixed 3-exchange cap with a token-aware limit.
+        If a compaction summary exists, it is prepended first. Then walks
+        non-compacted messages from most-recent backwards, adding exchanges
+        until the next message would exceed ``max_history_tokens``.
         """
+        lines: list[str] = []
+        total_tokens = 0
+
+        # Include compaction summary if one exists
+        summary = (
+            session.messages.filter(
+                role=Message.Role.SYSTEM,
+                is_compaction_summary=True,
+            )
+            .order_by("-created_at")
+            .first()
+        )
+        if summary:
+            summary_line = f"[CONVERSATION SUMMARY]: {summary.content}"
+            summary_tokens = estimate_tokens(summary_line)
+            if summary_tokens <= max_history_tokens:
+                lines.append(summary_line)
+                total_tokens += summary_tokens
+
+        # Fetch recent non-compacted messages
         recent_msgs = list(
-            session.messages.filter(role__in=[Message.Role.USER, Message.Role.ASSISTANT]).order_by(
-                "-created_at"
-            )[:20]
+            session.messages.filter(
+                role__in=[Message.Role.USER, Message.Role.ASSISTANT],
+                compacted_at__isnull=True,
+            ).order_by("-created_at")[:20]
         )
 
-        if not recent_msgs:
+        if not recent_msgs and not lines:
             return ""
 
         recent_msgs.reverse()
-
-        lines = []
-        total_tokens = 0
 
         for msg in recent_msgs:
             content = msg.content[:500]
@@ -569,41 +680,5 @@ class RAGService:
 
             lines.append(line)
             total_tokens += msg_tokens
-
-        return "\n".join(lines)
-
-    def _format_history(
-        self, session: ChatSession, max_exchanges: int = 3, max_chars_per_msg: int = 300
-    ) -> str:
-        """
-        Format recent conversation history for context.
-
-        Fetches the last N exchanges (user+assistant pairs), truncates long
-        messages, and formats them as a readable block. Excludes the current
-        user message (which hasn't been saved yet at generation time in the
-        refactored flow, or is the last one).
-
-        Token budget: ~800 tokens for 3 exchanges at 300 chars each.
-        """
-        recent_msgs = list(
-            session.messages.filter(role__in=[Message.Role.USER, Message.Role.ASSISTANT]).order_by(
-                "-created_at"
-            )[: max_exchanges * 2]
-        )
-
-        if not recent_msgs:
-            return ""
-
-        # Reverse to chronological order
-        recent_msgs.reverse()
-
-        lines = []
-        for msg in recent_msgs:
-            content = msg.content[:max_chars_per_msg]
-            if len(msg.content) > max_chars_per_msg:
-                content += "..."
-
-            role_label = "USER" if msg.role == Message.Role.USER else "CASTOR"
-            lines.append(f"{role_label}: {content}")
 
         return "\n".join(lines)

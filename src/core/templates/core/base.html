@@ -102,7 +102,15 @@
             background-color: var(--bs-tertiary-bg) !important;
         }
 
-        /* 1. Sidebar Transitions */
+        /* 1. Sidebar collapse chevron */
+        [data-bs-toggle="collapse"] .bi-chevron-down {
+            transition: transform 0.2s ease;
+        }
+        [data-bs-toggle="collapse"].collapsed .bi-chevron-down {
+            transform: rotate(-90deg);
+        }
+
+        /* 2. Sidebar Transitions */
         .sidebar {
             width: 280px;
             height: 100%;
@@ -153,6 +161,19 @@
             opacity: 1;
             visibility: visible;
             bottom: 90px; /* Slight pop-up animation */
+        }
+
+        .scroll-bottom-btn.has-new {
+            background-color: var(--castor-primary);
+            border-color: var(--castor-primary);
+            animation: scroll-btn-pulse 1.5s ease-in-out infinite;
+        }
+        .scroll-bottom-btn.has-new i {
+            color: white !important;
+        }
+        @keyframes scroll-btn-pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.5); }
+            50% { box-shadow: 0 0 0 8px rgba(59, 130, 246, 0); }
         }
 
         .scroll-bottom-btn:hover {

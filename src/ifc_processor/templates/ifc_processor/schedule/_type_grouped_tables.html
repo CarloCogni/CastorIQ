@@ -1,6 +1,7 @@
-<!--ifc_processor/schedule/_schedule_tables.html-->
-<!--  HTMX partial: one table section per IFC type.-->
-<!--  Context: results (dict[str, ScheduleResult]), project, ifc_file,-->
+<!--ifc_processor/schedule/_type_grouped_tables.html-->
+<!--  HTMX partial: type-grouped schedule — one table per IFC class,-->
+<!--  one row per defining IFCElementType with count and shared properties.-->
+<!--  Context: results (dict[str, TypeGroupedResult]), project, ifc_file,-->
 <!--            selected_types (list[str]), selected_storey (str)-->
 {% load i18n schedule_tags %}
 
@@ -20,18 +21,23 @@
       {# ── Section header ── #}
       <div class="px-3 py-2 bg-body-secondary border-bottom d-flex align-items-center gap-2 flex-shrink-0">
         <span class="badge bg-primary bg-opacity-90">{{ ifc_type }}</span>
-        <span class="text-secondary small">{{ result.total }} element{{ result.total|pluralize }}</span>
+        <span class="text-secondary small">
+          {{ result.total }} element{{ result.total|pluralize }}
+          in {{ result.groups|length }} type{{ result.groups|length|pluralize }}
+        </span>
         {% if selected_storey %}
           <span class="badge bg-secondary bg-opacity-25 text-body small">{{ selected_storey }}</span>
         {% endif %}
       </div>
 
       {# ── Table ── #}
-      {% if result.rows %}
+      {% if result.groups %}
       <div class="table-responsive">
         <table class="table table-sm table-hover align-middle mb-0" style="font-size: 0.82rem;">
           <thead class="table-dark sticky-top">
             <tr>
+              <th style="white-space: nowrap;">Type Name</th>
+              <th style="white-space: nowrap; text-align: center;">Count</th>
               {% for col in result.columns %}
               <th style="white-space: nowrap;">
                 {{ col.label }}
@@ -41,9 +47,13 @@
             </tr>
           </thead>
           <tbody>
-            {% for row in result.rows %}
+            {% for group in result.groups %}
             <tr>
-              {% for col, val in result.columns|zip_with_row:row %}
+              <td class="fw-semibold" style="white-space: nowrap;">{{ group.element_type_name }}</td>
+              <td class="text-center">
+                <span class="badge bg-secondary bg-opacity-25 text-body">{{ group.count }}</span>
+              </td>
+              {% for col, val in result.columns|zip_with_row:group.values %}
               <td>
                 {% if val is None %}
                   <span class="text-secondary opacity-40">—</span>

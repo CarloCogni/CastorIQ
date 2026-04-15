@@ -1,7 +1,8 @@
 <!--ifc_processor/explore/_entity_table.html-->
 <!--   HTMX partial: paginated, filtered entity table.-->
 <!--   Context: page_obj, ifc_file, project, type_counts, active_type,-->
-<!--            current_building, current_storey, current_space, current_q -->
+<!--            current_spatial_id, breadcrumb, current_q -->
+{% load ifc_filters %}
 
 {% with base_url=request.path %}
 
@@ -11,36 +12,28 @@
   {# Spatial breadcrumb #}
   <div class="d-flex align-items-center gap-1 small text-secondary flex-grow-1 flex-wrap">
     <a class="text-decoration-none text-secondary"
-       hx-get="{{ base_url }}"
+       hx-get="{{ base_url }}{% if current_q %}?q={{ current_q|urlencode }}{% endif %}"
        hx-target="#explore-entities"
        hx-swap="innerHTML"
        style="cursor:pointer;">
       <i class="bi bi-house-door"></i> All
     </a>
-    {% if current_building %}
-      <span class="opacity-40">›</span>
-      <a class="text-decoration-none text-secondary"
-         hx-get="{{ base_url }}?building={{ current_building|urlencode }}&q={{ current_q|urlencode }}"
-         hx-target="#explore-entities"
-         hx-swap="innerHTML"
-         style="cursor:pointer;">
-        {{ current_building }}
-      </a>
-    {% endif %}
-    {% if current_storey %}
-      <span class="opacity-40">›</span>
-      <a class="text-decoration-none text-secondary"
-         hx-get="{{ base_url }}?building={{ current_building|urlencode }}&storey={{ current_storey|urlencode }}&q={{ current_q|urlencode }}"
-         hx-target="#explore-entities"
-         hx-swap="innerHTML"
-         style="cursor:pointer;">
-        {{ current_storey }}
-      </a>
-    {% endif %}
-    {% if current_space %}
-      <span class="opacity-40">›</span>
-      <span class="text-body">{{ current_space }}</span>
-    {% endif %}
+    {% for crumb in breadcrumb %}
+      <span class="opacity-40">&rsaquo;</span>
+      {% if forloop.last %}
+        <span class="text-body">
+          <i class="bi {{ crumb.spatial_type|spatial_icon }} me-1" style="font-size:0.7rem;"></i>{{ crumb.name }}
+        </span>
+      {% else %}
+        <a class="text-decoration-none text-secondary"
+           hx-get="{{ base_url }}?spatial_id={{ crumb.id }}&q={{ current_q|urlencode }}"
+           hx-target="#explore-entities"
+           hx-swap="innerHTML"
+           style="cursor:pointer;">
+          <i class="bi {{ crumb.spatial_type|spatial_icon }} me-1" style="font-size:0.7rem;"></i>{{ crumb.name }}
+        </a>
+      {% endif %}
+    {% endfor %}
   </div>
 
   {# Search input #}
@@ -54,7 +47,7 @@
              class="form-control form-control-sm bg-body border-secondary-subtle"
              placeholder="Search name or GlobalID…"
              value="{{ current_q }}"
-             hx-get="{{ base_url }}?building={{ current_building|urlencode }}&storey={{ current_storey|urlencode }}&space={{ current_space|urlencode }}&type={{ active_type|urlencode }}"
+             hx-get="{{ base_url }}?spatial_id={{ current_spatial_id|urlencode }}&type={{ active_type|urlencode }}"
              hx-trigger="input changed delay:300ms, search"
              hx-target="#explore-entities"
              hx-swap="innerHTML"
@@ -64,7 +57,7 @@
   </div>
 
   {# Export CSV #}
-  <a href="{% url 'projects:explore_export' project.pk ifc_file.pk %}?building={{ current_building|urlencode }}&storey={{ current_storey|urlencode }}&space={{ current_space|urlencode }}&type={{ active_type|urlencode }}&q={{ current_q|urlencode }}"
+  <a href="{% url 'projects:explore_export' project.pk ifc_file.pk %}?spatial_id={{ current_spatial_id|urlencode }}&type={{ active_type|urlencode }}&q={{ current_q|urlencode }}"
      class="btn btn-sm btn-outline-secondary"
      title="Export current filter as CSV"
      download>
@@ -86,7 +79,7 @@
   </a>
   {% endif %}
   <a class="badge {% if not active_type %}bg-primary{% else %}bg-secondary bg-opacity-25 text-body{% endif %} text-decoration-none"
-     hx-get="{{ base_url }}?building={{ current_building|urlencode }}&storey={{ current_storey|urlencode }}&space={{ current_space|urlencode }}&q={{ current_q|urlencode }}"
+     hx-get="{{ base_url }}?spatial_id={{ current_spatial_id|urlencode }}&q={{ current_q|urlencode }}"
      hx-target="#explore-entities"
      hx-swap="innerHTML"
      style="cursor:pointer;">
@@ -94,7 +87,7 @@
   </a>
   {% for tc in type_counts %}
   <a class="badge {% if active_type == tc.ifc_type %}bg-primary{% else %}bg-secondary bg-opacity-25 text-body{% endif %} text-decoration-none badge-ifc-type"
-     hx-get="{{ base_url }}?building={{ current_building|urlencode }}&storey={{ current_storey|urlencode }}&space={{ current_space|urlencode }}&type={{ tc.ifc_type|urlencode }}&q={{ current_q|urlencode }}"
+     hx-get="{{ base_url }}?spatial_id={{ current_spatial_id|urlencode }}&type={{ tc.ifc_type|urlencode }}&q={{ current_q|urlencode }}"
      hx-target="#explore-entities"
      hx-swap="innerHTML"
      style="cursor:pointer;">
@@ -113,8 +106,8 @@
       <tr>
         <th style="width:140px;">Type</th>
         <th>Name</th>
-        <th style="width:120px;">Storey</th>
-        <th style="width:120px;">Space</th>
+        <th style="width:160px;">Element Type</th>
+        <th style="width:150px;">Container</th>
         <th style="width:110px;" class="text-secondary">GlobalID</th>
       </tr>
     </thead>
@@ -127,8 +120,14 @@
           <span class="badge bg-primary bg-opacity-10 text-body badge-ifc-type">{{ entity.ifc_type }}</span>
         </td>
         <td>{{ entity.name|default:"—" }}</td>
-        <td class="text-secondary">{{ entity.building_storey|default:"—"|truncatechars:18 }}</td>
-        <td class="text-secondary">{{ entity.space|default:"—"|truncatechars:18 }}</td>
+        <td class="text-secondary" style="font-size:0.8rem;">{{ entity.element_type.name|default:"—"|truncatechars:25 }}</td>
+        <td class="text-secondary">
+          {% if entity.spatial_container and entity.spatial_container.entity %}
+            {{ entity.spatial_container.entity.name|default:"—"|truncatechars:22 }}
+          {% else %}
+            —
+          {% endif %}
+        </td>
         <td class="text-secondary font-monospace" style="font-size:0.75rem;">{{ entity.global_id|truncatechars:10 }}</td>
       </tr>
       {% endfor %}
@@ -145,7 +144,7 @@
   <div class="d-flex gap-1">
     {% if page_obj.has_previous %}
     <button class="btn btn-sm btn-outline-secondary"
-            hx-get="{{ base_url }}?building={{ current_building|urlencode }}&storey={{ current_storey|urlencode }}&space={{ current_space|urlencode }}&type={{ active_type|urlencode }}&q={{ current_q|urlencode }}&page={{ page_obj.previous_page_number }}"
+            hx-get="{{ base_url }}?spatial_id={{ current_spatial_id|urlencode }}&type={{ active_type|urlencode }}&q={{ current_q|urlencode }}&page={{ page_obj.previous_page_number }}"
             hx-target="#explore-entities"
             hx-swap="innerHTML">
       <i class="bi bi-chevron-left"></i>
@@ -154,7 +153,7 @@
     <span class="btn btn-sm btn-outline-secondary disabled">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
     {% if page_obj.has_next %}
     <button class="btn btn-sm btn-outline-secondary"
-            hx-get="{{ base_url }}?building={{ current_building|urlencode }}&storey={{ current_storey|urlencode }}&space={{ current_space|urlencode }}&type={{ active_type|urlencode }}&q={{ current_q|urlencode }}&page={{ page_obj.next_page_number }}"
+            hx-get="{{ base_url }}?spatial_id={{ current_spatial_id|urlencode }}&type={{ active_type|urlencode }}&q={{ current_q|urlencode }}&page={{ page_obj.next_page_number }}"
             hx-target="#explore-entities"
             hx-swap="innerHTML">
       <i class="bi bi-chevron-right"></i>

@@ -6,9 +6,11 @@ AskConsumer — streams the RAG pipeline phases to the browser.
 
 Protocol:
     Client → Server:  {"action": "ask", "message": "<text>", "session_id": "<uuid>", "scope": "auto|ifc|docs"}
+    Client → Server:  {"action": "compact", "session_id": "<uuid>"}
     Client → Server:  {"action": "cancel"}
-    Server → Client:  {"type": "phase", "phase": "intent|retrieve|generate", "status": "running|done|error", "message": "..."}
+    Server → Client:  {"type": "phase", "phase": "intent|retrieve|generate|compact", "status": "running|done|error", "message": "..."}
     Server → Client:  {"type": "done"}
+    Server → Client:  {"type": "compacted"}
     Server → Client:  {"type": "cancelled"}
     Server → Client:  {"type": "error", "message": "<text>"}
 """
@@ -65,6 +67,8 @@ class AskConsumer(AsyncJsonWebsocketConsumer):
         elif action == "cancel":
             self._cancel_event.set()
             logger.debug("AskConsumer: cancel requested by %s", self.user.username)
+        elif action == "compact":
+            await self._handle_compact(content)
         else:
             await self.send_json({"type": "error", "message": f"Unknown action: {action}"})
 
@@ -96,6 +100,43 @@ class AskConsumer(AsyncJsonWebsocketConsumer):
             return
 
         await self.send_json({"type": "done"})
+
+    async def _handle_compact(self, content: dict) -> None:
+        """Compact conversation history for the given session."""
+        session_id = content.get("session_id")
+        if not session_id:
+            await self.send_json({"type": "error", "message": "session_id is required."})
+            return
+
+        try:
+            await self._run_compaction(session_id)
+        except Exception as e:
+            logger.exception("Compaction error: %s", e)
+            await self.send_json({"type": "error", "message": str(e)})
+            return
+
+        await self.send_json({"type": "compacted"})
+
+    @sync_to_async
+    def _run_compaction(self, session_id: str) -> None:
+        """Synchronous compaction execution wrapped for async use."""
+        from chat.models import ChatSession
+        from chat.services.compaction_service import CompactionService
+        from writeback.services.emitters import WebSocketEmitter
+
+        try:
+            session = ChatSession.objects.get(
+                pk=session_id,
+                project_id=self.project_id,
+                user=self.user,
+                mode=ChatSession.Mode.ASK,
+            )
+        except ChatSession.DoesNotExist:
+            raise ValueError("Session not found.")
+
+        emitter = WebSocketEmitter(self.send_json, cancel_event=self._cancel_event)
+        compactor = CompactionService(user=self.user)
+        compactor.compact_session(session, emitter=emitter)
 
     @sync_to_async
     def _run_pipeline(self, message_text: str, session_id: str | None, scope: str) -> None:

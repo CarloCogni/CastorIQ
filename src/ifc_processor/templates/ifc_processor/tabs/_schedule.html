@@ -63,6 +63,19 @@
           </select>
         </div>
 
+        {# View mode toggle #}
+        <div class="px-3 pt-2 pb-2 border-bottom flex-shrink-0">
+          <label class="small fw-semibold text-secondary text-uppercase d-block mb-1">
+            <i class="bi bi-grid-3x3 me-1"></i>View Mode
+          </label>
+          <div class="btn-group btn-group-sm w-100" role="group">
+            <input type="radio" class="btn-check" name="group-mode" id="mode-instance" value="" checked>
+            <label class="btn btn-outline-secondary" for="mode-instance">Instances</label>
+            <input type="radio" class="btn-check" name="group-mode" id="mode-type" value="type">
+            <label class="btn btn-outline-secondary" for="mode-type">By Type</label>
+          </div>
+        </div>
+
         {# Type checkboxes grouped by category #}
         <div class="flex-grow-1 overflow-auto px-3 pt-2 pb-3">
           {% if available_types %}
@@ -153,9 +166,20 @@
     return document.getElementById('storey-select')?.value || '';
   }
 
+  function getGroupMode() {
+    const checked = document.querySelector('input[name="group-mode"]:checked');
+    return checked ? checked.value : '';
+  }
+
+  function buildParams(types, storey) {
+    const groupBy = getGroupMode();
+    let params = '?types=' + encodeURIComponent(types) + '&storey=' + encodeURIComponent(storey);
+    if (groupBy) params += '&group_by=' + encodeURIComponent(groupBy);
+    return params;
+  }
+
   function updateExportLinks(types, storey) {
-    const params = '?types=' + encodeURIComponent(types) + '&storey=' + encodeURIComponent(storey);
-    document.getElementById('excel-link').href = excelBaseUrl + params;
+    document.getElementById('excel-link').href = excelBaseUrl + buildParams(types, storey);
   }
 
   function updateSummary(types) {
@@ -165,22 +189,28 @@
       return;
     }
     const names = types.split(',').map(t => t.replace('Ifc', '')).join(', ');
-    el.textContent = 'Showing: ' + names;
+    const mode = getGroupMode() === 'type' ? ' (grouped by type)' : '';
+    el.textContent = 'Showing: ' + names + mode;
   }
 
   document.getElementById('generate-btn').addEventListener('click', function () {
     const types = getCheckedTypes();
     const storey = getStorey();
-    const url = scheduleTableUrl + '?types=' + encodeURIComponent(types)
-              + '&storey=' + encodeURIComponent(storey);
+    const url = scheduleTableUrl + buildParams(types, storey);
     htmx.ajax('GET', url, { target: '#schedule-content', swap: 'innerHTML' });
     updateExportLinks(types, storey);
     updateSummary(types);
   });
 
-  // Keep export links in sync when storey changes
+  // Keep export links in sync when storey or view mode changes
   document.getElementById('storey-select').addEventListener('change', function () {
     updateExportLinks(getCheckedTypes(), this.value);
+  });
+
+  document.querySelectorAll('input[name="group-mode"]').forEach(function (radio) {
+    radio.addEventListener('change', function () {
+      updateExportLinks(getCheckedTypes(), getStorey());
+    });
   });
 
   // Init export links if types are pre-selected

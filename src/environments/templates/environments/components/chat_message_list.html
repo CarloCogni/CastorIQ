@@ -160,6 +160,13 @@
 <span id="context-bar-display" hx-swap-oob="innerHTML" class="d-none">
   {% include "environments/components/_context_bar_inner.html" %}
 </span>
+<script>
+  // Update data-utilization on the live element after OOB innerHTML swap
+  (function() {
+    var el = document.getElementById('context-bar-display');
+    if (el) el.dataset.utilization = '{{ utilization_pct|floatformat:0 }}';
+  })();
+</script>
 {% endif %}
 
 <script>

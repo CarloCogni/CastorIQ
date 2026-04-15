@@ -185,9 +185,18 @@
                 </label>
 
                 <div id="context-bar" class="ms-auto d-flex align-items-center gap-1">
-                    <span id="context-bar-display">
+                    <span id="context-bar-display" data-utilization="{{ utilization_pct|default:'0'|floatformat:0 }}">
                         {% if utilization_pct is not None %}{% include "environments/components/_context_bar_inner.html" %}{% endif %}
                     </span>
+                    <button type="button"
+                            class="btn btn-link p-0 ms-1 text-info compact-btn"
+                            id="compact-btn"
+                            style="line-height:1; font-size: 0.75rem; display: none;"
+                            title="Compact conversation history to free context space"
+                            onclick="AskChat.compactHistory()"
+                            tabindex="-1">
+                        <i class="bi bi-arrows-collapse"></i>
+                    </button>
                     <button type="button"
                             class="btn btn-link p-0 ms-1 text-warning"
                             style="line-height:1; font-size: 0.75rem;"
@@ -259,7 +268,7 @@ const AskChat = {
     /* ── Processing state ───────────────────────────────────────────────── */
     _setProcessing(state) {
         this._isProcessing = state;
-        document.getElementById('send-btn').disabled = state;
+        document.getElementById('send-btn').style.display = state ? 'none' : 'inline-block';
         document.getElementById('stop-btn').style.display = state ? 'inline-block' : 'none';
         if (this.inputEl) this.inputEl.disabled = state;
     },
@@ -286,6 +295,14 @@ const AskChat = {
                     swap: 'innerHTML',
                 });
                 break;
+            case 'compacted':
+                this._setProcessing(false);
+                this._hideProgressTracker();
+                htmx.ajax('GET', this.chatEl.dataset.messagesUrl, {
+                    target: '#chat-messages',
+                    swap: 'innerHTML',
+                });
+                break;
             case 'cancelled':
                 this._setProcessing(false);
                 this._hideProgressTracker();
@@ -300,7 +317,7 @@ const AskChat = {
                             <i class="bi bi-exclamation-triangle me-1"></i>${data.message}
                         </div>
                     </div>`);
-                this.chatEl.scrollTop = this.chatEl.scrollHeight;
+                scrollToBottomIfNearBottom();
                 break;
         }
     },
@@ -370,7 +387,7 @@ const AskChat = {
             </div>
         </div>`;
         this.chatEl.insertAdjacentHTML('beforeend', html);
-        this.chatEl.scrollTop = this.chatEl.scrollHeight;
+        scrollToBottomIfNearBottom();
     },
 
     _updateProgressPhase(data) {
@@ -394,11 +411,34 @@ const AskChat = {
         };
         const icon = icons[data.status] || icons.running;
         phaseEl.innerHTML = `${icon} <span class="text-secondary">${data.message}</span>`;
-        this.chatEl.scrollTop = this.chatEl.scrollHeight;
+        scrollToBottomIfNearBottom();
     },
 
     _hideProgressTracker() {
         document.getElementById('ask-progress-tracker')?.remove();
+    },
+
+    /* ── Compaction ────────────────────────────────────────────────────── */
+    compactHistory() {
+        if (!this._ws || this._ws.readyState !== WebSocket.OPEN) return;
+        const sessionPk = this.chatEl.dataset.sessionPk;
+        if (!sessionPk) return;
+
+        this._showProgressTracker();
+        this._setProcessing(true);
+
+        this._ws.send(JSON.stringify({
+            action: 'compact',
+            session_id: sessionPk,
+        }));
+    },
+
+    updateCompactBtnVisibility() {
+        const bar = document.getElementById('context-bar-display');
+        const btn = document.getElementById('compact-btn');
+        if (!bar || !btn) return;
+        const pct = parseFloat(bar.dataset.utilization || '0');
+        btn.style.display = pct >= 50 ? 'inline-block' : 'none';
     },
 };
 
@@ -410,6 +450,13 @@ const AskChat = {
 
     window.scrollToBottom = function() {
         chatContainer.scrollTop = chatContainer.scrollHeight;
+        scrollBtn.classList.remove('has-new');
+    };
+    window.scrollToBottomIfNearBottom = function() {
+        const distance = chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight;
+        if (distance <= 150) {
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
     };
     scrollToBottom();
 
@@ -418,7 +465,7 @@ const AskChat = {
         if (distanceToBottom > 150) {
             scrollBtn.classList.add('visible');
         } else {
-            scrollBtn.classList.remove('visible');
+            scrollBtn.classList.remove('visible', 'has-new');
         }
     });
 
@@ -426,9 +473,14 @@ const AskChat = {
     window.handleEnter = function(e) { AskChat.handleEnter(e); };
 
     // HTMX fallback path: optimistic UI when WS is not available
-    form.addEventListener('htmx:beforeRequest', function() {
+    form.addEventListener('htmx:beforeRequest', function(e) {
+        // WS is active — don't let HTMX also fire the POST
+        if (AskChat._ws && AskChat._ws.readyState === WebSocket.OPEN) {
+            e.preventDefault();
+            return;
+        }
         const text = document.getElementById('user-input').value.trim();
-        if (!text) return;
+        if (!text) { e.preventDefault(); return; }
         const loaderHTML = CastorLoader.getHTML();
         chatContainer.insertAdjacentHTML('beforeend', `
             <div class="message message-user">
@@ -449,16 +501,30 @@ const AskChat = {
         input.style.overflowY = 'hidden';
     });
 
-    // After any HTMX swap (fallback POST or WS-triggered GET), scroll to bottom
+    // After any HTMX swap (fallback POST or WS-triggered GET), scroll only if near bottom
     form.addEventListener('htmx:afterSwap', function() {
-        chatContainer.scrollTop = chatContainer.scrollHeight;
+        scrollToBottomIfNearBottom();
         document.getElementById('user-input').focus();
+    });
+
+    // Flag scroll button when new content arrives while user is scrolled up
+    chatContainer.addEventListener('htmx:afterSwap', function() {
+        const distance = chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight;
+        if (distance > 150) {
+            scrollBtn.classList.add('has-new');
+        }
     });
 
     form.addEventListener('htmx:responseError', function() {
         alert("Connection lost. Please try again.");
     });
 
+    // Update compact button visibility after messages refresh (OOB updates data-utilization)
+    document.body.addEventListener('htmx:afterSettle', function(e) {
+        AskChat.updateCompactBtnVisibility();
+    });
+
     AskChat.initWebSocket();
+    AskChat.updateCompactBtnVisibility();
 })();
 </script>

@@ -2,16 +2,23 @@
 """IFC file parsing service using IfcOpenShell."""
 
 import logging
+import re
 from dataclasses import dataclass, field
 
 import ifcopenshell
 import ifcopenshell.util.element as element_util
-import ifcopenshell.util.unit as ifc_unit_util  # noqa: F401 — used in _format_unit_label
+import ifcopenshell.util.unit as ifc_unit_util  # noqa: F401
 from django.db import transaction
 from django.utils import timezone
 
 from core.exceptions import log_exception
-from ifc_processor.models import IFCDataIssue, IFCEntity, IFCFile
+from ifc_processor.models import (
+    IFCDataIssue,
+    IFCElementType,
+    IFCEntity,
+    IFCFile,
+    IFCSpatialElement,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +64,32 @@ def _format_unit_label(unit) -> str:
     return "?"
 
 
+# ---------------------------------------------------------------------------
+# IFC type name → IFCSpatialElement.SpatialType mapping
+# ---------------------------------------------------------------------------
+
+_SPATIAL_TYPE_MAP: dict[str, IFCSpatialElement.SpatialType] = {
+    "IfcSite": IFCSpatialElement.SpatialType.SITE,
+    "IfcBuilding": IFCSpatialElement.SpatialType.BUILDING,
+    "IfcBuildingStorey": IFCSpatialElement.SpatialType.BUILDING_STOREY,
+    "IfcSpace": IFCSpatialElement.SpatialType.SPACE,
+    # IFC4.3 — IfcFacility and IfcFacilityPart are supertypes; their
+    # concrete subtypes (IfcBridge, IfcRoad, etc.) resolve to them via is_a().
+    "IfcFacility": IFCSpatialElement.SpatialType.FACILITY,
+    "IfcFacilityPart": IFCSpatialElement.SpatialType.FACILITY_PART,
+}
+
+# Ordered list of spatial IFC types for tree extraction (parents before children).
+_SPATIAL_EXTRACTION_ORDER: list[str] = [
+    "IfcSite",
+    "IfcBuilding",
+    "IfcFacility",
+    "IfcFacilityPart",
+    "IfcBuildingStorey",
+    "IfcSpace",
+]
+
+
 @dataclass
 class ParsedEntity:
     """Represents a parsed IFC entity."""
@@ -64,9 +97,6 @@ class ParsedEntity:
     global_id: str
     ifc_type: str
     name: str = ""
-    building: str = ""
-    building_storey: str = ""
-    space: str = ""
     properties: dict = field(default_factory=dict)
     description: str = ""
 
@@ -75,13 +105,23 @@ class IFCParser:
     """
     Service for parsing IFC files and extracting entities.
 
+    Three-phase extraction pipeline:
+      Phase A: Create IFCEntity records for all relevant types (spatial_container=None).
+      Phase B: Build the spatial tree (IFCSpatialElement records).
+      Phase C: Assign spatial_container FK on entities via bulk update.
+
     Usage:
         parser = IFCParser(ifc_file)
         parser.parse()
     """
 
-    # Entity types we want to extract (main building elements)
+    # Entity types we want to extract (main building elements + spatial containers)
     RELEVANT_TYPES = {
+        # Spatial structure elements (also get IFCSpatialElement tree nodes)
+        "IfcSite",
+        "IfcBuilding",
+        "IfcBuildingStorey",
+        "IfcSpace",
         # Structural
         "IfcWall",
         "IfcWallStandardCase",
@@ -105,8 +145,7 @@ class IFCParser:
         "IfcDistributionElement",
         "IfcSanitaryTerminal",
         "IfcFireSuppressionTerminal",
-        # Spaces
-        "IfcSpace",
+        # Grouping
         "IfcZone",
         # Furnishing
         "IfcFurniture",
@@ -153,7 +192,7 @@ class IFCParser:
     # Includes:
     #   1. IFC spatial structure elements — they ARE containers, not contained objects.
     #   2. IFC4.3 infrastructure physical elements — their spatial parents are IfcBridge /
-    #      IfcRoad / etc., not IfcBuilding / IfcBuildingStorey, so _get_spatial_info()
+    #      IfcRoad / etc., not IfcBuilding / IfcBuildingStorey, so get_container()
     #      will always return empty for them even when they are correctly placed.
     SKIP_ORPHAN_CHECK_TYPES: frozenset[str] = frozenset(
         {
@@ -212,7 +251,7 @@ class IFCParser:
         Returns:
             True if parsing succeeded, False otherwise
         """
-        logger.info(f"Starting to parse IFC file: {self.ifc_file.name}")
+        logger.info("Starting to parse IFC file: %s", self.ifc_file.name)
         self.ifc_file.refresh_from_db()
         if self.ifc_file.status == IFCFile.Status.PROCESSING:
             logger.warning("File is already being processed elsewhere.")
@@ -222,18 +261,29 @@ class IFCParser:
         self.ifc_file.save(update_fields=["status"])
 
         try:
-            with transaction.atomic():  # Everything inside here succeeds or fails together
-                # Open the IFC file
+            with transaction.atomic():
                 self.ifc_model = ifcopenshell.open(self.ifc_file.file.path)
 
                 # Extract metadata
                 self._extract_metadata()
 
-                # Delete existing entities (for re-processing)
+                # Delete existing records (for re-processing)
+                self.ifc_file.spatial_elements.all().delete()
                 self.ifc_file.entities.all().delete()
+                self.ifc_file.element_types.all().delete()
 
-                # Extract entities
-                self._extract_entities()
+                # Phase A: Create IFCEntity records (spatial_container=None)
+                try:
+                    container_map = self._extract_entities()
+                except Exception as phase_a_err:
+                    logger.error("Phase A (_extract_entities) failed: %s", phase_a_err)
+                    raise
+
+                # Phase B: Build the spatial tree (IFCSpatialElement records)
+                spatial_cache = self._build_spatial_tree()
+
+                # Phase C: Assign spatial_container FK on entities
+                self._assign_spatial_containers(container_map, spatial_cache)
 
                 # Update file status
                 self.ifc_file.status = IFCFile.Status.COMPLETED
@@ -243,7 +293,10 @@ class IFCParser:
                 self.ifc_file.save()
 
                 logger.info(
-                    f"Successfully parsed {self.ifc_file.name}: {self.entities_created} entities"
+                    "Successfully parsed %s: %d entities, %d spatial nodes",
+                    self.ifc_file.name,
+                    self.entities_created,
+                    len(spatial_cache),
                 )
                 return True
 
@@ -264,30 +317,23 @@ class IFCParser:
 
             return False
 
-    def _extract_metadata(self) -> None:
-        """Extract metadata from IFC file header."""
-        try:
-            # Get schema version
-            self.ifc_file.schema_version = self.ifc_model.schema
+    # ------------------------------------------------------------------
+    # Phase A: Entity extraction
+    # ------------------------------------------------------------------
 
-            # Get project info
-            projects = self.ifc_model.by_type("IfcProject")
-            if projects:
-                project = projects[0]
-                self.ifc_file.project_name = project.Name or ""
-                self.ifc_file.description = project.Description or ""
+    def _extract_entities(self) -> dict[str, str]:
+        """Extract all relevant IFC entities and create IFCEntity records.
 
-            self.ifc_file.save(update_fields=["schema_version", "project_name", "description"])
-            logger.debug(f"Extracted metadata: schema={self.ifc_file.schema_version}")
-
-        except Exception as e:
-            logger.warning(f"Could not extract metadata: {e}")
-
-    def _extract_entities(self) -> None:
+        Returns:
+            container_map: dict mapping entity GlobalId → container GlobalId,
+            used later in Phase C to assign spatial_container FKs.
+        """
         batch_size = 500
-        entities_to_create = []
-        issues_to_create = []
-        seen_global_ids = {}  # Now maps GUID → first element info
+        entities_to_create: list[IFCEntity] = []
+        issues_to_create: list[IFCDataIssue] = []
+        seen_global_ids: dict[str, dict] = {}
+        seen_type_guids: dict[str, IFCElementType] = {}
+        container_map: dict[str, str] = {}
         total_processed = 0
 
         for ifc_type in self.RELEVANT_TYPES:
@@ -300,18 +346,28 @@ class IFCParser:
                     ifc_type,
                 )
                 continue
+
             for element in elements:
                 gid = element.GlobalId
                 ifc_type_name = element.is_a()
 
-                # DATA PREPARATION
-                spatial_info = self._get_spatial_info(element)
-                properties = self._get_properties(element)
+                # Resolve the defining type object once per element
+                try:
+                    element_type_obj = element_util.get_type(element)
+                except Exception:
+                    element_type_obj = None
 
-                # ROUTING LOGIC
+                # DATA PREPARATION
+                properties = self._get_properties(element, element_type_obj)
+
+                # Resolve the direct spatial container (for Phase C)
+                container_gid = self._get_container_gid(element)
+                if container_gid:
+                    container_map[gid] = container_gid
+
+                # ROUTING LOGIC — duplicate check
                 if gid in seen_global_ids:
                     first_element_info = seen_global_ids[gid]
-
                     issue = IFCDataIssue(
                         ifc_file=self.ifc_file,
                         issue_type=IFCDataIssue.IssueType.DUPLICATE_GUID,
@@ -320,28 +376,21 @@ class IFCParser:
                         raw_data={
                             "name": element.Name or "",
                             "properties": properties,
-                            "spatial": spatial_info,
                             "first_element_name": first_element_info["name"],
                             "first_element_type": first_element_info["type"],
-                            "first_element_storey": first_element_info["storey"],
                         },
-                        description=f"Duplicate GlobalID '{gid}': '{element.Name or 'Unnamed'}' ({ifc_type_name}) conflicts with '{first_element_info['name'] or 'Unnamed'}' ({first_element_info['type']}).",
+                        description=(
+                            f"Duplicate GlobalID '{gid}': "
+                            f"'{element.Name or 'Unnamed'}' ({ifc_type_name}) conflicts with "
+                            f"'{first_element_info['name'] or 'Unnamed'}' ({first_element_info['type']})."
+                        ),
                     )
                     issues_to_create.append(issue)
                 else:
-                    # STRUCTURAL VALIDATION — only for elements that will be imported
+                    # STRUCTURAL VALIDATION
                     element_name = element.Name or "Unnamed"
 
-                    if (
-                        not any(
-                            [
-                                spatial_info["building"],
-                                spatial_info["building_storey"],
-                                spatial_info["space"],
-                            ]
-                        )
-                        and ifc_type_name not in self.SKIP_ORPHAN_CHECK_TYPES
-                    ):
+                    if not container_gid and ifc_type_name not in self.SKIP_ORPHAN_CHECK_TYPES:
                         issues_to_create.append(
                             IFCDataIssue(
                                 ifc_file=self.ifc_file,
@@ -363,7 +412,7 @@ class IFCParser:
                                 issue_type=IFCDataIssue.IssueType.MISSING_PROPERTY,
                                 global_id=gid,
                                 ifc_type=ifc_type_name,
-                                raw_data={"name": element.Name or "", "spatial": spatial_info},
+                                raw_data={"name": element.Name or ""},
                                 description=(
                                     f"Element '{element_name}' ({ifc_type_name}) has no property "
                                     "sets — imported but may not be useful for analysis."
@@ -371,16 +420,24 @@ class IFCParser:
                             )
                         )
 
-                    # ROUTE TO MAIN ENTITIES
-                    description = self._generate_description(element, properties, spatial_info)
+                    # Resolve the IFCElementType DB record
+                    element_type_record = None
+                    if element_type_obj is not None:
+                        try:
+                            element_type_record = self._get_or_create_element_type(
+                                element_type_obj, seen_type_guids
+                            )
+                        except Exception as e:
+                            logger.debug("Could not create element type for %s: %s", gid, e)
+
+                    description = self._generate_description(element, properties)
                     entity = IFCEntity(
                         ifc_file=self.ifc_file,
                         global_id=gid,
                         ifc_type=ifc_type_name,
                         name=element.Name or "",
-                        building=spatial_info.get("building", ""),
-                        building_storey=spatial_info.get("building_storey", ""),
-                        space=spatial_info.get("space", ""),
+                        element_type=element_type_record,
+                        spatial_container=None,  # Assigned in Phase C
                         properties=properties,
                         description=description,
                     )
@@ -388,11 +445,20 @@ class IFCParser:
                     seen_global_ids[gid] = {
                         "name": element.Name or "",
                         "type": ifc_type_name,
-                        "storey": spatial_info.get("building_storey", ""),
                     }
+
                 # MEMORY MANAGEMENT
                 if len(entities_to_create) >= batch_size:
-                    IFCEntity.objects.bulk_create(entities_to_create)
+                    try:
+                        IFCEntity.objects.bulk_create(entities_to_create)
+                    except Exception as batch_err:
+                        logger.error(
+                            "bulk_create failed on batch of %d entities (types: %s): %s",
+                            len(entities_to_create),
+                            {e.ifc_type for e in entities_to_create},
+                            batch_err,
+                        )
+                        raise
                     total_processed += len(entities_to_create)
                     entities_to_create = []
 
@@ -402,72 +468,342 @@ class IFCParser:
 
         # FINAL SWEEP
         if entities_to_create:
-            IFCEntity.objects.bulk_create(entities_to_create)
+            try:
+                IFCEntity.objects.bulk_create(entities_to_create)
+            except Exception as batch_err:
+                logger.error(
+                    "bulk_create failed on final batch of %d entities (types: %s): %s",
+                    len(entities_to_create),
+                    {e.ifc_type for e in entities_to_create},
+                    batch_err,
+                )
+                raise
             total_processed += len(entities_to_create)
         if issues_to_create:
             IFCDataIssue.objects.bulk_create(issues_to_create)
 
         self.entities_created = total_processed
+        return container_map
 
-    def _get_spatial_info(self, element) -> dict:
-        """Get the spatial hierarchy for an element."""
-        info = {
-            "building": "",
-            "building_storey": "",
-            "space": "",
-        }
+    # ------------------------------------------------------------------
+    # Phase B: Spatial tree construction
+    # ------------------------------------------------------------------
 
+    def _build_spatial_tree(self) -> dict[str, IFCSpatialElement]:
+        """Create IFCSpatialElement records for the spatial decomposition tree.
+
+        Iterates spatial IFC types in parent-first order, looks up each
+        element's IFCEntity by global_id, and links parent via
+        IfcRelAggregates (Decomposes inverse attribute).
+
+        Returns:
+            spatial_cache: dict mapping IFC GlobalId → IFCSpatialElement record.
+        """
+        spatial_cache: dict[str, IFCSpatialElement] = {}
+
+        # Pre-load a GID → IFCEntity lookup for spatial types only
+        spatial_gids: set[str] = set()
+        for ifc_type_name in _SPATIAL_EXTRACTION_ORDER:
+            try:
+                elements = self.ifc_model.by_type(ifc_type_name)
+            except Exception:
+                continue
+            for elem in elements:
+                spatial_gids.add(elem.GlobalId)
+
+        entity_by_gid: dict[str, IFCEntity] = {}
+        if spatial_gids:
+            entity_by_gid = {
+                e.global_id: e
+                for e in IFCEntity.objects.filter(
+                    ifc_file=self.ifc_file,
+                    global_id__in=spatial_gids,
+                )
+            }
+
+        for ifc_type_name in _SPATIAL_EXTRACTION_ORDER:
+            try:
+                elements = self.ifc_model.by_type(ifc_type_name)
+            except Exception:
+                continue
+
+            for elem in elements:
+                gid = elem.GlobalId
+                if gid in spatial_cache:
+                    continue
+
+                entity_record = entity_by_gid.get(gid)
+                if not entity_record:
+                    logger.debug(
+                        "Spatial element %s (%s) has no IFCEntity — skipping tree node.",
+                        gid,
+                        ifc_type_name,
+                    )
+                    continue
+
+                # Resolve spatial type (concrete subtypes like IfcBridge → facility)
+                spatial_type = self._resolve_spatial_type(elem)
+                if not spatial_type:
+                    continue
+
+                # Find parent via IfcRelAggregates (Decomposes inverse)
+                parent_record = None
+                parent_elem = self._get_aggregate_parent(elem)
+                if parent_elem and parent_elem.GlobalId in spatial_cache:
+                    parent_record = spatial_cache[parent_elem.GlobalId]
+
+                record = IFCSpatialElement.objects.create(
+                    ifc_file=self.ifc_file,
+                    parent=parent_record,
+                    spatial_type=spatial_type,
+                    entity=entity_record,
+                    long_name=getattr(elem, "LongName", None) or "",
+                    composition_type=getattr(elem, "CompositionType", None) or "",
+                    elevation=(
+                        getattr(elem, "Elevation", None)
+                        if ifc_type_name == "IfcBuildingStorey"
+                        else None
+                    ),
+                )
+                spatial_cache[gid] = record
+
+        logger.debug(
+            "Built spatial tree: %d nodes for %s",
+            len(spatial_cache),
+            self.ifc_file.name,
+        )
+        return spatial_cache
+
+    # ------------------------------------------------------------------
+    # Phase C: Assign spatial containers
+    # ------------------------------------------------------------------
+
+    def _assign_spatial_containers(
+        self,
+        container_map: dict[str, str],
+        spatial_cache: dict[str, IFCSpatialElement],
+    ) -> None:
+        """Assign spatial_container FK on IFCEntity records.
+
+        Uses container_map (entity GID → container GID) from Phase A and
+        spatial_cache (GID → IFCSpatialElement) from Phase B.
+        """
+        if not container_map or not spatial_cache:
+            return
+
+        # Build a batch of (entity_gid, spatial_element_id) pairs
+        updates: dict[str, IFCSpatialElement] = {}
+        for entity_gid, container_gid in container_map.items():
+            spatial_elem = spatial_cache.get(container_gid)
+            if spatial_elem:
+                updates[entity_gid] = spatial_elem
+
+        if not updates:
+            return
+
+        # Bulk update in chunks to avoid huge IN queries
+        chunk_size = 500
+        gid_list = list(updates.keys())
+        for i in range(0, len(gid_list), chunk_size):
+            chunk_gids = gid_list[i : i + chunk_size]
+            entities = IFCEntity.objects.filter(
+                ifc_file=self.ifc_file,
+                global_id__in=chunk_gids,
+            )
+            for entity in entities:
+                entity.spatial_container = updates[entity.global_id]
+            IFCEntity.objects.bulk_update(entities, ["spatial_container"])
+
+        logger.debug(
+            "Assigned spatial containers: %d of %d entities linked",
+            len(updates),
+            self.entities_created,
+        )
+
+    # ------------------------------------------------------------------
+    # Spatial helpers
+    # ------------------------------------------------------------------
+
+    def _get_container_gid(self, element) -> str | None:
+        """Return the GlobalId of the element's direct spatial container, or None."""
         try:
-            # Get the containing structure
             container = element_util.get_container(element)
+            if container:
+                return container.GlobalId
+        except Exception as e:
+            logger.debug("Could not resolve container for %s: %s", element.GlobalId, e)
+        return None
 
+    @staticmethod
+    def _get_aggregate_parent(element):
+        """Return the parent element via IfcRelAggregates (Decomposes inverse).
+
+        Used to walk the spatial decomposition tree (Site → Building → Storey → Space).
+        """
+        decomposes = getattr(element, "Decomposes", None)
+        if decomposes:
+            for rel in decomposes:
+                if rel.is_a("IfcRelAggregates"):
+                    return rel.RelatingObject
+        return None
+
+    @staticmethod
+    def _resolve_spatial_type(element) -> str | None:
+        """Map an IFC element to its IFCSpatialElement.SpatialType value.
+
+        Handles concrete subtypes (e.g. IfcBridge is_a IfcFacility).
+        """
+        ifc_type_name = element.is_a()
+
+        # Direct match first
+        if ifc_type_name in _SPATIAL_TYPE_MAP:
+            return _SPATIAL_TYPE_MAP[ifc_type_name]
+
+        # Check if element is a subtype of a known spatial type
+        for base_type, spatial_type in _SPATIAL_TYPE_MAP.items():
+            if element.is_a(base_type):
+                return spatial_type
+
+        return None
+
+    def _get_location_text(self, element) -> str:
+        """Walk up the spatial hierarchy to build a human-readable location string.
+
+        Used for description generation. Does not touch the database.
+        """
+        location_parts: list[str] = []
+        try:
+            container = element_util.get_container(element)
             while container:
                 container_type = container.is_a()
-
-                if container_type == "IfcSpace":
-                    info["space"] = container.Name or container.LongName or ""
-                elif container_type == "IfcBuildingStorey":
-                    info["building_storey"] = container.Name or container.LongName or ""
-                elif container_type == "IfcBuilding":
-                    info["building"] = container.Name or container.LongName or ""
-                    break  # Building is the top level we care about
-
-                # Move up the hierarchy
+                name = container.Name or getattr(container, "LongName", None) or ""
+                if name:
+                    if container_type == "IfcSpace":
+                        location_parts.append(f"inside space '{name}'")
+                    elif container_type == "IfcBuildingStorey":
+                        location_parts.append(f"on level '{name}'")
+                    elif container_type == "IfcBuilding":
+                        location_parts.append(f"in building '{name}'")
+                        break
+                    elif container_type == "IfcSite":
+                        location_parts.append(f"at site '{name}'")
+                        break
                 container = element_util.get_container(container)
-
         except Exception as e:
-            logger.debug(f"Could not get spatial info: {e}")
+            logger.debug("Could not get location text: %s", e)
+        return ", ".join(location_parts)
 
-        return info
+    # ------------------------------------------------------------------
+    # Metadata, properties, type handling, description
+    # ------------------------------------------------------------------
 
-    def _get_properties(self, element) -> dict:
-        """Extract all property sets from an element."""
+    def _extract_metadata(self) -> None:
+        """Extract metadata from IFC file header."""
+        try:
+            self.ifc_file.schema_version = self.ifc_model.schema
+
+            projects = self.ifc_model.by_type("IfcProject")
+            if projects:
+                project = projects[0]
+                self.ifc_file.project_name = project.Name or ""
+                self.ifc_file.description = project.Description or ""
+
+            unit_assignments = self.ifc_model.by_type("IfcUnitAssignment")
+            if unit_assignments:
+                units: dict[str, str] = {}
+                for unit in unit_assignments[0].Units:
+                    unit_type = getattr(unit, "UnitType", None)
+                    if unit_type and unit_type in _UNIT_TYPES:
+                        units[unit_type] = _format_unit_label(unit)
+                if units:
+                    self.ifc_file.project_units = units
+
+            self.ifc_file.save(
+                update_fields=[
+                    "schema_version",
+                    "project_name",
+                    "description",
+                    "project_units",
+                ],
+            )
+            logger.debug(
+                "Extracted metadata: schema=%s, units=%s",
+                self.ifc_file.schema_version,
+                self.ifc_file.project_units,
+            )
+        except Exception as e:
+            logger.warning("Could not extract metadata: %s", e)
+
+    def _get_or_create_element_type(
+        self,
+        type_obj,
+        cache: dict[str, IFCElementType],
+    ) -> IFCElementType:
+        """Return an IFCElementType record for the given IfcTypeProduct object.
+
+        Uses an in-memory cache keyed by GlobalId to avoid duplicate DB rows.
+        On first encounter the record is created immediately (not batched)
+        because element types are few (dozens) compared to instances (thousands).
+        """
+        type_gid = type_obj.GlobalId
+        if type_gid in cache:
+            return cache[type_gid]
+
+        type_properties: dict = {}
+        try:
+            type_psets = element_util.get_psets(type_obj)
+            for pset_name, pset_props in type_psets.items():
+                for prop_name, prop_value in pset_props.items():
+                    if prop_value is not None:
+                        key = f"{pset_name}.{prop_name}"
+                        type_properties[key] = self._serialize_value(prop_value)
+        except Exception as e:
+            logger.debug("Could not get type properties for %s: %s", type_gid, e)
+
+        element_type_record = IFCElementType.objects.create(
+            ifc_file=self.ifc_file,
+            global_id=type_gid,
+            ifc_type=type_obj.is_a(),
+            name=type_obj.Name or "",
+            description=getattr(type_obj, "Description", None) or "",
+            applicable_occurrence=getattr(type_obj, "ApplicableOccurrence", None) or "",
+            tag=getattr(type_obj, "Tag", None) or "",
+            properties=type_properties,
+        )
+        cache[type_gid] = element_type_record
+        return element_type_record
+
+    def _get_properties(self, element, element_type=None) -> dict:
+        """Extract all property sets from an element.
+
+        Args:
+            element: The IfcProduct instance.
+            element_type: Pre-resolved IfcTypeProduct object (avoids redundant
+                ``element_util.get_type`` call). Pass ``None`` if unknown — the
+                method will resolve it internally as a fallback.
+        """
         properties = {}
 
         try:
-            # Get all property sets
             psets = element_util.get_psets(element)
 
             for pset_name, pset_props in psets.items():
-                # Flatten into main dict with prefix
                 for prop_name, prop_value in pset_props.items():
-                    # Convert value to serializable format
                     if prop_value is not None:
                         key = f"{pset_name}.{prop_name}"
                         properties[key] = self._serialize_value(prop_value)
 
-            # Also get type properties if available
-            element_type = element_util.get_type(element)
+            if element_type is None:
+                element_type = element_util.get_type(element)
             if element_type:
                 type_psets = element_util.get_psets(element_type)
                 for pset_name, pset_props in type_psets.items():
                     for prop_name, prop_value in pset_props.items():
                         if prop_value is not None:
                             key = f"Type.{pset_name}.{prop_name}"
-                            if key not in properties:  # Don't override instance props
+                            if key not in properties:
                                 properties[key] = self._serialize_value(prop_value)
 
-            # Direct dimensional attributes on IfcDoor/IfcWindow (not in psets)
             if element.is_a("IfcDoor") or element.is_a("IfcWindow"):
                 for attr in ("OverallWidth", "OverallHeight"):
                     val = getattr(element, attr, None)
@@ -475,7 +811,7 @@ class IFCParser:
                         properties[attr] = round(float(val), 4)
 
         except Exception as e:
-            logger.debug(f"Could not get properties: {e}")
+            logger.debug("Could not get properties: %s", e)
 
         return properties
 
@@ -489,42 +825,23 @@ class IFCParser:
             return [self._serialize_value(v) for v in value]
         if isinstance(value, dict):
             return {k: self._serialize_value(v) for k, v in value.items()}
-        # For complex types, convert to string
         return str(value)
 
-    def _generate_description(self, element, properties: dict, spatial_info: dict) -> str:
-        """
-        Generate a rich semantic description for RAG indexing.
-        """
-        # 1. CLEAN TYPE: Turn 'IfcWallStandardCase' into 'Wall' and 'Wall Standard Case'
+    def _generate_description(self, element, properties: dict) -> str:
+        """Generate a rich semantic description for RAG indexing."""
         raw_type = element.is_a()
         clean_type = raw_type.replace("Ifc", "")
-
-        # Split camelCase (e.g., WallStandardCase -> Wall Standard Case)
-        # This helps the embedding model understand the words separately
-        import re
-
         human_type = re.sub(r"(?<!^)(?=[A-Z])", " ", clean_type)
 
-        # 2. INTRO: Strong subject statement
-        # "This is a Wall. It is a Wall Standard Case element named Wall-01."
         name = element.Name or "Unnamed"
         parts = [f"This is a {clean_type}. It is a {human_type} element named '{name}'"]
 
-        # 3. LOCATION
-        location_parts = []
-        if spatial_info.get("building"):
-            location_parts.append(f"in building '{spatial_info['building']}'")
-        if spatial_info.get("building_storey"):
-            location_parts.append(f"on level '{spatial_info['building_storey']}'")
-        if spatial_info.get("space"):
-            location_parts.append(f"inside space '{spatial_info['space']}'")
+        # Location from walking the IFC hierarchy
+        location_text = self._get_location_text(element)
+        if location_text:
+            parts.append(f"Location: {location_text}")
 
-        if location_parts:
-            parts.append(f"Location: {', '.join(location_parts)}")
-
-        # 4. KEY PROPERTIES (The "Why")
-        # We explicitly list common properties to catch queries like "fire rated" or "external"
+        # Key properties for RAG
         key_props = []
         target_keys = [
             "firerating",
@@ -547,9 +864,7 @@ class IFCParser:
         ]
 
         for key, value in properties.items():
-            # Check if any target key is part of the property name (case insensitive)
             if any(t in key.lower() for t in target_keys):
-                # Clean up key name (e.g. 'Pset_WallCommon.LoadBearing' -> 'LoadBearing')
                 simple_key = key.split(".")[-1]
                 key_props.append(f"{simple_key}: {value}")
 
@@ -574,5 +889,5 @@ def parse_ifc_file(ifc_file_id: str) -> bool:
         parser = IFCParser(ifc_file)
         return parser.parse()
     except IFCFile.DoesNotExist:
-        logger.error(f"IFC file not found: {ifc_file_id}")
+        logger.error("IFC file not found: %s", ifc_file_id)
         return False
