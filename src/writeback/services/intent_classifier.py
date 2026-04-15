@@ -77,6 +77,7 @@ CRITICAL — read carefully:
 9. Omit keys that are not relevant (e.g. omit "pset"/"property" for SET_ATTRIBUTE, omit "attribute" for SET_PROPERTY).
 10. When the user says "rename" or "change the name", ALWAYS use SET_ATTRIBUTE with "attribute": "Name".
 11. If the request contains multiple SIMPLE property/attribute changes connected by "and", "also", "plus", or comma-separated, return a JSON ARRAY of intents instead of a single object. Each element follows the same schema. Only do this for Tier 1 operations — if any sub-operation needs Tier 2/3, return the whole request as Tier 2.
+12. When returning a JSON array, you MUST include ALL operations mentioned — never truncate the list. If the user listed 4 renames, the array must have exactly 4 elements.
 
 ## Examples
 
@@ -95,6 +96,10 @@ Answer:
 User: "Set fire rating to EI120 and IsExternal to true for all walls"
 Answer:
 [{"tier": 1, "operation": "SET_PROPERTY", "filter": {"ifc_type": "IfcWall"}, "pset": "Pset_WallCommon", "property": "FireRating", "new_value": "EI120", "confidence": 0.9, "explanation": "Set FireRating to EI120 on all walls"}, {"tier": 1, "operation": "SET_PROPERTY", "filter": {"ifc_type": "IfcWall"}, "pset": "Pset_WallCommon", "property": "IsExternal", "new_value": true, "confidence": 0.9, "explanation": "Set IsExternal to true on all walls"}]
+
+User: "Change wall name from Basic Wall:A to GH_A, Change wall name from Basic Wall:B to GH_B, Change wall name from Basic Wall:C to GH_C"
+Answer:
+[{"tier": 1, "operation": "SET_ATTRIBUTE", "filter": {"ifc_type": "IfcWall", "name_pattern": "*Basic Wall:A*"}, "attribute": "Name", "new_value": "GH_A", "confidence": 0.95, "explanation": "Rename Basic Wall:A to GH_A"}, {"tier": 1, "operation": "SET_ATTRIBUTE", "filter": {"ifc_type": "IfcWall", "name_pattern": "*Basic Wall:B*"}, "attribute": "Name", "new_value": "GH_B", "confidence": 0.95, "explanation": "Rename Basic Wall:B to GH_B"}, {"tier": 1, "operation": "SET_ATTRIBUTE", "filter": {"ifc_type": "IfcWall", "name_pattern": "*Basic Wall:C*"}, "attribute": "Name", "new_value": "GH_C", "confidence": 0.95, "explanation": "Rename Basic Wall:C to GH_C"}]
 
 ## Common Property Sets
 
@@ -241,7 +246,7 @@ class IntentClassifier:
             logger.error(f"LLM returned invalid JSON: {response.content}")
             raise IntentParseError(f"Could not parse LLM response as JSON: {e}") from e
 
-            # Handle chained operations (LLM returns array)
+        # Handle chained operations (LLM returns array)
         if isinstance(parsed, list):
             intents = []
             for i, sub_intent in enumerate(parsed):
