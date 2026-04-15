@@ -1295,9 +1295,10 @@ ModifyChat.initWebSocket();
     const params = new URLSearchParams(window.location.search);
     const prompt = params.get('prompt');
     const conflictIds = params.get('conflict_ids') || '';
+    const entityGuid = params.get('entity_guid') || '';
     ModifyChat._conflictIds = conflictIds;
     if (prompt) {
-        ModifyChat.inputEl.value = prompt;
+        ModifyChat.inputEl.value = entityGuid ? prompt + ' ' + entityGuid : prompt;
         if (typeof autoGrow === 'function') autoGrow(ModifyChat.inputEl);
         ModifyChat.inputEl.focus();
     }
