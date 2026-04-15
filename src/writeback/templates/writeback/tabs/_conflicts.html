@@ -623,7 +623,7 @@
                 <div class="d-flex gap-2 align-items-center">
                     {% if group.fix_prompt %}
                     <a class="btn btn-sm btn-outline-primary rounded-pill px-3"
-                       href="{% url 'writeback:modify' project.pk %}?prompt={{ group.fix_prompt|urlencode }}&conflict_ids={{ group.all_ids|urlencode }}"
+                       href="{% url 'writeback:modify' project.pk %}?prompt={{ group.fix_prompt|urlencode }}&conflict_ids={{ group.all_ids|urlencode }}{% if rep.ifc_entity %}&entity_guid={{ rep.ifc_entity.global_id }}{% endif %}"
                        title="Opens the Modify tab pre-filled with a fix for this conflict">
                         <i class="bi bi-pencil me-1"></i>Fix in Modify
                     </a>
