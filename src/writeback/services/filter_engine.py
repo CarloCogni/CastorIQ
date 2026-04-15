@@ -22,7 +22,7 @@ class FilterEngine:
 
     Supports:
         - ifc_type: exact match (e.g. "IfcWall")
-        - storey: exact match on building_storey
+        - storey: match on spatial container storey name
         - property_match: key-value conditions on JSON properties
         - name_pattern: glob-style name matching (e.g. "D-*")
         - global_ids: explicit list of entity IDs
@@ -84,7 +84,10 @@ class FilterEngine:
     def _apply_storey(self, qs: QuerySet, storey: str | None) -> QuerySet:
         if not storey:
             return qs
-        return qs.filter(building_storey__icontains=storey)
+        return qs.filter(
+            spatial_container__spatial_type="building_storey",
+            spatial_container__entity__name__icontains=storey,
+        )
 
     def _apply_name_pattern(self, qs: QuerySet, pattern: str | None) -> QuerySet:
         if not pattern:

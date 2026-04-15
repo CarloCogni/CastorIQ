@@ -10,7 +10,15 @@
         {% endif %}
     </div>
 
-    <div class="message-content">
+    <div class="message-content position-relative group">
+        {% if message.role == 'user' %}
+        <button class="btn-copy-msg"
+                onclick="copyMessage('modify-raw-{{ forloop.counter }}', this)"
+                title="Copy text">
+            <i class="bi bi-copy"></i>
+        </button>
+        <textarea id="modify-raw-{{ forloop.counter }}" class="d-none">{{ message.content }}</textarea>
+        {% endif %}
         <div class="message-text mb-2">{{ message.content|linebreaks }}</div>
 
         {% if message.proposal %}

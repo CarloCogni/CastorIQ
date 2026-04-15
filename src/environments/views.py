@@ -32,13 +32,14 @@ from core.mixins import ProjectAccessMixin, ProjectTabMixin
 from core.token_budget import compute_budget, get_context_window
 from documents.models import Document
 from documents.services.document_processor import DocumentProcessor
-from ifc_processor.models import IFCEntity, IFCFile
+from ifc_processor.models import IFCEntity, IFCFile, IFCSpatialElement
 from ifc_processor.services.processor import IFCProcessingService
 from ifc_processor.services.schedule_service import (
     IFC_TYPE_CATEGORIES,
     DoorWindowScheduleService,
     GenericScheduleService,
 )
+from ifc_processor.templatetags.ifc_filters import get_unit_type_for_quantity, smart_round
 
 from .models import Project
 
@@ -314,7 +315,11 @@ class AskMessagesView(ProjectTabMixin, View):
             user=request.user,
             mode=ChatSession.Mode.ASK,
         )
-        messages_qs = session.messages.select_related().order_by("created_at")
+        messages_qs = (
+            session.messages.select_related()
+            .exclude(is_compaction_summary=True)
+            .order_by("created_at")
+        )
         model_name = resolve_model_name(request.user)
         history = [{"role": m.role, "content": m.content} for m in messages_qs]
         budget = compute_budget(model_name, system=SYSTEM_PROMPT, conversation_history=history)
@@ -812,23 +817,26 @@ class ExploreView(ProjectTabMixin, TemplateView):
         else:
             selected_ifc = completed_ifc_files.first()
 
-        buildings = []
+        root_nodes = []
         if selected_ifc:
-            buildings = list(
-                IFCEntity.objects.filter(ifc_file=selected_ifc)
-                .values("building")
-                .annotate(count=Count("id"))
-                .order_by("building")
+            root_nodes = list(
+                IFCSpatialElement.objects.filter(
+                    ifc_file=selected_ifc,
+                    parent__isnull=True,
+                )
+                .select_related("entity")
+                .annotate(entity_count=Count("contained_entities"))
+                .order_by("spatial_type", "entity__name")
             )
 
         context["completed_ifc_files"] = completed_ifc_files
         context["selected_ifc"] = selected_ifc
-        context["buildings"] = buildings
+        context["root_nodes"] = root_nodes
         return context
 
 
 class ExploreTreePartial(ProjectAccessMixin, View):
-    """HTMX partial: returns tree nodes (buildings/storeys/spaces) for a given IFC file."""
+    """HTMX partial: returns child spatial nodes for a given parent."""
 
     def get(self, request, pk: str, ifc_id: str) -> object:
         project = self.get_project()
@@ -836,48 +844,60 @@ class ExploreTreePartial(ProjectAccessMixin, View):
             IFCFile, pk=ifc_id, project=project, status=IFCFile.Status.COMPLETED
         )
 
-        building = request.GET.get("building", "")
-        storey = request.GET.get("storey", "")
+        spatial_id = request.GET.get("spatial_id", "")
 
-        base_qs = IFCEntity.objects.filter(ifc_file=ifc_file)
-
-        if building and storey:
-            # Return spaces within this building+storey
+        if spatial_id:
             nodes = list(
-                base_qs.filter(building=building, building_storey=storey)
-                .values("space")
-                .annotate(count=Count("id"))
-                .order_by("space")
+                IFCSpatialElement.objects.filter(
+                    ifc_file=ifc_file,
+                    parent_id=spatial_id,
+                )
+                .select_related("entity")
+                .annotate(entity_count=Count("contained_entities"))
+                .order_by("spatial_type", "entity__name")
             )
-            level = "space"
-        elif building:
-            # Return storeys within this building
-            nodes = list(
-                base_qs.filter(building=building)
-                .values("building_storey")
-                .annotate(count=Count("id"))
-                .order_by("building_storey")
-            )
-            level = "storey"
         else:
-            # Return top-level buildings
             nodes = list(
-                base_qs.values("building").annotate(count=Count("id")).order_by("building")
+                IFCSpatialElement.objects.filter(
+                    ifc_file=ifc_file,
+                    parent__isnull=True,
+                )
+                .select_related("entity")
+                .annotate(entity_count=Count("contained_entities"))
+                .order_by("spatial_type", "entity__name")
             )
-            level = "building"
 
         return render(
             request,
             "ifc_processor/explore/_tree_nodes.html",
             {
                 "nodes": nodes,
-                "level": level,
                 "ifc_file": ifc_file,
                 "project": project,
-                "current_building": building,
-                "current_storey": storey,
             },
         )
+
+
+def _get_spatial_descendant_ids(spatial_id: str, ifc_file: IFCFile) -> list:
+    """Return spatial_id plus all descendant IDs (Python walk — tree is tiny)."""
+    from collections import defaultdict
+
+    all_spatial = IFCSpatialElement.objects.filter(ifc_file=ifc_file).values("id", "parent_id")
+    children_map = defaultdict(list)
+    for s in all_spatial:
+        if s["parent_id"]:
+            children_map[s["parent_id"]].append(s["id"])
+
+    from uuid import UUID
+
+    root = UUID(spatial_id) if isinstance(spatial_id, str) else spatial_id
+    result = []
+    stack = [root]
+    while stack:
+        current = stack.pop()
+        result.append(current)
+        stack.extend(children_map.get(current, []))
+    return result
 
 
 class ExploreEntitiesPartial(ProjectAccessMixin, View):
@@ -891,26 +911,29 @@ class ExploreEntitiesPartial(ProjectAccessMixin, View):
             IFCFile, pk=ifc_id, project=project, status=IFCFile.Status.COMPLETED
         )
 
-        building = request.GET.get("building", "")
-        storey = request.GET.get("storey", "")
-        space = request.GET.get("space", "")
+        spatial_id = request.GET.get("spatial_id", "")
         ifc_type = request.GET.get("type", "")
         q = request.GET.get("q", "").strip()
         page_num = max(1, int(request.GET.get("page", 1) or 1))
 
         filters: dict = {"ifc_file": ifc_file}
-        if building:
-            filters["building"] = building
-        if storey:
-            filters["building_storey"] = storey
-        if space:
-            filters["space"] = space
+        if spatial_id:
+            descendant_ids = _get_spatial_descendant_ids(spatial_id, ifc_file)
+            filters["spatial_container_id__in"] = descendant_ids
         if ifc_type:
             filters["ifc_type"] = ifc_type
 
         qs = (
             IFCEntity.objects.filter(**filters)
-            .only("id", "global_id", "ifc_type", "name", "building_storey", "space")
+            .select_related("element_type", "spatial_container__entity")
+            .only(
+                "id",
+                "global_id",
+                "ifc_type",
+                "name",
+                "spatial_container",
+                "element_type__name",
+            )
             .order_by("ifc_type", "name")
         )
         if q:
@@ -919,7 +942,7 @@ class ExploreEntitiesPartial(ProjectAccessMixin, View):
         paginator = Paginator(qs, self.PAGE_SIZE)
         page_obj = paginator.get_page(page_num)
 
-        # Type chips with counts (scoped to building/storey/space, ignoring active type filter)
+        # Type chips with counts (scoped to spatial context, ignoring active type filter)
         type_filter = {k: v for k, v in filters.items() if k != "ifc_type"}
         type_counts = list(
             IFCEntity.objects.filter(**type_filter)
@@ -927,6 +950,9 @@ class ExploreEntitiesPartial(ProjectAccessMixin, View):
             .annotate(count=Count("id"))
             .order_by("ifc_type")
         )
+
+        # Build breadcrumb from spatial ancestor chain
+        breadcrumb = _build_spatial_breadcrumb(spatial_id) if spatial_id else []
 
         return render(
             request,
@@ -938,12 +964,31 @@ class ExploreEntitiesPartial(ProjectAccessMixin, View):
                 "type_counts": type_counts,
                 "available_types": [tc["ifc_type"] for tc in type_counts],
                 "active_type": ifc_type,
-                "current_building": building,
-                "current_storey": storey,
-                "current_space": space,
+                "current_spatial_id": spatial_id,
+                "breadcrumb": breadcrumb,
                 "current_q": q,
             },
         )
+
+
+def _build_spatial_breadcrumb(spatial_id: str) -> list[dict]:
+    """Walk up the spatial tree to build a breadcrumb list [{name, spatial_type, id}, ...]."""
+    breadcrumb = []
+    try:
+        node = IFCSpatialElement.objects.select_related("entity", "parent").get(pk=spatial_id)
+        while node:
+            breadcrumb.append(
+                {
+                    "name": node.entity.name or f"({node.get_spatial_type_display()})",
+                    "spatial_type": node.spatial_type,
+                    "id": str(node.pk),
+                }
+            )
+            node = node.parent
+        breadcrumb.reverse()
+    except IFCSpatialElement.DoesNotExist:
+        pass
+    return breadcrumb
 
 
 class ExploreEntityDetailPartial(ProjectAccessMixin, View):
@@ -952,7 +997,11 @@ class ExploreEntityDetailPartial(ProjectAccessMixin, View):
     def get(self, request, pk: str, ifc_id: str, entity_id: str) -> object:
         project = self.get_project()
         ifc_file = get_object_or_404(IFCFile, pk=ifc_id, project=project)
-        entity = get_object_or_404(IFCEntity, pk=entity_id, ifc_file=ifc_file)
+        entity = get_object_or_404(
+            IFCEntity.objects.select_related("spatial_container__entity"),
+            pk=entity_id,
+            ifc_file=ifc_file,
+        )
 
         property_sets: dict = {}
         quantity_sets: dict = {}
@@ -975,6 +1024,26 @@ class ExploreEntityDetailPartial(ProjectAccessMixin, View):
             else:
                 property_sets.setdefault("Other", {})[key] = value
 
+        # Build quantity_units: {prop_name: unit_label} from project units
+        # and apply unit-aware rounding to quantity values.
+        quantity_units: dict[str, str] = {}
+        project_units = ifc_file.project_units or {}
+        if project_units:
+            for props in quantity_sets.values():
+                for prop_name in props:
+                    unit_type = get_unit_type_for_quantity(prop_name)
+                    if unit_type and unit_type in project_units:
+                        unit_label = project_units[unit_type]
+                        quantity_units[prop_name] = unit_label
+                        val = props[prop_name]
+                        if isinstance(val, float):
+                            props[prop_name] = smart_round(val, unit_label)
+
+        # Build spatial breadcrumb from entity's container chain
+        spatial_breadcrumb = []
+        if entity.spatial_container:
+            spatial_breadcrumb = _build_spatial_breadcrumb(str(entity.spatial_container_id))
+
         return render(
             request,
             "ifc_processor/explore/_entity_detail.html",
@@ -984,6 +1053,8 @@ class ExploreEntityDetailPartial(ProjectAccessMixin, View):
                 "property_sets": property_sets,
                 "quantity_sets": quantity_sets,
                 "type_sets": type_sets,
+                "quantity_units": quantity_units,
+                "spatial_breadcrumb": spatial_breadcrumb,
             },
         )
 
@@ -997,19 +1068,14 @@ class ExploreExportView(ProjectAccessMixin, View):
             IFCFile, pk=ifc_id, project=project, status=IFCFile.Status.COMPLETED
         )
 
-        building = request.GET.get("building", "")
-        storey = request.GET.get("storey", "")
-        space = request.GET.get("space", "")
+        spatial_id = request.GET.get("spatial_id", "")
         ifc_type = request.GET.get("type", "")
         q = request.GET.get("q", "").strip()
 
         filters: dict = {"ifc_file": ifc_file}
-        if building:
-            filters["building"] = building
-        if storey:
-            filters["building_storey"] = storey
-        if space:
-            filters["space"] = space
+        if spatial_id:
+            descendant_ids = _get_spatial_descendant_ids(spatial_id, ifc_file)
+            filters["spatial_container_id__in"] = descendant_ids
         if ifc_type:
             filters["ifc_type"] = ifc_type
 
@@ -1022,18 +1088,28 @@ class ExploreExportView(ProjectAccessMixin, View):
         response["Content-Disposition"] = f'attachment; filename="{safe_name}_entities.csv"'
 
         writer = csv.writer(response)
-        writer.writerow(["GlobalID", "Type", "Name", "Building", "Storey", "Space"])
-        for entity in qs.only(
-            "global_id", "ifc_type", "name", "building", "building_storey", "space"
-        ).iterator():
+        writer.writerow(["GlobalID", "Type", "Name", "Element Type", "Spatial Container"])
+        for entity in (
+            qs.select_related("element_type", "spatial_container__entity")
+            .only(
+                "global_id",
+                "ifc_type",
+                "name",
+                "spatial_container",
+                "element_type__name",
+            )
+            .iterator()
+        ):
+            container_name = ""
+            if entity.spatial_container and entity.spatial_container.entity:
+                container_name = entity.spatial_container.entity.name or ""
             writer.writerow(
                 [
                     entity.global_id,
                     entity.ifc_type,
                     entity.name or "",
-                    entity.building or "",
-                    entity.building_storey or "",
-                    entity.space or "",
+                    entity.element_type.name if entity.element_type else "",
+                    container_name,
                 ]
             )
 
@@ -1075,8 +1151,7 @@ class ScheduleView(ProjectTabMixin, TemplateView):
         if selected_ifc:
             svc = GenericScheduleService(selected_ifc)
             available_types = svc.get_available_types()
-            if preselected_types:
-                storeys = svc.get_storeys(preselected_types)
+            storeys = svc.get_storeys()
 
         context.update(
             {
@@ -1103,13 +1178,28 @@ class ScheduleTablePartial(ProjectAccessMixin, View):
         raw = request.GET.get("types", "")
         ifc_types = [t.strip() for t in raw.split(",") if t.strip()]
         storey = request.GET.get("storey") or None
+        group_by = request.GET.get("group_by", "")
 
         if not ifc_types:
             return render(request, "ifc_processor/schedule/_no_selection.html", {})
 
         svc = GenericScheduleService(ifc_file)
-        results = svc.get_schedule(ifc_types, storey=storey)
 
+        if group_by == "type":
+            results = svc.get_type_grouped_schedule(ifc_types, storey=storey)
+            return render(
+                request,
+                "ifc_processor/schedule/_type_grouped_tables.html",
+                {
+                    "results": results,
+                    "project": project,
+                    "ifc_file": ifc_file,
+                    "selected_types": ifc_types,
+                    "selected_storey": storey or "",
+                },
+            )
+
+        results = svc.get_schedule(ifc_types, storey=storey)
         return render(
             request,
             "ifc_processor/schedule/_schedule_tables.html",
@@ -1138,9 +1228,9 @@ class ScheduleExcelExportView(ProjectAccessMixin, View):
         raw = request.GET.get("types", "")
         ifc_types = [t.strip() for t in raw.split(",") if t.strip()]
         storey = request.GET.get("storey") or None
+        group_by = request.GET.get("group_by", "")
 
         svc = GenericScheduleService(ifc_file)
-        results = svc.get_schedule(ifc_types, storey=storey)
 
         wb = openpyxl.Workbook()
         wb.remove(wb.active)  # remove default empty sheet
@@ -1150,37 +1240,66 @@ class ScheduleExcelExportView(ProjectAccessMixin, View):
         center = Alignment(horizontal="center")
 
         used_names: set[str] = set()
-        for ifc_type, result in results.items():
-            # Excel sheet names: max 31 chars, strip "Ifc" prefix, deduplicate
-            base = ifc_type.replace("Ifc", "")[:28]
-            sheet_name = base
-            suffix = 2
-            while sheet_name in used_names:
-                sheet_name = f"{base[:25]}_{suffix}"
-                suffix += 1
-            used_names.add(sheet_name)
 
-            ws = wb.create_sheet(title=sheet_name)
+        if group_by == "type":
+            results = svc.get_type_grouped_schedule(ifc_types, storey=storey)
+            for ifc_type, result in results.items():
+                base = ifc_type.replace("Ifc", "")[:28]
+                sheet_name = base
+                suffix = 2
+                while sheet_name in used_names:
+                    sheet_name = f"{base[:25]}_{suffix}"
+                    suffix += 1
+                used_names.add(sheet_name)
 
-            # Header row — append "(m)" suffix for normalised dimension columns
-            display_headers = [
-                f"{col.label} (m)" if col.unit == "m" else col.label for col in result.columns
-            ]
-            ws.append(display_headers)
-            for col_idx in range(1, len(display_headers) + 1):
-                cell = ws.cell(row=1, column=col_idx)
-                cell.font = header_font
-                cell.fill = header_fill
-                cell.alignment = center
+                ws = wb.create_sheet(title=sheet_name)
 
-            # Data rows
-            for row in result.rows:
-                ws.append(row)
+                # Header: Type Name, Count, then property columns
+                headers = ["Type Name", "Count"] + [
+                    f"{col.label} ({col.unit})" if col.unit else col.label for col in result.columns
+                ]
+                ws.append(headers)
+                for col_idx in range(1, len(headers) + 1):
+                    cell = ws.cell(row=1, column=col_idx)
+                    cell.font = header_font
+                    cell.fill = header_fill
+                    cell.alignment = center
 
-            # Auto-fit column widths
-            for col in ws.columns:
-                max_len = max((len(str(c.value or "")) for c in col), default=10)
-                ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 50)
+                for group in result.groups:
+                    ws.append([group.element_type_name, group.count, *group.values])
+
+                for col in ws.columns:
+                    max_len = max((len(str(c.value or "")) for c in col), default=10)
+                    ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 50)
+        else:
+            results = svc.get_schedule(ifc_types, storey=storey)
+            for ifc_type, result in results.items():
+                base = ifc_type.replace("Ifc", "")[:28]
+                sheet_name = base
+                suffix = 2
+                while sheet_name in used_names:
+                    sheet_name = f"{base[:25]}_{suffix}"
+                    suffix += 1
+                used_names.add(sheet_name)
+
+                ws = wb.create_sheet(title=sheet_name)
+
+                display_headers = [
+                    f"{col.label} ({col.unit})" if col.unit else col.label for col in result.columns
+                ]
+                ws.append(display_headers)
+                for col_idx in range(1, len(display_headers) + 1):
+                    cell = ws.cell(row=1, column=col_idx)
+                    cell.font = header_font
+                    cell.fill = header_fill
+                    cell.alignment = center
+
+                for row in result.rows:
+                    ws.append(row)
+
+                for col in ws.columns:
+                    max_len = max((len(str(c.value or "")) for c in col), default=10)
+                    ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 50)
 
         response = HttpResponse(
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

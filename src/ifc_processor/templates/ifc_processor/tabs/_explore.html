@@ -55,7 +55,7 @@
         </div>
         <div class="overflow-auto flex-grow-1 p-2" id="explore-tree">
           <ul class="list-unstyled mb-0 explore-tree-root">
-            {% include "ifc_processor/explore/_tree_nodes.html" with nodes=buildings level="building" ifc_file=selected_ifc project=project current_building="" current_storey="" only %}
+            {% include "ifc_processor/explore/_tree_nodes.html" with nodes=root_nodes ifc_file=selected_ifc project=project only %}
           </ul>
         </div>
       </div>

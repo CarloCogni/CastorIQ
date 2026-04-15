@@ -33,12 +33,16 @@
 
     <div class="p-3 border-bottom flex-shrink-0">
         <div class="d-flex align-items-center justify-content-between mb-2">
-            <span class="text-secondary text-uppercase fs-8 fw-bold letter-spacing-1">IFC Models</span>
+            <a class="text-secondary text-uppercase fs-8 fw-bold letter-spacing-1 text-decoration-none d-flex align-items-center gap-1"
+               data-bs-toggle="collapse" href="#collapseIfc" role="button" aria-expanded="true" aria-controls="collapseIfc">
+                <i class="bi bi-chevron-down fs-8"></i> IFC Models
+            </a>
             <a href="{% url 'projects:upload' project.pk %}" class="btn btn-sm btn-link text-secondary p-0 hover-white">
                 <i class="bi bi-plus-lg"></i>
             </a>
         </div>
 
+        <div class="collapse show" id="collapseIfc">
         <div class="d-flex flex-column gap-1">
             {% for ifc in ifc_files %}
             <div class="file-item d-flex align-items-center p-2 rounded justify-content-between position-relative group"
@@ -101,16 +105,21 @@
             </div>
             {% endfor %}
         </div>
+        </div>{# /collapseIfc #}
     </div>
 
     <div class="p-3 border-bottom flex-shrink-0">
         <div class="d-flex align-items-center justify-content-between mb-2">
-            <span class="text-secondary text-uppercase fs-8 fw-bold letter-spacing-1">Documents</span>
+            <a class="text-secondary text-uppercase fs-8 fw-bold letter-spacing-1 text-decoration-none d-flex align-items-center gap-1"
+               data-bs-toggle="collapse" href="#collapseDocs" role="button" aria-expanded="true" aria-controls="collapseDocs">
+                <i class="bi bi-chevron-down fs-8"></i> Documents
+            </a>
             <a href="{% url 'projects:upload' project.pk %}" class="btn btn-sm btn-link text-secondary p-0 hover-white">
                 <i class="bi bi-plus-lg"></i>
             </a>
         </div>
 
+        <div class="collapse show" id="collapseDocs">
         <div class="d-flex flex-column gap-1">
             {% for doc in documents %}
             <div class="file-item d-flex align-items-center p-2 rounded justify-content-between position-relative group"
@@ -173,11 +182,12 @@
             </div>
             {% endfor %}
         </div>
+        </div>{# /collapseDocs #}
     </div>
 
     <!-- Conversations (mode-aware: swaps content based on active tab) -->
     {% if chat_sessions is not None %}
-    <div class="p-3 flex-grow-1">
+    <div class="p-3">
         <div class="d-flex align-items-center justify-content-between mb-2">
             <div class="d-flex align-items-center gap-2">
                 <span class="text-secondary text-uppercase fs-8 fw-bold letter-spacing-1">Conversations</span>

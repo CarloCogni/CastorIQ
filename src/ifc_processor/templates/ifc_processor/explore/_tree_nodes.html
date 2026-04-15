@@ -1,68 +1,25 @@
 <!--ifc_processor/explore/_tree_nodes.html-->
-<!--   Renders a list of tree nodes at a given spatial level.-->
-<!--   Context: nodes (list of dicts), level (building|storey|space),-->
-<!--            ifc_file, project, current_building, current_storey-->
+<!--   Renders spatial tree nodes (universal — works at any level).-->
+<!--   Context: nodes (IFCSpatialElement queryset), ifc_file, project -->
+{% load ifc_filters %}
 
-{% if level == "building" %}
-  {% for node in nodes %}
-    {% with val=node.building count=node.count %}
-    <li class="mb-1">
-      <div class="explore-tree-node d-flex align-items-center justify-content-between"
-           id="tree-building-{{ forloop.counter }}"
-           hx-get="{% url 'projects:explore_tree' project.pk ifc_file.pk %}?building={{ val|urlencode }}"
-           hx-target="#tree-children-b{{ forloop.counter }}"
-           hx-swap="innerHTML"
-           onclick="exploreFilter(this, '{% url 'projects:explore_entities' project.pk ifc_file.pk %}?building={{ val|urlencode }}')"
-           >
-        <span>
-          <i class="bi bi-building me-1 text-secondary"></i>
-          {{ val|default:"(no building)" }}
-        </span>
-        <span class="badge bg-secondary ms-2" style="font-size:0.7rem;">{{ count }}</span>
-      </div>
-      <ul class="list-unstyled explore-tree-children mb-0" id="tree-children-b{{ forloop.counter }}"></ul>
-    </li>
-    {% endwith %}
-  {% empty %}
-    <li class="text-secondary small px-2 py-1 fst-italic">No spatial data available.</li>
-  {% endfor %}
-
-{% elif level == "storey" %}
-  {% for node in nodes %}
-    {% with val=node.building_storey count=node.count %}
-    <li class="mb-1">
-      <div class="explore-tree-node d-flex align-items-center justify-content-between"
-           id="tree-storey-{{ forloop.counter }}"
-           hx-get="{% url 'projects:explore_tree' project.pk ifc_file.pk %}?building={{ current_building|urlencode }}&storey={{ val|urlencode }}"
-           hx-target="#tree-children-s{{ forloop.counter }}"
-           hx-swap="innerHTML"
-           onclick="exploreFilter(this, '{% url 'projects:explore_entities' project.pk ifc_file.pk %}?building={{ current_building|urlencode }}&storey={{ val|urlencode }}')"
-           >
-        <span>
-          <i class="bi bi-layers me-1 text-secondary"></i>
-          {{ val|default:"(no storey)" }}
-        </span>
-        <span class="badge bg-secondary ms-2" style="font-size:0.7rem;">{{ count }}</span>
-      </div>
-      <ul class="list-unstyled explore-tree-children mb-0" id="tree-children-s{{ forloop.counter }}"></ul>
-    </li>
-    {% endwith %}
-  {% endfor %}
-
-{% elif level == "space" %}
-  {% for node in nodes %}
-    {% with val=node.space count=node.count %}
-    <li class="mb-1">
-      <div class="explore-tree-node d-flex align-items-center justify-content-between"
-           onclick="exploreFilter(this, '{% url 'projects:explore_entities' project.pk ifc_file.pk %}?building={{ current_building|urlencode }}&storey={{ current_storey|urlencode }}&space={{ val|urlencode }}')"
-           >
-        <span>
-          <i class="bi bi-door-open me-1 text-secondary"></i>
-          {{ val|default:"(no space)" }}
-        </span>
-        <span class="badge bg-secondary ms-2" style="font-size:0.7rem;">{{ count }}</span>
-      </div>
-    </li>
-    {% endwith %}
-  {% endfor %}
-{% endif %}
+{% for node in nodes %}
+<li class="mb-1">
+  <div class="explore-tree-node d-flex align-items-center justify-content-between"
+       id="tree-node-{{ node.pk }}"
+       hx-get="{% url 'projects:explore_tree' project.pk ifc_file.pk %}?spatial_id={{ node.pk }}"
+       hx-target="#tree-children-{{ node.pk }}"
+       hx-swap="innerHTML"
+       onclick="exploreFilter(this, '{% url 'projects:explore_entities' project.pk ifc_file.pk %}?spatial_id={{ node.pk }}')"
+       >
+    <span>
+      <i class="bi {{ node.spatial_type|spatial_icon }} me-1 text-secondary"></i>
+      {{ node.entity.name|default:"(unnamed)" }}
+    </span>
+    <span class="badge bg-secondary ms-2" style="font-size:0.7rem;">{{ node.entity_count }}</span>
+  </div>
+  <ul class="list-unstyled explore-tree-children mb-0" id="tree-children-{{ node.pk }}"></ul>
+</li>
+{% empty %}
+<li class="text-secondary small px-2 py-1 fst-italic">No spatial data available.</li>
+{% endfor %}

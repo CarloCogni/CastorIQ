@@ -124,6 +124,85 @@ class IFCFile(UUIDModel):
         return bool(self.schema_version) and not self.schema_version.upper().startswith("IFC4")
 
 
+class IFCElementType(UUIDModel):
+    """
+    A defining type object from an IFC file (IfcTypeProduct subtypes).
+
+    Mirrors the IFC schema hierarchy where IfcTypeProduct (and its subtypes
+    like IfcBeamType, IfcDoorType, IfcWallType, etc.) define shared
+    characteristics for multiple element occurrences.
+
+    Each occurrence (IFCEntity) links back here via a FK, enabling
+    type-grouped schedules and future write-back on type definitions.
+    """
+
+    ifc_file = models.ForeignKey(
+        IFCFile,
+        on_delete=models.CASCADE,
+        related_name="element_types",
+        verbose_name="IFC File",
+    )
+
+    # IFC identifiers
+    global_id = models.CharField(
+        max_length=64,
+        db_index=True,
+        verbose_name="Global ID",
+        help_text="Unique IFC GUID of the type object",
+    )
+    ifc_type = models.CharField(
+        max_length=2_000,
+        db_index=True,
+        verbose_name="IFC Type",
+        help_text="e.g., IfcDoorType, IfcBeamType, IfcWallType",
+    )
+    name = models.CharField(
+        max_length=2_000,
+        blank=True,
+        db_index=True,
+        verbose_name="Name",
+        help_text="Type name, e.g. 'Door-Single-Panel', 'Standard Footing 300x400'",
+    )
+    description = models.TextField(
+        blank=True,
+        verbose_name="Description",
+    )
+
+    # IFC attributes on IfcTypeProduct
+    applicable_occurrence = models.CharField(
+        max_length=2_000,
+        blank=True,
+        verbose_name="Applicable Occurrence",
+        help_text="IFC ApplicableOccurrence attribute — subtype filter string",
+    )
+    tag = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="Tag",
+        help_text="IFC Tag attribute — user-defined identifier",
+    )
+
+    # Type-level property sets as JSON
+    properties = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Properties",
+        help_text="Type-level property sets extracted from the IFC type object",
+    )
+
+    class Meta:
+        ordering = ["ifc_type", "name"]
+        verbose_name = "IFC Element Type"
+        verbose_name_plural = "IFC Element Types"
+        unique_together = ["ifc_file", "global_id"]
+        indexes = [
+            models.Index(fields=["ifc_file", "ifc_type"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.ifc_type}: {self.name or self.global_id[:8]}"
+
+
 class IFCEntity(UUIDModel):
     """An extracted entity from an IFC file."""
 
@@ -154,24 +233,28 @@ class IFCEntity(UUIDModel):
         verbose_name="Name",
     )
 
-    # Spatial hierarchy
-    building = models.CharField(
-        max_length=2_000,
+    # Link to defining type object (IfcTypeProduct)
+    element_type = models.ForeignKey(
+        IFCElementType,
+        null=True,
         blank=True,
-        verbose_name="Building",
+        on_delete=models.SET_NULL,
+        related_name="occurrences",
+        verbose_name="Element Type",
+        help_text="Defining type object (e.g. IfcDoorType) via IfcRelDefinesByType",
     )
-    building_storey = models.CharField(
-        max_length=2_000,
+
+    # Spatial containment — points to the IFCSpatialElement this entity sits inside.
+    # For a wall on "Ground Floor", this FK points to the IfcBuildingStorey node.
+    # Full hierarchy (building, site) is reachable via spatial_container.parent chain.
+    spatial_container = models.ForeignKey(
+        "IFCSpatialElement",
+        null=True,
         blank=True,
-        db_index=True,
-        verbose_name="Building Storey",
-        help_text="Floor/level where this entity is located",
-    )
-    space = models.CharField(
-        max_length=2_000,
-        blank=True,
-        verbose_name="Space",
-        help_text="Room or space containing this entity",
+        on_delete=models.SET_NULL,
+        related_name="contained_entities",
+        verbose_name="Spatial Container",
+        help_text="Direct spatial container (IfcRelContainedInSpatialStructure)",
     )
 
     # Properties stored as JSON
@@ -204,12 +287,109 @@ class IFCEntity(UUIDModel):
         indexes = [
             models.Index(fields=["ifc_file", "ifc_type"]),
             models.Index(fields=["ifc_file", "global_id"]),
-            models.Index(fields=["ifc_file", "building_storey"]),
+            models.Index(fields=["ifc_file", "spatial_container"]),
             models.Index(fields=["ifc_type", "name"]),
+            models.Index(fields=["ifc_file", "ifc_type", "element_type"]),
         ]
 
     def __str__(self):
         return f"{self.ifc_type}: {self.name or self.global_id[:8]}"
+
+
+class IFCSpatialElement(UUIDModel):
+    """
+    Lightweight tree overlay for the IFC spatial decomposition hierarchy.
+
+    Maps to IfcSpatialStructureElement subtypes (IfcSite, IfcBuilding,
+    IfcBuildingStorey, IfcSpace, and IFC4.3 IfcFacility/IfcFacilityPart).
+    Linked via self-referencing parent FK to form the spatial tree
+    (mirrors IfcRelAggregates in the IFC schema).
+
+    All entity data (properties, embeddings, name, global_id) lives on the
+    associated IFCEntity record via the OneToOne FK — this model holds ONLY
+    the tree structure and spatial-specific attributes.
+    """
+
+    class SpatialType(models.TextChoices):
+        SITE = "site", "Site"
+        BUILDING = "building", "Building"
+        BUILDING_STOREY = "building_storey", "Building Storey"
+        SPACE = "space", "Space"
+        # IFC4.3 infrastructure
+        FACILITY = "facility", "Facility"
+        FACILITY_PART = "facility_part", "Facility Part"
+
+    ifc_file = models.ForeignKey(
+        IFCFile,
+        on_delete=models.CASCADE,
+        related_name="spatial_elements",
+        verbose_name="IFC File",
+    )
+    parent = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="children",
+        verbose_name="Parent",
+        help_text="Parent spatial element (IfcRelAggregates)",
+    )
+    spatial_type = models.CharField(
+        max_length=20,
+        choices=SpatialType.choices,
+        db_index=True,
+        verbose_name="Spatial Type",
+    )
+
+    # OneToOne back to IFCEntity — the entity holds ALL data
+    entity = models.OneToOneField(
+        IFCEntity,
+        on_delete=models.CASCADE,
+        related_name="spatial_node",
+        verbose_name="Entity",
+        help_text="The IFCEntity record holding this spatial element's data",
+    )
+
+    # Extra attributes specific to spatial elements (not on IFCEntity)
+    long_name = models.CharField(
+        max_length=2_000,
+        blank=True,
+        verbose_name="Long Name",
+        help_text="IFC LongName attribute",
+    )
+    composition_type = models.CharField(
+        max_length=20,
+        blank=True,
+        verbose_name="Composition Type",
+        help_text="ELEMENT, COMPLEX, or PARTIAL",
+    )
+    elevation = models.DecimalField(
+        max_digits=12,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        verbose_name="Elevation",
+        help_text="Elevation value (IfcBuildingStorey only)",
+    )
+
+    class Meta:
+        ordering = ["spatial_type", "entity__name"]
+        verbose_name = "IFC Spatial Element"
+        verbose_name_plural = "IFC Spatial Elements"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["ifc_file", "entity"],
+                name="unique_spatial_element_per_entity",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["ifc_file", "spatial_type"]),
+            models.Index(fields=["ifc_file", "parent"]),
+        ]
+
+    def __str__(self) -> str:
+        name = self.entity.name if self.entity_id else self.pk
+        return f"{self.get_spatial_type_display()}: {name}"
 
 
 class IFCDataIssue(UUIDModel):

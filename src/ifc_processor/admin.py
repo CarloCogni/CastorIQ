@@ -4,7 +4,26 @@ import json
 from django.contrib import admin, messages
 from django.utils.html import format_html
 
-from .models import IFCDataIssue, IFCEntity, IFCFile
+from .models import (
+    IFCDataIssue,
+    IFCElementType,
+    IFCEntity,
+    IFCFile,
+    IFCSpatialElement,
+)
+
+
+class ElementTypeInline(admin.TabularInline):
+    model = IFCEntity
+    fk_name = "element_type"
+    extra = 0
+    fields = ("global_id", "name", "ifc_type")
+    readonly_fields = ("global_id", "name", "ifc_type")
+    can_delete = False
+    verbose_name = "Occurrence"
+    verbose_name_plural = "Occurrences"
+    show_change_link = True
+    max_num = 20
 
 
 class DataIssueInline(admin.TabularInline):
@@ -96,10 +115,42 @@ class IFCFileAdmin(admin.ModelAdmin):
         self.message_user(request, f"Reset {updated} file(s) to pending.", messages.SUCCESS)
 
 
+@admin.register(IFCElementType)
+class IFCElementTypeAdmin(admin.ModelAdmin):
+    list_display = ("name", "ifc_type", "ifc_file", "occurrence_count")
+    list_filter = ("ifc_type", "ifc_file__project")
+    search_fields = ("name", "global_id", "ifc_file__name")
+    readonly_fields = ("id", "global_id", "properties_pretty", "created_at", "updated_at")
+    list_select_related = ("ifc_file", "ifc_file__project")
+    inlines = [ElementTypeInline]
+
+    fieldsets = (
+        ("Identification", {"fields": ("id", "ifc_file", "global_id", "ifc_type", "name")}),
+        (
+            "IFC Attributes",
+            {"fields": ("description", "applicable_occurrence", "tag")},
+        ),
+        ("Properties", {"fields": ("properties_pretty",)}),
+    )
+
+    def occurrence_count(self, obj):
+        return obj.occurrences.count()
+
+    occurrence_count.short_description = "Occurrences"
+
+    def properties_pretty(self, obj):
+        if obj.properties:
+            formatted = json.dumps(obj.properties, indent=2)
+            return format_html('<pre style="margin:0; white-space:pre-wrap;">{}</pre>', formatted)
+        return "-"
+
+    properties_pretty.short_description = "Properties"
+
+
 @admin.register(IFCEntity)
 class IFCEntityAdmin(admin.ModelAdmin):
-    list_display = ("global_id_short", "ifc_type", "name", "building_storey", "ifc_file")
-    list_filter = ("ifc_type", "building_storey", "ifc_file__project")
+    list_display = ("global_id_short", "ifc_type", "name", "spatial_container", "ifc_file")
+    list_filter = ("ifc_type", "ifc_file__project")
     search_fields = ("global_id", "name", "description", "ifc_file__name")
     readonly_fields = ("id", "properties_pretty", "embedding_preview", "created_at", "updated_at")
     list_per_page = 50
@@ -111,7 +162,7 @@ class IFCEntityAdmin(admin.ModelAdmin):
         (
             "Spatial Location",
             {
-                "fields": ("building", "building_storey", "space"),
+                "fields": ("spatial_container",),
             },
         ),
         (
@@ -166,6 +217,27 @@ class IFCEntityAdmin(admin.ModelAdmin):
         )
 
     embedding_preview.short_description = "Embedding Vector"
+
+
+@admin.register(IFCSpatialElement)
+class IFCSpatialElementAdmin(admin.ModelAdmin):
+    """Admin for the IFC spatial decomposition tree."""
+
+    list_display = ("__str__", "spatial_type", "parent", "ifc_file")
+    list_filter = ("spatial_type", "ifc_file__project")
+    search_fields = ("entity__name", "entity__global_id", "ifc_file__name")
+    readonly_fields = ("id", "entity", "created_at", "updated_at")
+    list_select_related = ("entity", "parent", "parent__entity", "ifc_file")
+    autocomplete_fields = ["ifc_file"]
+
+    fieldsets = (
+        ("Identification", {"fields": ("id", "ifc_file", "spatial_type", "entity")}),
+        ("Tree Structure", {"fields": ("parent",)}),
+        (
+            "Spatial Attributes",
+            {"fields": ("long_name", "composition_type", "elevation")},
+        ),
+    )
 
 
 @admin.register(IFCDataIssue)

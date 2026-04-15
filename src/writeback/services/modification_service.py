@@ -1309,8 +1309,10 @@ class ModificationService:
         IFC GUIDs are exactly 22 characters, base64-encoded (0-9, A-Z, a-z, _, $).
         """
         import re
-        pattern = r'\b[0-9A-Za-z_$]{22}\b'
+
+        pattern = r"\b[0-9A-Za-z_$]{22}\b"
         return re.findall(pattern, message)
+
     def _execute_tier3(self, proposal: ModificationProposal) -> list[EntityChange]:
         code = proposal.intent_json.get("code", "")
         if not code:

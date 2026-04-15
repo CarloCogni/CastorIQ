@@ -156,6 +156,24 @@ class TokenBudget:
         return self.total_input > self.max_usable
 
 
+def compute_retrieval_budget(
+    model_name: str,
+    system_prompt: str,
+    history_tokens: int = 0,
+) -> int:
+    """
+    Compute the token budget available for retrieved context.
+
+    Returns the number of tokens remaining after accounting for the system
+    prompt, estimated conversation history, response reserve, and safety margin.
+    This is used to dynamically size retrieval depth before fetching results.
+    """
+    context_window = get_context_window(model_name)
+    max_usable = max(0, int(context_window * SAFETY_RATIO) - RESPONSE_RESERVE)
+    fixed_overhead = estimate_tokens(system_prompt) + history_tokens
+    return max(0, max_usable - fixed_overhead)
+
+
 def compute_budget(
     model_name: str,
     system: str,

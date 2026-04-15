@@ -1,6 +1,7 @@
 <!--ifc_processor/explore/_entity_detail.html-->
 <!--   HTMX partial: property inspector for a single IFC entity.-->
 <!--   Context: entity (IFCEntity), project, property_sets, quantity_sets, type_sets -->
+{% load ifc_filters %}
 
 {# ── Entity header ── #}
 <div class="px-3 pt-3 pb-2 border-bottom">
@@ -19,12 +20,13 @@
   </div>
 
   {# ── Spatial path ── #}
-  {% if entity.building or entity.building_storey or entity.space %}
+  {% if spatial_breadcrumb %}
   <div class="mt-2 small text-secondary">
     <i class="bi bi-geo-alt me-1"></i>
-    {% if entity.building %}<span>{{ entity.building }}</span>{% endif %}
-    {% if entity.building_storey %}<span class="mx-1 opacity-50">›</span><span>{{ entity.building_storey }}</span>{% endif %}
-    {% if entity.space %}<span class="mx-1 opacity-50">›</span><span>{{ entity.space }}</span>{% endif %}
+    {% for crumb in spatial_breadcrumb %}
+      {% if not forloop.first %}<span class="mx-1 opacity-50">&rsaquo;</span>{% endif %}
+      <span>{{ crumb.name }}</span>
+    {% endfor %}
   </div>
   {% endif %}
 </div>
@@ -56,7 +58,7 @@
           <td class="text-secondary pe-3" style="width:45%; white-space:nowrap;">{{ prop_name }}</td>
           <td>
             {% if prop_value is None %}<span class="text-secondary fst-italic">null</span>
-            {% else %}{{ prop_value }}{% endif %}
+            {% else %}{{ prop_value|format_value }}{% endif %}
           </td>
         </tr>
         {% endfor %}
@@ -81,7 +83,7 @@
           <td class="text-secondary pe-3" style="width:45%; white-space:nowrap;">{{ prop_name }}</td>
           <td>
             {% if prop_value is None %}<span class="text-secondary fst-italic">null</span>
-            {% else %}{{ prop_value }}{% endif %}
+            {% else %}{{ prop_value|format_value }}{% with unit=quantity_units|dictget:prop_name %}{% if unit %} <span class="text-secondary" style="font-size:0.8em;">{{ unit }}</span>{% endif %}{% endwith %}{% endif %}
           </td>
         </tr>
         {% endfor %}
@@ -107,7 +109,7 @@
             <td class="text-secondary pe-3" style="width:45%; white-space:nowrap;">{{ prop_name }}</td>
             <td>
               {% if prop_value is None %}<span class="text-secondary fst-italic">null</span>
-              {% else %}{{ prop_value }}{% endif %}
+              {% else %}{{ prop_value|format_value }}{% endif %}
             </td>
           </tr>
           {% endfor %}

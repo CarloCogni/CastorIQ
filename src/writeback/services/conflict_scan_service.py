@@ -345,7 +345,14 @@ class ConflictScanService:
         Filters results by confidence threshold (>= CONFIDENCE_THRESHOLD) before
         returning to prevent low-confidence guesses from being stored.
         """
-        location_parts = filter(None, [entity.building_storey, entity.space, entity.building])
+        # Walk the spatial_container chain to build location text
+        location_parts: list[str] = []
+        node = getattr(entity, "spatial_container", None)
+        while node:
+            name = node.entity.name if hasattr(node, "entity") and node.entity else ""
+            if name:
+                location_parts.append(name)
+            node = node.parent
         location = ", ".join(location_parts) or "Unassigned"
 
         properties_text = self._format_properties(entity.properties)
