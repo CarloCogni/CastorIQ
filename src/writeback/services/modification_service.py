@@ -276,6 +276,15 @@ class ModificationService:
         # 4. Resolve entity filter
         emitter.emit("validate", "running", "Matching entities…")
         filter_spec = intent.get("filter", {})
+
+        # If the user mentioned specific GUIDs, always honour them exactly —
+        # override whatever the LLM put in the filter so we never touch
+        # more entities than the user specified.
+        guids_in_message = self._extract_guids_from_message(user_message)
+        if guids_in_message:
+            filter_spec["global_ids"] = guids_in_message
+            logger.info(f"GUID override: restricting filter to {guids_in_message}")
+
         try:
             matched_qs = self.filter_engine.resolve(filter_spec)
         except ValueError as e:
@@ -1294,6 +1303,14 @@ class ModificationService:
 
         return proposal
 
+    def _extract_guids_from_message(self, message: str) -> list[str]:
+        """
+        Extract IFC GlobalIds from a user message.
+        IFC GUIDs are exactly 22 characters, base64-encoded (0-9, A-Z, a-z, _, $).
+        """
+        import re
+        pattern = r'\b[0-9A-Za-z_$]{22}\b'
+        return re.findall(pattern, message)
     def _execute_tier3(self, proposal: ModificationProposal) -> list[EntityChange]:
         code = proposal.intent_json.get("code", "")
         if not code:
