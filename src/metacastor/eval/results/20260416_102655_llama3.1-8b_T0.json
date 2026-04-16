@@ -1,0 +1,1318 @@
+{
+  "timestamp": "2026-04-16T10:26:55",
+  "model": "llama3.1:8b",
+  "temperature": 0,
+  "injection": false,
+  "cases_file": "eval_cases.jsonl",
+  "n_cases": 115,
+  "by_tier": {
+    "TRIVIAL": {
+      "operation": 0.9,
+      "tier": 1.0,
+      "filter_type": 0.95,
+      "parameters": 0.85,
+      "n": 20
+    },
+    "STANDARD": {
+      "operation": 0.88,
+      "tier": 0.84,
+      "filter_type": 0.76,
+      "parameters": 0.76,
+      "n": 25
+    },
+    "AMBIGUOUS": {
+      "operation": 0.2333,
+      "tier": 0.2333,
+      "filter_type": 0.3333,
+      "parameters": 0.2667,
+      "n": 30
+    },
+    "ESCALATION": {
+      "operation": 0.1,
+      "tier": 0.35,
+      "filter_type": 0.6,
+      "parameters": 0.4,
+      "n": 20
+    },
+    "ADVERSARIAL": {
+      "operation": 0.1,
+      "tier": 0.7,
+      "filter_type": 0.4,
+      "parameters": 0.25,
+      "n": 20
+    }
+  },
+  "overall": {
+    "operation": 0.4435,
+    "tier": 0.6,
+    "filter_type": 0.5913,
+    "parameters": 0.4957
+  },
+  "per_case": [
+    {
+      "id": "eval_001",
+      "difficulty_tier": "TRIVIAL",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_002",
+      "difficulty_tier": "TRIVIAL",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_003",
+      "difficulty_tier": "TRIVIAL",
+      "passed": false,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_004",
+      "difficulty_tier": "TRIVIAL",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_005",
+      "difficulty_tier": "TRIVIAL",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_006",
+      "difficulty_tier": "STANDARD",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_007",
+      "difficulty_tier": "STANDARD",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_008",
+      "difficulty_tier": "STANDARD",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_009",
+      "difficulty_tier": "STANDARD",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_010",
+      "difficulty_tier": "STANDARD",
+      "passed": false,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_011",
+      "difficulty_tier": "STANDARD",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_012",
+      "difficulty_tier": "STANDARD",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_013",
+      "difficulty_tier": "STANDARD",
+      "passed": false,
+      "scores": {
+        "operation": true,
+        "tier": false,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_014",
+      "difficulty_tier": "STANDARD",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_015",
+      "difficulty_tier": "AMBIGUOUS",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": false,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_016",
+      "difficulty_tier": "AMBIGUOUS",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_017",
+      "difficulty_tier": "AMBIGUOUS",
+      "passed": false,
+      "scores": {
+        "operation": true,
+        "tier": false,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_018",
+      "difficulty_tier": "AMBIGUOUS",
+      "passed": false,
+      "scores": {
+        "operation": true,
+        "tier": false,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_019",
+      "difficulty_tier": "AMBIGUOUS",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": false,
+        "filter_type": true,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_020",
+      "difficulty_tier": "ESCALATION",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": true,
+        "filter_type": false,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_021",
+      "difficulty_tier": "ESCALATION",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_022",
+      "difficulty_tier": "ESCALATION",
+      "passed": false,
+      "scores": {
+        "operation": true,
+        "tier": false,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_023",
+      "difficulty_tier": "ADVERSARIAL",
+      "passed": false,
+      "scores": {
+        "operation": true,
+        "tier": false,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_024",
+      "difficulty_tier": "ADVERSARIAL",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": true,
+        "filter_type": true,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_025",
+      "difficulty_tier": "ADVERSARIAL",
+      "passed": false,
+      "scores": {
+        "operation": true,
+        "tier": false,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_026",
+      "difficulty_tier": "TRIVIAL",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_027",
+      "difficulty_tier": "STANDARD",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_028",
+      "difficulty_tier": "STANDARD",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_029",
+      "difficulty_tier": "AMBIGUOUS",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": false,
+        "filter_type": true,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_030",
+      "difficulty_tier": "TRIVIAL",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_031",
+      "difficulty_tier": "TRIVIAL",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": true,
+        "filter_type": true,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_032",
+      "difficulty_tier": "TRIVIAL",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_033",
+      "difficulty_tier": "TRIVIAL",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_034",
+      "difficulty_tier": "TRIVIAL",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_035",
+      "difficulty_tier": "TRIVIAL",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_036",
+      "difficulty_tier": "TRIVIAL",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_037",
+      "difficulty_tier": "TRIVIAL",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_038",
+      "difficulty_tier": "TRIVIAL",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_039",
+      "difficulty_tier": "TRIVIAL",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_040",
+      "difficulty_tier": "TRIVIAL",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_041",
+      "difficulty_tier": "TRIVIAL",
+      "passed": false,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_042",
+      "difficulty_tier": "TRIVIAL",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_043",
+      "difficulty_tier": "TRIVIAL",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_044",
+      "difficulty_tier": "STANDARD",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_045",
+      "difficulty_tier": "STANDARD",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_046",
+      "difficulty_tier": "STANDARD",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_047",
+      "difficulty_tier": "STANDARD",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": false,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_048",
+      "difficulty_tier": "STANDARD",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": false,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_049",
+      "difficulty_tier": "STANDARD",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": false,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_050",
+      "difficulty_tier": "STANDARD",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_051",
+      "difficulty_tier": "STANDARD",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_052",
+      "difficulty_tier": "STANDARD",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_053",
+      "difficulty_tier": "STANDARD",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_054",
+      "difficulty_tier": "STANDARD",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_055",
+      "difficulty_tier": "STANDARD",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_056",
+      "difficulty_tier": "STANDARD",
+      "passed": false,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_057",
+      "difficulty_tier": "STANDARD",
+      "passed": true,
+      "scores": {
+        "operation": true,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_058",
+      "difficulty_tier": "AMBIGUOUS",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_059",
+      "difficulty_tier": "AMBIGUOUS",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_060",
+      "difficulty_tier": "AMBIGUOUS",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": false,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_061",
+      "difficulty_tier": "AMBIGUOUS",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": false,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_062",
+      "difficulty_tier": "AMBIGUOUS",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_063",
+      "difficulty_tier": "AMBIGUOUS",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_064",
+      "difficulty_tier": "AMBIGUOUS",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": false,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_065",
+      "difficulty_tier": "AMBIGUOUS",
+      "passed": false,
+      "scores": {
+        "operation": true,
+        "tier": false,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_066",
+      "difficulty_tier": "AMBIGUOUS",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": false,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_067",
+      "difficulty_tier": "AMBIGUOUS",
+      "passed": false,
+      "scores": {
+        "operation": true,
+        "tier": false,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_068",
+      "difficulty_tier": "AMBIGUOUS",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": false,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_069",
+      "difficulty_tier": "AMBIGUOUS",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": false,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_070",
+      "difficulty_tier": "AMBIGUOUS",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": false,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_071",
+      "difficulty_tier": "AMBIGUOUS",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": false,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_072",
+      "difficulty_tier": "AMBIGUOUS",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": false,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_073",
+      "difficulty_tier": "AMBIGUOUS",
+      "passed": false,
+      "scores": {
+        "operation": true,
+        "tier": false,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_074",
+      "difficulty_tier": "AMBIGUOUS",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_075",
+      "difficulty_tier": "AMBIGUOUS",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": false,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_076",
+      "difficulty_tier": "AMBIGUOUS",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": false,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_077",
+      "difficulty_tier": "AMBIGUOUS",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": false,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_078",
+      "difficulty_tier": "AMBIGUOUS",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_079",
+      "difficulty_tier": "AMBIGUOUS",
+      "passed": false,
+      "scores": {
+        "operation": true,
+        "tier": false,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_080",
+      "difficulty_tier": "AMBIGUOUS",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": false,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_081",
+      "difficulty_tier": "AMBIGUOUS",
+      "passed": false,
+      "scores": {
+        "operation": true,
+        "tier": false,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_082",
+      "difficulty_tier": "ESCALATION",
+      "passed": false,
+      "scores": {
+        "operation": true,
+        "tier": false,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_083",
+      "difficulty_tier": "ESCALATION",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": false,
+        "filter_type": true,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_084",
+      "difficulty_tier": "ESCALATION",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": false,
+        "filter_type": true,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_085",
+      "difficulty_tier": "ESCALATION",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": true,
+        "filter_type": false,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_086",
+      "difficulty_tier": "ESCALATION",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": true,
+        "filter_type": false,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_087",
+      "difficulty_tier": "ESCALATION",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_088",
+      "difficulty_tier": "ESCALATION",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": false,
+        "filter_type": true,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_089",
+      "difficulty_tier": "ESCALATION",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": false,
+        "filter_type": true,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_090",
+      "difficulty_tier": "ESCALATION",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": false,
+        "filter_type": true,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_091",
+      "difficulty_tier": "ESCALATION",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": false,
+        "filter_type": true,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_092",
+      "difficulty_tier": "ESCALATION",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": false,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_093",
+      "difficulty_tier": "ESCALATION",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": false,
+        "filter_type": true,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_094",
+      "difficulty_tier": "ESCALATION",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": true,
+        "filter_type": false,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_095",
+      "difficulty_tier": "ESCALATION",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": true,
+        "filter_type": false,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_096",
+      "difficulty_tier": "ESCALATION",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": false,
+        "filter_type": true,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_097",
+      "difficulty_tier": "ESCALATION",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": false,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_098",
+      "difficulty_tier": "ESCALATION",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": false,
+        "filter_type": true,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_099",
+      "difficulty_tier": "ADVERSARIAL",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": true,
+        "filter_type": false,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_100",
+      "difficulty_tier": "ADVERSARIAL",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": true,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_101",
+      "difficulty_tier": "ADVERSARIAL",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": false,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_102",
+      "difficulty_tier": "ADVERSARIAL",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": false,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_103",
+      "difficulty_tier": "ADVERSARIAL",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": true,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_104",
+      "difficulty_tier": "ADVERSARIAL",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": true,
+        "filter_type": true,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_105",
+      "difficulty_tier": "ADVERSARIAL",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": false,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_106",
+      "difficulty_tier": "ADVERSARIAL",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": false,
+        "filter_type": true,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_107",
+      "difficulty_tier": "ADVERSARIAL",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": true,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_108",
+      "difficulty_tier": "ADVERSARIAL",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": true,
+        "filter_type": true,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_109",
+      "difficulty_tier": "ADVERSARIAL",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": true,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_110",
+      "difficulty_tier": "ADVERSARIAL",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": true,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_111",
+      "difficulty_tier": "ADVERSARIAL",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": true,
+        "filter_type": false,
+        "parameters": true
+      }
+    },
+    {
+      "id": "eval_112",
+      "difficulty_tier": "ADVERSARIAL",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": true,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_113",
+      "difficulty_tier": "ADVERSARIAL",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": true,
+        "filter_type": true,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_114",
+      "difficulty_tier": "ADVERSARIAL",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": true,
+        "filter_type": false,
+        "parameters": false
+      }
+    },
+    {
+      "id": "eval_115",
+      "difficulty_tier": "ADVERSARIAL",
+      "passed": false,
+      "scores": {
+        "operation": false,
+        "tier": true,
+        "filter_type": true,
+        "parameters": false
+      }
+    }
+  ]
+}

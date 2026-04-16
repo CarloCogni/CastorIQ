@@ -4,6 +4,8 @@
 import factory
 from django.core.files.uploadedfile import SimpleUploadedFile
 
+from ifc_processor.models import IFCDataIssue
+
 
 class IFCFileFactory(factory.django.DjangoModelFactory):
     """Factory for IFCFile — includes all required fields."""
@@ -40,4 +42,50 @@ class IFCEntityFactory(factory.django.DjangoModelFactory):
             "Pset_WallCommon.FireRating": "EI60",
             "Pset_WallCommon.LoadBearing": False,
         }
+    )
+
+
+class IFCElementTypeFactory(factory.django.DjangoModelFactory):
+    """Factory for IFCElementType — a defining type object."""
+
+    class Meta:
+        model = "ifc_processor.IFCElementType"
+
+    ifc_file = factory.SubFactory(IFCFileFactory)
+    global_id = factory.Sequence(lambda n: f"TYPE-GUID-{n:08d}")
+    ifc_type = "IfcDoorType"
+    name = factory.Sequence(lambda n: f"DoorType-{n}")
+    properties = factory.LazyFunction(dict)
+
+
+class IFCSpatialElementFactory(factory.django.DjangoModelFactory):
+    """Factory for IFCSpatialElement — spatial hierarchy tree node."""
+
+    class Meta:
+        model = "ifc_processor.IFCSpatialElement"
+
+    ifc_file = factory.SubFactory(IFCFileFactory)
+    entity = factory.SubFactory(IFCEntityFactory)
+    parent = None
+    spatial_type = "building_storey"
+
+
+class IFCDataIssueFactory(factory.django.DjangoModelFactory):
+    """Factory for IFCDataIssue — a parse-time structural problem record."""
+
+    class Meta:
+        model = "ifc_processor.IFCDataIssue"
+
+    ifc_file = factory.SubFactory(IFCFileFactory)
+    issue_type = "orphaned_element"
+    global_id = factory.Sequence(lambda n: f"ISSUE-GUID-{n:08d}")
+    ifc_type = "IfcWall"
+    raw_data = factory.LazyFunction(dict)
+    description = "Element has no spatial placement."
+    severity = "medium"
+    status = "open"
+    # Stable hash must match the model's compute_hash so upsert tests behave
+    # the same as the real parser.
+    content_hash = factory.LazyAttribute(
+        lambda o: IFCDataIssue.compute_hash(o.ifc_file.id, o.global_id, o.issue_type)
     )
