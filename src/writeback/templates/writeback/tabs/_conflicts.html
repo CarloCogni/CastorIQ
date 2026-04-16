@@ -8,10 +8,10 @@
             data-subtab="data-quality"
             onclick="ConflictTabs.switchTo('data-quality')">
         <i class="bi bi-shield-exclamation me-1"></i>Data Quality
-        {% if data_issues %}
+        {% if open_issues %}
             <span class="badge rounded-pill ms-1"
                   style="background-color: var(--castor-warning); color: #000; font-size: 0.65rem;">
-                {{ data_issues.count }}
+                {{ open_issues|length }}
             </span>
         {% else %}
             <span class="badge rounded-pill ms-1"
@@ -54,7 +54,7 @@
 {# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ #}
 <div id="subtab-data-quality" class="conflict-subtab-panel p-4">
 
-    {% if data_issues %}
+    {% if open_issues or dismissed_issues %}
 
     {# ── Contextual banner with clear next steps ── #}
     <div class="d-flex align-items-start gap-3 rounded-3 p-3 mb-3"
@@ -62,7 +62,7 @@
         <i class="bi bi-info-circle text-warning mt-1 flex-shrink-0"></i>
         <div>
             <p class="mb-1 fs-7 fw-medium" style="color: var(--castor-warning);">
-                {{ data_issues.count }} issue{{ data_issues.count|pluralize }} found during IFC parsing
+                {{ open_issues|length }} open issue{{ open_issues|length|pluralize }} found during IFC parsing
             </p>
             <p class="text-secondary fs-8 mb-2">
                 Structural problems detected in the IFC file during upload.
@@ -77,162 +77,82 @@
                     <strong class="text-body">How to fix:</strong>
                     Open the IFC file in your BIM authoring tool (Revit, Bonsai, ArchiCAD…),
                     resolve the issues at the source, then re-upload the corrected file.
-                    Castor cannot fix structural IFC problems.
+                    Dismissed issues stay hidden across reparses; if the underlying element is
+                    fixed, the dismissed card is removed automatically.
                 </span>
             </div>
         </div>
     </div>
 
-    {# ── Issue list ── #}
-    <div class="d-flex flex-column gap-2">
-        {% for issue in data_issues %}
-        <div class="rounded-3 p-3"
-             style="background-color: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color);">
+    {# ── Filter pills + bulk actions ── #}
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+        <button class="btn btn-sm rounded-pill px-3 data-issue-filter-pill btn-primary"
+                data-issue-type="all"
+                onclick="DataIssueTabs.filterByType('all')">
+            All
+            <span class="badge rounded-pill ms-1"
+                  style="background-color: rgba(255,255,255,0.25); font-size: 0.65rem;">
+                {{ data_issue_type_counts.all }}
+            </span>
+        </button>
+        <button class="btn btn-sm rounded-pill px-3 data-issue-filter-pill btn-outline-secondary"
+                data-issue-type="duplicate_guid"
+                onclick="DataIssueTabs.filterByType('duplicate_guid')">
+            <i class="bi bi-files me-1"></i>Duplicate GUID
+            <span class="badge rounded-pill ms-1 bg-secondary" style="font-size: 0.65rem;">
+                {{ data_issue_type_counts.duplicate_guid }}
+            </span>
+        </button>
+        <button class="btn btn-sm rounded-pill px-3 data-issue-filter-pill btn-outline-secondary"
+                data-issue-type="orphaned_element"
+                onclick="DataIssueTabs.filterByType('orphaned_element')">
+            <i class="bi bi-geo-alt me-1"></i>Orphaned
+            <span class="badge rounded-pill ms-1 bg-secondary" style="font-size: 0.65rem;">
+                {{ data_issue_type_counts.orphaned_element }}
+            </span>
+        </button>
+        <button class="btn btn-sm rounded-pill px-3 data-issue-filter-pill btn-outline-secondary"
+                data-issue-type="missing_property"
+                onclick="DataIssueTabs.filterByType('missing_property')">
+            <i class="bi bi-list-ul me-1"></i>Missing properties
+            <span class="badge rounded-pill ms-1 bg-secondary" style="font-size: 0.65rem;">
+                {{ data_issue_type_counts.missing_property }}
+            </span>
+        </button>
+        <button class="btn btn-sm rounded-pill px-3 data-issue-filter-pill btn-outline-secondary"
+                data-issue-type="invalid_geometry"
+                onclick="DataIssueTabs.filterByType('invalid_geometry')">
+            <i class="bi bi-bounding-box me-1"></i>Invalid geometry
+            <span class="badge rounded-pill ms-1 bg-secondary" style="font-size: 0.65rem;">
+                {{ data_issue_type_counts.invalid_geometry }}
+            </span>
+        </button>
 
-            <div class="d-flex gap-3 align-items-start">
-
-                {# Severity icon #}
-                <div class="flex-shrink-0 d-flex align-items-center justify-content-center rounded-2"
-                     style="width: 36px; height: 36px; background-color: rgba(245, 158, 11, 0.12);">
-                    {% if issue.issue_type == 'duplicate_guid' %}
-                    <i class="bi bi-files text-warning"></i>
-                    {% elif issue.issue_type == 'orphaned_element' %}
-                    <i class="bi bi-geo-alt text-warning"></i>
-                    {% elif issue.issue_type == 'missing_property' %}
-                    <i class="bi bi-list-ul text-secondary"></i>
-                    {% elif issue.issue_type == 'invalid_geometry' %}
-                    <i class="bi bi-bounding-box text-danger"></i>
-                    {% else %}
-                    <i class="bi bi-exclamation-circle text-secondary"></i>
-                    {% endif %}
-                </div>
-
-                <div class="flex-grow-1 min-width-0">
-
-                    {% if issue.issue_type == 'duplicate_guid' %}
-
-                    {# ── Same-element duplicate ── #}
-                    {% if issue.raw_data.name == issue.raw_data.first_element_name and issue.ifc_type == issue.raw_data.first_element_type %}
-                    <div class="d-flex align-items-baseline gap-2 flex-wrap mb-1">
-                        <span class="fw-semibold">
-                            {% if issue.raw_data.name %}{{ issue.raw_data.name }}{% else %}<em class="text-secondary">Unnamed</em>{% endif %}
-                        </span>
-                        <span class="text-secondary fs-8">{{ issue.ifc_type }}</span>
-                        <span class="badge fs-8"
-                              style="background-color: rgba(239, 68, 68, 0.15); color: var(--castor-danger);">
-                            Duplicate
-                        </span>
-                        <span class="badge fs-8"
-                              style="background-color: rgba(239, 68, 68, 0.1); color: var(--castor-danger);">
-                            <i class="bi bi-x-circle me-1"></i>Skipped
-                        </span>
-                    </div>
-                    <p class="text-secondary fs-7 mb-2">
-                        This element appears multiple times with the same GlobalID.
-                        Only the first occurrence was imported — duplicates were skipped.
-                    </p>
-
-                    {# ── Cross-element duplicate ── #}
-                    {% else %}
-                    <div class="d-flex align-items-baseline gap-2 flex-wrap mb-1">
-                        <span class="fw-semibold text-warning">
-                            {% if issue.raw_data.name %}{{ issue.raw_data.name }}{% else %}<em class="text-secondary">Unnamed</em>{% endif %}
-                        </span>
-                        <span class="text-secondary fs-8">{{ issue.ifc_type }}</span>
-                        <i class="bi bi-arrow-left-right text-secondary fs-8"></i>
-                        <span class="fw-semibold" style="color: var(--castor-primary);">
-                            {% if issue.raw_data.first_element_name %}{{ issue.raw_data.first_element_name }}{% else %}<em class="text-secondary">Unnamed</em>{% endif %}
-                        </span>
-                        <span class="text-secondary fs-8">{{ issue.raw_data.first_element_type }}</span>
-                        <span class="badge fs-8"
-                              style="background-color: rgba(239, 68, 68, 0.1); color: var(--castor-danger);">
-                            <i class="bi bi-x-circle me-1"></i>Skipped
-                        </span>
-                    </div>
-                    <p class="text-secondary fs-7 mb-2">
-                        Two different elements share the same GlobalID — only
-                        <strong style="color: var(--castor-primary);">{{ issue.raw_data.first_element_name|default:"the first" }}</strong>
-                        was imported.
-                    </p>
-                    {% endif %}
-
-                    {# Duplicate metadata row #}
-                    <div class="d-flex flex-wrap gap-3 fs-8 text-secondary">
-                        <span><i class="bi bi-file-code me-1"></i>{{ issue.ifc_file.name }}</span>
-                        {% if issue.raw_data.first_element_storey %}
-                        <span><i class="bi bi-building me-1"></i>{{ issue.raw_data.first_element_storey }}</span>
-                        {% endif %}
-                        <code class="user-select-all" style="color: var(--castor-accent);">{{ issue.global_id }}</code>
-                    </div>
-
-                    {% elif issue.issue_type == 'orphaned_element' %}
-
-                    {# ── Orphaned element ── #}
-                    <div class="d-flex align-items-baseline gap-2 flex-wrap mb-1">
-                        <span class="fw-semibold">
-                            {% if issue.raw_data.name %}{{ issue.raw_data.name }}{% else %}<em class="text-secondary">Unnamed</em>{% endif %}
-                        </span>
-                        <span class="text-secondary fs-8">{{ issue.ifc_type }}</span>
-                        <span class="badge fs-8"
-                              style="background-color: rgba(245, 158, 11, 0.15); color: var(--castor-warning);">
-                            <i class="bi bi-check-circle me-1"></i>Imported
-                        </span>
-                    </div>
-                    <p class="text-secondary fs-7 mb-2">
-                        This element has no spatial placement — it belongs to no building, floor, or space.
-                        It was imported, but may not appear in floor-based views.
-                    </p>
-                    <div class="d-flex flex-wrap gap-3 fs-8 text-secondary">
-                        <span><i class="bi bi-file-code me-1"></i>{{ issue.ifc_file.name }}</span>
-                        <code class="user-select-all" style="color: var(--castor-accent);">{{ issue.global_id }}</code>
-                    </div>
-
-                    {% elif issue.issue_type == 'missing_property' %}
-
-                    {# ── Missing property sets ── #}
-                    <div class="d-flex align-items-baseline gap-2 flex-wrap mb-1">
-                        <span class="fw-semibold">
-                            {% if issue.raw_data.name %}{{ issue.raw_data.name }}{% else %}<em class="text-secondary">Unnamed</em>{% endif %}
-                        </span>
-                        <span class="text-secondary fs-8">{{ issue.ifc_type }}</span>
-                        <span class="badge fs-8"
-                              style="background-color: rgba(245, 158, 11, 0.15); color: var(--castor-warning);">
-                            <i class="bi bi-check-circle me-1"></i>Imported
-                        </span>
-                    </div>
-                    <p class="text-secondary fs-7 mb-2">
-                        This element has no property sets. If document specifications require
-                        properties for this element type, the conflict scan will flag it as
-                        non-compliant — compliance cannot be verified from property values alone.
-                    </p>
-                    <div class="d-flex flex-wrap gap-3 fs-8 text-secondary">
-                        <span><i class="bi bi-file-code me-1"></i>{{ issue.ifc_file.name }}</span>
-                        {% if issue.raw_data.spatial.building_storey %}
-                        <span><i class="bi bi-building me-1"></i>{{ issue.raw_data.spatial.building_storey }}</span>
-                        {% endif %}
-                        <code class="user-select-all" style="color: var(--castor-accent);">{{ issue.global_id }}</code>
-                    </div>
-
-                    {% else %}
-
-                    {# ── Generic fallback ── #}
-                    <div class="d-flex align-items-baseline gap-2 flex-wrap mb-1">
-                        <span class="fw-semibold">
-                            {% if issue.raw_data.name %}{{ issue.raw_data.name }}{% else %}<em class="text-secondary">Unnamed</em>{% endif %}
-                        </span>
-                        <span class="text-secondary fs-8">{{ issue.ifc_type }}</span>
-                    </div>
-                    <p class="text-secondary fs-7 mb-2">{{ issue.description }}</p>
-                    <div class="d-flex flex-wrap gap-3 fs-8 text-secondary">
-                        <span><i class="bi bi-file-code me-1"></i>{{ issue.ifc_file.name }}</span>
-                        <code class="user-select-all" style="color: var(--castor-accent);">{{ issue.global_id }}</code>
-                    </div>
-
-                    {% endif %}
-
-                </div>
-            </div>
+        <div class="ms-auto d-flex align-items-center gap-2">
+            <label class="form-check form-switch m-0 fs-8 text-secondary user-select-none">
+                <input class="form-check-input" type="checkbox" id="show-dismissed-issues"
+                       onchange="DataIssueTabs.toggleDismissed(this.checked)">
+                <span class="form-check-label ms-1">
+                    Show dismissed ({{ data_issue_dismissed_count }})
+                </span>
+            </label>
+            <button class="btn btn-sm btn-outline-secondary rounded-pill px-3 fs-8"
+                    id="bulk-dismiss-data-issues"
+                    onclick="DataIssueTabs.bulkDismiss()"
+                    data-url="{% url 'writeback:bulk_dismiss_data_issues' project.id %}"
+                    title="Dismiss every issue matching the current filter">
+                <i class="bi bi-eye-slash me-1"></i>Dismiss filtered
+            </button>
         </div>
+    </div>
+
+    {# ── Issue list ── #}
+    <div class="d-flex flex-column gap-2" id="data-issues-list">
+        {% for issue in open_issues %}
+            {% include "writeback/components/_data_issue_card.html" with issue=issue project=project %}
+        {% endfor %}
+        {% for issue in dismissed_issues %}
+            {% include "writeback/components/_data_issue_card.html" with issue=issue project=project %}
         {% endfor %}
     </div>
 
@@ -1018,6 +938,55 @@ const ConflictTabs = {
         return document.cookie.split('; ')
             .find(r => r.startsWith('csrftoken='))
             ?.split('=')[1] || '';
+    },
+};
+
+
+/* ─── Data Quality filter + dismiss controller ─── */
+const DataIssueTabs = {
+    _currentType: 'all',
+    _showDismissed: false,
+
+    filterByType(type) {
+        this._currentType = type;
+
+        // Update pill active states
+        document.querySelectorAll('.data-issue-filter-pill').forEach(btn => {
+            const active = btn.dataset.issueType === type;
+            btn.classList.toggle('btn-primary', active);
+            btn.classList.toggle('btn-outline-secondary', !active);
+        });
+
+        this._applyVisibility();
+    },
+
+    toggleDismissed(checked) {
+        this._showDismissed = checked;
+        this._applyVisibility();
+    },
+
+    _applyVisibility() {
+        document.querySelectorAll('.js-data-issue-card').forEach(card => {
+            const typeMatch = this._currentType === 'all' || card.dataset.issueType === this._currentType;
+            const statusMatch = card.dataset.status === 'open' || this._showDismissed;
+            card.classList.toggle('d-none', !(typeMatch && statusMatch));
+        });
+    },
+
+    bulkDismiss() {
+        const type = this._currentType;
+        const scope = type === 'all' ? 'all open data issues' : `all open "${type}" issues`;
+        if (!confirm(`Dismiss ${scope}? They will survive reparse but can be restored.`)) return;
+
+        const url = document.getElementById('bulk-dismiss-data-issues')?.dataset.url;
+        if (!url) return;
+
+        const fd = new FormData();
+        fd.append('csrfmiddlewaretoken', ConflictTabs._csrf());
+        if (type !== 'all') fd.append('issue_type', type);
+
+        fetch(url, { method: 'POST', body: fd })
+            .then(r => r.ok ? window.location.reload() : null);
     },
 };
 

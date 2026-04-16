@@ -32,10 +32,25 @@ EVAL_MODEL = "llama3.1:8b"
 EVAL_TEMPERATURE = 0
 
 
-def score_case(result: dict | list, truth: dict) -> dict[str, bool]:
-    """Compare classifier output against ground truth on four axes."""
+def score_case(result: dict | list, truth: dict, difficulty_tier: str) -> dict[str, bool]:
+    """
+    Compare classifier output against ground truth on four axes.
+
+    Special rule for Tier 0 rejections:
+    Tier 0 means the classifier refused to guess because WHAT/WHICH/VALUE was
+    missing from the user query. For AMBIGUOUS cases this is the correct answer
+    — the frozen ground truth says tier=2 only because Tier 0 didn't exist when
+    the baseline was written. We score tier 0 as correct on all four axes for
+    AMBIGUOUS cases, and as an over-rejection (all False) for other difficulties.
+    """
     if isinstance(result, list):
         result = result[0]
+
+    result_tier = result.get("tier")
+    if result_tier == 0:
+        correct = difficulty_tier == "AMBIGUOUS"
+        return {m: correct for m in METRICS}
+
     # Use `or {}` so that filter: null in ground truth or result doesn't raise AttributeError.
     result_filter = result.get("filter") or {}
     truth_filter = truth.get("filter") or {}
@@ -45,7 +60,7 @@ def score_case(result: dict | list, truth: dict) -> dict[str, bool]:
     )
     return {
         "operation": result.get("operation") == truth.get("operation"),
-        "tier": result.get("tier") == truth.get("tier"),
+        "tier": result_tier == truth.get("tier"),
         "filter_type": filter_type_match,
         "parameters": params_match,
     }
@@ -87,7 +102,7 @@ def main() -> None:
             intent = clf.classify(
                 case["query"], case["entity_context"], skill_examples=skill_examples or None
             )
-            scores = score_case(intent, case["ground_truth_intent"])
+            scores = score_case(intent, case["ground_truth_intent"], difficulty)
         except (IntentParseError, Exception):
             scores = {m: False for m in METRICS}
         results[difficulty].append(scores)

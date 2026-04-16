@@ -1,0 +1,211 @@
+<!--
+    writeback/components/_data_issue_card.html
+    Single IFCDataIssue card. Rendered in the Data Quality subtab and returned
+    directly by dismiss/restore HTMX endpoints (hx-swap="outerHTML").
+-->
+
+<div class="js-data-issue-card rounded-3 p-3{% if issue.status == 'dismissed' %} opacity-50{% endif %}"
+     id="data-issue-{{ issue.id }}"
+     data-issue-type="{{ issue.issue_type }}"
+     data-status="{{ issue.status }}"
+     style="background-color: var(--bs-tertiary-bg);
+            border: 1px solid var(--bs-border-color);
+            border-left: 3px solid {% if issue.severity == 'high' %}var(--castor-danger, #ef4444){% elif issue.severity == 'medium' %}var(--castor-warning, #f59e0b){% else %}var(--castor-secondary, #6b7280){% endif %};">
+
+    <div class="d-flex gap-3 align-items-start">
+
+        {# Severity icon #}
+        <div class="flex-shrink-0 d-flex align-items-center justify-content-center rounded-2"
+             style="width: 36px; height: 36px; background-color: rgba(245, 158, 11, 0.12);">
+            {% if issue.issue_type == 'duplicate_guid' %}
+            <i class="bi bi-files text-warning"></i>
+            {% elif issue.issue_type == 'orphaned_element' %}
+            <i class="bi bi-geo-alt text-warning"></i>
+            {% elif issue.issue_type == 'missing_property' %}
+            <i class="bi bi-list-ul text-secondary"></i>
+            {% elif issue.issue_type == 'invalid_geometry' %}
+            <i class="bi bi-bounding-box text-danger"></i>
+            {% else %}
+            <i class="bi bi-exclamation-circle text-secondary"></i>
+            {% endif %}
+        </div>
+
+        <div class="flex-grow-1 min-width-0">
+
+            {% if issue.issue_type == 'duplicate_guid' %}
+
+            {# ── Same-element duplicate ── #}
+            {% if issue.raw_data.name == issue.raw_data.first_element_name and issue.ifc_type == issue.raw_data.first_element_type %}
+            <div class="d-flex align-items-baseline gap-2 flex-wrap mb-1">
+                <span class="fw-semibold">
+                    {% if issue.raw_data.name %}{{ issue.raw_data.name }}{% else %}<em class="text-secondary">Unnamed</em>{% endif %}
+                </span>
+                <span class="text-secondary fs-8">{{ issue.ifc_type }}</span>
+                <span class="badge fs-8"
+                      style="background-color: rgba(239, 68, 68, 0.15); color: var(--castor-danger);">
+                    Duplicate
+                </span>
+                <span class="badge fs-8"
+                      style="background-color: rgba(239, 68, 68, 0.1); color: var(--castor-danger);">
+                    <i class="bi bi-x-circle me-1"></i>Skipped
+                </span>
+                {% if issue.first_seen_at == issue.last_seen_at %}
+                <span class="badge fs-8"
+                      style="background-color: rgba(59, 130, 246, 0.15); color: var(--castor-primary);">
+                    <i class="bi bi-stars me-1"></i>New
+                </span>
+                {% endif %}
+            </div>
+            <p class="text-secondary fs-7 mb-2">
+                This element appears multiple times with the same GlobalID.
+                Only the first occurrence was imported — duplicates were skipped.
+            </p>
+
+            {# ── Cross-element duplicate ── #}
+            {% else %}
+            <div class="d-flex align-items-baseline gap-2 flex-wrap mb-1">
+                <span class="fw-semibold text-warning">
+                    {% if issue.raw_data.name %}{{ issue.raw_data.name }}{% else %}<em class="text-secondary">Unnamed</em>{% endif %}
+                </span>
+                <span class="text-secondary fs-8">{{ issue.ifc_type }}</span>
+                <i class="bi bi-arrow-left-right text-secondary fs-8"></i>
+                <span class="fw-semibold" style="color: var(--castor-primary);">
+                    {% if issue.raw_data.first_element_name %}{{ issue.raw_data.first_element_name }}{% else %}<em class="text-secondary">Unnamed</em>{% endif %}
+                </span>
+                <span class="text-secondary fs-8">{{ issue.raw_data.first_element_type }}</span>
+                <span class="badge fs-8"
+                      style="background-color: rgba(239, 68, 68, 0.1); color: var(--castor-danger);">
+                    <i class="bi bi-x-circle me-1"></i>Skipped
+                </span>
+                {% if issue.first_seen_at == issue.last_seen_at %}
+                <span class="badge fs-8"
+                      style="background-color: rgba(59, 130, 246, 0.15); color: var(--castor-primary);">
+                    <i class="bi bi-stars me-1"></i>New
+                </span>
+                {% endif %}
+            </div>
+            <p class="text-secondary fs-7 mb-2">
+                Two different elements share the same GlobalID — only
+                <strong style="color: var(--castor-primary);">{{ issue.raw_data.first_element_name|default:"the first" }}</strong>
+                was imported.
+            </p>
+            {% endif %}
+
+            {# Duplicate metadata row #}
+            <div class="d-flex flex-wrap gap-3 fs-8 text-secondary">
+                <span><i class="bi bi-file-code me-1"></i>{{ issue.ifc_file.name }}</span>
+                {% if issue.raw_data.first_element_storey %}
+                <span><i class="bi bi-building me-1"></i>{{ issue.raw_data.first_element_storey }}</span>
+                {% endif %}
+                <code class="user-select-all" style="color: var(--castor-accent);">{{ issue.global_id }}</code>
+            </div>
+
+            {% elif issue.issue_type == 'orphaned_element' %}
+
+            {# ── Orphaned element ── #}
+            <div class="d-flex align-items-baseline gap-2 flex-wrap mb-1">
+                <span class="fw-semibold">
+                    {% if issue.raw_data.name %}{{ issue.raw_data.name }}{% else %}<em class="text-secondary">Unnamed</em>{% endif %}
+                </span>
+                <span class="text-secondary fs-8">{{ issue.ifc_type }}</span>
+                <span class="badge fs-8"
+                      style="background-color: rgba(245, 158, 11, 0.15); color: var(--castor-warning);">
+                    <i class="bi bi-check-circle me-1"></i>Imported
+                </span>
+                {% if issue.first_seen_at == issue.last_seen_at %}
+                <span class="badge fs-8"
+                      style="background-color: rgba(59, 130, 246, 0.15); color: var(--castor-primary);">
+                    <i class="bi bi-stars me-1"></i>New
+                </span>
+                {% endif %}
+            </div>
+            <p class="text-secondary fs-7 mb-2">
+                This element has no spatial placement — it belongs to no building, floor, or space.
+                It was imported, but may not appear in floor-based views.
+            </p>
+            <div class="d-flex flex-wrap gap-3 fs-8 text-secondary">
+                <span><i class="bi bi-file-code me-1"></i>{{ issue.ifc_file.name }}</span>
+                <code class="user-select-all" style="color: var(--castor-accent);">{{ issue.global_id }}</code>
+            </div>
+
+            {% elif issue.issue_type == 'missing_property' %}
+
+            {# ── Missing property sets ── #}
+            <div class="d-flex align-items-baseline gap-2 flex-wrap mb-1">
+                <span class="fw-semibold">
+                    {% if issue.raw_data.name %}{{ issue.raw_data.name }}{% else %}<em class="text-secondary">Unnamed</em>{% endif %}
+                </span>
+                <span class="text-secondary fs-8">{{ issue.ifc_type }}</span>
+                <span class="badge fs-8"
+                      style="background-color: rgba(245, 158, 11, 0.15); color: var(--castor-warning);">
+                    <i class="bi bi-check-circle me-1"></i>Imported
+                </span>
+                {% if issue.first_seen_at == issue.last_seen_at %}
+                <span class="badge fs-8"
+                      style="background-color: rgba(59, 130, 246, 0.15); color: var(--castor-primary);">
+                    <i class="bi bi-stars me-1"></i>New
+                </span>
+                {% endif %}
+            </div>
+            <p class="text-secondary fs-7 mb-2">
+                This element has no property sets. If document specifications require
+                properties for this element type, the conflict scan will flag it as
+                non-compliant — compliance cannot be verified from property values alone.
+            </p>
+            <div class="d-flex flex-wrap gap-3 fs-8 text-secondary">
+                <span><i class="bi bi-file-code me-1"></i>{{ issue.ifc_file.name }}</span>
+                {% if issue.raw_data.spatial.building_storey %}
+                <span><i class="bi bi-building me-1"></i>{{ issue.raw_data.spatial.building_storey }}</span>
+                {% endif %}
+                <code class="user-select-all" style="color: var(--castor-accent);">{{ issue.global_id }}</code>
+            </div>
+
+            {% else %}
+
+            {# ── Generic fallback (invalid_geometry etc.) ── #}
+            <div class="d-flex align-items-baseline gap-2 flex-wrap mb-1">
+                <span class="fw-semibold">
+                    {% if issue.raw_data.name %}{{ issue.raw_data.name }}{% else %}<em class="text-secondary">Unnamed</em>{% endif %}
+                </span>
+                <span class="text-secondary fs-8">{{ issue.ifc_type }}</span>
+                {% if issue.first_seen_at == issue.last_seen_at %}
+                <span class="badge fs-8"
+                      style="background-color: rgba(59, 130, 246, 0.15); color: var(--castor-primary);">
+                    <i class="bi bi-stars me-1"></i>New
+                </span>
+                {% endif %}
+            </div>
+            <p class="text-secondary fs-7 mb-2">{{ issue.description }}</p>
+            <div class="d-flex flex-wrap gap-3 fs-8 text-secondary">
+                <span><i class="bi bi-file-code me-1"></i>{{ issue.ifc_file.name }}</span>
+                <code class="user-select-all" style="color: var(--castor-accent);">{{ issue.global_id }}</code>
+            </div>
+
+            {% endif %}
+
+        </div>
+
+        {# Action button: dismiss if open, restore if dismissed #}
+        <div class="flex-shrink-0">
+            {% if issue.status == 'dismissed' %}
+            <button class="btn btn-sm btn-outline-secondary rounded-pill px-2 py-1 fs-8"
+                    hx-post="{% url 'writeback:restore_data_issue' project.id issue.id %}"
+                    hx-target="#data-issue-{{ issue.id }}"
+                    hx-swap="outerHTML"
+                    hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                    title="Restore — move back to open">
+                <i class="bi bi-arrow-counterclockwise me-1"></i>Restore
+            </button>
+            {% else %}
+            <button class="btn btn-sm btn-outline-secondary rounded-pill px-2 py-1 fs-8"
+                    hx-post="{% url 'writeback:dismiss_data_issue' project.id issue.id %}"
+                    hx-target="#data-issue-{{ issue.id }}"
+                    hx-swap="outerHTML"
+                    hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                    title="Dismiss — hide this issue (survives reparse)">
+                <i class="bi bi-eye-slash me-1"></i>Dismiss
+            </button>
+            {% endif %}
+        </div>
+    </div>
+</div>

@@ -291,8 +291,15 @@ class IntentClassifier:
 
         tier = intent["tier"]
 
-        if not isinstance(tier, int) or tier not in (1, 2, 3):
-            raise IntentParseError(f"Invalid tier: {tier}. Must be 1, 2, or 3.")
+        if not isinstance(tier, int) or tier not in (0, 1, 2, 3):
+            raise IntentParseError(f"Invalid tier: {tier}. Must be 0, 1, 2, or 3.")
+
+        if tier == 0:
+            # Tier 0 is a rejection — the request is too vague to classify.
+            # The only required field is a user-facing explanation.
+            if "explanation" not in intent:
+                raise IntentParseError("Tier 0 intent missing 'explanation'")
+            return
 
         if tier == 1:
             required = ["operation", "filter", "confidence", "explanation"]

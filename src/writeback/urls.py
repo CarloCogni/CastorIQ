@@ -37,6 +37,21 @@ urlpatterns = [
         views.DeleteAllConflictsView.as_view(),
         name="delete_all_conflicts",
     ),
+    path(
+        "<uuid:pk>/data-issues/<uuid:issue_id>/dismiss/",
+        views.DismissDataIssueView.as_view(),
+        name="dismiss_data_issue",
+    ),
+    path(
+        "<uuid:pk>/data-issues/<uuid:issue_id>/restore/",
+        views.RestoreDataIssueView.as_view(),
+        name="restore_data_issue",
+    ),
+    path(
+        "<uuid:pk>/data-issues/bulk-dismiss/",
+        views.BulkDismissDataIssuesView.as_view(),
+        name="bulk_dismiss_data_issues",
+    ),
     path("<uuid:pk>/history/", views.HistoryView.as_view(), name="history"),
     path(
         "<uuid:pk>/history/restore/<uuid:commit_id>/",

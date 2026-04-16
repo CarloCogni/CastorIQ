@@ -185,11 +185,35 @@ class TestClassify:
             instance.classify("Set something", "ctx")
 
     def test_invalid_tier_value_raises_intent_parse_error(self, classifier):
-        """tier=5 is not valid (must be 1, 2, or 3) → IntentParseError."""
+        """tier=5 is not valid (must be 0, 1, 2, or 3) → IntentParseError."""
         instance, mock_llm = classifier
         _make_llm_return(mock_llm, json.dumps({"tier": 5, "confidence": 0.8, "explanation": "x"}))
         with pytest.raises(IntentParseError, match="tier"):
             instance.classify("Do something complex", "ctx")
+
+    def test_tier0_rejection_with_explanation_is_accepted(self, classifier):
+        """Tier 0 (rejection) with explanation → parsed as valid intent, no error."""
+        instance, mock_llm = classifier
+        _make_llm_return(
+            mock_llm,
+            json.dumps(
+                {
+                    "tier": 0,
+                    "explanation": "Request is too vague — specify which walls and what value.",
+                    "confidence": 0.9,
+                }
+            ),
+        )
+        result = instance.classify("Make the building better", "ctx")
+        assert result["tier"] == 0
+        assert "vague" in result["explanation"]
+
+    def test_tier0_missing_explanation_raises(self, classifier):
+        """Tier 0 without explanation → IntentParseError (user-facing reason is required)."""
+        instance, mock_llm = classifier
+        _make_llm_return(mock_llm, json.dumps({"tier": 0, "confidence": 0.5}))
+        with pytest.raises(IntentParseError, match="explanation"):
+            instance.classify("vague request", "ctx")
 
     def test_tier1_missing_operation_raises_intent_parse_error(self, classifier):
         """Tier 1 intent missing 'operation' → IntentParseError."""

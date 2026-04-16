@@ -41,3 +41,4 @@ def message_list(request, pk):
 - Partial templates go in app/templates/app/components/
 - Check HX-Request header to distinguish HTMX from full page loads
 - Use hx-swap-oob for updating multiple elements from one response
+- **HTML comments only in `.html` templates.** Use `<!-- ... -->`, never Django `{# ... #}`. The `{# #}` syntax is single-line-only; multi-line blocks silently render as plain text in the output (a recurring bug). If you must have a stripped multi-line comment, use `{% comment %} ... {% endcomment %}`.

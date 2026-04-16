@@ -87,7 +87,7 @@ class ProjectListView(LoginRequiredMixin, ListView):
                 ),
                 issue_count=Count(
                     "ifc_files__data_issues",
-                    filter=Q(ifc_files__data_issues__is_resolved=False),
+                    filter=Q(ifc_files__data_issues__status="open"),
                     distinct=True,
                 ),
             )
