@@ -2,10 +2,10 @@
 """Tests for core.token_budget — patches Ollama to avoid network calls."""
 
 import pytest
+from django.conf import settings
 
 from core.token_budget import (
     DEFAULT_CONTEXT_WINDOW,
-    RESPONSE_RESERVE,
     TokenBudget,
     _context_window_cache,
     compute_budget,
@@ -26,7 +26,7 @@ def test_token_budget_total_input_sums_all_sections():
     budget = TokenBudget(
         model_context_window=8192,
         max_usable=5000,
-        response_reserve=RESPONSE_RESERVE,
+        response_reserve=settings.RAG_RESPONSE_RESERVE,
         system_tokens=100,
         entity_tokens=200,
         history_tokens=50,
@@ -40,7 +40,7 @@ def test_token_budget_remaining_for_injection():
     budget = TokenBudget(
         model_context_window=8192,
         max_usable=5000,
-        response_reserve=RESPONSE_RESERVE,
+        response_reserve=settings.RAG_RESPONSE_RESERVE,
         system_tokens=1000,
         entity_tokens=500,
         history_tokens=0,
@@ -54,7 +54,7 @@ def test_token_budget_utilization_pct():
     budget = TokenBudget(
         model_context_window=8192,
         max_usable=1000,
-        response_reserve=RESPONSE_RESERVE,
+        response_reserve=settings.RAG_RESPONSE_RESERVE,
         system_tokens=500,
         entity_tokens=0,
         history_tokens=0,
@@ -68,7 +68,7 @@ def test_token_budget_is_over_budget_true():
     budget = TokenBudget(
         model_context_window=8192,
         max_usable=100,
-        response_reserve=RESPONSE_RESERVE,
+        response_reserve=settings.RAG_RESPONSE_RESERVE,
         system_tokens=200,
         entity_tokens=0,
         history_tokens=0,
@@ -82,7 +82,7 @@ def test_token_budget_is_over_budget_false():
     budget = TokenBudget(
         model_context_window=8192,
         max_usable=1000,
-        response_reserve=RESPONSE_RESERVE,
+        response_reserve=settings.RAG_RESPONSE_RESERVE,
         system_tokens=200,
         entity_tokens=0,
         history_tokens=0,

@@ -361,17 +361,6 @@ class ModificationService:
         diff_preview = self._build_diff_preview(intent, validation.entities)
         emitter.emit("diff", "done", "Preview ready", {"rows": len(diff_preview)})
 
-        # 6b. Warn if SET_ATTRIBUTE hits multiple entities (likely unintended rename)
-        operation = intent.get("operation", "")
-        MAX_NUM_ENTITIES = 100  # noqa: N806  # todo: put this in front end so each user can adjust it
-        if operation == "SET_ATTRIBUTE" and len(validation.entities) > MAX_NUM_ENTITIES:
-            raise ModificationError(
-                f"SET_ATTRIBUTE would affect {len(validation.entities)} entities. "
-                f"Renaming this many entities is likely unintended. "
-                f"Please use a more specific filter (e.g. include the entity name)."
-                f"For testing purposes, can't modify more than {MAX_NUM_ENTITIES} entities at once."
-            )
-
         # 7. Resolve IFC file
         if ifc_file is None:
             ifc_file = matched_entities[0].ifc_file

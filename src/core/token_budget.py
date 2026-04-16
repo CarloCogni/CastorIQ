@@ -9,6 +9,8 @@ prompt components (system, entity context, history, injected content).
 Design constraints:
 - Ollama being down must never raise an exception here.
 - No Django ORM usage — safe to call at any point in the request cycle.
+- Budget constants (response reserve, safety ratio) read from django.conf.settings
+  at call time, not at import time, to avoid import-order issues.
 - No circular imports: only imports from core.token_utils and core.llm_model_registry.
 """
 
@@ -21,12 +23,6 @@ from core.llm_model_registry import DEFAULT_CONTEXT_WINDOW, MODEL_REGISTRY
 from core.token_utils import estimate_tokens
 
 logger = logging.getLogger(__name__)
-
-# Tokens reserved for the model's output; never allocated to input.
-RESPONSE_RESERVE = 1500
-
-# Never consume more than 90% of the context window for input.
-SAFETY_RATIO = 0.90
 
 # Module-level cache: model_name → context_window_size
 _context_window_cache: dict[str, int] = {}
@@ -125,7 +121,7 @@ class TokenBudget:
     """
 
     model_context_window: int
-    max_usable: int  # floor(context_window * SAFETY_RATIO) - RESPONSE_RESERVE
+    max_usable: int  # floor(context_window * safety_ratio) - response_reserve
     response_reserve: int
 
     system_tokens: int
@@ -168,8 +164,12 @@ def compute_retrieval_budget(
     prompt, estimated conversation history, response reserve, and safety margin.
     This is used to dynamically size retrieval depth before fetching results.
     """
+    from django.conf import settings as django_settings
+
     context_window = get_context_window(model_name)
-    max_usable = max(0, int(context_window * SAFETY_RATIO) - RESPONSE_RESERVE)
+    response_reserve = django_settings.RAG_RESPONSE_RESERVE
+    safety_ratio = django_settings.RAG_SAFETY_RATIO
+    max_usable = max(0, int(context_window * safety_ratio) - response_reserve)
     fixed_overhead = estimate_tokens(system_prompt) + history_tokens
     return max(0, max_usable - fixed_overhead)
 
@@ -194,9 +194,12 @@ def compute_budget(
     Returns:
         TokenBudget with allocation breakdown and utilization metrics.
     """
+    from django.conf import settings as django_settings
+
     context_window = get_context_window(model_name)
-    max_usable = int(context_window * SAFETY_RATIO) - RESPONSE_RESERVE
-    max_usable = max(max_usable, 0)
+    response_reserve = django_settings.RAG_RESPONSE_RESERVE
+    safety_ratio = django_settings.RAG_SAFETY_RATIO
+    max_usable = max(0, int(context_window * safety_ratio) - response_reserve)
 
     history_tokens = 0
     if conversation_history:
@@ -207,7 +210,7 @@ def compute_budget(
     return TokenBudget(
         model_context_window=context_window,
         max_usable=max_usable,
-        response_reserve=RESPONSE_RESERVE,
+        response_reserve=response_reserve,
         system_tokens=estimate_tokens(system),
         entity_tokens=estimate_tokens(entity_context),
         history_tokens=history_tokens,
