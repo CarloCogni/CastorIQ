@@ -682,7 +682,10 @@ If the colleague generates 1,000+ records, update the narrative with actual resu
 
 ### 5. Certified Tier 3 Reuse (Folded into Skill Bank, not a separate system)
 
-**What:** When a Tier 3 code-generation operation succeeds all the way through execution and Git commit, preserve the generated code alongside the SkillExample. On future Tier 3 escalations, if the skill bank retrieves a relevant example that includes generated code, surface it to the LLM as a reference pattern — not as executable code to be adapted, but as a few-shot example of what working Tier 3 code looks like for this type of operation.
+**What:** When a Tier 3 code-generation operation succeeds all the way through execution and Git commit, 
+preserve the generated code alongside the SkillExample. On future Tier 3 escalations, if the skill bank retrieves a 
+relevant example that includes generated code, surface it to the LLM as a reference pattern — not as executable code to
+be adapted, but as a few-shot example of what working Tier 3 code looks like for this type of operation.
 
 **Why this is not a separate deliverable:** The original design proposed a dedicated certified Tier 3 bank with its own retrieval pipeline, 
 parameterization logic, and similarity thresholds. That's unjustified at MSc scale. Tier 3 fires rarely by design (RSAA pushes most operations to lower tiers).
@@ -694,7 +697,8 @@ Tier 3 reuse is a field extension, not a new subsystem.
 
 **Implementation — extend SkillExample, don't create a new model:**
 
-`generated_code = TextField(null=True, blank=True)` is already included in the SkillExample model defined in Deliverable 2. No schema change needed in this deliverable — only behavior changes in the harvest hook and retriever.
+`generated_code = TextField(null=True, blank=True)` is already included in the SkillExample model defined in Deliverable 2.
+No schema change needed in this deliverable — only behavior changes in the harvest hook and retriever.
 
 - On Tier 3 commit success, the auto-harvest hook (Deliverable 2) saves the generated code alongside the standard SkillExample fields. The Tier 3 planner output must be threaded through `execute()` → `harvest_skill_example()`.
 - Tier 1 and Tier 2 SkillExamples have `generated_code=None`. No impact on existing retrieval.

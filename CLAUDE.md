@@ -73,6 +73,12 @@ Uncle Bob's clean code. Zen of Python: explicit over implicit, simple over compl
 - HTMX for interactivity (no heavy JS frameworks)
 - Bootstrap Icons
 
+### Django Templates — Comments
+
+**Use HTML `<!-- ... -->` comments in `.html` templates, never Django `{# ... #}`.**
+
+Django's `{# #}` syntax only matches on a **single line** — multi-line `{# ... #}` blocks are silently rendered as plain text in the output (recurring bug in this project). HTML comments always work, and the slight cost of them being visible in page source is acceptable for internal templates. If you genuinely need a multi-line comment that is stripped before render, use `{% comment %} ... {% endcomment %}` — but prefer `<!-- -->` as the default.
+
 ---
 
 ## Code Delivery Preferences

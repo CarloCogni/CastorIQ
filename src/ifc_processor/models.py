@@ -3,6 +3,7 @@
 import hashlib
 
 from django.db import models
+from django.utils import timezone
 from pgvector.django import VectorField
 
 from core.models import UUIDModel
@@ -393,13 +394,35 @@ class IFCSpatialElement(UUIDModel):
 
 
 class IFCDataIssue(UUIDModel):
-    """Stores information about invalid or duplicate data found in an IFC file."""
+    """Stores information about invalid or duplicate data found in an IFC file.
+
+    Dedup model mirrors writeback.Conflict: a stable content_hash identifies the
+    same problem across reparses, so a user's DISMISSED state survives reparse.
+    """
 
     class IssueType(models.TextChoices):
         DUPLICATE_GUID = "duplicate_guid", "Duplicate GlobalID"
         INVALID_GEOMETRY = "invalid_geometry", "Invalid Geometry"
         MISSING_PROPERTY = "missing_property", "Missing Required Property"
         ORPHANED_ELEMENT = "orphaned_element", "Orphaned Element (No Spatial Placement)"
+
+    class Severity(models.TextChoices):
+        LOW = "low", "Low"
+        MEDIUM = "medium", "Medium"
+        HIGH = "high", "High"
+
+    class Status(models.TextChoices):
+        OPEN = "open", "Open"
+        DISMISSED = "dismissed", "Dismissed"
+
+    # Default severity per issue_type. DUPLICATE_GUID / INVALID_GEOMETRY break
+    # downstream queries; MISSING_PROPERTY is mostly cosmetic.
+    SEVERITY_MAP = {
+        IssueType.DUPLICATE_GUID: Severity.HIGH,
+        IssueType.INVALID_GEOMETRY: Severity.HIGH,
+        IssueType.ORPHANED_ELEMENT: Severity.MEDIUM,
+        IssueType.MISSING_PROPERTY: Severity.LOW,
+    }
 
     ifc_file = models.ForeignKey(
         IFCFile,
@@ -415,8 +438,45 @@ class IFCDataIssue(UUIDModel):
     raw_data = models.JSONField(help_text="The properties and metadata of the conflicting element.")
 
     description = models.TextField()
-    is_resolved = models.BooleanField(default=False)
+
+    severity = models.CharField(
+        max_length=20,
+        choices=Severity.choices,
+        default=Severity.MEDIUM,
+        db_index=True,
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.OPEN,
+        db_index=True,
+    )
+
+    # Stable deduplication key: SHA-256(ifc_file_id : global_id : issue_type).
+    # Survives reparse: dismissed rows are preserved, open rows refreshed in place.
+    content_hash = models.CharField(max_length=64, db_index=True)
+
+    # The parser sets both timestamps to the same `now` on create; subsequent
+    # reparses only advance last_seen_at. When they are equal the issue was
+    # created in the most recent parse — drives the "New" badge in the UI.
+    first_seen_at = models.DateTimeField(default=timezone.now)
+    last_seen_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
         verbose_name = "IFC Data Issue"
         verbose_name_plural = "IFC Data Issues"
+        ordering = ["-severity", "ifc_file", "issue_type"]
+        indexes = [
+            models.Index(fields=["ifc_file", "status"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["ifc_file", "content_hash"],
+                name="unique_data_issue_content_hash",
+            ),
+        ]
+
+    @classmethod
+    def compute_hash(cls, ifc_file_id, global_id: str, issue_type: str) -> str:
+        """Stable identity for upsert-by-hash on reparse."""
+        return hashlib.sha256(f"{ifc_file_id}:{global_id}:{issue_type}".encode()).hexdigest()

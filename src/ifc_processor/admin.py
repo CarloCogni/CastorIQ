@@ -29,7 +29,7 @@ class ElementTypeInline(admin.TabularInline):
 class DataIssueInline(admin.TabularInline):
     model = IFCDataIssue
     extra = 0
-    readonly_fields = ("issue_type", "global_id", "is_resolved")
+    readonly_fields = ("issue_type", "global_id", "status")
     can_delete = False
     show_change_link = True  # Allows jumping to the full issue page
 
@@ -248,12 +248,13 @@ class IFCDataIssueAdmin(admin.ModelAdmin):
         "global_id",
         "ifc_type",
         "ifc_file",
-        "is_resolved",
-        "created_at",
+        "severity",
+        "status",
+        "last_seen_at",
     )
-    list_filter = ("issue_type", "is_resolved", "ifc_type", "ifc_file__project")
-    search_fields = ("global_id", "description", "ifc_file__name")
-    list_editable = ("is_resolved",)  # Allow quick marking as fixed
+    list_filter = ("issue_type", "status", "severity", "ifc_type", "ifc_file__project")
+    search_fields = ("global_id", "description", "ifc_file__name", "content_hash")
+    list_editable = ("status",)
 
     # 2. Organization
     readonly_fields = (
@@ -267,7 +268,17 @@ class IFCDataIssueAdmin(admin.ModelAdmin):
     )
 
     fieldsets = (
-        ("Issue Details", {"fields": ("id", "ifc_file", "issue_type", "is_resolved")}),
+        (
+            "Issue Details",
+            {"fields": ("id", "ifc_file", "issue_type", "severity", "status")},
+        ),
+        (
+            "Dedup & Tracking",
+            {
+                "fields": ("content_hash", "first_seen_at", "last_seen_at"),
+                "classes": ("collapse",),
+            },
+        ),
         (
             "Technical Context",
             {
@@ -310,9 +321,14 @@ class IFCDataIssueAdmin(admin.ModelAdmin):
     raw_data_pretty.short_description = "Raw Data Content"
 
     # 4. Mass Actions
-    actions = ["mark_as_resolved"]
+    actions = ["mark_as_dismissed", "mark_as_open"]
 
-    @admin.action(description="✅ Mark selected issues as resolved")
-    def mark_as_resolved(self, request, queryset):
-        queryset.update(is_resolved=True)
-        self.message_user(request, "Selected issues have been marked as resolved.")
+    @admin.action(description="Dismiss selected issues")
+    def mark_as_dismissed(self, request, queryset):
+        queryset.update(status=IFCDataIssue.Status.DISMISSED)
+        self.message_user(request, "Selected issues have been dismissed.")
+
+    @admin.action(description="Re-open selected issues")
+    def mark_as_open(self, request, queryset):
+        queryset.update(status=IFCDataIssue.Status.OPEN)
+        self.message_user(request, "Selected issues have been re-opened.")

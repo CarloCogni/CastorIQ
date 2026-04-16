@@ -47,7 +47,7 @@ class ProjectTabMixin(ProjectAccessMixin):
 
         # inside ProjectTabMixin.get_context_data:
         context["ifc_files"] = project.ifc_files.annotate(
-            unresolved_issue_count=Count("data_issues", filter=Q(data_issues__is_resolved=False))
+            unresolved_issue_count=Count("data_issues", filter=Q(data_issues__status="open"))
         ).order_by("-created_at")
         # Chat sessions for sidebar (mode-aware)
         mode_map = {"ask": ChatSession.Mode.ASK, "modify": ChatSession.Mode.MODIFY}

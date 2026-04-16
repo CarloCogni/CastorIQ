@@ -77,7 +77,7 @@ Results are broken down by **difficulty tier** — not by fixture or discipline.
 |---|---|
 | TRIVIAL | Simple, obvious requests. Sanity check only. |
 | STANDARD | Typical day-to-day requests with a clear filter and property. |
-| AMBIGUOUS | Underspecified requests where the model should ask for clarification. |
+| AMBIGUOUS | Underspecified requests. The correct answer is **tier 0** (reject) whenever WHAT/WHICH/VALUE is missing; the frozen ground truth says `tier: 2` because Tier 0 didn't exist when the cases were written — the eval scorer treats tier 0 as a correct answer for AMBIGUOUS cases. |
 | ESCALATION | Requests that require a multi-step plan or human code review (tier 2/3). |
 | ADVERSARIAL | Requests that look simple but must NOT be flattened to tier 1 (entity creation, deletion). |
 
@@ -111,7 +111,7 @@ This is the finding that motivates the whole project.
 **The baseline result on AMBIGUOUS cases (llama3.1:8b, no MetaCastor):**
 
 ```
-AMBIGUOUS    operation: 67%    tier: 33%    filter_type: 17%    parameters: 0%
+AMBIGUOUS    operation: 83%    tier: 40%    filter_type: 17%    parameters: 0%
 ```
 
 When a user says *"make the building more fire-safe"*, the model invents a specific answer:
@@ -124,26 +124,32 @@ When a user says *"make the building more fire-safe"*, the model invents a speci
 The user never said `EI60`. The user never said walls only. The model filled in values because it is trained to be helpful 
 and complete. This produces a proposal that looks reasonable but makes assumptions the user didn't authorise.
 
-The correct behaviour is tier 2: *"I'm not sure what you want specifically — should I set fire rating on all walls? 
-All elements? What rating?"*
+The correct behaviour is either **tier 0** (reject and ask for the missing value/target) or tier 2 (escalate to a
+multi-step plan when every value IS specified but can't fit in a single tier-1 call).
 
-**Why the operation score is misleadingly high (67%):** Many of those "correct" operations are cases where the model
+**Why the operation score is misleadingly high (83%):** Many of those "correct" operations are cases where the model
 returned SET_PROPERTY at tier 1 — which matches the operation label in the ground truth, but at the wrong tier. 
 The model is right about *what kind of change* to make, but wrong about *whether it's certain enough to commit to specific values*.
 
-**How MetaCastor fixes this:** The skill bank contains past examples of similar vague queries that were resolved at 
-tier 2 (because the user escalated them or rejected an overconfident tier-1 proposal). When a new vague query arrives, 
-those examples are injected into the classifier's context. The model sees: *"when queries look like this, the right 
-answer is tier 2"* — and learns to escalate rather than guess.
+**How Castor fixes this (two layers):**
+
+1. **Tier 0 rejection (classifier-level gate).** Rule 4 in the classifier system prompt tells the model to return
+   `tier: 0` whenever it cannot determine WHAT to change, on WHICH entities, and to WHAT value. Tier 0 returns a
+   user-facing explanation and short-circuits the pipeline before any plan generation or IFC write.
+2. **MetaCastor skill injection (soft refinement).** The skill bank contains past examples of similar queries
+   that were resolved successfully. When a new query arrives, those examples are injected into the classifier's
+   context so the model learns *"when queries look like this, the right answer is <tier X>"* — which can pull
+   legitimate multi-step requests out of a mistaken Tier 0, or anchor truly vague requests as Tier 0.
 
 ### The ADVERSARIAL result — a different problem
 
 ```
-ADVERSARIAL    tier: 33%
+ADVERSARIAL    operation: 10%    tier: 80%
 ```
 
-For requests like *"create a complete new floor with walls, slabs, and columns"*, the model only correctly identifies 
-the need for tier 3 one time in three. It tends to flatten entity-creation requests into tier 2.
+For requests like *"create a complete new floor with walls, slabs, and columns"*, the model gets the tier roughly
+right four times in five but picks the wrong operation nine times in ten — it tends to pick a tier-1-shaped operation
+label (SET_PROPERTY) instead of a creation op, even when it correctly flagged the request as tier 3.
 
 This is a **reasoning deficit**, not a formatting deficit. Few-shot injection shows the model what good output looks 
 like — but if the model doesn't recognise that creating new IFC entities is inherently tier 3, examples won't teach it that.
@@ -186,11 +192,52 @@ The comparison the dissertation makes:
 
 Measured as: delta on AMBIGUOUS tier accuracy between D1 baseline and D2 (skill bank active).
 
-- D1 baseline: **33% tier accuracy on AMBIGUOUS**
+- D1 baseline: **40% tier accuracy on AMBIGUOUS**
 - D2 target: meaningfully higher — the dissertation argues if it moves above ~60%, the contribution is real
 
 If the delta is only on TRIVIAL cases (which are already at 100%), the contribution is not meaningful. The AMBIGUOUS 
 tier is the only one that matters for the claim.
+
+See [Post-Tier-0 Re-measurement](#post-tier-0-re-measurement-2026-04-16) below for the updated numbers under the
+corrected Tier 0 validator and eval scoring.
+
+---
+
+## Post-Tier-0 Re-measurement (2026-04-16)
+
+Tier 0 was added to the classifier prompt (rule 4) but the validator at `_validate_structure()` only accepted tiers
+`(1, 2, 3)`, so every `tier: 0` response raised `IntentParseError` and was scored as all-false in the eval. This was
+fixed on 2026-04-16 by accepting tier 0 in the validator (requiring only `explanation`) and updating the eval scorer
+to treat `tier: 0` as a correct answer for AMBIGUOUS cases.
+
+**D1 (static prompt) — baseline vs post-Tier-0-fix:**
+
+| Tier | Metric | D1 baseline | D1 post-fix | Delta |
+|---|---|---|---|---|
+| AMBIGUOUS | tier | 40% | **67%** | +27pp |
+| AMBIGUOUS | filter | 17% | **77%** | +60pp |
+| AMBIGUOUS | parameters | 0% | **70%** | +70pp |
+| OVERALL | tier | 63% | **71%** | +9pp |
+| OVERALL | parameters | 41% | **66%** | +25pp |
+
+**D2 (skill injection) — baseline vs post-Tier-0-fix:**
+
+| Tier | Metric | D2 baseline | D2 post-fix | Delta |
+|---|---|---|---|---|
+| AMBIGUOUS | tier | 57% | **77%** | +20pp |
+| AMBIGUOUS | filter | 33% | **80%** | +47pp |
+| AMBIGUOUS | parameters | 27% | **77%** | +50pp |
+| OVERALL | tier | 70% | **77%** | +6pp |
+
+The AMBIGUOUS parameters metric jumping from 0% to 70% (D1) is the primary signal: the classifier now correctly
+recognises that missing values should trigger rejection, not guessing.
+
+**Known follow-up items:**
+- AMBIGUOUS operation dropped on D2 (73% → 33%). Some AMBIGUOUS cases get pulled out of Tier 0 by skill injection
+  and classified as T1/T2 with the wrong operation — possibly fabrication of values borrowed from injected examples.
+- ESCALATION/ADVERSARIAL filter accuracy regressed slightly — Tier 0 may be over-firing on edge cases.
+
+Both are flagged for audit, not blockers for the fix itself.
 
 ---
 
@@ -199,8 +246,8 @@ tier is the only one that matters for the claim.
 | Path | Purpose |
 |---|---|
 | `src/metacastor/` | Django app — models, services, management commands |
-| `src/metacastor/eval/eval_cases.jsonl` | 29 frozen eval cases — never edited after initial commit |
-| `src/metacastor/eval/dev_cases.jsonl` | 14 dev/tuning cases — free to edit |
+| `src/metacastor/eval/eval_cases.jsonl` | 115 frozen eval cases — never edited after initial commit |
+| `src/metacastor/eval/dev_cases.jsonl` | 35 dev/tuning cases — free to edit |
 | `src/metacastor/eval/run_eval.py` | Measurement script — pinned to llama3.1:8b |
 | `src/metacastor/eval/generate_context.py` | One-time helper — reads IFC fixture → entity_context string |
 | `src/metacastor/eval/fixtures/` | IFC files used by eval cases — committed to git, never replaced |

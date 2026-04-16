@@ -10,7 +10,7 @@ from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
 from django.http import HttpResponseRedirect, JsonResponse
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.generic import (
@@ -446,11 +446,22 @@ class ConflictsView(ProjectTabMixin, TemplateView):
         context["open_conflicts_count"] = status_counts["open"]
         context["open_conflicts"] = status_counts["open"] > 0  # truthy for sub-tab badge
         context["has_any_conflicts"] = any(status_counts.values())
-        context["data_issues"] = (
-            IFCDataIssue.objects.filter(ifc_file__project=project, is_resolved=False)
+        all_issues = list(
+            IFCDataIssue.objects.filter(ifc_file__project=project)
             .select_related("ifc_file")
-            .order_by("ifc_file", "issue_type")
+            .order_by("-severity", "ifc_file", "issue_type")
         )
+        open_issues = [i for i in all_issues if i.status == IFCDataIssue.Status.OPEN]
+        dismissed_issues = [i for i in all_issues if i.status == IFCDataIssue.Status.DISMISSED]
+        type_counts = {t.value: 0 for t in IFCDataIssue.IssueType}
+        for i in open_issues:
+            type_counts[i.issue_type] += 1
+        type_counts["all"] = len(open_issues)
+
+        context["open_issues"] = open_issues
+        context["dismissed_issues"] = dismissed_issues
+        context["data_issue_type_counts"] = type_counts
+        context["data_issue_dismissed_count"] = len(dismissed_issues)
         context["last_scan_run"] = (
             ScanRun.objects.filter(project=project, status=ScanRun.Status.COMPLETED)
             .order_by("-created_at")
@@ -648,6 +659,76 @@ class DeleteAllConflictsView(LoginRequiredMixin, View):
             return JsonResponse({"status": "error", "message": "Access denied."}, status=403)
         deleted, _ = project.conflicts.all().delete()
         return JsonResponse({"status": "deleted", "count": deleted})
+
+
+class DismissDataIssueView(LoginRequiredMixin, View):
+    """POST: mark an IFCDataIssue as dismissed. Returns the updated card partial."""
+
+    def post(self, request, pk, issue_id):
+        project = get_object_or_404(Project.objects.select_related("owner"), pk=pk)
+        if not project.user_has_access(request.user):
+            return JsonResponse({"status": "error", "message": "Access denied."}, status=403)
+
+        issue = get_object_or_404(
+            IFCDataIssue.objects.select_related("ifc_file"),
+            id=issue_id,
+            ifc_file__project=project,
+        )
+        issue.status = IFCDataIssue.Status.DISMISSED
+        issue.save(update_fields=["status"])
+
+        return render(
+            request,
+            "writeback/components/_data_issue_card.html",
+            {"issue": issue, "project": project},
+        )
+
+
+class RestoreDataIssueView(LoginRequiredMixin, View):
+    """POST: move a dismissed IFCDataIssue back to OPEN. Returns the card partial."""
+
+    def post(self, request, pk, issue_id):
+        project = get_object_or_404(Project.objects.select_related("owner"), pk=pk)
+        if not project.user_has_access(request.user):
+            return JsonResponse({"status": "error", "message": "Access denied."}, status=403)
+
+        issue = get_object_or_404(
+            IFCDataIssue.objects.select_related("ifc_file"),
+            id=issue_id,
+            ifc_file__project=project,
+        )
+        issue.status = IFCDataIssue.Status.OPEN
+        issue.save(update_fields=["status"])
+
+        return render(
+            request,
+            "writeback/components/_data_issue_card.html",
+            {"issue": issue, "project": project},
+        )
+
+
+class BulkDismissDataIssuesView(LoginRequiredMixin, View):
+    """POST: dismiss every OPEN data issue for the project.
+
+    Optional ``issue_type`` form field scopes the bulk action to the filter
+    the user has currently applied in the UI.
+    """
+
+    def post(self, request, pk):
+        project = get_object_or_404(Project.objects.select_related("owner"), pk=pk)
+        if not project.user_has_access(request.user):
+            return JsonResponse({"status": "error", "message": "Access denied."}, status=403)
+
+        qs = IFCDataIssue.objects.filter(
+            ifc_file__project=project,
+            status=IFCDataIssue.Status.OPEN,
+        )
+        issue_type = request.POST.get("issue_type", "").strip()
+        if issue_type and issue_type != "all":
+            qs = qs.filter(issue_type=issue_type)
+
+        updated = qs.update(status=IFCDataIssue.Status.DISMISSED)
+        return JsonResponse({"status": "dismissed", "count": updated})
 
 
 class RestoreCommitView(LoginRequiredMixin, View):

@@ -66,3 +66,20 @@ produced with the flawed case. All iterative tuning uses `dev_cases.jsonl` only.
 Each case stores a complete entity_context string generated once from the fixture, not parsed at
 eval time. This keeps the eval fully self-contained (Ollama is the only dependency) and prevents
 IFC parsing changes from silently affecting classifier measurements.
+
+---
+
+## Addendum (2026-04-16) — Tier 0 and Eval Scoring
+
+After the baseline was frozen, a **Tier 0** (rejection) output was added to the classifier prompt — the model
+returns `tier: 0` when it cannot determine WHAT/WHICH/VALUE from the user query. The frozen ground truth in
+`eval_cases.jsonl` labels all 30 AMBIGUOUS cases as `tier: 2` because Tier 0 didn't exist when the cases were
+written. Per the immutability rule, the cases themselves are not edited.
+
+Instead, `score_case()` in `run_eval.py` was updated to treat `tier: 0` as a correct answer for AMBIGUOUS
+cases (all four metrics scored True) and as an over-rejection for other difficulty tiers (all False). This
+keeps the baseline comparable to future runs while acknowledging that Tier 0 is the correct behaviour for
+the user queries in the AMBIGUOUS tier.
+
+Post-Tier-0 re-measurement numbers are documented in `overview.md` — the frozen baseline numbers above are
+not replaced.

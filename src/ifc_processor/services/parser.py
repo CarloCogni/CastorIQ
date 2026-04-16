@@ -260,6 +260,11 @@ class IFCParser:
         self.ifc_file.status = IFCFile.Status.PROCESSING
         self.ifc_file.save(update_fields=["status"])
 
+        # Tracks every content_hash produced this parse. After Phase C we use
+        # it to purge stale rows (both OPEN ghosts from earlier parses and
+        # DISMISSED rows whose underlying problem has been fixed in the IFC).
+        self._seen_issue_hashes: set[str] = set()
+
         try:
             with transaction.atomic():
                 self.ifc_model = ifcopenshell.open(self.ifc_file.file.path)
@@ -267,7 +272,9 @@ class IFCParser:
                 # Extract metadata
                 self._extract_metadata()
 
-                # Delete existing records (for re-processing)
+                # Delete existing records (for re-processing).
+                # IFCDataIssue is NOT wiped here — rows are upserted by
+                # content_hash so user-dismissed issues survive the reparse.
                 self.ifc_file.spatial_elements.all().delete()
                 self.ifc_file.entities.all().delete()
                 self.ifc_file.element_types.all().delete()
@@ -284,6 +291,12 @@ class IFCParser:
 
                 # Phase C: Assign spatial_container FK on entities
                 self._assign_spatial_containers(container_map, spatial_cache)
+
+                # Phase D: Purge data issues that did not recur this parse.
+                # Includes dismissed rows whose problem is now fixed.
+                IFCDataIssue.objects.filter(ifc_file=self.ifc_file).exclude(
+                    content_hash__in=self._seen_issue_hashes
+                ).delete()
 
                 # Update file status
                 self.ifc_file.status = IFCFile.Status.COMPLETED
@@ -330,7 +343,6 @@ class IFCParser:
         """
         batch_size = 500
         entities_to_create: list[IFCEntity] = []
-        issues_to_create: list[IFCDataIssue] = []
         seen_global_ids: dict[str, dict] = {}
         seen_type_guids: dict[str, IFCElementType] = {}
         container_map: dict[str, str] = {}
@@ -368,8 +380,7 @@ class IFCParser:
                 # ROUTING LOGIC — duplicate check
                 if gid in seen_global_ids:
                     first_element_info = seen_global_ids[gid]
-                    issue = IFCDataIssue(
-                        ifc_file=self.ifc_file,
+                    self._upsert_issue(
                         issue_type=IFCDataIssue.IssueType.DUPLICATE_GUID,
                         global_id=gid,
                         ifc_type=ifc_type_name,
@@ -385,39 +396,32 @@ class IFCParser:
                             f"'{first_element_info['name'] or 'Unnamed'}' ({first_element_info['type']})."
                         ),
                     )
-                    issues_to_create.append(issue)
                 else:
                     # STRUCTURAL VALIDATION
                     element_name = element.Name or "Unnamed"
 
                     if not container_gid and ifc_type_name not in self.SKIP_ORPHAN_CHECK_TYPES:
-                        issues_to_create.append(
-                            IFCDataIssue(
-                                ifc_file=self.ifc_file,
-                                issue_type=IFCDataIssue.IssueType.ORPHANED_ELEMENT,
-                                global_id=gid,
-                                ifc_type=ifc_type_name,
-                                raw_data={"name": element.Name or ""},
-                                description=(
-                                    f"Element '{element_name}' ({ifc_type_name}) has no spatial "
-                                    "placement — it belongs to no building, floor, or space."
-                                ),
-                            )
+                        self._upsert_issue(
+                            issue_type=IFCDataIssue.IssueType.ORPHANED_ELEMENT,
+                            global_id=gid,
+                            ifc_type=ifc_type_name,
+                            raw_data={"name": element.Name or ""},
+                            description=(
+                                f"Element '{element_name}' ({ifc_type_name}) has no spatial "
+                                "placement — it belongs to no building, floor, or space."
+                            ),
                         )
 
                     if not properties:
-                        issues_to_create.append(
-                            IFCDataIssue(
-                                ifc_file=self.ifc_file,
-                                issue_type=IFCDataIssue.IssueType.MISSING_PROPERTY,
-                                global_id=gid,
-                                ifc_type=ifc_type_name,
-                                raw_data={"name": element.Name or ""},
-                                description=(
-                                    f"Element '{element_name}' ({ifc_type_name}) has no property "
-                                    "sets — imported but may not be useful for analysis."
-                                ),
-                            )
+                        self._upsert_issue(
+                            issue_type=IFCDataIssue.IssueType.MISSING_PROPERTY,
+                            global_id=gid,
+                            ifc_type=ifc_type_name,
+                            raw_data={"name": element.Name or ""},
+                            description=(
+                                f"Element '{element_name}' ({ifc_type_name}) has no property "
+                                "sets — imported but may not be useful for analysis."
+                            ),
                         )
 
                     # Resolve the IFCElementType DB record
@@ -462,10 +466,6 @@ class IFCParser:
                     total_processed += len(entities_to_create)
                     entities_to_create = []
 
-                if len(issues_to_create) >= batch_size:
-                    IFCDataIssue.objects.bulk_create(issues_to_create)
-                    issues_to_create = []
-
         # FINAL SWEEP
         if entities_to_create:
             try:
@@ -479,11 +479,75 @@ class IFCParser:
                 )
                 raise
             total_processed += len(entities_to_create)
-        if issues_to_create:
-            IFCDataIssue.objects.bulk_create(issues_to_create)
 
         self.entities_created = total_processed
         return container_map
+
+    def _upsert_issue(
+        self,
+        *,
+        issue_type: str,
+        global_id: str,
+        ifc_type: str,
+        raw_data: dict,
+        description: str,
+    ) -> None:
+        """Upsert an IFCDataIssue by stable content_hash.
+
+        Mirrors writeback.services.conflict_scan_service._upsert_conflict:
+          - DISMISSED hash → only touch last_seen_at, never overwrite content.
+          - OPEN hash      → refresh content + severity + last_seen_at; keep first_seen_at.
+          - No match       → create with OPEN status; first_seen_at == last_seen_at
+                             drives the "New this parse" badge in the UI.
+
+        Collects every hash into self._seen_issue_hashes so the final sweep in
+        parse() can delete rows that didn't recur (fixed-and-gone autocleanup).
+        """
+        content_hash = IFCDataIssue.compute_hash(self.ifc_file.id, global_id, issue_type)
+        self._seen_issue_hashes.add(content_hash)
+        severity = IFCDataIssue.SEVERITY_MAP.get(issue_type, IFCDataIssue.Severity.MEDIUM)
+        now = timezone.now()
+
+        existing = IFCDataIssue.objects.filter(
+            ifc_file=self.ifc_file,
+            content_hash=content_hash,
+        ).first()
+
+        if existing and existing.status == IFCDataIssue.Status.DISMISSED:
+            existing.last_seen_at = now
+            existing.save(update_fields=["last_seen_at"])
+            return
+
+        if existing:  # OPEN — refresh in place
+            existing.ifc_type = ifc_type
+            existing.raw_data = raw_data
+            existing.description = description
+            existing.severity = severity
+            existing.last_seen_at = now
+            existing.save(
+                update_fields=[
+                    "ifc_type",
+                    "raw_data",
+                    "description",
+                    "severity",
+                    "last_seen_at",
+                ]
+            )
+            return
+
+        IFCDataIssue.objects.create(
+            ifc_file=self.ifc_file,
+            issue_type=issue_type,
+            global_id=global_id,
+            ifc_type=ifc_type,
+            raw_data=raw_data,
+            description=description,
+            severity=severity,
+            status=IFCDataIssue.Status.OPEN,
+            content_hash=content_hash,
+            first_seen_at=now,
+            last_seen_at=now,
+        )
 
     # ------------------------------------------------------------------
     # Phase B: Spatial tree construction
