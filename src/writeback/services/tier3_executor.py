@@ -49,6 +49,12 @@ class Tier3Executor:
         if not self.ifc_path.exists():
             raise Tier3ExecutionError(f"IFC file not found: {self.ifc_path}")
         self.timeout = timeout
+        # Populated by execute() after a successful run. Holds the raw dict
+        # returned by modify_ifc() — {"summary": str, "changes": list[dict]}.
+        # Used by the D5 evaluation harness to score post-state matches
+        # against the actual generated summary (not the EntityChange list,
+        # which discards the summary string).
+        self.last_result: dict | None = None
 
     def execute(self, code: str) -> list[EntityChange]:
         """
@@ -81,6 +87,7 @@ class Tier3Executor:
 
             # 8. Convert to EntityChange list
             changes = self._result_to_changes(result)
+            self.last_result = result
 
             logger.info(
                 f"Tier3 execution success: {len(changes)} changes, "

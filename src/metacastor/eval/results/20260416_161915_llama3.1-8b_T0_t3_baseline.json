@@ -1,0 +1,245 @@
+{
+  "timestamp": "2026-04-16T16:19:15",
+  "model": "llama3.1:8b",
+  "temperature": 0,
+  "injection": false,
+  "cases_file": "t3_eval_cases.jsonl",
+  "n_cases": 12,
+  "activation_count": 0,
+  "median_gen_ms": 21073.4,
+  "by_tier": {
+    "CREATE": {
+      "parse_ok": 1.0,
+      "validation_ok": 1.0,
+      "confidence_ok": 1.0,
+      "execution_ok": 0.0,
+      "post_state_ok": 0.0,
+      "n": 4
+    },
+    "DELETE": {
+      "parse_ok": 1.0,
+      "validation_ok": 1.0,
+      "confidence_ok": 1.0,
+      "execution_ok": 1.0,
+      "post_state_ok": 0.0,
+      "n": 3
+    },
+    "RELATIONSHIP": {
+      "parse_ok": 1.0,
+      "validation_ok": 1.0,
+      "confidence_ok": 1.0,
+      "execution_ok": 0.6667,
+      "post_state_ok": 0.0,
+      "n": 3
+    },
+    "SPATIAL": {
+      "parse_ok": 1.0,
+      "validation_ok": 1.0,
+      "confidence_ok": 1.0,
+      "execution_ok": 0.0,
+      "post_state_ok": 0.0,
+      "n": 2
+    }
+  },
+  "overall": {
+    "parse_ok": 1.0,
+    "validation_ok": 1.0,
+    "confidence_ok": 1.0,
+    "execution_ok": 0.4167,
+    "post_state_ok": 0.0
+  },
+  "per_case": [
+    {
+      "id": "t3_001",
+      "difficulty_tier": "CREATE",
+      "scores": {
+        "parse_ok": true,
+        "validation_ok": true,
+        "confidence_ok": true,
+        "execution_ok": false,
+        "post_state_ok": false
+      },
+      "passed": false,
+      "gen_ms": 24795.7,
+      "reference_injected": false,
+      "code_length": 1205,
+      "failure": "Tier3ExecutionError: Code execution error: AttributeError: entity instance of type 'IFC4.IfcSpace' has no attribute 'ContainedInStructure'"
+    },
+    {
+      "id": "t3_002",
+      "difficulty_tier": "CREATE",
+      "scores": {
+        "parse_ok": true,
+        "validation_ok": true,
+        "confidence_ok": true,
+        "execution_ok": false,
+        "post_state_ok": false
+      },
+      "passed": false,
+      "gen_ms": 19502.5,
+      "reference_injected": false,
+      "code_length": 1220,
+      "failure": "Tier3ExecutionError: Code execution error: AttributeError: entity instance of type 'IFC4.IfcSpace' has no attribute 'ContainedInStructure'"
+    },
+    {
+      "id": "t3_003",
+      "difficulty_tier": "CREATE",
+      "scores": {
+        "parse_ok": true,
+        "validation_ok": true,
+        "confidence_ok": true,
+        "execution_ok": false,
+        "post_state_ok": false
+      },
+      "passed": false,
+      "gen_ms": 19722.2,
+      "reference_injected": false,
+      "code_length": 1192,
+      "failure": "Tier3ExecutionError: Code execution error: AttributeError: entity instance of type 'IFC4.IfcSpace' has no attribute 'ContainedInStructure'"
+    },
+    {
+      "id": "t3_004",
+      "difficulty_tier": "DELETE",
+      "scores": {
+        "parse_ok": true,
+        "validation_ok": true,
+        "confidence_ok": true,
+        "execution_ok": true,
+        "post_state_ok": false
+      },
+      "passed": false,
+      "gen_ms": 11009.3,
+      "reference_injected": false,
+      "code_length": 642,
+      "failure": null
+    },
+    {
+      "id": "t3_005",
+      "difficulty_tier": "DELETE",
+      "scores": {
+        "parse_ok": true,
+        "validation_ok": true,
+        "confidence_ok": true,
+        "execution_ok": true,
+        "post_state_ok": false
+      },
+      "passed": false,
+      "gen_ms": 11117.7,
+      "reference_injected": false,
+      "code_length": 646,
+      "failure": null
+    },
+    {
+      "id": "t3_006",
+      "difficulty_tier": "DELETE",
+      "scores": {
+        "parse_ok": true,
+        "validation_ok": true,
+        "confidence_ok": true,
+        "execution_ok": true,
+        "post_state_ok": false
+      },
+      "passed": false,
+      "gen_ms": 11265.9,
+      "reference_injected": false,
+      "code_length": 665,
+      "failure": null
+    },
+    {
+      "id": "t3_007",
+      "difficulty_tier": "RELATIONSHIP",
+      "scores": {
+        "parse_ok": true,
+        "validation_ok": true,
+        "confidence_ok": true,
+        "execution_ok": true,
+        "post_state_ok": false
+      },
+      "passed": false,
+      "gen_ms": 18152.9,
+      "reference_injected": false,
+      "code_length": 1024,
+      "failure": null
+    },
+    {
+      "id": "t3_008",
+      "difficulty_tier": "RELATIONSHIP",
+      "scores": {
+        "parse_ok": true,
+        "validation_ok": true,
+        "confidence_ok": true,
+        "execution_ok": true,
+        "post_state_ok": false
+      },
+      "passed": false,
+      "gen_ms": 24912.6,
+      "reference_injected": false,
+      "code_length": 1319,
+      "failure": null
+    },
+    {
+      "id": "t3_009",
+      "difficulty_tier": "RELATIONSHIP",
+      "scores": {
+        "parse_ok": true,
+        "validation_ok": true,
+        "confidence_ok": true,
+        "execution_ok": false,
+        "post_state_ok": false
+      },
+      "passed": false,
+      "gen_ms": 21073.4,
+      "reference_injected": false,
+      "code_length": 1022,
+      "failure": "Tier3ExecutionError: Code execution error: AttributeError: entity instance of type 'IFC4.IfcSlab' has no attribute 'RelatingStructure'"
+    },
+    {
+      "id": "t3_010",
+      "difficulty_tier": "SPATIAL",
+      "scores": {
+        "parse_ok": true,
+        "validation_ok": true,
+        "confidence_ok": true,
+        "execution_ok": false,
+        "post_state_ok": false
+      },
+      "passed": false,
+      "gen_ms": 21365.4,
+      "reference_injected": false,
+      "code_length": 1062,
+      "failure": "Tier3ExecutionError: Code execution error: AttributeError: entity instance of type 'IFC4.IfcDoor' has no attribute 'RelatingStructure'"
+    },
+    {
+      "id": "t3_011",
+      "difficulty_tier": "SPATIAL",
+      "scores": {
+        "parse_ok": true,
+        "validation_ok": true,
+        "confidence_ok": true,
+        "execution_ok": false,
+        "post_state_ok": false
+      },
+      "passed": false,
+      "gen_ms": 21899.4,
+      "reference_injected": false,
+      "code_length": 1121,
+      "failure": "Tier3ExecutionError: Code execution error: AttributeError: 'tuple' object has no attribute 'Name'"
+    },
+    {
+      "id": "t3_012",
+      "difficulty_tier": "CREATE",
+      "scores": {
+        "parse_ok": true,
+        "validation_ok": true,
+        "confidence_ok": true,
+        "execution_ok": false,
+        "post_state_ok": false
+      },
+      "passed": false,
+      "gen_ms": 23993.2,
+      "reference_injected": false,
+      "code_length": 1213,
+      "failure": "Tier3ExecutionError: Code execution error: AttributeError: entity instance of type 'IFC4.IfcZone' has no attribute 'ContainsElements'"
+    }
+  ]
+}

@@ -222,6 +222,7 @@ class ModificationService:
                     message_obj=message_obj,
                     entity_context=entity_context,
                     emitter=emitter,
+                    skill_examples=skill_examples,
                 )
 
             intent = classified
@@ -258,6 +259,7 @@ class ModificationService:
                 ifc_file=ifc_file,
                 message_obj=message_obj,
                 emitter=emitter,
+                skill_examples=skill_examples,
             )
         if tier == 3:
             return self._propose_tier3(
@@ -267,6 +269,7 @@ class ModificationService:
                 ifc_file=ifc_file,
                 message_obj=message_obj,
                 emitter=emitter,
+                skill_examples=skill_examples,
             )
         if tier != 1:
             raise ModificationError(
@@ -329,6 +332,7 @@ class ModificationService:
                     ifc_file=ifc_file,
                     message_obj=message_obj,
                     emitter=emitter,
+                    skill_examples=skill_examples,
                 )
 
         emitter.emit(
@@ -874,6 +878,7 @@ class ModificationService:
         message_obj=None,
         entity_context: str = "",
         emitter: PipelineEmitter | None = None,
+        skill_examples: list[dict] | None = None,
     ):
         """
         Handle a chain of Tier 1 operations from a single user request.
@@ -935,6 +940,7 @@ class ModificationService:
                         ifc_file=ifc_file,
                         message_obj=message_obj,
                         emitter=emitter,
+                        skill_examples=skill_examples,
                     )
 
             # Combined confidence + groundedness gate (post-validation)
@@ -1002,6 +1008,7 @@ class ModificationService:
         ifc_file=None,
         message_obj=None,
         emitter: PipelineEmitter | None = None,
+        skill_examples: list[dict] | None = None,
     ) -> ModificationProposal:
         """
         Handle a Tier 2 request: generate plan, validate, create proposal.
@@ -1030,6 +1037,7 @@ class ModificationService:
                 ifc_file=ifc_file,
                 message_obj=message_obj,
                 emitter=emitter,
+                skill_examples=skill_examples,
             )
 
         # 2. Confidence check
@@ -1198,12 +1206,15 @@ class ModificationService:
         ifc_file=None,
         message_obj=None,
         emitter: PipelineEmitter | None = None,
+        skill_examples: list[dict] | None = None,
     ) -> ModificationProposal:
         emitter = emitter or NullEmitter()
 
         emitter.emit("codegen", "running", "Generating IfcOpenShell code…")
         try:
-            result = self.t3_planner.generate_code(user_message, entity_context)
+            result = self.t3_planner.generate_code(
+                user_message, entity_context, skill_examples=skill_examples
+            )
         except CodeGenerationError as e:
             emitter.emit("codegen", "error", f"Code generation failed: {e}")
             raise ModificationError(f"Code generation failed: {e}")

@@ -196,6 +196,13 @@
                 <input class="form-check-input" type="checkbox" id="skip-low-value" checked>
                 <span class="text-secondary fs-8">Skip non-physical elements</span>
             </label>
+            <!-- Easter egg: pop-out mini-game that listens to this scan via postMessage -->
+            <button type="button"
+                    class="btn btn-sm btn-link text-decoration-none text-secondary p-0 opacity-75"
+                    onclick="ScanEngine.openGame()"
+                    title="Play Castor Slug while the scan runs">
+                <i class="bi bi-joystick me-1"></i><span class="fs-8">Play while waiting</span>
+            </button>
         </div>
 
         <div class="d-flex align-items-center gap-3">
@@ -994,6 +1001,36 @@ const DataIssueTabs = {
 /* ─── Scan engine (WebSocket) ─── */
 const ScanEngine = {
     _ws: null,
+    _popup: null,  // Castor Slug pop-out window (eastereggs). Scan events are forwarded via postMessage.
+
+    /* Open the Castor Slug pop-out. Safe to call anytime — no-op if already open. */
+    openGame() {
+        if (this._popup && !this._popup.closed) {
+            this._popup.focus();
+            return;
+        }
+        const url = "{% url 'eastereggs:castor_slug' project.pk %}";
+        const features = 'width=720,height=480,resizable=yes,scrollbars=no,menubar=no,toolbar=no';
+        const p = window.open(url, 'castor_slug', features);
+        if (!p) {
+            this._toast('Pop-up blocked. Allow pop-ups for Castor to play.', 'danger');
+            return;
+        }
+        this._popup = p;
+    },
+
+    /* Forward a scan-engine message to the open pop-out game, if any. */
+    _forwardToGame(msg) {
+        if (!this._popup || this._popup.closed) return;
+        try {
+            this._popup.postMessage(
+                { channel: 'castor-scan', payload: msg },
+                window.location.origin,
+            );
+        } catch (_err) {
+            // Pop-out closed mid-send or cross-origin — ignore.
+        }
+    },
 
     runScan() {
         const btn = document.getElementById('run-scan-btn');
@@ -1020,6 +1057,9 @@ const ScanEngine = {
 
         this._ws.onmessage = (event) => {
             const msg = JSON.parse(event.data);
+
+            // Mirror every scan event to the Castor Slug pop-out (if open).
+            this._forwardToGame(msg);
 
             if (msg.type === 'phase') {
                 phaseLabel.textContent = msg.message;

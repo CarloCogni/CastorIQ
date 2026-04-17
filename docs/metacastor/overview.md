@@ -53,7 +53,13 @@ See: [D2 — Skill Bank](./d2-skill-bank.md) *(added when D2 is built)*
 
 ### D3 onwards — Failure Diagnosis, Fine-Tuning
 
-Future deliverables that build on D1 and D2. Not yet implemented.
+See the individual deliverable docs for status.
+
+### D5 — Certified Tier 3 Reuse
+
+A field-level extension of the skill bank: when a Tier 3 code-generation operation is approved and committed, the generated IfcOpenShell code is stored alongside the `SkillExample`. On future Tier 3 requests, the retriever surfaces qualifying past successes as few-shot **reference patterns** in the code-generation prompt. No separate model, no parameterisation — one new field, one conditional branch.
+
+See: [D5 — Certified Tier 3 Reuse](./d5-tier3-injection.md) *(implemented and measured 2026-04-16)*
 
 ---
 
