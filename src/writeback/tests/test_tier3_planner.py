@@ -6,7 +6,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from writeback.services.tier3_planner import CodeGenerationError, Tier3Planner
+from writeback.services.tier3_planner import (
+    _MAX_REFS,
+    CodeGenerationError,
+    Tier3Planner,
+    _format_tier3_references,
+)
 
 
 @pytest.fixture
@@ -201,3 +206,109 @@ class TestCheckForbiddenPatterns:
         code = "def modify_ifc(model):\n    f = open('x.txt')\n    return {}"
         with pytest.raises(CodeGenerationError, match="open\\(\\)"):
             Tier3Planner._check_forbidden_patterns(code)
+
+
+class TestFormatTier3References:
+    """Tests for _format_tier3_references — Deliverable 5 reference injection."""
+
+    def test_empty_list_returns_empty_string(self):
+        """No examples → empty reference block (caller skips injection)."""
+        assert _format_tier3_references([]) == ""
+
+    def test_none_generated_code_is_filtered_out(self):
+        """Tier 3 example with generated_code=None does not render."""
+        examples = [
+            {"tier": 3, "query_text": "q", "generated_code": None},
+            {"tier": 3, "query_text": "q", "generated_code": ""},
+        ]
+        assert _format_tier3_references(examples) == ""
+
+    def test_non_tier3_examples_are_filtered_out(self):
+        """Tier 1/2 examples do not appear in the Tier 3 reference block."""
+        examples = [
+            {"tier": 1, "query_text": "t1", "generated_code": "def modify_ifc(m): return {}"},
+            {"tier": 2, "query_text": "t2", "generated_code": "def modify_ifc(m): return {}"},
+        ]
+        assert _format_tier3_references(examples) == ""
+
+    def test_single_tier3_example_renders_reference_block(self):
+        """One qualifying Tier 3 example produces a reference block with its code."""
+        code = "def modify_ifc(model):\n    return {'summary': 'ok', 'changes': []}"
+        examples = [{"tier": 3, "query_text": "Create IfcSpace", "generated_code": code}]
+
+        block = _format_tier3_references(examples)
+
+        assert "Reference: Past Tier 3 Operations" in block
+        assert 'Past request: "Create IfcSpace"' in block
+        assert code in block
+        assert "do NOT copy verbatim" in block
+
+    def test_renders_at_most_max_refs(self):
+        """Even with more qualifying examples, only _MAX_REFS are rendered."""
+        code = "def modify_ifc(m): return {'summary': 'ok', 'changes': []}"
+        examples = [
+            {"tier": 3, "query_text": f"q{i}", "generated_code": code} for i in range(_MAX_REFS + 3)
+        ]
+
+        block = _format_tier3_references(examples)
+
+        assert block.count("--- Reference ") == _MAX_REFS
+
+    def test_preserves_order_of_inputs(self):
+        """References are rendered in the input order (already ranked by retriever)."""
+        examples = [
+            {"tier": 3, "query_text": "first", "generated_code": "def modify_ifc(m): return {}"},
+            {"tier": 3, "query_text": "second", "generated_code": "def modify_ifc(m): return {}"},
+        ]
+
+        block = _format_tier3_references(examples)
+
+        assert block.index("first") < block.index("second")
+
+
+class TestGenerateCodeReferenceInjection:
+    """Tests that skill_examples flow into the Tier3Planner system prompt."""
+
+    def test_skill_examples_none_is_backward_compatible(self, planner):
+        """generate_code() accepts skill_examples=None without crashing (legacy callers)."""
+        payload = {"tier": 3, "code": VALID_CODE, "explanation": "ok", "confidence": 0.8}
+        planner.llm.invoke.return_value = _llm_response(json.dumps(payload))
+
+        result = planner.generate_code("Do something", "context", skill_examples=None)
+
+        assert result["tier"] == 3
+        # Confirm the system prompt was NOT augmented with a reference section.
+        system_msg = planner.llm.invoke.call_args.args[0][0]
+        assert "Reference: Past Tier 3 Operations" not in system_msg.content
+
+    def test_tier3_example_with_code_is_injected_into_system_prompt(self, planner):
+        """A qualifying Tier 3 skill example appears in the system message."""
+        reference_code = (
+            "def modify_ifc(model):\n    return {'summary': 'old success', 'changes': []}"
+        )
+        payload = {"tier": 3, "code": VALID_CODE, "explanation": "ok", "confidence": 0.8}
+        planner.llm.invoke.return_value = _llm_response(json.dumps(payload))
+        skill_examples = [
+            {"tier": 3, "query_text": "past request", "generated_code": reference_code},
+        ]
+
+        planner.generate_code("Do something new", "context", skill_examples=skill_examples)
+
+        system_msg = planner.llm.invoke.call_args.args[0][0]
+        assert "Reference: Past Tier 3 Operations" in system_msg.content
+        assert "past request" in system_msg.content
+        assert reference_code in system_msg.content
+
+    def test_non_tier3_examples_do_not_inject_reference(self, planner):
+        """Tier 1/2 examples are not rendered into the Tier 3 system prompt."""
+        payload = {"tier": 3, "code": VALID_CODE, "explanation": "ok", "confidence": 0.8}
+        planner.llm.invoke.return_value = _llm_response(json.dumps(payload))
+        skill_examples = [
+            {"tier": 1, "query_text": "t1", "generated_code": "ignored"},
+            {"tier": 2, "query_text": "t2", "generated_code": None},
+        ]
+
+        planner.generate_code("Do something", "context", skill_examples=skill_examples)
+
+        system_msg = planner.llm.invoke.call_args.args[0][0]
+        assert "Reference: Past Tier 3 Operations" not in system_msg.content

@@ -1,0 +1,245 @@
+{
+  "timestamp": "2026-04-16T16:47:16",
+  "model": "llama3.1:8b",
+  "temperature": 0,
+  "injection": true,
+  "cases_file": "t3_eval_cases.jsonl",
+  "n_cases": 12,
+  "activation_count": 4,
+  "median_gen_ms": 23684.6,
+  "by_tier": {
+    "CREATE": {
+      "parse_ok": 1.0,
+      "validation_ok": 1.0,
+      "confidence_ok": 1.0,
+      "execution_ok": 0.25,
+      "post_state_ok": 0.0,
+      "n": 4
+    },
+    "DELETE": {
+      "parse_ok": 1.0,
+      "validation_ok": 1.0,
+      "confidence_ok": 1.0,
+      "execution_ok": 1.0,
+      "post_state_ok": 1.0,
+      "n": 3
+    },
+    "RELATIONSHIP": {
+      "parse_ok": 1.0,
+      "validation_ok": 1.0,
+      "confidence_ok": 1.0,
+      "execution_ok": 0.6667,
+      "post_state_ok": 0.6667,
+      "n": 3
+    },
+    "SPATIAL": {
+      "parse_ok": 1.0,
+      "validation_ok": 1.0,
+      "confidence_ok": 1.0,
+      "execution_ok": 0.0,
+      "post_state_ok": 0.0,
+      "n": 2
+    }
+  },
+  "overall": {
+    "parse_ok": 1.0,
+    "validation_ok": 1.0,
+    "confidence_ok": 1.0,
+    "execution_ok": 0.5,
+    "post_state_ok": 0.4167
+  },
+  "per_case": [
+    {
+      "id": "t3_001",
+      "difficulty_tier": "CREATE",
+      "scores": {
+        "parse_ok": true,
+        "validation_ok": true,
+        "confidence_ok": true,
+        "execution_ok": false,
+        "post_state_ok": false
+      },
+      "passed": false,
+      "gen_ms": 27759.8,
+      "reference_injected": true,
+      "code_length": 1181,
+      "failure": "Tier3ExecutionError: Code execution error: AttributeError: entity instance of type 'IFC4.IfcSpace' has no attribute 'ContainedInStructure'"
+    },
+    {
+      "id": "t3_002",
+      "difficulty_tier": "CREATE",
+      "scores": {
+        "parse_ok": true,
+        "validation_ok": true,
+        "confidence_ok": true,
+        "execution_ok": false,
+        "post_state_ok": false
+      },
+      "passed": false,
+      "gen_ms": 27388.2,
+      "reference_injected": true,
+      "code_length": 1288,
+      "failure": "Tier3ExecutionError: Code execution error: AttributeError: entity instance of type 'IFC4.IfcSpace' has no attribute 'ContainedInStructure'"
+    },
+    {
+      "id": "t3_003",
+      "difficulty_tier": "CREATE",
+      "scores": {
+        "parse_ok": true,
+        "validation_ok": true,
+        "confidence_ok": true,
+        "execution_ok": false,
+        "post_state_ok": false
+      },
+      "passed": false,
+      "gen_ms": 26714.0,
+      "reference_injected": true,
+      "code_length": 1230,
+      "failure": "Tier3ExecutionError: Code execution error: AttributeError: entity instance of type 'IFC4.IfcSpace' has no attribute 'ContainedInStructure'"
+    },
+    {
+      "id": "t3_004",
+      "difficulty_tier": "DELETE",
+      "scores": {
+        "parse_ok": true,
+        "validation_ok": true,
+        "confidence_ok": true,
+        "execution_ok": true,
+        "post_state_ok": true
+      },
+      "passed": true,
+      "gen_ms": 14376.9,
+      "reference_injected": false,
+      "code_length": 642,
+      "failure": null
+    },
+    {
+      "id": "t3_005",
+      "difficulty_tier": "DELETE",
+      "scores": {
+        "parse_ok": true,
+        "validation_ok": true,
+        "confidence_ok": true,
+        "execution_ok": true,
+        "post_state_ok": true
+      },
+      "passed": true,
+      "gen_ms": 13906.1,
+      "reference_injected": false,
+      "code_length": 646,
+      "failure": null
+    },
+    {
+      "id": "t3_006",
+      "difficulty_tier": "DELETE",
+      "scores": {
+        "parse_ok": true,
+        "validation_ok": true,
+        "confidence_ok": true,
+        "execution_ok": true,
+        "post_state_ok": true
+      },
+      "passed": true,
+      "gen_ms": 14078.9,
+      "reference_injected": false,
+      "code_length": 665,
+      "failure": null
+    },
+    {
+      "id": "t3_007",
+      "difficulty_tier": "RELATIONSHIP",
+      "scores": {
+        "parse_ok": true,
+        "validation_ok": true,
+        "confidence_ok": true,
+        "execution_ok": true,
+        "post_state_ok": true
+      },
+      "passed": true,
+      "gen_ms": 20285.2,
+      "reference_injected": false,
+      "code_length": 1024,
+      "failure": null
+    },
+    {
+      "id": "t3_008",
+      "difficulty_tier": "RELATIONSHIP",
+      "scores": {
+        "parse_ok": true,
+        "validation_ok": true,
+        "confidence_ok": true,
+        "execution_ok": true,
+        "post_state_ok": true
+      },
+      "passed": true,
+      "gen_ms": 25815.3,
+      "reference_injected": false,
+      "code_length": 1319,
+      "failure": null
+    },
+    {
+      "id": "t3_009",
+      "difficulty_tier": "RELATIONSHIP",
+      "scores": {
+        "parse_ok": true,
+        "validation_ok": true,
+        "confidence_ok": true,
+        "execution_ok": false,
+        "post_state_ok": false
+      },
+      "passed": false,
+      "gen_ms": 23684.6,
+      "reference_injected": false,
+      "code_length": 1107,
+      "failure": "Tier3ExecutionError: Code execution error: AttributeError: 'tuple' object has no attribute 'Name'"
+    },
+    {
+      "id": "t3_010",
+      "difficulty_tier": "SPATIAL",
+      "scores": {
+        "parse_ok": true,
+        "validation_ok": true,
+        "confidence_ok": true,
+        "execution_ok": false,
+        "post_state_ok": false
+      },
+      "passed": false,
+      "gen_ms": 23894.9,
+      "reference_injected": false,
+      "code_length": 1168,
+      "failure": "Tier3ExecutionError: Generated code has syntax error: f-string: unmatched '(' (<tier3_generated>, line 26)"
+    },
+    {
+      "id": "t3_011",
+      "difficulty_tier": "SPATIAL",
+      "scores": {
+        "parse_ok": true,
+        "validation_ok": true,
+        "confidence_ok": true,
+        "execution_ok": false,
+        "post_state_ok": false
+      },
+      "passed": false,
+      "gen_ms": 23284.3,
+      "reference_injected": false,
+      "code_length": 1121,
+      "failure": "Tier3ExecutionError: Code execution error: AttributeError: 'tuple' object has no attribute 'Name'"
+    },
+    {
+      "id": "t3_012",
+      "difficulty_tier": "CREATE",
+      "scores": {
+        "parse_ok": true,
+        "validation_ok": true,
+        "confidence_ok": true,
+        "execution_ok": true,
+        "post_state_ok": false
+      },
+      "passed": false,
+      "gen_ms": 23233.9,
+      "reference_injected": true,
+      "code_length": 1090,
+      "failure": null
+    }
+  ]
+}

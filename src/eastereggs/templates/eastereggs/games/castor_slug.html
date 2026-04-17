@@ -1,0 +1,182 @@
+{# eastereggs/games/castor_slug.html — standalone pop-out game page #}
+{# Deliberately does NOT extend base.html so a game crash is visually #}
+{# isolated from the main Castor app. Keep this page self-contained. #}
+{% load static %}
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Castor Slug</title>
+
+    <link rel="icon" type="image/png" href="{% static 'images/castor-logo-nobg.png' %}">
+
+    <!-- Bootstrap Icons only (no full Bootstrap — the game doesn't need it) -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --castor-primary: #3b82f6;
+            --castor-accent:  #8b5cf6;
+            --bg:             #0a0a0a;
+            --bg-chrome:      #111;
+            --border:         #222;
+            --text:           #e6e6e6;
+            --text-dim:       #888;
+        }
+
+        * { box-sizing: border-box; }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Press Start 2P', monospace;
+            overflow: hidden;
+        }
+
+        /* Thin top chrome so the window feels intentional, not a crashed popup */
+        .game-chrome {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 40px;
+            padding: 0 14px;
+            background: var(--bg-chrome);
+            border-bottom: 1px solid var(--border);
+            font-size: 10px;
+            letter-spacing: 0.08em;
+        }
+        .game-chrome .brand {
+            color: var(--castor-primary);
+        }
+        .game-chrome .scan-status {
+            color: var(--text-dim);
+            font-size: 9px;
+        }
+        .game-chrome .scan-status.live {
+            color: var(--castor-accent);
+        }
+        .game-chrome button {
+            background: transparent;
+            color: var(--text-dim);
+            border: none;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 10px;
+            padding: 4px 8px;
+        }
+        .game-chrome button:hover { color: var(--text); }
+
+        /* Canvas host */
+        #game-root {
+            position: absolute;
+            top: 40px;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: var(--bg);
+        }
+        #game-root canvas {
+            display: block;
+            margin: 0 auto;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+
+        /* Scan-done banner (hidden until scan finishes) */
+        #scan-done-banner {
+            position: absolute;
+            top: 50px;
+            right: 14px;
+            background: rgba(16, 185, 129, 0.14);
+            border: 1px solid rgba(16, 185, 129, 0.4);
+            color: #6ee7b7;
+            padding: 8px 12px;
+            font-size: 9px;
+            border-radius: 6px;
+            opacity: 0;
+            transform: translateY(-4px);
+            transition: opacity 200ms ease, transform 200ms ease;
+            pointer-events: none;
+        }
+        #scan-done-banner.show {
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: auto;
+        }
+        #scan-done-banner a {
+            color: #6ee7b7;
+            text-decoration: underline;
+            cursor: pointer;
+            margin-left: 8px;
+        }
+
+        /* Mobile warning */
+        @media (max-width: 720px) {
+            #mobile-warning { display: flex !important; }
+            #game-root, .game-chrome { display: none !important; }
+        }
+        #mobile-warning {
+            display: none;
+            position: fixed;
+            inset: 0;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            padding: 24px;
+            text-align: center;
+            font-size: 10px;
+            line-height: 1.8;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-chrome">
+        <span class="brand">
+            <i class="bi bi-joystick me-1"></i>CASTOR SLUG
+        </span>
+        <span class="scan-status" id="scan-status">
+            {% if has_scan_link %}waiting for scan…{% else %}standalone mode{% endif %}
+        </span>
+        <button type="button" onclick="window.close()" title="Close">
+            <i class="bi bi-x-lg"></i> CLOSE
+        </button>
+    </div>
+
+    <div id="game-root"></div>
+
+    <div id="scan-done-banner">
+        SCAN DONE
+        <a id="scan-done-return">return now</a>
+    </div>
+
+    <div id="mobile-warning">
+        <div style="font-size: 32px; margin-bottom: 16px;">🦫</div>
+        <div>Castor Slug is desktop-only.</div>
+        <div style="color: var(--text-dim); margin-top: 8px;">Open this on a keyboard-equipped machine.</div>
+    </div>
+
+    <!-- Scan-link config (read by shared/scan-link.js) -->
+    <script>
+        window.CASTOR_SLUG_CONFIG = {
+            hasScanLink: {{ has_scan_link|yesno:"true,false" }},
+            projectId: "{{ project.pk|default:'' }}",
+            expectedOrigin: window.location.origin,
+        };
+    </script>
+
+    <!-- Kaboom.js (aka Kaplay) from CDN — vendor later if offline use is needed -->
+    <script src="https://unpkg.com/kaplay@3001.0.1/dist/kaplay.js"></script>
+
+    <!-- Game modules -->
+    <script type="module" src="{% static 'eastereggs/shared/scan-link.js' %}"></script>
+    <script type="module" src="{% static 'eastereggs/castor-slug/main.js' %}"></script>
+</body>
+</html>

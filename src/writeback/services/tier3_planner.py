@@ -1,3 +1,12 @@
+# writeback/services/tier3_planner.py
+"""
+Tier 3 code generation — LLM produces sandboxed IfcOpenShell Python.
+
+Deliverable 5 extension: when the skill bank has retrieved past Tier 3
+examples whose generated code committed successfully, surface them to the
+LLM as reference patterns (few-shot), not as code to copy verbatim.
+"""
+
 import json
 import logging
 import re
@@ -7,6 +16,55 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from core.llm import get_llm
 
 logger = logging.getLogger(__name__)
+
+# Bound token cost of code references. The retriever returns ≤3 examples,
+# but dumping all of them as full code blocks is wasteful; 2 is plenty.
+_MAX_REFS = 2
+
+
+def _format_tier3_references(examples: list[dict]) -> str:
+    """
+    Render past Tier 3 successes as a reference-pattern block for the system prompt.
+
+    Filters `examples` to entries where `tier == 3` and `generated_code` is
+    non-empty, then emits a markdown section showing each prior request and the
+    code that worked for it. Returns an empty string when no qualifying example
+    exists — the caller should skip injection entirely in that case.
+
+    The block explicitly instructs the LLM to adapt the approach rather than
+    copy verbatim: entity references and property targets differ between
+    requests, and the full Tier 3 safety stack still gates execution.
+    """
+    qualifying = [
+        ex for ex in examples if ex.get("tier") == 3 and (ex.get("generated_code") or "").strip()
+    ][:_MAX_REFS]
+
+    if not qualifying:
+        return ""
+
+    parts = [
+        "## Reference: Past Tier 3 Operations That Succeeded",
+        "",
+        "The following code was generated and successfully executed for similar past requests.",
+        "Use them as reference patterns for approach and structure — do NOT copy verbatim.",
+        "Entity references, property targets, and filter criteria differ.",
+        "",
+    ]
+    for i, ex in enumerate(qualifying, start=1):
+        parts.extend(
+            [
+                f"--- Reference {i} ---",
+                f'Past request: "{ex.get("query_text", "")}"',
+                "Code that worked:",
+                "```python",
+                ex["generated_code"],
+                "```",
+                "",
+            ]
+        )
+
+    return "\n".join(parts)
+
 
 TIER3_SYSTEM_PROMPT = """\
 You are an IFC (Industry Foundation Classes) code generator.
@@ -86,7 +144,7 @@ User: "Create a new IfcSpace called 'Office-101' on Level 1"
 
 {
   "tier": 3,
-  "code": "def modify_ifc(model):\\n    import ifcopenshell\\n    import ifcopenshell.api\\n\\n    changes = []\\n\\n    # Find the target storey\\n    storey = None\\n    for s in model.by_type('IfcBuildingStorey'):\\n        if 'Level 1' in (s.Name or '') or '1' in (s.LongName or ''):\\n            storey = s\\n            break\\n\\n    if storey is None:\\n        raise ValueError('Could not find Level 1 storey')\\n\\n    # Create the space\\n    space = ifcopenshell.api.run('root.create_entity', model, ifc_class='IfcSpace')\\n    ifcopenshell.api.run('attribute.edit_attributes', model, product=space, attributes={'Name': 'Office-101', 'LongName': 'Office 101', 'Description': 'Office space'})\\n\\n    # Assign to storey\\n    ifcopenshell.api.run('spatial.assign_container', model, products=[space], relating_structure=storey)\\n\\n    changes.append({\\n        'global_id': space.GlobalId,\\n        'entity_name': 'Office-101',\\n        'ifc_type': 'IfcSpace',\\n        'description': 'Created new IfcSpace and assigned to Level 1',\\n        'old_value': '(none)',\\n        'new_value': 'Office-101 on Level 1',\\n    })\\n\\n    return {'summary': 'Created IfcSpace Office-101 on Level 1', 'changes': changes}",
+  "code": "def modify_ifc(model):\\n    import ifcopenshell\\n    import ifcopenshell.api\\n\\n    changes = []\\n\\n    # Find the target storey\\n    storey = None\\n    for s in model.by_type('IfcBuildingStorey'):\\n        if 'Level 1' in (s.Name or '') or '1' in (s.LongName or ''):\\n            storey = s\\n            break\\n\\n    if storey is None:\\n        raise ValueError('Could not find Level 1 storey')\\n\\n    # Create the space\\n    space = ifcopenshell.api.run('root.create_entity', model, ifc_class='IfcSpace')\\n    ifcopenshell.api.run('attribute.edit_attributes', model, product=space, attributes={'Name': 'Office-101', 'LongName': 'Office 101', 'Description': 'Office space'})\\n\\n    # Assign to storey\\n    ifcopenshell.api.run('aggregate.assign_object', model, products=[space], relating_object=storey)\\n\\n    changes.append({\\n        'global_id': space.GlobalId,\\n        'entity_name': 'Office-101',\\n        'ifc_type': 'IfcSpace',\\n        'description': 'Created new IfcSpace and aggregated under Level 1',\\n        'old_value': '(none)',\\n        'new_value': 'Office-101 on Level 1',\\n    })\\n\\n    return {'summary': 'Created IfcSpace Office-101 on Level 1', 'changes': changes}",
   "explanation": "Creates a new IfcSpace entity named Office-101 and assigns it to the Level 1 storey.",
   "confidence": 0.85
 }
@@ -156,13 +214,35 @@ Generate self-contained IfcOpenShell code to fulfill this request. Return JSON o
 class Tier3Planner:
     """Generates sandboxed IfcOpenShell Python code from natural language requests."""
 
-    def __init__(self, user=None):
-        self.llm = get_llm(user=user, temperature=0.1, format_json=True)
+    def __init__(self, user=None, temperature: float = 0.1):
+        self.llm = get_llm(user=user, temperature=temperature, format_json=True)
 
-    def generate_code(self, user_message: str, entity_context: str) -> dict:
-        """Invoke LLM to produce a modify_ifc() function. Returns validated JSON with code, explanation, confidence."""
+    def generate_code(
+        self,
+        user_message: str,
+        entity_context: str,
+        skill_examples: list[dict] | None = None,
+    ) -> dict:
+        """
+        Invoke LLM to produce a modify_ifc() function.
+
+        When `skill_examples` contains past Tier 3 successes with
+        `generated_code`, they are rendered into the system prompt as
+        reference patterns. The LLM is instructed to adapt rather than copy;
+        the full Tier 3 safety stack still gates execution.
+
+        Returns validated JSON with code, explanation, confidence.
+        """
+        reference_block = _format_tier3_references(skill_examples or [])
+        system_content = TIER3_SYSTEM_PROMPT
+        ref_count = 0
+        if reference_block:
+            system_content = f"{TIER3_SYSTEM_PROMPT}\n\n{reference_block}"
+            ref_count = reference_block.count("--- Reference ")
+            logger.info("Tier3 code generation with %d reference pattern(s).", ref_count)
+
         messages = [
-            SystemMessage(content=TIER3_SYSTEM_PROMPT),
+            SystemMessage(content=system_content),
             HumanMessage(
                 content=TIER3_USER_TEMPLATE.format(
                     user_message=user_message,

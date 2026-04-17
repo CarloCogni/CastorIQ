@@ -12,8 +12,12 @@ Stage 2 — Cosine similarity ranking (pgvector):
 Design constraints:
   - Only retrieves examples where was_approved=True AND commit_success=True.
   - K=3 hardcoded — no dynamic K.
-  - Returns truncated dicts (operation, filter, tier, confidence, query_text)
-    to minimise token cost when injected into the system prompt.
+  - Returns truncated dicts (operation, filter, tier, confidence, query_text,
+    generated_code) to minimise token cost when injected into the system prompt.
+    `generated_code` is None for Tier 1/2 examples and carries the successful
+    IfcOpenShell code for Tier 3 examples (Deliverable 5 — certified Tier 3
+    reuse). The Tier 3 planner filters on this field when building few-shot
+    reference patterns.
   - Falls back to [] on any error — never blocks the pipeline.
 """
 
@@ -110,4 +114,5 @@ def _truncate(example: SkillExample) -> dict:
         "filter": json.dumps(intent.get("filter", {})),
         "tier": intent.get("tier", example.outcome_tier),
         "confidence": intent.get("confidence", ""),
+        "generated_code": example.generated_code,
     }

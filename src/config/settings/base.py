@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     "embeddings",
     "writeback",
     "metacastor",
+    "eastereggs",
 ]
 
 MIDDLEWARE = [
