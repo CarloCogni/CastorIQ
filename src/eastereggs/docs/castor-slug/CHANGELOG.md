@@ -13,6 +13,16 @@ Format:
 
 ---
 
+## 2026-04-17 — routine/2026-04-17-extract-entities
+- Extracted sprite part-attachers (`attachBeaverParts`, `attachBugParts`, `attachOrphanParts`, `attachPsetParts`, `attachGeometryParts`, `attachStaleParts`, `attachTokenParts`) and enemy/pickup spawn factories (`spawnDupGuid`, `spawnOrphan`, `spawnPset`, `spawnGeometry`, `spawnStale`, `spawnToken`) into a new `entities.js` module.
+- Module exports a single `createEntities({ k, COLORS, GROUND_Y, ENEMY_SPEED_WALK })` factory; `main.js` calls it once at module load and destructures the names. Spawn functions now take `wave` as a second arg (was a closure variable).
+- Files touched: `static/eastereggs/castor-slug/main.js` (1303 → 818 lines), `static/eastereggs/castor-slug/entities.js` (new, 535 lines).
+- Behavior: no functional changes intended. `attachBeaverParts` is still imported in both menu and game scenes; `pickEnemyType()` returns the same factories; the spawn call site now passes `wave` explicitly.
+- Verified mentally: menu → game transition unchanged, all 5 enemy types still keyed by tags ("dup-guid", "orphan", "shielded", "taboo", "drops-token"), bullet/stomp branching by tag still works, gameover scene untouched.
+- Deferred: nothing.
+
+---
+
 ## 2026-04-16 — pre-routine baseline (manual)
 Baseline state before autonomous runs begin. Shipped by the human + Claude interactively:
 
