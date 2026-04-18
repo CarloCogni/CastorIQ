@@ -13,6 +13,15 @@ Format:
 
 ---
 
+## 2026-04-18 — routine/2026-04-18-entities-split
+
+- Split sprite composition + enemy spawn factories out of `main.js` into a new `entities.js` module next to it. `main.js` dropped from 1303 → 815 lines. No behavior change.
+- Module exposes `createEntities(k, COLORS, GROUND_Y, ENEMY_SPEED_WALK)` which returns all 7 `attach*Parts` factories and all 6 `spawn*` factories. `ENEMY_SPEED_WALK` hoisted to module scope in `main.js` so the entity module can be built once and reused by both scenes.
+- `wave` is now passed per spawn call (`factory(worldX, wave)`) instead of read via closure, so wave-dependent speed formulas (`ENEMY_SPEED_WALK + wave * 8`, etc.) still apply exactly as before. `pickEnemyType` stays in `main.js` since its weights are scene logic.
+- Files touched: `static/eastereggs/castor-slug/main.js`, `static/eastereggs/castor-slug/entities.js` (new), `docs/castor-slug/ROADMAP.md`, `docs/castor-slug/CHANGELOG.md`.
+- Mentally walked the playability checklist: menu → game → 5 enemy types with correct wave weighting → Geometry self-damage (taboo tag preserved) → PSet stomp (shielded tag preserved) → Stale drops token (drops-token tag preserved, `entities.spawnToken` call wired) → gameover + restart. Template already loads `main.js` as `type="module"`, so the relative `./entities.js` import resolves without any HTML change.
+- Deferred: nothing — the refactor was the whole scope. Remaining roadmap items renumbered (polish pack is now #1).
+
 ## 2026-04-16 — pre-routine baseline (manual)
 Baseline state before autonomous runs begin. Shipped by the human + Claude interactively:
 
