@@ -371,10 +371,12 @@ class ProposalConsumer(AsyncJsonWebsocketConsumer):
     @sync_to_async
     def _check_project_access(self) -> bool:
         from environments.models import Project
+        from environments.services import ProjectAccessService
 
         try:
             project = Project.objects.select_related("owner").get(pk=self.project_id)
-            return project.user_has_access(self.user)
+            # Modify-mode proposals mutate the IFC — EDITOR+ only.
+            return ProjectAccessService.can_modify(self.user, project)
         except Project.DoesNotExist:
             return False
 
@@ -479,10 +481,12 @@ class ScanConsumer(AsyncJsonWebsocketConsumer):
     @sync_to_async
     def _check_project_access(self) -> bool:
         from environments.models import Project
+        from environments.services import ProjectAccessService
 
         try:
             project = Project.objects.select_related("owner").get(pk=self.project_id)
-            return project.user_has_access(self.user)
+            # Conflict scans are read-only reporting; allow any member.
+            return ProjectAccessService.can_access(self.user, project)
         except Project.DoesNotExist:
             return False
 
@@ -564,10 +568,12 @@ class SchemaConversionConsumer(AsyncJsonWebsocketConsumer):
 
     @sync_to_async
     def _check_access(self) -> bool:
+        from environments.services import ProjectAccessService
         from ifc_processor.models import IFCFile
 
         try:
             ifc_file = IFCFile.objects.select_related("project__owner").get(pk=self.ifc_file_id)
-            return ifc_file.project.user_has_access(self.user)
+            # Schema conversion rewrites the IFC file — EDITOR+ only.
+            return ProjectAccessService.can_modify(self.user, ifc_file.project)
         except IFCFile.DoesNotExist:
             return False

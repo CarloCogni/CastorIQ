@@ -1,0 +1,48 @@
+<!-- facilities/components/role_switcher.html — navbar pill + dropdown of active roles -->
+
+{% if facilities_roles %}
+<div class="dropdown">
+    <button class="btn btn-sm rounded-pill px-3 py-1 dropdown-toggle d-flex align-items-center gap-2"
+            type="button"
+            id="facilities-role-pill"
+            data-bs-toggle="dropdown"
+            aria-expanded="false"
+            style="background-color: rgba(20, 184, 166, 0.15); color: var(--castor-facilities, #14b8a6); border: 1px solid rgba(20, 184, 166, 0.35); font-weight: 600;">
+        <i class="bi bi-person-badge"></i>
+        {% if facilities_active_role %}
+            {{ facilities_active_role.get_role_display }}
+        {% else %}
+            No role
+        {% endif %}
+    </button>
+
+    <ul class="dropdown-menu dropdown-menu-dark" aria-labelledby="facilities-role-pill">
+        {% for role in facilities_roles %}
+            <li>
+                <form method="post"
+                      action="{% url 'facilities:role_switch' project.pk %}"
+                      hx-post="{% url 'facilities:role_switch' project.pk %}"
+                      hx-target="#facilities-tab-body"
+                      hx-swap="outerHTML"
+                      class="m-0">
+                    {% csrf_token %}
+                    <input type="hidden" name="role_id" value="{{ role.id }}">
+                    <button type="submit"
+                            class="dropdown-item d-flex align-items-center gap-2 {% if facilities_active_role and role.id == facilities_active_role.id %}active{% endif %}">
+                        <i class="bi bi-person-badge"></i>
+                        <span>{{ role.get_role_display }}</span>
+                        {% if facilities_active_role and role.id == facilities_active_role.id %}
+                            <i class="bi bi-check2 ms-auto"></i>
+                        {% endif %}
+                    </button>
+                </form>
+            </li>
+        {% endfor %}
+    </ul>
+</div>
+{% else %}
+<span class="badge rounded-pill fs-8"
+      style="background-color: rgba(148, 163, 184, 0.15); color: var(--bs-secondary-color); border: 1px solid var(--bs-border-color); font-weight: 500;">
+    <i class="bi bi-person-slash me-1"></i>No facility roles assigned
+</span>
+{% endif %}

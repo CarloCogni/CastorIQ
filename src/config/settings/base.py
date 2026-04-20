@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     "writeback",
     "metacastor",
     "eastereggs",
+    "facilities",
 ]
 
 MIDDLEWARE = [

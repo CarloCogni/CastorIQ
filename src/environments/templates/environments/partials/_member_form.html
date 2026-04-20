@@ -1,0 +1,26 @@
+<!-- environments/partials/_member_form.html -->
+<form hx-post="{% url 'projects:member_add' project.pk %}"
+      hx-target="#members-tbody"
+      hx-swap="beforeend"
+      hx-on::after-request="if (event.detail.successful) this.reset();">
+    {% csrf_token %}
+    <div class="row g-2 align-items-end">
+        <div class="col-md-7">
+            <label class="form-label small text-secondary mb-1" for="new-member-email">Email</label>
+            <input type="email" id="new-member-email" name="email" class="form-control form-control-sm"
+                   placeholder="user@example.com" required>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label small text-secondary mb-1" for="new-member-permission">Permission</label>
+            <select id="new-member-permission" name="permission" class="form-select form-select-sm">
+                {% for value, label in permission_choices %}
+                <option value="{{ value }}">{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <button type="submit" class="btn btn-sm btn-primary w-100">Add</button>
+        </div>
+    </div>
+    <div class="form-text small">The user must already have an account. Invites for non-existing users aren't enabled yet.</div>
+</form>

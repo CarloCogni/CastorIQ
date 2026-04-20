@@ -1,0 +1,51 @@
+<!-- environments/partials/_member_row.html -->
+<tr id="member-row-{{ membership.user_id }}">
+    <td>
+        <div class="d-flex flex-column">
+            <span class="fw-medium">{{ membership.user.username }}</span>
+            <span class="text-secondary small">{{ membership.user.email }}</span>
+        </div>
+    </td>
+    <td>
+        {% if membership.permission == "owner" %}
+            <span class="badge bg-warning text-dark">Owner</span>
+        {% elif can_manage_access %}
+            <form class="d-inline"
+                  hx-post="{% url 'projects:member_change_permission' project.pk membership.user_id %}"
+                  hx-target="#member-row-{{ membership.user_id }}"
+                  hx-swap="outerHTML"
+                  hx-trigger="change">
+                {% csrf_token %}
+                <select name="permission" class="form-select form-select-sm" style="max-width: 140px;">
+                    {% for value, label in permission_choices %}
+                    <option value="{{ value }}" {% if membership.permission == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </form>
+        {% else %}
+            <span class="badge bg-secondary">{{ membership.get_permission_display }}</span>
+        {% endif %}
+    </td>
+    <td class="text-secondary small">{{ membership.joined_at|date:"Y-m-d" }}</td>
+    <td class="text-secondary small">
+        {% if membership.invited_by %}{{ membership.invited_by.username }}{% else %}—{% endif %}
+    </td>
+    <td class="text-end">
+        {% if can_manage_access %}
+            {% if membership.permission == "owner" %}
+                <button type="button" class="btn btn-sm btn-outline-secondary"
+                        data-bs-toggle="modal" data-bs-target="#transferOwnershipModal">
+                    Transfer…
+                </button>
+            {% else %}
+                <button type="button" class="btn btn-sm btn-outline-danger"
+                        hx-post="{% url 'projects:member_remove' project.pk membership.user_id %}"
+                        hx-target="#member-row-{{ membership.user_id }}"
+                        hx-swap="outerHTML"
+                        hx-confirm="Remove {{ membership.user.username }} from the project?">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            {% endif %}
+        {% endif %}
+    </td>
+</tr>

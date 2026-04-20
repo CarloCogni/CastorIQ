@@ -19,7 +19,12 @@ class UserFactory(factory.django.DjangoModelFactory):
 
 
 class ProjectFactory(factory.django.DjangoModelFactory):
-    """Factory for environments.Project."""
+    """Factory for environments.Project.
+
+    Auto-creates the OWNER membership row on the post-generation hook so
+    ``ProjectAccessService.can_access(owner, project)`` returns True without
+    tests having to remember the bootstrap step.
+    """
 
     class Meta:
         model = "environments.Project"
@@ -27,13 +32,38 @@ class ProjectFactory(factory.django.DjangoModelFactory):
     name = factory.Sequence(lambda n: f"Project {n}")
     owner = factory.SubFactory(UserFactory)
 
+    @factory.post_generation
+    def _bootstrap_owner(obj, create, extracted, **kwargs):  # noqa: N805 — factory_boy passes the generated object
+        if not create:
+            return
+        # Deferred import: avoids a circular import when factories are loaded
+        # before the services package.
+        from environments.services import ProjectAccessService
+
+        ProjectAccessService.bootstrap_owner_membership(obj)
+
 
 class ProjectMembershipFactory(factory.django.DjangoModelFactory):
-    """Factory for environments.ProjectMembership."""
+    """Factory for ProjectMembership rows (non-OWNER by default).
+
+    Use ``transfer_ownership`` if you need to move the OWNER — don't try to
+    create a second OWNER row via this factory.
+    """
 
     class Meta:
         model = "environments.ProjectMembership"
 
     project = factory.SubFactory(ProjectFactory)
     user = factory.SubFactory(UserFactory)
-    role = "viewer"
+    permission = "viewer"
+
+
+class ProjectRoleFactory(factory.django.DjangoModelFactory):
+    """Factory for environments.ProjectRole (7D FM functional roles)."""
+
+    class Meta:
+        model = "environments.ProjectRole"
+
+    project = factory.SubFactory(ProjectFactory)
+    user = factory.SubFactory(UserFactory)
+    role = "facilitiesmanager"

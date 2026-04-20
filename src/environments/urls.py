@@ -37,6 +37,24 @@ urlpatterns = [
     # Project CRUD
     path("<uuid:pk>/edit/", views.ProjectUpdateView.as_view(), name="edit"),
     path("<uuid:pk>/delete/", views.ProjectDeleteView.as_view(), name="delete"),
+    # People (access + functional roles)
+    path("<uuid:pk>/people/", views.PeopleView.as_view(), name="people"),
+    path("<uuid:pk>/people/add/", views.MemberAddView.as_view(), name="member_add"),
+    path(
+        "<uuid:pk>/people/<int:user_id>/change/",
+        views.MemberChangePermissionView.as_view(),
+        name="member_change_permission",
+    ),
+    path(
+        "<uuid:pk>/people/<int:user_id>/remove/",
+        views.MemberRemoveView.as_view(),
+        name="member_remove",
+    ),
+    path(
+        "<uuid:pk>/people/transfer/",
+        views.TransferOwnershipView.as_view(),
+        name="transfer_ownership",
+    ),
     # IFC CRUD
     path("ifc/<uuid:pk>/edit/", views.IFCFileUpdateView.as_view(), name="ifc_edit"),
     path("ifc/<uuid:pk>/reparse/", views.IFCReparseView.as_view(), name="ifc_reparse"),

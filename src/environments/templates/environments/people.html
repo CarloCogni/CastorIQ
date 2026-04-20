@@ -1,0 +1,103 @@
+<!-- environments/people.html -->
+{% extends "core/base.html" %}
+
+{% block title %}People — {{ project.name }}{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width: 960px;">
+
+    <div class="d-flex align-items-center mb-4">
+        <a href="{% url 'projects:ask' project.pk %}" class="btn btn-sm btn-link text-secondary me-2" title="Back to project">
+            <i class="bi bi-arrow-left"></i>
+        </a>
+        <div>
+            <h4 class="mb-0">People</h4>
+            <div class="text-secondary small">{{ project.name }}</div>
+        </div>
+    </div>
+
+    <!-- Section: Access (ProjectMembership) -->
+    <div class="card mb-4">
+        <div class="card-header d-flex align-items-center justify-content-between">
+            <div>
+                <h6 class="mb-0">Access</h6>
+                <div class="text-secondary small">Who can open this project and at what permission level.</div>
+            </div>
+            {% if can_manage_access %}
+            <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#add-member-form">
+                <i class="bi bi-person-plus me-1"></i>Add member
+            </button>
+            {% endif %}
+        </div>
+
+        {% if can_manage_access %}
+        <div class="collapse" id="add-member-form">
+            <div class="card-body border-bottom">
+                {% include "environments/partials/_member_form.html" %}
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="table-responsive">
+            <table class="table table-sm mb-0 align-middle">
+                <thead>
+                    <tr>
+                        <th style="width: 40%;">Member</th>
+                        <th>Permission</th>
+                        <th>Joined</th>
+                        <th>Invited by</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="members-tbody">
+                    {% for membership in memberships %}
+                    {% include "environments/partials/_member_row.html" %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Section: Functional roles (ProjectRole) -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h6 class="mb-0">Functional roles</h6>
+            <div class="text-secondary small">
+                7D Facility Management role assignments. Read-only here — manage via
+                <a href="{% url 'admin:environments_projectrole_changelist' %}">Django admin</a>.
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm mb-0 align-middle">
+                <thead>
+                    <tr>
+                        <th>Member</th>
+                        <th>Functional role</th>
+                        <th>Valid from</th>
+                        <th>Valid until</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for role in facility_roles %}
+                    <tr>
+                        <td>{{ role.user.username }}</td>
+                        <td>{{ role.get_role_display }}</td>
+                        <td>{{ role.valid_from|date:"Y-m-d" }}</td>
+                        <td>{% if role.valid_until %}{{ role.valid_until|date:"Y-m-d" }}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="4" class="text-secondary text-center py-3">No functional roles assigned.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% if can_manage_access %}
+    {% include "environments/partials/_transfer_modal.html" %}
+    {% endif %}
+
+</div>
+{% endblock %}

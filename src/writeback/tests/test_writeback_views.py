@@ -791,10 +791,12 @@ class TestRestoreCommitView:
 
     def test_restore_non_owner_raises_permission_denied(self, client):
         """Non-owner cannot restore commits."""
+        from environments.services import ProjectAccessService
+
         owner = UserFactory()
         project = ProjectFactory(owner=owner)
         collaborator = UserFactory()
-        project.collaborators.add(collaborator)
+        ProjectAccessService.add_member(project=project, user=collaborator, permission="editor")
         _login(client, collaborator)
 
         fake_commit_id = uuid.uuid4()

@@ -844,8 +844,8 @@ class TestIFCReparseView:
         assert response.status_code == 302
         assert "/login/" in response["Location"]
 
-    def test_get_non_owner_returns_404(self, client):
-        """User who does not own the project gets 404."""
+    def test_get_non_owner_returns_403(self, client):
+        """Non-owner (even project members) cannot reparse — owner-only op."""
         owner = UserFactory()
         other = UserFactory()
         project = ProjectFactory(owner=owner)
@@ -854,7 +854,7 @@ class TestIFCReparseView:
 
         response = client.get(reverse("projects:ifc_reparse", kwargs={"pk": ifc_file.pk}))
 
-        assert response.status_code == 404
+        assert response.status_code == 403
 
     def test_post_runs_pipeline_and_redirects_to_processed(self, client):
         """POST triggers the processing pipeline and redirects to file_processed."""
@@ -903,8 +903,8 @@ class TestIFCReparseView:
         assert response.status_code == 302
         assert "/login/" in response["Location"]
 
-    def test_post_non_owner_returns_404(self, client):
-        """POST by a user who does not own the project gets 404."""
+    def test_post_non_owner_returns_403(self, client):
+        """POST by a user who does not own the project gets 403 — owner-only."""
         owner = UserFactory()
         other = UserFactory()
         project = ProjectFactory(owner=owner)
@@ -913,7 +913,7 @@ class TestIFCReparseView:
 
         response = client.post(reverse("projects:ifc_reparse", kwargs={"pk": ifc_file.pk}))
 
-        assert response.status_code == 404
+        assert response.status_code == 403
 
 
 # ── DocumentUpdateView ───────────────────────────────────────────────────────
