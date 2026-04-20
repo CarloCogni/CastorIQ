@@ -24,6 +24,7 @@
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end bg-surface shadow border">
                     <li><a class="dropdown-item fs-8" href="{% url 'projects:edit' project.pk %}">Edit Project</a></li>
+                    <li><a class="dropdown-item fs-8" href="{% url 'projects:people' project.pk %}">People</a></li>
                     <li><a class="dropdown-item fs-8 text-danger" href="{% url 'projects:delete' project.pk %}">Delete Project</a></li>
                 </ul>
             </div>

@@ -21,6 +21,7 @@ from django.views.generic import (
 from chat.models import ChatSession, Message
 from core.mixins import ProjectTabMixin
 from environments.models import Project
+from environments.services import ProjectAccessService
 from ifc_processor.models import IFCDataIssue
 from writeback.models import Conflict, GitCommit, ScanRun
 from writeback.services.modification_service import (
@@ -564,7 +565,7 @@ class DismissConflictView(LoginRequiredMixin, View):
 
     def post(self, request, pk, conflict_id):
         project = get_object_or_404(Project.objects.select_related("owner"), pk=pk)
-        if not project.user_has_access(request.user):
+        if not ProjectAccessService.can_modify(request.user, project):
             return JsonResponse({"status": "error", "message": "Access denied."}, status=403)
 
         conflict = get_object_or_404(Conflict, id=conflict_id, project=project)
@@ -583,7 +584,7 @@ class BulkDismissView(LoginRequiredMixin, View):
 
     def post(self, request, pk):
         project = get_object_or_404(Project.objects.select_related("owner"), pk=pk)
-        if not project.user_has_access(request.user):
+        if not ProjectAccessService.can_modify(request.user, project):
             return JsonResponse({"status": "error", "message": "Access denied."}, status=403)
 
         ids_raw = request.POST.get("conflict_ids", "") or request.POST.get("ids", "")
@@ -601,7 +602,7 @@ class IgnoreConflictView(LoginRequiredMixin, View):
 
     def post(self, request, pk, conflict_id):
         project = get_object_or_404(Project.objects.select_related("owner"), pk=pk)
-        if not project.user_has_access(request.user):
+        if not ProjectAccessService.can_modify(request.user, project):
             return JsonResponse({"status": "error", "message": "Access denied."}, status=403)
 
         conflict = get_object_or_404(Conflict, id=conflict_id, project=project)
@@ -616,7 +617,7 @@ class BulkIgnoreView(LoginRequiredMixin, View):
 
     def post(self, request, pk):
         project = get_object_or_404(Project.objects.select_related("owner"), pk=pk)
-        if not project.user_has_access(request.user):
+        if not ProjectAccessService.can_modify(request.user, project):
             return JsonResponse({"status": "error", "message": "Access denied."}, status=403)
 
         ids_raw = request.POST.get("conflict_ids", "") or request.POST.get("ids", "")
@@ -632,7 +633,7 @@ class BulkResolveView(LoginRequiredMixin, View):
 
     def post(self, request, pk):
         project = get_object_or_404(Project.objects.select_related("owner"), pk=pk)
-        if not project.user_has_access(request.user):
+        if not ProjectAccessService.can_modify(request.user, project):
             return JsonResponse({"status": "error", "message": "Access denied."}, status=403)
 
         ids_raw = request.POST.get("conflict_ids", "")
@@ -655,7 +656,7 @@ class DeleteAllConflictsView(LoginRequiredMixin, View):
 
     def post(self, request, pk):
         project = get_object_or_404(Project.objects.select_related("owner"), pk=pk)
-        if not project.user_has_access(request.user):
+        if not ProjectAccessService.can_modify(request.user, project):
             return JsonResponse({"status": "error", "message": "Access denied."}, status=403)
         deleted, _ = project.conflicts.all().delete()
         return JsonResponse({"status": "deleted", "count": deleted})
@@ -666,7 +667,7 @@ class DismissDataIssueView(LoginRequiredMixin, View):
 
     def post(self, request, pk, issue_id):
         project = get_object_or_404(Project.objects.select_related("owner"), pk=pk)
-        if not project.user_has_access(request.user):
+        if not ProjectAccessService.can_modify(request.user, project):
             return JsonResponse({"status": "error", "message": "Access denied."}, status=403)
 
         issue = get_object_or_404(
@@ -689,7 +690,7 @@ class RestoreDataIssueView(LoginRequiredMixin, View):
 
     def post(self, request, pk, issue_id):
         project = get_object_or_404(Project.objects.select_related("owner"), pk=pk)
-        if not project.user_has_access(request.user):
+        if not ProjectAccessService.can_modify(request.user, project):
             return JsonResponse({"status": "error", "message": "Access denied."}, status=403)
 
         issue = get_object_or_404(
@@ -716,7 +717,7 @@ class BulkDismissDataIssuesView(LoginRequiredMixin, View):
 
     def post(self, request, pk):
         project = get_object_or_404(Project.objects.select_related("owner"), pk=pk)
-        if not project.user_has_access(request.user):
+        if not ProjectAccessService.can_modify(request.user, project):
             return JsonResponse({"status": "error", "message": "Access denied."}, status=403)
 
         qs = IFCDataIssue.objects.filter(
@@ -737,7 +738,7 @@ class RestoreCommitView(LoginRequiredMixin, View):
         project = get_object_or_404(Project.objects.select_related("owner"), pk=pk)
 
         # Ensure only owner can restore
-        if project.owner != request.user:
+        if not ProjectAccessService.can_delete(request.user, project):
             raise PermissionDenied("Only the project owner can restore commits.")
 
         from writeback.services.modification_service import ModificationError, ModificationService

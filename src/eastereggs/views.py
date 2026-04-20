@@ -62,8 +62,10 @@ class CastorSlugView(LoginRequiredMixin, View):
         }
 
         if project_id is not None:
+            from environments.services import ProjectAccessService
+
             project = get_object_or_404(Project.objects.select_related("owner"), pk=project_id)
-            if not project.user_has_access(request.user):
+            if not ProjectAccessService.can_access(request.user, project):
                 return HttpResponseForbidden("Access denied.")
             context["project"] = project
             context["has_scan_link"] = True

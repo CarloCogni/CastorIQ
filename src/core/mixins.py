@@ -1,26 +1,68 @@
+# core/mixins.py
+"""View mixins for project access, tab rendering, and permission gating.
+
+All access decisions delegate to
+:class:`environments.services.access_service.ProjectAccessService`. Do not
+check ``project.owner == user`` or iterate memberships directly in views —
+add a mixin here or call the service.
+"""
+
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.exceptions import PermissionDenied
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 
 from chat.models import ChatSession
 from environments.models import Project
+from environments.services import ProjectAccessService
 
 
 class ProjectAccessMixin(LoginRequiredMixin):
-    """Mixin to check project access."""
+    """Require that the logged-in user has any membership on the project.
 
-    def get_project(self):
-        """Get project with access check."""
+    Matches read-only endpoints (tab views, Explore, Schedule, HTMX partials).
+    Write endpoints should use :class:`ProjectModifyAccessMixin` instead.
+    """
+
+    def get_project(self) -> Project:
         project = get_object_or_404(Project.objects.select_related("owner"), pk=self.kwargs["pk"])
-        if not project.user_has_access(self.request.user):
-            from django.core.exceptions import PermissionDenied
-
+        if not ProjectAccessService.can_access(self.request.user, project):
             raise PermissionDenied
         return project
 
 
+class ProjectModifyAccessMixin(LoginRequiredMixin):
+    """Require EDITOR or OWNER on the project.
+
+    Used by Modify-mode endpoints, writeback propose/approve, file upload,
+    conflict mutation. Refuses VIEWER and non-members.
+    """
+
+    def get_project(self) -> Project:
+        project = get_object_or_404(Project.objects.select_related("owner"), pk=self.kwargs["pk"])
+        if not ProjectAccessService.can_modify(self.request.user, project):
+            raise PermissionDenied
+        return project
+
+
+class ProjectOwnerRequiredMixin(LoginRequiredMixin):
+    """Require OWNER on the project.
+
+    Used by delete, transfer, reparse, restore — actions that affect the
+    project's identity or commit history. Works on both Project objects and
+    objects with a ``.project`` attribute (e.g. IFCFile).
+    """
+
+    def get_object(self, queryset=None):
+        obj = super().get_object(queryset)
+        project = getattr(obj, "project", obj)
+        if not ProjectAccessService.can_delete(self.request.user, project):
+            raise PermissionDenied("Only the project owner can perform this action.")
+        return obj
+
+
 class ProjectTabMixin(ProjectAccessMixin):
-    """Base mixin for project tab views."""
+    """Base mixin for project tab views — renders the project detail shell."""
 
     template_name = "environments/project_detail.html"
 
@@ -28,28 +70,29 @@ class ProjectTabMixin(ProjectAccessMixin):
         context = super().get_context_data(**kwargs)
         project = self.get_project()
 
-        # Efficient query for sidebar data
         context["project"] = project
         context["active_tab"] = self.active_tab
 
-        # IFC files with status counts
+        # Permission of the current user — used by templates to show/hide
+        # mutation controls without a second DB hit.
+        context["user_permission"] = ProjectAccessService.user_permission(
+            self.request.user, project
+        )
+
         context["ifc_files"] = project.ifc_files.only(
             "id", "name", "status", "created_at", "entity_count"
         ).order_by("-created_at")
 
-        # Documents with status
         context["documents"] = project.documents.only(
             "id", "name", "document_type", "status", "created_at"
         ).order_by("-created_at")
 
-        # Conflict count for badge
         context["open_conflict_count"] = project.conflicts.filter(status="open").count()
 
-        # inside ProjectTabMixin.get_context_data:
         context["ifc_files"] = project.ifc_files.annotate(
             unresolved_issue_count=Count("data_issues", filter=Q(data_issues__status="open"))
         ).order_by("-created_at")
-        # Chat sessions for sidebar (mode-aware)
+
         mode_map = {"ask": ChatSession.Mode.ASK, "modify": ChatSession.Mode.MODIFY}
         chat_mode = mode_map.get(self.active_tab)
         if chat_mode:
@@ -61,7 +104,6 @@ class ProjectTabMixin(ProjectAccessMixin):
         else:
             context["chat_sessions"] = None
 
-        # Active session ID for sidebar highlight (set by child views)
         context.setdefault("active_session_id", None)
 
         return context

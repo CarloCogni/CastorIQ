@@ -8,6 +8,7 @@ from datetime import datetime
 
 from django.conf import settings
 from django.contrib import messages
+from django.contrib.auth import get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
@@ -28,7 +29,11 @@ from django.views.generic import (
 from chat.models import ChatSession, Message
 from chat.services.rag_service import SYSTEM_PROMPT, RAGService
 from core.llm import resolve_model_name
-from core.mixins import ProjectAccessMixin, ProjectTabMixin
+from core.mixins import (
+    ProjectAccessMixin,
+    ProjectOwnerRequiredMixin,
+    ProjectTabMixin,
+)
 from core.token_budget import compute_budget, get_context_window
 from documents.models import Document
 from documents.services.document_processor import DocumentProcessor
@@ -41,7 +46,13 @@ from ifc_processor.services.schedule_service import (
 )
 from ifc_processor.templatetags.ifc_filters import get_unit_type_for_quantity, smart_round
 
-from .models import Project
+from .models import Project, ProjectMembership, ProjectRole
+from .services import (
+    LastOwnerRemovalBlocked,
+    OwnerDemotionBlocked,
+    ProjectAccessError,
+    ProjectAccessService,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -51,33 +62,18 @@ def _fmt_ctx(tokens: int) -> str:
     return f"{tokens // 1024}k" if tokens >= 1024 else str(tokens)
 
 
-# --- Mixins ---
-
-
-class ProjectOwnerRequiredMixin(LoginRequiredMixin):
-    """Ensure only the project owner can perform this action."""
-
-    def get_object(self, queryset=None):
-        obj = super().get_object(queryset)
-        # Handle both Project objects and objects related to Project (like IFCFile)
-        project = getattr(obj, "project", obj)
-        if project.owner != self.request.user:
-            raise PermissionDenied("Only the project owner can perform this action.")
-        return obj
-
-
 class ProjectListView(LoginRequiredMixin, ListView):
-    """List all projects user has access to."""
+    """List all projects the user is a member of, regardless of tier."""
 
     model = Project
     template_name = "environments/project_list.html"
     context_object_name = "projects"
 
     def get_queryset(self):
-        """Get projects owned by or shared with user."""
-        user = self.request.user
+        """Projects with a ProjectMembership for the current user."""
         return (
-            Project.objects.filter(Q(owner=user) | Q(collaborators=user), is_archived=False)
+            ProjectAccessService.accessible_projects(self.request.user)
+            .filter(is_archived=False)
             .select_related("owner")
             .annotate(
                 ifc_count=Count("ifc_files", distinct=True),
@@ -91,13 +87,12 @@ class ProjectListView(LoginRequiredMixin, ListView):
                     distinct=True,
                 ),
             )
-            .distinct()
             .order_by("-updated_at")
         )
 
 
 class ProjectCreateView(LoginRequiredMixin, CreateView):
-    """Create a new project."""
+    """Create a new project and bootstrap its OWNER membership."""
 
     model = Project
     template_name = "environments/project_form.html"
@@ -106,7 +101,12 @@ class ProjectCreateView(LoginRequiredMixin, CreateView):
 
     def form_valid(self, form):
         form.instance.owner = self.request.user
-        return super().form_valid(form)
+        response = super().form_valid(form)
+        # Keep Project.owner and the OWNER membership row in lockstep from
+        # creation onward. Without this bootstrap, the creator holds the FK
+        # but has no membership row — every access check refuses them.
+        ProjectAccessService.bootstrap_owner_membership(self.object)
+        return response
 
 
 class ProjectDetailView(ProjectAccessMixin, DetailView):
@@ -412,10 +412,20 @@ class IFCFileUpdateView(ProjectAccessMixin, UpdateView):
 
 
 class IFCReparseView(LoginRequiredMixin, View):
-    """Confirmation page and trigger for reparsing an already-uploaded IFC file."""
+    """Confirmation page and trigger for reparsing an already-uploaded IFC file.
+
+    Reparse re-runs the processing pipeline, wipes extracted entities, and
+    may churn the Git history. OWNER only.
+    """
+
+    def _get_ifc(self, request, pk) -> IFCFile:
+        ifc_file = get_object_or_404(IFCFile.objects.select_related("project"), pk=pk)
+        if not ProjectAccessService.can_delete(request.user, ifc_file.project):
+            raise PermissionDenied("Only the project owner can reparse IFC files.")
+        return ifc_file
 
     def get(self, request: HttpRequest, pk) -> HttpResponse:
-        ifc_file = get_object_or_404(IFCFile, pk=pk, project__owner=request.user)
+        ifc_file = self._get_ifc(request, pk)
         return render(
             request,
             "environments/ifc_reparse_confirm.html",
@@ -423,7 +433,7 @@ class IFCReparseView(LoginRequiredMixin, View):
         )
 
     def post(self, request: HttpRequest, pk) -> HttpResponse:
-        ifc_file = get_object_or_404(IFCFile, pk=pk, project__owner=request.user)
+        ifc_file = self._get_ifc(request, pk)
         processor = IFCProcessingService(ifc_file)
         success = processor.run_pipeline()
         request.session["processing_result"] = {
@@ -729,9 +739,7 @@ class IFCSchemaConvertView(ProjectAccessMixin, View):
         """Resolve project via the IFC file's pk kwarg."""
         ifc_file = get_object_or_404(IFCFile, pk=self.kwargs["pk"])
         project = ifc_file.project
-        if not project.user_has_access(self.request.user):
-            from django.core.exceptions import PermissionDenied
-
+        if not ProjectAccessService.can_access(self.request.user, project):
             raise PermissionDenied
         return project
 
@@ -774,7 +782,7 @@ class DocumentOCRView(LoginRequiredMixin, View):
             pk=pk,
         )
         project = document.project
-        if not project.user_has_access(request.user):
+        if not ProjectAccessService.can_access(request.user, project):
             raise PermissionDenied
 
         if not getattr(settings, "GLM_OCR_ENABLED", False):
@@ -1309,6 +1317,184 @@ class ScheduleExcelExportView(ProjectAccessMixin, View):
         response["Content-Disposition"] = f'attachment; filename="{safe_name}_schedule_{ts}.xlsx"'
         wb.save(response)
         return response
+
+
+# --- People (members + functional roles) ---
+
+
+class PeopleView(ProjectTabMixin, TemplateView):
+    """Project Settings → People page.
+
+    Two sections: Access (ProjectMembership CRUD for OWNERs) and Functional
+    roles (ProjectRole list — read-only in this PR, see 7D-milestones.md).
+    """
+
+    active_tab = "people"
+    template_name = "environments/people.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        project = self.get_project()
+        user_permission = ProjectAccessService.user_permission(self.request.user, project)
+
+        context["memberships"] = list(ProjectAccessService.members_ordered(project))
+        context["facility_roles"] = (
+            ProjectRole.objects.filter(project=project)
+            .select_related("user")
+            .order_by("user__username", "role", "-valid_from")
+        )
+        context["can_manage_access"] = ProjectAccessService.can_admin(self.request.user, project)
+        context["user_permission"] = user_permission
+        context["permission_choices"] = [
+            # OWNER is excluded from the mutable choices — ownership goes via
+            # the transfer modal, not a plain dropdown.
+            (ProjectMembership.Permission.EDITOR, "Editor"),
+            (ProjectMembership.Permission.VIEWER, "Viewer"),
+        ]
+        return context
+
+
+def _render_member_row(request, project, membership):
+    return render(
+        request,
+        "environments/partials/_member_row.html",
+        {
+            "project": project,
+            "membership": membership,
+            "can_manage_access": True,
+            "permission_choices": [
+                (ProjectMembership.Permission.EDITOR, "Editor"),
+                (ProjectMembership.Permission.VIEWER, "Viewer"),
+            ],
+        },
+    )
+
+
+class MemberAddView(ProjectAccessMixin, View):
+    """HTMX POST: add a member by email at a chosen permission tier."""
+
+    def post(self, request, pk):
+        project = self.get_project()
+        if not ProjectAccessService.can_admin(request.user, project):
+            raise PermissionDenied
+
+        email = (request.POST.get("email") or "").strip().lower()
+        permission = request.POST.get("permission") or ProjectMembership.Permission.VIEWER
+
+        if not email:
+            return HttpResponse("Email is required.", status=400)
+
+        user_model = get_user_model()
+        try:
+            user = user_model.objects.get(email__iexact=email)
+        except user_model.DoesNotExist:
+            return HttpResponse(
+                "No user exists with that email. Invite flow is not enabled yet.", status=400
+            )
+
+        if user.pk == project.owner_id and permission != ProjectMembership.Permission.OWNER:
+            return HttpResponse("The project owner already has OWNER membership.", status=400)
+
+        try:
+            membership = ProjectAccessService.add_member(
+                project=project,
+                user=user,
+                permission=permission,
+                invited_by=request.user,
+            )
+        except ProjectAccessError as exc:
+            return HttpResponse(str(exc), status=400)
+
+        return _render_member_row(request, project, membership)
+
+
+class MemberChangePermissionView(ProjectAccessMixin, View):
+    """HTMX POST: change an existing member's permission."""
+
+    def post(self, request, pk, user_id):
+        project = self.get_project()
+        if not ProjectAccessService.can_admin(request.user, project):
+            raise PermissionDenied
+
+        new_permission = request.POST.get("permission")
+        if new_permission not in ProjectMembership.Permission.values:
+            return HttpResponse("Unknown permission.", status=400)
+
+        user_model = get_user_model()
+        target = get_object_or_404(user_model, pk=user_id)
+
+        try:
+            membership = ProjectAccessService.change_permission(
+                project=project,
+                user=target,
+                new_permission=new_permission,
+            )
+        except OwnerDemotionBlocked as exc:
+            return HttpResponse(str(exc), status=400)
+        except ProjectAccessError as exc:
+            return HttpResponse(str(exc), status=400)
+        except ProjectMembership.DoesNotExist:
+            return HttpResponse("User is not a member.", status=404)
+
+        return _render_member_row(request, project, membership)
+
+
+class MemberRemoveView(ProjectAccessMixin, View):
+    """HTMX POST/DELETE: remove a member from the project."""
+
+    def post(self, request, pk, user_id):
+        return self._remove(request, pk, user_id)
+
+    def delete(self, request, pk, user_id):
+        return self._remove(request, pk, user_id)
+
+    def _remove(self, request, pk, user_id):
+        project = self.get_project()
+        if not ProjectAccessService.can_admin(request.user, project):
+            raise PermissionDenied
+
+        user_model = get_user_model()
+        target = get_object_or_404(user_model, pk=user_id)
+
+        try:
+            ProjectAccessService.remove_member(project=project, user=target)
+        except LastOwnerRemovalBlocked as exc:
+            return HttpResponse(str(exc), status=400)
+        except ProjectMembership.DoesNotExist:
+            return HttpResponse("User is not a member.", status=404)
+
+        # HTMX swap strategy: return empty 200 and let the row hx-swap="outerHTML"
+        # on the client remove the <tr>.
+        return HttpResponse("", status=200)
+
+
+class TransferOwnershipView(ProjectAccessMixin, View):
+    """HTMX POST: transfer ownership to another existing member."""
+
+    def post(self, request, pk):
+        project = self.get_project()
+        if not ProjectAccessService.can_delete(request.user, project):
+            raise PermissionDenied
+
+        new_owner_id = request.POST.get("new_owner_id")
+        if not new_owner_id:
+            return HttpResponse("new_owner_id is required.", status=400)
+
+        user_model = get_user_model()
+        new_owner = get_object_or_404(user_model, pk=new_owner_id)
+
+        if not ProjectAccessService.can_access(new_owner, project):
+            return HttpResponse(
+                "Target user must already be a member before receiving ownership.",
+                status=400,
+            )
+
+        ProjectAccessService.transfer_ownership(project=project, new_owner=new_owner)
+        messages.success(request, f"Ownership transferred to {new_owner.username}.")
+        # Full refresh — ownership change reshuffles every row's control set.
+        return HttpResponse(
+            status=204, headers={"HX-Redirect": reverse("projects:people", args=[project.pk])}
+        )
 
 
 class ScheduleExportView(ProjectAccessMixin, View):

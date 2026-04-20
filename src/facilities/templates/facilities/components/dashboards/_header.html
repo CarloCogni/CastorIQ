@@ -1,0 +1,14 @@
+<!-- facilities/components/dashboards/_header.html — shared header for role dashboards -->
+
+<div class="mb-4 d-flex align-items-center gap-3">
+    <div class="d-flex align-items-center justify-content-center rounded"
+         style="width: 48px; height: 48px; background-color: rgba(20, 184, 166, 0.15); color: var(--castor-facilities, #14b8a6);">
+        <i class="bi bi-building fs-3"></i>
+    </div>
+    <div>
+        <h4 class="mb-0">
+            Welcome, {{ facilities_active_role.get_role_display|default:"guest" }}
+        </h4>
+        <p class="text-secondary mb-0 fs-7">{{ tagline }}</p>
+    </div>
+</div>

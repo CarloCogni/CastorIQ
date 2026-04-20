@@ -214,10 +214,11 @@ class AskConsumer(AsyncJsonWebsocketConsumer):
     @sync_to_async
     def _check_project_access(self) -> bool:
         from environments.models import Project
+        from environments.services import ProjectAccessService
 
         try:
             project = Project.objects.select_related("owner").get(pk=self.project_id)
-            return project.user_has_access(self.user)
+            return ProjectAccessService.can_access(self.user, project)
         except Project.DoesNotExist:
             return False
 

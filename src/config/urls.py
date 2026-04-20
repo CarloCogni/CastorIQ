@@ -14,6 +14,7 @@ urlpatterns = [
     path("api/health/", health_check, name="health_check"),
     path("projects/", include("environments.urls")),
     path("writeback/", include("writeback.urls")),
+    path("facilities/", include("facilities.urls")),
     path("core/", include("core.urls")),
     path("eastereggs/", include("eastereggs.urls")),
     # Authentication

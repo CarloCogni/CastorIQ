@@ -1,0 +1,15 @@
+<!-- facilities/components/dashboards/_default.html — shown when user has no active FM role -->
+
+<div class="empty-state">
+    <i class="bi bi-building" style="color: var(--castor-facilities, #14b8a6);"></i>
+    <h4 class="mb-2">Facilities</h4>
+    <p class="text-secondary mb-4 mx-auto" style="max-width: 480px;">
+        You don't yet have a facility-management role on this project.
+        Ask a project owner or facilities manager to grant you a role to see the
+        tab's operational views.
+    </p>
+    <div class="fs-8 text-secondary">
+        <i class="bi bi-info-circle me-1"></i>
+        Roles can be managed in the Django admin under <code>environments &rsaquo; Project roles</code> (M0 bootstrap).
+    </div>
+</div>

@@ -1,0 +1,33 @@
+<!-- environments/partials/_transfer_modal.html -->
+<div class="modal fade" id="transferOwnershipModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form hx-post="{% url 'projects:transfer_ownership' project.pk %}">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">Transfer ownership</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p>
+                        The current owner will be demoted to <strong>Editor</strong>. The new owner must already
+                        be a member. This cannot be undone by a non-owner.
+                    </p>
+                    <label class="form-label small text-secondary mb-1" for="transfer-new-owner">New owner</label>
+                    <select id="transfer-new-owner" name="new_owner_id" class="form-select form-select-sm" required>
+                        <option value="">— Select a member —</option>
+                        {% for membership in memberships %}
+                            {% if membership.permission != "owner" %}
+                            <option value="{{ membership.user_id }}">{{ membership.user.username }} ({{ membership.user.email }})</option>
+                            {% endif %}
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-sm btn-link" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-sm btn-warning">Transfer ownership</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
