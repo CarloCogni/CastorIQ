@@ -1,0 +1,24 @@
+<!-- facilities/tabs/_facilities_asset_detail.html — wrapper for AssetDetailView -->
+
+<div class="d-flex flex-column gap-3">
+
+    <div class="d-flex align-items-center gap-2">
+        <a href="{% url 'facilities:assets_list' project.pk %}"
+           class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-2">
+            <i class="bi bi-arrow-left"></i> Back to assets
+        </a>
+        {% if spatial_breadcrumb %}
+        <nav aria-label="Spatial breadcrumb" class="fs-8 text-secondary d-flex align-items-center gap-1 flex-wrap">
+            <i class="bi bi-geo-alt"></i>
+            {% for crumb in spatial_breadcrumb %}
+                <span>{{ crumb.name }}</span>
+                {% if not forloop.last %}<i class="bi bi-chevron-right" style="font-size: 0.75em; opacity: 0.55;"></i>{% endif %}
+            {% endfor %}
+        </nav>
+        {% endif %}
+    </div>
+
+    <div id="asset-detail-mount">
+        {% include "facilities/components/asset_detail.html" %}
+    </div>
+</div>

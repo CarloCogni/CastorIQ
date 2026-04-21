@@ -42,6 +42,7 @@
                         hx-post="{% url 'projects:member_remove' project.pk membership.user_id %}"
                         hx-target="#member-row-{{ membership.user_id }}"
                         hx-swap="outerHTML"
+                        hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                         hx-confirm="Remove {{ membership.user.username }} from the project?">
                     <i class="bi bi-x-lg"></i>
                 </button>

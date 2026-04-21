@@ -1,0 +1,28 @@
+<!-- environments/partials/_role_row.html -->
+<tr id="role-row-{{ role.pk }}">
+    <td>
+        <div class="d-flex flex-column">
+            <span class="fw-medium">{{ role.user.username }}</span>
+            <span class="text-secondary small">{{ role.user.email }}</span>
+        </div>
+    </td>
+    <td>
+        <span class="badge" style="background-color: #14b8a6; color: white;">{{ role.get_role_display }}</span>
+    </td>
+    <td class="text-secondary small">{{ role.valid_from|date:"Y-m-d" }}</td>
+    <td class="text-secondary small">
+        {% if role.valid_until %}{{ role.valid_until|date:"Y-m-d" }}{% else %}<span class="text-secondary">—</span>{% endif %}
+    </td>
+    <td class="text-end">
+        {% if can_manage_roles %}
+            <button type="button" class="btn btn-sm btn-outline-danger"
+                    hx-post="{% url 'projects:role_remove' project.pk role.pk %}"
+                    hx-target="#role-row-{{ role.pk }}"
+                    hx-swap="outerHTML"
+                    hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                    hx-confirm="Remove this role assignment?">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        {% endif %}
+    </td>
+</tr>

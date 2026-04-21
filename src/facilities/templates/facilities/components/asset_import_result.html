@@ -1,0 +1,41 @@
+<!-- facilities/components/asset_import_result.html — summary returned by AssetCSVImportView -->
+
+<div class="p-3 rounded border"
+     style="background-color: {% if result.errors %}rgba(234,179,8,0.10){% else %}rgba(20,184,166,0.10){% endif %}; border-color: {% if result.errors %}rgba(234,179,8,0.35){% else %}rgba(20,184,166,0.35){% endif %} !important;">
+    <div class="fw-semibold mb-1">
+        {% if dry_run %}
+            Preview — no rows written yet
+        {% else %}
+            Import complete
+        {% endif %}
+    </div>
+    <div class="fs-7">
+        {{ result.total_rows }} row{{ result.total_rows|pluralize }} processed · {{ result.created }} created · {{ result.updated }} updated · {{ result.errors|length }} error{{ result.errors|length|pluralize }}
+    </div>
+
+    {% if result.errors %}
+    <div class="mt-2">
+        <div class="fs-8 text-secondary text-uppercase fw-semibold mb-1">Errors</div>
+        <ul class="fs-8 m-0">
+            {% for error in result.errors|slice:":15" %}
+            <li>Row {{ error.row }}: {{ error.message }}</li>
+            {% endfor %}
+            {% if result.errors|length > 15 %}
+            <li>… and {{ result.errors|length|add:"-15" }} more.</li>
+            {% endif %}
+        </ul>
+    </div>
+    {% endif %}
+
+    {% if dry_run and result.total_rows and not result.errors %}
+    <div class="fs-8 text-secondary mt-2">
+        Dry-run succeeded. Choose <strong>Commit to database</strong> above and re-submit to apply.
+    </div>
+    {% elif not dry_run %}
+    <div class="mt-2">
+        <a href="{% url 'facilities:assets_list' project.pk %}" class="btn btn-sm btn-outline-primary">
+            <i class="bi bi-arrow-clockwise"></i> Refresh asset list
+        </a>
+    </div>
+    {% endif %}
+</div>

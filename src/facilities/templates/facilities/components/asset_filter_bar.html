@@ -1,0 +1,58 @@
+<!-- facilities/components/asset_filter_bar.html — search + type chips + classification chips -->
+
+<form method="get"
+      action="{% url 'facilities:assets_list' project.pk %}"
+      hx-get="{% url 'facilities:assets_list' project.pk %}"
+      hx-target="#asset-grid-mount"
+      hx-swap="innerHTML"
+      hx-trigger="change from:find select, keyup changed delay:300ms from:find input[type='search']"
+      hx-push-url="true"
+      class="d-flex flex-column gap-2">
+
+    <div class="d-flex flex-wrap align-items-center gap-2">
+        <div class="position-relative flex-grow-1" style="max-width: 420px;">
+            <i class="bi bi-search position-absolute" style="top: 50%; left: 12px; transform: translateY(-50%); opacity: 0.55;"></i>
+            <input type="search"
+                   name="q"
+                   value="{{ active_q|default:'' }}"
+                   class="form-control form-control-sm ps-5"
+                   placeholder="Search tag, manufacturer, serial, name…">
+        </div>
+
+        <select name="responsible_party_id"
+                class="form-select form-select-sm"
+                style="max-width: 220px;">
+            <option value="">Any responsible party</option>
+            <!-- Populated via People page in M2+ — for now free-text user IDs are not surfaced. -->
+        </select>
+
+        {% if type_counts %}
+        <select name="ifc_type" class="form-select form-select-sm" style="max-width: 240px;">
+            <option value="">All IFC types</option>
+            {% for row in type_counts %}
+            <option value="{{ row.ifc_entity__ifc_type }}"
+                    {% if row.ifc_entity__ifc_type == active_type %}selected{% endif %}>
+                {{ row.ifc_entity__ifc_type }} ({{ row.count }})
+            </option>
+            {% endfor %}
+        </select>
+        {% endif %}
+    </div>
+
+    <div class="d-flex flex-wrap align-items-center gap-2">
+        <span class="fs-8 text-secondary text-uppercase fw-semibold">Classifications:</span>
+        {% for reference in classification_references %}
+        <label class="d-inline-flex align-items-center gap-1 fs-8 px-2 py-1 rounded border"
+               style="cursor: pointer; {% if reference.id|stringformat:'s' in active_classification_ref_ids %}background-color: rgba(20,184,166,0.12); border-color: var(--castor-facilities, #14b8a6); color: var(--castor-facilities, #14b8a6);{% endif %}">
+            <input type="checkbox"
+                   name="classification_ref"
+                   value="{{ reference.id }}"
+                   class="form-check-input m-0"
+                   {% if reference.id|stringformat:'s' in active_classification_ref_ids %}checked{% endif %}>
+            <span>{{ reference.classification.name }}:{{ reference.code }}</span>
+        </label>
+        {% empty %}
+        <span class="fs-8 text-muted">No classification codes defined yet.</span>
+        {% endfor %}
+    </div>
+</form>

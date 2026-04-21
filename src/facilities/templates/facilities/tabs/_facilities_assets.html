@@ -1,0 +1,100 @@
+<!-- facilities/tabs/_facilities_assets.html — Asset Register sub-tab body -->
+
+<div class="d-flex flex-column gap-3" id="facilities-assets-body">
+
+    <!-- Top bar: title + primary actions -->
+    <div class="d-flex align-items-center gap-3 flex-wrap">
+        <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-grid-3x3-gap fs-5" style="color: var(--castor-facilities, #14b8a6);"></i>
+            <h5 class="m-0">Asset Register</h5>
+            {% if page_obj %}
+            <span class="badge rounded-pill" style="background-color: rgba(20,184,166,0.15); color: var(--castor-facilities, #14b8a6); border: 1px solid rgba(20,184,166,0.35);">
+                {{ page_obj.paginator.count }} asset{{ page_obj.paginator.count|pluralize }}
+            </span>
+            {% endif %}
+        </div>
+
+        {% if user_permission == "owner" or user_permission == "editor" %}
+        <div class="ms-auto d-flex gap-2">
+            <button class="btn btn-sm d-inline-flex align-items-center gap-2"
+                    style="background-color: var(--castor-facilities, #14b8a6); color: white; border: none;"
+                    hx-get="{% url 'facilities:assets_promote' project.pk %}"
+                    hx-target="#asset-promote-drawer-mount"
+                    hx-swap="innerHTML">
+                <i class="bi bi-plus-lg"></i> Add assets
+            </button>
+            <button class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-2"
+                    type="button"
+                    data-bs-toggle="modal"
+                    data-bs-target="#asset-import-modal">
+                <i class="bi bi-upload"></i> Import CSV
+            </button>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Filter bar -->
+    {% include "facilities/components/asset_filter_bar.html" %}
+
+    <!-- Grid (HTMX-swappable) -->
+    <div id="asset-grid-mount">
+        {% include "facilities/components/asset_grid.html" %}
+    </div>
+
+    <!-- Status banner (simple flash from ?message=) -->
+    {% if request.GET.message %}
+    <div class="alert alert-info py-2 px-3 mb-0">
+        {{ request.GET.message }}
+    </div>
+    {% endif %}
+
+    <!-- Bulk action bar (hidden by default, surfaced by JS on selection) -->
+    {% include "facilities/components/asset_bulk_bar.html" %}
+
+    <!-- Promote drawer mount — filled by HTMX on Add assets -->
+    <div id="asset-promote-drawer-mount"></div>
+
+    <!-- Import modal — static HTML, form POSTs via HTMX -->
+    {% include "facilities/components/asset_import_modal.html" %}
+</div>
+
+<script>
+(function () {
+    // Bulk-bar wiring — surfaces the sticky bar when any card checkbox is ticked.
+    const grid = document.getElementById('asset-grid-mount');
+    const bar = document.getElementById('asset-bulk-bar');
+    const countLabel = document.getElementById('asset-bulk-count');
+    if (!grid || !bar) return;
+
+    function syncSelection() {
+        const checkboxes = grid.querySelectorAll('input[name="asset_ids"]:checked');
+        const count = checkboxes.length;
+        if (countLabel) countLabel.textContent = count;
+        bar.classList.toggle('d-none', count === 0);
+
+        // Mirror the selected ids into every bulk-action form.
+        document.querySelectorAll('.asset-bulk-form').forEach(form => {
+            form.querySelectorAll('input[name="asset_ids"]').forEach(el => el.remove());
+            checkboxes.forEach(cb => {
+                const clone = document.createElement('input');
+                clone.type = 'hidden';
+                clone.name = 'asset_ids';
+                clone.value = cb.value;
+                form.appendChild(clone);
+            });
+        });
+    }
+
+    grid.addEventListener('change', event => {
+        if (event.target && event.target.matches('input[name="asset_ids"]')) {
+            syncSelection();
+        }
+    });
+    document.body.addEventListener('htmx:afterSwap', event => {
+        if (event.target && event.target.id === 'asset-grid-mount') {
+            syncSelection();
+        }
+    });
+    syncSelection();
+})();
+</script>

@@ -1338,12 +1338,17 @@ class PeopleView(ProjectTabMixin, TemplateView):
         user_permission = ProjectAccessService.user_permission(self.request.user, project)
 
         context["memberships"] = list(ProjectAccessService.members_ordered(project))
-        context["facility_roles"] = (
+        context["facility_roles"] = list(
             ProjectRole.objects.filter(project=project)
             .select_related("user")
             .order_by("user__username", "role", "-valid_from")
         )
-        context["can_manage_access"] = ProjectAccessService.can_admin(self.request.user, project)
+        can_admin = ProjectAccessService.can_admin(self.request.user, project)
+        context["can_manage_access"] = can_admin
+        # Role-CRUD authorization currently matches access-tier CRUD (OWNER-
+        # only). Kept as a separate key so widening it later (e.g. to an
+        # ADMIN tier) touches exactly one line here.
+        context["can_manage_roles"] = can_admin
         context["user_permission"] = user_permission
         context["permission_choices"] = [
             # OWNER is excluded from the mutable choices — ownership goes via
@@ -1351,6 +1356,7 @@ class PeopleView(ProjectTabMixin, TemplateView):
             (ProjectMembership.Permission.EDITOR, "Editor"),
             (ProjectMembership.Permission.VIEWER, "Viewer"),
         ]
+        context["role_choices"] = ProjectRole.Role.choices
         return context
 
 
@@ -1370,27 +1376,79 @@ def _render_member_row(request, project, membership):
     )
 
 
+class UserSearchView(ProjectAccessMixin, View):
+    """JSON GET: typeahead over all system users.
+
+    Returns ``{"matches": [...], "too_short": bool, "query": str, "scope": str}``
+    where each match is ``{"id": int, "username": str, "email": str}``. The
+    frontend (vanilla ``fetch`` in ``people.html``) renders the dropdown.
+
+    HTML + HTMX was tried first and the response never reached the user —
+    silent failure mode was too hard to diagnose. JSON lets the browser's
+    Network tab show every round-trip, and the client-side render path is
+    fully debuggable with console.log.
+    """
+
+    MIN_Q = 2
+    LIMIT = 8
+    SCOPES = ("member", "role")
+
+    def get(self, request, pk):
+        project = self.get_project()
+        if not ProjectAccessService.can_admin(request.user, project):
+            raise PermissionDenied
+
+        query = (request.GET.get("q") or "").strip()
+        scope = request.GET.get("scope") or "member"
+        if scope not in self.SCOPES:
+            scope = "member"
+
+        if len(query) < self.MIN_Q:
+            return JsonResponse({"too_short": True, "matches": [], "query": query, "scope": scope})
+
+        user_model = get_user_model()
+        qs = user_model.objects.filter(
+            Q(username__icontains=query) | Q(email__icontains=query)
+        ).order_by("username")
+
+        # For the member-add picker, hide users already in the project — adding
+        # them again is a no-op and crowds the list. For the role-add picker we
+        # keep everyone, since a single user can hold both a membership and
+        # multiple functional roles.
+        if scope == "member":
+            member_ids = ProjectMembership.objects.filter(project=project).values_list(
+                "user_id", flat=True
+            )
+            qs = qs.exclude(pk__in=list(member_ids))
+
+        matches = [{"id": u.pk, "username": u.username, "email": u.email} for u in qs[: self.LIMIT]]
+        return JsonResponse(
+            {"too_short": False, "matches": matches, "query": query, "scope": scope}
+        )
+
+
 class MemberAddView(ProjectAccessMixin, View):
-    """HTMX POST: add a member by email at a chosen permission tier."""
+    """HTMX POST: add a member by ``user_id`` picked from the typeahead.
+
+    Email-based invite is a separate, client-only flow (``_invite_by_email.html``)
+    that opens a ``mailto:`` — this endpoint expects an already-registered user.
+    """
 
     def post(self, request, pk):
         project = self.get_project()
         if not ProjectAccessService.can_admin(request.user, project):
             raise PermissionDenied
 
-        email = (request.POST.get("email") or "").strip().lower()
         permission = request.POST.get("permission") or ProjectMembership.Permission.VIEWER
+        user_id = (request.POST.get("user_id") or "").strip()
 
-        if not email:
-            return HttpResponse("Email is required.", status=400)
+        if not user_id:
+            return HttpResponse("Pick a user from the suggestions first.", status=400)
 
         user_model = get_user_model()
-        try:
-            user = user_model.objects.get(email__iexact=email)
-        except user_model.DoesNotExist:
-            return HttpResponse(
-                "No user exists with that email. Invite flow is not enabled yet.", status=400
-            )
+        user = user_model.objects.filter(pk=user_id).first()
+        if user is None:
+            return HttpResponse("User not found.", status=404)
 
         if user.pk == project.owner_id and permission != ProjectMembership.Permission.OWNER:
             return HttpResponse("The project owner already has OWNER membership.", status=400)
@@ -1495,6 +1553,109 @@ class TransferOwnershipView(ProjectAccessMixin, View):
         return HttpResponse(
             status=204, headers={"HX-Redirect": reverse("projects:people", args=[project.pk])}
         )
+
+
+# --- Functional-role (ProjectRole) CRUD --------------------------------------
+# These live next to the access-tier views so the entire People-page surface
+# stays in one file. The role service is imported lazily inside each handler to
+# avoid a hard cycle between environments and facilities at module-load time.
+
+
+def _render_role_row(request, project, role):
+    return render(
+        request,
+        "environments/partials/_role_row.html",
+        {
+            "project": project,
+            "role": role,
+            "can_manage_roles": True,
+        },
+    )
+
+
+def _parse_date_or_none(value: str | None):
+    """Parse a 'YYYY-MM-DD' form field into an aware datetime at 00:00 local.
+
+    Returns None for empty/whitespace input. Raises ValueError on bad format.
+    """
+    from django.utils import timezone as dj_timezone
+
+    if not value or not value.strip():
+        return None
+    parsed = datetime.strptime(value.strip(), "%Y-%m-%d")
+    return dj_timezone.make_aware(parsed)
+
+
+class RoleAddView(ProjectAccessMixin, View):
+    """HTMX POST: assign a functional role (ProjectRole) to any user."""
+
+    def post(self, request, pk):
+        from facilities.services import ProjectRoleError, ProjectRoleService
+
+        project = self.get_project()
+        if not ProjectAccessService.can_admin(request.user, project):
+            raise PermissionDenied
+
+        user_id = (request.POST.get("user_id") or "").strip()
+        role_value = (request.POST.get("role") or "").strip()
+        valid_from_raw = request.POST.get("valid_from")
+        valid_until_raw = request.POST.get("valid_until")
+
+        if not user_id:
+            return HttpResponse("Pick a user from the suggestions.", status=400)
+        if role_value not in ProjectRole.Role.values:
+            return HttpResponse("Pick a functional role.", status=400)
+
+        user_model = get_user_model()
+        target = user_model.objects.filter(pk=user_id).first()
+        if target is None:
+            return HttpResponse("User not found.", status=404)
+
+        try:
+            valid_from = _parse_date_or_none(valid_from_raw)
+            valid_until = _parse_date_or_none(valid_until_raw)
+        except ValueError:
+            return HttpResponse("Dates must be YYYY-MM-DD.", status=400)
+
+        try:
+            role = ProjectRoleService.add_role(
+                project=project,
+                user=target,
+                role=role_value,
+                valid_from=valid_from,
+                valid_until=valid_until,
+            )
+        except ProjectRoleError as exc:
+            return HttpResponse(str(exc), status=400)
+
+        # Re-select with user for template display without another query.
+        role = ProjectRole.objects.select_related("user").get(pk=role.pk)
+        return _render_role_row(request, project, role)
+
+
+class RoleRemoveView(ProjectAccessMixin, View):
+    """HTMX POST/DELETE: remove a functional-role assignment."""
+
+    def post(self, request, pk, role_id):
+        return self._remove(request, pk, role_id)
+
+    def delete(self, request, pk, role_id):
+        return self._remove(request, pk, role_id)
+
+    def _remove(self, request, pk, role_id):
+        from facilities.services import ProjectRoleError, ProjectRoleService
+
+        project = self.get_project()
+        if not ProjectAccessService.can_admin(request.user, project):
+            raise PermissionDenied
+
+        try:
+            ProjectRoleService.remove_role(project=project, role_id=role_id)
+        except ProjectRoleError as exc:
+            return HttpResponse(str(exc), status=404)
+
+        # Empty body + 200 — the <tr>'s hx-swap="outerHTML" strips the row.
+        return HttpResponse("", status=200)
 
 
 class ScheduleExportView(ProjectAccessMixin, View):

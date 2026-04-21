@@ -78,6 +78,25 @@ _DOC_SUMMARY_KEYWORDS: frozenset[str] = frozenset(
     }
 )
 
+# Facilities (7D FM) asset-query keywords — routes to a DB-backed answer path
+# that injects FacilityAsset rows into the prompt instead of relying on IFC
+# vector search. Registered-in-project assets carry FM metadata (tag,
+# manufacturer, warranty) that vectors over entity descriptions cannot surface.
+_FM_ASSET_KEYWORDS: frozenset[str] = frozenset(
+    {
+        "which assets",
+        "list assets",
+        "list the assets",
+        "asset inventory",
+        "assets in",
+        "assets with",
+        "assets under warranty",
+        "asset register",
+        "facility asset",
+        "facility assets",
+    }
+)
+
 
 class RAGService:
     """
@@ -182,6 +201,16 @@ class RAGService:
         elif intent == "doc_summary" and scope == "docs":
             context_items = self._retrieve_summary_context(project)
             analysis_mode = "General Summary"
+        elif intent == "fm_asset_query":
+            # 7D Facilities asset queries — DB-backed answer path. Vector
+            # search over IFCEntity descriptions cannot surface FM metadata
+            # like manufacturer, warranty, or responsible party; inject
+            # matching FacilityAsset rows as a structured context blob.
+            aggregate_context_str = self._format_fm_asset_context(
+                self._retrieve_fm_asset_context(project, user_text)
+            )
+            context_items = []
+            analysis_mode = "FM Asset Register"
         else:
             context_items = self._retrieve_vector_context(
                 project, user_text, scope, budget_tokens=retrieval_budget
@@ -230,21 +259,77 @@ class RAGService:
 
     def _detect_intent(self, user_text: str) -> str:
         """
-        Classify query into one of three retrieval intents.
+        Classify query into one of the retrieval intents.
 
-        Checks IFC inventory keywords first (more specific than summary keywords).
+        FM asset keywords are checked first (most specific), then IFC inventory,
+        then document summary. Everything else falls through to specific Q&A.
 
         Returns:
+            "fm_asset_query" — FacilityAsset register queries (7D FM)
             "ifc_inventory"  — aggregate/count questions about IFC element types
             "doc_summary"    — high-level document overview requests
             "specific_qa"    — default for targeted questions
         """
         lowered = user_text.lower()
+        if any(kw in lowered for kw in _FM_ASSET_KEYWORDS):
+            return "fm_asset_query"
         if any(kw in lowered for kw in _IFC_INVENTORY_KEYWORDS):
             return "ifc_inventory"
         if any(kw in lowered for kw in _DOC_SUMMARY_KEYWORDS):
             return "doc_summary"
         return "specific_qa"
+
+    _FM_ASSET_ROW_LIMIT = 25
+
+    def _retrieve_fm_asset_context(self, project, query: str) -> list:
+        """Return up to ``_FM_ASSET_ROW_LIMIT`` facility assets matching ``query``.
+
+        Uses :class:`facilities.services.AssetService` for consistent scoping
+        and eager-loading; this keeps the RAG layer decoupled from the asset
+        model's internals.
+        """
+        # Deferred import: RAG does not require the facilities app to be
+        # installed at import time, and the circular dep risk is non-zero.
+        from facilities.services import AssetService
+
+        service = AssetService(project=project, user=self._user)
+        return list(service.list_assets(q=query)[: self._FM_ASSET_ROW_LIMIT])
+
+    @staticmethod
+    def _format_fm_asset_context(assets: list) -> str:
+        """Render a concise text block describing the matched assets."""
+        if not assets:
+            return (
+                "FM ASSET REGISTER: No matching assets found. Answer from the "
+                "user's question directly and suggest they check the Facilities "
+                "tab if they expected results."
+            )
+
+        lines = ["FM ASSET REGISTER — matching assets:"]
+        for asset in assets:
+            entity = asset.ifc_entity
+            parts: list[str] = []
+            if asset.asset_tag:
+                parts.append(f"Tag={asset.asset_tag}")
+            if asset.manufacturer or asset.model_number:
+                parts.append(
+                    "Manufacturer="
+                    + "/".join(x for x in [asset.manufacturer, asset.model_number] if x)
+                )
+            if asset.serial_number:
+                parts.append(f"Serial={asset.serial_number}")
+            if asset.condition_score is not None:
+                parts.append(f"Condition={asset.condition_score}/100")
+            if asset.warranty_end:
+                parts.append(f"WarrantyEnd={asset.warranty_end.isoformat()}")
+            if entity is not None:
+                parts.append(f"IFCType={entity.ifc_type}")
+                if entity.spatial_container and entity.spatial_container.entity:
+                    parts.append(
+                        f"Location={entity.spatial_container.entity.name or entity.spatial_container.spatial_type}"
+                    )
+            lines.append("- " + ", ".join(parts))
+        return "\n".join(lines)
 
     # Retrieval depth guardrails
     _MIN_CANDIDATES_PER_SOURCE = 8

@@ -1,15 +1,23 @@
 # facilities/services/role_service.py
-"""Resolve, list, and switch a user's active ProjectRole for a given project."""
+"""Resolve, list, switch, and mutate a user's ProjectRole assignments."""
+
+from __future__ import annotations
 
 import logging
+from datetime import datetime
 
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from environments.models import ProjectRole
+from environments.models import Project, ProjectRole
 
 logger = logging.getLogger(__name__)
 
 SESSION_KEY = "facilities_active_role_id"
+
+
+class ProjectRoleError(Exception):
+    """Base for role-service guard violations (duplicate, bad dates, etc.)."""
 
 
 class ProjectRoleService:
@@ -77,3 +85,68 @@ class ProjectRoleService:
             role.role,
         )
         return {"role": role, "error": None}
+
+    # ---- Mutations ---------------------------------------------------------
+    #
+    # Class-level mutation helpers used by the People-page role CRUD endpoints.
+    # Instance methods above are scoped to a single (project, user) view
+    # context; these take their targets as explicit arguments.
+
+    @classmethod
+    def add_role(
+        cls,
+        *,
+        project: Project,
+        user,
+        role: str,
+        valid_from: datetime | None = None,
+        valid_until: datetime | None = None,
+    ) -> ProjectRole:
+        """Create a ProjectRole row.
+
+        Rejects valid_from >= valid_until (a zero-length window). Duplicate
+        (user, project, role, valid_from) tuples surface as ProjectRoleError
+        via the unique constraint at the DB layer.
+        """
+        if role not in ProjectRole.Role.values:
+            raise ProjectRoleError(f"Unknown role: {role!r}")
+
+        resolved_from = valid_from or timezone.now()
+        if valid_until is not None and valid_until <= resolved_from:
+            raise ProjectRoleError("valid_until must be after valid_from.")
+
+        try:
+            with transaction.atomic():
+                instance = ProjectRole.objects.create(
+                    project=project,
+                    user=user,
+                    role=role,
+                    valid_from=resolved_from,
+                    valid_until=valid_until,
+                )
+        except IntegrityError as exc:
+            raise ProjectRoleError(
+                "This user already has that role starting on the same date."
+            ) from exc
+
+        logger.info(
+            "Added functional role: user=%s project=%s role=%s valid_from=%s valid_until=%s",
+            user.pk,
+            project.pk,
+            role,
+            resolved_from.isoformat(),
+            valid_until.isoformat() if valid_until else None,
+        )
+        return instance
+
+    @classmethod
+    def remove_role(cls, *, project: Project, role_id) -> None:
+        """Delete a ProjectRole row scoped to the given project.
+
+        Scoping by project prevents cross-project role deletion via a forged
+        role_id from a URL on a different project.
+        """
+        deleted, _ = ProjectRole.objects.filter(pk=role_id, project=project).delete()
+        if deleted == 0:
+            raise ProjectRoleError("Role not found on this project.")
+        logger.info("Removed functional role: project=%s role_id=%s", project.pk, role_id)

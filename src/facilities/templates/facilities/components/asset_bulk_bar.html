@@ -1,0 +1,59 @@
+<!-- facilities/components/asset_bulk_bar.html — sticky bottom bar for multi-select bulk ops -->
+
+{% if user_permission == "owner" or user_permission == "editor" %}
+<div id="asset-bulk-bar"
+     class="d-none position-sticky p-3 rounded border shadow"
+     style="bottom: 16px; z-index: 5; background-color: var(--bs-body-bg); border-color: var(--castor-facilities, #14b8a6) !important;">
+    <div class="d-flex flex-wrap align-items-center gap-2">
+        <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-check2-square fs-4" style="color: var(--castor-facilities, #14b8a6);"></i>
+            <strong><span id="asset-bulk-count">0</span> selected</strong>
+        </div>
+
+        <!-- Classify form -->
+        <form method="post"
+              action="{% url 'facilities:assets_bulk' project.pk %}"
+              class="asset-bulk-form d-flex align-items-center gap-1">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="classify">
+            <select name="classification_reference_id" class="form-select form-select-sm" style="max-width: 220px;" required>
+                <option value="">Classify as…</option>
+                {% for reference in classification_references %}
+                <option value="{{ reference.id }}">{{ reference.classification.name }}:{{ reference.code }}</option>
+                {% endfor %}
+            </select>
+            <select name="classify_mode" class="form-select form-select-sm" style="max-width: 110px;">
+                <option value="add" selected>Add</option>
+                <option value="replace">Replace</option>
+            </select>
+            <button type="submit" class="btn btn-sm btn-outline-primary">Apply</button>
+        </form>
+
+        <!-- Reassign (placeholder; full list of members comes with M3+) -->
+        <form method="post"
+              action="{% url 'facilities:assets_bulk' project.pk %}"
+              class="asset-bulk-form d-flex align-items-center gap-1">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="set_responsible_party">
+            <input type="text"
+                   name="responsible_party_id"
+                   class="form-control form-control-sm"
+                   placeholder="User UUID (blank = clear)"
+                   style="max-width: 280px;">
+            <button type="submit" class="btn btn-sm btn-outline-primary">Reassign</button>
+        </form>
+
+        <!-- Delete -->
+        <form method="post"
+              action="{% url 'facilities:assets_bulk' project.pk %}"
+              class="asset-bulk-form"
+              onsubmit="return confirm('Delete the selected assets? This cannot be undone in M1.');">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="delete">
+            <button type="submit" class="btn btn-sm btn-outline-danger">
+                <i class="bi bi-trash"></i> Delete
+            </button>
+        </form>
+    </div>
+</div>
+{% endif %}

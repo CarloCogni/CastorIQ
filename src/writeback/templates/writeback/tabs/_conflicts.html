@@ -335,6 +335,7 @@
         <button class="btn btn-sm btn-outline-danger rounded-pill"
                 id="delete-all-btn"
                 hx-post="{% url 'writeback:delete_all_conflicts' project.pk %}"
+                hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                 hx-confirm="Permanently delete ALL conflicts (all statuses)? This cannot be undone."
                 hx-on::after-request="window.location.href = window.location.pathname + '?subtab=semantic'">
             <i class="bi bi-trash me-1"></i>Delete All
@@ -545,6 +546,19 @@
                 </div>
                 {% endif %}
 
+                {# Restore action — shown for any non-open card so the user can undo a misclick #}
+                {% if conflict_status != 'open' %}
+                <div class="d-flex gap-2 align-items-center">
+                    <button class="btn btn-sm btn-outline-primary rounded-pill"
+                            hx-post="{% url 'writeback:restore_conflict' project.pk rep.pk %}"
+                            hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                            hx-on::after-request="window.location.href = window.location.pathname + '?subtab=semantic'"
+                            title="Move this conflict back to Open">
+                        <i class="bi bi-arrow-counterclockwise me-1"></i>Restore to Open
+                    </button>
+                </div>
+                {% endif %}
+
                 {# Actions — only shown for open conflicts #}
                 {% if conflict_status == 'open' %}
                 <div class="d-flex gap-2 align-items-center">
@@ -556,16 +570,12 @@
                     </a>
                     {% endif %}
                     <button class="btn btn-sm btn-outline-warning rounded-pill"
-                            hx-post="{% url 'writeback:bulk_ignore_conflicts' project.pk %}"
-                            hx-vals='{"conflict_ids": "{{ group.all_ids }}"}'
-                            hx-confirm="Ignore {% if group.count > 1 %}all {{ group.count }} conflicts in this group{% else %}this conflict{% endif %}?"
-                            hx-target="closest .conflict-card"
-                            hx-swap="outerHTML"
+                            onclick="ScanEngine.doIgnore('{% url 'writeback:bulk_ignore_conflicts' project.pk %}', '{{ group.all_ids }}', this)"
                             title="Ignore {% if group.count > 1 %}all {{ group.count }} conflicts in this group{% else %}this conflict{% endif %}">
                         <i class="bi bi-eye-slash me-1"></i>Ignore
                     </button>
                     <button class="btn btn-sm btn-outline-secondary rounded-pill px-3"
-                            onclick="ScanEngine.confirmDismiss('{% url 'writeback:bulk_dismiss' project.pk %}', '{{ group.all_ids }}', this)"
+                            onclick="ScanEngine.doDismiss('{% url 'writeback:bulk_dismiss' project.pk %}', '{{ group.all_ids }}', this)"
                             title="Dismiss {% if group.count > 1 %}all {{ group.count }} conflicts in this group{% else %}this conflict{% endif %}">
                         <i class="bi bi-x-circle me-1"></i>Dismiss
                     </button>
@@ -786,26 +796,6 @@
     </div>
 </div>
 
-{# ── Dismiss confirmation modal ── #}
-<div class="modal fade" id="dismissModal" tabindex="-1">
-    <div class="modal-dialog modal-sm modal-dialog-centered">
-        <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
-            <div class="modal-body text-center p-4">
-                <i class="bi bi-x-circle text-secondary mb-2" style="font-size: 1.5rem;"></i>
-                <p class="fw-medium mb-1">Dismiss this conflict?</p>
-                <p class="text-secondary fs-8 mb-3">It won't appear again unless a future scan re-detects it.</p>
-                <div class="d-flex gap-2 justify-content-center">
-                    <button class="btn btn-sm btn-outline-secondary rounded-pill px-3"
-                            data-bs-dismiss="modal">Cancel</button>
-                    <button class="btn btn-sm btn-danger rounded-pill px-3"
-                            id="confirm-dismiss-btn">Dismiss</button>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-
 {# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ #}
 {# STYLES                                                            #}
 {# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ #}
@@ -928,6 +918,39 @@ const ConflictTabs = {
         // Show/hide bulk open actions
         const bulkOpen = document.getElementById('bulk-open-actions');
         if (bulkOpen) bulkOpen.classList.toggle('d-none', status !== 'open');
+    },
+
+    /* Adjust pill + tab + subtab badges when a card transitions status client-side
+       (e.g. Ignore / Dismiss). Also refreshes the summary bar by re-applying the
+       current filter. Keeps the UI consistent without a full page reload. */
+    adjustCounts(fromStatus, toStatus) {
+        const bump = (id, delta) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            const n = Math.max(0, (parseInt(el.textContent, 10) || 0) + delta);
+            el.textContent = n;
+        };
+        bump(`pill-count-${fromStatus}`, -1);
+        bump(`pill-count-${toStatus}`, +1);
+
+        if (fromStatus === 'open') {
+            // Top-level tab badge ("Conflicts N") + semantic sub-tab badge.
+            document.querySelectorAll('.badge-conflicts').forEach(el => {
+                const n = Math.max(0, (parseInt(el.textContent, 10) || 0) - 1);
+                el.textContent = n;
+                if (n === 0) el.classList.add('d-none');
+            });
+            const subtabBadge = document.querySelector(
+                '.conflict-subtab[data-subtab="semantic"] .badge'
+            );
+            if (subtabBadge) {
+                const n = Math.max(0, (parseInt(subtabBadge.textContent, 10) || 0) - 1);
+                subtabBadge.textContent = n;
+            }
+        }
+
+        // Refresh summary bar + bulk-open visibility via the existing filter logic.
+        this.filterByStatus(this._currentStatus);
     },
 
     bulkAction(url, confirmMsg) {
@@ -1130,37 +1153,34 @@ const ScanEngine = {
         return div;
     },
 
-    _pendingDismiss: { url: null, ids: null, btn: null },
-
-    confirmDismiss(url, ids, btn) {
-        this._pendingDismiss = { url, ids, btn };
-        const modal = new bootstrap.Modal(document.getElementById('dismissModal'));
-        modal.show();
-
-        const confirmBtn = document.getElementById('confirm-dismiss-btn');
-        const handler = () => {
-            this._doDismiss(this._pendingDismiss.url, this._pendingDismiss.ids, this._pendingDismiss.btn);
-            modal.hide();
-            confirmBtn.removeEventListener('click', handler);
-        };
-        confirmBtn.addEventListener('click', handler);
+    doDismiss(url, ids, btn) {
+        this._applyCardAction(url, ids, btn, 'dismissed', 'open', 'dismissed');
     },
 
-    _doDismiss(url, ids, btn) {
+    doIgnore(url, ids, btn) {
+        this._applyCardAction(url, ids, btn, 'ignored', 'open', 'ignored');
+    },
+
+    /* POSTs the action, animates the card out on success, and updates pill + tab
+       counts live so the UI stays consistent without a page reload. */
+    _applyCardAction(url, ids, btn, expectedStatus, fromStatus, toStatus) {
         const card = btn.closest('.conflict-card');
         const formData = new FormData();
         formData.append('csrfmiddlewaretoken', ConflictTabs._csrf());
-        formData.append('ids', ids);
+        formData.append('conflict_ids', ids);
 
         fetch(url, { method: 'POST', body: formData })
         .then(r => r.json())
         .then(data => {
-            if (data.status === 'dismissed') {
-                card.style.transition = 'all 0.3s ease';
-                card.style.opacity = '0';
-                card.style.transform = 'translateX(20px)';
-                setTimeout(() => card.remove(), 350);
-            }
+            if (data.status !== expectedStatus) return;
+
+            card.style.transition = 'all 0.3s ease';
+            card.style.opacity = '0';
+            card.style.transform = 'translateX(20px)';
+            setTimeout(() => {
+                card.remove();
+                ConflictTabs.adjustCounts(fromStatus, toStatus);
+            }, 350);
         });
     },
 

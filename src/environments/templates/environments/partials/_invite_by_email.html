@@ -1,0 +1,42 @@
+<!-- environments/partials/_invite_by_email.html -->
+<!--
+  Purely client-side "invite by email" widget. The typeahead-based main form
+  only works for users who already have accounts. If the OWNER wants to bring
+  in someone who hasn't registered yet, they can use this to open a prefilled
+  mailto: in their default mail client. Real invite flow (pending invites,
+  accept tokens, email sending) is deferred — see docs/specs/7D-milestones.md.
+
+  Parameters:
+    - `scope`: "member" | "role" — used to produce unique DOM ids so two
+      instances can coexist (one per modal).
+    - `project`: the Project being managed (used for subject line).
+-->
+<div class="border-top mt-3 pt-3">
+    <a href="#invite-email-{{ scope }}-body"
+       class="small text-secondary text-decoration-none"
+       data-bs-toggle="collapse"
+       role="button"
+       aria-expanded="false"
+       aria-controls="invite-email-{{ scope }}-body">
+        <i class="bi bi-envelope-plus me-1"></i>User not in the system? Invite by email
+    </a>
+    <div id="invite-email-{{ scope }}-body" class="collapse mt-2">
+        <div class="alert alert-secondary small py-2 px-3 mb-2">
+            Real invite emails aren't wired up yet. For now, open your mail
+            client with a prefilled message — the recipient needs to register
+            before you can {% if scope == "role" %}assign them a role{% else %}add them as a member{% endif %}.
+        </div>
+        <div class="input-group input-group-sm">
+            <input type="email"
+                   id="invite-email-{{ scope }}-input"
+                   class="form-control form-control-sm"
+                   placeholder="colleague@example.com"
+                   autocomplete="off">
+            <button type="button"
+                    class="btn btn-outline-primary"
+                    onclick="openInviteMailto('{{ scope }}', '{{ project.name|escapejs }}')">
+                <i class="bi bi-box-arrow-up-right me-1"></i>Open email client
+            </button>
+        </div>
+    </div>
+</div>
