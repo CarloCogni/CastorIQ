@@ -3,6 +3,7 @@
 {% include "facilities/components/dashboards/_header.html" with tagline="Ops cockpit — work orders, PMs, requests, compliance." %}
 
 <div class="row g-3">
+    {% include "facilities/components/dashboards/_asset_count_card.html" %}
     {% include "facilities/components/dashboards/_placeholder_card.html" with icon="clipboard2-check" title="Open work orders" hint="M3 · CMMS core" %}
     {% include "facilities/components/dashboards/_placeholder_card.html" with icon="calendar-event" title="Overdue PMs" hint="M5 · PM Planner" %}
     {% include "facilities/components/dashboards/_placeholder_card.html" with icon="exclamation-diamond" title="Permits expiring ≤ 90 days" hint="M6 · Documents v2" %}

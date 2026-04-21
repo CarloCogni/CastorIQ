@@ -334,6 +334,168 @@ class TestEvaluateEntity:
 
         assert findings == []
 
+    def test_evaluate_entity_drops_wall_requirement_on_beam(self, scan_service, ifc_file):
+        """A finding with applies_to_element='wall' is dropped when the entity is IfcBeam.
+
+        Regression for the 'Missing fire rating for external walls' card wrongly
+        attached to an IfcBeam (girder) — the scanner would previously persist
+        such cross-type findings because the prompt didn't enforce element matching.
+        """
+        from documents.models import Document, DocumentChunk
+        from ifc_processor.tests.factories import IFCEntityFactory
+
+        entity = IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcBeam", name="girder")
+        doc = Document.objects.create(
+            project=scan_service.project,
+            name="safety.pdf",
+            file="safety.pdf",
+            status="completed",
+        )
+        chunk = DocumentChunk.objects.create(
+            document=doc, content="External walls shall have EI60.", chunk_index=0
+        )
+
+        scan_service.llm.invoke.return_value.content = json.dumps(
+            {
+                "conflicts": [
+                    {
+                        "property_name": "FireRating",
+                        "ifc_value": "absent (no property sets)",
+                        "document_value": "EI60",
+                        "applies_to_element": "wall",
+                        "title": "Missing fire rating for external walls",
+                        "description": "Document requires EI60 for external walls.",
+                        "severity": "critical",
+                        "confidence": 0.95,
+                        "suggested_fix": "Add FireRating = EI60",
+                        "source_chunk_index": 0,
+                    }
+                ]
+            }
+        )
+
+        findings = scan_service._evaluate_entity(entity, [chunk])
+
+        assert findings == []
+
+    def test_evaluate_entity_keeps_matching_element_type(self, scan_service, ifc_file):
+        """applies_to_element='wall' on an IfcWall is kept."""
+        from documents.models import Document, DocumentChunk
+        from ifc_processor.tests.factories import IFCEntityFactory
+
+        entity = IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcWallStandardCase")
+        doc = Document.objects.create(
+            project=scan_service.project,
+            name="safety.pdf",
+            file="safety.pdf",
+            status="completed",
+        )
+        chunk = DocumentChunk.objects.create(
+            document=doc, content="External walls shall have EI60.", chunk_index=0
+        )
+
+        scan_service.llm.invoke.return_value.content = json.dumps(
+            {
+                "conflicts": [
+                    {
+                        "property_name": "FireRating",
+                        "ifc_value": "absent (no property sets)",
+                        "document_value": "EI60",
+                        "applies_to_element": "wall",
+                        "title": "Missing fire rating for external walls",
+                        "description": "Document requires EI60.",
+                        "severity": "critical",
+                        "confidence": 0.95,
+                        "suggested_fix": "Add FireRating = EI60",
+                        "source_chunk_index": 0,
+                    }
+                ]
+            }
+        )
+
+        findings = scan_service._evaluate_entity(entity, [chunk])
+
+        assert len(findings) == 1
+        assert findings[0]["applies_to_element"] == "wall"
+
+    def test_evaluate_entity_keeps_any_label_on_any_type(self, scan_service, ifc_file):
+        """applies_to_element='any' bypasses the type gate."""
+        from documents.models import Document, DocumentChunk
+        from ifc_processor.tests.factories import IFCEntityFactory
+
+        entity = IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcBeam")
+        doc = Document.objects.create(
+            project=scan_service.project,
+            name="spec.pdf",
+            file="spec.pdf",
+            status="completed",
+        )
+        chunk = DocumentChunk.objects.create(
+            document=doc, content="All elements shall carry a label.", chunk_index=0
+        )
+
+        scan_service.llm.invoke.return_value.content = json.dumps(
+            {
+                "conflicts": [
+                    {
+                        "property_name": "Label",
+                        "ifc_value": "absent",
+                        "document_value": "required",
+                        "applies_to_element": "any",
+                        "title": "Missing label",
+                        "description": "...",
+                        "severity": "low",
+                        "confidence": 0.85,
+                        "suggested_fix": "Add Label",
+                        "source_chunk_index": 0,
+                    }
+                ]
+            }
+        )
+
+        findings = scan_service._evaluate_entity(entity, [chunk])
+
+        assert len(findings) == 1
+
+    def test_evaluate_entity_unknown_label_is_fail_open(self, scan_service, ifc_file):
+        """An applies_to_element label not in ELEMENT_TYPE_MAP is allowed through (fail-open)."""
+        from documents.models import Document, DocumentChunk
+        from ifc_processor.tests.factories import IFCEntityFactory
+
+        entity = IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcWall")
+        doc = Document.objects.create(
+            project=scan_service.project,
+            name="spec.pdf",
+            file="spec.pdf",
+            status="completed",
+        )
+        chunk = DocumentChunk.objects.create(
+            document=doc, content="Partitions shall resist fire.", chunk_index=0
+        )
+
+        scan_service.llm.invoke.return_value.content = json.dumps(
+            {
+                "conflicts": [
+                    {
+                        "property_name": "FireRating",
+                        "ifc_value": "EI60",
+                        "document_value": "EI90",
+                        "applies_to_element": "partition",  # not in map
+                        "title": "Fire rating too low",
+                        "description": "...",
+                        "severity": "high",
+                        "confidence": 0.8,
+                        "suggested_fix": "Raise FireRating",
+                        "source_chunk_index": 0,
+                    }
+                ]
+            }
+        )
+
+        findings = scan_service._evaluate_entity(entity, [chunk])
+
+        assert len(findings) == 1
+
 
 # ── full_scan ──────────────────────────────────────────────────────────────────
 

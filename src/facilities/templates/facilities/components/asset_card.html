@@ -1,0 +1,99 @@
+<!-- facilities/components/asset_card.html — one tile in the asset grid -->
+
+{% with entity=asset.ifc_entity score=asset.condition_score %}
+<div class="col-12 col-md-6 col-xl-4">
+    <div class="p-3 rounded border d-flex flex-column gap-2 h-100 position-relative"
+         style="background-color: var(--bs-body-bg); border-color: var(--bs-border-color) !important; transition: border-color 0.15s ease;">
+
+        <!-- Multi-select checkbox -->
+        <div class="position-absolute" style="top: 10px; right: 10px;">
+            <input class="form-check-input"
+                   type="checkbox"
+                   name="asset_ids"
+                   value="{{ asset.pk }}"
+                   aria-label="Select asset {{ asset|stringformat:'s' }}">
+        </div>
+
+        <!-- Identifier block -->
+        <div class="d-flex align-items-start gap-2 pe-4">
+            <i class="bi bi-box-seam fs-4" style="color: var(--castor-facilities, #14b8a6);"></i>
+            <div class="flex-grow-1 min-width-0">
+                <div class="fw-semibold text-truncate">
+                    <a href="{% url 'facilities:assets_detail' project.pk asset.pk %}"
+                       class="text-decoration-none"
+                       style="color: inherit;">
+                        {{ asset.asset_tag|default:entity.name|default:entity.global_id|slice:":12" }}
+                    </a>
+                </div>
+                <div class="fs-8 text-secondary text-truncate">
+                    {% if asset.manufacturer or asset.model_number %}
+                        {{ asset.manufacturer }}{% if asset.manufacturer and asset.model_number %} · {% endif %}{{ asset.model_number }}
+                    {% else %}
+                        {{ entity.ifc_type }}
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Breadcrumb -->
+        {% if entity.spatial_container %}
+        <div class="fs-8 text-secondary d-flex align-items-center gap-1 text-truncate">
+            <i class="bi bi-geo-alt"></i>
+            {% if entity.spatial_container.entity.name %}
+                <span class="text-truncate">{{ entity.spatial_container.entity.name }}</span>
+            {% else %}
+                <span class="text-truncate">({{ entity.spatial_container.get_spatial_type_display }})</span>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Traffic lights: condition + warranty -->
+        <div class="d-flex flex-wrap gap-1">
+            {% if score != None %}
+                {% if score >= 70 %}
+                <span class="badge rounded-pill" style="background-color: rgba(34,197,94,0.15); color: #16a34a; border: 1px solid rgba(34,197,94,0.35);">
+                    <i class="bi bi-heart-pulse"></i> {{ score }}/100
+                </span>
+                {% elif score >= 40 %}
+                <span class="badge rounded-pill" style="background-color: rgba(234,179,8,0.15); color: #ca8a04; border: 1px solid rgba(234,179,8,0.35);">
+                    <i class="bi bi-heart-pulse"></i> {{ score }}/100
+                </span>
+                {% else %}
+                <span class="badge rounded-pill" style="background-color: rgba(239,68,68,0.15); color: #dc2626; border: 1px solid rgba(239,68,68,0.35);">
+                    <i class="bi bi-heart-pulse"></i> {{ score }}/100
+                </span>
+                {% endif %}
+            {% endif %}
+
+            {% if asset.warranty_end %}
+                <span class="badge rounded-pill text-secondary" style="background-color: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color);">
+                    <i class="bi bi-shield-check"></i> warranty: {{ asset.warranty_end|date:"Y-m-d" }}
+                </span>
+            {% endif %}
+
+            {% if asset.decommissioned_at %}
+                <span class="badge rounded-pill" style="background-color: rgba(148,163,184,0.2); color: var(--bs-secondary-color); border: 1px solid var(--bs-border-color);">
+                    <i class="bi bi-archive"></i> decommissioned
+                </span>
+            {% endif %}
+        </div>
+
+        <!-- Classification chips -->
+        {% if asset.classifications.all %}
+        <div class="d-flex flex-wrap gap-1">
+            {% for reference in asset.classifications.all %}
+            <span class="badge rounded-pill fs-8" style="background-color: rgba(20,184,166,0.10); color: var(--castor-facilities, #14b8a6); border: 1px solid rgba(20,184,166,0.30);">
+                {{ reference.classification.name }}:{{ reference.code }}
+            </span>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Placeholder for live WO / PM counts — filled in M3 / M5 -->
+        <div class="mt-auto pt-2 fs-8 text-secondary d-flex gap-3 border-top">
+            <span title="Open work orders — M3"><i class="bi bi-clipboard2-check"></i> 0 WOs</span>
+            <span title="Next PM — M5"><i class="bi bi-calendar-event"></i> next PM: —</span>
+        </div>
+    </div>
+</div>
+{% endwith %}

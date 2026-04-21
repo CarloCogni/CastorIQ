@@ -1,0 +1,141 @@
+<!-- facilities/components/asset_promote_drawer.html — modal drawer for bulk-promoting IFC entities -->
+
+<div class="modal fade show"
+     id="asset-promote-drawer"
+     tabindex="-1"
+     aria-labelledby="asset-promote-title"
+     style="display: block; background-color: rgba(0,0,0,0.35);">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title d-flex align-items-center gap-2" id="asset-promote-title">
+                    <i class="bi bi-plus-circle" style="color: var(--castor-facilities, #14b8a6);"></i>
+                    Add assets — promote IFC entities
+                </h5>
+                <button type="button"
+                        class="btn-close"
+                        aria-label="Close"
+                        onclick="document.getElementById('asset-promote-drawer-mount').innerHTML='';"></button>
+            </div>
+
+            <form method="post"
+                  action="{% url 'facilities:assets_promote' project.pk %}"
+                  class="d-flex flex-column"
+                  style="min-height: 0;">
+                {% csrf_token %}
+
+                <!-- Filter bar inside the drawer -->
+                <div class="p-3 border-bottom d-flex flex-wrap gap-2"
+                     style="background-color: var(--bs-tertiary-bg);">
+
+                    <input type="search"
+                           name="q"
+                           value="{{ active_q }}"
+                           placeholder="Search name or GUID…"
+                           class="form-control form-control-sm"
+                           style="max-width: 240px;"
+                           hx-get="{% url 'facilities:assets_promote' project.pk %}"
+                           hx-target="#asset-promote-drawer-mount"
+                           hx-swap="innerHTML"
+                           hx-trigger="keyup changed delay:300ms"
+                           hx-include="closest form">
+
+                    {% if ifc_files %}
+                    <select name="ifc_file_id"
+                            class="form-select form-select-sm"
+                            style="max-width: 220px;"
+                            hx-get="{% url 'facilities:assets_promote' project.pk %}"
+                            hx-target="#asset-promote-drawer-mount"
+                            hx-swap="innerHTML"
+                            hx-include="closest form">
+                        <option value="">All IFC files</option>
+                        {% for ifc_file in ifc_files %}
+                        <option value="{{ ifc_file.id }}" {% if ifc_file.id|stringformat:'s' == active_ifc_file_id %}selected{% endif %}>
+                            {{ ifc_file.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    {% endif %}
+
+                    {% if type_counts %}
+                    <select name="ifc_type"
+                            class="form-select form-select-sm"
+                            style="max-width: 240px;"
+                            hx-get="{% url 'facilities:assets_promote' project.pk %}"
+                            hx-target="#asset-promote-drawer-mount"
+                            hx-swap="innerHTML"
+                            hx-include="closest form">
+                        <option value="">All types</option>
+                        {% for row in type_counts %}
+                        <option value="{{ row.ifc_type }}" {% if row.ifc_type == active_type %}selected{% endif %}>
+                            {{ row.ifc_type }} ({{ row.count }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                    {% endif %}
+                </div>
+
+                <div class="modal-body" style="max-height: 60vh; overflow-y: auto;">
+                    {% if candidates %}
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <div class="fs-8 text-secondary">
+                            {{ candidates|length }} candidate{{ candidates|length|pluralize }}
+                            {% if candidates|length >= 200 %}
+                                <span>(showing first 200 — narrow the filter to see more)</span>
+                            {% endif %}
+                        </div>
+                        <div class="form-check fs-8">
+                            <input class="form-check-input"
+                                   type="checkbox"
+                                   id="promote-select-all"
+                                   onclick="document.querySelectorAll('.promote-checkbox').forEach(cb => cb.checked = this.checked);">
+                            <label class="form-check-label" for="promote-select-all">Select all</label>
+                        </div>
+                    </div>
+                    <div class="list-group">
+                        {% for entity in candidates %}
+                        <label class="list-group-item d-flex align-items-center gap-2"
+                               style="cursor: pointer;">
+                            <input class="form-check-input promote-checkbox m-0"
+                                   type="checkbox"
+                                   name="ifc_entity_ids"
+                                   value="{{ entity.pk }}">
+                            <div class="flex-grow-1 min-width-0">
+                                <div class="fw-semibold text-truncate">{{ entity.name|default:entity.global_id }}</div>
+                                <div class="fs-8 text-secondary text-truncate">
+                                    {{ entity.ifc_type }}
+                                    {% if entity.spatial_container and entity.spatial_container.entity %}
+                                        · <i class="bi bi-geo-alt"></i> {{ entity.spatial_container.entity.name|default:entity.spatial_container.get_spatial_type_display }}
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <code class="fs-8 text-secondary d-none d-md-block">{{ entity.global_id|slice:":12" }}</code>
+                        </label>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="p-4 rounded text-center"
+                         style="background-color: var(--bs-tertiary-bg); border: 1px dashed var(--bs-border-color);">
+                        <i class="bi bi-check-circle fs-1 d-block mb-2 text-secondary" style="opacity: 0.5;"></i>
+                        <div class="h6 mb-1">No candidates</div>
+                        <div class="fs-8 text-secondary">Every matching IFC entity is already an asset, or the filter returned nothing.</div>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button"
+                            class="btn btn-secondary"
+                            onclick="document.getElementById('asset-promote-drawer-mount').innerHTML='';">
+                        Cancel
+                    </button>
+                    <button type="submit"
+                            class="btn"
+                            style="background-color: var(--castor-facilities, #14b8a6); color: white; border: none;">
+                        <i class="bi bi-plus-lg"></i> Promote selected
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

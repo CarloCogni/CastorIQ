@@ -87,7 +87,14 @@ class ProjectTabMixin(ProjectAccessMixin):
             "id", "name", "document_type", "status", "created_at"
         ).order_by("-created_at")
 
-        context["open_conflict_count"] = project.conflicts.filter(status="open").count()
+        # Count distinct conflict *groups* so the tab badge matches the number
+        # of cards rendered in the Conflicts tab (grouped by title + values + IFC type).
+        context["open_conflict_count"] = (
+            project.conflicts.filter(status="open")
+            .values("title", "ifc_value", "document_value", "ifc_entity__ifc_type")
+            .distinct()
+            .count()
+        )
 
         context["ifc_files"] = project.ifc_files.annotate(
             unresolved_issue_count=Count("data_issues", filter=Q(data_issues__status="open"))

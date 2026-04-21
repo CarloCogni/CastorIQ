@@ -3,6 +3,7 @@
 {% include "facilities/components/dashboards/_header.html" with tagline="Portfolio view — costs, capex, and fiscal-period control." %}
 
 <div class="row g-3">
+    {% include "facilities/components/dashboards/_asset_count_card.html" %}
     {% include "facilities/components/dashboards/_placeholder_card.html" with icon="cash-stack" title="OpEx this period" hint="M8 · Cost Tracking" %}
     {% include "facilities/components/dashboards/_placeholder_card.html" with icon="graph-up-arrow" title="Capex budget vs actuals" hint="M8 · Cost Tracking" %}
     {% include "facilities/components/dashboards/_placeholder_card.html" with icon="calendar2-check" title="Replace-vs-maintain alerts" hint="M8 · AI insight" %}

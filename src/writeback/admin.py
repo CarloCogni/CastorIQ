@@ -412,7 +412,7 @@ class ConflictAdmin(admin.ModelAdmin):
         ),
     )
 
-    actions = ["mark_resolved", "mark_ignored"]
+    actions = ["mark_resolved", "mark_ignored", "hard_delete_selected", "delete_selected"]
 
     def severity_badge(self, obj):
         colors = {
@@ -460,3 +460,8 @@ class ConflictAdmin(admin.ModelAdmin):
     def mark_ignored(self, request, queryset):
         updated = queryset.update(status="ignored")
         self.message_user(request, f"Marked {updated} conflict(s) as ignored.")
+
+    @admin.action(description="🗑️ Hard-delete selected conflicts (bypass confirmation)")
+    def hard_delete_selected(self, request, queryset):
+        count, _ = queryset.delete()
+        self.message_user(request, f"Permanently deleted {count} conflict(s).")

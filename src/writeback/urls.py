@@ -38,6 +38,11 @@ urlpatterns = [
         name="delete_all_conflicts",
     ),
     path(
+        "<uuid:pk>/conflicts/<uuid:conflict_id>/restore/",
+        views.RestoreConflictView.as_view(),
+        name="restore_conflict",
+    ),
+    path(
         "<uuid:pk>/data-issues/<uuid:issue_id>/dismiss/",
         views.DismissDataIssueView.as_view(),
         name="dismiss_data_issue",

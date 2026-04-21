@@ -24,19 +24,12 @@
                 <div class="text-secondary small">Who can open this project and at what permission level.</div>
             </div>
             {% if can_manage_access %}
-            <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#add-member-form">
+            <button type="button" class="btn btn-sm btn-outline-primary"
+                    data-bs-toggle="modal" data-bs-target="#addMemberModal">
                 <i class="bi bi-person-plus me-1"></i>Add member
             </button>
             {% endif %}
         </div>
-
-        {% if can_manage_access %}
-        <div class="collapse" id="add-member-form">
-            <div class="card-body border-bottom">
-                {% include "environments/partials/_member_form.html" %}
-            </div>
-        </div>
-        {% endif %}
 
         <div class="table-responsive">
             <table class="table table-sm mb-0 align-middle">
@@ -60,34 +53,39 @@
 
     <!-- Section: Functional roles (ProjectRole) -->
     <div class="card mb-4">
-        <div class="card-header">
-            <h6 class="mb-0">Functional roles</h6>
-            <div class="text-secondary small">
-                7D Facility Management role assignments. Read-only here — manage via
-                <a href="{% url 'admin:environments_projectrole_changelist' %}">Django admin</a>.
+        <div class="card-header d-flex align-items-center justify-content-between">
+            <div>
+                <h6 class="mb-0">Functional roles</h6>
+                <div class="text-secondary small">
+                    7D Facility Management role assignments. A user may hold multiple roles with
+                    independent validity windows.
+                </div>
             </div>
+            {% if can_manage_roles %}
+            <button type="button" class="btn btn-sm" style="border: 1px solid #14b8a6; color: #14b8a6;"
+                    data-bs-toggle="modal" data-bs-target="#assignRoleModal">
+                <i class="bi bi-plus-lg me-1"></i>Assign role
+            </button>
+            {% endif %}
         </div>
+
         <div class="table-responsive">
             <table class="table table-sm mb-0 align-middle">
                 <thead>
                     <tr>
-                        <th>Member</th>
+                        <th style="width: 40%;">Member</th>
                         <th>Functional role</th>
                         <th>Valid from</th>
                         <th>Valid until</th>
+                        <th class="text-end">Actions</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="roles-tbody">
                     {% for role in facility_roles %}
-                    <tr>
-                        <td>{{ role.user.username }}</td>
-                        <td>{{ role.get_role_display }}</td>
-                        <td>{{ role.valid_from|date:"Y-m-d" }}</td>
-                        <td>{% if role.valid_until %}{{ role.valid_until|date:"Y-m-d" }}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
-                    </tr>
+                    {% include "environments/partials/_role_row.html" %}
                     {% empty %}
-                    <tr>
-                        <td colspan="4" class="text-secondary text-center py-3">No functional roles assigned.</td>
+                    <tr id="roles-empty-row">
+                        <td colspan="5" class="text-secondary text-center py-3">No functional roles assigned.</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -99,5 +97,291 @@
     {% include "environments/partials/_transfer_modal.html" %}
     {% endif %}
 
+    <!-- Modals (owner-only actions) -->
+    {% if can_manage_access %}
+    <div class="modal fade" id="addMemberModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add member</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    {% include "environments/partials/_member_form.html" %}
+                    {% include "environments/partials/_invite_by_email.html" with scope="member" %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if can_manage_roles %}
+    <div class="modal fade" id="assignRoleModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Assign functional role</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    {% include "environments/partials/_role_form.html" %}
+                    {% include "environments/partials/_invite_by_email.html" with scope="role" %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 </div>
+
+<script>
+    // =======================================================================
+    // User-typeahead (vanilla fetch + JSON). One handler covers both modals
+    // via data-* attributes on each <input class="user-typeahead">.
+    // Verbose console.log by design: if "nothing happens" the developer tools
+    // Console will show exactly what the client is doing — request URL,
+    // status, and response — and the Network tab will corroborate.
+    // =======================================================================
+
+    const TYPEAHEAD_MIN_CHARS = 2;
+    const TYPEAHEAD_DEBOUNCE_MS = 200;
+
+    function escapeHtml(s) {
+        return String(s)
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#39;');
+    }
+
+    function renderTypeaheadInfo(slot, message) {
+        slot.innerHTML = '<div class="list-group-item small text-secondary py-1 px-2">' +
+            escapeHtml(message) + '</div>';
+        slot.classList.remove('d-none');
+    }
+
+    function renderTypeaheadMatches(slot, scope, matches) {
+        if (matches.length === 0) {
+            renderTypeaheadInfo(slot, 'No users match your query.');
+            return;
+        }
+        const html = matches.map(function (u) {
+            const label = escapeHtml(u.username);
+            const mail = escapeHtml(u.email);
+            // Pack the three picker args as JSON inside data-* — avoids quoting
+            // hazards from usernames/emails that contain apostrophes.
+            const payload = escapeHtml(JSON.stringify({id: u.id, username: u.username, email: u.email}));
+            return '<button type="button" class="list-group-item list-group-item-action py-1 px-2 d-flex flex-column" ' +
+                'data-scope="' + scope + '" data-user=\'' + payload + '\' ' +
+                'onclick="onSuggestionClick(this)">' +
+                '<span class="fw-medium small">' + label + '</span>' +
+                '<span class="text-secondary" style="font-size: 0.75rem;">' + mail + '</span>' +
+                '</button>';
+        }).join('');
+        slot.innerHTML = html;
+        slot.classList.remove('d-none');
+    }
+
+    function renderTypeaheadError(slot, message) {
+        slot.innerHTML = '<div class="list-group-item small text-danger py-1 px-2">' +
+            escapeHtml(message) + '</div>';
+        slot.classList.remove('d-none');
+    }
+
+    // Per-input state: debounce timer id + in-flight AbortController.
+    const _typeaheadState = new WeakMap();
+
+    async function performTypeaheadSearch(inputEl) {
+        const scope = inputEl.dataset.scope;
+        const slot = document.getElementById(inputEl.dataset.suggestionsId);
+        const q = inputEl.value.trim();
+
+        if (q.length < TYPEAHEAD_MIN_CHARS) {
+            renderTypeaheadInfo(slot, 'Type at least ' + TYPEAHEAD_MIN_CHARS + ' characters…');
+            return;
+        }
+
+        // Cancel previous in-flight request for this input.
+        const prev = _typeaheadState.get(inputEl);
+        if (prev && prev.controller) prev.controller.abort();
+        const controller = new AbortController();
+        _typeaheadState.set(inputEl, {..._typeaheadState.get(inputEl), controller});
+
+        const url = inputEl.dataset.searchUrl + '?' + new URLSearchParams({q, scope});
+        console.log('[typeahead]', scope, '→ GET', url);
+
+        try {
+            const resp = await fetch(url, {
+                credentials: 'same-origin',
+                headers: {'Accept': 'application/json', 'X-Requested-With': 'fetch'},
+                signal: controller.signal,
+            });
+            console.log('[typeahead]', scope, '← status', resp.status);
+            if (!resp.ok) {
+                const body = await resp.text();
+                console.warn('[typeahead] error body:', body);
+                renderTypeaheadError(slot, 'Search failed (' + resp.status + '). See console for details.');
+                return;
+            }
+            const data = await resp.json();
+            console.log('[typeahead]', scope, '← data', data);
+            if (data.too_short) {
+                renderTypeaheadInfo(slot, 'Type at least ' + TYPEAHEAD_MIN_CHARS + ' characters…');
+                return;
+            }
+            renderTypeaheadMatches(slot, scope, data.matches || []);
+        } catch (err) {
+            if (err.name === 'AbortError') return;  // superseded by a newer keystroke
+            console.error('[typeahead]', scope, 'fetch error:', err);
+            renderTypeaheadError(slot, 'Network error: ' + err.message);
+        }
+    }
+
+    function onTypeaheadInput(e) {
+        const inputEl = e.currentTarget;
+        // Typing invalidates any previously-picked user_id.
+        const hidden = document.getElementById(inputEl.dataset.hiddenId);
+        if (hidden) hidden.value = '';
+        const state = _typeaheadState.get(inputEl) || {};
+        clearTimeout(state.timer);
+        state.timer = setTimeout(() => performTypeaheadSearch(inputEl), TYPEAHEAD_DEBOUNCE_MS);
+        _typeaheadState.set(inputEl, state);
+    }
+
+    function onSuggestionClick(buttonEl) {
+        const payload = JSON.parse(buttonEl.dataset.user);
+        const scope = buttonEl.dataset.scope;
+        pickUserSuggestion(scope, payload.id, payload.username, payload.email);
+    }
+
+    function pickUserSuggestion(scope, userId, username, email) {
+        const input = document.getElementById(scope + '-user-search');
+        const hidden = document.getElementById(scope + '-user-id');
+        const slot = document.getElementById(scope + '-user-suggestions');
+        if (hidden) hidden.value = userId;
+        if (input) input.value = username + ' (' + email + ')';
+        if (slot) { slot.innerHTML = ''; slot.classList.add('d-none'); }
+    }
+
+    // Wire up every .user-typeahead input on the page.
+    document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('input.user-typeahead').forEach(function (inputEl) {
+            inputEl.addEventListener('input', onTypeaheadInput);
+            inputEl.addEventListener('focus', function () {
+                // Re-show the current dropdown on focus if it has content.
+                const slot = document.getElementById(inputEl.dataset.suggestionsId);
+                if (slot && slot.innerHTML.trim()) slot.classList.remove('d-none');
+            });
+        });
+
+        // Hide suggestion dropdown when clicking outside its input/slot pair.
+        document.addEventListener('click', function (e) {
+            document.querySelectorAll('input.user-typeahead').forEach(function (inputEl) {
+                const slot = document.getElementById(inputEl.dataset.suggestionsId);
+                if (!slot) return;
+                if (slot.contains(e.target) || inputEl.contains(e.target)) return;
+                slot.classList.add('d-none');
+            });
+        });
+    });
+
+    // --- mailto: invite-by-email (client-only, no backend) -----------------
+    function openInviteMailto(scope, projectName) {
+        const input = document.getElementById('invite-email-' + scope + '-input');
+        const email = (input.value || '').trim();
+        if (!email || !/@.+\./.test(email)) {
+            input.focus();
+            input.classList.add('is-invalid');
+            return;
+        }
+        input.classList.remove('is-invalid');
+        const subject = encodeURIComponent('Join ' + projectName + ' on Castor');
+        const body = encodeURIComponent(
+            "Hi,\n\n" +
+            "I'd like to add you to the Castor project \"" + projectName + "\".\n" +
+            "Please register an account, then let me know — I'll " +
+            (scope === 'role' ? 'assign your role' : 'add you as a member') + " from there.\n\n" +
+            "Thanks!"
+        );
+        window.location.href = 'mailto:' + encodeURIComponent(email) + '?subject=' + subject + '&body=' + body;
+    }
+
+    // --- Response routing: success -> append row + close, error -> inline --
+    // htmx:afterRequest bubbles from the typeahead input to the form. Guard
+    // so these only act on the actual form submit (event.detail.elt is the
+    // form), not child requests.
+    function routeMemberAddResponse(event) {
+        if (event.detail.elt.id !== 'member-add-form') return;
+        const xhr = event.detail.xhr;
+        const resultSlot = document.getElementById('member-add-result');
+        if (xhr.status >= 200 && xhr.status < 300) {
+            document.getElementById('members-tbody').insertAdjacentHTML('beforeend', xhr.responseText);
+            htmx.process(document.getElementById('members-tbody').lastElementChild);
+            resultSlot.innerHTML = '';
+            closeAndResetModal('addMemberModal', resetMemberForm);
+        } else {
+            resultSlot.innerHTML = '<div class="alert alert-danger py-2 px-3 small mt-2 mb-0">' + xhr.responseText + '</div>';
+        }
+    }
+
+    function routeRoleAddResponse(event) {
+        if (event.detail.elt.id !== 'role-add-form') return;
+        const xhr = event.detail.xhr;
+        const resultSlot = document.getElementById('role-add-result');
+        if (xhr.status >= 200 && xhr.status < 300) {
+            const tbody = document.getElementById('roles-tbody');
+            const emptyRow = document.getElementById('roles-empty-row');
+            if (emptyRow) emptyRow.remove();
+            tbody.insertAdjacentHTML('beforeend', xhr.responseText);
+            htmx.process(tbody.lastElementChild);
+            resultSlot.innerHTML = '';
+            closeAndResetModal('assignRoleModal', resetRoleForm);
+        } else {
+            resultSlot.innerHTML = '<div class="alert alert-danger py-2 px-3 small mt-2 mb-0">' + xhr.responseText + '</div>';
+        }
+    }
+
+    function resetMemberForm() {
+        const f = document.getElementById('member-add-form');
+        if (!f) return;
+        f.reset();
+        document.getElementById('member-user-id').value = '';
+        const slot = document.getElementById('member-user-suggestions');
+        slot.innerHTML = '';
+        slot.classList.add('d-none');
+        document.getElementById('member-add-result').innerHTML = '';
+        const inviteInput = document.getElementById('invite-email-member-input');
+        if (inviteInput) { inviteInput.value = ''; inviteInput.classList.remove('is-invalid'); }
+    }
+
+    function resetRoleForm() {
+        const f = document.getElementById('role-add-form');
+        if (!f) return;
+        f.reset();
+        document.getElementById('role-user-id').value = '';
+        const slot = document.getElementById('role-user-suggestions');
+        slot.innerHTML = '';
+        slot.classList.add('d-none');
+        document.getElementById('role-add-result').innerHTML = '';
+        const inviteInput = document.getElementById('invite-email-role-input');
+        if (inviteInput) { inviteInput.value = ''; inviteInput.classList.remove('is-invalid'); }
+    }
+
+    function closeAndResetModal(modalId, resetFn) {
+        const el = document.getElementById(modalId);
+        if (!el) return;
+        const instance = bootstrap.Modal.getInstance(el) || new bootstrap.Modal(el);
+        instance.hide();
+        resetFn();
+    }
+
+    // Reset whenever a modal is dismissed (Cancel, Esc, or backdrop click).
+    document.addEventListener('DOMContentLoaded', function () {
+        const addMember = document.getElementById('addMemberModal');
+        if (addMember) addMember.addEventListener('hidden.bs.modal', resetMemberForm);
+        const assignRole = document.getElementById('assignRoleModal');
+        if (assignRole) assignRole.addEventListener('hidden.bs.modal', resetRoleForm);
+    });
+
+</script>
 {% endblock %}

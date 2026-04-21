@@ -68,6 +68,38 @@ REQUIREMENT_KEYWORDS = [
 CONFIDENCE_THRESHOLD = 0.7
 
 # ────────────────────────────────────────────────────────────
+# Element-type gate: maps the LLM's `applies_to_element` label
+# (short English word extracted from the requirement text) to
+# the set of IFC classes that satisfy it. Findings whose label
+# does not match the entity's IFC type are dropped before
+# persistence — prevents wall requirements being pinned on
+# beams, columns, etc. by a loose vector recall.
+# ────────────────────────────────────────────────────────────
+
+ELEMENT_TYPE_MAP: dict[str, set[str]] = {
+    "wall": {"IfcWall", "IfcWallStandardCase", "IfcCurtainWall"},
+    "door": {"IfcDoor"},
+    "window": {"IfcWindow"},
+    "slab": {"IfcSlab"},
+    "roof": {"IfcRoof", "IfcSlab"},
+    "beam": {"IfcBeam"},
+    "column": {"IfcColumn"},
+    "stair": {"IfcStair", "IfcStairFlight"},
+    "ramp": {"IfcRamp", "IfcRampFlight"},
+    "railing": {"IfcRailing"},
+    "covering": {"IfcCovering"},
+    "furniture": {"IfcFurnishingElement", "IfcFurniture"},
+    "space": {"IfcSpace"},
+    "zone": {"IfcZone"},
+    "pipe": {"IfcPipeSegment", "IfcPipeFitting"},
+    "duct": {"IfcDuctSegment", "IfcDuctFitting"},
+}
+
+# Labels that explicitly bypass the gate (generic/applies-to-all requirements).
+ELEMENT_TYPE_ANY_LABELS = {"any", "all", "", "element", "any element"}
+
+
+# ────────────────────────────────────────────────────────────
 # Scanner LLM Prompts
 # ────────────────────────────────────────────────────────────
 
@@ -76,20 +108,44 @@ You are a construction compliance checker.
 
 Your task is to compare IFC building model data against technical document requirements.
 
-## Two-step process (MANDATORY):
+## Three-step process (MANDATORY):
 Step 1 — EXTRACT: List every specific requirement found in the document excerpts
-         (property name + required value). Ignore vague or general statements.
-Step 2 — COMPARE: For each extracted requirement, look up the same property in the
-         IFC entity's current properties and compare:
+         (property name + required value + the element class it targets,
+         e.g. "wall", "door", "slab", "beam", "column"). Ignore vague statements.
+Step 2 — GATE: Check whether the requirement APPLIES to the current IFC entity.
+         The entity's IFC type is shown under "## IFC Entity · Type". A requirement
+         that targets a specific element class only applies when the IFC type
+         semantically matches that class:
+           - "wall"   → IfcWall, IfcWallStandardCase, IfcCurtainWall
+           - "door"   → IfcDoor
+           - "window" → IfcWindow
+           - "slab"   → IfcSlab
+           - "roof"   → IfcRoof (or IfcSlab acting as roof)
+           - "beam"   → IfcBeam
+           - "column" → IfcColumn
+           - "stair"  → IfcStair, IfcStairFlight
+         If the requirement clearly targets a different element class, SKIP it —
+         do NOT flag a conflict. A requirement for "external walls" is NEVER a
+         conflict on an IfcBeam or IfcColumn, even if properties are missing.
+         Only if the requirement is generic (applies to any element) set
+         applies_to_element = "any".
+Step 3 — COMPARE: For each requirement that passed the gate, look up the same
+         property in the IFC entity's current properties and compare:
          - Values match or are equivalent → NOT a conflict. Skip it.
          - Values differ → flag as a conflict.
-         - Property absent in IFC but entity has other properties → NOT a conflict (property may be optional or not applicable to this element).
-         - Entity has NO properties at all (shown as "(no properties)") AND document explicitly requires a specific value for this element type → flag as a conflict: required data is absent. Use ifc_value: "absent (no property sets)", suggested_fix: "Add [PropertyName] = [RequiredValue] to [EntityName] — required by document".
-         - Requirement is ambiguous → NOT a conflict (uncertainty, not contradiction).
+         - Property absent but entity has other properties → NOT a conflict
+           (property may be optional or not applicable to this element).
+         - Entity has NO properties at all (shown as "(no properties)") AND the
+           requirement targets THIS element class specifically (gate passed) →
+           flag as a conflict with ifc_value: "absent (no property sets)".
+         - Requirement is ambiguous → NOT a conflict.
 
 ## Critical rules:
 - NEVER flag a property where the IFC value already satisfies the document requirement.
+- NEVER flag a requirement that targets a different element class than the IFC entity.
 - ONLY flag when the IFC value is demonstrably DIFFERENT from the document requirement.
+- Always include the `applies_to_element` field (lowercase, singular English noun,
+  or "any" for generic requirements).
 - Assign a confidence score (0.0–1.0). Only include conflicts with confidence >= 0.7.
 - If no genuine conflicts exist, return {"conflicts": []}.
 
@@ -100,6 +156,7 @@ Step 2 — COMPARE: For each extracted requirement, look up the same property in
       "property_name": "FireRating",
       "ifc_value": "EI60",
       "document_value": "EI120",
+      "applies_to_element": "wall",
       "title": "Fire rating below requirement",
       "description": "Wall fire rating is EI60 but specification requires EI120 for corridor partitions.",
       "severity": "critical",
@@ -390,11 +447,49 @@ class ConflictScanService:
             return []
 
         confident = [f for f in findings if f.get("confidence", 0) >= CONFIDENCE_THRESHOLD]
-        skipped = len(findings) - len(confident)
-        if skipped:
-            logger.debug("Filtered %d low-confidence finding(s) for entity %s", skipped, entity.id)
+        low_conf_skipped = len(findings) - len(confident)
+        if low_conf_skipped:
+            logger.debug(
+                "Filtered %d low-confidence finding(s) for entity %s",
+                low_conf_skipped,
+                entity.id,
+            )
 
-        return confident
+        applicable = [f for f in confident if self._finding_applies_to_entity(f, entity)]
+        type_skipped = len(confident) - len(applicable)
+        if type_skipped:
+            logger.info(
+                "Dropped %d cross-type finding(s) for entity %s (type=%s): requirement targeted a different element class",
+                type_skipped,
+                entity.id,
+                entity.ifc_type,
+            )
+
+        return applicable
+
+    @staticmethod
+    def _finding_applies_to_entity(finding: dict, entity: IFCEntity) -> bool:
+        """
+        Gate: does this LLM finding actually target the entity's IFC type?
+
+        Uses the `applies_to_element` label the LLM attaches to each finding.
+        Generic labels (in ELEMENT_TYPE_ANY_LABELS) bypass the gate. Known
+        labels (in ELEMENT_TYPE_MAP) must have the entity's ifc_type in their
+        allowed set. Unknown labels are allowed through (fail-open) so a new
+        requirement vocabulary doesn't silently drop findings — extend
+        ELEMENT_TYPE_MAP when that happens.
+        """
+        label = str(finding.get("applies_to_element", "")).strip().lower()
+
+        if label in ELEMENT_TYPE_ANY_LABELS:
+            return True
+
+        allowed = ELEMENT_TYPE_MAP.get(label)
+        if allowed is None:
+            logger.debug("Unknown applies_to_element label %r — allowing finding through", label)
+            return True
+
+        return entity.ifc_type in allowed
 
     def _upsert_conflict(
         self,

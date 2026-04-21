@@ -119,6 +119,70 @@ class TestDismissConflictView:
 # ===================================================================
 
 
+class TestRestoreConflictView:
+    """POST /<pk>/conflicts/<conflict_id>/restore/"""
+
+    def test_restore_sets_status_open(self, auth_client, project, wall_entities):
+        """Restoring a DISMISSED conflict flips it back to OPEN and clears resolution metadata."""
+        from django.utils import timezone
+
+        from writeback.tests.factories import ConflictFactory
+
+        c = ConflictFactory(
+            project=project,
+            ifc_entity=wall_entities[0],
+            status=Conflict.Status.DISMISSED,
+            resolved_at=timezone.now(),
+            resolution_note="accidentally dismissed",
+        )
+
+        url = reverse(
+            "writeback:restore_conflict",
+            kwargs={"pk": project.pk, "conflict_id": c.pk},
+        )
+        resp = auth_client.post(url)
+
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "open"
+        c.refresh_from_db()
+        assert c.status == Conflict.Status.OPEN
+        assert c.resolved_at is None
+        assert c.resolution_note == ""
+
+    def test_restore_ignored_conflict(self, auth_client, project, wall_entities):
+        """Ignored conflicts can also be restored."""
+        from writeback.tests.factories import ConflictFactory
+
+        c = ConflictFactory(
+            project=project, ifc_entity=wall_entities[0], status=Conflict.Status.IGNORED
+        )
+        url = reverse(
+            "writeback:restore_conflict",
+            kwargs={"pk": project.pk, "conflict_id": c.pk},
+        )
+        resp = auth_client.post(url)
+
+        assert resp.status_code == 200
+        c.refresh_from_db()
+        assert c.status == Conflict.Status.OPEN
+
+    def test_restore_denies_non_owner(self, other_client, project, conflict):
+        """Non-owner gets 403."""
+        url = reverse(
+            "writeback:restore_conflict",
+            kwargs={"pk": project.pk, "conflict_id": conflict.pk},
+        )
+        assert other_client.post(url).status_code == 403
+
+    def test_restore_missing_conflict_returns_404(self, auth_client, project):
+        """Unknown conflict id returns 404."""
+        url = reverse(
+            "writeback:restore_conflict",
+            kwargs={"pk": project.pk, "conflict_id": uuid.uuid4()},
+        )
+        assert auth_client.post(url).status_code == 404
+
+
 class TestIgnoreConflictView:
     """POST /<pk>/conflicts/<conflict_id>/ignore/"""
 
@@ -512,6 +576,36 @@ class TestConflictsViewGET:
         resp = auth_client.get(url)
 
         assert resp.context["last_scan_run"] == scan
+
+    def test_grouping_key_includes_ifc_type(self, auth_client, project, ifc_file):
+        """Two conflicts with identical (title, ifc_value, document_value) but
+        different ifc_type do NOT collapse into a single group — each IFC type
+        gets its own card. Regression for the wall/beam confusion.
+        """
+        from ifc_processor.tests.factories import IFCEntityFactory
+
+        wall = IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcWall", name="outer-wall")
+        beam = IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcBeam", name="girder")
+
+        common = {
+            "project": project,
+            "title": "Missing fire rating for external walls",
+            "ifc_value": "absent (no property sets)",
+            "document_value": "EI60",
+            "severity": "critical",
+        }
+        ConflictFactory(ifc_entity=wall, **common)
+        ConflictFactory(ifc_entity=beam, **common)
+
+        url = reverse("writeback:conflicts", kwargs={"pk": project.pk})
+        resp = auth_client.get(url)
+
+        assert resp.status_code == 200
+        open_groups = resp.context["grouped_by_status"]["open"]
+        # One group per ifc_type — each should have count == 1
+        assert len(open_groups) == 2
+        representatives_by_type = {g["representative"].ifc_entity.ifc_type for g in open_groups}
+        assert representatives_by_type == {"IfcWall", "IfcBeam"}
 
 
 # ===================================================================

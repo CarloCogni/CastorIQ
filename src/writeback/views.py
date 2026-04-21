@@ -396,14 +396,6 @@ class ConflictsView(ProjectTabMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         project = self.get_project()
 
-        # Counts for pill tabs
-        status_counts = {
-            "open": project.conflicts.filter(status=Conflict.Status.OPEN).count(),
-            "resolved": project.conflicts.filter(status=Conflict.Status.RESOLVED).count(),
-            "ignored": project.conflicts.filter(status=Conflict.Status.IGNORED).count(),
-            "dismissed": project.conflicts.filter(status=Conflict.Status.DISMISSED).count(),
-        }
-
         # Build grouped conflicts for every status so the template can filter client-side
         severity_rank = {"critical": 4, "high": 3, "medium": 2, "low": 1}
         grouped_by_status: dict = {}
@@ -420,12 +412,16 @@ class ConflictsView(ProjectTabMixin, TemplateView):
             )
             groups: dict = defaultdict(list)
             for c in raw:
-                key = (c.title, c.ifc_value, c.document_value)
+                ifc_type = c.ifc_entity.ifc_type if c.ifc_entity else None
+                key = (c.title, c.ifc_value, c.document_value, ifc_type)
                 groups[key].append(c)
 
             grouped: list = []
             for group in groups.values():
-                representative = max(group, key=lambda c: severity_rank.get(c.severity, 0))
+                representative = max(
+                    group,
+                    key=lambda c: (severity_rank.get(c.severity, 0), c.created_at),
+                )
                 entities = [c.ifc_entity for c in group if c.ifc_entity]
                 grouped.append(
                     {
@@ -441,6 +437,10 @@ class ConflictsView(ProjectTabMixin, TemplateView):
                 reverse=True,
             )
             grouped_by_status[conflict_status.value] = grouped
+
+        # Pill counts mirror the card count (grouped) so what the user reads
+        # matches what they can click.
+        status_counts = {status: len(groups) for status, groups in grouped_by_status.items()}
 
         context["grouped_by_status"] = grouped_by_status
         context["status_counts"] = status_counts
@@ -660,6 +660,27 @@ class DeleteAllConflictsView(LoginRequiredMixin, View):
             return JsonResponse({"status": "error", "message": "Access denied."}, status=403)
         deleted, _ = project.conflicts.all().delete()
         return JsonResponse({"status": "deleted", "count": deleted})
+
+
+class RestoreConflictView(LoginRequiredMixin, View):
+    """POST: revert a DISMISSED / IGNORED / RESOLVED conflict back to OPEN.
+
+    Lets the user undo a misclick on the Dismiss / Ignore / Resolve actions.
+    """
+
+    def post(self, request, pk, conflict_id):
+        project = get_object_or_404(Project.objects.select_related("owner"), pk=pk)
+        if not ProjectAccessService.can_modify(request.user, project):
+            return JsonResponse({"status": "error", "message": "Access denied."}, status=403)
+
+        conflict = get_object_or_404(Conflict, id=conflict_id, project=project)
+        conflict.status = Conflict.Status.OPEN
+        conflict.resolved_at = None
+        conflict.resolved_by = None
+        conflict.resolution_note = ""
+        conflict.save(update_fields=["status", "resolved_at", "resolved_by", "resolution_note"])
+
+        return JsonResponse({"status": "open"})
 
 
 class DismissDataIssueView(LoginRequiredMixin, View):

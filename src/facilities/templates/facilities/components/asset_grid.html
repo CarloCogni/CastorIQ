@@ -1,0 +1,57 @@
+<!-- facilities/components/asset_grid.html — paginated card grid -->
+
+{% if page_obj and page_obj.object_list %}
+<div class="row g-3">
+    {% for asset in page_obj.object_list %}
+        {% include "facilities/components/asset_card.html" with asset=asset %}
+    {% endfor %}
+</div>
+
+{% if page_obj.paginator.num_pages > 1 %}
+<nav aria-label="Asset pagination" class="mt-3">
+    <ul class="pagination pagination-sm justify-content-center m-0">
+        {% if page_obj.has_previous %}
+        <li class="page-item">
+            <a class="page-link"
+               href="?page={{ page_obj.previous_page_number }}{% if active_q %}&q={{ active_q }}{% endif %}{% if active_type %}&ifc_type={{ active_type }}{% endif %}"
+               hx-get="{% url 'facilities:assets_list' project.pk %}?page={{ page_obj.previous_page_number }}{% if active_q %}&q={{ active_q }}{% endif %}{% if active_type %}&ifc_type={{ active_type }}{% endif %}"
+               hx-target="#asset-grid-mount"
+               hx-swap="innerHTML">
+                <i class="bi bi-chevron-left"></i>
+            </a>
+        </li>
+        {% endif %}
+        <li class="page-item active">
+            <span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+        </li>
+        {% if page_obj.has_next %}
+        <li class="page-item">
+            <a class="page-link"
+               href="?page={{ page_obj.next_page_number }}{% if active_q %}&q={{ active_q }}{% endif %}{% if active_type %}&ifc_type={{ active_type }}{% endif %}"
+               hx-get="{% url 'facilities:assets_list' project.pk %}?page={{ page_obj.next_page_number }}{% if active_q %}&q={{ active_q }}{% endif %}{% if active_type %}&ifc_type={{ active_type }}{% endif %}"
+               hx-target="#asset-grid-mount"
+               hx-swap="innerHTML">
+                <i class="bi bi-chevron-right"></i>
+            </a>
+        </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+
+{% else %}
+<div class="p-5 rounded text-center" style="background-color: var(--bs-tertiary-bg); border: 1px dashed var(--bs-border-color);">
+    <i class="bi bi-grid-3x3-gap fs-1 d-block mb-2" style="color: var(--castor-facilities, #14b8a6); opacity: 0.6;"></i>
+    <div class="h6 mb-1">No assets yet</div>
+    <div class="fs-8 text-secondary mb-3">Promote IFC entities to facility assets, or import a CSV to seed the register.</div>
+    {% if user_permission == "owner" or user_permission == "editor" %}
+    <button class="btn btn-sm d-inline-flex align-items-center gap-2"
+            style="background-color: var(--castor-facilities, #14b8a6); color: white; border: none;"
+            hx-get="{% url 'facilities:assets_promote' project.pk %}"
+            hx-target="#asset-promote-drawer-mount"
+            hx-swap="innerHTML">
+        <i class="bi bi-plus-lg"></i> Add assets
+    </button>
+    {% endif %}
+</div>
+{% endif %}

@@ -1,4 +1,4 @@
-<!-- facilities/tabs/_facilities.html — role-aware landing dashboard + role switcher -->
+<!-- facilities/tabs/_facilities.html — Facilities shell: role switcher, sub-nav, sub-tab body -->
 
 <div id="facilities-tab-body" class="d-flex flex-column h-100 overflow-auto">
 
@@ -16,9 +16,14 @@
         </div>
     </div>
 
-    <!-- Role-specific landing dashboard -->
+    <!-- Sub-navigation (Dashboard, Assets, …) -->
+    {% include "facilities/components/facilities_subnav.html" %}
+
+    <!-- Sub-tab body — view picks the template via facilities_body_template; fallback = role dashboard -->
     <div class="flex-grow-1 p-4">
-        {% if facilities_active_role %}
+        {% if facilities_body_template %}
+            {% include facilities_body_template %}
+        {% elif facilities_active_role %}
             {% include facilities_dashboard_template %}
         {% else %}
             {% include "facilities/components/dashboards/_default.html" %}

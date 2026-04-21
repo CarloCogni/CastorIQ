@@ -47,26 +47,21 @@ class TestPeopleViewRendering:
 
 @pytest.mark.django_db
 class TestMemberAddView:
-    def test_owner_can_add_editor_by_email(self, client):
+    """MemberAddView is now typeahead-only (user_id). The email-invite flow
+    lives client-side in _invite_by_email.html — see TestMemberAddViaUserId
+    in test_people_crud_extras.py for user_id coverage."""
+
+    def test_owner_can_add_editor_by_user_id(self, client):
         project = ProjectFactory()
         target = UserFactory()
         _login(client, project.owner)
         resp = client.post(
             reverse("projects:member_add", args=[project.pk]),
-            {"email": target.email, "permission": Permission.EDITOR},
+            {"user_id": target.pk, "permission": Permission.EDITOR},
         )
         assert resp.status_code == 200
         assert target.username.encode() in resp.content
         assert ProjectAccessService.user_permission(target, project) == Permission.EDITOR
-
-    def test_unknown_email_returns_400(self, client):
-        project = ProjectFactory()
-        _login(client, project.owner)
-        resp = client.post(
-            reverse("projects:member_add", args=[project.pk]),
-            {"email": "no-such-user@example.com", "permission": Permission.VIEWER},
-        )
-        assert resp.status_code == 400
 
     def test_editor_cannot_add_members(self, client):
         project = ProjectFactory()
@@ -76,7 +71,7 @@ class TestMemberAddView:
         _login(client, editor)
         resp = client.post(
             reverse("projects:member_add", args=[project.pk]),
-            {"email": target.email, "permission": Permission.VIEWER},
+            {"user_id": target.pk, "permission": Permission.VIEWER},
         )
         assert resp.status_code == 403
 

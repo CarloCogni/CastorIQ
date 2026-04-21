@@ -1,0 +1,50 @@
+<!-- facilities/components/asset_import_modal.html — CSV import (dry-run preview + commit) -->
+
+<div class="modal fade" id="asset-import-modal" tabindex="-1" aria-labelledby="asset-import-title" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title d-flex align-items-center gap-2" id="asset-import-title">
+                    <i class="bi bi-upload" style="color: var(--castor-facilities, #14b8a6);"></i>
+                    Import assets from CSV
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="fs-8 text-secondary mb-2">
+                    CSV schema: <code>global_id, asset_tag, manufacturer, model_number, serial_number, commissioning_date (YYYY-MM-DD), warranty_end (YYYY-MM-DD), classification_system, classification_code</code>.
+                    Rows match IFC entities by <code>global_id</code>; existing assets are updated in-place.
+                </div>
+
+                <form method="post"
+                      action="{% url 'facilities:assets_import' project.pk %}"
+                      enctype="multipart/form-data"
+                      hx-post="{% url 'facilities:assets_import' project.pk %}"
+                      hx-target="#asset-import-result"
+                      hx-swap="innerHTML"
+                      hx-encoding="multipart/form-data"
+                      class="d-flex flex-column gap-2">
+                    {% csrf_token %}
+                    <input type="file" name="file" accept=".csv" class="form-control form-control-sm" required>
+                    <fieldset class="fs-8 d-flex gap-3">
+                        <label class="form-check m-0">
+                            <input type="radio" name="dry_run" value="true" class="form-check-input" checked>
+                            <span class="form-check-label">Preview only</span>
+                        </label>
+                        <label class="form-check m-0">
+                            <input type="radio" name="dry_run" value="false" class="form-check-input">
+                            <span class="form-check-label">Commit to database</span>
+                        </label>
+                    </fieldset>
+                    <div class="d-flex justify-content-end">
+                        <button type="submit" class="btn btn-sm" style="background-color: var(--castor-facilities, #14b8a6); color: white; border: none;">
+                            <i class="bi bi-play"></i> Process
+                        </button>
+                    </div>
+                </form>
+
+                <div id="asset-import-result" class="mt-3"></div>
+            </div>
+        </div>
+    </div>
+</div>
