@@ -61,6 +61,14 @@ def get_llm(user=None, temperature=0.2, format_json=False, **kwargs) -> ChatOlla
     if format_json:
         llm_kwargs["format"] = "json"
 
+    # Apply a bounded per-request timeout unless the caller overrode it.
+    # Without this, a hung Ollama call holds the ASGI thread indefinitely and
+    # WebSocket disconnect cancellation can never land.
+    timeout_seconds = getattr(settings, "OLLAMA_REQUEST_TIMEOUT", 120.0)
+    caller_client_kwargs = llm_kwargs.get("client_kwargs") or {}
+    if "timeout" not in caller_client_kwargs:
+        llm_kwargs["client_kwargs"] = {**caller_client_kwargs, "timeout": timeout_seconds}
+
     logger.debug("LLM init: model=%s, user=%s, temp=%s", model_name, user, temperature)
 
     return ChatOllama(**llm_kwargs)

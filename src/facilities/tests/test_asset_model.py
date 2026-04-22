@@ -163,7 +163,10 @@ class TestOrphanFacilityAsset:
         """An orphan with name + ifc_type + no ifc_entity persists fine."""
         project = ProjectFactory()
         asset = FacilityAsset.objects.create(
-            project=project, ifc_entity=None, name="Extinguisher", ifc_type="IfcFireSuppressionTerminal"
+            project=project,
+            ifc_entity=None,
+            name="Extinguisher",
+            ifc_type="IfcFireSuppressionTerminal",
         )
         assert asset.pk is not None
         assert asset.is_orphan is True

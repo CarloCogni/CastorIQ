@@ -130,6 +130,9 @@ REST_FRAMEWORK = {
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
 OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "mxbai-embed-large")
+# Per-request timeout (seconds) applied to every ChatOllama call. A hung Ollama
+# request otherwise wedges the ASGI thread pool and blocks cancellation.
+OLLAMA_REQUEST_TIMEOUT = float(os.getenv("OLLAMA_REQUEST_TIMEOUT", "120"))
 
 # RAG Token Budget
 RAG_RESPONSE_RESERVE = int(os.getenv("RAG_RESPONSE_RESERVE", "1500"))
@@ -160,3 +163,42 @@ CRISPY_TEMPLATE_PACK = "bootstrap5"
 # Supabase
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
+
+# Logging
+# Project loggers go to console at INFO so per-entity narratives (scan loop,
+# RAG pipeline, modification tiers) are visible during development. Library
+# loggers (httpx, ollama, langchain) stay at WARNING so they don't drown app
+# signal — without this, every Ollama request emits multiple DEBUG lines and
+# the scan trace is impossible to read.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "concise": {
+            "format": "[{levelname}] {name}: {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "concise",
+        },
+    },
+    "loggers": {
+        "writeback": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "chat": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "core": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "documents": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "ifc_processor": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "facilities": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "environments": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "metacastor": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "embeddings": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "httpx": {"level": "WARNING"},
+        "httpcore": {"level": "WARNING"},
+        "ollama": {"level": "WARNING"},
+        "langchain_ollama": {"level": "WARNING"},
+        "asyncio": {"level": "WARNING"},
+    },
+}

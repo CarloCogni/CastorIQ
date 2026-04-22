@@ -1,6 +1,8 @@
 # ifc_processor/templatetags/ifc_filters.py
 """General-purpose template filters for IFC data display."""
 
+import math
+
 from django import template
 
 register = template.Library()
@@ -96,14 +98,29 @@ def smart_round(value: float, unit: str | None = None) -> int | float:
 
 @register.filter
 def format_value(value: object) -> object:
-    """Format a property value for display.
+    """Format a numeric value for display with thousand separators and up to
+    2 decimals (trailing zeros stripped).
 
-    Rounds floats to 2 decimal places to avoid raw Python precision noise
-    (e.g. 0.12345678901234 → 0.12). Non-float values pass through unchanged.
+    Accepts Python ``int``/``float`` and numeric-looking strings. Non-numeric
+    values (labels like ``"EI60"``, ``"(not set)"``, ``None``, booleans,
+    non-finite floats) pass through unchanged.
+
+    Examples: ``6.33939393939394`` → ``"6.34"``; ``"5.0"`` → ``"5"``;
+    ``1234.5`` → ``"1,234.5"``; ``"EI60"`` → ``"EI60"``.
     """
-    if isinstance(value, float):
-        return round(value, 2)
-    return value
+    if isinstance(value, bool):
+        return value
+    num: float | None = None
+    if isinstance(value, (int, float)):
+        num = float(value)
+    elif isinstance(value, str):
+        try:
+            num = float(value.strip())
+        except ValueError:
+            return value
+    if num is None or not math.isfinite(num):
+        return value
+    return f"{num:,.2f}".rstrip("0").rstrip(".")
 
 
 @register.filter

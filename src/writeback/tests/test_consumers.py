@@ -218,6 +218,65 @@ class TestScanConsumerMessages:
 
         await communicator.disconnect()
 
+    async def test_cancellation_error_from_scan_returns_cancelled_message(self, project, user):
+        """CancellationError raised by full_scan surfaces as {type: cancelled}."""
+        from unittest.mock import patch
+
+        from writeback.services.emitters import CancellationError
+
+        communicator = WebsocketCommunicator(
+            ScanConsumer.as_asgi(),
+            f"/ws/projects/{project.id}/scan/",
+        )
+        communicator.scope["user"] = user
+        communicator.scope["url_route"] = {"kwargs": {"project_id": str(project.id)}}
+
+        connected, _ = await communicator.connect()
+        assert connected
+
+        with patch(
+            "writeback.services.conflict_scan_service.ConflictScanService",
+        ) as mock_svc_cls:
+            mock_svc = mock_svc_cls.return_value
+            mock_svc.full_scan.side_effect = CancellationError("Pipeline cancelled by user.")
+
+            await communicator.send_json_to({"action": "start_scan", "skip_low_value": True})
+
+            messages = []
+            for _ in range(5):
+                try:
+                    msg = await communicator.receive_json_from(timeout=2)
+                    messages.append(msg)
+                    if msg.get("type") in ("cancelled", "error", "done"):
+                        break
+                except Exception:
+                    break
+
+        types = [m["type"] for m in messages]
+        assert "cancelled" in types
+        assert "error" not in types
+
+        await communicator.disconnect()
+
+    async def test_disconnect_sets_cancel_event(self, project, user):
+        """disconnect() flips the cancel event so any running scan aborts.
+
+        Exercises the consumer directly — WebsocketCommunicator doesn't expose
+        the live instance, and we only need to verify the method contract.
+        """
+        import threading
+
+        consumer = ScanConsumer()
+        consumer.user = user
+        consumer.scope = {"url_route": {"kwargs": {"project_id": str(project.id)}}}
+        consumer._cancel_event = threading.Event()
+
+        assert not consumer._cancel_event.is_set()
+
+        await consumer.disconnect(close_code=1000)
+
+        assert consumer._cancel_event.is_set()
+
 
 # ── _serialize_result ─────────────────────────────────────────────────────────
 

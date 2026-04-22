@@ -347,9 +347,7 @@ class FacilityAsset(UUIDModel):
         if self.ifc_entity_id:
             return
         if not (self.name or "").strip():
-            raise ValidationError(
-                {"name": "Required for orphan assets (no IFC entity linked)."}
-            )
+            raise ValidationError({"name": "Required for orphan assets (no IFC entity linked)."})
 
     @property
     def is_active(self) -> bool:

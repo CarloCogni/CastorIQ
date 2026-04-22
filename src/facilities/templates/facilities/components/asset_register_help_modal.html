@@ -1,0 +1,204 @@
+<!-- facilities/components/asset_register_help_modal.html — "How the Asset Register works" -->
+
+<div class="modal fade" id="assetRegisterHelpModal" tabindex="-1" aria-labelledby="assetRegisterHelpLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+
+            <div class="modal-header border-bottom px-4 py-3"
+                 style="border-color: var(--bs-border-color) !important;">
+                <h5 class="modal-title fw-semibold fs-6 mb-0" id="assetRegisterHelpLabel">
+                    <i class="bi bi-grid-3x3-gap me-2" style="color: var(--castor-facilities, #14b8a6);"></i>
+                    How the Asset Register Works
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body px-4 py-4">
+
+                <!-- 1. What is an asset? -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-box-seam me-1" style="color: var(--castor-facilities, #14b8a6);"></i>
+                    What is an asset?
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    An asset is a facility-management record for a single physical item — manufacturer,
+                    serial, warranty, condition, responsible person, classifications, notes. It can represent
+                    an item that <strong class="text-body">is in your IFC model</strong>
+                    (a linked asset) or one that <strong class="text-body">isn't in the model</strong>
+                    (an orphan — e.g. fire extinguishers, loose furniture, vehicles, post-handover replacements,
+                    sub-components like an AHU filter).
+                </p>
+
+                <!-- 2. Three ways to add assets -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-plus-circle me-1" style="color: var(--castor-facilities, #14b8a6);"></i>
+                    Three ways to add assets
+                </p>
+                <div class="d-flex flex-column gap-2 fs-8 mb-4">
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge rounded-pill flex-shrink-0 mt-1"
+                              style="background-color: rgba(20, 184, 166, 0.15); color: var(--castor-facilities, #14b8a6); border: 1px solid rgba(20, 184, 166, 0.3);">
+                            <i class="bi bi-plus-lg"></i> Add assets
+                        </span>
+                        <span class="text-secondary">
+                            <strong class="text-body">Promote IFC entities.</strong> Opens a drawer listing
+                            every IFC entity in the project that doesn't yet have an asset record.
+                            Pick the ones you want to track and click <em>Promote selected</em>. No data
+                            entry required — the asset inherits name, type and location from the IFC entity.
+                        </span>
+                    </div>
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge rounded-pill flex-shrink-0 mt-1"
+                              style="background-color: rgba(148, 163, 184, 0.15); color: var(--bs-body-color); border: 1px solid var(--bs-border-color);">
+                            <i class="bi bi-plus-circle"></i> Add manual asset
+                        </span>
+                        <span class="text-secondary">
+                            <strong class="text-body">Create an orphan.</strong> For items not in the IFC model.
+                            Only <em>name</em> is required. You may optionally add a free-text type/category
+                            (for grouping later), pin the item to a room/floor in the spatial tree, or give it a
+                            free-text location. Use this for consumables, mobile equipment, late-arriving replacements.
+                        </span>
+                    </div>
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge rounded-pill flex-shrink-0 mt-1"
+                              style="background-color: rgba(148, 163, 184, 0.15); color: var(--bs-body-color); border: 1px solid var(--bs-border-color);">
+                            <i class="bi bi-upload"></i> Import CSV
+                        </span>
+                        <span class="text-secondary">
+                            <strong class="text-body">Bulk load.</strong> Each row is either linked
+                            (has a <code>global_id</code> matching an IFC entity) or orphan
+                            (has <code>name</code>; everything else is optional). Runs dry by default —
+                            you review counts and errors before committing.
+                        </span>
+                    </div>
+                </div>
+
+                <!-- 3. Linked vs orphan comparison -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-arrow-left-right me-1" style="color: var(--castor-facilities, #14b8a6);"></i>
+                    Linked vs orphan
+                </p>
+                <div class="table-responsive mb-4">
+                    <table class="table table-sm mb-0 fs-8">
+                        <thead>
+                            <tr>
+                                <th scope="col" style="width: 28%;">Concern</th>
+                                <th scope="col">Linked asset</th>
+                                <th scope="col">Orphan asset</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="text-secondary">Identity</td>
+                                <td>IFC <code>GlobalId</code></td>
+                                <td>Internal UUID (+ optional <em>asset tag</em>)</td>
+                            </tr>
+                            <tr>
+                                <td class="text-secondary">Display name</td>
+                                <td>IFC entity name</td>
+                                <td><em>Name</em> field (required)</td>
+                            </tr>
+                            <tr>
+                                <td class="text-secondary">Type / category</td>
+                                <td>Read from IFC entity type</td>
+                                <td>Optional free text (grouping only — any label works)</td>
+                            </tr>
+                            <tr>
+                                <td class="text-secondary">Location</td>
+                                <td>Via the IFC entity's spatial container</td>
+                                <td>Optional spatial container (room/floor) + free-text fallback</td>
+                            </tr>
+                            <tr>
+                                <td class="text-secondary">Show in 3D</td>
+                                <td>Yes</td>
+                                <td>No — shows a <span class="badge rounded-pill fs-8" style="background-color: rgba(148,163,184,0.15); color: var(--bs-secondary-color); border: 1px solid var(--bs-border-color);">Not in IFC model</span> badge</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 4. CSV format reference -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-filetype-csv me-1" style="color: var(--castor-facilities, #14b8a6);"></i>
+                    CSV columns
+                </p>
+                <div class="table-responsive mb-2">
+                    <table class="table table-sm mb-0 fs-8">
+                        <thead>
+                            <tr>
+                                <th scope="col">Column</th>
+                                <th scope="col">Required</th>
+                                <th scope="col">Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>global_id</code></td>
+                                <td class="text-secondary">Linked rows only</td>
+                                <td>Must match an IFC entity in this project. Row is rejected if no match.</td>
+                            </tr>
+                            <tr>
+                                <td><code>name</code></td>
+                                <td class="text-secondary">Orphan rows only</td>
+                                <td>Display name for the orphan.</td>
+                            </tr>
+                            <tr>
+                                <td><code>ifc_type</code></td>
+                                <td class="text-secondary">No</td>
+                                <td>Optional free-text category for grouping — e.g. <code>Fire extinguisher</code>, <code>IfcUnitaryEquipment</code>, <code>Service vehicle</code>.</td>
+                            </tr>
+                            <tr>
+                                <td><code>spatial_global_id</code></td>
+                                <td class="text-secondary">No</td>
+                                <td>Orphan-only. GlobalId of an <em>IfcSpatialElement</em> (room/floor) in this project.</td>
+                            </tr>
+                            <tr>
+                                <td><code>location</code></td>
+                                <td class="text-secondary">No</td>
+                                <td>Orphan-only free-text location fallback.</td>
+                            </tr>
+                            <tr>
+                                <td><code>asset_tag</code></td>
+                                <td class="text-secondary">No</td>
+                                <td>Human-readable code (e.g. <code>AHU-04</code>). Unique per project when set.</td>
+                            </tr>
+                            <tr>
+                                <td><code>manufacturer</code>, <code>model_number</code>, <code>serial_number</code></td>
+                                <td class="text-secondary">No</td>
+                                <td>Free text.</td>
+                            </tr>
+                            <tr>
+                                <td><code>commissioning_date</code>, <code>warranty_end</code></td>
+                                <td class="text-secondary">No</td>
+                                <td>ISO date (<code>YYYY-MM-DD</code>).</td>
+                            </tr>
+                            <tr>
+                                <td><code>classification_system</code>, <code>classification_code</code></td>
+                                <td class="text-secondary">No (pair)</td>
+                                <td>Both required together. Missing (system, code) pairs are created on the fly.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p class="text-secondary fs-8 mb-4">
+                    <i class="bi bi-info-circle me-1"></i>
+                    Import runs <strong class="text-body">dry-run by default</strong> — rows are validated inside a savepoint and rolled back
+                    so you can review counts and errors before committing.
+                </p>
+
+                <!-- 5. Caveats -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-exclamation-circle me-1" style="color: var(--castor-accent, #8b5cf6);"></i>
+                    Caveats
+                </p>
+                <div class="d-flex flex-column gap-1 fs-8 text-secondary">
+                    <span><i class="bi bi-dot"></i>An IFC entity can have at most one linked asset (uniqueness constraint).</span>
+                    <span><i class="bi bi-dot"></i>Orphans can't be viewed in 3D until they're manually linked to an IFC entity (link action coming later).</span>
+                    <span><i class="bi bi-dot"></i>This form does <strong class="text-body">not</strong> modify geometry or create IFC entities — it attaches FM metadata only.</span>
+                    <span><i class="bi bi-dot"></i>If an item ends up in the IFC model later, convert the orphan rather than creating a second record (no duplicates).</span>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
