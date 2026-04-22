@@ -17,21 +17,21 @@ from django.utils import timezone
 from core.llm import resolve_model_name
 from core.token_budget import compute_budget
 from ifc_processor.models import IFCEntity
+from ifc_processor.services.ifc_standard_psets import lookup_property
+from ifc_processor.services.ifc_writer import EntityChange, IFCWriteError, Tier1Writer
 from ifc_processor.services.processor import IFCProcessingService
+from ifc_processor.services.tier2_writer import Tier2Writer
 from writeback.models import GitCommit, ModificationProposal
 from writeback.services.guardian_service import GuardianService
 
 from .emitters import CancellationError, NullEmitter, PipelineEmitter
 from .filter_engine import FilterEngine
 from .git_service import GitService
-from .ifc_standard_psets import lookup_property
-from .ifc_writer import EntityChange, IFCWriteError, Tier1Writer
 from .intent_classifier import SYSTEM_PROMPT as CLASSIFY_SYSTEM_PROMPT
 from .intent_classifier import IntentClassifier, IntentParseError
 from .tier1_validator import Tier1Validator
 from .tier2_planner import PlanGenerationError, Tier2Planner
 from .tier2_validator import Tier2Validator
-from .tier2_writer import Tier2Writer
 from .tier3_executor import Tier3ExecutionError, Tier3Executor
 from .tier3_planner import CodeGenerationError, Tier3Planner
 from .tier3_reviewer import Tier3Reviewer

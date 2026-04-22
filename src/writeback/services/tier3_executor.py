@@ -12,7 +12,7 @@ import ifcopenshell
 import ifcopenshell.api
 import ifcopenshell.util.element
 
-from .ifc_writer import EntityChange
+from ifc_processor.services.ifc_writer import EntityChange
 
 logger = logging.getLogger(__name__)
 

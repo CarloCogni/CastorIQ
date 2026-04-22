@@ -1,11 +1,11 @@
-# writeback/tests/test_ifc_writer.py
+# ifc_processor/tests/test_ifc_writer.py
 """Tests for Tier1Writer and ifc_writer helpers — IfcOpenShell always mocked."""
 
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from writeback.services.ifc_writer import IFCWriteError, Tier1Writer
+from ifc_processor.services.ifc_writer import IFCWriteError, Tier1Writer
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -66,7 +66,7 @@ def writer(mock_ifc_model, tmp_path):
     fake_ifc = tmp_path / "test.ifc"
     fake_ifc.write_bytes(b"ISO-10303-21;\nDATA;\nENDSEC;\nEND-ISO-10303-21;")
 
-    with patch("writeback.services.ifc_writer.ifcopenshell.open", return_value=model):
+    with patch("ifc_processor.services.ifc_writer.ifcopenshell.open", return_value=model):
         w = Tier1Writer(str(fake_ifc))
 
     w._mock_model = model
@@ -126,13 +126,13 @@ class TestCoerceForIfcType:
 
     def _make_writer(self):
         """Minimal writer without real file (for pure coerce tests)."""
-        with patch("writeback.services.ifc_writer.ifcopenshell.open", return_value=MagicMock()):
+        with patch("ifc_processor.services.ifc_writer.ifcopenshell.open", return_value=MagicMock()):
             import tempfile
 
             with tempfile.NamedTemporaryFile(suffix=".ifc", delete=False) as f:
                 f.write(b"ISO-10303-21;\nDATA;\nENDSEC;\nEND-ISO-10303-21;")
                 tmp = f.name
-        with patch("writeback.services.ifc_writer.ifcopenshell.open", return_value=MagicMock()):
+        with patch("ifc_processor.services.ifc_writer.ifcopenshell.open", return_value=MagicMock()):
             return Tier1Writer(tmp)
 
     def test_none_prop_entity_returns_value_unchanged(self, writer):
@@ -220,7 +220,7 @@ class TestSetProperty:
 
         # element has no psets
         with patch(
-            "writeback.services.ifc_writer.element_util.get_psets",
+            "ifc_processor.services.ifc_writer.element_util.get_psets",
             return_value={},
         ):
             with pytest.raises(IFCWriteError, match="not found"):
@@ -234,7 +234,7 @@ class TestSetProperty:
     def test_set_property_missing_property_raises_ifc_write_error(self, writer, mock_ifc_model):
         """set_property raises IFCWriteError when the specific property is absent."""
         with patch(
-            "writeback.services.ifc_writer.element_util.get_psets",
+            "ifc_processor.services.ifc_writer.element_util.get_psets",
             return_value={"Pset_WallCommon": {"IsExternal": True}},
         ):
             with pytest.raises(IFCWriteError, match="not found"):
@@ -247,16 +247,18 @@ class TestSetProperty:
 
     def test_set_property_returns_entity_change_list(self, writer, mock_ifc_model):
         """set_property on a found property returns a list of EntityChange objects."""
-        from writeback.services.ifc_writer import EntityChange
+        from ifc_processor.services.ifc_writer import EntityChange
 
         model, element, pset_element, prop_entity = mock_ifc_model
 
         with patch(
-            "writeback.services.ifc_writer.element_util.get_psets",
+            "ifc_processor.services.ifc_writer.element_util.get_psets",
             return_value={"Pset_WallCommon": {"FireRating": "EI60"}},
         ):
-            with patch("writeback.services.ifc_writer.coerce_from_registry", return_value="EI120"):
-                with patch("writeback.services.ifc_writer.ifcopenshell.api.run"):
+            with patch(
+                "ifc_processor.services.ifc_writer.coerce_from_registry", return_value="EI120"
+            ):
+                with patch("ifc_processor.services.ifc_writer.ifcopenshell.api.run"):
                     changes = writer.set_property(
                         global_ids=["GUID-001"],
                         pset="Pset_WallCommon",
@@ -279,7 +281,7 @@ class TestAddProperty:
     def test_add_property_raises_when_already_exists(self, writer):
         """add_property raises IFCWriteError when the property already exists."""
         with patch(
-            "writeback.services.ifc_writer.element_util.get_psets",
+            "ifc_processor.services.ifc_writer.element_util.get_psets",
             return_value={"Pset_WallCommon": {"FireRating": "EI60"}},
         ):
             with pytest.raises(IFCWriteError, match="already exists"):
@@ -300,7 +302,7 @@ class TestRemoveProperty:
     def test_remove_property_raises_when_not_found(self, writer):
         """remove_property raises IFCWriteError when the property doesn't exist."""
         with patch(
-            "writeback.services.ifc_writer.element_util.get_psets",
+            "ifc_processor.services.ifc_writer.element_util.get_psets",
             return_value={"Pset_WallCommon": {}},
         ):
             with pytest.raises(IFCWriteError, match="not found"):
@@ -312,15 +314,15 @@ class TestRemoveProperty:
 
     def test_remove_property_succeeds_when_property_exists(self, writer, mock_ifc_model):
         """remove_property returns EntityChange list when property exists."""
-        from writeback.services.ifc_writer import EntityChange
+        from ifc_processor.services.ifc_writer import EntityChange
 
         model, element, pset_element, prop_entity = mock_ifc_model
 
         with patch(
-            "writeback.services.ifc_writer.element_util.get_psets",
+            "ifc_processor.services.ifc_writer.element_util.get_psets",
             return_value={"Pset_WallCommon": {"FireRating": "EI60"}},
         ):
-            with patch("writeback.services.ifc_writer.ifcopenshell.api.run"):
+            with patch("ifc_processor.services.ifc_writer.ifcopenshell.api.run"):
                 changes = writer.remove_property(
                     global_ids=["GUID-001"],
                     pset="Pset_WallCommon",
@@ -340,9 +342,9 @@ class TestSetAttribute:
 
     def test_set_attribute_returns_entity_change(self, writer):
         """set_attribute returns a list with one EntityChange on success."""
-        from writeback.services.ifc_writer import EntityChange
+        from ifc_processor.services.ifc_writer import EntityChange
 
-        with patch("writeback.services.ifc_writer.ifcopenshell.api.run"):
+        with patch("ifc_processor.services.ifc_writer.ifcopenshell.api.run"):
             changes = writer.set_attribute(
                 global_ids=["GUID-001"],
                 attribute="Name",

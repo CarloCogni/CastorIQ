@@ -1,12 +1,12 @@
-# writeback/tests/test_tier2_writer.py
+# ifc_processor/tests/test_tier2_writer.py
 """Tests for Tier2Writer — all IfcOpenShell I/O is mocked."""
 
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from writeback.services.ifc_writer import IFCWriteError
-from writeback.services.tier2_writer import PlanStepResult, Tier2Writer
+from ifc_processor.services.ifc_writer import IFCWriteError
+from ifc_processor.services.tier2_writer import PlanStepResult, Tier2Writer
 
 # ── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -26,7 +26,7 @@ def mock_writer(mock_ifc_model, tmp_path):
     fake_ifc = tmp_path / "model.ifc"
     fake_ifc.write_bytes(b"ISO-10303-21;\nDATA;\nENDSEC;\nEND-ISO-10303-21;")
 
-    with patch("writeback.services.tier2_writer.Tier1Writer") as MockT1:
+    with patch("ifc_processor.services.tier2_writer.Tier1Writer") as MockT1:
         t1_instance = MockT1.return_value
         t1_instance.model = mock_ifc_model
         t1_instance.save.return_value = None
@@ -93,8 +93,8 @@ class TestAddPset:
         element = _make_element()
         mock_writer.t1._get_element.return_value = element
 
-        with patch("writeback.services.tier2_writer.element_util.get_psets", return_value={}):
-            with patch("writeback.services.tier2_writer.ifcopenshell.api.run") as mock_run:
+        with patch("ifc_processor.services.tier2_writer.element_util.get_psets", return_value={}):
+            with patch("ifc_processor.services.tier2_writer.ifcopenshell.api.run") as mock_run:
                 mock_pset = MagicMock()
                 mock_run.return_value = mock_pset
 
@@ -120,9 +120,10 @@ class TestAddPset:
         existing_psets = {"Pset_Custom": {"ExistingProp": "OldValue", "id": 1}}
 
         with patch(
-            "writeback.services.tier2_writer.element_util.get_psets", return_value=existing_psets
+            "ifc_processor.services.tier2_writer.element_util.get_psets",
+            return_value=existing_psets,
         ):
-            with patch("writeback.services.tier2_writer.ifcopenshell.api.run"):
+            with patch("ifc_processor.services.tier2_writer.ifcopenshell.api.run"):
                 changes = mock_writer.add_pset(
                     global_ids=["GUID-001"],
                     pset_name="Pset_Custom",
@@ -141,7 +142,8 @@ class TestAddPset:
         existing_psets = {"Pset_Custom": {"Prop1": "Value1"}}
 
         with patch(
-            "writeback.services.tier2_writer.element_util.get_psets", return_value=existing_psets
+            "ifc_processor.services.tier2_writer.element_util.get_psets",
+            return_value=existing_psets,
         ):
             changes = mock_writer.add_pset(
                 global_ids=["GUID-001"],
@@ -168,9 +170,10 @@ class TestRemovePset:
         existing_psets = {"Pset_WallCommon": {"FireRating": "EI60", "IsExternal": True}}
 
         with patch(
-            "writeback.services.tier2_writer.element_util.get_psets", return_value=existing_psets
+            "ifc_processor.services.tier2_writer.element_util.get_psets",
+            return_value=existing_psets,
         ):
-            with patch("writeback.services.tier2_writer.ifcopenshell.api.run"):
+            with patch("ifc_processor.services.tier2_writer.ifcopenshell.api.run"):
                 changes = mock_writer.remove_pset(
                     global_ids=["GUID-001"],
                     pset_name="Pset_WallCommon",
@@ -184,7 +187,7 @@ class TestRemovePset:
         element = _make_element()
         mock_writer.t1._get_element.return_value = element
 
-        with patch("writeback.services.tier2_writer.element_util.get_psets", return_value={}):
+        with patch("ifc_processor.services.tier2_writer.element_util.get_psets", return_value={}):
             with pytest.raises(IFCWriteError, match="not found"):
                 mock_writer.remove_pset(
                     global_ids=["GUID-001"],
@@ -204,7 +207,7 @@ class TestSetClassification:
         mock_writer.t1._get_element.return_value = element
         mock_ifc_model.by_type.return_value = []  # No existing classifications
 
-        with patch("writeback.services.tier2_writer.ifcopenshell.api.run") as mock_run:
+        with patch("ifc_processor.services.tier2_writer.ifcopenshell.api.run") as mock_run:
             mock_classification = MagicMock()
             mock_run.return_value = mock_classification
 
@@ -233,9 +236,9 @@ class TestSetMaterial:
         mock_writer.t1._get_element.return_value = element
         mock_ifc_model.by_type.return_value = []  # No existing materials
 
-        with patch("writeback.services.tier2_writer.ifcopenshell.api.run") as mock_run:
+        with patch("ifc_processor.services.tier2_writer.ifcopenshell.api.run") as mock_run:
             with patch(
-                "writeback.services.tier2_writer.ifcopenshell.util.element.get_material",
+                "ifc_processor.services.tier2_writer.ifcopenshell.util.element.get_material",
                 return_value=None,
             ):
                 mock_material = MagicMock()
@@ -261,9 +264,9 @@ class TestSetMaterial:
         existing_material = MagicMock()
         existing_material.Name = "OldMaterial"
 
-        with patch("writeback.services.tier2_writer.ifcopenshell.api.run") as mock_run:
+        with patch("ifc_processor.services.tier2_writer.ifcopenshell.api.run") as mock_run:
             with patch(
-                "writeback.services.tier2_writer.ifcopenshell.util.element.get_material",
+                "ifc_processor.services.tier2_writer.ifcopenshell.util.element.get_material",
                 return_value=existing_material,
             ):
                 mock_run.return_value = MagicMock()
@@ -285,7 +288,7 @@ class TestCopyProperties:
         source = _make_element("SRC-001")
         mock_writer.t1._get_element.return_value = source
 
-        with patch("writeback.services.tier2_writer.element_util.get_psets", return_value={}):
+        with patch("ifc_processor.services.tier2_writer.element_util.get_psets", return_value={}):
             with pytest.raises(IFCWriteError, match="doesn't have property set"):
                 mock_writer.copy_properties(
                     source_global_id="SRC-001",
@@ -300,7 +303,7 @@ class TestCopyProperties:
 
         # Pset exists but only has 'id' (metadata key), no actual props
         with patch(
-            "writeback.services.tier2_writer.element_util.get_psets",
+            "ifc_processor.services.tier2_writer.element_util.get_psets",
             return_value={"Pset_WallCommon": {"id": 42}},
         ):
             with pytest.raises(IFCWriteError, match="No matching properties"):
@@ -318,7 +321,7 @@ class TestCopyProperties:
         source_psets = {"Pset_WallCommon": {"FireRating": "EI60", "IsExternal": True}}
 
         with patch(
-            "writeback.services.tier2_writer.element_util.get_psets",
+            "ifc_processor.services.tier2_writer.element_util.get_psets",
             return_value=source_psets,
         ):
             mock_writer.add_pset = MagicMock(return_value=[])
@@ -363,7 +366,7 @@ class TestInternalHelpers:
         element = MagicMock()
 
         with patch(
-            "writeback.services.tier2_writer.ifcopenshell.util.element.get_material",
+            "ifc_processor.services.tier2_writer.ifcopenshell.util.element.get_material",
             return_value=None,
         ):
             result = mock_writer._get_material_name(element)

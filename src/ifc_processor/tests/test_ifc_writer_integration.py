@@ -22,7 +22,7 @@ import ifcopenshell
 import ifcopenshell.util.element as element_util
 import pytest
 
-from writeback.services.ifc_writer import IFCWriteError, Tier1Writer
+from ifc_processor.services.ifc_writer import IFCWriteError, Tier1Writer
 
 # Known GUIDs from the fixture file
 WALL1_GUID = "2O2Fr$t4X7Zf8NOew3FLOH"

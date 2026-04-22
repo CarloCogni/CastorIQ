@@ -1,16 +1,22 @@
-# writeback/services/tier2_writer.py
+# ifc_processor/services/tier2_writer.py
 """
-Tier 2 IFC write operations using IfcOpenShell.
+Structural IFC write operations on top of IfcOpenShell.
 
-Extends Tier 1 with structural operations:
+Extends :class:`Tier1Writer` with operations that change an entity's
+relationships or create new IFC objects:
+
     - ADD_PSET: create a new property set (custom or standard)
     - REMOVE_PSET: remove an entire property set
     - SET_CLASSIFICATION: assign classification references
     - SET_MATERIAL: assign material to elements
     - COPY_PROPERTIES: copy properties between entities
 
-The LLM generates a plan; this module executes each step.
-Reuses Tier1Writer for property-level operations.
+Pure library code — no LLM, no Django. Shared by every Castor service that
+modifies an IFC file (writeback proposals, FM export reconciliation, …).
+
+``Tier2Writer`` wraps a ``Tier1Writer`` (accessible via ``.t1``) so a single
+instance covers both property-level and structural operations against the
+same in-memory ifcopenshell model.
 """
 
 import logging
@@ -28,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class PlanStepResult:
-    """Result of executing one step in a Tier 2 plan."""
+    """Result of executing one step in a multi-op plan."""
 
     step_index: int
     operation: str
@@ -43,7 +49,7 @@ class PlanStepResult:
 
 class Tier2Writer:
     """
-    Tier 2 IFC write operations (ORANGE tier).
+    Structural IFC writer that composes property-level ops from Tier1Writer.
 
     Wraps a Tier1Writer for property ops and adds structural ops.
     All operations share the same ifcopenshell model instance
