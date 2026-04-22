@@ -268,3 +268,58 @@ class TestAssetBulkView:
             data={"action": "delete"},
         )
         assert response.status_code == 400
+
+
+@pytest.mark.django_db
+class TestAssetCreateManualView:
+    """GET / POST /facilities/<uuid>/facilities/assets/create-manual/ — orphan creation."""
+
+    def test_viewer_cannot_open_drawer(self, client):
+        """Viewers are refused by ProjectModifyAccessMixin."""
+        project = ProjectFactory()
+        viewer = UserFactory()
+        _make_viewer(project, viewer)
+        _login(client, viewer)
+        response = client.get(reverse("facilities:assets_create_manual", args=[project.pk]))
+        assert response.status_code == 403
+
+    def test_editor_sees_drawer_with_type_list(self, client):
+        """Editors see the drawer populated with the project's IFC type vocabulary."""
+        project = ProjectFactory()
+        editor = UserFactory()
+        _make_editor(project, editor)
+        # Seed the project with an IFC entity so the type dropdown is non-empty.
+        IFCEntityFactory(ifc_file=IFCFileFactory(project=project), ifc_type="IfcFurniture")
+        _login(client, editor)
+        response = client.get(reverse("facilities:assets_create_manual", args=[project.pk]))
+        assert response.status_code == 200
+        assert "IfcFurniture" in response.context["ifc_types"]
+
+    def test_post_creates_orphan_and_redirects(self, client):
+        """Happy path — POST creates an orphan asset and redirects to the asset list."""
+        project = ProjectFactory()
+        _login(client, project.owner)
+        response = client.post(
+            reverse("facilities:assets_create_manual", args=[project.pk]),
+            data={
+                "name": "Fire extinguisher L2-03",
+                "ifc_type": "IfcFireSuppressionTerminal",
+                "asset_tag": "FE-L2-03",
+            },
+        )
+        assert response.status_code == 302
+        orphan = FacilityAsset.objects.get(project=project, asset_tag="FE-L2-03")
+        assert orphan.ifc_entity is None
+        assert orphan.name == "Fire extinguisher L2-03"
+
+    def test_post_missing_required_fields_re_renders_with_error(self, client):
+        """Invalid POST (no name) re-renders the drawer with a 400 and an error message."""
+        project = ProjectFactory()
+        _login(client, project.owner)
+        response = client.post(
+            reverse("facilities:assets_create_manual", args=[project.pk]),
+            data={"name": "", "ifc_type": "IfcFurniture"},
+        )
+        assert response.status_code == 400
+        assert "form_error" in response.context
+        assert not FacilityAsset.objects.filter(project=project).exists()

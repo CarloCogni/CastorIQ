@@ -24,6 +24,7 @@ from core.mixins import (
     ProjectModifyAccessMixin,
     ProjectTabMixin,
 )
+from environments.services import ProjectAccessService
 
 from .models import ClassificationReference, FacilityAsset
 from .services.asset_service import (
@@ -59,14 +60,29 @@ def _dashboard_template_for(active_role) -> str:
 
 
 def _role_context(project, user, session) -> dict:
-    """Common context shared by every facilities view — active role + dashboard pick."""
+    """Common context shared by every facilities view — active role + dashboard pick.
+
+    When the user is the project OWNER but has no explicit ``ProjectRole``, we
+    surface an implicit-owner view: the Facilities Manager dashboard renders,
+    and ``facilities_is_implicit_owner`` lets templates label the state so the
+    owner can assign themselves a specific role via the People page.
+    """
     service = ProjectRoleService(project, user)
     roles = service.active_roles()
     active_role = service.resolve_active(session)
+
+    is_implicit_owner = active_role is None and ProjectAccessService.can_admin(user, project)
+    dashboard_template = (
+        ROLE_DASHBOARD_TEMPLATES["facilitiesmanager"]
+        if is_implicit_owner
+        else _dashboard_template_for(active_role)
+    )
+
     return {
         "facilities_roles": roles,
         "facilities_active_role": active_role,
-        "facilities_dashboard_template": _dashboard_template_for(active_role),
+        "facilities_dashboard_template": dashboard_template,
+        "facilities_is_implicit_owner": is_implicit_owner,
     }
 
 
@@ -99,13 +115,10 @@ class RoleSwitchView(ProjectAccessMixin, View):
         if result["error"]:
             return HttpResponseBadRequest(result["error"])
 
-        active_role = service.resolve_active(request.session)
         context = {
             "project": project,
             "active_sub_tab": request.POST.get("active_sub_tab", "dashboard"),
-            "facilities_active_role": active_role,
-            "facilities_roles": service.active_roles(),
-            "facilities_dashboard_template": _dashboard_template_for(active_role),
+            **_role_context(project, request.user, request.session),
         }
         return render(request, "facilities/tabs/_facilities.html", context)
 
@@ -205,6 +218,68 @@ class AssetDetailView(ProjectTabMixin, TemplateView):
         ).select_related("classification")
         context["facilities_body_template"] = "facilities/tabs/_facilities_asset_detail.html"
         return context
+
+
+class AssetCreateManualView(ProjectModifyAccessMixin, View):
+    """Manual create drawer — orphan assets for items not modelled in IFC.
+
+    GET renders the form drawer pre-loaded with the project's spatial tree and
+    the IFC type vocabulary. POST delegates to :meth:`AssetService.create_orphan`
+    and returns either a redirect to the asset list on success or the drawer
+    with validation errors on failure.
+    """
+
+    def get(self, request, pk):
+        project = self.get_project()
+        context = {
+            "project": project,
+            "spatial_elements": _project_spatial_elements(project),
+            "ifc_types": _project_ifc_types(project),
+            "form_values": {},
+            "form_errors": {},
+        }
+        return render(
+            request,
+            "facilities/components/asset_create_manual_drawer.html",
+            context,
+        )
+
+    def post(self, request, pk):
+        project = self.get_project()
+        service = AssetService(project, request.user)
+
+        raw = {
+            "name": request.POST.get("name", "").strip(),
+            "ifc_type": request.POST.get("ifc_type", "").strip(),
+            "spatial_id": request.POST.get("spatial_id", "").strip() or None,
+            "location_text": request.POST.get("location_text", "").strip(),
+            "asset_tag": request.POST.get("asset_tag", "").strip(),
+            "manufacturer": request.POST.get("manufacturer", "").strip(),
+            "model_number": request.POST.get("model_number", "").strip(),
+            "serial_number": request.POST.get("serial_number", "").strip(),
+            "commissioning_date": request.POST.get("commissioning_date", "").strip() or None,
+            "warranty_end": request.POST.get("warranty_end", "").strip() or None,
+            "notes": request.POST.get("notes", "").strip(),
+        }
+
+        try:
+            service.create_orphan(**raw)
+        except AssetValidationError as exc:
+            context = {
+                "project": project,
+                "spatial_elements": _project_spatial_elements(project),
+                "ifc_types": _project_ifc_types(project),
+                "form_values": raw,
+                "form_error": str(exc),
+            }
+            return render(
+                request,
+                "facilities/components/asset_create_manual_drawer.html",
+                context,
+                status=400,
+            )
+
+        return _redirect_to_asset_list(project, params={"message": "Manual asset created."})
 
 
 class AssetPromoteView(ProjectModifyAccessMixin, View):
@@ -414,9 +489,10 @@ def _redirect_to_asset_list(project, *, params: dict[str, str] | None = None) ->
 
 
 def _spatial_breadcrumb(asset: FacilityAsset) -> list[dict]:
-    """Walk up the spatial tree for the asset's IFC entity — ``[Site, Bldg, Storey, Space]``."""
+    """Walk up the spatial tree — uses the IFC entity's container for linked assets,
+    or the orphan asset's own ``spatial_container`` for orphans."""
     breadcrumb: list[dict] = []
-    node = asset.ifc_entity.spatial_container if asset.ifc_entity_id else None
+    node = asset.display_spatial_container
     while node:
         breadcrumb.append(
             {
@@ -429,3 +505,27 @@ def _spatial_breadcrumb(asset: FacilityAsset) -> list[dict]:
         node = node.parent
     breadcrumb.reverse()
     return breadcrumb
+
+
+def _project_spatial_elements(project) -> list:
+    """Return the project's spatial elements for location-picker dropdowns."""
+    from ifc_processor.models import IFCSpatialElement
+
+    return list(
+        IFCSpatialElement.objects.filter(ifc_file__project=project)
+        .select_related("entity")
+        .order_by("spatial_type", "entity__name")
+    )
+
+
+def _project_ifc_types(project) -> list[str]:
+    """Distinct IFC types present in the project's IFC entities — powers the type picker."""
+    from ifc_processor.models import IFCEntity
+
+    return list(
+        IFCEntity.objects.filter(ifc_file__project=project)
+        .exclude(ifc_type="")
+        .values_list("ifc_type", flat=True)
+        .distinct()
+        .order_by("ifc_type")
+    )

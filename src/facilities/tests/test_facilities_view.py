@@ -4,7 +4,12 @@
 import pytest
 from django.urls import reverse
 
-from environments.tests.factories import ProjectFactory, ProjectRoleFactory, UserFactory
+from environments.tests.factories import (
+    ProjectFactory,
+    ProjectMembershipFactory,
+    ProjectRoleFactory,
+    UserFactory,
+)
 from facilities.services.role_service import SESSION_KEY
 
 
@@ -30,8 +35,8 @@ class TestFacilitiesView:
         response = client.get(reverse("facilities:tab", kwargs={"pk": project.pk}))
         assert response.status_code == 403
 
-    def test_owner_without_fm_role_sees_default_dashboard(self, client):
-        """Project owner with no FM role sees the 'no role assigned' landing."""
+    def test_owner_without_fm_role_sees_implicit_fm_dashboard(self, client):
+        """Project owner with no explicit FM role gets the FM dashboard as an implicit fallback."""
         user = UserFactory()
         project = ProjectFactory(owner=user)
         _login(client, user)
@@ -40,7 +45,28 @@ class TestFacilitiesView:
         assert response.status_code == 200
         assert response.context["facilities_active_role"] is None
         assert response.context["facilities_roles"] == []
+        assert response.context["facilities_is_implicit_owner"] is True
+        assert "dashboards/_fm.html" in response.context["facilities_dashboard_template"]
+        assert "You don't yet have a facility-management role" not in response.content.decode()
+
+    def test_non_owner_member_without_role_sees_default_with_people_link(self, client):
+        """VIEWER/EDITOR members with no FM role still see the 'no role' landing — with a People link, not a Django admin reference."""
+        viewer = UserFactory()
+        project = ProjectFactory()
+        ProjectMembershipFactory(project=project, user=viewer, permission="viewer")
+        _login(client, viewer)
+
+        response = client.get(reverse("facilities:tab", kwargs={"pk": project.pk}))
+
+        assert response.status_code == 200
+        assert response.context["facilities_active_role"] is None
+        assert response.context["facilities_is_implicit_owner"] is False
         assert "dashboards/_default.html" in response.context["facilities_dashboard_template"]
+
+        body = response.content.decode()
+        assert "Django admin" not in body
+        assert "M0 bootstrap" not in body
+        assert reverse("projects:people", kwargs={"pk": project.pk}) in body
 
     def test_fm_role_renders_fm_dashboard(self, client):
         """A FACILITIESMANAGER role resolves to the FM dashboard template."""

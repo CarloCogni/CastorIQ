@@ -43,15 +43,23 @@
 <div class="p-5 rounded text-center" style="background-color: var(--bs-tertiary-bg); border: 1px dashed var(--bs-border-color);">
     <i class="bi bi-grid-3x3-gap fs-1 d-block mb-2" style="color: var(--castor-facilities, #14b8a6); opacity: 0.6;"></i>
     <div class="h6 mb-1">No assets yet</div>
-    <div class="fs-8 text-secondary mb-3">Promote IFC entities to facility assets, or import a CSV to seed the register.</div>
+    <div class="fs-8 text-secondary mb-3">Promote IFC entities to facility assets, create a manual asset for items not in the model, or import a CSV.</div>
     {% if user_permission == "owner" or user_permission == "editor" %}
-    <button class="btn btn-sm d-inline-flex align-items-center gap-2"
-            style="background-color: var(--castor-facilities, #14b8a6); color: white; border: none;"
-            hx-get="{% url 'facilities:assets_promote' project.pk %}"
-            hx-target="#asset-promote-drawer-mount"
-            hx-swap="innerHTML">
-        <i class="bi bi-plus-lg"></i> Add assets
-    </button>
+    <div class="d-inline-flex flex-wrap gap-2 justify-content-center">
+        <button class="btn btn-sm d-inline-flex align-items-center gap-2"
+                style="background-color: var(--castor-facilities, #14b8a6); color: white; border: none;"
+                hx-get="{% url 'facilities:assets_promote' project.pk %}"
+                hx-target="#asset-promote-drawer-mount"
+                hx-swap="innerHTML">
+            <i class="bi bi-plus-lg"></i> Add assets
+        </button>
+        <button class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-2"
+                hx-get="{% url 'facilities:assets_create_manual' project.pk %}"
+                hx-target="#asset-promote-drawer-mount"
+                hx-swap="innerHTML">
+            <i class="bi bi-plus-circle"></i> Add manual asset
+        </button>
+    </div>
     {% endif %}
 </div>
 {% endif %}

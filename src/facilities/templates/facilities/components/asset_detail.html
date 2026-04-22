@@ -9,8 +9,14 @@
             <div class="d-flex align-items-start gap-3 mb-3">
                 <i class="bi bi-box-seam fs-1" style="color: var(--castor-facilities, #14b8a6);"></i>
                 <div class="flex-grow-1">
-                    <h3 class="m-0 d-flex align-items-center gap-2">
-                        <span>{{ asset.asset_tag|default:entity.name|default:"Untitled asset" }}</span>
+                    <h3 class="m-0 d-flex align-items-center gap-2 flex-wrap">
+                        <span>{{ asset.asset_tag|default:asset.display_name|default:"Untitled asset" }}</span>
+                        {% if asset.is_orphan %}
+                        <span class="badge rounded-pill fs-8" title="Not in the IFC model"
+                              style="background-color: rgba(148,163,184,0.15); color: var(--bs-secondary-color); border: 1px solid var(--bs-border-color);">
+                            <i class="bi bi-box"></i> Not in IFC model
+                        </span>
+                        {% endif %}
                         {% if asset.decommissioned_at %}
                         <span class="badge rounded-pill" style="background-color: rgba(148,163,184,0.2); color: var(--bs-secondary-color); border: 1px solid var(--bs-border-color);">
                             <i class="bi bi-archive"></i> Decommissioned
@@ -18,15 +24,17 @@
                         {% endif %}
                     </h3>
                     <div class="text-secondary fs-7">
-                        {{ entity.ifc_type }}
-                        {% if entity.global_id %}<span class="mx-2">·</span><code class="fs-8">{{ entity.global_id }}</code>{% endif %}
+                        {{ asset.display_ifc_type }}
+                        {% if entity and entity.global_id %}<span class="mx-2">·</span><code class="fs-8">{{ entity.global_id }}</code>{% endif %}
                     </div>
                 </div>
+                {% if entity %}
                 <a href="{% url 'projects:explore' project.pk %}?entity={{ entity.pk }}"
                    class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-2"
                    title="Open in Explore tab">
                     <i class="bi bi-diagram-3"></i> View in IFC
                 </a>
+                {% endif %}
             </div>
 
             <!-- Identification grid -->

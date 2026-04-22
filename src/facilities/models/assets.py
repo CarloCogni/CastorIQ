@@ -30,12 +30,13 @@ created/updated timestamps from :class:`core.models.TimestampedModel`.
 from __future__ import annotations
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Q
 
 from core.models import UUIDModel
 from environments.models import Project
-from ifc_processor.models import IFCEntity
+from ifc_processor.models import IFCEntity, IFCSpatialElement
 
 
 class Classification(UUIDModel):
@@ -134,15 +135,33 @@ class ClassificationReference(UUIDModel):
 
 
 class FacilityAsset(UUIDModel):
-    """FM overlay on an :class:`ifc_processor.models.IFCEntity`.
+    """FM overlay on a physical item — IFC-linked OR orphan (not in the model).
 
     A FacilityAsset materializes the FM-relevant metadata — tag, manufacturer,
     warranty, condition, responsible party, classifications — for a single
-    physical IFC entity. Every FacilityAsset is scoped to a project (matching
-    its IFCEntity's IFC file) and is unique per (project, ifc_entity).
+    physical item a facility manager tracks over the building's life.
 
-    The ``project`` FK is denormalized from ``ifc_entity.ifc_file.project`` so
-    list queries stay fast and project-scoping does not require a JOIN.
+    **Two flavours, one table:**
+
+    - **Linked asset** — ``ifc_entity`` is set. Name / type / location are
+      read from the IFC entity; the DB only carries FM overlay fields.
+    - **Orphan asset** — ``ifc_entity`` is ``None``. Covers items that are
+      not in the IFC model (post-handover additions, LOD-cutoff items like
+      fire extinguishers or loose furniture, consumables, vehicles, AHU
+      sub-components). The asset supplies its own ``name``; ``ifc_type`` is
+      optional free text (for grouping/filtering, not an IFC promise);
+      location is optionally pinned via ``spatial_container`` (a room/floor
+      from the IFC spatial tree) and/or ``location_text`` (free text).
+
+    Invariant (enforced by ``clean()`` + a DB check constraint): an asset
+    either has an ``ifc_entity`` OR has a non-empty ``name``. ``ifc_type`` is
+    optional on both sides (linked assets read it from the entity; orphans
+    may leave it blank). Uniqueness (``(project, ifc_entity)``) is conditional
+    on the IFC link existing so multiple orphans per project don't collide.
+
+    The ``project`` FK is denormalized from ``ifc_entity.ifc_file.project``
+    for linked assets so list queries stay fast; orphans set ``project``
+    directly.
     """
 
     project = models.ForeignKey(
@@ -153,10 +172,54 @@ class FacilityAsset(UUIDModel):
     )
     ifc_entity = models.ForeignKey(
         IFCEntity,
+        null=True,
+        blank=True,
         on_delete=models.CASCADE,
         related_name="facility_assets",
         verbose_name="IFC Entity",
-        help_text="The physical IFC entity this asset record overlays",
+        help_text=(
+            "The physical IFC entity this asset record overlays. Leave blank for "
+            "orphan assets (items not present in the IFC model)."
+        ),
+    )
+
+    # orphan-only identity (required when ifc_entity is blank)
+    name = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="Name",
+        help_text="Display name. Required for orphan assets; left blank when linked to an IFC entity.",
+    )
+    ifc_type = models.CharField(
+        max_length=100,
+        blank=True,
+        db_index=True,
+        verbose_name="Type / category",
+        help_text=(
+            "Optional grouping label (e.g. 'Fire extinguisher', 'IfcUnitaryEquipment', "
+            "'Service vehicle'). For linked assets the entity's IFC type is used; for "
+            "orphans it's free text — leave blank if you don't need filtering by type."
+        ),
+    )
+
+    # orphan-only location (linked assets reach location via ifc_entity.spatial_container)
+    spatial_container = models.ForeignKey(
+        IFCSpatialElement,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="orphan_assets",
+        verbose_name="Spatial Container",
+        help_text=(
+            "Optional room/floor/building anchor for an orphan asset. Ignored when "
+            "the asset is linked to an IFC entity."
+        ),
+    )
+    location_text = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="Location (free text)",
+        help_text="Free-text location for orphans with no spatial anchor (vehicles, mobile tools).",
     )
 
     # identification
@@ -233,18 +296,27 @@ class FacilityAsset(UUIDModel):
     notes = models.TextField(blank=True, verbose_name="Notes")
 
     class Meta:
-        ordering = ["asset_tag", "ifc_entity__name"]
+        ordering = ["asset_tag", "name", "ifc_entity__name"]
         verbose_name = "Facility Asset"
         verbose_name_plural = "Facility Assets"
         constraints = [
+            # One asset per IFC entity — conditional so orphans (ifc_entity NULL)
+            # don't collide with each other under a single-row NULL constraint.
             models.UniqueConstraint(
                 fields=["project", "ifc_entity"],
+                condition=Q(ifc_entity__isnull=False),
                 name="uniq_facility_asset_per_entity",
             ),
             models.UniqueConstraint(
                 fields=["project", "asset_tag"],
                 condition=Q(asset_tag__gt=""),
                 name="uniq_facility_asset_tag_per_project",
+            ),
+            # Invariant: an asset is either IFC-linked OR a named orphan.
+            # ``ifc_type`` is an optional grouping label, not part of the invariant.
+            models.CheckConstraint(
+                name="facility_asset_linked_or_orphan_complete",
+                condition=Q(ifc_entity__isnull=False) | ~Q(name=""),
             ),
         ]
         indexes = [
@@ -259,14 +331,56 @@ class FacilityAsset(UUIDModel):
             return self.asset_tag
         if self.ifc_entity_id and self.ifc_entity.name:
             return self.ifc_entity.name
+        if self.name:
+            return self.name
         if self.ifc_entity_id and self.ifc_entity.global_id:
             return self.ifc_entity.global_id[:8]
         return f"Asset {self.pk}"
+
+    def clean(self) -> None:
+        """Enforce the linked-or-orphan invariant with form-friendly errors.
+
+        Complements the DB check constraint so ModelForm / Django admin surface
+        the violation as a field error rather than an IntegrityError at save.
+        """
+        super().clean()
+        if self.ifc_entity_id:
+            return
+        if not (self.name or "").strip():
+            raise ValidationError(
+                {"name": "Required for orphan assets (no IFC entity linked)."}
+            )
 
     @property
     def is_active(self) -> bool:
         """True while the asset has not been decommissioned."""
         return self.decommissioned_at is None
+
+    @property
+    def is_orphan(self) -> bool:
+        """True when this asset has no IFC entity (not in the IFC model)."""
+        return self.ifc_entity_id is None
+
+    @property
+    def display_name(self) -> str:
+        """Best available name: IFC entity name for linked assets, ``name`` for orphans."""
+        if self.ifc_entity_id and self.ifc_entity.name:
+            return self.ifc_entity.name
+        return self.name or ""
+
+    @property
+    def display_ifc_type(self) -> str:
+        """Best available type label: IFC entity type for linked, ``ifc_type`` for orphans."""
+        if self.ifc_entity_id and self.ifc_entity.ifc_type:
+            return self.ifc_entity.ifc_type
+        return self.ifc_type or ""
+
+    @property
+    def display_spatial_container(self) -> IFCSpatialElement | None:
+        """Room/floor/building anchor — via the linked IFC entity, or the orphan override."""
+        if self.ifc_entity_id and self.ifc_entity.spatial_container_id:
+            return self.ifc_entity.spatial_container
+        return self.spatial_container
 
 
 class AssetInventory(UUIDModel):

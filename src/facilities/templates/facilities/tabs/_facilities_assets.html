@@ -12,16 +12,32 @@
                 {{ page_obj.paginator.count }} asset{{ page_obj.paginator.count|pluralize }}
             </span>
             {% endif %}
+            <button type="button"
+                    class="btn btn-sm rounded-pill px-2 py-1 asset-help-btn"
+                    data-bs-toggle="modal"
+                    data-bs-target="#assetRegisterHelpModal"
+                    title="How the Asset Register works"
+                    aria-label="How the Asset Register works">
+                <i class="bi bi-question-circle"></i>
+            </button>
         </div>
 
         {% if user_permission == "owner" or user_permission == "editor" %}
-        <div class="ms-auto d-flex gap-2">
+        <div class="ms-auto d-flex gap-2 flex-wrap">
             <button class="btn btn-sm d-inline-flex align-items-center gap-2"
                     style="background-color: var(--castor-facilities, #14b8a6); color: white; border: none;"
                     hx-get="{% url 'facilities:assets_promote' project.pk %}"
                     hx-target="#asset-promote-drawer-mount"
-                    hx-swap="innerHTML">
+                    hx-swap="innerHTML"
+                    title="Promote entities already in the IFC model into the asset register">
                 <i class="bi bi-plus-lg"></i> Add assets
+            </button>
+            <button class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-2"
+                    hx-get="{% url 'facilities:assets_create_manual' project.pk %}"
+                    hx-target="#asset-promote-drawer-mount"
+                    hx-swap="innerHTML"
+                    title="Create an asset for an item not in the IFC model (orphan)">
+                <i class="bi bi-plus-circle"></i> Add manual asset
             </button>
             <button class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-2"
                     type="button"
@@ -51,12 +67,34 @@
     <!-- Bulk action bar (hidden by default, surfaced by JS on selection) -->
     {% include "facilities/components/asset_bulk_bar.html" %}
 
-    <!-- Promote drawer mount — filled by HTMX on Add assets -->
+    <!-- Promote drawer mount — filled by HTMX on Add assets / Add manual asset -->
     <div id="asset-promote-drawer-mount"></div>
 
     <!-- Import modal — static HTML, form POSTs via HTMX -->
     {% include "facilities/components/asset_import_modal.html" %}
+
+    <!-- Help modal — "How the Asset Register Works" -->
+    {% include "facilities/components/asset_register_help_modal.html" %}
 </div>
+
+<style>
+    /* "?" help pill next to the Asset Register heading. Matches the shape of
+       the one in writeback/_conflicts.html, with the facilities teal tint. */
+    .asset-help-btn {
+        background: transparent;
+        border: 1px dashed rgba(20, 184, 166, 0.35);
+        color: var(--castor-facilities, #14b8a6);
+        font-size: 0.8125rem;
+        transition: all 0.15s ease;
+        opacity: 0.85;
+    }
+    .asset-help-btn:hover {
+        background-color: rgba(20, 184, 166, 0.08);
+        border-style: solid;
+        color: var(--castor-facilities, #14b8a6);
+        opacity: 1;
+    }
+</style>
 
 <script>
 (function () {

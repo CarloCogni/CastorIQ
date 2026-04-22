@@ -61,12 +61,14 @@ class AssetInventoryInline(admin.StackedInline):
 
 @admin.register(FacilityAsset)
 class FacilityAssetAdmin(admin.ModelAdmin):
-    """Admin for the FacilityAsset register."""
+    """Admin for the FacilityAsset register — supports linked and orphan rows."""
 
     list_display = (
         "asset_tag",
+        "display_name",
+        "display_ifc_type",
+        "is_orphan",
         "manufacturer",
-        "model_number",
         "condition_score",
         "warranty_end",
         "project",
@@ -79,18 +81,71 @@ class FacilityAssetAdmin(admin.ModelAdmin):
     )
     search_fields = (
         "asset_tag",
+        "name",
+        "ifc_type",
         "manufacturer",
         "model_number",
         "serial_number",
         "barcode",
+        "location_text",
         "ifc_entity__name",
         "ifc_entity__global_id",
     )
-    raw_id_fields = ("ifc_entity", "responsible_party")
+    raw_id_fields = ("ifc_entity", "spatial_container", "responsible_party")
     filter_horizontal = ("classifications",)
     inlines = [AssetInventoryInline]
     date_hierarchy = "warranty_end"
     ordering = ("asset_tag",)
+    fieldsets = (
+        (
+            "Linkage",
+            {
+                "fields": ("project", "ifc_entity", "name", "ifc_type"),
+                "description": (
+                    "Leave 'IFC Entity' blank for orphan assets (not in the IFC model) — "
+                    "in that case 'Name' and 'IFC Type' are required."
+                ),
+            },
+        ),
+        (
+            "Location (orphans only)",
+            {
+                "fields": ("spatial_container", "location_text"),
+                "description": "Ignored for IFC-linked assets — they inherit location from the IFC entity.",
+            },
+        ),
+        (
+            "Identification",
+            {
+                "fields": (
+                    "asset_tag",
+                    "manufacturer",
+                    "model_number",
+                    "serial_number",
+                    "barcode",
+                ),
+            },
+        ),
+        (
+            "Lifecycle & condition",
+            {
+                "fields": (
+                    "commissioning_date",
+                    "expected_service_life_years",
+                    "decommissioned_at",
+                    "condition_score",
+                    "warranty_start",
+                    "warranty_end",
+                ),
+            },
+        ),
+        (
+            "Assignment & notes",
+            {
+                "fields": ("responsible_party", "classifications", "notes"),
+            },
+        ),
+    )
 
 
 @admin.register(AssetInventory)

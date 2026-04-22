@@ -12,8 +12,15 @@
             </div>
             <div class="modal-body">
                 <div class="fs-8 text-secondary mb-2">
-                    CSV schema: <code>global_id, asset_tag, manufacturer, model_number, serial_number, commissioning_date (YYYY-MM-DD), warranty_end (YYYY-MM-DD), classification_system, classification_code</code>.
-                    Rows match IFC entities by <code>global_id</code>; existing assets are updated in-place.
+                    CSV columns: <code>global_id, name, ifc_type, spatial_global_id, location, asset_tag, manufacturer, model_number, serial_number, commissioning_date (YYYY-MM-DD), warranty_end (YYYY-MM-DD), classification_system, classification_code</code>.
+                </div>
+                <div class="fs-8 text-secondary mb-2">
+                    Each row is either <strong class="text-body">linked</strong>
+                    (set <code>global_id</code> to match an IFC entity — existing assets are updated in-place)
+                    or <strong class="text-body">orphan</strong>
+                    (leave <code>global_id</code> blank and set <code>name</code> for items not in the IFC model;
+                    <code>ifc_type</code> and the other columns are optional). See the <i class="bi bi-question-circle"></i>
+                    help button next to "Asset Register" for the full column reference.
                 </div>
 
                 <form method="post"

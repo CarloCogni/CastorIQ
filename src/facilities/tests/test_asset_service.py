@@ -22,8 +22,13 @@ from facilities.tests.factories import (
     ClassificationFactory,
     ClassificationReferenceFactory,
     FacilityAssetFactory,
+    OrphanAssetFactory,
 )
-from ifc_processor.tests.factories import IFCEntityFactory, IFCFileFactory
+from ifc_processor.tests.factories import (
+    IFCEntityFactory,
+    IFCFileFactory,
+    IFCSpatialElementFactory,
+)
 
 
 def _make_entity(project):
@@ -583,8 +588,249 @@ class TestImportCSV:
         assert asset.warranty_end == date(2027, 5, 1)
 
     def test_missing_global_id_column_raises(self):
-        """Without a global_id column the import is fatal."""
+        """CSV with neither global_id nor (name + ifc_type) columns is fatal."""
         project = ProjectFactory()
         csv_bytes = b"asset_tag\nAST-01\n"
         with pytest.raises(AssetValidationError):
             AssetService(project, project.owner).import_csv(file=csv_bytes, dry_run=True)
+
+    def test_orphan_row_creates_orphan_asset(self):
+        """Row without global_id but with name + ifc_type creates an orphan."""
+        project = ProjectFactory()
+        csv_bytes = self._csv(
+            [
+                {
+                    "global_id": "",
+                    "name": "Extinguisher 2F",
+                    "ifc_type": "IfcFireSuppressionTerminal",
+                    "asset_tag": "FE-2F-01",
+                }
+            ]
+        )
+        result = AssetService(project, project.owner).import_csv(file=csv_bytes, dry_run=False)
+        assert result["created"] == 1
+        assert result["errors"] == []
+        asset = FacilityAsset.objects.get(project=project, asset_tag="FE-2F-01")
+        assert asset.ifc_entity is None
+        assert asset.name == "Extinguisher 2F"
+        assert asset.ifc_type == "IfcFireSuppressionTerminal"
+
+    def test_orphan_row_with_only_name_is_accepted(self):
+        """A blank ``ifc_type`` on an orphan row is fine — only ``name`` is required."""
+        project = ProjectFactory()
+        csv_bytes = self._csv(
+            [
+                {
+                    "global_id": "",
+                    "name": "Only name, no type",
+                    "ifc_type": "",
+                    "asset_tag": "ORPH-NOTYPE",
+                }
+            ]
+        )
+        result = AssetService(project, project.owner).import_csv(file=csv_bytes, dry_run=False)
+        assert result["created"] == 1
+        assert result["errors"] == []
+        orphan = FacilityAsset.objects.get(project=project, asset_tag="ORPH-NOTYPE")
+        assert orphan.name == "Only name, no type"
+        assert orphan.ifc_type == ""
+
+    def test_orphan_row_with_no_name_and_no_global_id_rejected(self):
+        """A row with neither ``global_id`` nor ``name`` is a row-level error."""
+        project = ProjectFactory()
+        csv_bytes = self._csv(
+            [
+                {
+                    "global_id": "",
+                    "name": "",
+                    "ifc_type": "IfcFurniture",
+                    "asset_tag": "BAD-01",
+                }
+            ]
+        )
+        result = AssetService(project, project.owner).import_csv(file=csv_bytes, dry_run=False)
+        assert result["created"] == 0
+        assert len(result["errors"]) == 1
+        message = result["errors"][0]["message"]
+        assert "name" in message.lower() or "global_id" in message.lower()
+        # The classic 'No IFC entity' message must NOT appear — that would be misleading.
+        assert "no ifc entity" not in message.lower()
+
+    def test_mixed_csv_accepts_linked_and_orphan_rows(self):
+        """A single CSV with both row flavours commits both."""
+        project = ProjectFactory()
+        entity = _make_entity(project)
+        csv_bytes = self._csv(
+            [
+                {
+                    "global_id": entity.global_id,
+                    "name": "",
+                    "ifc_type": "",
+                    "asset_tag": "LINKED-01",
+                },
+                {
+                    "global_id": "",
+                    "name": "Portable pump",
+                    "ifc_type": "IfcPump",
+                    "asset_tag": "ORPH-01",
+                },
+            ]
+        )
+        result = AssetService(project, project.owner).import_csv(file=csv_bytes, dry_run=False)
+        assert result["created"] == 2
+        assert result["errors"] == []
+        linked = FacilityAsset.objects.get(project=project, asset_tag="LINKED-01")
+        orphan = FacilityAsset.objects.get(project=project, asset_tag="ORPH-01")
+        assert linked.ifc_entity == entity
+        assert orphan.ifc_entity is None
+        assert orphan.ifc_type == "IfcPump"
+
+    def test_orphan_row_with_spatial_global_id_pins_location(self):
+        """``spatial_global_id`` column resolves to a spatial element on orphan rows."""
+        project = ProjectFactory()
+        ifc_file = IFCFileFactory(project=project)
+        storey_entity = IFCEntityFactory(
+            ifc_file=ifc_file, ifc_type="IfcBuildingStorey", global_id="STOREY-GUID-1"
+        )
+        storey = IFCSpatialElementFactory(
+            ifc_file=ifc_file, entity=storey_entity, spatial_type="building_storey"
+        )
+        csv_bytes = self._csv(
+            [
+                {
+                    "global_id": "",
+                    "name": "Movable AC",
+                    "ifc_type": "IfcUnitaryEquipment",
+                    "spatial_global_id": "STOREY-GUID-1",
+                    "asset_tag": "AC-PORT-01",
+                }
+            ]
+        )
+        result = AssetService(project, project.owner).import_csv(file=csv_bytes, dry_run=False)
+        assert result["created"] == 1
+        orphan = FacilityAsset.objects.get(project=project, asset_tag="AC-PORT-01")
+        assert orphan.spatial_container == storey
+
+    def test_orphan_row_with_unknown_spatial_global_id_rejected(self):
+        """Unknown spatial_global_id on an orphan row is a row-level error."""
+        project = ProjectFactory()
+        csv_bytes = self._csv(
+            [
+                {
+                    "global_id": "",
+                    "name": "x",
+                    "ifc_type": "IfcFurniture",
+                    "spatial_global_id": "NOT-HERE",
+                    "asset_tag": "X-01",
+                }
+            ]
+        )
+        result = AssetService(project, project.owner).import_csv(file=csv_bytes, dry_run=False)
+        assert result["created"] == 0
+        assert any("NOT-HERE" in e["message"] for e in result["errors"])
+
+
+@pytest.mark.django_db
+class TestCreateOrphan:
+    """AssetService.create_orphan — manual create path for items not in IFC."""
+
+    def test_happy_path(self):
+        """Create an orphan with required name + ifc_type only."""
+        project = ProjectFactory()
+        asset = AssetService(project, project.owner).create_orphan(
+            name="Fire extinguisher 2F-03",
+            ifc_type="IfcFireSuppressionTerminal",
+        )
+        assert asset.pk is not None
+        assert asset.is_orphan is True
+        assert asset.name == "Fire extinguisher 2F-03"
+
+    def test_requires_name(self):
+        """Blank name → AssetValidationError."""
+        project = ProjectFactory()
+        with pytest.raises(AssetValidationError):
+            AssetService(project, project.owner).create_orphan(name="", ifc_type="IfcFurniture")
+
+    def test_ifc_type_is_optional(self):
+        """Blank ``ifc_type`` is accepted — it's a free-text grouping label."""
+        project = ProjectFactory()
+        asset = AssetService(project, project.owner).create_orphan(name="Loose chair")
+        assert asset.pk is not None
+        assert asset.ifc_type == ""
+
+    def test_resolves_spatial_container(self):
+        """Given a valid spatial_id, the orphan is anchored to that spatial element."""
+        project = ProjectFactory()
+        ifc_file = IFCFileFactory(project=project)
+        storey = IFCSpatialElementFactory(ifc_file=ifc_file)
+        asset = AssetService(project, project.owner).create_orphan(
+            name="Loose chair",
+            ifc_type="IfcFurniture",
+            spatial_id=str(storey.pk),
+        )
+        assert asset.spatial_container == storey
+
+    def test_rejects_cross_project_spatial_container(self):
+        """Spatial container from a different project is refused."""
+        project = ProjectFactory()
+        other_project = ProjectFactory()
+        foreign_storey = IFCSpatialElementFactory(ifc_file=IFCFileFactory(project=other_project))
+        with pytest.raises(AssetValidationError):
+            AssetService(project, project.owner).create_orphan(
+                name="Trespasser",
+                ifc_type="IfcFurniture",
+                spatial_id=str(foreign_storey.pk),
+            )
+
+    def test_free_text_location_accepted(self):
+        """``location_text`` is stored verbatim on the orphan."""
+        project = ProjectFactory()
+        asset = AssetService(project, project.owner).create_orphan(
+            name="Service van", ifc_type="IfcVehicle", location_text="Fleet bay #2"
+        )
+        assert asset.location_text == "Fleet bay #2"
+
+
+@pytest.mark.django_db
+class TestLinkageFilter:
+    """AssetService.list_assets ``linkage`` parameter separates linked vs orphan."""
+
+    def test_default_returns_both(self):
+        """linkage='any' (default) returns both flavours."""
+        project = ProjectFactory()
+        FacilityAssetFactory(project=project, asset_tag="L-01")
+        OrphanAssetFactory(project=project, asset_tag="O-01")
+        qs = AssetService(project, project.owner).list_assets()
+        assert qs.count() == 2
+
+    def test_linkage_linked_excludes_orphans(self):
+        """linkage='linked' returns only IFC-linked assets."""
+        project = ProjectFactory()
+        FacilityAssetFactory(project=project, asset_tag="L-01")
+        OrphanAssetFactory(project=project, asset_tag="O-01")
+        tags = sorted(
+            a.asset_tag
+            for a in AssetService(project, project.owner).list_assets(linkage="linked")
+        )
+        assert tags == ["L-01"]
+
+    def test_linkage_orphan_excludes_linked(self):
+        """linkage='orphan' returns only orphan assets."""
+        project = ProjectFactory()
+        FacilityAssetFactory(project=project, asset_tag="L-01")
+        OrphanAssetFactory(project=project, asset_tag="O-01")
+        tags = sorted(
+            a.asset_tag
+            for a in AssetService(project, project.owner).list_assets(linkage="orphan")
+        )
+        assert tags == ["O-01"]
+
+    def test_q_search_matches_orphan_name(self):
+        """Full-text search now also searches the orphan ``name`` column."""
+        project = ProjectFactory()
+        OrphanAssetFactory(project=project, asset_tag="O-01", name="Rooftop extinguisher")
+        OrphanAssetFactory(project=project, asset_tag="O-02", name="Basement pump")
+        tags = sorted(
+            a.asset_tag for a in AssetService(project, project.owner).list_assets(q="Rooftop")
+        )
+        assert tags == ["O-01"]

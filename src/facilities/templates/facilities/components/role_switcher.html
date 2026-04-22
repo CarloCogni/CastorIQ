@@ -40,6 +40,14 @@
         {% endfor %}
     </ul>
 </div>
+{% elif facilities_is_implicit_owner %}
+<a href="{% url 'projects:people' project.pk %}"
+   class="badge rounded-pill fs-8 text-decoration-none d-inline-flex align-items-center gap-1"
+   style="background-color: rgba(59, 130, 246, 0.15); color: var(--castor-blue, #3b82f6); border: 1px solid rgba(59, 130, 246, 0.35); font-weight: 600;"
+   title="You're the project owner — viewing the Facilities Manager dashboard by default. Click to assign yourself a specific role.">
+    <i class="bi bi-shield-lock"></i>
+    <span>Project Owner &mdash; implicit view</span>
+</a>
 {% else %}
 <span class="badge rounded-pill fs-8"
       style="background-color: rgba(148, 163, 184, 0.15); color: var(--bs-secondary-color); border: 1px solid var(--bs-border-color); font-weight: 500;">

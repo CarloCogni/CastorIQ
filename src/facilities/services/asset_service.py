@@ -52,7 +52,14 @@ class AssetNotFoundError(AssetServiceError):
 
 
 CSV_COLUMNS = (
+    # Linking / identity — either global_id (linked) or name+ifc_type (orphan).
     "global_id",
+    "name",
+    "ifc_type",
+    # Orphan-only location fields (ignored when global_id is present).
+    "spatial_global_id",
+    "location",
+    # FM metadata (applies to both flavours).
     "asset_tag",
     "manufacturer",
     "model_number",
@@ -65,6 +72,10 @@ CSV_COLUMNS = (
 
 BULK_CLASSIFY_ADD = "add"
 BULK_CLASSIFY_REPLACE = "replace"
+
+LINKAGE_ANY = "any"
+LINKAGE_LINKED = "linked"
+LINKAGE_ORPHAN = "orphan"
 
 
 @dataclass
@@ -104,12 +115,14 @@ class AssetService:
         ifc_type: str = "",
         responsible_party_id: str = "",
         include_decommissioned: bool = False,
+        linkage: str = LINKAGE_ANY,
     ) -> QuerySet[FacilityAsset]:
         """Return the project's assets filtered by the given parameters.
 
         Filters compose — an empty / missing parameter is treated as *no
-        filter on this axis*. Returns a queryset (not a list) so callers can
-        paginate with ``Paginator``.
+        filter on this axis*. ``linkage`` (``any`` / ``linked`` / ``orphan``)
+        separates IFC-linked assets from orphan assets. Returns a queryset
+        (not a list) so callers can paginate with ``Paginator``.
         """
         qs = (
             FacilityAsset.objects.filter(project=self.project)
@@ -120,6 +133,8 @@ class AssetService:
                 "ifc_entity__spatial_container",
                 "ifc_entity__spatial_container__entity",
                 "ifc_entity__element_type",
+                "spatial_container",
+                "spatial_container__entity",
                 "responsible_party",
             )
             .prefetch_related("classifications__classification")
@@ -128,8 +143,14 @@ class AssetService:
         if not include_decommissioned:
             qs = qs.filter(decommissioned_at__isnull=True)
 
+        if linkage == LINKAGE_LINKED:
+            qs = qs.filter(ifc_entity__isnull=False)
+        elif linkage == LINKAGE_ORPHAN:
+            qs = qs.filter(ifc_entity__isnull=True)
+
         if ifc_type:
-            qs = qs.filter(ifc_entity__ifc_type=ifc_type)
+            # Match the entity's type (linked) OR the orphan override field.
+            qs = qs.filter(Q(ifc_entity__ifc_type=ifc_type) | Q(ifc_type=ifc_type))
 
         if responsible_party_id:
             qs = qs.filter(responsible_party_id=responsible_party_id)
@@ -139,7 +160,10 @@ class AssetService:
 
         if spatial_id:
             descendant_ids = _spatial_descendant_ids(spatial_id)
-            qs = qs.filter(ifc_entity__spatial_container_id__in=descendant_ids)
+            qs = qs.filter(
+                Q(ifc_entity__spatial_container_id__in=descendant_ids)
+                | Q(spatial_container_id__in=descendant_ids)
+            )
 
         if q:
             qs = qs.filter(
@@ -147,11 +171,12 @@ class AssetService:
                 | Q(manufacturer__icontains=q)
                 | Q(model_number__icontains=q)
                 | Q(serial_number__icontains=q)
+                | Q(name__icontains=q)
                 | Q(ifc_entity__name__icontains=q)
                 | Q(ifc_entity__global_id__icontains=q)
             )
 
-        return qs.order_by("asset_tag", "ifc_entity__name")
+        return qs.order_by("asset_tag", "name", "ifc_entity__name")
 
     def get_asset(self, pk) -> FacilityAsset:
         """Return a single asset inside this project, or raise ``AssetNotFoundError``."""
@@ -163,6 +188,8 @@ class AssetService:
                     "ifc_entity__ifc_file",
                     "ifc_entity__spatial_container__entity",
                     "ifc_entity__element_type",
+                    "spatial_container",
+                    "spatial_container__entity",
                     "responsible_party",
                     "inventory",
                 )
@@ -253,6 +280,84 @@ class AssetService:
             ifc_entity.pk,
         )
         return asset
+
+    def create_orphan(
+        self,
+        *,
+        name: str,
+        ifc_type: str = "",
+        spatial_id: str | UUID | None = None,
+        location_text: str = "",
+        **fields: Any,
+    ) -> FacilityAsset:
+        """Create an orphan asset (no IFC link) — for items not in the IFC model.
+
+        ``name`` is the only required field. ``ifc_type`` is an optional free-text
+        grouping label (facilities managers can type anything; power users may pick
+        a real IFC type for consistency with linked assets). ``spatial_id`` pins
+        the orphan to a room/floor/building inside the project's spatial tree;
+        ``location_text`` is a free-text fallback for mobile / location-less items.
+        All FM-overlay fields (tag, manufacturer, dates, notes…) flow through
+        ``**fields`` and are filtered against the allowed set.
+        """
+        name = (name or "").strip()
+        ifc_type = (ifc_type or "").strip()
+        if not name:
+            raise AssetValidationError("Name is required for orphan assets.")
+
+        spatial_container = self._resolve_spatial_id(spatial_id) if spatial_id else None
+
+        allowed = {
+            "asset_tag",
+            "manufacturer",
+            "model_number",
+            "serial_number",
+            "barcode",
+            "commissioning_date",
+            "expected_service_life_years",
+            "decommissioned_at",
+            "condition_score",
+            "warranty_start",
+            "warranty_end",
+            "responsible_party",
+            "notes",
+        }
+        clean = {k: v for k, v in fields.items() if k in allowed and v not in (None, "")}
+
+        try:
+            with transaction.atomic():
+                asset = FacilityAsset.objects.create(
+                    project=self.project,
+                    ifc_entity=None,
+                    name=name,
+                    ifc_type=ifc_type,
+                    spatial_container=spatial_container,
+                    location_text=(location_text or "").strip(),
+                    **clean,
+                )
+        except IntegrityError as exc:
+            raise AssetValidationError(
+                "Orphan asset conflicts with a uniqueness constraint (e.g. duplicate tag)."
+            ) from exc
+
+        logger.info(
+            "Created orphan facility asset: project=%s asset=%s name=%s type=%s",
+            self.project.pk,
+            asset.pk,
+            asset.name,
+            asset.ifc_type,
+        )
+        return asset
+
+    def _resolve_spatial_id(self, spatial_id: str | UUID) -> IFCSpatialElement:
+        """Resolve a spatial-id string to an :class:`IFCSpatialElement` in this project."""
+        try:
+            element = IFCSpatialElement.objects.select_related("ifc_file").get(pk=spatial_id)
+        except (IFCSpatialElement.DoesNotExist, ValueError) as exc:
+            raise AssetValidationError("Spatial container not found.") from exc
+        if element.ifc_file.project_id != self.project.pk:
+            raise AssetValidationError("Spatial container does not belong to this project.")
+        return element
 
     def update_asset(self, asset: FacilityAsset, **fields: Any) -> FacilityAsset:
         """Apply a partial update to an existing asset.
@@ -460,12 +565,19 @@ class AssetService:
     # ---- CSV import --------------------------------------------------------
 
     def import_csv(self, *, file, dry_run: bool = True) -> dict[str, Any]:
-        """Parse a CSV, match rows to IFCEntities by ``global_id``, and upsert.
+        """Parse a CSV, upsert IFC-linked assets, and create orphan assets.
 
-        The CSV schema is :data:`CSV_COLUMNS`. ``global_id`` is required on
-        every row. Existing assets are updated in-place; unknown entities
-        become validation errors. Classifications are resolved lazily:
-        missing (system, code) pairs are created automatically.
+        The CSV schema is :data:`CSV_COLUMNS`. Each row is either:
+
+        - **Linked** — ``global_id`` is set; the row must match an IFC entity
+          in this project. Existing assets are updated in-place.
+        - **Orphan** — ``global_id`` is blank; ``name`` must be non-empty.
+          A new orphan asset is created. ``ifc_type`` is an optional free-text
+          grouping label; ``spatial_global_id`` (if present) anchors it to a
+          room/floor; ``location`` fills the free-text fallback.
+
+        Rows with neither ``global_id`` nor ``name`` are rejected. Classifications
+        are resolved lazily: missing (system, code) pairs are created automatically.
 
         In ``dry_run=True`` mode no writes are performed — only validation.
         """
@@ -475,8 +587,16 @@ class AssetService:
         except csv.Error as exc:
             raise AssetValidationError(f"Invalid CSV: {exc}") from exc
 
-        if not reader.fieldnames or "global_id" not in reader.fieldnames:
-            raise AssetValidationError("CSV must include a 'global_id' column.")
+        if not reader.fieldnames:
+            raise AssetValidationError("CSV is empty or has no header row.")
+        # Allow either 'global_id' (linked rows) or 'name' (orphan rows).
+        has_global = "global_id" in reader.fieldnames
+        has_name_column = "name" in reader.fieldnames
+        if not has_global and not has_name_column:
+            raise AssetValidationError(
+                "CSV must include a 'global_id' column (linked rows) or "
+                "a 'name' column (orphan rows)."
+            )
 
         rows = list(reader)
         result: dict[str, Any] = {
@@ -488,7 +608,7 @@ class AssetService:
         }
 
         # Load matching entities + assets up-front to avoid N queries.
-        global_ids = [r.get("global_id", "").strip() for r in rows]
+        global_ids = [(r.get("global_id") or "").strip() for r in rows]
         global_ids = [g for g in global_ids if g]
         entities_by_gid = {
             e.global_id: e
@@ -499,9 +619,27 @@ class AssetService:
         assets_by_gid = {
             a.ifc_entity.global_id: a
             for a in FacilityAsset.objects.filter(
-                project=self.project, ifc_entity__global_id__in=global_ids
+                project=self.project,
+                ifc_entity__isnull=False,
+                ifc_entity__global_id__in=global_ids,
             ).select_related("ifc_entity")
         }
+
+        # Pre-load spatial containers referenced by orphan rows.
+        spatial_global_ids = [
+            (r.get("spatial_global_id") or "").strip()
+            for r in rows
+            if (r.get("spatial_global_id") or "").strip()
+        ]
+        spatial_by_gid: dict[str, IFCSpatialElement] = {}
+        if spatial_global_ids:
+            spatial_by_gid = {
+                s.entity.global_id: s
+                for s in IFCSpatialElement.objects.filter(
+                    ifc_file__project=self.project,
+                    entity__global_id__in=spatial_global_ids,
+                ).select_related("entity", "ifc_file")
+            }
 
         # Commit inside a single atomic block so partial failures revert.
         def _apply() -> None:
@@ -511,6 +649,7 @@ class AssetService:
                         row,
                         entities_by_gid=entities_by_gid,
                         assets_by_gid=assets_by_gid,
+                        spatial_by_gid=spatial_by_gid,
                         result=result,
                     )
                 except AssetValidationError as exc:
@@ -542,19 +681,15 @@ class AssetService:
         *,
         entities_by_gid: dict[str, IFCEntity],
         assets_by_gid: dict[str, FacilityAsset],
+        spatial_by_gid: dict[str, IFCSpatialElement],
         result: dict[str, Any],
     ) -> None:
         """Apply a single CSV row. Mutates ``result`` counters in place."""
         global_id = (row.get("global_id") or "").strip()
-        if not global_id:
-            raise AssetValidationError("Missing global_id.")
+        orphan_name = (row.get("name") or "").strip()
+        orphan_type = (row.get("ifc_type") or "").strip()
 
-        entity = entities_by_gid.get(global_id)
-        if not entity:
-            raise AssetValidationError(
-                f"No IFC entity in this project with global_id={global_id!r}."
-            )
-
+        # FM metadata shared by both row flavours.
         fields: dict[str, Any] = {}
         for column in (
             "asset_tag",
@@ -565,7 +700,6 @@ class AssetService:
             value = (row.get(column) or "").strip()
             if value:
                 fields[column] = value
-
         if row.get("commissioning_date"):
             fields["commissioning_date"] = _parse_date(
                 row["commissioning_date"], column="commissioning_date"
@@ -573,17 +707,48 @@ class AssetService:
         if row.get("warranty_end"):
             fields["warranty_end"] = _parse_date(row["warranty_end"], column="warranty_end")
 
-        existing = assets_by_gid.get(global_id)
-        if existing:
-            for key, value in fields.items():
-                setattr(existing, key, value)
-            existing.save()
-            result["updated"] += 1
-            asset = existing
-        else:
-            asset = FacilityAsset.objects.create(project=self.project, ifc_entity=entity, **fields)
-            assets_by_gid[global_id] = asset
+        if global_id:
+            # Linked row — name/ifc_type columns are ignored (entity is source of truth).
+            entity = entities_by_gid.get(global_id)
+            if not entity:
+                raise AssetValidationError(
+                    f"No IFC entity in this project with global_id={global_id!r}."
+                )
+            existing = assets_by_gid.get(global_id)
+            if existing:
+                for key, value in fields.items():
+                    setattr(existing, key, value)
+                existing.save()
+                result["updated"] += 1
+                asset = existing
+            else:
+                asset = FacilityAsset.objects.create(
+                    project=self.project, ifc_entity=entity, **fields
+                )
+                assets_by_gid[global_id] = asset
+                result["created"] += 1
+        elif orphan_name:
+            # Orphan row — only name is required; ifc_type / spatial / location are optional.
+            spatial_gid = (row.get("spatial_global_id") or "").strip()
+            spatial_container = spatial_by_gid.get(spatial_gid) if spatial_gid else None
+            if spatial_gid and not spatial_container:
+                raise AssetValidationError(
+                    f"No spatial element in this project with global_id={spatial_gid!r}."
+                )
+            asset = FacilityAsset.objects.create(
+                project=self.project,
+                ifc_entity=None,
+                name=orphan_name,
+                ifc_type=orphan_type,
+                spatial_container=spatial_container,
+                location_text=(row.get("location") or "").strip(),
+                **fields,
+            )
             result["created"] += 1
+        else:
+            raise AssetValidationError(
+                "Row must have either 'global_id' (linked) or 'name' (orphan)."
+            )
 
         system_name = (row.get("classification_system") or "").strip()
         code = (row.get("classification_code") or "").strip()
