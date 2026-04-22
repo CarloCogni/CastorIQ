@@ -51,6 +51,23 @@ class FacilityAssetFactory(factory.django.DjangoModelFactory):
     model_number = factory.Sequence(lambda n: f"MODEL-{n:04d}")
 
 
+class OrphanAssetFactory(factory.django.DjangoModelFactory):
+    """Factory for an orphan ``facilities.FacilityAsset`` — no IFC link.
+
+    Name + ifc_type are required by the model's check constraint; asset_tag is
+    left unique per project so two orphans don't collide.
+    """
+
+    class Meta:
+        model = "facilities.FacilityAsset"
+
+    project = factory.SubFactory(ProjectFactory)
+    ifc_entity = None
+    name = factory.Sequence(lambda n: f"Orphan-{n:04d}")
+    ifc_type = "IfcFurniture"
+    asset_tag = factory.Sequence(lambda n: f"ORPH-{n:04d}")
+
+
 class AssetInventoryFactory(factory.django.DjangoModelFactory):
     """Factory for ``facilities.AssetInventory``."""
 

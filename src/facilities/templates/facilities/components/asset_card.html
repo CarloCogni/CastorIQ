@@ -1,6 +1,6 @@
 <!-- facilities/components/asset_card.html — one tile in the asset grid -->
 
-{% with entity=asset.ifc_entity score=asset.condition_score %}
+{% with score=asset.condition_score container=asset.display_spatial_container %}
 <div class="col-12 col-md-6 col-xl-4">
     <div class="p-3 rounded border d-flex flex-column gap-2 h-100 position-relative"
          style="background-color: var(--bs-body-bg); border-color: var(--bs-border-color) !important; transition: border-color 0.15s ease;">
@@ -22,33 +22,44 @@
                     <a href="{% url 'facilities:assets_detail' project.pk asset.pk %}"
                        class="text-decoration-none"
                        style="color: inherit;">
-                        {{ asset.asset_tag|default:entity.name|default:entity.global_id|slice:":12" }}
+                        {{ asset.asset_tag|default:asset.display_name|default:"Untitled asset" }}
                     </a>
                 </div>
                 <div class="fs-8 text-secondary text-truncate">
                     {% if asset.manufacturer or asset.model_number %}
                         {{ asset.manufacturer }}{% if asset.manufacturer and asset.model_number %} · {% endif %}{{ asset.model_number }}
                     {% else %}
-                        {{ entity.ifc_type }}
+                        {{ asset.display_ifc_type }}
                     {% endif %}
                 </div>
             </div>
         </div>
 
-        <!-- Breadcrumb -->
-        {% if entity.spatial_container %}
+        <!-- Breadcrumb / location — works for both linked and orphan assets -->
+        {% if container %}
         <div class="fs-8 text-secondary d-flex align-items-center gap-1 text-truncate">
             <i class="bi bi-geo-alt"></i>
-            {% if entity.spatial_container.entity.name %}
-                <span class="text-truncate">{{ entity.spatial_container.entity.name }}</span>
+            {% if container.entity.name %}
+                <span class="text-truncate">{{ container.entity.name }}</span>
             {% else %}
-                <span class="text-truncate">({{ entity.spatial_container.get_spatial_type_display }})</span>
+                <span class="text-truncate">({{ container.get_spatial_type_display }})</span>
             {% endif %}
+        </div>
+        {% elif asset.location_text %}
+        <div class="fs-8 text-secondary d-flex align-items-center gap-1 text-truncate">
+            <i class="bi bi-geo-alt"></i>
+            <span class="text-truncate">{{ asset.location_text }}</span>
         </div>
         {% endif %}
 
         <!-- Traffic lights: condition + warranty -->
         <div class="d-flex flex-wrap gap-1">
+            {% if asset.is_orphan %}
+                <span class="badge rounded-pill" title="Not in the IFC model"
+                      style="background-color: rgba(148,163,184,0.15); color: var(--bs-secondary-color); border: 1px solid var(--bs-border-color);">
+                    <i class="bi bi-box"></i> Not in IFC model
+                </span>
+            {% endif %}
             {% if score != None %}
                 {% if score >= 70 %}
                 <span class="badge rounded-pill" style="background-color: rgba(34,197,94,0.15); color: #16a34a; border: 1px solid rgba(34,197,94,0.35);">

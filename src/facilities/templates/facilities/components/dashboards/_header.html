@@ -7,7 +7,11 @@
     </div>
     <div>
         <h4 class="mb-0">
-            Welcome, {{ facilities_active_role.get_role_display|default:"guest" }}
+            Welcome,
+            {% if facilities_active_role %}{{ facilities_active_role.get_role_display }}
+            {% elif facilities_is_implicit_owner %}Project Owner
+            {% else %}guest
+            {% endif %}
         </h4>
         <p class="text-secondary mb-0 fs-7">{{ tagline }}</p>
     </div>

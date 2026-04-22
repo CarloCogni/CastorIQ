@@ -2,7 +2,7 @@
 
 Companion to `docs/specs/7D-facility-management.md` (the vision spec). This file is the **execution ledger** — what's shipped, what's in flight, what's next, and the review gate for each block. Keep it current at the start and end of each milestone so any session starts with a clear picture of where we are.
 
-**Last updated:** 2026-04-17
+**Last updated:** 2026-04-21
 
 ---
 
@@ -21,7 +21,7 @@ Companion to `docs/specs/7D-facility-management.md` (the vision spec). This file
 | # | Milestone | Status | Reviewed |
 |---|-----------|--------|----------|
 | M0 | Scaffold + Facilities tab + ProjectRole + role-switcher + role-aware landing | ✅ Done | ⏳ Pending walk-through |
-| M1 | Asset Register | ⏳ Not started | — |
+| M1 | Asset Register | ✅ Done | ⏳ Pending walk-through |
 | M2 | Export Reconciliation v1 | ⏳ Not started | — |
 | M3 | Work Orders | ⏳ Not started | — |
 | M4 | Occupant Portal | ⏳ Not started | — |
@@ -74,29 +74,72 @@ Effort legend: S = 1–2 days, M = 3–5 days, L = 1–2 weeks.
 
 ---
 
-## M1 — Asset Register — ⏳ Not started
+## M1 — Asset Register — ✅ Done
 
 **Goal.** The single pane of glass for every physical asset with a serial number or service obligation. Cards, not rows. The hero feature of FM.
 
-**Deliverables.**
-- `facilities/models/assets.py`: `FacilityAsset` (FK → `ifc_processor.IFCEntity`), `AssetInventory`, `Classification`, `ClassificationReference`.
-- Service layer: `facilities/services/asset_service.py` (list, filter, bulk tag, bulk classify, CSV import).
-- Views + URLs: `AssetListView` (card grid with filters), `AssetDetailView` (the hero card), `AssetBulkView`, `AssetCSVImportView`.
+**Delivered.**
+- `facilities/models/assets.py`: `FacilityAsset`, `AssetInventory`, `Classification`, `ClassificationReference`. `FacilityAsset.ifc_entity` is **nullable** to accommodate orphan assets (see "Beyond spec" below); `(project, ifc_entity)` uniqueness is conditional on the link existing.
+- `facilities/services/asset_service.py`: `list_assets` (q, ifc_type, spatial_id, classification_refs, responsible_party, linkage filter, include_decommissioned), `get_asset`, `create_asset` + `bulk_promote`, `update_asset`, `delete_asset`, `bulk_classify`, `bulk_set_responsible_party`, `import_csv` (dry-run + commit), `create_orphan`, `list_promotion_candidates`.
+- Views + URLs:
+  - `AssetListView` — card grid with filters, HTMX fragment swap on `HX-Request`
+  - `AssetDetailView` — hero card with spatial breadcrumb + inline edit form
+  - `AssetPromoteView` — drawer listing promotable IFC entities, bulk promote on POST
+  - `AssetCreateManualView` — drawer to create an orphan asset (see "Beyond spec")
+  - `AssetUpdateView` — HTMX single-field/subset updates
+  - `AssetBulkView` — classify / set-responsible-party / delete
+  - `AssetCSVImportView` — multipart upload, dry-run preview, commit on confirm
+  - Mutation endpoints use `ProjectModifyAccessMixin`; list/detail use `ProjectTabMixin` (inherits `ProjectAccessMixin`).
 - Templates:
-  - `tabs/_facilities_assets.html` — sub-tab body listing asset cards
-  - `components/asset_card.html`, `components/asset_detail.html`, `components/asset_bulk_bar.html`
-- Sub-nav inside the Facilities tab: `Dashboard | Assets | (placeholders for next milestones)`.
-- Ask integration: FM intent routing for asset queries ("which assets are in Storey-02?") — light-touch, reuses existing `chat` service.
-- Tests: model constraints, service happy/edge/failure, view access control, CSV import parsing, bulk ops.
+  - `tabs/_facilities_assets.html`, `tabs/_facilities_asset_detail.html`
+  - `components/asset_card.html`, `asset_detail.html`, `asset_grid.html`, `asset_bulk_bar.html`, `asset_filter_bar.html`
+  - `components/asset_promote_drawer.html`, `asset_create_manual_drawer.html` (beyond spec)
+  - `components/asset_import_modal.html`, `asset_import_result.html`
+  - `components/asset_register_help_modal.html` (beyond spec) — inline "how it works" reference next to the Asset Register heading
+- Sub-nav inside the Facilities tab: Dashboard | Assets | disabled placeholders (Spaces, Work, Maintenance, Systems, Sensors, Documents, People, Costs, Reports).
+- Ask integration: `chat.services.rag_service.RAGService._detect_intent` classifies FM phrasing ("which assets are in Storey-02?", "list assets with expired warranty", …) as `fm_asset_query` and the asset-context block renders key fields. Tests in `facilities/tests/test_fm_intent_routing.py`.
+- Admin: `FacilityAssetAdmin` with linkage-aware fieldsets, raw_id_fields for `ifc_entity` / `spatial_container` / `responsible_party`, `AssetInventoryInline`, classification horizontal filter.
+- 155 tests passing: `test_asset_model.py`, `test_asset_service.py`, `test_asset_views.py`, `test_asset_csv_import.py`, `test_fm_intent_routing.py` (plus M0 tests untouched).
+- Migrations: `facilities.0001_initial` (baseline, earlier commit) → `0002_alter_facilityasset_options_and_more` (orphan fields + initial constraints) → `0003_remove_facilityasset_..._and_more` (relaxed orphan constraint: `name` required, `ifc_type` optional).
 
-**Review gate.** Open Facilities → Assets → browse cards; filter by classification / storey / type; multi-select + bulk-tag; import a small CSV; click into an asset and see the hero card with IFC back-reference.
+**Beyond spec — orphan asset support (added 2026-04-21).** The spec assumed every asset is an IFCEntity overlay. Real FM needs looser coupling for items that aren't modelled — LOD cutoffs (fire extinguishers, signage, loose furniture), post-handover additions, non-building assets (vehicles, consumables), and sub-components of IFC entities. Decision taken this milestone:
+- `FacilityAsset.ifc_entity` is nullable. Orphans carry `name` (required) + `ifc_type` (optional free text, not enforced as a real IFC type) + optional `spatial_container` FK + `location_text` fallback.
+- Invariant preserved: at most one IFC link per asset (conditional unique); if an orphan later becomes modelled, link the existing row rather than create a duplicate (no dual-existence — see `feedback_no_duplication`).
+- New manual-create drawer + "Add manual asset" button on the register and empty state. CSV import accepts orphan rows (global_id blank, name non-empty).
+- Asset cards / detail use `display_name` / `display_ifc_type` / `display_spatial_container` and show a "Not in IFC model" badge for orphans. "View in IFC" is hidden for orphans.
 
-**Dependencies / prerequisites.**
-- Facilities sub-nav scaffold (add it in M1, not a separate prep step).
-- ~~Resolve access-model debt first~~ — done 2026-04-18.
-- Asset mutation endpoints must use `ProjectModifyAccessMixin` (EDITOR+); read-only endpoints use `ProjectAccessMixin`.
+**Beyond spec — implicit-owner fallback (added 2026-04-21).** Project owners with no explicit `ProjectRole` were seeing the "Ask a project owner or facilities manager to grant you a role" empty state, which is absurd when they *are* the project owner. `FacilitiesView._role_context` now synthesizes an implicit-owner state — renders the FM dashboard, labels the role-switcher pill as "Project Owner — implicit view" with a link to the People page. No DB writes, no auto-assigned roles; pure view-layer. Stale Django-admin reference in `_default.html` replaced with a link to the in-app People page.
 
-**Effort.** L (1–2 weeks).
+**Review gate (walk-through, pending user).**
+1. Open the project → **Facilities** → sub-nav shows **Dashboard | Assets | …placeholders**. Click **Assets**.
+2. Browse the card grid. Open the `?` help modal next to the "Asset Register" heading and walk through the five sections (what is an asset, three ways to add, linked vs orphan, CSV format, caveats).
+3. Filter by classification, storey (spatial), and IFC type. Confirm counts update.
+4. Multi-select a few cards → bulk classify → confirm the reference is attached.
+5. **Add assets** → promote drawer → pick two IFC entities → **Promote selected** → return to the grid with the new cards.
+6. **Add manual asset** → create an orphan with name only (no type, no location) → confirm the "Not in IFC model" badge on the new card.
+7. **Import CSV** → drop a tiny CSV (one linked row with `global_id`, one orphan row with just `name`) → preview → commit → confirm both flavours land.
+8. Click into an asset → hero card renders → "View in IFC" link present for linked, absent for orphan.
+9. Type *"which assets have an expired warranty?"* in the Ask chat → confirm the FM asset-context block is surfaced.
+
+**Known gaps (non-blocking, tracked in Open debt).**
+- **IFC pset ↔ DB field overlap.** `FacilityAsset.manufacturer` / `model_number` / `serial_number` / `warranty_end` / `commissioning_date` overlap with `Pset_ManufacturerOccurrence.*`, `Pset_Warranty.*`, and the equivalent COBie psets. The promotion flow does NOT seed DB columns from psets today — dual sources of truth. Conflicts with the `feedback_no_duplication` principle; needs a follow-up pass. See Open debt #6.
+- Manual orphan→linked reconciliation UI (when an orphan later shows up in the IFC model) is not built. The data model supports it; the UI waits.
+
+**Files touched (M1 work).**
+- new: `src/facilities/models/assets.py` (earlier commit); extended 2026-04-21 with orphan fields, conditional unique + check constraints, `display_*` + `is_orphan` properties, `clean()`
+- new: `src/facilities/services/asset_service.py` (earlier commit); extended with `linkage` filter, `create_orphan`, mixed linked+orphan CSV
+- new: `src/facilities/views.py` asset views (earlier commit); added `AssetCreateManualView`, implicit-owner fallback in `_role_context`
+- new: `src/facilities/admin.py` asset registrations; fieldsets updated for orphans
+- new: `src/facilities/urls.py` asset routes; added `assets_create_manual`
+- new: `src/facilities/templates/facilities/tabs/_facilities_assets.html`, `_facilities_asset_detail.html`
+- new: `src/facilities/templates/facilities/components/asset_card.html`, `asset_detail.html`, `asset_grid.html`, `asset_bulk_bar.html`, `asset_filter_bar.html`, `asset_promote_drawer.html`, `asset_import_modal.html`, `asset_import_result.html`, `asset_create_manual_drawer.html`, `asset_register_help_modal.html`, `facilities_subnav.html`
+- modified: `src/chat/services/rag_service.py` (FM intent routing + asset context block)
+- modified: `src/facilities/templates/facilities/tabs/_facilities.html` (sub-nav include, implicit-owner render gate)
+- modified: `src/facilities/templates/facilities/components/dashboards/_default.html` (People page link)
+- modified: `src/facilities/templates/facilities/components/dashboards/_header.html` ("Project Owner" greeting)
+- modified: `src/facilities/templates/facilities/components/role_switcher.html` (implicit-owner pill)
+- migrations: `facilities/0001_initial`, `0002_alter_facilityasset_options_and_more`, `0003_remove_facilityasset_..._and_more`
+- tests: `facilities/tests/test_asset_model.py`, `test_asset_service.py`, `test_asset_views.py`, `test_asset_csv_import.py`, `test_fm_intent_routing.py`, `test_facilities_view.py`, `factories.py`
 
 ---
 
@@ -235,6 +278,15 @@ Effort legend: S = 1–2 days, M = 3–5 days, L = 1–2 weeks.
 
 5. **ADMIN permission tier** (deferred to post-alpha). Three tiers (OWNER / EDITOR / VIEWER) today — widen when a real second admin axis emerges (billing, integrations, secrets).
 
+6. **IFC pset ↔ FacilityAsset DB column overlap** (surfaced 2026-04-21, post-M1). `FacilityAsset.manufacturer`, `model_number`, `serial_number`, `warranty_start`, `warranty_end`, `commissioning_date`, `condition_score` overlap with IFC property sets carried on `IFCEntity.properties` — `Pset_ManufacturerOccurrence.{Manufacturer, ModelLabel, SerialNumber, ProductionYear}`, `Pset_Warranty.{WarrantyStartDate, WarrantyEndDate}`, `Pset_ConditionOfProperty.*`, `Pset_ServiceLife.*`, and the COBie.Component pset family. The promotion flow does **not** seed the DB columns from these psets today, so a freshly-promoted asset's fields start blank even when the IFC file carries the data — and manual edits on the DB side don't sync back. Dual sources of truth, violates `feedback_no_duplication`. Three candidate directions for the follow-up pass:
+   - **Auto-populate on promotion** — at `bulk_promote` time, read the relevant psets and copy into DB columns. DB remains authoritative thereafter. Lowest risk, mostly additive.
+   - **Read-through fallback** — DB columns are overrides only; `asset.manufacturer` is a property that returns the DB value else the pset value. No duplication, but every filter query against JSONField gets harder.
+   - **Pset-first with DB-diffs** — IFC pset is authoritative; DB stores deltas only. Cleanest but biggest touch (filters, display, CSV behaviour, export reconciliation).
+
+   Decision deferred until a concrete use case picks the winner. Touches M1 (Asset Register) and M2 (Export Reconciliation).
+
+7. **Orphan → linked reconciliation** (surfaced 2026-04-21, post-M1). When an orphan asset's physical counterpart later appears in the IFC model, we need a manual link action: "this orphan is now represented by entity X, convert it". Data model supports it (nullable FK); UI not built.
+
 ---
 
 ## Rules of the road
@@ -252,3 +304,4 @@ Effort legend: S = 1–2 days, M = 3–5 days, L = 1–2 weeks.
 
 - **2026-04-17** — File created; M0 shipped (code + tests), review walk-through pending. Open debt documented.
 - **2026-04-18** — Access-model consolidation shipped. `ProjectMembership` rewritten with OWNER / EDITOR / VIEWER permission tiers + partial unique index on OWNER. `Project.collaborators` dropped. `Project.owner` switched to `on_delete=PROTECT`. `ProjectAccessService` + `ProjectModifyAccessMixin` are the single source of truth for access decisions. People page (`projects:people`) added — full access-tier CRUD, read-only functional roles. Migration `0004_permission_consolidation` is reversible. M1 (Asset Register) now unblocked.
+- **2026-04-21** — **M1 (Asset Register) shipped.** Models, services, views, templates, admin, FM intent routing in Ask, 155 tests passing. Two scope extensions beyond the original spec: **(a) orphan assets** — `FacilityAsset.ifc_entity` now nullable, with required `name`, optional free-text `ifc_type`, optional `spatial_container` + `location_text`; manual-create drawer, "Add manual asset" button, relaxed CSV schema, "Not in IFC model" badges, help modal next to the Asset Register heading. Migrations `0002` + `0003`. **(b) implicit-owner fallback** — project owners with no explicit `ProjectRole` now land on the FM dashboard (implicit view) instead of the "ask a role" empty state; stale Django-admin reference replaced with a link to the in-app People page. Added open-debt items #6 (IFC pset ↔ DB column overlap, dual sources of truth) and #7 (orphan → linked reconciliation UI). Review walk-through still pending.

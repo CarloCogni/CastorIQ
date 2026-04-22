@@ -27,6 +27,11 @@ urlpatterns = [
         name="assets_promote",
     ),
     path(
+        "<uuid:pk>/facilities/assets/create-manual/",
+        views.AssetCreateManualView.as_view(),
+        name="assets_create_manual",
+    ),
+    path(
         "<uuid:pk>/facilities/assets/bulk/",
         views.AssetBulkView.as_view(),
         name="assets_bulk",

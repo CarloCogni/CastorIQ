@@ -19,6 +19,7 @@ from facilities.tests.factories import (
     ClassificationFactory,
     ClassificationReferenceFactory,
     FacilityAssetFactory,
+    OrphanAssetFactory,
 )
 from ifc_processor.tests.factories import IFCEntityFactory, IFCFileFactory
 
@@ -152,6 +153,71 @@ class TestFacilityAsset:
         asset.classifications.add(reference_a, reference_b)
         assert set(asset.classifications.all()) == {reference_a, reference_b}
         assert asset in reference_a.assets.all()
+
+
+@pytest.mark.django_db
+class TestOrphanFacilityAsset:
+    """Orphan FacilityAsset — no IFC link, with required name + ifc_type."""
+
+    def test_orphan_creation_with_name_and_type(self):
+        """An orphan with name + ifc_type + no ifc_entity persists fine."""
+        project = ProjectFactory()
+        asset = FacilityAsset.objects.create(
+            project=project, ifc_entity=None, name="Extinguisher", ifc_type="IfcFireSuppressionTerminal"
+        )
+        assert asset.pk is not None
+        assert asset.is_orphan is True
+        assert asset.display_name == "Extinguisher"
+        assert asset.display_ifc_type == "IfcFireSuppressionTerminal"
+
+    def test_asset_without_ifc_or_orphan_fields_violates_check_constraint(self):
+        """Missing IFC entity AND missing (name, ifc_type) → CheckConstraint fails."""
+        project = ProjectFactory()
+        with pytest.raises(IntegrityError):
+            FacilityAsset.objects.create(project=project, ifc_entity=None, name="", ifc_type="")
+
+    def test_orphan_requires_only_name_not_ifc_type(self):
+        """``ifc_type`` is optional — an orphan with just ``name`` set is valid."""
+        project = ProjectFactory()
+        asset = FacilityAsset.objects.create(
+            project=project, ifc_entity=None, name="Loose chair", ifc_type=""
+        )
+        assert asset.pk is not None
+        assert asset.ifc_type == ""
+
+    def test_two_orphans_in_same_project_allowed(self):
+        """The unique constraint on (project, ifc_entity) is conditional — orphans don't collide."""
+        project = ProjectFactory()
+        OrphanAssetFactory(project=project)
+        OrphanAssetFactory(project=project)
+        assert FacilityAsset.objects.filter(project=project, ifc_entity__isnull=True).count() == 2
+
+    def test_linked_uniqueness_still_holds(self):
+        """Even with the condition, two assets pointing at the same entity collide."""
+        ifc_file = IFCFileFactory()
+        entity = IFCEntityFactory(ifc_file=ifc_file)
+        FacilityAssetFactory(project=ifc_file.project, ifc_entity=entity)
+        with pytest.raises(IntegrityError):
+            FacilityAssetFactory(project=ifc_file.project, ifc_entity=entity)
+
+    def test_display_name_prefers_linked_entity_name(self):
+        """``display_name`` returns the IFC entity's name for linked assets."""
+        ifc_file = IFCFileFactory()
+        entity = IFCEntityFactory(ifc_file=ifc_file, name="AHU-Rooftop")
+        asset = FacilityAssetFactory(project=ifc_file.project, ifc_entity=entity)
+        assert asset.display_name == "AHU-Rooftop"
+        assert asset.is_orphan is False
+
+    def test_clean_raises_form_error_when_name_missing(self):
+        """``clean()`` surfaces a field-level ValidationError when ``name`` is blank."""
+        from django.core.exceptions import ValidationError
+
+        asset = FacilityAsset(project=ProjectFactory(), ifc_entity=None, name="", ifc_type="")
+        with pytest.raises(ValidationError) as exc_info:
+            asset.clean()
+        assert "name" in exc_info.value.message_dict
+        # ifc_type is optional — it must NOT be reported as missing.
+        assert "ifc_type" not in exc_info.value.message_dict
 
 
 @pytest.mark.django_db

@@ -23,7 +23,7 @@
     <div class="flex-grow-1 p-4">
         {% if facilities_body_template %}
             {% include facilities_body_template %}
-        {% elif facilities_active_role %}
+        {% elif facilities_active_role or facilities_is_implicit_owner %}
             {% include facilities_dashboard_template %}
         {% else %}
             {% include "facilities/components/dashboards/_default.html" %}
