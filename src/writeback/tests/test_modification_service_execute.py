@@ -151,7 +151,7 @@ class TestExecuteFailure:
         self, project, ifc_file, wall_entities, user, mock_git, mock_filter_engine
     ):
         """IFCWriteError during execute sets proposal status to FAILED."""
-        from writeback.services.ifc_writer import IFCWriteError
+        from ifc_processor.services.ifc_writer import IFCWriteError
 
         proposal = ModificationProposalFactory(
             ifc_file=ifc_file,
@@ -185,7 +185,7 @@ class TestExecuteFailure:
         self, project, ifc_file, wall_entities, user, mock_git, mock_filter_engine
     ):
         """Git rollback is called when execution fails."""
-        from writeback.services.ifc_writer import IFCWriteError
+        from ifc_processor.services.ifc_writer import IFCWriteError
 
         proposal = ModificationProposalFactory(
             ifc_file=ifc_file,

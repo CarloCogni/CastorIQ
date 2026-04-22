@@ -12,8 +12,8 @@ import logging
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from core.llm import get_llm
+from ifc_processor.services.ifc_standard_psets import get_applicable_psets
 
-from .ifc_standard_psets import get_applicable_psets
 from .message_normalizer import normalize as normalize_message
 
 logger = logging.getLogger(__name__)
@@ -378,7 +378,7 @@ class IntentClassifier:
                     hint = ""
                     if "." in key:
                         pset_name, prop_name = key.split(".", 1)
-                        from .ifc_standard_psets import lookup_property
+                        from ifc_processor.services.ifc_standard_psets import lookup_property
 
                         info = lookup_property(pset_name, prop_name)
                         if info:

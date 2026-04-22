@@ -12,8 +12,7 @@ from dataclasses import dataclass, field
 from difflib import get_close_matches
 
 from ifc_processor.models import IFCEntity
-
-from .ifc_standard_psets import is_standard_pset, lookup_property
+from ifc_processor.services.ifc_standard_psets import is_standard_pset, lookup_property
 
 logger = logging.getLogger(__name__)
 

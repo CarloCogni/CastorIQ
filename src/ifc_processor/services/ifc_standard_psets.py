@@ -1,14 +1,18 @@
-# writeback/services/ifc_standard_psets.py
+# ifc_processor/services/ifc_standard_psets.py
 """
 Registry of ALL IFC4 standard property sets and their property types.
 
 Auto-generated from IfcOpenShell IFC4 PSD templates.
-Do NOT edit manually � re-run scripts/extract_ifc_psets.py instead.
+Do NOT edit manually — re-run scripts/extract_ifc_psets.py instead.
 
 Total: 140 psets, 1078 properties.
 
+Pure library code — consumed by the IFC writers in this package and by any
+Castor service (writeback, facilities export, ingest) that needs to look up
+a standard property's type or coerce a value to it.
+
 Usage:
-    from .ifc_standard_psets import lookup_property, coerce_from_registry
+    from ifc_processor.services.ifc_standard_psets import lookup_property, coerce_from_registry
 """
 
 # Type constants

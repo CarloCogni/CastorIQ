@@ -1,9 +1,15 @@
-# writeback/services/ifc_writer.py
+# ifc_processor/services/ifc_writer.py
 """
-IFC write operations using IfcOpenShell.
+Safe IFC property / attribute write operations on top of IfcOpenShell.
 
-Tier 1 (Certified Operations): pre-coded, tested functions
-for safe property modifications. The LLM never touches this code.
+Pure library code — no LLM, no Django, no per-caller context. Any Castor
+service that needs to modify an IFC file should drive these writers:
+writeback proposals, FM export reconciliation, future ingest-side patches.
+
+The class is still called ``Tier1Writer`` because writeback classifies the
+operations it exposes (SET_PROPERTY, ADD_PROPERTY, REMOVE_PROPERTY,
+SET_ATTRIBUTE) as its GREEN tier. The writer itself has no knowledge of
+that tier system — it is a neutral IFC-write primitive.
 """
 
 import logging
@@ -40,7 +46,7 @@ class IFCWriteError(Exception):
 
 class Tier1Writer:
     """
-    Certified IFC write operations (GREEN tier).
+    Safe IFC property / attribute writer.
 
     Supported operations:
         - SET_PROPERTY: change an existing property value
