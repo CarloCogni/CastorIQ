@@ -1,0 +1,184 @@
+<!-- facilities/components/asset_create_manual_drawer.html — modal drawer to create an orphan asset -->
+
+<div class="modal fade show"
+     id="asset-create-manual-drawer"
+     tabindex="-1"
+     aria-labelledby="asset-create-manual-title"
+     style="display: block; background-color: rgba(0,0,0,0.35);">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title d-flex align-items-center gap-2" id="asset-create-manual-title">
+                    <i class="bi bi-plus-circle" style="color: var(--castor-facilities, #14b8a6);"></i>
+                    Add manual asset
+                </h5>
+                <button type="button"
+                        class="btn-close"
+                        aria-label="Close"
+                        onclick="document.getElementById('asset-promote-drawer-mount').innerHTML='';"></button>
+            </div>
+
+            <form method="post"
+                  action="{% url 'facilities:assets_create_manual' project.pk %}"
+                  class="d-flex flex-column"
+                  style="min-height: 0;">
+                {% csrf_token %}
+
+                <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+                    <p class="text-secondary fs-8 mb-3">
+                        Use this form for items that are <strong class="text-body">not in the IFC model</strong> —
+                        consumables, loose furniture, vehicles, post-handover replacements, sub-components.
+                        For items already modelled, use <em>Add assets</em> instead.
+                    </p>
+
+                    {% if form_error %}
+                    <div class="alert alert-warning py-2 px-3 fs-8 mb-3">
+                        <i class="bi bi-exclamation-triangle me-1"></i>{{ form_error }}
+                    </div>
+                    {% endif %}
+
+                    <div class="row g-2">
+                        <!-- Required identity -->
+                        <div class="col-12 col-md-6">
+                            <label class="form-label fs-8 text-secondary">
+                                Name <span class="text-danger">*</span>
+                            </label>
+                            <input type="text"
+                                   name="name"
+                                   class="form-control form-control-sm"
+                                   value="{{ form_values.name|default:'' }}"
+                                   required
+                                   placeholder="e.g. Fire extinguisher — Level 2 lobby">
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label fs-8 text-secondary">
+                                Type or category <span class="fs-8 text-secondary">(optional)</span>
+                            </label>
+                            <input list="asset-manual-ifc-types"
+                                   type="text"
+                                   name="ifc_type"
+                                   class="form-control form-control-sm"
+                                   value="{{ form_values.ifc_type|default:'' }}"
+                                   placeholder="Fire extinguisher, Kitchen appliance, Service vehicle…">
+                            <datalist id="asset-manual-ifc-types">
+                                {% for type_name in ifc_types %}
+                                <option value="{{ type_name }}"></option>
+                                {% endfor %}
+                            </datalist>
+                            <div class="form-text fs-8">
+                                Free text — helps you group and filter later. Leave blank if you don't need it.
+                            </div>
+                        </div>
+
+                        <!-- Location (optional) -->
+                        <div class="col-12">
+                            <hr class="my-1">
+                            <div class="fs-8 text-secondary text-uppercase fw-semibold mb-1">
+                                <i class="bi bi-geo-alt"></i> Location (optional)
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label fs-8 text-secondary">Spatial container</label>
+                            <select name="spatial_id" class="form-select form-select-sm">
+                                <option value="">— none —</option>
+                                {% for node in spatial_elements %}
+                                <option value="{{ node.pk }}"
+                                        {% if form_values.spatial_id == node.pk|stringformat:'s' %}selected{% endif %}>
+                                    {{ node.get_spatial_type_display }} · {{ node.entity.name|default:"(unnamed)" }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label fs-8 text-secondary">Free-text location</label>
+                            <input type="text"
+                                   name="location_text"
+                                   class="form-control form-control-sm"
+                                   value="{{ form_values.location_text|default:'' }}"
+                                   placeholder="e.g. Service vehicle — van #3">
+                        </div>
+
+                        <!-- Identification (optional) -->
+                        <div class="col-12">
+                            <hr class="my-1">
+                            <div class="fs-8 text-secondary text-uppercase fw-semibold mb-1">
+                                <i class="bi bi-tag"></i> Identification (optional)
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label fs-8 text-secondary">Asset tag</label>
+                            <input type="text"
+                                   name="asset_tag"
+                                   class="form-control form-control-sm"
+                                   value="{{ form_values.asset_tag|default:'' }}"
+                                   placeholder="e.g. FE-L2-003">
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label fs-8 text-secondary">Manufacturer</label>
+                            <input type="text"
+                                   name="manufacturer"
+                                   class="form-control form-control-sm"
+                                   value="{{ form_values.manufacturer|default:'' }}">
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label fs-8 text-secondary">Model number</label>
+                            <input type="text"
+                                   name="model_number"
+                                   class="form-control form-control-sm"
+                                   value="{{ form_values.model_number|default:'' }}">
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label fs-8 text-secondary">Serial number</label>
+                            <input type="text"
+                                   name="serial_number"
+                                   class="form-control form-control-sm"
+                                   value="{{ form_values.serial_number|default:'' }}">
+                        </div>
+
+                        <!-- Lifecycle (optional) -->
+                        <div class="col-12">
+                            <hr class="my-1">
+                            <div class="fs-8 text-secondary text-uppercase fw-semibold mb-1">
+                                <i class="bi bi-calendar-event"></i> Lifecycle (optional)
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label fs-8 text-secondary">Commissioning date</label>
+                            <input type="date"
+                                   name="commissioning_date"
+                                   class="form-control form-control-sm"
+                                   value="{{ form_values.commissioning_date|default:'' }}">
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label fs-8 text-secondary">Warranty end</label>
+                            <input type="date"
+                                   name="warranty_end"
+                                   class="form-control form-control-sm"
+                                   value="{{ form_values.warranty_end|default:'' }}">
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label fs-8 text-secondary">Notes</label>
+                            <textarea name="notes"
+                                      class="form-control form-control-sm"
+                                      rows="2">{{ form_values.notes|default:'' }}</textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button"
+                            class="btn btn-secondary"
+                            onclick="document.getElementById('asset-promote-drawer-mount').innerHTML='';">
+                        Cancel
+                    </button>
+                    <button type="submit"
+                            class="btn"
+                            style="background-color: var(--castor-facilities, #14b8a6); color: white; border: none;">
+                        <i class="bi bi-plus-circle"></i> Create asset
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

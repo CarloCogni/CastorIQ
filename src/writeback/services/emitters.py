@@ -48,6 +48,15 @@ class PipelineEmitter(Protocol):
         """
         ...
 
+    def is_cancelled(self) -> bool:
+        """Return True if the consumer has flagged the in-flight pipeline for cancellation.
+
+        Services should poll this at coarse boundaries (e.g. before each
+        per-entity LLM call) so cancellation takes effect without waiting
+        for the next emit() to fire.
+        """
+        ...
+
 
 class NullEmitter:
     """Silent emitter — logs at DEBUG. Used as default (backward-compatible)."""
@@ -60,6 +69,9 @@ class NullEmitter:
         detail: dict[str, Any] | None = None,
     ) -> None:
         logger.debug("Pipeline [%s/%s]: %s %s", phase, status, message, detail or "")
+
+    def is_cancelled(self) -> bool:
+        return False
 
 
 class WebSocketEmitter:
@@ -117,6 +129,7 @@ class CapturingEmitter:
 
     def __init__(self) -> None:
         self.events: list[dict[str, Any]] = []
+        self._cancelled = False
 
     def emit(
         self,
@@ -126,3 +139,10 @@ class CapturingEmitter:
         detail: dict[str, Any] | None = None,
     ) -> None:
         self.events.append({"phase": phase, "status": status, "message": message, "detail": detail})
+
+    def is_cancelled(self) -> bool:
+        return self._cancelled
+
+    def request_cancel(self) -> None:
+        """Test helper: flip the cancel flag so the next is_cancelled() check raises."""
+        self._cancelled = True

@@ -241,6 +241,68 @@ class TestUpsertConflict:
 
         assert result == "skipped"
 
+    def test_upsert_coerces_null_ifc_value_to_fallback(self, scan_service, project, ifc_file):
+        """LLM returning ``"ifc_value": null`` is coerced to a fallback string.
+
+        Regression for the NotNullViolation raised when the roof/thermal-transmittance
+        scan produced a finding with a null ifc_value — the DB column is NOT NULL.
+        """
+        from documents.models import Document, DocumentChunk
+        from ifc_processor.tests.factories import IFCEntityFactory
+
+        entity = IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcRoof")
+        doc = Document.objects.create(
+            project=project, name="Spec.pdf", file="spec.pdf", status="completed"
+        )
+        chunk = DocumentChunk.objects.create(
+            document=doc, content="Roof shall have U <= 0.2.", chunk_index=0
+        )
+        scan_run = ScanRun.objects.create(
+            project=project,
+            triggered_by=scan_service.user,
+            scan_type=ScanRun.ScanType.FULL,
+            status=ScanRun.Status.RUNNING,
+            llm_model_used="test",
+        )
+
+        finding = self._make_finding()
+        finding["ifc_value"] = None
+
+        result = scan_service._upsert_conflict(entity, chunk, finding, scan_run)
+
+        assert result == "created"
+        conflict = Conflict.objects.get(project=project)
+        assert conflict.ifc_value == "(not set)"
+
+    def test_upsert_tolerates_null_property_name(self, scan_service, project, ifc_file):
+        """``"property_name": null`` must not crash on the slice / hash path."""
+        from documents.models import Document, DocumentChunk
+        from ifc_processor.tests.factories import IFCEntityFactory
+
+        entity = IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcWall")
+        doc = Document.objects.create(
+            project=project, name="Spec.pdf", file="spec.pdf", status="completed"
+        )
+        chunk = DocumentChunk.objects.create(
+            document=doc, content="Walls shall be labeled.", chunk_index=0
+        )
+        scan_run = ScanRun.objects.create(
+            project=project,
+            triggered_by=scan_service.user,
+            scan_type=ScanRun.ScanType.FULL,
+            status=ScanRun.Status.RUNNING,
+            llm_model_used="test",
+        )
+
+        finding = self._make_finding()
+        finding["property_name"] = None
+
+        result = scan_service._upsert_conflict(entity, chunk, finding, scan_run)
+
+        assert result == "created"
+        conflict = Conflict.objects.get(project=project)
+        assert conflict.property_name == ""
+
 
 # ── _evaluate_entity ──────────────────────────────────────────────────────────
 
@@ -525,3 +587,154 @@ class TestFullScan:
 
         run = ScanRun.objects.filter(project=project).latest("created_at")
         assert run.status == ScanRun.Status.COMPLETED
+
+
+# ── Per-entity heartbeat ──────────────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+class TestPerEntityHeartbeat:
+    """The compare loop must emit running + done per entity so the live UI has
+    a real heartbeat — without this the user can't tell whether the scan is
+    progressing or stuck on the current entity."""
+
+    def test_loop_emits_running_and_done_per_entity_with_label_detail(
+        self, scan_service, ifc_file, monkeypatch
+    ):
+        from documents.models import Document, DocumentChunk
+        from ifc_processor.tests.factories import IFCEntityFactory
+        from writeback.services.emitters import CapturingEmitter
+
+        e1 = IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcWall", name="Wall A")
+        e2 = IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcWall", name="Wall B")
+        doc = Document.objects.create(
+            project=scan_service.project,
+            name="Spec.pdf",
+            file="spec.pdf",
+            status="completed",
+        )
+        chunk = DocumentChunk.objects.create(
+            document=doc, content="Walls shall have EI120.", chunk_index=0
+        )
+
+        # Bypass vector search — feed the loop a known entity → chunks map.
+        monkeypatch.setattr(scan_service, "_get_requirement_chunks", lambda: [chunk])
+        monkeypatch.setattr(
+            scan_service,
+            "_build_entity_chunk_map",
+            lambda req_chunks: {e1: [chunk], e2: [chunk]},
+        )
+        scan_service.llm.invoke.return_value.content = '{"conflicts": []}'
+
+        emitter = CapturingEmitter()
+        scan_service.full_scan(emitter=emitter)
+
+        compare = [ev for ev in emitter.events if ev["phase"] == "compare"]
+        running = [ev for ev in compare if ev["status"] == "running"]
+        done = [ev for ev in compare if ev["status"] == "done"]
+
+        assert len(running) == 2
+        assert len(done) == 2
+
+        for ev in running + done:
+            detail = ev["detail"]
+            assert detail["ifc_type"] == "IfcWall"
+            assert detail["entity_name"] in {"Wall A", "Wall B"}
+            assert detail["total"] == 2
+            assert detail["current"] in {1, 2}
+
+    def test_loop_raises_cancellation_error_before_calling_llm_when_flag_set(
+        self, scan_service, ifc_file, monkeypatch
+    ):
+        """If the cancel flag is set between entities, the loop short-circuits
+        before the next LLM call rather than spending another N seconds on Ollama."""
+        from documents.models import Document, DocumentChunk
+        from ifc_processor.tests.factories import IFCEntityFactory
+        from writeback.services.emitters import CancellationError, CapturingEmitter
+
+        e1 = IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcWall", name="Wall A")
+        e2 = IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcWall", name="Wall B")
+        doc = Document.objects.create(
+            project=scan_service.project,
+            name="Spec.pdf",
+            file="spec.pdf",
+            status="completed",
+        )
+        chunk = DocumentChunk.objects.create(
+            document=doc, content="Walls shall have EI120.", chunk_index=0
+        )
+
+        monkeypatch.setattr(scan_service, "_get_requirement_chunks", lambda: [chunk])
+        monkeypatch.setattr(
+            scan_service,
+            "_build_entity_chunk_map",
+            lambda req_chunks: {e1: [chunk], e2: [chunk]},
+        )
+
+        emitter = CapturingEmitter()
+        llm_calls = {"n": 0}
+
+        def fake_evaluate(entity, chunks):
+            llm_calls["n"] += 1
+            # Simulate the user clicking Cancel during the first entity's LLM call.
+            emitter.request_cancel()
+            return []
+
+        monkeypatch.setattr(scan_service, "_evaluate_entity", fake_evaluate)
+
+        with pytest.raises(CancellationError):
+            scan_service.full_scan(emitter=emitter)
+
+        # First entity's LLM call ran (the cancel happened during it).
+        # Second entity must NOT have triggered _evaluate_entity — the explicit
+        # pre-LLM check should have raised before it.
+        assert llm_calls["n"] == 1
+
+    def test_loop_emits_error_event_when_evaluate_entity_raises(
+        self, scan_service, ifc_file, monkeypatch
+    ):
+        """A per-entity LLM failure produces a compare/error event AND the loop
+        continues to the next entity (the broad except in the loop swallows
+        non-CancellationError exceptions)."""
+        from documents.models import Document, DocumentChunk
+        from ifc_processor.tests.factories import IFCEntityFactory
+        from writeback.services.emitters import CapturingEmitter
+
+        e1 = IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcWall", name="Wall A")
+        e2 = IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcWall", name="Wall B")
+        doc = Document.objects.create(
+            project=scan_service.project,
+            name="Spec.pdf",
+            file="spec.pdf",
+            status="completed",
+        )
+        chunk = DocumentChunk.objects.create(
+            document=doc, content="Walls shall have EI120.", chunk_index=0
+        )
+
+        monkeypatch.setattr(scan_service, "_get_requirement_chunks", lambda: [chunk])
+        monkeypatch.setattr(
+            scan_service,
+            "_build_entity_chunk_map",
+            lambda req_chunks: {e1: [chunk], e2: [chunk]},
+        )
+
+        calls = {"n": 0}
+
+        def fake_evaluate(entity, chunks):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("ollama timed out")
+            return []
+
+        monkeypatch.setattr(scan_service, "_evaluate_entity", fake_evaluate)
+
+        emitter = CapturingEmitter()
+        scan_service.full_scan(emitter=emitter)
+
+        compare = [ev for ev in emitter.events if ev["phase"] == "compare"]
+        statuses = [ev["status"] for ev in compare]
+
+        assert statuses.count("running") == 2
+        assert statuses.count("error") == 1
+        assert statuses.count("done") == 1

@@ -809,8 +809,7 @@ class TestLinkageFilter:
         FacilityAssetFactory(project=project, asset_tag="L-01")
         OrphanAssetFactory(project=project, asset_tag="O-01")
         tags = sorted(
-            a.asset_tag
-            for a in AssetService(project, project.owner).list_assets(linkage="linked")
+            a.asset_tag for a in AssetService(project, project.owner).list_assets(linkage="linked")
         )
         assert tags == ["L-01"]
 
@@ -820,8 +819,7 @@ class TestLinkageFilter:
         FacilityAssetFactory(project=project, asset_tag="L-01")
         OrphanAssetFactory(project=project, asset_tag="O-01")
         tags = sorted(
-            a.asset_tag
-            for a in AssetService(project, project.owner).list_assets(linkage="orphan")
+            a.asset_tag for a in AssetService(project, project.owner).list_assets(linkage="orphan")
         )
         assert tags == ["O-01"]
 

@@ -16,8 +16,10 @@ Protocol (ProposalConsumer):
 
 Protocol (ScanConsumer):
     Client → Server:  {"action": "start_scan", "skip_low_value": true}
+    Client → Server:  {"action": "cancel"}
     Server → Client:  {"type": "phase", "phase": "<name>", "status": "running|done|error", ...}
     Server → Client:  {"type": "scan_complete", "stats": {...}}
+    Server → Client:  {"type": "cancelled"}
     Server → Client:  {"type": "error", "message": "<text>"}
     Server → Client:  {"type": "done"}
 """
@@ -121,7 +123,12 @@ class ProposalConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json({"type": "proposal", **serialized})
         await self.send_json({"type": "done"})
 
-    @sync_to_async
+    # `thread_sensitive=False` puts the LLM-bound work on the asgiref shared
+    # thread pool instead of the single shared sync thread. Without this, a
+    # stuck Ollama call holds the only sync thread and starves every other
+    # @sync_to_async — including new WebSocket auth checks — so new tabs can't
+    # even connect until the in-flight call returns or hits the 60s timeout.
+    @sync_to_async(thread_sensitive=False)
     def _run_pipeline(
         self,
         message_text: str,
@@ -414,6 +421,7 @@ class ScanConsumer(AsyncJsonWebsocketConsumer):
     async def connect(self) -> None:
         self.user = self.scope["user"]
         self.project_id = self.scope["url_route"]["kwargs"]["project_id"]
+        self._cancel_event = threading.Event()
 
         if self.user.is_anonymous:
             await self.close(code=4001)
@@ -432,6 +440,12 @@ class ScanConsumer(AsyncJsonWebsocketConsumer):
         )
 
     async def disconnect(self, close_code: int) -> None:
+        # Signal any running scan to abort at the next emit boundary. Without
+        # this, the sync_to_async thread keeps invoking Ollama after the client
+        # is gone, leaking the thread and queueing up behind a zombie request.
+        cancel_event = getattr(self, "_cancel_event", None)
+        if cancel_event is not None:
+            cancel_event.set()
         logger.debug(
             "ScanConsumer disconnected: user=%s code=%s",
             getattr(self.user, "username", "?"),
@@ -442,6 +456,9 @@ class ScanConsumer(AsyncJsonWebsocketConsumer):
         action = content.get("action")
         if action == "start_scan":
             await self._handle_start_scan(content)
+        elif action == "cancel":
+            self._cancel_event.set()
+            logger.debug("ScanConsumer: cancel requested by %s", self.user.username)
         else:
             await self.send_json({"type": "error", "message": f"Unknown action: {action}"})
 
@@ -451,9 +468,18 @@ class ScanConsumer(AsyncJsonWebsocketConsumer):
         """Run the conflict scan pipeline and stream phase events to the client."""
         skip_low_value = content.get("skip_low_value", True)
 
+        # Clear stale cancel state so a prior cancel doesn't kill this run.
+        self._cancel_event.clear()
+
         try:
             stats = await self._run_scan(skip_low_value)
         except Exception as e:
+            from writeback.services.emitters import CancellationError
+
+            if isinstance(e, CancellationError):
+                logger.debug("Conflict scan cancelled for user=%s", self.user.username)
+                await self.send_json({"type": "cancelled"})
+                return
             logger.exception("Conflict scan pipeline error: %s", e)
             await self.send_json({"type": "error", "message": str(e)})
             await self.send_json({"type": "done"})
@@ -462,7 +488,9 @@ class ScanConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json({"type": "scan_complete", "stats": stats})
         await self.send_json({"type": "done"})
 
-    @sync_to_async
+    # See _run_pipeline above — same reason: keep LLM-bound work off the
+    # single shared sync thread so connect()/auth on other tabs isn't blocked.
+    @sync_to_async(thread_sensitive=False)
     def _run_scan(self, skip_low_value: bool) -> dict:
         """Synchronous scan execution wrapped for async use."""
         from environments.models import Project
@@ -474,7 +502,7 @@ class ScanConsumer(AsyncJsonWebsocketConsumer):
         except Project.DoesNotExist:
             raise ValueError("Project not found.")
 
-        emitter = WebSocketEmitter(self.send_json)
+        emitter = WebSocketEmitter(self.send_json, cancel_event=self._cancel_event)
         svc = ConflictScanService(project, self.user, skip_low_value=skip_low_value)
         return svc.full_scan(emitter=emitter)
 

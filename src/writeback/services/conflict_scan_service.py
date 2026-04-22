@@ -18,11 +18,15 @@ same JSON parse safety. The difference is directionality — the Guardian checks
 *proposed* change, the Scanner checks *existing* entity state.
 """
 
+import concurrent.futures
 import hashlib
 import json
 import logging
+import time
 from collections import defaultdict
 
+import httpcore
+import httpx
 from django.db.models import Q
 from langchain_core.messages import HumanMessage, SystemMessage
 from pgvector.django import CosineDistance
@@ -31,7 +35,7 @@ from core.llm import get_llm
 from documents.models import DocumentChunk
 from ifc_processor.models import IFCEntity
 from writeback.models import Conflict, ScanRun
-from writeback.services.emitters import NullEmitter
+from writeback.services.emitters import CancellationError, NullEmitter
 
 logger = logging.getLogger(__name__)
 
@@ -227,11 +231,37 @@ class ConflictScanService:
         "IfcZone",
     }
 
+    # Per-entity LLM call cap. Tighter than the global OLLAMA_REQUEST_TIMEOUT
+    # because the user is watching a live progress UI — a single hung entity
+    # should advance the loop within 2 minutes
+    SCAN_LLM_TIMEOUT_SECONDS = 120.0
+
+    # Hard cap on findings JSON length (tokens). Stops the model from
+    # rambling for minutes — typical valid scanner output fits well under
+    # 1024 tokens. Combined with the wall-clock timeout below, this
+    # makes runaway generation (the actual cause of the 18-minute hang
+    # the user kept hitting on entity 6) impossible.
+    SCAN_MAX_OUTPUT_TOKENS = 1024
+
     def __init__(self, project, user, skip_low_value: bool = True):
         self.project = project
         self.user = user
         self.skip_low_value = skip_low_value
-        self.llm = get_llm(user=user, temperature=0.1, format_json=True)
+        # `client_kwargs={"timeout": …}` is httpx's per-read timeout — it
+        # only fires when the socket goes silent for that long. Ollama can
+        # stream tokens slowly enough to keep the timer alive forever, so
+        # this is NOT a wall-clock cap. The real cap is enforced in
+        # _evaluate_entity() via ThreadPoolExecutor.result(timeout=…).
+        # `num_predict` caps Ollama's output tokens at the model layer so
+        # the model can't generate for 30 minutes even if the timeout
+        # somehow doesn't fire.
+        self.llm = get_llm(
+            user=user,
+            temperature=0.1,
+            format_json=True,
+            num_predict=self.SCAN_MAX_OUTPUT_TOKENS,
+            client_kwargs={"timeout": self.SCAN_LLM_TIMEOUT_SECONDS},
+        )
 
     def full_scan(self, emitter=None) -> dict:
         """
@@ -254,6 +284,14 @@ class ConflictScanService:
 
         try:
             stats = self._run(emitter, scan_run)
+        except CancellationError:
+            # ScanRun has no CANCELLED status — FAILED with a clear marker keeps
+            # the audit trail honest without synthesizing a new enum value.
+            logger.debug("Conflict scan cancelled for project %s", self.project.id)
+            scan_run.status = ScanRun.Status.FAILED
+            scan_run.error_message = "Cancelled by client."
+            scan_run.save(update_fields=["status", "error_message"])
+            raise
         except Exception as e:
             logger.exception("Conflict scan failed for project %s: %s", self.project.id, e)
             scan_run.status = ScanRun.Status.FAILED
@@ -311,14 +349,52 @@ class ConflictScanService:
         stats = {"entities_scanned": 0, "conflicts_found": 0, "conflicts_updated": 0}
 
         for i, (entity, chunks) in enumerate(entity_chunk_map.items(), 1):
+            # Explicit pre-LLM cancel check. The emit() right below also
+            # raises CancellationError if the flag is set, but checking here
+            # makes the contract obvious and avoids a wasted send roundtrip
+            # when the user cancelled between entities.
+            if emitter.is_cancelled():
+                raise CancellationError(f"Cancelled before entity {i}/{total}.")
+
+            entity_label = entity.name or entity.global_id or f"entity-{entity.id}"
+            base_detail = {
+                "current": i,
+                "total": total,
+                "entity_name": entity_label,
+                "ifc_type": entity.ifc_type,
+            }
             emitter.emit(
                 "compare",
                 "running",
-                f"Comparing entity {i}/{total}…",
-                {"current": i, "total": total},
+                f"Comparing {i}/{total} — {entity.ifc_type} “{entity_label}”",
+                base_detail,
             )
+
+            prompt_chars = sum(len(c.content or "") for c in chunks)
+            logger.info(
+                "Scanner [%d/%d] %s id=%s name=%r → Ollama (chunks=%d, prompt~%d chars)",
+                i,
+                total,
+                entity.ifc_type,
+                entity.id,
+                entity_label,
+                len(chunks),
+                prompt_chars,
+            )
+
+            started = time.monotonic()
             try:
                 findings = self._evaluate_entity(entity, chunks)
+                elapsed = time.monotonic() - started
+                logger.info(
+                    "Scanner [%d/%d] ← %.1fs, %d finding%s",
+                    i,
+                    total,
+                    elapsed,
+                    len(findings),
+                    "s" if len(findings) != 1 else "",
+                )
+
                 stats["entities_scanned"] += 1
 
                 for finding in findings:
@@ -330,8 +406,47 @@ class ConflictScanService:
                     elif result == "updated":
                         stats["conflicts_updated"] += 1
 
-            except Exception:
-                logger.exception("Conflict scan failed for entity %s (%s)", entity.id, entity)
+                # Per-entity heartbeat: emit a `done` so the UI sees a real
+                # status flip after every comparison, not just an in-place
+                # number change. Without this the user can't tell whether the
+                # loop is alive or stuck on the current entity.
+                emitter.emit(
+                    "compare",
+                    "done",
+                    f"✓ {i}/{total} — {entity.ifc_type} “{entity_label}” — "
+                    f"{len(findings)} finding{'s' if len(findings) != 1 else ''}",
+                    {**base_detail, "findings": len(findings)},
+                )
+
+            except CancellationError:
+                # Cancellation propagates as Exception; re-raise so the broad
+                # except below doesn't swallow it and continue scanning.
+                raise
+            except Exception as e:
+                elapsed = time.monotonic() - started
+                # Timeouts are expected outcomes — one line is enough.
+                # Anything else is genuinely surprising — keep the traceback.
+                if isinstance(e, (httpx.TimeoutException, httpcore.TimeoutException)):
+                    logger.warning(
+                        "Scanner [%d/%d] ✗ timeout after %.1fs (Ollama did not respond)",
+                        i,
+                        total,
+                        elapsed,
+                    )
+                else:
+                    logger.exception(
+                        "Scanner [%d/%d] ✗ %s after %.1fs",
+                        i,
+                        total,
+                        type(e).__name__,
+                        elapsed,
+                    )
+                emitter.emit(
+                    "compare",
+                    "error",
+                    f"⚠ {i}/{total} — {entity.ifc_type} “{entity_label}” — {type(e).__name__}",
+                    {**base_detail, "error": str(e)[:200]},
+                )
 
         logger.info(
             "Conflict scan complete for project %s: scanned=%d, found=%d, updated=%d",
@@ -433,7 +548,33 @@ class ConflictScanService:
             ),
         ]
 
-        response = self.llm.invoke(messages)
+        # Hard wall-clock cap on the LLM call. We can't trust httpx's per-read
+        # timeout to fire (Ollama streams tokens, which keeps the read timer
+        # alive even when generation effectively stalls — the user has hit
+        # this exact mode for 18 minutes on a single entity). Run invoke()
+        # in a worker thread and give up after SCAN_LLM_TIMEOUT_SECONDS.
+        # The thread will keep running until Ollama responds — Python can't
+        # interrupt a blocking C call — but the loop advances. The leaked
+        # thread is a daemon so it won't block process exit; the only real
+        # cost is that the in-flight Ollama request still occupies one slot
+        # on the Ollama server until it returns.
+        executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix=f"scan-llm-{entity.id}"
+        )
+        try:
+            future = executor.submit(self.llm.invoke, messages)
+            try:
+                response = future.result(timeout=self.SCAN_LLM_TIMEOUT_SECONDS)
+            except concurrent.futures.TimeoutError as e:
+                # Re-raise as httpx.ReadTimeout so the loop's existing
+                # timeout handler (one-line warning) catches it.
+                raise httpx.ReadTimeout(
+                    f"Hard wall-clock timeout after {self.SCAN_LLM_TIMEOUT_SECONDS:.0f}s"
+                ) from e
+        finally:
+            # Don't wait — if the worker is wedged in Ollama, waiting would
+            # defeat the entire point of the watchdog.
+            executor.shutdown(wait=False)
 
         try:
             result = json.loads(response.content)
@@ -510,8 +651,8 @@ class ConflictScanService:
 
         Returns 'created', 'updated', or 'skipped'.
         """
-        property_name = finding.get("property_name", "")[:255]
-        title = finding.get("title", "Conflict")[:255]
+        property_name = self._finding_str(finding, "property_name")[:255]
+        title = self._finding_str(finding, "title", "Conflict")[:255]
         severity = finding.get("severity", Conflict.Severity.MEDIUM)
 
         valid_severities = {s.value for s in Conflict.Severity}
@@ -524,11 +665,11 @@ class ConflictScanService:
 
         common_fields = {
             "title": title,
-            "description": finding.get("description", ""),
-            "ifc_value": finding.get("ifc_value", ""),
-            "document_value": finding.get("document_value", ""),
+            "description": self._finding_str(finding, "description"),
+            "ifc_value": self._finding_str(finding, "ifc_value", "(not set)"),
+            "document_value": self._finding_str(finding, "document_value"),
             "severity": severity,
-            "suggested_fix": finding.get("suggested_fix", ""),
+            "suggested_fix": self._finding_str(finding, "suggested_fix"),
             "confidence": finding.get("confidence", 0.0),
             "property_name": property_name,
             "scan_run": scan_run,
@@ -567,6 +708,20 @@ class ConflictScanService:
         return "created"
 
     # ── Helpers ────────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _finding_str(finding: dict, key: str, fallback: str = "") -> str:
+        """Coerce an LLM-supplied finding field to a non-None string.
+
+        `dict.get(key, default)` only uses the default when the key is missing,
+        not when the value is explicitly None — the LLM sometimes returns
+        ``null`` for string fields despite prompt guidance, so this helper
+        covers both cases.
+        """
+        value = finding.get(key)
+        if value is None:
+            return fallback
+        return str(value)
 
     def _get_llm_model_name(self) -> str:
         """Return the LLM model name for audit logging."""

@@ -1,4 +1,5 @@
 <!-- Conflicts Tab — Sub-tabbed: Data Quality | Semantic Conflicts -->
+{% load ifc_filters %}
 
 {# ── Sub-tab navigation ──────────────────────────────────────────── #}
 <div class="border-bottom d-flex align-items-center px-4 py-2 gap-2 flex-shrink-0"
@@ -223,8 +224,24 @@
         <div class="d-flex align-items-center gap-2 mb-2">
             <div class="spinner-border spinner-border-sm text-primary" role="status" aria-hidden="true"></div>
             <span class="text-primary fw-medium fs-7" id="scan-phase-label">Initialising…</span>
+            <span class="text-secondary fs-8 ms-2" id="scan-elapsed"></span>
+            <button id="scan-cancel-btn" type="button"
+                    class="btn btn-sm btn-outline-danger rounded-pill ms-auto d-none"
+                    onclick="ScanEngine.cancel()">
+                <i class="bi bi-x-circle me-1"></i>Cancel
+            </button>
         </div>
         <div class="d-flex flex-column gap-1" id="scan-phase-steps"></div>
+        <!-- Stuck-detection banner: appears when no WS message has arrived for >30s. -->
+        <div id="scan-stuck-banner" class="d-none mt-2 rounded-2 p-2 fs-8"
+             style="background-color: rgba(245, 158, 11, 0.1);
+                    border: 1px solid rgba(245, 158, 11, 0.2);
+                    color: var(--castor-warning);">
+            <i class="bi bi-exclamation-triangle me-1"></i>
+            No update for <span id="scan-stuck-secs">0</span>s — the LLM may be slow or stuck.
+            <a href="#" class="text-decoration-underline" style="color: inherit;"
+               onclick="ScanEngine.cancel(); return false;">Cancel</a> and try again?
+        </div>
     </div>
 
     {# ── Explainer banner — shown only when no scan has ever run and no conflicts exist ── #}
@@ -487,7 +504,7 @@
                             <span class="text-secondary fs-8 ms-1">· {{ rep.ifc_entity.ifc_type }}</span>
                             {% endif %}
                         </div>
-                        <code class="fs-7" style="color: var(--castor-warning);">{{ rep.ifc_value }}</code>
+                        <code class="fs-7" style="color: var(--castor-warning);">{{ rep.ifc_value|format_value }}</code>
                         {% if group.count == 1 and rep.ifc_entity %}
                         <div class="text-secondary fs-8 mt-1">
                             <i class="bi bi-box me-1"></i>{{ rep.ifc_entity.name|default:rep.ifc_entity.global_id }}
@@ -510,7 +527,7 @@
                             </span>
                             <span class="text-secondary fs-8 text-uppercase fw-semibold">Required by</span>
                         </div>
-                        <code class="fs-7" style="color: var(--castor-primary);">{{ rep.document_value }}</code>
+                        <code class="fs-7" style="color: var(--castor-primary);">{{ rep.document_value|format_value }}</code>
                         {% if rep.document_chunk %}
                         <div class="text-secondary fs-8 mt-1">
                             {{ rep.document_chunk.document.name }}{% if rep.document_chunk.page_number %}, p.{{ rep.document_chunk.page_number }}{% endif %}
@@ -1026,6 +1043,19 @@ const ScanEngine = {
     _ws: null,
     _popup: null,  // Castor Slug pop-out window (eastereggs). Scan events are forwarded via postMessage.
 
+    // Live-progress state — used by the elapsed counter and stuck-detection banner.
+    _startedAt: 0,
+    _lastMsgAt: 0,
+    _tickHandle: null,
+    _cancelling: false,
+
+    // No-update threshold (ms) before showing the stuck banner. Some entities
+    // legitimately take ~50–60s (large prompts, cold model load, slow Ollama
+    // responses) — firing the "stuck" warning at 30s produced too many false
+    // alarms. The hard wall-clock cap on the LLM call is 60s per entity, so
+    // 120s comfortably covers two consecutive slow entities before warning.
+    STUCK_THRESHOLD_MS: 120_000,
+
     /* Open the Castor Slug pop-out. Safe to call anytime — no-op if already open. */
     openGame() {
         if (this._popup && !this._popup.closed) {
@@ -1056,18 +1086,28 @@ const ScanEngine = {
     },
 
     runScan() {
-        const btn = document.getElementById('run-scan-btn');
         const progress = document.getElementById('scan-progress');
         const phaseLabel = document.getElementById('scan-phase-label');
         const phaseSteps = document.getElementById('scan-phase-steps');
+        const cancelBtn = document.getElementById('scan-cancel-btn');
         const skipLowValue = document.getElementById('skip-low-value')?.checked ?? true;
 
         if (this._ws && this._ws.readyState < 2) return; // already running
 
-        btn.disabled = true;
+        document.getElementById('run-scan-btn').disabled = true;
         progress.classList.remove('d-none');
         phaseSteps.innerHTML = '';
         phaseLabel.textContent = 'Connecting…';
+
+        this._cancelling = false;
+        this._startedAt = Date.now();
+        this._lastMsgAt = Date.now();
+        this._startTicker();
+
+        cancelBtn.classList.remove('d-none');
+        cancelBtn.disabled = false;
+        cancelBtn.innerHTML = '<i class="bi bi-x-circle me-1"></i>Cancel';
+        this._hideStuckBanner();
 
         const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
         const wsUrl = `${proto}://${window.location.host}/ws/projects/{{ project.pk }}/conflicts/scan/`;
@@ -1075,11 +1115,14 @@ const ScanEngine = {
 
         this._ws.onopen = () => {
             phaseLabel.textContent = 'Starting scan…';
+            this._lastMsgAt = Date.now();
             this._ws.send(JSON.stringify({ action: 'start_scan', skip_low_value: skipLowValue }));
         };
 
         this._ws.onmessage = (event) => {
             const msg = JSON.parse(event.data);
+            this._lastMsgAt = Date.now();
+            this._hideStuckBanner();
 
             // Mirror every scan event to the Castor Slug pop-out (if open).
             this._forwardToGame(msg);
@@ -1102,32 +1145,117 @@ const ScanEngine = {
                 this._toast('Scan complete — ' + (parts.join(' · ') || 'No conflicts found.'));
             } else if (msg.type === 'done') {
                 this._ws.close();
+                this._resetUi();
                 setTimeout(() => {
                     const url = new URL(window.location.href);
                     url.searchParams.set('subtab', 'semantic');
                     window.location.href = url.toString();
                 }, 1200);
+            } else if (msg.type === 'cancelled') {
+                phaseLabel.textContent = 'Scan cancelled';
+                this._toast('Scan cancelled.', 'warning');
+                this._resetUi();
             } else if (msg.type === 'error') {
                 phaseLabel.textContent = 'Scan error';
                 this._toast(msg.message || 'Scan failed.', 'danger');
-                btn.disabled = false;
-                progress.classList.add('d-none');
+                this._resetUi();
             }
         };
 
         this._ws.onerror = () => {
             this._toast('WebSocket error — scan could not start.', 'danger');
-            btn.disabled = false;
-            progress.classList.add('d-none');
+            this._resetUi();
         };
 
         this._ws.onclose = (ev) => {
             if (ev.code === 4001 || ev.code === 4003) {
                 this._toast('Access denied.', 'danger');
-                btn.disabled = false;
-                progress.classList.add('d-none');
             }
+            this._resetUi();
         };
+    },
+
+    /* Send a soft cancel. Server flips the cancel event; the next emit boundary
+       in the scan loop raises CancellationError and the consumer answers with
+       {type: 'cancelled'}. While waiting (the current LLM call must return or
+       hit the 60s timeout) we keep the elapsed counter ticking and show
+       "Cancelling…" so the user knows the request was received. */
+    cancel() {
+        if (!this._ws || this._ws.readyState !== WebSocket.OPEN) {
+            this._resetUi();
+            return;
+        }
+        this._cancelling = true;
+        this._hideStuckBanner();
+        const cancelBtn = document.getElementById('scan-cancel-btn');
+        if (cancelBtn) {
+            cancelBtn.disabled = true;
+            cancelBtn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Cancelling…';
+        }
+        const phaseLabel = document.getElementById('scan-phase-label');
+        if (phaseLabel) {
+            phaseLabel.textContent = 'Cancelling — waiting for current LLM call to return…';
+        }
+        try {
+            this._ws.send(JSON.stringify({ action: 'cancel' }));
+        } catch (_e) {
+            this._resetUi();
+        }
+    },
+
+    _startTicker() {
+        if (this._tickHandle) clearInterval(this._tickHandle);
+        this._tickHandle = setInterval(() => this._tick(), 1000);
+        this._tick();
+    },
+
+    _tick() {
+        const elapsedEl = document.getElementById('scan-elapsed');
+        if (elapsedEl) elapsedEl.textContent = this._fmtElapsed(Date.now() - this._startedAt);
+
+        if (this._cancelling) return;
+        const idleMs = Date.now() - this._lastMsgAt;
+        if (idleMs > this.STUCK_THRESHOLD_MS) {
+            this._showStuckBanner(Math.floor(idleMs / 1000));
+        }
+    },
+
+    _fmtElapsed(ms) {
+        const s = Math.max(0, Math.floor(ms / 1000));
+        if (s < 60) return `${s}s`;
+        const m = Math.floor(s / 60);
+        return `${m}m ${s % 60}s`;
+    },
+
+    _showStuckBanner(secs) {
+        const banner = document.getElementById('scan-stuck-banner');
+        const secsEl = document.getElementById('scan-stuck-secs');
+        if (banner) banner.classList.remove('d-none');
+        if (secsEl) secsEl.textContent = secs;
+    },
+
+    _hideStuckBanner() {
+        const banner = document.getElementById('scan-stuck-banner');
+        if (banner) banner.classList.add('d-none');
+    },
+
+    _resetUi() {
+        if (this._tickHandle) {
+            clearInterval(this._tickHandle);
+            this._tickHandle = null;
+        }
+        const btn = document.getElementById('run-scan-btn');
+        const progress = document.getElementById('scan-progress');
+        const cancelBtn = document.getElementById('scan-cancel-btn');
+        if (btn) btn.disabled = false;
+        if (progress) progress.classList.add('d-none');
+        if (cancelBtn) {
+            cancelBtn.classList.add('d-none');
+            cancelBtn.disabled = false;
+            cancelBtn.innerHTML = '<i class="bi bi-x-circle me-1"></i>Cancel';
+        }
+        this._hideStuckBanner();
+        this._cancelling = false;
     },
 
     _makeStep(msg) {
@@ -1203,5 +1331,7 @@ const ScanEngine = {
     }
     // Always apply initial open filter so counts and empty states are correct
     ConflictTabs.filterByStatus('open');
+    // Sync Data Quality visibility with the (unchecked) "Show dismissed" switch
+    DataIssueTabs._applyVisibility();
 })();
 </script>
