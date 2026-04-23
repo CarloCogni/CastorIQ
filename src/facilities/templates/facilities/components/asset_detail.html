@@ -4,83 +4,34 @@
 <div class="row g-3">
     <div class="col-12 col-xl-8">
 
-        <!-- Identification card -->
-        <div class="p-4 rounded border" style="background-color: var(--bs-body-bg); border-color: var(--bs-border-color) !important;">
-            <div class="d-flex align-items-start gap-3 mb-3">
-                <i class="bi bi-box-seam fs-1" style="color: var(--castor-facilities, #14b8a6);"></i>
-                <div class="flex-grow-1">
-                    <h3 class="m-0 d-flex align-items-center gap-2 flex-wrap">
-                        <span>{{ asset.asset_tag|default:asset.display_name|default:"Untitled asset" }}</span>
-                        {% if asset.is_orphan %}
-                        <span class="badge rounded-pill fs-8" title="Not in the IFC model"
-                              style="background-color: rgba(148,163,184,0.15); color: var(--bs-secondary-color); border: 1px solid var(--bs-border-color);">
-                            <i class="bi bi-box"></i> Not in IFC model
-                        </span>
-                        {% endif %}
-                        {% if asset.decommissioned_at %}
-                        <span class="badge rounded-pill" style="background-color: rgba(148,163,184,0.2); color: var(--bs-secondary-color); border: 1px solid var(--bs-border-color);">
-                            <i class="bi bi-archive"></i> Decommissioned
-                        </span>
-                        {% endif %}
-                    </h3>
-                    <div class="text-secondary fs-7">
-                        {{ asset.display_ifc_type }}
-                        {% if entity and entity.global_id %}<span class="mx-2">·</span><code class="fs-8">{{ entity.global_id }}</code>{% endif %}
-                    </div>
-                </div>
-                {% if entity %}
-                <a href="{% url 'projects:explore' project.pk %}?entity={{ entity.pk }}"
-                   class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-2"
-                   title="Open in Explore tab">
-                    <i class="bi bi-diagram-3"></i> View in IFC
-                </a>
-                {% endif %}
-            </div>
+        {% include "facilities/components/_asset_detail_summary.html" %}
 
-            <!-- Identification grid -->
-            <div class="row g-3">
-                <div class="col-12 col-md-6">
-                    <div class="fs-8 text-secondary text-uppercase fw-semibold">Asset Tag</div>
-                    <div>{{ asset.asset_tag|default:"—" }}</div>
-                </div>
-                <div class="col-12 col-md-6">
-                    <div class="fs-8 text-secondary text-uppercase fw-semibold">Manufacturer</div>
-                    <div>{{ asset.manufacturer|default:"—" }}</div>
-                </div>
-                <div class="col-12 col-md-6">
-                    <div class="fs-8 text-secondary text-uppercase fw-semibold">Model</div>
-                    <div>{{ asset.model_number|default:"—" }}</div>
-                </div>
-                <div class="col-12 col-md-6">
-                    <div class="fs-8 text-secondary text-uppercase fw-semibold">Serial</div>
-                    <div>{{ asset.serial_number|default:"—" }}</div>
-                </div>
-                <div class="col-12 col-md-6">
-                    <div class="fs-8 text-secondary text-uppercase fw-semibold">Barcode / QR</div>
-                    <div>{{ asset.barcode|default:"—" }}</div>
-                </div>
-                <div class="col-12 col-md-6">
-                    <div class="fs-8 text-secondary text-uppercase fw-semibold">Responsible Party</div>
-                    <div>
-                        {% if asset.responsible_party %}
-                            {{ asset.responsible_party.get_full_name|default:asset.responsible_party.username }}
-                        {% else %}—{% endif %}
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Inline edit form (editors + owners only) -->
+        <!-- Inline edit form (editors + owners only). hx-swap="none" so the
+             form is never torn down on save: the server response carries the
+             refreshed summary + sidebar as hx-swap-oob fragments, plus an
+             HX-Trigger that fires the global castor:saved toast. -->
         {% if user_permission == "owner" or user_permission == "editor" %}
         <div class="p-4 rounded border mt-3" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color) !important;">
             <div class="fs-8 text-secondary text-uppercase fw-semibold mb-2">
                 <i class="bi bi-pencil-square"></i> Edit
             </div>
             <form hx-post="{% url 'facilities:assets_update' project.pk asset.pk %}"
-                  hx-target="#asset-detail-mount"
-                  hx-swap="innerHTML"
+                  hx-swap="none"
                   class="row g-2">
                 {% csrf_token %}
+                <div class="col-12">
+                    <label class="form-label fs-8 text-secondary">
+                        Name
+                        {% if asset.is_orphan %}
+                            <span class="text-danger">*</span>
+                        {% else %}
+                            <span class="text-secondary">— override for IFC Name (blank = use "{{ asset.ifc_entity.name|default:'(unnamed)' }}")</span>
+                        {% endif %}
+                    </label>
+                    <input type="text" name="name" class="form-control form-control-sm"
+                           value="{{ asset.name }}"
+                           {% if asset.is_orphan %}required{% endif %}>
+                </div>
                 <div class="col-12 col-md-6">
                     <label class="form-label fs-8 text-secondary">Asset Tag</label>
                     <input type="text" name="asset_tag" class="form-control form-control-sm" value="{{ asset.asset_tag }}">
@@ -127,51 +78,6 @@
         {% endif %}
     </div>
 
-    <div class="col-12 col-xl-4 d-flex flex-column gap-3">
-
-        <!-- Condition / warranty summary -->
-        <div class="p-3 rounded border" style="background-color: var(--bs-body-bg); border-color: var(--bs-border-color) !important;">
-            <div class="fs-8 text-secondary text-uppercase fw-semibold mb-2">Condition</div>
-            {% if asset.condition_score != None %}
-                <div class="display-6 m-0">{{ asset.condition_score }}<span class="fs-5 text-secondary">/100</span></div>
-            {% else %}
-                <div class="text-secondary">Not scored yet</div>
-            {% endif %}
-
-            <hr class="my-3">
-
-            <div class="fs-8 text-secondary text-uppercase fw-semibold mb-2">Warranty</div>
-            <div class="d-flex flex-column gap-1 fs-7">
-                <div>Start: {{ asset.warranty_start|date:"Y-m-d"|default:"—" }}</div>
-                <div>End: {{ asset.warranty_end|date:"Y-m-d"|default:"—" }}</div>
-            </div>
-        </div>
-
-        <!-- Classifications -->
-        <div class="p-3 rounded border" style="background-color: var(--bs-body-bg); border-color: var(--bs-border-color) !important;">
-            <div class="fs-8 text-secondary text-uppercase fw-semibold mb-2">Classifications</div>
-            {% if asset.classifications.all %}
-                <div class="d-flex flex-wrap gap-1">
-                    {% for reference in asset.classifications.all %}
-                    <span class="badge rounded-pill fs-8" style="background-color: rgba(20,184,166,0.10); color: var(--castor-facilities, #14b8a6); border: 1px solid rgba(20,184,166,0.30);">
-                        {{ reference.classification.name }}:{{ reference.code }}
-                    </span>
-                    {% endfor %}
-                </div>
-            {% else %}
-                <div class="fs-7 text-secondary">None assigned.</div>
-            {% endif %}
-        </div>
-
-        <!-- Placeholder panels (M3 work orders, M5 PM plans, M8 replace-vs-maintain) -->
-        <div class="p-3 rounded border" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color) !important;">
-            <div class="fs-8 text-secondary text-uppercase fw-semibold mb-2">Recent activity</div>
-            <div class="fs-7 text-secondary">
-                <div class="mb-1"><i class="bi bi-clipboard2-check"></i> Work orders — M3</div>
-                <div class="mb-1"><i class="bi bi-calendar-event"></i> Next PM — M5</div>
-                <div><i class="bi bi-currency-euro"></i> Replace-vs-maintain — M8</div>
-            </div>
-        </div>
-    </div>
+    {% include "facilities/components/_asset_detail_sidebar.html" %}
 </div>
 {% endwith %}

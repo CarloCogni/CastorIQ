@@ -19,6 +19,7 @@ from django.views.generic import (
 )
 
 from chat.models import ChatSession, Message
+from core.http import trigger_toast
 from core.mixins import ProjectTabMixin
 from environments.models import Project
 from environments.services import ProjectAccessService
@@ -560,19 +561,24 @@ class RunScanView(LoginRequiredMixin, View):
         )
 
 
+def _access_denied_toast():
+    response = JsonResponse({"status": "error", "message": "Access denied."}, status=403)
+    return trigger_toast(response, "Access denied", level="error")
+
+
 class DismissConflictView(LoginRequiredMixin, View):
     """POST endpoint to dismiss a single Conflict record."""
 
     def post(self, request, pk, conflict_id):
         project = get_object_or_404(Project.objects.select_related("owner"), pk=pk)
         if not ProjectAccessService.can_modify(request.user, project):
-            return JsonResponse({"status": "error", "message": "Access denied."}, status=403)
+            return _access_denied_toast()
 
         conflict = get_object_or_404(Conflict, id=conflict_id, project=project)
         conflict.status = Conflict.Status.DISMISSED
         conflict.save(update_fields=["status"])
 
-        return JsonResponse({"status": "dismissed"})
+        return trigger_toast(JsonResponse({"status": "dismissed"}), "Conflict dismissed")
 
 
 class BulkDismissView(LoginRequiredMixin, View):
@@ -585,7 +591,7 @@ class BulkDismissView(LoginRequiredMixin, View):
     def post(self, request, pk):
         project = get_object_or_404(Project.objects.select_related("owner"), pk=pk)
         if not ProjectAccessService.can_modify(request.user, project):
-            return JsonResponse({"status": "error", "message": "Access denied."}, status=403)
+            return _access_denied_toast()
 
         ids_raw = request.POST.get("conflict_ids", "") or request.POST.get("ids", "")
         qs = project.conflicts.filter(status=Conflict.Status.OPEN)
@@ -594,7 +600,8 @@ class BulkDismissView(LoginRequiredMixin, View):
             qs = qs.filter(id__in=ids)
 
         updated = qs.update(status=Conflict.Status.DISMISSED)
-        return JsonResponse({"status": "dismissed", "count": updated})
+        response = JsonResponse({"status": "dismissed", "count": updated})
+        return trigger_toast(response, f"{updated} conflict(s) dismissed")
 
 
 class IgnoreConflictView(LoginRequiredMixin, View):
@@ -603,13 +610,13 @@ class IgnoreConflictView(LoginRequiredMixin, View):
     def post(self, request, pk, conflict_id):
         project = get_object_or_404(Project.objects.select_related("owner"), pk=pk)
         if not ProjectAccessService.can_modify(request.user, project):
-            return JsonResponse({"status": "error", "message": "Access denied."}, status=403)
+            return _access_denied_toast()
 
         conflict = get_object_or_404(Conflict, id=conflict_id, project=project)
         conflict.status = Conflict.Status.IGNORED
         conflict.save(update_fields=["status"])
 
-        return JsonResponse({"status": "ignored"})
+        return trigger_toast(JsonResponse({"status": "ignored"}), "Conflict ignored")
 
 
 class BulkIgnoreView(LoginRequiredMixin, View):
@@ -618,14 +625,15 @@ class BulkIgnoreView(LoginRequiredMixin, View):
     def post(self, request, pk):
         project = get_object_or_404(Project.objects.select_related("owner"), pk=pk)
         if not ProjectAccessService.can_modify(request.user, project):
-            return JsonResponse({"status": "error", "message": "Access denied."}, status=403)
+            return _access_denied_toast()
 
         ids_raw = request.POST.get("conflict_ids", "") or request.POST.get("ids", "")
         ids = [i.strip() for i in ids_raw.split(",") if i.strip()]
         updated = Conflict.objects.filter(
             project=project, id__in=ids, status=Conflict.Status.OPEN
         ).update(status=Conflict.Status.IGNORED)
-        return JsonResponse({"status": "ignored", "count": updated})
+        response = JsonResponse({"status": "ignored", "count": updated})
+        return trigger_toast(response, f"{updated} conflict(s) ignored")
 
 
 class BulkResolveView(LoginRequiredMixin, View):
@@ -634,7 +642,7 @@ class BulkResolveView(LoginRequiredMixin, View):
     def post(self, request, pk):
         project = get_object_or_404(Project.objects.select_related("owner"), pk=pk)
         if not ProjectAccessService.can_modify(request.user, project):
-            return JsonResponse({"status": "error", "message": "Access denied."}, status=403)
+            return _access_denied_toast()
 
         ids_raw = request.POST.get("conflict_ids", "")
         qs = project.conflicts.filter(status=Conflict.Status.OPEN)
@@ -648,7 +656,8 @@ class BulkResolveView(LoginRequiredMixin, View):
             resolved_at=timezone.now(),
             resolution_note="Manually resolved",
         )
-        return JsonResponse({"status": "resolved", "count": updated})
+        response = JsonResponse({"status": "resolved", "count": updated})
+        return trigger_toast(response, f"{updated} conflict(s) resolved")
 
 
 class DeleteAllConflictsView(LoginRequiredMixin, View):
@@ -657,9 +666,10 @@ class DeleteAllConflictsView(LoginRequiredMixin, View):
     def post(self, request, pk):
         project = get_object_or_404(Project.objects.select_related("owner"), pk=pk)
         if not ProjectAccessService.can_modify(request.user, project):
-            return JsonResponse({"status": "error", "message": "Access denied."}, status=403)
+            return _access_denied_toast()
         deleted, _ = project.conflicts.all().delete()
-        return JsonResponse({"status": "deleted", "count": deleted})
+        response = JsonResponse({"status": "deleted", "count": deleted})
+        return trigger_toast(response, f"{deleted} conflict(s) deleted")
 
 
 class RestoreConflictView(LoginRequiredMixin, View):
@@ -671,7 +681,7 @@ class RestoreConflictView(LoginRequiredMixin, View):
     def post(self, request, pk, conflict_id):
         project = get_object_or_404(Project.objects.select_related("owner"), pk=pk)
         if not ProjectAccessService.can_modify(request.user, project):
-            return JsonResponse({"status": "error", "message": "Access denied."}, status=403)
+            return _access_denied_toast()
 
         conflict = get_object_or_404(Conflict, id=conflict_id, project=project)
         conflict.status = Conflict.Status.OPEN
@@ -680,7 +690,7 @@ class RestoreConflictView(LoginRequiredMixin, View):
         conflict.resolution_note = ""
         conflict.save(update_fields=["status", "resolved_at", "resolved_by", "resolution_note"])
 
-        return JsonResponse({"status": "open"})
+        return trigger_toast(JsonResponse({"status": "open"}), "Conflict restored")
 
 
 class DismissDataIssueView(LoginRequiredMixin, View):
@@ -689,7 +699,7 @@ class DismissDataIssueView(LoginRequiredMixin, View):
     def post(self, request, pk, issue_id):
         project = get_object_or_404(Project.objects.select_related("owner"), pk=pk)
         if not ProjectAccessService.can_modify(request.user, project):
-            return JsonResponse({"status": "error", "message": "Access denied."}, status=403)
+            return _access_denied_toast()
 
         issue = get_object_or_404(
             IFCDataIssue.objects.select_related("ifc_file"),
@@ -699,11 +709,12 @@ class DismissDataIssueView(LoginRequiredMixin, View):
         issue.status = IFCDataIssue.Status.DISMISSED
         issue.save(update_fields=["status"])
 
-        return render(
+        response = render(
             request,
             "writeback/components/_data_issue_card.html",
             {"issue": issue, "project": project},
         )
+        return trigger_toast(response, "Data issue dismissed")
 
 
 class RestoreDataIssueView(LoginRequiredMixin, View):
@@ -712,7 +723,7 @@ class RestoreDataIssueView(LoginRequiredMixin, View):
     def post(self, request, pk, issue_id):
         project = get_object_or_404(Project.objects.select_related("owner"), pk=pk)
         if not ProjectAccessService.can_modify(request.user, project):
-            return JsonResponse({"status": "error", "message": "Access denied."}, status=403)
+            return _access_denied_toast()
 
         issue = get_object_or_404(
             IFCDataIssue.objects.select_related("ifc_file"),
@@ -722,11 +733,12 @@ class RestoreDataIssueView(LoginRequiredMixin, View):
         issue.status = IFCDataIssue.Status.OPEN
         issue.save(update_fields=["status"])
 
-        return render(
+        response = render(
             request,
             "writeback/components/_data_issue_card.html",
             {"issue": issue, "project": project},
         )
+        return trigger_toast(response, "Data issue restored")
 
 
 class BulkDismissDataIssuesView(LoginRequiredMixin, View):
@@ -739,7 +751,7 @@ class BulkDismissDataIssuesView(LoginRequiredMixin, View):
     def post(self, request, pk):
         project = get_object_or_404(Project.objects.select_related("owner"), pk=pk)
         if not ProjectAccessService.can_modify(request.user, project):
-            return JsonResponse({"status": "error", "message": "Access denied."}, status=403)
+            return _access_denied_toast()
 
         qs = IFCDataIssue.objects.filter(
             ifc_file__project=project,
@@ -750,7 +762,8 @@ class BulkDismissDataIssuesView(LoginRequiredMixin, View):
             qs = qs.filter(issue_type=issue_type)
 
         updated = qs.update(status=IFCDataIssue.Status.DISMISSED)
-        return JsonResponse({"status": "dismissed", "count": updated})
+        response = JsonResponse({"status": "dismissed", "count": updated})
+        return trigger_toast(response, f"{updated} data issue(s) dismissed")
 
 
 class RestoreCommitView(LoginRequiredMixin, View):

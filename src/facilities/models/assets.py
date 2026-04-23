@@ -183,12 +183,16 @@ class FacilityAsset(UUIDModel):
         ),
     )
 
-    # orphan-only identity (required when ifc_entity is blank)
+    # identity — required for orphans; optional override for linked assets.
     name = models.CharField(
         max_length=255,
         blank=True,
         verbose_name="Name",
-        help_text="Display name. Required for orphan assets; left blank when linked to an IFC entity.",
+        help_text=(
+            "Display name. Required for orphan assets. For linked assets, an "
+            "optional override: when set, it takes precedence over the IFC entity's "
+            "Name and round-trips to IfcRoot.Name on export."
+        ),
     )
     ifc_type = models.CharField(
         max_length=100,
@@ -361,10 +365,17 @@ class FacilityAsset(UUIDModel):
 
     @property
     def display_name(self) -> str:
-        """Best available name: IFC entity name for linked assets, ``name`` for orphans."""
+        """Best available name.
+
+        Linked asset with a DB ``name`` set → the DB value (the FM override,
+        which round-trips to ``IfcRoot.Name`` on export). Linked asset with
+        blank DB ``name`` → the IFC entity's Name. Orphan → the DB ``name``.
+        """
+        if self.name:
+            return self.name
         if self.ifc_entity_id and self.ifc_entity.name:
             return self.ifc_entity.name
-        return self.name or ""
+        return ""
 
     @property
     def display_ifc_type(self) -> str:

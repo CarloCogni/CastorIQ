@@ -1,0 +1,157 @@
+<!-- facilities/components/export_ifc_modal.html -->
+<!--
+    Export IFC modal shell. Body is filled by HTMX from
+    facilities:export_preview when the modal opens. Progress is streamed over
+    the Facilities export WebSocket; fallback POST lives at
+    facilities:export_apply.
+-->
+<div class="modal fade" id="exportIFCModal" tabindex="-1" aria-labelledby="exportIFCModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="exportIFCModalLabel">
+          <i class="bi bi-cloud-upload me-2" style="color: var(--castor-facilities, #14b8a6);"></i>
+          Export FM updates to IFC
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="export-ifc-modal-body">
+        <!-- Filled by HTMX GET facilities:export_preview -->
+        <div class="d-flex align-items-center text-secondary">
+          <div class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></div>
+          Computing export plan&hellip;
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    if (window.__castorExportModalInit) return;
+    window.__castorExportModalInit = true;
+
+    const modalEl = document.getElementById('exportIFCModal');
+    if (!modalEl) return;
+
+    // Reset the body on close so a stale preview doesn't flash on re-open.
+    // If the export just succeeded, reload after the modal hides — the banner
+    // count, the Assets list, and the History tab all need a fresh render.
+    modalEl.addEventListener('hidden.bs.modal', function () {
+      if (window.__castorExportSucceeded) {
+        window.__castorExportSucceeded = false;
+        location.reload();
+        return;
+      }
+      const body = document.getElementById('export-ifc-modal-body');
+      if (body) {
+        body.innerHTML =
+          '<div class="d-flex align-items-center text-secondary">' +
+          '  <div class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></div>' +
+          '  Computing export plan&hellip;' +
+          '</div>';
+      }
+      // Disconnect any live export WebSocket from a prior open.
+      if (window.__castorExportWS && window.__castorExportWS.readyState <= 1) {
+        try { window.__castorExportWS.close(); } catch (_e) { /* noop */ }
+      }
+      window.__castorExportWS = null;
+    });
+  })();
+
+  window.castorStartExport = function (projectId, ifcFileId) {
+    const progress = document.getElementById('export-ifc-progress');
+    const confirmBtn = document.getElementById('export-ifc-confirm-btn');
+    const toast = document.getElementById('export-ifc-result');
+
+    if (confirmBtn) { confirmBtn.disabled = true; }
+    if (progress) { progress.classList.remove('d-none'); }
+    if (toast) { toast.innerHTML = ''; }
+
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = proto + '//' + location.host + '/ws/projects/' + projectId + '/fm/export/';
+    const ws = new WebSocket(wsUrl);
+    window.__castorExportWS = ws;
+
+    const phaseEl = document.getElementById('export-ifc-phase');
+    const phaseLog = document.getElementById('export-ifc-phase-log');
+    const setPhase = function (name, status, message) {
+      if (phaseEl) {
+        phaseEl.textContent = message || (name + ' — ' + status);
+      }
+      if (phaseLog) {
+        const row = document.createElement('div');
+        row.className = 'small font-monospace';
+        row.textContent = '[' + status + '] ' + name + ': ' + (message || '');
+        phaseLog.appendChild(row);
+        phaseLog.scrollTop = phaseLog.scrollHeight;
+      }
+    };
+
+    ws.addEventListener('open', function () {
+      ws.send(JSON.stringify({ action: 'start_export', ifc_file_id: ifcFileId }));
+    });
+
+    ws.addEventListener('message', function (ev) {
+      let msg;
+      try { msg = JSON.parse(ev.data); } catch (_e) { return; }
+      if (msg.type === 'phase') {
+        setPhase(msg.phase, msg.status, msg.message);
+      } else if (msg.type === 'export_complete') {
+        setPhase('export', 'done', 'Commit ' + (msg.commit_hash || '').slice(0, 8));
+        if (toast) {
+          toast.innerHTML =
+            '<div class="alert alert-success mb-0">' +
+            '  <i class="bi bi-check-circle me-1"></i>' +
+            '  Exported ' + msg.delta_count + ' delta(s). Commit ' +
+            (msg.commit_hash || '').slice(0, 8) + '. ' +
+            '  Close this dialog when you&rsquo;re done reading the log.' +
+            '</div>';
+        }
+        // Flag the modal so its hidden.bs.modal listener reloads the page
+        // the next time the user dismisses it. No auto-close — the phase
+        // log is what they came here to see.
+        window.__castorExportSucceeded = true;
+        // Swap the disabled "Proceed" button for a visible "Close" button
+        // so the next action is obvious.
+        if (confirmBtn) {
+          confirmBtn.textContent = 'Close';
+          confirmBtn.disabled = false;
+          confirmBtn.classList.remove('btn-primary');
+          confirmBtn.classList.add('btn-success');
+          confirmBtn.setAttribute('data-bs-dismiss', 'modal');
+          // Replace the onclick handler so the button no longer starts another
+          // export (it would fail anyway — the queue is empty — but the UX
+          // should be unambiguous).
+          confirmBtn.onclick = null;
+        }
+      } else if (msg.type === 'error') {
+        setPhase('export', 'error', msg.message);
+        if (toast) {
+          toast.innerHTML =
+            '<div class="alert alert-danger mb-0">' +
+            '  <i class="bi bi-x-circle me-1"></i>' +
+            '  Export failed: ' + (msg.message || 'unknown error') +
+            '</div>';
+        }
+        if (confirmBtn) { confirmBtn.disabled = false; }
+      } else if (msg.type === 'cancelled') {
+        setPhase('export', 'error', 'Cancelled');
+        if (confirmBtn) { confirmBtn.disabled = false; }
+      } else if (msg.type === 'done') {
+        try { ws.close(); } catch (_e) { /* noop */ }
+      }
+    });
+
+    ws.addEventListener('error', function () {
+      setPhase('export', 'error', 'WebSocket error');
+      if (confirmBtn) { confirmBtn.disabled = false; }
+    });
+  };
+
+  window.castorCancelExport = function () {
+    if (window.__castorExportWS && window.__castorExportWS.readyState === 1) {
+      window.__castorExportWS.send(JSON.stringify({ action: 'cancel' }));
+    }
+  };
+</script>

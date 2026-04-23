@@ -6,6 +6,7 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
+from django.contrib import messages
 from django.core.paginator import Paginator
 from django.db.models import Count
 from django.http import (
@@ -19,6 +20,7 @@ from django.urls import reverse
 from django.views import View
 from django.views.generic import TemplateView
 
+from core.http import toast_response, trigger_toast
 from core.mixins import (
     ProjectAccessMixin,
     ProjectModifyAccessMixin,
@@ -31,6 +33,10 @@ from .services.asset_service import (
     AssetNotFoundError,
     AssetService,
     AssetValidationError,
+)
+from .services.export_reconciliation_service import (
+    ExportError,
+    ExportReconciliationService,
 )
 from .services.role_service import ProjectRoleService
 
@@ -263,7 +269,7 @@ class AssetCreateManualView(ProjectModifyAccessMixin, View):
         }
 
         try:
-            service.create_orphan(**raw)
+            asset = service.create_orphan(**raw)
         except AssetValidationError as exc:
             context = {
                 "project": project,
@@ -279,6 +285,7 @@ class AssetCreateManualView(ProjectModifyAccessMixin, View):
                 status=400,
             )
 
+        messages.success(request, f"Asset '{asset.name}' created")
         return _redirect_to_asset_list(project, params={"message": "Manual asset created."})
 
 
@@ -326,14 +333,20 @@ class AssetPromoteView(ProjectModifyAccessMixin, View):
         entity_ids = [eid for eid in entity_ids if eid is not None]
 
         if not entity_ids:
-            return HttpResponseBadRequest("No entities selected.")
+            return toast_response("No entities selected.", "error", status=400)
 
         result = service.bulk_promote(ifc_entity_ids=entity_ids)
+        promoted = len(result.created)
+        skipped = len(result.skipped_entity_ids)
+        if skipped:
+            messages.success(request, f"{promoted} promoted, {skipped} skipped")
+        else:
+            messages.success(request, f"{promoted} asset(s) promoted")
         return _redirect_to_asset_list(
             project,
             params={
-                "promoted": str(len(result.created)),
-                "skipped": str(len(result.skipped_entity_ids)),
+                "promoted": str(promoted),
+                "skipped": str(skipped),
             },
         )
 
@@ -342,6 +355,7 @@ class AssetUpdateView(ProjectModifyAccessMixin, View):
     """HTMX fragment — update one field (or a small subset) on a single asset."""
 
     ALLOWED_FIELDS = {
+        "name",
         "asset_tag",
         "manufacturer",
         "model_number",
@@ -374,13 +388,36 @@ class AssetUpdateView(ProjectModifyAccessMixin, View):
         try:
             service.update_asset(asset, **fields)
         except AssetValidationError as exc:
-            return HttpResponseBadRequest(str(exc))
+            # 200 + toast so the form stays put. The form uses hx-swap="none",
+            # so an empty body is correct.
+            return toast_response(str(exc), level="error")
 
-        return render(
+        # Recompute the banner context alongside the refreshed asset so the
+        # OOB swap picks up the just-emitted FMDelta. Mirrors
+        # ProjectTabMixin.get_context_data — kept in sync with core/mixins.py.
+        from facilities.models import FMDelta
+
+        response = render(
             request,
-            "facilities/components/asset_detail.html",
-            {"asset": service.get_asset(asset_pk), "project": project},
+            "facilities/components/asset_detail_saved_oob.html",
+            {
+                "asset": service.get_asset(asset_pk),
+                "project": project,
+                "user_permission": ProjectAccessService.user_permission(request.user, project),
+                "pending_fm_delta_count": FMDelta.objects.filter(
+                    project=project,
+                    applied_to_ifc_at__isnull=True,
+                    superseded_at__isnull=True,
+                ).count(),
+                "last_fm_export_at": (
+                    project.fm_export_jobs.filter(status="completed")
+                    .order_by("-completed_at")
+                    .values_list("completed_at", flat=True)
+                    .first()
+                ),
+            },
         )
+        return trigger_toast(response, "Asset saved")
 
 
 class AssetBulkView(ProjectModifyAccessMixin, View):
@@ -393,7 +430,7 @@ class AssetBulkView(ProjectModifyAccessMixin, View):
         action = request.POST.get("action", "").strip()
         asset_ids = request.POST.getlist("asset_ids")
         if not asset_ids:
-            return HttpResponseBadRequest("No assets selected.")
+            return toast_response("No assets selected.", "error", status=400)
 
         try:
             if action == "classify":
@@ -418,9 +455,9 @@ class AssetBulkView(ProjectModifyAccessMixin, View):
                     count += 1
                 message = f"Deleted {count} asset(s)."
             else:
-                return HttpResponseBadRequest(f"Unknown bulk action: {action!r}")
+                return toast_response(f"Unknown bulk action: {action!r}", "error", status=400)
         except AssetValidationError as exc:
-            return HttpResponseBadRequest(str(exc))
+            return toast_response(str(exc), "error", status=400)
 
         logger.info(
             "Bulk action %s on project=%s count=%d user=%s",
@@ -429,6 +466,7 @@ class AssetBulkView(ProjectModifyAccessMixin, View):
             count,
             request.user.pk,
         )
+        messages.success(request, message)
         return _redirect_to_asset_list(project, params={"message": message})
 
 
@@ -441,20 +479,100 @@ class AssetCSVImportView(ProjectModifyAccessMixin, View):
 
         upload = request.FILES.get("file")
         if not upload:
-            return HttpResponseBadRequest("Missing file.")
+            return toast_response("Missing file.", "error", status=400)
 
         dry_run = request.POST.get("dry_run", "true").lower() != "false"
 
         try:
             result = service.import_csv(file=upload.read(), dry_run=dry_run)
         except AssetValidationError as exc:
-            return HttpResponseBadRequest(str(exc))
+            return toast_response(str(exc), "error", status=400)
 
-        return render(
+        response = render(
             request,
             "facilities/components/asset_import_result.html",
             {"project": project, "result": result, "dry_run": dry_run},
         )
+        if not dry_run:
+            created = result.get("created", 0)
+            updated = result.get("updated", 0)
+            response = trigger_toast(response, f"Imported: {created} created, {updated} updated")
+        return response
+
+
+# ---- Export Reconciliation (M2) --------------------------------------------
+
+
+class ExportPreviewView(ProjectModifyAccessMixin, View):
+    """HTMX GET — render the Export IFC modal preview fragment.
+
+    Computes the current :class:`ExportPlan` and returns the preview table
+    so the modal can show "N entities, M deltas, K conflicts" before the FM
+    confirms. No write-side I/O; re-runs on every open.
+    """
+
+    def get(self, request, pk):
+        project = self.get_project()
+        service = ExportReconciliationService(project)
+        context = service.preview()
+        context["project"] = project
+        context["ifc_file"] = _pick_export_ifc_file(project)
+        return render(
+            request,
+            "facilities/components/export_ifc_preview.html",
+            context,
+        )
+
+
+class ExportApplyView(ProjectModifyAccessMixin, View):
+    """HTTP POST — synchronous Export IFC fallback.
+
+    Runs the full reconciliation pipeline with a :class:`NullEmitter`. Blocks
+    until completion, then redirects back to the assets list on success or
+    re-renders the preview with an error banner on failure. The preferred
+    path for long exports is the WebSocket consumer (live progress); this
+    endpoint exists for non-JS clients and for pragmatic CLI-style runs.
+    """
+
+    def post(self, request, pk):
+        project = self.get_project()
+        ifc_file = _pick_export_ifc_file(project)
+        if ifc_file is None:
+            return toast_response(
+                "Project has no completed IFC file to export into.", "error", status=400
+            )
+
+        service = ExportReconciliationService(project)
+        try:
+            job = service.export(ifc_file=ifc_file, user=request.user)
+        except ExportError as exc:
+            logger.warning("Export failed for project %s: %s", project.pk, exc)
+            response = render(
+                request,
+                "facilities/components/export_ifc_preview.html",
+                {
+                    **service.preview(),
+                    "project": project,
+                    "ifc_file": ifc_file,
+                    "error": str(exc),
+                },
+                status=400,
+            )
+            return trigger_toast(response, f"Export failed: {exc}", level="error")
+
+        messages.success(request, f"IFC export applied (commit {job.commit_hash[:8]})")
+        return _redirect_to_asset_list(
+            project, params={"exported": str(job.pk), "commit": job.commit_hash[:8]}
+        )
+
+
+def _pick_export_ifc_file(project):
+    """Pick the IFC file to export into.
+
+    v1: the project's most recent completed IFC. If a project has multiple
+    completed IFCs a later milestone will add an explicit selector.
+    """
+    return project.ifc_files.filter(status="completed").order_by("-created_at").first()
 
 
 # ---- Small helpers --------------------------------------------------------

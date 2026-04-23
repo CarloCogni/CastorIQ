@@ -66,6 +66,8 @@
         </ul>
     </div>
 
+    {% include "environments/partials/_fm_dirty_banner.html" %}
+
     <div class="flex-grow-1 overflow-hidden d-flex flex-column position-relative">
         {% if active_tab == 'ask' %}
             {% include "environments/tabs/_ask.html" %}

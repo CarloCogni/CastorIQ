@@ -13,6 +13,7 @@ from django.shortcuts import redirect, render
 from django.views.decorators.http import require_POST
 from django.views.generic import TemplateView, View
 
+from core.http import trigger_toast
 from core.llm_model_registry import (
     MODEL_REGISTRY,
     VRAM_TIERS,
@@ -399,17 +400,20 @@ class SetModelAPIView(LoginRequiredMixin, View):
             config.save()
         logger.info("LLM model changed to: %s", config.active_model or "(default)")
 
-        # Return updated status fragment for HTMX swap
-        return render(
+        active = config.active_model or settings.OLLAMA_MODEL
+        info = get_model_info(active)
+        label = (info.label if info else active) or active
+        response = render(
             request,
             "core/components/model_status.html",
             {
-                "active_model": config.active_model or settings.OLLAMA_MODEL,
-                "active_model_info": get_model_info(config.active_model or settings.OLLAMA_MODEL),
+                "active_model": active,
+                "active_model_info": info,
                 "is_using_default": not config.active_model,
                 "just_saved": True,
             },
         )
+        return trigger_toast(response, f"Active model: {label}")
 
 
 @require_POST
@@ -441,7 +445,8 @@ def create_team_note(request):
         browser_info=data.get("browser_info"),
     )
 
-    return JsonResponse({"success": True, "id": str(note.id)})
+    response = JsonResponse({"success": True, "id": str(note.id)})
+    return trigger_toast(response, "Team note saved")
 
 
 @require_POST

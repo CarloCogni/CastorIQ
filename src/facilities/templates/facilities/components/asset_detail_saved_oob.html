@@ -1,0 +1,10 @@
+<!-- facilities/components/asset_detail_saved_oob.html —
+     Response body for AssetUpdateView.post. Three out-of-band swaps
+     refresh the read-only summary, the sidebar, and the project-level
+     FM-dirty banner (so its pending count updates without a reload).
+     The edit form is untouched because its ``hx-swap`` is ``none``.
+     Pair this response with an ``HX-Trigger: castor:saved`` header so
+     the global toast fires in the same round-trip. -->
+{% include "facilities/components/_asset_detail_summary.html" with oob=True %}
+{% include "facilities/components/_asset_detail_sidebar.html" with oob=True %}
+{% include "environments/partials/_fm_dirty_banner.html" with oob=True %}

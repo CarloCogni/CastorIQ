@@ -1,0 +1,53 @@
+<!-- facilities/components/_asset_detail_sidebar.html —
+     Right-hand column of the asset detail page: condition & warranty
+     summary, classifications, and milestone-placeholder cards.
+     Rendered from asset_detail.html (no OOB) and from
+     asset_detail_saved_oob.html (with ``oob=True``). -->
+<div id="asset-detail-sidebar"
+     class="col-12 col-xl-4 d-flex flex-column gap-3"
+     {% if oob %}hx-swap-oob="outerHTML"{% endif %}>
+
+    <!-- Condition / warranty summary -->
+    <div class="p-3 rounded border" style="background-color: var(--bs-body-bg); border-color: var(--bs-border-color) !important;">
+        <div class="fs-8 text-secondary text-uppercase fw-semibold mb-2">Condition</div>
+        {% if asset.condition_score != None %}
+            <div class="display-6 m-0">{{ asset.condition_score }}<span class="fs-5 text-secondary">/100</span></div>
+        {% else %}
+            <div class="text-secondary">Not scored yet</div>
+        {% endif %}
+
+        <hr class="my-3">
+
+        <div class="fs-8 text-secondary text-uppercase fw-semibold mb-2">Warranty</div>
+        <div class="d-flex flex-column gap-1 fs-7">
+            <div>Start: {{ asset.warranty_start|date:"Y-m-d"|default:"—" }}</div>
+            <div>End: {{ asset.warranty_end|date:"Y-m-d"|default:"—" }}</div>
+        </div>
+    </div>
+
+    <!-- Classifications -->
+    <div class="p-3 rounded border" style="background-color: var(--bs-body-bg); border-color: var(--bs-border-color) !important;">
+        <div class="fs-8 text-secondary text-uppercase fw-semibold mb-2">Classifications</div>
+        {% if asset.classifications.all %}
+            <div class="d-flex flex-wrap gap-1">
+                {% for reference in asset.classifications.all %}
+                <span class="badge rounded-pill fs-8" style="background-color: rgba(20,184,166,0.10); color: var(--castor-facilities, #14b8a6); border: 1px solid rgba(20,184,166,0.30);">
+                    {{ reference.classification.name }}:{{ reference.code }}
+                </span>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="fs-7 text-secondary">None assigned.</div>
+        {% endif %}
+    </div>
+
+    <!-- Placeholder panels (M3 work orders, M5 PM plans, M8 replace-vs-maintain) -->
+    <div class="p-3 rounded border" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color) !important;">
+        <div class="fs-8 text-secondary text-uppercase fw-semibold mb-2">Recent activity</div>
+        <div class="fs-7 text-secondary">
+            <div class="mb-1"><i class="bi bi-clipboard2-check"></i> Work orders — M3</div>
+            <div class="mb-1"><i class="bi bi-calendar-event"></i> Next PM — M5</div>
+            <div><i class="bi bi-currency-euro"></i> Replace-vs-maintain — M8</div>
+        </div>
+    </div>
+</div>

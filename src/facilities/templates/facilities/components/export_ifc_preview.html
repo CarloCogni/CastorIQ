@@ -1,0 +1,174 @@
+<!-- facilities/components/export_ifc_preview.html -->
+<!--
+    HTMX fragment: body of the Export IFC modal. Renders the plan-phase
+    summary (counts + per-entity breakdown) and the Proceed button that
+    kicks off the WebSocket-driven export.
+-->
+{% if error %}
+<div class="alert alert-danger">
+  <i class="bi bi-x-circle me-1"></i>
+  {{ error }}
+</div>
+{% endif %}
+
+{% if is_empty %}
+<div class="text-secondary">
+  <i class="bi bi-check-circle me-1"></i>
+  No pending FM updates — the IFC is up to date.
+</div>
+{% else %}
+<div class="mb-3">
+  <div class="row g-3 text-center">
+    <div class="col">
+      <div class="small text-secondary text-uppercase">Entities</div>
+      <div class="fs-4 fw-semibold">{{ entity_count }}</div>
+    </div>
+    <div class="col">
+      <div class="small text-secondary text-uppercase">Deltas</div>
+      <div class="fs-4 fw-semibold">{{ delta_count }}</div>
+    </div>
+    <div class="col">
+      <div class="small text-secondary text-uppercase">Superseded</div>
+      <div class="fs-4 fw-semibold {% if conflict_count %}text-warning{% endif %}">
+        {{ conflict_count }}
+      </div>
+    </div>
+  </div>
+  {% if conflict_count %}
+  <div class="small text-secondary mt-2">
+    <i class="bi bi-info-circle me-1"></i>
+    {{ conflict_count }} earlier delta{{ conflict_count|pluralize }} superseded by a later edit on the same target (last-write-wins).
+  </div>
+  {% endif %}
+</div>
+
+{% if ops_by_type %}
+<div class="mb-3">
+  <div class="small text-secondary text-uppercase mb-1">By operation</div>
+  {% for op, count in ops_by_type.items %}
+    <span class="badge rounded-pill bg-secondary me-1">{{ op }}: {{ count }}</span>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="table-responsive mb-3" style="max-height: 360px;">
+  <table class="table table-sm mb-0 align-middle">
+    <thead class="small text-secondary text-uppercase">
+      <tr>
+        <th style="width: 2rem;"></th>
+        <th>Entity</th>
+        <th>GlobalId</th>
+        <th class="text-end">Deltas</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in entity_rows %}
+      <tr>
+        <td class="p-1">
+          <button type="button"
+                  class="btn btn-sm btn-link p-0 text-secondary collapsed"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#entity-detail-{{ forloop.counter }}"
+                  aria-expanded="false"
+                  aria-controls="entity-detail-{{ forloop.counter }}"
+                  title="Show per-delta detail">
+            <i class="bi bi-chevron-down"></i>
+          </button>
+        </td>
+        <td class="text-truncate" style="max-width: 280px;">{{ row.name }}</td>
+        <td class="font-monospace small text-secondary">{{ row.global_id|slice:":12" }}…</td>
+        <td class="text-end">{{ row.delta_count }}</td>
+      </tr>
+      <tr>
+        <td colspan="4" class="p-0 border-0">
+          <div id="entity-detail-{{ forloop.counter }}" class="collapse">
+            <div class="bg-body-tertiary px-3 py-2 border-start border-end border-bottom">
+              <table class="table table-sm mb-0 align-middle">
+                <thead class="small text-secondary text-uppercase">
+                  <tr>
+                    <th style="width: 10rem;">Operation</th>
+                    <th>Target</th>
+                    <th>Change</th>
+                    <th class="text-nowrap">When</th>
+                    <th class="text-nowrap">By</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for delta in row.deltas %}
+                  <tr>
+                    <td>
+                      <code class="fs-8">{{ delta.operation }}</code>
+                    </td>
+                    <td class="font-monospace small">
+                      {% if delta.operation == "SET_ATTRIBUTE" %}
+                        IfcRoot.{{ delta.payload.attribute }}
+                      {% elif delta.operation == "SET_CLASSIFICATION" %}
+                        {{ delta.payload.system }}
+                      {% else %}
+                        {{ delta.payload.pset }}.{{ delta.payload.property }}
+                      {% endif %}
+                    </td>
+                    <td class="small">
+                      {% if delta.operation == "SET_CLASSIFICATION" %}
+                        <span class="badge rounded-pill"
+                              style="background-color: rgba(20,184,166,0.10); color: var(--castor-facilities, #14b8a6); border: 1px solid rgba(20,184,166,0.30);">
+                          {{ delta.payload.action|default:"add" }}
+                        </span>
+                        <code class="fs-8 ms-1">{{ delta.payload.code }}</code>
+                        {% if delta.payload.name %}<span class="text-secondary">— {{ delta.payload.name }}</span>{% endif %}
+                      {% else %}
+                        <span class="text-secondary">{{ delta.payload.old_value|default:"—" }}</span>
+                        <i class="bi bi-arrow-right mx-1 text-secondary"></i>
+                        <span class="fw-semibold">{{ delta.payload.value|default:"—" }}</span>
+                      {% endif %}
+                    </td>
+                    <td class="small text-secondary text-nowrap"
+                        title="{{ delta.created_at|date:'Y-m-d H:i' }}">
+                      {{ delta.created_at|timesince }} ago
+                    </td>
+                    <td class="small text-nowrap">
+                      {% if delta.created_by %}
+                        {{ delta.created_by.get_full_name|default:delta.created_by.username }}
+                      {% else %}<span class="text-secondary">—</span>{% endif %}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div id="export-ifc-progress" class="d-none mb-3">
+  <div class="d-flex align-items-center">
+    <div class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></div>
+    <span id="export-ifc-phase" class="small">Starting export&hellip;</span>
+  </div>
+  <div id="export-ifc-phase-log"
+       class="border rounded mt-2 p-2 bg-body-tertiary"
+       style="max-height: 140px; overflow-y: auto;"></div>
+</div>
+
+<div id="export-ifc-result"></div>
+
+<div class="d-flex justify-content-end gap-2 mt-3">
+  <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+  {% if ifc_file %}
+  <button id="export-ifc-confirm-btn"
+          type="button"
+          class="btn btn-primary"
+          onclick="castorStartExport('{{ project.pk }}', '{{ ifc_file.pk }}')">
+    <i class="bi bi-cloud-upload me-1"></i>Proceed to Export
+  </button>
+  {% else %}
+  <button type="button" class="btn btn-primary" disabled>
+    No completed IFC file in this project
+  </button>
+  {% endif %}
+</div>
+{% endif %}

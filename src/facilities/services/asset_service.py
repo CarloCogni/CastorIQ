@@ -31,6 +31,13 @@ from facilities.models import (
     Classification,
     ClassificationReference,
     FacilityAsset,
+    FMDelta,
+)
+from facilities.services.ifc_mappers import (
+    classification_delta_payload,
+    delta_payload_for_field,
+    field_names,
+    read_from_ifc_entity,
 )
 from ifc_processor.models import IFCEntity, IFCSpatialElement
 
@@ -247,6 +254,7 @@ class AssetService:
             raise AssetValidationError("IFC entity does not belong to this project.")
 
         allowed = {
+            "name",
             "asset_tag",
             "manufacturer",
             "model_number",
@@ -365,11 +373,18 @@ class AssetService:
         Only recognized fields are written; unknown keys are silently dropped
         (mirrors Django form behavior). Raises :class:`AssetValidationError`
         on uniqueness violations.
+
+        Every dirty field that appears in :func:`field_names` AND belongs to
+        a linked (non-orphan) asset queues one :class:`FMDelta` row, to be
+        replayed into the IFC on the next Export IFC run. DB-only fields
+        (``responsible_party``, ``condition_score``, ``notes``, …) are
+        mutated silently with no delta.
         """
         if asset.project_id != self.project.pk:
             raise AssetValidationError("Asset belongs to a different project.")
 
         allowed = {
+            "name",
             "asset_tag",
             "manufacturer",
             "model_number",
@@ -385,10 +400,13 @@ class AssetService:
             "notes",
         }
         dirty: list[str] = []
+        old_values: dict[str, Any] = {}
         for key, value in fields.items():
             if key not in allowed:
                 continue
-            if getattr(asset, key) != value:
+            old = getattr(asset, key)
+            if old != value:
+                old_values[key] = old
                 setattr(asset, key, value)
                 dirty.append(key)
 
@@ -396,7 +414,9 @@ class AssetService:
             return asset
 
         try:
-            asset.save(update_fields=[*dirty, "updated_at"])
+            with transaction.atomic():
+                asset.save(update_fields=[*dirty, "updated_at"])
+                self._queue_field_deltas(asset, dirty, old_values)
         except IntegrityError as exc:
             raise AssetValidationError("Update conflicts with a uniqueness constraint.") from exc
 
@@ -409,7 +429,13 @@ class AssetService:
         return asset
 
     def delete_asset(self, asset: FacilityAsset) -> None:
-        """Hard-delete an asset. M2 will introduce delta tracking."""
+        """Hard-delete an asset.
+
+        M2 does NOT emit an ``FMDelta`` on delete: a ``DELETE_IFCASSET`` op
+        would require Tier 3 entity deletion, which is out of FM scope for
+        v1. Any pending deltas on the asset survive via their denormalized
+        ``entity_guid`` (the ``asset`` FK goes ``SET_NULL``).
+        """
         if asset.project_id != self.project.pk:
             raise AssetValidationError("Asset belongs to a different project.")
         asset_pk = asset.pk
@@ -431,6 +457,13 @@ class AssetService:
         Already-promoted entities are silently skipped (idempotent). Entities
         outside this project are filtered out. Optional ``defaults`` apply to
         every created asset (typically ``responsible_party``).
+
+        **Pset-seeding (M2).** For every entity we read the mapped pset /
+        attribute values out of ``IFCEntity.properties`` + ``IFCEntity.name``
+        and seed them onto the freshly-created asset. User-provided defaults
+        take precedence over IFC-sourced values (the FM caller can always
+        override). Seeding never emits an ``FMDelta`` — the DB is simply
+        catching up to what already exists in the IFC.
         """
         if not ifc_entity_ids:
             return BulkPromoteResult(created=[], skipped_entity_ids=[])
@@ -457,8 +490,11 @@ class AssetService:
                 if entity.pk in already:
                     skipped.append(entity.pk)
                     continue
+                seeded = read_from_ifc_entity(entity)
+                # User defaults override IFC-sourced seed values.
+                create_kwargs = {**seeded, **defaults}
                 asset = FacilityAsset.objects.create(
-                    project=self.project, ifc_entity=entity, **defaults
+                    project=self.project, ifc_entity=entity, **create_kwargs
                 )
                 created.append(asset)
 
@@ -501,16 +537,29 @@ class AssetService:
         if reference.classification.project_id != self.project.pk:
             raise AssetValidationError("Classification reference does not belong to this project.")
 
-        assets = list(FacilityAsset.objects.filter(pk__in=asset_ids, project=self.project))
+        assets = list(
+            FacilityAsset.objects.filter(pk__in=asset_ids, project=self.project).select_related(
+                "ifc_entity"
+            )
+        )
         if not assets:
             return 0
 
         with transaction.atomic():
             for asset in assets:
+                had_ref = asset.classifications.filter(pk=reference.pk).exists()
                 if action == BULK_CLASSIFY_REPLACE:
                     asset.classifications.set([reference])
                 else:
                     asset.classifications.add(reference)
+                # Emit an add-delta only when this reference is newly attached
+                # to the asset. "replace" mode also fires on a new attach, but
+                # does NOT emit remove-deltas for dropped references (v1: the
+                # dispatcher supports add only — drops land in a later pass).
+                if not had_ref:
+                    self._record_classification_delta(
+                        asset=asset, reference=reference, action="add"
+                    )
 
         logger.info(
             "Bulk classify %s: project=%s assets=%d reference=%s",
@@ -561,6 +610,62 @@ class AssetService:
             user.pk,
         )
         return updated
+
+    # ---- FMDelta emission helpers (M2) -------------------------------------
+
+    def _queue_field_deltas(
+        self,
+        asset: FacilityAsset,
+        dirty_fields: list[str],
+        old_values: dict[str, Any],
+    ) -> None:
+        """Queue ``FMDelta`` rows for every export-tracked field in ``dirty_fields``.
+
+        No-op for orphan assets (no IFC counterpart) and for fields outside
+        :func:`field_names` (DB-only columns like ``responsible_party`` or
+        ``condition_score``).
+        """
+        if asset.is_orphan or not asset.ifc_entity_id:
+            return
+        tracked = field_names()
+        if not any(f in tracked for f in dirty_fields):
+            return
+
+        entity_guid = asset.ifc_entity.global_id
+        for field in dirty_fields:
+            if field not in tracked:
+                continue
+            operation, payload = delta_payload_for_field(
+                field, old_values.get(field), getattr(asset, field)
+            )
+            FMDelta.objects.create(
+                project=self.project,
+                asset=asset,
+                entity_guid=entity_guid,
+                operation=operation,
+                payload=payload,
+                created_by=self.user,
+            )
+
+    def _record_classification_delta(
+        self,
+        *,
+        asset: FacilityAsset,
+        reference: ClassificationReference,
+        action: str,
+    ) -> None:
+        """Queue a ``SET_CLASSIFICATION`` ``FMDelta`` for a linked asset."""
+        if asset.is_orphan or not asset.ifc_entity_id:
+            return
+        payload = classification_delta_payload(reference, action)
+        FMDelta.objects.create(
+            project=self.project,
+            asset=asset,
+            entity_guid=asset.ifc_entity.global_id,
+            operation=FMDelta.Operation.SET_CLASSIFICATION,
+            payload=payload,
+            created_by=self.user,
+        )
 
     # ---- CSV import --------------------------------------------------------
 
@@ -716,17 +821,38 @@ class AssetService:
                 )
             existing = assets_by_gid.get(global_id)
             if existing:
+                dirty: list[str] = []
+                old_values: dict[str, Any] = {}
                 for key, value in fields.items():
-                    setattr(existing, key, value)
-                existing.save()
+                    old = getattr(existing, key)
+                    if old != value:
+                        old_values[key] = old
+                        setattr(existing, key, value)
+                        dirty.append(key)
+                if dirty:
+                    existing.save(update_fields=[*dirty, "updated_at"])
+                    self._queue_field_deltas(existing, dirty, old_values)
                 result["updated"] += 1
                 asset = existing
             else:
+                # Seed from the IFC pset dump, then layer CSV-provided fields on top.
+                seeded = read_from_ifc_entity(entity)
+                create_kwargs = {**seeded, **fields}
                 asset = FacilityAsset.objects.create(
-                    project=self.project, ifc_entity=entity, **fields
+                    project=self.project, ifc_entity=entity, **create_kwargs
                 )
                 assets_by_gid[global_id] = asset
                 result["created"] += 1
+                # Emit deltas only for fields whose CSV value actually
+                # diverges from the seeded value (i.e. the CSV is telling us
+                # something the IFC didn't already say).
+                diverged = {
+                    k: seeded.get(k)
+                    for k, v in fields.items()
+                    if k in field_names() and seeded.get(k) != v
+                }
+                if diverged:
+                    self._queue_field_deltas(asset, list(diverged), diverged)
         elif orphan_name:
             # Orphan row — only name is required; ifc_type / spatial / location are optional.
             spatial_gid = (row.get("spatial_global_id") or "").strip()
@@ -759,7 +885,10 @@ class AssetService:
             reference, _ = ClassificationReference.objects.get_or_create(
                 classification=classification, code=code
             )
+            had_ref = asset.classifications.filter(pk=reference.pk).exists()
             asset.classifications.add(reference)
+            if not had_ref:
+                self._record_classification_delta(asset=asset, reference=reference, action="add")
 
 
 # ---- Module-level helpers --------------------------------------------------

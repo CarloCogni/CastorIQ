@@ -1,0 +1,36 @@
+<!-- environments/partials/_fm_dirty_banner.html —
+     "N FM updates not in IFC" banner + Export modal host.
+     Rendered inline in project_detail.html, and re-rendered via HTMX
+     out-of-band swap by mutation views that create ``FMDelta`` rows
+     (e.g. AssetUpdateView), so the count stays fresh without a full
+     page reload. The wrapper div is always present so OOB swaps have
+     a stable anchor even when the count is zero. -->
+<div id="fm-dirty-banner"{% if oob %} hx-swap-oob="outerHTML"{% endif %}>
+  {% if pending_fm_delta_count and user_permission and user_permission != 'viewer' %}
+  <div class="px-3 py-2 d-flex align-items-center justify-content-between border-bottom"
+       style="background-color: rgba(245, 158, 11, 0.08); border-bottom-color: rgba(245, 158, 11, 0.2) !important;">
+      <div class="small">
+          <i class="bi bi-exclamation-triangle me-1" style="color: var(--castor-warning, #f59e0b);"></i>
+          <strong>{{ pending_fm_delta_count }}</strong> FM update{{ pending_fm_delta_count|pluralize }} not in IFC
+          {% if last_fm_export_at %}
+              &mdash; last export
+              <time datetime="{{ last_fm_export_at|date:'c' }}" title="{{ last_fm_export_at|date:'Y-m-d H:i' }}">
+                  {{ last_fm_export_at|timesince }} ago
+              </time>
+          {% else %}
+              &mdash; never exported
+          {% endif %}
+      </div>
+      <button type="button"
+              class="btn btn-sm btn-outline-secondary"
+              data-bs-toggle="modal"
+              data-bs-target="#exportIFCModal"
+              hx-get="{% url 'facilities:export_preview' project.pk %}"
+              hx-target="#export-ifc-modal-body"
+              hx-swap="innerHTML">
+          <i class="bi bi-cloud-upload me-1"></i>Export IFC
+      </button>
+  </div>
+  {% include "facilities/components/export_ifc_modal.html" %}
+  {% endif %}
+</div>
