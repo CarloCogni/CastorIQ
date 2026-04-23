@@ -695,6 +695,67 @@
         })
     });
     </script>
+
+    <!--
+        Global toast primitive. Any HTMX endpoint can fire a toast by
+        returning an HX-Trigger header. Use the helpers in core.http:
+            from core.http import trigger_toast, toast_response
+            return trigger_toast(response, "Saved", "success")
+            return toast_response("Permission denied", "error", status=403)
+        For redirect-based views, use django.contrib.messages — the bridge
+        below converts each message into a toast on page load.
+        Levels: "success" (green) / "error" (red) / "info" (secondary).
+    -->
+    <div id="castor-toast-container" class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1080;"></div>
+    <template id="castor-toast-template">
+        <div class="toast align-items-center border-0" role="alert" aria-live="polite" aria-atomic="true">
+            <div class="d-flex">
+                <div class="toast-body"></div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        </div>
+    </template>
+    <script>
+    document.body.addEventListener('castor:toast', function (e) {
+        var d = e.detail || {};
+        var level = d.level || 'success';
+        var bg = level === 'error' ? 'bg-danger'
+               : level === 'info'  ? 'bg-secondary'
+               :                     'bg-success';
+        var tpl = document.getElementById('castor-toast-template').content.cloneNode(true);
+        var el = tpl.firstElementChild;
+        el.classList.add(bg, 'text-white');
+        el.querySelector('.toast-body').textContent = d.message || 'Saved';
+        var container = document.getElementById('castor-toast-container');
+        container.appendChild(el);
+        var t = new bootstrap.Toast(el, { delay: level === 'error' ? 5000 : 2500 });
+        t.show();
+        el.addEventListener('hidden.bs.toast', function () { el.remove(); });
+    });
+    </script>
+    {% if messages %}
+    <script id="castor-messages-bridge" type="application/json">
+        [{% for m in messages %}{"tags": "{{ m.tags|default:'info'|escapejs }}", "message": "{{ m.message|escapejs }}"}{% if not forloop.last %},{% endif %}{% endfor %}]
+    </script>
+    <script>
+    (function () {
+        var node = document.getElementById('castor-messages-bridge');
+        if (!node) return;
+        var msgs;
+        try { msgs = JSON.parse(node.textContent); } catch (_) { return; }
+        msgs.forEach(function (m) {
+            var tags = (m.tags || '').toLowerCase();
+            var lvl = tags.indexOf('error') >= 0 || tags.indexOf('warning') >= 0 ? 'error'
+                    : tags.indexOf('success') >= 0 ? 'success'
+                    : 'info';
+            document.body.dispatchEvent(new CustomEvent('castor:toast', {
+                detail: {level: lvl, message: m.message}
+            }));
+        });
+    })();
+    </script>
+    {% endif %}
+
     {% block extra_js %}{% endblock %}
 </body>
 </html>

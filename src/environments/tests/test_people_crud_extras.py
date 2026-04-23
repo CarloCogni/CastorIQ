@@ -118,7 +118,8 @@ class TestMemberAddViaUserId:
 
     def test_missing_user_id_returns_400_with_prompt(self, client):
         """MemberAddView is user_id-only now — the email-invite fallback has
-        been split out into a client-side mailto: widget."""
+        been split out into a client-side mailto: widget. Error is surfaced
+        to the user via a castor:toast HX-Trigger."""
         project = ProjectFactory()
         _login(client, project.owner)
         resp = client.post(
@@ -126,7 +127,7 @@ class TestMemberAddViaUserId:
             {"permission": Permission.VIEWER},
         )
         assert resp.status_code == 400
-        assert b"Pick a user from the suggestions" in resp.content
+        assert "Pick a user from the suggestions" in resp["HX-Trigger"]
 
     def test_unknown_user_id_returns_404(self, client):
         project = ProjectFactory()

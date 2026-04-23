@@ -28,6 +28,7 @@ from django.views.generic import (
 
 from chat.models import ChatSession, Message
 from chat.services.rag_service import SYSTEM_PROMPT, RAGService
+from core.http import toast_response, trigger_toast
 from core.llm import resolve_model_name
 from core.mixins import (
     ProjectAccessMixin,
@@ -132,6 +133,11 @@ class ProjectUpdateView(ProjectOwnerRequiredMixin, UpdateView):
     template_name = "environments/project_form.html"
     fields = ["name", "description"]
     context_object_name = "project"
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        messages.success(self.request, f"Project '{self.object.name}' updated")
+        return response
 
     def get_success_url(self):
         # Redirect back to the project dashboard (Ask tab)
@@ -348,6 +354,7 @@ class DeleteSessionView(ProjectAccessMixin, View):
         )
         session.delete()
         logger.info("Deleted chat session %s for project %s", session_id, pk)
+        messages.success(request, "Chat session deleted")
         return redirect("projects:ask", pk=project.pk)
 
 
@@ -368,7 +375,8 @@ class RenameSessionView(ProjectAccessMixin, View):
             session.save(update_fields=["title"])
             logger.info("Renamed session %s to '%s'", session_id, session.title)
 
-        return JsonResponse({"ok": True, "title": session.title})
+        response = JsonResponse({"ok": True, "title": session.title})
+        return trigger_toast(response, "Session renamed")
 
 
 class IFCFileUpdateView(ProjectAccessMixin, UpdateView):
@@ -761,6 +769,10 @@ class IFCSchemaConvertView(ProjectAccessMixin, View):
         ifc_file = get_object_or_404(IFCFile, pk=pk)
         project = self.get_project()
         result = IFCSchemaConverterService(ifc_file).convert()
+        if result.get("success"):
+            messages.success(request, f"'{ifc_file.name}' converted to IFC4")
+        else:
+            messages.error(request, f"Conversion failed: {result.get('error') or 'unknown error'}")
         return render(
             request,
             "environments/schema_convert.html",
@@ -1443,15 +1455,17 @@ class MemberAddView(ProjectAccessMixin, View):
         user_id = (request.POST.get("user_id") or "").strip()
 
         if not user_id:
-            return HttpResponse("Pick a user from the suggestions first.", status=400)
+            return toast_response("Pick a user from the suggestions first.", "error", status=400)
 
         user_model = get_user_model()
         user = user_model.objects.filter(pk=user_id).first()
         if user is None:
-            return HttpResponse("User not found.", status=404)
+            return toast_response("User not found.", "error", status=404)
 
         if user.pk == project.owner_id and permission != ProjectMembership.Permission.OWNER:
-            return HttpResponse("The project owner already has OWNER membership.", status=400)
+            return toast_response(
+                "The project owner already has OWNER membership.", "error", status=400
+            )
 
         try:
             membership = ProjectAccessService.add_member(
@@ -1461,9 +1475,12 @@ class MemberAddView(ProjectAccessMixin, View):
                 invited_by=request.user,
             )
         except ProjectAccessError as exc:
-            return HttpResponse(str(exc), status=400)
+            return toast_response(str(exc), "error", status=400)
 
-        return _render_member_row(request, project, membership)
+        response = _render_member_row(request, project, membership)
+        return trigger_toast(
+            response, f"{user.username} added as {membership.get_permission_display()}"
+        )
 
 
 class MemberChangePermissionView(ProjectAccessMixin, View):
@@ -1476,7 +1493,7 @@ class MemberChangePermissionView(ProjectAccessMixin, View):
 
         new_permission = request.POST.get("permission")
         if new_permission not in ProjectMembership.Permission.values:
-            return HttpResponse("Unknown permission.", status=400)
+            return toast_response("Unknown permission.", "error", status=400)
 
         user_model = get_user_model()
         target = get_object_or_404(user_model, pk=user_id)
@@ -1488,13 +1505,17 @@ class MemberChangePermissionView(ProjectAccessMixin, View):
                 new_permission=new_permission,
             )
         except OwnerDemotionBlocked as exc:
-            return HttpResponse(str(exc), status=400)
+            return toast_response(str(exc), "error", status=400)
         except ProjectAccessError as exc:
-            return HttpResponse(str(exc), status=400)
+            return toast_response(str(exc), "error", status=400)
         except ProjectMembership.DoesNotExist:
-            return HttpResponse("User is not a member.", status=404)
+            return toast_response("User is not a member.", "error", status=404)
 
-        return _render_member_row(request, project, membership)
+        response = _render_member_row(request, project, membership)
+        return trigger_toast(
+            response,
+            f"{target.username} is now {membership.get_permission_display()}",
+        )
 
 
 class MemberRemoveView(ProjectAccessMixin, View):
@@ -1517,13 +1538,12 @@ class MemberRemoveView(ProjectAccessMixin, View):
         try:
             ProjectAccessService.remove_member(project=project, user=target)
         except LastOwnerRemovalBlocked as exc:
-            return HttpResponse(str(exc), status=400)
+            return toast_response(str(exc), "error", status=400)
         except ProjectMembership.DoesNotExist:
-            return HttpResponse("User is not a member.", status=404)
+            return toast_response("User is not a member.", "error", status=404)
 
-        # HTMX swap strategy: return empty 200 and let the row hx-swap="outerHTML"
-        # on the client remove the <tr>.
-        return HttpResponse("", status=200)
+        # Empty body + 200 so the row's hx-swap="outerHTML" removes the <tr>.
+        return toast_response(f"{target.username} removed from project")
 
 
 class TransferOwnershipView(ProjectAccessMixin, View):
@@ -1602,20 +1622,20 @@ class RoleAddView(ProjectAccessMixin, View):
         valid_until_raw = request.POST.get("valid_until")
 
         if not user_id:
-            return HttpResponse("Pick a user from the suggestions.", status=400)
+            return toast_response("Pick a user from the suggestions.", "error", status=400)
         if role_value not in ProjectRole.Role.values:
-            return HttpResponse("Pick a functional role.", status=400)
+            return toast_response("Pick a functional role.", "error", status=400)
 
         user_model = get_user_model()
         target = user_model.objects.filter(pk=user_id).first()
         if target is None:
-            return HttpResponse("User not found.", status=404)
+            return toast_response("User not found.", "error", status=404)
 
         try:
             valid_from = _parse_date_or_none(valid_from_raw)
             valid_until = _parse_date_or_none(valid_until_raw)
         except ValueError:
-            return HttpResponse("Dates must be YYYY-MM-DD.", status=400)
+            return toast_response("Dates must be YYYY-MM-DD.", "error", status=400)
 
         try:
             role = ProjectRoleService.add_role(
@@ -1626,11 +1646,15 @@ class RoleAddView(ProjectAccessMixin, View):
                 valid_until=valid_until,
             )
         except ProjectRoleError as exc:
-            return HttpResponse(str(exc), status=400)
+            return toast_response(str(exc), "error", status=400)
 
         # Re-select with user for template display without another query.
         role = ProjectRole.objects.select_related("user").get(pk=role.pk)
-        return _render_role_row(request, project, role)
+        response = _render_role_row(request, project, role)
+        return trigger_toast(
+            response,
+            f"{target.username} assigned as {role.get_role_display()}",
+        )
 
 
 class RoleRemoveView(ProjectAccessMixin, View):
@@ -1652,10 +1676,10 @@ class RoleRemoveView(ProjectAccessMixin, View):
         try:
             ProjectRoleService.remove_role(project=project, role_id=role_id)
         except ProjectRoleError as exc:
-            return HttpResponse(str(exc), status=404)
+            return toast_response(str(exc), "error", status=404)
 
         # Empty body + 200 — the <tr>'s hx-swap="outerHTML" strips the row.
-        return HttpResponse("", status=200)
+        return toast_response("Role removed")
 
 
 class ScheduleExportView(ProjectAccessMixin, View):

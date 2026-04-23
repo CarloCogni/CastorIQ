@@ -96,6 +96,19 @@ class ProjectTabMixin(ProjectAccessMixin):
             .count()
         )
 
+        # Facilities M2 — pending FM updates banner. Partial-index query, so
+        # the cost stays O(pending) regardless of total audit volume.
+        context["pending_fm_delta_count"] = project.fm_deltas.filter(
+            applied_to_ifc_at__isnull=True,
+            superseded_at__isnull=True,
+        ).count()
+        context["last_fm_export_at"] = (
+            project.fm_export_jobs.filter(status="completed")
+            .order_by("-completed_at")
+            .values_list("completed_at", flat=True)
+            .first()
+        )
+
         context["ifc_files"] = project.ifc_files.annotate(
             unresolved_issue_count=Count("data_issues", filter=Q(data_issues__status="open"))
         ).order_by("-created_at")

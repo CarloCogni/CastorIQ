@@ -15,10 +15,22 @@ from .assets import (
     ClassificationReference,
     FacilityAsset,
 )
+from .exports import (
+    DEFAULT_ENABLED_OPERATIONS,
+    DEFAULT_ENABLED_PSETS,
+    ExportJob,
+    ExportProfile,
+    FMDelta,
+)
 
 __all__ = [
+    "DEFAULT_ENABLED_OPERATIONS",
+    "DEFAULT_ENABLED_PSETS",
     "AssetInventory",
     "Classification",
     "ClassificationReference",
+    "ExportJob",
+    "ExportProfile",
+    "FMDelta",
     "FacilityAsset",
 ]

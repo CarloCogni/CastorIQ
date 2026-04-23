@@ -51,4 +51,15 @@ urlpatterns = [
         views.AssetUpdateView.as_view(),
         name="assets_update",
     ),
+    # Export Reconciliation (M2).
+    path(
+        "<uuid:pk>/facilities/export/preview/",
+        views.ExportPreviewView.as_view(),
+        name="export_preview",
+    ),
+    path(
+        "<uuid:pk>/facilities/export/apply/",
+        views.ExportApplyView.as_view(),
+        name="export_apply",
+    ),
 ]

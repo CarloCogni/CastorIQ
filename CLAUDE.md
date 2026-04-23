@@ -79,6 +79,16 @@ Uncle Bob's clean code. Zen of Python: explicit over implicit, simple over compl
 
 Django's `{# #}` syntax only matches on a **single line** — multi-line `{# ... #}` blocks are silently rendered as plain text in the output (recurring bug in this project). HTML comments always work, and the slight cost of them being visible in page source is acceptable for internal templates. If you genuinely need a multi-line comment that is stripped before render, use `{% comment %} ... {% endcomment %}` — but prefer `<!-- -->` as the default.
 
+### User feedback on mutations
+
+Every POST/PUT/DELETE endpoint MUST give the user visible feedback. The toast primitive lives in `core/templates/core/base.html` (Bootstrap 5 toast, bottom-right, listens for the `castor:toast` event); fire it via the helpers in `core.http`:
+
+- HTMX endpoint that already returns a partial: `return trigger_toast(response, "Saved")`.
+- HTMX endpoint with no body to swap (validation error on `hx-swap="none"`, bulk action): `return toast_response("Bad input", "error", status=400)`.
+- Redirect-based view: `messages.success(request, "…")`. The base template's messages bridge auto-dispatches `castor:toast` for every Django message on page load.
+
+Levels: `success` (green) / `error` (red) / `info` (secondary). Field-level form validation errors stay inline on the re-rendered form — only non-field / exceptional errors get a toast.
+
 ---
 
 ## Code Delivery Preferences

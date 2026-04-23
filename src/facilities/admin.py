@@ -12,7 +12,10 @@ from .models import (
     AssetInventory,
     Classification,
     ClassificationReference,
+    ExportJob,
+    ExportProfile,
     FacilityAsset,
+    FMDelta,
 )
 
 
@@ -161,3 +164,80 @@ class AssetInventoryAdmin(admin.ModelAdmin):
     )
     search_fields = ("asset__asset_tag", "asset__serial_number")
     raw_id_fields = ("asset",)
+
+
+# ── Export Reconciliation (M2) ────────────────────────────────────────────
+
+
+@admin.register(ExportProfile)
+class ExportProfileAdmin(admin.ModelAdmin):
+    """Default + custom export profiles per project."""
+
+    list_display = ("name", "project", "is_default", "created_at")
+    list_filter = ("project", "is_default")
+    search_fields = ("name",)
+    raw_id_fields = ("project",)
+
+
+@admin.register(ExportJob)
+class ExportJobAdmin(admin.ModelAdmin):
+    """One row per Export IFC attempt — read-mostly."""
+
+    list_display = (
+        "id",
+        "project",
+        "ifc_file",
+        "status",
+        "delta_count",
+        "entity_count",
+        "conflict_count",
+        "commit_hash",
+        "initiated_by",
+        "created_at",
+    )
+    list_filter = ("status", "project")
+    search_fields = ("commit_hash", "ifc_file__name")
+    raw_id_fields = ("project", "ifc_file", "initiated_by", "export_profile")
+    readonly_fields = (
+        "started_at",
+        "completed_at",
+        "commit_hash",
+        "delta_count",
+        "entity_count",
+        "conflict_count",
+        "error_reason",
+        "created_at",
+        "updated_at",
+    )
+    date_hierarchy = "created_at"
+
+
+@admin.register(FMDelta)
+class FMDeltaAdmin(admin.ModelAdmin):
+    """Audit view for FM-generated IFC writes — read-mostly."""
+
+    list_display = (
+        "entity_guid",
+        "operation",
+        "project",
+        "asset",
+        "is_pending",
+        "created_at",
+        "applied_to_ifc_at",
+    )
+    list_filter = ("operation", "project")
+    search_fields = ("entity_guid", "ifc_commit_hash")
+    raw_id_fields = ("project", "asset", "created_by", "export_job")
+    readonly_fields = (
+        "payload",
+        "applied_to_ifc_at",
+        "superseded_at",
+        "ifc_commit_hash",
+        "created_at",
+        "updated_at",
+    )
+    date_hierarchy = "created_at"
+
+    @admin.display(boolean=True, description="Pending")
+    def is_pending(self, obj: FMDelta) -> bool:
+        return obj.is_pending
