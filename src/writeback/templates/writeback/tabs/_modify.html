@@ -980,15 +980,25 @@ const ModifyChat = {
 
     /* ── Fetch helper ─────────────────────────────── */
     async _post(body) {
-        const resp = await fetch(this.sessionUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'X-CSRFToken': this.csrfToken,
-            },
-            body: new URLSearchParams(body),
-        });
-        return resp.json();
+        // Single choke point for all HTTP fallbacks in Modify (propose,
+        // approve, reject, chain). WebSocket path is untouched — it has its
+        // own phase tracker. The CastorRIF hook shows the global top bar +
+        // mascot pill while the request is in flight.
+        const rifKey = 'modify-http-' + (body.action || 'post') + '-' + Date.now();
+        if (window.CastorRIF) window.CastorRIF.begin(rifKey);
+        try {
+            const resp = await fetch(this.sessionUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': this.csrfToken,
+                },
+                body: new URLSearchParams(body),
+            });
+            return resp.json();
+        } finally {
+            if (window.CastorRIF) window.CastorRIF.end(rifKey);
+        }
     },
 
     /* ── Failure card ─────────────────────────────── */
