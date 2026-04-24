@@ -455,6 +455,130 @@
             animation: spin 1s linear infinite;
         }
 
+        /* ──────────────────────────────────────────────────────────────────
+           Global Request-In-Flight indicator (CastorRIF).
+           Three coordinated primitives, dispatched by the JS singleton below:
+             1. #castor-rif-bar       — 3px gradient sweep at viewport top,
+                                        shown for EVERY tracked request.
+             2. #castor-rif-pill      — floating Castor-beaver pill, appears
+                                        only after 450ms of sustained loading.
+             3. .castor-rif-busy      — per-element lock applied to the button
+                                        or link that triggered the request, to
+                                        prevent re-clicks.
+           z-index stack: bar(1085) > toast(1080) > pill(1079) > modal(1055).
+           ────────────────────────────────────────────────────────────────── */
+        #castor-rif-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            z-index: 1085;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 120ms ease;
+            overflow: hidden;
+        }
+        #castor-rif-bar.is-active {
+            opacity: 1;
+        }
+        #castor-rif-bar::before {
+            content: "";
+            display: block;
+            height: 100%;
+            width: 40%;
+            background: linear-gradient(
+                90deg,
+                transparent,
+                var(--castor-primary) 35%,
+                var(--castor-accent) 65%,
+                transparent
+            );
+            box-shadow: 0 0 12px rgba(59, 130, 246, 0.4);
+            animation: castor-rif-sweep 1.1s linear infinite;
+        }
+        @keyframes castor-rif-sweep {
+            0%   { transform: translateX(-100%); }
+            100% { transform: translateX(350%); }
+        }
+
+        #castor-rif-pill {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%) translateY(8px);
+            z-index: 1079;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 16px 8px 10px;
+            border-radius: 999px;
+            background-color: var(--bs-tertiary-bg);
+            border: 1px solid var(--bs-border-color);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35),
+                        0 0 0 1px rgba(59, 130, 246, 0.15);
+            color: var(--bs-body-color);
+            font-size: 0.8125rem;
+            font-weight: 500;
+            letter-spacing: 0.2px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 180ms ease, transform 180ms ease;
+        }
+        #castor-rif-pill.is-active {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+        #castor-rif-pill .castor-rif-pill-loader {
+            display: inline-block;
+            width: 28px;
+            height: 28px;
+            flex-shrink: 0;
+        }
+        #castor-rif-pill .castor-rif-pill-loader svg {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        #castor-rif-pill .castor-rif-pill-label {
+            color: var(--bs-secondary-color);
+        }
+
+        .castor-rif-busy {
+            pointer-events: none !important;
+            opacity: 0.65 !important;
+            position: relative;
+            cursor: wait !important;
+        }
+        .castor-rif-busy::after {
+            content: "";
+            display: inline-block;
+            width: 0.9em;
+            height: 0.9em;
+            margin-left: 0.45em;
+            border: 2px solid currentColor;
+            border-right-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            vertical-align: -0.15em;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            #castor-rif-bar::before {
+                animation: none;
+                width: 100%;
+                opacity: 0.55;
+            }
+            #castor-rif-pill .castor-rif-pill-loader svg * {
+                animation: none !important;
+            }
+            .castor-rif-busy::after {
+                animation: none;
+                border-right-color: currentColor;
+                opacity: 0.5;
+            }
+        }
+
         /* Quill dark-theme overrides */
         .ql-toolbar.ql-snow {
             border-color: var(--bs-border-color) !important;
@@ -741,6 +865,41 @@
     </script>
 
     <!--
+        Global Castor-mascot loader primitive. Any page can fetch an animated
+        loader SVG via window.CastorLoader.getHTML(). Used by:
+          - the CastorRIF "Working…" pill below (24×24 mini variant)
+          - Ask/Modify WebSocket phase trackers (50×50 in their own chat flows)
+          - docs/loader_gallery.html to preview variants
+    -->
+    <template id="global-castor-loader">
+        {% include "loaders/castor_loader.html" %}
+    </template>
+
+    <!--
+        Global Request-In-Flight indicator (CastorRIF). Shows a top-of-viewport
+        gradient sweep bar for every tracked HTTP request, plus a floating
+        Castor-beaver pill after 450ms of sustained loading. Triggering elements
+        (buttons, links) are automatically locked with .castor-rif-busy for the
+        request's duration to prevent re-clicks.
+
+        Auto-wired for HTMX requests and plain link navigations. Plain forms
+        opt in via the `data-castor-track` attribute. WebSocket flows are NOT
+        wired here — they have their own per-flow phase trackers.
+
+        Manual API:
+            CastorRIF.begin(key?)   // key is optional; triggers 90s deadman
+            CastorRIF.end(key?)
+            CastorRIF.lock(el)      // add busy lock to arbitrary element
+            CastorRIF.unlock(el)
+            CastorRIF._reset()      // dev-tools recovery
+    -->
+    <div id="castor-rif-bar" role="progressbar" aria-hidden="true"></div>
+    <div id="castor-rif-pill" aria-hidden="true">
+        <span class="castor-rif-pill-loader"></span>
+        <span class="castor-rif-pill-label">Loading…</span>
+    </div>
+
+    <!--
         Global toast primitive. Any HTMX endpoint can fire a toast by
         returning an HX-Trigger header. Use the helpers in core.http:
             from core.http import trigger_toast, toast_response
@@ -776,6 +935,203 @@
         t.show();
         el.addEventListener('hidden.bs.toast', function () { el.remove(); });
     });
+    </script>
+
+    <!--
+        Global CastorLoader + CastorRIF (request-in-flight indicator). See the
+        HTML containers above for the primitives' contracts.
+    -->
+    <script>
+    (function () {
+        // Picks a random Castor-mascot SVG variant from the global template.
+        // Used by the CastorRIF pill and by WebSocket phase trackers.
+        window.CastorLoader = {
+            templateId: 'global-castor-loader',
+            getHTML: function () {
+                var template = document.getElementById(this.templateId);
+                if (!template) return '<div class="spinner-border spinner-border-sm"></div>';
+                var wrapper = document.createElement('div');
+                wrapper.innerHTML = template.innerHTML;
+                var variants = wrapper.querySelectorAll('.castor-loader-variant');
+                if (variants.length > 0) {
+                    var selected = variants[Math.floor(Math.random() * variants.length)];
+                    selected.style.display = 'block';
+                    return selected.outerHTML;
+                }
+                return wrapper.innerHTML;
+            }
+        };
+
+        var BAR_SHOW_DELAY_MS = 80;    // anti-flash for <50ms cached responses
+        var PILL_SHOW_DELAY_MS = 450;  // only escalate to mascot for slow reqs
+        var HIDE_DELAY_MS = 120;       // tiny tail so chained requests don't flicker
+        var DEADMAN_MS = 90000;        // 90s safety for stuck keyed requests
+
+        var n = 0;
+        var bar = null, pill = null, pillLoaderHost = null;
+        var showBarTimer = null, showPillTimer = null, hideTimer = null;
+        var deadmen = Object.create(null);
+        var pillMascotInjected = false;
+
+        function ensureRefs() {
+            if (!bar) bar = document.getElementById('castor-rif-bar');
+            if (!pill) pill = document.getElementById('castor-rif-pill');
+            if (!pillLoaderHost && pill) pillLoaderHost = pill.querySelector('.castor-rif-pill-loader');
+        }
+
+        function refreshPillMascot() {
+            // Re-roll the mascot variant each time the pill appears so the
+            // user occasionally sees different animations — adds personality
+            // without any extra code paths.
+            if (pillLoaderHost && window.CastorLoader) {
+                pillLoaderHost.innerHTML = window.CastorLoader.getHTML();
+                pillMascotInjected = true;
+            }
+        }
+
+        function showBar() { ensureRefs(); if (bar) bar.classList.add('is-active'); }
+        function hideBar() { ensureRefs(); if (bar) bar.classList.remove('is-active'); }
+        function showPill() {
+            ensureRefs();
+            if (!pill) return;
+            refreshPillMascot();
+            pill.classList.add('is-active');
+        }
+        function hidePill() { ensureRefs(); if (pill) pill.classList.remove('is-active'); }
+
+        function scheduleShow() {
+            if (showBarTimer) return;
+            showBarTimer = setTimeout(function () {
+                showBarTimer = null;
+                if (n > 0) showBar();
+            }, BAR_SHOW_DELAY_MS);
+            showPillTimer = setTimeout(function () {
+                showPillTimer = null;
+                if (n > 0) showPill();
+            }, PILL_SHOW_DELAY_MS);
+        }
+
+        function scheduleHide() {
+            clearTimeout(showBarTimer); showBarTimer = null;
+            clearTimeout(showPillTimer); showPillTimer = null;
+            clearTimeout(hideTimer);
+            hideTimer = setTimeout(function () {
+                hideTimer = null;
+                if (n === 0) { hideBar(); hidePill(); }
+            }, HIDE_DELAY_MS);
+        }
+
+        function begin(key) {
+            n++;
+            if (key) {
+                clearTimeout(deadmen[key]);
+                deadmen[key] = setTimeout(function () { end(key); }, DEADMAN_MS);
+            }
+            clearTimeout(hideTimer); hideTimer = null;
+            scheduleShow();
+        }
+
+        function end(key) {
+            if (key && deadmen[key]) {
+                clearTimeout(deadmen[key]);
+                delete deadmen[key];
+            }
+            n = Math.max(0, n - 1);
+            if (n === 0) scheduleHide();
+        }
+
+        function lock(el) {
+            if (!el || !el.classList) return;
+            el.classList.add('castor-rif-busy');
+            el.setAttribute('aria-busy', 'true');
+        }
+        function unlock(el) {
+            if (!el || !el.classList) return;
+            el.classList.remove('castor-rif-busy');
+            el.removeAttribute('aria-busy');
+        }
+
+        window.CastorRIF = {
+            begin: begin,
+            end: end,
+            lock: lock,
+            unlock: unlock,
+            _reset: function () {
+                n = 0;
+                Object.keys(deadmen).forEach(function (k) { clearTimeout(deadmen[k]); delete deadmen[k]; });
+                clearTimeout(showBarTimer); showBarTimer = null;
+                clearTimeout(showPillTimer); showPillTimer = null;
+                clearTimeout(hideTimer); hideTimer = null;
+                hideBar(); hidePill();
+            }
+        };
+
+        // HTMX lifecycle — only `afterRequest` decrements (fires for both
+        // 2xx and non-2xx in htmx 1.9.x); `sendError` covers the no-response
+        // case where afterRequest never fires.
+        document.body.addEventListener('htmx:beforeRequest', function (e) {
+            var t = e.detail && e.detail.elt;
+            if (t) lock(t);
+            begin();
+        });
+        document.body.addEventListener('htmx:afterRequest', function (e) {
+            var t = e.detail && e.detail.elt;
+            if (t) unlock(t);
+            end();
+        });
+        document.body.addEventListener('htmx:sendError', function (e) {
+            var t = e.detail && e.detail.elt;
+            if (t) unlock(t);
+            end();
+        });
+
+        // Plain link navigation (full page load). The triggering <a> gets the
+        // busy lock immediately; no end() is needed because navigation wipes
+        // the JS context. Skip anchors that don't actually navigate.
+        document.addEventListener('click', function (e) {
+            if (e.defaultPrevented) return;
+            if (e.button !== 0) return;                // left-click only
+            if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;  // new tab / save
+            var a = e.target.closest && e.target.closest('a');
+            if (!a) return;
+            if (a.target && a.target !== '' && a.target !== '_self') return;
+            if (a.hasAttribute('download')) return;
+            var href = a.getAttribute('href');
+            if (!href) return;
+            if (href[0] === '#') return;
+            if (/^(javascript:|mailto:|tel:|sms:)/i.test(href)) return;
+            // HTMX takes over for boosted links; skip to avoid double-counting.
+            if (a.hasAttribute('hx-get') || a.hasAttribute('hx-post') ||
+                a.hasAttribute('hx-put') || a.hasAttribute('hx-delete') ||
+                a.hasAttribute('hx-patch') || a.hasAttribute('hx-boost') ||
+                a.closest('[hx-boost]')) return;
+            lock(a);
+            begin();
+        }, true);
+
+        // Plain form submit — opt-in via data-castor-track. We don't
+        // auto-track all forms because a JS-intercepted submit would
+        // increment without a matching decrement.
+        document.addEventListener('submit', function (e) {
+            if (e.defaultPrevented) return;
+            var f = e.target;
+            if (!f || !f.matches || !f.matches('form[data-castor-track]')) return;
+            if (f.hasAttribute('hx-post') || f.hasAttribute('hx-get') ||
+                f.querySelector('[hx-post],[hx-get],[hx-put],[hx-delete],[hx-patch]')) return;
+            var submitter = e.submitter || f.querySelector('button[type="submit"], input[type="submit"]');
+            if (submitter) lock(submitter);
+            begin();
+            // Page will navigate; no end() needed.
+        }, true);
+
+        // Pre-warm the pill mascot so there's no visible layout jank on
+        // first appearance. Best-effort; no-op if the template is missing.
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', refreshPillMascot, { once: true });
+        } else {
+            refreshPillMascot();
+        }
+    })();
     </script>
     {% if messages %}
     <script id="castor-messages-bridge" type="application/json">

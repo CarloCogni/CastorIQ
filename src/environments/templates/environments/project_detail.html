@@ -88,10 +88,6 @@
 
 </div>
 
-<template id="global-castor-loader">
-    {% include "loaders/castor_loader.html" %}
-</template>
-
 {% block extra_js %}
 <script>
 
@@ -175,44 +171,6 @@ async function uploadDocument(input) {
     } catch (error) {
         console.error(error);
         alert('Upload failed: ' + error.message);
-    }
-};
-
-/**
- * 2. CENTRALIZED LOGIC
- * A single source of truth for generating loader HTML.
- * Easy to modify: If you want to change from random to sequential, change it here only.
- */
-window.CastorLoader = {
-    templateId: 'global-castor-loader',
-
-    /**
-     * Returns the HTML string of a single, randomly selected loader variant.
-     */
-    getHTML() {
-        const template = document.getElementById(this.templateId);
-        if (!template) return '<div class="spinner-border"></div>'; // Fallback
-
-        // Create a dummy wrapper to manipulate the DOM
-        const wrapper = document.createElement('div');
-        wrapper.innerHTML = template.innerHTML;
-
-        // Find variants
-        const variants = wrapper.querySelectorAll('.castor-loader-variant');
-
-        if (variants.length > 0) {
-            // Pick one random variant
-            const randomIndex = Math.floor(Math.random() * variants.length);
-            const selected = variants[randomIndex];
-
-            // Clean up: Ensure the selected one is visible, others are removed
-            // (Assuming your CSS hides them by default, we force display: block or just return that specific node)
-            selected.style.display = 'block';
-            return selected.outerHTML;
-        }
-
-        // Fallback if no variants structure exists yet (just return whole template)
-        return wrapper.innerHTML;
     }
 };
 </script>
