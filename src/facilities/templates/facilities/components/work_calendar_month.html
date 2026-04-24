@@ -1,0 +1,62 @@
+<!-- facilities/components/work_calendar_month.html — server-rendered month grid -->
+
+{% load dict_filters %}
+
+<div class="card border-0 shadow-sm">
+    <div class="card-header d-flex align-items-center gap-2 py-2">
+        <button class="btn btn-sm btn-outline-secondary"
+                hx-get="{% url 'facilities:work_calendar' project.pk %}?year={{ calendar_prev_year }}&month={{ calendar_prev_month }}"
+                hx-target="#work-calendar-mount"
+                hx-swap="innerHTML">
+            <i class="bi bi-chevron-left"></i>
+        </button>
+        <div class="fs-7 fw-semibold">{{ calendar_month_label }}</div>
+        <button class="btn btn-sm btn-outline-secondary"
+                hx-get="{% url 'facilities:work_calendar' project.pk %}?year={{ calendar_next_year }}&month={{ calendar_next_month }}"
+                hx-target="#work-calendar-mount"
+                hx-swap="innerHTML">
+            <i class="bi bi-chevron-right"></i>
+        </button>
+        <a href="{% url 'facilities:work_calendar' project.pk %}" class="ms-auto btn btn-sm btn-outline-secondary">
+            <i class="bi bi-house"></i> Today
+        </a>
+    </div>
+    <div class="card-body p-2">
+        <table class="calendar-grid w-100 table-fixed">
+            <thead>
+                <tr class="text-secondary fs-9">
+                    <th class="p-1 text-start">Mon</th>
+                    <th class="p-1 text-start">Tue</th>
+                    <th class="p-1 text-start">Wed</th>
+                    <th class="p-1 text-start">Thu</th>
+                    <th class="p-1 text-start">Fri</th>
+                    <th class="p-1 text-start">Sat</th>
+                    <th class="p-1 text-start">Sun</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for week in calendar_weeks %}
+                <tr>
+                    {% for day in week %}
+                    <td class="calendar-cell p-1 align-top {% if day == 0 %}calendar-cell--empty{% endif %} {% if day == today_day %}calendar-cell--today{% endif %}">
+                        {% if day > 0 %}
+                        <div class="fs-9 text-secondary mb-1">{{ day }}</div>
+                        {% for wo in calendar_events_by_day|get_item:day %}
+                        {% include "facilities/components/work_calendar_event.html" with wo=wo %}
+                        {% endfor %}
+                        {% endif %}
+                    </td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<style>
+.calendar-grid { border-collapse: separate; border-spacing: 2px; table-layout: fixed; }
+.calendar-cell { width: 14.28%; height: 90px; vertical-align: top; border: 1px solid rgba(0,0,0,0.06); border-radius: 4px; }
+.calendar-cell--empty { background-color: rgba(0,0,0,0.02); }
+.calendar-cell--today { background-color: rgba(20, 184, 166, 0.06); border-color: rgba(20, 184, 166, 0.35); }
+</style>

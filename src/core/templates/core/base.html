@@ -668,6 +668,50 @@
             border: 1px solid rgba(0, 0, 0, 0.1);
             padding: 0.5rem;
         }
+
+        /* ──────────────────────────────────────────────────────────────────
+           Universal "?" help pill — tiny button next to any page heading that
+           opens a Bootstrap modal explaining the page. Every meaningful tab
+           (Assets, Work, Permits, Requests, …) should have one. Tint picks up
+           from `--castor-*` so Facilities pages (teal), Ask (blue), Modify
+           (purple) each get the right accent by setting --help-accent on a
+           parent element. Defaults to --castor-primary.
+
+           Usage (next to the heading):
+             <button class="help-pill" data-bs-toggle="modal"
+                     data-bs-target="#xHelpModal"
+                     title="How this page works"
+                     aria-label="How this page works">
+                 <i class="bi bi-question-circle"></i>
+             </button>
+           ────────────────────────────────────────────────────────────────── */
+        .help-pill {
+            --help-accent: var(--castor-primary);
+            background: transparent;
+            border: 1px dashed rgba(0, 0, 0, 0.001);
+            border-color: color-mix(in srgb, var(--help-accent) 35%, transparent);
+            color: var(--help-accent);
+            font-size: 0.8125rem;
+            line-height: 1;
+            border-radius: 999px;
+            padding: 0.25rem 0.5rem;
+            transition: all 0.15s ease;
+            opacity: 0.85;
+            cursor: pointer;
+        }
+        .help-pill:hover, .help-pill:focus-visible {
+            background-color: color-mix(in srgb, var(--help-accent) 8%, transparent);
+            border-style: solid;
+            color: var(--help-accent);
+            opacity: 1;
+            outline: none;
+        }
+        /* Facilities (teal) and Modify (purple) accents — scope by placing the
+           class on a container. For Facilities pages, the subnav wrapper can
+           set --help-accent: var(--castor-facilities); alternatively the
+           button itself can be given an inline style. */
+        .facilities-scope { --help-accent: var(--castor-facilities); }
+        .modify-scope { --help-accent: var(--castor-accent); }
     </style>
 
     {% block extra_css %}{% endblock %}

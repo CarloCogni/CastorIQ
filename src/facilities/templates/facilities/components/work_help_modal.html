@@ -1,0 +1,68 @@
+<!-- facilities/components/work_help_modal.html — "How Work Orders work" reference -->
+
+<div class="modal fade" id="workOrderHelpModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-question-circle"></i>
+                    How Work Orders work
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body fs-7">
+
+                <h6 class="mt-2">Lifecycle</h6>
+                <p class="text-secondary">
+                    Each work order moves through ten stages: <code>Draft → Submitted → Triaged
+                    → Assigned → Scheduled → In Progress → Completed → Verified → Closed</code>.
+                    A parallel terminal stage, <code>Cancelled</code>, covers WOs that don't
+                    actually get done. Transitions write an immutable status event for the audit trail.
+                </p>
+
+                <h6 class="mt-3">Three views</h6>
+                <ul class="text-secondary">
+                    <li><strong>List</strong> — searchable / filterable card grid; bulk actions on multi-select.</li>
+                    <li><strong>Kanban</strong> — drag a card to move it to a new column; only valid transitions are accepted.</li>
+                    <li><strong>Calendar</strong> — month grid showing WOs by their <code>scheduled_start</code>.</li>
+                </ul>
+
+                <h6 class="mt-3">Roles &amp; permissions</h6>
+                <p class="text-secondary mb-2">Transitions are role-gated. The most common buckets:</p>
+                <ul class="text-secondary">
+                    <li><strong>Facilities Manager / Building Owner</strong> — triage, assign, verify, close, reopen, cancel.</li>
+                    <li><strong>Maintenance Engineer / Contractor</strong> — start &amp; complete the WOs they're assigned to.</li>
+                    <li><strong>Anyone with project access</strong> — submit a draft WO; cancel their own submitted WO.</li>
+                </ul>
+                <p class="text-secondary mb-0">
+                    A maintenance engineer who reports their own WO can use the <em>skip-triage</em>
+                    path — a self-reported WO jumps directly from Draft to Assigned, no FM-side
+                    triage needed.
+                </p>
+
+                <h6 class="mt-3">Anchors</h6>
+                <p class="text-secondary mb-0">
+                    A WO can be anchored to a <strong>FacilityAsset</strong> (linked to an IFC entity
+                    or orphan) and/or to a <strong>spatial container</strong> (room, floor, building).
+                    Both are optional but at least one is recommended for traceability.
+                </p>
+
+                <h6 class="mt-3">Audit trail</h6>
+                <p class="text-secondary mb-0">
+                    Every status change writes a <code>WorkOrderStatusEvent</code> capturing the
+                    actor, their functional role at the time, and an optional note. These rows are
+                    append-only; the timeline on the WO detail is the source of truth.
+                </p>
+
+                <h6 class="mt-3">Out of scope (M3)</h6>
+                <p class="text-secondary mb-0">
+                    SLA pause/resume, IFC export of closed WOs, condition-based PM triggers,
+                    and the BMS / sensor integration come in later milestones.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,52 @@
+<!-- facilities/components/work_filter_bar.html — WO list filters -->
+
+<form class="d-flex align-items-center gap-2 flex-wrap pb-2 border-bottom"
+      hx-get="{% url 'facilities:work_list' project.pk %}"
+      hx-target="#work-grid-mount"
+      hx-swap="innerHTML"
+      hx-trigger="change delay:200ms from:select, input delay:400ms from:input[type=search], submit"
+      hx-push-url="true">
+
+    <div class="input-group input-group-sm" style="width: 240px;">
+        <span class="input-group-text"><i class="bi bi-search"></i></span>
+        <input type="search" name="q" value="{{ filters.q }}" placeholder="WO #, title, vendor…"
+               class="form-control form-control-sm">
+    </div>
+
+    <select name="status" class="form-select form-select-sm" style="width: 150px;">
+        <option value="">All statuses</option>
+        {% for value, label in wo_status_choices %}
+        <option value="{{ value }}" {% if filters.status_filter == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+    </select>
+
+    <select name="priority" class="form-select form-select-sm" style="width: 130px;">
+        <option value="">Any priority</option>
+        <option value="1" {% if filters.priority_filter == 1 %}selected{% endif %}>1 — Critical</option>
+        <option value="2" {% if filters.priority_filter == 2 %}selected{% endif %}>2 — High</option>
+        <option value="3" {% if filters.priority_filter == 3 %}selected{% endif %}>3 — Normal</option>
+        <option value="4" {% if filters.priority_filter == 4 %}selected{% endif %}>4 — Low</option>
+        <option value="5" {% if filters.priority_filter == 5 %}selected{% endif %}>5 — Backlog</option>
+    </select>
+
+    <select name="category" class="form-select form-select-sm" style="width: 140px;">
+        <option value="">Any category</option>
+        <option value="corrective" {% if filters.category_filter == "corrective" %}selected{% endif %}>Corrective</option>
+        <option value="preventive" {% if filters.category_filter == "preventive" %}selected{% endif %}>Preventive</option>
+        <option value="inspection" {% if filters.category_filter == "inspection" %}selected{% endif %}>Inspection</option>
+        <option value="installation" {% if filters.category_filter == "installation" %}selected{% endif %}>Installation</option>
+        <option value="decommission" {% if filters.category_filter == "decommission" %}selected{% endif %}>Decommission</option>
+    </select>
+
+    <div class="form-check form-check-sm ms-1">
+        <input class="form-check-input" type="checkbox" id="wo-overdue-only"
+               name="overdue" value="1" {% if filters.overdue_only %}checked{% endif %}>
+        <label class="form-check-label fs-8" for="wo-overdue-only">Overdue only</label>
+    </div>
+
+    <div class="form-check form-check-sm">
+        <input class="form-check-input" type="checkbox" id="wo-include-closed"
+               name="include_closed" value="1" {% if filters.include_closed %}checked{% endif %}>
+        <label class="form-check-label fs-8" for="wo-include-closed">Include closed</label>
+    </div>
+</form>

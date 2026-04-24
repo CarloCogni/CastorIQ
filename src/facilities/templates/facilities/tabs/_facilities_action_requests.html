@@ -1,0 +1,68 @@
+<!-- facilities/tabs/_facilities_action_requests.html — Action Request triage list -->
+
+<div class="d-flex flex-column gap-3 facilities-scope" id="facilities-action-requests-body">
+    <div class="d-flex align-items-center gap-3 flex-wrap">
+        <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-megaphone fs-5" style="color: var(--castor-facilities, #14b8a6);"></i>
+            <h5 class="m-0">Action Requests</h5>
+            {% if page_obj %}
+            <span class="badge rounded-pill" style="background-color: rgba(20,184,166,0.15); color: var(--castor-facilities, #14b8a6); border: 1px solid rgba(20,184,166,0.35);">
+                {{ page_obj.paginator.count }} request{{ page_obj.paginator.count|pluralize }}
+            </span>
+            {% endif %}
+            <button type="button"
+                    class="help-pill"
+                    data-bs-toggle="modal"
+                    data-bs-target="#actionRequestHelpModal"
+                    title="How Action Requests work"
+                    aria-label="How Action Requests work">
+                <i class="bi bi-question-circle"></i>
+            </button>
+        </div>
+
+        <div class="ms-auto d-flex gap-2 flex-wrap">
+            {% if user_permission == "owner" or user_permission == "editor" %}
+            <button class="btn btn-sm d-inline-flex align-items-center gap-2"
+                    style="background-color: var(--castor-facilities, #14b8a6); color: white; border: none;"
+                    hx-get="{% url 'facilities:ar_create' project.pk %}"
+                    hx-target="#ar-drawer-mount"
+                    hx-swap="innerHTML">
+                <i class="bi bi-plus-lg"></i> Report an issue
+            </button>
+            {% endif %}
+        </div>
+    </div>
+
+    <form class="d-flex align-items-center gap-2 flex-wrap pb-2 border-bottom"
+          hx-get="{% url 'facilities:ar_list' project.pk %}"
+          hx-target="#ar-grid-mount"
+          hx-swap="innerHTML"
+          hx-trigger="change delay:200ms from:select, input delay:400ms from:input[type=search]">
+        <div class="input-group input-group-sm" style="width: 240px;">
+            <span class="input-group-text"><i class="bi bi-search"></i></span>
+            <input type="search" name="q" value="{{ active_q }}" placeholder="Title, description…"
+                   class="form-control form-control-sm">
+        </div>
+        <select name="status" class="form-select form-select-sm" style="width: 140px;">
+            <option value="">All statuses</option>
+            {% for value, label in ar_statuses %}
+            <option value="{{ value }}" {% if active_status == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+        <select name="severity" class="form-select form-select-sm" style="width: 130px;">
+            <option value="">Any severity</option>
+            {% for value, label in ar_severities %}
+            <option value="{{ value }}" {% if active_severity == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </form>
+
+    <div id="ar-grid-mount">
+        {% include "facilities/components/action_request_grid.html" %}
+    </div>
+
+    <div id="ar-drawer-mount"></div>
+
+    <!-- Help modal — "How Action Requests Work" -->
+    {% include "facilities/components/action_request_help_modal.html" %}
+</div>

@@ -1,0 +1,123 @@
+<!-- facilities/tabs/_facilities_work.html — Work Order list sub-tab body -->
+
+<div class="d-flex flex-column gap-3" id="facilities-work-body">
+
+    <!-- Top bar: title + view toggle + primary actions -->
+    <div class="d-flex align-items-center gap-3 flex-wrap">
+        <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-clipboard2-check fs-5" style="color: var(--castor-facilities, #14b8a6);"></i>
+            <h5 class="m-0">Work Orders</h5>
+            {% if page_obj %}
+            <span class="badge rounded-pill" style="background-color: rgba(20,184,166,0.15); color: var(--castor-facilities, #14b8a6); border: 1px solid rgba(20,184,166,0.35);">
+                {{ page_obj.paginator.count }} order{{ page_obj.paginator.count|pluralize }}
+            </span>
+            {% endif %}
+            <button type="button"
+                    class="btn btn-sm rounded-pill px-2 py-1 wo-help-btn"
+                    data-bs-toggle="modal"
+                    data-bs-target="#workOrderHelpModal"
+                    title="How Work Orders work">
+                <i class="bi bi-question-circle"></i>
+            </button>
+        </div>
+
+        <div class="ms-auto d-flex gap-2 flex-wrap align-items-center">
+            <!-- View switcher: list / kanban / calendar -->
+            <div class="btn-group btn-group-sm" role="group" aria-label="View switcher">
+                <a href="{% url 'facilities:work_list' project.pk %}"
+                   class="btn btn-outline-secondary active"
+                   title="List view"><i class="bi bi-list-ul"></i> List</a>
+                <a href="{% url 'facilities:work_kanban' project.pk %}"
+                   class="btn btn-outline-secondary"
+                   title="Kanban board"><i class="bi bi-kanban"></i> Kanban</a>
+                <a href="{% url 'facilities:work_calendar' project.pk %}"
+                   class="btn btn-outline-secondary"
+                   title="Calendar"><i class="bi bi-calendar3"></i> Calendar</a>
+            </div>
+
+            {% if user_permission == "owner" or user_permission == "editor" %}
+            <button class="btn btn-sm d-inline-flex align-items-center gap-2"
+                    style="background-color: var(--castor-facilities, #14b8a6); color: white; border: none;"
+                    hx-get="{% url 'facilities:work_create' project.pk %}"
+                    hx-target="#work-drawer-mount"
+                    hx-swap="innerHTML"
+                    title="Create a new work order">
+                <i class="bi bi-plus-lg"></i> New work order
+            </button>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Filter bar -->
+    {% include "facilities/components/work_filter_bar.html" %}
+
+    <!-- Grid (HTMX-swappable) -->
+    <div id="work-grid-mount">
+        {% include "facilities/components/work_grid.html" %}
+    </div>
+
+    <!-- Bulk action bar (hidden by default, surfaced by JS on selection) -->
+    {% include "facilities/components/work_bulk_bar.html" %}
+
+    <!-- Drawer mount — filled by HTMX on "New work order" -->
+    <div id="work-drawer-mount"></div>
+
+    <!-- Help modal -->
+    {% include "facilities/components/work_help_modal.html" %}
+</div>
+
+<style>
+    .wo-help-btn {
+        background: transparent;
+        border: 1px dashed rgba(20, 184, 166, 0.35);
+        color: var(--castor-facilities, #14b8a6);
+        font-size: 0.8125rem;
+        transition: all 0.15s ease;
+        opacity: 0.85;
+    }
+    .wo-help-btn:hover {
+        background-color: rgba(20, 184, 166, 0.08);
+        border-style: solid;
+        color: var(--castor-facilities, #14b8a6);
+        opacity: 1;
+    }
+</style>
+
+<script>
+(function () {
+    const grid = document.getElementById('work-grid-mount');
+    const bar = document.getElementById('work-bulk-bar');
+    const countLabel = document.getElementById('work-bulk-count');
+    if (!grid || !bar) return;
+
+    function syncSelection() {
+        const checkboxes = grid.querySelectorAll('input[name="wo_ids"]:checked');
+        const count = checkboxes.length;
+        if (countLabel) countLabel.textContent = count;
+        bar.classList.toggle('d-none', count === 0);
+
+        document.querySelectorAll('.work-bulk-form').forEach(form => {
+            form.querySelectorAll('input[name="wo_ids"]').forEach(el => el.remove());
+            checkboxes.forEach(cb => {
+                const clone = document.createElement('input');
+                clone.type = 'hidden';
+                clone.name = 'wo_ids';
+                clone.value = cb.value;
+                form.appendChild(clone);
+            });
+        });
+    }
+
+    grid.addEventListener('change', event => {
+        if (event.target && event.target.matches('input[name="wo_ids"]')) {
+            syncSelection();
+        }
+    });
+    document.body.addEventListener('htmx:afterSwap', event => {
+        if (event.target && event.target.id === 'work-grid-mount') {
+            syncSelection();
+        }
+    });
+    syncSelection();
+})();
+</script>

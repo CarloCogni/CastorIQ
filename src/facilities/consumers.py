@@ -143,3 +143,80 @@ class ExportConsumer(AsyncJsonWebsocketConsumer):
             return False
         # Export rewrites the IFC file — EDITOR+ only.
         return ProjectAccessService.can_modify(self.user, project)
+
+
+# ─── Work Orders (M3.D) ────────────────────────────────────────────────────
+
+
+def fm_wo_group_name(project_id) -> str:
+    """Channel group name for a project's WO live updates.
+
+    Public helper so the service layer can call ``group_send`` to the same
+    name the consumer subscribes to without redefining the convention.
+    """
+    return f"fm-wo-{project_id}"
+
+
+class WorkOrderConsumer(AsyncJsonWebsocketConsumer):
+    """Push-only WebSocket — broadcasts WO transitions to every connected client.
+
+    Joins a per-project channel group on connect; the service layer fans out
+    transition events to that group via :func:`fm_wo_group_name`. Mutations
+    still go through the HTTP transition endpoint so CSRF, auth, and role
+    gating live in one place.
+    """
+
+    async def connect(self) -> None:
+        self.user = self.scope["user"]
+        self.project_id = self.scope["url_route"]["kwargs"]["project_id"]
+
+        if self.user.is_anonymous:
+            await self.close(code=4001)
+            return
+
+        if not await self._check_project_access():
+            await self.close(code=4003)
+            return
+
+        self.group_name = fm_wo_group_name(self.project_id)
+        await self.channel_layer.group_add(self.group_name, self.channel_name)
+        await self.accept()
+        logger.debug(
+            "WorkOrderConsumer connected: user=%s project=%s",
+            self.user.username,
+            self.project_id,
+        )
+
+    async def disconnect(self, close_code: int) -> None:
+        group_name = getattr(self, "group_name", None)
+        if group_name is not None and self.channel_layer is not None:
+            await self.channel_layer.group_discard(group_name, self.channel_name)
+
+    async def receive_json(self, content: dict, **kwargs) -> None:
+        action = content.get("action")
+        if action == "ping":
+            await self.send_json({"type": "pong"})
+        elif action == "subscribe":
+            await self.send_json({"type": "subscribed", "project_id": self.project_id})
+        else:
+            await self.send_json({"type": "error", "message": f"Unknown action: {action}"})
+
+    # Group-message handler — invoked by ``channel_layer.group_send`` with
+    # ``{"type": "wo_updated", "payload": {...}}``. Channels dispatches the
+    # ``type`` value to a method of the same name (dots replaced by
+    # underscores), so service-layer broadcasts use ``"type": "wo_updated"``.
+    async def wo_updated(self, event: dict) -> None:
+        await self.send_json({"type": "wo.updated", **event["payload"]})
+
+    @sync_to_async
+    def _check_project_access(self) -> bool:
+        from environments.models import Project
+        from environments.services import ProjectAccessService
+
+        try:
+            project = Project.objects.select_related("owner").get(pk=self.project_id)
+        except Project.DoesNotExist:
+            return False
+        # READER+ may subscribe — viewers should see live updates even if
+        # they cannot fire transitions themselves.
+        return ProjectAccessService.can_access(self.user, project)

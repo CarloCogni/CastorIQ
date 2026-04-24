@@ -1,0 +1,25 @@
+<!-- facilities/components/work_kanban_card.html — single draggable WO card -->
+
+<div id="wo-card-{{ wo.pk }}" class="kanban-card card border-0 shadow-sm"
+     draggable="true"
+     data-wo-id="{{ wo.pk }}"
+     data-status="{{ wo.status }}">
+    <div class="card-body p-2">
+        <div class="d-flex align-items-center gap-1 mb-1">
+            <a href="{% url 'facilities:work_detail' project.pk wo.pk %}"
+               class="fs-8 fw-semibold text-decoration-none"
+               style="color: var(--castor-facilities, #14b8a6);">{{ wo.wo_number }}</a>
+            <span class="badge text-bg-light border fs-9 ms-auto">P{{ wo.priority }}</span>
+            {% if wo.is_overdue %}
+            <span class="badge text-bg-danger fs-9">Overdue</span>
+            {% endif %}
+        </div>
+        <div class="fs-8 mb-1" style="line-height: 1.25;">{{ wo.title|truncatechars:80 }}</div>
+        <div class="fs-9 text-secondary">
+            {% if wo.assignee_user %}{{ wo.assignee_user.username }}
+            {% elif wo.assignee_vendor %}{{ wo.assignee_vendor }}
+            {% else %}<span class="text-muted">Unassigned</span>{% endif %}
+            {% if wo.due_at %} · <span title="Due">{{ wo.due_at|date:"M j" }}</span>{% endif %}
+        </div>
+    </div>
+</div>

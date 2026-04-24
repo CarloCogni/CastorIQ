@@ -1,0 +1,50 @@
+<!-- facilities/components/work_grid.html — WO card grid + pagination -->
+
+{% if page_obj.object_list %}
+<div class="row g-3">
+    {% for wo in page_obj.object_list %}
+    <div class="col-12 col-md-6 col-lg-4">
+        {% include "facilities/components/work_card.html" with wo=wo %}
+    </div>
+    {% endfor %}
+</div>
+
+{% if paginator.num_pages > 1 %}
+<nav class="mt-3" aria-label="Work order pagination">
+    <ul class="pagination pagination-sm justify-content-center">
+        {% if page_obj.has_previous %}
+        <li class="page-item">
+            <a class="page-link"
+               hx-get="?page={{ page_obj.previous_page_number }}&q={{ filters.q }}&status={{ filters.status_filter|default_if_none:'' }}"
+               hx-target="#work-grid-mount"
+               href="?page={{ page_obj.previous_page_number }}">Previous</a>
+        </li>
+        {% endif %}
+        <li class="page-item active">
+            <span class="page-link">Page {{ page_obj.number }} / {{ paginator.num_pages }}</span>
+        </li>
+        {% if page_obj.has_next %}
+        <li class="page-item">
+            <a class="page-link"
+               hx-get="?page={{ page_obj.next_page_number }}&q={{ filters.q }}&status={{ filters.status_filter|default_if_none:'' }}"
+               hx-target="#work-grid-mount"
+               href="?page={{ page_obj.next_page_number }}">Next</a>
+        </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+
+{% else %}
+<div class="text-center text-secondary py-5">
+    <i class="bi bi-clipboard2-x fs-2 d-block mb-2"></i>
+    <p class="mb-1 fs-7">No work orders match the current filters.</p>
+    {% if user_permission == "owner" or user_permission == "editor" %}
+    <button class="btn btn-sm btn-outline-secondary mt-2"
+            hx-get="{% url 'facilities:work_create' project.pk %}"
+            hx-target="#work-drawer-mount">
+        <i class="bi bi-plus-lg"></i> Create the first work order
+    </button>
+    {% endif %}
+</div>
+{% endif %}

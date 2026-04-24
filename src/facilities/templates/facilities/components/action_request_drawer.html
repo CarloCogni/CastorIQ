@@ -1,0 +1,52 @@
+<!-- facilities/components/action_request_drawer.html — modal drawer to file an AR -->
+
+<div class="modal fade show d-block" id="actionRequestDrawer" tabindex="-1"
+     style="background-color: rgba(0,0,0,0.4);"
+     onclick="if (event.target === this) this.remove();">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form method="post" action="{% url 'facilities:ar_create' project.pk %}">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-megaphone" style="color: var(--castor-facilities, #14b8a6);"></i>
+                        Report an issue
+                    </h5>
+                    <button type="button" class="btn-close" onclick="this.closest('.modal').remove()"></button>
+                </div>
+                <div class="modal-body">
+                    {% if form_error %}<div class="alert alert-danger py-2">{{ form_error }}</div>{% endif %}
+
+                    <div class="mb-3">
+                        <label class="form-label fs-8">What's wrong? *</label>
+                        <input type="text" name="title" required maxlength="255"
+                               class="form-control" placeholder="e.g. Meeting room 3-B is cold"
+                               value="{{ form_values.title|default:'' }}">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fs-8">Details</label>
+                        <textarea name="description" rows="3" class="form-control"
+                                  placeholder="When did it start? What have you tried? Attach photos via the WO once an FM picks it up."
+                        >{{ form_values.description|default:'' }}</textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fs-8">Severity</label>
+                        <select name="severity" class="form-select">
+                            {% for value, label in ar_severities %}
+                            <option value="{{ value }}" {% if form_values.severity == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="this.closest('.modal').remove()">Cancel</button>
+                    <button type="submit" class="btn btn-sm" style="background-color: var(--castor-facilities, #14b8a6); color: white; border: none;">
+                        <i class="bi bi-send"></i> Submit
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

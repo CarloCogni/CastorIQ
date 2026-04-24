@@ -1,0 +1,87 @@
+<!-- facilities/components/work_create_drawer.html — modal drawer to create a WO -->
+
+<div class="modal fade show d-block" id="workCreateDrawer" tabindex="-1"
+     style="background-color: rgba(0,0,0,0.4);"
+     onclick="if (event.target === this) this.remove();">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <form method="post" action="{% url 'facilities:work_create' project.pk %}">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-plus-lg" style="color: var(--castor-facilities, #14b8a6);"></i>
+                        New work order
+                    </h5>
+                    <button type="button" class="btn-close" onclick="this.closest('.modal').remove()" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    {% if form_error %}
+                    <div class="alert alert-danger py-2">{{ form_error }}</div>
+                    {% endif %}
+
+                    <div class="mb-3">
+                        <label class="form-label fs-8">Title *</label>
+                        <input type="text" name="title" required maxlength="255"
+                               class="form-control" value="{{ form_values.title|default:'' }}">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fs-8">Description</label>
+                        <textarea name="description" rows="3" class="form-control">{{ form_values.description|default:'' }}</textarea>
+                    </div>
+
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <label class="form-label fs-8">Category</label>
+                            <select name="category" class="form-select">
+                                <option value="corrective">Corrective</option>
+                                <option value="preventive">Preventive</option>
+                                <option value="inspection">Inspection</option>
+                                <option value="installation">Installation</option>
+                                <option value="decommission">Decommission</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fs-8">Priority</label>
+                            <select name="priority" class="form-select">
+                                <option value="1">P1 — Critical</option>
+                                <option value="2">P2 — High</option>
+                                <option value="3" selected>P3 — Normal</option>
+                                <option value="4">P4 — Low</option>
+                                <option value="5">P5 — Backlog</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fs-8">Due at</label>
+                            <input type="datetime-local" name="due_at" class="form-control"
+                                   value="{{ form_values.due_at|default:'' }}">
+                        </div>
+                    </div>
+
+                    <hr class="my-3">
+
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <label class="form-label fs-8">Vendor (free text)</label>
+                            <input type="text" name="assignee_vendor" class="form-control"
+                                   placeholder="ACME HVAC"
+                                   value="{{ form_values.assignee_vendor|default:'' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fs-8">Scheduled start</label>
+                            <input type="datetime-local" name="scheduled_start" class="form-control"
+                                   value="{{ form_values.scheduled_start|default:'' }}">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="this.closest('.modal').remove()">Cancel</button>
+                    <button type="submit" class="btn btn-sm"
+                            style="background-color: var(--castor-facilities, #14b8a6); color: white; border: none;">
+                        <i class="bi bi-check-lg"></i> Create
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

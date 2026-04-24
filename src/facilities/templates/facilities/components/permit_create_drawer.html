@@ -1,0 +1,69 @@
+<!-- facilities/components/permit_create_drawer.html — modal drawer to create a permit -->
+
+<div class="modal fade show d-block" id="permitCreateDrawer" tabindex="-1"
+     style="background-color: rgba(0,0,0,0.4);"
+     onclick="if (event.target === this) this.remove();">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form method="post" action="{% url 'facilities:permit_create' project.pk %}">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-shield-check"></i> New permit</h5>
+                    <button type="button" class="btn-close" onclick="this.closest('.modal').remove()"></button>
+                </div>
+                <div class="modal-body">
+                    {% if form_error %}<div class="alert alert-danger py-2">{{ form_error }}</div>{% endif %}
+
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <label class="form-label fs-8">Permit number *</label>
+                            <input type="text" name="permit_number" required class="form-control" value="{{ form_values.permit_number|default:'' }}">
+                        </div>
+                        <div class="col-md-8">
+                            <label class="form-label fs-8">Title *</label>
+                            <input type="text" name="title" required class="form-control" value="{{ form_values.title|default:'' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fs-8">Kind</label>
+                            <select name="kind" class="form-select">
+                                {% for value, label in permit_kinds %}
+                                <option value="{{ value }}" {% if form_values.kind == value %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fs-8">Status</label>
+                            <select name="status" class="form-select">
+                                {% for value, label in permit_statuses %}
+                                <option value="{{ value }}" {% if form_values.status == value %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-12">
+                            <label class="form-label fs-8">Issued to</label>
+                            <input type="text" name="issued_to" class="form-control" value="{{ form_values.issued_to|default:'' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fs-8">Valid from</label>
+                            <input type="datetime-local" name="valid_from" class="form-control">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fs-8">Valid until</label>
+                            <input type="datetime-local" name="valid_until" class="form-control">
+                        </div>
+                        <div class="col-md-12">
+                            <label class="form-label fs-8">Notes</label>
+                            <textarea name="notes" rows="2" class="form-control">{{ form_values.notes|default:'' }}</textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="this.closest('.modal').remove()">Cancel</button>
+                    <button type="submit" class="btn btn-sm" style="background-color: var(--castor-facilities, #14b8a6); color: white; border: none;">
+                        <i class="bi bi-check-lg"></i> Create
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

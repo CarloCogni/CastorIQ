@@ -1,0 +1,221 @@
+<!-- facilities/tabs/_facilities_work_kanban.html — kanban board for Work Orders -->
+
+<div class="d-flex flex-column gap-3" id="facilities-work-kanban-body">
+    <div class="d-flex align-items-center gap-3 flex-wrap">
+        <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-kanban fs-5" style="color: var(--castor-facilities, #14b8a6);"></i>
+            <h5 class="m-0">Kanban</h5>
+        </div>
+        <div class="ms-auto d-flex gap-2 flex-wrap align-items-center">
+            <div class="btn-group btn-group-sm" role="group" aria-label="View switcher">
+                <a href="{% url 'facilities:work_list' project.pk %}" class="btn btn-outline-secondary"><i class="bi bi-list-ul"></i> List</a>
+                <a href="{% url 'facilities:work_kanban' project.pk %}" class="btn btn-outline-secondary active"><i class="bi bi-kanban"></i> Kanban</a>
+                <a href="{% url 'facilities:work_calendar' project.pk %}" class="btn btn-outline-secondary"><i class="bi bi-calendar3"></i> Calendar</a>
+            </div>
+            {% if user_permission == "owner" or user_permission == "editor" %}
+            <button class="btn btn-sm d-inline-flex align-items-center gap-2 btn-outline-secondary"
+                    hx-get="{% url 'facilities:work_intent' project.pk %}"
+                    hx-target="#work-drawer-mount"
+                    hx-swap="innerHTML"
+                    title="AI batch — natural-language → multiple work orders">
+                <i class="bi bi-stars"></i> AI batch
+            </button>
+            <button class="btn btn-sm d-inline-flex align-items-center gap-2"
+                    style="background-color: var(--castor-facilities, #14b8a6); color: white; border: none;"
+                    hx-get="{% url 'facilities:work_create' project.pk %}"
+                    hx-target="#work-drawer-mount"
+                    hx-swap="innerHTML">
+                <i class="bi bi-plus-lg"></i> New work order
+            </button>
+            {% endif %}
+        </div>
+    </div>
+
+    {% include "facilities/components/work_kanban_board.html" %}
+
+    <div id="work-drawer-mount"></div>
+</div>
+
+<script>
+(function () {
+    // Vanilla HTML5 drag/drop. On drop we POST to the transition endpoint for
+    // the drop-target's status. Client-side verb mapping keeps the UX snappy;
+    // the server is still the source of truth and rejects disallowed moves.
+    const board = document.getElementById('work-kanban-board');
+    if (!board) return;
+
+    // (from_status, to_status) -> transition name.
+    const VERBS = {
+        '0-10': 'submit',
+        '10-20': 'triage',
+        '20-30': 'assign',
+        '30-40': 'schedule',
+        '30-50': 'start',
+        '40-50': 'start',
+        '40-30': 'reassign',
+        '50-60': 'complete',
+        '50-30': 'pause',
+        '60-70': 'verify',
+        '60-30': 'reject',
+        '70-80': 'close',
+        '80-30': 'reopen',
+    };
+
+    function getCSRF() {
+        const name = 'csrftoken';
+        const match = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+        return match ? decodeURIComponent(match[2]) : '';
+    }
+
+    board.addEventListener('dragstart', event => {
+        const card = event.target.closest('.kanban-card');
+        if (!card) return;
+        event.dataTransfer.setData('text/wo-id', card.dataset.woId);
+        event.dataTransfer.setData('text/from-status', card.dataset.status);
+        event.dataTransfer.effectAllowed = 'move';
+        card.classList.add('dragging');
+    });
+    board.addEventListener('dragend', event => {
+        const card = event.target.closest('.kanban-card');
+        if (card) card.classList.remove('dragging');
+    });
+    board.querySelectorAll('.kanban-column').forEach(col => {
+        col.addEventListener('dragover', event => {
+            event.preventDefault();
+            col.classList.add('drag-over');
+        });
+        col.addEventListener('dragleave', () => col.classList.remove('drag-over'));
+        col.addEventListener('drop', async event => {
+            event.preventDefault();
+            col.classList.remove('drag-over');
+            const woId = event.dataTransfer.getData('text/wo-id');
+            const from = event.dataTransfer.getData('text/from-status');
+            const to = col.dataset.status;
+            if (!woId || from === to) return;
+            const verb = VERBS[from + '-' + to];
+            if (!verb) {
+                window.dispatchEvent(new CustomEvent('castor:toast', {
+                    detail: { level: 'error', message: 'That move is not a valid transition.' }
+                }));
+                return;
+            }
+            const url = '{% url "facilities:work_transition" project.pk "00000000-0000-0000-0000-000000000000" "VERB" %}'
+                .replace('00000000-0000-0000-0000-000000000000', woId)
+                .replace('VERB', verb);
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': getCSRF(), 'HX-Request': 'true' },
+                body: new FormData()
+            });
+            if (!res.ok) {
+                window.dispatchEvent(new CustomEvent('castor:toast', {
+                    detail: { level: 'error', message: 'Transition refused by the server.' }
+                }));
+                return;
+            }
+            // Server-confirmed; the per-project WS push (below) will repaint
+            // the affected card on this and every other connected client.
+        });
+    });
+
+    // ── WebSocket subscription (M3.D) ──────────────────────────────────────
+    // Per-project channel group `fm-wo-{project_id}`. On `wo.updated` events,
+    // swap the card's HTML and re-home it into the right column based on the
+    // new status. Reconnects with exponential backoff on close.
+    const wsScheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const projectId = '{{ project.pk }}';
+    const wsUrl = wsScheme + '://' + window.location.host + '/ws/projects/' + projectId + '/fm/work/';
+
+    function applyUpdate(payload) {
+        const targetColumn = board.querySelector('.kanban-column[data-status="' + payload.to_status + '"]');
+        if (!targetColumn) return;
+        const targetBody = targetColumn.querySelector('.kanban-column-body');
+        if (!targetBody) return;
+        const existing = document.getElementById('wo-card-' + payload.wo_id);
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = payload.html.trim();
+        const fresh = wrapper.firstChild;
+        if (existing) {
+            // If the card is already in the right column, just swap inline.
+            const sourceColumn = existing.closest('.kanban-column');
+            if (sourceColumn === targetColumn) {
+                existing.replaceWith(fresh);
+            } else {
+                existing.remove();
+                targetBody.appendChild(fresh);
+            }
+        } else {
+            targetBody.appendChild(fresh);
+        }
+    }
+
+    let backoff = 500;
+    let socket = null;
+    function connectWS() {
+        socket = new WebSocket(wsUrl);
+        socket.addEventListener('open', () => {
+            backoff = 500;
+            socket.send(JSON.stringify({action: 'subscribe'}));
+        });
+        socket.addEventListener('message', event => {
+            try {
+                const data = JSON.parse(event.data);
+                if (data && data.type === 'wo.updated') applyUpdate(data);
+            } catch (_) {
+                // ignore malformed payloads
+            }
+        });
+        socket.addEventListener('close', () => {
+            // Exponential backoff up to ~30s
+            setTimeout(connectWS, Math.min(backoff *= 2, 30000));
+        });
+    }
+    connectWS();
+})();
+</script>
+
+<style>
+#work-kanban-board {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(260px, 1fr);
+    gap: 12px;
+    overflow-x: auto;
+    padding-bottom: 8px;
+}
+.kanban-column {
+    background-color: rgba(20, 184, 166, 0.04);
+    border: 1px solid rgba(20, 184, 166, 0.18);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    min-height: 260px;
+    transition: background-color 0.15s ease;
+}
+.kanban-column.drag-over {
+    background-color: rgba(20, 184, 166, 0.14);
+    border-color: rgba(20, 184, 166, 0.45);
+}
+.kanban-column-header {
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(20, 184, 166, 0.18);
+    font-weight: 600;
+    font-size: 0.8125rem;
+}
+.kanban-column-body {
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex-grow: 1;
+}
+.kanban-card {
+    cursor: grab;
+    user-select: none;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.kanban-card.dragging {
+    opacity: 0.35;
+    cursor: grabbing;
+}
+</style>

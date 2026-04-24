@@ -28,7 +28,19 @@ from core.mixins import (
 )
 from environments.services import ProjectAccessService
 
-from .models import ClassificationReference, FacilityAsset
+from .models import (
+    ActionRequest,
+    ClassificationReference,
+    FacilityAsset,
+    FMIntentProposal,
+    Permit,
+    WorkOrderStatus,
+)
+from .services.action_request_service import (
+    ActionRequestNotFoundError,
+    ActionRequestService,
+    ActionRequestValidationError,
+)
 from .services.asset_service import (
     AssetNotFoundError,
     AssetService,
@@ -38,7 +50,26 @@ from .services.export_reconciliation_service import (
     ExportError,
     ExportReconciliationService,
 )
+from .services.fm_intent_service import (
+    FMIntentError,
+    FMIntentService,
+    FMIntentValidationError,
+)
+from .services.permit_service import (
+    PermitNotFoundError,
+    PermitService,
+    PermitValidationError,
+)
 from .services.role_service import ProjectRoleService
+from .services.workorder_service import (
+    KANBAN_STATUSES,
+    VALID_TRANSITION_NAMES,
+    IllegalTransitionError,
+    RoleNotAllowedError,
+    WorkOrderNotFoundError,
+    WorkOrderService,
+    WorkOrderValidationError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -647,3 +678,1021 @@ def _project_ifc_types(project) -> list[str]:
         .distinct()
         .order_by("ifc_type")
     )
+
+
+# ─── Work Orders (M3) ──────────────────────────────────────────────────────
+
+
+WORK_PAGE_SIZE = 24
+
+
+def _wo_filter_context(request) -> dict:
+    """Pull WO list filters off the request — shared by list / kanban / calendar."""
+    return {
+        "q": request.GET.get("q", "").strip(),
+        "status_filter": _safe_int(request.GET.get("status"), default=None),
+        "priority_filter": _safe_int(request.GET.get("priority"), default=None),
+        "category_filter": request.GET.get("category", "").strip(),
+        "assignee_user_id": request.GET.get("assignee_user_id", "").strip() or None,
+        "assignee_vendor": request.GET.get("assignee_vendor", "").strip(),
+        "asset_id": request.GET.get("asset_id", "").strip() or None,
+        "overdue_only": request.GET.get("overdue") == "1",
+        "include_closed": request.GET.get("include_closed") == "1",
+    }
+
+
+def _wo_filter_to_service_kwargs(filters: dict) -> dict:
+    """Map the request-derived filter dict into ``WorkOrderService.list_work_orders`` kwargs."""
+    return {
+        "q": filters["q"],
+        "status": filters["status_filter"],
+        "priority": filters["priority_filter"],
+        "category": filters["category_filter"],
+        "assignee_user_id": filters["assignee_user_id"],
+        "assignee_vendor": filters["assignee_vendor"],
+        "asset_id": filters["asset_id"],
+        "overdue_only": filters["overdue_only"],
+        "include_closed": filters["include_closed"],
+    }
+
+
+class WorkOrderListView(ProjectTabMixin, TemplateView):
+    """Work-order list — card grid with filters, pagination, and bulk-bar hooks."""
+
+    active_tab = "facilities"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        project = self.get_project()
+        context.update(_role_context(project, self.request.user, self.request.session))
+        context["active_sub_tab"] = "work"
+        context["facilities_body_template"] = "facilities/tabs/_facilities_work.html"
+        context.update(self._grid_context(project, self.request))
+        return context
+
+    def get(self, request, *args, **kwargs):
+        if request.headers.get("HX-Request") == "true":
+            project = self.get_project()
+            context = self._grid_context(project, request)
+            context["project"] = project
+            return render(request, "facilities/components/work_grid.html", context)
+        return super().get(request, *args, **kwargs)
+
+    @staticmethod
+    def _grid_context(project, request) -> dict:
+        service = WorkOrderService(project, request.user)
+        filters = _wo_filter_context(request)
+        page_num = max(1, _safe_int(request.GET.get("page", "1"), default=1))
+
+        queryset = service.list_work_orders(**_wo_filter_to_service_kwargs(filters))
+        paginator = Paginator(queryset, WORK_PAGE_SIZE)
+        page_obj = paginator.get_page(page_num)
+
+        return {
+            "page_obj": page_obj,
+            "paginator": paginator,
+            "filters": filters,
+            "wo_status_choices": WorkOrderStatus.choices,
+        }
+
+
+class WorkOrderKanbanView(ProjectTabMixin, TemplateView):
+    """Kanban board — one column per open WO status, vanilla HTML5 drag/drop."""
+
+    active_tab = "facilities"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        project = self.get_project()
+        context.update(_role_context(project, self.request.user, self.request.session))
+        context["active_sub_tab"] = "work"
+        context["facilities_body_template"] = "facilities/tabs/_facilities_work_kanban.html"
+
+        service = WorkOrderService(project, self.request.user)
+        filters = _wo_filter_context(self.request)
+        columns = service.kanban_columns(**_wo_filter_to_service_kwargs(filters))
+        context["kanban_columns"] = [
+            {"status": status, "label": WorkOrderStatus(status).label, "wos": columns[status]}
+            for status in KANBAN_STATUSES
+        ]
+        context["filters"] = filters
+        return context
+
+
+class WorkOrderCalendarView(ProjectTabMixin, TemplateView):
+    """Server-rendered month calendar — WO chips on their ``scheduled_start`` day."""
+
+    active_tab = "facilities"
+
+    def get_context_data(self, **kwargs):
+        from calendar import Calendar
+        from datetime import date
+
+        context = super().get_context_data(**kwargs)
+        project = self.get_project()
+        context.update(_role_context(project, self.request.user, self.request.session))
+        context["active_sub_tab"] = "work"
+        context["facilities_body_template"] = "facilities/tabs/_facilities_work_calendar.html"
+
+        today = date.today()
+        year = _safe_int(self.request.GET.get("year"), default=today.year)
+        month = _safe_int(self.request.GET.get("month"), default=today.month)
+        # Clamp month
+        if not 1 <= month <= 12:
+            month = today.month
+
+        from datetime import datetime as _dt
+
+        from django.utils.timezone import make_aware
+
+        start = make_aware(_dt(year, month, 1))
+        next_month = month + 1
+        next_year = year
+        if next_month > 12:
+            next_month = 1
+            next_year += 1
+        end = make_aware(_dt(next_year, next_month, 1))
+
+        service = WorkOrderService(project, self.request.user)
+        events = list(service.calendar_window(start=start, end=end))
+        events_by_day: dict[int, list] = {}
+        for wo in events:
+            day = wo.scheduled_start.day
+            events_by_day.setdefault(day, []).append(wo)
+
+        cal = Calendar(firstweekday=0)
+        weeks = cal.monthdayscalendar(year, month)
+
+        prev_month = month - 1
+        prev_year = year
+        if prev_month < 1:
+            prev_month = 12
+            prev_year -= 1
+
+        context["calendar_year"] = year
+        context["calendar_month"] = month
+        context["calendar_month_label"] = start.strftime("%B %Y")
+        context["calendar_weeks"] = weeks
+        context["calendar_events_by_day"] = events_by_day
+        context["calendar_prev_year"] = prev_year
+        context["calendar_prev_month"] = prev_month
+        context["calendar_next_year"] = next_year
+        context["calendar_next_month"] = next_month
+        context["today_day"] = today.day if (today.year == year and today.month == month) else None
+        return context
+
+    def get(self, request, *args, **kwargs):
+        if request.headers.get("HX-Request") == "true":
+            context = self.get_context_data(**kwargs)
+            return render(request, "facilities/components/work_calendar_month.html", context)
+        return super().get(request, *args, **kwargs)
+
+
+class WorkOrderDetailView(ProjectTabMixin, TemplateView):
+    """Work-order detail — full page with status timeline + transition buttons."""
+
+    active_tab = "facilities"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        project = self.get_project()
+        context.update(_role_context(project, self.request.user, self.request.session))
+        context["active_sub_tab"] = "work"
+
+        try:
+            wo = WorkOrderService(project, self.request.user).get_work_order(self.kwargs["wo_pk"])
+        except WorkOrderNotFoundError as exc:
+            raise Http404(str(exc)) from exc
+
+        context["wo"] = wo
+        context["wo_status_choices"] = WorkOrderStatus.choices
+        context["allowed_transitions"] = _allowed_transitions_for(
+            wo, context.get("facilities_active_role")
+        )
+        context["available_permits"] = (
+            Permit.objects.filter(project=project)
+            .exclude(pk__in=wo.permits.values_list("pk", flat=True))
+            .order_by("permit_number")
+        )
+        context["facilities_body_template"] = "facilities/tabs/_facilities_work_detail.html"
+        return context
+
+
+class WorkOrderCreateView(ProjectModifyAccessMixin, View):
+    """Create-WO drawer — GET renders the form, POST persists in DRAFT."""
+
+    def get(self, request, pk):
+        project = self.get_project()
+        return render(
+            request,
+            "facilities/components/work_create_drawer.html",
+            {
+                "project": project,
+                "form_values": {},
+                "form_error": None,
+                "wo": None,
+            },
+        )
+
+    def post(self, request, pk):
+        project = self.get_project()
+        service = WorkOrderService(project, request.user)
+        raw = _wo_form_payload(request.POST, project)
+
+        try:
+            wo = service.create_work_order(**raw["service_kwargs"])
+        except WorkOrderValidationError as exc:
+            return render(
+                request,
+                "facilities/components/work_create_drawer.html",
+                {
+                    "project": project,
+                    "form_values": raw["form_values"],
+                    "form_error": str(exc),
+                    "wo": None,
+                },
+                status=400,
+            )
+
+        messages.success(request, f"Work order {wo.wo_number} created")
+        return HttpResponseRedirect(reverse("facilities:work_detail", args=[project.pk, wo.pk]))
+
+
+class WorkOrderUpdateView(ProjectModifyAccessMixin, View):
+    """Update mutable fields on a single WO. Fields are stage-gated by the service."""
+
+    def post(self, request, pk, wo_pk):
+        project = self.get_project()
+        service = WorkOrderService(project, request.user)
+        try:
+            wo = service.get_work_order(wo_pk)
+        except WorkOrderNotFoundError as exc:
+            raise Http404(str(exc)) from exc
+
+        raw = _wo_form_payload(request.POST, project)
+        try:
+            service.update_work_order(wo, **raw["service_kwargs"])
+        except WorkOrderValidationError as exc:
+            return toast_response(str(exc), level="error", status=400)
+
+        messages.success(request, "Work order saved")
+        return HttpResponseRedirect(reverse("facilities:work_detail", args=[project.pk, wo.pk]))
+
+
+class WorkOrderTransitionView(ProjectModifyAccessMixin, View):
+    """Single dispatcher for every state transition. Validates the URL kwarg."""
+
+    def post(self, request, pk, wo_pk, transition):
+        if transition not in VALID_TRANSITION_NAMES:
+            return toast_response(f"Unknown transition: {transition!r}", "error", status=400)
+
+        project = self.get_project()
+        service = WorkOrderService(project, request.user)
+        try:
+            wo = service.get_work_order(wo_pk)
+        except WorkOrderNotFoundError as exc:
+            raise Http404(str(exc)) from exc
+
+        method_name = transition  # transition names match service method names
+        method = getattr(service, method_name, None)
+        if method is None:
+            return toast_response(
+                f"Transition not implemented: {transition!r}", "error", status=400
+            )
+
+        kwargs: dict = {"note": request.POST.get("note", "").strip()}
+        try:
+            if transition == "assign":
+                kwargs["assignee_user_id"] = request.POST.get("assignee_user_id") or None
+                kwargs["assignee_vendor"] = request.POST.get("assignee_vendor", "").strip()
+            elif transition == "reassign":
+                kwargs["assignee_user_id"] = request.POST.get("assignee_user_id") or None
+                kwargs["assignee_vendor"] = request.POST.get("assignee_vendor", "").strip()
+            elif transition == "schedule":
+                kwargs["scheduled_start"] = _parse_dt(request.POST.get("scheduled_start"))
+                kwargs["scheduled_end"] = _parse_dt(request.POST.get("scheduled_end"))
+            method(wo, **kwargs)
+        except (
+            IllegalTransitionError,
+            RoleNotAllowedError,
+            WorkOrderValidationError,
+        ) as exc:
+            return toast_response(str(exc), "error", status=400)
+
+        if request.headers.get("HX-Request") == "true":
+            response = render(
+                request,
+                "facilities/components/_work_detail_body.html",
+                {
+                    "project": project,
+                    "wo": service.get_work_order(wo.pk),
+                    "wo_status_choices": WorkOrderStatus.choices,
+                    "allowed_transitions": _allowed_transitions_for(
+                        wo,
+                        ProjectRoleService(project, request.user).resolve_active(request.session),
+                    ),
+                    "available_permits": (
+                        Permit.objects.filter(project=project)
+                        .exclude(pk__in=wo.permits.values_list("pk", flat=True))
+                        .order_by("permit_number")
+                    ),
+                },
+            )
+            return trigger_toast(response, f"Marked {transition}")
+
+        messages.success(request, f"Transition {transition} applied")
+        return HttpResponseRedirect(reverse("facilities:work_detail", args=[project.pk, wo.pk]))
+
+
+class WorkOrderAttachmentView(ProjectModifyAccessMixin, View):
+    """Upload a single file to a WO."""
+
+    def post(self, request, pk, wo_pk):
+        project = self.get_project()
+        service = WorkOrderService(project, request.user)
+        try:
+            wo = service.get_work_order(wo_pk)
+        except WorkOrderNotFoundError as exc:
+            raise Http404(str(exc)) from exc
+
+        upload = request.FILES.get("file")
+        if not upload:
+            return toast_response("Missing file.", "error", status=400)
+
+        service.upload_attachment(
+            wo,
+            file=upload,
+            caption=request.POST.get("caption", "").strip(),
+            kind=request.POST.get("kind", "photo"),
+        )
+        messages.success(request, "Attachment uploaded")
+        return HttpResponseRedirect(reverse("facilities:work_detail", args=[project.pk, wo.pk]))
+
+
+class WorkOrderBulkView(ProjectModifyAccessMixin, View):
+    """Bulk actions from the WO list — assign, set-priority, schedule, cancel."""
+
+    def post(self, request, pk):
+        project = self.get_project()
+        service = WorkOrderService(project, request.user)
+
+        action = request.POST.get("action", "").strip()
+        wo_ids = request.POST.getlist("wo_ids")
+        if not wo_ids:
+            return toast_response("No work orders selected.", "error", status=400)
+
+        try:
+            if action == "assign":
+                count = service.bulk_assign(
+                    wo_ids,
+                    assignee_user_id=request.POST.get("assignee_user_id") or None,
+                    assignee_vendor=request.POST.get("assignee_vendor", "").strip(),
+                )
+                msg = f"Assigned {count} work order(s)."
+            elif action == "set_priority":
+                priority = _safe_int(request.POST.get("priority"), default=3)
+                count = service.bulk_set_priority(wo_ids, priority=priority)
+                msg = f"Updated priority on {count} work order(s)."
+            elif action == "schedule":
+                count = service.bulk_schedule(
+                    wo_ids,
+                    scheduled_start=_parse_dt(request.POST.get("scheduled_start")),
+                    scheduled_end=_parse_dt(request.POST.get("scheduled_end")),
+                )
+                msg = f"Scheduled {count} work order(s)."
+            elif action == "cancel":
+                count = service.bulk_cancel(wo_ids, note=request.POST.get("note", "").strip())
+                msg = f"Cancelled {count} work order(s)."
+            else:
+                return toast_response(f"Unknown bulk action: {action!r}", "error", status=400)
+        except WorkOrderValidationError as exc:
+            return toast_response(str(exc), "error", status=400)
+
+        messages.success(request, msg)
+        return HttpResponseRedirect(reverse("facilities:work_list", args=[project.pk]))
+
+
+class WorkOrderPermitLinkView(ProjectModifyAccessMixin, View):
+    """Link an existing permit to a WO."""
+
+    def post(self, request, pk, wo_pk):
+        project = self.get_project()
+        wo_svc = WorkOrderService(project, request.user)
+        permit_svc = PermitService(project, request.user)
+        try:
+            wo = wo_svc.get_work_order(wo_pk)
+            permit = permit_svc.get_permit(request.POST.get("permit_id"))
+        except (WorkOrderNotFoundError, PermitNotFoundError) as exc:
+            return toast_response(str(exc), "error", status=404)
+        try:
+            wo_svc.link_permit(wo, permit)
+        except WorkOrderValidationError as exc:
+            return toast_response(str(exc), "error", status=400)
+        messages.success(request, f"Linked permit {permit.permit_number}")
+        return HttpResponseRedirect(reverse("facilities:work_detail", args=[project.pk, wo.pk]))
+
+
+class WorkOrderPermitUnlinkView(ProjectModifyAccessMixin, View):
+    """Unlink a permit from a WO."""
+
+    def post(self, request, pk, wo_pk, permit_pk):
+        project = self.get_project()
+        wo_svc = WorkOrderService(project, request.user)
+        permit_svc = PermitService(project, request.user)
+        try:
+            wo = wo_svc.get_work_order(wo_pk)
+            permit = permit_svc.get_permit(permit_pk)
+        except (WorkOrderNotFoundError, PermitNotFoundError) as exc:
+            return toast_response(str(exc), "error", status=404)
+        wo_svc.unlink_permit(wo, permit)
+        messages.success(request, f"Unlinked permit {permit.permit_number}")
+        return HttpResponseRedirect(reverse("facilities:work_detail", args=[project.pk, wo.pk]))
+
+
+# ─── Permits (M3) ──────────────────────────────────────────────────────────
+
+
+PERMIT_PAGE_SIZE = 24
+
+
+class PermitListView(ProjectTabMixin, TemplateView):
+    """Permit register — full CRUD landing for M3."""
+
+    active_tab = "facilities"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        project = self.get_project()
+        context.update(_role_context(project, self.request.user, self.request.session))
+        context["active_sub_tab"] = "permits"
+        context["facilities_body_template"] = "facilities/tabs/_facilities_permits.html"
+
+        service = PermitService(project, self.request.user)
+        q = self.request.GET.get("q", "").strip()
+        kind = self.request.GET.get("kind", "").strip()
+        status = self.request.GET.get("status", "").strip()
+        queryset = service.list_permits(q=q, kind=kind, status=status)
+        paginator = Paginator(queryset, PERMIT_PAGE_SIZE)
+        page_obj = paginator.get_page(_safe_int(self.request.GET.get("page", "1"), default=1))
+
+        context.update(
+            {
+                "page_obj": page_obj,
+                "paginator": paginator,
+                "active_q": q,
+                "active_kind": kind,
+                "active_status": status,
+                "permit_kinds": Permit.Kind.choices,
+                "permit_statuses": Permit.Status.choices,
+            }
+        )
+        return context
+
+    def get(self, request, *args, **kwargs):
+        if request.headers.get("HX-Request") == "true":
+            context = self.get_context_data(**kwargs)
+            return render(request, "facilities/components/permit_grid.html", context)
+        return super().get(request, *args, **kwargs)
+
+
+class PermitDetailView(ProjectTabMixin, TemplateView):
+    active_tab = "facilities"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        project = self.get_project()
+        context.update(_role_context(project, self.request.user, self.request.session))
+        context["active_sub_tab"] = "permits"
+        context["facilities_body_template"] = "facilities/tabs/_facilities_permit_detail.html"
+        try:
+            permit = PermitService(project, self.request.user).get_permit(self.kwargs["permit_pk"])
+        except PermitNotFoundError as exc:
+            raise Http404(str(exc)) from exc
+        context["permit"] = permit
+        context["permit_kinds"] = Permit.Kind.choices
+        context["permit_statuses"] = Permit.Status.choices
+        return context
+
+
+class PermitCreateView(ProjectModifyAccessMixin, View):
+    def get(self, request, pk):
+        project = self.get_project()
+        return render(
+            request,
+            "facilities/components/permit_create_drawer.html",
+            {
+                "project": project,
+                "form_values": {},
+                "form_error": None,
+                "permit_kinds": Permit.Kind.choices,
+                "permit_statuses": Permit.Status.choices,
+            },
+        )
+
+    def post(self, request, pk):
+        project = self.get_project()
+        service = PermitService(project, request.user)
+        raw = _permit_form_payload(request.POST)
+        try:
+            permit = service.create_permit(**raw)
+        except PermitValidationError as exc:
+            return render(
+                request,
+                "facilities/components/permit_create_drawer.html",
+                {
+                    "project": project,
+                    "form_values": raw,
+                    "form_error": str(exc),
+                    "permit_kinds": Permit.Kind.choices,
+                    "permit_statuses": Permit.Status.choices,
+                },
+                status=400,
+            )
+        messages.success(request, f"Permit {permit.permit_number} created")
+        return HttpResponseRedirect(
+            reverse("facilities:permit_detail", args=[project.pk, permit.pk])
+        )
+
+
+class PermitUpdateView(ProjectModifyAccessMixin, View):
+    def post(self, request, pk, permit_pk):
+        project = self.get_project()
+        service = PermitService(project, request.user)
+        try:
+            permit = service.get_permit(permit_pk)
+        except PermitNotFoundError as exc:
+            raise Http404(str(exc)) from exc
+        try:
+            service.update_permit(permit, **_permit_form_payload(request.POST))
+        except PermitValidationError as exc:
+            return toast_response(str(exc), "error", status=400)
+        messages.success(request, "Permit saved")
+        return HttpResponseRedirect(
+            reverse("facilities:permit_detail", args=[project.pk, permit.pk])
+        )
+
+
+class PermitRevokeView(ProjectModifyAccessMixin, View):
+    def post(self, request, pk, permit_pk):
+        project = self.get_project()
+        service = PermitService(project, request.user)
+        try:
+            permit = service.get_permit(permit_pk)
+        except PermitNotFoundError as exc:
+            raise Http404(str(exc)) from exc
+        service.revoke_permit(permit, note=request.POST.get("note", "").strip())
+        messages.success(request, f"Permit {permit.permit_number} revoked")
+        return HttpResponseRedirect(
+            reverse("facilities:permit_detail", args=[project.pk, permit.pk])
+        )
+
+
+# ─── Action Requests (M3) ──────────────────────────────────────────────────
+
+
+AR_PAGE_SIZE = 24
+
+
+class ActionRequestListView(ProjectTabMixin, TemplateView):
+    active_tab = "facilities"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        project = self.get_project()
+        context.update(_role_context(project, self.request.user, self.request.session))
+        context["active_sub_tab"] = "action_requests"
+        context["facilities_body_template"] = "facilities/tabs/_facilities_action_requests.html"
+
+        service = ActionRequestService(project, self.request.user)
+        q = self.request.GET.get("q", "").strip()
+        status = self.request.GET.get("status", "").strip()
+        severity = self.request.GET.get("severity", "").strip()
+        queryset = service.list_action_requests(q=q, status=status, severity=severity)
+        paginator = Paginator(queryset, AR_PAGE_SIZE)
+        page_obj = paginator.get_page(_safe_int(self.request.GET.get("page", "1"), default=1))
+
+        context.update(
+            {
+                "page_obj": page_obj,
+                "paginator": paginator,
+                "active_q": q,
+                "active_status": status,
+                "active_severity": severity,
+                "ar_statuses": ActionRequest.Status.choices,
+                "ar_severities": ActionRequest.Severity.choices,
+            }
+        )
+        return context
+
+    def get(self, request, *args, **kwargs):
+        if request.headers.get("HX-Request") == "true":
+            context = self.get_context_data(**kwargs)
+            return render(request, "facilities/components/action_request_grid.html", context)
+        return super().get(request, *args, **kwargs)
+
+
+class ActionRequestDetailView(ProjectTabMixin, TemplateView):
+    active_tab = "facilities"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        project = self.get_project()
+        context.update(_role_context(project, self.request.user, self.request.session))
+        context["active_sub_tab"] = "action_requests"
+        context["facilities_body_template"] = (
+            "facilities/tabs/_facilities_action_request_detail.html"
+        )
+        try:
+            ar = ActionRequestService(project, self.request.user).get_action_request(
+                self.kwargs["ar_pk"]
+            )
+        except ActionRequestNotFoundError as exc:
+            raise Http404(str(exc)) from exc
+        context["ar"] = ar
+        context["ar_statuses"] = ActionRequest.Status.choices
+        context["ar_severities"] = ActionRequest.Severity.choices
+        return context
+
+
+class ActionRequestCreateView(ProjectModifyAccessMixin, View):
+    def get(self, request, pk):
+        project = self.get_project()
+        return render(
+            request,
+            "facilities/components/action_request_drawer.html",
+            {
+                "project": project,
+                "form_values": {},
+                "form_error": None,
+                "ar_severities": ActionRequest.Severity.choices,
+            },
+        )
+
+    def post(self, request, pk):
+        project = self.get_project()
+        service = ActionRequestService(project, request.user)
+        raw = _ar_form_payload(request.POST)
+        try:
+            ar = service.create_action_request(**raw)
+        except ActionRequestValidationError as exc:
+            return render(
+                request,
+                "facilities/components/action_request_drawer.html",
+                {
+                    "project": project,
+                    "form_values": raw,
+                    "form_error": str(exc),
+                    "ar_severities": ActionRequest.Severity.choices,
+                },
+                status=400,
+            )
+        messages.success(request, "Request submitted")
+        return HttpResponseRedirect(reverse("facilities:ar_detail", args=[project.pk, ar.pk]))
+
+
+class ActionRequestUpdateView(ProjectModifyAccessMixin, View):
+    def post(self, request, pk, ar_pk):
+        project = self.get_project()
+        service = ActionRequestService(project, request.user)
+        try:
+            ar = service.get_action_request(ar_pk)
+        except ActionRequestNotFoundError as exc:
+            raise Http404(str(exc)) from exc
+        try:
+            service.update_action_request(ar, **_ar_form_payload(request.POST))
+        except ActionRequestValidationError as exc:
+            return toast_response(str(exc), "error", status=400)
+        messages.success(request, "Request updated")
+        return HttpResponseRedirect(reverse("facilities:ar_detail", args=[project.pk, ar.pk]))
+
+
+class ActionRequestTriageView(ProjectModifyAccessMixin, View):
+    def post(self, request, pk, ar_pk):
+        project = self.get_project()
+        service = ActionRequestService(project, request.user)
+        try:
+            ar = service.get_action_request(ar_pk)
+        except ActionRequestNotFoundError as exc:
+            raise Http404(str(exc)) from exc
+        try:
+            service.triage(ar, note=request.POST.get("note", "").strip())
+        except ActionRequestValidationError as exc:
+            return toast_response(str(exc), "error", status=400)
+        messages.success(request, "Request triaged")
+        return HttpResponseRedirect(reverse("facilities:ar_detail", args=[project.pk, ar.pk]))
+
+
+class ActionRequestDismissView(ProjectModifyAccessMixin, View):
+    def post(self, request, pk, ar_pk):
+        project = self.get_project()
+        service = ActionRequestService(project, request.user)
+        try:
+            ar = service.get_action_request(ar_pk)
+        except ActionRequestNotFoundError as exc:
+            raise Http404(str(exc)) from exc
+        try:
+            service.dismiss(ar, note=request.POST.get("note", "").strip())
+        except ActionRequestValidationError as exc:
+            return toast_response(str(exc), "error", status=400)
+        messages.success(request, "Request dismissed")
+        return HttpResponseRedirect(reverse("facilities:ar_detail", args=[project.pk, ar.pk]))
+
+
+class ActionRequestEscalateView(ProjectModifyAccessMixin, View):
+    """AR → WO escalation. Cross-domain mutation lives on WorkOrderService."""
+
+    def post(self, request, pk, ar_pk):
+        project = self.get_project()
+        ar_svc = ActionRequestService(project, request.user)
+        wo_svc = WorkOrderService(project, request.user)
+        try:
+            ar = ar_svc.get_action_request(ar_pk)
+        except ActionRequestNotFoundError as exc:
+            raise Http404(str(exc)) from exc
+
+        # Optional override fields submitted from the escalate modal.
+        overrides: dict = {}
+        title = request.POST.get("title", "").strip()
+        if title:
+            overrides["title"] = title
+        priority = _safe_int(request.POST.get("priority"), default=None)
+        if priority:
+            overrides["priority"] = priority
+
+        try:
+            wo = wo_svc.escalate_action_request(ar, **overrides)
+        except WorkOrderValidationError as exc:
+            return toast_response(str(exc), "error", status=400)
+
+        messages.success(request, f"Escalated to {wo.wo_number}")
+        return HttpResponseRedirect(reverse("facilities:work_detail", args=[project.pk, wo.pk]))
+
+
+# ─── Helpers shared by the M3 views ────────────────────────────────────────
+
+
+def _wo_form_payload(post, project) -> dict:
+    """Coerce a WO create/update POST into the service signature.
+
+    Returns ``{"form_values": <raw>, "service_kwargs": <coerced>}``. The raw
+    dict is what the drawer re-renders on validation error; the kwargs dict
+    is what gets handed to the service.
+    """
+    raw = {
+        "title": post.get("title", "").strip(),
+        "description": post.get("description", "").strip(),
+        "category": post.get("category", "").strip(),
+        "priority": post.get("priority", "").strip(),
+        "due_at": post.get("due_at", "").strip(),
+        "asset_id": post.get("affected_asset_id", "").strip(),
+        "spatial_id": post.get("affected_spatial_id", "").strip(),
+        "scheduled_start": post.get("scheduled_start", "").strip(),
+        "scheduled_end": post.get("scheduled_end", "").strip(),
+        "assignee_vendor": post.get("assignee_vendor", "").strip(),
+        "assignee_user_id": post.get("assignee_user_id", "").strip(),
+    }
+    kwargs: dict = {}
+    if raw["title"]:
+        kwargs["title"] = raw["title"]
+    if raw["description"]:
+        kwargs["description"] = raw["description"]
+    if raw["category"]:
+        kwargs["category"] = raw["category"]
+    if raw["priority"]:
+        kwargs["priority"] = _safe_int(raw["priority"], default=3)
+    if raw["due_at"]:
+        kwargs["due_at"] = _parse_dt(raw["due_at"])
+    if raw["asset_id"]:
+        try:
+            kwargs["affected_asset"] = FacilityAsset.objects.get(
+                pk=raw["asset_id"], project=project
+            )
+        except FacilityAsset.DoesNotExist:
+            pass
+    if raw["spatial_id"]:
+        from ifc_processor.models import IFCSpatialElement
+
+        try:
+            kwargs["affected_spatial"] = IFCSpatialElement.objects.get(pk=raw["spatial_id"])
+        except IFCSpatialElement.DoesNotExist:
+            pass
+    if raw["scheduled_start"]:
+        kwargs["scheduled_start"] = _parse_dt(raw["scheduled_start"])
+    if raw["scheduled_end"]:
+        kwargs["scheduled_end"] = _parse_dt(raw["scheduled_end"])
+    if raw["assignee_vendor"]:
+        kwargs["assignee_vendor"] = raw["assignee_vendor"]
+    if raw["assignee_user_id"]:
+        from django.contrib.auth import get_user_model
+
+        try:
+            kwargs["assignee_user"] = get_user_model().objects.get(pk=raw["assignee_user_id"])
+        except Exception:  # noqa: BLE001 — bad UUID / unknown user → drop silently
+            pass
+    return {"form_values": raw, "service_kwargs": kwargs}
+
+
+def _permit_form_payload(post) -> dict:
+    """Coerce a Permit create/update POST."""
+    fields = {
+        "permit_number": post.get("permit_number", "").strip(),
+        "kind": post.get("kind", "").strip() or "other",
+        "title": post.get("title", "").strip(),
+        "issued_to": post.get("issued_to", "").strip(),
+        "valid_from": _parse_dt(post.get("valid_from")),
+        "valid_until": _parse_dt(post.get("valid_until")),
+        "status": post.get("status", "").strip() or "draft",
+        "notes": post.get("notes", "").strip(),
+    }
+    # Strip empties so service-layer required-field checks fire as intended.
+    return {k: v for k, v in fields.items() if v not in (None, "")}
+
+
+def _ar_form_payload(post) -> dict:
+    """Coerce an AR create/update POST."""
+    fields: dict = {
+        "title": post.get("title", "").strip(),
+        "description": post.get("description", "").strip(),
+        "severity": post.get("severity", "").strip() or "medium",
+    }
+    asset_id = post.get("affected_asset_id", "").strip()
+    if asset_id:
+        try:
+            fields["affected_asset"] = FacilityAsset.objects.get(pk=asset_id)
+        except FacilityAsset.DoesNotExist:
+            pass
+    spatial_id = post.get("affected_spatial_id", "").strip()
+    if spatial_id:
+        from ifc_processor.models import IFCSpatialElement
+
+        try:
+            fields["affected_spatial"] = IFCSpatialElement.objects.get(pk=spatial_id)
+        except IFCSpatialElement.DoesNotExist:
+            pass
+    return {k: v for k, v in fields.items() if v not in (None, "")}
+
+
+def _allowed_transitions_for(wo, active_role) -> list[dict]:
+    """Return ``[{name, label, target_status}, …]`` for transitions the actor may run.
+
+    The view layer only needs the list of buttons to render; the service does
+    the actual gate check on POST. The role check here is best-effort — we
+    don't have access to the assignee_match nuance until we know the actor.
+    """
+    from .services.workorder_service import _TRANSITIONS
+
+    if active_role:
+        actor_role = active_role.role
+    else:
+        actor_role = ""
+    out = []
+    for (from_status, name), rule in _TRANSITIONS.items():
+        if from_status != wo.status:
+            continue
+        if (
+            rule.allowed_roles
+            and actor_role not in rule.allowed_roles
+            and "requester" not in rule.allowed_roles
+        ):
+            # Skip: the server will refuse anyway. Keep "cancel" by requester
+            # visible on the UI side though.
+            if name != "cancel":
+                continue
+        out.append(
+            {
+                "name": name,
+                "label": name.replace("_", " ").title(),
+                "target_status": rule.to_status,
+                "target_status_label": WorkOrderStatus(rule.to_status).label,
+            }
+        )
+    return out
+
+
+def _parse_dt(value):
+    """Parse an HTML5 ``datetime-local`` (or ISO-8601) string. Returns None for blank."""
+    if not value:
+        return None
+    from datetime import datetime as _dt
+
+    from django.utils.timezone import is_naive, make_aware
+
+    s = str(value).strip()
+    if not s:
+        return None
+    try:
+        # datetime-local has no offset
+        parsed = _dt.fromisoformat(s)
+    except ValueError:
+        return None
+    if is_naive(parsed):
+        parsed = make_aware(parsed)
+    return parsed
+
+
+# ─── Intent-to-WO (M3.E) ──────────────────────────────────────────────────
+
+
+class WorkOrderIntentView(ProjectModifyAccessMixin, View):
+    """Drawer GET → text-area; POST → run propose() and render the review modal."""
+
+    def get(self, request, pk):
+        project = self.get_project()
+        return render(
+            request,
+            "facilities/components/work_intent_drawer.html",
+            {"project": project, "user_message": "", "form_error": None},
+        )
+
+    def post(self, request, pk):
+        project = self.get_project()
+        message = request.POST.get("user_message", "").strip()
+        try:
+            proposal = FMIntentService(project, request.user).propose(message)
+        except FMIntentValidationError as exc:
+            return render(
+                request,
+                "facilities/components/work_intent_drawer.html",
+                {"project": project, "user_message": message, "form_error": str(exc)},
+                status=400,
+            )
+        except FMIntentError as exc:
+            logger.warning("Intent-to-WO propose failed for project %s: %s", project.pk, exc)
+            return toast_response(str(exc), "error", status=500)
+
+        return render(
+            request,
+            "facilities/components/work_intent_review_modal.html",
+            {"project": project, "proposal": proposal, "drafts": proposal.work_order_drafts},
+        )
+
+
+class WorkOrderIntentConfirmView(ProjectModifyAccessMixin, View):
+    """Materialize a proposal: loop create + transitions per WO."""
+
+    def post(self, request, pk, proposal_pk):
+        project = self.get_project()
+        try:
+            proposal = FMIntentProposal.objects.get(pk=proposal_pk, project=project)
+        except FMIntentProposal.DoesNotExist as exc:
+            raise Http404(str(exc)) from exc
+
+        edits = _intent_edits_payload(request.POST, proposal)
+
+        try:
+            wos = FMIntentService(project, request.user).confirm(proposal, edits=edits)
+        except FMIntentValidationError as exc:
+            return toast_response(str(exc), "error", status=400)
+
+        messages.success(request, f"Created {len(wos)} work order(s) from one sentence.")
+        return HttpResponseRedirect(reverse("facilities:work_kanban", args=[project.pk]))
+
+
+class WorkOrderIntentRejectView(ProjectModifyAccessMixin, View):
+    """Drop a PENDING proposal."""
+
+    def post(self, request, pk, proposal_pk):
+        project = self.get_project()
+        try:
+            proposal = FMIntentProposal.objects.get(pk=proposal_pk, project=project)
+        except FMIntentProposal.DoesNotExist as exc:
+            raise Http404(str(exc)) from exc
+        try:
+            FMIntentService(project, request.user).reject(
+                proposal, note=request.POST.get("note", "").strip()
+            )
+        except FMIntentValidationError as exc:
+            return toast_response(str(exc), "error", status=400)
+        messages.info(request, "Intent batch dismissed.")
+        return HttpResponseRedirect(reverse("facilities:work_kanban", args=[project.pk]))
+
+
+def _intent_edits_payload(post, proposal: FMIntentProposal) -> list[dict]:
+    """Translate the review modal's per-row form fields into a drafts list.
+
+    The modal renders one row per draft with name=``draft-<idx>-<field>`` and
+    a checkbox name=``keep-<idx>``. We honour explicit drops by omitting
+    those rows from the returned list. If no rows survive, return an empty
+    list so confirm() materialises nothing — caller can decide what to do.
+    """
+    edits: list[dict] = []
+    for idx, draft in enumerate(proposal.work_order_drafts):
+        keep = post.get(f"keep-{idx}") == "on"
+        if not keep:
+            continue
+        edits.append(
+            {
+                "title": post.get(f"draft-{idx}-title", "").strip() or draft.get("title"),
+                "description": post.get(f"draft-{idx}-description", "").strip()
+                or draft.get("description"),
+                "category": post.get(f"draft-{idx}-category", "").strip() or draft.get("category"),
+                "priority": post.get(f"draft-{idx}-priority", "").strip() or draft.get("priority"),
+                "scheduled_start": post.get(f"draft-{idx}-scheduled_start", "").strip()
+                or draft.get("scheduled_start"),
+                "due_at": post.get(f"draft-{idx}-due_at", "").strip() or draft.get("due_at"),
+                "assignee_vendor": post.get(f"draft-{idx}-assignee_vendor", "").strip()
+                or draft.get("assignee_vendor"),
+                "affected_asset_id": draft.get("affected_asset_id"),
+            }
+        )
+    return edits

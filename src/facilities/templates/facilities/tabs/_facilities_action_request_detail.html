@@ -1,0 +1,109 @@
+<!-- facilities/tabs/_facilities_action_request_detail.html — single-AR page -->
+
+<div class="d-flex flex-column gap-3">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <a href="{% url 'facilities:ar_list' project.pk %}" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Back
+        </a>
+        <h5 class="m-0 d-flex align-items-center gap-2">
+            <i class="bi bi-megaphone" style="color: var(--castor-facilities, #14b8a6);"></i>
+            <span>{{ ar.title }}</span>
+        </h5>
+        <span class="badge text-bg-light border fs-8">{{ ar.get_status_display }}</span>
+        <span class="badge text-bg-light border fs-8">{{ ar.get_severity_display }}</span>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-12 col-lg-8">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <dl class="row mb-0">
+                        <dt class="col-sm-3 fs-8 text-secondary">Submitted by</dt>
+                        <dd class="col-sm-9 fs-7">{{ ar.submitted_by.username|default:"—" }}</dd>
+
+                        <dt class="col-sm-3 fs-8 text-secondary">Submitted at</dt>
+                        <dd class="col-sm-9 fs-7">{{ ar.created_at|date:"M j, Y H:i" }}</dd>
+
+                        <dt class="col-sm-3 fs-8 text-secondary">Description</dt>
+                        <dd class="col-sm-9 fs-7" style="white-space: pre-line;">{{ ar.description|default:"—" }}</dd>
+
+                        {% if ar.affected_asset %}
+                        <dt class="col-sm-3 fs-8 text-secondary">Affected asset</dt>
+                        <dd class="col-sm-9 fs-7">
+                            <a href="{% url 'facilities:assets_detail' project.pk ar.affected_asset.pk %}">{{ ar.affected_asset }}</a>
+                        </dd>
+                        {% endif %}
+
+                        {% if ar.affected_spatial %}
+                        <dt class="col-sm-3 fs-8 text-secondary">Affected space</dt>
+                        <dd class="col-sm-9 fs-7">{{ ar.affected_spatial }}</dd>
+                        {% endif %}
+
+                        {% if ar.triage_note %}
+                        <dt class="col-sm-3 fs-8 text-secondary">Triage note</dt>
+                        <dd class="col-sm-9 fs-7" style="white-space: pre-line;">{{ ar.triage_note }}</dd>
+                        {% endif %}
+                    </dl>
+
+                    {% if ar.work_orders.all %}
+                    <hr>
+                    <div class="fs-8 fw-semibold mb-2">Linked work orders</div>
+                    <ul class="list-unstyled mb-0">
+                        {% for wo in ar.work_orders.all %}
+                        <li class="py-1">
+                            <a href="{% url 'facilities:work_detail' project.pk wo.pk %}">{{ wo.wo_number }}</a>
+                            <span class="text-secondary fs-8">— {{ wo.title|truncatechars:50 }}</span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-lg-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header py-2 fs-8 fw-semibold">Triage</div>
+                <div class="card-body p-3 d-flex flex-column gap-2">
+                    {% if user_permission == "owner" or user_permission == "editor" %}
+                    {% if ar.status == 'open' %}
+                    <form method="post" action="{% url 'facilities:ar_triage' project.pk ar.pk %}">
+                        {% csrf_token %}
+                        <input type="text" name="note" placeholder="Triage note (optional)" class="form-control form-control-sm mb-2">
+                        <button class="btn btn-sm w-100" type="submit"
+                                style="background-color: var(--castor-facilities, #14b8a6); color: white; border: none;">
+                            <i class="bi bi-check2-circle"></i> Mark triaged
+                        </button>
+                    </form>
+                    {% endif %}
+
+                    {% if ar.status == 'open' or ar.status == 'triaged' %}
+                    <form method="post" action="{% url 'facilities:ar_escalate' project.pk ar.pk %}">
+                        {% csrf_token %}
+                        <button class="btn btn-sm w-100 btn-outline-secondary" type="submit"
+                                title="Create a Work Order from this request">
+                            <i class="bi bi-arrow-right-circle"></i> Escalate to Work Order
+                        </button>
+                    </form>
+
+                    <form method="post" action="{% url 'facilities:ar_dismiss' project.pk ar.pk %}"
+                          onsubmit="return confirm('Dismiss this request?');">
+                        {% csrf_token %}
+                        <input type="text" name="note" placeholder="Reason (optional)" class="form-control form-control-sm mb-2 mt-2">
+                        <button class="btn btn-sm w-100 btn-outline-danger" type="submit">
+                            <i class="bi bi-x-octagon"></i> Dismiss
+                        </button>
+                    </form>
+                    {% endif %}
+                    {% endif %}
+
+                    {% if ar.status == 'escalated' %}
+                    <div class="text-secondary fs-8">Already escalated to a work order.</div>
+                    {% elif ar.status == 'dismissed' %}
+                    <div class="text-secondary fs-8">This request was dismissed.</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

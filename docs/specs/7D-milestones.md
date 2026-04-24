@@ -2,7 +2,7 @@
 
 Companion to `docs/specs/7D-facility-management.md` (the vision spec). This file is the **execution ledger** — what's shipped, what's in flight, what's next, and the review gate for each block. Keep it current at the start and end of each milestone so any session starts with a clear picture of where we are.
 
-**Last updated:** 2026-04-21
+**Last updated:** 2026-04-23
 
 ---
 
@@ -22,8 +22,8 @@ Companion to `docs/specs/7D-facility-management.md` (the vision spec). This file
 |---|-----------|--------|----------|
 | M0 | Scaffold + Facilities tab + ProjectRole + role-switcher + role-aware landing | ✅ Done | ⏳ Pending walk-through |
 | M1 | Asset Register | ✅ Done | ⏳ Pending walk-through |
-| M2 | Export Reconciliation v1 | ⏳ Not started | — |
-| M3 | Work Orders | ⏳ Not started | — |
+| M2 | Export Reconciliation v1 | ✅ Done | ⏳ Pending walk-through |
+| M3 | Work Orders | ✅ Done | ⏳ Pending walk-through |
 | M4 | Occupant Portal | ⏳ Not started | — |
 | M5 | PM Planner + Manual-to-PM (AI #3) | ⏳ Not started | — |
 | M6 | Documents v2 | ⏳ Not started | — |
@@ -143,40 +143,77 @@ Effort legend: S = 1–2 days, M = 3–5 days, L = 1–2 weeks.
 
 ---
 
-## M2 — Export Reconciliation v1 — ⏳ Not started
+## M2 — Export Reconciliation v1 — ✅ Done
 
 **Goal.** FM writes stay in the DB, IFC is reconciled on explicit Export. First version handles asset edits (property/classification/pset) only — sensor refs + WO summaries deferred.
 
-**Deliverables.**
-- `facilities/models/exports.py`: `FMDelta(project, entity_guid, operation, payload, created_at, created_by, applied_to_ifc_at, ifc_commit_hash)`, `ExportJob`, `ExportProfile`.
-- `facilities/services/export_reconciliation_service.py` — ★ the critical one. Plans → snapshots → replays deltas against existing tier executors → single `GitService.commit_modification()` call with bundled diff.
-- `facilities/services/ifc_mappers/` — one mapper per FM-certified op: `SET_PROPERTY`, `ADD_PSET`, `SET_CLASSIFICATION`, `SET_ATTRIBUTE` (reuse existing writeback handlers); new FM ops (`CREATE_IFCASSET_GROUP`, `WIRE_IFCDOCUMENTREFERENCE`, etc.) come online in later milestones.
-- Export IFC modal with preview (affected entities, conflict resolution UI).
-- Project header banner: `⚠ N FM updates not in IFC — last export X days ago`.
-- Small extension to `writeback.ModificationService`: `skip_commit=True` hook so Export drives the Git commit itself.
-- Tests: delta creation on asset edit, export plan rendering, replay-against-snapshot, rollback on failure, idempotency on re-ingest.
+**Delivered.**
+- `facilities/models/exports.py`: `FMDelta`, `ExportJob`, `ExportProfile`. Migration `facilities.0004_exports_m2` (+ follow-up `0005` softening `ExportJob.ifc_file` to `SET_NULL` for audit survival). `FacilityAsset.name` widened to optional override on linked assets — orphan invariant preserved.
+- `facilities/services/export_reconciliation_service.py` — peer of `ModificationService`, no LLM coupling, pure ifcopenshell + Git. `plan(profile=None)` collapses last-write-wins per `natural_key`; `preview()` renders a template-friendly snapshot; `export(ifc_file, user, profile, emitter)` runs the full pipeline (plan → snapshot → apply → validate → commit) emitting phase events and stamping each applied delta with the resulting commit hash.
+- `facilities/services/ifc_mappers/` — `asset_field_map`, `classification_mapper`, `dispatcher` — one mapper per FM-certified op (`SET_PROPERTY`, `ADD_PSET`, `SET_CLASSIFICATION`, `SET_ATTRIBUTE`). Reuses the writeback Tier1/Tier2 writers (extracted to `ifc_processor` in commit `dd22dd8`).
+- Views: `ExportPreviewView`, `ExportApplyView` + WebSocket `ExportConsumer` on `ws/projects/<id>/fm/export/` streaming `plan → snapshot → apply → validate → save → commit` with cancel support.
+- UI: amber dirty banner in the project shell (OOB-refreshable via `_fm_dirty_banner.html`), Export IFC modal with expandable per-entity subtable showing operation / target / old → new / when / who.
+- **Open debt #6 resolved bidirectionally.** `bulk_promote` reads `Pset_ManufacturerOccurrence` / `Pset_Warranty` / `Pset_AssetCommon` from `IFCEntity.properties` and seeds DB columns; `update_asset` emits `FMDelta`s that export replays back into those psets. DB is authoritative post-promotion.
+- Shared `diff_data` shape with writeback so the History tab renders FM exports with no template fork; `tier=2` flags them ORANGE.
+- Tests: `test_fm_delta_model.py`, `test_delta_emission.py`, `test_export_plan.py`, `test_export_apply.py`, `test_promote_seeding.py`. Green alongside the M1 + M0 suites.
 
-**Review gate.** Edit an asset attribute → see dirty banner → click Export → preview → confirm → verify one new Git commit + correct IFC pset/attribute writes + all deltas marked applied.
+**Review gate (walk-through, pending user).**
+1. Open the project → **Facilities** → **Assets**. Edit a few asset fields covered by the certified ops (manufacturer, warranty end, serial number, classification). Confirm the amber `⚠ N FM updates not in IFC — last export X days ago` banner appears in the project header.
+2. Click **Export IFC** → preview modal renders with the per-entity subtable (operation, target, old → new, who, when) and a profile selector. Confirm the conflict count = 0 in the simple case; bump it by editing the same field twice in a row and confirm the older delta is shown as superseded.
+3. Hit **Export** → WebSocket streams the plan → snapshot → apply → validate → save → commit phases live. Single Git commit lands with the deterministic message.
+4. Verify in the History tab that the export shows up as a tier=2 ORANGE entry with the same diff shape as a writeback proposal.
+5. Re-ingest the IFC file Castor just exported — confirm no duplicate FM data is created (idempotent on re-ingest, per spec §7.4).
 
-**Effort.** M (3–5 days).
+**Files touched (M2 work).**
+- new: `src/facilities/models/exports.py` (`FMDelta`, `ExportJob`, `ExportProfile`)
+- new: `src/facilities/services/export_reconciliation_service.py`
+- new: `src/facilities/services/ifc_mappers/{__init__.py,asset_field_map.py,classification_mapper.py,dispatcher.py}`
+- new: `src/facilities/consumers.py` (`ExportConsumer`); `src/facilities/routing.py`
+- new: tests `test_fm_delta_model.py`, `test_delta_emission.py`, `test_export_plan.py`, `test_export_apply.py`, `test_promote_seeding.py`
+- migrations: `facilities.0004_exports_m2`, `facilities.0005_alter_exportjob_ifc_file`
+- modified: `src/facilities/services/asset_service.py` (delta emission on update; pset seeding on promote), `src/facilities/views.py` (export views), `src/facilities/admin.py`, `src/facilities/templates/facilities/components/export_ifc_modal.html`, `export_ifc_preview.html`
+- writeback prep: tier writers extracted to `src/ifc_processor/` (commit `dd22dd8`); `ModificationService` got a `skip_commit` hook so Export drives the Git commit itself.
 
 ---
 
-## M3 — Work Orders — ⏳ Not started
+## M3 — Work Orders — ✅ Done
 
 **Goal.** CMMS core. From "noticed something wrong" to "signed off" without leaving Castor.
 
-**Deliverables.**
-- `facilities/models/work.py`: `WorkOrder`, `ActionRequest`, `Permit`, `WorkOrderStatusEvent`, `WorkOrderAttachment`. Lifecycle: Draft → Submitted → Triaged → Assigned → Scheduled → In Progress → Completed → Verified → Closed.
-- `facilities/services/workorder_service.py` — transitions, assignment, SLA clock.
-- `facilities/consumers.py` — `WorkOrderConsumer` for live status push (reuses existing channels setup).
-- Views: kanban board, calendar, list (filterable/exportable), detail modal.
-- **AI wow (§6.2):** Intent-to-WO — natural-language input → Tier-2 RSAA plan → batch-review modal → confirm → N WOs created. Reuses existing `ModificationService` shape with a new "FM batch" tier-2 flow.
-- Tests: state machine, WS push, intent-to-WO prompt + parsing (LLM mocked).
+**Delivered (5 sub-phases, ~415 tests passing).**
+- **3.A — Models + migration + admin** (`facilities/models/work.py`, migration `0006_work_orders`): `WorkOrder` (10-stage `WorkOrderStatus` IntegerChoices, auto-numbered `WO-NNNNN` per project, dual-anchor FKs to `FacilityAsset` + `IFCSpatialElement`, `is_overdue` property), `WorkOrderStatusEvent` (append-only, `save()` rejects updates with `ImmutableError`), `WorkOrderAttachment`, `Permit` (project-scoped, M2M to WO, `is_expiring_soon` 90-day window), `ActionRequest`. 38 model tests.
+- **3.B — `WorkOrderService` + state machine** (`facilities/services/workorder_service.py` + sibling `permit_service.py` + `action_request_service.py`): single `_TRANSITIONS` dict keyed by `(from_status, name)`, role gates with sentinel tokens (`requester` / `assignee`), `_apply_transition` writes a status event + calls `_broadcast`. Skip-triage path for engineer-self-reports. Full bulk methods. AR-to-WO escalation lives on `WorkOrderService` for cross-domain transactionality. **No FMDelta emission** per spec §7.3. 66 service tests (parametrized transition matrix + role-gate matrix + bulk atomicity + escalation).
+- **3.C — Views + templates + URLs + sub-nav unlock**: 23 new routes (list / kanban / calendar / detail / create / update / single transition dispatcher / bulk / attachments / permits CRUD + link / action-requests CRUD + triage + dismiss + escalate). 25 new templates: `_facilities_work*.html`, kanban with vanilla HTML5 drag/drop, server-rendered HTMX month calendar, `_work_detail_body.html` with status timeline + transition buttons + attachments + permit linking, `permit_*` + `action_request_*` components. Sub-nav unlocked Work / Permits / Requests entries. 27 view tests.
+- **3.D — `WorkOrderConsumer` + per-project channel group** (`fm-wo-{project_id}`): push-only WS, transition broadcasts via `channel_layer.group_send` with **server pre-rendered** kanban-card HTML in the payload (one server render per transition, not per-client). `WorkOrderService._broadcast` now wired to `get_channel_layer()`. Inline JS on kanban template subscribes + reconnects with exponential backoff. 8 consumer tests including the load-bearing two-tab fan-out assertion.
+- **3.E — Intent-to-WO (FMIntentService + FMIntentProposal)** (`facilities/services/fm_intent_service.py` + `fm_intent_prompts.py`, migration `0007_fm_intent_proposal`): two-pass LLM (classifier → planner), `_invoke_with_wallclock` enforces hard caps via `ThreadPoolExecutor` per `feedback_ollama_hard_timeout`. `confirm()` loops `WorkOrderService.create_work_order` + `submit/triage/assign/schedule` per draft so every WO writes a full 5-event status chain (no DB-level bulk write). `FMIntentProposal` is the audit row, double-linked to created WOs via `WorkOrder.source_intent_batch_id`. AI batch button on kanban toolbar. 16 LLM-mocked tests including the bypass guard.
 
-**Review gate.** Type *"Schedule filter replacement on all rooftop AHUs next Tuesday, assign to ACME HVAC, priority 2"* → batch review → confirm → 8 WOs on kanban, WS pushed to a second browser tab.
+**Review gate (walk-through, pending user).**
+1. Open the project → **Facilities** → sub-nav now shows **Dashboard | Assets | Work | Permits | Requests | …placeholders**. Click **Work**.
+2. Filter by status / priority / category in the list view; HTMX swap updates the grid.
+3. Click **Kanban** → drag a card from a column to the next valid column → confirm transition lands and audit timeline updates.
+4. Open the project in a second browser tab also on the kanban; trigger a transition in tab 1 → confirm tab 2 receives the WS push (`fm-wo-{project_id}` group) and the card swaps in place.
+5. Click **Calendar** → navigate prev/next month; WO chips appear on their `scheduled_start` day cells.
+6. Open a WO's detail page → status timeline lists every event with actor + role snapshot + timestamp; attach a photo; link an existing permit.
+7. Submit *"Schedule filter replacement on all rooftop AHUs next Tuesday, assign to ACME HVAC, priority 2"* via the **AI batch** button → review modal → confirm → N WOs land in `Scheduled`, all sharing one `source_intent_batch_id` (visible in admin via `FMIntentProposal`).
+8. Log in as OCCUPANT → submit an `ActionRequest` via the report-an-issue drawer; log in as FM → triage → escalate → confirm WO is created with `source_action_request` set and the AR moves to `escalated`.
+9. Create a Permit → link it to a WO → revoke it → confirm WO detail shows the revoked status.
+10. Run `cd src && uv run pytest facilities/tests/ -v -x` — all green; `uv run ruff check . && uv run ruff format .` — clean.
 
-**Effort.** L (1–2 weeks).
+**Beyond spec / scope decisions.**
+- Permits + Action Requests ship with **full CRUD UI** (per user decision) rather than the originally-suggested "models-only + minimal AR drawer" — the patterns will be reused (not replaced) by M4 (Occupant Portal) and M6 (Documents).
+- Intent-to-WO uses a **separate `FMIntentService`** mirroring `ModificationService.propose()` shape, NOT a tier-2 extension of writeback (writeback's `Tier2Writer` is hardcoded to IFC mutations and would poison the FM contract). Audit trail persists on every outcome — applied / rejected / failed / pending.
+- Kanban uses **vanilla HTML5 drag/drop** (no SortableJS) and the calendar is **server-rendered HTMX** (no FullCalendar) — both per CLAUDE.md "no JS frameworks".
+- View module split (originally planned as `views/asset.py` etc.) **deferred** — added the new view classes to `views.py` directly per CLAUDE.md "don't refactor beyond what the task requires." Split can land as its own follow-up if `views.py` exceeds ~1500 LOC after M4–M6.
+
+**Files touched (M3 work).**
+- new: `src/facilities/models/work.py`
+- new: `src/facilities/services/{workorder_service,permit_service,action_request_service,fm_intent_service,fm_intent_prompts}.py`
+- new: 25 templates under `src/facilities/templates/facilities/{tabs,components}/`
+- new: 7 test files under `src/facilities/tests/` (`test_workorder_model`, `test_workorder_service`, `test_permit_service`, `test_action_request_service`, `test_workorder_views`, `test_workorder_consumer`, `test_intent_to_wo`)
+- migrations: `facilities.0006_work_orders`, `facilities.0007_fm_intent_proposal`
+- modified: `src/facilities/{models/__init__.py,services/__init__.py,admin.py,urls.py,views.py,consumers.py,routing.py,tests/factories.py,templates/facilities/components/facilities_subnav.html}`
+
+**Effort.** L (originally 1–2 weeks; landed in one focused build session).
 
 ---
 
@@ -305,3 +342,5 @@ Effort legend: S = 1–2 days, M = 3–5 days, L = 1–2 weeks.
 - **2026-04-17** — File created; M0 shipped (code + tests), review walk-through pending. Open debt documented.
 - **2026-04-18** — Access-model consolidation shipped. `ProjectMembership` rewritten with OWNER / EDITOR / VIEWER permission tiers + partial unique index on OWNER. `Project.collaborators` dropped. `Project.owner` switched to `on_delete=PROTECT`. `ProjectAccessService` + `ProjectModifyAccessMixin` are the single source of truth for access decisions. People page (`projects:people`) added — full access-tier CRUD, read-only functional roles. Migration `0004_permission_consolidation` is reversible. M1 (Asset Register) now unblocked.
 - **2026-04-21** — **M1 (Asset Register) shipped.** Models, services, views, templates, admin, FM intent routing in Ask, 155 tests passing. Two scope extensions beyond the original spec: **(a) orphan assets** — `FacilityAsset.ifc_entity` now nullable, with required `name`, optional free-text `ifc_type`, optional `spatial_container` + `location_text`; manual-create drawer, "Add manual asset" button, relaxed CSV schema, "Not in IFC model" badges, help modal next to the Asset Register heading. Migrations `0002` + `0003`. **(b) implicit-owner fallback** — project owners with no explicit `ProjectRole` now land on the FM dashboard (implicit view) instead of the "ask a role" empty state; stale Django-admin reference replaced with a link to the in-app People page. Added open-debt items #6 (IFC pset ↔ DB column overlap, dual sources of truth) and #7 (orphan → linked reconciliation UI). Review walk-through still pending.
+- **2026-04-23** — **M2 (Export Reconciliation v1) shipped** (commit `212e147`). FMDelta queue + ExportReconciliationService (peer of ModificationService) + ifc_mappers + ExportConsumer (WS phase streaming) + dirty banner + Export IFC modal. Migrations `0004_exports_m2` + `0005_alter_exportjob_ifc_file`. Open debt #6 resolved bidirectionally (`bulk_promote` seeds DB columns from psets; `update_asset` emits FMDeltas back to psets — DB authoritative post-promotion). Tier1/Tier2 writers extracted to `ifc_processor` (commit `dd22dd8`). Review walk-through pending.
+- **2026-04-23** — **M3 (Work Orders) shipped — all five sub-phases.** 3.A models + migration + admin (`WorkOrder` 10-stage status / `WorkOrderStatusEvent` append-only / `WorkOrderAttachment` / `Permit` / `ActionRequest`; migration `0006_work_orders`; 38 model tests). 3.B `WorkOrderService` + state-machine table + sibling `permit_service` / `action_request_service`; no FMDelta on transitions per spec §7.3; 66 service tests covering parametrized transition matrix + role-gate matrix + bulk atomicity + AR-to-WO escalation. 3.C 23 new URL routes, 25 new templates, vanilla HTML5 drag/drop kanban + HTMX month calendar, sub-nav unlocked Work / Permits / Requests; 27 view tests. 3.D `WorkOrderConsumer` with per-project channel group `fm-wo-{project_id}`, server pre-rendered HTML in WS payload (one render per transition), inline JS subscribes + reconnects; 8 consumer tests including two-tab fan-out assertion. 3.E `FMIntentService` + `FMIntentProposal` (migration `0007_fm_intent_proposal`), two-pass LLM (classifier + planner) with hard wall-clock caps via `ThreadPoolExecutor` per `feedback_ollama_hard_timeout`, `confirm()` walks every WO through the full `submit/triage/assign/schedule` chain (no DB-level bulk write — every WO writes its 5-event status chain), AI batch button on kanban; 16 LLM-mocked tests including the bypass guard. **Two scope decisions beyond the spec.** (a) Permits + ARs ship with **full CRUD UI** per user decision (not the minimal models-only + AR drawer originally sketched); the patterns will be reused — not replaced — by M4 and M6. (b) Intent-to-WO is a separate `FMIntentService` mirroring `ModificationService.propose()` *shape* only, NOT a tier-2 extension; writeback's `Tier2Writer` is hardcoded to IFC writes and would poison the FM-only contract. Total facilities tests: ~415 (M0+M1+M2+M3) — full suite green. Review walk-through pending.

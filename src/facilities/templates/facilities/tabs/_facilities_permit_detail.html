@@ -1,0 +1,109 @@
+<!-- facilities/tabs/_facilities_permit_detail.html — single-permit page -->
+
+<div class="d-flex flex-column gap-3">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <a href="{% url 'facilities:permit_list' project.pk %}" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Back
+        </a>
+        <h5 class="m-0 d-flex align-items-center gap-2">
+            <i class="bi bi-shield-check" style="color: var(--castor-facilities, #14b8a6);"></i>
+            <span style="color: var(--castor-facilities, #14b8a6);">{{ permit.permit_number }}</span>
+            <span class="text-secondary fw-normal">{{ permit.title }}</span>
+        </h5>
+        <div class="ms-auto d-flex gap-2">
+            {% if user_permission == "owner" or user_permission == "editor" %}
+            {% if permit.status != 'revoked' %}
+            <form method="post" action="{% url 'facilities:permit_revoke' project.pk permit.pk %}"
+                  onsubmit="return confirm('Revoke permit {{ permit.permit_number }}?');">
+                {% csrf_token %}
+                <button class="btn btn-sm btn-outline-danger"><i class="bi bi-x-octagon"></i> Revoke</button>
+            </form>
+            {% endif %}
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-12 col-lg-8">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <form method="post" action="{% url 'facilities:permit_update' project.pk permit.pk %}">
+                        {% csrf_token %}
+                        <div class="row g-2">
+                            <div class="col-md-4">
+                                <label class="form-label fs-8">Permit number</label>
+                                <input type="text" name="permit_number" class="form-control" value="{{ permit.permit_number }}">
+                            </div>
+                            <div class="col-md-8">
+                                <label class="form-label fs-8">Title</label>
+                                <input type="text" name="title" class="form-control" value="{{ permit.title }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fs-8">Kind</label>
+                                <select name="kind" class="form-select">
+                                    {% for value, label in permit_kinds %}
+                                    <option value="{{ value }}" {% if permit.kind == value %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fs-8">Status</label>
+                                <select name="status" class="form-select">
+                                    {% for value, label in permit_statuses %}
+                                    <option value="{{ value }}" {% if permit.status == value %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fs-8">Issued to</label>
+                                <input type="text" name="issued_to" class="form-control" value="{{ permit.issued_to }}">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label fs-8">Valid from</label>
+                                <input type="datetime-local" name="valid_from" class="form-control"
+                                       value="{{ permit.valid_from|date:'Y-m-d\TH:i' }}">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label fs-8">Valid until</label>
+                                <input type="datetime-local" name="valid_until" class="form-control"
+                                       value="{{ permit.valid_until|date:'Y-m-d\TH:i' }}">
+                            </div>
+                            <div class="col-md-12">
+                                <label class="form-label fs-8">Notes</label>
+                                <textarea name="notes" rows="3" class="form-control">{{ permit.notes }}</textarea>
+                            </div>
+                        </div>
+                        {% if user_permission == "owner" or user_permission == "editor" %}
+                        <button class="btn btn-sm mt-3" type="submit"
+                                style="background-color: var(--castor-facilities, #14b8a6); color: white; border: none;">
+                            <i class="bi bi-check-lg"></i> Save
+                        </button>
+                        {% endif %}
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-lg-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header py-2 fs-8 fw-semibold">Linked work orders</div>
+                <div class="card-body p-3">
+                    {% if permit.work_orders.all %}
+                    <ul class="list-unstyled mb-0">
+                        {% for wo in permit.work_orders.all %}
+                        <li class="py-1 border-bottom">
+                            <a href="{% url 'facilities:work_detail' project.pk wo.pk %}" class="text-decoration-none">
+                                <span class="fw-semibold">{{ wo.wo_number }}</span>
+                                <span class="text-secondary fs-8">— {{ wo.title|truncatechars:40 }}</span>
+                            </a>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <div class="text-muted fs-8">No linked work orders.</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,129 @@
+<!-- facilities/components/work_intent_review_modal.html — batch-review modal -->
+
+<div class="modal fade show d-block" id="workIntentReviewModal" tabindex="-1"
+     style="background-color: rgba(0,0,0,0.4);"
+     onclick="if (event.target === this) this.remove();">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title d-flex align-items-center gap-2">
+                    <i class="bi bi-stars" style="color: var(--castor-facilities, #14b8a6);"></i>
+                    Review proposed work orders
+                </h5>
+                <button type="button" class="btn-close" onclick="this.closest('.modal').remove()"></button>
+            </div>
+
+            {% if proposal.status == 'failed' %}
+            <div class="modal-body">
+                <div class="alert alert-danger">
+                    <strong>Drafting failed.</strong>
+                    <div class="mt-1 fs-8">{{ proposal.error }}</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-sm btn-outline-secondary" onclick="this.closest('.modal').remove()">Close</button>
+            </div>
+            {% elif not drafts %}
+            <div class="modal-body">
+                <div class="text-center text-secondary py-4">
+                    <i class="bi bi-info-circle fs-2 d-block mb-2"></i>
+                    <p class="mb-0">The model couldn't resolve any matching assets for this request.</p>
+                    <p class="fs-8 text-muted mb-0">{{ proposal.plan_json.explanation|default:"" }}</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <form method="post" action="{% url 'facilities:work_intent_reject' project.pk proposal.pk %}">
+                    {% csrf_token %}
+                    <button class="btn btn-sm btn-outline-secondary">Discard</button>
+                </form>
+            </div>
+            {% else %}
+            <form method="post" action="{% url 'facilities:work_intent_confirm' project.pk proposal.pk %}">
+                {% csrf_token %}
+                <div class="modal-body">
+
+                    {% with confidence=proposal.confidence|default:0 %}
+                    {% if confidence < 50 %}
+                    <div class="alert alert-warning py-2 fs-8">
+                        Low confidence ({{ confidence }}%). Review every row carefully before confirming.
+                    </div>
+                    {% endif %}
+                    {% endwith %}
+
+                    {% if proposal.plan_json.explanation %}
+                    <p class="fs-7 fst-italic text-secondary">{{ proposal.plan_json.explanation }}</p>
+                    {% endif %}
+
+                    <div class="table-responsive">
+                        <table class="table table-sm table-borderless align-middle">
+                            <thead class="text-secondary fs-9">
+                                <tr>
+                                    <th style="width: 36px;">Keep</th>
+                                    <th>Title</th>
+                                    <th style="width: 120px;">Category</th>
+                                    <th style="width: 90px;">Priority</th>
+                                    <th style="width: 180px;">Scheduled</th>
+                                    <th style="width: 180px;">Vendor</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for draft in drafts %}
+                                <tr {% if not draft.scheduled_start %}class="table-warning"{% endif %}>
+                                    <td>
+                                        <input type="checkbox" name="keep-{{ forloop.counter0 }}" checked
+                                               class="form-check-input">
+                                    </td>
+                                    <td>
+                                        <input type="text" name="draft-{{ forloop.counter0 }}-title"
+                                               value="{{ draft.title }}" class="form-control form-control-sm">
+                                        {% if draft.affected_asset_id %}
+                                        <span class="fs-9 text-muted">→ asset {{ draft.affected_asset_id|slice:":8" }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <select name="draft-{{ forloop.counter0 }}-category" class="form-select form-select-sm">
+                                            <option value="corrective" {% if draft.category == 'corrective' %}selected{% endif %}>Corrective</option>
+                                            <option value="preventive" {% if draft.category == 'preventive' %}selected{% endif %}>Preventive</option>
+                                            <option value="inspection" {% if draft.category == 'inspection' %}selected{% endif %}>Inspection</option>
+                                            <option value="installation" {% if draft.category == 'installation' %}selected{% endif %}>Installation</option>
+                                            <option value="decommission" {% if draft.category == 'decommission' %}selected{% endif %}>Decommission</option>
+                                        </select>
+                                    </td>
+                                    <td>
+                                        <select name="draft-{{ forloop.counter0 }}-priority" class="form-select form-select-sm">
+                                            {% for n in "12345" %}
+                                            <option value="{{ n }}" {% if draft.priority|stringformat:'s' == n %}selected{% endif %}>P{{ n }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </td>
+                                    <td>
+                                        <input type="datetime-local" name="draft-{{ forloop.counter0 }}-scheduled_start"
+                                               value="{{ draft.scheduled_start|default:'' }}"
+                                               class="form-control form-control-sm">
+                                    </td>
+                                    <td>
+                                        <input type="text" name="draft-{{ forloop.counter0 }}-assignee_vendor"
+                                               value="{{ draft.assignee_vendor|default:'' }}"
+                                               class="form-control form-control-sm">
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <form method="post" action="{% url 'facilities:work_intent_reject' project.pk proposal.pk %}" class="me-auto">
+                        {% csrf_token %}
+                        <button class="btn btn-sm btn-outline-danger" type="submit">Discard batch</button>
+                    </form>
+                    <button class="btn btn-sm" type="submit"
+                            style="background-color: var(--castor-facilities, #14b8a6); color: white; border: none;">
+                        <i class="bi bi-check2-circle"></i> Confirm &amp; create {{ drafts|length }} WO{{ drafts|length|pluralize }}
+                    </button>
+                </div>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+</div>
