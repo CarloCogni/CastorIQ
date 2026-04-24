@@ -1,0 +1,16 @@
+<!-- facilities/components/work_kanban_column.html — one status column -->
+
+<div class="kanban-column" data-status="{{ col.status }}" role="listitem"
+     aria-label="{{ col.label }}">
+    <div class="kanban-column-header d-flex align-items-center justify-content-between">
+        <span>{{ col.label }}</span>
+        <span class="badge text-bg-light border fs-9">{{ col.wos|length }}</span>
+    </div>
+    <div class="kanban-column-body">
+        {% for wo in col.wos %}
+        {% include "facilities/components/work_kanban_card.html" with wo=wo %}
+        {% empty %}
+        <div class="text-muted fs-9 text-center py-3">—</div>
+        {% endfor %}
+    </div>
+</div>

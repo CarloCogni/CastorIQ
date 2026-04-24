@@ -1,0 +1,18 @@
+<!-- facilities/tabs/_facilities_work_detail.html — WO full-page detail body -->
+
+<div class="d-flex flex-column gap-3" id="facilities-work-detail-body">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <a href="{% url 'facilities:work_list' project.pk %}"
+           class="btn btn-sm btn-outline-secondary"
+           title="Back to work order list"><i class="bi bi-arrow-left"></i> Back</a>
+        <h5 class="m-0 d-flex align-items-center gap-2">
+            <i class="bi bi-clipboard2-check" style="color: var(--castor-facilities, #14b8a6);"></i>
+            <span style="color: var(--castor-facilities, #14b8a6);">{{ wo.wo_number }}</span>
+            <span class="text-secondary fw-normal">{{ wo.title }}</span>
+        </h5>
+    </div>
+
+    <div id="work-detail-body">
+        {% include "facilities/components/_work_detail_body.html" %}
+    </div>
+</div>

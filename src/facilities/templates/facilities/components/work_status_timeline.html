@@ -1,0 +1,30 @@
+<!-- facilities/components/work_status_timeline.html — chronological status events -->
+
+{% if wo.status_events.all %}
+<ul class="list-unstyled mb-0 wo-timeline">
+    {% for event in wo.status_events.all %}
+    <li class="d-flex gap-2 align-items-start py-1 border-bottom">
+        <i class="bi bi-circle-fill" style="color: var(--castor-facilities, #14b8a6); font-size: 0.5rem; margin-top: 0.6rem;"></i>
+        <div class="flex-grow-1">
+            <div class="fs-8">
+                {% if event.from_status is None %}
+                <span class="fw-semibold">Created</span>
+                {% else %}
+                <span class="text-secondary">{{ event.get_from_status_display }}</span>
+                <i class="bi bi-arrow-right"></i>
+                <span class="fw-semibold">{{ event.get_to_status_display }}</span>
+                {% endif %}
+            </div>
+            <div class="fs-9 text-secondary">
+                {{ event.created_at|date:"M j, H:i" }}
+                {% if event.actor %} — {{ event.actor.username }}{% endif %}
+                {% if event.actor_role %} <span class="badge text-bg-light border fs-9">{{ event.actor_role }}</span>{% endif %}
+            </div>
+            {% if event.note %}<div class="fs-9 text-secondary fst-italic">{{ event.note }}</div>{% endif %}
+        </div>
+    </li>
+    {% endfor %}
+</ul>
+{% else %}
+<div class="text-muted fs-8">No events yet.</div>
+{% endif %}

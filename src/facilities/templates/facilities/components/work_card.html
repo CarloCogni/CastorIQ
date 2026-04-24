@@ -1,0 +1,50 @@
+<!-- facilities/components/work_card.html — one WO row in the list grid -->
+
+{% with status_label=wo.get_status_display priority_label=wo.get_priority_display %}
+<div class="card h-100 border-0 shadow-sm wo-card" id="wo-card-{{ wo.pk }}">
+    <div class="card-body p-3">
+        <div class="d-flex align-items-start gap-2">
+            <input type="checkbox" name="wo_ids" value="{{ wo.pk }}" class="form-check-input mt-1"
+                   aria-label="Select {{ wo.wo_number }}">
+            <div class="flex-grow-1">
+                <div class="d-flex align-items-center gap-2 mb-1">
+                    <a href="{% url 'facilities:work_detail' project.pk wo.pk %}"
+                       class="fs-7 fw-semibold text-decoration-none"
+                       style="color: var(--castor-facilities, #14b8a6);">{{ wo.wo_number }}</a>
+                    <span class="badge text-bg-light border fs-9">{{ status_label }}</span>
+                    <span class="badge text-bg-light border fs-9" title="Priority">P{{ wo.priority }}</span>
+                    {% if wo.is_overdue %}
+                    <span class="badge text-bg-danger fs-9">Overdue</span>
+                    {% endif %}
+                </div>
+                <div class="fw-semibold fs-7 mb-1">{{ wo.title }}</div>
+                <div class="fs-8 text-secondary">
+                    {% if wo.affected_asset %}
+                        <i class="bi bi-gear"></i> {{ wo.affected_asset }}
+                    {% elif wo.affected_spatial %}
+                        <i class="bi bi-geo-alt"></i> {{ wo.affected_spatial }}
+                    {% else %}
+                        <span class="text-muted">No asset anchor</span>
+                    {% endif %}
+                </div>
+                <div class="d-flex flex-wrap gap-3 fs-8 text-secondary mt-2">
+                    <span>
+                        <i class="bi bi-person-circle"></i>
+                        {% if wo.assignee_user %}{{ wo.assignee_user.username }}
+                        {% elif wo.assignee_vendor %}{{ wo.assignee_vendor }}
+                        {% else %}<span class="text-muted">Unassigned</span>
+                        {% endif %}
+                    </span>
+                    {% if wo.scheduled_start %}
+                    <span title="Scheduled start"><i class="bi bi-calendar-event"></i> {{ wo.scheduled_start|date:"M j, H:i" }}</span>
+                    {% endif %}
+                    {% if wo.due_at %}
+                    <span title="Due at"><i class="bi bi-alarm"></i> {{ wo.due_at|date:"M j" }}</span>
+                    {% endif %}
+                    <span title="Category">{{ wo.get_category_display }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endwith %}

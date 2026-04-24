@@ -1,0 +1,94 @@
+<!-- facilities/components/permit_help_modal.html — "How Permits work" -->
+
+<div class="modal fade" id="permitHelpModal" tabindex="-1" aria-labelledby="permitHelpLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+
+            <div class="modal-header border-bottom px-4 py-3"
+                 style="border-color: var(--bs-border-color) !important;">
+                <h5 class="modal-title fw-semibold fs-6 mb-0" id="permitHelpLabel">
+                    <i class="bi bi-shield-check me-2" style="color: var(--castor-facilities, #14b8a6);"></i>
+                    How Permits Work
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body px-4 py-4">
+
+                <!-- 1. What is a permit? -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-clipboard2 me-1" style="color: var(--castor-facilities, #14b8a6);"></i>
+                    What is a permit?
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    A permit is a regulatory or safety instrument required before certain work can be
+                    performed — <strong class="text-body">hot work</strong>, <strong class="text-body">confined-space entry</strong>,
+                    <strong class="text-body">electrical isolation</strong>, <strong class="text-body">working at height</strong>,
+                    or a project-specific <em>other</em> category. Castor tracks the instrument itself
+                    (number, issuing party, validity window) and which work orders it authorizes.
+                </p>
+
+                <!-- 2. Lifecycle -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-arrow-repeat me-1" style="color: var(--castor-facilities, #14b8a6);"></i>
+                    Lifecycle
+                </p>
+                <div class="d-flex flex-column gap-2 fs-8 mb-4">
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge rounded-pill flex-shrink-0 mt-1"
+                              style="background-color: rgba(148,163,184,0.15); color: var(--bs-body-color); border: 1px solid var(--bs-border-color);">Draft</span>
+                        <span class="text-secondary">Captured but not yet in force — use while negotiating dates with the authority.</span>
+                    </div>
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge rounded-pill flex-shrink-0 mt-1"
+                              style="background-color: rgba(20,184,166,0.15); color: var(--castor-facilities, #14b8a6); border: 1px solid rgba(20,184,166,0.3);">Active</span>
+                        <span class="text-secondary">In effect. Within its validity window the linked work can proceed.</span>
+                    </div>
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge rounded-pill flex-shrink-0 mt-1"
+                              style="background-color: rgba(245,158,11,0.15); color: var(--castor-warning, #f59e0b); border: 1px solid rgba(245,158,11,0.3);">Expired</span>
+                        <span class="text-secondary">Past <em>valid_until</em>. Use the <em>Expiring soon</em> badge (shown 0–90 days before expiry) to catch renewals early.</span>
+                    </div>
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge rounded-pill flex-shrink-0 mt-1"
+                              style="background-color: rgba(239,68,68,0.15); color: var(--castor-danger, #ef4444); border: 1px solid rgba(239,68,68,0.3);">Revoked</span>
+                        <span class="text-secondary">Withdrawn by the authority or the project. Use <em>Revoke</em> on the detail page; a dated note is appended to the permit's notes.</span>
+                    </div>
+                </div>
+
+                <!-- 3. Linking to work orders -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-link-45deg me-1" style="color: var(--castor-facilities, #14b8a6);"></i>
+                    Linking to work orders
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    Open a work order and use the <em>Linked permits</em> section to attach an existing permit.
+                    One permit can authorize several WOs (a single hot-work permit may cover three roof-deck
+                    WOs for the same week). Unlink from the WO side; the permit itself is unaffected.
+                </p>
+
+                <!-- 4. Who can do what -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-person-check me-1" style="color: var(--castor-facilities, #14b8a6);"></i>
+                    Who can do what
+                </p>
+                <div class="d-flex flex-column gap-1 fs-8 text-secondary mb-4">
+                    <span><i class="bi bi-dot"></i>Creating, editing, revoking, and linking requires <strong class="text-body">Editor</strong> or <strong class="text-body">Owner</strong> access.</span>
+                    <span><i class="bi bi-dot"></i>Viewers can see the permit list and a WO's linked permits but cannot mutate either side.</span>
+                </div>
+
+                <!-- 5. Caveats -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-exclamation-circle me-1" style="color: var(--castor-accent, #8b5cf6);"></i>
+                    Caveats
+                </p>
+                <div class="d-flex flex-column gap-1 fs-8 text-secondary">
+                    <span><i class="bi bi-dot"></i>Permit numbers are unique per project. Re-using the authority's number across projects is fine.</span>
+                    <span><i class="bi bi-dot"></i>The 90-day expiring-soon window is a client-side signal only — the permit does not auto-revoke at expiry.</span>
+                    <span><i class="bi bi-dot"></i>Permits are DB-only records — they are <strong class="text-body">not</strong> exported to IFC in the current milestone.</span>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>

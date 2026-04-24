@@ -1,0 +1,68 @@
+<!-- facilities/tabs/_facilities_permits.html — Permit register sub-tab body -->
+
+<div class="d-flex flex-column gap-3 facilities-scope" id="facilities-permits-body">
+    <div class="d-flex align-items-center gap-3 flex-wrap">
+        <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-shield-check fs-5" style="color: var(--castor-facilities, #14b8a6);"></i>
+            <h5 class="m-0">Permits</h5>
+            {% if page_obj %}
+            <span class="badge rounded-pill" style="background-color: rgba(20,184,166,0.15); color: var(--castor-facilities, #14b8a6); border: 1px solid rgba(20,184,166,0.35);">
+                {{ page_obj.paginator.count }} permit{{ page_obj.paginator.count|pluralize }}
+            </span>
+            {% endif %}
+            <button type="button"
+                    class="help-pill"
+                    data-bs-toggle="modal"
+                    data-bs-target="#permitHelpModal"
+                    title="How Permits work"
+                    aria-label="How Permits work">
+                <i class="bi bi-question-circle"></i>
+            </button>
+        </div>
+
+        <div class="ms-auto d-flex gap-2 flex-wrap">
+            {% if user_permission == "owner" or user_permission == "editor" %}
+            <button class="btn btn-sm d-inline-flex align-items-center gap-2"
+                    style="background-color: var(--castor-facilities, #14b8a6); color: white; border: none;"
+                    hx-get="{% url 'facilities:permit_create' project.pk %}"
+                    hx-target="#permit-drawer-mount"
+                    hx-swap="innerHTML">
+                <i class="bi bi-plus-lg"></i> New permit
+            </button>
+            {% endif %}
+        </div>
+    </div>
+
+    <form class="d-flex align-items-center gap-2 flex-wrap pb-2 border-bottom"
+          hx-get="{% url 'facilities:permit_list' project.pk %}"
+          hx-target="#permit-grid-mount"
+          hx-swap="innerHTML"
+          hx-trigger="change delay:200ms from:select, input delay:400ms from:input[type=search]">
+        <div class="input-group input-group-sm" style="width: 240px;">
+            <span class="input-group-text"><i class="bi bi-search"></i></span>
+            <input type="search" name="q" value="{{ active_q }}" placeholder="Number, title…"
+                   class="form-control form-control-sm">
+        </div>
+        <select name="kind" class="form-select form-select-sm" style="width: 180px;">
+            <option value="">All kinds</option>
+            {% for value, label in permit_kinds %}
+            <option value="{{ value }}" {% if active_kind == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+        <select name="status" class="form-select form-select-sm" style="width: 140px;">
+            <option value="">All statuses</option>
+            {% for value, label in permit_statuses %}
+            <option value="{{ value }}" {% if active_status == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </form>
+
+    <div id="permit-grid-mount">
+        {% include "facilities/components/permit_grid.html" %}
+    </div>
+
+    <div id="permit-drawer-mount"></div>
+
+    <!-- Help modal — "How Permits Work" -->
+    {% include "facilities/components/permit_help_modal.html" %}
+</div>

@@ -1,0 +1,49 @@
+<!-- facilities/components/work_intent_drawer.html — Intent-to-WO entry drawer -->
+
+<div class="modal fade show d-block" id="workIntentDrawer" tabindex="-1"
+     style="background-color: rgba(0,0,0,0.4);"
+     onclick="if (event.target === this) this.remove();">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form method="post" action="{% url 'facilities:work_intent' project.pk %}"
+                  hx-post="{% url 'facilities:work_intent' project.pk %}"
+                  hx-target="#work-drawer-mount"
+                  hx-swap="innerHTML">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title d-flex align-items-center gap-2">
+                        <i class="bi bi-stars" style="color: var(--castor-facilities, #14b8a6);"></i>
+                        AI batch — Intent to Work Orders
+                    </h5>
+                    <button type="button" class="btn-close" onclick="this.closest('.modal').remove()" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="fs-8 text-secondary mb-3">
+                        Type one sentence; the LLM will draft a batch of work orders against your assets,
+                        and you'll review every one before anything is created.
+                    </p>
+                    {% if form_error %}
+                    <div class="alert alert-danger py-2">{{ form_error }}</div>
+                    {% endif %}
+                    <div class="mb-2">
+                        <label class="form-label fs-8">Request</label>
+                        <textarea name="user_message" rows="3" required minlength="10" maxlength="500"
+                                  class="form-control"
+                                  placeholder="e.g. Schedule filter replacement on all rooftop AHUs next Tuesday, assign to ACME HVAC, priority 2.">{{ user_message }}</textarea>
+                    </div>
+                    <div class="fs-9 text-muted">
+                        Tip: name the asset type ("rooftop AHUs", "all chillers"), include a date,
+                        a vendor (optional), and a priority for best results.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="this.closest('.modal').remove()">Cancel</button>
+                    <button type="submit" class="btn btn-sm"
+                            style="background-color: var(--castor-facilities, #14b8a6); color: white; border: none;">
+                        <i class="bi bi-magic"></i> Draft work orders
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

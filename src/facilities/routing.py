@@ -10,4 +10,8 @@ websocket_urlpatterns = [
         r"ws/projects/(?P<project_id>[0-9a-f-]+)/fm/export/$",
         consumers.ExportConsumer.as_asgi(),
     ),
+    re_path(
+        r"ws/projects/(?P<project_id>[0-9a-f-]+)/fm/work/$",
+        consumers.WorkOrderConsumer.as_asgi(),
+    ),
 ]

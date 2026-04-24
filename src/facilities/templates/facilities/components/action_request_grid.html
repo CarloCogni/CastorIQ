@@ -1,0 +1,39 @@
+<!-- facilities/components/action_request_grid.html — AR list grid -->
+
+{% if page_obj.object_list %}
+<div class="row g-3">
+    {% for ar in page_obj.object_list %}
+    <div class="col-12 col-md-6 col-lg-4">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body p-3">
+                <div class="d-flex align-items-center gap-2 mb-1">
+                    <a href="{% url 'facilities:ar_detail' project.pk ar.pk %}" class="fs-7 fw-semibold text-decoration-none"
+                       style="color: var(--castor-facilities, #14b8a6);">
+                        <i class="bi bi-megaphone"></i> {{ ar.title|truncatechars:50 }}
+                    </a>
+                    <span class="badge text-bg-light border fs-9 ms-auto">{{ ar.get_status_display }}</span>
+                </div>
+                <div class="fs-8 text-secondary mb-2">
+                    <span class="badge text-bg-light border fs-9">{{ ar.get_severity_display }}</span>
+                    {% if ar.affected_asset %} · <i class="bi bi-gear"></i> {{ ar.affected_asset }}
+                    {% elif ar.affected_spatial %} · <i class="bi bi-geo-alt"></i> {{ ar.affected_spatial }}
+                    {% endif %}
+                </div>
+                {% if ar.description %}
+                <p class="fs-8 mb-1" style="white-space: pre-line;">{{ ar.description|truncatechars:140 }}</p>
+                {% endif %}
+                <div class="fs-9 text-muted">
+                    {{ ar.created_at|date:"M j, Y H:i" }}
+                    {% if ar.submitted_by %} · {{ ar.submitted_by.username }}{% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="text-center text-secondary py-5">
+    <i class="bi bi-megaphone fs-2 d-block mb-2"></i>
+    <p class="mb-0 fs-7">No action requests yet.</p>
+</div>
+{% endif %}

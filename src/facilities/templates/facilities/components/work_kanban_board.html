@@ -1,0 +1,7 @@
+<!-- facilities/components/work_kanban_board.html — columns container -->
+
+<div id="work-kanban-board" role="list" aria-label="Work order kanban">
+    {% for col in kanban_columns %}
+    {% include "facilities/components/work_kanban_column.html" with col=col %}
+    {% endfor %}
+</div>

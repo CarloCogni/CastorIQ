@@ -1,0 +1,177 @@
+<!-- facilities/components/_work_detail_body.html — shared detail body (full page + drawer) -->
+
+<div class="row g-3">
+
+    <!-- Hero card -->
+    <div class="col-12 col-lg-8">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+                    <span class="badge text-bg-light border fs-8">{{ wo.get_status_display }}</span>
+                    <span class="badge text-bg-light border fs-8">{{ wo.get_priority_display }}</span>
+                    <span class="badge text-bg-light border fs-8">{{ wo.get_category_display }}</span>
+                    {% if wo.is_overdue %}<span class="badge text-bg-danger fs-8">Overdue</span>{% endif %}
+                </div>
+
+                <dl class="row mb-0">
+                    <dt class="col-sm-3 fs-8 text-secondary">Anchor</dt>
+                    <dd class="col-sm-9 fs-7">
+                        {% if wo.affected_asset %}<i class="bi bi-gear"></i> <a href="{% url 'facilities:assets_detail' project.pk wo.affected_asset.pk %}">{{ wo.affected_asset }}</a>
+                        {% elif wo.affected_spatial %}<i class="bi bi-geo-alt"></i> {{ wo.affected_spatial }}
+                        {% else %}<span class="text-muted">No asset or space anchor</span>{% endif %}
+                    </dd>
+
+                    <dt class="col-sm-3 fs-8 text-secondary">Description</dt>
+                    <dd class="col-sm-9 fs-7" style="white-space: pre-line;">{{ wo.description|default:"—" }}</dd>
+
+                    <dt class="col-sm-3 fs-8 text-secondary">Requested by</dt>
+                    <dd class="col-sm-9 fs-7">{{ wo.requested_by.username|default:"—" }}</dd>
+
+                    <dt class="col-sm-3 fs-8 text-secondary">Assignee</dt>
+                    <dd class="col-sm-9 fs-7">
+                        {% if wo.assignee_user %}<i class="bi bi-person-circle"></i> {{ wo.assignee_user.username }}
+                        {% elif wo.assignee_vendor %}<i class="bi bi-building"></i> {{ wo.assignee_vendor }}
+                        {% else %}<span class="text-muted">Unassigned</span>{% endif %}
+                    </dd>
+
+                    <dt class="col-sm-3 fs-8 text-secondary">Schedule</dt>
+                    <dd class="col-sm-9 fs-7">
+                        {% if wo.scheduled_start %}{{ wo.scheduled_start|date:"M j, Y H:i" }}{% if wo.scheduled_end %} → {{ wo.scheduled_end|date:"H:i" }}{% endif %}
+                        {% else %}<span class="text-muted">Not scheduled</span>{% endif %}
+                    </dd>
+
+                    <dt class="col-sm-3 fs-8 text-secondary">Due</dt>
+                    <dd class="col-sm-9 fs-7">{% if wo.due_at %}{{ wo.due_at|date:"M j, Y H:i" }}{% else %}<span class="text-muted">No deadline</span>{% endif %}</dd>
+
+                    {% if wo.actual_start %}
+                    <dt class="col-sm-3 fs-8 text-secondary">Actual start</dt>
+                    <dd class="col-sm-9 fs-7">{{ wo.actual_start|date:"M j, Y H:i" }}</dd>
+                    {% endif %}
+                    {% if wo.actual_end %}
+                    <dt class="col-sm-3 fs-8 text-secondary">Actual end</dt>
+                    <dd class="col-sm-9 fs-7">{{ wo.actual_end|date:"M j, Y H:i" }}</dd>
+                    {% endif %}
+                    {% if wo.verified_at %}
+                    <dt class="col-sm-3 fs-8 text-secondary">Verified</dt>
+                    <dd class="col-sm-9 fs-7">{{ wo.verified_at|date:"M j, Y H:i" }} by {{ wo.verified_by.username|default:"—" }}</dd>
+                    {% endif %}
+                    {% if wo.source_action_request %}
+                    <dt class="col-sm-3 fs-8 text-secondary">Source</dt>
+                    <dd class="col-sm-9 fs-7">From action request <a href="{% url 'facilities:ar_detail' project.pk wo.source_action_request.pk %}">{{ wo.source_action_request.title|truncatechars:60 }}</a></dd>
+                    {% endif %}
+                </dl>
+            </div>
+        </div>
+
+        <!-- Permits -->
+        <div class="card border-0 shadow-sm mt-3">
+            <div class="card-header py-2 fs-8 fw-semibold">Linked permits</div>
+            <div class="card-body p-3">
+                {% if wo.permits.all %}
+                <ul class="list-unstyled mb-0">
+                    {% for permit in wo.permits.all %}
+                    <li class="d-flex align-items-center gap-2 py-1 border-bottom">
+                        <i class="bi bi-shield-check"></i>
+                        <a href="{% url 'facilities:permit_detail' project.pk permit.pk %}" class="text-decoration-none">{{ permit.permit_number }}</a>
+                        <span class="fs-8 text-secondary">{{ permit.title }}</span>
+                        {% if user_permission == "owner" or user_permission == "editor" %}
+                        <form method="post" class="ms-auto" action="{% url 'facilities:work_permit_unlink' project.pk wo.pk permit.pk %}">
+                            {% csrf_token %}
+                            <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-x"></i></button>
+                        </form>
+                        {% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div class="text-muted fs-8">No permits linked.</div>
+                {% endif %}
+
+                {% if user_permission == "owner" or user_permission == "editor" %}
+                {% if available_permits %}
+                <form method="post" action="{% url 'facilities:work_permit_link' project.pk wo.pk %}" class="d-flex gap-2 mt-2">
+                    {% csrf_token %}
+                    <select name="permit_id" class="form-select form-select-sm" style="max-width: 320px;">
+                        {% for permit in available_permits %}
+                        <option value="{{ permit.pk }}">{{ permit.permit_number }} — {{ permit.title|truncatechars:40 }}</option>
+                        {% endfor %}
+                    </select>
+                    <button class="btn btn-sm btn-outline-secondary"><i class="bi bi-link-45deg"></i> Link</button>
+                </form>
+                {% endif %}
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Attachments -->
+        <div class="card border-0 shadow-sm mt-3">
+            <div class="card-header py-2 fs-8 fw-semibold">Attachments</div>
+            <div class="card-body p-3">
+                {% if wo.attachments.all %}
+                <ul class="list-unstyled mb-0">
+                    {% for att in wo.attachments.all %}
+                    <li class="d-flex align-items-center gap-2 py-1 border-bottom">
+                        <i class="bi bi-paperclip"></i>
+                        <a href="{{ att.file.url }}" class="text-decoration-none" target="_blank">{{ att.caption|default:att.file.name }}</a>
+                        <span class="badge text-bg-light border fs-9">{{ att.get_kind_display }}</span>
+                        <span class="ms-auto fs-9 text-muted">{{ att.created_at|date:"M j" }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div class="text-muted fs-8">No attachments yet.</div>
+                {% endif %}
+
+                {% if user_permission == "owner" or user_permission == "editor" %}
+                <form method="post" enctype="multipart/form-data"
+                      action="{% url 'facilities:work_attachment' project.pk wo.pk %}"
+                      class="d-flex gap-2 mt-2 align-items-center">
+                    {% csrf_token %}
+                    <input type="file" name="file" class="form-control form-control-sm" required>
+                    <input type="text" name="caption" placeholder="Caption (optional)" class="form-control form-control-sm">
+                    <select name="kind" class="form-select form-select-sm" style="width: 110px;">
+                        <option value="photo">Photo</option>
+                        <option value="document">Document</option>
+                        <option value="signoff">Sign-off</option>
+                    </select>
+                    <button class="btn btn-sm btn-outline-secondary"><i class="bi bi-upload"></i> Upload</button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Side: status timeline + transition buttons -->
+    <div class="col-12 col-lg-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header py-2 fs-8 fw-semibold">Actions</div>
+            <div class="card-body p-3 d-flex flex-column gap-2">
+                {% if user_permission == "owner" or user_permission == "editor" %}
+                {% if allowed_transitions %}
+                {% for t in allowed_transitions %}
+                <form method="post" action="{% url 'facilities:work_transition' project.pk wo.pk t.name %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm w-100 d-flex align-items-center justify-content-between"
+                            style="background-color: rgba(20,184,166,0.08); color: var(--castor-facilities, #14b8a6); border: 1px solid rgba(20,184,166,0.35);">
+                        <span><i class="bi bi-arrow-right-circle"></i> {{ t.label }}</span>
+                        <span class="fs-9">→ {{ t.target_status_label }}</span>
+                    </button>
+                </form>
+                {% endfor %}
+                {% else %}
+                <div class="text-muted fs-8">No transitions available for the current state and your role.</div>
+                {% endif %}
+                {% else %}
+                <div class="text-muted fs-8">Read-only — actions require Editor permission.</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm mt-3">
+            <div class="card-header py-2 fs-8 fw-semibold">Status timeline</div>
+            <div class="card-body p-3">
+                {% include "facilities/components/work_status_timeline.html" %}
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,21 @@
+<!-- facilities/tabs/_facilities_work_calendar.html — month calendar view -->
+
+<div class="d-flex flex-column gap-3" id="facilities-work-calendar-body">
+    <div class="d-flex align-items-center gap-3 flex-wrap">
+        <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-calendar3 fs-5" style="color: var(--castor-facilities, #14b8a6);"></i>
+            <h5 class="m-0">Calendar</h5>
+        </div>
+        <div class="ms-auto d-flex gap-2 flex-wrap align-items-center">
+            <div class="btn-group btn-group-sm" role="group" aria-label="View switcher">
+                <a href="{% url 'facilities:work_list' project.pk %}" class="btn btn-outline-secondary"><i class="bi bi-list-ul"></i> List</a>
+                <a href="{% url 'facilities:work_kanban' project.pk %}" class="btn btn-outline-secondary"><i class="bi bi-kanban"></i> Kanban</a>
+                <a href="{% url 'facilities:work_calendar' project.pk %}" class="btn btn-outline-secondary active"><i class="bi bi-calendar3"></i> Calendar</a>
+            </div>
+        </div>
+    </div>
+
+    <div id="work-calendar-mount">
+        {% include "facilities/components/work_calendar_month.html" %}
+    </div>
+</div>

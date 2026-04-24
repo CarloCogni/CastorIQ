@@ -89,6 +89,37 @@ Every POST/PUT/DELETE endpoint MUST give the user visible feedback. The toast pr
 
 Levels: `success` (green) / `error` (red) / `info` (secondary). Field-level form validation errors stay inline on the re-rendered form — only non-field / exceptional errors get a toast.
 
+### Help modals — "?" pill on every meaningful page (non-negotiable)
+
+**Every non-trivial tab or sub-tab MUST ship with a `?` help pill next to its heading that opens a Bootstrap modal explaining the page.** This is a durable UX commitment, not a nice-to-have — users who open a page cold must have a one-click path to understanding what it does, how to use it, and where the edges are.
+
+**When it applies:**
+- Any tab/sub-tab with a list, lifecycle, bulk ops, or configuration surface. Examples: Assets, Work, Permits, Requests, Maintenance, Systems, Ask, Modify, Conflicts, History, Explore, Schedule.
+- Drawers reached from a page that already has a help modal inherit their parent's explanation — they don't need their own.
+- Admin pages are out of scope (different audience).
+
+**Pattern (copy exactly for every new page):**
+
+1. Next to the page's `<h5>` heading, add the pill button:
+   ```html
+   <button type="button"
+           class="help-pill"
+           data-bs-toggle="modal"
+           data-bs-target="#<thingHelpModal>"
+           title="How <Thing> works"
+           aria-label="How <Thing> works">
+       <i class="bi bi-question-circle"></i>
+   </button>
+   ```
+2. Wrap the page body in a scope class so `.help-pill` picks up the right accent: `.facilities-scope` (teal), `.modify-scope` (purple), or leave blank for the default blue.
+3. Create `<app>/templates/<app>/components/<thing>_help_modal.html` using the standard five-section shape — What is it? / Lifecycle / How to do X / Who can do what / Caveats — and `{% include %}` it at the bottom of the tab body.
+4. `.help-pill` CSS is defined once in `core/templates/core/base.html`. Do NOT redefine it per-page.
+5. **When a feature lands on a page that has a help modal, update the modal in the same change.** Stale help text is worse than none.
+
+**Reference implementations:** `facilities/templates/facilities/components/{asset_register,work,permit,action_request}_help_modal.html`. The Asset Register modal is the canonical example.
+
+**Rule of thumb:** if a new tab ships without a `?` pill next to the heading, the review is not complete. Flag it before merge.
+
 ---
 
 ## Code Delivery Preferences
@@ -119,6 +150,7 @@ Read the relevant skill file before generating code in that domain.
 | django-service.md | Creating or modifying any service class |
 | ifcopenshell-ops.md | Any IFC file modification code |
 | htmx-patterns.md | Adding or modifying interactive UI |
+| help-modals.md | Creating or editing any tab / sub-tab / full-page view |
 | testing-skill.md | Writing, updating, or running tests |
 
 ---
@@ -145,9 +177,11 @@ Read the relevant skill file before generating code in that domain.
 - Before IfcOpenShell code: Read `.claude/skills/ifcopenshell-ops.md`
 - Before creating a service: Read `.claude/skills/django-service.md`
 - Before HTMX interactivity: Read `.claude/skills/htmx-patterns.md`
+- Before creating or editing a tab / sub-tab with non-trivial IA: Read `.claude/skills/help-modals.md` and ensure a `?` help pill + modal ships with the page (see Frontend §"Help modals" above — non-negotiable).
 - Before writing/updating tests: Read `.claude/skills/testing-skill.md`
 - After modifying ANY service or model: run `cd src && uv run pytest <app>/tests/ -v -x` and fix failures before finishing.
 - If a refactor changes a function/class/signature that tests depend on: update those tests in the same response.
+- When a feature lands on a page that has a help modal: update the modal in the same change.
 - Always run `ruff check` and `ruff format` after changes.
 
 ### Migrations

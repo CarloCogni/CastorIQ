@@ -1,0 +1,8 @@
+<!-- facilities/components/work_calendar_event.html — one chip in a calendar day cell -->
+
+<a href="{% url 'facilities:work_detail' project.pk wo.pk %}"
+   class="d-block fs-9 text-decoration-none calendar-event mb-1 px-1"
+   title="{{ wo.title }} — {{ wo.scheduled_start|date:'M j, H:i' }}"
+   style="background-color: rgba(20,184,166,0.12); color: var(--castor-facilities, #14b8a6); border-radius: 3px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+    <span class="fw-semibold">{{ wo.scheduled_start|date:"H:i" }}</span> {{ wo.title|truncatechars:24 }}
+</a>

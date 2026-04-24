@@ -2,13 +2,16 @@
 """Admin registrations for the facilities app.
 
 M1 registers the Asset Register models: Classification / ClassificationReference
-and FacilityAsset / AssetInventory. Work, maintenance, systems, sensors, etc.
-are added in later milestones.
+and FacilityAsset / AssetInventory. M2 adds the Export Reconciliation models
+(ExportProfile / ExportJob / FMDelta). M3 adds the Work Order family
+(WorkOrder / WorkOrderStatusEvent / WorkOrderAttachment / Permit /
+ActionRequest). Maintenance, systems, sensors, etc. land in later milestones.
 """
 
 from django.contrib import admin
 
 from .models import (
+    ActionRequest,
     AssetInventory,
     Classification,
     ClassificationReference,
@@ -16,6 +19,11 @@ from .models import (
     ExportProfile,
     FacilityAsset,
     FMDelta,
+    FMIntentProposal,
+    Permit,
+    WorkOrder,
+    WorkOrderAttachment,
+    WorkOrderStatusEvent,
 )
 
 
@@ -241,3 +249,219 @@ class FMDeltaAdmin(admin.ModelAdmin):
     @admin.display(boolean=True, description="Pending")
     def is_pending(self, obj: FMDelta) -> bool:
         return obj.is_pending
+
+
+# ── Work Orders (M3) ──────────────────────────────────────────────────────
+
+
+class WorkOrderStatusEventInline(admin.TabularInline):
+    """Read-only inline rendering of a WO's full status timeline."""
+
+    model = WorkOrderStatusEvent
+    extra = 0
+    can_delete = False
+    fields = ("created_at", "from_status", "to_status", "actor", "actor_role", "note")
+    readonly_fields = fields
+    ordering = ("created_at",)
+
+    def has_add_permission(self, request, obj=None):  # noqa: D401
+        """Status events are append-only via the service layer, not admin."""
+        return False
+
+
+class WorkOrderAttachmentInline(admin.TabularInline):
+    """Inline list of files attached to the WO."""
+
+    model = WorkOrderAttachment
+    extra = 0
+    fields = ("kind", "file", "caption", "uploaded_by", "created_at")
+    readonly_fields = ("created_at",)
+
+
+@admin.register(WorkOrder)
+class WorkOrderAdmin(admin.ModelAdmin):
+    """Admin for the WorkOrder lifecycle — read-mostly, mutations go through the service."""
+
+    list_display = (
+        "wo_number",
+        "title",
+        "project",
+        "status",
+        "priority",
+        "category",
+        "assignee_user",
+        "assignee_vendor",
+        "scheduled_start",
+        "due_at",
+        "created_at",
+    )
+    list_filter = ("status", "priority", "category", "project")
+    search_fields = (
+        "wo_number",
+        "title",
+        "description",
+        "assignee_vendor",
+        "affected_asset__asset_tag",
+    )
+    raw_id_fields = (
+        "project",
+        "affected_asset",
+        "affected_spatial",
+        "requested_by",
+        "assignee_user",
+        "verified_by",
+        "source_action_request",
+    )
+    readonly_fields = (
+        "wo_number",
+        "actual_start",
+        "actual_end",
+        "verified_at",
+        "verified_by",
+        "closed_at",
+        "source_intent_batch_id",
+        "created_at",
+        "updated_at",
+    )
+    date_hierarchy = "created_at"
+    inlines = [WorkOrderStatusEventInline, WorkOrderAttachmentInline]
+    fieldsets = (
+        (
+            "Identity",
+            {"fields": ("project", "wo_number", "title", "description", "category", "priority")},
+        ),
+        (
+            "Anchors",
+            {"fields": ("affected_asset", "affected_spatial")},
+        ),
+        (
+            "Lifecycle",
+            {
+                "fields": (
+                    "status",
+                    "requested_by",
+                    "assignee_user",
+                    "assignee_vendor",
+                    "scheduled_start",
+                    "scheduled_end",
+                    "actual_start",
+                    "actual_end",
+                    "due_at",
+                    "verified_at",
+                    "verified_by",
+                    "closed_at",
+                ),
+            },
+        ),
+        (
+            "Provenance",
+            {"fields": ("source_action_request", "source_intent_batch_id")},
+        ),
+    )
+
+
+@admin.register(WorkOrderStatusEvent)
+class WorkOrderStatusEventAdmin(admin.ModelAdmin):
+    """Append-only audit log of WO transitions."""
+
+    list_display = (
+        "work_order",
+        "from_status",
+        "to_status",
+        "actor",
+        "actor_role",
+        "created_at",
+    )
+    list_filter = ("to_status", "actor_role")
+    search_fields = ("work_order__wo_number", "note")
+    raw_id_fields = ("work_order", "actor")
+    readonly_fields = ("work_order", "from_status", "to_status", "actor", "actor_role", "note")
+    date_hierarchy = "created_at"
+
+    def has_add_permission(self, request):  # noqa: D401
+        """Status events are written by the service layer only."""
+        return False
+
+    def has_change_permission(self, request, obj=None):  # noqa: D401
+        """Append-only — no edits."""
+        return False
+
+
+@admin.register(WorkOrderAttachment)
+class WorkOrderAttachmentAdmin(admin.ModelAdmin):
+    """Admin for attachments — light CRUD."""
+
+    list_display = ("work_order", "kind", "caption", "uploaded_by", "created_at")
+    list_filter = ("kind",)
+    search_fields = ("caption", "work_order__wo_number")
+    raw_id_fields = ("work_order", "uploaded_by")
+
+
+@admin.register(Permit)
+class PermitAdmin(admin.ModelAdmin):
+    """Admin for Permits — full CRUD per M3 user decision."""
+
+    list_display = (
+        "permit_number",
+        "title",
+        "kind",
+        "status",
+        "issued_to",
+        "valid_from",
+        "valid_until",
+        "project",
+    )
+    list_filter = ("kind", "status", "project")
+    search_fields = ("permit_number", "title", "issued_to", "notes")
+    raw_id_fields = ("project",)
+    filter_horizontal = ("work_orders",)
+    date_hierarchy = "valid_until"
+
+
+@admin.register(ActionRequest)
+class ActionRequestAdmin(admin.ModelAdmin):
+    """Admin for occupant-submitted Action Requests."""
+
+    list_display = (
+        "title",
+        "project",
+        "submitted_by",
+        "severity",
+        "status",
+        "affected_asset",
+        "affected_spatial",
+        "created_at",
+    )
+    list_filter = ("status", "severity", "project")
+    search_fields = ("title", "description", "triage_note")
+    raw_id_fields = ("project", "submitted_by", "affected_asset", "affected_spatial")
+    date_hierarchy = "created_at"
+
+
+@admin.register(FMIntentProposal)
+class FMIntentProposalAdmin(admin.ModelAdmin):
+    """Audit view for Intent-to-WO batches — read-mostly."""
+
+    list_display = (
+        "id",
+        "project",
+        "user",
+        "status",
+        "confidence",
+        "created_at",
+        "applied_at",
+    )
+    list_filter = ("status", "project")
+    search_fields = ("user_message", "error")
+    raw_id_fields = ("project", "user")
+    readonly_fields = (
+        "user_message",
+        "plan_json",
+        "confidence",
+        "applied_at",
+        "created_wo_ids",
+        "error",
+        "created_at",
+        "updated_at",
+    )
+    date_hierarchy = "created_at"
