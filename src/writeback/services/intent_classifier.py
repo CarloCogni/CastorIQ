@@ -253,6 +253,12 @@ class IntentClassifier:
                 if not isinstance(sub_intent, dict):
                     raise IntentParseError(f"Chain element {i} is not a valid intent object")
                 self._validate_structure(sub_intent)
+                # Auto-fill explanation if LLM omitted it
+                if "explanation" not in sub_intent and sub_intent.get("tier") == 1:
+                    op = sub_intent.get("operation", "modify")
+                    prop = sub_intent.get("property") or sub_intent.get("attribute", "")
+                    val = sub_intent.get("new_value", "")
+                    sub_intent["explanation"] = f"{op} {prop} to {val}".strip()
                 # Normalize confidence on each
                 raw_conf = sub_intent.get("confidence", 0.0)
                 if isinstance(raw_conf, (int, float)) and raw_conf <= 1.0:
@@ -266,6 +272,13 @@ class IntentClassifier:
 
         intent = parsed
 
+        # Auto-fill explanation if LLM omitted it
+        if "explanation" not in intent and intent.get("tier") == 1:
+            op = intent.get("operation", "modify")
+            prop = intent.get("property") or intent.get("attribute", "")
+            val = intent.get("new_value", "")
+            intent["explanation"] = f"{op} {prop} to {val}".strip()
+            
         # Validate required fields
         self._validate_structure(intent)
 
