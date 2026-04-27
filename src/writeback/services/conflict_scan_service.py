@@ -679,11 +679,10 @@ class ConflictScanService:
         document_value = self._finding_str(finding, "document_value")
         entity_name = entity.name or entity.global_id
 
-        # Build fix prompt deterministically from actual conflict data
-        # so "Fix in Modify" always targets the correct entity and property.
+       # Build fix prompt deterministically from actual conflict data
         fix_prompt = (
-            f"Add {property_name} {document_value} to Pset_WallCommon "
-            f"for wall {entity_name} {entity.global_id}"
+            f"Set {property_name} to {document_value} "
+            f"for {entity.ifc_type} {entity_name} {entity.global_id}"
         )
 
         common_fields = {
