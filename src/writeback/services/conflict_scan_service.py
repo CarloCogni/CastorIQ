@@ -663,13 +663,24 @@ class ConflictScanService:
             f"{entity.id}:{chunk.id}:{property_name}".encode()
         ).hexdigest()
 
+        ifc_value = self._finding_str(finding, "ifc_value", "(not set)")
+        document_value = self._finding_str(finding, "document_value")
+        entity_name = entity.name or entity.global_id
+
+        # Build fix prompt deterministically from actual conflict data
+        # so "Fix in Modify" always targets the correct entity and property.
+        fix_prompt = (
+            f"Add {property_name} {document_value} to Pset_WallCommon "
+            f"for wall {entity_name} {entity.global_id}"
+        )
+
         common_fields = {
             "title": title,
             "description": self._finding_str(finding, "description"),
-            "ifc_value": self._finding_str(finding, "ifc_value", "(not set)"),
-            "document_value": self._finding_str(finding, "document_value"),
+            "ifc_value": ifc_value,
+            "document_value": document_value,
             "severity": severity,
-            "suggested_fix": self._finding_str(finding, "suggested_fix"),
+            "suggested_fix": fix_prompt,
             "confidence": finding.get("confidence", 0.0),
             "property_name": property_name,
             "scan_run": scan_run,
