@@ -14,17 +14,22 @@
 {% endblock %}
 
 {% block content %}
-    {% include "environments/components/sidebar.html" %}
+    {% if not facilities_is_occupant_mode %}
+        {% include "environments/components/sidebar.html" %}
+    {% endif %}
 
 <div class="flex-grow-1 d-flex flex-column min-width-0 bg-body h-100 overflow-hidden position-relative">
 
     <div class="border-bottom bg-body d-flex align-items-center px-3 flex-shrink-0">
 
+        {% if not facilities_is_occupant_mode %}
         <button class="btn btn-link text-secondary me-2 p-2" onclick="toggleSidebar()" title="Toggle Sidebar">
             <i class="bi bi-layout-sidebar"></i>
         </button>
+        {% endif %}
 
         <ul class="nav nav-tabs-custom border-bottom-0 flex-grow-1">
+            {% if not facilities_is_occupant_mode %}
             <li class="nav-item">
                 <a class="nav-link tab-ask {% if active_tab == 'ask' %}active{% endif %}" href="{% url 'projects:ask' project.pk %}">
                     <i class="bi bi-chat me-2"></i>Ask
@@ -58,9 +63,10 @@
                     <i class="bi bi-table me-2"></i>Schedule
                 </a>
             </li>
+            {% endif %}
             <li class="nav-item">
                 <a class="nav-link tab-facilities {% if active_tab == 'facilities' %}active{% endif %}" href="{% url 'facilities:tab' project.pk %}">
-                    <i class="bi bi-building me-2"></i>Facilities
+                    <i class="bi bi-building me-2"></i>{% if facilities_is_occupant_mode %}Portal{% else %}Facilities{% endif %}
                 </a>
             </li>
         </ul>
@@ -68,7 +74,7 @@
 
     {% include "environments/partials/_fm_dirty_banner.html" %}
 
-    <div class="flex-grow-1 overflow-hidden d-flex flex-column position-relative">
+    <div class="flex-grow-1 overflow-hidden d-flex flex-column position-relative min-width-0">
         {% if active_tab == 'ask' %}
             {% include "environments/tabs/_ask.html" %}
         {% elif active_tab == 'modify' %}

@@ -1,5 +1,22 @@
 <!-- facilities/components/facilities_subnav.html — sub-tabs inside the Facilities tab -->
 
+<!--
+  Occupant mode (M4): TENANT/OCCUPANT users without EDITOR+ access see only
+  the Dashboard sub-tab — the portal landing IS the sub-tab body. No sense
+  surfacing Assets/Work/Permits/Requests links that would 403 on click.
+-->
+{% if facilities_is_occupant_mode %}
+<div class="border-bottom flex-shrink-0" style="background-color: var(--bs-body-bg);">
+    <nav class="d-flex align-items-center gap-1 px-4 overflow-x-auto"
+         aria-label="Facilities sub-navigation">
+        <span class="d-inline-flex align-items-center gap-2 px-3 py-2 fs-8 fw-semibold flex-shrink-0"
+              style="color: var(--castor-facilities, #14b8a6); border-bottom: 2px solid var(--castor-facilities, #14b8a6);">
+            <i class="bi bi-house-door"></i>
+            <span>Portal</span>
+        </span>
+    </nav>
+</div>
+{% else %}
 <div class="border-bottom flex-shrink-0"
      style="background-color: var(--bs-body-bg);">
     <nav class="d-flex align-items-center gap-1 px-4 overflow-x-auto"
@@ -51,3 +68,4 @@
         <span class="d-inline-flex align-items-center gap-2 px-3 py-2 fs-8 text-muted flex-shrink-0" style="border-bottom: 2px solid transparent; opacity: 0.55; cursor: not-allowed;" title="Reports — M7"><i class="bi bi-lock"></i><span>Reports</span></span>
     </nav>
 </div>
+{% endif %}

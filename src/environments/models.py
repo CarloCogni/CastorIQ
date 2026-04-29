@@ -207,6 +207,20 @@ class ProjectRole(UUIDModel):
         verbose_name="Valid Until",
         help_text="Leave blank for an open-ended assignment.",
     )
+    assigned_space = models.ForeignKey(
+        "ifc_processor.IFCSpatialElement",
+        on_delete=models.SET_NULL,
+        related_name="+",
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="Assigned Space",
+        help_text=(
+            "Spatial container the user occupies (TENANT / OCCUPANT only). "
+            "Pre-fills location on Occupant Portal requests; never granted "
+            "automatically — set explicitly when seating the user."
+        ),
+    )
 
     class Meta:
         verbose_name = "Project Role"

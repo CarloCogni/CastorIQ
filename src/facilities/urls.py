@@ -180,6 +180,17 @@ urlpatterns = [
         views.ActionRequestEscalateView.as_view(),
         name="ar_escalate",
     ),
+    # Occupant Portal (M4).
+    path(
+        "<uuid:pk>/facilities/portal/intake/",
+        views.OccupantPortalIntakeView.as_view(),
+        name="portal_intake",
+    ),
+    path(
+        "<uuid:pk>/facilities/portal/intake/confirm/",
+        views.OccupantPortalConfirmView.as_view(),
+        name="portal_intake_confirm",
+    ),
     # Intent-to-WO (M3.E).
     path(
         "<uuid:pk>/facilities/work/intent/",

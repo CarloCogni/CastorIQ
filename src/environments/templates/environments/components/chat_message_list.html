@@ -1,6 +1,38 @@
 <!--chat_message_list.html-->
 {% load static chat_filters %}
 {% for message in messages %}
+{% if message.is_compaction_summary %}
+<div class="compaction-summary-card my-3 px-3 py-2 rounded-3 border border-secondary border-opacity-50"
+     style="border-style: dashed !important; background: rgba(13, 202, 240, 0.05);">
+    <div class="d-flex align-items-center gap-2 mb-2">
+        <i class="bi bi-arrows-collapse text-info"></i>
+        <strong class="fs-7 text-info">Conversation summary</strong>
+        <span class="text-secondary fs-8">· {{ compacted_history|length }} earlier message{{ compacted_history|length|pluralize }} folded · {{ message.created_at|date:"M j, H:i" }}</span>
+        <button type="button"
+                class="btn btn-link btn-sm p-0 ms-auto fs-8 text-secondary text-decoration-none"
+                onclick="toggleCompactedHistory('compacted-history-{{ message.pk }}', this)">
+            <i class="bi bi-eye"></i> Show full history
+        </button>
+    </div>
+    <div class="fs-7 text-light">{{ message.content|render_markdown }}</div>
+</div>
+<div id="compacted-history-{{ message.pk }}" class="compacted-history d-none mb-3">
+    {% for old in compacted_history %}
+    <div class="message message-{{ old.role }} opacity-50" style="filter: grayscale(0.4);">
+        <div class="message-avatar">
+            {% if old.role == 'user' %}{{ user.username.0|upper }}{% else %}<i class="bi bi-building"></i>{% endif %}
+        </div>
+        <div class="message-content">
+            <span class="badge rounded-pill fs-8 fw-normal mb-1"
+                  style="background-color: rgba(108, 117, 125, 0.15); color: var(--bs-secondary-color);">
+                <i class="bi bi-archive me-1"></i>Folded into summary — not in active LLM context
+            </span>
+            <div class="message-text">{{ old.content|render_markdown }}</div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
 <div class="message message-{{ message.role }}">
     <div class="message-avatar">
         {% if message.role == 'user' %}
@@ -148,6 +180,7 @@
         {% endif %}
     </div>
 </div>
+{% endif %}
 {% empty %}
 <div class="empty-state h-100 d-flex flex-column align-items-center justify-content-center">
     <i class="bi bi-chat-dots fs-1 mb-3 text-secondary opacity-50"></i>
@@ -170,6 +203,17 @@
 {% endif %}
 
 <script>
+    // Toggle the folded-history block under a compaction summary card
+    function toggleCompactedHistory(blockId, btn) {
+        const block = document.getElementById(blockId);
+        if (!block) return;
+        const isHidden = block.classList.contains('d-none');
+        block.classList.toggle('d-none', !isHidden);
+        btn.innerHTML = isHidden
+            ? '<i class="bi bi-eye-slash"></i> Hide full history'
+            : '<i class="bi bi-eye"></i> Show full history';
+    }
+
     // Source detail toggle — one open at a time per message
     function toggleSourceDetail(badgeBtn, detailId) {
         const detail = document.getElementById(detailId);

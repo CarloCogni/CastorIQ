@@ -107,6 +107,139 @@ class TestFacilitiesView:
 
 
 @pytest.mark.django_db
+class TestOccupantMode:
+    """The is_occupant_mode flag — drives portal-shell rendering vs. full FM workspace."""
+
+    def test_owner_is_not_in_occupant_mode(self, client):
+        """OWNER membership keeps the full workspace even with no functional role."""
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        _login(client, user)
+
+        response = client.get(reverse("facilities:tab", kwargs={"pk": project.pk}))
+
+        assert response.status_code == 200
+        assert response.context["facilities_is_occupant_mode"] is False
+
+    def test_viewer_with_no_role_is_not_in_occupant_mode(self, client):
+        """A bare VIEWER without a TENANT/OCCUPANT role is not in portal mode."""
+        user = UserFactory()
+        project = ProjectFactory()
+        ProjectMembershipFactory(project=project, user=user, permission="viewer")
+        _login(client, user)
+
+        response = client.get(reverse("facilities:tab", kwargs={"pk": project.pk}))
+
+        assert response.context["facilities_is_occupant_mode"] is False
+
+    def test_tenant_viewer_is_in_occupant_mode(self, client):
+        """TENANT role + VIEWER access flips the user into portal mode."""
+        user = UserFactory()
+        project = ProjectFactory()
+        ProjectMembershipFactory(project=project, user=user, permission="viewer")
+        ProjectRoleFactory(user=user, project=project, role="tenant")
+        _login(client, user)
+
+        response = client.get(reverse("facilities:tab", kwargs={"pk": project.pk}))
+
+        assert response.context["facilities_is_occupant_mode"] is True
+
+    def test_occupant_viewer_is_in_occupant_mode(self, client):
+        """OCCUPANT role + VIEWER access also flips into portal mode."""
+        user = UserFactory()
+        project = ProjectFactory()
+        ProjectMembershipFactory(project=project, user=user, permission="viewer")
+        ProjectRoleFactory(user=user, project=project, role="occupant")
+        _login(client, user)
+
+        response = client.get(reverse("facilities:tab", kwargs={"pk": project.pk}))
+
+        assert response.context["facilities_is_occupant_mode"] is True
+
+    def test_editor_with_tenant_role_is_not_in_occupant_mode(self, client):
+        """FM staff testing as TENANT keep the full workspace — can_modify wins."""
+        user = UserFactory()
+        project = ProjectFactory()
+        ProjectMembershipFactory(project=project, user=user, permission="editor")
+        ProjectRoleFactory(user=user, project=project, role="tenant")
+        _login(client, user)
+
+        response = client.get(reverse("facilities:tab", kwargs={"pk": project.pk}))
+
+        assert response.context["facilities_is_occupant_mode"] is False
+
+    def test_owner_with_occupant_role_is_not_in_occupant_mode(self, client):
+        """Owner + OCCUPANT role — owner can_modify, so portal mode stays off."""
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        ProjectRoleFactory(user=user, project=project, role="occupant")
+        _login(client, user)
+
+        response = client.get(reverse("facilities:tab", kwargs={"pk": project.pk}))
+
+        assert response.context["facilities_is_occupant_mode"] is False
+
+    def test_portal_landing_context_loaded_for_tenant(self, client):
+        """In occupant mode, FacilitiesView injects portal_assigned_space + recent ARs."""
+        from facilities.tests.factories import ActionRequestFactory
+        from ifc_processor.tests.factories import IFCSpatialElementFactory
+
+        user = UserFactory()
+        project = ProjectFactory()
+        ProjectMembershipFactory(project=project, user=user, permission="viewer")
+        space = IFCSpatialElementFactory()
+        ProjectRoleFactory(user=user, project=project, role="tenant", assigned_space=space)
+        ar = ActionRequestFactory(project=project, submitted_by=user, title="Cold room")
+        # AR submitted by another user should NOT appear in this user's recent list.
+        other = UserFactory()
+        ActionRequestFactory(project=project, submitted_by=other, title="Other AR")
+        _login(client, user)
+
+        response = client.get(reverse("facilities:tab", kwargs={"pk": project.pk}))
+
+        assert response.context["portal_assigned_space"] == space
+        recent_titles = [a.title for a in response.context["portal_recent_ars"]]
+        assert "Cold room" in recent_titles
+        assert "Other AR" not in recent_titles
+        assert ar in response.context["portal_recent_ars"]
+
+    def test_top_tab_strip_hides_other_tabs_for_occupant(self, client):
+        """The project_detail.html tab strip omits Ask/Modify/etc. when in portal mode."""
+        user = UserFactory()
+        project = ProjectFactory()
+        ProjectMembershipFactory(project=project, user=user, permission="viewer")
+        ProjectRoleFactory(user=user, project=project, role="tenant")
+        _login(client, user)
+
+        response = client.get(reverse("facilities:tab", kwargs={"pk": project.pk}))
+        body = response.content.decode()
+
+        # Facilities tab still rendered, but as "Portal".
+        assert "tab-facilities" in body
+        assert "</i>Portal" in body
+        # Other tab links stripped.
+        assert reverse("writeback:modify", kwargs={"pk": project.pk}) not in body
+        assert reverse("writeback:conflicts", kwargs={"pk": project.pk}) not in body
+        assert reverse("projects:ask", kwargs={"pk": project.pk}) not in body
+
+    def test_top_tab_strip_full_for_fm_user(self, client):
+        """FM staff still see the whole tab strip — Ask/Modify/Conflicts/etc."""
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        ProjectRoleFactory(user=user, project=project, role="facilitiesmanager")
+        _login(client, user)
+
+        response = client.get(reverse("facilities:tab", kwargs={"pk": project.pk}))
+        body = response.content.decode()
+
+        # Original label rendered, not "Portal".
+        assert "</i>Facilities" in body
+        assert "</i>Portal" not in body
+        assert reverse("writeback:modify", kwargs={"pk": project.pk}) in body
+        assert reverse("writeback:conflicts", kwargs={"pk": project.pk}) in body
+
+
+@pytest.mark.django_db
 class TestRoleSwitchView:
     """POST /facilities/<uuid>/facilities/role/switch/ — HTMX partial re-render."""
 

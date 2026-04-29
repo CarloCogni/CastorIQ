@@ -18,7 +18,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from django.db.models import Q, QuerySet
+from django.template.loader import render_to_string
 
 from environments.models import Project
 from facilities.models import ActionRequest
@@ -125,6 +128,7 @@ class ActionRequestService:
             ar.pk,
             getattr(self.user, "pk", None),
         )
+        self._broadcast(ar, "created")
         return ar
 
     def update_action_request(self, ar: ActionRequest, **fields: Any) -> ActionRequest:
@@ -157,6 +161,7 @@ class ActionRequestService:
             ar.triage_note = note
         ar.save(update_fields=["status", "triage_note", "updated_at"])
         logger.info("ActionRequest triaged: project=%s ar=%s", self.project.pk, ar.pk)
+        self._broadcast(ar, "triaged")
         return ar
 
     def dismiss(self, ar: ActionRequest, *, note: str = "") -> ActionRequest:
@@ -172,6 +177,7 @@ class ActionRequestService:
             ar.triage_note = note
         ar.save(update_fields=["status", "triage_note", "updated_at"])
         logger.info("ActionRequest dismissed: project=%s ar=%s", self.project.pk, ar.pk)
+        self._broadcast(ar, "dismissed")
         return ar
 
     def delete_action_request(self, ar: ActionRequest) -> None:
@@ -179,3 +185,73 @@ class ActionRequestService:
         if ar.project_id != self.project.id:
             raise ActionRequestValidationError("Action request does not belong to this project.")
         ar.delete()
+
+    # ── Broadcasts (M4.C) ──────────────────────────────────────────────
+    #
+    # Two channel groups:
+    # * ``fm-portal-{user_id}-{project_id}`` — the submitter's portal page,
+    #   so they see their own AR's status update without a refresh.
+    # * ``fm-wo-{project_id}`` — the FM Work / Requests workspace, reused
+    #   from M3.D rather than introducing a third group.
+    #
+    # Each broadcast pre-renders the matching HTML server-side; one render
+    # per transition, regardless of how many subscribers are connected.
+
+    def _broadcast(self, ar: ActionRequest, event: str) -> None:
+        """Fan-out an AR change to the occupant + FM channel groups."""
+        layer = get_channel_layer()
+        if layer is None:
+            return  # Channels not configured — degrade silently.
+
+        try:
+            self._broadcast_to_occupant(ar, event, layer)
+        except Exception as exc:  # noqa: BLE001 — broadcasts must never break service writes
+            logger.warning("AR portal broadcast failed: ar=%s err=%s", ar.pk, exc)
+        try:
+            self._broadcast_to_fm(ar, event, layer)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("AR FM broadcast failed: ar=%s err=%s", ar.pk, exc)
+
+    def _broadcast_to_occupant(self, ar: ActionRequest, event: str, layer) -> None:
+        """Push the portal status card to the AR submitter only."""
+        if ar.submitted_by_id is None:
+            return
+        from facilities.consumers import fm_portal_group_name
+
+        rendered = render_to_string(
+            "facilities/portal/_portal_status_card.html",
+            {"ar": ar, "project": self.project},
+        )
+        async_to_sync(layer.group_send)(
+            fm_portal_group_name(ar.submitted_by_id, self.project.pk),
+            {
+                "type": "ar_updated",
+                "payload": {
+                    "ar_id": str(ar.pk),
+                    "event": event,
+                    "status": ar.status,
+                    "html": rendered,
+                },
+            },
+        )
+
+    def _broadcast_to_fm(self, ar: ActionRequest, event: str, layer) -> None:
+        """Push the AR card to the project-wide FM channel group."""
+        from facilities.consumers import fm_wo_group_name
+
+        rendered = render_to_string(
+            "facilities/components/_ar_row_card.html",
+            {"ar": ar, "project": self.project},
+        )
+        async_to_sync(layer.group_send)(
+            fm_wo_group_name(self.project.pk),
+            {
+                "type": "ar_updated",
+                "payload": {
+                    "ar_id": str(ar.pk),
+                    "event": event,
+                    "status": ar.status,
+                    "html": rendered,
+                },
+            },
+        )

@@ -638,6 +638,15 @@ class WorkOrderService:
             ar.pk,
             wo.wo_number,
         )
+        # M4.C — push the AR's status update to its submitter's portal page
+        # so the occupant sees "your request became WO-00042" without a
+        # refresh. AR svc owns the broadcast contract; we call into it.
+        from facilities.services.action_request_service import ActionRequestService
+
+        try:
+            ActionRequestService(self.project, self.user)._broadcast(ar, "escalated")
+        except Exception as exc:  # noqa: BLE001 — broadcasts must never block escalation
+            logger.warning("AR escalation broadcast failed: ar=%s err=%s", ar.pk, exc)
         return wo
 
     # ── Internals ──────────────────────────────────────────────────────

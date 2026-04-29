@@ -1,0 +1,99 @@
+<!-- facilities/portal/_portal_intake_review.html — review-and-confirm fragment -->
+
+<div class="card shadow-sm border" id="portal-intake-review"
+     style="border-color: rgba(20,184,166,0.45) !important;">
+    <div class="card-body">
+
+        <div class="d-flex align-items-center justify-content-between mb-3">
+            <p class="fs-6 fw-semibold mb-0">
+                <i class="bi bi-check2-circle me-2" style="color: var(--castor-facilities, #14b8a6);"></i>
+                Looks right? Confirm to send.
+            </p>
+            <button type="button"
+                    class="btn btn-link text-secondary p-0"
+                    aria-label="Close"
+                    onclick="document.getElementById('portal-intake-mount').innerHTML = ''; return false;">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
+
+        {% if draft.fallback_used %}
+            <div class="alert alert-warning fs-8 py-2 px-3 mb-3" role="alert">
+                <i class="bi bi-exclamation-triangle me-1"></i>
+                Drafted without the assistant. You can still send it — the FM team will pick it up.
+            </div>
+        {% else %}
+            <p class="fs-8 text-secondary mb-3">
+                Confidence: {{ draft.confidence }} / 100
+                {% if draft.explanation %}— {{ draft.explanation }}{% endif %}
+            </p>
+        {% endif %}
+
+        <form hx-post="{% url 'facilities:portal_intake_confirm' project.pk %}"
+              hx-target="body"
+              hx-swap="none">
+            {% csrf_token %}
+            <input type="hidden" name="draft_token" value="{{ draft_token }}">
+
+            <div class="mb-3">
+                <label for="portal-review-title" class="form-label fs-7 text-secondary">Title</label>
+                <input type="text"
+                       id="portal-review-title"
+                       name="title"
+                       class="form-control"
+                       maxlength="255"
+                       value="{{ draft.title }}"
+                       required>
+            </div>
+
+            <div class="mb-3">
+                <label for="portal-review-description" class="form-label fs-7 text-secondary">Details</label>
+                <textarea id="portal-review-description"
+                          name="description"
+                          class="form-control"
+                          rows="3"
+                          maxlength="4000">{{ draft.description }}</textarea>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-12 col-md-6">
+                    <label for="portal-review-severity" class="form-label fs-7 text-secondary">Severity</label>
+                    <select id="portal-review-severity" name="severity" class="form-select">
+                        {% for value, label in ar_severities %}
+                            <option value="{{ value }}" {% if draft.severity == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12 col-md-6">
+                    <label for="portal-review-spatial" class="form-label fs-7 text-secondary">Location</label>
+                    <select id="portal-review-spatial" name="affected_spatial_id" class="form-select">
+                        <option value="" {% if not draft.affected_spatial %}selected{% endif %}>(no specific space)</option>
+                        {% for cand in draft.candidates %}
+                            <option value="{{ cand.pk }}"
+                                    {% if draft.affected_spatial and draft.affected_spatial.pk == cand.pk %}selected{% endif %}>
+                                {% if cand.entity %}{{ cand.entity.name|default:"(unnamed)" }}{% else %}(unnamed){% endif %}
+                                {% if cand.long_name %} — {{ cand.long_name }}{% endif %}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="d-flex justify-content-between gap-2">
+                <button type="button"
+                        class="btn btn-sm btn-outline-secondary"
+                        hx-get="{% url 'facilities:portal_intake' project.pk %}"
+                        hx-target="#portal-intake-mount"
+                        hx-swap="innerHTML">
+                    <i class="bi bi-arrow-left me-1"></i>Edit message
+                </button>
+
+                <button type="submit"
+                        class="btn btn-sm"
+                        style="background-color: var(--castor-facilities, #14b8a6); color: white; min-height: 44px; padding: 0.5rem 1.25rem;">
+                    <i class="bi bi-send me-1"></i>Send request
+                </button>
+            </div>
+        </form>
+    </div>
+</div>

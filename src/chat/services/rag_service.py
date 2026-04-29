@@ -18,6 +18,12 @@ from ifc_processor.models import IFCEntity, IFCFile
 
 logger = logging.getLogger(__name__)
 
+# Auto-compaction at the 80% history-budget threshold. Currently dormant:
+# during early development of the compaction UX we want compaction to fire
+# only via the manual button in _ask.html so the behaviour is observable
+# and reproducible. Flip to True to restore the safety net.
+_AUTO_COMPACT_ENABLED = False
+
 
 def _get_entity_storey_name(entity: IFCEntity) -> str:
     """Walk the spatial_container chain to find the storey name, or return empty."""
@@ -228,8 +234,14 @@ class RAGService:
 
         project_meta = self._get_project_metadata(project)
 
-        # Auto-compact when history consumes too much of the budget
-        if retrieval_budget > 0 and history_estimate > retrieval_budget * 0.8:
+        # Auto-compact when history consumes too much of the budget.
+        # Gated by _AUTO_COMPACT_ENABLED — currently False so compaction only
+        # runs from the manual button in _ask.html. See module-level flag.
+        if (
+            _AUTO_COMPACT_ENABLED
+            and retrieval_budget > 0
+            and history_estimate > retrieval_budget * 0.8
+        ):
             from chat.services.compaction_service import CompactionService
 
             compactor = CompactionService(user=self._user)

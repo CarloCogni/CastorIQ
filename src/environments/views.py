@@ -209,14 +209,36 @@ class AskView(ProjectTabMixin, TemplateView):
         return super().get(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
+        from chat.services.compaction_service import MIN_MESSAGES_TO_COMPACT
+
         context = super().get_context_data(**kwargs)
         project = self.get_project()
         session = self._resolve_session(project, self.request.user)
 
         context["session"] = session
         context["active_session_id"] = session.pk
-        messages_qs = session.messages.select_related().order_by("created_at")
+
+        # Mirror AskMessagesView: show the active summary, hide compacted
+        # originals (revealed via the summary card's "Show full history" toggle).
+        messages_qs = (
+            session.messages.select_related()
+            .filter(Q(is_compaction_summary=True) | Q(compacted_at__isnull=True))
+            .order_by("created_at")
+        )
         context["messages"] = messages_qs
+        context["compacted_history"] = list(
+            session.messages.filter(compacted_at__isnull=False).order_by("created_at")
+        )
+
+        # Disable compaction button until there's a worthwhile chunk to summarize.
+        context["can_compact"] = (
+            session.messages.filter(
+                role__in=[Message.Role.USER, Message.Role.ASSISTANT],
+                compacted_at__isnull=True,
+            ).count()
+            >= MIN_MESSAGES_TO_COMPACT
+        )
+        context["min_messages_to_compact"] = MIN_MESSAGES_TO_COMPACT
 
         if messages_qs.exists():
             model_name = resolve_model_name(self.request.user)
@@ -285,13 +307,31 @@ class AskView(ProjectTabMixin, TemplateView):
 
         # HTMX partial response
         if request.headers.get("HX-Request"):
-            updated_messages = session.messages.select_related().order_by("created_at")
+            from chat.services.compaction_service import MIN_MESSAGES_TO_COMPACT
+
+            updated_messages = (
+                session.messages.select_related()
+                .filter(Q(is_compaction_summary=True) | Q(compacted_at__isnull=True))
+                .order_by("created_at")
+            )
+            compacted_history = list(
+                session.messages.filter(compacted_at__isnull=False).order_by("created_at")
+            )
+            can_compact = (
+                session.messages.filter(
+                    role__in=[Message.Role.USER, Message.Role.ASSISTANT],
+                    compacted_at__isnull=True,
+                ).count()
+                >= MIN_MESSAGES_TO_COMPACT
+            )
             model_name = resolve_model_name(request.user)
             return render(
                 request,
                 "environments/components/chat_message_list.html",
                 {
                     "messages": updated_messages,
+                    "compacted_history": compacted_history,
+                    "can_compact": can_compact,
                     "user": request.user,
                     "utilization_pct": utilization_pct,
                     "context_window_label": _fmt_ctx(get_context_window(model_name)),
@@ -313,6 +353,8 @@ class AskMessagesView(ProjectTabMixin, View):
     active_tab = "ask"
 
     def get(self, request, pk, session_id, *args, **kwargs):
+        from chat.services.compaction_service import MIN_MESSAGES_TO_COMPACT
+
         project = self.get_project()
         session = get_object_or_404(
             ChatSession,
@@ -321,12 +363,24 @@ class AskMessagesView(ProjectTabMixin, View):
             user=request.user,
             mode=ChatSession.Mode.ASK,
         )
+        # Show: live messages (no compacted_at) AND the active summary.
+        # Hide: messages already folded into a summary — they're revealed via
+        # the "Show full history" toggle on the summary card.
         messages_qs = (
             session.messages.select_related()
-            .exclude(is_compaction_summary=True)
+            .filter(Q(is_compaction_summary=True) | Q(compacted_at__isnull=True))
             .order_by("created_at")
         )
+        compacted_qs = session.messages.filter(compacted_at__isnull=False).order_by("created_at")
+        can_compact = (
+            session.messages.filter(
+                role__in=[Message.Role.USER, Message.Role.ASSISTANT],
+                compacted_at__isnull=True,
+            ).count()
+            >= MIN_MESSAGES_TO_COMPACT
+        )
         model_name = resolve_model_name(request.user)
+        # Token budget reflects what the LLM actually sees: live history + summary.
         history = [{"role": m.role, "content": m.content} for m in messages_qs]
         budget = compute_budget(model_name, system=SYSTEM_PROMPT, conversation_history=history)
         return render(
@@ -334,6 +388,8 @@ class AskMessagesView(ProjectTabMixin, View):
             "environments/components/chat_message_list.html",
             {
                 "messages": messages_qs,
+                "compacted_history": list(compacted_qs),
+                "can_compact": can_compact,
                 "user": request.user,
                 "utilization_pct": budget.utilization_pct,
                 "context_window_label": _fmt_ctx(budget.model_context_window),

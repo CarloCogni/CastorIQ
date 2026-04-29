@@ -1,0 +1,81 @@
+<!-- facilities/components/portal_help_modal.html — "How the Portal Works" -->
+
+<div class="modal fade"
+     id="portalHelpModal"
+     tabindex="-1"
+     aria-labelledby="portalHelpLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+
+            <div class="modal-header border-bottom px-4 py-3"
+                 style="border-color: var(--bs-border-color) !important;">
+                <h5 class="modal-title fw-semibold fs-6 mb-0" id="portalHelpLabel">
+                    <i class="bi bi-house-door me-2" style="color: var(--castor-facilities, #14b8a6);"></i>
+                    How the Portal Works
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body px-4 py-4">
+
+                <!-- 1. What is it? -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-megaphone me-1" style="color: var(--castor-facilities, #14b8a6);"></i>
+                    What's the Portal?
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    A simple way for occupants and tenants to flag building issues to the
+                    facilities team. There's no form to fill out — type what you need in
+                    plain English and the assistant turns it into a structured request.
+                </p>
+
+                <!-- 2. Lifecycle -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-arrow-repeat me-1" style="color: var(--castor-facilities, #14b8a6);"></i>
+                    What happens after I send a request?
+                </p>
+                <div class="d-flex flex-column gap-1 fs-8 text-secondary mb-4">
+                    <span><i class="bi bi-dot"></i><b>Open</b> — your request lands in the FM team's queue.</span>
+                    <span><i class="bi bi-dot"></i><b>Triaged</b> — someone has read it and is preparing the response.</span>
+                    <span><i class="bi bi-dot"></i><b>Escalated</b> — it became a Work Order. A technician is on it.</span>
+                    <span><i class="bi bi-dot"></i><b>Dismissed</b> — the FM team decided no action is needed and noted why.</span>
+                </div>
+
+                <!-- 3. How to do X -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-plus-circle me-1" style="color: var(--castor-facilities, #14b8a6);"></i>
+                    How to file a request
+                </p>
+                <div class="d-flex flex-column gap-1 fs-8 text-secondary mb-4">
+                    <span><i class="bi bi-dot"></i>Tap <b>New request</b>, type the issue, and tap <b>Draft request</b>.</span>
+                    <span><i class="bi bi-dot"></i>Review what the assistant extracted — title, severity, location.</span>
+                    <span><i class="bi bi-dot"></i>Adjust anything that's wrong, then <b>Send request</b>.</span>
+                    <span><i class="bi bi-dot"></i>Watch your <b>Recent requests</b> card — the status updates live as the FM team works on it.</span>
+                </div>
+
+                <!-- 4. Who can do what -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-person-check me-1" style="color: var(--castor-facilities, #14b8a6);"></i>
+                    Who can do what
+                </p>
+                <div class="d-flex flex-column gap-1 fs-8 text-secondary mb-4">
+                    <span><i class="bi bi-dot"></i><b>You</b> can submit, view your own history, and track status. Nothing else.</span>
+                    <span><i class="bi bi-dot"></i><b>FM staff</b> can triage, dismiss, or escalate your request to a Work Order.</span>
+                </div>
+
+                <!-- 5. Caveats -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-exclamation-circle me-1" style="color: var(--castor-accent, #8b5cf6);"></i>
+                    Caveats
+                </p>
+                <div class="d-flex flex-column gap-1 fs-8 text-secondary">
+                    <span><i class="bi bi-dot"></i>The Portal is for non-emergency issues. Call your safety contact for emergencies.</span>
+                    <span><i class="bi bi-dot"></i>The assistant can misclassify location or severity — please review before sending.</span>
+                    <span><i class="bi bi-dot"></i>You only see your own requests. Other occupants' requests are private.</span>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>

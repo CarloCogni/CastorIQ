@@ -836,6 +836,23 @@
            button itself can be given an inline style. */
         .facilities-scope { --help-accent: var(--castor-facilities); }
         .modify-scope { --help-accent: var(--castor-accent); }
+
+        /* Occupant Portal mobile-first scope (M4.D).
+           Tap targets ≥ 44px, single-column on narrow viewports, larger
+           text for thumb reach. The .portal-scope class wraps the portal
+           landing so these rules cannot bleed into the desktop FM UI. */
+        .portal-scope .btn { min-height: 44px; }
+        .portal-scope textarea,
+        .portal-scope input[type="text"],
+        .portal-scope select { min-height: 44px; font-size: 1rem; }
+        .portal-scope .card-body { padding: 1rem; }
+        @media (max-width: 600px) {
+            .portal-scope .row { --bs-gutter-x: 0.75rem; }
+            .portal-scope .col-12 { padding-left: 0; padding-right: 0; }
+            .portal-scope .card { border-radius: 0.75rem; }
+            .portal-scope h5, .portal-scope p.fs-6 { font-size: 1.1rem !important; }
+            .portal-scope .fs-7 { font-size: 0.95rem !important; }
+        }
     </style>
 
     {% block extra_css %}{% endblock %}
@@ -921,6 +938,8 @@
     <script>
     document.body.addEventListener('castor:toast', function (e) {
         var d = e.detail || {};
+        var msg = (d.message || '').trim();
+        if (!msg) return;
         var level = d.level || 'success';
         var bg = level === 'error' ? 'bg-danger'
                : level === 'info'  ? 'bg-secondary'
@@ -928,7 +947,7 @@
         var tpl = document.getElementById('castor-toast-template').content.cloneNode(true);
         var el = tpl.firstElementChild;
         el.classList.add(bg, 'text-white');
-        el.querySelector('.toast-body').textContent = d.message || 'Saved';
+        el.querySelector('.toast-body').textContent = msg;
         var container = document.getElementById('castor-toast-container');
         container.appendChild(el);
         var t = new bootstrap.Toast(el, { delay: level === 'error' ? 5000 : 2500 });
@@ -1143,13 +1162,18 @@
         if (!node) return;
         var msgs;
         try { msgs = JSON.parse(node.textContent); } catch (_) { return; }
+        if (msgs.length) {
+            console.warn('[castor] messages bridge fired', msgs.length, 'msg(s):', msgs);
+        }
         msgs.forEach(function (m) {
+            var text = (m.message || '').trim();
+            if (!text) return;
             var tags = (m.tags || '').toLowerCase();
             var lvl = tags.indexOf('error') >= 0 || tags.indexOf('warning') >= 0 ? 'error'
                     : tags.indexOf('success') >= 0 ? 'success'
                     : 'info';
             document.body.dispatchEvent(new CustomEvent('castor:toast', {
-                detail: {level: lvl, message: m.message}
+                detail: {level: lvl, message: text}
             }));
         });
     })();

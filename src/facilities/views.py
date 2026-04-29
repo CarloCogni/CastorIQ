@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import logging
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from django.contrib import messages
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
 from django.db.models import Count
 from django.http import (
@@ -15,7 +17,7 @@ from django.http import (
     HttpResponseBadRequest,
     HttpResponseRedirect,
 )
-from django.shortcuts import render
+from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 from django.views import View
 from django.views.generic import TemplateView
@@ -26,6 +28,7 @@ from core.mixins import (
     ProjectModifyAccessMixin,
     ProjectTabMixin,
 )
+from environments.models import Project, ProjectRole
 from environments.services import ProjectAccessService
 
 from .models import (
@@ -55,6 +58,12 @@ from .services.fm_intent_service import (
     FMIntentService,
     FMIntentValidationError,
 )
+from .services.occupant_intake_service import (
+    OccupantIntakeError,
+    OccupantIntakeService,
+    OccupantIntakeValidationError,
+)
+from .services.occupant_space_service import OccupantSpaceService
 from .services.permit_service import (
     PermitNotFoundError,
     PermitService,
@@ -115,11 +124,22 @@ def _role_context(project, user, session) -> dict:
         else _dashboard_template_for(active_role)
     )
 
+    # M4 — Occupant Portal mode. The mobile-first portal shell renders when the
+    # active functional role is TENANT/OCCUPANT AND the user is not an
+    # EDITOR+ on the project. FM staff who hold an OCCUPANT role for testing
+    # keep the full workspace.
+    is_occupant_mode = (
+        active_role is not None
+        and active_role.role in (ProjectRole.Role.TENANT, ProjectRole.Role.OCCUPANT)
+        and not ProjectAccessService.can_modify(user, project)
+    )
+
     return {
         "facilities_roles": roles,
         "facilities_active_role": active_role,
         "facilities_dashboard_template": dashboard_template,
         "facilities_is_implicit_owner": is_implicit_owner,
+        "facilities_is_occupant_mode": is_occupant_mode,
     }
 
 
@@ -138,6 +158,10 @@ class FacilitiesView(ProjectTabMixin, TemplateView):
         context["facilities_open_asset_count"] = FacilityAsset.objects.filter(
             project=project, decommissioned_at__isnull=True
         ).count()
+
+        # M4 — Occupant Portal landing data (only fetched when needed).
+        if context.get("facilities_is_occupant_mode"):
+            context.update(_portal_landing_context(project, self.request.user))
         return context
 
 
@@ -1665,6 +1689,206 @@ class WorkOrderIntentRejectView(ProjectModifyAccessMixin, View):
             return toast_response(str(exc), "error", status=400)
         messages.info(request, "Intent batch dismissed.")
         return HttpResponseRedirect(reverse("facilities:work_kanban", args=[project.pk]))
+
+
+# ─── Occupant Portal (M4) ──────────────────────────────────────────────────
+
+
+PORTAL_RECENT_AR_LIMIT = 10
+
+
+class OccupantPortalAccessMixin(LoginRequiredMixin):
+    """Portal-only write gate.
+
+    Allows POST when the user is EDITOR+ on the project (the FM staff
+    pathway) OR has an active TENANT/OCCUPANT functional role on the project.
+    Scoped to portal endpoints — do NOT reuse on other write surfaces; the
+    contract assumes :class:`OccupantIntakeService.submit` independently
+    asserts ``submitted_by == request.user``.
+    """
+
+    def get_project(self) -> Project:
+        project = get_object_or_404(Project.objects.select_related("owner"), pk=self.kwargs["pk"])
+        if ProjectAccessService.can_modify(self.request.user, project):
+            return project
+        active_occupant = OccupantSpaceService(project, self.request.user).resolve_active_role()
+        if active_occupant is not None:
+            return project
+        raise PermissionDenied
+
+
+def _portal_landing_context(project, user) -> dict:
+    """Common context for the occupant portal landing — assigned space + recent ARs."""
+    space_service = OccupantSpaceService(project, user)
+    assigned_space = space_service.resolve()
+    recent_ars = list(
+        ActionRequest.objects.filter(project=project, submitted_by=user)
+        .select_related("affected_spatial__entity", "affected_asset")
+        .order_by("-created_at")[:PORTAL_RECENT_AR_LIMIT]
+    )
+    return {
+        "portal_assigned_space": assigned_space,
+        "portal_recent_ars": recent_ars,
+    }
+
+
+class OccupantPortalIntakeView(OccupantPortalAccessMixin, View):
+    """Portal intake drawer.
+
+    GET renders the textarea (drawer fragment for HTMX, full page otherwise).
+    POST runs the LLM draft and returns the review fragment with the
+    extracted fields + candidate list.
+    """
+
+    def get(self, request, pk):
+        project = self.get_project()
+        return render(
+            request,
+            "facilities/portal/_portal_intake_drawer.html",
+            {
+                "project": project,
+                "user_message": "",
+                "form_error": None,
+            },
+        )
+
+    def post(self, request, pk):
+        project = self.get_project()
+        message = request.POST.get("user_message", "").strip()
+        service = OccupantIntakeService(project, request.user)
+
+        try:
+            draft = service.draft(message)
+        except OccupantIntakeValidationError as exc:
+            return render(
+                request,
+                "facilities/portal/_portal_intake_drawer.html",
+                {
+                    "project": project,
+                    "user_message": message,
+                    "form_error": str(exc),
+                },
+                status=400,
+            )
+
+        # Cache the LLM payload + candidate ids in the session so the
+        # confirm POST can re-build the spatial selection without a second
+        # LLM hit. Keyed on a token returned in the form so the user can
+        # have multiple drawers open without colliding.
+        token = uuid4().hex
+        request.session.setdefault("portal_drafts", {})
+        request.session["portal_drafts"][token] = {
+            "user_text": draft.user_text,
+            "title": draft.title,
+            "description": draft.description,
+            "severity": draft.severity,
+            "affected_spatial_id": (
+                str(draft.affected_spatial.pk) if draft.affected_spatial else None
+            ),
+            "candidate_ids": [str(c.pk) for c in draft.candidates],
+            "confidence": draft.confidence,
+            "explanation": draft.explanation,
+            "fallback_used": draft.fallback_used,
+            "raw_payload": draft.raw_payload,
+        }
+        request.session.modified = True
+
+        return render(
+            request,
+            "facilities/portal/_portal_intake_review.html",
+            {
+                "project": project,
+                "draft": draft,
+                "draft_token": token,
+                "ar_severities": ActionRequest.Severity.choices,
+            },
+        )
+
+
+class OccupantPortalConfirmView(OccupantPortalAccessMixin, View):
+    """Persist the draft as an :class:`ActionRequest` after occupant confirmation."""
+
+    def post(self, request, pk):
+        from .services.occupant_intake_service import IntakeDraft
+
+        project = self.get_project()
+        token = request.POST.get("draft_token", "").strip()
+        cached = (request.session.get("portal_drafts") or {}).get(token)
+        if not cached:
+            return toast_response("That draft has expired. Please try again.", "error", status=400)
+
+        # Reconstruct candidate list (filtered to the project — defensive).
+        from ifc_processor.models import IFCSpatialElement
+
+        candidates = list(
+            IFCSpatialElement.objects.filter(
+                pk__in=cached.get("candidate_ids", []),
+                ifc_file__project=project,
+            ).select_related("entity")
+        )
+        cached_spatial_id = cached.get("affected_spatial_id")
+        cached_spatial = None
+        if cached_spatial_id:
+            cached_spatial = next((c for c in candidates if str(c.pk) == cached_spatial_id), None)
+
+        draft = IntakeDraft(
+            title=cached["title"],
+            description=cached["description"],
+            severity=cached["severity"],
+            affected_spatial=cached_spatial,
+            confidence=cached.get("confidence", 0),
+            explanation=cached.get("explanation", ""),
+            user_text=cached["user_text"],
+            raw_payload=cached.get("raw_payload") or {},
+            candidates=candidates,
+            fallback_used=cached.get("fallback_used", False),
+        )
+
+        # User-supplied overrides from the review-modal form.
+        title_override = request.POST.get("title", "").strip() or None
+        description_override = request.POST.get("description", "").strip() or None
+        severity_override = request.POST.get("severity", "").strip() or None
+        spatial_id_override = request.POST.get("affected_spatial_id", "").strip()
+
+        spatial_override = None
+        spatial_explicit = "affected_spatial_id" in request.POST
+        if spatial_id_override:
+            try:
+                spatial_override = IFCSpatialElement.objects.select_related("entity").get(
+                    pk=spatial_id_override, ifc_file__project=project
+                )
+            except (IFCSpatialElement.DoesNotExist, ValueError, TypeError):
+                spatial_override = None
+
+        service = OccupantIntakeService(project, request.user)
+        try:
+            service.submit(
+                draft,
+                title_override=title_override,
+                description_override=description_override,
+                severity_override=severity_override,
+                affected_spatial_override=spatial_override,
+                affected_spatial_override_explicit=spatial_explicit,
+            )
+        except OccupantIntakeValidationError as exc:
+            return toast_response(str(exc), "error", status=400)
+        except OccupantIntakeError as exc:
+            logger.warning("Occupant submit failed: project=%s err=%s", project.pk, exc)
+            return toast_response(str(exc), "error", status=400)
+
+        # Drop the cached draft so the back-button doesn't double-submit.
+        drafts = request.session.get("portal_drafts") or {}
+        drafts.pop(token, None)
+        request.session["portal_drafts"] = drafts
+        request.session.modified = True
+
+        messages.success(request, "Request submitted.")
+        target = reverse("facilities:tab", args=[project.pk])
+        if request.headers.get("HX-Request") == "true":
+            response = HttpResponse(status=204)
+            response["HX-Redirect"] = target
+            return response
+        return HttpResponseRedirect(target)
 
 
 def _intent_edits_payload(post, proposal: FMIntentProposal) -> list[dict]:

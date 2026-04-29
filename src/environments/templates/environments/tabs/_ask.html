@@ -63,6 +63,16 @@
                     Start a new session when nearing the limit to maintain quality.
                 </p>
 
+                <p class="text-secondary small mb-2">
+                    <i class="bi bi-arrows-collapse text-info me-1"></i>
+                    <strong class="text-light">Manual compact button:</strong> the
+                    <i class="bi bi-arrows-collapse"></i> icon next to the percentage summarises older
+                    turns into a single system message while keeping the most recent exchanges intact.
+                    The conversation continues in the same chat &mdash; no navigation, no lost history.
+                    Automatic compaction at the 80% threshold is currently disabled during this development
+                    phase, so the manual button is the only path.
+                </p>
+
                 <div class="mt-3">
                     <p class="text-secondary small mb-2">
                         <i class="bi bi-calculator me-1 text-info"></i>
@@ -191,10 +201,11 @@
                     <button type="button"
                             class="btn btn-link p-0 ms-1 text-info compact-btn"
                             id="compact-btn"
-                            style="line-height:1; font-size: 0.75rem; display: none;"
-                            title="Compact conversation history to free context space"
+                            style="line-height:1; font-size: 0.75rem;"
+                            title="{% if can_compact %}Compact conversation history to free context space{% else %}Need at least {{ min_messages_to_compact }} messages to compact{% endif %}"
                             onclick="AskChat.compactHistory()"
-                            tabindex="-1">
+                            tabindex="-1"
+                            {% if not can_compact %}disabled{% endif %}>
                         <i class="bi bi-arrows-collapse"></i>
                     </button>
                     <button type="button"
@@ -295,14 +306,25 @@ const AskChat = {
                     swap: 'innerHTML',
                 });
                 break;
-            case 'compacted':
+            case 'compacted': {
                 this._setProcessing(false);
                 this._hideProgressTracker();
+                const count = data.count || 0;
+                document.body.dispatchEvent(new CustomEvent('castor:toast', {
+                    detail: count > 0
+                        ? { level: 'success', message: `Compacted ${count} message${count === 1 ? '' : 's'} into a summary` }
+                        : { level: 'info', message: 'Nothing to compact yet — keep chatting and try again later' }
+                }));
+                if (count > 0) {
+                    const btn = document.getElementById('compact-btn');
+                    if (btn) btn.disabled = true;
+                }
                 htmx.ajax('GET', this.chatEl.dataset.messagesUrl, {
                     target: '#chat-messages',
                     swap: 'innerHTML',
                 });
                 break;
+            }
             case 'cancelled':
                 this._setProcessing(false);
                 this._hideProgressTracker();
@@ -420,6 +442,8 @@ const AskChat = {
 
     /* ── Compaction ────────────────────────────────────────────────────── */
     compactHistory() {
+        const btn = document.getElementById('compact-btn');
+        if (btn && btn.disabled) return;
         if (!this._ws || this._ws.readyState !== WebSocket.OPEN) return;
         const sessionPk = this.chatEl.dataset.sessionPk;
         if (!sessionPk) return;
@@ -431,14 +455,6 @@ const AskChat = {
             action: 'compact',
             session_id: sessionPk,
         }));
-    },
-
-    updateCompactBtnVisibility() {
-        const bar = document.getElementById('context-bar-display');
-        const btn = document.getElementById('compact-btn');
-        if (!bar || !btn) return;
-        const pct = parseFloat(bar.dataset.utilization || '0');
-        btn.style.display = pct >= 50 ? 'inline-block' : 'none';
     },
 };
 
@@ -519,12 +535,6 @@ const AskChat = {
         alert("Connection lost. Please try again.");
     });
 
-    // Update compact button visibility after messages refresh (OOB updates data-utilization)
-    document.body.addEventListener('htmx:afterSettle', function(e) {
-        AskChat.updateCompactBtnVisibility();
-    });
-
     AskChat.initWebSocket();
-    AskChat.updateCompactBtnVisibility();
 })();
 </script>

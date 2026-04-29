@@ -21,10 +21,10 @@ from core.llm import get_llm
 logger = logging.getLogger(__name__)
 
 # Messages to keep uncompacted (the active conversation window)
-_KEEP_RECENT = 4
+KEEP_RECENT = 2
 
 # Minimum messages before compaction is worthwhile
-_MIN_MESSAGES_TO_COMPACT = 6
+MIN_MESSAGES_TO_COMPACT = 3
 
 _COMPACTION_PROMPT = ChatPromptTemplate.from_template(
     "Summarize the following conversation between a user and Castor (a BIM/AEC "
@@ -55,15 +55,15 @@ class CompactionService:
         if emitter is not None:
             emitter.emit(phase, status, message)
 
-    def compact_session(self, session: ChatSession, emitter: Any = None) -> Message | None:
+    def compact_session(self, session: ChatSession, emitter: Any = None) -> int:
         """
         Summarize old messages into a compaction summary message.
 
-        Keeps the most recent ``_KEEP_RECENT`` messages uncompacted and
+        Keeps the most recent ``KEEP_RECENT`` messages uncompacted and
         summarizes everything older. Previous compaction summaries are
         replaced (only one active summary per session).
 
-        Returns the new summary Message, or None if nothing to compact.
+        Returns the count of messages compacted (0 if nothing to compact).
         """
         self._emit(emitter, "compact", "running", "Compacting conversation history...")
 
@@ -75,20 +75,20 @@ class CompactionService:
             ).order_by("created_at")
         )
 
-        if len(messages) < _MIN_MESSAGES_TO_COMPACT:
+        if len(messages) < MIN_MESSAGES_TO_COMPACT:
             logger.debug(
                 "Session %s: only %d messages, skipping compaction",
                 session.pk,
                 len(messages),
             )
             self._emit(emitter, "compact", "done", "Not enough messages to compact")
-            return None
+            return 0
 
         # Split: messages to compact vs. active window to keep
-        to_compact = messages[:-_KEEP_RECENT]
+        to_compact = messages[:-KEEP_RECENT]
         if not to_compact:
             self._emit(emitter, "compact", "done", "Nothing to compact")
-            return None
+            return 0
 
         # Format the conversation block for the LLM
         conversation_lines = []
@@ -137,9 +137,10 @@ class CompactionService:
         if previous_summary:
             previous_summary.delete()
 
+        compacted_count = len(to_compact)
         logger.info(
             "Compacted %d messages in session %s → summary %s",
-            len(to_compact),
+            compacted_count,
             session.pk,
             summary_msg.pk,
         )
@@ -147,6 +148,6 @@ class CompactionService:
             emitter,
             "compact",
             "done",
-            f"Compacted {len(to_compact)} messages",
+            f"Compacted {compacted_count} messages",
         )
-        return summary_msg
+        return compacted_count
