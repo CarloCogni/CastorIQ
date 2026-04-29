@@ -153,15 +153,6 @@ Step 3 — COMPARE: For each requirement that passed the gate, look up the same
 - Assign a confidence score (0.0–1.0). Only include conflicts with confidence >= 0.7.
 - If no genuine conflicts exist, return {"conflicts": []}.
 
-## Cross-type rule (mandatory):
-A requirement applies to ONE specific element type stated in the document. Do NOT
-carry a requirement from one element type to another. If the document states a
-fire-rating requirement for "walls" and the entity under evaluation is a roof,
-return no findings for that requirement. Generalising across element types is a
-hard error — even when the property name is plausible for both. If the document
-contains NO requirement explicitly worded for the entity's element class, return
-{"conflicts": []}. Do not infer requirements from analogous element types.
-
 ## Output format (JSON only, no markdown):
 {
   "conflicts": [
@@ -207,9 +198,6 @@ SCANNER_USER_TEMPLATE = """\
 Apply the two-step process: first extract all specific requirements from the excerpts,
 then compare each against the IFC entity properties above.
 Return JSON only. NEVER flag a property whose IFC value already matches the requirement.
-NEVER carry a requirement from one element type to another — if the excerpts only
-mention requirements for a different element class than this entity, return
-{{"conflicts": []}}.
 """
 
 
@@ -644,19 +632,6 @@ class ConflictScanService:
 
         return entity.ifc_type in allowed
 
-    @staticmethod
-    def _normalise_value(value: object) -> str:
-        """
-        Normalise a property value for equality comparison.
-
-        Lowercase, strip whitespace, and collapse all internal whitespace, so
-        "EI60", "EI 60", "ei 60" all reduce to "ei60". Used to enforce the
-        prompt rule "NEVER flag when IFC value already satisfies the requirement"
-        as a post-LLM guard, since LLMs occasionally ignore it.
-        """
-        text = str(value or "").strip().lower()
-        return "".join(text.split())
-
     def _upsert_conflict(
         self,
         entity: IFCEntity,
@@ -670,28 +645,12 @@ class ConflictScanService:
         content_hash = SHA-256(entity.id + ":" + chunk.id + ":" + property_name)
 
         Logic:
-          - ifc_value normalises equal to document_value → skip (LLM ignored its own rule)
           - content_hash exists as DISMISSED → skip (don't recreate)
           - content_hash exists as OPEN → update in place
           - content_hash exists as RESOLVED / not found → create fresh record
 
         Returns 'created', 'updated', or 'skipped'.
         """
-        ifc_value_raw = self._finding_str(finding, "ifc_value", "(not set)")
-        document_value_raw = self._finding_str(finding, "document_value")
-
-        # Post-LLM equality guard — defence in depth for the prompt rule.
-        if document_value_raw and self._normalise_value(ifc_value_raw) == self._normalise_value(
-            document_value_raw
-        ):
-            logger.debug(
-                "Dropped finding for entity %s: ifc_value=%r matches document_value=%r after normalisation",
-                entity.id,
-                ifc_value_raw,
-                document_value_raw,
-            )
-            return "skipped"
-
         property_name = self._finding_str(finding, "property_name")[:255]
         title = self._finding_str(finding, "title", "Conflict")[:255]
         severity = finding.get("severity", Conflict.Severity.MEDIUM)
@@ -707,8 +666,8 @@ class ConflictScanService:
         common_fields = {
             "title": title,
             "description": self._finding_str(finding, "description"),
-            "ifc_value": ifc_value_raw,
-            "document_value": document_value_raw,
+            "ifc_value": self._finding_str(finding, "ifc_value", "(not set)"),
+            "document_value": self._finding_str(finding, "document_value"),
             "severity": severity,
             "suggested_fix": self._finding_str(finding, "suggested_fix"),
             "confidence": finding.get("confidence", 0.0),
