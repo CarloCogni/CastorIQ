@@ -13,7 +13,7 @@ from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 
 from chat.models import ChatSession
-from environments.models import Project
+from environments.models import Project, ProjectRole
 from environments.services import ProjectAccessService
 
 
@@ -79,6 +79,11 @@ class ProjectTabMixin(ProjectAccessMixin):
             self.request.user, project
         )
 
+        # Occupant Portal mode (M4) — when the user is a TENANT/OCCUPANT
+        # without EDITOR+ access, hide every tab except Facilities. Computed
+        # here so non-Facilities tab views (Ask, Explore, …) can also gate.
+        context["facilities_is_occupant_mode"] = self._compute_occupant_mode(project)
+
         context["ifc_files"] = project.ifc_files.only(
             "id", "name", "status", "created_at", "entity_count"
         ).order_by("-created_at")
@@ -127,3 +132,21 @@ class ProjectTabMixin(ProjectAccessMixin):
         context.setdefault("active_session_id", None)
 
         return context
+
+    def _compute_occupant_mode(self, project: Project) -> bool:
+        """Return True when the user should see the simplified Occupant Portal.
+
+        Occupant mode = active TENANT/OCCUPANT functional role AND no EDITOR+
+        access on the project. FM staff testing as OCCUPANT keep the full
+        workspace.
+        """
+        user = self.request.user
+        if not user.is_authenticated:
+            return False
+        if ProjectAccessService.can_modify(user, project):
+            return False
+        return (
+            ProjectRole.active_for(user, project)
+            .filter(role__in=(ProjectRole.Role.TENANT, ProjectRole.Role.OCCUPANT))
+            .exists()
+        )

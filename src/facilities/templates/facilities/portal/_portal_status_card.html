@@ -1,0 +1,32 @@
+<!-- facilities/portal/_portal_status_card.html — single AR status card pushed via WS -->
+
+<div class="portal-status-card border rounded p-3 mb-2"
+     data-ar-id="{{ ar.pk }}"
+     style="background-color: var(--bs-tertiary-bg);">
+    <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+        <div class="min-width-0">
+            <p class="fs-7 fw-semibold mb-0 text-truncate">{{ ar.title }}</p>
+            <p class="fs-8 text-secondary mb-0">
+                {{ ar.created_at|date:"M j, Y H:i" }}
+                {% if ar.affected_spatial and ar.affected_spatial.entity %}
+                    · {{ ar.affected_spatial.entity.name }}
+                {% endif %}
+            </p>
+        </div>
+        <span class="badge rounded-pill"
+              style="
+                  {% if ar.status == 'open' %}background-color: rgba(20,184,166,0.15); color: var(--castor-facilities, #14b8a6); border: 1px solid rgba(20,184,166,0.35);
+                  {% elif ar.status == 'triaged' %}background-color: rgba(59,130,246,0.15); color: #3b82f6; border: 1px solid rgba(59,130,246,0.35);
+                  {% elif ar.status == 'escalated' %}background-color: rgba(139,92,246,0.15); color: #8b5cf6; border: 1px solid rgba(139,92,246,0.35);
+                  {% elif ar.status == 'dismissed' %}background-color: rgba(148,163,184,0.15); color: #94a3b8; border: 1px solid rgba(148,163,184,0.35);
+                  {% endif %}
+              ">
+            {{ ar.get_status_display }}
+        </span>
+    </div>
+    {% if ar.triage_note %}
+        <p class="fs-8 text-secondary mt-2 mb-0">
+            <i class="bi bi-chat-quote me-1"></i>{{ ar.triage_note }}
+        </p>
+    {% endif %}
+</div>

@@ -32,14 +32,25 @@ class TestFilterEngineResolve:
 
     def test_storey_filter_case_insensitive_contains(self, project, ifc_file):
         """storey filter uses icontains — partial, case-insensitive match."""
-        from ifc_processor.tests.factories import IFCEntityFactory
+        from ifc_processor.tests.factories import IFCEntityFactory, IFCSpatialElementFactory
 
+        storey_entity = IFCEntityFactory(
+            ifc_file=ifc_file,
+            ifc_type="IfcBuildingStorey",
+            name="Ground Floor",
+            global_id="GUID-STOREY-001",
+        )
+        storey = IFCSpatialElementFactory(
+            ifc_file=ifc_file,
+            entity=storey_entity,
+            spatial_type="building_storey",
+        )
         IFCEntityFactory(
             ifc_file=ifc_file,
             ifc_type="IfcWall",
             name="StairWall",
             global_id="GUID-SW-001",
-            building_storey="Ground Floor",
+            spatial_container=storey,
         )
         engine = FilterEngine(project)
         qs = engine.resolve({"storey": "ground"})
@@ -59,6 +70,39 @@ class TestFilterEngineResolve:
         qs = engine.resolve({"name_pattern": "D-*"})
         names = list(qs.values_list("name", flat=True))
         assert not any(n.startswith("Wall-") for n in names)
+
+    def test_name_pattern_glob_matches_revit_prefixed_name(self, project, ifc_file):
+        """
+        Revit-exported names like 'Basic Wall:_Dekkeforkant 255mm:386330' must
+        be findable via a substring glob '_Dekkeforkant*' — the LLM does not
+        know about the 'Basic Wall:' prefix.
+        """
+        from ifc_processor.tests.factories import IFCEntityFactory
+
+        IFCEntityFactory(
+            ifc_file=ifc_file,
+            ifc_type="IfcWall",
+            name="Basic Wall:_Dekkeforkant 255mm:386330",
+            global_id="GUID-DKK-001",
+        )
+        engine = FilterEngine(project)
+        qs = engine.resolve({"ifc_type": "IfcWall", "name_pattern": "_Dekkeforkant*"})
+        assert qs.count() == 1
+        assert qs.first().name == "Basic Wall:_Dekkeforkant 255mm:386330"
+
+    def test_name_pattern_no_wildcard_uses_substring_match(self, project, ifc_file):
+        """A bare token (no '*') should match by substring — Revit prefix tolerated."""
+        from ifc_processor.tests.factories import IFCEntityFactory
+
+        IFCEntityFactory(
+            ifc_file=ifc_file,
+            ifc_type="IfcWall",
+            name="Basic Wall:_Dekkeforkant 255mm:386330",
+            global_id="GUID-DKK-002",
+        )
+        engine = FilterEngine(project)
+        qs = engine.resolve({"ifc_type": "IfcWall", "name_pattern": "_Dekkeforkant"})
+        assert qs.count() == 1
 
     def test_global_ids_filter_returns_exact_entities(self, project, wall_entities):
         """global_ids list returns exactly those entities and no others."""

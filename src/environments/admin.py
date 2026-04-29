@@ -22,7 +22,8 @@ class ProjectRoleInline(admin.TabularInline):
     model = ProjectRole
     extra = 0
     autocomplete_fields = ["user"]
-    fields = ("user", "role", "valid_from", "valid_until")
+    raw_id_fields = ["assigned_space"]
+    fields = ("user", "role", "valid_from", "valid_until", "assigned_space")
 
 
 @admin.register(Project)
@@ -80,9 +81,10 @@ class ProjectMembershipAdmin(admin.ModelAdmin):
 class ProjectRoleAdmin(admin.ModelAdmin):
     """Bulk admin for functional-role assignments."""
 
-    list_display = ("user", "project", "role", "valid_from", "valid_until")
+    list_display = ("user", "project", "role", "valid_from", "valid_until", "assigned_space")
     list_filter = ("role", "project")
     search_fields = ("user__username", "project__name")
     autocomplete_fields = ["user", "project"]
-    list_select_related = ("user", "project")
+    raw_id_fields = ["assigned_space"]
+    list_select_related = ("user", "project", "assigned_space")
     date_hierarchy = "valid_from"

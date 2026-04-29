@@ -220,3 +220,74 @@ class WorkOrderConsumer(AsyncJsonWebsocketConsumer):
         # READER+ may subscribe — viewers should see live updates even if
         # they cannot fire transitions themselves.
         return ProjectAccessService.can_access(self.user, project)
+
+    # ar_updated — Action Request side push (M4.C). Same channel group as
+    # WO updates because the FM Requests page is part of the same workspace.
+    # Service layer fires this with ``"type": "ar_updated"`` + an HTML payload.
+    async def ar_updated(self, event: dict) -> None:
+        await self.send_json({"type": "ar.updated", **event["payload"]})
+
+
+# ─── Occupant Portal (M4.C) ────────────────────────────────────────────────
+
+
+def fm_portal_group_name(user_id, project_id) -> str:
+    """Channel group for an occupant's portal status updates.
+
+    Per-user, per-project — narrow blast radius. The submitting tenant gets
+    AR triage / dismiss / escalate pushes for **their own** requests; other
+    occupants on the same project see nothing.
+    """
+    return f"fm-portal-{user_id}-{project_id}"
+
+
+class OccupantPortalConsumer(AsyncJsonWebsocketConsumer):
+    """Push-only WebSocket — broadcasts AR status updates to the submitter."""
+
+    async def connect(self) -> None:
+        self.user = self.scope["user"]
+        self.project_id = self.scope["url_route"]["kwargs"]["project_id"]
+
+        if self.user.is_anonymous:
+            await self.close(code=4001)
+            return
+
+        if not await self._check_project_access():
+            await self.close(code=4003)
+            return
+
+        self.group_name = fm_portal_group_name(self.user.pk, self.project_id)
+        await self.channel_layer.group_add(self.group_name, self.channel_name)
+        await self.accept()
+        logger.debug(
+            "OccupantPortalConsumer connected: user=%s project=%s",
+            self.user.username,
+            self.project_id,
+        )
+
+    async def disconnect(self, close_code: int) -> None:
+        group_name = getattr(self, "group_name", None)
+        if group_name is not None and self.channel_layer is not None:
+            await self.channel_layer.group_discard(group_name, self.channel_name)
+
+    async def receive_json(self, content: dict, **kwargs) -> None:
+        action = content.get("action")
+        if action == "ping":
+            await self.send_json({"type": "pong"})
+        else:
+            await self.send_json({"type": "error", "message": f"Unknown action: {action}"})
+
+    async def ar_updated(self, event: dict) -> None:
+        """Server-rendered AR status card pushed by the service layer."""
+        await self.send_json({"type": "ar.updated", **event["payload"]})
+
+    @sync_to_async
+    def _check_project_access(self) -> bool:
+        from environments.models import Project
+        from environments.services import ProjectAccessService
+
+        try:
+            project = Project.objects.select_related("owner").get(pk=self.project_id)
+        except Project.DoesNotExist:
+            return False
+        return ProjectAccessService.can_access(self.user, project)

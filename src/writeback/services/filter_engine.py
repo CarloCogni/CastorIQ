@@ -92,8 +92,13 @@ class FilterEngine:
     def _apply_name_pattern(self, qs: QuerySet, pattern: str | None) -> QuerySet:
         if not pattern:
             return qs
-        # Convert glob "D-*" to regex "^D\-.*$"
-        regex = "^" + re.escape(pattern).replace(r"\*", ".*") + "$"
+        # Substring match by default — Revit-exported names are commonly
+        # prefixed (e.g. "Basic Wall:_Dekkeforkant 255mm:386330"), so an
+        # anchored prefix glob like "_Dekkeforkant*" would never match.
+        # No wildcards → plain icontains. Wildcards → unanchored regex.
+        if "*" not in pattern:
+            return qs.filter(name__icontains=pattern)
+        regex = re.escape(pattern).replace(r"\*", ".*")
         return qs.filter(name__iregex=regex)
 
     def _apply_global_ids(self, qs: QuerySet, global_ids: list | None) -> QuerySet:

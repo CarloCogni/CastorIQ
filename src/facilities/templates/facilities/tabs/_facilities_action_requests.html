@@ -1,5 +1,22 @@
 <!-- facilities/tabs/_facilities_action_requests.html — Action Request triage list -->
 
+<style>
+    /* M4.F — single-column collapse for FM phone triage. Closes the §4
+       day-in-the-life gap (FM glances at the queue on her commute). */
+    @media (max-width: 600px) {
+        #facilities-action-requests-body .ar-grid-row > .col-12,
+        #facilities-action-requests-body #ar-grid-mount .col-md-6,
+        #facilities-action-requests-body #ar-grid-mount .col-lg-4 {
+            flex: 0 0 100%;
+            max-width: 100%;
+        }
+        #facilities-action-requests-body .input-group,
+        #facilities-action-requests-body select.form-select-sm { width: 100% !important; }
+        #facilities-action-requests-body form.d-flex { flex-direction: column; align-items: stretch !important; }
+        #facilities-action-requests-body form.d-flex > * { width: 100%; }
+    }
+</style>
+
 <div class="d-flex flex-column gap-3 facilities-scope" id="facilities-action-requests-body">
     <div class="d-flex align-items-center gap-3 flex-wrap">
         <div class="d-flex align-items-center gap-2">

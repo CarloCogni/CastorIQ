@@ -259,7 +259,7 @@
         const hidden = document.getElementById(scope + '-user-id');
         const slot = document.getElementById(scope + '-user-suggestions');
         if (hidden) hidden.value = userId;
-        if (input) input.value = username + ' (' + email + ')';
+        if (input) input.value = email ? username + ' (' + email + ')' : username;
         if (slot) { slot.innerHTML = ''; slot.classList.add('d-none'); }
     }
 

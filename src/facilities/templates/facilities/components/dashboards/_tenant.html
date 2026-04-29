@@ -1,9 +1,135 @@
 <!-- facilities/components/dashboards/_tenant.html — Tenant / Occupant landing (mobile-first) -->
 
-{% include "facilities/components/dashboards/_header.html" with tagline="Your space, your requests. That's it." %}
+<div class="portal-scope facilities-scope">
+
+<div class="d-flex align-items-center gap-2 mb-3">
+    <h5 class="m-0">
+        <i class="bi bi-house-door me-1" style="color: var(--castor-facilities, #14b8a6);"></i>
+        Your portal
+    </h5>
+    <button type="button"
+            class="help-pill"
+            data-bs-toggle="modal"
+            data-bs-target="#portalHelpModal"
+            title="How the Portal works"
+            aria-label="How the Portal works">
+        <i class="bi bi-question-circle"></i>
+    </button>
+</div>
+
+<!-- Drawer mount point — HTMX swaps the intake drawer / review fragment in here. -->
+<div id="portal-intake-mount" class="mb-3"></div>
+
+{% include "facilities/components/portal_help_modal.html" %}
+
+</div><!-- /.portal-scope -->
+
+<!-- WS live-update channel — fires when this user's AR status changes (M4.C). -->
+<script>
+(function () {
+    if (window.__portalWsBound) return;
+    window.__portalWsBound = true;
+    const projectPk = "{{ project.pk }}";
+    let backoff = 1000;
+    function connect() {
+        const proto = location.protocol === "https:" ? "wss" : "ws";
+        const ws = new WebSocket(`${proto}://${location.host}/ws/projects/${projectPk}/fm/portal/`);
+        ws.onopen = () => { backoff = 1000; };
+        ws.onmessage = (ev) => {
+            try {
+                const msg = JSON.parse(ev.data);
+                if (msg && msg.type === "ar.updated" && msg.html) {
+                    const card = document.querySelector(`.portal-status-card[data-ar-id="${msg.ar_id}"]`);
+                    if (card) {
+                        card.outerHTML = msg.html;
+                    } else {
+                        // First push for this AR — prepend onto the recent list
+                        // (handled by a server-rendered list; safest fallback
+                        // is a soft refresh of just the recent-requests area
+                        // on next interaction. Skipping here keeps DOM stable.)
+                    }
+                }
+            } catch (e) { /* swallow malformed frames */ }
+        };
+        ws.onclose = () => {
+            setTimeout(connect, Math.min(backoff, 30000));
+            backoff = Math.min(backoff * 2, 30000);
+        };
+        ws.onerror = () => { try { ws.close(); } catch (_) {} };
+    }
+    connect();
+})();
+</script>
 
 <div class="row g-3">
-    {% include "facilities/components/dashboards/_placeholder_card.html" with icon="house-door" title="Your space" hint="M4 · Occupant Portal" %}
-    {% include "facilities/components/dashboards/_placeholder_card.html" with icon="megaphone" title="Submit a new request" hint="M4 · Occupant Portal" %}
-    {% include "facilities/components/dashboards/_placeholder_card.html" with icon="list-check" title="Your recent requests" hint="M4 · Occupant Portal" %}
+
+    <!-- Your space -->
+    <div class="col-12 col-md-6 col-lg-4">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body">
+                <p class="text-secondary text-uppercase fs-8 fw-semibold mb-2">
+                    <i class="bi bi-house-door me-1" style="color: var(--castor-facilities, #14b8a6);"></i>Your space
+                </p>
+                {% if portal_assigned_space and portal_assigned_space.entity %}
+                    <p class="fs-5 fw-semibold mb-1">{{ portal_assigned_space.entity.name|default:"(unnamed)" }}</p>
+                    <p class="text-secondary fs-7 mb-0">
+                        {{ portal_assigned_space.get_spatial_type_display }}
+                        {% if portal_assigned_space.long_name %}
+                            — {{ portal_assigned_space.long_name }}
+                        {% endif %}
+                    </p>
+                {% else %}
+                    <p class="fs-7 text-secondary mb-0">
+                        No space assigned yet. Ask the project owner to seat you.
+                    </p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Submit a new request — primary CTA -->
+    <div class="col-12 col-md-6 col-lg-4">
+        <div class="card h-100 shadow-sm border" style="border-color: rgba(20,184,166,0.35) !important;">
+            <div class="card-body d-flex flex-column">
+                <p class="text-secondary text-uppercase fs-8 fw-semibold mb-2">
+                    <i class="bi bi-megaphone me-1" style="color: var(--castor-facilities, #14b8a6);"></i>Submit a new request
+                </p>
+                <p class="fs-7 mb-3">
+                    Type what you need. We'll route it to the right team.
+                </p>
+                <button type="button"
+                        class="btn btn-sm mt-auto align-self-start"
+                        style="background-color: var(--castor-facilities, #14b8a6); color: white; min-height: 44px; padding: 0.5rem 1rem;"
+                        aria-label="Open the new-request box"
+                        hx-get="{% url 'facilities:portal_intake' project.pk %}"
+                        hx-target="#portal-intake-mount"
+                        hx-swap="innerHTML">
+                    <i class="bi bi-pencil-square me-2"></i>New request
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Your recent requests -->
+    <div class="col-12 col-lg-4">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body">
+                <p class="text-secondary text-uppercase fs-8 fw-semibold mb-2">
+                    <i class="bi bi-list-check me-1" style="color: var(--castor-facilities, #14b8a6);"></i>Your recent requests
+                </p>
+                {% if portal_recent_ars %}
+                    <div class="d-flex flex-column gap-1" id="portal-recent-list">
+                        {% for ar in portal_recent_ars %}
+                            {% include "facilities/portal/_portal_status_card.html" with ar=ar %}
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="fs-7 text-secondary mb-0" id="portal-recent-empty">
+                        Nothing yet. Your last 10 submissions will live here.
+                    </p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
 </div>

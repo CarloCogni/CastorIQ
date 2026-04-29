@@ -148,6 +148,29 @@ class ActionRequest(UUIDModel):
         help_text="FM-side notes from triage / dismissal.",
     )
 
+    # M4 — Occupant Portal intake provenance. Populated when the AR is created
+    # via the LLM intake; left blank for FM-side manual creates and for AR
+    # rows that predate M4. Carries the raw user message + the parsed plan +
+    # confidence so a later abuse / debug pass has the full audit footprint.
+    user_text = models.TextField(
+        blank=True,
+        default="",
+        verbose_name="Occupant Text",
+        help_text="Raw text the occupant typed in the portal (M4).",
+    )
+    draft_payload = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="LLM Draft Payload",
+        help_text="Parsed LLM output used to draft this request (M4).",
+    )
+    draft_confidence = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="LLM Confidence",
+        help_text="0–100 self-reported confidence from the intake LLM (M4).",
+    )
+
     class Meta:
         ordering = ["-created_at"]
         verbose_name = "Action Request"

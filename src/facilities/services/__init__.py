@@ -23,6 +23,13 @@ from .fm_intent_service import (
     FMIntentService,
     FMIntentValidationError,
 )
+from .occupant_intake_service import (
+    IntakeDraft,
+    OccupantIntakeError,
+    OccupantIntakeService,
+    OccupantIntakeValidationError,
+)
+from .occupant_space_service import OccupantSpaceService
 from .permit_service import (
     PermitNotFoundError,
     PermitService,
@@ -61,6 +68,11 @@ __all__ = [
     "FMIntentService",
     "FMIntentValidationError",
     "IllegalTransitionError",
+    "IntakeDraft",
+    "OccupantIntakeError",
+    "OccupantIntakeService",
+    "OccupantIntakeValidationError",
+    "OccupantSpaceService",
     "PermitNotFoundError",
     "PermitService",
     "PermitServiceError",

@@ -201,6 +201,93 @@ class TestUpsertConflict:
         conflict = Conflict.objects.get(project=project)
         assert conflict.description == "Updated description."
 
+    def test_upsert_skips_when_values_equal(self, scan_service, project, ifc_file):
+        """LLM ignored its own rule: ifc_value == document_value must be dropped."""
+        from documents.models import Document, DocumentChunk
+        from ifc_processor.tests.factories import IFCEntityFactory
+
+        entity = IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcWall")
+        doc = Document.objects.create(
+            project=project, name="Spec.pdf", file="spec.pdf", status="completed"
+        )
+        chunk = DocumentChunk.objects.create(
+            document=doc, content="Walls shall have EI60.", chunk_index=0
+        )
+        scan_run = ScanRun.objects.create(
+            project=project,
+            triggered_by=scan_service.user,
+            scan_type=ScanRun.ScanType.FULL,
+            status=ScanRun.Status.RUNNING,
+            llm_model_used="test",
+        )
+
+        finding = self._make_finding()
+        finding["ifc_value"] = "EI60"
+        finding["document_value"] = "EI60"
+
+        result = scan_service._upsert_conflict(entity, chunk, finding, scan_run)
+
+        assert result == "skipped"
+        assert not Conflict.objects.filter(project=project).exists()
+
+    def test_upsert_skips_when_values_equal_after_normalisation(
+        self, scan_service, project, ifc_file
+    ):
+        """'EI60' vs 'EI 60' (whitespace-only difference) must also be dropped."""
+        from documents.models import Document, DocumentChunk
+        from ifc_processor.tests.factories import IFCEntityFactory
+
+        entity = IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcWall")
+        doc = Document.objects.create(
+            project=project, name="Spec.pdf", file="spec.pdf", status="completed"
+        )
+        chunk = DocumentChunk.objects.create(
+            document=doc, content="Walls shall have EI 60.", chunk_index=0
+        )
+        scan_run = ScanRun.objects.create(
+            project=project,
+            triggered_by=scan_service.user,
+            scan_type=ScanRun.ScanType.FULL,
+            status=ScanRun.Status.RUNNING,
+            llm_model_used="test",
+        )
+
+        finding = self._make_finding()
+        finding["ifc_value"] = "EI60"
+        finding["document_value"] = "EI 60"
+
+        result = scan_service._upsert_conflict(entity, chunk, finding, scan_run)
+
+        assert result == "skipped"
+
+    def test_upsert_skips_when_values_equal_case_insensitive(self, scan_service, project, ifc_file):
+        """'ei60' vs 'EI60' (case-only difference) must also be dropped."""
+        from documents.models import Document, DocumentChunk
+        from ifc_processor.tests.factories import IFCEntityFactory
+
+        entity = IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcWall")
+        doc = Document.objects.create(
+            project=project, name="Spec.pdf", file="spec.pdf", status="completed"
+        )
+        chunk = DocumentChunk.objects.create(
+            document=doc, content="Walls shall have EI60.", chunk_index=0
+        )
+        scan_run = ScanRun.objects.create(
+            project=project,
+            triggered_by=scan_service.user,
+            scan_type=ScanRun.ScanType.FULL,
+            status=ScanRun.Status.RUNNING,
+            llm_model_used="test",
+        )
+
+        finding = self._make_finding()
+        finding["ifc_value"] = "ei60"
+        finding["document_value"] = "EI60"
+
+        result = scan_service._upsert_conflict(entity, chunk, finding, scan_run)
+
+        assert result == "skipped"
+
     def test_upsert_skips_dismissed_conflict(self, scan_service, project, ifc_file):
         """Dismissed conflicts are never recreated."""
         import hashlib

@@ -10,7 +10,7 @@ Protocol:
     Client → Server:  {"action": "cancel"}
     Server → Client:  {"type": "phase", "phase": "intent|retrieve|generate|compact", "status": "running|done|error", "message": "..."}
     Server → Client:  {"type": "done"}
-    Server → Client:  {"type": "compacted"}
+    Server → Client:  {"type": "compacted", "count": <int>}
     Server → Client:  {"type": "cancelled"}
     Server → Client:  {"type": "error", "message": "<text>"}
 """
@@ -109,16 +109,16 @@ class AskConsumer(AsyncJsonWebsocketConsumer):
             return
 
         try:
-            await self._run_compaction(session_id)
+            count = await self._run_compaction(session_id)
         except Exception as e:
             logger.exception("Compaction error: %s", e)
             await self.send_json({"type": "error", "message": str(e)})
             return
 
-        await self.send_json({"type": "compacted"})
+        await self.send_json({"type": "compacted", "count": count})
 
     @sync_to_async
-    def _run_compaction(self, session_id: str) -> None:
+    def _run_compaction(self, session_id: str) -> int:
         """Synchronous compaction execution wrapped for async use."""
         from chat.models import ChatSession
         from chat.services.compaction_service import CompactionService
@@ -136,7 +136,7 @@ class AskConsumer(AsyncJsonWebsocketConsumer):
 
         emitter = WebSocketEmitter(self.send_json, cancel_event=self._cancel_event)
         compactor = CompactionService(user=self.user)
-        compactor.compact_session(session, emitter=emitter)
+        return compactor.compact_session(session, emitter=emitter)
 
     @sync_to_async
     def _run_pipeline(self, message_text: str, session_id: str | None, scope: str) -> None:

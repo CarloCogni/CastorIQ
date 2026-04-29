@@ -19,7 +19,6 @@ caps generation at the model layer too.
 
 from __future__ import annotations
 
-import concurrent.futures
 import json
 import logging
 from dataclasses import dataclass
@@ -34,6 +33,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from core.llm import get_llm
 from environments.models import Project
 from facilities.models import FacilityAsset, FMIntentProposal, WorkOrder
+from facilities.services._llm_helpers import invoke_with_wallclock
 from facilities.services.fm_intent_prompts import (
     CLASSIFIER_SYSTEM,
     CLASSIFIER_USER_TEMPLATE,
@@ -345,7 +345,7 @@ class FMIntentService:
             SystemMessage(content=CLASSIFIER_SYSTEM),
             HumanMessage(content=CLASSIFIER_USER_TEMPLATE.format(user_message=message)),
         ]
-        raw = _invoke_with_wallclock(llm, messages, CLASSIFIER_TIMEOUT_SECONDS, "intent-classifier")
+        raw = invoke_with_wallclock(llm, messages, CLASSIFIER_TIMEOUT_SECONDS, "intent-classifier")
         try:
             data = json.loads(raw)
         except json.JSONDecodeError as exc:
@@ -377,7 +377,7 @@ class FMIntentService:
             ),
             HumanMessage(content=PLANNER_USER_TEMPLATE.format(user_message=message)),
         ]
-        raw = _invoke_with_wallclock(llm, messages, PLANNER_TIMEOUT_SECONDS, "intent-planner")
+        raw = invoke_with_wallclock(llm, messages, PLANNER_TIMEOUT_SECONDS, "intent-planner")
         try:
             data = json.loads(raw)
         except json.JSONDecodeError as exc:
@@ -453,31 +453,6 @@ class FMIntentService:
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────
-
-
-def _invoke_with_wallclock(llm, messages, timeout: float, thread_prefix: str) -> str:
-    """Run llm.invoke in a worker thread with a hard wall-clock timeout.
-
-    httpx's per-read timeout doesn't fire when Ollama dribbles tokens, so we
-    enforce the cap from outside. The leaked thread is daemonic and the
-    in-flight Ollama request occupies one server slot until it returns —
-    those costs are acceptable in exchange for a UI that never wedges.
-    """
-    executor = concurrent.futures.ThreadPoolExecutor(
-        max_workers=1, thread_name_prefix=thread_prefix
-    )
-    try:
-        future = executor.submit(llm.invoke, messages)
-        try:
-            response = future.result(timeout=timeout)
-        except concurrent.futures.TimeoutError as exc:
-            raise httpx.ReadTimeout(f"Hard wall-clock timeout after {timeout:.0f}s") from exc
-    finally:
-        executor.shutdown(wait=False)
-    content = getattr(response, "content", None)
-    if content is None:
-        raise ValueError("LLM response had no content attribute")
-    return str(content)
 
 
 def _parse_iso(value) -> datetime | None:

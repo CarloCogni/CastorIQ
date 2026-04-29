@@ -178,7 +178,7 @@ class TestAskConsumerMessages:
         await communicator.disconnect()
 
     async def test_compact_happy_path_streams_compacted(self, project, user, chat_session):
-        """Successful compact action ends with a 'compacted' message."""
+        """Successful compact action ends with a 'compacted' message carrying a count."""
         from unittest.mock import AsyncMock, patch
 
         communicator = _make_communicator(project.id, user)
@@ -186,15 +186,16 @@ class TestAskConsumerMessages:
         assert connected
 
         with patch.object(AskConsumer, "_run_compaction", new_callable=AsyncMock) as mock_run:
-            mock_run.return_value = None
+            mock_run.return_value = 5
 
             await communicator.send_json_to(
                 {"action": "compact", "session_id": str(chat_session.pk)}
             )
             messages = await _drain_until(communicator, {"compacted", "error"})
 
-        types = [m["type"] for m in messages]
-        assert "compacted" in types
+        compacted = next((m for m in messages if m["type"] == "compacted"), None)
+        assert compacted is not None
+        assert compacted["count"] == 5
         await communicator.disconnect()
 
     async def test_compact_service_error_streams_error(self, project, user, chat_session):
