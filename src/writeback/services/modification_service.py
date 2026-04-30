@@ -12,6 +12,7 @@ import json
 import logging
 import uuid
 
+from django.conf import settings
 from django.utils import timezone
 
 from core.llm import resolve_model_name
@@ -25,16 +26,31 @@ from writeback.models import GitCommit, ModificationProposal
 from writeback.services.guardian_service import GuardianService
 
 from .emitters import CancellationError, NullEmitter, PipelineEmitter
+from .entity_resolver import (
+    MODE_EXISTING_TARGET,
+    MODE_NEW_TARGET,
+    MODE_PARENT_TARGET,
+    EntityNameResolver,
+)
 from .filter_engine import FilterEngine
 from .git_service import GitService
+from .intent_assembler import (
+    assemble_tier1_intent,
+    assemble_tier2_intent,
+    derive_tier3_inputs,
+)
 from .intent_classifier import SYSTEM_PROMPT as CLASSIFY_SYSTEM_PROMPT
 from .intent_classifier import IntentClassifier, IntentParseError
+from .slot_extractor import SlotExtractionError, SlotExtractor
 from .tier1_validator import Tier1Validator
 from .tier2_planner import PlanGenerationError, Tier2Planner
 from .tier2_validator import Tier2Validator
 from .tier3_executor import Tier3ExecutionError, Tier3Executor
 from .tier3_planner import CodeGenerationError, Tier3Planner
 from .tier3_reviewer import Tier3Reviewer
+from .tier_router import RoutingResult
+from .tier_router import route as route_tier
+from .triage_classifier import TriageClassifier, TriageError
 
 logger = logging.getLogger(__name__)
 
@@ -64,14 +80,22 @@ class ModificationService:
 
     def __init__(self, project, user=None):
         self.project = project
+        self.user = user
         self.git = GitService(project)
         self.filter_engine = FilterEngine(project)
+        self.entity_resolver = EntityNameResolver(
+            project, user=user, filter_engine=self.filter_engine
+        )
         self.classifier = IntentClassifier(user=user)
         self.t1_validator = Tier1Validator()
         self.t2_planner = Tier2Planner(user=user)
         self.t2_validator = Tier2Validator(project)
         self.t3_planner = Tier3Planner(user=user)
         self.t3_reviewer = Tier3Reviewer(user=user)
+        # V2 pipeline services. Cheap to construct; LLM is not invoked
+        # until ``classify`` / ``extract`` are called.
+        self.triage_classifier = TriageClassifier(user=user)
+        self.slot_extractor = SlotExtractor(user=user)
 
     # ── Phase 1: Propose ───────────────────────────────────
 
@@ -105,6 +129,19 @@ class ModificationService:
             ModificationError on classification/validation failure.
         """
         emitter = emitter or NullEmitter()
+
+        # V2 pipeline: behind a settings flag while the new prompts are
+        # being validated against real Ollama models. Default off — flip
+        # ``WRITEBACK_PIPELINE_V2 = True`` in settings to opt in.
+        if getattr(settings, "WRITEBACK_PIPELINE_V2", False):
+            return self._propose_v2(
+                user_message,
+                user=user,
+                ifc_file=ifc_file,
+                message_obj=message_obj,
+                emitter=emitter,
+                failure_context=failure_context,
+            )
 
         # 0a. Feasibility pre-check — reject vague requests before any expensive work.
         from writeback.services.feasibility_checker import FeasibilityChecker
@@ -162,13 +199,54 @@ class ModificationService:
             {"skill_count": n},
         )
 
-        # 1b. Build entity context — token-aware, two-pass, injection-aware.
+        # 1b. Pre-LLM entity resolution. The resolver is now AUTHORITATIVE for
+        #     entity targeting — its output becomes the filter directly via
+        #     build_filter_spec(). When the resolver returns nothing, we
+        #     reject the request rather than falling through to the LLM,
+        #     because the LLM no longer has a `filter` field in its schema.
+        emitter.emit("resolve", "running", "Resolving entity references…")
+        resolution = self.entity_resolver.resolve(user_message)
+        if resolution.is_empty:
+            emitter.emit("resolve", "done", "No specific entities resolved", {"resolved_count": 0})
+            self._raise_with_failure_record(
+                ValueError(
+                    "I couldn't identify any specific entity, type, or "
+                    "category in your request. Please name the entity "
+                    '(e.g. "wall :285330"), the category (e.g. "all '
+                    'walls"), or a property predicate (e.g. "all '
+                    'external walls").'
+                ),
+                phase="VALIDATION",
+                query_text=user_message,
+                intent_json=None,
+            )
+
+        entity_context_input = resolution.entities
+        logger.info("Pre-LLM resolution: %s", resolution.diagnostic)
+        emitter.emit(
+            "resolve",
+            "done",
+            f"Resolved {len(resolution.entities)} candidate"
+            f"{'s' if len(resolution.entities) != 1 else ''}",
+            {"resolved_count": len(resolution.entities), "scope": resolution.scope},
+        )
+
+        pipeline_warnings: list[str] = []
+        if resolution.misses:
+            misses_str = ", ".join(resolution.misses)
+            pipeline_warnings.append(
+                f"Could not match: {misses_str}. Proceeding with the "
+                f"{len(resolution.entities)} matched "
+                f"entit{'y' if len(resolution.entities) == 1 else 'ies'}."
+            )
+
+        # Build entity context — token-aware, two-pass, injection-aware.
         model_name = resolve_model_name(user)
         prelim_budget = compute_budget(
             model_name, system=CLASSIFY_SYSTEM_PROMPT, injected=injection_text
         )
         entity_context = self.classifier.build_entity_context(
-            all_entities, available_tokens=prelim_budget.remaining_for_injection
+            entity_context_input, available_tokens=prelim_budget.remaining_for_injection
         )
         final_budget = compute_budget(
             model_name,
@@ -223,12 +301,21 @@ class ModificationService:
                     entity_context=entity_context,
                     emitter=emitter,
                     skill_examples=skill_examples,
+                    resolution=resolution,
+                    pipeline_warnings=pipeline_warnings,
                 )
 
             intent = classified
         except IntentParseError as e:
             emitter.emit("classify", "error", f"Could not understand the request: {e}")
-            raise ModificationError(f"Could not understand the request: {e}")
+            # Route through the failure-record path so the consumer surfaces
+            # the help card (with retry button) instead of a raw error toast.
+            self._raise_with_failure_record(
+                ValueError(f"Could not understand the request: {e}"),
+                phase="VALIDATION",
+                query_text=user_message,
+                intent_json=None,
+            )
 
         # 3. Check tier — route to appropriate handler
         tier = intent.get("tier", 0)
@@ -245,6 +332,9 @@ class ModificationService:
 
         if tier == 0:
             explanation = intent.get("explanation", "Request is too ambiguous to process.")
+            # Wrap with a stable marker the failure classifier matches on
+            # (REQUEST_AMBIGUOUS pattern), but the marker is stripped before
+            # the message reaches the user — see _render_diagnosis().
             self._raise_with_failure_record(
                 ValueError(f"Ambiguous request: {explanation}"),
                 phase="VALIDATION",
@@ -276,17 +366,23 @@ class ModificationService:
                 f"Unexpected tier: {tier}. Reason: {intent.get('explanation', '?')}"
             )
 
-        # 4. Resolve entity filter
+        # 4. Build filter deterministically from the resolver's result.
+        #    The LLM's `filter` field (if any) is ignored — entity targeting
+        #    is the resolver's job, period. This is the boundary that the
+        #    old "filter pinning AND-merge" code conflated.
         emitter.emit("validate", "running", "Matching entities…")
-        filter_spec = intent.get("filter", {})
+        from .filter_builder import build_filter_spec
 
-        # If the user mentioned specific GUIDs, always honour them exactly —
-        # override whatever the LLM put in the filter so we never touch
-        # more entities than the user specified.
-        guids_in_message = self._extract_guids_from_message(user_message)
-        if guids_in_message:
-            filter_spec["global_ids"] = guids_in_message
-            logger.info(f"GUID override: restricting filter to {guids_in_message}")
+        filter_spec = build_filter_spec(resolution)
+        logger.info(
+            "Filter built from resolver: %d entit%s (scope=%s)",
+            len(resolution.entities),
+            "y" if len(resolution.entities) == 1 else "ies",
+            resolution.scope,
+        )
+        # Stamp the filter back onto the intent so proposal.intent_json /
+        # filter_spec audit fields stay populated for downstream code.
+        intent["filter"] = filter_spec
 
         try:
             matched_qs = self.filter_engine.resolve(filter_spec)
@@ -295,45 +391,34 @@ class ModificationService:
 
         matched_entities = list(matched_qs)
 
-        # 5. Validate operation against real entity data
+        # 5. Validate operation against real entity data. SET_PROPERTY now
+        #    upserts on standard psets, so the historical SET→ADD auto-
+        #    fallback path is folded into the validator itself.
         validation = self.t1_validator.validate(intent, matched_entities)
 
         if not validation.valid:
-            # Auto-fallback: SET_PROPERTY → ADD_PROPERTY for standard pset properties
-            if intent.get("operation") == "SET_PROPERTY" and "not found on any" in validation.error:
-                pset = intent.get("pset", "")
-                prop = intent.get("property", "")
-                if lookup_property(pset, prop) is not None:
-                    logger.info(
-                        f"Auto-fallback: SET_PROPERTY → ADD_PROPERTY "
-                        f"for {pset}.{prop} (standard property, not yet on entities)"
-                    )
-                    intent["operation"] = "ADD_PROPERTY"
-                    validation = self.t1_validator.validate(intent, matched_entities)
-
-            # Tier 1 still failing
-            if not validation.valid:
-                # Type/enum errors are user errors — surface them directly
-                if "not found on any" not in validation.error:
-                    emitter.emit("validate", "error", validation.error)
-                    self._raise_with_failure_record(
-                        ValueError(validation.error),
-                        phase="VALIDATION",
-                        query_text=user_message,
-                        intent_json=intent,
-                    )
-                # "Not found" error → escalate to Tier 2
-                logger.info(f"Tier 1 validation failed, escalating to Tier 2: {validation.error}")
-                emitter.emit("validate", "done", "Escalating to Tier 2 plan…", {"escalated": True})
-                return self._propose_tier2(
-                    user_message,
-                    entity_context,
-                    user=user,
-                    ifc_file=ifc_file,
-                    message_obj=message_obj,
-                    emitter=emitter,
-                    skill_examples=skill_examples,
+            # Type/enum errors are user errors — surface them directly
+            if "not found on any" not in validation.error and "missing on" not in validation.error:
+                emitter.emit("validate", "error", validation.error)
+                self._raise_with_failure_record(
+                    ValueError(validation.error),
+                    phase="VALIDATION",
+                    query_text=user_message,
+                    intent_json=intent,
                 )
+            # Custom-pset / property-not-found cases → escalate to Tier 2
+            logger.info(f"Tier 1 validation failed, escalating to Tier 2: {validation.error}")
+            emitter.emit("validate", "done", "Escalating to Tier 2 plan…", {"escalated": True})
+            return self._propose_tier2(
+                user_message,
+                entity_context,
+                user=user,
+                ifc_file=ifc_file,
+                message_obj=message_obj,
+                emitter=emitter,
+                skill_examples=skill_examples,
+                escalation_hint=validation.error,
+            )
 
         emitter.emit(
             "validate",
@@ -369,13 +454,24 @@ class ModificationService:
         if ifc_file is None:
             ifc_file = matched_entities[0].ifc_file
 
+        # Compose proposal explanation: stamp pipeline + validator warnings
+        # at the top so the user sees them in the proposal card. The
+        # groundedness guard already prefixes with "⚠ …" when it fires.
+        all_warnings: list[str] = []
+        all_warnings.extend(pipeline_warnings)
+        all_warnings.extend(validation.warnings or [])
+        explanation = intent.get("explanation", "")
+        if all_warnings:
+            warning_block = "\n".join(f"⚠ {w}" for w in all_warnings)
+            explanation = f"{warning_block}\n\n{explanation}" if explanation else warning_block
+
         # 8. Create the proposal
         proposal = ModificationProposal.objects.create(
             message=message_obj,
             ifc_file=ifc_file,
             created_by=user,
             request_text=user_message,
-            explanation=intent.get("explanation", ""),
+            explanation=explanation,
             changes=intent,
             diff_preview=json.dumps(diff_preview),
             affected_count=len(validation.entities),
@@ -548,6 +644,41 @@ class ModificationService:
         proposal.rejection_reason = reason
         proposal.save()
         logger.info(f"Proposal {proposal.id} rejected")
+
+    # ── Supersede ──────────────────────────────────────────
+
+    def supersede_pending(self, session, user) -> list[str]:
+        """
+        Mark every PENDING proposal in this session as SUPERSEDED.
+
+        Called when the user sends a new modify request before resolving the
+        previous one. Captures the abandon as a queryable status (with reviewer
+        and timestamp) so it remains available later as soft-negative training
+        data instead of vanishing as an orphaned PENDING row.
+
+        Args:
+            session: ChatSession whose prior pending proposals should be superseded.
+            user:    The user whose new request triggered the supersede.
+
+        Returns:
+            List of stringified proposal IDs that were marked SUPERSEDED.
+        """
+        pending = ModificationProposal.objects.filter(
+            message__session=session,
+            status=ModificationProposal.Status.PENDING,
+            ifc_file__project=self.project,
+        )
+        ids = [str(p.id) for p in pending]
+        if not ids:
+            return []
+
+        pending.update(
+            status=ModificationProposal.Status.SUPERSEDED,
+            reviewed_by=user,
+            reviewed_at=timezone.now(),
+        )
+        logger.info("Superseded %d pending proposal(s) in session %s", len(ids), session.id)
+        return ids
 
     # ───ROLLBACK / RESTORE / TIME MACHINE ─────────────────────────────
 
@@ -853,10 +984,15 @@ class ModificationService:
                 )
 
                 if change.pset == "(attribute)":
-                    # Direct attribute change
+                    # Direct attribute change — mirror the modeled IFC attributes
+                    # to their dedicated columns. ObjectType / LongName remain in
+                    # the properties JSON since they aren't first-class on the model.
                     if change.property == "Name":
                         entity.name = change.new_value
-                    # Could extend for Description, etc.
+                    elif change.property == "Description":
+                        entity.ifc_description = change.new_value
+                    elif change.property == "Tag":
+                        entity.tag = change.new_value
                 elif change.new_value == "(removed)":
                     key = f"{change.pset}.{change.property}"
                     entity.properties.pop(key, None)
@@ -864,7 +1000,7 @@ class ModificationService:
                     key = f"{change.pset}.{change.property}"
                     entity.properties[key] = change.new_value
 
-                entity.save(update_fields=["properties", "name"])
+                entity.save(update_fields=["properties", "name", "ifc_description", "tag"])
 
             except IFCEntity.DoesNotExist:
                 logger.warning(f"Could not sync entity {change.global_id} — not in DB")
@@ -879,16 +1015,35 @@ class ModificationService:
         entity_context: str = "",
         emitter: PipelineEmitter | None = None,
         skill_examples: list[dict] | None = None,
+        resolution=None,
+        pipeline_warnings: list[str] | None = None,
     ):
         """
         Handle a chain of Tier 1 operations from a single user request.
 
         Creates one proposal per sub-intent, linked by a shared chain_id.
         Returns the list of proposals.
+
+        ``resolution`` is the same ResolutionResult used by the parent
+        ``propose()`` call. Every step in the chain targets the same
+        entity set (the LLM only varies operation/property/value across
+        chained intents, never entity targeting).
         """
+        from .filter_builder import build_filter_spec
+
         emitter = emitter or NullEmitter()
         chain_id = str(uuid.uuid4())[:8]
         proposals = []
+        pipeline_warnings = list(pipeline_warnings or [])
+
+        if resolution is None or resolution.is_empty:
+            raise ModificationError(
+                "Chain proposal requires a non-empty resolver result. "
+                "This is a programming error — propose() should have "
+                "rejected the request before reaching the chain branch."
+            )
+
+        chain_filter_spec = build_filter_spec(resolution)
 
         for i, intent in enumerate(intents):
             tier = intent.get("tier", 0)
@@ -898,10 +1053,11 @@ class ModificationService:
                     f"All chained operations must be Tier 1."
                 )
 
-            # Resolve filter
-            filter_spec = intent.get("filter", {})
+            # Filter is the deterministic resolver-built spec, identical
+            # for every step. Stamp it onto the intent for audit.
+            intent["filter"] = chain_filter_spec
             try:
-                matched_qs = self.filter_engine.resolve(filter_spec)
+                matched_qs = self.filter_engine.resolve(chain_filter_spec)
             except ValueError as e:
                 raise ModificationError(f"Chain element {i + 1} filter error: {e}")
             matched_entities = list(matched_qs)
@@ -910,38 +1066,29 @@ class ModificationService:
             validation = self.t1_validator.validate(intent, matched_entities)
 
             if not validation.valid:
-                # Try SET→ADD fallback
+                # Type/enum errors are user errors — surface them directly
                 if (
-                    intent.get("operation") == "SET_PROPERTY"
-                    and "not found on any" in validation.error
+                    "not found on any" not in validation.error
+                    and "missing on" not in validation.error
                 ):
-                    pset = intent.get("pset", "")
-                    prop = intent.get("property", "")
-                    if lookup_property(pset, prop) is not None:
-                        intent["operation"] = "ADD_PROPERTY"
-                        validation = self.t1_validator.validate(intent, matched_entities)
-
-                if not validation.valid:
-                    # Type/enum errors are user errors — surface them directly
-                    if "not found on any" not in validation.error:
-                        raise ModificationError(
-                            f"Chain element {i + 1} validation failed: {validation.error}"
-                        )
-                    logger.info(
-                        f"Chain element {i + 1} failed Tier 1, escalating to Tier 2: {validation.error}"
+                    raise ModificationError(
+                        f"Chain element {i + 1} validation failed: {validation.error}"
                     )
-                    emitter.emit(
-                        "validate", "done", "Escalating to Tier 2 plan…", {"escalated": True}
-                    )
-                    return self._propose_tier2(
-                        user_message,
-                        entity_context,
-                        user=user,
-                        ifc_file=ifc_file,
-                        message_obj=message_obj,
-                        emitter=emitter,
-                        skill_examples=skill_examples,
-                    )
+                # Custom-pset / property-not-found cases → escalate to Tier 2
+                logger.info(
+                    f"Chain element {i + 1} failed Tier 1, escalating to Tier 2: {validation.error}"
+                )
+                emitter.emit("validate", "done", "Escalating to Tier 2 plan…", {"escalated": True})
+                return self._propose_tier2(
+                    user_message,
+                    entity_context,
+                    user=user,
+                    ifc_file=ifc_file,
+                    message_obj=message_obj,
+                    emitter=emitter,
+                    skill_examples=skill_examples,
+                    escalation_hint=validation.error,
+                )
 
             # Combined confidence + groundedness gate (post-validation)
             confidence = intent.get("confidence", 0)
@@ -960,13 +1107,23 @@ class ModificationService:
             # Resolve IFC file from first match if not provided
             resolved_ifc_file = ifc_file or matched_entities[0].ifc_file
 
+            # Compose explanation with warnings (only on first step to avoid
+            # repeating the resolver-level warnings on every chained card).
+            step_warnings: list[str] = list(validation.warnings or [])
+            if i == 0:
+                step_warnings = pipeline_warnings + step_warnings
+            explanation = intent.get("explanation", "")
+            if step_warnings:
+                warning_block = "\n".join(f"⚠ {w}" for w in step_warnings)
+                explanation = f"{warning_block}\n\n{explanation}" if explanation else warning_block
+
             # Create proposal (same field names as propose())
             proposal = ModificationProposal.objects.create(
                 message=message_obj,
                 ifc_file=resolved_ifc_file,
                 created_by=user,
                 request_text=f"[Chain {chain_id} ({i + 1}/{len(intents)})] {user_message}",
-                explanation=intent.get("explanation", ""),
+                explanation=explanation,
                 changes=intent,
                 diff_preview=json.dumps(diff_preview),
                 affected_count=len(validation.entities),
@@ -974,7 +1131,7 @@ class ModificationService:
                 tier=tier,
                 operation=intent.get("operation", ""),
                 intent_json=intent,
-                filter_spec=filter_spec,
+                filter_spec=chain_filter_spec,
                 confidence=confidence,
             )
             emitter.emit("guardian", "running", f"Checking documents for step {i + 1}…")
@@ -1009,18 +1166,27 @@ class ModificationService:
         message_obj=None,
         emitter: PipelineEmitter | None = None,
         skill_examples: list[dict] | None = None,
+        escalation_hint: str | None = None,
     ) -> ModificationProposal:
         """
         Handle a Tier 2 request: generate plan, validate, create proposal.
 
         The plan is stored in intent_json. Execution iterates over steps.
+
+        ``escalation_hint`` carries the Tier 1 validation error when this
+        path was reached via T1 escalation. It is forwarded to the planner
+        so the LLM can self-correct (wrong property name, SET vs ADD).
         """
         emitter = emitter or NullEmitter()
 
         # 1. Generate execution plan
         emitter.emit("plan", "running", "Generating execution plan…")
         try:
-            plan = self.t2_planner.generate_plan(user_message, entity_context)
+            plan = self.t2_planner.generate_plan(
+                user_message,
+                entity_context,
+                escalation_hint=escalation_hint,
+            )
         except PlanGenerationError as e:
             emitter.emit("plan", "error", f"Plan generation failed: {e}")
             raise ModificationError(f"Could not generate plan: {e}")
@@ -1058,6 +1224,14 @@ class ModificationService:
         # 3. Validate the full plan
         emitter.emit("validate", "running", "Validating plan steps…")
         validation = self.t2_validator.validate_plan(plan)
+
+        # Auto-fallback (parity with Tier 1): SET_PROPERTY → ADD_PROPERTY for
+        # standard pset properties when the property is missing on entities.
+        # validate_plan stops at the first failing step, so iterate up to
+        # len(steps) times to cover plans where multiple steps need the swap.
+        if not validation.valid:
+            validation = self._t2_autofix_set_to_add(plan, validation)
+
         if not validation.valid:
             emitter.emit("validate", "error", validation.error)
             raise ModificationError(f"Plan validation failed: {validation.error}")
@@ -1304,14 +1478,59 @@ class ModificationService:
         return proposal
 
     def _extract_guids_from_message(self, message: str) -> list[str]:
-        """
-        Extract IFC GlobalIds from a user message.
-        IFC GUIDs are exactly 22 characters, base64-encoded (0-9, A-Z, a-z, _, $).
-        """
-        import re
+        """Extract IFC GlobalIds from a user message.
 
-        pattern = r"\b[0-9A-Za-z_$]{22}\b"
-        return re.findall(pattern, message)
+        Delegates to ``EntityNameResolver.extract_guids`` so the regex lives
+        in one place. Kept as an instance method to preserve existing call
+        sites (and to make patching easy in tests).
+        """
+        return EntityNameResolver.extract_guids(message)
+
+    def _t2_autofix_set_to_add(self, plan: dict, validation):
+        """
+        Mirror Tier 1's SET_PROPERTY → ADD_PROPERTY fallback at Tier 2.
+
+        ``validate_plan`` stops at the first invalid step. When that step is
+        a SET_PROPERTY on a standard pset property that simply doesn't exist
+        on the matched entities yet, swap it to ADD_PROPERTY in place and
+        re-validate. Bounded loop because subsequent steps may need the same
+        swap.
+        """
+        steps = plan.get("plan", []) or []
+        if not steps:
+            return validation
+
+        for _ in range(len(steps)):
+            if validation.valid:
+                return validation
+            if not validation.steps:
+                return validation
+
+            failed = validation.steps[-1]
+            if failed.operation != "SET_PROPERTY":
+                return validation
+            if "not found on any" not in (failed.error or ""):
+                return validation
+
+            step = steps[failed.step_index]
+            params = step.get("params", {}) or {}
+            pset = params.get("pset", "")
+            prop = params.get("property", "")
+            if not pset or not prop:
+                return validation
+            if lookup_property(pset, prop) is None:
+                return validation
+
+            logger.info(
+                "Auto-fallback (T2): SET_PROPERTY → ADD_PROPERTY "
+                "for %s.%s (standard property, not yet on entities)",
+                pset,
+                prop,
+            )
+            step["operation"] = "ADD_PROPERTY"
+            validation = self.t2_validator.validate_plan(plan)
+
+        return validation
 
     def _execute_tier3(self, proposal: ModificationProposal) -> list[EntityChange]:
         code = proposal.intent_json.get("code", "")
@@ -1331,3 +1550,608 @@ class ModificationService:
         proposal.save(update_fields=["affected_count"])
 
         return changes
+
+    # ── V2 Pipeline (triage → slots → resolve → route) ─────────────
+
+    def _propose_v2(
+        self,
+        user_message: str,
+        user,
+        ifc_file=None,
+        message_obj=None,
+        emitter: PipelineEmitter | None = None,
+        failure_context: str | None = None,
+    ) -> ModificationProposal:
+        """V2 entry point: decomposed pipeline with deterministic tier choice.
+
+        Stages:
+          1. Triage     — segment the request (per-segment kind + phrases).
+          2. Slots      — extract per-kind slot dicts.
+          3. Resolve    — locate target entities, mode-aware per kind.
+          3.5 Route     — deterministic tier selection (no LLM).
+          4. Dispatch   — T1 single / T1 chain / T2 plan / T3 code.
+
+        Replaces the FeasibilityChecker + IntentClassifier monolith.
+        Behind a settings flag while the new prompts are being validated.
+        """
+        emitter = emitter or NullEmitter()
+
+        # 0. Sanity check — same as V1.
+        all_entities = list(
+            IFCEntity.objects.filter(
+                ifc_file__project=self.project,
+                ifc_file__status="completed",
+            )[:100]
+        )
+        if not all_entities:
+            raise ModificationError(
+                "No processed IFC entities found in this project. "
+                "Please upload and process an IFC file first."
+            )
+
+        segments = self._v2_run_triage(user_message, emitter)
+        self._v2_run_slot_extraction(segments, user_message, emitter)
+        self._v2_run_target_resolution(segments, emitter)
+
+        # 4. Route deterministically.
+        emitter.emit("classify", "running", "Selecting execution tier…")
+        routing = route_tier(segments)
+        if routing.is_rejected:
+            emitter.emit("classify", "error", routing.rejection_reason)
+            self._raise_with_failure_record(
+                ValueError(routing.rejection_reason),
+                phase="VALIDATION",
+                query_text=user_message,
+                intent_json={"segments": segments},
+            )
+        emitter.emit(
+            "classify",
+            "done",
+            f"Tier {routing.tier} — {routing.operation}",
+            {"tier": routing.tier, "operation": routing.operation},
+        )
+
+        # 5. Dispatch.
+        if routing.tier == 1:
+            if routing.operation == "CHAIN":
+                return self._v2_dispatch_t1_chain(
+                    segments,
+                    user_message,
+                    user=user,
+                    ifc_file=ifc_file,
+                    message_obj=message_obj,
+                    emitter=emitter,
+                )
+            return self._v2_dispatch_t1(
+                segments[0],
+                routing,
+                user_message,
+                user=user,
+                ifc_file=ifc_file,
+                message_obj=message_obj,
+                emitter=emitter,
+            )
+
+        if routing.tier == 2:
+            return self._v2_dispatch_t2(
+                segments,
+                user_message,
+                user=user,
+                ifc_file=ifc_file,
+                message_obj=message_obj,
+                emitter=emitter,
+            )
+
+        if routing.tier == 3:
+            return self._v2_dispatch_t3(
+                segments,
+                user_message,
+                user=user,
+                ifc_file=ifc_file,
+                message_obj=message_obj,
+                emitter=emitter,
+            )
+
+        raise ModificationError(
+            f"V2 router returned unexpected tier: {routing.tier}"
+        )
+
+    # ── V2 Stages ─────────────────────────────────────────────────
+
+    def _v2_run_triage(self, user_message: str, emitter: PipelineEmitter) -> list[dict]:
+        """Stage 1 — invoke the triage classifier and return the segment list."""
+        emitter.emit("triage", "running", "Understanding request…")
+        try:
+            triage_result = self.triage_classifier.classify(user_message)
+        except TriageError as e:
+            emitter.emit("triage", "error", str(e))
+            self._raise_with_failure_record(
+                ValueError(f"Could not understand request: {e}"),
+                phase="VALIDATION",
+                query_text=user_message,
+                intent_json=None,
+            )
+        segments = triage_result.segments
+        suffix = "s" if len(segments) != 1 else ""
+        emitter.emit(
+            "triage",
+            "done",
+            f"{len(segments)} action segment{suffix} identified",
+            {"segments": len(segments)},
+        )
+        return segments
+
+    def _v2_run_slot_extraction(
+        self,
+        segments: list[dict],
+        user_message: str,
+        emitter: PipelineEmitter,
+    ) -> None:
+        """Stage 2 — extract per-kind slots, attach to each segment in place."""
+        emitter.emit("extract", "running", "Extracting parameters…")
+        for seg in segments:
+            kind = seg.get("kind")
+            if kind in ("OUT_OF_SCOPE", "UNCLEAR"):
+                seg["slots"] = {}
+                seg.setdefault("warnings", [])
+                continue
+            try:
+                slot_result = self.slot_extractor.extract(seg, user_message)
+            except SlotExtractionError as e:
+                emitter.emit("extract", "error", str(e))
+                self._raise_with_failure_record(
+                    ValueError(f"Could not extract parameters: {e}"),
+                    phase="VALIDATION",
+                    query_text=user_message,
+                    intent_json={"segments": segments},
+                )
+            seg["slots"] = slot_result.slots
+            seg["warnings"] = slot_result.warnings
+        emitter.emit("extract", "done", "Parameters extracted")
+
+    def _v2_run_target_resolution(
+        self,
+        segments: list[dict],
+        emitter: PipelineEmitter,
+    ) -> None:
+        """Stage 3 — resolve target entities per segment, mode-aware.
+
+        EXISTING_TARGET for property/attribute/pset/delete/relationship.
+        PARENT_TARGET for the parent_phrase of a CREATE segment, plus
+        NEW_TARGET (an empty result by design) on the proposed names.
+        OUT_OF_SCOPE / UNCLEAR are skipped — the router rejects them.
+        """
+        emitter.emit("resolve", "running", "Locating entities…")
+        for seg in segments:
+            kind = seg.get("kind")
+            if kind in ("PROPERTY", "ATTRIBUTE", "PSET", "DELETE", "RELATIONSHIP"):
+                target_phrase = (seg.get("target_phrase") or "").strip()
+                seg["resolution"] = self.entity_resolver.resolve(
+                    target_phrase, mode=MODE_EXISTING_TARGET
+                )
+            elif kind == "CREATE":
+                slots = seg.get("slots") or {}
+                parent_phrase = (slots.get("parent_phrase") or "").strip()
+                if parent_phrase:
+                    seg["parent_resolution"] = self.entity_resolver.resolve(
+                        parent_phrase, mode=MODE_PARENT_TARGET
+                    )
+                else:
+                    seg["parent_resolution"] = None
+                seg["resolution"] = self.entity_resolver.resolve(
+                    "", mode=MODE_NEW_TARGET
+                )
+            else:
+                seg["resolution"] = None
+        emitter.emit("resolve", "done", "Resolution complete")
+
+    # ── V2 Dispatch — Tier 1 single ───────────────────────────────
+
+    def _v2_dispatch_t1(
+        self,
+        segment: dict,
+        routing: RoutingResult,
+        user_message: str,
+        user,
+        ifc_file,
+        message_obj,
+        emitter: PipelineEmitter,
+    ) -> ModificationProposal:
+        """T1 single-segment path. Uses the deterministic intent assembler
+        instead of running the legacy classifier prompt.
+        """
+        from .filter_builder import build_filter_spec
+
+        intent = assemble_tier1_intent(segment, routing)
+        resolution = segment.get("resolution")
+        if resolution is None or resolution.is_empty:
+            self._raise_with_failure_record(
+                ValueError(
+                    "Could not locate any entities matching the segment's "
+                    f"target ({segment.get('target_phrase', '?')!r}). Try "
+                    "naming the entity by GlobalId, full name, or an IFC "
+                    "category like 'all walls'."
+                ),
+                phase="VALIDATION",
+                query_text=user_message,
+                intent_json=intent,
+            )
+
+        emitter.emit("validate", "running", "Matching entities…")
+        filter_spec = build_filter_spec(resolution)
+        intent["filter"] = filter_spec
+        try:
+            matched_qs = self.filter_engine.resolve(filter_spec)
+        except ValueError as e:
+            raise ModificationError(str(e))
+        matched_entities = list(matched_qs)
+
+        validation = self.t1_validator.validate(intent, matched_entities)
+        if not validation.valid:
+            if "not found on any" not in validation.error and "missing on" not in validation.error:
+                emitter.emit("validate", "error", validation.error)
+                self._raise_with_failure_record(
+                    ValueError(validation.error),
+                    phase="VALIDATION",
+                    query_text=user_message,
+                    intent_json=intent,
+                )
+            # Custom-pset / property-not-found cases → escalate to T2.
+            logger.info(
+                "V2 Tier 1 validation failed, escalating to Tier 2: %s",
+                validation.error,
+            )
+            emitter.emit("validate", "done", "Escalating to Tier 2 plan…", {"escalated": True})
+            return self._v2_dispatch_t2(
+                [segment],
+                user_message,
+                user=user,
+                ifc_file=ifc_file,
+                message_obj=message_obj,
+                emitter=emitter,
+                escalation_hint=validation.error,
+            )
+
+        emitter.emit(
+            "validate",
+            "done",
+            f"{len(validation.entities)} entit{'y' if len(validation.entities) == 1 else 'ies'} matched",
+            {"entities_count": len(validation.entities)},
+        )
+
+        emitter.emit("diff", "running", "Building change preview…")
+        diff_preview = self._build_diff_preview(intent, validation.entities)
+        emitter.emit("diff", "done", "Preview ready", {"rows": len(diff_preview)})
+
+        if ifc_file is None:
+            ifc_file = matched_entities[0].ifc_file
+
+        all_warnings = list(segment.get("warnings") or []) + list(validation.warnings or [])
+        explanation = intent.get("explanation", "")
+        if all_warnings:
+            warning_block = "\n".join(f"⚠ {w}" for w in all_warnings)
+            explanation = f"{warning_block}\n\n{explanation}" if explanation else warning_block
+
+        proposal = ModificationProposal.objects.create(
+            message=message_obj,
+            ifc_file=ifc_file,
+            created_by=user,
+            request_text=user_message,
+            explanation=explanation,
+            changes=intent,
+            diff_preview=json.dumps(diff_preview),
+            affected_count=len(validation.entities),
+            status=ModificationProposal.Status.PENDING,
+            tier=1,
+            operation=intent.get("operation", ""),
+            intent_json=intent,
+            filter_spec=filter_spec,
+            confidence=intent.get("confidence", 80),
+        )
+
+        logger.info(
+            "V2 Tier 1 proposal %s: %s on %d entities",
+            proposal.id,
+            intent["operation"],
+            len(validation.entities),
+        )
+
+        emitter.emit("guardian", "running", "Checking project documents…")
+        try:
+            GuardianService().check(proposal)
+            emitter.emit(
+                "guardian",
+                "done",
+                "Document check complete",
+                {"verdict": proposal.verification_status},
+            )
+        except CancellationError:
+            raise
+        except Exception as e:
+            logger.warning("Guardian check failed (non-blocking): %s", e)
+            emitter.emit("guardian", "done", "Document check unavailable", {"verdict": "failed"})
+
+        return proposal
+
+    # ── V2 Dispatch — Tier 1 chain ────────────────────────────────
+
+    def _v2_dispatch_t1_chain(
+        self,
+        segments: list[dict],
+        user_message: str,
+        user,
+        ifc_file,
+        message_obj,
+        emitter: PipelineEmitter,
+    ):
+        """T1 chain: same target across segments, multiple operations.
+
+        The shared entity set comes from segments[0]'s resolution. If
+        targets differ across segments the router should have escalated
+        to T2; we fall back to T2 here as a safety net.
+        """
+        if not segments:
+            raise ModificationError("Empty chain — no segments to dispatch.")
+
+        first_resolution = segments[0].get("resolution")
+        for seg in segments[1:]:
+            other = seg.get("resolution")
+            if (
+                other is None
+                or first_resolution is None
+                or {e.pk for e in (other.entities or [])}
+                != {e.pk for e in (first_resolution.entities or [])}
+            ):
+                logger.info(
+                    "V2 chain segments target different entity sets — escalating to T2."
+                )
+                return self._v2_dispatch_t2(
+                    segments,
+                    user_message,
+                    user=user,
+                    ifc_file=ifc_file,
+                    message_obj=message_obj,
+                    emitter=emitter,
+                )
+
+        # Build per-segment Tier 1 intents.
+        intents = []
+        for seg in segments:
+            kind = seg.get("kind")
+            op = "SET_ATTRIBUTE" if kind == "ATTRIBUTE" else "SET_PROPERTY"
+            intents.append(
+                assemble_tier1_intent(
+                    seg, RoutingResult(tier=1, operation=op)
+                )
+            )
+
+        chain_warnings: list[str] = []
+        for seg in segments:
+            chain_warnings.extend(seg.get("warnings") or [])
+
+        return self._propose_chain(
+            intents,
+            user_message,
+            user=user,
+            ifc_file=ifc_file,
+            message_obj=message_obj,
+            entity_context="",
+            emitter=emitter,
+            skill_examples=[],
+            resolution=first_resolution,
+            pipeline_warnings=chain_warnings,
+        )
+
+    # ── V2 Dispatch — Tier 2 ──────────────────────────────────────
+
+    def _v2_dispatch_t2(
+        self,
+        segments: list[dict],
+        user_message: str,
+        user,
+        ifc_file,
+        message_obj,
+        emitter: PipelineEmitter,
+        escalation_hint: str | None = None,
+    ) -> ModificationProposal:
+        """T2 path: assembles a plan directly from V2 segments — no
+        Tier2Planner LLM call. Per-step ``filter`` is stamped from the
+        segment's resolution; the rest mirrors ``_propose_tier2``.
+        """
+        from .filter_builder import build_filter_spec
+
+        plan = assemble_tier2_intent(segments)
+        plan_steps = plan.get("plan", [])
+        if not plan_steps:
+            self._raise_with_failure_record(
+                ValueError(
+                    "Could not build any executable steps from the request. "
+                    "Please rephrase with concrete property names or pset names."
+                ),
+                phase="VALIDATION",
+                query_text=user_message,
+                intent_json=plan,
+            )
+
+        # Stamp per-step filter_spec from the segment that contributed
+        # the step. The assembler skips unsupported segment kinds, so we
+        # iterate segments in order and pair them with the contiguous
+        # step list.
+        emitter.emit("plan", "running", "Building execution plan…")
+        seg_iter = iter(seg for seg in segments if seg.get("kind") in ("PROPERTY", "ATTRIBUTE", "PSET"))
+        for step in plan_steps:
+            try:
+                seg = next(seg_iter)
+            except StopIteration:
+                seg = None
+            resolution = seg.get("resolution") if seg else None
+            if resolution is None or resolution.is_empty:
+                self._raise_with_failure_record(
+                    ValueError(
+                        f"Step {step.get('step', '?')}: could not locate any "
+                        "entities matching the target. Please name the entity "
+                        "or category."
+                    ),
+                    phase="VALIDATION",
+                    query_text=user_message,
+                    intent_json=plan,
+                )
+            step["filter"] = build_filter_spec(resolution)
+        emitter.emit(
+            "plan",
+            "done",
+            f"Plan ready — {len(plan_steps)} step{'s' if len(plan_steps) != 1 else ''}",
+            {"steps_count": len(plan_steps)},
+        )
+
+        emitter.emit("validate", "running", "Validating plan steps…")
+        validation = self.t2_validator.validate_plan(plan)
+        if not validation.valid:
+            validation = self._t2_autofix_set_to_add(plan, validation)
+        if not validation.valid:
+            emitter.emit("validate", "error", validation.error)
+            self._raise_with_failure_record(
+                ValueError(f"Plan validation failed: {validation.error}"),
+                phase="VALIDATION",
+                query_text=user_message,
+                intent_json=plan,
+            )
+        emitter.emit(
+            "validate",
+            "done",
+            f"{validation.total_affected} entit"
+            f"{'y' if validation.total_affected == 1 else 'ies'} affected",
+            {"entities_count": validation.total_affected},
+        )
+
+        emitter.emit("diff", "running", "Building change preview…")
+        diff_preview = self._build_tier2_diff_preview(plan, validation)
+        emitter.emit("diff", "done", "Preview ready", {"rows": len(diff_preview)})
+
+        if ifc_file is None:
+            first_entities = validation.steps[0].entities if validation.steps else []
+            if not first_entities:
+                raise ModificationError("Could not determine target IFC file.")
+            ifc_file = first_entities[0].ifc_file
+
+        # Surface segment-level slot warnings on the proposal.
+        warnings: list[str] = []
+        for seg in segments:
+            warnings.extend(seg.get("warnings") or [])
+        explanation = plan.get("explanation", "")
+        if escalation_hint:
+            explanation = f"⚠ Escalated from Tier 1: {escalation_hint}\n\n{explanation}"
+        if warnings:
+            block = "\n".join(f"⚠ {w}" for w in warnings)
+            explanation = f"{block}\n\n{explanation}" if explanation else block
+
+        proposal = ModificationProposal.objects.create(
+            message=message_obj,
+            ifc_file=ifc_file,
+            created_by=user,
+            request_text=user_message,
+            explanation=explanation,
+            changes=plan,
+            diff_preview=json.dumps(diff_preview),
+            affected_count=validation.total_affected,
+            status=ModificationProposal.Status.PENDING,
+            tier=2,
+            operation="PLAN",
+            intent_json=plan,
+            filter_spec={},
+            confidence=plan.get("confidence", 80),
+        )
+
+        logger.info(
+            "V2 Tier 2 proposal %s: %d steps, %d entities",
+            proposal.id,
+            len(plan_steps),
+            validation.total_affected,
+        )
+
+        emitter.emit("guardian", "running", "Checking project documents…")
+        try:
+            GuardianService().check(proposal)
+            emitter.emit(
+                "guardian",
+                "done",
+                "Document check complete",
+                {"verdict": proposal.verification_status},
+            )
+        except Exception as e:
+            logger.warning("Guardian check failed (non-blocking): %s", e)
+            emitter.emit("guardian", "done", "Document check unavailable", {"verdict": "failed"})
+
+        return proposal
+
+    # ── V2 Dispatch — Tier 3 ──────────────────────────────────────
+
+    def _v2_dispatch_t3(
+        self,
+        segments: list[dict],
+        user_message: str,
+        user,
+        ifc_file,
+        message_obj,
+        emitter: PipelineEmitter,
+    ) -> ModificationProposal:
+        """T3 path: feeds the existing Tier3Planner with V2-derived
+        structured inputs (existing parents, proposed names, entity
+        class, deletion targets). Code generation, review, sandbox,
+        and proposal creation reuse the V1 helpers.
+        """
+        t3_inputs = derive_tier3_inputs(segments)
+        entity_context = self._v2_build_t3_entity_context(t3_inputs)
+        return self._propose_tier3(
+            user_message,
+            entity_context,
+            user=user,
+            ifc_file=ifc_file,
+            message_obj=message_obj,
+            emitter=emitter,
+            skill_examples=[],
+        )
+
+    def _v2_build_t3_entity_context(self, t3_inputs: dict) -> str:
+        """Render the structured T3 inputs as a compact text block the
+        existing Tier3Planner prompt can consume.
+
+        The Tier3Planner accepts ``entity_context`` as free-form text;
+        it does not parse a fixed schema. By labelling the V2 sections
+        explicitly (EXISTING_PARENTS / PROPOSED_NAMES / ENTITY_CLASS /
+        DELETE_TARGETS) the LLM has a clear, deterministic anchor to
+        target without relying on the resolver's brittle category
+        descriptions.
+        """
+        lines: list[str] = []
+        entity_class = t3_inputs.get("entity_class", "")
+        if entity_class:
+            lines.append(f"ENTITY_CLASS: {entity_class}")
+
+        proposed_names = t3_inputs.get("proposed_names") or []
+        if proposed_names:
+            lines.append("PROPOSED_NAMES:")
+            for name in proposed_names:
+                lines.append(f"  - {name}")
+
+        existing_parents = t3_inputs.get("existing_parents") or []
+        if existing_parents:
+            lines.append("EXISTING_PARENTS:")
+            for p in existing_parents:
+                lines.append(
+                    f"  - {p.get('name', '')!r} (global_id={p.get('global_id', '')}, "
+                    f"ifc_type={p.get('ifc_type', '')})"
+                )
+
+        targets_to_delete = t3_inputs.get("targets_to_delete") or []
+        if targets_to_delete:
+            lines.append("DELETE_TARGETS:")
+            for t in targets_to_delete:
+                lines.append(
+                    f"  - {t.get('name', '')!r} (global_id={t.get('global_id', '')}, "
+                    f"ifc_type={t.get('ifc_type', '')})"
+                )
+
+        if not lines:
+            return "(no structured V2 context — proceed from user_message alone)"
+        return "\n".join(lines)
