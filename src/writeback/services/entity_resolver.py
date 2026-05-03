@@ -412,8 +412,12 @@ class EntityNameResolver:
         if guid_matches is not None:
             return guid_matches
 
-        # Iteration 0: focused LLM extraction.
-        extracted = self._llm_extract(user_message)
+        # Iteration 0: focused LLM extraction with progressive-trim retry.
+        # When the small model returns scope='unknown' on the full message
+        # (often because of a leading IFC class token like 'IfcWall ' that
+        # the model can't strip), retry with the leading token dropped.
+        # Mirrors the DB-level trim fallback in `_resolve_specific`.
+        extracted = self._llm_extract_with_trim_retry(user_message)
         if extracted is None:
             return _EMPTY
         # Deterministic safety net: if the user mentioned ``:NNNNN`` step IDs
@@ -522,6 +526,76 @@ class EntityNameResolver:
         if not isinstance(data, dict):
             return None
         return data
+
+    def _llm_extract_with_trim_retry(self, user_message: str) -> dict | None:
+        """Run :meth:`_llm_extract` with progressive-trim retry on
+        ``scope='unknown'``.
+
+        Small Ollama models occasionally return ``unknown`` when the
+        message starts with a leading IFC class token (``IfcWall ...``)
+        or other lead-in that the extractor can't strip. Dropping the
+        leading whitespace-separated token and retrying often succeeds
+        — same pattern as the DB-level fallback in ``_resolve_specific``.
+
+        On hard LLM failure (network down, parse error → ``_llm_extract``
+        returns ``None``) we exit immediately without retrying — the
+        message shape isn't the problem.
+
+        Bounded at 3 extractor calls total (1 initial + up to 2 trim
+        retries). Returns the most recent extraction dict (which may
+        still carry ``scope='unknown'`` if no candidate succeeded), or
+        ``None`` on hard LLM failure.
+        """
+        candidates = self._build_message_trim_candidates(user_message)
+        last_extracted: dict | None = None
+        for index, candidate in enumerate(candidates):
+            attempt = self._llm_extract(candidate)
+            if attempt is None:
+                # Network / parse failure on the underlying LLM call —
+                # retrying with a shorter message can't help.
+                return None
+            last_extracted = attempt
+            scope = attempt.get("scope")
+            if scope and scope != "unknown":
+                if index > 0:
+                    logger.info(
+                        "Resolver: extraction recovered after trim — "
+                        "original=%r, trimmed=%r, scope=%s",
+                        user_message,
+                        candidate,
+                        scope,
+                    )
+                return attempt
+        return last_extracted
+
+    @staticmethod
+    def _build_message_trim_candidates(user_message: str) -> list[str]:
+        """Original message first, then up to 2 trim variants that each
+        drop the leading whitespace-separated token. Trim variants must
+        clear the floor (``_TRIM_FLOOR_CHARS`` chars OR
+        ``_TRIM_FLOOR_TOKENS`` tokens) to be queried.
+
+        Mirrors the candidate-generation in ``_resolve_specific``.
+        """
+        msg = (user_message or "").strip()
+        if not msg:
+            return []
+        candidates = [msg]
+        seen = {msg}
+        remaining = msg
+        for _ in range(2):
+            parts = remaining.split(maxsplit=1)
+            if len(parts) < 2:
+                break
+            remaining = parts[1].strip()
+            if not remaining or remaining in seen:
+                break
+            token_count = len(remaining.split())
+            if len(remaining) < _TRIM_FLOOR_CHARS and token_count < _TRIM_FLOOR_TOKENS:
+                break
+            candidates.append(remaining)
+            seen.add(remaining)
+        return candidates
 
     def _db_resolve(self, extracted: dict) -> ResolutionResult:
         scope = extracted.get("scope", "unknown")
