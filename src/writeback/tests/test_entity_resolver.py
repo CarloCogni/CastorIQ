@@ -75,7 +75,12 @@ class TestResolveByGuid:
         self, project, ifc_file, wall_entities
     ):
         """A token that LOOKS like a GUID but matches no entity falls
-        through to the LLM extraction pass instead of returning empty."""
+        through to the LLM extraction pass instead of returning empty.
+
+        With the scope=unknown trim retry in place the extractor is invoked
+        up to 3 times — full message + 2 progressive-trim retries — before
+        the resolver gives up and returns _EMPTY.
+        """
         mock_llm = MagicMock()
         # The fall-through LLM call returns "unknown" → empty result.
         mock_llm.invoke.return_value = _make_llm_response(json.dumps({"scope": "unknown"}))
@@ -84,7 +89,8 @@ class TestResolveByGuid:
         result = resolver.resolve("modify wall NotARealGuid12345xYz1AB")
 
         assert result.is_empty
-        mock_llm.invoke.assert_called_once()
+        # 1 initial extractor call + 2 trim retries on persistent scope=unknown.
+        assert mock_llm.invoke.call_count == 3
 
 
 @pytest.mark.django_db
@@ -296,6 +302,109 @@ class TestExtractionDrift:
         result = resolver.resolve("change firerating")
 
         assert result.is_empty
+
+
+@pytest.mark.django_db
+class TestExtractionTrimRetry:
+    """The scope=unknown trim retry mirrors the DB-level trim fallback.
+
+    When the small Ollama model returns ``scope=unknown`` on the full
+    message — typically because of a leading ``IfcWall`` token it can't
+    strip — the resolver retries the LLM with the leading word dropped.
+    Bounded at 2 retries so worst case is 3 extractor calls before
+    falling through.
+    """
+
+    def test_unknown_then_specific_recovers_via_trim(self, project, ifc_file, wall_entities):
+        """Failure-mode regression: 'IfcWall <name>' returns scope=unknown
+        on the full message (the model didn't strip the class token), then
+        scope=specific on the trimmed message — and the resolver returns
+        the matched entity in 2 calls.
+        """
+        target = wall_entities[1]  # 'Wall-001'
+        mock_llm = MagicMock()
+        mock_llm.invoke.side_effect = [
+            # Try 1 — full message, model can't strip the class prefix.
+            _make_llm_response(json.dumps({"scope": "unknown"})),
+            # Try 2 — leading token dropped, model identifies the entity.
+            _make_llm_response(
+                json.dumps(
+                    {"scope": "specific", "ifc_type": "IfcWall", "entity_name": target.name}
+                )
+            ),
+        ]
+        resolver = EntityNameResolver(project, llm=mock_llm)
+
+        result = resolver.resolve(f"IfcWall {target.name}")
+
+        assert result.is_unique
+        assert result.entities[0].pk == target.pk
+        assert mock_llm.invoke.call_count == 2
+
+    def test_all_unknown_returns_empty_after_bounded_retries(
+        self, project, ifc_file, wall_entities
+    ):
+        """When every trim variant still returns scope=unknown, the
+        resolver falls through to _EMPTY after exactly 3 extractor calls
+        (1 initial + 2 trims) — never more.
+        """
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = _make_llm_response(json.dumps({"scope": "unknown"}))
+        resolver = EntityNameResolver(project, llm=mock_llm)
+
+        result = resolver.resolve("frobnicate the widget thingamajig")
+
+        assert result.is_empty
+        assert mock_llm.invoke.call_count == 3
+
+    def test_floor_stops_trim_before_short_fragments(self, project, ifc_file, wall_entities):
+        """A 3-token message where the second trim would drop below the
+        floor (≥ 4 chars OR ≥ 2 tokens) only triggers 2 LLM calls — the
+        third candidate is rejected by the floor before the LLM runs.
+
+        'ab cd ef' → trim 1 'cd ef' (passes: 5 chars, 2 tokens) →
+                     trim 2 'ef' (fails: 2 chars, 1 token) → break.
+        """
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = _make_llm_response(json.dumps({"scope": "unknown"}))
+        resolver = EntityNameResolver(project, llm=mock_llm)
+
+        result = resolver.resolve("ab cd ef")
+
+        assert result.is_empty
+        assert mock_llm.invoke.call_count == 2
+
+    def test_first_call_specific_does_not_trigger_retry(
+        self, project, ifc_file, wall_entities
+    ):
+        """The happy path is unchanged: when the LLM nails the extraction
+        on the first call, the resolver does not invoke the trim retry.
+        """
+        target = wall_entities[2]
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = _make_llm_response(
+            json.dumps({"scope": "specific", "ifc_type": "IfcWall", "entity_name": target.name})
+        )
+        resolver = EntityNameResolver(project, llm=mock_llm)
+
+        result = resolver.resolve(f"set FireRating to EI120 on {target.name}")
+
+        assert result.is_unique
+        assert mock_llm.invoke.call_count == 1
+
+    def test_hard_llm_failure_does_not_trigger_retry(self, project, ifc_file, wall_entities):
+        """Network-down / parse-error returns from _llm_extract surface as
+        None — the trim retry skips immediately rather than burning calls
+        on a model that can't respond. Stays at 1 call, returns _EMPTY.
+        """
+        mock_llm = MagicMock()
+        mock_llm.invoke.side_effect = RuntimeError("Ollama unreachable")
+        resolver = EntityNameResolver(project, llm=mock_llm)
+
+        result = resolver.resolve("IfcWall something")
+
+        assert result.is_empty
+        assert mock_llm.invoke.call_count == 1
 
 
 class TestResolutionResultPredicates:
