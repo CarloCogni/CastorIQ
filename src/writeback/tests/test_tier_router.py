@@ -154,8 +154,14 @@ class TestTier1Routing:
         assert result.operation == "PLAN"
 
 
-class TestTier1Chain:
-    def test_two_property_segments_route_chain(self):
+class TestMultiSegmentRouting:
+    """Multi-segment requests route to Tier 2 (compound plan) — NOT
+    Tier 1 chain. The chain primitive can't survive the unique
+    constraint on ``ModificationProposal.message`` (one row per chat
+    message). Tier 2 builds a single plan with one step per segment.
+    """
+
+    def test_two_property_segments_route_t2_plan(self):
         segments = [
             _segment(
                 "PROPERTY",
@@ -167,10 +173,10 @@ class TestTier1Chain:
             ),
         ]
         result = route(segments)
-        assert result.tier == 1
-        assert result.operation == "CHAIN"
+        assert result.tier == 2
+        assert result.operation == "PLAN"
 
-    def test_property_plus_attribute_routes_chain(self):
+    def test_property_plus_attribute_routes_t2_plan(self):
         segments = [
             _segment(
                 "PROPERTY",
@@ -183,8 +189,8 @@ class TestTier1Chain:
             ),
         ]
         result = route(segments)
-        assert result.tier == 1
-        assert result.operation == "CHAIN"
+        assert result.tier == 2
+        assert result.operation == "PLAN"
 
 
 class TestTier2Routing:
