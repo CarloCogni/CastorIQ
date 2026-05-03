@@ -30,6 +30,14 @@ def v2_enabled(settings):
 
 
 @pytest.fixture
+def v2_disabled(settings):
+    """Force the V2 pipeline flag off — defeats any local.py override the
+    user may have set while iterating on the V2 cutover.
+    """
+    settings.WRITEBACK_PIPELINE_V2 = False
+
+
+@pytest.fixture
 def mock_guardian():
     with patch("writeback.services.modification_service.GuardianService") as mock_cls:
         instance = mock_cls.return_value
@@ -70,10 +78,7 @@ class TestV2FailureARegression:
         mock_guardian,
         mock_git,
     ):
-        message = (
-            "Create three new IfcZone entities for Fire Zone A, "
-            "Fire Zone B, and Fire Zone C"
-        )
+        message = "Create three new IfcZone entities for Fire Zone A, Fire Zone B, and Fire Zone C"
 
         triage_segments = [
             {
@@ -93,8 +98,7 @@ class TestV2FailureARegression:
         t3_code_payload = {
             "tier": 3,
             "code": (
-                "def modify_ifc(model):\n"
-                "    return {'summary': 'created 3 zones', 'changes': []}\n"
+                "def modify_ifc(model):\n    return {'summary': 'created 3 zones', 'changes': []}\n"
             ),
             "explanation": "Create three IfcZone entities.",
             "confidence": 80,
@@ -111,23 +115,19 @@ class TestV2FailureARegression:
                 return_value=empty_resolution,
             ),
             patch(
-                "writeback.services.modification_service."
-                "TriageClassifier.classify",
+                "writeback.services.modification_service.TriageClassifier.classify",
                 return_value=TriageResult(segments=triage_segments),
             ),
             patch(
-                "writeback.services.modification_service."
-                "SlotExtractor.extract",
+                "writeback.services.modification_service.SlotExtractor.extract",
                 return_value=slot_payload,
             ),
             patch(
-                "writeback.services.modification_service."
-                "Tier3Planner.generate_code",
+                "writeback.services.modification_service.Tier3Planner.generate_code",
                 return_value=t3_code_payload,
             ),
             patch(
-                "writeback.services.modification_service."
-                "Tier3Reviewer.review",
+                "writeback.services.modification_service.Tier3Reviewer.review",
                 return_value=review_payload,
             ),
         ):
@@ -161,7 +161,7 @@ class TestV2FailureBRegression:
         mock_git,
     ):
         message = (
-            'Create a custom property set Pset_Maintenance on all walls '
+            "Create a custom property set Pset_Maintenance on all walls "
             'with Inspector "TBD" and LastInspection "2026-01-01"'
         )
 
@@ -170,8 +170,7 @@ class TestV2FailureBRegression:
                 "kind": "PSET",
                 "target_phrase": "all walls",
                 "value_phrase": (
-                    "Pset_Maintenance with Inspector TBD and "
-                    "LastInspection 2026-01-01"
+                    "Pset_Maintenance with Inspector TBD and LastInspection 2026-01-01"
                 ),
             }
         ]
@@ -194,13 +193,11 @@ class TestV2FailureBRegression:
         ):
             with (
                 patch(
-                    "writeback.services.modification_service."
-                    "TriageClassifier.classify",
+                    "writeback.services.modification_service.TriageClassifier.classify",
                     return_value=TriageResult(segments=triage_segments),
                 ),
                 patch(
-                    "writeback.services.modification_service."
-                    "SlotExtractor.extract",
+                    "writeback.services.modification_service.SlotExtractor.extract",
                     return_value=slot_payload,
                 ),
             ):
@@ -249,9 +246,7 @@ class TestV2Tier1Path:
             },
             warnings=[],
         )
-        resolution = _resolution_for(
-            wall_entities, scope="all_of_type", ifc_type_hint="IfcWall"
-        )
+        resolution = _resolution_for(wall_entities, scope="all_of_type", ifc_type_hint="IfcWall")
 
         with (
             patch(
@@ -259,13 +254,11 @@ class TestV2Tier1Path:
                 return_value=resolution,
             ),
             patch(
-                "writeback.services.modification_service."
-                "TriageClassifier.classify",
+                "writeback.services.modification_service.TriageClassifier.classify",
                 return_value=TriageResult(segments=triage_segments),
             ),
             patch(
-                "writeback.services.modification_service."
-                "SlotExtractor.extract",
+                "writeback.services.modification_service.SlotExtractor.extract",
                 return_value=slot_payload,
             ),
         ):
@@ -307,8 +300,7 @@ class TestV2Rejections:
         ]
 
         with patch(
-            "writeback.services.modification_service."
-            "TriageClassifier.classify",
+            "writeback.services.modification_service.TriageClassifier.classify",
             return_value=TriageResult(segments=triage_segments),
         ):
             svc = ModificationService(project)
@@ -337,8 +329,7 @@ class TestV2Rejections:
         ]
 
         with patch(
-            "writeback.services.modification_service."
-            "TriageClassifier.classify",
+            "writeback.services.modification_service.TriageClassifier.classify",
             return_value=TriageResult(segments=triage_segments),
         ):
             svc = ModificationService(project)
@@ -385,13 +376,11 @@ class TestV2Rejections:
                 return_value=empty_resolution,
             ),
             patch(
-                "writeback.services.modification_service."
-                "TriageClassifier.classify",
+                "writeback.services.modification_service.TriageClassifier.classify",
                 return_value=TriageResult(segments=triage_segments),
             ),
             patch(
-                "writeback.services.modification_service."
-                "SlotExtractor.extract",
+                "writeback.services.modification_service.SlotExtractor.extract",
                 return_value=slot_payload,
             ),
         ):
@@ -409,7 +398,14 @@ class TestV2FlagOff:
     """
 
     def test_v2_methods_not_called_when_flag_off(
-        self, project, ifc_file, wall_entities, user, mock_guardian, mock_git
+        self,
+        v2_disabled,
+        project,
+        ifc_file,
+        wall_entities,
+        user,
+        mock_guardian,
+        mock_git,
     ):
         """If V2 were called, the mocked TriageClassifier would record an
         invocation. With the flag off the legacy code path runs, which
@@ -417,13 +413,9 @@ class TestV2FlagOff:
         """
         with (
             patch(
-                "writeback.services.modification_service."
-                "TriageClassifier.classify"
+                "writeback.services.modification_service.TriageClassifier.classify"
             ) as triage_mock,
-            patch(
-                "writeback.services.modification_service."
-                "SlotExtractor.extract"
-            ) as slots_mock,
+            patch("writeback.services.modification_service.SlotExtractor.extract") as slots_mock,
             # Force the legacy path to fail fast — we only care that V2
             # services were never invoked, not that V1 succeeded.
             patch(

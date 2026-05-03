@@ -73,14 +73,56 @@ class TestTier1Routing:
         assert result.tier == 1
         assert result.operation == "SET_PROPERTY"
 
-    def test_property_with_no_pset_routes_t1(self):
-        """Validator handles SET → ADD escalation post-routing."""
-        seg = _segment(
-            "PROPERTY",
-            slots={"pset": "", "property": "FireRating", "value": "EI120"},
-        )
+    def test_property_with_no_pset_infers_standard_pset(self):
+        """When the slot extractor returned empty pset, the router fills
+        it in deterministically from the standard registry — FireRating
+        on a wall lives in Pset_WallCommon. The mutated segment is what
+        the downstream dispatcher and writer will see.
+        """
+        # Resolution carries an ifc_type_hint so get_applicable_psets
+        # narrows the search to wall-related psets.
+        from unittest.mock import MagicMock
+
+        resolution = MagicMock()
+        resolution.entities = [MagicMock()]
+        resolution.ifc_type_hint = "IfcWall"
+
+        seg = {
+            "kind": "PROPERTY",
+            "target_phrase": "Wall-01",
+            "value_phrase": "FireRating to EI120",
+            "slots": {"pset": "", "property": "FireRating", "value": "EI120"},
+            "resolution": resolution,
+        }
         result = route([seg])
+
         assert result.tier == 1
+        assert result.operation == "SET_PROPERTY"
+        # The router mutated the segment so the writer sees a populated pset.
+        assert seg["slots"]["pset"] == "Pset_WallCommon"
+
+    def test_property_with_no_pset_and_unknown_property_rejects(self):
+        """Custom property (not in any standard pset) with no user-named
+        pset is rejected with an actionable message instead of crashing
+        the validator with 'SET_PROPERTY requires pset'.
+        """
+        from unittest.mock import MagicMock
+
+        resolution = MagicMock()
+        resolution.entities = [MagicMock()]
+        resolution.ifc_type_hint = "IfcWall"
+
+        seg = {
+            "kind": "PROPERTY",
+            "target_phrase": "all walls",
+            "value_phrase": "Inspector to TBD",
+            "slots": {"pset": "", "property": "Inspector", "value": "TBD"},
+            "resolution": resolution,
+        }
+        result = route([seg])
+        assert result.is_rejected
+        assert "Inspector" in result.rejection_reason
+        assert "Pset" in result.rejection_reason  # mentions naming a pset
 
     def test_property_with_custom_pset_escalates_to_t2(self):
         seg = _segment(
