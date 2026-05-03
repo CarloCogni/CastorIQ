@@ -11,10 +11,16 @@ user's intent shape:
   - Single PROPERTY/ATTRIBUTE on existing entities          → Tier 1
   - PSET ADD/REMOVE on existing entities                    → Tier 2
   - CREATE / DELETE / RELATIONSHIP                          → Tier 3
-  - Multi-segment all PROPERTY/ATTRIBUTE                    → Tier 1 chain
+  - Multi-segment (any combination of PROPERTY/ATTRIBUTE)   → Tier 2 (compound plan)
   - Multi-segment with any PSET                             → Tier 2 (compound plan)
   - Multi-segment with any CREATE/DELETE/RELATIONSHIP       → Tier 3
   - OUT_OF_SCOPE / UNCLEAR                                  → Tier 0 reject
+
+Multi-segment requests never route to a Tier 1 chain. The
+``ModificationProposal.message`` foreign key is unique per row, so
+multiple proposals tied to the same chat Message hit IntegrityError
+at insert time. Tier 2 builds a single plan with one step per
+segment instead — single proposal, atomic execution across steps.
 
 Validators downstream retain veto power: a Tier 1 routing can still
 escalate to Tier 2 when the property doesn't exist on matched entities
@@ -176,56 +182,72 @@ def route(segments: list[dict[str, Any]]) -> RoutingResult:
             )
 
     # Multi-segment routing: the most-permissive tier across segments wins.
-    # If any segment requires Tier 3, the whole request runs as Tier 3 (the
-    # caller's chain primitive can split it back into per-tier proposals
-    # if needed). Same for Tier 2 versus Tier 1.
+    # If any segment requires Tier 3, the whole request runs as Tier 3.
     if kinds & TIER3_KINDS:
         return _route_tier3(segments)
 
     if kinds & TIER2_KINDS:
         return _route_tier2(segments)
 
-    # Tier 1 path: every segment is PROPERTY or ATTRIBUTE.
+    # Multi-segment PROPERTY/ATTRIBUTE → Tier 2 plan with one step per
+    # segment. Cannot use Tier 1 chain because ModificationProposal.message
+    # is unique per row; chain proposals all share the same chat Message
+    # FK and would hit IntegrityError at insert time.
+    if len(segments) > 1:
+        return RoutingResult(tier=2, operation="PLAN")
+
+    # Single-segment Tier 1.
     return _route_tier1(segments)
 
 
 def _route_tier1(segments: list[dict[str, Any]]) -> RoutingResult:
-    """Single-segment Tier 1, or a multi-segment Tier 1 chain."""
-    if len(segments) == 1:
-        seg = segments[0]
-        kind = seg.get("kind")
-        slots = seg.get("slots") or {}
+    """Single-segment Tier 1 routing.
 
-        if kind == KIND_ATTRIBUTE:
-            entity_count = _resolution_count(seg)
-            if entity_count > SAFE_ATTRIBUTE_BULK_LIMIT:
-                logger.info(
-                    "Router: SET_ATTRIBUTE on %d entities exceeds bulk limit %d — routing T2.",
-                    entity_count,
-                    SAFE_ATTRIBUTE_BULK_LIMIT,
-                )
-                return RoutingResult(tier=2, operation="PLAN")
-            return RoutingResult(tier=1, operation="SET_ATTRIBUTE")
+    Multi-segment PROPERTY/ATTRIBUTE requests are NOT routed as a Tier 1
+    chain — the ``ModificationProposal.message`` foreign key is unique
+    per row, so creating one proposal per chain element with the same
+    chat Message hits ``IntegrityError`` at insert time. Instead, the
+    caller routes multi-segment cases to Tier 2 where ``assemble_tier2``
+    builds a single plan with multiple SET_PROPERTY/SET_ATTRIBUTE steps.
+    The result is a single proposal the user approves once; execution is
+    still atomic across steps.
+    """
+    if len(segments) != 1:
+        # Should not happen in practice — route() handles multi-segment
+        # before reaching here. Defensive fall-through to T2 plan.
+        return RoutingResult(tier=2, operation="PLAN")
 
-        # PROPERTY: route on whether the property is on a standard pset.
-        # Custom psets that don't yet exist on the matched entities go to
-        # Tier 2's ADD_PSET path. Standard psets stay at Tier 1; the
-        # validator handles SET → ADD escalation when the property is
-        # missing from the matched entities.
-        pset = (slots.get("pset") or "").strip()
-        prop = (slots.get("property") or "").strip()
-        if pset and prop and lookup_property(pset, prop) is None:
-            # Custom pset / unknown property — escalate.
+    seg = segments[0]
+    kind = seg.get("kind")
+    slots = seg.get("slots") or {}
+
+    if kind == KIND_ATTRIBUTE:
+        entity_count = _resolution_count(seg)
+        if entity_count > SAFE_ATTRIBUTE_BULK_LIMIT:
             logger.info(
-                "Router: PROPERTY on unknown pset %r — routing T2 (custom pset path).",
-                pset,
+                "Router: SET_ATTRIBUTE on %d entities exceeds bulk limit %d — routing T2.",
+                entity_count,
+                SAFE_ATTRIBUTE_BULK_LIMIT,
             )
             return RoutingResult(tier=2, operation="PLAN")
+        return RoutingResult(tier=1, operation="SET_ATTRIBUTE")
 
-        return RoutingResult(tier=1, operation="SET_PROPERTY")
+    # PROPERTY: route on whether the property is on a standard pset.
+    # Custom psets that don't yet exist on the matched entities go to
+    # Tier 2's ADD_PSET path. Standard psets stay at Tier 1; the
+    # validator handles SET → ADD escalation when the property is
+    # missing from the matched entities.
+    pset = (slots.get("pset") or "").strip()
+    prop = (slots.get("property") or "").strip()
+    if pset and prop and lookup_property(pset, prop) is None:
+        # Custom pset / unknown property — escalate.
+        logger.info(
+            "Router: PROPERTY on unknown pset %r — routing T2 (custom pset path).",
+            pset,
+        )
+        return RoutingResult(tier=2, operation="PLAN")
 
-    # Multi-segment chain: every segment must be Tier 1.
-    return RoutingResult(tier=1, operation="CHAIN")
+    return RoutingResult(tier=1, operation="SET_PROPERTY")
 
 
 def _route_tier2(segments: list[dict[str, Any]]) -> RoutingResult:
@@ -299,7 +321,8 @@ def _maybe_infer_pset(segment: dict[str, Any]) -> None:
     #    to this type, less likely to be a parent type's pset).
     if not inferred and isinstance(ifc_type, str) and ifc_type.strip():
         applicable = [
-            p for p in get_applicable_psets(ifc_type.strip())
+            p
+            for p in get_applicable_psets(ifc_type.strip())
             if lookup_property(p, prop) is not None
         ]
         if applicable:
@@ -308,9 +331,7 @@ def _maybe_infer_pset(segment: dict[str, Any]) -> None:
     # 3. Final fallback: scan every standard pset. Useful when the
     #    resolver didn't pin an ifc_type at all (cross-type chains).
     if not inferred:
-        all_matches = [
-            p for p in STANDARD_PSETS if lookup_property(p, prop) is not None
-        ]
+        all_matches = [p for p in STANDARD_PSETS if lookup_property(p, prop) is not None]
         if all_matches:
             inferred = min(all_matches, key=len)
 
