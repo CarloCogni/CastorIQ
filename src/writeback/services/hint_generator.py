@@ -22,7 +22,6 @@ import difflib
 import hashlib
 import json
 import logging
-from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeout
 from dataclasses import dataclass
 from re import compile as re_compile
@@ -31,6 +30,7 @@ from django.conf import settings
 from django.core.cache import cache
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from core.llm import safe_invoke
 from ifc_processor.models import IFCEntity
 from ifc_processor.services.ifc_standard_psets import (
     STANDARD_PSETS,
@@ -360,9 +360,13 @@ class HintGenerator:
             return cached
 
         try:
-            with ThreadPoolExecutor(max_workers=1) as ex:
-                future = ex.submit(self._llm_invoke, category, payload)
-                raw = future.result(timeout=2)
+            raw = safe_invoke(
+                self._llm_invoke,
+                category,
+                payload,
+                timeout=2,
+                thread_name_prefix="hint-llm",
+            )
         except FuturesTimeout:
             logger.warning("Hint LLM timed out (>2s) for category=%s", category)
             return _EMPTY_HINT

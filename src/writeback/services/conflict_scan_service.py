@@ -31,7 +31,7 @@ from django.db.models import Q
 from langchain_core.messages import HumanMessage, SystemMessage
 from pgvector.django import CosineDistance
 
-from core.llm import get_llm
+from core.llm import get_llm, safe_invoke
 from documents.models import DocumentChunk
 from ifc_processor.models import IFCEntity
 from writeback.models import Conflict, ScanRun
@@ -548,33 +548,22 @@ class ConflictScanService:
             ),
         ]
 
-        # Hard wall-clock cap on the LLM call. We can't trust httpx's per-read
-        # timeout to fire (Ollama streams tokens, which keeps the read timer
-        # alive even when generation effectively stalls — the user has hit
-        # this exact mode for 18 minutes on a single entity). Run invoke()
-        # in a worker thread and give up after SCAN_LLM_TIMEOUT_SECONDS.
-        # The thread will keep running until Ollama responds — Python can't
-        # interrupt a blocking C call — but the loop advances. The leaked
-        # thread is a daemon so it won't block process exit; the only real
-        # cost is that the in-flight Ollama request still occupies one slot
-        # on the Ollama server until it returns.
-        executor = concurrent.futures.ThreadPoolExecutor(
-            max_workers=1, thread_name_prefix=f"scan-llm-{entity.id}"
-        )
+        # Hard wall-clock cap on the LLM call. httpx's per-read timeout doesn't
+        # fire while Ollama is streaming tokens, so a stalled call can wedge a
+        # thread for many minutes. core.llm.safe_invoke runs the call in a
+        # worker we can abandon and re-raises the timeout — we map that back
+        # to httpx.ReadTimeout so the loop's existing handler catches it.
         try:
-            future = executor.submit(self.llm.invoke, messages)
-            try:
-                response = future.result(timeout=self.SCAN_LLM_TIMEOUT_SECONDS)
-            except concurrent.futures.TimeoutError as e:
-                # Re-raise as httpx.ReadTimeout so the loop's existing
-                # timeout handler (one-line warning) catches it.
-                raise httpx.ReadTimeout(
-                    f"Hard wall-clock timeout after {self.SCAN_LLM_TIMEOUT_SECONDS:.0f}s"
-                ) from e
-        finally:
-            # Don't wait — if the worker is wedged in Ollama, waiting would
-            # defeat the entire point of the watchdog.
-            executor.shutdown(wait=False)
+            response = safe_invoke(
+                self.llm.invoke,
+                messages,
+                timeout=self.SCAN_LLM_TIMEOUT_SECONDS,
+                thread_name_prefix=f"scan-llm-{entity.id}",
+            )
+        except concurrent.futures.TimeoutError as e:
+            raise httpx.ReadTimeout(
+                f"Hard wall-clock timeout after {self.SCAN_LLM_TIMEOUT_SECONDS:.0f}s"
+            ) from e
 
         try:
             result = json.loads(response.content)
