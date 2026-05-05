@@ -118,8 +118,8 @@ class RAGService:
     def __init__(self, user=None):
         self._user = user
         self.embedding_service = EmbeddingService()
-        self.llm = get_llm(user=user, temperature=0.2)
-        self.model_name = resolve_model_name(user)
+        self.llm = get_llm(user=user, purpose="ask", temperature=0.2)
+        self.model_name = resolve_model_name(user, purpose="ask")
 
     @staticmethod
     def _emit(

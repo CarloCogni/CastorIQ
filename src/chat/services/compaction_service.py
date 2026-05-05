@@ -42,7 +42,8 @@ class CompactionService:
     """Summarizes old conversation messages to free context window space."""
 
     def __init__(self, user=None):
-        self.llm = get_llm(user=user, temperature=0.0)
+        # Compaction summarises chat context for the Ask pipeline — route via Ask provider.
+        self.llm = get_llm(user=user, purpose="ask", temperature=0.0)
 
     @staticmethod
     def _emit(
