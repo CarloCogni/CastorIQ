@@ -44,7 +44,170 @@ class LLMMasterKillError(RuntimeError):
     """Raised when ``LLM_MASTER_KILL`` is set and a cloud call is requested."""
 
 
-def cached_system(llm: BaseChatModel, content: str):
+class TokenBudgetExceededError(RuntimeError):
+    """Raised when a user's UserTokenBudget would be exceeded by a request."""
+
+    def __init__(self, message: str, *, used: int = 0, cap: int = 0):
+        super().__init__(message)
+        self.used = used
+        self.cap = cap
+
+
+# Provider price table — USD per million tokens (input / output). Numbers are
+# rough public list prices as of 2026-05; exact reconciliation against the
+# provider dashboards happens during dogfood. Update without ceremony as
+# providers change tiers.
+_PRICE_TABLE: dict[tuple[str, str], tuple[float, float]] = {
+    ("ollama", "*"): (0.0, 0.0),
+    ("anthropic", "claude-sonnet-4-6"): (3.0, 15.0),
+    ("anthropic", "claude-opus-4-7"): (15.0, 75.0),
+    ("anthropic", "claude-haiku-4-5"): (1.0, 5.0),
+    ("anthropic", "*"): (3.0, 15.0),
+    ("groq", "llama-3.3-70b-versatile"): (0.59, 0.79),
+    ("groq", "llama-3.1-8b-instant"): (0.05, 0.08),
+    ("groq", "*"): (0.59, 0.79),
+}
+
+
+def _price_for(provider: str, model: str) -> tuple[float, float]:
+    """Lookup (input_price_per_million, output_price_per_million) for a model."""
+    return _PRICE_TABLE.get((provider, model)) or _PRICE_TABLE.get((provider, "*"), (0.0, 0.0))
+
+
+def _compute_cost_usd(provider: str, model: str, tokens_in: int, tokens_out: int) -> float:
+    p_in, p_out = _price_for(provider, model)
+    return (tokens_in * p_in + tokens_out * p_out) / 1_000_000
+
+
+def _estimate_input_tokens(messages) -> int:
+    """Rough input-token estimate from a list of langchain message objects."""
+    from core.token_utils import estimate_tokens
+
+    total = 0
+    for msg in messages:
+        content = getattr(msg, "content", "")
+        if isinstance(content, list):
+            text = " ".join(b.get("text", "") for b in content if isinstance(b, dict))
+        else:
+            text = str(content)
+        total += 4 + estimate_tokens(text)
+    return total
+
+
+def _read_usage(response) -> tuple[int, int]:
+    """Pull (tokens_in, tokens_out) from a langchain response, robust to provider quirks."""
+    if response is None:
+        return (0, 0)
+    meta = getattr(response, "usage_metadata", None) or {}
+    if isinstance(meta, dict) and meta:
+        return (int(meta.get("input_tokens", 0) or 0), int(meta.get("output_tokens", 0) or 0))
+    # Fallback: response_metadata.token_usage (older Anthropic / Groq shapes)
+    rmeta = getattr(response, "response_metadata", {}) or {}
+    usage = rmeta.get("token_usage") or rmeta.get("usage") or {}
+    if usage:
+        return (
+            int(usage.get("prompt_tokens", usage.get("input_tokens", 0)) or 0),
+            int(usage.get("completion_tokens", usage.get("output_tokens", 0)) or 0),
+        )
+    return (0, 0)
+
+
+class TrackedChatModel:
+    """
+    Lightweight wrapper that intercepts ``.invoke`` to enforce per-user token
+    budgets and append an LLMCallLog row on each call.
+
+    Pre-call: lazy-reset on new UTC day, refuse with TokenBudgetExceededError if
+    ``budget.would_exceed(estimate)`` (cloud only — Ollama is free).
+    Post-call: read ``response.usage_metadata``, ``record_usage``, log the row.
+
+    Other Runnable methods (``stream``, ``__or__``, etc.) delegate to the
+    wrapped model so chain composition keeps working.
+    """
+
+    def __init__(self, llm: BaseChatModel, *, user, provider: str, model: str, purpose: str):
+        # Use object.__setattr__ to bypass any Pydantic frozen-field guards on
+        # the wrapped LLM — we never write to the underlying model from here.
+        object.__setattr__(self, "_llm", llm)
+        object.__setattr__(self, "_user", user)
+        object.__setattr__(self, "provider", provider)  # exposed so cached_system can detect
+        object.__setattr__(self, "model_name", model)
+        object.__setattr__(self, "_purpose", purpose)
+
+    def __getattr__(self, name):
+        # Falls through to the underlying LLM for everything we don't override.
+        return getattr(self._llm, name)
+
+    def __or__(self, other):
+        return self._llm.__or__(other)
+
+    def __ror__(self, other):
+        return self._llm.__ror__(other)
+
+    def invoke(self, input, config=None, **kwargs):
+        import time
+
+        from django.db import OperationalError, ProgrammingError
+
+        from core.models import LLMCallLog, UserTokenBudget
+
+        is_cloud = self.provider != "ollama"
+        budget = None
+        if is_cloud and self._user and getattr(self._user, "is_authenticated", False):
+            try:
+                budget = UserTokenBudget.load(self._user)
+                budget.reset_if_new_day()
+                estimated_in = _estimate_input_tokens(input) if isinstance(input, list) else 0
+                # Reserve a conservative output budget for the pre-check.
+                estimated = estimated_in + 1500
+                if budget.would_exceed(estimated):
+                    raise TokenBudgetExceededError(
+                        f"Daily token cap reached: {budget.used_today}/{budget.daily_cap}.",
+                        used=budget.used_today,
+                        cap=budget.daily_cap,
+                    )
+            except (OperationalError, ProgrammingError):
+                # DB not ready (migrations, tests). Don't block the call.
+                budget = None
+
+        t0 = time.perf_counter()
+        succeeded = True
+        error_type = ""
+        response = None
+        try:
+            response = self._llm.invoke(input, config=config, **kwargs)
+            return response
+        except Exception as e:
+            succeeded = False
+            error_type = type(e).__name__
+            raise
+        finally:
+            elapsed_ms = int((time.perf_counter() - t0) * 1000)
+            tokens_in, tokens_out = _read_usage(response) if succeeded else (0, 0)
+            if budget and succeeded:
+                budget.record_usage(tokens_in + tokens_out)
+            try:
+                LLMCallLog.objects.create(
+                    user=self._user
+                    if (self._user and getattr(self._user, "is_authenticated", False))
+                    else None,
+                    provider=self.provider,
+                    model=self.model_name or "",
+                    purpose=self._purpose,
+                    tokens_in=tokens_in,
+                    tokens_out=tokens_out,
+                    estimated_cost_usd=_compute_cost_usd(
+                        self.provider, self.model_name or "", tokens_in, tokens_out
+                    ),
+                    latency_ms=elapsed_ms,
+                    succeeded=succeeded,
+                    error_type=error_type[:120],
+                )
+            except (OperationalError, ProgrammingError):
+                pass  # DB not ready — observability is best-effort.
+
+
+def cached_system(llm, content: str):
     """
     Build a SystemMessage marked for Anthropic prompt caching.
 
@@ -53,18 +216,21 @@ def cached_system(llm: BaseChatModel, content: str):
     "ephemeral"}`` — recognised by langchain-anthropic's message translator.
 
     For Ollama and Groq, returns a plain string-content SystemMessage so
-    behaviour is unchanged. The detection key is the LLM instance itself
-    rather than the SiteLLMConfig singleton, so this stays correct under
-    force_local_ollama and per-call provider overrides.
+    behaviour is unchanged. Detection accepts both raw ChatAnthropic
+    instances and TrackedChatModel wrappers (which expose ``.provider``).
     """
     from langchain_core.messages import SystemMessage
 
-    try:
-        from langchain_anthropic import ChatAnthropic
-    except ImportError:
-        return SystemMessage(content=content)
+    is_anthropic = getattr(llm, "provider", None) == "anthropic"
+    if not is_anthropic:
+        try:
+            from langchain_anthropic import ChatAnthropic
 
-    if isinstance(llm, ChatAnthropic):
+            is_anthropic = isinstance(llm, ChatAnthropic)
+        except ImportError:
+            is_anthropic = False
+
+    if is_anthropic:
         return SystemMessage(
             content=[
                 {"type": "text", "text": content, "cache_control": {"type": "ephemeral"}},
@@ -184,7 +350,8 @@ def get_llm(
         temperature,
         purpose,
     )
-    return builder(model=model, temperature=temperature, format_json=format_json, kwargs=kwargs)
+    raw = builder(model=model, temperature=temperature, format_json=format_json, kwargs=kwargs)
+    return TrackedChatModel(raw, user=user, provider=provider, model=model, purpose=purpose)
 
 
 # --- provider builders ----------------------------------------------------
