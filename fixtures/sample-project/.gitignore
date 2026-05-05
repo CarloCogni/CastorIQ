@@ -1,0 +1,13 @@
+# The actual binary fixtures (IFC + PDFs) are sourced from public assets
+# at deploy time — see PROVENANCE.md. Don't commit them, don't commit any
+# user-uploaded variations dropped here for testing.
+
+*.ifc
+docs/*.pdf
+docs/*.PDF
+
+# Allow:
+!README.md
+!PROVENANCE.md
+!.gitignore
+!embeddings.json
