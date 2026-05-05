@@ -1,0 +1,141 @@
+<!-- writeback/templates/writeback/components/failure_help_modal.html -->
+<!--
+  Help modal explaining why a modification request can fail and what the
+  user can do about it. Triggered by the "Why?" affordance on failure
+  cards in modify_message_list.html. Single instance per Modify tab —
+  do not duplicate per-card.
+-->
+
+<div class="modal fade modify-scope" id="modifyFailureHelpModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border-0 shadow">
+
+            <div class="modal-header border-bottom py-3">
+                <h5 class="modal-title fw-semibold mb-0">
+                    <i class="bi bi-info-circle me-2" style="color: var(--castor-accent);"></i>
+                    Why did this modification fail?
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body p-4">
+
+                <!-- Lead -->
+                <p class="text-secondary mb-4">
+                    Castor runs all language-model inference <strong>locally</strong>, on
+                    your own machine, through Ollama. That choice protects your data and
+                    works offline, but it comes with a tradeoff: the locally-runnable
+                    models are smaller than frontier APIs, and on complex prompts they
+                    sometimes produce malformed or incomplete output. Castor catches
+                    those failures cleanly instead of acting on garbage.
+                </p>
+
+                <!-- Common failure types -->
+                <h6 class="fw-semibold mb-2">What the failure types mean</h6>
+                <div class="list-group list-group-flush mb-4">
+
+                    <div class="list-group-item px-0 border-0 py-2">
+                        <div class="fw-semibold fs-7 mb-1">Request Ambiguous</div>
+                        <p class="text-secondary fs-8 mb-0">
+                            The model produced a structured intent but couldn't extract a
+                            target value from your message — for example, it set
+                            <code>new_value</code> to <code>null</code>. This often happens
+                            when an element name contains unusual characters
+                            (colons, embedded numbers, mixed punctuation) and the model
+                            loses focus partway through. <strong>Fix:</strong> retype the
+                            value clearly, e.g. <code>set FireRating to EI240 on wall &lt;name&gt;</code>,
+                            or switch to a more capable model.
+                        </p>
+                    </div>
+
+                    <div class="list-group-item px-0 border-0 py-2">
+                        <div class="fw-semibold fs-7 mb-1">Request Too Vague</div>
+                        <p class="text-secondary fs-8 mb-0">
+                            The request didn't carry enough information to identify a
+                            target. <strong>Fix:</strong> name the entity type, the
+                            property, and the new value explicitly.
+                        </p>
+                    </div>
+
+                    <div class="list-group-item px-0 border-0 py-2">
+                        <div class="fw-semibold fs-7 mb-1">Filter No Match / Filter Empty</div>
+                        <p class="text-secondary fs-8 mb-0">
+                            The targeting filter the model produced didn't match any
+                            entity in the IFC file, or matched everything (refused as
+                            unsafe). <strong>Fix:</strong> include a more specific
+                            identifier — element name, level, or a property the target
+                            entity has.
+                        </p>
+                    </div>
+
+                    <div class="list-group-item px-0 border-0 py-2">
+                        <div class="fw-semibold fs-7 mb-1">Property Not Found / Pset Not Found</div>
+                        <p class="text-secondary fs-8 mb-0">
+                            The property or pset the model named doesn't exist on the
+                            target entities. <strong>Fix:</strong> use exact IFC names
+                            (e.g. <code>Pset_WallCommon.FireRating</code>, not
+                            <code>fire-rating</code>).
+                        </p>
+                    </div>
+
+                </div>
+
+                <!-- Model dependency -->
+                <h6 class="fw-semibold mb-2">Model size matters</h6>
+                <p class="text-secondary fs-8 mb-3">
+                    Reliability of these structured-output tasks scales with model size.
+                    In our testing:
+                </p>
+                <ul class="text-secondary fs-8 mb-4">
+                    <li>
+                        <strong>7–8B models</strong> (e.g. <code>llama3.1:8b</code>) drift
+                        frequently on complex prompts: they invent field names, drop
+                        values, or wrap output in unexpected nesting. Castor's repair
+                        layer recovers many of these, but not all.
+                    </li>
+                    <li>
+                        <strong>14B+ models</strong> (e.g. <code>qwen3:14b</code>) handle
+                        the same prompts reliably. If you keep hitting the same failure,
+                        try switching from the model selector at the top of the page.
+                    </li>
+                </ul>
+
+                <!-- Hostile names -->
+                <h6 class="fw-semibold mb-2">Why complex element names trip the model</h6>
+                <p class="text-secondary fs-8 mb-4">
+                    Revit-style names like
+                    <code>Basic Wall:Wall-Ext_102Bwk-75Ins-100LBlk-12P:285330</code>
+                    contain colons, hyphens, embedded numerics, and a numeric suffix
+                    that resembles a code identifier. Small models often misclassify
+                    these as code rather than a name string and produce inconsistent
+                    output around them. If you can identify the wall by a simpler
+                    attribute (level, type, role), prefer that.
+                </p>
+
+                <!-- Practical advice -->
+                <div class="alert alert-secondary mb-3" role="alert">
+                    <div class="fw-semibold mb-1">If the same prompt keeps failing</div>
+                    <ol class="mb-0 fs-8">
+                        <li>Switch the model from the selector (try a 14B+ model).</li>
+                        <li>Rephrase: put the verb and value first, then the target
+                            (e.g. <em>"Set FireRating to EI240 on the wall named …"</em>).</li>
+                        <li>Identify the target by a simpler attribute when possible
+                            (level, name pattern, type) instead of a full Revit name.</li>
+                    </ol>
+                </div>
+
+                <!-- Pointer to the long-form doc -->
+                <p class="text-secondary fs-8 mb-0">
+                    For developer-level detail and observed evidence, see
+                    <code>docs/known-limitations.md</code> in the project repository.
+                </p>
+
+            </div>
+
+            <div class="modal-footer border-top py-2">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+
+        </div>
+    </div>
+</div>

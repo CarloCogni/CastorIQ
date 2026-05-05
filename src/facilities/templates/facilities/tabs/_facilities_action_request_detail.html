@@ -87,7 +87,9 @@
                     </form>
 
                     <form method="post" action="{% url 'facilities:ar_dismiss' project.pk ar.pk %}"
-                          onsubmit="return confirm('Dismiss this request?');">
+                          data-castor-confirm="Dismiss this request?"
+                          data-castor-confirm-title="Dismiss request"
+                          data-castor-confirm-label="Dismiss">
                         {% csrf_token %}
                         <input type="text" name="note" placeholder="Reason (optional)" class="form-control form-control-sm mb-2 mt-2">
                         <button class="btn btn-sm w-100 btn-outline-danger" type="submit">

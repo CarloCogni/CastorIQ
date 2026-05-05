@@ -12,19 +12,6 @@ from environments.tests.factories import ProjectFactory, UserFactory
 from ifc_processor.tests.factories import IFCEntityFactory, IFCFileFactory
 
 
-@pytest.fixture(autouse=True)
-def _default_writeback_pipeline_v2_off(settings):
-    """Force ``WRITEBACK_PIPELINE_V2 = False`` for every writeback test.
-
-    The user may have set the flag to ``True`` in ``settings/local.py``
-    while iterating on the V2 cutover, but the broader test suite is
-    written against the V1 path. Tests that specifically need V2
-    enabled use the ``v2_enabled`` fixture (defined in
-    ``test_modification_service_v2.py``), which overrides this default.
-    """
-    settings.WRITEBACK_PIPELINE_V2 = False
-
-
 @pytest.fixture
 def user():
     """A user fixture built via factory."""

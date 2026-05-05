@@ -147,12 +147,15 @@
                         {% endif %}
 
                         {% if not forloop.first %}
-                        <form method="post" action="{% url 'writeback:restore_commit' project.pk commit.id %}">
+                        <form method="post"
+                              action="{% url 'writeback:restore_commit' project.pk commit.id %}"
+                              data-castor-confirm="Restore {{ ifc_file.name }} to this state? This creates a NEW commit that makes the file look exactly like it did at this point. All entities in the database will be re-synced."
+                              data-castor-confirm-title="Restore IFC file"
+                              data-castor-confirm-label="Restore">
                             {% csrf_token %}
                             <button type="submit"
                                     class="btn btn-outline-danger btn-xs w-100"
-                                    title="Revert {{ ifc_file.name }} to this state"
-                                    onclick="return confirm('⚠️ Restore {{ ifc_file.name }}?\n\nThis will create a NEW commit that makes the file look exactly like it did at this point.\n\nAll entities in the database will be re-synced.');">
+                                    title="Revert {{ ifc_file.name }} to this state">
                                 <i class="bi bi-clock-history me-1"></i>Restore
                             </button>
                         </form>

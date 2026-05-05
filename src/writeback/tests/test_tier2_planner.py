@@ -122,6 +122,37 @@ class TestGeneratePlan:
 
         assert result["tier"] == 3
 
+    def test_escalation_hint_appears_in_user_prompt(self, planner):
+        """When the caller passes ``escalation_hint``, the planner must surface
+        it to the LLM under a ``Tier 1 Feedback`` block so the model can
+        self-correct on the next attempt."""
+        instance, mock_llm = planner
+        _set_llm_response(mock_llm, json.dumps(VALID_PLAN))
+        hint = (
+            "Property 'Pset_WallCommon.FireResistanceDuration' not found "
+            "on any of the 3 matched entities. Did you mean: Pset_WallCommon.Reference?"
+        )
+
+        instance.generate_plan("Set fire rating", "context", escalation_hint=hint)
+
+        sent_messages = mock_llm.invoke.call_args[0][0]
+        user_content = sent_messages[1].content
+        assert "Tier 1 Feedback" in user_content
+        assert "FireResistanceDuration" in user_content
+        assert "Did you mean" in user_content
+
+    def test_no_escalation_hint_means_no_feedback_block(self, planner):
+        """When ``escalation_hint`` is None, the user prompt must not contain
+        a stale 'Tier 1 Feedback' header."""
+        instance, mock_llm = planner
+        _set_llm_response(mock_llm, json.dumps(VALID_PLAN))
+
+        instance.generate_plan("Set fire rating", "context")
+
+        sent_messages = mock_llm.invoke.call_args[0][0]
+        user_content = sent_messages[1].content
+        assert "Tier 1 Feedback" not in user_content
+
     def test_malformed_json_raises_plan_generation_error(self, planner):
         """Non-JSON LLM response raises PlanGenerationError."""
         instance, mock_llm = planner

@@ -136,7 +136,7 @@ _TYPE_TO_CATEGORY: dict[str, str] = {
 }
 
 # Fixed columns always prepended to every schedule, in this order.
-_FIXED_COLUMNS = ["GlobalID", "Name", "Level", "Room"]
+_FIXED_COLUMNS = ["GlobalID", "Name", "Description", "Tag", "Level", "Room"]
 
 # Property key ordering: Pset_ < Qto_ < Type. < other
 _PSET_PATTERN = re.compile(r"^Pset_", re.IGNORECASE)
@@ -206,6 +206,8 @@ class TypeGroupRow(NamedTuple):
     element_type_id: str | None  # UUID PK for linking (None for untyped group)
     count: int  # Number of element occurrences
     values: list  # Property values in column order
+    type_description: str  # IFC Description on the IfcTypeProduct (may be empty)
+    type_tag: str  # IFC Tag on the IfcTypeProduct (may be empty)
 
 
 class TypeGroupedResult(NamedTuple):
@@ -326,7 +328,14 @@ class GenericScheduleService:
         qs = (
             IFCEntity.objects.filter(ifc_file=self.ifc_file, ifc_type=ifc_type)
             .select_related("spatial_container__entity", "spatial_container__parent__entity")
-            .only("global_id", "name", "spatial_container", "properties")
+            .only(
+                "global_id",
+                "name",
+                "ifc_description",
+                "tag",
+                "spatial_container",
+                "properties",
+            )
             .order_by("name")
         )
         if storey:
@@ -369,6 +378,8 @@ class GenericScheduleService:
             row: list[Any] = [
                 entity.global_id,
                 entity.name or "—",
+                entity.ifc_description or "—",
+                entity.tag or "—",
                 _entity_storey_name(entity) or "—",
                 _entity_space_name(entity) or "—",
             ]
@@ -476,6 +487,8 @@ class GenericScheduleService:
                     element_type_id=type_id,
                     count=count,
                     values=values,
+                    type_description=(et.description if et else ""),
+                    type_tag=(et.tag if et else ""),
                 )
             )
 

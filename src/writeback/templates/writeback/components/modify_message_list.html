@@ -113,7 +113,7 @@
                 <span class="badge bg-danger">Failed: {{ p.error_message|truncatechars:60 }}</span>
                 {% endif %}
 
-                {# Failure records (D3): shown for execution-phase failures linked to this proposal #}
+                <!-- Failure records (D3): shown for execution-phase failures linked to this proposal -->
                 {% for fr in p.failure_records.all %}
                 <div class="card border-2 {% if fr.category == 'RETRYABLE' %}border-warning{% else %}border-danger{% endif %} mt-2 shadow-sm">
                     <div class="card-body py-2 px-3">
@@ -123,7 +123,14 @@
                             <span class="badge {% if fr.category == 'RETRYABLE' %}bg-warning text-dark{% else %}bg-danger{% endif %} ms-auto" style="font-size:.65rem;">{{ fr.category|title }}</span>
                             <span class="text-muted" style="font-size:.65rem;">{{ fr.failure_phase }}</span>
                         </div>
-                        <p class="mb-0 text-muted fs-8">{{ fr.diagnosis }}</p>
+                        <p class="mb-1 text-muted fs-8">{{ fr.diagnosis }}</p>
+                        <button type="button"
+                                class="btn btn-link btn-sm p-0 fs-8 text-decoration-none"
+                                data-bs-toggle="modal"
+                                data-bs-target="#modifyFailureHelpModal"
+                                title="Why does this happen, and what can I try?">
+                            <i class="bi bi-info-circle me-1"></i>Why did this happen?
+                        </button>
                     </div>
                 </div>
                 {% endfor %}

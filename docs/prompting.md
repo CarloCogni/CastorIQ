@@ -286,3 +286,14 @@ exactly why it failed and what assumptions led me astray.
     misunderstandings before they become wrong code. If the explanation is off, correct it before any code is written.
 
 
+---
+### GIT MESSAGE PROMPT
+Act as a senior DevOps engineer and generate a git commit message for the changes that you can find under gitdiff.
+
+Rules:
+1. Follow the Conventional Commits specification (feat, fix, chore, refactor, docs, test, etc.).
+2. Adhere strictly to the 50/72 rule: The subject line must be 50 characters or less. The body must wrap at 72 characters.
+3. Write the subject line in the imperative mood (e.g., "Add feature" not "Added feature" or "Adding feature").
+4. Do not end the subject line with a period.
+5. Use the body to explain the what and why of the change, not the how (the diff already shows the how).
+6. If the changes are trivial, omit the body entirely.

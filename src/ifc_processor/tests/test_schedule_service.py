@@ -244,7 +244,7 @@ class TestGenericScheduleServiceSchedule:
     """Tests for get_schedule()."""
 
     def test_basic_schedule_has_fixed_and_discovered_columns(self):
-        """Schedule includes fixed columns (GlobalID, Name, Level, Room) plus discovered properties."""
+        """Schedule includes fixed columns (GlobalID, Name, Description, Tag, Level, Room) plus discovered properties."""
         ifc_file = IFCFileFactory()
         IFCEntityFactory(
             ifc_file=ifc_file,
@@ -263,9 +263,44 @@ class TestGenericScheduleServiceSchedule:
         col_labels = [c.label for c in schedule.columns]
         assert "GlobalID" in col_labels
         assert "Name" in col_labels
+        assert "Description" in col_labels
+        assert "Tag" in col_labels
         assert "IsExternal" in col_labels
         assert "FireRating" in col_labels
         assert schedule.total == 1
+
+    def test_ifc_description_and_tag_surface_in_rows(self):
+        """Occurrence-level IFC Description and Tag values land in fixed-column row slots."""
+        ifc_file = IFCFileFactory()
+        IFCEntityFactory(
+            ifc_file=ifc_file,
+            ifc_type="IfcWall",
+            name="W-001",
+            ifc_description="Load-bearing exterior wall",
+            tag="rev-A-12345",
+        )
+
+        svc = GenericScheduleService(ifc_file)
+        schedule = svc.get_schedule(["IfcWall"])["IfcWall"]
+        row = schedule.rows[0]
+        # Fixed column order: GlobalID, Name, Description, Tag, Level, Room
+        assert row[2] == "Load-bearing exterior wall"
+        assert row[3] == "rev-A-12345"
+
+    def test_blank_ifc_description_and_tag_render_as_dash(self):
+        """Empty Description/Tag fall back to the dash placeholder."""
+        ifc_file = IFCFileFactory()
+        IFCEntityFactory(
+            ifc_file=ifc_file,
+            ifc_type="IfcWall",
+            ifc_description="",
+            tag="",
+        )
+
+        svc = GenericScheduleService(ifc_file)
+        row = svc.get_schedule(["IfcWall"])["IfcWall"].rows[0]
+        assert row[2] == "—"
+        assert row[3] == "—"
 
     def test_multiple_entities_produce_multiple_rows(self):
         """Each entity becomes one row in the schedule."""
@@ -361,6 +396,26 @@ class TestGenericScheduleServiceTypeGrouped:
         assert len(groups) == 1
         assert groups[0].element_type_name == "(Untyped)"
         assert groups[0].element_type_id is None
+        # Untyped groups carry no type-level Description / Tag
+        assert groups[0].type_description == ""
+        assert groups[0].type_tag == ""
+
+    def test_type_description_and_tag_surface_in_group_row(self):
+        """IFCElementType.description / .tag flow into the TypeGroupRow."""
+        ifc_file = IFCFileFactory()
+        door_type = IFCElementTypeFactory(
+            ifc_file=ifc_file,
+            ifc_type="IfcDoorType",
+            name="SinglePanel",
+            description="Standard interior single-leaf door",
+            tag="DOOR-T-001",
+        )
+        IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcDoor", element_type=door_type)
+
+        svc = GenericScheduleService(ifc_file)
+        groups = svc.get_type_grouped_schedule(["IfcDoor"])["IfcDoor"].groups
+        assert groups[0].type_description == "Standard interior single-leaf door"
+        assert groups[0].type_tag == "DOOR-T-001"
 
 
 # ── DoorWindowScheduleService (DB tests) ─────────────────────────────────────

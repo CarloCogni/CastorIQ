@@ -248,6 +248,79 @@ _EMPTY = ResolutionResult(
 )
 
 
+# Quantifier words that justify a scope=all_of_type / filtered match.
+# A message lacking ALL of these but containing an IFC type token AND
+# specific-name markers is almost certainly naming one entity, not the
+# whole category.
+_ALL_OF_TYPE_QUANTIFIERS = (
+    "all ",
+    "every ",
+    "each ",
+    "any ",
+    "all of ",
+    "every one of ",
+)
+
+# Characters / patterns that signal the user is naming a specific entity
+# rather than describing a category. Hyphens (``Wall-001``), colons
+# (``Basic Wall:...:285330``), and step-IDs (``:285330``) are the
+# common ones in IFC entity names.
+_SPECIFIC_NAME_MARKERS = re.compile(r"[-:]|\d{3,}")
+
+
+def _downgrade_unquantified_all_of_type(extracted: dict, user_message: str) -> dict:
+    """Reject ``scope=all_of_type`` when the message names ONE entity.
+
+    Trigger conditions (ALL must hold):
+      1. The LLM extractor returned ``scope='all_of_type'`` (or ``'filtered'``).
+      2. The message has NO quantifier word (``all``/``every``/``each``/``any``).
+      3. The message has at least one specific-name marker (``-`` ``:`` or a
+         3+-digit number) — this is what distinguishes ``Wall-Imaginary-Does-
+         Not-Exist`` (specific) from ``external walls`` (legitimate filter).
+
+    On trigger, rewrite ``scope='specific'`` with the message itself as
+    the entity_name so the DB layer attempts a name match. The trim
+    cascade and empty-resolution router check propagate cleanly from
+    there.
+
+    Mutates and returns ``extracted``.
+    """
+    scope = extracted.get("scope")
+    if scope not in ("all_of_type", "filtered"):
+        return extracted
+    msg = (user_message or "").lower()
+    if any(q in msg for q in _ALL_OF_TYPE_QUANTIFIERS):
+        return extracted
+    if not _SPECIFIC_NAME_MARKERS.search(msg):
+        return extracted
+    logger.info(
+        "Resolver: downgrading scope=%s -> specific (no quantifier, "
+        "specific-name markers present in %r)",
+        scope,
+        user_message,
+    )
+    extracted["scope"] = "specific"
+    extracted["entity_name"] = (user_message or "").strip()
+    extracted.pop("filter_hints", None)
+    return extracted
+
+
+def _hint_from_entities(provided: str | None, entities: list[IFCEntity]) -> str | None:
+    """Derive a single ifc_type hint when the extractor didn't supply one.
+
+    Prefers the explicit value. Falls back to the matched entities'
+    actual ``ifc_type`` when they all share a single type. Mixed-type
+    matches return None — the caller cannot assume one canonical pset
+    from a heterogeneous set.
+    """
+    if isinstance(provided, str) and provided.strip():
+        return provided.strip()
+    types = {e.ifc_type for e in entities if getattr(e, "ifc_type", None)}
+    if len(types) == 1:
+        return next(iter(types))
+    return None
+
+
 class EntityNameResolver:
     """Resolves entity references from a user message before the main classifier runs.
 
@@ -424,6 +497,11 @@ class EntityNameResolver:
         # that the LLM dropped, add them back so per-name resolution gets a
         # chance to find each. Promotes scope to specific_multi as needed.
         extracted = self._augment_with_step_ids(extracted, user_message)
+        # Quantifier guard: small models occasionally return scope=all_of_type
+        # for a specific-looking name like "Wall-Imaginary-Does-Not-Exist"
+        # because the prefix matches a known IFC class. Downgrade when the
+        # message contains no quantifier word — the user named ONE thing.
+        extracted = _downgrade_unquantified_all_of_type(extracted, user_message)
         result = self._db_resolve(extracted)
         if result.is_unique:
             return result
@@ -443,6 +521,7 @@ class EntityNameResolver:
             is_final=False,
         )
         if extracted_1 is not None:
+            extracted_1 = _downgrade_unquantified_all_of_type(extracted_1, user_message)
             result_1 = self._db_resolve(extracted_1)
             if result_1.is_unique:
                 return result_1
@@ -465,6 +544,7 @@ class EntityNameResolver:
             is_final=True,
         )
         if extracted_2 is not None:
+            extracted_2 = _downgrade_unquantified_all_of_type(extracted_2, user_message)
             result_2 = self._db_resolve(extracted_2)
             if result_2.is_unique:
                 return result_2
@@ -497,7 +577,7 @@ class EntityNameResolver:
         )
         return ResolutionResult(
             entities=entities,
-            ifc_type_hint=None,
+            ifc_type_hint=_hint_from_entities(None, entities),
             scope="specific",
             diagnostic=f"matched {len(entities)} entit{'y' if len(entities) == 1 else 'ies'} by GUID",
         )
@@ -709,7 +789,7 @@ class EntityNameResolver:
                 )
             return ResolutionResult(
                 entities=entities,
-                ifc_type_hint=ifc_type if isinstance(ifc_type, str) else None,
+                ifc_type_hint=_hint_from_entities(ifc_type, entities),
                 scope="specific",
                 diagnostic=(
                     f"matched {len(entities)} entit{'y' if len(entities) == 1 else 'ies'} "
@@ -759,7 +839,7 @@ class EntityNameResolver:
         )
         return ResolutionResult(
             entities=entities,
-            ifc_type_hint=ifc_type if isinstance(ifc_type, str) else None,
+            ifc_type_hint=_hint_from_entities(ifc_type, entities),
             scope="filtered",
             diagnostic=f"matched {len(entities)} entit{'y' if len(entities) == 1 else 'ies'} by filter",
         )
@@ -805,7 +885,7 @@ class EntityNameResolver:
         logger.info("Resolver: specific_multi — %s", diagnostic)
         return ResolutionResult(
             entities=matched,
-            ifc_type_hint=ifc_type if isinstance(ifc_type, str) else None,
+            ifc_type_hint=_hint_from_entities(ifc_type, matched),
             scope="specific_multi",
             diagnostic=diagnostic,
             misses=tuple(misses),

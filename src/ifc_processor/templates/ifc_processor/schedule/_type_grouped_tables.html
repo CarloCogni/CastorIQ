@@ -49,7 +49,17 @@
           <tbody>
             {% for group in result.groups %}
             <tr>
-              <td class="fw-semibold" style="white-space: nowrap;">{{ group.element_type_name }}</td>
+              <td class="fw-semibold" style="white-space: nowrap;">
+                {{ group.element_type_name }}
+                {% if group.type_tag %}
+                  <span class="text-secondary fw-normal font-monospace ms-2" style="font-size:0.78em;" title="IFC Tag">[{{ group.type_tag }}]</span>
+                {% endif %}
+                {% if group.type_description %}
+                  <div class="text-secondary fw-normal small" style="font-size:0.78em; white-space: normal; max-width: 360px;" title="IFC Description">
+                    {{ group.type_description }}
+                  </div>
+                {% endif %}
+              </td>
               <td class="text-center">
                 <span class="badge bg-secondary bg-opacity-25 text-body">{{ group.count }}</span>
               </td>

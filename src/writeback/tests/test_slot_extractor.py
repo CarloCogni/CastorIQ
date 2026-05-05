@@ -92,9 +92,7 @@ class TestAttributeExtraction:
         mock_llm = MagicMock()
         mock_llm.invoke.return_value = _response({"attribute": attr, "value": "NewValue"})
         ext = SlotExtractor(llm=mock_llm)
-        result = ext.extract(
-            _segment("ATTRIBUTE"), f"set {attr} to NewValue on D-01"
-        )
+        result = ext.extract(_segment("ATTRIBUTE"), f"set {attr} to NewValue on D-01")
         assert result.slots["attribute"] == attr
 
     def test_unsafe_attribute_raises(self):
@@ -108,9 +106,7 @@ class TestAttributeExtraction:
         mock_llm = MagicMock()
         mock_llm.invoke.return_value = _response({"attribute": "Name", "value": "Made-Up"})
         ext = SlotExtractor(llm=mock_llm)
-        result = ext.extract(
-            _segment("ATTRIBUTE"), "rename D-01 to D-01-Updated"
-        )
+        result = ext.extract(_segment("ATTRIBUTE"), "rename D-01 to D-01-Updated")
         # 'Made-Up' isn't in the message
         assert result.warnings
 
@@ -150,7 +146,7 @@ class TestPsetExtraction:
             {"operation": "UPDATE_PSET", "pset_name": "Pset_X"}
         )
         ext = SlotExtractor(llm=mock_llm)
-        with pytest.raises(SlotExtractionError, match="must be ADD_PSET"):
+        with pytest.raises(SlotExtractionError, match="must be one of"):
             ext.extract(_segment("PSET"), "anything")
 
     def test_missing_pset_name_raises(self):
@@ -196,9 +192,7 @@ class TestCreateExtraction:
             {"entity_class": "IfcSpace", "names": ["Server Room"], "parent_phrase": "Level 2"}
         )
         ext = SlotExtractor(llm=mock_llm)
-        result = ext.extract(
-            _segment("CREATE"), "create an IfcSpace called Server Room on Level 2"
-        )
+        result = ext.extract(_segment("CREATE"), "create an IfcSpace called Server Room on Level 2")
         assert result.slots["parent_phrase"] == "Level 2"
 
     def test_invalid_entity_class_raises(self):
@@ -216,7 +210,7 @@ class TestCreateExtraction:
             {"entity_class": "IfcZone", "names": [], "parent_phrase": ""}
         )
         ext = SlotExtractor(llm=mock_llm)
-        with pytest.raises(SlotExtractionError, match="at least one name"):
+        with pytest.raises(SlotExtractionError, match="at least one specific name"):
             ext.extract(_segment("CREATE"), "anything")
 
 

@@ -14,7 +14,9 @@
             {% if user_permission == "owner" or user_permission == "editor" %}
             {% if permit.status != 'revoked' %}
             <form method="post" action="{% url 'facilities:permit_revoke' project.pk permit.pk %}"
-                  onsubmit="return confirm('Revoke permit {{ permit.permit_number }}?');">
+                  data-castor-confirm="Revoke permit {{ permit.permit_number }}?"
+                  data-castor-confirm-title="Revoke permit"
+                  data-castor-confirm-label="Revoke">
                 {% csrf_token %}
                 <button class="btn btn-sm btn-outline-danger"><i class="bi bi-x-octagon"></i> Revoke</button>
             </form>

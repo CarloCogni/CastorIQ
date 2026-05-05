@@ -1,5 +1,5 @@
 # writeback/tests/test_modification_service_v2.py
-"""Integration tests for ModificationService.propose() with WRITEBACK_PIPELINE_V2=True.
+"""Integration tests for ModificationService.propose() — the V2 pipeline.
 
 The four V2 LLM stages (triage, slot extraction, T3 planner, T3 reviewer)
 are mocked at the SERVICE level — the resolver, validators, filter
@@ -21,20 +21,6 @@ from writeback.services.entity_resolver import ResolutionResult
 from writeback.services.modification_service import ModificationError, ModificationService
 from writeback.services.slot_extractor import SlotResult
 from writeback.services.triage_classifier import TriageResult
-
-
-@pytest.fixture
-def v2_enabled(settings):
-    """Activate the V2 pipeline flag for the duration of the test."""
-    settings.WRITEBACK_PIPELINE_V2 = True
-
-
-@pytest.fixture
-def v2_disabled(settings):
-    """Force the V2 pipeline flag off — defeats any local.py override the
-    user may have set while iterating on the V2 cutover.
-    """
-    settings.WRITEBACK_PIPELINE_V2 = False
 
 
 @pytest.fixture
@@ -70,7 +56,6 @@ class TestV2FailureARegression:
 
     def test_create_three_zones_routes_to_tier_3(
         self,
-        v2_enabled,
         project,
         ifc_file,
         wall_entities,
@@ -152,7 +137,6 @@ class TestV2FailureBRegression:
 
     def test_pset_on_all_walls_routes_to_tier_2(
         self,
-        v2_enabled,
         project,
         ifc_file,
         wall_entities,
@@ -222,7 +206,6 @@ class TestV2Tier1Path:
 
     def test_property_on_known_pset_creates_tier1_proposal(
         self,
-        v2_enabled,
         project,
         ifc_file,
         wall_entities,
@@ -281,7 +264,6 @@ class TestV2Rejections:
 
     def test_out_of_scope_segment_rejects_with_reason(
         self,
-        v2_enabled,
         project,
         ifc_file,
         wall_entities,
@@ -310,7 +292,6 @@ class TestV2Rejections:
 
     def test_unclear_segment_rejects_with_missing_slots(
         self,
-        v2_enabled,
         project,
         ifc_file,
         wall_entities,
@@ -342,7 +323,6 @@ class TestV2Rejections:
 
     def test_property_segment_with_unresolvable_target_rejects(
         self,
-        v2_enabled,
         project,
         ifc_file,
         wall_entities,
@@ -387,45 +367,4 @@ class TestV2Rejections:
             svc = ModificationService(project)
             with pytest.raises(ModificationError) as exc:
                 svc.propose(message, user=user)
-        assert "could not locate" in str(exc.value).lower()
-
-
-@pytest.mark.django_db
-class TestV2FlagOff:
-    """When the flag is False (default), V2 must NOT run — the existing
-    V1 pipeline path is exercised. Smoke check that the flag dispatch
-    works in both directions.
-    """
-
-    def test_v2_methods_not_called_when_flag_off(
-        self,
-        v2_disabled,
-        project,
-        ifc_file,
-        wall_entities,
-        user,
-        mock_guardian,
-        mock_git,
-    ):
-        """If V2 were called, the mocked TriageClassifier would record an
-        invocation. With the flag off the legacy code path runs, which
-        won't touch our V2 services at all.
-        """
-        with (
-            patch(
-                "writeback.services.modification_service.TriageClassifier.classify"
-            ) as triage_mock,
-            patch("writeback.services.modification_service.SlotExtractor.extract") as slots_mock,
-            # Force the legacy path to fail fast — we only care that V2
-            # services were never invoked, not that V1 succeeded.
-            patch(
-                "writeback.services.feasibility_checker.FeasibilityChecker.check"
-            ) as feasibility_mock,
-        ):
-            feasibility_mock.return_value = MagicMock(feasible=False, reason="forced")
-            svc = ModificationService(project)
-            with pytest.raises(ModificationError):
-                svc.propose("anything at all", user=user)
-
-        triage_mock.assert_not_called()
-        slots_mock.assert_not_called()
+        assert "no entities matched" in str(exc.value).lower()

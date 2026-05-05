@@ -27,6 +27,11 @@ urlpatterns = [
         name="delete_session",
     ),
     path(
+        "<uuid:pk>/sessions/delete-all/",
+        views.DeleteAllSessionsView.as_view(),
+        name="delete_all_sessions",
+    ),
+    path(
         "<uuid:pk>/ask/<uuid:session_id>/rename/",
         views.RenameSessionView.as_view(),
         name="rename_session",

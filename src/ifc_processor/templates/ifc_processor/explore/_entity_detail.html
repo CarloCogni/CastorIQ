@@ -31,6 +31,26 @@
   {% endif %}
 </div>
 
+<!-- ── IFC attributes (Description / Tag) ── -->
+<!--   These are the actual IFC attributes from the file (IfcRoot.Description, -->
+<!--   IfcElement.Tag) — NOT the AI-generated summary rendered below. -->
+{% if entity.ifc_description or entity.tag %}
+<div class="px-3 py-2 border-bottom">
+  {% if entity.ifc_description %}
+  <div class="small mb-1">
+    <span class="text-secondary fw-semibold me-2">Description</span>
+    <span>{{ entity.ifc_description }}</span>
+  </div>
+  {% endif %}
+  {% if entity.tag %}
+  <div class="small">
+    <span class="text-secondary fw-semibold me-2">Tag</span>
+    <span class="font-monospace">{{ entity.tag }}</span>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
 {# ── AI description ── #}
 {% if entity.description %}
 <div class="px-3 py-2 border-bottom" style="background: rgba(59,130,246,0.05);">

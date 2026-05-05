@@ -184,6 +184,92 @@ class TestSetModelAPIView:
         assert config.active_model == ""
 
 
+# ── SetThemeAPIView ─────────────────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+class TestSetThemeAPIView:
+    """POST /settings/api/set-theme/."""
+
+    def test_post_unauthenticated_redirects(self, client):
+        """Unauthenticated POST redirects to login."""
+        response = client.post(reverse("core:set_theme_api"), {"theme": "light"})
+        assert response.status_code == 302
+
+    def test_post_light_persists_to_userllmconfig(self, client):
+        """Valid 'light' theme is saved on UserLLMConfig."""
+        from core.models import UserLLMConfig
+
+        user = UserFactory()
+        _login(client, user)
+
+        response = client.post(reverse("core:set_theme_api"), {"theme": "light"})
+
+        assert response.status_code == 200
+        assert UserLLMConfig.load(user).theme == "light"
+
+    def test_post_dark_persists_to_userllmconfig(self, client):
+        """Posting 'dark' overwrites a previously saved 'light' choice."""
+        from core.models import UserLLMConfig
+
+        user = UserFactory()
+        UserLLMConfig.objects.update_or_create(user=user, defaults={"theme": "light"})
+        _login(client, user)
+
+        response = client.post(reverse("core:set_theme_api"), {"theme": "dark"})
+
+        assert response.status_code == 200
+        assert UserLLMConfig.load(user).theme == "dark"
+
+    def test_post_invalid_theme_returns_400(self, client):
+        """Unknown theme value is rejected and persisted state is unchanged."""
+        from core.models import UserLLMConfig
+
+        user = UserFactory()
+        _login(client, user)
+
+        response = client.post(reverse("core:set_theme_api"), {"theme": "neon"})
+
+        assert response.status_code == 400
+        assert UserLLMConfig.load(user).theme == "dark"  # unchanged default
+
+    def test_post_fires_castor_theme_changed_trigger(self, client):
+        """HX-Trigger header carries castor:theme-changed for the live flip."""
+        user = UserFactory()
+        _login(client, user)
+
+        response = client.post(reverse("core:set_theme_api"), {"theme": "light"})
+
+        assert response.status_code == 200
+        assert "castor:theme-changed" in response["HX-Trigger"]
+
+    def test_settings_page_renders_with_user_theme_attribute(self, client):
+        """data-bs-theme on <html> reflects the user's saved theme."""
+        from core.models import UserLLMConfig
+
+        user = UserFactory()
+        UserLLMConfig.objects.update_or_create(user=user, defaults={"theme": "light"})
+        _login(client, user)
+
+        response = client.get(reverse("core:settings"))
+
+        assert response.status_code == 200
+        assert b'data-bs-theme="light"' in response.content
+
+
+# ── UserLLMConfig theme default ─────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+def test_userllmconfig_default_theme_is_dark():
+    """A freshly loaded UserLLMConfig defaults to dark theme."""
+    from core.models import UserLLMConfig
+
+    user = UserFactory()
+    config = UserLLMConfig.load(user)
+    assert config.theme == "dark"
+
+
 # ── send_errors_to_supabase ─────────────────────────────────────────────────
 
 

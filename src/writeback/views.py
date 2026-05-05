@@ -161,8 +161,12 @@ class ModifyView(ProjectTabMixin, TemplateView):
 
         svc = ModificationService(project, user=request.user)
 
+        # Supersede any prior pending proposals in this session before
+        # generating a new one — captures the abandon as a queryable status.
+        superseded_ids = svc.supersede_pending(session, request.user)
+
         try:
-            result = svc.propose(user_message=user_text, user=request.user)
+            proposal = svc.propose(user_message=user_text, user=request.user)
         except ModificationError as e:
             # Save error as assistant message
             Message.objects.create(
@@ -172,92 +176,74 @@ class ModifyView(ProjectTabMixin, TemplateView):
             )
             return JsonResponse({"status": "error", "message": str(e)})
 
-        # Normalize to list for uniform handling
-        proposals = result if isinstance(result, list) else [result]
-        is_chain = isinstance(result, list)
-
         # Save assistant message
-        explanations = [p.explanation for p in proposals]
         assistant_msg = Message.objects.create(
             session=session,
             role=Message.Role.ASSISTANT,
-            content=" + ".join(explanations) if is_chain else explanations[0],
+            content=proposal.explanation,
         )
 
-        # Link proposals to message and persist conflict link
+        # Link the proposal to the assistant message and persist conflict link.
         conflict_ids_raw = request.POST.get("conflict_ids", "")
         linked_ids = (
             [i.strip() for i in conflict_ids_raw.split(",") if i.strip()]
             if conflict_ids_raw
             else []
         )
-        for p in proposals:
-            p.message = assistant_msg
-            if linked_ids:
-                p.linked_conflict_ids = linked_ids
-                p.save(update_fields=["message", "linked_conflict_ids"])
-            else:
-                p.save(update_fields=["message"])
+        proposal.message = assistant_msg
+        if linked_ids:
+            proposal.linked_conflict_ids = linked_ids
+            proposal.save(update_fields=["message", "linked_conflict_ids"])
+        else:
+            proposal.save(update_fields=["message"])
 
         # Auto-title
         if session.title == "New Modification":
             session.title = user_text[:50]
             session.save(update_fields=["title"])
 
-        serialized = []
-        for p in proposals:
-            try:
-                diff_preview = json.loads(p.diff_preview)
-            except (json.JSONDecodeError, TypeError):
-                diff_preview = []
+        try:
+            diff_preview = json.loads(proposal.diff_preview)
+        except (json.JSONDecodeError, TypeError):
+            diff_preview = []
 
-            entry = {
-                "id": str(p.id),
-                "tier": p.tier,
-                "operation": p.operation,
-                "explanation": p.explanation,
-                "confidence": p.confidence,
-                "affected_count": p.affected_count,
-                "diff_preview": diff_preview,
-                "conflict_ids": ",".join(str(i) for i in p.linked_conflict_ids),
-                "guardian": {
-                    "status": p.verification_status,
-                    "result": p.verification_result,
-                    "source": p.verification_source,
-                },
-            }
+        entry = {
+            "id": str(proposal.id),
+            "tier": proposal.tier,
+            "operation": proposal.operation,
+            "explanation": proposal.explanation,
+            "confidence": proposal.confidence,
+            "affected_count": proposal.affected_count,
+            "diff_preview": diff_preview,
+            "conflict_ids": ",".join(str(i) for i in proposal.linked_conflict_ids),
+            "guardian": {
+                "status": proposal.verification_status,
+                "result": proposal.verification_result,
+                "source": proposal.verification_source,
+            },
+        }
 
-            # Tier 2: include plan steps for UI
-            if p.tier == 2 and p.intent_json and "plan" in p.intent_json:
-                entry["plan_steps"] = [
-                    {
-                        "step": s.get("step", i + 1),
-                        "operation": s.get("operation", ""),
-                        "explanation": s.get("explanation", ""),
-                    }
-                    for i, s in enumerate(p.intent_json["plan"])
-                ]
-            if p.tier == 3 and p.intent_json:
-                if "code" in p.intent_json:
-                    entry["code"] = p.intent_json["code"]
-                if "review" in p.intent_json:
-                    entry["review"] = p.intent_json["review"]
-
-            serialized.append(entry)
-
-        if is_chain:
-            return JsonResponse(
+        # Tier 2: include plan steps for UI
+        if proposal.tier == 2 and proposal.intent_json and "plan" in proposal.intent_json:
+            entry["plan_steps"] = [
                 {
-                    "status": "proposed",
-                    "chain": True,
-                    "proposals": serialized,
+                    "step": s.get("step", i + 1),
+                    "operation": s.get("operation", ""),
+                    "explanation": s.get("explanation", ""),
                 }
-            )
+                for i, s in enumerate(proposal.intent_json["plan"])
+            ]
+        if proposal.tier == 3 and proposal.intent_json:
+            if "code" in proposal.intent_json:
+                entry["code"] = proposal.intent_json["code"]
+            if "review" in proposal.intent_json:
+                entry["review"] = proposal.intent_json["review"]
 
         return JsonResponse(
             {
                 "status": "proposed",
-                "proposal": serialized[0],
+                "proposal": entry,
+                "superseded_ids": superseded_ids,
             }
         )
 
@@ -279,11 +265,22 @@ class ModifyView(ProjectTabMixin, TemplateView):
             proposal = ModificationProposal.objects.get(
                 id=proposal_id,
                 ifc_file__project=project,
-                status=ModificationProposal.Status.PENDING,
             )
         except ModificationProposal.DoesNotExist:
+            return JsonResponse({"status": "error", "message": "Proposal not found."}, status=404)
+
+        if proposal.status == ModificationProposal.Status.SUPERSEDED:
             return JsonResponse(
-                {"status": "error", "message": "Proposal not found or not pending."}, status=404
+                {
+                    "status": "error",
+                    "message": "This proposal was superseded by a newer request.",
+                    "superseded": True,
+                },
+                status=410,
+            )
+        if proposal.status != ModificationProposal.Status.PENDING:
+            return JsonResponse(
+                {"status": "error", "message": "Proposal is no longer pending."}, status=409
             )
 
         proposal.reviewed_by = request.user
@@ -364,11 +361,22 @@ class ModifyView(ProjectTabMixin, TemplateView):
             proposal = ModificationProposal.objects.get(
                 id=proposal_id,
                 ifc_file__project=project,
-                status=ModificationProposal.Status.PENDING,
             )
         except ModificationProposal.DoesNotExist:
+            return JsonResponse({"status": "error", "message": "Proposal not found."}, status=404)
+
+        if proposal.status == ModificationProposal.Status.SUPERSEDED:
             return JsonResponse(
-                {"status": "error", "message": "Proposal not found or not pending."}, status=404
+                {
+                    "status": "error",
+                    "message": "This proposal was superseded by a newer request.",
+                    "superseded": True,
+                },
+                status=410,
+            )
+        if proposal.status != ModificationProposal.Status.PENDING:
+            return JsonResponse(
+                {"status": "error", "message": "Proposal is no longer pending."}, status=409
             )
 
         svc = ModificationService(project)

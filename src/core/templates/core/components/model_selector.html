@@ -2,12 +2,26 @@
 {% load static %}
 
 {% if error %}
+    <!-- OOB: reflect connection state in the System Status section. -->
+    <span id="ollama-health" hx-swap-oob="outerHTML" class="setting-value">
+        <span class="text-danger d-inline-flex align-items-center gap-1">
+            <i class="bi bi-x-circle-fill"></i> Unreachable
+        </span>
+    </span>
+
     <div class="alert alert-danger d-flex align-items-center gap-2 fs-7 mb-0">
         <i class="bi bi-exclamation-triangle-fill"></i>
         {{ error }}
     </div>
 
 {% else %}
+    <!-- OOB: reflect connection state in the System Status section. -->
+    <span id="ollama-health" hx-swap-oob="outerHTML" class="setting-value">
+        <span class="text-success d-inline-flex align-items-center gap-1">
+            <i class="bi bi-check-circle-fill"></i> Connected
+        </span>
+    </span>
+
 
     <!-- ── Installed Models (selectable) ─────────────────────── -->
     {% if installed_by_tier %}

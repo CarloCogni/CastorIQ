@@ -214,11 +214,10 @@ class TestCoerceForIfcType:
 class TestSetProperty:
     """Tests for Tier1Writer.set_property() — uses mocked IFC model."""
 
-    def test_set_property_missing_pset_raises_ifc_write_error(self, writer, mock_ifc_model):
-        """set_property raises IFCWriteError when pset not found on element."""
-        model, element, pset_element, prop_entity = mock_ifc_model
-
-        # element has no psets
+    def test_set_property_missing_pset_raises_for_non_standard_pset(self, writer, mock_ifc_model):
+        """For NON-standard psets, set_property still raises when pset missing —
+        upsert is only allowed for standard IFC psets where the pset can be
+        auto-created safely."""
         with patch(
             "ifc_processor.services.ifc_writer.element_util.get_psets",
             return_value={},
@@ -226,24 +225,81 @@ class TestSetProperty:
             with pytest.raises(IFCWriteError, match="not found"):
                 writer.set_property(
                     global_ids=["GUID-001"],
-                    pset="Pset_WallCommon",
-                    prop="FireRating",
-                    value="EI120",
+                    pset="Pset_CustomFireCompliance",  # non-standard
+                    prop="Standard",
+                    value="FS-2026",
                 )
 
-    def test_set_property_missing_property_raises_ifc_write_error(self, writer, mock_ifc_model):
-        """set_property raises IFCWriteError when the specific property is absent."""
+    def test_set_property_missing_property_raises_for_non_standard_pset(
+        self, writer, mock_ifc_model
+    ):
+        """For NON-standard psets, set_property raises when the specific
+        property is absent. Standard psets get upsert; custom psets stay strict."""
         with patch(
             "ifc_processor.services.ifc_writer.element_util.get_psets",
-            return_value={"Pset_WallCommon": {"IsExternal": True}},
+            return_value={"Pset_CustomFireCompliance": {"OtherProp": True}},
         ):
             with pytest.raises(IFCWriteError, match="not found"):
                 writer.set_property(
                     global_ids=["GUID-001"],
-                    pset="Pset_WallCommon",
-                    prop="FireRating",
-                    value="EI120",
+                    pset="Pset_CustomFireCompliance",
+                    prop="Standard",
+                    value="FS-2026",
                 )
+
+    def test_set_property_upserts_when_pset_missing_on_standard_pset(self, writer, mock_ifc_model):
+        """For standard psets, set_property auto-creates the pset and adds
+        the property. The returned EntityChange has old_value='(none)'."""
+        from ifc_processor.services.ifc_writer import EntityChange
+
+        with patch(
+            "ifc_processor.services.ifc_writer.element_util.get_psets",
+            return_value={},  # pset missing
+        ):
+            with patch(
+                "ifc_processor.services.ifc_writer.coerce_from_registry",
+                return_value="EI120",
+            ):
+                with patch("ifc_processor.services.ifc_writer.ifcopenshell.api.run"):
+                    changes = writer.set_property(
+                        global_ids=["GUID-001"],
+                        pset="Pset_WallCommon",
+                        prop="FireRating",
+                        value="EI120",
+                    )
+
+        assert len(changes) == 1
+        assert isinstance(changes[0], EntityChange)
+        assert changes[0].old_value == "(none)"
+        assert changes[0].new_value == "EI120"
+
+    def test_set_property_upserts_when_property_missing_on_standard_pset(
+        self, writer, mock_ifc_model
+    ):
+        """Standard pset present, property missing → set_property adds the
+        property via pset.edit_pset (which auto-adds when missing)."""
+        from ifc_processor.services.ifc_writer import EntityChange
+
+        with patch(
+            "ifc_processor.services.ifc_writer.element_util.get_psets",
+            return_value={"Pset_WallCommon": {"IsExternal": True}},
+        ):
+            with patch(
+                "ifc_processor.services.ifc_writer.coerce_from_registry",
+                return_value="EI120",
+            ):
+                with patch("ifc_processor.services.ifc_writer.ifcopenshell.api.run"):
+                    changes = writer.set_property(
+                        global_ids=["GUID-001"],
+                        pset="Pset_WallCommon",
+                        prop="FireRating",
+                        value="EI120",
+                    )
+
+        assert len(changes) == 1
+        assert isinstance(changes[0], EntityChange)
+        assert changes[0].old_value == "(none)"
+        assert changes[0].new_value == "EI120"
 
     def test_set_property_returns_entity_change_list(self, writer, mock_ifc_model):
         """set_property on a found property returns a list of EntityChange objects."""
@@ -354,6 +410,41 @@ class TestSetAttribute:
         assert len(changes) == 1
         assert isinstance(changes[0], EntityChange)
         assert changes[0].new_value == "Wall-Renamed"
+
+    def test_set_attribute_description_routes_through_edit_attributes(self, writer):
+        """SET_ATTRIBUTE on Description must call attribute.edit_attributes."""
+        with patch("ifc_processor.services.ifc_writer.ifcopenshell.api.run") as mock_run:
+            changes = writer.set_attribute(
+                global_ids=["GUID-001"],
+                attribute="Description",
+                value="Exterior load-bearing wall",
+            )
+
+        assert len(changes) == 1
+        assert changes[0].property == "Description"
+        assert changes[0].new_value == "Exterior load-bearing wall"
+        mock_run.assert_called_once()
+        # The api.run call should target attribute.edit_attributes with the new value.
+        args, kwargs = mock_run.call_args
+        assert args[0] == "attribute.edit_attributes"
+        assert kwargs["attributes"] == {"Description": "Exterior load-bearing wall"}
+
+    def test_set_attribute_tag_routes_through_edit_attributes(self, writer):
+        """SET_ATTRIBUTE on Tag must call attribute.edit_attributes."""
+        with patch("ifc_processor.services.ifc_writer.ifcopenshell.api.run") as mock_run:
+            changes = writer.set_attribute(
+                global_ids=["GUID-001"],
+                attribute="Tag",
+                value="REV-285330",
+            )
+
+        assert len(changes) == 1
+        assert changes[0].property == "Tag"
+        assert changes[0].new_value == "REV-285330"
+        mock_run.assert_called_once()
+        args, kwargs = mock_run.call_args
+        assert args[0] == "attribute.edit_attributes"
+        assert kwargs["attributes"] == {"Tag": "REV-285330"}
 
 
 # ── _get_element ──────────────────────────────────────────────────────────────

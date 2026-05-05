@@ -202,3 +202,12 @@ LOGGING = {
         "asyncio": {"level": "WARNING"},
     },
 }
+
+# ── Writeback rejection-hint generator ─────────────────────────────
+# Strategy 3 (LLM-fallback) is wired but gated behind a category whitelist
+# that starts empty. Strategies 1 (Templated) and 2 (Registry-grounded) are
+# always on and add no LLM cost. Add categories to ``WRITEBACK_HINT_LLM_CATEGORIES``
+# only after observing real rejections that 1+2 cannot address — see
+# ``writeback/services/hint_generator.py`` for the strategy contracts.
+WRITEBACK_HINT_LLM_FALLBACK = True
+WRITEBACK_HINT_LLM_CATEGORIES: tuple[str, ...] = ()

@@ -652,6 +652,20 @@ class ConflictScanService:
         Returns 'created', 'updated', or 'skipped'.
         """
         property_name = self._finding_str(finding, "property_name")[:255]
+
+        # Hard guard: never store a conflict where IFC value equals document value.
+        # The LLM sometimes flags these despite explicit prompt instructions not to.
+        ifc_val = str(finding.get("ifc_value", "")).strip().upper().replace(" ", "")
+        doc_val = str(finding.get("document_value", "")).strip().upper().replace(" ", "")
+        if ifc_val and doc_val and ifc_val == doc_val:
+            logger.info(
+                "Skipping false positive: IFC value '%s' already matches document value '%s' for entity %s",
+                ifc_val,
+                doc_val,
+                entity.id,
+            )
+            return "skipped"
+
         title = self._finding_str(finding, "title", "Conflict")[:255]
         severity = finding.get("severity", Conflict.Severity.MEDIUM)
 

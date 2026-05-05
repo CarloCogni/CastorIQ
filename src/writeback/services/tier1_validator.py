@@ -185,6 +185,23 @@ class Tier1Validator:
     # ── Operation Validators ───────────────────────────────
 
     def _validate_set_property(self, intent: dict, entities: list[IFCEntity]) -> ValidationResult:
+        """Validate SET_PROPERTY with upsert semantics for standard psets.
+
+        Behaviour matrix:
+
+            pset standard?  all have prop?   action
+            ---------------------------------------------------------
+            yes             yes              SET on all
+            yes             some/none        SET on all (writer upserts)
+            no              yes              SET on all
+            no              no               escalate to Tier 2 (custom pset)
+            no              partial          escalate to Tier 2
+
+        The previous behaviour silently dropped entities that lacked the
+        property, which collapsed "change FireRating on all walls" to
+        whichever subset already had FireRating. With upsert, the resolver's
+        full set is honoured.
+        """
         pset = intent.get("pset", "")
         prop = intent.get("property", "")
         value = intent.get("new_value")
@@ -200,17 +217,22 @@ class Tier1Validator:
                 error="SET_PROPERTY requires 'new_value'.",
             )
 
-        # Check that pset.property exists on at least one entity
         key = f"{pset}.{prop}"
         entities_with_prop = [e for e in entities if key in (e.properties or {})]
+        entities_missing_prop = [e for e in entities if key not in (e.properties or {})]
 
-        if not entities_with_prop:
-            # Helpful error: suggest close matches
+        # Type pre-validation up front — applies to all branches.
+        type_ok, type_err, _ = self._validate_value_type(pset, prop, value)
+        if not type_ok:
+            return ValidationResult(valid=False, error=type_err)
+
+        # Custom pset: we cannot upsert without escalating to Tier 2 (which
+        # owns ADD_PSET). All-have is fine; any partial / all-missing escalates.
+        if not is_standard_pset(pset) and entities_missing_prop:
             available = set()
             for e in entities:
                 for k in e.properties or {}:
                     available.add(k)
-
             hint = ""
             if available:
                 close = get_close_matches(key, list(available), n=3, cutoff=0.4)
@@ -218,32 +240,69 @@ class Tier1Validator:
                     hint = f" Did you mean: {', '.join(close)}?"
                 else:
                     hint = f" Available: {', '.join(sorted(available)[:10])}"
-
             return ValidationResult(
                 valid=False,
-                error=f"Property '{key}' not found on any of the "
-                f"{len(entities)} matched entities.{hint}",
+                error=(
+                    f"Property '{key}' not found on "
+                    f"{len(entities_missing_prop)} of {len(entities)} matched "
+                    f"entities and pset is not a standard IFC pset.{hint}"
+                ),
             )
 
-        # Type pre-validation against the standard registry
-        type_ok, type_err, _ = self._validate_value_type(pset, prop, value)
-        if not type_ok:
-            return ValidationResult(valid=False, error=type_err)
+        # Standard pset + property unknown to registry + absent on every
+        # entity = almost certainly a typo. Surface the closest matches
+        # rather than silently upserting a misspelled property name.
+        if (
+            is_standard_pset(pset)
+            and not entities_with_prop
+            and lookup_property(pset, prop) is None
+        ):
+            available = set()
+            for e in entities:
+                for k in e.properties or {}:
+                    if k.startswith(f"{pset}."):
+                        available.add(k)
+            hint = ""
+            if available:
+                close = get_close_matches(key, list(available), n=3, cutoff=0.4)
+                if close:
+                    hint = f" Did you mean: {', '.join(close)}?"
+                else:
+                    hint = f" Available: {', '.join(sorted(available)[:10])}"
+            return ValidationResult(
+                valid=False,
+                error=(
+                    f"Property '{key}' not found on any of the "
+                    f"{len(entities)} matched entities and is not a known "
+                    f"property of {pset}.{hint}"
+                ),
+            )
 
+        # Standard pset OR every entity already has the property → safe.
         groundedness = self._compute_groundedness(pset, prop, value)
 
         warnings = []
-        if len(entities_with_prop) > TIER1_LARGE_OP_THRESHOLD:
+        if len(entities) > TIER1_LARGE_OP_THRESHOLD:
             warnings.append(
-                f"Large operation: this will affect {len(entities_with_prop)} entities. "
+                f"Large operation: this will affect {len(entities)} entities. "
                 f"Review carefully before approving."
+            )
+        if entities_missing_prop:
+            warnings.append(
+                f"{len(entities_missing_prop)} of {len(entities)} entities did "
+                f"not have '{key}' — it will be added (upsert)."
             )
 
         return ValidationResult(
             valid=True,
             operation="SET_PROPERTY",
-            entities=entities_with_prop,
-            params={"pset": pset, "property": prop, "new_value": value},
+            entities=entities,
+            params={
+                "pset": pset,
+                "property": prop,
+                "new_value": value,
+                "upsert": bool(entities_missing_prop),
+            },
             groundedness_score=groundedness,
             warnings=warnings,
         )

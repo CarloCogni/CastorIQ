@@ -119,7 +119,7 @@ class IFCFileAdmin(admin.ModelAdmin):
 class IFCElementTypeAdmin(admin.ModelAdmin):
     list_display = ("name", "ifc_type", "ifc_file", "occurrence_count")
     list_filter = ("ifc_type", "ifc_file__project")
-    search_fields = ("name", "global_id", "ifc_file__name")
+    search_fields = ("name", "global_id", "tag", "description", "ifc_file__name")
     readonly_fields = ("id", "global_id", "properties_pretty", "created_at", "updated_at")
     list_select_related = ("ifc_file", "ifc_file__project")
     inlines = [ElementTypeInline]
@@ -151,7 +151,7 @@ class IFCElementTypeAdmin(admin.ModelAdmin):
 class IFCEntityAdmin(admin.ModelAdmin):
     list_display = ("global_id_short", "ifc_type", "name", "spatial_container", "ifc_file")
     list_filter = ("ifc_type", "ifc_file__project")
-    search_fields = ("global_id", "name", "description", "ifc_file__name")
+    search_fields = ("global_id", "name", "ifc_description", "tag", "description", "ifc_file__name")
     readonly_fields = ("id", "properties_pretty", "embedding_preview", "created_at", "updated_at")
     list_per_page = 50
     show_full_result_count = False
@@ -159,6 +159,10 @@ class IFCEntityAdmin(admin.ModelAdmin):
 
     fieldsets = (
         ("Identification", {"fields": ("id", "ifc_file", "global_id", "ifc_type", "name")}),
+        (
+            "IFC Attributes",
+            {"fields": ("ifc_description", "tag")},
+        ),
         (
             "Spatial Location",
             {
@@ -174,7 +178,6 @@ class IFCEntityAdmin(admin.ModelAdmin):
         (
             "Embedding",
             {
-                # 2. CHANGE: Replace 'embedding' with 'embedding_preview' here too
                 "fields": ("embedding_preview",),
                 "classes": ("collapse",),
             },

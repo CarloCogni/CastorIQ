@@ -3,10 +3,10 @@
 
 {% block content %}
 <style>
-    /* Dark Mode Overrides for this page */
+    /* Page background flips with theme. */
     body, .bg-body {
-        background-color: #121212 !important; /* Deep dark background */
-        color: #e0e0e0 !important;
+        background-color: var(--bs-body-bg) !important;
+        color: var(--bs-body-color) !important;
     }
 
     /* The Infinite Grid */
@@ -18,10 +18,10 @@
         padding-bottom: 5rem;
     }
 
-    /* Dark Card Styling */
+    /* Card surface — flips with theme. */
     .loader-card {
-        background-color: #1e1e1e;       /* Slightly lighter than body */
-        border: 1px solid #333;
+        background-color: var(--bs-tertiary-bg);
+        border: 1px solid var(--bs-border-color);
         border-radius: 12px;
         aspect-ratio: 1 / 1;             /* Perfect square */
         display: flex;

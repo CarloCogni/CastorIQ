@@ -98,7 +98,9 @@ class ProposalConsumer(AsyncJsonWebsocketConsumer):
         conflict_ids_raw = content.get("conflict_ids", "")
 
         try:
-            result, proposals = await self._run_pipeline(message_text, session_id, conflict_ids_raw)
+            result, proposals, superseded_ids = await self._run_pipeline(
+                message_text, session_id, conflict_ids_raw
+            )
         except Exception as e:
             from writeback.services.emitters import CancellationError
             from writeback.services.modification_service import ModificationError
@@ -120,6 +122,7 @@ class ProposalConsumer(AsyncJsonWebsocketConsumer):
             return
 
         serialized = await self._serialize_result(result, proposals)
+        serialized["superseded_ids"] = superseded_ids
         await self.send_json({"type": "proposal", **serialized})
         await self.send_json({"type": "done"})
 
@@ -177,6 +180,10 @@ class ProposalConsumer(AsyncJsonWebsocketConsumer):
         emitter = WebSocketEmitter(self.send_json, cancel_event=self._cancel_event)
         svc = ModificationService(project, user=self.user)
 
+        # Supersede any prior pending proposals in this session before
+        # generating a new one — captures the abandon as a queryable status.
+        superseded_ids = svc.supersede_pending(session, self.user)
+
         try:
             result = svc.propose(
                 user_message=message_text,
@@ -230,7 +237,7 @@ class ProposalConsumer(AsyncJsonWebsocketConsumer):
             session.title = message_text[:50]
             session.save(update_fields=["title"])
 
-        return result, proposals
+        return result, proposals, superseded_ids
 
     async def _handle_propose_with_retry(self, content: dict) -> None:
         """
@@ -259,7 +266,7 @@ class ProposalConsumer(AsyncJsonWebsocketConsumer):
             failure_context = None
 
         try:
-            result, proposals = await self._run_pipeline(
+            result, proposals, superseded_ids = await self._run_pipeline(
                 message_text, session_id, conflict_ids_raw, failure_context=failure_context
             )
         except Exception as e:
@@ -283,6 +290,7 @@ class ProposalConsumer(AsyncJsonWebsocketConsumer):
             return
 
         serialized = await self._serialize_result(result, proposals)
+        serialized["superseded_ids"] = superseded_ids
         await self.send_json({"type": "proposal", **serialized})
         await self.send_json({"type": "done"})
 

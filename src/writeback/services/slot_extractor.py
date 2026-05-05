@@ -108,26 +108,47 @@ User: "change description on Wall-001 to 'load-bearing exterior wall'"
 # ── PSET ──────────────────────────────────────────────────────────
 
 PSET_SYSTEM_PROMPT = """\
-You extract pset-level slots from a single IFC modification segment.
+You extract pset-family slots from a single IFC modification segment.
 
-The user is adding a property set, removing one, or copying properties.
-Output ONLY this JSON:
+The user is doing ONE of these:
+  (1) ADD_PSET           — attach a property set, optionally with initial props
+  (2) REMOVE_PSET        — detach a whole property set
+  (3) SET_MATERIAL       — assign / change the material on entities
+  (4) SET_CLASSIFICATION — classify entities under a system + reference
 
-{
-  "operation": "ADD_PSET | REMOVE_PSET",
-  "pset_name": "<exact pset name>",
-  "properties": {"<PropertyName>": <value>, ...}
-}
+Output ONLY this JSON, with the operation-specific keys:
+
+ADD_PSET:
+{"operation": "ADD_PSET",
+ "pset_name": "<exact Pset_* name>",
+ "properties": {"<Name>": <value>, ...}}
+
+REMOVE_PSET:
+{"operation": "REMOVE_PSET",
+ "pset_name": "<exact Pset_* name>"}
+
+SET_MATERIAL:
+{"operation": "SET_MATERIAL",
+ "material_name": "<material name verbatim>"}
+
+SET_CLASSIFICATION:
+{"operation": "SET_CLASSIFICATION",
+ "system_name": "<classification system, e.g. Uniclass>",
+ "reference": "<reference code, e.g. EF_25_10>"}
 
 Rules:
-  - "operation": ADD_PSET when the user wants to attach the pset with
-    initial properties; REMOVE_PSET when the user wants to delete the
-    whole pset.
-  - "pset_name": the exact name the user typed.
-  - "properties": for ADD_PSET only — a flat dict of property → value
-    where each value is copied verbatim from the user's wording.
-    Empty dict {} is allowed when the user didn't name initial values.
-    Omit this key for REMOVE_PSET.
+  - "pset_name" must follow the IFC convention `Pset_<Something>`. If the
+    user typed a generic word ("properties", "the pset"), this is NOT a
+    valid pset_name — return ``"pset_name": ""`` and the caller will
+    reject the request.
+  - For ADD_PSET, "properties" is a flat dict; empty {} is allowed when
+    the user didn't name initial values.
+  - All extracted strings are copied verbatim from the user's wording.
+  - Pick the operation that matches the user's verb:
+      "add Pset_X" / "attach"            → ADD_PSET
+      "remove Pset_X" / "delete pset"    → REMOVE_PSET
+      "assign material" / "set material" → SET_MATERIAL
+      "classify" / "set classification"  → SET_CLASSIFICATION
 
 Examples:
 
@@ -137,6 +158,19 @@ User: "add Pset_Maintenance to all walls with Inspector=TBD and LastInspection=2
 
 User: "remove Pset_Custom from Wall-001"
 {"operation": "REMOVE_PSET", "pset_name": "Pset_Custom"}
+
+User: "assign concrete material to all walls"
+{"operation": "SET_MATERIAL", "material_name": "concrete"}
+
+User: "set the material of wall :285395 to Reinforced Concrete C30/37"
+{"operation": "SET_MATERIAL", "material_name": "Reinforced Concrete C30/37"}
+
+User: "classify all walls under FireSafety with reference FS-2026/EW"
+{"operation": "SET_CLASSIFICATION",
+ "system_name": "FireSafety", "reference": "FS-2026/EW"}
+
+User: "add properties to walls"   ← pset_name unknown / generic
+{"operation": "ADD_PSET", "pset_name": "", "properties": {}}
 """
 
 
@@ -243,7 +277,9 @@ class SlotExtractor:
 
         if kind == "ATTRIBUTE":
             slots = self._llm_extract(ATTRIBUTE_SYSTEM_PROMPT, segment, user_message)
-            return self._post_process_attribute(slots, user_message)
+            return self._post_process_attribute(
+                slots, user_message, target_phrase=segment.get("target_phrase") or ""
+            )
 
         if kind == "PSET":
             slots = self._llm_extract(PSET_SYSTEM_PROMPT, segment, user_message)
@@ -309,7 +345,12 @@ class SlotExtractor:
             warnings=warnings,
         )
 
-    def _post_process_attribute(self, raw: dict, user_message: str) -> SlotResult:
+    def _post_process_attribute(
+        self,
+        raw: dict,
+        user_message: str,
+        target_phrase: str = "",
+    ) -> SlotResult:
         warnings: list[str] = []
         attr = (raw.get("attribute") or "").strip()
         if attr not in SAFE_ATTRIBUTES:
@@ -321,6 +362,25 @@ class SlotExtractor:
         if value is None or (isinstance(value, str) and not value.strip()):
             raise SlotExtractionError("ATTRIBUTE segment missing 'value' slot.")
 
+        # Vague-value guard: "rename the door" → triage emits ATTRIBUTE with
+        # target_phrase="the door", and the slot LLM hallucinates value="the
+        # door" because no real new value was supplied. Reject when the
+        # extracted value is just the target reference echoed back, or when
+        # it equals the attribute's own name.
+        if isinstance(value, str):
+            value_norm = value.strip().lower()
+            target_norm = target_phrase.strip().lower()
+            if target_norm and value_norm == target_norm:
+                raise SlotExtractionError(
+                    f"ATTRIBUTE segment {attr!r}: no new value was provided. "
+                    f"Please rephrase, e.g. 'rename {target_phrase} to <new name>'."
+                )
+            if value_norm == attr.lower():
+                raise SlotExtractionError(
+                    f"ATTRIBUTE segment {attr!r}: extracted value {value!r} is "
+                    "the attribute name itself — no new value provided."
+                )
+
         if not _value_appears_in_message(value, user_message):
             warnings.append(
                 f"Value {value!r} not found in your request — please confirm before approving."
@@ -331,14 +391,63 @@ class SlotExtractor:
     def _post_process_pset(self, raw: dict, user_message: str) -> SlotResult:
         warnings: list[str] = []
         op = (raw.get("operation") or "").strip().upper()
-        if op not in ("ADD_PSET", "REMOVE_PSET"):
+        if op not in ("ADD_PSET", "REMOVE_PSET", "SET_MATERIAL", "SET_CLASSIFICATION"):
             raise SlotExtractionError(
-                f"PSET segment 'operation' must be ADD_PSET or REMOVE_PSET, got {op!r}."
+                "PSET segment 'operation' must be one of "
+                "ADD_PSET / REMOVE_PSET / SET_MATERIAL / SET_CLASSIFICATION, "
+                f"got {op!r}."
             )
 
+        if op == "SET_MATERIAL":
+            material_name = (raw.get("material_name") or "").strip()
+            if not material_name:
+                raise SlotExtractionError(
+                    "SET_MATERIAL segment missing 'material_name'. "
+                    "Please name the material to assign."
+                )
+            if not _value_appears_in_message(material_name, user_message):
+                warnings.append(
+                    f"Material {material_name!r} not found in your request — "
+                    "please confirm before approving."
+                )
+            return SlotResult(
+                slots={"operation": op, "material_name": material_name},
+                warnings=warnings,
+            )
+
+        if op == "SET_CLASSIFICATION":
+            system_name = (raw.get("system_name") or "").strip()
+            reference = (raw.get("reference") or "").strip()
+            if not system_name:
+                raise SlotExtractionError(
+                    "SET_CLASSIFICATION segment missing 'system_name'. "
+                    "Please name the classification system."
+                )
+            if not reference:
+                raise SlotExtractionError(
+                    "SET_CLASSIFICATION segment missing 'reference'. "
+                    "Please provide the classification reference code."
+                )
+            return SlotResult(
+                slots={"operation": op, "system_name": system_name, "reference": reference},
+                warnings=warnings,
+            )
+
+        # ADD_PSET / REMOVE_PSET share the pset_name shape guard.
         pset_name = (raw.get("pset_name") or "").strip()
         if not pset_name:
-            raise SlotExtractionError("PSET segment missing 'pset_name'.")
+            raise SlotExtractionError(
+                "PSET segment missing 'pset_name'. Please name the property "
+                "set, e.g. 'Pset_Maintenance'."
+            )
+        # Generic words like "properties", "the pset", "stuff" leak through
+        # the LLM extractor when the user didn't actually name a Pset_*.
+        # Reject before they reach the writers.
+        if not pset_name.lower().startswith("pset_"):
+            raise SlotExtractionError(
+                f"PSET segment 'pset_name' {pset_name!r} is not a valid IFC pset name. "
+                "Please name the property set explicitly, e.g. 'Pset_Maintenance'."
+            )
 
         if op == "REMOVE_PSET":
             return SlotResult(
@@ -376,10 +485,16 @@ class SlotExtractor:
         if not isinstance(names_raw, list):
             raise SlotExtractionError("CREATE 'names' must be a JSON array.")
         names = [str(n).strip() for n in names_raw if str(n).strip()]
+        # Generic-word guard: "create three new IfcZone entities" → LLM
+        # hallucinates names=["three new"] from the quantifier phrase.
+        # Drop entries that are just quantifier / placeholder noise so the
+        # caller surfaces a clean "no names provided" rejection.
+        names = [n for n in names if not _is_generic_create_name(n, entity_class)]
         if not names:
             raise SlotExtractionError(
-                "CREATE 'names' must contain at least one name. "
-                "Please name the entities you want created."
+                "CREATE 'names' must contain at least one specific name. "
+                "Please name the entities you want created — e.g. 'Fire Zone A', "
+                "'Storage-01' — not just a count or generic noun."
             )
 
         parent_phrase = (raw.get("parent_phrase") or "").strip()
@@ -392,6 +507,67 @@ class SlotExtractor:
             },
             warnings=[],
         )
+
+
+# Words that the LLM frequently hallucinates as CREATE names when the
+# user only supplied a quantifier or generic placeholder. Each is a
+# whole-token comparison (case-insensitive); multi-word names containing
+# any of these tokens (e.g. "Fire Zone A") still pass.
+_GENERIC_CREATE_TOKENS = frozenset(
+    {
+        "new",
+        "the",
+        "a",
+        "an",
+        "entity",
+        "entities",
+        "instance",
+        "instances",
+        "object",
+        "objects",
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six",
+        "seven",
+        "eight",
+        "nine",
+        "ten",
+        "several",
+        "many",
+        "some",
+    }
+)
+
+
+def _is_generic_create_name(name: str, entity_class: str) -> bool:
+    """Detect placeholder names like 'three new' / 'IfcZone entity' that
+    the LLM emits when the user didn't actually name a specific entity.
+
+    Returns True when *every* whitespace-separated token in ``name`` is
+    either a pure number, a generic quantifier/placeholder, or the
+    entity class itself. A name with at least one specific token (e.g.
+    'Fire Zone A', 'Storage-01') is considered specific.
+    """
+    cleaned = name.strip()
+    if not cleaned:
+        return True
+    cls_norm = (entity_class or "").strip().lower()
+    cls_short = cls_norm.removeprefix("ifc")
+    for token in cleaned.split():
+        t = token.lower().strip(".,;:!?\"'()")
+        if not t:
+            continue
+        if t.isdigit():
+            continue
+        if t in _GENERIC_CREATE_TOKENS:
+            continue
+        if t == cls_norm or t == cls_short:
+            continue
+        return False
+    return True
 
 
 def _value_appears_in_message(value, user_message: str) -> bool:

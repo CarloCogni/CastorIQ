@@ -179,12 +179,15 @@ class ErrorLog(UUIDModel):
 
 class UserLLMConfig(models.Model):
     """
-    Per-user LLM preference.
+    Per-user UI + LLM preferences.
 
-    Each user can choose their own Ollama model.
-    When blank, get_llm() falls back to settings.OLLAMA_MODEL.
-    Future: enables per-model billing based on user's choice.
+    Each user can choose their own Ollama model and UI theme.
+    When `active_model` is blank, get_llm() falls back to settings.OLLAMA_MODEL.
     """
+
+    class Theme(models.TextChoices):
+        DARK = "dark", "Dark"
+        LIGHT = "light", "Light"
 
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
@@ -198,6 +201,13 @@ class UserLLMConfig(models.Model):
         default="",
         verbose_name="Active Model",
         help_text="Ollama model tag (e.g. qwen3:14b). Blank = use .env default.",
+    )
+    theme = models.CharField(
+        max_length=8,
+        choices=Theme.choices,
+        default=Theme.DARK,
+        verbose_name="Theme",
+        help_text="UI color theme.",
     )
     updated_at = models.DateTimeField(auto_now=True)
 

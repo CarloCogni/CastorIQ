@@ -109,12 +109,13 @@ def test_set_property_multiple_entities_all_changed(ifc_copy: Path) -> None:
 
 
 @pytest.mark.slow
-def test_set_property_rolls_back_on_missing_pset(ifc_copy: Path) -> None:
-    """SET_PROPERTY on a non-existent pset raises and leaves the file unmodified."""
+def test_set_property_rolls_back_on_missing_non_standard_pset(ifc_copy: Path) -> None:
+    """SET_PROPERTY on a non-existent NON-STANDARD pset raises and leaves
+    the file unmodified. Standard psets get upsert; custom psets stay strict."""
     writer = Tier1Writer(ifc_copy)
 
     with pytest.raises(IFCWriteError, match="not found"):
-        writer.set_property([WALL1_GUID], "Pset_BeamCommon", "FireRating", "EI120")
+        writer.set_property([WALL1_GUID], "Pset_CustomCompliance", "Standard", "FS-2026")
 
     # File unchanged: original FireRating still EI60
     model = ifcopenshell.open(str(ifc_copy))
@@ -124,16 +125,22 @@ def test_set_property_rolls_back_on_missing_pset(ifc_copy: Path) -> None:
 
 
 @pytest.mark.slow
-def test_set_property_rolls_back_on_missing_property(ifc_copy: Path) -> None:
-    """SET_PROPERTY on a non-existent property raises and leaves the file unmodified."""
+def test_set_property_upserts_missing_property_on_standard_pset(ifc_copy: Path) -> None:
+    """SET_PROPERTY on a non-existent property of a STANDARD pset adds the
+    property (upsert) and the change persists after save → re-open."""
     writer = Tier1Writer(ifc_copy)
 
-    with pytest.raises(IFCWriteError, match="not found"):
-        writer.set_property([WALL1_GUID], "Pset_WallCommon", "NonExistentProp", "value")
+    changes = writer.set_property([WALL1_GUID], "Pset_WallCommon", "AcousticRating", "Rw45")
+    writer.save()
+
+    assert len(changes) == 1
+    assert changes[0].old_value == "(none)"
+    assert changes[0].new_value == "Rw45"
 
     model = ifcopenshell.open(str(ifc_copy))
     element = model.by_guid(WALL1_GUID)
     psets = element_util.get_psets(element)
+    assert psets["Pset_WallCommon"]["AcousticRating"] == "Rw45"
     # Other properties untouched
     assert psets["Pset_WallCommon"]["FireRating"] == "EI60"
 

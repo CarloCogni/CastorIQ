@@ -106,32 +106,57 @@ class Tier1Writer:
         value,
     ) -> list[EntityChange]:
         """
-        SET_PROPERTY: Change an existing property value on matched entities.
+        SET_PROPERTY: Set a property value on matched entities.
 
-        Raises IFCWriteError if pset or property doesn't exist on any entity.
+        For standard IFC psets (Pset_WallCommon, Pset_DoorCommon, …) this is
+        upsert: missing psets are auto-created and missing properties are
+        added (writes ``old_value="(none)"`` for those entities). For
+        non-standard psets the operation is strict — missing pset or property
+        raises ``IFCWriteError`` and the caller is expected to escalate to
+        Tier 2.
         """
         changes = []
         self.model.begin_transaction()
         try:
+            standard_pset = is_standard_pset(pset)
             for gid in global_ids:
                 element = self._get_element(gid)
                 psets = element_util.get_psets(element)
 
+                # Upsert path: pset missing.
                 if pset not in psets:
-                    raise IFCWriteError(f"Property set '{pset}' not found on {element.Name or gid}")
-
-                real_prop = self._resolve_property_name(psets[pset], prop)
-                if real_prop is None:
-                    available = [k for k in psets[pset] if k != "id"]
-                    raise IFCWriteError(
-                        f"Property '{prop}' not found in '{pset}' on "
-                        f"{element.Name or gid}. Available: {', '.join(available)}"
+                    if not standard_pset:
+                        raise IFCWriteError(
+                            f"Property set '{pset}' not found on {element.Name or gid} "
+                            f"and is not a standard IFC pset. "
+                            f"Use ADD_PSET (Tier 2) for custom property sets."
+                        )
+                    pset_element = ifcopenshell.api.run(
+                        "pset.add_pset",
+                        self.model,
+                        product=element,
+                        name=pset,
                     )
-
-                old_value = psets[pset][real_prop]
-
-                # Find the actual IfcPropertySet element for the API call
-                pset_element = self._find_pset_element(element, pset)
+                    real_prop = prop
+                    old_value = "(none)"
+                    logger.info(f"Auto-created standard pset '{pset}' on {element.Name or gid}")
+                else:
+                    real_prop = self._resolve_property_name(psets[pset], prop)
+                    pset_element = self._find_pset_element(element, pset)
+                    if real_prop is None:
+                        # Property missing inside an existing pset.
+                        if not standard_pset:
+                            available = [k for k in psets[pset] if k != "id"]
+                            raise IFCWriteError(
+                                f"Property '{prop}' not found in '{pset}' on "
+                                f"{element.Name or gid}. Available: "
+                                f"{', '.join(available)}"
+                            )
+                        # Standard pset — upsert by adding the property.
+                        real_prop = prop
+                        old_value = "(none)"
+                    else:
+                        old_value = psets[pset][real_prop]
 
                 # Coercion priority:
                 # 1. Registry (knows standard types authoritatively)
@@ -142,7 +167,7 @@ class Tier1Writer:
                 except ValueError as e:
                     raise IFCWriteError(str(e)) from e
 
-                if coerced_value == value:
+                if coerced_value == value and old_value != "(none)":
                     # Registry didn't know this property — inspect the IFC entity
                     prop_entity = self._get_property_entity(pset_element, real_prop)
                     if prop_entity is not None:

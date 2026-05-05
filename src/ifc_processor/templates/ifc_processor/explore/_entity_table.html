@@ -45,7 +45,7 @@
       <input type="search"
              id="entity-search"
              class="form-control form-control-sm bg-body border-secondary-subtle"
-             placeholder="Search name or GlobalID…"
+             placeholder="Search name, GlobalID, tag…"
              value="{{ current_q }}"
              hx-get="{{ base_url }}?spatial_id={{ current_spatial_id|urlencode }}&type={{ active_type|urlencode }}"
              hx-trigger="input changed delay:300ms, search"
@@ -106,6 +106,8 @@
       <tr>
         <th style="width:140px;">Type</th>
         <th>Name</th>
+        <th style="width:110px;">Tag</th>
+        <th>Description</th>
         <th style="width:160px;">Element Type</th>
         <th style="width:150px;">Container</th>
         <th style="width:110px;" class="text-secondary">GlobalID</th>
@@ -120,6 +122,12 @@
           <span class="badge bg-primary bg-opacity-10 text-body badge-ifc-type">{{ entity.ifc_type }}</span>
         </td>
         <td>{{ entity.name|default:"—" }}</td>
+        <td class="text-secondary font-monospace" style="font-size:0.78rem;">
+          {% if entity.tag %}{{ entity.tag|truncatechars:14 }}{% else %}<span class="opacity-40">—</span>{% endif %}
+        </td>
+        <td class="text-secondary" style="font-size:0.8rem;">
+          {% if entity.ifc_description %}{{ entity.ifc_description|truncatechars:60 }}{% else %}<span class="opacity-40">—</span>{% endif %}
+        </td>
         <td class="text-secondary" style="font-size:0.8rem;">{{ entity.element_type.name|default:"—"|truncatechars:25 }}</td>
         <td class="text-secondary">
           {% if entity.spatial_container and entity.spatial_container.entity %}

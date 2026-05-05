@@ -53,7 +53,7 @@ Four principles govern every test in this suite.
 | Layer | Marker | Needs DB? | Extra prerequisites | Examples |
 |---|---|---|---|---|
 | Pure logic | _(none)_ | No | — | `test_token_utils`, `test_message_normalizer`, `test_emitters`, `test_llm_model_registry` |
-| LLM-mocked | _(none)_ | No | — | `test_intent_classifier`, `test_tier3_executor`, `test_git_service`, `test_token_budget` |
+| LLM-mocked | _(none)_ | No | — | `test_triage_classifier`, `test_slot_extractor`, `test_hint_generator`, `test_tier3_executor`, `test_git_service`, `test_token_budget` |
 | DB-dependent | `@pytest.mark.django_db` | Yes | Docker + PostgreSQL | `test_filter_engine`, `test_tier1_validator`, `test_models` |
 | Pipeline integration smoke | `@pytest.mark.slow` | Yes | Docker + PostgreSQL | `test_modification_pipeline` |
 | IfcOpenShell integration | `@pytest.mark.slow` | No | Real `.ifc` fixture (committed) | `test_ifc_writer_integration` |
@@ -105,7 +105,10 @@ Castor/
       test_emitters.py          ← NullEmitter, CapturingEmitter — no DB
       test_filter_engine.py     ← FilterEngine.resolve() — @django_db
       test_tier1_validator.py   ← Tier1Validator full validation matrix — @django_db
-      test_intent_classifier.py ← build_entity_context (DB) + classify (mock LLM)
+      test_triage_classifier.py ← stage 1 — segment kinds, mock LLM, no DB
+      test_slot_extractor.py    ← stage 2 — per-kind slot prompts + guards, mock LLM, no DB
+      test_tier_router.py       ← stage 3.5 — deterministic routing, no LLM, no DB
+      test_hint_generator.py    ← Tier 0 hints (Templated / Registry / LLM-fallback gating), mock LLM
       test_tier2_planner.py     ← _validate_plan + generate_plan — mock LLM, no DB
       test_tier3_executor.py    ← Code validation only — pure Python, no DB
       test_git_service.py       ← Patches git.Repo — no file I/O
@@ -186,22 +189,30 @@ All patches use `monkeypatch` or `unittest.mock.patch`. Prefer `monkeypatch` —
 | Ollama API (token budget) | `core.token_budget._fetch_context_window_from_ollama` |
 | WebSocket send | `patch.object(consumer, 'send_json')` |
 
-**LLM mock pattern** — replace the LLM after construction, since `IntentClassifier.__init__` calls `get_llm()` immediately:
+**LLM mock pattern** — patch `get_llm` per pipeline-stage module, since each stage instantiates its own LLM lazily on the first call:
 
 ```python
 @pytest.fixture
-def mock_llm(monkeypatch):
+def mock_llm():
     mock = MagicMock()
-    monkeypatch.setattr("core.llm.get_llm", lambda **kw: mock)
-    return mock
+    with (
+        patch("writeback.services.triage_classifier.get_llm", return_value=mock),
+        patch("writeback.services.slot_extractor.get_llm", return_value=mock),
+        patch("writeback.services.entity_resolver.get_llm", return_value=mock),
+        patch("writeback.services.tier2_planner.get_llm", return_value=mock),
+        patch("writeback.services.tier3_planner.get_llm", return_value=mock),
+        patch("writeback.services.tier3_reviewer.get_llm", return_value=mock),
+    ):
+        yield mock
 ```
 
-Alternatively, replace the instance attribute directly when testing a single classifier:
+Alternatively, when testing a single stage in isolation, inject a mock via the constructor — the pipeline stages accept an optional `llm=` kwarg specifically for this:
 
 ```python
-classifier = IntentClassifier()
-classifier.llm = MagicMock()
-classifier.llm.invoke.return_value.content = json.dumps({...})
+mock_llm = MagicMock()
+mock_llm.invoke.return_value.content = json.dumps({"segments": [...]})
+classifier = TriageClassifier(llm=mock_llm)
+result = classifier.classify("set FireRating to EI120 on all walls")
 ```
 
 ---

@@ -54,20 +54,34 @@ For each segment, return ONLY these three fields:
 
 Kinds:
   - PROPERTY:     set/add/remove a single property on existing entities
-                  ("set FireRating to EI120 on all walls").
-  - ATTRIBUTE:    rename / change a top-level IFC attribute (Name,
-                  Description, ObjectType, Tag, LongName).
-  - PSET:         add a whole property set, remove a whole property set,
-                  set classification, set material, copy properties between
-                  entities ("add Pset_Maintenance with Inspector=TBD to all walls").
-  - CREATE:       create new IFC entities — zones, spaces, classifications,
-                  materials, relationships ("create three new IfcZone for
-                  Fire Zone A, B, C").
+                  ("set FireRating to EI120 on all walls"). Properties live
+                  inside a Pset (e.g. Pset_WallCommon.FireRating).
+  - ATTRIBUTE:    rename / change a top-level IFC attribute. The five
+                  attributes are EXACTLY: Name, Description, ObjectType,
+                  Tag, LongName. If the user is changing one of these by
+                  name — even on multiple entities — the kind is ATTRIBUTE,
+                  not PROPERTY.
+  - PSET:         (1) add a whole property set ("add Pset_Maintenance ..."),
+                  (2) remove a whole property set ("remove Pset_X"),
+                  (3) assign / change a material ("assign concrete material",
+                      "set the material of Wall-01 to ..."),
+                  (4) classify entities ("classify all walls under Uniclass",
+                      "set classification of ...").
+                  Material and classification operations are PSET, not
+                  PROPERTY — there is no "material" property to set.
+  - CREATE:       create non-physical IFC entities only — IfcZone, IfcSpace,
+                  IfcClassification, IfcMaterial. ("create three new IfcZone
+                  for Fire Zone A, B, C").
+                  CREATE for a physical element with geometry (IfcWall,
+                  IfcDoor, IfcWindow, IfcSlab, IfcColumn, IfcBeam, IfcRoof,
+                  furniture) is OUT_OF_SCOPE — Castor does not author
+                  geometry.
   - DELETE:       delete existing entities ("delete all furniture in Level 1").
   - RELATIONSHIP: change spatial parents, group memberships, or other
                   IfcRel* links ("move Wall-01 to Level 2").
-  - OUT_OF_SCOPE: geometric edits — moving, resizing, rotating physical
-                  elements. Castor does not support these. Set ``reason``.
+  - OUT_OF_SCOPE: any geometric edit — moving, resizing, rotating, extending,
+                  thickening, or AUTHORING (creating) a physical element.
+                  Castor does not support these. Set ``reason``.
   - UNCLEAR:      cannot determine target, action, or value. Set ``missing``
                   to the list of fields the user did not provide:
                   ["target"], ["value"], or ["target", "value"].
@@ -92,11 +106,26 @@ User: "set fire rating to EI120 on all walls"
 User: "rename door D-007 to D-007-Updated"
 {"segments": [{"kind": "ATTRIBUTE", "target_phrase": "door D-007", "value_phrase": "Name to D-007-Updated"}]}
 
+User: "set Tag to EW-A1 on Basic Wall:Wall-01 and :02"
+{"segments": [{"kind": "ATTRIBUTE", "target_phrase": "Basic Wall:Wall-01 and :02", "value_phrase": "Tag to EW-A1"}]}
+
 User: "add Pset_Maintenance to all walls with Inspector=TBD and LastInspection=2026-01-01"
 {"segments": [{"kind": "PSET", "target_phrase": "all walls", "value_phrase": "Pset_Maintenance with Inspector=TBD and LastInspection=2026-01-01"}]}
 
+User: "assign concrete material to all walls"
+{"segments": [{"kind": "PSET", "target_phrase": "all walls", "value_phrase": "set material to concrete"}]}
+
+User: "set the material of wall :285395 to Reinforced Concrete C30/37"
+{"segments": [{"kind": "PSET", "target_phrase": "wall :285395", "value_phrase": "set material to Reinforced Concrete C30/37"}]}
+
+User: "classify all walls under FireSafety with reference FS-2026/EW"
+{"segments": [{"kind": "PSET", "target_phrase": "all walls", "value_phrase": "set classification under FireSafety with reference FS-2026/EW"}]}
+
 User: "create three new IfcZone entities for Fire Zone A, Fire Zone B, and Fire Zone C"
 {"segments": [{"kind": "CREATE", "target_phrase": "three new IfcZone entities for Fire Zone A, Fire Zone B, and Fire Zone C", "value_phrase": "IfcZone named Fire Zone A, Fire Zone B, Fire Zone C"}]}
+
+User: "create a new wall between Level 1 and Level 2"
+{"segments": [{"kind": "OUT_OF_SCOPE", "target_phrase": "a new wall between Level 1 and Level 2", "value_phrase": "create wall", "reason": "Authoring a physical element (wall) requires geometry, which is out of scope."}]}
 
 User: "delete all chairs in the Conference Room"
 {"segments": [{"kind": "DELETE", "target_phrase": "all chairs in the Conference Room", "value_phrase": ""}]}

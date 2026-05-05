@@ -234,6 +234,27 @@ class IFCEntity(UUIDModel):
         verbose_name="Name",
     )
 
+    # IFC attributes on IfcRoot / IfcElement — distinct from `description` below,
+    # which is the AI-generated semantic summary used by the RAG pipeline.
+    ifc_description = models.TextField(
+        blank=True,
+        verbose_name="IFC Description",
+        help_text=(
+            "IFC `Description` attribute on the occurrence (IfcRoot.Description). "
+            "Distinct from `description`, which is the AI-generated semantic summary used by RAG."
+        ),
+    )
+    tag = models.CharField(
+        max_length=255,
+        blank=True,
+        db_index=True,
+        verbose_name="Tag",
+        help_text=(
+            "IFC `Tag` attribute on the occurrence — user-defined identifier "
+            "(typically the source-app element id)."
+        ),
+    )
+
     # Link to defining type object (IfcTypeProduct)
     element_type = models.ForeignKey(
         IFCElementType,

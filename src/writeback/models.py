@@ -17,6 +17,7 @@ class ModificationProposal(UUIDModel):
         REJECTED = "rejected", "Rejected"
         APPLIED = "applied", "Applied"
         FAILED = "failed", "Failed"
+        SUPERSEDED = "superseded", "Superseded"
 
     class Tier(models.IntegerChoices):
         GREEN = 1, "Tier 1 – Certified Ops (GREEN)"

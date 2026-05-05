@@ -12,8 +12,15 @@ from writeback.services.tier_router import (
 )
 
 
-def _segment(kind, slots=None, resolution_count=0, **extra):
-    """Build a segment dict the way the V2 pipeline shapes it."""
+def _segment(kind, slots=None, resolution_count=1, **extra):
+    """Build a segment dict the way the V2 pipeline shapes it.
+
+    ``resolution_count`` defaults to 1 because the most common
+    routing case is "resolver matched something". Tests that need to
+    exercise the empty-resolution rejection path pass ``0`` explicitly.
+    UNCLEAR / OUT_OF_SCOPE / CREATE segments are exempt from the
+    router's resolution check, so the default is harmless for them.
+    """
     seg = {
         "kind": kind,
         "target_phrase": "",
