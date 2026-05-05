@@ -103,6 +103,28 @@ LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "projects:list"
 LOGOUT_REDIRECT_URL = "login"
 
+# Password reset — beta uses Django's built-in PasswordResetConfirmView as the
+# one-time set-password link in welcome emails (M3.6). Default is 7 days so a
+# reviewer can sit on an approval over the weekend without invalidating the
+# applicant's link.
+PASSWORD_RESET_TIMEOUT = int(os.getenv("PASSWORD_RESET_TIMEOUT", str(7 * 24 * 3600)))
+
+# Email — env-driven so dev can stay on console output and prod can swap to
+# SMTP without a code change. EMAIL_HOST being unset is the signal that no
+# real backend is configured; prod overrides EMAIL_BACKEND to smtp explicitly
+# in production.py.
+EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
+EMAIL_HOST = os.getenv("EMAIL_HOST", "")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True").lower() == "true"
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Castor <noreply@castoriq.io>")
+SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
+
+# Public-facing site URL — used to build absolute links in welcome emails.
+SITE_URL = os.getenv("SITE_URL", "http://localhost:8001")
+
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
