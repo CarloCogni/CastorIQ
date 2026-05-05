@@ -65,6 +65,24 @@ class TestEmbeddingService:
         assert len(result) == 2
         mock_ollama_embeddings.embed_documents.assert_called_once()
 
+    def test_embed_documents_batches_large_inputs(self, mock_ollama_embeddings, settings):
+        """Long input lists are split into sub-batches to avoid Ollama 400s."""
+        from embeddings.services.embedding_service import EmbeddingService
+
+        settings.OLLAMA_EMBED_BATCH_SIZE = 16
+        # Underlying client returns one vector per text it receives.
+        mock_ollama_embeddings.embed_documents.side_effect = lambda batch: [
+            [0.1] * 1024 for _ in batch
+        ]
+
+        svc = EmbeddingService()
+        texts = [f"chunk {i}" for i in range(50)]
+        result = svc.embed_documents(texts)
+
+        assert len(result) == 50
+        # ceil(50 / 16) = 4
+        assert mock_ollama_embeddings.embed_documents.call_count == 4
+
     def test_model_name_property(self, mock_ollama_embeddings):
         """model_name property returns the configured model name."""
         from embeddings.services.embedding_service import EmbeddingService

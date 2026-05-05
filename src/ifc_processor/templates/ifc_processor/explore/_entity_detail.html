@@ -75,7 +75,7 @@
       <tbody>
         {% for prop_name, prop_value in props.items %}
         <tr>
-          <td class="text-secondary pe-3" style="width:45%; white-space:nowrap;">{{ prop_name }}</td>
+          <td class="text-secondary pe-3 align-top" style="width:40%; word-break:break-all;" title="{{ prop_name }}">{{ prop_name }}</td>
           <td>
             {% if prop_value is None %}<span class="text-secondary fst-italic">null</span>
             {% else %}{{ prop_value|format_value }}{% endif %}
@@ -100,7 +100,7 @@
       <tbody>
         {% for prop_name, prop_value in props.items %}
         <tr>
-          <td class="text-secondary pe-3" style="width:45%; white-space:nowrap;">{{ prop_name }}</td>
+          <td class="text-secondary pe-3 align-top" style="width:40%; word-break:break-all;" title="{{ prop_name }}">{{ prop_name }}</td>
           <td>
             {% if prop_value is None %}<span class="text-secondary fst-italic">null</span>
             {% else %}{{ prop_value|format_value }}{% with unit=quantity_units|dictget:prop_name %}{% if unit %} <span class="text-secondary" style="font-size:0.8em;">{{ unit }}</span>{% endif %}{% endwith %}{% endif %}
@@ -126,7 +126,7 @@
         <tbody>
           {% for prop_name, prop_value in props.items %}
           <tr>
-            <td class="text-secondary pe-3" style="width:45%; white-space:nowrap;">{{ prop_name }}</td>
+            <td class="text-secondary pe-3 align-top" style="width:40%; word-break:break-all;" title="{{ prop_name }}">{{ prop_name }}</td>
             <td>
               {% if prop_value is None %}<span class="text-secondary fst-italic">null</span>
               {% else %}{{ prop_value|format_value }}{% endif %}
