@@ -24,11 +24,16 @@ Embeddings stay Ollama-only — see ``embeddings/services/embedding_service.py``
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, TypeVar
 
 from django.conf import settings
 from langchain_core.language_models.chat_models import BaseChatModel
 
 logger = logging.getLogger(__name__)
+
+_T = TypeVar("_T")
 
 
 class LLMConfigurationError(RuntimeError):
@@ -37,6 +42,35 @@ class LLMConfigurationError(RuntimeError):
 
 class LLMMasterKillError(RuntimeError):
     """Raised when ``LLM_MASTER_KILL`` is set and a cloud call is requested."""
+
+
+def safe_invoke(
+    func: Callable[..., _T],
+    *args: Any,
+    timeout: float,
+    thread_name_prefix: str = "llm-call",
+    **kwargs: Any,
+) -> _T:
+    """
+    Run a blocking LLM invocation in a worker thread with a hard wall-clock cap.
+
+    Ollama (and some httpx-based clients) advertise per-read timeouts that don't
+    fire while the connection is streaming tokens — a stalled call can hold an
+    ASGI thread for many minutes. Wrapping invoke() in a thread we can abandon
+    gives the caller a real wall-clock cap.
+
+    Raises ``concurrent.futures.TimeoutError`` if the call doesn't return in
+    ``timeout`` seconds. The worker thread is daemonic so it won't block
+    process exit; the in-flight provider request still occupies one server-side
+    slot until it returns on its own.
+    """
+    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix=thread_name_prefix)
+    try:
+        future = executor.submit(func, *args, **kwargs)
+        return future.result(timeout=timeout)
+    finally:
+        # Never wait on shutdown — a wedged worker would defeat the whole point.
+        executor.shutdown(wait=False)
 
 
 def _resolve_site_config(purpose: str) -> tuple[str, str]:
