@@ -6,6 +6,29 @@ from .base import *  # noqa: F401, F403
 
 DEBUG = False
 
+# Sentry — error visibility in production. Initialised here only (never in
+# dev/local) so the Sentry SDK doesn't try to phone home from a developer
+# machine. SENTRY_DSN being unset is a normal state — Sentry account creation
+# is the operator's job, not the deploy script's.
+_sentry_dsn = os.getenv("SENTRY_DSN", "").strip()
+if _sentry_dsn:
+    import sentry_sdk
+    from sentry_sdk.integrations.django import DjangoIntegration
+    from sentry_sdk.integrations.logging import LoggingIntegration
+
+    sentry_sdk.init(
+        dsn=_sentry_dsn,
+        integrations=[
+            DjangoIntegration(),
+            # WARNING-and-above goes as a breadcrumb, ERROR-and-above as an event.
+            LoggingIntegration(level=None, event_level=None),
+        ],
+        environment=os.getenv("SENTRY_ENVIRONMENT", "production"),
+        release=os.getenv("SENTRY_RELEASE", ""),
+        traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.0")),
+        send_default_pii=False,
+    )
+
 # Security settings
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True

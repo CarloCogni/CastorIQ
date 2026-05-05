@@ -36,6 +36,7 @@ dependencies = [
     "langchain-anthropic>=1.4.3",
     "langchain-groq>=1.1.2",
     "django-solo>=2.5.1",
+    "sentry-sdk>=2.59.0",
 ]
 
 [project.optional-dependencies]
