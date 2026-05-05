@@ -438,3 +438,147 @@ class SiteLLMConfig(SingletonModel):
         if provider == "ollama":
             return ("ollama", settings.OLLAMA_MODEL)
         return (provider, model or cloud_default)
+
+
+class UserTokenBudget(models.Model):
+    """
+    Per-user daily LLM token cap.
+
+    The dispatcher checks ``would_exceed(estimated)`` before each cloud call
+    and increments ``used_today`` after the response lands (post-call
+    reconciliation against ``response.usage_metadata`` — real numbers, not
+    heuristics). The pre-paid provider balance is the *hard* cap; this is a
+    *soft* second layer so one runaway user can't drain the pool.
+
+    Reset is lazy: ``reset_if_new_day()`` zeroes ``used_today`` on the first
+    call after midnight UTC. No cron required.
+    """
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="token_budget",
+        primary_key=True,
+    )
+    daily_cap = models.PositiveIntegerField(
+        default=50_000,
+        verbose_name="Daily Cap (tokens)",
+        help_text="Total tokens (input + output) allowed per UTC day. 0 = unlimited.",
+    )
+    used_today = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Used Today",
+        help_text="Tokens consumed since the last reset.",
+    )
+    last_reset_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Last Reset",
+    )
+    hard_blocked = models.BooleanField(
+        default=False,
+        verbose_name="Hard Blocked",
+        help_text="When set, refuse all cloud LLM calls regardless of remaining budget.",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "User Token Budget"
+        verbose_name_plural = "User Token Budgets"
+
+    def __str__(self) -> str:
+        return f"{self.user.username} — {self.used_today}/{self.daily_cap}"
+
+    @classmethod
+    def load(cls, user) -> "UserTokenBudget":
+        """Get-or-create the budget row for a user."""
+        obj, _ = cls.objects.get_or_create(user=user)
+        return obj
+
+    def reset_if_new_day(self) -> bool:
+        """Zero ``used_today`` if we've crossed midnight UTC. Returns True on reset."""
+        from django.utils import timezone
+
+        now = timezone.now()
+        if self.last_reset_at is None or self.last_reset_at.date() != now.date():
+            self.used_today = 0
+            self.last_reset_at = now
+            self.save(update_fields=["used_today", "last_reset_at", "updated_at"])
+            return True
+        return False
+
+    def would_exceed(self, estimated_tokens: int) -> bool:
+        """True if recording ``estimated_tokens`` would push past the daily cap."""
+        if self.hard_blocked:
+            return True
+        if self.daily_cap == 0:
+            return False
+        return self.used_today + estimated_tokens > self.daily_cap
+
+    def record_usage(self, tokens: int) -> None:
+        """Increment ``used_today`` after a real LLM response lands."""
+        if tokens <= 0:
+            return
+        self.used_today = (self.used_today or 0) + tokens
+        self.save(update_fields=["used_today", "updated_at"])
+
+    @property
+    def remaining(self) -> int:
+        if self.daily_cap == 0:
+            return 0
+        return max(0, self.daily_cap - self.used_today)
+
+
+class LLMCallLog(models.Model):
+    """
+    One row per LLM invocation. Pure observability — never read on the hot path.
+
+    Lets us answer "did anyone go nuts last week?" and reconcile internal cost
+    estimates against the provider dashboards. Index covers the two access
+    patterns: filter by user (admin user inspector) and filter by created_at
+    (range queries / weekly review).
+    """
+
+    class Purpose(models.TextChoices):
+        ASK = "ask", "Ask"
+        MODIFY = "modify", "Modify"
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="llm_calls",
+    )
+    provider = models.CharField(max_length=20)
+    model = models.CharField(max_length=100, blank=True)
+    purpose = models.CharField(max_length=10, choices=Purpose.choices, db_index=True)
+    tokens_in = models.PositiveIntegerField(default=0)
+    tokens_out = models.PositiveIntegerField(default=0)
+    estimated_cost_usd = models.DecimalField(
+        max_digits=10,
+        decimal_places=6,
+        default=0,
+        help_text="Estimated USD cost — provider price table × token counts.",
+    )
+    latency_ms = models.PositiveIntegerField(null=True, blank=True)
+    succeeded = models.BooleanField(default=True, db_index=True)
+    error_type = models.CharField(max_length=120, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "LLM Call Log"
+        verbose_name_plural = "LLM Call Logs"
+        indexes = [
+            models.Index(fields=["user", "-created_at"]),
+            models.Index(fields=["provider", "-created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        u = self.user.username if self.user else "(anon)"
+        return f"{u} · {self.provider}/{self.model} · {self.tokens_in}+{self.tokens_out}"
+
+    @property
+    def total_tokens(self) -> int:
+        return (self.tokens_in or 0) + (self.tokens_out or 0)
