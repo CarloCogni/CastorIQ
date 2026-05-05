@@ -981,6 +981,31 @@ const ModifyChat = {
         }
     },
 
+    /* ── Tier 3 review acknowledgement gate ───────── */
+    async acknowledgeReview(proposalId, checkboxEl) {
+        // Optimistically toggle the Execute button to follow the checkbox
+        // state; revert if the server refuses. The server-side gate in
+        // _handle_approve is the source of truth either way.
+        const btn = document.getElementById(`proposal-execute-${proposalId}`);
+        if (!checkboxEl.checked) {
+            if (btn) {
+                btn.setAttribute('disabled', '');
+                btn.title = 'Acknowledge the code review checkbox above to enable';
+            }
+            return;
+        }
+        try {
+            await this._post({ action: 'acknowledge_review', proposal_id: proposalId });
+            if (btn) {
+                btn.removeAttribute('disabled');
+                btn.removeAttribute('title');
+            }
+        } catch (err) {
+            checkboxEl.checked = false;
+            this._appendBubble('assistant', `❌ Could not record acknowledgement: ${err.message}`);
+        }
+    },
+
     async approveChain(proposalIds) {
             this._showLoader();
             try {
@@ -1194,6 +1219,14 @@ const ModifyChat = {
                                 </h6>
                                 <pre class="rounded mb-0"
                                      style="max-height: 350px; overflow: auto;"><code class="language-python hljs">${this._escapeHtml(p.code)}</code></pre>
+                                <div class="form-check mt-2">
+                                    <input class="form-check-input" type="checkbox"
+                                           id="t3-review-ack-${p.id}"
+                                           onchange="ModifyChat.acknowledgeReview('${p.id}', this)">
+                                    <label class="form-check-label fs-8 text-secondary" for="t3-review-ack-${p.id}">
+                                        I have reviewed this code and accept responsibility for executing it.
+                                    </label>
+                                </div>
                             </div>` : ''}
                         ${diffRows ? `
                         <div class="table-responsive mb-3">
@@ -1214,6 +1247,8 @@ const ModifyChat = {
                         ${this._guardianBadgeHTML(p.guardian)}
                         <div class="d-flex gap-2" id="proposal-actions-${p.id}">
                             <button class="btn btn-sm ${p.tier === 3 ? 'btn-danger' : 'btn-success'} w-50"
+                                    id="proposal-execute-${p.id}"
+                                    ${p.tier === 3 ? 'disabled title="Acknowledge the code review checkbox above to enable"' : ''}
                                     onclick="ModifyChat.approve('${p.id}')">
                                 <i class="bi ${p.tier === 3 ? 'bi-lightning-charge' : 'bi-check-lg'} me-1"></i>${p.tier === 3 ? 'Execute' : 'Approve'}
                             </button>

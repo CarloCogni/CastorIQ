@@ -19,7 +19,7 @@ from django.views.generic import (
 )
 
 from chat.models import ChatSession, Message
-from core.http import trigger_toast
+from core.http import toast_response, trigger_toast
 from core.llm import (
     LLMConfigurationError,
     LLMMasterKillError,
@@ -154,6 +154,7 @@ class ModifyView(ProjectTabMixin, TemplateView):
             "propose": self._handle_propose,
             "approve": self._handle_approve,
             "reject": self._handle_reject,
+            "acknowledge_review": self._handle_acknowledge_review,
         }
         handler = dispatch.get(action)
         if not handler:
@@ -314,6 +315,24 @@ class ModifyView(ProjectTabMixin, TemplateView):
                 {"status": "error", "message": "Proposal is no longer pending."}, status=409
             )
 
+        # Tier 3 review gate — Tier 3 generates IfcOpenShell code that runs in
+        # our process. The user must explicitly acknowledge they read it before
+        # the Execute action is allowed. The acknowledgement is a separate POST
+        # (action=acknowledge_review) so the timestamp is real, not coerced.
+        if proposal.tier == 3 and proposal.code_review_acknowledged_at is None:
+            return JsonResponse(
+                {
+                    "status": "error",
+                    "message": (
+                        "Tier 3 proposals require you to explicitly acknowledge that "
+                        "you have reviewed the generated code. Tick the review checkbox "
+                        "below the code preview before clicking Execute."
+                    ),
+                    "needs_review_ack": True,
+                },
+                status=422,
+            )
+
         proposal.reviewed_by = request.user
         proposal.reviewed_at = timezone.now()
         proposal.save(update_fields=["reviewed_by", "reviewed_at"])
@@ -372,6 +391,47 @@ class ModifyView(ProjectTabMixin, TemplateView):
                 "commit_hash": git_commit.commit_hash[:8],
                 "entities_modified": proposal.affected_count,
                 "resolved_conflicts": resolved_count,
+            }
+        )
+
+    def _handle_acknowledge_review(self, request, project):
+        """Mark a Tier 3 proposal's generated code as reviewed by the user.
+
+        Records ``code_review_acknowledged_{at,by}`` so the subsequent
+        ``approve`` action can pass the gate. Idempotent: re-acknowledging
+        updates the timestamp to ``now`` but preserves the original reviewer
+        only if the same user re-clicks (rare). Returns 200 with a toast.
+        """
+        from writeback.models import ModificationProposal
+
+        proposal_id = request.POST.get("proposal_id")
+        if not proposal_id:
+            return toast_response("proposal_id is required.", level="error", status=400)
+
+        try:
+            proposal = ModificationProposal.objects.get(
+                id=proposal_id,
+                ifc_file__project=project,
+            )
+        except ModificationProposal.DoesNotExist:
+            return toast_response("Proposal not found.", level="error", status=404)
+
+        if proposal.tier != 3:
+            return toast_response(
+                "Review acknowledgement only applies to Tier 3 proposals.",
+                level="error",
+                status=400,
+            )
+        if proposal.status != ModificationProposal.Status.PENDING:
+            return toast_response("Proposal is no longer pending.", level="error", status=409)
+
+        proposal.code_review_acknowledged_at = timezone.now()
+        proposal.code_review_acknowledged_by = request.user
+        proposal.save(update_fields=["code_review_acknowledged_at", "code_review_acknowledged_by"])
+        return JsonResponse(
+            {
+                "status": "ok",
+                "acknowledged_at": proposal.code_review_acknowledged_at.isoformat(),
             }
         )
 
