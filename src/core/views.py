@@ -43,10 +43,16 @@ def health_check(request):
     return JsonResponse({"status": "healthy", "service": "castor"})
 
 
-@login_required
 def home_view(request):
-    """Home page - redirect to projects."""
-    return redirect("projects:list")
+    """Root URL.
+
+    Authenticated users land on the project list (the actual app); unauthenticated
+    visitors see the public beta landing page. There is intentionally no
+    self-service signup — the only path in is the application form.
+    """
+    if request.user.is_authenticated:
+        return redirect("projects:list")
+    return render(request, "core/landing.html")
 
 
 def test_error(request):

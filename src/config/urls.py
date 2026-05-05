@@ -17,6 +17,7 @@ urlpatterns = [
     path("facilities/", include("facilities.urls")),
     path("core/", include("core.urls")),
     path("eastereggs/", include("eastereggs.urls")),
+    path("beta/", include("beta.urls")),
     # Authentication
     path("login/", auth_views.LoginView.as_view(), name="login"),
     path("logout/", auth_views.LogoutView.as_view(next_page="login"), name="logout"),
