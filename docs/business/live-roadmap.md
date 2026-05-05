@@ -120,13 +120,13 @@ The funnel. Public landing → form → admin review → manual user creation �
 
 Zero-friction first-run. Same sample for everyone. Pre-indexed.
 
-- [ ] Source the seed IFC: BuildingSMART or NIST Duplex Apartment (open, non-confidential, mid-complexity). Add to `fixtures/sample-project/<file>.ifc`
-- [ ] Add 2–3 seed documents (PDF specs, technical sheets) to `fixtures/sample-project/docs/`
-- [ ] Pre-indexed embeddings shipped as a Django fixture so cold-start is paid once on the dev machine, not per-user on the VPS
-- [ ] `manage.py provision_sample_project <user_id>` management command (idempotent — re-running on a user that already has the sample is a no-op)
-- [ ] Wire the command to the admin "approve" action so the sample project exists by the time the welcome email arrives
-- [ ] Document set-up: README in `fixtures/sample-project/` explaining where the file came from + license
-- [ ] E2E test (real, not mocked): create user → run command → user can run Ask + T1 Modify on the sample project and get sensible output
+- [~] Source the seed IFC: scaffolded `fixtures/sample-project/` with `.gitignore` for binaries; **operator must drop a `building.ifc` and 2–3 PDFs in before deploy** — see `fixtures/sample-project/PROVENANCE.md` for sources
+- [~] Seed PDFs go in `fixtures/sample-project/docs/` (same caveat — gitignored, drop in)
+- [ ] Pre-indexed embeddings shipped as a Django fixture so cold-start is paid once on the dev machine, not per-user on the VPS — deferred until the binaries are sourced
+- [x] `manage.py provision_sample_project <user|user_id>` management command (idempotent; supports `--skip-pipeline` for fast row-only provisioning)
+- [x] Wire the command to the admin "approve" action so the sample project exists by the time the welcome email arrives — failures are surfaced as WARNING but don't abort the approval
+- [x] Document set-up: `README.md` + `PROVENANCE.md` in `fixtures/sample-project/` explaining sources, licensing, and the embeddings-fixture path
+- [ ] E2E test (real, not mocked): create user → run command → user can run Ask + T1 Modify on the sample project — pending the actual binary fixtures landing
 
 **Done when:** a brand-new approved user logs in for the first time and sees the sample project on `/projects/` with retrieval and modify both working in <30 seconds (excluding LLM latency).
 
