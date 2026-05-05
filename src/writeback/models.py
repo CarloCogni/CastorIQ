@@ -176,6 +176,25 @@ class ModificationProposal(UUIDModel):
         max_length=255, blank=True, help_text="Citation (e.g., 'Fire Strategy.pdf, p.14')"
     )
 
+    # Tier 3 review acknowledgement — gates Execute on T3 only.
+    code_review_acknowledged_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Code Review Acknowledged At",
+        help_text=(
+            "Timestamp when the user ticked 'I have reviewed this code and accept "
+            "responsibility' on a Tier 3 proposal. Tier 3 approval is refused if blank."
+        ),
+    )
+    code_review_acknowledged_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="code_acknowledged_proposals",
+        verbose_name="Code Review Acknowledged By",
+    )
+
     class Meta:
         ordering = ["-created_at"]
         verbose_name = "Modification Proposal"

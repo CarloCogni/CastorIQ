@@ -878,6 +878,13 @@ class ModificationService:
         return validation
 
     def _execute_tier3(self, proposal: ModificationProposal) -> list[EntityChange]:
+        # Structured execution log — proposal id, user, review verdict, success,
+        # duration, exception type. The CLAUDE.md "human review" gate is enforced
+        # at the view layer (writeback.views._handle_approve refuses without an
+        # acknowledgement); this log is the post-mortem trail when a T3 run
+        # misbehaves in production.
+        import time
+
         code = proposal.intent_json.get("code", "")
         if not code:
             raise IFCWriteError("Proposal has no code to execute")
@@ -885,10 +892,46 @@ class ModificationService:
         ifc_path = proposal.ifc_file.file.path
         executor = Tier3Executor(ifc_path)
 
+        review = (proposal.intent_json or {}).get("review") or {}
+        verdict = review.get("verdict", "unknown")
+        ack_user = (
+            proposal.code_review_acknowledged_by.username
+            if proposal.code_review_acknowledged_by
+            else "(none)"
+        )
+        ack_at = (
+            proposal.code_review_acknowledged_at.isoformat()
+            if proposal.code_review_acknowledged_at
+            else "(none)"
+        )
+
+        t0 = time.perf_counter()
         try:
             changes = executor.execute(code)
         except Tier3ExecutionError as e:
+            elapsed_ms = int((time.perf_counter() - t0) * 1000)
+            logger.error(
+                "T3 execute FAILED proposal=%s ack_by=%s ack_at=%s verdict=%s "
+                "duration_ms=%d exception=%s",
+                proposal.id,
+                ack_user,
+                ack_at,
+                verdict,
+                elapsed_ms,
+                type(e).__name__,
+            )
             raise IFCWriteError(f"Tier 3 execution failed: {e}") from e
+
+        elapsed_ms = int((time.perf_counter() - t0) * 1000)
+        logger.info(
+            "T3 execute OK proposal=%s ack_by=%s ack_at=%s verdict=%s duration_ms=%d entities=%d",
+            proposal.id,
+            ack_user,
+            ack_at,
+            verdict,
+            elapsed_ms,
+            len(changes),
+        )
 
         # Update affected count now that we know
         proposal.affected_count = len(changes)
