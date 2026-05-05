@@ -131,6 +131,32 @@ class BetaApplicationAdmin(admin.ModelAdmin):
                     user.set_unusable_password()  # forces the welcome flow
                     user.save()
 
+                # Sample-project provisioning. Failures here are surfaced as
+                # a warning but don't block the approval — a re-run of the
+                # management command can recover. Skipped on idempotent
+                # re-approve (the command itself short-circuits).
+                try:
+                    from django.core.management import call_command
+
+                    call_command(
+                        "provision_sample_project",
+                        str(user.pk),
+                        verbosity=0,
+                    )
+                except Exception as prov_exc:
+                    logger.exception(
+                        "Sample-project provisioning failed for %s: %s",
+                        application.email,
+                        prov_exc,
+                    )
+                    self.message_user(
+                        request,
+                        f"{application.email}: account created and email queued, "
+                        f"but sample-project provisioning failed ({prov_exc}). "
+                        "Re-run `manage.py provision_sample_project` to recover.",
+                        level=messages.WARNING,
+                    )
+
                 set_password_url = _build_set_password_url(user)
                 _send_welcome_email(application, set_password_url)
 
