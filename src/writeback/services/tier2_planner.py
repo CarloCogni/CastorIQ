@@ -183,9 +183,17 @@ PLANNER_USER_TEMPLATE = """\
 
 ## Entity Context
 {entity_context}
-
+{escalation_block}
 ## Task
 Decompose this request into an ordered execution plan (JSON only).
+"""
+
+ESCALATION_BLOCK_TEMPLATE = """
+## Tier 1 Feedback
+A simpler single-operation attempt failed validation: {hint}
+If the property does not yet exist on the matched entities, prefer ADD_PROPERTY
+(it auto-creates standard psets) over SET_PROPERTY. If a property name was wrong,
+use one of the suggested alternatives.
 """
 
 
@@ -206,9 +214,22 @@ class Tier2Planner:
     def __init__(self, user=None):
         self.llm = get_llm(user=user, temperature=0.1, format_json=True)
 
-    def generate_plan(self, user_message: str, entity_context: str) -> dict:
+    def generate_plan(
+        self,
+        user_message: str,
+        entity_context: str,
+        escalation_hint: str | None = None,
+    ) -> dict:
         """
         Generate a Tier 2 execution plan from a user request.
+
+        Args:
+            user_message: original user request.
+            entity_context: pre-formatted entity summary.
+            escalation_hint: optional Tier 1 validation error to surface
+                to the planner so it can avoid the same mistake. When set,
+                the hint is rendered into the user prompt under a
+                "Tier 1 Feedback" section.
 
         Returns:
             Dict with "tier", "plan" (list of steps), "confidence", "explanation".
@@ -216,12 +237,19 @@ class Tier2Planner:
         Raises:
             PlanGenerationError on invalid LLM output.
         """
+        escalation_block = (
+            ESCALATION_BLOCK_TEMPLATE.format(hint=escalation_hint.strip())
+            if escalation_hint
+            else ""
+        )
+
         messages = [
             SystemMessage(content=PLANNER_SYSTEM_PROMPT),
             HumanMessage(
                 content=PLANNER_USER_TEMPLATE.format(
                     user_message=user_message,
                     entity_context=entity_context,
+                    escalation_block=escalation_block,
                 )
             ),
         ]

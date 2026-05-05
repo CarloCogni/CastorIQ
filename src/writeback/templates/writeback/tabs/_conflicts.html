@@ -479,8 +479,8 @@
                     {% endif %}
                     {% if group.count > 1 %}
                     <span class="badge rounded-pill flex-shrink-0"
-                          style="background-color: rgba(255,255,255,0.06); color: var(--bs-secondary-color);
-                                 border: 1px solid rgba(255,255,255,0.08); font-size: 0.65rem; white-space: nowrap;">
+                          style="background-color: var(--castor-overlay); color: var(--bs-secondary-color);
+                                 border: 1px solid var(--castor-overlay-strong); font-size: 0.65rem; white-space: nowrap;">
                         {{ group.count }} entities
                     </span>
                     {% endif %}
@@ -544,8 +544,8 @@
                         <i class="bi bi-collection me-1"></i><strong class="text-body">Affected:</strong>
                         {% for entity in group.entities %}
                         <span class="badge rounded-1 ms-1"
-                              style="background-color: rgba(255,255,255,0.05); color: var(--bs-secondary-color);
-                                     border: 1px solid rgba(255,255,255,0.08); font-size: 0.65rem;">
+                              style="background-color: var(--castor-overlay); color: var(--bs-secondary-color);
+                                     border: 1px solid var(--castor-overlay-strong); font-size: 0.65rem;">
                             {{ entity.name|default:entity.global_id }}
                         </span>
                         {% endfor %}
@@ -827,7 +827,7 @@
         transition: all 0.15s ease;
     }
     .conflict-subtab:hover {
-        background-color: rgba(255, 255, 255, 0.04);
+        background-color: var(--castor-overlay);
         color: var(--bs-body-color);
         border-color: var(--bs-border-color);
     }
@@ -842,16 +842,16 @@
         transition: border-color 0.15s ease;
     }
     .conflict-card:hover {
-        border-color: rgba(255, 255, 255, 0.1) !important;
+        border-color: var(--castor-overlay-strong) !important;
     }
 
     /* ── Flow step badges ── */
     .conflict-flow-step {
-        background-color: rgba(255, 255, 255, 0.06);
+        background-color: var(--castor-overlay);
         color: var(--bs-secondary-color);
         font-weight: 500;
         padding: 0.25rem 0.6rem;
-        border: 1px solid rgba(255, 255, 255, 0.06);
+        border: 1px solid var(--castor-overlay);
     }
 
     /* ── Help button in subtab bar ── */
@@ -971,14 +971,19 @@ const ConflictTabs = {
     },
 
     bulkAction(url, confirmMsg) {
-        if (!confirm(confirmMsg)) return;
-        const fd = new FormData();
-        fd.append('csrfmiddlewaretoken', this._csrf());
-        fd.append('conflict_ids', 'all');
-        fetch(url, { method: 'POST', body: fd })
-            .then(() => {
-                window.location.href = window.location.pathname + '?subtab=semantic';
-            });
+        const ask = (window.CastorConfirm && window.CastorConfirm.ask)
+            ? window.CastorConfirm.ask({title: 'Confirm', body: confirmMsg, danger: true})
+            : Promise.resolve(window.confirm(confirmMsg));
+        ask.then(ok => {
+            if (!ok) return;
+            const fd = new FormData();
+            fd.append('csrfmiddlewaretoken', this._csrf());
+            fd.append('conflict_ids', 'all');
+            fetch(url, { method: 'POST', body: fd })
+                .then(() => {
+                    window.location.href = window.location.pathname + '?subtab=semantic';
+                });
+        });
     },
 
     _csrf() {
@@ -1023,17 +1028,20 @@ const DataIssueTabs = {
     bulkDismiss() {
         const type = this._currentType;
         const scope = type === 'all' ? 'all open data issues' : `all open "${type}" issues`;
-        if (!confirm(`Dismiss ${scope}? They will survive reparse but can be restored.`)) return;
-
-        const url = document.getElementById('bulk-dismiss-data-issues')?.dataset.url;
-        if (!url) return;
-
-        const fd = new FormData();
-        fd.append('csrfmiddlewaretoken', ConflictTabs._csrf());
-        if (type !== 'all') fd.append('issue_type', type);
-
-        fetch(url, { method: 'POST', body: fd })
-            .then(r => r.ok ? window.location.reload() : null);
+        const body = `Dismiss ${scope}? They will survive reparse but can be restored.`;
+        const ask = (window.CastorConfirm && window.CastorConfirm.ask)
+            ? window.CastorConfirm.ask({title: 'Dismiss data issues', body: body, confirmLabel: 'Dismiss', danger: true})
+            : Promise.resolve(window.confirm(body));
+        ask.then(ok => {
+            if (!ok) return;
+            const url = document.getElementById('bulk-dismiss-data-issues')?.dataset.url;
+            if (!url) return;
+            const fd = new FormData();
+            fd.append('csrfmiddlewaretoken', ConflictTabs._csrf());
+            if (type !== 'all') fd.append('issue_type', type);
+            fetch(url, { method: 'POST', body: fd })
+                .then(r => r.ok ? window.location.reload() : null);
+        });
     },
 };
 

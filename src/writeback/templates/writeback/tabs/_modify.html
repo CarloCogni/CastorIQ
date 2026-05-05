@@ -21,6 +21,9 @@
                 <button class="btn btn-sm btn-ghost-secondary p-1" data-bs-toggle="modal" data-bs-target="#tier1HelpModal" title="Example prompts">
                     <i class="bi bi-lightbulb fs-6" style="color: var(--castor-accent);"></i>
                 </button>
+                <button class="btn btn-sm btn-ghost-secondary p-1" data-bs-toggle="modal" data-bs-target="#modifyFailureHelpModal" title="Known limitations">
+                    <i class="bi bi-exclamation-triangle fs-6 text-warning"></i>
+                </button>
             </div>
             <div class="dropdown">
                 <button class="btn btn-sm btn-ghost-secondary" data-bs-toggle="dropdown">
@@ -28,11 +31,28 @@
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end shadow-sm">
                     <li>
-                        <form method="post" action="{% url 'projects:delete_session' project.pk session.pk %}">
+                        <form method="post"
+                              action="{% url 'projects:delete_session' project.pk session.pk %}"
+                              data-castor-confirm="Delete this modification history? This cannot be undone."
+                              data-castor-confirm-title="Delete conversation"
+                              data-castor-confirm-label="Delete">
                             {% csrf_token %}
-                            <button class="dropdown-item text-danger"
-                                    onclick="return confirm('Delete this modification history?')">
+                            <button type="submit" class="dropdown-item text-danger">
                                 <i class="bi bi-trash me-2"></i>Clear History
+                            </button>
+                        </form>
+                    </li>
+                    <li><hr class="dropdown-divider my-1"></li>
+                    <li>
+                        <form method="post"
+                              action="{% url 'projects:delete_all_sessions' project.pk %}"
+                              data-castor-confirm="Delete every Modify conversation in this project? This cannot be undone."
+                              data-castor-confirm-title="Clear all conversations"
+                              data-castor-confirm-label="Delete all">
+                            {% csrf_token %}
+                            <input type="hidden" name="mode" value="modify">
+                            <button type="submit" class="dropdown-item text-danger">
+                                <i class="bi bi-trash3 me-2"></i>Clear All Conversations
                             </button>
                         </form>
                     </li>
@@ -197,6 +217,10 @@
                                 <div>
                                     <div class="fw-semibold fs-8">Your Approval</div>
                                     <div class="text-secondary fs-8">You see a <strong>diff preview</strong> (Tier 1 &amp; 2) or <strong>generated code</strong> (Tier 3) before anything is written. Nothing runs without your explicit approval.</div>
+                                    <div class="text-secondary fs-8 mt-1">
+                                        <i class="bi bi-arrow-down-circle me-1"></i>
+                                        <em>Sending a new request before deciding marks the prior proposal as <strong>superseded</strong> — it stops being actionable, but the record (and your iteration history) is preserved.</em>
+                                    </div>
                                 </div>
                             </div>
 
@@ -632,6 +656,8 @@
     </div>
 </div>
 
+{% include "writeback/components/failure_help_modal.html" %}
+
 <script>
 const ModifyChat = {
     chatEl: document.getElementById('modify-chat-messages'),
@@ -724,6 +750,7 @@ const ModifyChat = {
                 this._setProcessing(false);
                 this._hideProgressTracker();
                 if (data.status === 'proposed') {
+                    this._applySuperseded(data.superseded_ids);
                     if (data.chain && data.proposals) {
                         const chainIds = data.proposals.map(p => p.id);
                         const chainBanner = `
@@ -882,6 +909,7 @@ const ModifyChat = {
             this._hideLoader();
 
             if (data.status === 'proposed') {
+                this._applySuperseded(data.superseded_ids);
                 if (data.chain && data.proposals) {
                     const chainIds = data.proposals.map(p => p.id);
                     const chainBanner = `
@@ -1012,11 +1040,20 @@ const ModifyChat = {
         const failureId = failure && failure.id;
         const phase = (failure && failure.failure_phase) ? failure.failure_phase : '';
 
-        const retryBtn = (isRetryable && failureId && this._lastQuery) ? `
-            <button class="btn btn-sm btn-outline-warning mt-2"
-                    onclick="ModifyChat.retryFromFailure('${failureId}')">
-                <i class="bi bi-arrow-clockwise me-1"></i>Try again
+        const retryBtn = (isRetryable && this._lastQuery) ? `
+            <button class="btn btn-sm btn-outline-warning"
+                    onclick="ModifyChat.retryFromFailure()">
+                <i class="bi bi-pencil-square me-1"></i>Edit & retry
             </button>` : '';
+
+        const whyBtn = `
+            <button type="button"
+                    class="btn btn-link btn-sm p-0 fs-8 text-decoration-none"
+                    data-bs-toggle="modal"
+                    data-bs-target="#modifyFailureHelpModal"
+                    title="Why does this happen, and what can I try?">
+                <i class="bi bi-info-circle me-1"></i>Why did this happen?
+            </button>`;
 
         const html = `
             <div class="message message-assistant">
@@ -1032,8 +1069,11 @@ const ModifyChat = {
                                 <span class="badge ${badgeClass} ms-auto" style="font-size:.65rem;">${badgeLabel}</span>
                                 ${phase ? `<span class="text-muted" style="font-size:.65rem;">${phase}</span>` : ''}
                             </div>
-                            <p class="mb-0 text-muted fs-8">${diagnosis}</p>
-                            ${retryBtn}
+                            <p class="mb-1 text-muted fs-8">${diagnosis}</p>
+                            <div class="d-flex align-items-center gap-3 mt-1 flex-wrap">
+                                ${whyBtn}
+                                ${retryBtn}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1042,24 +1082,14 @@ const ModifyChat = {
         this.scrollToBottom();
     },
 
-    retryFromFailure(failureId) {
-        if (!this._lastQuery || !failureId) return;
-        if (!this._ws || this._ws.readyState !== WebSocket.OPEN) {
-            this._appendBubble('assistant', '⚠️ Connection lost — please refresh and try again.');
-            return;
-        }
-        const chatEl = document.getElementById('modify-chat-messages');
-        const sessionPk = chatEl.dataset.sessionPk;
-        this._appendBubble('user', `↩ Retrying: ${this._lastQuery}`);
-        this._showProgressTracker();
-        this._setProcessing(true);
-        this._ws.send(JSON.stringify({
-            action: 'propose_with_retry',
-            message: this._lastQuery,
-            failure_id: failureId,
-            session_id: sessionPk,
-            conflict_ids: this._conflictIds || '',
-        }));
+    retryFromFailure() {
+        if (!this._lastQuery || !this.inputEl) return;
+        this.inputEl.value = this._lastQuery;
+        if (typeof autoGrow === 'function') autoGrow(this.inputEl);
+        this.inputEl.focus();
+        const len = this.inputEl.value.length;
+        this.inputEl.setSelectionRange(len, len);
+        this.inputEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     },
 
     /* ── DOM helpers ──────────────────────────────── */
@@ -1233,10 +1263,25 @@ const ModifyChat = {
     _markProposalCard(proposalId, status) {
         const actions = document.getElementById(`proposal-actions-${proposalId}`);
         if (!actions) return;
-        const badge = status === 'applied'
-            ? '<span class="badge bg-success">✓ Applied</span>'
-            : '<span class="badge bg-secondary">Rejected</span>';
-        actions.innerHTML = badge;
+        const badges = {
+            applied:    '<span class="badge bg-success">✓ Applied</span>',
+            rejected:   '<span class="badge bg-secondary">Rejected</span>',
+            failed:     '<span class="badge bg-danger">Failed</span>',
+            superseded: '<span class="badge bg-secondary-subtle text-secondary"><i class="bi bi-arrow-down-circle me-1"></i>Superseded by newer request</span>',
+        };
+        actions.innerHTML = badges[status] || badges.rejected;
+        if (status === 'superseded') {
+            const card = document.getElementById(`proposal-card-${proposalId}`);
+            if (card) card.style.opacity = '0.55';
+        }
+    },
+
+    _applySuperseded(ids) {
+        if (!Array.isArray(ids)) return;
+        ids.forEach(id => {
+            this._markProposalCard(id, 'superseded');
+            this._removeSidebarProposal(id);
+        });
     },
 
     _removeSidebarProposal(proposalId) {

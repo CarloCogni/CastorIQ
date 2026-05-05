@@ -52,9 +52,7 @@ def assemble_tier1_intent(segment: dict, routing: RoutingResult) -> dict:
     if routing.operation == "SET_ATTRIBUTE":
         intent["attribute"] = slots.get("attribute", "")
         intent["new_value"] = slots.get("value")
-        intent["explanation"] = (
-            f"Set {slots.get('attribute', '')} to {slots.get('value')!r}"
-        )
+        intent["explanation"] = f"Set {slots.get('attribute', '')} to {slots.get('value')!r}"
     else:
         # SET_PROPERTY (router default for PROPERTY kind).
         intent["pset"] = slots.get("pset") or ""
@@ -212,6 +210,29 @@ def _segment_to_tier2_step(seg: dict, index: int) -> dict | None:
                 "filter": {},
                 "params": {"pset_name": slots.get("pset_name") or ""},
                 "explanation": f"Remove Pset {slots.get('pset_name', '')}.",
+            }
+        if op == "SET_MATERIAL":
+            material_name = slots.get("material_name") or ""
+            return {
+                "step": index,
+                "operation": "SET_MATERIAL",
+                "filter": {},
+                "params": {"material_name": material_name},
+                "explanation": f"Set material to {material_name}.",
+            }
+        if op == "SET_CLASSIFICATION":
+            return {
+                "step": index,
+                "operation": "SET_CLASSIFICATION",
+                "filter": {},
+                "params": {
+                    "system_name": slots.get("system_name") or "",
+                    "reference": slots.get("reference") or "",
+                },
+                "explanation": (
+                    f"Classify under {slots.get('system_name', '')} "
+                    f"with reference {slots.get('reference', '')}."
+                ),
             }
 
     logger.warning("Skipping segment with unsupported Tier 2 kind: %r", kind)

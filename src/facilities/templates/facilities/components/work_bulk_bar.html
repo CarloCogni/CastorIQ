@@ -32,11 +32,13 @@
         </form>
 
         <form class="d-flex align-items-center gap-1 work-bulk-form" method="post"
-              action="{% url 'facilities:work_bulk' project.pk %}">
+              action="{% url 'facilities:work_bulk' project.pk %}"
+              data-castor-confirm="Cancel the selected work orders?"
+              data-castor-confirm-title="Cancel work orders"
+              data-castor-confirm-label="Cancel orders">
             {% csrf_token %}
             <input type="hidden" name="action" value="cancel">
-            <button type="submit" class="btn btn-sm btn-outline-danger"
-                    onclick="return confirm('Cancel the selected work orders?');">
+            <button type="submit" class="btn btn-sm btn-outline-danger">
                 <i class="bi bi-x-lg"></i> Cancel
             </button>
         </form>

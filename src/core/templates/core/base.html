@@ -1,11 +1,30 @@
 <!--base.html-->
 {% load static %}
 <!DOCTYPE html>
-<html lang="en" data-bs-theme="dark">
+<html lang="en" data-bs-theme="{{ user_theme|default:'dark' }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Castor{% endblock %}</title>
+
+    <!--
+        Theme FOUC shim. Runs BEFORE Bootstrap CSS so the first paint matches
+        whatever the user last chose, even if the server-side render lagged
+        (e.g. cross-tab toggle). Cookie is the source of truth for the next
+        page load; the live-flip listener at the bottom of <body> keeps it
+        synced when the toggle is changed.
+    -->
+    <script>
+      (function () {
+        try {
+          var t = document.cookie.match(/(?:^|;\s*)castor_theme=(dark|light)/);
+          if (t) document.documentElement.setAttribute('data-bs-theme', t[1]);
+        } catch (e) {}
+        if (!/(?:^|;\s*)castor_theme=/.test(document.cookie)) {
+          document.cookie = 'castor_theme={{ user_theme|default:"dark" }};path=/;max-age=31536000;samesite=lax';
+        }
+      })();
+    </script>
 
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -29,6 +48,7 @@
 
     <style>
         :root {
+            /* Brand identity — same in both themes. */
             --castor-primary: #3b82f6;
             --castor-primary-hover: #2563eb;
             --castor-accent: #8b5cf6;
@@ -44,6 +64,26 @@
             --bs-border-color: #2a2a2a;
             --bs-primary: var(--castor-primary);
             --bs-primary-rgb: 59, 130, 246;
+            /* Castor theme-aware tokens (overlays / code / shadow). */
+            --castor-overlay: rgba(255, 255, 255, 0.05);
+            --castor-overlay-strong: rgba(255, 255, 255, 0.1);
+            --castor-code-bg: #1e1e1e;
+            --castor-code-fg: #d4d4d4;
+            --castor-shadow: rgba(0, 0, 0, 0.4);
+        }
+
+        [data-bs-theme="light"] {
+            --bs-body-bg: #ffffff;
+            --bs-tertiary-bg: #f5f5f7;
+            --bs-secondary-bg: #ececef;
+            --bs-border-color: #e0e0e4;
+            --bs-primary: var(--castor-primary);
+            --bs-primary-rgb: 59, 130, 246;
+            --castor-overlay: rgba(0, 0, 0, 0.04);
+            --castor-overlay-strong: rgba(0, 0, 0, 0.08);
+            --castor-code-bg: #f6f8fa;
+            --castor-code-fg: #24292f;
+            --castor-shadow: rgba(0, 0, 0, 0.08);
         }
 
         body {
@@ -147,7 +187,7 @@
             border-radius: 50%;
             background-color: var(--bs-tertiary-bg);
             border: 1px solid var(--bs-border-color);
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 4px 6px -1px var(--castor-shadow);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -211,7 +251,7 @@
         }
 
         .nav-tabs-custom .nav-link:hover {
-            background-color: rgba(255, 255, 255, 0.05);
+            background-color: var(--castor-overlay);
             color: var(--bs-body-color);
         }
 
@@ -232,7 +272,7 @@
         }
 
         .file-item:hover {
-            background-color: rgba(255, 255, 255, 0.05);
+            background-color: var(--castor-overlay);
         }
 
         .file-icon {
@@ -515,7 +555,7 @@
             border-radius: 999px;
             background-color: var(--bs-tertiary-bg);
             border: 1px solid var(--bs-border-color);
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35),
+            box-shadow: 0 8px 24px var(--castor-shadow),
                         0 0 0 1px rgba(59, 130, 246, 0.15);
             color: var(--bs-body-color);
             font-size: 0.8125rem;
@@ -615,7 +655,7 @@
         /* 3. Tweak the file icon to pop less visually */
         .file-icon {
             /* Slight background adjustment */
-            box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+            box-shadow: 0 1px 2px var(--castor-shadow);
         }
         .min-width-0 {
             min-width: 0 !important;
@@ -761,8 +801,8 @@
 
         /* AI Markdown Typography Fixes */
         .message-text pre {
-            background-color: #1e1e1e;
-            color: #d4d4d4;
+            background-color: var(--castor-code-bg);
+            color: var(--castor-code-fg);
             padding: 1rem;
             border-radius: 0.5rem;
             overflow-x: auto;
@@ -771,7 +811,7 @@
         }
 
         .message-text code {
-            background-color: rgba(0, 0, 0, 0.05);
+            background-color: var(--castor-overlay);
             padding: 0.2rem 0.4rem;
             border-radius: 0.25rem;
             font-family: monospace;
@@ -789,7 +829,7 @@
         }
 
         .message-text th, .message-text td {
-            border: 1px solid rgba(0, 0, 0, 0.1);
+            border: 1px solid var(--bs-border-color);
             padding: 0.5rem;
         }
 
@@ -954,6 +994,160 @@
         t.show();
         el.addEventListener('hidden.bs.toast', function () { el.remove(); });
     });
+
+    // Live theme flip — fired by SetThemeAPIView via HX-Trigger. Updates the
+    // root `data-bs-theme` attribute and rewrites the cookie so the next page
+    // load (and any other open tab on its next render) sees the new value.
+    document.body.addEventListener('castor:theme-changed', function (e) {
+        var theme = (e.detail && e.detail.theme) || 'dark';
+        document.documentElement.setAttribute('data-bs-theme', theme);
+        document.cookie = 'castor_theme=' + theme + ';path=/;max-age=31536000;samesite=lax';
+    });
+    </script>
+
+    <!--
+        Global confirm modal. Replaces the browser's window.confirm() prompt
+        for destructive actions so we get a single, themeable dialog with no
+        per-action URLs needed. Two ways to use it:
+
+        1. Declarative (preferred). Add data-castor-confirm to a <form> or to
+           any clickable element (<button>, <a>):
+               <form method="post" action="…"
+                     data-castor-confirm="Delete this conversation?"
+                     data-castor-confirm-title="Delete conversation"
+                     data-castor-confirm-label="Delete">
+                   …
+               </form>
+
+        2. Programmatic:
+               window.CastorConfirm.ask({
+                   title: 'Delete', body: 'Sure?', confirmLabel: 'Delete',
+                   danger: true,
+               }).then(function (ok) { if (ok) … });
+
+        Default styling treats actions as destructive (red confirm button);
+        pass data-castor-confirm-danger="false" to switch to a primary button.
+    -->
+    <div class="modal fade" id="castor-confirm-modal" tabindex="-1" aria-hidden="true" aria-labelledby="castor-confirm-title">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header border-bottom py-2">
+                    <h6 class="modal-title fs-7 fw-semibold m-0" id="castor-confirm-title">Are you sure?</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-3">
+                    <p class="mb-0 fs-7" id="castor-confirm-body">This action cannot be undone.</p>
+                </div>
+                <div class="modal-footer border-top py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal" id="castor-confirm-cancel">Cancel</button>
+                    <button type="button" class="btn btn-sm btn-danger" id="castor-confirm-ok">Confirm</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+    (function () {
+        var pending = null;
+        var modalEl = null;
+        var modalInstance = null;
+        var titleEl = null, bodyEl = null, okEl = null;
+
+        function ensureWired() {
+            if (modalInstance) return;
+            modalEl = document.getElementById('castor-confirm-modal');
+            if (!modalEl || !window.bootstrap) return;
+            modalInstance = bootstrap.Modal.getOrCreateInstance(modalEl);
+            titleEl = modalEl.querySelector('#castor-confirm-title');
+            bodyEl = modalEl.querySelector('#castor-confirm-body');
+            okEl = modalEl.querySelector('#castor-confirm-ok');
+            okEl.addEventListener('click', function () {
+                if (!pending) return;
+                var p = pending; pending = null;
+                modalInstance.hide();
+                p.resolve(true);
+            });
+            modalEl.addEventListener('hidden.bs.modal', function () {
+                if (!pending) return;
+                var p = pending; pending = null;
+                p.resolve(false);
+            });
+        }
+
+        window.CastorConfirm = {
+            ask: function (opts) {
+                opts = opts || {};
+                return new Promise(function (resolve) {
+                    ensureWired();
+                    if (!modalInstance) {
+                        // No bootstrap available — fall back to native confirm.
+                        resolve(window.confirm(opts.body || 'Are you sure?'));
+                        return;
+                    }
+                    titleEl.textContent = opts.title || 'Are you sure?';
+                    bodyEl.textContent = opts.body || 'This action cannot be undone.';
+                    okEl.textContent = opts.confirmLabel || 'Confirm';
+                    var danger = opts.danger !== false;
+                    okEl.classList.toggle('btn-danger', danger);
+                    okEl.classList.toggle('btn-primary', !danger);
+                    pending = { resolve: resolve };
+                    modalInstance.show();
+                });
+            }
+        };
+
+        function readOpts(el) {
+            return {
+                body: el.getAttribute('data-castor-confirm') || 'Are you sure?',
+                title: el.getAttribute('data-castor-confirm-title') || 'Are you sure?',
+                confirmLabel: el.getAttribute('data-castor-confirm-label') || 'Confirm',
+                danger: el.getAttribute('data-castor-confirm-danger') !== 'false',
+            };
+        }
+
+        // Form intercept — capture phase, registered before RIF/data-castor-track
+        // so a cancelled submit never kicks off the loading indicator.
+        document.addEventListener('submit', function (e) {
+            var f = e.target;
+            if (!f || !f.matches || !f.matches('form[data-castor-confirm]')) return;
+            if (f.dataset.castorConfirmed === '1') {
+                delete f.dataset.castorConfirmed;
+                return;
+            }
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            window.CastorConfirm.ask(readOpts(f)).then(function (ok) {
+                if (!ok) return;
+                f.dataset.castorConfirmed = '1';
+                if (typeof f.requestSubmit === 'function') {
+                    f.requestSubmit();
+                } else {
+                    f.submit();
+                }
+            });
+        }, true);
+
+        // Click intercept for buttons/links carrying data-castor-confirm
+        // outside of a confirm-form (forms are handled above).
+        document.addEventListener('click', function (e) {
+            var t = e.target.closest && e.target.closest('[data-castor-confirm]');
+            if (!t) return;
+            if (t.tagName === 'FORM') return;
+            // Skip submit buttons whose own form already handles confirmation —
+            // the submit handler above is the right place for those.
+            if (t.form && t.form.hasAttribute('data-castor-confirm')) return;
+            if (t.dataset.castorConfirmed === '1') {
+                delete t.dataset.castorConfirmed;
+                return;
+            }
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            window.CastorConfirm.ask(readOpts(t)).then(function (ok) {
+                if (!ok) return;
+                t.dataset.castorConfirmed = '1';
+                t.click();
+            });
+        }, true);
+    })();
     </script>
 
     <!--
@@ -1085,21 +1279,42 @@
             }
         };
 
+        // RIF policy: fire only for user-initiated HTMX requests.
+        // Ambient triggers (load, revealed, intersect, every <interval>) belong
+        // to page chrome that auto-loads in the background — they should rely
+        // on their own inline placeholder, not the global progress bar.
+        // Escape hatch: any element (or ancestor) tagged data-rif="off" opts
+        // out explicitly, regardless of its hx-trigger.
+        var AMBIENT_TRIGGERS = {load: 1, revealed: 1, intersect: 1, every: 1};
+        function isAmbient(elt) {
+            if (!elt) return false;
+            if (elt.closest && elt.closest('[data-rif="off"]')) return true;
+            var trig = elt.getAttribute && elt.getAttribute('hx-trigger');
+            if (!trig) return false;
+            var first = trig.split(',')[0].trim().toLowerCase();
+            var token = first.split(/\s+/)[0];
+            return AMBIENT_TRIGGERS.hasOwnProperty(token);
+        }
+
         // HTMX lifecycle — only `afterRequest` decrements (fires for both
         // 2xx and non-2xx in htmx 1.9.x); `sendError` covers the no-response
-        // case where afterRequest never fires.
+        // case where afterRequest never fires. Ambient requests are skipped on
+        // both sides so the counter stays balanced.
         document.body.addEventListener('htmx:beforeRequest', function (e) {
             var t = e.detail && e.detail.elt;
+            if (isAmbient(t)) return;
             if (t) lock(t);
             begin();
         });
         document.body.addEventListener('htmx:afterRequest', function (e) {
             var t = e.detail && e.detail.elt;
+            if (isAmbient(t)) return;
             if (t) unlock(t);
             end();
         });
         document.body.addEventListener('htmx:sendError', function (e) {
             var t = e.detail && e.detail.elt;
+            if (isAmbient(t)) return;
             if (t) unlock(t);
             end();
         });

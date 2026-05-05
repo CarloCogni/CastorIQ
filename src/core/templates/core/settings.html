@@ -158,7 +158,7 @@
     }
 
     .family-unknown {
-        background-color: rgba(255, 255, 255, 0.08);
+        background-color: var(--castor-overlay-strong);
         color: var(--bs-secondary-color);
     }
 
@@ -274,12 +274,12 @@
         </div>
         <div class="setting-row">
             <span class="setting-label">Connection</span>
+            <!-- Updated out-of-band by the model_selector.html response. -->
             <span class="setting-value" id="ollama-health">
-                <span class="spinner-border spinner-border-sm text-secondary" role="status"
-                      hx-get="{% url 'core:ollama_models_api' %}"
-                      hx-trigger="load"
-                      hx-swap="none"
-                ></span>
+                <span class="text-secondary fs-7 d-inline-flex align-items-center gap-1">
+                    <span class="spinner-border spinner-border-sm" role="status"></span>
+                    Checking…
+                </span>
             </span>
         </div>
     </div>
@@ -310,23 +310,22 @@
 
 
     <!-- ═══════════════════════════════════════════════════════ -->
-    <!-- 5. Appearance (PLACEHOLDER)                            -->
+    <!-- 5. Appearance                                          -->
     <!-- ═══════════════════════════════════════════════════════ -->
-    <div class="settings-section placeholder-overlay">
+    <div class="settings-section">
         <div class="settings-section-header">
             <i class="bi bi-palette-fill"></i>
             <h3>Appearance</h3>
         </div>
         <div class="setting-row">
             <span class="setting-label">Theme</span>
-            <div class="form-check form-switch mb-0">
-                <input class="form-check-input" type="checkbox" checked disabled>
-                <label class="form-check-label fs-7">Dark mode</label>
-            </div>
+            {% include "core/components/theme_toggle.html" %}
         </div>
         <div class="setting-row">
             <span class="setting-label">Sidebar position</span>
-            <select class="form-select form-select-sm" style="width: auto;" disabled>
+            <select class="form-select form-select-sm" style="width: auto;"
+                    disabled
+                    title="Sidebar position is not yet configurable.">
                 <option selected>Left</option>
                 <option>Right</option>
             </select>

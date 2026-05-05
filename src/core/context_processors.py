@@ -10,14 +10,15 @@ from django.conf import settings
 
 def llm_context(request):
     """
-    Inject the current user's active LLM model into every template.
+    Inject the current user's active LLM model and UI theme into every template.
 
     Available in templates as:
         {{ active_llm_model }}  — the Ollama tag string
         {{ active_llm_info }}   — ModelInfo dataclass (or None)
+        {{ user_theme }}        — "dark" | "light" (always present)
     """
     if not hasattr(request, "user") or not request.user.is_authenticated:
-        return {}
+        return {"user_theme": "dark"}
 
     from core.llm_model_registry import get_model_info
     from core.models import UserLLMConfig
@@ -25,10 +26,13 @@ def llm_context(request):
     try:
         config = UserLLMConfig.load(request.user)
         model_tag = config.active_model or settings.OLLAMA_MODEL
+        user_theme = config.theme
     except Exception:
         model_tag = settings.OLLAMA_MODEL
+        user_theme = "dark"
 
     return {
         "active_llm_model": model_tag,
         "active_llm_info": get_model_info(model_tag),
+        "user_theme": user_theme,
     }

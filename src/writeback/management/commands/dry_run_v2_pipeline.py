@@ -1,12 +1,14 @@
 # writeback/management/commands/dry_run_v2_pipeline.py
-"""Run the V2 writeback pipeline on a user prompt and print each stage.
+"""Run the writeback V2 pipeline on a user prompt and print each stage.
 
 Read-only: no proposal is created, no IFC file is modified, no git
 commit is made. Stops after the tier router decides which dispatch
 path the request would take.
 
-Use this to validate the V2 prompts against your real Ollama models
-before flipping ``WRITEBACK_PIPELINE_V2 = True`` globally.
+Use this to validate the prompts against your real Ollama models —
+useful both for regression testing (run the canonical
+``pipeline-test-prompts.txt`` fixture) and ad-hoc debugging of
+single problematic requests.
 
 Usage::
 
@@ -34,6 +36,7 @@ from writeback.services.entity_resolver import (
     MODE_PARENT_TARGET,
     EntityNameResolver,
 )
+from writeback.services.hint_generator import HintGenerator
 from writeback.services.slot_extractor import SlotExtractionError, SlotExtractor
 from writeback.services.tier_router import route as route_tier
 from writeback.services.triage_classifier import TriageClassifier, TriageError
@@ -79,19 +82,16 @@ class Command(BaseCommand):
         triage = TriageClassifier(user=None)
         slots = SlotExtractor(user=None)
         resolver = EntityNameResolver(project=project, user=None)
+        hint_generator = HintGenerator(project=project, user=None)
 
-        prompts = (
-            [prompt]
-            if prompt
-            else self._read_prompts_file(prompts_file)
-        )
+        prompts = [prompt] if prompt else self._read_prompts_file(prompts_file)
 
         for index, current in enumerate(prompts, start=1):
             self.stdout.write("")
             header = f"=== prompt {index}/{len(prompts)} ==="
             self.stdout.write(self.style.MIGRATE_HEADING(header))
             self.stdout.write(f"  {current!r}")
-            self._dry_run_one(current, triage, slots, resolver)
+            self._dry_run_one(current, triage, slots, resolver, hint_generator)
 
     # ── Internals ──────────────────────────────────────────────
 
@@ -105,9 +105,7 @@ class Command(BaseCommand):
         except Project.DoesNotExist:
             raise CommandError(f"Project not found: {ident!r}")
         except Project.MultipleObjectsReturned:
-            raise CommandError(
-                f"Multiple projects match name {ident!r} — pass UUID instead."
-            )
+            raise CommandError(f"Multiple projects match name {ident!r} — pass UUID instead.")
 
     def _read_prompts_file(self, path: str) -> list[str]:
         p = Path(path)
@@ -125,6 +123,7 @@ class Command(BaseCommand):
         triage: TriageClassifier,
         slots: SlotExtractor,
         resolver: EntityNameResolver,
+        hint_generator: HintGenerator,
     ) -> None:
         # Stage 1 — Triage.
         self.stdout.write("\n[1] triage_classifier.classify")
@@ -149,9 +148,7 @@ class Command(BaseCommand):
             try:
                 slot_result = slots.extract(seg, prompt)
             except SlotExtractionError as e:
-                self.stderr.write(
-                    self.style.ERROR(f"  segment {i} SlotExtractionError: {e}")
-                )
+                self.stderr.write(self.style.ERROR(f"  segment {i} SlotExtractionError: {e}"))
                 return
             seg["slots"] = slot_result.slots
             seg["warnings"] = slot_result.warnings
@@ -183,9 +180,7 @@ class Command(BaseCommand):
                     )
                 else:
                     seg["parent_resolution"] = None
-                    self.stdout.write(
-                        f"  segment {i} (CREATE, no parent_phrase)"
-                    )
+                    self.stdout.write(f"  segment {i} (CREATE, no parent_phrase)")
                 seg["resolution"] = resolver.resolve("", mode=MODE_NEW_TARGET)
             else:
                 seg["resolution"] = None
@@ -195,20 +190,22 @@ class Command(BaseCommand):
         self.stdout.write("\n[4] tier_router.route")
         routing = route_tier(segments)
         if routing.is_rejected:
-            self.stdout.write(
-                self.style.WARNING(
-                    f"  → tier 0 REJECT: {routing.rejection_reason}"
+            self.stdout.write(self.style.WARNING(f"  -> tier 0 REJECT: {routing.rejection_reason}"))
+            try:
+                hint = hint_generator.suggest(
+                    reason_category=routing.rejection_category,
+                    payload=routing.rejection_payload,
                 )
-            )
+            except Exception as e:
+                self.stderr.write(self.style.ERROR(f"  hint_generator raised: {e}"))
+                return
+            if not hint.is_empty:
+                self.stdout.write(f"  hint ({hint.source}): {hint.text}")
             return
         self.stdout.write(
-            self.style.SUCCESS(
-                f"  → tier {routing.tier}, operation {routing.operation}"
-            )
+            self.style.SUCCESS(f"  -> tier {routing.tier}, operation {routing.operation}")
         )
-        self.stdout.write(
-            "  (dry-run stops here — no proposal created)"
-        )
+        self.stdout.write("  (dry-run stops here -- no proposal created)")
 
     @staticmethod
     def _compact_json(obj) -> str:

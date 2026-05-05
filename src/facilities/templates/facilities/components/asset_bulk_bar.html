@@ -47,7 +47,9 @@
         <form method="post"
               action="{% url 'facilities:assets_bulk' project.pk %}"
               class="asset-bulk-form"
-              onsubmit="return confirm('Delete the selected assets? This cannot be undone in M1.');">
+              data-castor-confirm="Delete the selected assets? This cannot be undone in M1."
+              data-castor-confirm-title="Delete assets"
+              data-castor-confirm-label="Delete">
             {% csrf_token %}
             <input type="hidden" name="action" value="delete">
             <button type="submit" class="btn btn-sm btn-outline-danger">

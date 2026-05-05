@@ -24,6 +24,7 @@ urlpatterns = [
         "settings/api/ollama-models/", views.OllamaModelsAPIView.as_view(), name="ollama_models_api"
     ),
     path("settings/api/set-model/", views.SetModelAPIView.as_view(), name="set_model_api"),
+    path("settings/api/set-theme/", views.SetThemeAPIView.as_view(), name="set_theme_api"),
     path("notes/create/", views.create_team_note, name="create_team_note"),
     path("notes/send-to-supabase/", views.send_notes_to_supabase, name="send_notes_to_supabase"),
     path(

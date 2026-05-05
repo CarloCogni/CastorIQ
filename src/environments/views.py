@@ -398,7 +398,7 @@ class AskMessagesView(ProjectTabMixin, View):
 
 
 class DeleteSessionView(ProjectAccessMixin, View):
-    """Delete a chat session and redirect to Ask tab."""
+    """Delete a chat session; redirect back to whichever tab owned it."""
 
     def post(self, request, pk, session_id):
         project = self.get_project()
@@ -408,9 +408,43 @@ class DeleteSessionView(ProjectAccessMixin, View):
             project=project,
             user=request.user,
         )
+        mode = session.mode
         session.delete()
         logger.info("Deleted chat session %s for project %s", session_id, pk)
         messages.success(request, "Chat session deleted")
+        if mode == ChatSession.Mode.MODIFY:
+            return redirect("writeback:modify", pk=project.pk)
+        return redirect("projects:ask", pk=project.pk)
+
+
+class DeleteAllSessionsView(ProjectAccessMixin, View):
+    """Bulk-delete all of the current user's chat sessions for a single mode.
+
+    POST body: `mode` = "ask" | "modify". Redirects back to that tab's
+    landing page so a fresh session can be created on next visit.
+    """
+
+    def post(self, request, pk):
+        project = self.get_project()
+        raw_mode = (request.POST.get("mode") or "").strip().lower()
+        valid = {choice.value for choice in ChatSession.Mode}
+        if raw_mode not in valid:
+            messages.error(request, "Unknown conversation mode")
+            return redirect("projects:ask", pk=project.pk)
+
+        deleted, _ = ChatSession.objects.filter(
+            project=project,
+            user=request.user,
+            mode=raw_mode,
+        ).delete()
+        logger.info("Cleared %s '%s' chat sessions for project %s", deleted, raw_mode, pk)
+        if deleted:
+            messages.success(request, f"Deleted {deleted} conversation(s)")
+        else:
+            messages.info(request, "No conversations to delete")
+
+        if raw_mode == ChatSession.Mode.MODIFY:
+            return redirect("writeback:modify", pk=project.pk)
         return redirect("projects:ask", pk=project.pk)
 
 
@@ -1007,13 +1041,20 @@ class ExploreEntitiesPartial(ProjectAccessMixin, View):
                 "global_id",
                 "ifc_type",
                 "name",
+                "tag",
+                "ifc_description",
                 "spatial_container",
                 "element_type__name",
             )
             .order_by("ifc_type", "name")
         )
         if q:
-            qs = qs.filter(Q(name__icontains=q) | Q(global_id__icontains=q))
+            qs = qs.filter(
+                Q(name__icontains=q)
+                | Q(global_id__icontains=q)
+                | Q(tag__icontains=q)
+                | Q(ifc_description__icontains=q)
+            )
 
         paginator = Paginator(qs, self.PAGE_SIZE)
         page_obj = paginator.get_page(page_num)
@@ -1157,20 +1198,29 @@ class ExploreExportView(ProjectAccessMixin, View):
 
         qs = IFCEntity.objects.filter(**filters).order_by("ifc_type", "name")
         if q:
-            qs = qs.filter(Q(name__icontains=q) | Q(global_id__icontains=q))
+            qs = qs.filter(
+                Q(name__icontains=q)
+                | Q(global_id__icontains=q)
+                | Q(tag__icontains=q)
+                | Q(ifc_description__icontains=q)
+            )
 
         response = HttpResponse(content_type="text/csv")
         safe_name = ifc_file.name.replace('"', "")
         response["Content-Disposition"] = f'attachment; filename="{safe_name}_entities.csv"'
 
         writer = csv.writer(response)
-        writer.writerow(["GlobalID", "Type", "Name", "Element Type", "Spatial Container"])
+        writer.writerow(
+            ["GlobalID", "Type", "Name", "Description", "Tag", "Element Type", "Spatial Container"]
+        )
         for entity in (
             qs.select_related("element_type", "spatial_container__entity")
             .only(
                 "global_id",
                 "ifc_type",
                 "name",
+                "ifc_description",
+                "tag",
                 "spatial_container",
                 "element_type__name",
             )
@@ -1184,6 +1234,8 @@ class ExploreExportView(ProjectAccessMixin, View):
                     entity.global_id,
                     entity.ifc_type,
                     entity.name or "",
+                    entity.ifc_description or "",
+                    entity.tag or "",
                     entity.element_type.name if entity.element_type else "",
                     container_name,
                 ]

@@ -1,0 +1,23 @@
+<!-- core/components/theme_toggle.html -->
+<!--
+    Dark/Light theme toggle. Posted to core:set_theme_api which persists the
+    choice on UserLLMConfig and fires a `castor:theme-changed` event. The
+    listener in base.html flips <html data-bs-theme> live and rewrites the
+    `castor_theme` cookie so the FOUC shim paints the right theme on next
+    page load.
+-->
+<div class="form-check form-switch mb-0" id="theme-toggle-wrapper">
+    <input class="form-check-input"
+           type="checkbox"
+           id="theme-toggle-input"
+           {% if user_theme == "dark" %}checked{% endif %}
+           hx-post="{% url 'core:set_theme_api' %}"
+           hx-trigger="change"
+           hx-vals='js:{"theme": document.getElementById("theme-toggle-input").checked ? "dark" : "light"}'
+           hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+           hx-target="#theme-toggle-wrapper"
+           hx-swap="outerHTML">
+    <label class="form-check-label fs-7" for="theme-toggle-input">
+        {% if user_theme == "dark" %}Dark mode{% else %}Light mode{% endif %}
+    </label>
+</div>

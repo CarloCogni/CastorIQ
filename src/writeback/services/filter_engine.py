@@ -26,6 +26,8 @@ class FilterEngine:
         - property_match: key-value conditions on JSON properties
         - name_pattern: glob-style name matching (e.g. "D-*")
         - global_ids: explicit list of entity IDs
+        - tag: substring match on the IFC Tag attribute
+        - ifc_description: substring match on the IFC Description attribute
 
     Usage:
         engine = FilterEngine(project)
@@ -44,7 +46,8 @@ class FilterEngine:
 
         Args:
             filter_spec: Dict with optional keys: ifc_type, storey,
-                         property_match, name_pattern, global_ids
+                         property_match, name_pattern, global_ids,
+                         tag, ifc_description
 
         Returns:
             Filtered IFCEntity queryset.
@@ -64,6 +67,8 @@ class FilterEngine:
         qs = self._apply_storey(qs, filter_spec.get("storey"))
         qs = self._apply_name_pattern(qs, filter_spec.get("name_pattern"))
         qs = self._apply_global_ids(qs, filter_spec.get("global_ids"))
+        qs = self._apply_tag(qs, filter_spec.get("tag"))
+        qs = self._apply_ifc_description(qs, filter_spec.get("ifc_description"))
         qs = self._apply_property_match(qs, filter_spec.get("property_match"))
 
         count = qs.count()
@@ -106,19 +111,57 @@ class FilterEngine:
             return qs
         return qs.filter(global_id__in=global_ids)
 
+    def _apply_tag(self, qs: QuerySet, tag: str | None) -> QuerySet:
+        if not tag:
+            return qs
+        # Tags are user-defined element ids (typically the source-app id).
+        # Exact-equal is the common case; fall back to icontains for partial.
+        if "*" in tag:
+            regex = re.escape(tag).replace(r"\*", ".*")
+            return qs.filter(tag__iregex=regex)
+        return qs.filter(tag__iexact=tag)
+
+    def _apply_ifc_description(self, qs: QuerySet, description: str | None) -> QuerySet:
+        if not description:
+            return qs
+        return qs.filter(ifc_description__icontains=description)
+
     def _apply_property_match(self, qs: QuerySet, property_match: dict | None) -> QuerySet:
         """
         Filter by JSON property values.
 
         property_match keys use dot notation: "Pset_WallCommon.IsExternal"
         which maps to a key inside the properties JSONField.
+
+        Type-aware comparison:
+          * bool / str / int → exact JSON containment (fast, indexable).
+          * float            → 5% relative tolerance, evaluated in Python.
+            IFC files routinely store full-precision floats (e.g. Revit
+            exports ThermalTransmittance as 0.235926059936681), so a user
+            who types "0.24" must still match. Absolute floor of 1e-6
+            covers values near zero.
         """
         if not property_match:
             return qs
 
         for key, value in property_match.items():
-            # Django JSON __contains lookup:
-            # properties__contains={"Pset_WallCommon.IsExternal": True}
-            qs = qs.filter(properties__contains={key: value})
+            if isinstance(value, bool) or not isinstance(value, float):
+                # bool / int / str → exact JSON containment.
+                qs = qs.filter(properties__contains={key: value})
+                continue
+
+            # Float path: tolerant comparison evaluated in Python.
+            tolerance = max(0.05 * abs(value), 1e-6)
+            candidate_qs = qs.filter(properties__has_key=key)
+            matching_ids: list = []
+            for entity_id, props in candidate_qs.values_list("id", "properties"):
+                stored = (props or {}).get(key)
+                try:
+                    stored_f = float(stored)
+                except (TypeError, ValueError):
+                    continue
+                if abs(stored_f - value) <= tolerance:
+                    matching_ids.append(entity_id)
+            qs = qs.filter(id__in=matching_ids)
 
         return qs

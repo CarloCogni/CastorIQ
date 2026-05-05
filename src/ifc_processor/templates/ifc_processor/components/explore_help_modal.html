@@ -1,0 +1,187 @@
+<!-- ifc_processor/components/explore_help_modal.html — "How Explore Works" -->
+
+<div class="modal fade" id="exploreHelpModal" tabindex="-1" aria-labelledby="exploreHelpLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+
+            <div class="modal-header border-bottom px-4 py-3"
+                 style="border-color: var(--bs-border-color) !important;">
+                <h5 class="modal-title fw-semibold fs-6 mb-0" id="exploreHelpLabel">
+                    <i class="bi bi-diagram-3 me-2 text-primary"></i>
+                    How Explore Works
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body px-4 py-4">
+
+                <!-- 1. What is Explore? -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-box-seam me-1 text-primary"></i>
+                    What is Explore?
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    A read-only inspector for the parsed IFC model. You can walk the spatial tree
+                    (project → site → building → storey → space), filter the entity table by IFC class,
+                    search by name / GlobalID / tag / description, and open any entity to see its full
+                    attribute set, property sets (<code>Pset_*</code>), quantities (<code>Qto_*</code>) and
+                    type-level properties. Nothing here mutates the IFC file — that lives in
+                    <strong class="text-body">Modify</strong>.
+                </p>
+
+                <!-- 2. Layout / How the page is organised -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-layout-split me-1 text-primary"></i>
+                    Layout
+                </p>
+                <div class="d-flex flex-column gap-2 fs-8 mb-4">
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge rounded-pill flex-shrink-0 mt-1"
+                              style="background-color: rgba(59, 130, 246, 0.15); color: var(--bs-primary); border: 1px solid rgba(59, 130, 246, 0.3);">
+                            <i class="bi bi-diagram-3"></i> Spatial tree
+                        </span>
+                        <span class="text-secondary">
+                            <strong class="text-body">Left column.</strong> The IFC spatial decomposition
+                            (<code>IfcSite</code> → <code>IfcBuilding</code> → <code>IfcBuildingStorey</code>
+                            → <code>IfcSpace</code>). Click any node to filter the table to entities contained
+                            below that node.
+                        </span>
+                    </div>
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge rounded-pill flex-shrink-0 mt-1"
+                              style="background-color: rgba(59, 130, 246, 0.15); color: var(--bs-primary); border: 1px solid rgba(59, 130, 246, 0.3);">
+                            <i class="bi bi-table"></i> Entity table
+                        </span>
+                        <span class="text-secondary">
+                            <strong class="text-body">Right pane.</strong> One row per occurrence
+                            (<code>IfcElement</code>) within the current spatial scope, paginated 50 at a time.
+                            Columns: Type · Name · Tag · Description · Element Type · Container · GlobalID.
+                        </span>
+                    </div>
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge rounded-pill flex-shrink-0 mt-1"
+                              style="background-color: rgba(59, 130, 246, 0.15); color: var(--bs-primary); border: 1px solid rgba(59, 130, 246, 0.3);">
+                            <i class="bi bi-window"></i> Detail panel
+                        </span>
+                        <span class="text-secondary">
+                            <strong class="text-body">Modal on row click.</strong> Header (type, name, GlobalID),
+                            IFC <em>Description</em> + <em>Tag</em>, AI Summary, and every stored property set,
+                            quantity set, and type set.
+                        </span>
+                    </div>
+                </div>
+
+                <!-- 3. How to use it -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-mouse me-1 text-primary"></i>
+                    How to use it
+                </p>
+                <div class="d-flex flex-column gap-2 fs-8 mb-4">
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge rounded-pill flex-shrink-0 mt-1"
+                              style="background-color: rgba(148, 163, 184, 0.15); color: var(--bs-body-color); border: 1px solid var(--bs-border-color);">
+                            <i class="bi bi-funnel"></i> Filter by type
+                        </span>
+                        <span class="text-secondary">
+                            Click an IFC type chip above the table (e.g. <code>IfcDoor</code>, <code>IfcWall</code>).
+                            Counts reflect the current spatial scope. <em>All</em> clears the filter.
+                            Use <em>Schedule this type</em> to jump to the type-grouped schedule for the active class.
+                        </span>
+                    </div>
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge rounded-pill flex-shrink-0 mt-1"
+                              style="background-color: rgba(148, 163, 184, 0.15); color: var(--bs-body-color); border: 1px solid var(--bs-border-color);">
+                            <i class="bi bi-search"></i> Search
+                        </span>
+                        <span class="text-secondary">
+                            The search box matches <em>substring</em> across <strong class="text-body">name</strong>,
+                            <strong class="text-body">GlobalID</strong>, <strong class="text-body">tag</strong>
+                            and <strong class="text-body">IFC description</strong>. Results respect the active
+                            spatial scope and type filter.
+                        </span>
+                    </div>
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge rounded-pill flex-shrink-0 mt-1"
+                              style="background-color: rgba(148, 163, 184, 0.15); color: var(--bs-body-color); border: 1px solid var(--bs-border-color);">
+                            <i class="bi bi-keyboard"></i> Keyboard
+                        </span>
+                        <span class="text-secondary">
+                            <kbd>↑</kbd> / <kbd>↓</kbd> moves between rows; <kbd>Enter</kbd> opens the detail
+                            panel. Disabled while the search box has focus.
+                        </span>
+                    </div>
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge rounded-pill flex-shrink-0 mt-1"
+                              style="background-color: rgba(148, 163, 184, 0.15); color: var(--bs-body-color); border: 1px solid var(--bs-border-color);">
+                            <i class="bi bi-chat-dots"></i> Ask / Modify
+                        </span>
+                        <span class="text-secondary">
+                            Inside the detail panel, <em>Ask about this</em> jumps to the Ask tab with a
+                            pre-filled question; <em>Modify</em> jumps to Modify with the entity referenced.
+                            Both close the inspector first.
+                        </span>
+                    </div>
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge rounded-pill flex-shrink-0 mt-1"
+                              style="background-color: rgba(148, 163, 184, 0.15); color: var(--bs-body-color); border: 1px solid var(--bs-border-color);">
+                            <i class="bi bi-download"></i> Export CSV
+                        </span>
+                        <span class="text-secondary">
+                            The CSV button exports <em>exactly the current filter</em> — spatial scope, type chip,
+                            and search query all apply. Columns: GlobalID, Type, Name, Description, Tag,
+                            Element Type, Spatial Container.
+                        </span>
+                    </div>
+                </div>
+
+                <!-- 4. Description vs AI Summary -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-arrow-left-right me-1 text-primary"></i>
+                    Description vs AI Summary vs Tag
+                </p>
+                <div class="table-responsive mb-4">
+                    <table class="table table-sm mb-0 fs-8">
+                        <thead>
+                            <tr>
+                                <th scope="col" style="width: 22%;">Field</th>
+                                <th scope="col">Source</th>
+                                <th scope="col">Use</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>Description</code></td>
+                                <td>IFC attribute <code>IfcRoot.Description</code>, parsed verbatim.</td>
+                                <td>Authoring-tool free text. Often empty.</td>
+                            </tr>
+                            <tr>
+                                <td><code>Tag</code></td>
+                                <td>IFC attribute <code>IfcElement.Tag</code>, parsed verbatim.</td>
+                                <td>Source-system identifier (e.g. Revit element id). <strong class="text-body">Not</strong> the FM asset tag.</td>
+                            </tr>
+                            <tr>
+                                <td><em>AI Summary</em></td>
+                                <td>Generated by the embedding pipeline.</td>
+                                <td>Semantic blurb used for vector search in Ask mode. Shown in the detail panel under a blue <em>AI Summary</em> heading.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 5. Caveats -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-exclamation-circle me-1" style="color: var(--castor-accent, #8b5cf6);"></i>
+                    Caveats
+                </p>
+                <div class="d-flex flex-column gap-1 fs-8 text-secondary">
+                    <span><i class="bi bi-dot"></i>Read-only. To change anything in the model, switch to <strong class="text-body">Modify</strong>.</span>
+                    <span><i class="bi bi-dot"></i>Geometry isn't rendered here — Explore shows attributes and properties, not the 3D view.</span>
+                    <span><i class="bi bi-dot"></i>Only entities that survived parse appear. Rejected rows live in the admin <em>IFCDataIssue</em> log.</span>
+                    <span><i class="bi bi-dot"></i>Search is substring, case-insensitive, and joined as OR across name / GlobalID / tag / description. No regex.</span>
+                    <span><i class="bi bi-dot"></i>If the file selector shows nothing, no IFC file in this project has finished parsing yet.</span>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>

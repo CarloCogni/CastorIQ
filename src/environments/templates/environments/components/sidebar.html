@@ -194,17 +194,36 @@
                 <span class="text-secondary text-uppercase fs-8 fw-bold letter-spacing-1">Conversations</span>
                 <span class="mode-label mode-label-{{ active_tab }}">{{ active_tab }}</span>
             </div>
-            <form method="post" action="{% if active_tab == 'modify' %}{% url 'writeback:modify' project.pk %}{% else %}{% url 'projects:ask' project.pk %}{% endif %}">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="new_session">
-                <button type="submit"
-                        class="btn btn-link btn-sm text-secondary p-0 hover-white"
-                        data-bs-toggle="tooltip"
-                        data-bs-placement="right"
-                        data-bs-title="New conversation">
-                    <i class="bi bi-plus-lg"></i>
-                </button>
-            </form>
+            <div class="d-flex align-items-center gap-2">
+                {% if chat_sessions %}
+                <form method="post"
+                      action="{% url 'projects:delete_all_sessions' project.pk %}"
+                      data-castor-confirm="Delete all {{ active_tab }} conversations? This cannot be undone."
+                      data-castor-confirm-title="Clear all conversations"
+                      data-castor-confirm-label="Delete all">
+                    {% csrf_token %}
+                    <input type="hidden" name="mode" value="{{ active_tab }}">
+                    <button type="submit"
+                            class="btn btn-link btn-sm text-secondary p-0 hover-white"
+                            data-bs-toggle="tooltip"
+                            data-bs-placement="right"
+                            data-bs-title="Clear all conversations">
+                        <i class="bi bi-trash3"></i>
+                    </button>
+                </form>
+                {% endif %}
+                <form method="post" action="{% if active_tab == 'modify' %}{% url 'writeback:modify' project.pk %}{% else %}{% url 'projects:ask' project.pk %}{% endif %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="new_session">
+                    <button type="submit"
+                            class="btn btn-link btn-sm text-secondary p-0 hover-white"
+                            data-bs-toggle="tooltip"
+                            data-bs-placement="right"
+                            data-bs-title="New conversation">
+                        <i class="bi bi-plus-lg"></i>
+                    </button>
+                </form>
+            </div>
         </div>
 
         <div class="d-flex flex-column gap-1">
@@ -256,7 +275,9 @@
                         <li>
                             <form method="post"
                                   action="{% url 'projects:delete_session' project.pk session.pk %}"
-                                  onsubmit="return confirm('Delete this conversation?')">
+                                  data-castor-confirm="Delete this conversation? This cannot be undone."
+                                  data-castor-confirm-title="Delete conversation"
+                                  data-castor-confirm-label="Delete">
                                 {% csrf_token %}
                                 <button type="submit" class="dropdown-item fs-8 text-danger">
                                     <i class="bi bi-trash3 me-2"></i>Delete

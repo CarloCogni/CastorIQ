@@ -256,6 +256,7 @@ class TestModifyViewPostPropose:
         # Simpler: patch at the class level
         with patch("writeback.views.ModificationService") as MockSvc:
             instance = MockSvc.return_value
+            instance.supersede_pending.return_value = []
             instance.propose.return_value = mock_proposal
 
             response = client.post(
@@ -266,42 +267,6 @@ class TestModifyViewPostPropose:
         data = json.loads(response.content)
         assert data["status"] == "proposed"
         assert "proposal" in data
-
-    def test_propose_chain_returns_proposals_list(self, client):
-        """propose() returning a list triggers chain response with proposals list."""
-        user = UserFactory()
-        project = ProjectFactory(owner=user)
-        IFCFileFactory(project=project)
-        _login(client, user)
-
-        mock_proposal = MagicMock()
-        mock_proposal.id = uuid.uuid4()
-        mock_proposal.tier = 1
-        mock_proposal.operation = "SET_PROPERTY"
-        mock_proposal.explanation = "Step 1"
-        mock_proposal.confidence = 90
-        mock_proposal.affected_count = 3
-        mock_proposal.diff_preview = "[]"
-        mock_proposal.linked_conflict_ids = []
-        mock_proposal.verification_status = "ok"
-        mock_proposal.verification_result = ""
-        mock_proposal.verification_source = ""
-        mock_proposal.intent_json = {}
-        mock_proposal.message = None
-
-        with patch("writeback.views.ModificationService") as MockSvc:
-            instance = MockSvc.return_value
-            instance.propose.return_value = [mock_proposal, mock_proposal]
-
-            response = client.post(
-                _modify_url(project.pk),
-                {"action": "propose", "message": "Do multiple things"},
-            )
-
-        data = json.loads(response.content)
-        assert data["status"] == "proposed"
-        assert data.get("chain") is True
-        assert "proposals" in data
 
 
 # ── ModifyView POST: approve ───────────────────────────────────────────────

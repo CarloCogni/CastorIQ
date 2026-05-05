@@ -440,6 +440,8 @@ class IFCParser:
                         global_id=gid,
                         ifc_type=ifc_type_name,
                         name=element.Name or "",
+                        ifc_description=getattr(element, "Description", None) or "",
+                        tag=getattr(element, "Tag", None) or "",
                         element_type=element_type_record,
                         spatial_container=None,  # Assigned in Phase C
                         properties=properties,

@@ -32,7 +32,7 @@ INITIAL pick, not the final word.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from ifc_processor.services.ifc_standard_psets import (
@@ -42,6 +42,15 @@ from ifc_processor.services.ifc_standard_psets import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# Rejection categories — feed the HintGenerator to choose a strategy.
+# Keep these stable; HintGenerator's templated branch dispatches on them.
+REJECT_CATEGORY_UNCLEAR = "unclear"
+REJECT_CATEGORY_OUT_OF_SCOPE = "out_of_scope"
+REJECT_CATEGORY_ENTITY_NOT_FOUND = "entity_not_found"
+REJECT_CATEGORY_PSET_UNKNOWN = "pset_unknown"
+REJECT_CATEGORY_INTERNAL = "internal"
 
 
 # Kinds emitted by the triage classifier (Stage 1).
@@ -91,11 +100,18 @@ class RoutingResult:
     canonical operation name the writers expect (``SET_PROPERTY``,
     ``ADD_PSET``, etc.). ``rejection_reason`` is populated only when
     ``tier == 0`` so the caller can surface it to the user verbatim.
+
+    On rejection, ``rejection_category`` and ``rejection_payload`` give
+    the ``HintGenerator`` the structured signal it needs to emit a
+    helpful suggestion (e.g. "did you mean FireRating?"). They are
+    empty for non-rejection results.
     """
 
     tier: int
     operation: str = ""
     rejection_reason: str = ""
+    rejection_category: str = ""
+    rejection_payload: dict[str, Any] = field(default_factory=dict)
 
     @property
     def is_rejected(self) -> bool:
@@ -119,6 +135,8 @@ def route(segments: list[dict[str, Any]]) -> RoutingResult:
         return RoutingResult(
             tier=0,
             rejection_reason="No actionable segments extracted from the request.",
+            rejection_category=REJECT_CATEGORY_UNCLEAR,
+            rejection_payload={"missing": ["request"]},
         )
 
     kinds = {seg.get("kind") for seg in segments}
@@ -134,7 +152,12 @@ def route(segments: list[dict[str, Any]]) -> RoutingResult:
             )
         else:
             reason = "The request is too ambiguous to classify."
-        return RoutingResult(tier=0, rejection_reason=reason)
+        return RoutingResult(
+            tier=0,
+            rejection_reason=reason,
+            rejection_category=REJECT_CATEGORY_UNCLEAR,
+            rejection_payload={"missing": list(missing)},
+        )
 
     if KIND_OUT_OF_SCOPE in kinds:
         oos = next(seg for seg in segments if seg.get("kind") == KIND_OUT_OF_SCOPE)
@@ -142,7 +165,12 @@ def route(segments: list[dict[str, Any]]) -> RoutingResult:
             "This kind of modification is out of scope for Castor "
             "(geometry edits are not supported)."
         )
-        return RoutingResult(tier=0, rejection_reason=reason)
+        return RoutingResult(
+            tier=0,
+            rejection_reason=reason,
+            rejection_category=REJECT_CATEGORY_OUT_OF_SCOPE,
+            rejection_payload={"reason": reason},
+        )
 
     # Validate every kind is a known tier-mapped value.
     unknown = kinds - VALID_KINDS
@@ -150,6 +178,32 @@ def route(segments: list[dict[str, Any]]) -> RoutingResult:
         return RoutingResult(
             tier=0,
             rejection_reason=f"Unrecognised segment kind(s): {sorted(unknown)}.",
+            rejection_category=REJECT_CATEGORY_INTERNAL,
+            rejection_payload={"unknown_kinds": sorted(unknown)},
+        )
+
+    # Reject when an EXISTING_TARGET-mode segment got 0 entities back
+    # from the resolver. The resolver is the sole entity-targeting
+    # authority (per project_writeback_rewrite_2026_04); if it pinned
+    # nothing, the user's reference does not exist in this project's
+    # IFC, and the writers would crash without a target. CREATE
+    # segments are exempt — NEW_TARGET resolution returns empty by
+    # design.
+    for seg in segments:
+        kind = seg.get("kind")
+        if kind not in (KIND_PROPERTY, KIND_ATTRIBUTE, KIND_PSET, KIND_DELETE, KIND_RELATIONSHIP):
+            continue
+        if _resolution_count(seg) > 0:
+            continue
+        target = (seg.get("target_phrase") or "").strip() or "the requested entities"
+        return RoutingResult(
+            tier=0,
+            rejection_reason=(
+                f"No entities matched {target!r} in this project. "
+                "Please name an existing entity, type, or filter."
+            ),
+            rejection_category=REJECT_CATEGORY_ENTITY_NOT_FOUND,
+            rejection_payload={"target_phrase": target, "kind": kind},
         )
 
     # Pre-route: deterministic pset inference for PROPERTY segments where
@@ -172,6 +226,8 @@ def route(segments: list[dict[str, Any]]) -> RoutingResult:
         slots = seg.get("slots") or {}
         if not (slots.get("pset") or "").strip():
             prop = (slots.get("property") or "").strip() or "?"
+            resolution = seg.get("resolution")
+            ifc_type_hint = getattr(resolution, "ifc_type_hint", None) if resolution else None
             return RoutingResult(
                 tier=0,
                 rejection_reason=(
@@ -179,6 +235,8 @@ def route(segments: list[dict[str, Any]]) -> RoutingResult:
                     "and you didn't name one. Please rephrase, e.g. "
                     f"'set Pset_<your-pset>.{prop} = <value>'."
                 ),
+                rejection_category=REJECT_CATEGORY_PSET_UNKNOWN,
+                rejection_payload={"property": prop, "ifc_type_hint": ifc_type_hint},
             )
 
     # Multi-segment routing: the most-permissive tier across segments wins.

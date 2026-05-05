@@ -118,6 +118,51 @@ class TestFilterEngineResolve:
         qs = engine.resolve({"property_match": {"Pset_WallCommon.IsExternal": True}})
         assert qs.count() == len(wall_entities)
 
+    def test_property_match_float_uses_relative_tolerance(self, project, ifc_file):
+        """float predicates allow ~5% relative tolerance so the user's
+        rounded value (0.24) matches the IFC's full-precision stored value
+        (0.235926…). Required for Revit-exported floats."""
+        from ifc_processor.tests.factories import IFCEntityFactory
+
+        within = IFCEntityFactory(
+            ifc_file=ifc_file,
+            ifc_type="IfcWall",
+            name="WallWithin",
+            global_id="GUID-WALL-WITHIN",
+            properties={"Pset_WallCommon.ThermalTransmittance": 0.235926059936681},
+        )
+        outside = IFCEntityFactory(
+            ifc_file=ifc_file,
+            ifc_type="IfcWall",
+            name="WallOutside",
+            global_id="GUID-WALL-OUTSIDE",
+            properties={"Pset_WallCommon.ThermalTransmittance": 0.55},
+        )
+
+        engine = FilterEngine(project)
+        qs = engine.resolve({"property_match": {"Pset_WallCommon.ThermalTransmittance": 0.24}})
+
+        ids = set(qs.values_list("id", flat=True))
+        assert within.id in ids
+        assert outside.id not in ids
+
+    def test_property_match_float_zero_uses_absolute_floor(self, project, ifc_file):
+        """value=0.0 with relative tolerance would collapse to 0; an
+        absolute floor (1e-6) keeps near-zero matches sane."""
+        from ifc_processor.tests.factories import IFCEntityFactory
+
+        IFCEntityFactory(
+            ifc_file=ifc_file,
+            ifc_type="IfcWall",
+            name="WallZero",
+            global_id="GUID-WALL-ZERO",
+            properties={"Pset_WallCommon.SomeFloat": 0.0},
+        )
+
+        engine = FilterEngine(project)
+        qs = engine.resolve({"property_match": {"Pset_WallCommon.SomeFloat": 0.0}})
+        assert qs.count() == 1
+
     def test_combined_type_and_property_filter(self, project, wall_entities, door_entity):
         """Combining ifc_type and property_match narrows results correctly."""
         engine = FilterEngine(project)
@@ -136,6 +181,75 @@ class TestFilterEngineResolve:
         engine = FilterEngine(project)
         with pytest.raises(ValueError, match="0 entities"):
             engine.resolve({"ifc_type": "IfcBeam"})
+
+    def test_tag_filter_exact_match_is_case_insensitive(self, project, ifc_file):
+        """tag predicate uses iexact — exact value match, ignoring case."""
+        from ifc_processor.tests.factories import IFCEntityFactory
+
+        IFCEntityFactory(
+            ifc_file=ifc_file,
+            ifc_type="IfcWall",
+            name="WallA",
+            global_id="GUID-TAG-A",
+            tag="285330",
+        )
+        IFCEntityFactory(
+            ifc_file=ifc_file,
+            ifc_type="IfcWall",
+            name="WallB",
+            global_id="GUID-TAG-B",
+            tag="285331",
+        )
+        engine = FilterEngine(project)
+        qs = engine.resolve({"tag": "285330"})
+        assert qs.count() == 1
+        assert qs.first().tag == "285330"
+
+    def test_tag_filter_supports_glob(self, project, ifc_file):
+        """tag with '*' falls back to regex glob, like name_pattern."""
+        from ifc_processor.tests.factories import IFCEntityFactory
+
+        IFCEntityFactory(
+            ifc_file=ifc_file,
+            ifc_type="IfcWall",
+            name="WallA",
+            global_id="GUID-TAG-G1",
+            tag="REV-285330",
+        )
+        IFCEntityFactory(
+            ifc_file=ifc_file,
+            ifc_type="IfcWall",
+            name="WallB",
+            global_id="GUID-TAG-G2",
+            tag="ARC-285331",
+        )
+        engine = FilterEngine(project)
+        qs = engine.resolve({"tag": "REV-*"})
+        assert qs.count() == 1
+        assert qs.first().tag == "REV-285330"
+
+    def test_ifc_description_filter_substring(self, project, ifc_file):
+        """ifc_description predicate uses icontains — partial, case-insensitive match."""
+        from ifc_processor.tests.factories import IFCEntityFactory
+
+        IFCEntityFactory(
+            ifc_file=ifc_file,
+            ifc_type="IfcWall",
+            name="WallA",
+            global_id="GUID-DESC-A",
+            ifc_description="Exterior load-bearing wall, north facade",
+        )
+        IFCEntityFactory(
+            ifc_file=ifc_file,
+            ifc_type="IfcWall",
+            name="WallB",
+            global_id="GUID-DESC-B",
+            ifc_description="Interior partition",
+        )
+        engine = FilterEngine(project)
+        qs = engine.resolve({"ifc_description": "north"})
+        assert qs.count() == 1
+        assert qs.first().global_id == "GUID-DESC-A"
 
     def test_only_queries_completed_ifc_files(self, project, user):
         """FilterEngine should not return entities from non-completed IFC files."""

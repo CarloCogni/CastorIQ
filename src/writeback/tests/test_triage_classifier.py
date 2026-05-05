@@ -25,7 +25,11 @@ class TestNormaliseSegments:
     def test_canonical_segments_list_passes_through(self):
         data = {
             "segments": [
-                {"kind": "PROPERTY", "target_phrase": "Wall-01", "value_phrase": "FireRating to EI120"}
+                {
+                    "kind": "PROPERTY",
+                    "target_phrase": "Wall-01",
+                    "value_phrase": "FireRating to EI120",
+                }
             ]
         }
         out = _normalise_segments(data)
@@ -145,8 +149,7 @@ class TestTriageClassifier:
                             "kind": "PSET",
                             "target_phrase": "all walls",
                             "value_phrase": (
-                                "Pset_Maintenance with Inspector=TBD and "
-                                "LastInspection=2026-01-01"
+                                "Pset_Maintenance with Inspector=TBD and LastInspection=2026-01-01"
                             ),
                         }
                     ]
@@ -182,9 +185,7 @@ class TestTriageClassifier:
             )
         )
         triage = TriageClassifier(llm=mock_llm)
-        result = triage.classify(
-            "set FireRating to EI120 and IsExternal to true on Wall-01"
-        )
+        result = triage.classify("set FireRating to EI120 and IsExternal to true on Wall-01")
         assert len(result.segments) == 2
 
     def test_unclear_request_returns_unclear_segment(self):

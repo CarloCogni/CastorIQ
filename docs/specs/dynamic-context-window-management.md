@@ -1,21 +1,22 @@
 # Context Window Management
 
-**Status:** Ready for implementation (no dependencies on other MetaCastor deliverables)  
-**Estimated effort:** 2–3 days  
-**Priority:** Build first — every future MetaCastor feature injects content into the LLM context window. Without token awareness, injections compete blindly and the first symptom is hallucinations from context overflow, which you'll misdiagnose as a model quality problem.
+**Status:** Ask-mode budget allocator is live; Modify-mode per-stage budgets are not enforced — the writeback pipeline's narrow per-stage prompts are small enough that runtime budget allocation isn't currently required. The largest residual budget concern is `Tier3Planner.entity_context`.
+
+**Priority:** Reuse the Ask-mode allocator if the Modify-mode budget concern grows — every future feature that injects content (failure-context retry, etc.) competes blindly without token awareness, and the first symptom is hallucinations from context overflow.
 
 ---
 
 ## Problem
 
-Local Ollama models (target: llama3.1:8b or similar ~8B models runnable on any decent computer without GPU) have limited context windows. The system already packs multiple content types into each LLM call:
+Local Ollama models (target: llama3.1:8b or similar ~8B models runnable on any decent computer without GPU) have limited context windows. The system packs multiple content types into each LLM call:
 
-**IntentClassifier (Modify mode):**
-- System instructions + operation schemas
-- Entity context (types, psets, sample properties)
-- Chat/conversation history
-- *(Future: few-shot examples from skill bank)*
-- *(Future: failure diagnostic context on retry)*
+**Modify-mode pipeline stages:**
+- `TriageClassifier`: system instructions + segmentation rules + user message. ~1–2K tokens; well under any model's window.
+- `SlotExtractor`: per-kind narrow prompt + segment text. One call per segment, each ≤1K tokens.
+- `EntityNameResolver`: resolver prompt + DB-grounded candidate hints (iter 1/2). ~2–4K tokens including hints.
+- `Tier3Planner`: full entity_context block (existing parents + proposed names + entity class + delete targets). **The largest budget concern** — can grow with project size.
+
+Each stage's prompt is narrow enough to hold only what it needs — there's no single LLM call carrying entity context + few-shot examples + failure context + system schema simultaneously.
 
 **Ask mode (RAG pipeline):**
 - System instructions
@@ -202,19 +203,24 @@ def compute_budget(
 
 ### 4. Budget Allocation by Mode
 
-**IntentClassifier (Modify mode) — 8K floor model:**
+**Modify-mode pipeline stages — 8K floor model:**
 
-| Budget slot | Tokens | Type |
+The pipeline runs four narrow stages, each with its own small budget; no single stage approaches the floor. Numbers below are typical, not enforced — runtime budget allocation isn't currently wired in for the Modify path.
+
+| Stage | Tokens (typical) | Notes |
 |---|---|---|
-| System instructions + operation schemas | ~2,000 | Fixed |
-| Entity context (types, psets, sample properties) | ~1,500 | Variable, can be trimmed |
-| Failure diagnostic context (if retry) | ~100 | Single block, future Deliverable 4 |
-| Few-shot examples from skill bank | **Remaining budget** | Dynamic, future Deliverable 2 |
+| `TriageClassifier` | ~1,500 | System prompt + user message |
+| `SlotExtractor` (per segment) | ~800 | Per-kind narrow prompt + segment text |
+| `EntityNameResolver` | ~2,000–4,000 | Includes DB-grounded candidate hints in iter 1/2 |
+| `Tier2Planner` | n/a (skipped) | Plans built deterministically by `intent_assembler` |
+| `Tier3Planner` | ~3,000–6,000 | The biggest concern — entity_context block (parents + proposed names + entity class + delete targets) can grow with project size |
 | Response reserve | 1,500 | Fixed |
 
-On 8K (usable: ~7,300 after 90% ceiling): ~2,000 + ~1,500 + 1,500 reserve = ~5,000 committed. Leaves ~2,300 for dynamic injection. At 200–400 tokens per example, that's 5–11 examples theoretically — but in practice K=3 is the hardcoded cap (Deliverable 2), so the budget check is "do 3 fit? if not, try 2, then 1, then 0."
+On 8K (usable: ~7,300 after 90% ceiling): every individual stage fits comfortably. Tier3Planner has the only realistic chance of approaching the floor on a large project.
 
-On 32K (usable: ~29,000): same fixed costs, ~24,000 remaining. Budget is never the bottleneck; K=3 cap still applies.
+On 32K (usable: ~29,000): no concern.
+
+**Failure-context retry**: When a `RETRYABLE` failure feeds back into the pipeline via `failure_context`, the snippet is ~60 tokens — added to whichever stage's prompt the failure originated in. Negligible budget impact.
 
 **Ask mode — unbounded conversation history is the risk:**
 
@@ -254,7 +260,7 @@ Surface a simple usage indicator in the Ask UI so users know when conversation q
 - The warning at 80% is a suggestion, not a block. Users can continue — the system doesn't refuse to answer.
 - The indicator is based on total conversation history tokens, not per-message. It grows monotonically within a session.
 
-**Modify mode:** Token budget is managed per-call (each modification is a fresh IntentClassifier invocation with its own budget). The conversation history risk doesn't apply the same way. No UI indicator needed for Modify mode initially — the budget allocator handles it internally.
+**Modify mode:** Each pipeline stage is a fresh LLM invocation with its own (small) prompt; conversation history is not threaded through. No UI indicator needed — per-stage prompts are small enough that runtime budget enforcement isn't currently wired in.
 
 ### 6. Entity Context Trimming (Graceful Degradation)
 
@@ -289,15 +295,15 @@ The 0.5 factor ensures entity context never consumes more than half of the remai
 
 ## Integration Points
 
-This system is designed to be usable immediately (for Ask mode conversations and current IntentClassifier prompts) and to serve as infrastructure for future MetaCastor features.
+This system is shipped for Ask mode conversations. The Modify-mode pipeline does not use it; budgets there are managed implicitly by per-stage prompt size. The allocator remains available infrastructure for any future feature that needs it.
 
 **Now (no MetaCastor dependencies):**
 
 - Ask mode: token tracking + UI indicator prevents silent degradation on small models
-- IntentClassifier: budget-aware prompt assembly prevents overflow when entity context is large
+- Modify-mode pipeline stages: per-stage prompts are small enough that overflow is not a current concern. `Tier3Planner.entity_context` is the single residual risk on large projects; budget-aware assembly there is a future option.
 - Developer visibility: `TokenBudget` dataclass gives clear insight into where tokens are going
 
-**Future (when MetaCastor deliverables are built):**
+**Future (if richer in-prompt injection is added later):**
 
 - Skill bank injection (Deliverable 2): call `budget.remaining_for_injection` before injecting few-shot examples. If remaining < 200 tokens, inject 0. Otherwise inject up to K=3 examples that fit.
 - Failure context injection (Deliverable 4): single retry block is ~100 tokens — check it fits before injecting, fall back to no-context retry if it doesn't.
@@ -334,7 +340,7 @@ The system must function correctly with llama3.1:8b (8K context) as the floor. T
 | Token estimation utilities (`estimate_tokens`, `estimate_messages_tokens`) | None | 30min | `core/token_utils.py` |
 | `TokenBudget` dataclass + `compute_budget` function | Registry + utils | 2–3h | `core/token_budget.py` |
 | Entity context trimming (3-tier: full / trimmed / minimal) | Token utils | 2–3h | Trimming logic in entity context assembly |
-| Integrate budget into IntentClassifier prompt assembly | Budget module | 2–3h | Budget-aware Modify mode |
+| Integrate budget into Tier3Planner entity_context | Budget module | 2–3h | Budget-aware Modify mode (only Tier3 needs this so far) |
 | Integrate budget into Ask mode RAG pipeline | Budget module | 2h | Budget-aware Ask mode |
 | Ask mode UI indicator (utilization bar + threshold warnings) | Ask mode integration | 3–4h | Frontend indicator |
 | Logging: emit token budget breakdown on every LLM call (debug level) | Budget module | 30min | Observability |
@@ -353,4 +359,4 @@ The system must function correctly with llama3.1:8b (8K context) as the floor. T
 | Ask mode conversation at 15, 25, 40 messages | Utilization percentage increases, warnings fire at correct thresholds |
 | Unknown model name | Falls back to 8,192 default, logs warning |
 | Empty entity context | Budget calculation handles zero-length strings without error |
-| IntentClassifier prompt at exactly 90% ceiling | System does not exceed ceiling, response reserve is respected |
+| Tier3Planner entity_context at exactly 90% ceiling | System does not exceed ceiling, response reserve is respected |

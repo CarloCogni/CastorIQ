@@ -328,9 +328,7 @@ class TestExtractionTrimRetry:
             _make_llm_response(json.dumps({"scope": "unknown"})),
             # Try 2 — leading token dropped, model identifies the entity.
             _make_llm_response(
-                json.dumps(
-                    {"scope": "specific", "ifc_type": "IfcWall", "entity_name": target.name}
-                )
+                json.dumps({"scope": "specific", "ifc_type": "IfcWall", "entity_name": target.name})
             ),
         ]
         resolver = EntityNameResolver(project, llm=mock_llm)
@@ -374,9 +372,7 @@ class TestExtractionTrimRetry:
         assert result.is_empty
         assert mock_llm.invoke.call_count == 2
 
-    def test_first_call_specific_does_not_trigger_retry(
-        self, project, ifc_file, wall_entities
-    ):
+    def test_first_call_specific_does_not_trigger_retry(self, project, ifc_file, wall_entities):
         """The happy path is unchanged: when the LLM nails the extraction
         on the first call, the resolver does not invoke the trim retry.
         """

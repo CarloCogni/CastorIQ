@@ -117,12 +117,10 @@ CATEGORY_MAP: dict[str, str] = {
 DIAGNOSIS_TEMPLATES: dict[str, str] = {
     "REQUEST_TOO_VAGUE": (
         "The request could not be mapped to a specific IFC operation. "
-        "Specify the entity type, property name, and target value."
+        "Specify the entity type, property name, and target value — "
+        'e.g. "set FireRating to EI120 on the wall named <name>".'
     ),
-    "REQUEST_AMBIGUOUS": (
-        "The request was ambiguous: {detail}. "
-        "Try rephrasing with an explicit entity type, pset, and property."
-    ),
+    "REQUEST_AMBIGUOUS": "{detail}",
     "LLM_JSON_PARSE_ERROR": (
         "The model returned a response that could not be parsed as JSON. "
         "This can happen with ambiguous requests — try rephrasing more precisely."
@@ -349,10 +347,8 @@ def create_failure_record(
 
 def build_failure_context(failure_record) -> str:
     """
-    Build a ~60-token context string for retry injection into IntentClassifier.
-
-    Injected as a ## Previous Attempt block in the system prompt.
-    Only meaningful for RETRYABLE failures.
+    Build a ~60-token context string the writeback pipeline can pass back
+    on retry as ``failure_context``. Only meaningful for RETRYABLE failures.
 
     Args:
         failure_record: A FailureRecord instance.
@@ -388,9 +384,22 @@ def build_failure_context(failure_record) -> str:
 
 
 def _render_diagnosis(error_type: str, exc_msg: str) -> str:
-    """Render DIAGNOSIS_TEMPLATES[error_type] with {detail} = first 120 chars of exc_msg."""
+    """Render DIAGNOSIS_TEMPLATES[error_type] with ``{detail}`` = ``exc_msg``.
+
+    The detail string is capped at 500 characters as a sanity bound against
+    runaway exception messages (e.g. tracebacks pasted into a ValueError).
+    Below that cap, the message is preserved verbatim so user-facing
+    actionable advice is not cut off mid-sentence.
+
+    Common upstream wrapper prefixes are stripped before formatting so the
+    final diagnosis does not double up phrases like "Ambiguous request:".
+    """
     template = DIAGNOSIS_TEMPLATES.get(error_type, "An error occurred: {detail}.")
-    detail = exc_msg[:120]
+    detail = exc_msg[:500]
+    for prefix in ("Ambiguous request:", "Validation failed:", "Could not understand the request:"):
+        if detail.startswith(prefix):
+            detail = detail[len(prefix) :].strip()
+            break
     return template.format(detail=detail)
 
 

@@ -1,6 +1,7 @@
 # core/views.py
 """Core views."""
 
+import json
 from logging import getLogger
 
 import requests as http_requests
@@ -13,7 +14,7 @@ from django.shortcuts import redirect, render
 from django.views.decorators.http import require_POST
 from django.views.generic import TemplateView, View
 
-from core.http import trigger_toast
+from core.http import toast_response, trigger_toast
 from core.llm_model_registry import (
     MODEL_REGISTRY,
     VRAM_TIERS,
@@ -414,6 +415,35 @@ class SetModelAPIView(LoginRequiredMixin, View):
             },
         )
         return trigger_toast(response, f"Active model: {label}")
+
+
+class SetThemeAPIView(LoginRequiredMixin, View):
+    """HTMX endpoint: persist the user's theme choice."""
+
+    VALID = {"dark", "light"}
+
+    def post(self, request):
+        theme = request.POST.get("theme", "").strip().lower()
+        if theme not in self.VALID:
+            return toast_response("Invalid theme", level="error", status=400)
+
+        config = UserLLMConfig.load(request.user)
+        config.theme = theme
+        config.save(update_fields=["theme", "updated_at"])
+        logger.info("Theme changed to: %s", theme)
+
+        response = render(
+            request,
+            "core/components/theme_toggle.html",
+            {"user_theme": theme},
+        )
+        # Fire `castor:theme-changed` so the live-flip listener in base.html can
+        # update <html data-bs-theme> and the cookie without a full reload.
+        existing = response.get("HX-Trigger")
+        payload = json.loads(existing) if existing else {}
+        payload["castor:theme-changed"] = {"theme": theme}
+        response["HX-Trigger"] = json.dumps(payload)
+        return trigger_toast(response, f"Theme: {theme.title()}")
 
 
 @require_POST

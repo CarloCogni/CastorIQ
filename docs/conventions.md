@@ -19,14 +19,15 @@ Markdown tables listing your services will be stale within a week. A docstring o
 ### What This Looks Like
 
 ```python
-# writeback/services/intent_classifier.py
-"""
-Classify user messages into structured modification intents.
+# writeback/services/triage_classifier.py
+"""Stage 1 of the writeback pipeline — request triage.
 
-Takes a natural language message (e.g., "change the fire rating of all
-walls on Level 2 to 90 minutes") and produces a structured JSON intent
-with action, target entity filters, and parameter values. The intent
-drives tier selection and downstream validation.
+Splits the raw user message into independent action segments. Each
+segment carries a ``kind`` (PROPERTY / PSET / ATTRIBUTE / CREATE /
+DELETE / RELATIONSHIP / OUT_OF_SCOPE / UNCLEAR), a free-text
+``target_phrase`` describing what the user wants modified, and a
+free-text ``value_phrase`` describing the new value or operation
+parameter.
 
 Uses the user's configured Ollama model via core.llm.get_llm().
 """
@@ -39,7 +40,7 @@ A developer reading this file knows exactly what it does, what it produces, and 
 - **Every module**: docstring explaining purpose and role in the system
 - **Every class**: docstring explaining what it represents
 - **Every public method**: docstring explaining what it does (not how)
-- **File header**: `# writeback/services/intent_classifier.py`
+- **File header**: `# writeback/services/triage_classifier.py`
 
 If the purpose isn't obvious from name + docstring, fix the name and docstring — don't write a markdown file.
 
@@ -209,7 +210,10 @@ When logic lives in views, you can't reuse it. Need the same approval logic in a
 writeback/
   services/
     modification_service.py    # Orchestrates the full modification flow
-    intent_classifier.py       # LLM intent classification
+    triage_classifier.py       # Stage 1: segment user request into action kinds
+    slot_extractor.py          # Stage 2: per-kind narrow slot extraction
+    entity_resolver.py         # Stage 3: locate target entities
+    tier_router.py             # Stage 3.5: deterministic tier selection
     tier1_validator.py         # Validates tier 1 intents
     ...
   views.py                     # Thin: receives HTTP, calls services, returns response

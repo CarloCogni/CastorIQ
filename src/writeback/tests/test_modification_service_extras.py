@@ -1,5 +1,6 @@
 # writeback/tests/test_modification_service_extras.py
-"""Additional tests for ModificationService — reject() and restore_version()."""
+"""Additional tests for ModificationService — reject(), restore_version(), and
+the Tier 2 SET_PROPERTY → ADD_PROPERTY auto-fallback."""
 
 from unittest.mock import MagicMock, patch
 
@@ -21,11 +22,15 @@ def mock_git():
 def mock_llm():
     """Patch all LLM instantiations to avoid Ollama calls."""
     mock = MagicMock()
-    with patch("writeback.services.intent_classifier.get_llm", return_value=mock):
-        with patch("writeback.services.tier2_planner.get_llm", return_value=mock):
-            with patch("writeback.services.tier3_planner.get_llm", return_value=mock):
-                with patch("writeback.services.tier3_reviewer.get_llm", return_value=mock):
-                    yield mock
+    with (
+        patch("writeback.services.triage_classifier.get_llm", return_value=mock),
+        patch("writeback.services.slot_extractor.get_llm", return_value=mock),
+        patch("writeback.services.entity_resolver.get_llm", return_value=mock),
+        patch("writeback.services.tier2_planner.get_llm", return_value=mock),
+        patch("writeback.services.tier3_planner.get_llm", return_value=mock),
+        patch("writeback.services.tier3_reviewer.get_llm", return_value=mock),
+    ):
+        yield mock
 
 
 # ── ModificationService.reject() ─────────────────────────────────────────────
@@ -185,3 +190,196 @@ class TestRestoreVersion:
 
             with pytest.raises(ModificationError, match="parsing failed"):
                 svc.restore_version(str(commit.id), user)
+
+
+# ── Tier 2 SET → ADD auto-fallback ───────────────────────────────────────────
+
+
+@pytest.mark.django_db
+class TestT2AutofixSetToAdd:
+    """Tier 2 should mirror the Tier 1 SET→ADD fallback so a small-model plan
+    that picks SET_PROPERTY for a property that doesn't exist on the matched
+    entities (but is a valid standard property) is auto-corrected instead of
+    failing the whole pipeline."""
+
+    def test_set_property_on_missing_standard_prop_validates_via_upsert(
+        self, project, ifc_file, wall_entities, user, mock_git, mock_llm
+    ):
+        """wall_entities have FireRating/IsExternal/LoadBearing but NOT
+        ThermalTransmittance. With upsert semantics SET_PROPERTY validates
+        directly (operation stays SET_PROPERTY) and the writer auto-adds
+        the property at execute time — no SET→ADD swap, no separate fallback."""
+        svc = ModificationService(project, user=user)
+        plan = {
+            "tier": 2,
+            "plan": [
+                {
+                    "step": 1,
+                    "operation": "SET_PROPERTY",
+                    "filter": {"ifc_type": "IfcWall"},
+                    "params": {
+                        "pset": "Pset_WallCommon",
+                        "property": "ThermalTransmittance",
+                        "new_value": 0.18,
+                    },
+                    "explanation": "Set U-value",
+                }
+            ],
+            "confidence": 90,
+            "explanation": "Update U-value",
+        }
+
+        result = svc.t2_validator.validate_plan(plan)
+        assert result.valid is True
+        assert plan["plan"][0]["operation"] == "SET_PROPERTY"
+
+    def test_non_standard_property_is_not_swapped(
+        self, project, ifc_file, wall_entities, user, mock_git, mock_llm
+    ):
+        """A SET on a hallucinated standard-pset property name (e.g.
+        ``FireResistanceDuration``) must FAIL validation with a 'Did you
+        mean' hint instead of silently upserting a misspelled property.
+        Standard pset + property unknown to registry + absent on every
+        entity = almost certainly a typo."""
+        svc = ModificationService(project, user=user)
+        plan = {
+            "tier": 2,
+            "plan": [
+                {
+                    "step": 1,
+                    "operation": "SET_PROPERTY",
+                    "filter": {"ifc_type": "IfcWall"},
+                    "params": {
+                        "pset": "Pset_WallCommon",
+                        "property": "FireResistanceDuration",
+                        "new_value": "EI240",
+                    },
+                    "explanation": "Set fire resistance",
+                }
+            ],
+            "confidence": 90,
+            "explanation": "Set fire resistance",
+        }
+
+        result = svc.t2_validator.validate_plan(plan)
+        assert result.valid is False
+        # Either the registry-typo guard OR a 'did you mean' hint
+        combined_error = result.error + " " + (result.steps[0].error if result.steps else "")
+        assert "FireRating" in combined_error or "not a known property" in combined_error
+
+    def test_unrelated_validation_failures_pass_through_unchanged(
+        self, project, ifc_file, wall_entities, user, mock_git, mock_llm
+    ):
+        """The fallback only handles 'not found on any' errors. Other failures
+        (e.g. ADD_PSET on an already-fully-populated pset) must be returned
+        unchanged so the original error reaches the user."""
+        svc = ModificationService(project, user=user)
+        plan = {
+            "tier": 2,
+            "plan": [
+                {
+                    "step": 1,
+                    "operation": "ADD_PSET",
+                    "filter": {"ifc_type": "IfcWall"},
+                    "params": {
+                        "pset_name": "Pset_WallCommon",
+                        "properties": {"FireRating": "EI60"},
+                    },
+                    "explanation": "Add pset that already exists",
+                }
+            ],
+            "confidence": 90,
+            "explanation": "Will fail unrelated to SET/ADD",
+        }
+
+        first = svc.t2_validator.validate_plan(plan)
+        assert first.valid is False
+
+        result = svc._t2_autofix_set_to_add(plan, first)
+
+        assert result.valid is False
+        assert plan["plan"][0]["operation"] == "ADD_PSET"
+
+
+# ── _sync_entity_properties — IFC attribute mirror ───────────────────────────
+
+
+@pytest.mark.django_db
+class TestSyncEntityPropertiesAttributes:
+    """Tests for ModificationService._sync_entity_properties when the change is
+    a direct IFC attribute (Name / Description / Tag), not a pset property."""
+
+    def test_description_and_tag_mirror_to_dedicated_columns(
+        self, project, ifc_file, wall_entities, user, mock_git, mock_llm
+    ):
+        """SET_ATTRIBUTE on Description/Tag must update the dedicated columns,
+        not stash the value in the properties JSON.
+
+        Pins the user-reported bug: a Modify-tab Description edit succeeded
+        against the IFC file but never appeared in Explore/Schedule because
+        only Name was synced back to the DB."""
+        from ifc_processor.models import IFCEntity
+        from ifc_processor.services.ifc_writer import EntityChange
+
+        target = wall_entities[0]
+        target.ifc_description = "old desc"
+        target.tag = "old-tag"
+        target.save(update_fields=["ifc_description", "tag"])
+
+        svc = ModificationService(project, user=user)
+        changes = [
+            EntityChange(
+                global_id=target.global_id,
+                entity_name=target.name,
+                ifc_type=target.ifc_type,
+                pset="(attribute)",
+                property="Description",
+                old_value="old desc",
+                new_value="new desc from Modify",
+            ),
+            EntityChange(
+                global_id=target.global_id,
+                entity_name=target.name,
+                ifc_type=target.ifc_type,
+                pset="(attribute)",
+                property="Tag",
+                old_value="old-tag",
+                new_value="rev-B-99",
+            ),
+        ]
+
+        svc._sync_entity_properties(changes, ifc_file)
+
+        refreshed = IFCEntity.objects.get(pk=target.pk)
+        assert refreshed.ifc_description == "new desc from Modify"
+        assert refreshed.tag == "rev-B-99"
+        # Properties JSON must NOT carry these — they are first-class columns.
+        assert "(attribute).Description" not in (refreshed.properties or {})
+        assert "(attribute).Tag" not in (refreshed.properties or {})
+
+    def test_name_attribute_still_mirrors_to_name_column(
+        self, project, ifc_file, wall_entities, user, mock_git, mock_llm
+    ):
+        """Regression guard: extending the attribute-sync branch must not break
+        the original Name path."""
+        from ifc_processor.models import IFCEntity
+        from ifc_processor.services.ifc_writer import EntityChange
+
+        target = wall_entities[0]
+        svc = ModificationService(project, user=user)
+        svc._sync_entity_properties(
+            [
+                EntityChange(
+                    global_id=target.global_id,
+                    entity_name=target.name,
+                    ifc_type=target.ifc_type,
+                    pset="(attribute)",
+                    property="Name",
+                    old_value=target.name,
+                    new_value="Wall-Renamed",
+                )
+            ],
+            ifc_file,
+        )
+
+        assert IFCEntity.objects.get(pk=target.pk).name == "Wall-Renamed"
