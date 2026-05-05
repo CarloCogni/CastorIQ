@@ -4,6 +4,7 @@ import uuid
 
 from django.conf import settings
 from django.db import models
+from solo.models import SingletonModel
 
 
 class TimestampedModel(models.Model):
@@ -335,3 +336,105 @@ class TeamNote(UUIDModel):
 
     def __str__(self) -> str:
         return f"[{self.category}] {self.title[:50]} — {self.author_username}"
+
+
+class SiteLLMConfig(SingletonModel):
+    """
+    Site-wide LLM provider configuration (one row, ever).
+
+    The dispatcher in ``core.llm`` reads this singleton at call time so the
+    operator can flip Ask, Modify, or both between providers from Django admin
+    without a deploy. Local Ollama is always a first-class option, never just
+    a fallback.
+
+    On first read, ``load()`` seeds the row from settings env vars
+    (``ASK_PROVIDER``, ``ASK_MODEL``, ``MODIFY_PROVIDER``, ``MODIFY_MODEL``).
+    """
+
+    class Provider(models.TextChoices):
+        OLLAMA = "ollama", "Ollama (local)"
+        ANTHROPIC = "anthropic", "Anthropic Claude"
+        GROQ = "groq", "Groq"
+
+    ask_provider = models.CharField(
+        max_length=20,
+        choices=Provider.choices,
+        default=Provider.OLLAMA,
+        verbose_name="Ask Provider",
+        help_text="Provider used by the Ask (RAG) pipeline.",
+    )
+    ask_model = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        verbose_name="Ask Model",
+        help_text="Model identifier for the Ask provider. Blank = .env default.",
+    )
+    modify_provider = models.CharField(
+        max_length=20,
+        choices=Provider.choices,
+        default=Provider.OLLAMA,
+        verbose_name="Modify Provider",
+        help_text="Provider used by the Modify (writeback) pipeline.",
+    )
+    modify_model = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        verbose_name="Modify Model",
+        help_text="Model identifier for the Modify provider. Blank = .env default.",
+    )
+    force_local_ollama = models.BooleanField(
+        default=False,
+        verbose_name="Force Local Ollama",
+        help_text=(
+            "Emergency override: route every LLM call to local Ollama, ignoring "
+            "the per-purpose provider settings above. Useful for cost-free testing "
+            "or provider-outage failover."
+        ),
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Site LLM Configuration"
+        verbose_name_plural = "Site LLM Configuration"
+
+    def __str__(self) -> str:
+        if self.force_local_ollama:
+            return "Site LLM (force local Ollama)"
+        return f"Ask={self.ask_provider} · Modify={self.modify_provider}"
+
+    @classmethod
+    def load(cls) -> "SiteLLMConfig":
+        """Get-or-create the singleton, seeding defaults from settings on first read."""
+        obj, created = cls.objects.get_or_create(pk=1)
+        if created:
+            obj.ask_provider = settings.ASK_PROVIDER
+            obj.modify_provider = settings.MODIFY_PROVIDER
+            # Cloud-provider models live in ask_model / modify_model. When the seeded
+            # provider is Ollama, leave them blank so resolve() falls back to
+            # settings.OLLAMA_MODEL — otherwise we'd persist a Claude/Llama name on
+            # an Ollama provider, which is meaningless.
+            obj.ask_model = settings.ASK_MODEL if obj.ask_provider != cls.Provider.OLLAMA else ""
+            obj.modify_model = (
+                settings.MODIFY_MODEL if obj.modify_provider != cls.Provider.OLLAMA else ""
+            )
+            obj.save()
+        return obj
+
+    def resolve(self, purpose: str) -> tuple[str, str]:
+        """Return (provider, model) for a given call-site purpose ('ask' | 'modify')."""
+        if self.force_local_ollama:
+            return ("ollama", settings.OLLAMA_MODEL)
+        if purpose == "ask":
+            provider, model = self.ask_provider, self.ask_model
+            cloud_default = settings.ASK_MODEL
+        elif purpose == "modify":
+            provider, model = self.modify_provider, self.modify_model
+            cloud_default = settings.MODIFY_MODEL
+        else:
+            raise ValueError(f"Unknown LLM purpose: {purpose!r} (expected 'ask' | 'modify')")
+        provider = str(provider)
+        if provider == "ollama":
+            return ("ollama", settings.OLLAMA_MODEL)
+        return (provider, model or cloud_default)

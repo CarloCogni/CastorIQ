@@ -4,8 +4,9 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import User
 from django.utils import timezone
 from django.utils.html import format_html
+from solo.admin import SingletonModelAdmin
 
-from .models import ErrorLog, TeamNote, UserLLMConfig
+from .models import ErrorLog, SiteLLMConfig, TeamNote, UserLLMConfig
 
 # Unregister the default UserAdmin and register with search_fields
 admin.site.unregister(User)
@@ -152,6 +153,34 @@ class ErrorLogAdmin(admin.ModelAdmin):
 class UserLLMConfigAdmin(admin.ModelAdmin):
     list_display = ("user", "active_model", "updated_at")
     list_filter = ("active_model",)
+    readonly_fields = ("updated_at",)
+
+
+@admin.register(SiteLLMConfig)
+class SiteLLMConfigAdmin(SingletonModelAdmin):
+    """Site-wide LLM provider configuration. Operator flips Ask/Modify per provider here."""
+
+    fieldsets = (
+        (
+            "Ask pipeline (RAG)",
+            {"fields": ("ask_provider", "ask_model")},
+        ),
+        (
+            "Modify pipeline (writeback)",
+            {"fields": ("modify_provider", "modify_model")},
+        ),
+        (
+            "Emergency override",
+            {
+                "fields": ("force_local_ollama",),
+                "description": (
+                    "When enabled, every LLM call routes to local Ollama regardless "
+                    "of the per-purpose settings above. Use for cost-free testing or "
+                    "provider-outage failover."
+                ),
+            },
+        ),
+    )
     readonly_fields = ("updated_at",)
 
 
