@@ -57,18 +57,18 @@ Get the server breathing. Nothing Django yet — just infra fundamentals so M5 i
 
 Cloud LLMs as defaults — Claude for Ask, Groq Llama-3.3-70B for Modify — but **all three providers (Anthropic, Groq, Ollama) are runtime-switchable** via a `SiteLLMConfig` admin singleton. Local Ollama LLM stays a first-class option, not a fallback.
 
-- [ ] `SiteLLMConfig` singleton model (one row, ever): `ask_provider`, `ask_model`, `modify_provider`, `modify_model`, `force_local_ollama` (global override). Use `django-solo` or hand-rolled singleton pattern
-- [ ] Django admin for `SiteLLMConfig` with provider dropdowns; flipping a value takes effect on the next call (no deploy)
-- [ ] `src/core/services/llm_client.py` — provider dispatcher (`ollama | groq | anthropic`); reads `SiteLLMConfig` at call time, falls back to env defaults if singleton missing
-- [ ] Settings env vars: `ANTHROPIC_API_KEY`, `GROQ_API_KEY`, `OLLAMA_HOST`, defaults `ASK_PROVIDER=anthropic`, `MODIFY_PROVIDER=groq`, `ASK_MODEL=claude-sonnet-4-6`, `MODIFY_MODEL=llama-3.3-70b-versatile`
-- [ ] Anthropic SDK wired into `chat/services/rag_service.py` (Ask path)
-- [ ] Groq SDK wired into `writeback/services/` for triage / planner / hint generator
-- [ ] Provider-specific kwargs translated at the dispatcher (Ollama `num_predict` ≡ Groq/Anthropic `max_tokens`); call sites stay provider-agnostic
-- [ ] Real wall-clock timeout normalised across all major call sites (`ThreadPoolExecutor.result(timeout=N)` helper from `core/llm.py`)
-- [ ] Anthropic prompt caching enabled on stable system prompts (`claude-api` skill — invoke when implementing)
-- [ ] Cloud failure surfaces a clear error (toast or banner) — no silent provider fallback. The operator decides via admin whether to flip to Ollama after an outage
-- [ ] Smoke: Ask question on the sample project against each of the three providers
-- [ ] Smoke: Modify pipeline (T1 → T2) against each of the three providers
+- [x] `SiteLLMConfig` singleton model (one row, ever): `ask_provider`, `ask_model`, `modify_provider`, `modify_model`, `force_local_ollama` (global override). Use `django-solo` or hand-rolled singleton pattern
+- [x] Django admin for `SiteLLMConfig` with provider dropdowns; flipping a value takes effect on the next call (no deploy)
+- [x] `core/llm.py` provider dispatcher (`ollama | groq | anthropic`); reads `SiteLLMConfig` at call time, falls back to Ollama if singleton missing — extends the existing factory rather than carving out a new module
+- [x] Settings env vars: `ANTHROPIC_API_KEY`, `GROQ_API_KEY`, `OLLAMA_HOST`, defaults `ASK_PROVIDER=ollama` and `MODIFY_PROVIDER=ollama` (operator flips to Anthropic / Groq via admin once the keys are loaded), `ASK_MODEL=claude-sonnet-4-6`, `MODIFY_MODEL=llama-3.3-70b-versatile`
+- [x] Anthropic SDK wired into `chat/services/rag_service.py` (Ask path) — refactored away from `ChatPromptTemplate.from_template` so the system prompt can be cached separately
+- [x] Groq SDK wired through the same dispatcher; writeback services use it on `purpose='modify'`
+- [x] Provider-specific kwargs translated at the dispatcher (Ollama `num_predict` ≡ Groq/Anthropic `max_tokens`); call sites stay provider-agnostic
+- [x] Real wall-clock timeout normalised — `core.llm.safe_invoke` consolidates the `ThreadPoolExecutor.result(timeout=N)` pattern; `conflict_scan_service` and `hint_generator` migrated
+- [x] Anthropic prompt caching wired on stable system prompts via `core.llm.cached_system` — Triage classifier, Tier 3 reviewer, and RAG `SYSTEM_PROMPT`
+- [x] Cloud failure surfaces a clear error — `LLMConfigurationError` (missing key) and `LLMMasterKillError` (env-driven kill switch) raised at the dispatcher; M2 wires them to user-visible toasts
+- [x] Smoke: `manage.py smoke_llm_providers --provider {ollama|anthropic|groq|all}` runs Ask + Modify intents against the chosen provider
+- [ ] Smoke: T1 → T2 end-to-end against each provider (deferred — depends on a real proposal flow; covered manually before the Wave 1 invites)
 
 **Done when:** the existing test suite passes against each of the three providers, swapped via the admin singleton. Flipping `force_local_ollama=True` instantly routes everything to local Ollama. T3 generates valid IfcOpenShell code on each provider.
 
