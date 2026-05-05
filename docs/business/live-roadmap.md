@@ -98,18 +98,19 @@ Visible per-user daily cap, real cost logging, kill-switch. Detail and pricing m
 
 The funnel. Public landing → form → admin review → manual user creation → welcome email.
 
-- [ ] `BetaApplication` model (`email`, `name`, `job_title`, `description`, `status` ∈ pending|called|approved|rejected, `notes`, `created_at`, `reviewed_at`, `reviewed_by`)
-- [ ] Public landing template at `/` (unauth-safe): hero, embedded YouTube `<iframe>` (placeholder ID for now), 3-bullet value prop, application form, footer link to privacy/terms
-- [ ] Landing scope class: `.beta-scope` or reuse existing dark-theme tokens; do NOT churn other working templates (per CLAUDE.md feedback)
-- [ ] Application form view: POST → save `BetaApplication` → confirmation toast → confirmation email to applicant
-- [ ] Honeypot + simple rate limit on the form (`django-ratelimit` or hand-rolled session check)
-- [ ] Django admin list for `BetaApplication`: filter by status, search by email, "approve" admin action
-- [ ] "Approve" action: creates `User` (email = application email, unusable password), triggers welcome email, marks application approved with timestamp + reviewer
-- [ ] Welcome email template (HTML + plaintext, Mailgun-rendered) with set-password link (Django's built-in `PasswordResetConfirmView`)
-- [ ] `PASSWORD_RESET_TIMEOUT` set to 7 days
-- [ ] Short heads-up footer line on the landing page: "Castor is a private testing environment. Uploaded IFCs are processed by cloud LLM providers when active. By applying you opt into a research/test setup." — informational, not a legal disclosure (no company behind Castor yet)
-- [ ] Login view exists; logout clears the session correctly
-- [ ] **No public registration view exists.** If `users/urls.py` ships one accidentally, remove it
+- [x] `BetaApplication` model (`email`, `name`, `job_title`, `description`, `status` ∈ pending|called|approved|rejected, `notes`, `created_at`, `reviewed_at`, `reviewed_by`, `created_user` FK to the eventual User row, plus `submitted_ip` / `submitted_user_agent` for spam triage)
+- [x] Public landing template at `/` (unauth-safe): hero, embedded YouTube `<iframe>` (placeholder ID), 3 feature cards (Ask / Modify / Versioned), application form, footer heads-up. Standalone dark-theme shell — does not extend base.html
+- [x] Landing uses local CSS tokens scoped inside the standalone shell — no churn on the existing `.facilities-scope` / `.modify-scope` system
+- [x] Application form view: POST → honeypot + per-session throttle → validate → persist → Django messages render under the form → confirmation email
+- [x] Honeypot field (`company_website`) + 60s/session per-IP throttle, hand-rolled (no extra dep)
+- [x] Django admin list for `BetaApplication`: status / created_at filters, search across email/name/job/description/notes, three bulk actions (approve, mark called, mark rejected)
+- [x] "Approve → create User + send welcome email" admin action: creates User (username=email, unusable password), builds set-password URL via `PasswordResetConfirmView` token, dispatches welcome email, marks app approved with reviewer + timestamp + created_user FK. Idempotent across re-runs.
+- [x] Welcome email template (HTML + plaintext) with set-password link, daily-cap heads-up, sample-project pre-load note
+- [x] `PASSWORD_RESET_TIMEOUT = 7 * 24 * 3600` (7 days) in base settings
+- [x] Landing footer heads-up line: "Castor is a private testing environment. Uploaded IFCs are processed by cloud LLM providers when active." — informational, not legal
+- [x] Login view exists; logout clears the session correctly
+- [x] No public registration view exists — non-functional "Create Account" button on login.html removed; replaced with link back to the landing form
+- [x] `?` help pill + modal on the landing page explaining what Castor is, how vetting works, what users get on approval, caveats (CLAUDE.md non-negotiable)
 
 **Done when:** end-to-end on staging — submit application logged out → see toast → approve in admin → receive welcome email → click set-password link → set password → land on `/projects/` with the sample project listed.
 
