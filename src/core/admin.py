@@ -6,7 +6,14 @@ from django.utils import timezone
 from django.utils.html import format_html
 from solo.admin import SingletonModelAdmin
 
-from .models import ErrorLog, SiteLLMConfig, TeamNote, UserLLMConfig
+from .models import (
+    ErrorLog,
+    LLMCallLog,
+    SiteLLMConfig,
+    TeamNote,
+    UserLLMConfig,
+    UserTokenBudget,
+)
 
 # Unregister the default UserAdmin and register with search_fields
 admin.site.unregister(User)
@@ -154,6 +161,76 @@ class UserLLMConfigAdmin(admin.ModelAdmin):
     list_display = ("user", "active_model", "updated_at")
     list_filter = ("active_model",)
     readonly_fields = ("updated_at",)
+
+
+@admin.register(UserTokenBudget)
+class UserTokenBudgetAdmin(admin.ModelAdmin):
+    """Per-user daily LLM token cap. Operator can reset, raise, or hard-block."""
+
+    list_display = (
+        "user",
+        "daily_cap",
+        "used_today",
+        "remaining_display",
+        "hard_blocked",
+        "last_reset_at",
+    )
+    list_filter = ("hard_blocked",)
+    search_fields = ("user__username", "user__email")
+    actions = ["reset_used_today", "block_user", "unblock_user"]
+    readonly_fields = ("last_reset_at", "updated_at")
+
+    def remaining_display(self, obj: UserTokenBudget) -> str:
+        return f"{obj.remaining:,}" if obj.daily_cap else "unlimited"
+
+    remaining_display.short_description = "Remaining"
+
+    @admin.action(description="Reset used_today to 0")
+    def reset_used_today(self, request, queryset):
+        updated = queryset.update(used_today=0, last_reset_at=timezone.now())
+        self.message_user(request, f"Reset {updated} budget(s).")
+
+    @admin.action(description="Block (refuse all cloud LLM calls)")
+    def block_user(self, request, queryset):
+        updated = queryset.update(hard_blocked=True)
+        self.message_user(request, f"Hard-blocked {updated} user(s).")
+
+    @admin.action(description="Unblock")
+    def unblock_user(self, request, queryset):
+        updated = queryset.update(hard_blocked=False)
+        self.message_user(request, f"Unblocked {updated} user(s).")
+
+
+@admin.register(LLMCallLog)
+class LLMCallLogAdmin(admin.ModelAdmin):
+    """Read-only LLM-call audit log. One row per invoke, success or failure."""
+
+    list_display = (
+        "created_at",
+        "user",
+        "provider",
+        "model",
+        "purpose",
+        "tokens_in",
+        "tokens_out",
+        "estimated_cost_usd",
+        "latency_ms",
+        "succeeded",
+    )
+    list_filter = ("provider", "purpose", "succeeded", "created_at")
+    search_fields = ("user__username", "user__email", "model", "error_type")
+    date_hierarchy = "created_at"
+    list_per_page = 100
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        # Allow purging old rows from admin if the table grows large.
+        return request.user.is_superuser
 
 
 @admin.register(SiteLLMConfig)
