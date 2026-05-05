@@ -1,0 +1,26 @@
+Hi {{ user_full_name|default:user.username }},
+
+Your Castor beta application has been approved. Welcome!
+
+Set your password and sign in:
+{{ set_password_url }}
+
+This link is valid for 7 days.
+
+A few things you should know about the beta:
+
+  - It's a private testing environment. We're a small team running this
+    on a single VPS. Things will occasionally break.
+  - When you ask Castor a question or propose a modification, the request
+    is processed by cloud LLM providers (Anthropic, Groq) when they are
+    active in our admin config. Don't upload anything you wouldn't share
+    with those providers under their standard policies.
+  - You have a daily token cap (visible inside the app). It resets at
+    midnight UTC. If you need it raised, just email us back.
+  - You'll see a sample IFC project pre-loaded on first login. Use it to
+    explore Ask and Modify before uploading your own files.
+
+If anything looks wrong, reply to this email — it goes to a real human.
+
+— The Castor team
+{{ site_url }}
