@@ -72,6 +72,7 @@ TEMPLATES = [
                 "django.contrib.messages.context_processors.messages",
                 "core.context_processors.llm_context",
                 "core.context_processors.maintenance_banner",
+                "core.context_processors.token_budget",
             ],
         },
     },

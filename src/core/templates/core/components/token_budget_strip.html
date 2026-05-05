@@ -1,0 +1,33 @@
+<!-- core/components/token_budget_strip.html
+     Per-user daily LLM token cap banner.
+     Rendered by Ask + Modify panels. Reads token_used / token_cap / token_pct
+     from core.context_processors.token_budget. -->
+{% if token_show %}
+<div class="px-3 py-1 small d-flex align-items-center justify-content-between border-bottom"
+     style="background: var(--bs-tertiary-bg);"
+     id="castor-token-strip">
+    <span class="d-flex align-items-center gap-2 text-secondary">
+        <i class="bi bi-coin"></i>
+        <span>
+            <strong class="{% if token_pct >= 90 %}text-danger{% elif token_pct >= 70 %}text-warning{% else %}text-light{% endif %}">{{ token_used }}</strong>
+            / {{ token_cap }} tokens today
+        </span>
+        <div class="progress" style="width: 120px; height: 6px;">
+            <div class="progress-bar {% if token_pct >= 90 %}bg-danger{% elif token_pct >= 70 %}bg-warning{% else %}bg-primary{% endif %}"
+                 role="progressbar"
+                 style="width: {{ token_pct }}%;"
+                 aria-valuenow="{{ token_pct }}"
+                 aria-valuemin="0"
+                 aria-valuemax="100"></div>
+        </div>
+        {% if token_blocked %}
+        <span class="badge bg-danger">paused</span>
+        {% endif %}
+    </span>
+    <a href="mailto:carlo.cogni@protonmail.com?subject=Castor%20beta%3A%20token%20cap%20raise%20request"
+       class="text-decoration-none small"
+       title="Email the operator to request more tokens">
+        <i class="bi bi-envelope-plus"></i> request more
+    </a>
+</div>
+{% endif %}

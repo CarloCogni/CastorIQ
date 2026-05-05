@@ -47,3 +47,40 @@ def maintenance_banner(request):
     so the banner shows even on unauthenticated pages (landing, login).
     """
     return {"llm_master_kill": getattr(settings, "LLM_MASTER_KILL", False)}
+
+
+def token_budget(request):
+    """
+    Inject the authenticated user's daily token budget into every template.
+
+    Available in templates as:
+        {{ token_used }}      — tokens consumed today
+        {{ token_cap }}       — daily cap (0 means unlimited)
+        {{ token_pct }}       — used / cap × 100, capped at 100
+        {{ token_blocked }}   — True when hard_blocked is set
+        {{ token_show }}      — whether to render the banner at all
+
+    Cap=0 hides the banner; UserTokenBudget rows are auto-created by
+    UserTokenBudget.load() so any authenticated user has a row.
+    """
+    if not hasattr(request, "user") or not request.user.is_authenticated:
+        return {"token_show": False}
+
+    try:
+        from core.models import UserTokenBudget
+
+        budget = UserTokenBudget.load(request.user)
+        budget.reset_if_new_day()
+        cap = budget.daily_cap or 0
+        used = budget.used_today or 0
+        pct = min(100, int((used / cap) * 100)) if cap else 0
+        return {
+            "token_show": cap > 0,
+            "token_used": used,
+            "token_cap": cap,
+            "token_pct": pct,
+            "token_blocked": budget.hard_blocked,
+        }
+    except Exception:
+        # DB not ready or table missing — skip the banner silently.
+        return {"token_show": False}
