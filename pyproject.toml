@@ -31,6 +31,11 @@ dependencies = [
     "pymupdf>=1.27.2.2",
     "pillow>=12.1.1",
     "openpyxl>=3.1.5",
+    "anthropic>=0.99.0",
+    "groq>=0.37.1",
+    "langchain-anthropic>=1.4.3",
+    "langchain-groq>=1.1.2",
+    "django-solo>=2.5.1",
 ]
 
 [project.optional-dependencies]

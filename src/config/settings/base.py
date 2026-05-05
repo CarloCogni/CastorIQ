@@ -32,6 +32,7 @@ INSTALLED_APPS = [
     "crispy_forms",
     "crispy_bootstrap5",
     "channels",
+    "solo",
     # Local apps
     "core",
     "environments",
@@ -136,6 +137,20 @@ OLLAMA_EMBED_BATCH_SIZE = int(os.getenv("OLLAMA_EMBED_BATCH_SIZE", "16"))
 # Per-request timeout (seconds) applied to every ChatOllama call. A hung Ollama
 # request otherwise wedges the ASGI thread pool and blocks cancellation.
 OLLAMA_REQUEST_TIMEOUT = float(os.getenv("OLLAMA_REQUEST_TIMEOUT", "120"))
+
+# Cloud LLM Providers (beta launch)
+# Provider selection per call site (Ask vs Modify) is the SiteLLMConfig singleton's
+# job at runtime; these env vars are the boot defaults the singleton seeds itself with
+# the first time it's read. Local Ollama remains a first-class option at any moment.
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+ASK_PROVIDER = os.getenv("ASK_PROVIDER", "ollama")  # ollama | anthropic | groq
+ASK_MODEL = os.getenv("ASK_MODEL", "claude-sonnet-4-6")
+MODIFY_PROVIDER = os.getenv("MODIFY_PROVIDER", "ollama")  # ollama | anthropic | groq
+MODIFY_MODEL = os.getenv("MODIFY_MODEL", "llama-3.3-70b-versatile")
+# Last-resort circuit-breaker. When set, the dispatcher refuses every cloud call and
+# the site renders a "paused for maintenance" banner. Local Ollama still works.
+LLM_MASTER_KILL = os.getenv("LLM_MASTER_KILL", "0") == "1"
 
 # RAG Token Budget
 RAG_RESPONSE_RESERVE = int(os.getenv("RAG_RESPONSE_RESERVE", "1500"))
