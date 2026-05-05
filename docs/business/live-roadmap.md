@@ -160,9 +160,10 @@ Pre-flight, polish, first wave of trusted invites. Replaces the standalone launc
 **Polish & content**
 - [ ] Demo video produced: 60–90 seconds, screen recording + voiceover, shows Ask → T1 → T2 → T3 with review gate
 - [ ] Video uploaded to YouTube (unlisted is fine); `<iframe>` embed updated on landing page
-- [ ] Help modals reviewed across all tabs (CLAUDE.md non-negotiable — `?` pill on every meaningful page)
+- [~] Help modals reviewed across all tabs (CLAUDE.md non-negotiable — `?` pill on every meaningful page) — Ask now ships a modal (M6.2); Modify already had its set; History + Schedule remain — flagged as follow-up, low priority for wave-1
 - [ ] Error messages, loading states, empty states tightened wherever a beta user might land cold
-- [ ] Landing footer heads-up line finalised (informational, no legal page needed at this stage)
+- [x] Landing footer heads-up line finalised (informational, no legal page needed at this stage)
+- [x] Sentry SDK wired in `production.py` only, gated on `SENTRY_DSN` env var, `send_default_pii=False` (M6.1)
 
 **Pre-flight checklist (was launch-checklist.md, folded in)**
 - [ ] DNS for `castoriq.io` resolves to VPS from a public DNS checker (`dig @1.1.1.1`)
