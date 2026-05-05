@@ -189,15 +189,14 @@
                     <button type="submit" class="btn btn-castor rounded-3">
                         <i class="bi bi-box-arrow-in-right me-2"></i> Initialize Session
                     </button>
-
-                    <button type="button" class="btn btn-register rounded-3">
-                        Create Account
-                    </button>
                 </div>
             </form>
 
             <div class="mt-4 text-center">
-                <a href="#" class="text-white-50 text-decoration-none fs-7 hover-white">Forgot password?</a>
+                <a href="{% url 'password_reset' %}" class="text-white-50 text-decoration-none fs-7 hover-white">Forgot password?</a>
+                <div class="mt-2 small text-white-50">
+                    No account yet? <a href="/" class="text-white-50">Apply on the landing page</a>
+                </div>
             </div>
         </div>
     </div>
