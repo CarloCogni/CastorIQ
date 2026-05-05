@@ -4,26 +4,81 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('core', '0008_userllmconfig_theme'),
+        ("core", "0008_userllmconfig_theme"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='SiteLLMConfig',
+            name="SiteLLMConfig",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('ask_provider', models.CharField(choices=[('ollama', 'Ollama (local)'), ('anthropic', 'Anthropic Claude'), ('groq', 'Groq')], default='ollama', help_text='Provider used by the Ask (RAG) pipeline.', max_length=20, verbose_name='Ask Provider')),
-                ('ask_model', models.CharField(blank=True, default='', help_text='Model identifier for the Ask provider. Blank = .env default.', max_length=100, verbose_name='Ask Model')),
-                ('modify_provider', models.CharField(choices=[('ollama', 'Ollama (local)'), ('anthropic', 'Anthropic Claude'), ('groq', 'Groq')], default='ollama', help_text='Provider used by the Modify (writeback) pipeline.', max_length=20, verbose_name='Modify Provider')),
-                ('modify_model', models.CharField(blank=True, default='', help_text='Model identifier for the Modify provider. Blank = .env default.', max_length=100, verbose_name='Modify Model')),
-                ('force_local_ollama', models.BooleanField(default=False, help_text='Emergency override: route every LLM call to local Ollama, ignoring the per-purpose provider settings above. Useful for cost-free testing or provider-outage failover.', verbose_name='Force Local Ollama')),
-                ('updated_at', models.DateTimeField(auto_now=True)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                (
+                    "ask_provider",
+                    models.CharField(
+                        choices=[
+                            ("ollama", "Ollama (local)"),
+                            ("anthropic", "Anthropic Claude"),
+                            ("groq", "Groq"),
+                        ],
+                        default="ollama",
+                        help_text="Provider used by the Ask (RAG) pipeline.",
+                        max_length=20,
+                        verbose_name="Ask Provider",
+                    ),
+                ),
+                (
+                    "ask_model",
+                    models.CharField(
+                        blank=True,
+                        default="",
+                        help_text="Model identifier for the Ask provider. Blank = .env default.",
+                        max_length=100,
+                        verbose_name="Ask Model",
+                    ),
+                ),
+                (
+                    "modify_provider",
+                    models.CharField(
+                        choices=[
+                            ("ollama", "Ollama (local)"),
+                            ("anthropic", "Anthropic Claude"),
+                            ("groq", "Groq"),
+                        ],
+                        default="ollama",
+                        help_text="Provider used by the Modify (writeback) pipeline.",
+                        max_length=20,
+                        verbose_name="Modify Provider",
+                    ),
+                ),
+                (
+                    "modify_model",
+                    models.CharField(
+                        blank=True,
+                        default="",
+                        help_text="Model identifier for the Modify provider. Blank = .env default.",
+                        max_length=100,
+                        verbose_name="Modify Model",
+                    ),
+                ),
+                (
+                    "force_local_ollama",
+                    models.BooleanField(
+                        default=False,
+                        help_text="Emergency override: route every LLM call to local Ollama, ignoring the per-purpose provider settings above. Useful for cost-free testing or provider-outage failover.",
+                        verbose_name="Force Local Ollama",
+                    ),
+                ),
+                ("updated_at", models.DateTimeField(auto_now=True)),
             ],
             options={
-                'verbose_name': 'Site LLM Configuration',
-                'verbose_name_plural': 'Site LLM Configuration',
+                "verbose_name": "Site LLM Configuration",
+                "verbose_name_plural": "Site LLM Configuration",
             },
         ),
     ]
