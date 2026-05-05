@@ -36,3 +36,14 @@ def llm_context(request):
         "active_llm_info": get_model_info(model_tag),
         "user_theme": user_theme,
     }
+
+
+def maintenance_banner(request):
+    """
+    Inject the master-kill flag into every template.
+
+    Available in templates as ``{{ llm_master_kill }}``. The base template
+    renders a global banner when truthy. Wired separately from llm_context
+    so the banner shows even on unauthenticated pages (landing, login).
+    """
+    return {"llm_master_kill": getattr(settings, "LLM_MASTER_KILL", False)}

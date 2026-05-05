@@ -898,6 +898,17 @@
     {% block extra_css %}{% endblock %}
 </head>
 <body>
+    {% if llm_master_kill %}
+    <!-- Site-wide maintenance banner triggered by LLM_MASTER_KILL=1 in env. -->
+    <div id="castor-master-kill-banner"
+         class="alert alert-warning text-center py-2 mb-0 rounded-0"
+         role="alert"
+         style="border-left:0;border-right:0;border-top:0;font-size:0.85rem;">
+        <i class="bi bi-cone-striped me-1"></i>
+        <strong>Castor is paused for maintenance.</strong>
+        Cloud LLM calls are disabled while we work on something. Local features still work.
+    </div>
+    {% endif %}
     {% block body %}
     <div class="d-flex flex-column vh-100">
         {% include "core/components/navbar.html" %}
