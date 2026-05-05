@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     "metacastor",
     "eastereggs",
     "facilities",
+    "beta",
 ]
 
 MIDDLEWARE = [
