@@ -29,7 +29,12 @@ from django.views.generic import (
 from chat.models import ChatSession, Message
 from chat.services.rag_service import SYSTEM_PROMPT, RAGService
 from core.http import toast_response, trigger_toast
-from core.llm import resolve_model_name
+from core.llm import (
+    LLMConfigurationError,
+    LLMMasterKillError,
+    TokenBudgetExceededError,
+    resolve_model_name,
+)
 from core.mixins import (
     ProjectAccessMixin,
     ProjectOwnerRequiredMixin,
@@ -291,6 +296,30 @@ class AskView(ProjectTabMixin, TemplateView):
                 role=Message.Role.ASSISTANT,
                 content=answer_text,
                 retrieved_context=rag._serialize_context(context_items, scope=scope),
+            )
+        except (
+            LLMConfigurationError,
+            LLMMasterKillError,
+            TokenBudgetExceededError,
+        ) as e:
+            # Cloud guardrail tripped — surface the friendly reason rather than
+            # the misleading "check Ollama" line.
+            if isinstance(e, TokenBudgetExceededError):
+                friendly = (
+                    f"You've hit your daily token cap ({e.used}/{e.cap}). "
+                    "It resets at midnight UTC. Email the operator to request more."
+                )
+            elif isinstance(e, LLMMasterKillError):
+                friendly = (
+                    "Castor is paused for maintenance. Cloud LLM calls are disabled right now."
+                )
+            else:
+                friendly = "The configured LLM provider is missing its API key. The operator has been notified."
+            logger.warning("Ask blocked by guardrail for session %s: %s", session.pk, e)
+            Message.objects.create(
+                session=session,
+                role=Message.Role.ASSISTANT,
+                content=f"⚠️ {friendly}",
             )
         except Exception as e:
             logger.exception("RAG generation failed for session %s: %s", session.pk, e)
