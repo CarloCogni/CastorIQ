@@ -4,12 +4,11 @@ from textwrap import dedent
 from typing import Any
 
 from django.db.models import Count
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import HumanMessage
 from pgvector.django import CosineDistance
 
 from chat.models import ChatSession, Message
-from core.llm import get_llm, resolve_model_name
+from core.llm import cached_system, get_llm, resolve_model_name
 from core.token_budget import compute_budget, compute_retrieval_budget
 from core.token_utils import estimate_tokens
 from documents.models import Document, DocumentChunk
@@ -645,38 +644,34 @@ class RAGService:
         )
 
         # --- 6. Assemble prompt ---
-        template = (
-            "{system_prompt}\n\n"
-            "ANALYSIS MODE: {analysis_mode}\n"
-            "{mode_instruction}\n\n"
-            "=== PROJECT FILES ===\n"
-            "{project_meta}\n\n"
-            "=== RETRIEVED EXCERPTS ===\n"
-            "{context_str}\n\n"
-            "{history_block}"
-            "=== CURRENT QUESTION ===\n"
-            "{question}\n\n"
-            "=== ANSWER ==="
-        )
-
+        # The system prompt is split out as a separate (cached, when on Anthropic)
+        # SystemMessage so prompt-caching can pin the stable rubric while the
+        # per-query body churns. Other providers receive a plain SystemMessage
+        # with the same content.
         history_block = ""
         if history_str:
             history_block = f"=== RECENT CONVERSATION ===\n{history_str}\n\n"
 
-        prompt = ChatPromptTemplate.from_template(template)
-        chain = prompt | self.llm | StrOutputParser()
-
-        answer = chain.invoke(
-            {
-                "system_prompt": SYSTEM_PROMPT,
-                "analysis_mode": analysis_mode,
-                "mode_instruction": mode_instruction,
-                "project_meta": project_meta,
-                "context_str": context_str,
-                "history_block": history_block,
-                "question": query,
-            }
+        human_content = (
+            f"ANALYSIS MODE: {analysis_mode}\n"
+            f"{mode_instruction}\n\n"
+            f"=== PROJECT FILES ===\n"
+            f"{project_meta}\n\n"
+            f"=== RETRIEVED EXCERPTS ===\n"
+            f"{context_str}\n\n"
+            f"{history_block}"
+            f"=== CURRENT QUESTION ===\n"
+            f"{query}\n\n"
+            f"=== ANSWER ==="
         )
+
+        response = self.llm.invoke(
+            [
+                cached_system(self.llm, SYSTEM_PROMPT),
+                HumanMessage(content=human_content),
+            ]
+        )
+        answer = response.content if hasattr(response, "content") else str(response)
 
         return answer, final_budget.utilization_pct
 
