@@ -46,11 +46,23 @@ class EmbeddingService:
             return []
         return self._client.embed_query(text)
 
-    def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        """Embed a batch of documents. Used at indexing time."""
+    def embed_documents(self, texts: list[str], batch_size: int | None = None) -> list[list[float]]:
+        """Embed a batch of documents. Used at indexing time.
+
+        Splits the input into sub-batches before delegating to the Ollama client.
+        A single oversized HTTP request to Ollama's /api/embeddings endpoint
+        returns 400 once the body exceeds its internal limits, which surfaces
+        as a generic ingestion failure for long PDFs.
+        """
         if not texts:
             return []
-        return self._client.embed_documents(texts)
+        size = batch_size if batch_size is not None else settings.OLLAMA_EMBED_BATCH_SIZE
+        if size <= 0:
+            size = len(texts)
+        vectors: list[list[float]] = []
+        for i in range(0, len(texts), size):
+            vectors.extend(self._client.embed_documents(texts[i : i + size]))
+        return vectors
 
     @property
     def model_name(self) -> str:

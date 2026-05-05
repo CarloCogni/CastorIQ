@@ -60,7 +60,21 @@ class DocumentProcessor:
             logger.info(f"Generated {len(lc_docs)} chunks.")
 
             # 2. Embed
-            chunks_text = [doc.page_content for doc in lc_docs]
+            # Hard cap per-chunk length: a chunk that exceeds the embedding
+            # model's context window (e.g. a long URL or table row with no
+            # separator chars) makes Ollama 400 the entire batch.
+            max_chars = getattr(settings, "DOCUMENT_EMBED_MAX_CHARS", 2000)
+            chunks_text = []
+            for doc in lc_docs:
+                text = doc.page_content
+                if len(text) > max_chars:
+                    logger.warning(
+                        "Truncating oversize chunk (%d chars) in %s — splitter found no separators.",
+                        len(text),
+                        self.document.name,
+                    )
+                    text = text[:max_chars]
+                chunks_text.append(text)
             vectors = self.embedding_service.embed_documents(chunks_text)
 
             # 3. Save to DB
