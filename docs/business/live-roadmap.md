@@ -78,16 +78,17 @@ Cloud LLMs as defaults — Claude for Ask, Groq Llama-3.3-70B for Modify — but
 
 Visible per-user daily cap, real cost logging, kill-switch. Detail and pricing math in `token-economics.md`.
 
-- [ ] `UserTokenBudget` model: `user`, `daily_cap` (default 50000), `used_today`, `last_reset_at`, `hard_blocked`
-- [ ] `LLMCallLog` model: `user`, `provider`, `model`, `tokens_in`, `tokens_out`, `estimated_cost_usd`, `endpoint` (ask | modify), `created_at`
-- [ ] Pre-call estimator: refuse the request if `used_today + estimated > daily_cap` with a friendly toast
-- [ ] Post-call reconciliation against `response.usage` (real numbers, not heuristics)
-- [ ] Daily reset cron (or lazy reset on first call after midnight UTC)
-- [ ] UI banner in `chat/templates/_ask.html` and `writeback/templates/_modify.html`: "X / Y tokens today" with a "request more" mailto link
-- [ ] `LLM_MASTER_KILL=1` env var: blocks all cloud calls and renders a "Castor is paused for maintenance" banner site-wide
-- [ ] Provider quota-exhausted errors converted to friendly toasts, not 500s
-- [ ] Django admin view for `UserTokenBudget` with a "reset" admin action
-- [ ] Django admin list for `LLMCallLog` with date + user filters
+- [x] `UserTokenBudget` model: `user`, `daily_cap` (default 50000), `used_today`, `last_reset_at`, `hard_blocked`
+- [x] `LLMCallLog` model: `user`, `provider`, `model`, `tokens_in`, `tokens_out`, `estimated_cost_usd`, `purpose` (ask | modify), `latency_ms`, `succeeded`, `error_type`, `created_at`
+- [x] Pre-call estimator: refuses with `TokenBudgetExceededError` (HTTP 429 from Modify, friendly assistant message in Ask) when `used_today + estimated > daily_cap`
+- [x] Post-call reconciliation reads `response.usage_metadata` (with a `response_metadata.token_usage` fallback for older shapes) — real numbers, not heuristics
+- [x] Lazy reset on first call after midnight UTC — no cron required
+- [x] UI banner ("X / Y tokens today" + "request more" mailto) on Ask + Modify, via `core/components/token_budget_strip.html` and the `token_budget` context processor
+- [x] `LLM_MASTER_KILL=1` env var blocks all cloud calls and renders a maintenance banner site-wide via `maintenance_banner` context processor
+- [x] Provider errors surface as typed exceptions (`LLMConfigurationError`, `LLMMasterKillError`, `TokenBudgetExceededError`) and become friendly assistant messages, not 500s
+- [x] Django admin view for `UserTokenBudget` with reset / block / unblock bulk actions
+- [x] Django admin (read-only) list for `LLMCallLog` with provider, purpose, succeeded, and date_hierarchy filters
+- [x] Tier 3 review gate enforced — `code_review_acknowledged_{at,by}` on `ModificationProposal`, mandatory checkbox in `_modify.html`, `_handle_approve` returns 422 without ack, structured logging on `_execute_tier3`
 
 **Done when:** setting a user's `daily_cap` to 1 produces a friendly block on the next Ask. The admin can reset it. The total cost from a day of dogfood matches what's in the Anthropic + Groq dashboards within ±5%.
 
