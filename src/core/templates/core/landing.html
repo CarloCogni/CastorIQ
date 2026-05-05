@@ -196,6 +196,17 @@
                 intro call. There is no self-serve signup.
             </p>
 
+            {% if messages %}
+            <div class="mb-3">
+                {% for m in messages %}
+                <div class="alert {% if 'error' in m.tags %}alert-danger{% elif 'info' in m.tags %}alert-info{% else %}alert-success{% endif %} py-2 small mb-2"
+                     role="alert">
+                    {{ m }}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
             <form method="post" action="{% url 'beta:apply' %}" novalidate>
                 {% csrf_token %}
 
