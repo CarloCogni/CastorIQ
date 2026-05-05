@@ -1,0 +1,58 @@
+<!-- environments/components/ask_help_modal.html — "How Ask works" -->
+
+<div class="modal fade" id="askHelpModal" tabindex="-1" aria-labelledby="askHelpLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+
+            <div class="modal-header border-bottom px-4 py-3" style="border-color: var(--bs-border-color) !important;">
+                <h5 class="modal-title fw-semibold fs-6 mb-0" id="askHelpLabel">
+                    <i class="bi bi-search me-2 text-primary"></i>How Ask works
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body px-4 py-4">
+
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-box-seam me-1 text-primary"></i>What is it?
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    A natural-language interface to the parsed IFC model and any documents you've
+                    uploaded. Ask narrows the question down to relevant entities and document chunks
+                    via vector search, packs them into the LLM's context window, and answers with
+                    citations. Nothing here mutates the model — that's <strong class="text-body">Modify</strong>.
+                </p>
+
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-list-check me-1 text-primary"></i>How to ask a good question
+                </p>
+                <ul class="text-secondary fs-7 ps-3 mb-4">
+                    <li><strong class="text-body">Be specific.</strong> "What's the fire rating of the doors on Storey 2?" beats "tell me about doors".</li>
+                    <li><strong class="text-body">Reference what you mean.</strong> Mentioning a property name, an IFC class, or an entity name helps the retriever find the right chunks.</li>
+                    <li><strong class="text-body">Compare against docs.</strong> "Does the IFC's wall U-value match the thermal spec?" works because both sides are in the index.</li>
+                    <li><strong class="text-body">Watch the citations.</strong> Every answer cites the IFC entity or document page it came from. If something looks off, click through.</li>
+                </ul>
+
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-cpu me-1 text-primary"></i>Provider + token budget
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    Ask routes through whichever provider the operator has configured for this pipeline
+                    (Ollama / Anthropic Claude / Groq). Cloud providers count against your daily token
+                    cap shown at the top of this page; Ollama is free. The cap resets at midnight UTC —
+                    email the operator to request a raise.
+                </p>
+
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-exclamation-triangle me-1 text-primary"></i>Caveats
+                </p>
+                <ul class="text-secondary fs-7 ps-3 mb-0">
+                    <li>If a question doesn't match anything in the index, Ask says "I don't know" rather than guessing. That's deliberate.</li>
+                    <li>Long conversations consume context. If the indicator at the top says you're approaching the limit, use the <em>Compact</em> button to summarise old turns.</li>
+                    <li>Ask doesn't run scripts and can't change anything. For modifications, switch to the <strong class="text-body">Modify</strong> tab.</li>
+                </ul>
+
+            </div>
+        </div>
+    </div>
+</div>

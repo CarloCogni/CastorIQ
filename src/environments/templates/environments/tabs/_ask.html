@@ -4,6 +4,19 @@
 <div class="d-flex flex-column flex-grow-1 w-100 h-100 position-relative" style="overflow: hidden;">
 
     {% include "core/components/token_budget_strip.html" %}
+
+    <!-- Help-modal pill (CLAUDE.md non-negotiable) -->
+    <button type="button"
+            class="btn btn-sm btn-link p-0 position-absolute"
+            style="top: 8px; right: 12px; z-index: 5; color: var(--bs-secondary-color);"
+            data-bs-toggle="modal"
+            data-bs-target="#askHelpModal"
+            title="How Ask works"
+            aria-label="How Ask works">
+        <i class="bi bi-question-circle fs-5"></i>
+    </button>
+    {% include "environments/components/ask_help_modal.html" %}
+
     <div class="flex-grow-1 overflow-y-auto p-4 min-height-0"
          id="chat-messages"
          style="scroll-behavior: smooth;"
