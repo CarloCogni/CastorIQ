@@ -44,6 +44,35 @@ class LLMMasterKillError(RuntimeError):
     """Raised when ``LLM_MASTER_KILL`` is set and a cloud call is requested."""
 
 
+def cached_system(llm: BaseChatModel, content: str):
+    """
+    Build a SystemMessage marked for Anthropic prompt caching.
+
+    Anthropic's prompt cache cuts spend by ~90% on stable system prompts. We
+    encode this with a content-block list and ``cache_control={"type":
+    "ephemeral"}`` — recognised by langchain-anthropic's message translator.
+
+    For Ollama and Groq, returns a plain string-content SystemMessage so
+    behaviour is unchanged. The detection key is the LLM instance itself
+    rather than the SiteLLMConfig singleton, so this stays correct under
+    force_local_ollama and per-call provider overrides.
+    """
+    from langchain_core.messages import SystemMessage
+
+    try:
+        from langchain_anthropic import ChatAnthropic
+    except ImportError:
+        return SystemMessage(content=content)
+
+    if isinstance(llm, ChatAnthropic):
+        return SystemMessage(
+            content=[
+                {"type": "text", "text": content, "cache_control": {"type": "ephemeral"}},
+            ]
+        )
+    return SystemMessage(content=content)
+
+
 def safe_invoke(
     func: Callable[..., _T],
     *args: Any,

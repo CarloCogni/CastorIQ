@@ -26,9 +26,9 @@ import json
 import logging
 from dataclasses import dataclass
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage
 
-from core.llm import get_llm
+from core.llm import cached_system, get_llm
 
 from .tier_router import VALID_KINDS
 
@@ -206,7 +206,7 @@ class TriageClassifier:
         try:
             response = self.llm.invoke(
                 [
-                    SystemMessage(content=SYSTEM_PROMPT),
+                    cached_system(self.llm, SYSTEM_PROMPT),
                     HumanMessage(content=_USER_TEMPLATE.format(user_message=user_message)),
                 ]
             )

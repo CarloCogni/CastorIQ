@@ -3,9 +3,9 @@
 import json
 import logging
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage
 
-from core.llm import get_llm
+from core.llm import cached_system, get_llm
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +86,7 @@ class Tier3Reviewer:
     ) -> dict:
         """Review generated Tier 3 code against the original user request."""
         messages = [
-            SystemMessage(content=REVIEWER_SYSTEM_PROMPT),
+            cached_system(self.llm, REVIEWER_SYSTEM_PROMPT),
             HumanMessage(
                 content=REVIEWER_USER_TEMPLATE.format(
                     user_message=user_message,
