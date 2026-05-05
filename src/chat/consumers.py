@@ -148,6 +148,11 @@ class AskConsumer(AsyncJsonWebsocketConsumer):
         """
         from chat.models import ChatSession, Message
         from chat.services.rag_service import RAGService
+        from core.llm import (
+            LLMConfigurationError,
+            LLMMasterKillError,
+            TokenBudgetExceededError,
+        )
         from environments.models import Project
         from writeback.services.emitters import CancellationError, WebSocketEmitter
 
@@ -198,6 +203,24 @@ class AskConsumer(AsyncJsonWebsocketConsumer):
         except CancellationError:
             logger.debug("RAG pipeline cancelled for user=%s", self.user.username)
             raise
+        except (LLMConfigurationError, LLMMasterKillError, TokenBudgetExceededError) as e:
+            if isinstance(e, TokenBudgetExceededError):
+                friendly = (
+                    f"You've hit your daily token cap ({e.used}/{e.cap}). "
+                    "It resets at midnight UTC. Email the operator to request more."
+                )
+            elif isinstance(e, LLMMasterKillError):
+                friendly = (
+                    "Castor is paused for maintenance. Cloud LLM calls are disabled right now."
+                )
+            else:
+                friendly = "The configured LLM provider is missing its API key. The operator has been notified."
+            Message.objects.create(
+                session=session,
+                role=Message.Role.ASSISTANT,
+                content=f"⚠️ {friendly}",
+            )
+            return  # don't re-raise — the message is already in chat
         except Exception as e:
             Message.objects.create(
                 session=session,

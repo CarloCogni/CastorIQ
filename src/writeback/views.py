@@ -20,6 +20,11 @@ from django.views.generic import (
 
 from chat.models import ChatSession, Message
 from core.http import trigger_toast
+from core.llm import (
+    LLMConfigurationError,
+    LLMMasterKillError,
+    TokenBudgetExceededError,
+)
 from core.mixins import ProjectTabMixin
 from environments.models import Project
 from environments.services import ProjectAccessService
@@ -31,6 +36,20 @@ from writeback.services.modification_service import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _friendly_llm_error(exc: Exception) -> str:
+    """Translate a typed LLM error into a user-readable line."""
+    if isinstance(exc, TokenBudgetExceededError):
+        return (
+            f"You've hit your daily token cap ({exc.used}/{exc.cap}). "
+            "It resets at midnight UTC. Email the operator to request more."
+        )
+    if isinstance(exc, LLMMasterKillError):
+        return "Castor is paused for maintenance. Cloud LLM calls are disabled right now."
+    if isinstance(exc, LLMConfigurationError):
+        return "The configured LLM provider is missing its API key. The operator has been notified."
+    return "The LLM provider returned an error. Try again in a moment or contact the operator."
 
 
 class ModifyView(ProjectTabMixin, TemplateView):
@@ -167,6 +186,18 @@ class ModifyView(ProjectTabMixin, TemplateView):
 
         try:
             proposal = svc.propose(user_message=user_text, user=request.user)
+        except (LLMConfigurationError, LLMMasterKillError, TokenBudgetExceededError) as e:
+            # Cloud-side guardrail tripped — surface the friendly reason and stop.
+            friendly = _friendly_llm_error(e)
+            Message.objects.create(
+                session=session,
+                role=Message.Role.ASSISTANT,
+                content=f"⚠️ {friendly}",
+            )
+            return JsonResponse(
+                {"status": "blocked", "message": friendly},
+                status=429 if isinstance(e, TokenBudgetExceededError) else 503,
+            )
         except ModificationError as e:
             # Save error as assistant message
             Message.objects.create(
