@@ -5,27 +5,41 @@ with every new beta user. None of the binary files are checked in — they
 must be downloaded from the listed sources and dropped into this folder
 before deploy.
 
-## IFC model — `building.ifc`
+## IFC models — `architectural.ifc` + `structural.ifc`
 
-**Recommended:** BuildingSMART Sample Files / Duplex Apartment (IFC4).
+The sample project provisions **two** IFC files into the same `Project`:
+one architectural, one structural. Ask can cross-cut between them
+(e.g. "does the structural slab line up with the architectural FFL on
+Storey 2?") and Modify can be exercised on either.
 
-- Source repository: <https://github.com/buildingSMART/Sample-Test-Files>
-- Specific file: any of the `Duplex_*.ifc` variants (mid-complexity, ~4–10 MB)
-- License: CC-BY 4.0 — attribution OK in the help modal
-- Why it works: fully-MEP'd small residential, plenty of psets, Storey/Space
-  hierarchy intact, fire/thermal/acoustic properties realistic — exercises
-  every Castor write-back tier without being huge.
+The filenames are matched literally by `provision_sample_project`, so
+keep them exactly:
 
-**Fallback:** NIST FCM-test or KSC ER-7 (single-storey, simpler).
-
-After download:
-
-```bash
-mv ~/Downloads/Duplex_A_20110907.ifc fixtures/sample-project/building.ifc
-sha256sum fixtures/sample-project/building.ifc >> fixtures/sample-project/PROVENANCE.md
+```
+fixtures/sample-project/architectural.ifc
+fixtures/sample-project/structural.ifc
 ```
 
-Pin the hash here once chosen so a re-deploy can verify the fixture.
+**Source criteria.** Mid-complexity (a few hundred to a few thousand
+entities), IFC4 schema, non-confidential, both files describing the same
+physical building so cross-discipline questions are meaningful.
+
+**Recommended public sources:**
+
+- BuildingSMART Sample-Test-Files: <https://github.com/buildingSMART/Sample-Test-Files>
+  (CC-BY 4.0; pick a model that ships separate ARCH + STRUCT exports).
+- KIT IFC examples: <https://www.ifcwiki.org/index.php?title=KIT_IFC_Examples>
+  (split-discipline samples, public domain).
+- Or any of your own non-confidential project files renamed to match.
+
+After dropping the files in:
+
+```bash
+sha256sum fixtures/sample-project/architectural.ifc fixtures/sample-project/structural.ifc \
+  >> fixtures/sample-project/PROVENANCE.md
+```
+
+Pin the hashes here once chosen so a re-deploy can verify the fixtures.
 
 ## Documents — `docs/*.pdf`
 
