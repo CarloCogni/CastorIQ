@@ -1,6 +1,8 @@
-# The actual binary fixtures (IFC + PDFs) are sourced from public assets
-# at deploy time — see PROVENANCE.md. Don't commit them, don't commit any
-# user-uploaded variations dropped here for testing.
+# The IFC binaries are sourced from public assets at deploy time — see
+# PROVENANCE.md — and not committed. The two design-doc PDFs ARE committed
+# because they're rendered from the .md sources next to them via
+# render_pdfs.py and they're the actual demo content; any other PDF
+# dropped into docs/ stays ignored as a safety net.
 
 *.ifc
 docs/*.pdf
@@ -11,3 +13,5 @@ docs/*.PDF
 !PROVENANCE.md
 !.gitignore
 !embeddings.json
+!docs/architectural-design-brief.pdf
+!docs/structural-design-statement.pdf
