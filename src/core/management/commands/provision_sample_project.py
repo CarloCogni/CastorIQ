@@ -11,8 +11,11 @@ Usage:
     cd src && uv run python manage.py provision_sample_project <user_id> --skip-pipeline
 
 The fixture layout is documented in fixtures/sample-project/README.md and
-fixtures/sample-project/PROVENANCE.md. If the IFC or PDFs are missing, the
-command fails loud with the expected paths so the operator can drop them in.
+fixtures/sample-project/PROVENANCE.md. The command provisions BOTH the
+architectural and structural IFC files into the same Project so Ask can
+cross-cut between disciplines. If any expected fixture is missing, the
+command fails loud with all missing paths listed so the operator can
+drop them in.
 """
 
 from __future__ import annotations
@@ -29,10 +32,18 @@ from django.db import transaction
 logger = logging.getLogger(__name__)
 User = get_user_model()
 
-SAMPLE_PROJECT_NAME = "Sample Project (BuildingSMART Duplex)"
+SAMPLE_PROJECT_NAME = "Sample Project"
 SAMPLE_PROJECT_DESCRIPTION = (
-    "Auto-provisioned demo project. Curated IFC + a few specs so you can "
-    "exercise Ask and Modify against something real on first login."
+    "Auto-provisioned demo project. Architectural + structural IFC plus a few "
+    "specs so you can exercise Ask and Modify against something real on first login."
+)
+
+# Filenames the operator drops into fixtures/sample-project/. Each (filename,
+# label) becomes its own IFCFile row on the same Project — Ask can then
+# cross-cut between disciplines, and Modify routes per file.
+_SAMPLE_IFCS: tuple[tuple[str, str], ...] = (
+    ("architectural.ifc", "architectural model"),
+    ("structural.ifc", "structural model"),
 )
 
 
@@ -40,8 +51,8 @@ def _fixtures_root() -> Path:
     return Path(settings.BASE_DIR) / "fixtures" / "sample-project"
 
 
-def _expected_ifc() -> Path:
-    return _fixtures_root() / "building.ifc"
+def _expected_ifc_paths() -> list[Path]:
+    return [_fixtures_root() / name for name, _ in _SAMPLE_IFCS]
 
 
 def _expected_docs_dir() -> Path:
@@ -66,11 +77,13 @@ class Command(BaseCommand):
         user = self._resolve_user(options["user_id"])
         skip_pipeline = options["skip_pipeline"]
 
-        ifc_path = _expected_ifc()
-        if not ifc_path.exists():
+        ifc_paths = _expected_ifc_paths()
+        missing = [p for p in ifc_paths if not p.exists()]
+        if missing:
             raise CommandError(
-                f"Sample IFC missing — expected file at {ifc_path}. "
-                "See fixtures/sample-project/PROVENANCE.md for download instructions."
+                "Sample IFC fixtures missing — expected files at:\n  "
+                + "\n  ".join(str(p) for p in missing)
+                + "\nSee fixtures/sample-project/PROVENANCE.md for sourcing instructions."
             )
 
         existing = Project.objects.filter(owner=user, name=SAMPLE_PROJECT_NAME).first()
@@ -95,7 +108,13 @@ class Command(BaseCommand):
             self.style.SUCCESS(f"Created project '{project.name}' (id={project.id}).")
         )
 
-        self._provision_ifc(project, ifc_path, skip_pipeline=skip_pipeline)
+        for filename, label in _SAMPLE_IFCS:
+            self._provision_ifc(
+                project,
+                _fixtures_root() / filename,
+                label=label,
+                skip_pipeline=skip_pipeline,
+            )
         self._provision_documents(project, _expected_docs_dir(), skip_pipeline=skip_pipeline)
 
         self.stdout.write(
@@ -119,7 +138,7 @@ class Command(BaseCommand):
         except User.DoesNotExist as exc:
             raise CommandError(f"User '{identifier}' not found.") from exc
 
-    def _provision_ifc(self, project, ifc_path: Path, *, skip_pipeline: bool) -> None:
+    def _provision_ifc(self, project, ifc_path: Path, *, label: str, skip_pipeline: bool) -> None:
         from ifc_processor.models import IFCFile
 
         with ifc_path.open("rb") as fh:
@@ -129,7 +148,7 @@ class Command(BaseCommand):
                 file=File(fh, name=ifc_path.name),
                 status=IFCFile.Status.PENDING,
             )
-        self.stdout.write(f"  + IFCFile {ifc_file.name} ({ifc_file.id})")
+        self.stdout.write(f"  + IFCFile {ifc_file.name} ({label}) ({ifc_file.id})")
 
         if skip_pipeline:
             self.stdout.write("    (skipped IFC pipeline — pass without --skip-pipeline to run it)")
@@ -146,7 +165,7 @@ class Command(BaseCommand):
             else:
                 self.stdout.write(self.style.WARNING("    pipeline reported failure; check logs"))
         except Exception as exc:
-            logger.exception("Sample-project IFC pipeline failed: %s", exc)
+            logger.exception("Sample-project IFC pipeline failed for %s: %s", ifc_path.name, exc)
             self.stdout.write(
                 self.style.WARNING(f"    pipeline error: {type(exc).__name__}: {exc}")
             )
