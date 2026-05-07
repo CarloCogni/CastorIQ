@@ -66,7 +66,7 @@
 ```
 
 - **All services in one `docker-compose.prod.yml`** on the same VPS. No multi-host setup.
-- **Ollama on the VPS runs embeddings by default** (`mxbai-embed-large`, ~1 GB resident). It can *also* serve LLM inference if the operator flips Ask or Modify to the Ollama provider via `SiteLLMConfig` — in that case, `ollama pull <llm-model>` on the VPS once. For ad-hoc local-LLM testing without burdening the VPS, the operator can instead point `OLLAMA_HOST` at a dev-machine Ollama via Tailscale or similar.
+- **Ollama on the VPS runs embeddings by default** (`mxbai-embed-large`, ~1 GB resident). It can *also* serve LLM inference if the operator flips Ask or Modify to the Ollama provider via `SiteLLMConfig` — in that case, `ollama pull <llm-model>` on the VPS once. See `server-pulldown-runbook.md` Phase 4 for the actual command and the recommended small-model shortlist (`gemma3:4b` and friends — anything ≤4B params runs cleanly on the CPU-only CCX13). For ad-hoc local-LLM testing without burdening the VPS, the operator can instead point `OLLAMA_HOST` at a dev-machine Ollama via Tailscale or similar.
 - **Ports exposed to internet:** 80 (redirects to 443) and 443 only.
 - **Internal docker network** for postgres, ollama, daphne — none of them are reachable from outside.
 - **Persistent volumes:**
