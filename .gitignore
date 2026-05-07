@@ -43,6 +43,7 @@ staticfiles/
 .env
 .env.local
 .env.*.local
+.env.dev.bak
 
 # Testing
 .coverage

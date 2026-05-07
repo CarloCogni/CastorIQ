@@ -128,6 +128,24 @@ sudo systemctl enable --now ollama
 ollama pull mxbai-embed-large
 ```
 
+Optionally pull a small CPU-friendly LLM as well. Uses: cost-free end-to-end
+smoke before the cloud keys are wired up; a free fallback when Anthropic /
+Groq are flaky or rate-limit (`force_local_ollama=True` in `SiteLLMConfig`);
+ongoing dogfood without spending tokens. CCX13 has no GPU, so stick to
+≤4B-param models — `gemma3:4b` runs at ~5–15 tok/s on CPU at ~3 GB resident,
+which leaves ample headroom alongside Postgres + the embedding model.
+
+```bash
+ollama pull gemma3:4b              # or qwen3:4b, llama3.2:3b
+```
+
+To make this small model the site-wide default, set `OLLAMA_MODEL=gemma3:4b`
+in `.env` and recreate the `web` container (`docker compose ... up -d`). The
+admin's `ask_model` / `modify_model` fields are ignored when the provider is
+Ollama — `SiteLLMConfig.resolve()` always falls back to `settings.OLLAMA_MODEL`
+in that case. Per-user overrides via the in-app model selector also work
+without restart.
+
 Make Ollama listen on the docker bridge (default is loopback only):
 
 ```bash
@@ -141,6 +159,7 @@ curl -fsS http://localhost:11434/api/tags     # should list mxbai-embed-large
 
 - [ ] `ollama` service is `active`
 - [ ] `mxbai-embed-large` is in the model list
+- [ ] (Optional) Small LLM pulled (e.g. `gemma3:4b`) and visible in `ollama list`
 - [ ] UFW does **not** allow 11434 inbound from outside the box (`ufw status` shouldn't list it)
 
 ---
@@ -198,6 +217,14 @@ In a browser:
 - [ ] `https://castoriq.io/` renders the landing page
 - [ ] SSL Labs ssllabs.com/ssltest scores **A or A+**
 - [ ] Apply via the form → check pending in `/admin/` → approve → welcome email arrives → set-password link works → login → sample project visible
+- [ ] **Local-Ollama path first** (if Phase 4 pulled a small LLM): in
+      `/admin/core/sitellmconfig/` toggle `force_local_ollama = True`, run a
+      Tier 1 prompt on the sample project — should complete using the local
+      model with no Anthropic / Groq traffic. This isolates "stack works"
+      from "cloud key works" and gives a clean baseline before cloud testing.
+- [ ] **Cloud path second**: untoggle `force_local_ollama`, confirm the
+      Runtime status panel shows both API keys as `Configured ✓`, run another
+      Tier 1 prompt — should now hit the configured cloud provider.
 - [ ] Modify on the sample project: WS upgrade fires (DevTools Network tab), Tier 1 streams phase events, T3 shows the mandatory review checkbox
 
 ---

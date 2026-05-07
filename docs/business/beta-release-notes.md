@@ -58,3 +58,33 @@ connect external providers for monitoring
 connect email
  keep on going!!!!
 
+settings.html -> needs to be adjusted to be adjusted
+-----
+
+### side ntoes for dry run: 
+
+  Option A — backup & restore (do this for the dry-run tonight)
+
+  Zero refactor risk, takes 30 seconds:
+
+  # Before Phase 1
+  mv .env .env.dev.bak
+
+  # Do Phase 1 normally
+  cp .env.production.example .env
+  # edit .env, fill in DJANGO_SECRET_KEY, POSTGRES_PASSWORD, etc.
+
+  # ... run all 12 phases ...
+
+  # After Phase 12 tear-down
+  docker compose -f docker/docker-compose.prod.yml down -v
+  mv .env.dev.bak .env   # restore your dev secrets
+
+  Your dev runserver keeps working immediately afterward. Don't forget the restore step — if you do, your next cd src && uv run
+  manage.py runserver will read the prod .env and either fail (wrong DB host db instead of localhost) or behave oddly.
+
+  Defensive belt: take a quick copy you can't accidentally mv over:
+  cp .env .env.dev.bak    # copy, not move
+  # … dry-run …
+  cp .env.dev.bak .env    # overwrite the prod .env back to dev
+  rm .env.dev.bak

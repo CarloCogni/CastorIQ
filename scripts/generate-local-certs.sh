@@ -21,10 +21,14 @@ if [[ -f "$CERT_DIR/fullchain.pem" && -f "$CERT_DIR/privkey.pem" ]]; then
     exit 0
 fi
 
+# Note the leading "//" on -subj: on Git Bash for Windows, MSYS rewrites a
+# bare "/CN=localhost" into a Windows path. The double slash signals "POSIX
+# string, do not convert"; openssl skips the empty leading field, so the
+# parsed subject is identical to "/CN=localhost" on every platform.
 openssl req -x509 -nodes -newkey rsa:2048 -days 30 \
     -keyout "$CERT_DIR/privkey.pem" \
     -out    "$CERT_DIR/fullchain.pem" \
-    -subj   "/CN=localhost" \
+    -subj   "//CN=localhost" \
     -addext "subjectAltName=DNS:localhost,DNS:castoriq.io,DNS:www.castoriq.io,IP:127.0.0.1"
 
 mkdir -p "$REPO_ROOT/tmp/acme-webroot"

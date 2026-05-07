@@ -34,7 +34,7 @@ Edit `.env` and fill in:
 - `SITE_URL=https://localhost`
 - `ANTHROPIC_API_KEY` / `GROQ_API_KEY` — only if you want to exercise the cloud path; otherwise leave empty and `ASK_PROVIDER=ollama`
 
-- [ ] `.env` exists at repo root with non-empty `DJANGO_SECRET_KEY` + `POSTGRES_PASSWORD`
+- [X] `.env` exists at repo root with non-empty `DJANGO_SECRET_KEY` + `POSTGRES_PASSWORD`
 
 ---
 
@@ -44,8 +44,8 @@ Edit `.env` and fill in:
 scripts/generate-local-certs.sh
 ```
 
-- [ ] `tmp/letsencrypt/live/castoriq.io/fullchain.pem` exists
-- [ ] `tmp/letsencrypt/live/castoriq.io/privkey.pem` exists
+- [X] `tmp/letsencrypt/live/castoriq.io/fullchain.pem` exists
+- [X] `tmp/letsencrypt/live/castoriq.io/privkey.pem` exists
 
 ---
 
