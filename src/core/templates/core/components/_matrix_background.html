@@ -1,0 +1,109 @@
+<!--
+  core/components/_matrix_background.html
+  Matrix-rain canvas that builds a skyscraper silhouette in the centre of the viewport.
+  Kept in a partial so the login template (and anything else that wants the effect)
+  can include it without duplicating ~110 lines of canvas JS.
+
+  Includer must position #matrix-canvas (z-index, absolute/fixed) — the layout is
+  page-specific. The script below only handles the animation, not the placement.
+-->
+<canvas id="matrix-canvas"></canvas>
+
+<script>
+    (function () {
+        const canvas = document.getElementById('matrix-canvas');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+
+        const colorPrimary = '#4facfe';
+        const colorSecondary = '#00f2fe';
+        const colorDim = '#1a237e';
+        const fontSize = 14;
+        const fontFamily = 'JetBrains Mono, monospace';
+
+        // Digits only — reads as construction / measurement data, not anime cosplay.
+        const chars = '0123456789';
+
+        let columns = 0;
+        let drops = [];
+        let stack = [];
+        let skyline = [];
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            columns = Math.floor(canvas.width / fontSize);
+            drops = [];
+            stack = [];
+            skyline = [];
+
+            // Skyscraper silhouette: tallest in the centre, tapering at the edges.
+            const centerX = columns / 2;
+            const widthVar = columns / 4;
+
+            for (let i = 0; i < columns; i++) {
+                drops[i] = Math.random() * -100;
+                stack[i] = 0;
+
+                const distFromCenter = Math.abs(i - centerX);
+                let heightFactor = Math.max(0, 1 - (distFromCenter / widthVar));
+                heightFactor = heightFactor * (0.8 + Math.random() * 0.2);
+
+                const maxChars = Math.floor(canvas.height / fontSize);
+                skyline[i] = Math.floor(maxChars * 0.8 * heightFactor);
+            }
+        }
+
+        function draw() {
+            // Trail fade — softer than a clear() so the rain leaves ghosts behind it.
+            ctx.fillStyle = 'rgba(5, 5, 5, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.font = fontSize + 'px ' + fontFamily;
+
+            for (let i = 0; i < columns; i++) {
+
+                // Draw the building: each accumulated stack cell.
+                if (stack[i] > 0) {
+                    for (let s = 0; s < stack[i]; s++) {
+                        const y = canvas.height - (s * fontSize);
+
+                        if (Math.random() > 0.95) {
+                            ctx.fillStyle = '#fff';
+                        } else {
+                            ctx.fillStyle = colorDim;
+                        }
+
+                        const charIndex = (i + s) % chars.length;
+                        ctx.fillText(chars[charIndex], i * fontSize, y);
+                    }
+                }
+
+                // Draw the falling drop.
+                const text = chars.charAt(Math.floor(Math.random() * chars.length));
+                const yPos = drops[i] * fontSize;
+                const groundLevel = canvas.height - (stack[i] * fontSize);
+
+                if (yPos < groundLevel) {
+                    ctx.fillStyle = colorSecondary;
+                    ctx.fillText(text, i * fontSize, yPos);
+                }
+
+                // Hit detection — drops that reach the current ground stack +4 cells fast.
+                if (yPos > groundLevel) {
+                    drops[i] = 0;
+                    if (stack[i] < skyline[i]) {
+                        stack[i] += 4;
+                    }
+                }
+
+                drops[i]++;
+            }
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+        setInterval(draw, 33); // ~30 FPS
+    })();
+</script>

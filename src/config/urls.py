@@ -6,11 +6,23 @@ from django.contrib import admin
 from django.contrib.auth import views as auth_views
 from django.urls import include, path
 
-from core.views import health_check, home_view
+from core.views import (
+    health_check,
+    home_view,
+    login_page_view,
+    login_step1_reset_view,
+    login_step1_view,
+    login_step2_view,
+    privacy_view,
+    terms_view,
+)
 
 urlpatterns = [
     path("", home_view, name="home"),
     path("admin/", admin.site.urls),
+    # /healthz/ is the canonical probe (nginx, uptime monitors, M6 pre-flight).
+    # /api/health/ stays as alias for anything already wired to the old path.
+    path("healthz/", health_check, name="healthz"),
     path("api/health/", health_check, name="health_check"),
     path("projects/", include("environments.urls")),
     path("writeback/", include("writeback.urls")),
@@ -18,9 +30,17 @@ urlpatterns = [
     path("core/", include("core.urls")),
     path("eastereggs/", include("eastereggs.urls")),
     path("beta/", include("beta.urls")),
-    # Authentication
-    path("login/", auth_views.LoginView.as_view(), name="login"),
+    # Authentication — two-step login (username, then password). The GET
+    # endpoint keeps the historical name "login" so all `{% url 'login' %}`
+    # references in the codebase resolve unchanged.
+    path("login/", login_page_view, name="login"),
+    path("login/step1/", login_step1_view, name="login_step1"),
+    path("login/step1/reset/", login_step1_reset_view, name="login_step1_reset"),
+    path("login/step2/", login_step2_view, name="login_step2"),
     path("logout/", auth_views.LogoutView.as_view(next_page="login"), name="logout"),
+    # Public transparency pages — short, plain-language notes (not legal docs).
+    path("privacy/", privacy_view, name="privacy"),
+    path("terms/", terms_view, name="terms"),
     # Password reset — used both for forgotten passwords and as the "set
     # initial password" path the welcome email sends approved beta users to.
     # Templates are Django defaults until polish (M6).

@@ -1,0 +1,135 @@
+/* core/static/core/css/public.css
+ * Shared design tokens + brand mark for the unauthenticated surfaces (landing, login,
+ * privacy, terms). These pages deliberately do NOT extend core/base.html; this file
+ * is the single source of truth for their visual language.
+ */
+
+:root {
+    --castor-primary: #3b82f6;
+    --castor-blue-light: #4facfe;
+    --castor-blue-cyan: #00f2fe;
+    --castor-deep-blue: #1a237e;
+    --castor-bg: #050505;
+    --castor-surface: #0f0f10;
+    --castor-border: #1f2024;
+    --castor-text: #e7e7e7;
+    --castor-text-muted: #a4a6ab;
+    --castor-text-faint: #6b7076;
+}
+
+body {
+    background: var(--castor-bg);
+    color: var(--castor-text);
+    font-family: 'Inter', sans-serif;
+    line-height: 1.6;
+}
+
+/* CastorIQ wordmark — the public brand mark.
+ * "Castor" reads as the established short name (white→light blue gradient);
+ * "IQ" is the new identifier (solid cyan, slightly heavier weight).
+ * Used on landing nav, hero callouts, login card header, footers.
+ */
+.castoriq-wordmark {
+    font-family: 'Inter', sans-serif;
+    letter-spacing: -0.02em;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0;
+}
+.castoriq-wordmark .cw-prefix {
+    font-weight: 700;
+    background: linear-gradient(90deg, #ffffff 0%, var(--castor-blue-light) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+.castoriq-wordmark .cw-iq {
+    font-weight: 800;
+    color: var(--castor-blue-cyan);
+    letter-spacing: -0.04em;
+    margin-left: 0.04em;
+}
+
+/* Generic inline gradient highlight for hero callouts and feature emphasis.
+ * NOT a brand mark — use this for any phrase that should pop in the cyan/blue
+ * gradient. Reserve .castoriq-wordmark for the literal "CastorIQ" mark. */
+.gradient-accent {
+    background: linear-gradient(90deg, var(--castor-blue-light), var(--castor-blue-cyan));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+/* Shared form controls — dark inputs with blue focus halo. */
+.castor-public .form-control,
+.castor-public .form-select {
+    background: #1a1b1f;
+    border: 1px solid var(--castor-border);
+    color: var(--castor-text);
+}
+.castor-public .form-control:focus,
+.castor-public .form-select:focus {
+    background: #1a1b1f;
+    border-color: var(--castor-primary);
+    box-shadow: 0 0 0 0.2rem rgba(59, 130, 246, 0.15);
+    color: var(--castor-text);
+}
+
+/* Primary button used across the public surfaces. */
+.castor-public .btn-primary {
+    background: var(--castor-primary);
+    border-color: var(--castor-primary);
+}
+.castor-public .btn-primary:hover {
+    background: #2563eb;
+    border-color: #2563eb;
+}
+
+/* Subtle link treatment for footer / nav. */
+.castor-public a.subtle {
+    color: var(--castor-text-muted);
+    text-decoration: none;
+}
+.castor-public a.subtle:hover {
+    color: var(--castor-text);
+}
+
+/* Help pill — identical contract to base.html's `.help-pill` so the affordance reads
+ * the same as inside the app, even though these pages don't load base.html. */
+.castor-public .help-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 50%;
+    border: 1px dashed rgba(255, 255, 255, 0.25);
+    color: var(--castor-text-muted);
+    background: transparent;
+    padding: 0;
+    line-height: 1;
+    transition: all 0.15s ease;
+}
+.castor-public .help-pill:hover,
+.castor-public .help-pill:focus {
+    border-color: var(--castor-blue-light);
+    color: var(--castor-blue-light);
+    background: rgba(79, 172, 254, 0.08);
+}
+
+/* Honeypot field — hidden from humans, visible to dumb bots. */
+.castor-public .honeypot {
+    position: absolute;
+    left: -10000px;
+    top: auto;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+}
+
+.footer-note {
+    color: var(--castor-text-faint);
+    font-size: 0.85rem;
+}

@@ -1,4 +1,8 @@
-version: "3.9"
+# Production stack: Daphne + Postgres (pgvector) + nginx.
+# Ollama lives outside the compose stack — either on the same host (via
+# OLLAMA_HOST=http://host.docker.internal:11434 with extra_hosts) or as its own
+# container managed separately. This keeps embedding model storage off the
+# Castor image.
 
 services:
   web:
@@ -7,17 +11,25 @@ services:
       dockerfile: docker/Dockerfile
     container_name: castor-web
     environment:
-      - DJANGO_SETTINGS_MODULE=castor.settings.production
+      - DJANGO_SETTINGS_MODULE=config.settings.production
     env_file:
       - ../.env
-    ports:
-      - "8000:8000"
+    # No host port binding: nginx is the only public ingress. To probe Daphne
+    # directly during a local dry-run, use `docker compose exec web curl
+    # http://127.0.0.1:8000/healthz/`.
+    expose:
+      - "8000"
     depends_on:
       db:
         condition: service_healthy
     volumes:
       - static_volume:/app/staticfiles
       - media_volume:/app/media
+    extra_hosts:
+      # Lets the container reach Ollama running on the Docker host (Linux too,
+      # since Docker 20.10+). Override with OLLAMA_HOST in .env if Ollama is
+      # itself containerised.
+      - "host.docker.internal:host-gateway"
 
   db:
     image: pgvector/pgvector:pg16
@@ -45,6 +57,11 @@ services:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - static_volume:/app/staticfiles:ro
       - media_volume:/app/media:ro
+      # Certs come from the host's certbot. Override LETSENCRYPT_DIR for local
+      # dry-runs (e.g. ./tmp/letsencrypt with self-signed certs).
+      - ${LETSENCRYPT_DIR:-/etc/letsencrypt}:/etc/letsencrypt:ro
+      # Webroot for ACME challenges (certbot --webroot renewals).
+      - ${ACME_WEBROOT:-./tmp/acme-webroot}:/var/www/acme:ro
     depends_on:
       - web
 
