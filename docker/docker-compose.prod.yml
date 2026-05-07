@@ -34,15 +34,20 @@ services:
   db:
     image: pgvector/pgvector:pg16
     container_name: castor-db
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+    # env_file mirrors `web` so we don't depend on compose's variable
+    # substitution finding `.env` next to the compose file. The Postgres
+    # image only consumes POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB
+    # from the injected env; the rest are inert here.
+    env_file:
+      - ../.env
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      # ${POSTGRES_USER:-castor} / ${POSTGRES_DB:-castor} fall back to the
+      # default values from .env.production.example so the healthcheck shell
+      # works even before compose substitution lands.
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-castor} -d $${POSTGRES_DB:-castor}"]
       interval: 5s
       timeout: 5s
       retries: 5
