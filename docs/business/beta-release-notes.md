@@ -44,3 +44,17 @@ the point of the live roadmap is to have the milestones to work on one by one an
 Perhaps there are other documents worth creating? anything else? be creative
 
 
+#################################################################################
+
+next: dry-run-check list to double check before running. adding api keys from claude and groq.
+Double checking how quickly code updates can be pushed to production.
+push to production
+
+to check in production: backups, how to connect to external data saving source to expand like server + NAS
+
+power BI
+
+connect external providers for monitoring
+connect email
+ keep on going!!!!
+

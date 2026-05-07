@@ -1,0 +1,46 @@
+{% load static %}
+<!--
+  registration/_login_step2.html
+  Step 2 of the two-step login: password. The username is staged on the
+  session by step 1; the view reads it back so it isn't carried in the form
+  (preventing tampering and shoulder-surfing of the email value here).
+-->
+
+<div class="mb-3">
+    <div class="d-flex align-items-center gap-2 px-3 py-2 rounded-3"
+         style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);">
+        <i class="bi bi-person-circle" style="color: var(--castor-blue-light);"></i>
+        <span class="text-white-50 small flex-grow-1 text-truncate">{{ username }}</span>
+        <a href="#"
+           hx-get="{% url 'login_step1_reset' %}"
+           hx-target="#login-form-region"
+           hx-swap="innerHTML"
+           class="text-white-50 text-decoration-none small"
+           title="Use a different account">
+            <i class="bi bi-arrow-left-circle"></i>
+        </a>
+    </div>
+</div>
+
+<form id="login-step2"
+      hx-post="{% url 'login_step2' %}"
+      hx-target="#login-form-region"
+      hx-swap="innerHTML"
+      novalidate>
+    {% csrf_token %}
+
+    <div class="mb-4">
+        <label for="id_password" class="form-label text-white-50 fs-7">Password</label>
+        {{ form.password }}
+    </div>
+
+    <div class="d-grid gap-3">
+        <button type="submit" class="btn btn-castor rounded-3">
+            <i class="bi bi-box-arrow-in-right me-2"></i> Initialize Session
+        </button>
+    </div>
+</form>
+
+<div class="mt-4 text-center">
+    <a href="{% url 'password_reset' %}" class="text-white-50 text-decoration-none fs-7">Forgot password?</a>
+</div>

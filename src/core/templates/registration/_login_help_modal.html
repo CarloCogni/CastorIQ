@@ -1,0 +1,65 @@
+<!--
+  registration/_login_help_modal.html
+  Help modal for the login page. CLAUDE.md non-negotiable: every meaningful
+  page ships with a "?" pill that opens a modal explaining what it is, how to
+  use it, and where the edges are.
+-->
+<div class="modal fade" id="loginHelpModal" tabindex="-1" aria-labelledby="loginHelpModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content"
+             style="background: var(--castor-surface); border: 1px solid var(--castor-border); color: var(--castor-text);">
+            <div class="modal-header" style="border-color: var(--castor-border);">
+                <h5 class="modal-title" id="loginHelpModalLabel">
+                    <i class="bi bi-question-circle me-2" style="color: var(--castor-blue-light);"></i>Signing in to CastorIQ
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <h6 class="text-uppercase small fw-bold" style="color: var(--castor-blue-light); letter-spacing: 0.05em;">What is this page?</h6>
+                <p>
+                    The sign-in gate for vetted beta users. Access is invite-only — there is no
+                    public signup path. If you applied through the landing page and your account was
+                    approved, you received a welcome email with a one-time link to set your password.
+                </p>
+
+                <h6 class="text-uppercase small fw-bold mt-4" style="color: var(--castor-blue-light); letter-spacing: 0.05em;">How to log in</h6>
+                <ol class="ps-3">
+                    <li><strong>Email or username.</strong> Most beta users use their email; the operator may have a separate username.</li>
+                    <li><strong>Password.</strong> Enter the password you set from the welcome email.</li>
+                    <li><strong>Wrong details?</strong> The error message is intentionally generic — for security we don't say which field was wrong.</li>
+                </ol>
+
+                <h6 class="text-uppercase small fw-bold mt-4" style="color: var(--castor-blue-light); letter-spacing: 0.05em;">Forgot your password?</h6>
+                <p>
+                    Use the <em>Forgot password?</em> link below the form. We email a reset link to
+                    the address on file; the link is single-use and valid for 7 days.
+                </p>
+
+                <h6 class="text-uppercase small fw-bold mt-4" style="color: var(--castor-blue-light); letter-spacing: 0.05em;">Not approved yet?</h6>
+                <p>
+                    The only way in is the application form on the
+                    <a href="/" class="link-light">landing page</a>. We read every application by
+                    hand. Allow a few days; we may follow up for a 10-minute intro call before
+                    creating your account.
+                </p>
+
+                <h6 class="text-uppercase small fw-bold mt-4" style="color: var(--castor-blue-light); letter-spacing: 0.05em;">What you get on first login</h6>
+                <ul class="ps-3">
+                    <li>A pre-loaded sample IFC project so you can try Ask and Modify in seconds.</li>
+                    <li>A daily token allowance for cloud LLM use (visible inside the app, resets at midnight UTC).</li>
+                    <li>Direct access to the operator if anything is broken or you want the cap raised.</li>
+                </ul>
+
+                <h6 class="text-uppercase small fw-bold mt-4" style="color: var(--castor-blue-light); letter-spacing: 0.05em;">Caveats — read these</h6>
+                <ul class="ps-3">
+                    <li>This is a private testing environment. Things will occasionally break.</li>
+                    <li>When cloud LLM providers are active, your prompts and the relevant context are sent to them. Don't upload anything you wouldn't share under their standard terms.</li>
+                    <li>Geometry modifications are out of scope — Castor handles properties, materials, classifications, psets only.</li>
+                </ul>
+            </div>
+            <div class="modal-footer" style="border-color: var(--castor-border);">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>

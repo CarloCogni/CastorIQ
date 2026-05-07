@@ -1,7 +1,7 @@
 # core/admin.py
+import requests as http_requests
+from django.conf import settings
 from django.contrib import admin
-from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from django.contrib.auth.models import User
 from django.utils import timezone
 from django.utils.html import format_html
 from solo.admin import SingletonModelAdmin
@@ -15,14 +15,7 @@ from .models import (
     UserTokenBudget,
 )
 
-# Unregister the default UserAdmin and register with search_fields
-admin.site.unregister(User)
-
-
-@admin.register(User)
-class UserAdmin(BaseUserAdmin):
-    search_fields = ("username", "email", "first_name", "last_name")
-    list_display = ("username", "email", "first_name", "last_name", "is_staff", "is_active")
+# UserAdmin lives in ``users/admin.py`` now (the User model moved with it).
 
 
 @admin.register(ErrorLog)
@@ -239,6 +232,23 @@ class SiteLLMConfigAdmin(SingletonModelAdmin):
 
     fieldsets = (
         (
+            "Runtime status",
+            {
+                "fields": (
+                    "anthropic_key_status",
+                    "groq_key_status",
+                    "ollama_status",
+                    "master_kill_status",
+                ),
+                "description": (
+                    "Read-only snapshot of the .env-controlled inputs. If a cloud "
+                    "provider is selected below but its key is missing here, calls "
+                    "will fail at runtime — fix the .env entry and restart before "
+                    "flipping the dropdown."
+                ),
+            },
+        ),
+        (
             "Ask pipeline (RAG)",
             {"fields": ("ask_provider", "ask_model")},
         ),
@@ -258,7 +268,63 @@ class SiteLLMConfigAdmin(SingletonModelAdmin):
             },
         ),
     )
-    readonly_fields = ("updated_at",)
+    readonly_fields = (
+        "updated_at",
+        "anthropic_key_status",
+        "groq_key_status",
+        "ollama_status",
+        "master_kill_status",
+    )
+
+    @admin.display(description="Anthropic API key")
+    def anthropic_key_status(self, obj):
+        if getattr(settings, "ANTHROPIC_API_KEY", ""):
+            return format_html('<span style="color: #16a34a;">Configured ✓</span>')
+        return format_html(
+            '<span style="color: #dc2626;">Missing — set ANTHROPIC_API_KEY in .env</span>'
+        )
+
+    @admin.display(description="Groq API key")
+    def groq_key_status(self, obj):
+        if getattr(settings, "GROQ_API_KEY", ""):
+            return format_html('<span style="color: #16a34a;">Configured ✓</span>')
+        return format_html(
+            '<span style="color: #dc2626;">Missing — set GROQ_API_KEY in .env</span>'
+        )
+
+    @admin.display(description="Ollama endpoint")
+    def ollama_status(self, obj):
+        host = getattr(settings, "OLLAMA_HOST", "")
+        if not host:
+            return format_html(
+                '<span style="color: #dc2626;">Missing — set OLLAMA_HOST in .env</span>'
+            )
+        try:
+            resp = http_requests.get(f"{host}/api/tags", timeout=2)
+        except http_requests.RequestException as exc:
+            return format_html(
+                '<span style="color: #dc2626;">Unreachable</span> <code>{}</code> ({})',
+                host,
+                type(exc).__name__,
+            )
+        if resp.status_code == 200:
+            return format_html(
+                '<span style="color: #16a34a;">Reachable ✓</span> <code>{}</code>',
+                host,
+            )
+        return format_html(
+            '<span style="color: #dc2626;">HTTP {} from {}</span>',
+            resp.status_code,
+            host,
+        )
+
+    @admin.display(description="Master kill switch")
+    def master_kill_status(self, obj):
+        if getattr(settings, "LLM_MASTER_KILL", False):
+            return format_html(
+                '<span style="color: #dc2626;">Active ⛔ — all cloud calls blocked</span>'
+            )
+        return format_html('<span style="color: #16a34a;">Inactive</span>')
 
 
 @admin.register(TeamNote)

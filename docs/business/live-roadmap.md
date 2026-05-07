@@ -39,15 +39,15 @@ M7 Barcelona wave      Jun 08–14
 
 Get the server breathing. Nothing Django yet — just infra fundamentals so M5 isn't a panic.
 
-- [ ] Hetzner Cloud account funded; CCX13 instance provisioned in `nbg1` or `fsn1` (EU-Falkenstein/Nuremberg)
-- [ ] DNS at Namecheap: `A @ → <vps_ip>`, `A www → <vps_ip>`, TTL 1 hour during setup
-- [ ] SSH hardening: key-only login, root login disabled, non-root sudo user, UFW (allow 22 / 80 / 443)
-- [ ] `fail2ban` installed with default jail
-- [ ] Unattended security upgrades enabled (`unattended-upgrades`)
-- [ ] 4 GB swap file (cushion for Postgres + Ollama spikes)
-- [ ] Docker + docker-compose installed
-- [ ] Hetzner Storage Box ordered (€4/mo, 1 TB) — credentials saved in password manager
-- [ ] First placeholder served over HTTPS at `https://castoriq.io` (nginx + certbot smoke test)
+- [X] Hetzner Cloud account funded; CCX13 instance provisioned in `nbg1` or `fsn1` (EU-Falkenstein/Nuremberg)
+- [X] DNS at Namecheap: `A @ → <vps_ip>`, `A www → <vps_ip>`, TTL 1 hour during setup
+- [X] SSH hardening: key-only login, root login disabled, non-root sudo user, UFW (allow 22 / 80 / 443)
+- [X] `fail2ban` installed with default jail
+- [X] Unattended security upgrades enabled (`unattended-upgrades`)
+- [X] 4 GB swap file (cushion for Postgres + Ollama spikes)
+- [X] Docker + docker-compose installed
+- [X] Hetzner Storage Box ordered (€4/mo, 1 TB) — credentials saved in password manager
+- [X] First placeholder served over HTTPS at `https://castoriq.io` (nginx + certbot smoke test)
 
 **Done when:** `curl -I https://castoriq.io` returns 200 with a valid Let's Encrypt cert.
 

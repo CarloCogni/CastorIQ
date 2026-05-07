@@ -3,7 +3,7 @@ name: castor
 services:
   db:
     image: pgvector/pgvector:pg16
-    container_name: castor_db
+    container_name: castor-dev-db
     environment:
       POSTGRES_USER: castor
       POSTGRES_PASSWORD: castor
@@ -21,7 +21,7 @@ services:
 
   pgadmin:
     image: dpage/pgadmin4:latest
-    container_name: castor-pgadmin
+    container_name: castor-dev-pgadmin
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@castor.com
       PGADMIN_DEFAULT_PASSWORD: admin

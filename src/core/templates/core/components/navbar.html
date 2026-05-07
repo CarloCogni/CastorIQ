@@ -20,7 +20,7 @@
             {{ user.username.0|upper }}
         </div>
 
-
+         {% if user.is_staff %}
         <button
                 class="btn btn-link text-secondary opacity-50 hover-white p-0 border-0"
                 title="Leave a Team Note"
@@ -30,7 +30,6 @@
             <i class="bi bi-sticky-fill fs-5"></i>
         </button>
 
-        {% if user.is_staff %}
         <button
                 id="btn-send-errors"
                 class="btn btn-link text-secondary opacity-50 hover-white p-0 border-0"

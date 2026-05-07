@@ -1,38 +1,30 @@
 {% load static %}
-{% load crispy_forms_tags %}
 <!DOCTYPE html>
 <html lang="en" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Castor | Constructing Intelligence</title>
+    <meta name="robots" content="noindex, nofollow">
+    <title>Sign in · CastorIQ</title>
+
+    <link rel="icon" type="image/png" href="{% static 'favicon.png' %}">
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link href="{% static 'core/css/public.css' %}" rel="stylesheet">
 
     <style>
-        :root {
-            /* Colors extracted from your SVG */
-            --castor-blue-light: #4facfe;
-            --castor-blue-cyan: #00f2fe;
-            --castor-deep-blue: #1a237e;
-            --bg-color: #050505;
-        }
-
+        /* Page-specific layering: matrix canvas behind, form overlay on top. */
         body {
             margin: 0;
             padding: 0;
-            background-color: var(--bg-color);
-            color: #fff;
-            font-family: 'Inter', sans-serif;
-            overflow: hidden; /* Prevent scroll bars during animation */
+            overflow: hidden;
             height: 100vh;
             width: 100vw;
             position: relative;
         }
 
-        /* CANVAS LAYER */
         #matrix-canvas {
             position: absolute;
             top: 0;
@@ -42,7 +34,6 @@
             z-index: 0;
         }
 
-        /* UI LAYER */
         .login-overlay {
             position: absolute;
             top: 0;
@@ -53,17 +44,14 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            /* Lighter gradient to show more background */
             background: radial-gradient(circle at center, rgba(0,0,0,0) 0%, rgba(0,0,0,0.4) 100%);
         }
 
-        /* Glassmorphism Card */
+        /* Glassmorphism card. */
         .castor-card {
             width: 100%;
             max-width: 420px;
-            /* MORE TRANSPARENT: changed 0.65 to 0.35 */
             background: rgba(10, 10, 10, 0.35);
-            /* Increased blur to keep text readable */
             backdrop-filter: blur(16px);
             -webkit-backdrop-filter: blur(16px);
             border: 1px solid rgba(79, 172, 254, 0.3);
@@ -74,8 +62,6 @@
             position: relative;
             overflow: hidden;
         }
-
-        /* subtle sheen effect on card */
         .castor-card::before {
             content: '';
             position: absolute;
@@ -92,24 +78,15 @@
             transition: 0.8s ease-in-out;
         }
 
-        /* Typography Override */
-        h1 {
-            font-weight: 700;
-            letter-spacing: -0.5px;
-            background: linear-gradient(135deg, #fff 0%, var(--castor-blue-light) 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        .form-control {
-            /* More transparent inputs */
+        /* Inputs in the glass card need a touch more transparency than the
+         * shared form-control treatment; override here. */
+        .castor-card .form-control {
             background: rgba(0, 0, 0, 0.3);
             border: 1px solid rgba(255, 255, 255, 0.15);
             color: #fff;
             padding: 0.75rem 1rem;
         }
-
-        .form-control:focus {
+        .castor-card .form-control:focus {
             background: rgba(0, 0, 0, 0.5);
             border-color: var(--castor-blue-light);
             box-shadow: 0 0 0 4px rgba(79, 172, 254, 0.15);
@@ -124,197 +101,90 @@
             padding: 0.75rem;
             transition: all 0.3s ease;
         }
-
         .btn-castor:hover {
             transform: translateY(-1px);
             box-shadow: 0 4px 12px rgba(79, 172, 254, 0.4);
             color: #000;
         }
 
-        /* Register Button Style */
-        .btn-register {
-            background: transparent;
-            border: 1px solid rgba(255,255,255,0.2);
-            color: rgba(255,255,255,0.7);
-            padding: 0.75rem;
-            font-weight: 500;
-            transition: all 0.3s ease;
-        }
-
-        .btn-register:hover {
-            border-color: rgba(255,255,255,0.5);
-            color: #fff;
-            background: rgba(255,255,255,0.05);
-        }
-
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(20px); }
             to { opacity: 1; transform: translateY(0); }
         }
+
+        .login-card-header h1 {
+            font-size: 1.6rem;
+            margin-bottom: 0.25rem;
+        }
     </style>
 </head>
-<body>
+<body class="castor-public">
 
-    <canvas id="matrix-canvas"></canvas>
+    {% include "core/components/_matrix_background.html" %}
 
     <div class="login-overlay">
         <div class="castor-card">
 
-            <div class="text-center mb-4">
-                <img src="{% static 'images/castor-logo-nobg.png' %}" alt="Castor Logo" height="80" class="mb-3">
-                <h1 class="h3 mb-1">Castor</h1>
-                <p class="text-white-50 small">Construction Intelligence Platform</p>
+            <div class="login-card-header text-center mb-4">
+                <img src="{% static 'images/castor-logo-nobg.png' %}" alt="CastorIQ" height="72" class="mb-3">
+                <h1>
+                    <span class="castoriq-wordmark">
+                        <span class="cw-prefix">Castor</span><span class="cw-iq">IQ</span>
+                    </span>
+                    <button type="button"
+                            class="help-pill ms-2"
+                            data-bs-toggle="modal"
+                            data-bs-target="#loginHelpModal"
+                            title="How signing in works"
+                            aria-label="How signing in works"
+                            style="vertical-align: middle;">
+                        <i class="bi bi-question-circle"></i>
+                    </button>
+                </h1>
+                <p class="text-white-50 small mb-0">Construction Intelligence Platform</p>
             </div>
 
-            <form method="post">
-                {% csrf_token %}
-
-                {% if form.errors %}
-                <div class="alert alert-danger bg-danger bg-opacity-10 border-danger border-opacity-25 text-white fs-7 py-2" role="alert">
-                    <i class="bi bi-exclamation-triangle-fill me-2"></i> Invalid credentials
-                </div>
-                {% endif %}
-
-                <div class="mb-3">
-                    <label for="id_username" class="form-label text-white-50 fs-7">Username</label>
-                    <input type="text" name="username" id="id_username" class="form-control" placeholder="Enter ID" required autofocus>
-                </div>
-
-                <div class="mb-4">
-                    <label for="id_password" class="form-label text-white-50 fs-7">Password</label>
-                    <input type="password" name="password" id="id_password" class="form-control" placeholder="••••••••" required>
-                </div>
-
-                <div class="d-grid gap-3">
-                    <button type="submit" class="btn btn-castor rounded-3">
-                        <i class="bi bi-box-arrow-in-right me-2"></i> Initialize Session
-                    </button>
-                </div>
-            </form>
-
-            <div class="mt-4 text-center">
-                <a href="{% url 'password_reset' %}" class="text-white-50 text-decoration-none fs-7 hover-white">Forgot password?</a>
-                <div class="mt-2 small text-white-50">
-                    No account yet? <a href="/" class="text-white-50">Apply on the landing page</a>
-                </div>
+            <div id="login-form-region">
+                {% include "registration/_login_step1.html" %}
             </div>
         </div>
     </div>
 
+    {% include "registration/_login_help_modal.html" %}
+
+    <!-- Toast container — fired by trigger_toast / HX-Trigger:castor:toast -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1100;">
+        <div id="castor-login-toast" class="toast align-items-center border-0" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="d-flex">
+                <div class="toast-body" id="castor-login-toast-body"></div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script>
-        const canvas = document.getElementById('matrix-canvas');
-        const ctx = canvas.getContext('2d');
+        // Lightweight toast bridge — login.html doesn't extend base.html so we
+        // wire the same `castor:toast` event listener locally.
+        document.body.addEventListener('castor:toast', function (evt) {
+            const detail = evt.detail || {};
+            const toastEl = document.getElementById('castor-login-toast');
+            const bodyEl = document.getElementById('castor-login-toast-body');
+            if (!toastEl || !bodyEl) return;
 
-        // Configuration
-        const colorPrimary = '#4facfe'; // Light blue
-        const colorSecondary = '#00f2fe'; // Cyan
-        const colorDim = '#1a237e'; // Deep blue
-        const fontSize = 14;
-        const fontFamily = 'JetBrains Mono, monospace';
-
-        // Characters to rain (Numbers for construction data feel)
-        const chars = '0123456789';
-
-        let columns = 0;
-        let drops = [];
-        let stack = [];
-        let skyline = [];
-
-        function resize() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-
-            columns = Math.floor(canvas.width / fontSize);
-            drops = [];
-            stack = [];
-            skyline = [];
-
-            // Calculate Skyscraper Shape (Gaussian-ish curve)
-            const centerX = columns / 2;
-            const widthVar = columns / 4;
-
-            for (let i = 0; i < columns; i++) {
-                drops[i] = Math.random() * -100; // Start above screen
-                stack[i] = 0; // Start with no building
-
-                // Tower shape logic
-                const distFromCenter = Math.abs(i - centerX);
-                let heightFactor = Math.max(0, 1 - (distFromCenter / widthVar));
-
-                // Add some randomness
-                heightFactor = heightFactor * (0.8 + Math.random() * 0.2);
-
-                const maxChars = Math.floor(canvas.height / fontSize);
-                skyline[i] = Math.floor(maxChars * 0.8 * heightFactor);
+            bodyEl.textContent = detail.message || '';
+            toastEl.classList.remove('text-bg-success', 'text-bg-danger', 'text-bg-secondary');
+            const lvl = (detail.level || 'success').toLowerCase();
+            if (lvl === 'error') {
+                toastEl.classList.add('text-bg-danger');
+            } else if (lvl === 'info') {
+                toastEl.classList.add('text-bg-secondary');
+            } else {
+                toastEl.classList.add('text-bg-success');
             }
-        }
-
-        function draw() {
-            // 1. Fade effect for trails
-            ctx.fillStyle = 'rgba(5, 5, 5, 0.1)';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            ctx.font = fontSize + 'px ' + fontFamily;
-
-            const maxRows = Math.floor(canvas.height / fontSize);
-
-            // Loop through columns
-            for (let i = 0; i < columns; i++) {
-
-                // --- DRAW THE BUILDING (The "Pile") ---
-                if (stack[i] > 0) {
-                    for (let s = 0; s < stack[i]; s++) {
-                        const y = canvas.height - (s * fontSize);
-
-                        // Glimmer effect
-                        if (Math.random() > 0.95) {
-                            ctx.fillStyle = '#fff';
-                        } else {
-                            ctx.fillStyle = colorDim;
-                        }
-
-                        const charIndex = (i + s) % chars.length;
-                        ctx.fillText(chars[charIndex], i * fontSize, y);
-                    }
-                }
-
-                // --- DRAW THE RAIN ---
-                const text = chars.charAt(Math.floor(Math.random() * chars.length));
-                const yPos = drops[i] * fontSize;
-
-                // Calculate where the "ground" is for this specific column
-                const groundLevel = canvas.height - (stack[i] * fontSize);
-
-                // If drop is above ground, draw it
-                if (yPos < groundLevel) {
-                    ctx.fillStyle = colorSecondary; // Bright Cyan
-                    ctx.fillText(text, i * fontSize, yPos);
-                }
-
-                // --- LOGIC: HIT DETECTION ---
-                // If the drop hits the current ground level
-                if (yPos > groundLevel) {
-                    // Reset drop to top
-                    drops[i] = 0;
-
-                    // BUILD FAST LOGIC:
-                    // Only build if we haven't reached the skyline limit
-                    if (stack[i] < skyline[i]) {
-                        // Increase stack by 4 blocks per hit! (Very fast construction)
-                        stack[i] += 4;
-                    }
-                }
-
-                // Move drop down (Normal speed)
-                drops[i]++;
-            }
-        }
-
-        // Initialize
-        window.addEventListener('resize', resize);
-        resize();
-        setInterval(draw, 33); // ~30FPS
-
+            bootstrap.Toast.getOrCreateInstance(toastEl, { delay: 4000 }).show();
+        });
     </script>
 </body>
 </html>

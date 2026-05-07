@@ -38,7 +38,7 @@ X_FRAME_OPTIONS = "DENY"
 # HTTP to Daphne, so SECURE_PROXY_SSL_HEADER is required for Django to know
 # the request was originally HTTPS. Without it, secure-cookie + redirect logic
 # loops forever.
-SECURE_SSL_REDIRECT = True
+SECURE_SSL_REDIRECT = os.getenv("SECURE_SSL_REDIRECT", "True").lower() == "true"
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_HSTS_SECONDS = int(os.getenv("SECURE_HSTS_SECONDS", str(60 * 60 * 24 * 365)))
 SECURE_HSTS_PRELOAD = True
@@ -56,6 +56,15 @@ CSRF_TRUSTED_ORIGINS = [
 # real SMTP. Override the default explicitly so a missing env var fails loud
 # (no silent console-fallback in prod).
 EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
+
+# Static files — WhiteNoise serves them straight from the Daphne process with
+# hashed filenames + gzip/brotli. nginx still front-fronts via the static volume
+# mount for hot paths, but this storage backend is what makes far-future cache
+# headers safe.
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+}
 
 # Database from environment
 DATABASES = {

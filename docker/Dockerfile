@@ -1,27 +1,59 @@
+# docker/Dockerfile — Castor production image (Daphne + ASGI)
+#
+# Builds a single-process Daphne container that nginx fronts via the prod
+# compose stack. WSGI is intentionally not used: the writeback Modify pipeline
+# streams over WebSocket, and gunicorn would silently drop those upgrades.
+
 FROM python:3.11-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    DJANGO_SETTINGS_MODULE=config.settings.production \
+    PATH="/root/.local/bin:${PATH}"
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    libpq-dev \
-    gcc \
+# Build-time + runtime system deps.
+#   libpq-dev / gcc: psycopg & ifcopenshell wheel fallbacks
+#   libgl1 / libglib2.0-0: PyMuPDF and OpenCV runtime
+#   curl: certbot/healthcheck convenience inside the container
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libpq-dev \
+        gcc \
+        libgl1 \
+        libglib2.0-0 \
+        curl \
+        ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Install UV
-RUN pip install uv
+# uv handles the lockfile-driven install. We never install the project itself
+# (--no-install-project): Castor is a Django app, not a distributed package.
+RUN pip install --no-cache-dir uv
 
-# Copy dependency files
-COPY pyproject.toml .
+# Copy lockfile + manifest first so dependency layer caches independently
+# of source edits.
+COPY pyproject.toml uv.lock ./
 
-# Install dependencies
-RUN uv pip install --system -e "."
+RUN uv sync --frozen --no-install-project --no-dev
 
-# Copy application
-COPY src/castor /app/
+# Bring uv's venv onto PATH for the rest of the build + runtime.
+ENV PATH="/app/.venv/bin:${PATH}"
 
-# Collect static files
-RUN python manage.py collectstatic --noinput
+# Application source.
+COPY src/ /app/src/
+COPY static/ /app/static/
+COPY fixtures/ /app/fixtures/
 
-# Run with gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "castor.wsgi:application"]
+# Build-time-only env so collectstatic + system checks don't fail on
+# missing prod secrets. Real runtime values come from docker-compose env_file.
+RUN DJANGO_SECRET_KEY=build-only-not-used-at-runtime \
+    POSTGRES_PASSWORD=build-only \
+    DJANGO_ALLOWED_HOSTS=localhost \
+    python src/manage.py collectstatic --noinput --clear
+
+EXPOSE 8000
+
+# Daphne serves both HTTP and WebSocket through the ASGI application.
+# Working directory is /app/src so `config.asgi:application` resolves.
+WORKDIR /app/src
+CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "config.asgi:application"]

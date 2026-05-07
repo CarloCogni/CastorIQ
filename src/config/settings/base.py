@@ -33,7 +33,9 @@ INSTALLED_APPS = [
     "crispy_bootstrap5",
     "channels",
     "solo",
-    # Local apps
+    # Local apps — users must come first so AUTH_USER_MODEL resolves before
+    # any other migration with a swappable_dependency on it.
+    "users",
     "core",
     "environments",
     "chat",
@@ -49,6 +51,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -99,6 +102,16 @@ USE_I18N = True
 USE_TZ = True
 
 # Authentication
+AUTH_USER_MODEL = "users.User"
+
+# Custom backend lets users sign in with EITHER username or email. With the
+# unique constraint on User.email this never collides; on miss the backend
+# runs a dummy ``set_password`` so wrong-email and wrong-password share wall
+# clock cost (anti-enumeration).
+AUTHENTICATION_BACKENDS = [
+    "core.auth_backends.EmailOrUsernameModelBackend",
+]
+
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "projects:list"
 LOGOUT_REDIRECT_URL = "login"

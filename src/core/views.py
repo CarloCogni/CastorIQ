@@ -9,11 +9,14 @@ from django.conf import settings
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.http import JsonResponse
-from django.shortcuts import redirect, render
+from django.db import connections
+from django.db.utils import OperationalError
+from django.http import HttpResponse, JsonResponse
+from django.shortcuts import redirect, render, resolve_url
 from django.views.decorators.http import require_POST
 from django.views.generic import TemplateView, View
 
+from core.forms import LoginPasswordForm, LoginUsernameForm
 from core.http import toast_response, trigger_toast
 from core.llm_model_registry import (
     MODEL_REGISTRY,
@@ -21,6 +24,12 @@ from core.llm_model_registry import (
     get_model_info,
 )
 from core.models import ErrorLog, UserLLMConfig
+from core.services.auth_service import (
+    clear_login_stage,
+    complete_login_attempt,
+    get_staged_username,
+    stage_login_attempt,
+)
 from core.services.team_notes import (
     create_note,
     push_notes_to_supabase,
@@ -39,8 +48,37 @@ def _fmt_ctx(tokens: int) -> str:
 
 
 def health_check(request):
-    """Health check endpoint."""
-    return JsonResponse({"status": "healthy", "service": "castor"})
+    """Liveness + readiness probe.
+
+    Returns 200 only when both the database and Ollama are reachable. nginx,
+    uptime monitors, and the M6 pre-flight checklist consume this — a stale-200
+    that doesn't actually probe dependencies is worse than no probe.
+    """
+    db_status = "ok"
+    ollama_status = "ok"
+
+    try:
+        connections["default"].cursor().execute("SELECT 1")
+    except OperationalError as exc:
+        db_status = "down"
+        logger.warning("healthz db check failed: %s", exc)
+
+    try:
+        resp = http_requests.get(f"{settings.OLLAMA_HOST}/api/tags", timeout=2)
+        if resp.status_code != 200:
+            ollama_status = "down"
+    except http_requests.RequestException as exc:
+        ollama_status = "down"
+        logger.warning("healthz ollama check failed: %s", exc)
+
+    healthy = db_status == "ok" and ollama_status == "ok"
+    payload = {
+        "status": "healthy" if healthy else "degraded",
+        "service": "castor",
+        "db": db_status,
+        "ollama": ollama_status,
+    }
+    return JsonResponse(payload, status=200 if healthy else 503)
 
 
 def home_view(request):
@@ -515,3 +553,116 @@ def pull_notes_from_supabase(request):
             {"success": False, "error": f"Supabase request failed: {e}"},
             status=502,
         )
+
+
+# ---------------------------------------------------------------------------
+# Public unauthenticated surfaces: two-step login, privacy, terms
+# ---------------------------------------------------------------------------
+
+
+def login_page_view(request):
+    """GET /login/ — render the full login template.
+
+    The page hosts the matrix background plus a swappable form region; initial
+    render shows step 1 (username). Authenticated users skip the page entirely.
+    """
+    if request.user.is_authenticated:
+        return redirect(settings.LOGIN_REDIRECT_URL)
+    clear_login_stage(request)
+    return render(
+        request,
+        "registration/login.html",
+        {"form": LoginUsernameForm()},
+    )
+
+
+@require_POST
+def login_step1_view(request):
+    """POST /login/step1/ — stage username, render step 2 partial.
+
+    Anti-enumeration: this endpoint NEVER queries the user table. Any well-formed
+    submission proceeds to step 2, regardless of whether the username exists.
+    """
+    form = LoginUsernameForm(request.POST)
+    if not form.is_valid():
+        return render(
+            request,
+            "registration/_login_step1.html",
+            {"form": form},
+            status=400,
+        )
+
+    username = form.cleaned_data["username"]
+    stage_login_attempt(request, username)
+    return render(
+        request,
+        "registration/_login_step2.html",
+        {"form": LoginPasswordForm(), "username": username},
+    )
+
+
+def login_step1_reset_view(request):
+    """GET /login/step1/ — return the step 1 partial (used by 'use a different account')."""
+    clear_login_stage(request)
+    return render(
+        request,
+        "registration/_login_step1.html",
+        {"form": LoginUsernameForm()},
+    )
+
+
+@require_POST
+def login_step2_view(request):
+    """POST /login/step2/ — authenticate the staged username + this password.
+
+    Success: HX-Redirect header pointing at LOGIN_REDIRECT_URL.
+    Failure (any cause): re-render step 1 + generic toast. Never reveals which
+    field caused the failure.
+    """
+    staged = get_staged_username(request)
+    if not staged:
+        # Stage expired or missing — bounce back to step 1 with a hint.
+        response = render(
+            request,
+            "registration/_login_step1.html",
+            {"form": LoginUsernameForm()},
+        )
+        return trigger_toast(response, "Session expired — start over", level="info")
+
+    form = LoginPasswordForm(request.POST)
+    if not form.is_valid():
+        return render(
+            request,
+            "registration/_login_step2.html",
+            {"form": form, "username": staged},
+            status=400,
+        )
+
+    user = complete_login_attempt(request, form.cleaned_data["password"])
+    if user is None:
+        # Single, generic error path — wrong password, unknown user, inactive
+        # account all collapse to the same message.
+        clear_login_stage(request)
+        response = render(
+            request,
+            "registration/_login_step1.html",
+            {"form": LoginUsernameForm()},
+        )
+        return trigger_toast(response, "Invalid credentials", level="error")
+
+    # Success — tell HTMX to do a full-page redirect to the post-login landing.
+    # ``LOGIN_REDIRECT_URL`` may be a URL name (e.g. "projects:list"); resolve
+    # it before handing it to HTMX so the browser navigates to a real path.
+    response = HttpResponse(status=204)
+    response["HX-Redirect"] = resolve_url(settings.LOGIN_REDIRECT_URL)
+    return response
+
+
+def privacy_view(request):
+    """Public privacy / data-handling notice — short, transparent, no legal entity."""
+    return render(request, "core/privacy.html")
+
+
+def terms_view(request):
+    """Public terms-of-use notice for the beta — short, plain language."""
+    return render(request, "core/terms.html")
