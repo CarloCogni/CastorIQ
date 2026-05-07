@@ -61,6 +61,13 @@ EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.smtp.Email
 # hashed filenames + gzip/brotli. nginx still front-fronts via the static volume
 # mount for hot paths, but this storage backend is what makes far-future cache
 # headers safe.
+#
+# STATIC_ROOT is overridden out of the source tree so it lines up with the
+# named volume `static_volume:/app/staticfiles` mounted by both `web` (writer)
+# and `nginx` (reader) in docker-compose.prod.yml. Without this override
+# Django would write to BASE_DIR / "staticfiles" = /app/src/staticfiles, which
+# the volume never sees → nginx 404s on /static/.
+STATIC_ROOT = "/app/staticfiles"
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},

@@ -39,9 +39,11 @@ RUN uv sync --frozen --no-install-project --no-dev
 # Bring uv's venv onto PATH for the rest of the build + runtime.
 ENV PATH="/app/.venv/bin:${PATH}"
 
-# Application source.
+# Application source. Static assets live under src/static/ and per-app
+# */static/ dirs — collectstatic below pulls from STATICFILES_DIRS into
+# STATIC_ROOT (set to /app/staticfiles in production.py to line up with the
+# named volume mounted by docker-compose.prod.yml).
 COPY src/ /app/src/
-COPY static/ /app/static/
 COPY fixtures/ /app/fixtures/
 
 # Build-time-only env so collectstatic + system checks don't fail on
