@@ -17,12 +17,16 @@ WORKDIR /app
 #   libpq-dev / gcc: psycopg & ifcopenshell wheel fallbacks
 #   libgl1 / libglib2.0-0: PyMuPDF and OpenCV runtime
 #   curl: certbot/healthcheck convenience inside the container
+#   git: GitPython (writeback/services/git_service.py) probes for the git
+#        binary at import time — without it, every Django command crashes
+#        because writeback/views.py is imported during URL resolution.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libpq-dev \
         gcc \
         libgl1 \
         libglib2.0-0 \
         curl \
+        git \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 

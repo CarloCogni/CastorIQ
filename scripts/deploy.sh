@@ -11,8 +11,8 @@
 #   3. docker compose build (rebuilds the web image; lockfile + collectstatic
 #      run inside)
 #   4. docker compose up -d (recreates only the changed containers)
-#   5. docker compose exec web python src/manage.py migrate --noinput
-#   6. docker compose exec web python src/manage.py collectstatic --noinput
+#   5. docker compose exec web python manage.py migrate --noinput
+#   6. docker compose exec web python manage.py collectstatic --noinput
 #      (no-op for image-baked assets but cheap insurance for hot-reloaded ones)
 #
 # Pre-flight: refuses to deploy if .env is missing, since the stack needs it.
@@ -42,10 +42,10 @@ echo "→ Bringing the stack up…"
 docker compose -f "$COMPOSE_FILE" up -d
 
 echo "→ Applying migrations…"
-docker compose -f "$COMPOSE_FILE" exec -T web python src/manage.py migrate --noinput
+docker compose -f "$COMPOSE_FILE" exec -T web python manage.py migrate --noinput
 
 echo "→ Refreshing static assets…"
-docker compose -f "$COMPOSE_FILE" exec -T web python src/manage.py collectstatic --noinput
+docker compose -f "$COMPOSE_FILE" exec -T web python manage.py collectstatic --noinput
 
 echo "✓ Deploy complete. Probe:"
 echo "  curl -fsS https://castoriq.io/healthz/"

@@ -60,8 +60,8 @@ Watch for:
 - `collectstatic --noinput --clear` completes (`169 static files copied`)
 - Final image tags as `docker-web` (or the repo name)
 
-- [ ] Build finishes with no errors
-- [ ] `docker images | grep docker-web` shows the new image
+- [X] Build finishes with no errors
+- [X] `docker images | grep docker-web` shows the new image
 
 ---
 
@@ -72,8 +72,8 @@ LETSENCRYPT_DIR="$(pwd)/tmp/letsencrypt" \
   docker compose -f docker/docker-compose.prod.yml up -d
 ```
 
-- [ ] `docker compose -f docker/docker-compose.prod.yml ps` shows `web`, `db`, `nginx` all `Up` and `healthy` (db) / running (others)
-- [ ] `docker compose -f docker/docker-compose.prod.yml logs --tail 50 web` shows Daphne started: `Listening on TCP address 0.0.0.0:8000`
+- [X] `docker compose -f docker/docker-compose.prod.yml ps` shows `web`, `db`, `nginx` all `Up` and `healthy` (db) / running (others)
+- [X] `docker compose -f docker/docker-compose.prod.yml logs --tail 50 web` shows Daphne started: `Listening on TCP address 0.0.0.0:8000`
 
 If `web` exits immediately, the most likely culprit is a missing env var — `docker compose ... logs web` shows the traceback.
 
@@ -82,12 +82,12 @@ If `web` exits immediately, the most likely culprit is a missing env var — `do
 ## Phase 5 — Migrate + superuser
 
 ```bash
-docker compose -f docker/docker-compose.prod.yml exec web python src/manage.py migrate --noinput
-docker compose -f docker/docker-compose.prod.yml exec web python src/manage.py createsuperuser
+docker compose -f docker/docker-compose.prod.yml exec web python manage.py migrate --noinput
+docker compose -f docker/docker-compose.prod.yml exec web python manage.py createsuperuser
 ```
 
-- [ ] All 64 migrations apply without error
-- [ ] Superuser created (use a real email — you'll need it to log in)
+- [X] All 64 migrations apply without error
+- [X] Superuser created (use a real email — you'll need it to log in)
 
 ---
 
@@ -99,8 +99,8 @@ curl -k https://localhost/healthz/
 
 Expected JSON: `{"status": "healthy", "service": "castor", "db": "ok", "ollama": "ok"}`.
 
-- [ ] HTTP 200 returned
-- [ ] Both `db` and `ollama` report `ok`
+- [X] HTTP 200 returned
+- [X] Both `db` and `ollama` report `ok`
 
 If `ollama: down`, the container can't reach the host's Ollama. Confirm `OLLAMA_HOST=http://host.docker.internal:11434` in `.env` and that Docker Desktop networking allows host-gateway resolution.
 
@@ -109,24 +109,27 @@ If `ollama: down`, the container can't reach the host's Ollama. Confirm `OLLAMA_
 ## Phase 7 — Static assets
 
 ```bash
-curl -kI https://localhost/static/admin/css/base.css
+curl -kI -H "Accept-Encoding: gzip" https://localhost/static/admin/css/base.css
 ```
 
-- [ ] HTTP 200
-- [ ] `Cache-Control: public, immutable`
-- [ ] `Content-Encoding: gzip` (or `br`)
+The `-H "Accept-Encoding: gzip"` is required: `curl` omits it by default, and
+without it nginx returns the uncompressed body, masking whether gzip is wired
+up at all.
+
+- [X] HTTP 200
+- [X] `Cache-Control: public, immutable`
+- [X] `Content-Encoding: gzip` (or `br`)
 
 If 404, `collectstatic` didn't run during build — check the Dockerfile output.
-
 ---
 
 ## Phase 8 — Landing page
 
 Open `https://localhost/` in a browser (accept the self-signed cert warning).
 
-- [ ] Landing page renders with hero + 3 feature cards + application form
-- [ ] No 5xx in browser console
-- [ ] `?` help pill on the heading opens the modal
+- [X] Landing page renders with hero + 3 feature cards + application form
+- [X] No 5xx in browser console
+- [X] `?` help pill on the heading opens the modal
 
 ---
 
@@ -135,13 +138,13 @@ Open `https://localhost/` in a browser (accept the self-signed cert warning).
 Log in as the superuser at `https://localhost/login/`.
 
 ```bash
-docker compose -f docker/docker-compose.prod.yml exec web python src/manage.py provision_sample_project <your-username>
+docker compose -f docker/docker-compose.prod.yml exec web python manage.py provision_sample_project <your-username>
 ```
 
-- [ ] Redirected to `/projects/` after login
-- [ ] Sample project listed
-- [ ] Open the project — Ask, Modify, Explore tabs all load
-- [ ] Open `/admin/core/sitellmconfig/` and confirm the **Runtime status** panel
+- [X] Redirected to `/projects/` after login
+- [X] Sample project listed
+- [X] Open the project — Ask, Modify, Explore tabs all load
+- [X] Open `/admin/core/sitellmconfig/` and confirm the **Runtime status** panel
       shows the providers you intend to use as `Configured ✓` and Ollama as
       `Reachable ✓`. If anything is red, fix `.env` and recycle the stack
       before continuing — flipping the Ask / Modify dropdowns to a missing
@@ -153,8 +156,8 @@ docker compose -f docker/docker-compose.prod.yml exec web python src/manage.py p
 
 Open the **Modify** tab on the sample project. Open browser DevTools → Network → filter by `ws/`.
 
-- [ ] WebSocket connection to `wss://localhost/ws/projects/<id>/modify/` shows `101 Switching Protocols`
-- [ ] Submitting a Tier 1 prompt streams pipeline phase events live (not a single-shot HTTP response)
+- [X] WebSocket connection to `wss://localhost/ws/projects/<id>/modify/` shows `101 Switching Protocols`
+- [X] Submitting a Tier 1 prompt streams pipeline phase events live (not a single-shot HTTP response)
 
 If the request 502s or stays at 200 with no upgrade, nginx didn't propagate the upgrade headers — check `docker/nginx.conf` `proxy_set_header Upgrade $http_upgrade;` lines.
 
@@ -163,10 +166,10 @@ If the request 502s or stays at 200 with no upgrade, nginx didn't propagate the 
 ## Phase 11 — Manage.py check --deploy
 
 ```bash
-docker compose -f docker/docker-compose.prod.yml exec web python src/manage.py check --deploy
+docker compose -f docker/docker-compose.prod.yml exec web python manage.py check --deploy
 ```
 
-- [ ] No warnings (the dev-machine `test-only` SECRET_KEY warning won't fire here because `.env` has a real one)
+- [X] No warnings (the dev-machine `test-only` SECRET_KEY warning won't fire here because `.env` has a real one)
 
 ---
 
@@ -192,7 +195,7 @@ BACKUP_DIR=./tmp/backups ./scripts/backup.sh
 docker compose -f docker/docker-compose.prod.yml down -v
 ```
 
-- [ ] All containers stopped and volumes removed (the `-v` is intentional — fresh state for the next dry-run)
+- [X] All containers stopped and volumes removed (the `-v` is intentional — fresh state for the next dry-run)
 
 ---
 

@@ -48,7 +48,11 @@ _SAMPLE_IFCS: tuple[tuple[str, str], ...] = (
 
 
 def _fixtures_root() -> Path:
-    return Path(settings.BASE_DIR) / "fixtures" / "sample-project"
+    # BASE_DIR is <repo>/src (or /app/src in the container). Fixtures live at
+    # the repo root in fixtures/sample-project/ — see the layout documented in
+    # fixtures/sample-project/README.md and the Dockerfile's `COPY fixtures/
+    # /app/fixtures/`.
+    return Path(settings.BASE_DIR).parent / "fixtures" / "sample-project"
 
 
 def _expected_ifc_paths() -> list[Path]:
