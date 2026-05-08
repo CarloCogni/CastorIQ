@@ -175,7 +175,7 @@ In the Mailgun dashboard:
 Pre-warm by sending yourself a few test emails before any beta invite goes out:
 
 ```bash
-docker compose -f docker/docker-compose.prod.yml exec web python src/manage.py shell -c \
+docker compose -f docker/docker-compose.prod.yml exec web python manage.py shell -c \
     "from django.core.mail import send_mail; \
      send_mail('Castor smoke', 'pre-warm', 'noreply@castoriq.io', ['<your-email>'])"
 ```
@@ -192,8 +192,8 @@ docker compose -f docker/docker-compose.prod.yml exec web python src/manage.py s
 cd ~/apps/castor
 docker compose -f docker/docker-compose.prod.yml build
 docker compose -f docker/docker-compose.prod.yml up -d
-docker compose -f docker/docker-compose.prod.yml exec web python src/manage.py migrate --noinput
-docker compose -f docker/docker-compose.prod.yml exec web python src/manage.py createsuperuser
+docker compose -f docker/docker-compose.prod.yml exec web python manage.py migrate --noinput
+docker compose -f docker/docker-compose.prod.yml exec web python manage.py createsuperuser
 ```
 
 - [ ] Image build completes
@@ -279,7 +279,7 @@ gunzip -c ~/backups/castor/castor-YYYY-MM-DD.sql.gz | \
 If `SENTRY_DSN` was set in Phase 2, trigger a deliberate test exception:
 
 ```bash
-docker compose -f docker/docker-compose.prod.yml exec web python src/manage.py shell -c \
+docker compose -f docker/docker-compose.prod.yml exec web python manage.py shell -c \
     "import sentry_sdk; sentry_sdk.capture_message('castor launch smoke')"
 ```
 
@@ -302,6 +302,9 @@ When this phase is fully ticked, `castoriq.io` is live. Move on to M6 polish in
 
 - OS baseline (Phases 0–9 of `server-setup.md`)
 - The dev-side dry-run (`dry-run-checklist.md`)
+- Operator-side tooling for the live box (tmux, ctop, Claude Code via Max
+  subscription, shell aliases, log rotation, git identity, snapshot
+  discipline) — see `operator-toolkit.md`
 - Re-deploys after the first cut — once Phase 6 is done, every subsequent
   release is `ssh <username>@castoriq.io` then `cd apps/castor && ./scripts/deploy.sh`
 - Voyage AI embeddings cutover (only if dogfood reveals CPU pain — see
