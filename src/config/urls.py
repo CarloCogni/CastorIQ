@@ -69,3 +69,10 @@ urlpatterns = [
 # Serve media files in development
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+# Custom error handlers — only invoked when DEBUG=False. See core.views for
+# the implementations and core/templates/errors/ for the rendered templates.
+handler400 = "core.views.error_400_view"
+handler403 = "core.views.error_403_view"
+handler404 = "core.views.error_404_view"
+handler500 = "core.views.error_500_view"

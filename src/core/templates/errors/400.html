@@ -1,0 +1,14 @@
+<!--
+  core/templates/errors/400.html
+  Bad Request — the client sent something Django couldn't parse (malformed
+  form, bad CSRF, suspicious operation rejected by middleware).
+-->
+{% extends "errors/_error_base.html" %}
+
+{% block page_title %}400 — Bad Request — CastorIQ{% endblock %}
+{% block error_code %}400{% endblock %}
+{% block error_title %}That request didn't make sense{% endblock %}
+{% block error_message %}
+    Something about the link or form was malformed. Try again from the home page,
+    or refresh and resubmit.
+{% endblock %}

@@ -1,0 +1,14 @@
+<!--
+  core/templates/errors/404.html
+  Not Found — the URL didn't match any route, or a get_object_or_404 missed.
+  Most common error a user will hit; copy is friendly and non-accusatory.
+-->
+{% extends "errors/_error_base.html" %}
+
+{% block page_title %}404 — Page Not Found — CastorIQ{% endblock %}
+{% block error_code %}404{% endblock %}
+{% block error_title %}We couldn't find that{% endblock %}
+{% block error_message %}
+    The page you were looking for doesn't exist &mdash; it may have been moved,
+    deleted, or the link was wrong.
+{% endblock %}

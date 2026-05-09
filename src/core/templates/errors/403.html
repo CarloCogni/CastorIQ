@@ -1,0 +1,21 @@
+<!--
+  core/templates/errors/403.html
+  Forbidden — the user is authenticated but lacks permission, or the request
+  failed permission middleware. Offers a Sign-in shortcut as the secondary
+  action since 403 is often "you need to log in" in disguise.
+-->
+{% extends "errors/_error_base.html" %}
+
+{% block page_title %}403 — Forbidden — CastorIQ{% endblock %}
+{% block error_code %}403{% endblock %}
+{% block error_title %}You don't have access to this{% endblock %}
+{% block error_message %}
+    This page is restricted. If you think you should be able to see it,
+    sign in with the right account or contact your project admin.
+{% endblock %}
+
+{% block extra_actions %}
+<a href="{% url 'login' %}" class="error-btn error-btn-secondary">
+    Sign in
+</a>
+{% endblock %}

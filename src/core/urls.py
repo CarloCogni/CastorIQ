@@ -1,5 +1,6 @@
 """Core URL configuration."""
 
+from django.conf import settings
 from django.urls import path
 
 from . import views
@@ -31,3 +32,15 @@ urlpatterns = [
         "notes/pull-from-supabase/", views.pull_notes_from_supabase, name="pull_notes_from_supabase"
     ),
 ]
+
+# DEBUG-only preview route for error templates. handlerXXX in config/urls.py
+# only fire for real errors when DEBUG=False, so we keep this open path for
+# design iteration. The view itself re-checks settings.DEBUG and 404s in prod.
+if settings.DEBUG:
+    urlpatterns += [
+        path(
+            "dev/preview-error/<int:code>/",
+            views.preview_error_view,
+            name="preview_error",
+        ),
+    ]

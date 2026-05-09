@@ -700,3 +700,63 @@ def privacy_view(request):
 def terms_view(request):
     """Public terms-of-use notice for the beta — short, plain language."""
     return render(request, "core/terms.html")
+
+
+# ---------------------------------------------------------------------------
+# Custom error handlers (400, 403, 404, 500)
+#
+# Wired into the root URLconf via `handlerXXX = "core.views.error_NNN_view"`.
+# Django only invokes these when DEBUG=False; in DEBUG=True the technical
+# error page is shown instead. Use ``preview_error_view`` below to design /
+# inspect the templates without flipping DEBUG.
+#
+# The templates intentionally do NOT extend core/base.html — they are
+# standalone HTML so they keep working even when context processors or
+# middleware are part of what just broke.
+# ---------------------------------------------------------------------------
+
+
+def error_400_view(request, exception=None):
+    """Bad Request handler — malformed request the framework rejected."""
+    return render(request, "errors/400.html", status=400)
+
+
+def error_403_view(request, exception=None):
+    """Forbidden handler — user lacks permission, or middleware rejected the request."""
+    return render(request, "errors/403.html", status=403)
+
+
+def error_404_view(request, exception=None):
+    """Not Found handler — URL didn't match a route, or get_object_or_404 missed."""
+    return render(request, "errors/404.html", status=404)
+
+
+def error_500_view(request):
+    """Internal Server Error handler — uncaught exception in a view.
+
+    Note the signature: handler500 takes no ``exception`` argument, unlike
+    400/403/404. The template renders with a bare context, so it must not
+    depend on the request user, context processors, or DB state.
+    """
+    return render(request, "errors/500.html", status=500)
+
+
+def preview_error_view(request, code: int):
+    """DEBUG-only: render an error template at an explicit URL.
+
+    Lets us iterate on the design without flipping DEBUG=False, since
+    Django's handlerXXX only fire for real errors when DEBUG is off.
+    Returns 404 outside of DEBUG so the route can't be probed in production.
+    """
+    if not settings.DEBUG:
+        from django.http import Http404
+
+        raise Http404()
+
+    template_by_code = {400: "400", 403: "403", 404: "404", 500: "500"}
+    name = template_by_code.get(code)
+    if name is None:
+        from django.http import Http404
+
+        raise Http404()
+    return render(request, f"errors/{name}.html", status=code)

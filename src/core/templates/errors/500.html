@@ -1,0 +1,23 @@
+<!--
+  core/templates/errors/500.html
+  Internal Server Error — uncaught exception. Django renders this with a
+  bare context (no request user, no context processors), so the template MUST
+  not depend on anything beyond the static path. Offers a mailto as the
+  secondary action so the user can flag a recurring issue.
+-->
+{% extends "errors/_error_base.html" %}
+
+{% block page_title %}500 — Server Error — CastorIQ{% endblock %}
+{% block error_code %}500{% endblock %}
+{% block error_title %}Something broke on our end{% endblock %}
+{% block error_message %}
+    An unexpected error occurred. We've been notified.
+    Try again in a moment, or head back home.
+{% endblock %}
+
+{% block extra_actions %}
+<a href="mailto:hello@castoriq.io?subject=CastorIQ%20500%20error&body=Tell%20us%20what%20you%20were%20doing%20when%20this%20happened%3A%0A%0A"
+   class="error-btn error-btn-secondary">
+    Report this
+</a>
+{% endblock %}
