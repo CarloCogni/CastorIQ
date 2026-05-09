@@ -1,0 +1,243 @@
+{% load static %}
+<!--
+  core/templates/errors/_error_base.html
+  Shared shell for the four Django error pages (400, 403, 404, 500). Standalone HTML —
+  intentionally does NOT extend core/base.html, because at the moment a 500 fires we
+  cannot trust context processors, the request user, or any of the chrome that base.html
+  pulls in. All design tokens are inlined so the page still reads correctly even if
+  /static/ is degraded. Child templates override `page_title`, `error_code`,
+  `error_title`, `error_message`, and optionally `extra_actions`.
+-->
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex,nofollow">
+    <title>{% block page_title %}Error — CastorIQ{% endblock %}</title>
+
+    <link rel="icon" type="image/png" href="{% static 'favicon.png' %}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+    <style>
+        /* Tokens duplicated from public.css so the page survives a stylesheet fetch
+         * failure during a degraded state. Keep the values in sync manually if
+         * public.css ever changes — these are the public-surface palette. */
+        :root {
+            --castor-primary: #3b82f6;
+            --castor-blue-light: #4facfe;
+            --castor-blue-cyan: #00f2fe;
+            --castor-accent: #8b5cf6;
+            --castor-bg: #050505;
+            --castor-surface: #0f0f10;
+            --castor-border: #1f2024;
+            --castor-text: #e7e7e7;
+            --castor-text-muted: #a4a6ab;
+            --castor-text-faint: #6b7076;
+        }
+        * { box-sizing: border-box; }
+        html, body { height: 100%; margin: 0; padding: 0; }
+        body {
+            background: var(--castor-bg);
+            color: var(--castor-text);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            line-height: 1.6;
+            overflow: hidden;
+        }
+
+        /* Matrix canvas — full-viewport, behind the content. The partial does its
+         * own JS work; we only own the placement here. */
+        #matrix-canvas {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            opacity: 0.35;
+            pointer-events: none;
+        }
+
+        .error-shell {
+            position: relative;
+            z-index: 1;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem 1.25rem 5rem;
+            text-align: center;
+            animation: error-fade-in 0.5s ease-out;
+        }
+        @keyframes error-fade-in {
+            from { opacity: 0; transform: translateY(-12px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        .error-logo {
+            height: 56px;
+            width: auto;
+            margin-bottom: 1.25rem;
+            animation: error-bob 4s ease-in-out infinite;
+            filter: drop-shadow(0 4px 18px rgba(79, 172, 254, 0.30));
+        }
+        @keyframes error-bob {
+            0%, 100% { transform: translateY(0); }
+            50%      { transform: translateY(-7px); }
+        }
+
+        .error-code {
+            font-family: 'JetBrains Mono', 'Menlo', monospace;
+            font-size: clamp(6rem, 18vw, 11rem);
+            font-weight: 800;
+            line-height: 0.95;
+            letter-spacing: -0.05em;
+            margin: 0;
+            background: linear-gradient(
+                90deg,
+                var(--castor-blue-light) 0%,
+                var(--castor-blue-cyan) 25%,
+                var(--castor-accent) 50%,
+                var(--castor-blue-cyan) 75%,
+                var(--castor-blue-light) 100%
+            );
+            background-size: 200% 100%;
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            animation: error-shimmer 6s linear infinite;
+        }
+        @keyframes error-shimmer {
+            0%   { background-position: 0% 50%; }
+            100% { background-position: 200% 50%; }
+        }
+
+        .error-title {
+            font-size: clamp(1.4rem, 3vw, 1.85rem);
+            font-weight: 600;
+            margin: 1.25rem 0 0.6rem;
+            color: var(--castor-text);
+            letter-spacing: -0.01em;
+        }
+
+        .error-message {
+            font-size: 1.05rem;
+            color: var(--castor-text-muted);
+            max-width: 540px;
+            margin: 0 auto 2rem;
+        }
+
+        .error-actions {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .error-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            padding: 0.65rem 1.5rem;
+            border-radius: 10px;
+            font-weight: 500;
+            font-size: 0.95rem;
+            text-decoration: none;
+            border: 1px solid transparent;
+            transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .error-btn-primary {
+            background: var(--castor-primary);
+            color: #ffffff;
+            border-color: var(--castor-primary);
+        }
+        .error-btn-primary:hover {
+            background: #2563eb;
+            border-color: #2563eb;
+            transform: translateY(-1px);
+            box-shadow: 0 8px 20px rgba(59, 130, 246, 0.35);
+        }
+        .error-btn-secondary {
+            background: transparent;
+            color: var(--castor-text-muted);
+            border-color: var(--castor-border);
+        }
+        .error-btn-secondary:hover {
+            color: var(--castor-text);
+            border-color: var(--castor-text-muted);
+        }
+
+        .error-footer {
+            position: fixed;
+            bottom: 1rem;
+            left: 0;
+            right: 0;
+            text-align: center;
+            font-size: 0.8rem;
+            color: var(--castor-text-faint);
+            z-index: 1;
+        }
+
+        /* CastorIQ wordmark — duplicated inline so the footer mark renders without
+         * public.css. Keep in sync with .castoriq-wordmark in public.css. */
+        .castoriq-wordmark {
+            font-family: 'Inter', sans-serif;
+            letter-spacing: -0.02em;
+            display: inline-flex;
+            align-items: baseline;
+            gap: 0;
+        }
+        .castoriq-wordmark .cw-prefix {
+            font-weight: 700;
+            background: linear-gradient(90deg, #ffffff 0%, var(--castor-blue-light) 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        .castoriq-wordmark .cw-iq {
+            font-weight: 800;
+            color: var(--castor-blue-cyan);
+            letter-spacing: -0.04em;
+            margin-left: 0.04em;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .error-shell, .error-logo, .error-code { animation: none; }
+        }
+
+        @media (max-width: 480px) {
+            #matrix-canvas { opacity: 0.20; }
+            .error-shell { padding-top: 1rem; }
+            .error-btn { width: 100%; justify-content: center; }
+        }
+    </style>
+</head>
+<body>
+
+{% include "core/components/_matrix_background.html" %}
+
+<main class="error-shell">
+    <img src="{% static 'images/castor-logo-nobg.png' %}" alt="" class="error-logo">
+
+    <h1 class="error-code">{% block error_code %}???{% endblock %}</h1>
+    <h2 class="error-title">{% block error_title %}Something went wrong{% endblock %}</h2>
+    <p class="error-message">{% block error_message %}An unexpected error occurred.{% endblock %}</p>
+
+    <div class="error-actions">
+        <a href="/" class="error-btn error-btn-primary">
+            <span aria-hidden="true">&larr;</span> Back to home
+        </a>
+        {% block extra_actions %}{% endblock %}
+    </div>
+</main>
+
+<footer class="error-footer">
+    <span class="castoriq-wordmark">
+        <span class="cw-prefix">Castor</span><span class="cw-iq">IQ</span>
+    </span>
+</footer>
+
+</body>
+</html>

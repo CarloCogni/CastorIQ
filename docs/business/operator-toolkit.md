@@ -58,9 +58,9 @@ cat <<'EOF' >> ~/.bashrc
 
 # Castor operator: open a 3-window tmux session in the project dir
 castor-tmux() {
-    tmux new-session  -d -s castor -n app    -c ~/apps/castor
-    tmux new-window      -t castor   -n logs  -c ~/apps/castor
-    tmux new-window      -t castor   -n db    -c ~/apps/castor
+    tmux new-session  -d -s castor -n app    -c ~/castor
+    tmux new-window      -t castor   -n logs  -c ~/castor
+    tmux new-window      -t castor   -n db    -c ~/castor
     tmux attach-session  -t castor
 }
 EOF
@@ -82,17 +82,27 @@ fifth time you type it.
 cat <<'EOF' >> ~/.bashrc
 
 # Castor operator aliases
-alias dcprod='docker compose -f ~/apps/castor/docker/docker-compose.prod.yml'
+alias dcprod='docker compose -f ~/castor/docker/docker-compose.prod.yml'
 alias castor-logs='dcprod logs -f --tail=200'
 alias castor-web='dcprod exec web python src/manage.py'
 alias castor-restart='dcprod restart web'
+
+# Castor operator: one-shot deploy from anywhere on the box
+castor-deploy() {
+    (cd ~/castor && ./scripts/deploy.sh "$@")
+}
 EOF
 source ~/.bashrc
 ```
 
+The deploy function uses a subshell `(cd ~/castor && …)` so the `cd` doesn't
+persist — you stay in whatever directory you ran it from. `"$@"` forwards
+any future `deploy.sh` flags through unchanged.
+
 - [ ] `dcprod ps` returns the same output as the long compose command
 - [ ] `castor-logs web` follows the web container's log
 - [ ] `castor-web shell` drops you into a Django shell
+- [ ] `castor-deploy` from any directory runs the full deploy and returns you where you were
 
 ---
 
@@ -143,11 +153,11 @@ Three rules — don't break them:
 | DO                                         | DON'T                                       |
 |--------------------------------------------|---------------------------------------------|
 | Run Claude Code inside `tmux` so SSH drops don't kill long sessions | Run it outside `tmux` for any session longer than ~2 min |
-| Default `cwd` to `~/` and `cd` into the project deliberately when needed | Run it from `~/apps/castor` by default — accidental edits become structurally easier |
+| Default `cwd` to `~/` and `cd` into the project deliberately when needed | Run it from `~/castor` by default — accidental edits become structurally easier |
 | Use it for **diagnosis**: read logs, query DB, draft fixes | Use it to commit and `git push` from prod — that breaks the dev → CI → deploy flow |
 
 Hot-fix workflow: if Claude Code helps you find the fix on the VPS, capture
-the patch, push from your **dev box**, then `cd ~/apps/castor && ./scripts/deploy.sh`
+the patch, push from your **dev box**, then `cd ~/castor && ./scripts/deploy.sh`
 on the VPS. The VPS stays read-mostly for code.
 
 ### 3d — Caveats
@@ -163,7 +173,7 @@ on the VPS. The VPS stays read-mostly for code.
 - [ ] `claude --version` succeeds
 - [ ] `~/.claude/` exists with `0700` perms; files inside are `0600`
 - [ ] A trivial prompt from `~/` runs and returns a response
-- [ ] From `~/apps/castor`, `claude` opens with project context
+- [ ] From `~/castor`, `claude` opens with project context
 
 ---
 
@@ -203,7 +213,7 @@ git config --global user.name  "Carlo (castoriq-prod)"
 ```
 
 - [ ] `logrotate -d /etc/logrotate.d/castor-backups` exits cleanly
-- [ ] `git -C ~/apps/castor config --get user.email` returns your operator email
+- [ ] `git -C ~/castor config --get user.email` returns your operator email
 
 ---
 

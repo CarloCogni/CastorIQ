@@ -46,36 +46,20 @@ Perhaps there are other documents worth creating? anything else? be creative
 
 #################################################################################
 
-next: dry-run-check list to double check before running. adding api keys from claude and groq.
-Double checking how quickly code updates can be pushed to production.
-push to production
-
-to check in production: backups, how to connect to external data saving source to expand like server + NAS
-
-power BI
-
-connect external providers for monitoring
-connect email
- keep on going!!!!
-
-settings.html -> needs to be adjusted to be adjusted
 -----
 
 final vps bring up: 
-mail GUN 
+mail GUN - Brevo (formerly Sendinblue)	300 emails/day (~9,000/month)	Scales affordably
 Sentry
 
-settings.html - adjust
 implement power BI
 test groq and Claude connections
 
-bait and switch landing page
 
 test restore backup after night cronjob
 
 
 websocket errors logger
-400, 404, 500 html pages!
 
 other user experience requirements? 
 
