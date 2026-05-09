@@ -124,12 +124,20 @@ sudo whoami      # must print: root
 
 ## Phase 3 — SSH hardening
 
-Lock SSH down: no root login, no passwords, keys only. Drop a small override file
-in `sshd_config.d/` rather than editing the main config — survives package
-upgrades cleanly.
+Lock SSH down: no root login, no passwords, keys only, **and move off port 22**.
+Drop a small override file in `sshd_config.d/` rather than editing the main
+config — survives package upgrades cleanly.
+
+> **Why move off port 22:** bots scan 22 around the clock. On a busy box this
+> can exhaust sshd's `MaxStartups` slots and time out *legitimate* connections
+> at the SSH protocol layer (TCP handshake completes, then dies) — a confusing
+> failure mode that looks like a network block but isn't. Pick any high port
+> (5-digit, not 22) and bot pressure essentially vanishes. See
+> `ssh-lockout-runbook.md` for the diagnosis pattern.
 
 ```bash
 cat <<'EOF' > /etc/ssh/sshd_config.d/10-castor.conf
+Port <ssh_port>
 PermitRootLogin no
 PasswordAuthentication no
 PubkeyAuthentication yes
@@ -137,20 +145,34 @@ KbdInteractiveAuthentication no
 EOF
 
 sshd -t                          # validates config, must print nothing
-systemctl restart ssh
+```
+
+**Ubuntu 24.04 quirk — socket activation must be disabled.** On 24.04+, the
+`ssh.service` unit is started via `ssh.socket`, and the socket unit dictates
+the listen port. The `Port` directive above is **silently ignored** unless we
+hand listening back to the service. This is the single most time-consuming
+gotcha in this whole runbook — do it explicitly:
+
+```bash
+systemctl disable --now ssh.socket
+systemctl enable --now ssh.service
+systemctl restart ssh.service
+ss -tlnp | grep sshd             # MUST show <ssh_port>, NOT 22
 ```
 
 **Verify** from a fresh terminal:
 
 ```bash
-ssh <username>@<vps_ip>          # should succeed
-ssh root@<vps_ip>                # should be refused: "Permission denied"
+ssh -p <ssh_port> <username>@<vps_ip>   # should succeed
+ssh -p <ssh_port> root@<vps_ip>         # should be refused: "Permission denied"
 ```
 
-- [X] `/etc/ssh/sshd_config.d/10-castor.conf` written
+- [X] `/etc/ssh/sshd_config.d/10-castor.conf` written, includes `Port <ssh_port>`
+- [X] `ssh.socket` disabled, `ssh.service` enabled (24.04 socket-activation fix)
+- [X] `ss -tlnp | grep sshd` shows the new port, not 22
 - [X] `sshd -t` exits cleanly
-- [X] `ssh root@<vps_ip>` is refused
-- [X] `ssh <username>@<vps_ip>` still works
+- [X] `ssh -p <ssh_port> root@<vps_ip>` is refused
+- [X] `ssh -p <ssh_port> <username>@<vps_ip>` still works
 - [X] Only **after** the above pass: close the root console
 
 ---
@@ -164,7 +186,10 @@ follow-up doc just works).
 ```bash
 ufw default deny incoming
 ufw default allow outgoing
-ufw allow OpenSSH
+# Custom SSH port from Phase 3. Do NOT use `ufw allow OpenSSH` — that opens
+# port 22, which we explicitly closed because of the bot-flood / MaxStartups
+# lockout class of incident.
+ufw allow <ssh_port>/tcp
 ufw allow http
 ufw allow https
 ufw enable                       # answer "y" to the SSH-cutoff warning
@@ -172,8 +197,81 @@ ufw status verbose
 ```
 
 - [X] `ufw status verbose` shows `Status: active`
-- [X] Allow rules present for `OpenSSH`, `80/tcp`, `443/tcp`
+- [X] Allow rules present for `<ssh_port>/tcp`, `80/tcp`, `443/tcp`
+- [X] Port 22 is **not** in the allow list
 - [X] Default policy: `deny (incoming), allow (outgoing)`
+
+---
+
+## Phase 4b — Hetzner Cloud Firewall (defence in depth)
+
+UFW runs *inside* the VPS. The Hetzner Cloud Firewall runs *in front of* it,
+at the hypervisor / network layer — packets it drops never reach our kernel.
+Adding it on top of UFW is not redundant: the two layers fail differently and
+together cover gaps that either alone leaves open.
+
+> **Why both:**
+>
+> 1. **Docker bypasses UFW.** When a container publishes a port (`-p 80:80`),
+>    Docker writes its own iptables rules in the `DOCKER` chain that sidestep
+>    UFW's `INPUT` chain. A container accidentally exposed on a port UFW didn't
+>    allow is still reachable. The Hetzner firewall doesn't care what iptables
+>    says — it filters before the packet hits the box.
+> 2. **In-box failures.** A bad script flushing iptables, a kernel panic, a
+>    misapplied UFW rule — anything that breaks UFW also breaks UFW's
+>    protection. The hypervisor firewall keeps blocking regardless.
+> 3. **Bot pressure.** SSH on a high port already kills most of it; an outer
+>    firewall that can pin SSH to your home IP eliminates the rest.
+
+Configure in the Hetzner panel → **Firewalls** → **Create Firewall**, then
+attach it to the `castoriq-prod` server (or via a project label if you want it
+auto-applied to future servers). Default policy is already drop-all-inbound /
+allow-all-outbound, which matches our UFW posture — only add the rules below.
+
+### Inbound rules
+
+| Protocol | Port      | Source        | Purpose |
+|----------|-----------|---------------|---------|
+| TCP      | `<ssh_port>` | Any IPv4 + IPv6 (or your home IP `/32`, see below) | SSH |
+| TCP      | `80`      | Any IPv4 + IPv6 | HTTP — Let's Encrypt HTTP-01 + redirect to HTTPS |
+| TCP      | `443`     | Any IPv4 + IPv6 | HTTPS — the actual site |
+| ICMP     | —         | Any IPv4 + IPv6 | `ping` / MTR for debugging connectivity |
+
+**Tighter SSH option:** if your home/office has a stable IP, set the SSH rule's
+source to `<your_ip>/32` (IPv4) and your `/64` IPv6 prefix. Bots can't even
+complete the TCP handshake. If your IP rotates (most consumer ISPs), leave
+SSH open to the world — fail2ban + key-only auth from Phase 3/5 already
+cover that case.
+
+### Outbound rules
+
+Leave **unrestricted** (the Hetzner default). Locking down outbound on a box
+that needs to reach Docker Hub, apt mirrors, Let's Encrypt, Mailgun, Sentry,
+Ollama model downloads, and Hetzner Storage Box is a maintenance trap with
+near-zero security upside on a single-tenant VPS.
+
+### Debugging note — there are now two firewalls
+
+When something seems blocked, check **both** layers, in this order (outer
+first, since that's what the packet hits first):
+
+```bash
+# Outer (Hetzner): only visible in the panel — Firewalls → <name> → Rules
+# Inner (UFW): on the box
+ufw status verbose
+```
+
+The `ssh-lockout-runbook.md` recovery path still works: the **Hetzner Console**
+(hypervisor serial console) bypasses both firewalls, fail2ban, and sshd. It
+remains the guaranteed last resort.
+
+- [ ] Hetzner Cloud Firewall created with the four inbound rules above
+- [ ] Outbound left unrestricted
+- [ ] Firewall attached to `castoriq-prod` (or a label that matches it)
+- [ ] Verified from laptop: `ssh -p <ssh_port> <username>@<vps_ip>` still works
+- [ ] Verified: `curl -I http://castoriq.io` reaches the box (or fails with a
+      box-side error, not a connection timeout) once nginx is up in the next
+      runbook
 
 ---
 
@@ -191,11 +289,24 @@ maxretry = 5
 
 [sshd]
 enabled  = true
+# Loosened from DEFAULT: a single-operator box on a custom SSH port doesn't
+# need aggressive thresholds, and the previous tight values (5 / 10m / 1h)
+# caused repeated self-lockouts during legitimate use — verbose ssh, IDE
+# Remote-SSH retries, agent key probing. With SSH off port 22, brute-force
+# pressure is near-zero anyway.
+maxretry = 10
+findtime = 10m
+bantime  = 15m
 EOF
 
 systemctl enable --now fail2ban
 fail2ban-client status sshd
 ```
+
+> If you ever lock yourself out, the recovery path is `ssh-lockout-runbook.md`
+> in this same folder. Hetzner Cloud Console (hypervisor serial console) is
+> the guaranteed last resort — it bypasses ufw, iptables, fail2ban, and sshd
+> entirely.
 
 - [X] `/etc/fail2ban/jail.local` created
 - [X] `systemctl is-active fail2ban` returns `active`

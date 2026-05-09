@@ -12,6 +12,8 @@ from django.shortcuts import redirect
 from django.template.loader import render_to_string
 from django.views.decorators.http import require_POST
 
+from core.models import SiteLaunchConfig
+
 from .models import BetaApplication
 
 logger = logging.getLogger(__name__)
@@ -58,7 +60,15 @@ def apply_view(request):
     persist → confirmation email → redirect back to /. All errors and the
     success message are surfaced via Django's messages framework, which the
     landing template renders.
+
+    Short-circuited when the site is not in ``live`` state — during
+    coming-soon or maintenance the form is unreachable from the splash, but
+    we still reject direct POSTs so cached links / scripts can't create
+    BetaApplication rows.
     """
+    if not SiteLaunchConfig.load().is_live:
+        return redirect("/")
+
     # Honeypot — bots fill any input they can see; humans don't see this one.
     if request.POST.get("company_website", "").strip():
         logger.info("Beta application honeypot triggered from %s", _client_ip(request))

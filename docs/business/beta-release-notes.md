@@ -61,30 +61,22 @@ connect email
 settings.html -> needs to be adjusted to be adjusted
 -----
 
-### side ntoes for dry run: 
+final vps bring up: 
+mail GUN 
+Sentry
 
-  Option A — backup & restore (do this for the dry-run tonight)
+settings.html - adjust
+implement power BI
+test groq and Claude connections
 
-  Zero refactor risk, takes 30 seconds:
+bait and switch landing page
 
-  # Before Phase 1
-  mv .env .env.dev.bak
+test restore backup after night cronjob
 
-  # Do Phase 1 normally
-  cp .env.production.example .env
-  # edit .env, fill in DJANGO_SECRET_KEY, POSTGRES_PASSWORD, etc.
 
-  # ... run all 12 phases ...
+websocket errors logger
+400, 404, 500 html pages!
 
-  # After Phase 12 tear-down
-  docker compose -f docker/docker-compose.prod.yml down -v
-  mv .env.dev.bak .env   # restore your dev secrets
+other user experience requirements? 
 
-  Your dev runserver keeps working immediately afterward. Don't forget the restore step — if you do, your next cd src && uv run
-  manage.py runserver will read the prod .env and either fail (wrong DB host db instead of localhost) or behave oddly.
-
-  Defensive belt: take a quick copy you can't accidentally mv over:
-  cp .env .env.dev.bak    # copy, not move
-  # … dry-run …
-  cp .env.dev.bak .env    # overwrite the prod .env back to dev
-  rm .env.dev.bak
+HETZNER - investiage external volumes for back and media storage like a NAS

@@ -49,7 +49,8 @@
         </button>
         {% endif %}
 
-        <a href="{% url 'core:settings' %}" class="d-flex align-items-center gap-2 text-secondary opacity-50 hover-white text-decoration-none" title="Settings — {{ active_llm_model }}">
+        <a href="{% url 'core:settings' %}" class="d-flex align-items-center gap-2 text-secondary opacity-50 hover-white text-decoration-none" title="Settings{% if user.is_staff %} — {{ active_llm_model }}{% endif %}">
+            {% if user.is_staff %}
             <span class="d-none d-md-inline fs-8 {% if active_llm_info %}{% if active_llm_info.family == 'qwen' %}text-accent{% else %}text-primary{% endif %}{% endif %}"
                   style="font-weight: 500;">
                 {% if active_llm_info %}
@@ -58,6 +59,7 @@
                     {{ active_llm_model }}
                 {% endif %}
             </span>
+            {% endif %}
             <i class="bi bi-gear-fill"></i>
         </a>
         <div class="vr bg-secondary opacity-25 mx-1"></div>
