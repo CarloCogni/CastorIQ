@@ -1,0 +1,109 @@
+<!-- core/components/settings_help_modal.html — "How Settings work" -->
+
+<div class="modal fade" id="settingsHelpModal" tabindex="-1" aria-labelledby="settingsHelpLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+
+            <div class="modal-header border-bottom px-4 py-3"
+                 style="border-color: var(--bs-border-color) !important;">
+                <h5 class="modal-title fw-semibold fs-6 mb-0" id="settingsHelpLabel">
+                    <i class="bi bi-gear me-2" style="color: var(--castor-primary, #3b82f6);"></i>
+                    How Settings Work
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body px-4 py-4">
+
+                <!-- 1. What is it? -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-box-seam me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    What is this page?
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    Settings is where you manage your <strong class="text-body">account preferences</strong> and
+                    review how this Castor build is configured. During the beta, most engine-level
+                    options (LLM provider, model, embedding model, daily token cap) are managed by the
+                    host — this page only exposes what's actually yours to change.
+                </p>
+
+                <!-- 2. What you can change today -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-toggles me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    What you can change today
+                </p>
+                <div class="d-flex flex-column gap-2 fs-8 mb-4">
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge rounded-pill flex-shrink-0 mt-1"
+                              style="background-color: rgba(59, 130, 246, 0.15); color: var(--castor-primary, #3b82f6); border: 1px solid rgba(59, 130, 246, 0.3);">
+                            <i class="bi bi-palette"></i> Theme
+                        </span>
+                        <span class="text-secondary">
+                            <strong class="text-body">Dark or light.</strong> Saved per user; flips live on toggle
+                            and persists across sessions via cookie.
+                        </span>
+                    </div>
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge rounded-pill flex-shrink-0 mt-1"
+                              style="background-color: rgba(148, 163, 184, 0.15); color: var(--bs-body-color); border: 1px solid var(--bs-border-color);">
+                            <i class="bi bi-person"></i> Account
+                        </span>
+                        <span class="text-secondary">
+                            <strong class="text-body">Read-only.</strong> Username, email, and join date.
+                            Email and username changes go through the host during the beta — write to the
+                            address on the release notes.
+                        </span>
+                    </div>
+                </div>
+
+                <!-- 3. What's host-controlled in the beta -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-shield-lock me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    Host-controlled in the beta
+                </p>
+                <div class="d-flex flex-column gap-1 fs-8 text-secondary mb-4">
+                    <span><i class="bi bi-dot"></i><strong class="text-body">LLM provider and model.</strong> Anthropic Claude for Ask, Groq Llama for Modify — set centrally, not per user.</span>
+                    <span><i class="bi bi-dot"></i><strong class="text-body">Embedding model.</strong> Locked to <code>mxbai-embed-large</code>; changing it would require re-embedding every project.</span>
+                    <span><i class="bi bi-dot"></i><strong class="text-body">Daily token cap.</strong> Shared budget shown in the banner above the Ask and Modify chat inputs.</span>
+                    <span><i class="bi bi-dot"></i><strong class="text-body">RAG tuning</strong> (chunk size, top-K, similarity threshold) — fixed defaults during the beta.</span>
+                </div>
+
+                <!-- 4. What's coming -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-stars me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    What's coming
+                </p>
+                <div class="d-flex flex-column gap-1 fs-8 text-secondary mb-4">
+                    <span><i class="bi bi-dot"></i><strong class="text-body">Bring Your Own Key (v1.1).</strong> Plug in your own Anthropic or Groq API key to bypass the shared cap. Encrypted at rest, scoped to your account.</span>
+                    <span><i class="bi bi-dot"></i><strong class="text-body">RAG tuning.</strong> Per-user chunk size, top-K, and similarity threshold.</span>
+                    <span><i class="bi bi-dot"></i><strong class="text-body">Notifications.</strong> Opt-in email for processing errors and write-back conflicts.</span>
+                </div>
+
+                {% if user.is_staff %}
+                <!-- 5. Staff-only admin section -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-shield-lock me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    System administration <span class="badge bg-secondary bg-opacity-25 text-secondary fs-8">Staff</span>
+                </p>
+                <div class="d-flex flex-column gap-1 fs-8 text-secondary mb-4">
+                    <span><i class="bi bi-dot"></i><strong class="text-body">LLM Configuration.</strong> Pick the active Ollama model for this account. Affects only Ollama-routed requests; cloud providers are governed by <code>SiteLLMConfig</code> in the Django admin.</span>
+                    <span><i class="bi bi-dot"></i><strong class="text-body">Embedding Model.</strong> Read-only — changing it requires re-embedding every project's IFC entities and document chunks.</span>
+                    <span><i class="bi bi-dot"></i><strong class="text-body">System Status.</strong> The configured Ollama endpoint and a live connection check.</span>
+                </div>
+                {% endif %}
+
+                <!-- Caveats -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-exclamation-circle me-1" style="color: var(--castor-accent, #8b5cf6);"></i>
+                    Caveats
+                </p>
+                <div class="d-flex flex-column gap-1 fs-8 text-secondary">
+                    <span><i class="bi bi-dot"></i>The beta runs on <strong class="text-body">shared infrastructure</strong>. Don't upload data you wouldn't want a host operator to see in error logs.</span>
+                    <span><i class="bi bi-dot"></i>Token usage is tracked at the chat banner, <strong class="text-body">not on this page</strong> — you can see remaining budget where you're spending it.</span>
+                    <span><i class="bi bi-dot"></i>Sections marked <em>Coming soon</em> are visible on purpose — they signal what's on the v1.1 roadmap, not features that are silently broken.</span>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>

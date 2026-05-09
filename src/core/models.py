@@ -440,6 +440,56 @@ class SiteLLMConfig(SingletonModel):
         return (provider, model or cloud_default)
 
 
+class SiteLaunchConfig(SingletonModel):
+    """
+    Public-face state for the unauthenticated `/` URL (one row, ever).
+
+    Three states:
+    - ``coming_soon``: pre-launch splash, "Stay tuned. BIM is about to be redefined."
+    - ``live``: the real beta landing page (hero + features + application form)
+    - ``maintenance``: post-launch outage splash, "Be right back."
+
+    Flippable from /admin/core/sitelaunchconfig/ — no deploy needed. The
+    authenticated app surface (projects, Ask, Modify, admin) is unaffected by
+    state; only the public face and the beta-application form are gated.
+    """
+
+    class State(models.TextChoices):
+        COMING_SOON = "coming_soon", "Coming soon (pre-launch splash)"
+        LIVE = "live", "Live (full landing page)"
+        MAINTENANCE = "maintenance", "Under maintenance"
+
+    state = models.CharField(
+        max_length=20,
+        choices=State.choices,
+        default=State.COMING_SOON,
+        verbose_name="Public-face state",
+        help_text=(
+            "Controls what unauthenticated visitors see at /. "
+            "'live' shows the real landing page and accepts beta applications; "
+            "'coming_soon' and 'maintenance' both show a Matrix-rain splash and "
+            "block the application form."
+        ),
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Site Launch Configuration"
+        verbose_name_plural = "Site Launch Configuration"
+
+    def __str__(self) -> str:
+        return f"State: {self.get_state_display()}"
+
+    @classmethod
+    def load(cls) -> "SiteLaunchConfig":
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    @property
+    def is_live(self) -> bool:
+        return self.state == self.State.LIVE
+
+
 class UserTokenBudget(models.Model):
     """
     Per-user daily LLM token cap.

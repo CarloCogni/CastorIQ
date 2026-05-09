@@ -1,0 +1,418 @@
+<!--core/templates/core/_archived/settings_local_setup.html-->
+<!--
+    Archived 2026-05-08. Original Settings page from the local-Ollama era.
+    Kept verbatim for self-hosted setups and as a reference for the BYOK
+    UI work in v1.1.
+
+    To revive:
+      1. Point SettingsView.template_name back to "core/_archived/settings_local_setup.html".
+      2. Restore the Ollama context vars in SettingsView.get_context_data
+         (active_model, active_model_info, default_model, is_using_default,
+         embed_model, embed_dimensions, ollama_host, vram_tiers).
+      3. The ollama_models_api / set_model_api routes in core/urls.py and
+         their views in core/views.py are still present and functional.
+
+    Component partials referenced below (model_status, model_selector, theme_toggle)
+    still live at core/templates/core/components/.
+-->
+{% extends "core/base.html" %}
+{% load static %}
+
+{% block title %}Settings — Castor{% endblock %}
+
+{% block extra_css %}
+<style>
+    .settings-container {
+        max-width: 860px;
+        margin: 0 auto;
+        padding: 2rem 1.5rem;
+        overflow-y: auto;
+        width: 100%;
+    }
+
+    .settings-section {
+        background-color: var(--bs-tertiary-bg);
+        border: 1px solid var(--bs-border-color);
+        border-radius: 0.75rem;
+        padding: 1.5rem;
+        margin-bottom: 1.25rem;
+    }
+
+    .settings-section-header {
+        display: flex;
+        align-items: center;
+        gap: 0.625rem;
+        margin-bottom: 1rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 1px solid var(--bs-border-color);
+    }
+
+    .settings-section-header i {
+        font-size: 1.1rem;
+        opacity: 0.8;
+    }
+
+    .settings-section-header h3 {
+        font-size: 1rem;
+        font-weight: 600;
+        margin: 0;
+    }
+
+    .settings-section-header .badge {
+        font-size: 0.625rem;
+        font-weight: 500;
+    }
+
+    .model-card {
+        background-color: var(--bs-body-bg);
+        border: 1px solid var(--bs-border-color);
+        border-radius: 0.625rem;
+        padding: 0.875rem 1rem;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+
+    .model-card:hover {
+        border-color: var(--castor-primary);
+        background-color: rgba(59, 130, 246, 0.04);
+    }
+
+    .model-card.active {
+        border-color: var(--castor-primary);
+        background-color: rgba(59, 130, 246, 0.08);
+        box-shadow: 0 0 0 1px var(--castor-primary);
+    }
+
+    .model-card.active .model-active-dot {
+        display: inline-block;
+    }
+
+    .model-active-dot {
+        display: none;
+        width: 8px;
+        height: 8px;
+        background-color: var(--castor-success);
+        border-radius: 50%;
+    }
+
+    .tier-divider {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--bs-secondary-color);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-top: 1rem;
+        margin-bottom: 0.5rem;
+        padding-bottom: 0.375rem;
+        border-bottom: 1px solid var(--bs-border-color);
+    }
+
+    .tier-divider:first-child {
+        margin-top: 0;
+    }
+
+    .setting-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.625rem 0;
+    }
+
+    .setting-row + .setting-row {
+        border-top: 1px solid var(--bs-border-color);
+    }
+
+    .setting-label {
+        font-size: 0.875rem;
+        color: var(--bs-secondary-color);
+    }
+
+    .setting-value {
+        font-size: 0.875rem;
+        font-weight: 500;
+    }
+
+    .placeholder-overlay {
+        position: relative;
+        opacity: 0.45;
+        pointer-events: none;
+        user-select: none;
+    }
+
+    .placeholder-overlay::after {
+        content: "Coming soon";
+        position: absolute;
+        top: 0.75rem;
+        right: 1rem;
+        font-size: 0.6875rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--bs-secondary-color);
+        background-color: var(--bs-body-bg);
+        padding: 2px 8px;
+        border-radius: 4px;
+    }
+
+    .family-badge {
+        font-size: 0.625rem;
+        padding: 1px 6px;
+        border-radius: 4px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
+
+    .family-qwen {
+        background-color: rgba(139, 92, 246, 0.15);
+        color: var(--castor-accent);
+    }
+
+    .family-llama {
+        background-color: rgba(59, 130, 246, 0.15);
+        color: var(--castor-primary);
+    }
+
+    .family-unknown {
+        background-color: var(--castor-overlay-strong);
+        color: var(--bs-secondary-color);
+    }
+
+    .toast-saved {
+        position: fixed;
+        bottom: 2rem;
+        right: 2rem;
+        z-index: 1060;
+        animation: slideUp 0.3s ease-out;
+    }
+
+    @keyframes slideUp {
+        from { opacity: 0; transform: translateY(12px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+    code[onclick] {
+        transition: all 0.15s ease;
+    }
+
+    code[onclick]:hover {
+        background-color: var(--castor-primary) !important;
+        color: white;
+    }
+
+    code[onclick]:active {
+        transform: scale(0.96);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="settings-container">
+
+    <!-- Page Header -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <a href="{% url 'projects:list' %}" class="text-secondary text-decoration-none">
+            <i class="bi bi-arrow-left fs-5"></i>
+        </a>
+        <div>
+            <h1 class="fs-4 fw-bold mb-0">Settings</h1>
+            <p class="text-secondary fs-7 mb-0">System-wide configuration for Castor</p>
+        </div>
+    </div>
+
+
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- 1. LLM Configuration (FUNCTIONAL)                      -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <div class="settings-section">
+        <div class="settings-section-header">
+            <i class="bi bi-cpu text-primary"></i>
+            <h3>LLM Configuration</h3>
+        </div>
+
+        <!-- Current model status (swapped by HTMX on save) -->
+        <div id="model-status">
+            {% include "core/components/model_status.html" %}
+        </div>
+
+        <!-- Model selector (loaded via HTMX on page load) -->
+        <div
+            id="model-selector"
+            hx-get="{% url 'core:ollama_models_api' %}"
+            hx-trigger="load"
+            hx-swap="innerHTML"
+        >
+            <div class="text-center py-4">
+                <div class="spinner-border spinner-border-sm text-secondary" role="status"></div>
+                <span class="text-secondary fs-7 ms-2">Querying Ollama for available models…</span>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- 2. Embedding Model (READ-ONLY)                         -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <div class="settings-section">
+        <div class="settings-section-header">
+            <i class="bi bi-vector-pen text-accent"></i>
+            <h3>Embedding Model</h3>
+            <span class="badge bg-secondary bg-opacity-25 text-secondary">Locked</span>
+        </div>
+
+        <div class="setting-row">
+            <span class="setting-label">Model</span>
+            <span class="setting-value"><code>{{ embed_model }}</code></span>
+        </div>
+        <div class="setting-row">
+            <span class="setting-label">Dimensions</span>
+            <span class="setting-value">{{ embed_dimensions }}d</span>
+        </div>
+        <p class="text-secondary fs-8 mt-2 mb-0">
+            <i class="bi bi-lock-fill me-1"></i>
+            Changing the embedding model requires re-embedding all IFC entities and document chunks.
+            Modify <code>OLLAMA_EMBED_MODEL</code> in your <code>.env</code> and run <code>generate_embeddings</code>.
+        </p>
+    </div>
+
+
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- 3. System Status (LIVE DATA)                           -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <div class="settings-section">
+        <div class="settings-section-header">
+            <i class="bi bi-activity text-success"></i>
+            <h3>System Status</h3>
+        </div>
+
+        <div class="setting-row">
+            <span class="setting-label">Ollama endpoint</span>
+            <span class="setting-value"><code>{{ ollama_host }}</code></span>
+        </div>
+        <div class="setting-row">
+            <span class="setting-label">Connection</span>
+            <!-- Updated out-of-band by the model_selector.html response. -->
+            <span class="setting-value" id="ollama-health">
+                <span class="text-secondary fs-7 d-inline-flex align-items-center gap-1">
+                    <span class="spinner-border spinner-border-sm" role="status"></span>
+                    Checking…
+                </span>
+            </span>
+        </div>
+    </div>
+
+
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- 4. Account (READ-ONLY)                                 -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <div class="settings-section">
+        <div class="settings-section-header">
+            <i class="bi bi-person-fill text-primary"></i>
+            <h3>Account</h3>
+        </div>
+
+        <div class="setting-row">
+            <span class="setting-label">Username</span>
+            <span class="setting-value">{{ user.username }}</span>
+        </div>
+        <div class="setting-row">
+            <span class="setting-label">Email</span>
+            <span class="setting-value">{{ user.email|default:"—" }}</span>
+        </div>
+        <div class="setting-row">
+            <span class="setting-label">Joined</span>
+            <span class="setting-value">{{ user.date_joined|date:"N j, Y" }}</span>
+        </div>
+    </div>
+
+
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- 5. Appearance                                          -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <div class="settings-section">
+        <div class="settings-section-header">
+            <i class="bi bi-palette-fill"></i>
+            <h3>Appearance</h3>
+        </div>
+        <div class="setting-row">
+            <span class="setting-label">Theme</span>
+            {% include "core/components/theme_toggle.html" %}
+        </div>
+        <div class="setting-row">
+            <span class="setting-label">Sidebar position</span>
+            <select class="form-select form-select-sm" style="width: auto;"
+                    disabled
+                    title="Sidebar position is not yet configurable.">
+                <option selected>Left</option>
+                <option>Right</option>
+            </select>
+        </div>
+    </div>
+
+
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- 6. RAG Tuning (PLACEHOLDER)                            -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <div class="settings-section placeholder-overlay">
+        <div class="settings-section-header">
+            <i class="bi bi-sliders2"></i>
+            <h3>RAG Pipeline</h3>
+        </div>
+        <div class="setting-row">
+            <span class="setting-label">Chunk size</span>
+            <span class="setting-value">512 tokens</span>
+        </div>
+        <div class="setting-row">
+            <span class="setting-label">Top-K results</span>
+            <span class="setting-value">8</span>
+        </div>
+        <div class="setting-row">
+            <span class="setting-label">Similarity threshold</span>
+            <span class="setting-value">0.72</span>
+        </div>
+    </div>
+
+
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- 7. Notifications (PLACEHOLDER)                         -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <div class="settings-section placeholder-overlay">
+        <div class="settings-section-header">
+            <i class="bi bi-bell-fill"></i>
+            <h3>Notifications</h3>
+        </div>
+        <div class="setting-row">
+            <span class="setting-label">Email on conflicts</span>
+            <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" disabled>
+            </div>
+        </div>
+        <div class="setting-row">
+            <span class="setting-label">Email on processing errors</span>
+            <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" disabled>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom spacer -->
+    <div style="height: 2rem;"></div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Update Ollama health indicator after the model list loads
+    document.body.addEventListener('htmx:afterSwap', function(e) {
+        if (e.detail.target.id === 'model-selector') {
+            const healthEl = document.getElementById('ollama-health');
+            const hasError = e.detail.target.querySelector('.alert-danger');
+            if (hasError) {
+                healthEl.innerHTML = '<span class="status-dot status-failed d-inline-block me-1"></span> Offline';
+            } else {
+                healthEl.innerHTML = '<span class="status-dot status-completed d-inline-block me-1"></span> Connected';
+            }
+        }
+    });
+</script>
+{% endblock %}

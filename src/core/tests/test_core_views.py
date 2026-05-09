@@ -67,14 +67,41 @@ class TestSettingsView:
         assert response.status_code == 302
         assert "login" in response["Location"].lower()
 
-    def test_settings_context_contains_active_model(self, client):
-        """Settings page context includes active_model key."""
+    def test_settings_page_renders_account_and_theme_sections(self, client):
+        """Settings page surfaces the user's account info and theme toggle."""
+        user = UserFactory(username="carlito")
+        _login(client, user)
+
+        response = client.get(reverse("core:settings"))
+
+        assert response.status_code == 200
+        assert b"carlito" in response.content
+        assert b"Theme" in response.content
+        assert b"Bring Your Own Key" in response.content
+
+    def test_settings_page_hides_admin_sections_for_non_staff(self, client):
+        """Non-staff users do not see the LLM Configuration / System Status block."""
         user = UserFactory()
         _login(client, user)
 
         response = client.get(reverse("core:settings"))
-        assert "active_model" in response.context
-        assert "vram_tiers" in response.context
+
+        assert response.status_code == 200
+        assert b"System administration" not in response.content
+        assert b"LLM Configuration" not in response.content
+        assert b"Ollama endpoint" not in response.content
+
+    def test_settings_page_shows_admin_sections_for_staff(self, client):
+        """Staff users see the LLM Configuration / Embedding Model / System Status block."""
+        user = _staff_user()
+        _login(client, user)
+
+        response = client.get(reverse("core:settings"))
+
+        assert response.status_code == 200
+        assert b"System administration" in response.content
+        assert b"LLM Configuration" in response.content
+        assert b"Ollama endpoint" in response.content
 
 
 # ── OllamaModelsAPIView ─────────────────────────────────────────────────────
@@ -82,16 +109,24 @@ class TestSettingsView:
 
 @pytest.mark.django_db
 class TestOllamaModelsAPIView:
-    """GET /settings/api/ollama-models/."""
+    """GET /settings/api/ollama-models/ — staff-only."""
 
     def test_get_unauthenticated_redirects(self, client):
         """Unauthenticated GET redirects to login."""
         response = client.get(reverse("core:ollama_models_api"))
         assert response.status_code == 302
 
+    def test_get_non_staff_forbidden(self, client):
+        """Logged-in but non-staff users get 403 from the staff-only endpoint."""
+        user = UserFactory()
+        _login(client, user)
+
+        response = client.get(reverse("core:ollama_models_api"))
+        assert response.status_code == 403
+
     def test_get_ollama_unreachable_returns_error_context(self, client):
         """When Ollama is unreachable, response contains error context."""
-        user = UserFactory()
+        user = _staff_user()
         _login(client, user)
 
         with patch("core.views.http_requests.get", side_effect=Exception("Connection refused")):
@@ -103,7 +138,7 @@ class TestOllamaModelsAPIView:
 
     def test_get_ollama_available_returns_model_lists(self, client):
         """When Ollama responds, installed and recommended model lists are built."""
-        user = UserFactory()
+        user = _staff_user()
         _login(client, user)
 
         mock_resp = MagicMock()
@@ -121,7 +156,7 @@ class TestOllamaModelsAPIView:
 
     def test_get_skips_embedding_models(self, client):
         """Models with 'embed' in their name are excluded from installed list."""
-        user = UserFactory()
+        user = _staff_user()
         _login(client, user)
 
         mock_resp = MagicMock()
@@ -144,16 +179,24 @@ class TestOllamaModelsAPIView:
 
 @pytest.mark.django_db
 class TestSetModelAPIView:
-    """POST /settings/api/set-model/."""
+    """POST /settings/api/set-model/ — staff-only."""
 
     def test_post_unauthenticated_redirects(self, client):
         """Unauthenticated POST redirects to login."""
         response = client.post(reverse("core:set_model_api"), {"model_tag": "llama3.1:8b"})
         assert response.status_code == 302
 
+    def test_post_non_staff_forbidden(self, client):
+        """Logged-in but non-staff users get 403 from the staff-only endpoint."""
+        user = UserFactory()
+        _login(client, user)
+
+        response = client.post(reverse("core:set_model_api"), {"model_tag": "qwen3:14b"})
+        assert response.status_code == 403
+
     def test_post_sets_model_tag(self, client, settings):
         """POST with model_tag saves it to UserLLMConfig."""
-        user = UserFactory()
+        user = _staff_user()
         _login(client, user)
         # Use a model tag different from the default to avoid reset-to-default logic
         settings.OLLAMA_MODEL = "default-model:latest"
@@ -168,7 +211,7 @@ class TestSetModelAPIView:
 
     def test_post_empty_model_tag_resets_to_default(self, client):
         """Empty model_tag resets to default (clears active_model)."""
-        user = UserFactory()
+        user = _staff_user()
         _login(client, user)
 
         # First set a non-default model

@@ -8,7 +8,7 @@ import requests as http_requests
 from django.conf import settings
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required, user_passes_test
-from django.contrib.auth.mixins import LoginRequiredMixin
+from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.db import connections
 from django.db.utils import OperationalError
 from django.http import HttpResponse, JsonResponse
@@ -23,7 +23,7 @@ from core.llm_model_registry import (
     VRAM_TIERS,
     get_model_info,
 )
-from core.models import ErrorLog, UserLLMConfig
+from core.models import ErrorLog, SiteLaunchConfig, UserLLMConfig
 from core.services.auth_service import (
     clear_login_stage,
     complete_login_attempt,
@@ -84,13 +84,28 @@ def health_check(request):
 def home_view(request):
     """Root URL.
 
-    Authenticated users land on the project list (the actual app); unauthenticated
-    visitors see the public beta landing page. There is intentionally no
-    self-service signup — the only path in is the application form.
+    Authenticated users always land on the project list. For unauthenticated
+    visitors, ``SiteLaunchConfig`` decides what is shown:
+
+    - ``live`` → the real beta landing page with the application form.
+    - ``coming_soon`` → pre-launch splash with the matrix-rain effect.
+    - ``maintenance`` → same splash with a different headline.
+
+    The toggle is flippable from /admin/core/sitelaunchconfig/ — no deploy.
+    There is intentionally no self-service signup — the only path in is the
+    application form, which is itself disabled in the non-live states.
     """
     if request.user.is_authenticated:
         return redirect("projects:list")
-    return render(request, "core/landing.html")
+    config = SiteLaunchConfig.load()
+    if config.is_live:
+        return render(request, "core/landing.html")
+    mode = (
+        "maintenance"
+        if config.state == SiteLaunchConfig.State.MAINTENANCE
+        else "coming_soon"
+    )
+    return render(request, "core/coming_soon.html", {"mode": mode})
 
 
 def test_error(request):
@@ -289,31 +304,46 @@ def pull_errors_from_supabase(request):
 
 
 class SettingsView(LoginRequiredMixin, TemplateView):
-    """System-wide application settings."""
+    """User account preferences, plus a staff-only system-administration block.
+
+    Regular users see theme + read-only account info, with placeholders for
+    BYOK / RAG tuning / notifications (all v1.1+). Staff users additionally
+    see the Ollama model picker, embedding-model display, and Ollama endpoint
+    status — the original local-setup admin surface, gated by ``is_staff`` in
+    the template. Theme is provided by the global ``user_theme`` context
+    processor.
+    """
 
     template_name = "core/settings.html"
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
 
-        config = UserLLMConfig.load(self.request.user)
-        active_model = config.active_model or settings.OLLAMA_MODEL
-        active_info = get_model_info(active_model)
-
-        context["active_model"] = active_model
-        context["active_model_info"] = active_info
-        context["default_model"] = settings.OLLAMA_MODEL
-        context["is_using_default"] = not config.active_model
-        context["embed_model"] = settings.OLLAMA_EMBED_MODEL
-        context["embed_dimensions"] = settings.PGVECTOR_DIMENSIONS
-        context["ollama_host"] = settings.OLLAMA_HOST
-        context["vram_tiers"] = VRAM_TIERS
+        if self.request.user.is_staff:
+            config = UserLLMConfig.load(self.request.user)
+            active_model = config.active_model or settings.OLLAMA_MODEL
+            context["active_model"] = active_model
+            context["active_model_info"] = get_model_info(active_model)
+            context["default_model"] = settings.OLLAMA_MODEL
+            context["is_using_default"] = not config.active_model
+            context["embed_model"] = settings.OLLAMA_EMBED_MODEL
+            context["embed_dimensions"] = settings.PGVECTOR_DIMENSIONS
+            context["ollama_host"] = settings.OLLAMA_HOST
+            context["vram_tiers"] = VRAM_TIERS
 
         return context
 
 
-class OllamaModelsAPIView(LoginRequiredMixin, View):
-    """HTMX endpoint: fetch available Ollama models, return HTML partial."""
+class OllamaModelsAPIView(LoginRequiredMixin, UserPassesTestMixin, View):
+    """HTMX endpoint: fetch available Ollama models, return HTML partial.
+
+    Staff-only — the model picker is part of the system-administration surface
+    on the Settings page. Non-staff users get a 403 to keep the cloud-LLM
+    posture clean during the beta.
+    """
+
+    def test_func(self):
+        return self.request.user.is_staff
 
     def get(self, request):
         config = UserLLMConfig.load(request.user)
@@ -428,8 +458,12 @@ class OllamaModelsAPIView(LoginRequiredMixin, View):
         return ordered
 
 
-class SetModelAPIView(LoginRequiredMixin, View):
-    """HTMX endpoint: save the user's model choice."""
+class SetModelAPIView(LoginRequiredMixin, UserPassesTestMixin, View):
+    """HTMX endpoint: save the user's model choice. Staff-only (see
+    ``OllamaModelsAPIView`` for the same gate)."""
+
+    def test_func(self):
+        return self.request.user.is_staff
 
     def post(self, request):
         tag = request.POST.get("model_tag", "").strip()

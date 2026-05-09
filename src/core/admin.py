@@ -9,6 +9,7 @@ from solo.admin import SingletonModelAdmin
 from .models import (
     ErrorLog,
     LLMCallLog,
+    SiteLaunchConfig,
     SiteLLMConfig,
     TeamNote,
     UserLLMConfig,
@@ -325,6 +326,28 @@ class SiteLLMConfigAdmin(SingletonModelAdmin):
                 '<span style="color: #dc2626;">Active ⛔ — all cloud calls blocked</span>'
             )
         return format_html('<span style="color: #16a34a;">Inactive</span>')
+
+
+@admin.register(SiteLaunchConfig)
+class SiteLaunchConfigAdmin(SingletonModelAdmin):
+    """Public-face state. Operator flips the splash on/off here."""
+
+    fieldsets = (
+        (
+            None,
+            {
+                "fields": ("state",),
+                "description": (
+                    "Switch between the pre-launch splash, the live landing page, "
+                    "and the maintenance splash. Authenticated users (Ask, Modify, "
+                    "admin) are unaffected by this toggle — it only controls the "
+                    "public unauthenticated face at /."
+                ),
+            },
+        ),
+        ("Audit", {"fields": ("updated_at",)}),
+    )
+    readonly_fields = ("updated_at",)
 
 
 @admin.register(TeamNote)
