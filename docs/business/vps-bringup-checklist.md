@@ -50,7 +50,7 @@ Required values:
 | `OLLAMA_HOST` | `http://host.docker.internal:11434` (only if you run Ollama on the host) — otherwise leave the dockerised default |
 | `ANTHROPIC_API_KEY` | real key (Ask provider) |
 | `GROQ_API_KEY` | real key (Modify provider) |
-| `EMAIL_*` (Mailgun) | fill if available, else leave blank for now |
+| `EMAIL_*` (Brevo) | fill if available, else leave blank for now |
 | `SENTRY_DSN` | fill if Sentry project exists, else leave blank |
 
 ```bash
@@ -250,7 +250,7 @@ mkdir -p ~/castor-backups
 
 ---
 
-## Phase 11 — Sentry + Mailgun (skip if env keys not set)
+## Phase 11 — Sentry + Brevo (skip if env keys not set)
 
 If `SENTRY_DSN` is set in `.env`:
 
@@ -261,11 +261,14 @@ docker compose -f docker/docker-compose.prod.yml exec web \
 
 - [ ] Exception lands in Sentry within 60s, tagged `environment=production`
 
-If Mailgun is configured: send yourself a test password-reset email from
-`https://castoriq.io/accounts/password_reset/`.
+If Brevo is configured: send yourself a test password-reset email from
+`https://castoriq.io/accounts/password_reset/`. Full setup is in
+`docs/business/sentry-and-email.md` Sections 7–9.
 
 - [ ] Reset email arrives within 30s, links back to `https://castoriq.io/`
-- [ ] SPF / DKIM / DMARC pass on the received email (check the headers)
+- [ ] SPF / DKIM pass on the received email (check the headers); if Brevo
+      domain auth is not yet configured, `softfail` is acceptable for now
+      but should be fixed before the first real invite wave
 
 ---
 

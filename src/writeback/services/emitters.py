@@ -75,12 +75,22 @@ class NullEmitter:
 
 
 class WebSocketEmitter:
-    """Emits phase events to a WebSocket consumer via send_json."""
+    """Emits phase events to a WebSocket consumer via send_json.
+
+    Send failures (closed channel, JSON encode error) land in ``ErrorLog`` at
+    ``severity="warning"`` and abort the pipeline by raising
+    :class:`CancellationError`. The previous behaviour — swallowing the
+    failure and continuing to emit into a dead channel — kept Ollama/LLM
+    work running for a client that was already gone, leaking tokens against
+    the daily cap.
+    """
 
     def __init__(
         self,
         send_json,
         cancel_event: threading.Event | None = None,
+        scope: dict[str, Any] | None = None,
+        consumer_name: str = "",
     ) -> None:
         """
         Args:
@@ -89,12 +99,28 @@ class WebSocketEmitter:
             cancel_event: Optional threading.Event set by the consumer when
                           the client sends a cancel action. Checked after
                           every emit — raises CancellationError when set.
+            scope: Optional ASGI scope dict from the originating consumer.
+                   When supplied, send-failure rows in ErrorLog include the
+                   user, URL and route kwargs that were live when the send
+                   failed. Pass ``self.scope`` from the consumer.
+            consumer_name: Optional dotted name (e.g.
+                   ``"writeback.consumers.ProposalConsumer"``) used as the
+                   ``view_name`` on ErrorLog rows. Falls back to a generic
+                   label so older callers keep working.
         """
         self._send_json = send_json
         self._cancel_event = cancel_event
+        self._scope = scope
+        self._consumer_name = consumer_name or "writeback.services.emitters.WebSocketEmitter"
+        # Once a send fails, the channel is treated as dead — every subsequent
+        # emit() short-circuits to CancellationError so the pipeline unwinds
+        # promptly instead of paying for more LLM work the user can't see.
+        self._broken = False
 
     def is_cancelled(self) -> bool:
-        """Return True if the client has requested cancellation."""
+        """Return True if the client has requested cancellation OR the channel broke."""
+        if self._broken:
+            return True
         return self._cancel_event is not None and self._cancel_event.is_set()
 
     def emit(
@@ -105,6 +131,12 @@ class WebSocketEmitter:
         detail: dict[str, Any] | None = None,
     ) -> None:
         from asgiref.sync import async_to_sync
+
+        from core.exceptions import log_async_exception
+
+        if self._broken:
+            # Channel already declared dead by a previous emit — short-circuit.
+            raise CancellationError("WebSocket channel is broken; aborting pipeline.")
 
         payload: dict[str, Any] = {
             "type": "phase",
@@ -118,7 +150,16 @@ class WebSocketEmitter:
         try:
             async_to_sync(self._send_json)(payload)
         except Exception as e:
+            self._broken = True
             logger.warning("WebSocketEmitter send failed: %s", e)
+            log_async_exception(
+                e,
+                scope=self._scope,
+                severity="warning",
+                view_name=f"{self._consumer_name}.emit",
+                extra_context={"phase": phase, "status": status},
+            )
+            raise CancellationError("WebSocket send failed; client is unreachable.") from e
 
         if self.is_cancelled():
             raise CancellationError("Pipeline cancelled by user.")

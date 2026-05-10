@@ -106,13 +106,40 @@ def test_websocket_emitter_omits_detail_key_when_none():
     assert "detail" not in events[0]
 
 
-def test_websocket_emitter_swallows_send_exceptions():
-    """WebSocketEmitter does not propagate exceptions from send_json."""
-    from writeback.services.emitters import WebSocketEmitter
+def test_websocket_emitter_raises_cancellation_on_send_failure():
+    """When send_json fails the channel is dead — emit raises CancellationError
+    so the pipeline unwinds instead of doing more LLM work for a gone client."""
+    import pytest
+
+    from writeback.services.emitters import CancellationError, WebSocketEmitter
 
     async def bad_send(data):
         raise RuntimeError("WS closed")
 
     emitter = WebSocketEmitter(send_json=bad_send)
-    # Should not raise
-    emitter.emit("classify", "running", "test", {})
+
+    with pytest.raises(CancellationError):
+        emitter.emit("classify", "running", "test", {})
+
+    # Once broken, subsequent emits short-circuit immediately.
+    with pytest.raises(CancellationError):
+        emitter.emit("validate", "running", "test")
+
+
+def test_websocket_emitter_is_cancelled_after_broken_send():
+    """is_cancelled() returns True once a send has failed, even without a
+    cancel_event — keeps services that poll it on a tight loop honest."""
+    from writeback.services.emitters import CancellationError, WebSocketEmitter
+
+    async def bad_send(data):
+        raise RuntimeError("WS closed")
+
+    emitter = WebSocketEmitter(send_json=bad_send)
+    assert emitter.is_cancelled() is False
+
+    try:
+        emitter.emit("classify", "running", "test")
+    except CancellationError:
+        pass
+
+    assert emitter.is_cancelled() is True

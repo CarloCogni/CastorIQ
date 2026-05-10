@@ -60,7 +60,7 @@ Mandatory values to set:
 - `DJANGO_ALLOWED_HOSTS=castoriq.io,www.castoriq.io`
 - `DJANGO_CSRF_TRUSTED_ORIGINS=https://castoriq.io,https://www.castoriq.io`
 - `SITE_URL=https://castoriq.io`
-- `EMAIL_HOST_USER` / `EMAIL_HOST_PASSWORD` — from Mailgun (see Phase 5)
+- `EMAIL_HOST_USER` / `EMAIL_HOST_PASSWORD` — from Brevo (see Phase 5)
 - `ANTHROPIC_API_KEY` / `GROQ_API_KEY` — from each provider's dashboard
 - `SENTRY_DSN` — optional but recommended
 
@@ -164,13 +164,26 @@ curl -fsS http://localhost:11434/api/tags     # should list mxbai-embed-large
 
 ---
 
-## Phase 5 — Mailgun for outbound email
+## Phase 5 — Brevo for outbound email
 
-In the Mailgun dashboard:
-1. Add `castoriq.io` as a sending domain (EU region matches the VPS's data residency).
-2. Add the SPF, DKIM, and DMARC DNS records Mailgun shows you to Namecheap.
-3. Wait for Mailgun to mark the domain *Verified*.
-4. Copy the SMTP credentials into `.env` (`EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`).
+Brevo's SMTP relay does **not** require domain verification to send,
+which makes setup much shorter than the Mailgun flow it replaces. Full
+operator walk-through (account, SMTP key, deliverability pre-warming,
+end-to-end smoke probes) lives in `docs/business/sentry-and-email.md`
+Sections 7–10 — read it; this phase is the abridged version for the
+pull-down.
+
+In the Brevo dashboard:
+1. Sign up at <https://www.brevo.com> (free tier: 300 emails/day).
+2. **Settings → SMTP & API → SMTP** tab.
+3. Note the **SMTP login** (e.g. `8a3b7c@smtp-brevo.com`) and
+   **generate a new SMTP key** (the password — Brevo only shows it
+   once).
+4. Drop those into `.env` (`EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`).
+5. *Recommended for deliverability:* in **Senders & IP → Domains**,
+   add `castoriq.io` and copy the SPF + DKIM TXT records Brevo shows
+   into Namecheap. Not strictly required to send, but the single
+   highest-leverage thing for landing in inbox rather than spam.
 
 Pre-warm by sending yourself a few test emails before any beta invite goes out:
 
@@ -180,8 +193,9 @@ docker compose -f docker/docker-compose.prod.yml exec web python manage.py shell
      send_mail('Castor smoke', 'pre-warm', 'noreply@castoriq.io', ['<your-email>'])"
 ```
 
-- [ ] Mailgun shows the domain as *Verified*
-- [ ] SPF + DKIM + DMARC records visible via `dig TXT castoriq.io @1.1.1.1`
+- [ ] Brevo SMTP key generated and dropped into `.env`
+- [ ] (Recommended) Brevo dashboard shows `castoriq.io` as authenticated
+      (SPF + DKIM green)
 - [ ] You received the smoke email and it didn't land in spam
 
 ---

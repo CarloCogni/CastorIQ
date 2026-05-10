@@ -21,10 +21,12 @@ import threading
 from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
+from core.consumers import CastorConsumerMixin, capture_consumer_errors
+
 logger = logging.getLogger(__name__)
 
 
-class AskConsumer(AsyncJsonWebsocketConsumer):
+class AskConsumer(CastorConsumerMixin, AsyncJsonWebsocketConsumer):
     """
     Async WebSocket consumer that streams the RAG pipeline to the browser.
 
@@ -32,6 +34,7 @@ class AskConsumer(AsyncJsonWebsocketConsumer):
     Auth is handled by AuthMiddlewareStack in asgi.py.
     """
 
+    @capture_consumer_errors
     async def connect(self) -> None:
         self.user = self.scope["user"]
         self.project_id = self.scope["url_route"]["kwargs"]["project_id"]
@@ -53,6 +56,7 @@ class AskConsumer(AsyncJsonWebsocketConsumer):
             self.project_id,
         )
 
+    @capture_consumer_errors
     async def disconnect(self, close_code: int) -> None:
         logger.debug(
             "AskConsumer disconnected: user=%s code=%s",
@@ -60,6 +64,7 @@ class AskConsumer(AsyncJsonWebsocketConsumer):
             close_code,
         )
 
+    @capture_consumer_errors
     async def receive_json(self, content: dict, **kwargs) -> None:
         action = content.get("action")
         if action == "ask":
@@ -70,7 +75,7 @@ class AskConsumer(AsyncJsonWebsocketConsumer):
         elif action == "compact":
             await self._handle_compact(content)
         else:
-            await self.send_json({"type": "error", "message": f"Unknown action: {action}"})
+            await self.safe_send_json({"type": "error", "message": f"Unknown action: {action}"})
 
     # ── Private handlers ───────────────────────────────────────────────────────
 
@@ -78,7 +83,7 @@ class AskConsumer(AsyncJsonWebsocketConsumer):
         """Run the RAG pipeline and stream phase events to the client."""
         message_text = (content.get("message") or "").strip()
         if not message_text:
-            await self.send_json({"type": "error", "message": "Message is required."})
+            await self.safe_send_json({"type": "error", "message": "Message is required."})
             return
 
         # Reset cancel state for each new request
@@ -93,29 +98,31 @@ class AskConsumer(AsyncJsonWebsocketConsumer):
             from writeback.services.emitters import CancellationError
 
             if isinstance(e, CancellationError):
-                await self.send_json({"type": "cancelled"})
+                await self.safe_send_json({"type": "cancelled"})
                 return
             logger.exception("RAG pipeline error: %s", e)
-            await self.send_json({"type": "error", "message": str(e)})
+            await self.log_consumer_exception(e, method="_handle_ask")
+            await self.safe_send_json({"type": "error", "message": str(e)})
             return
 
-        await self.send_json({"type": "done"})
+        await self.safe_send_json({"type": "done"})
 
     async def _handle_compact(self, content: dict) -> None:
         """Compact conversation history for the given session."""
         session_id = content.get("session_id")
         if not session_id:
-            await self.send_json({"type": "error", "message": "session_id is required."})
+            await self.safe_send_json({"type": "error", "message": "session_id is required."})
             return
 
         try:
             count = await self._run_compaction(session_id)
         except Exception as e:
             logger.exception("Compaction error: %s", e)
-            await self.send_json({"type": "error", "message": str(e)})
+            await self.log_consumer_exception(e, method="_handle_compact")
+            await self.safe_send_json({"type": "error", "message": str(e)})
             return
 
-        await self.send_json({"type": "compacted", "count": count})
+        await self.safe_send_json({"type": "compacted", "count": count})
 
     @sync_to_async
     def _run_compaction(self, session_id: str) -> int:
@@ -134,7 +141,12 @@ class AskConsumer(AsyncJsonWebsocketConsumer):
         except ChatSession.DoesNotExist:
             raise ValueError("Session not found.")
 
-        emitter = WebSocketEmitter(self.send_json, cancel_event=self._cancel_event)
+        emitter = WebSocketEmitter(
+            self.send_json,
+            cancel_event=self._cancel_event,
+            scope=self.scope,
+            consumer_name=f"{type(self).__module__}.{type(self).__name__}",
+        )
         compactor = CompactionService(user=self.user)
         return compactor.compact_session(session, emitter=emitter)
 
@@ -183,7 +195,12 @@ class AskConsumer(AsyncJsonWebsocketConsumer):
             content=message_text,
         )
 
-        emitter = WebSocketEmitter(self.send_json, cancel_event=self._cancel_event)
+        emitter = WebSocketEmitter(
+            self.send_json,
+            cancel_event=self._cancel_event,
+            scope=self.scope,
+            consumer_name=f"{type(self).__module__}.{type(self).__name__}",
+        )
         rag = RAGService(user=self.user)
 
         try:

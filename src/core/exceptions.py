@@ -1,6 +1,7 @@
-"""Custom exception handlers and error logging utilities"""
+"""Custom exception handlers and error logging utilities."""
 
 import logging
+from typing import Any
 
 from django.http import HttpRequest
 
@@ -80,6 +81,131 @@ def get_client_ip(request: HttpRequest) -> str | None:
     else:
         ip = request.META.get("REMOTE_ADDR")
     return ip
+
+
+def log_async_exception(
+    exception: Exception,
+    scope: dict[str, Any] | None = None,
+    severity: str = "error",
+    view_name: str = "",
+    extra_context: dict | None = None,
+) -> None:
+    """
+    Log an exception raised in an async (Channels/ASGI) context to the database.
+
+    Mirror of ``log_exception`` for ASGI ``scope`` dicts. Used by WebSocket
+    consumers and library loggers (daphne / channels) where there is no
+    Django ``HttpRequest`` to introspect.
+
+    Args:
+        exception: The exception instance.
+        scope: The Channels ASGI scope dict (or ``None`` when unavailable, e.g.
+               for library logger records).
+        severity: Error severity level (debug, info, warning, error, critical).
+        view_name: Caller-supplied dotted name (e.g.
+                   ``"writeback.consumers.ProposalConsumer.connect"``). Falls
+                   back to the empty string if not provided.
+        extra_context: Additional context to store under ``request_data["extra"]``.
+    """
+    # Import here to avoid circular imports on app startup.
+    from core.models import ErrorLog
+
+    try:
+        stacktrace = get_full_stack()
+
+        error_data: dict[str, Any] = {
+            "severity": severity,
+            "message": str(exception) or exception.__class__.__name__,
+            "exception_type": exception.__class__.__name__,
+            "stacktrace": stacktrace,
+            "method": "WS",
+            "view_name": view_name,
+        }
+
+        if scope is not None:
+            error_data.update(_scope_request_fields(scope))
+            error_data["request_data"] = _scope_request_data(scope, extra_context)
+        elif extra_context:
+            error_data["request_data"] = {"extra": extra_context}
+
+        ErrorLog.objects.create(**error_data)
+
+    except Exception as e:
+        # Last-resort fallback: never let observability code crash the consumer.
+        logger.exception("Failed to log async error to database: %s", e)
+
+
+def _scope_request_fields(scope: dict[str, Any]) -> dict[str, Any]:
+    """Map ASGI scope keys onto ErrorLog request-context columns."""
+    fields: dict[str, Any] = {}
+
+    raw_path = scope.get("raw_path") or scope.get("path") or ""
+    if isinstance(raw_path, bytes):
+        raw_path = raw_path.decode("utf-8", errors="replace")
+    query_string = scope.get("query_string") or b""
+    if isinstance(query_string, bytes):
+        query_string = query_string.decode("utf-8", errors="replace")
+    scheme = scope.get("scheme", "")
+    host = _scope_header(scope, b"host", default="")
+    proto = "wss" if scheme == "wss" else ("ws" if scheme == "ws" else scheme or "ws")
+    full_url = f"{proto}://{host}{raw_path}"
+    if query_string:
+        full_url = f"{full_url}?{query_string}"
+    fields["url"] = full_url[:500]
+
+    user = scope.get("user")
+    if user is not None and getattr(user, "is_authenticated", False):
+        fields["user"] = user
+
+    ua = _scope_header(scope, b"user-agent", default="")
+    fields["user_agent"] = ua[:500]
+
+    fields["ip_address"] = _scope_client_ip(scope)
+
+    return fields
+
+
+def _scope_request_data(
+    scope: dict[str, Any],
+    extra_context: dict | None,
+) -> dict[str, Any]:
+    """Build the JSON ``request_data`` payload from a scope (no PII)."""
+    url_route = scope.get("url_route") or {}
+    payload: dict[str, Any] = {
+        "scope_type": scope.get("type", ""),
+        "scope_path": scope.get("path", ""),
+        "url_route_kwargs": _stringify_kwargs(url_route.get("kwargs", {})),
+    }
+    if extra_context:
+        payload["extra"] = extra_context
+    return payload
+
+
+def _scope_header(scope: dict[str, Any], name: bytes, default: str = "") -> str:
+    """Pick a single header out of the Channels ``scope["headers"]`` list."""
+    for header_name, header_value in scope.get("headers") or ():
+        if header_name == name:
+            try:
+                return header_value.decode("utf-8", errors="replace")
+            except AttributeError:
+                return str(header_value)
+    return default
+
+
+def _scope_client_ip(scope: dict[str, Any]) -> str | None:
+    """Extract the client IP from scope, honouring X-Forwarded-For when present."""
+    xff = _scope_header(scope, b"x-forwarded-for", default="")
+    if xff:
+        return xff.split(",")[0].strip() or None
+    client = scope.get("client")
+    if isinstance(client, (list, tuple)) and client:
+        return str(client[0])
+    return None
+
+
+def _stringify_kwargs(kwargs: dict[str, Any]) -> dict[str, str]:
+    """JSON-safe view of the URL route kwargs (UUIDs etc. become strings)."""
+    return {k: str(v) for k, v in kwargs.items()}
 
 
 def _filter_sensitive_data(data: dict) -> dict:

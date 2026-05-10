@@ -10,6 +10,11 @@ services:
       context: ..
       dockerfile: docker/Dockerfile
     container_name: castor-web
+    # `unless-stopped` re-launches Daphne after a worker crash without
+    # racing back up if the operator deliberately stopped the stack. Without
+    # this, a Daphne segfault leaves the WS surface dark until manual SSH
+    # intervention — invisible to ErrorLog and to UptimeRobot's HTTP probe.
+    restart: unless-stopped
     environment:
       - DJANGO_SETTINGS_MODULE=config.settings.production
     env_file:
@@ -30,6 +35,17 @@ services:
       # since Docker 20.10+). Override with OLLAMA_HOST in .env if Ollama is
       # itself containerised.
       - "host.docker.internal:host-gateway"
+    # Healthcheck pings the in-container /healthz/ endpoint — DB + Ollama
+    # reachability. ``start_period`` gives the worker time to import the
+    # full Django app graph on cold boot before the first probe lands.
+    # nginx + UptimeRobot still hit /healthz/ from the outside; this layer
+    # is what tells the runtime to mark the container unhealthy and restart.
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz/', timeout=5).status==200 else 1)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   db:
     image: pgvector/pgvector:pg16
