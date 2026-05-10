@@ -394,6 +394,31 @@ class ModificationService:
             return routing.rejection_reason
         return f"{routing.rejection_reason} {hint.text}".strip()
 
+    @staticmethod
+    def _segments_to_jsonable(segments: list[dict]) -> list[dict]:
+        """Strip non-serializable fields from V2 segments before storing
+        them on a FailureRecord.
+
+        V2 triage/slot/resolve stages decorate each segment with rich
+        runtime objects: ``ResolutionResult`` dataclasses (carrying live
+        ``IFCEntity`` Django model instances) under ``resolution`` and
+        ``parent_resolution``, plus other in-memory helpers. Django's
+        JSONField cannot persist any of those.
+
+        This helper preserves only the keys whose values are guaranteed
+        JSON-serialisable: ``kind``, ``target_phrase``, ``slots``,
+        ``warnings``. The slots dict carries the user-facing intent
+        (pset, property, value, …) which is exactly what failure
+        analysis needs.
+        """
+        allowed = ("kind", "target_phrase", "slots", "warnings")
+        clean: list[dict] = []
+        for seg in segments or ():
+            if not isinstance(seg, dict):
+                continue
+            clean.append({k: seg.get(k) for k in allowed if k in seg})
+        return clean
+
     def _raise_with_failure_record(
         self,
         exc: Exception,
@@ -410,6 +435,8 @@ class ModificationService:
             phase:      Pipeline phase — "VALIDATION", "EXECUTION", or "SANDBOX".
             query_text: The user's original query string.
             intent_json: Parsed intent if available; None for very early failures.
+                        Caller is responsible for ensuring serializability —
+                        for V2 segments use ``_segments_to_jsonable``.
             proposal:   Associated ModificationProposal, if one was created.
 
         Raises:
@@ -992,7 +1019,7 @@ class ModificationService:
                 ValueError(full_reason),
                 phase="VALIDATION",
                 query_text=user_message,
-                intent_json={"segments": segments},
+                intent_json={"segments": self._segments_to_jsonable(segments)},
             )
         emitter.emit(
             "classify",
@@ -1082,7 +1109,7 @@ class ModificationService:
                     ValueError(f"Could not extract parameters: {e}"),
                     phase="VALIDATION",
                     query_text=user_message,
-                    intent_json={"segments": segments},
+                    intent_json={"segments": self._segments_to_jsonable(segments)},
                 )
             seg["slots"] = slot_result.slots
             seg["warnings"] = slot_result.warnings

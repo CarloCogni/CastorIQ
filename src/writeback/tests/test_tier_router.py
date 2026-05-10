@@ -108,6 +108,57 @@ class TestTier1Routing:
         # The router mutated the segment so the writer sees a populated pset.
         assert seg["slots"]["pset"] == "Pset_WallCommon"
 
+    def test_property_with_tolerant_wording_canonicalizes_slots(self):
+        """The slot extractor often returns the user's wording verbatim
+        ("fire rating", "FIRE_RATING", "fire-rating"). The router must
+        canonicalize property and pset names against the registry so the
+        Tier1Writer receives the IFC4-correct CamelCase form, not the
+        user's casing. This is a GENERAL fix — no per-property table.
+        """
+        from unittest.mock import MagicMock
+
+        for prop_in in ("fire rating", "FIRE_RATING", "fire-rating", "FireRating"):
+            resolution = MagicMock()
+            resolution.entities = [MagicMock()]
+            resolution.ifc_type_hint = "IfcWall"
+
+            seg = {
+                "kind": "PROPERTY",
+                "target_phrase": "all walls",
+                "value_phrase": f"{prop_in} to EI120",
+                "slots": {"pset": "", "property": prop_in, "value": "EI120"},
+                "resolution": resolution,
+            }
+            result = route([seg])
+            assert result.tier == 1, f"prop_in={prop_in!r} did not route T1"
+            assert result.operation == "SET_PROPERTY"
+            assert seg["slots"]["pset"] == "Pset_WallCommon"
+            assert seg["slots"]["property"] == "FireRating"
+
+    def test_property_with_tolerantly_spelled_pset_canonicalizes(self):
+        """User-named pset in lower-case ("pset_wallcommon") canonicalizes
+        to the registry-correct "Pset_WallCommon" so the strict
+        ``lookup_property`` gate at ``_route_tier1`` keeps working.
+        """
+        from unittest.mock import MagicMock
+
+        resolution = MagicMock()
+        resolution.entities = [MagicMock()]
+        resolution.ifc_type_hint = "IfcWall"
+
+        seg = {
+            "kind": "PROPERTY",
+            "target_phrase": "all walls",
+            "value_phrase": "FireRating to EI120",
+            "slots": {"pset": "pset_wallcommon", "property": "FireRating", "value": "EI120"},
+            "resolution": resolution,
+        }
+        result = route([seg])
+        assert result.tier == 1
+        assert result.operation == "SET_PROPERTY"
+        assert seg["slots"]["pset"] == "Pset_WallCommon"
+        assert seg["slots"]["property"] == "FireRating"
+
     def test_property_with_no_pset_and_unknown_property_rejects(self):
         """Custom property (not in any standard pset) with no user-named
         pset is rejected with an actionable message instead of crashing

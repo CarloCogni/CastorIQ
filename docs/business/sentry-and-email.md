@@ -216,11 +216,10 @@ EU-hosted, same data residency as the Hetzner CCX13 VPS.
 > especially for first-touch beta-invite emails. This is documented in
 > Brevo's UI; the records are TXT entries you add to Namecheap.
 
-- [ ] Brevo account exists
-- [ ] SMTP login noted, SMTP key saved in your password manager
-- [ ] (Recommended) SPF + DKIM TXT records added on `castoriq.io`,
+- [X] Brevo account exists
+- [X] SMTP login noted, SMTP key saved in your password manager
+- [X] (Recommended) SPF + DKIM TXT records added on `castoriq.io`,
       Brevo dashboard shows the domain as authenticated
-
 ---
 
 ## Section 8 — Wire Brevo into the live VPS
@@ -252,10 +251,10 @@ docker compose -f docker/docker-compose.prod.yml restart web
 docker compose -f docker/docker-compose.prod.yml exec web env | grep EMAIL_HOST
 ```
 
-- [ ] `EMAIL_HOST` reports `smtp-relay.brevo.com`
-- [ ] `EMAIL_HOST_USER` and `EMAIL_HOST_PASSWORD` are set (don't echo
+- [X] `EMAIL_HOST` reports `smtp-relay.brevo.com`
+- [X] `EMAIL_HOST_USER` and `EMAIL_HOST_PASSWORD` are set (don't echo
       them — just confirm they're non-empty)
-- [ ] No SMTP-related errors in `docker compose ... logs web`
+- [X] No SMTP-related errors in `docker compose ... logs web`
 
 ---
 
@@ -269,7 +268,7 @@ path that Castor actually exercises in production.
 ```bash
 docker compose -f docker/docker-compose.prod.yml exec web python manage.py shell -c \
     "from django.core.mail import send_mail; \
-     send_mail('Castor smoke', 'pre-warm', 'noreply@castoriq.io', ['<your-email>'])"
+     send_mail('Castor smoke', 'pre-warm', 'noreply@castoriq.io', ['your.actual.address@gmail.com'])"
 ```
 
 This confirms SMTP credentials and TLS are correct.
