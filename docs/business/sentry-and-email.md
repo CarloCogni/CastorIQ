@@ -61,9 +61,9 @@ Neither needs code changes — both wire entirely through `.env`.
    Copy it into your password manager — you'll paste it into `.env`
    in the next section.
 
-- [ ] Sentry account exists, project `castor-prod` is visible in the
+- [X] Sentry account exists, project `castor-prod` is visible in the
       sidebar
-- [ ] DSN saved in your password manager
+- [X] DSN saved in your password manager
 
 ---
 
@@ -249,6 +249,33 @@ OPERATOR_NOTIFICATION_EMAIL=<your-inbox@example.com>
 time someone submits the beta application form, with a deep link straight
 to the admin row. Leave it blank to disable — the applicant still receives
 their confirmation either way.
+
+While you're in `.env`, add the anti-abuse and login-lockout block. These
+all have sensible defaults — only override if you want different limits:
+
+```dotenv
+# Beta funnel: per-IP rate limit + daily Brevo budget circuit breaker.
+BETA_RATE_LIMIT=5/h
+BETA_DAILY_OPERATOR_CAP=250
+BETA_DAILY_TOTAL_CAP=290
+
+# Login lockout (django-axes). Set proxy count to 1 in prod — nginx is the
+# only ingress, so HTTP_X_FORWARDED_FOR is the real client IP.
+AXES_FAILURE_LIMIT=5
+AXES_COOLOFF_TIME=1
+AXES_IPWARE_PROXY_COUNT=1
+```
+
+The `BETA_DAILY_*` caps stop email sends — never form submissions —
+once today's Brevo count crosses the threshold. At `OPERATOR_CAP` the
+operator copies stop; at `TOTAL_CAP` applicant confirmations also
+stop, leaving the remaining 10/day of free-tier headroom for password
+resets and welcome emails. The runtime toggle for the operator copy
+lives at `/admin/core/sitelaunchconfig/` ("Email me on each new beta
+application") — flip it off there during a launch surge and back on
+when traffic subsides.
+
+`BETA_RATE_LIMIT` uses `django-ratelimit` syntax (`5/h`, `1/m`, `10/d`).
 
 Restart `web` so Django picks up the new SMTP settings:
 

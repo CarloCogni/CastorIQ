@@ -471,6 +471,16 @@ class SiteLaunchConfig(SingletonModel):
             "block the application form."
         ),
     )
+    notify_operator_on_application = models.BooleanField(
+        default=True,
+        verbose_name="Email me on each new beta application",
+        help_text=(
+            "When on, OPERATOR_NOTIFICATION_EMAIL receives a one-line ping for every "
+            "submission with a deep link to the admin row. Turn off to silence the "
+            "operator copy without redeploying — applicants always receive their "
+            "confirmation regardless of this setting."
+        ),
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

@@ -47,6 +47,9 @@ INSTALLED_APPS = [
     "eastereggs",
     "facilities",
     "beta",
+    # Login lockout for /admin/ and /accounts/login. Must come after
+    # django.contrib.auth so its signals are loaded first.
+    "axes",
 ]
 
 MIDDLEWARE = [
@@ -59,6 +62,9 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "core.middleware.ErrorLoggingMiddleware",  # ADD THIS LINE
+    # AxesMiddleware MUST be the very last entry — it inspects the response
+    # to detect login failures and lock out abusive IPs.
+    "axes.middleware.AxesMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -109,6 +115,10 @@ AUTH_USER_MODEL = "users.User"
 # runs a dummy ``set_password`` so wrong-email and wrong-password share wall
 # clock cost (anti-enumeration).
 AUTHENTICATION_BACKENDS = [
+    # AxesStandaloneBackend MUST be first — it short-circuits authentication
+    # for locked-out IPs before the real backend is consulted, so wrong-
+    # password attempts past the failure limit don't leak timing info.
+    "axes.backends.AxesStandaloneBackend",
     "core.auth_backends.EmailOrUsernameModelBackend",
 ]
 
@@ -142,6 +152,44 @@ OPERATOR_NOTIFICATION_EMAIL = os.getenv("OPERATOR_NOTIFICATION_EMAIL", "")
 
 # Public-facing site URL — used to build absolute links in welcome emails.
 SITE_URL = os.getenv("SITE_URL", "http://localhost:8001")
+
+# Caches — ``default`` is per-process LocMemCache (template fragments, ad-hoc
+# memoisation). ``throttle`` is Postgres-backed via DatabaseCache so per-IP
+# rate limits and the daily send-count circuit breaker share state across
+# every Daphne worker. Run ``manage.py createcachetable`` once to provision.
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "castor-default",
+    },
+    "throttle": {
+        "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+        "LOCATION": "castor_throttle_cache",
+    },
+}
+
+# django-ratelimit reads its counters from this cache alias.
+RATELIMIT_USE_CACHE = "throttle"
+
+# django-axes — login lockout for /admin/ and any login view. After
+# AXES_FAILURE_LIMIT failed attempts from one IP, that IP is locked for
+# AXES_COOLOFF_TIME hours. Successful logins reset the counter.
+AXES_FAILURE_LIMIT = int(os.getenv("AXES_FAILURE_LIMIT", "5"))
+AXES_COOLOFF_TIME = int(os.getenv("AXES_COOLOFF_TIME", "1"))
+AXES_LOCKOUT_PARAMETERS = ["ip_address"]
+AXES_RESET_ON_SUCCESS = True
+AXES_VERBOSE = False
+# Tells axes to read the client IP from HTTP_X_FORWARDED_FOR rather than
+# REMOTE_ADDR. Set to 1 in production where nginx is the only ingress; leave
+# at 0 in dev so unit tests can't spoof IPs via the header.
+AXES_IPWARE_PROXY_COUNT = int(os.getenv("AXES_IPWARE_PROXY_COUNT", "0"))
+
+# Beta funnel anti-abuse — public form rate limit and Brevo daily-budget
+# circuit breaker. Counters live in the ``throttle`` cache; both caps are
+# total daily Brevo sends (confirmation + operator pings combined).
+BETA_RATE_LIMIT = os.getenv("BETA_RATE_LIMIT", "5/h")
+BETA_DAILY_TOTAL_CAP = int(os.getenv("BETA_DAILY_TOTAL_CAP", "290"))
+BETA_DAILY_OPERATOR_CAP = int(os.getenv("BETA_DAILY_OPERATOR_CAP", "250"))
 
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = "static/"

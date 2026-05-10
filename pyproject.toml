@@ -40,6 +40,8 @@ dependencies = [
     "whitenoise>=6.6",
     "django-crispy-forms>=2.5",
     "crispy-bootstrap5>=2025.10",
+    "django-ratelimit>=4.1",
+    "django-axes>=7.0",
 ]
 
 [project.optional-dependencies]
