@@ -64,3 +64,18 @@ websocket errors logger
 other user experience requirements? 
 
 HETZNER - investiage external volumes for back and media storage like a NAS
+
+---
+### BETA Application
+welcome email: 
+We received your Castor beta application
+----------------------------------------
+
+Hi carlo cogni,
+
+We've received your Castor beta application. We read every one by hand and will get back to you within a few days. We may follow up to schedule a short intro call before creating your account — that's intentional, the beta is small and we like to know who's using it.
+
+In the meantime, you can learn more at https://castoriq.io. 
+### it should be castoriq.io/learn or something similar ###
+develop a learn experience!
+

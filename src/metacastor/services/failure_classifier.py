@@ -12,6 +12,7 @@ Design constraints:
   - Embedding call is best-effort; FailureRecord.query_embedding is nullable.
 """
 
+import json
 import logging
 
 logger = logging.getLogger(__name__)
@@ -291,6 +292,25 @@ def create_failure_record(
     """
     try:
         from metacastor.models import FailureRecord
+
+        # Guardrail: intent_json is persisted to a Django JSONField. If it
+        # carries non-serializable values (e.g. dataclasses with ORM
+        # instances) the FailureRecord write below blows up and we lose
+        # the entire record — which silently breaks the WS path's
+        # ``type:"failure"`` card. Pre-flight a JSON roundtrip and drop
+        # the snapshot on failure rather than the whole record. Logged
+        # at ERROR so this class of regression is loud, not silent.
+        if intent_json is not None:
+            try:
+                json.dumps(intent_json, default=str)
+            except (TypeError, ValueError) as serialise_err:
+                logger.error(
+                    "create_failure_record: intent_json is not JSON-serializable: %s. "
+                    "Caller must sanitize before raising. intent_json keys=%s",
+                    serialise_err,
+                    list(intent_json.keys()) if isinstance(intent_json, dict) else None,
+                )
+                intent_json = None
 
         error_type, category, diagnosis = classify_error(exc, phase)
 

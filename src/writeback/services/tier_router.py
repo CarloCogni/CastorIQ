@@ -39,6 +39,8 @@ from ifc_processor.services.ifc_standard_psets import (
     STANDARD_PSETS,
     get_applicable_psets,
     lookup_property,
+    resolve_property_name,
+    resolve_pset_name,
 )
 
 logger = logging.getLogger(__name__)
@@ -330,77 +332,103 @@ def _resolution_count(segment: dict[str, Any]) -> int:
 
 
 def _maybe_infer_pset(segment: dict[str, Any]) -> None:
-    """Fill in ``slots['pset']`` from the standard registry when empty.
+    """Canonicalize ``slots['pset']`` and ``slots['property']`` against the
+    standard registry.
 
-    The V2 slot extractor's PROPERTY prompt is intentionally narrow —
-    it returns ``pset=null`` when the user didn't name a pset. This
-    helper recovers the pset deterministically using:
+    Two responsibilities:
 
-      1. The resolved entity's ``ifc_type_hint`` → ``get_applicable_psets``
-         narrows the search to psets whose name suggests the same type
-         (e.g. ``IfcWall`` → ``Pset_WallCommon``, ``Pset_WallFireRating``).
-      2. ``lookup_property(candidate_pset, prop_name)`` confirms the
-         property is registered in that pset.
+      1. **Canonicalize what the user/LLM provided.** If the slot extractor
+         returned a tolerantly-spelled pset (``pset_wallcommon``) or a
+         tolerantly-spelled property (``"fire rating"``), rewrite each
+         to its canonical CamelCase form when it exists in the standard
+         registry. Downstream callers (Tier1Writer, validators, the
+         strict ``lookup_property`` gate at ``_route_tier1``) can then
+         keep doing exact-match comparisons.
 
-    Falls back to scanning every standard pset when the entity-type
-    hint produces no matches. Mutates the segment in place. No-op if
-    ``pset`` is already populated or the property is not in any
-    standard pset (caller will surface a clean rejection in that
-    case).
+      2. **Infer pset from property when only the property was given.**
+         Search psets in this priority:
+
+           a. The canonical ``Pset_<Type>Common`` for the resolved IFC
+              type (IfcWall → Pset_WallCommon, …).
+           b. Other psets whose name suggests the same type and contain
+              the property (shortest name wins — most specific to type).
+           c. Global fallback: any standard pset that contains the
+              property (shortest name wins).
+
+    All matching is tolerant (case + non-alphanumerics) via
+    ``resolve_property_name`` / ``resolve_pset_name``. Mutates the
+    segment in place. No-op if no match is found — caller surfaces a
+    clean rejection in that case.
     """
     slots = segment.get("slots")
     if not isinstance(slots, dict):
         return
-    pset = (slots.get("pset") or "").strip()
-    if pset:
-        return
-    prop = (slots.get("property") or "").strip()
-    if not prop:
-        return
+    pset_in = (slots.get("pset") or "").strip()
+    prop_in = (slots.get("property") or "").strip()
+    if not prop_in:
+        return  # nothing to canonicalize against
 
     resolution = segment.get("resolution")
     ifc_type = getattr(resolution, "ifc_type_hint", None)
 
-    inferred = ""
-    # 1. Try the canonical ``Pset_<Type>Common`` first — this is the
-    #    convention for nearly every IFC class (IfcWall→Pset_WallCommon,
-    #    IfcDoor→Pset_DoorCommon, etc.). ``get_applicable_psets`` uses a
-    #    substring match that returns Pset_CurtainWallCommon as well as
-    #    Pset_WallCommon for IfcWall; preferring the exact Common pset
-    #    avoids that ambiguity.
-    if isinstance(ifc_type, str) and ifc_type.strip():
-        type_short = ifc_type.strip().replace("Ifc", "").replace("StandardCase", "")
-        canonical = f"Pset_{type_short}Common"
-        if lookup_property(canonical, prop) is not None:
-            inferred = canonical
+    inferred_pset: str | None = None
 
-    # 2. Otherwise, scan psets whose name suggests the same type and
-    #    contain the property. Pick the shortest match (more specific
-    #    to this type, less likely to be a parent type's pset).
-    if not inferred and isinstance(ifc_type, str) and ifc_type.strip():
-        applicable = [
-            p
-            for p in get_applicable_psets(ifc_type.strip())
-            if lookup_property(p, prop) is not None
-        ]
-        if applicable:
-            inferred = min(applicable, key=len)
+    # Path A — pset is already populated. Canonicalize it. If the user
+    # named a non-standard pset (custom Pset_Foo), resolve_pset_name
+    # returns None and we leave the original wording untouched so the
+    # custom-pset routing in _route_tier1 can pick it up at Tier 2.
+    if pset_in:
+        canonical_pset = resolve_pset_name(pset_in)
+        if canonical_pset is not None:
+            inferred_pset = canonical_pset
 
-    # 3. Final fallback: scan every standard pset. Useful when the
-    #    resolver didn't pin an ifc_type at all (cross-type chains).
-    if not inferred:
-        all_matches = [p for p in STANDARD_PSETS if lookup_property(p, prop) is not None]
-        if all_matches:
-            inferred = min(all_matches, key=len)
+    # Path B — no pset given. Infer from the property + ifc_type hint.
+    if inferred_pset is None and not pset_in:
+        # B1: canonical Pset_<Type>Common.
+        if isinstance(ifc_type, str) and ifc_type.strip():
+            type_short = ifc_type.strip().replace("Ifc", "").replace("StandardCase", "")
+            candidate = f"Pset_{type_short}Common"
+            if resolve_property_name(candidate, prop_in) is not None:
+                inferred_pset = candidate
 
-    if not inferred:
-        return  # property is custom — caller handles the rejection
+        # B2: other psets whose name suggests the same type.
+        if inferred_pset is None and isinstance(ifc_type, str) and ifc_type.strip():
+            applicable = [
+                p
+                for p in get_applicable_psets(ifc_type.strip())
+                if resolve_property_name(p, prop_in) is not None
+            ]
+            if applicable:
+                inferred_pset = min(applicable, key=len)
 
-    slots["pset"] = inferred
+        # B3: global fallback — any standard pset that contains the property.
+        if inferred_pset is None:
+            all_matches = [
+                p for p in STANDARD_PSETS if resolve_property_name(p, prop_in) is not None
+            ]
+            if all_matches:
+                inferred_pset = min(all_matches, key=len)
+
+    if inferred_pset is None:
+        return  # custom pset or unknown property — caller handles rejection
+
+    canonical_prop = resolve_property_name(inferred_pset, prop_in)
+    if canonical_prop is None:
+        # Path A landed us on a known pset but the property isn't in it.
+        # Leave slots untouched; the Tier-0 gate will reject with the
+        # standard "property not found in pset" message.
+        return
+
+    slots["pset"] = inferred_pset
+    slots["property"] = canonical_prop
     segment["slots"] = slots
-    logger.info(
-        "Router: inferred pset=%r for property=%r (ifc_type=%r)",
-        inferred,
-        prop,
-        ifc_type,
-    )
+
+    if pset_in != inferred_pset or prop_in != canonical_prop:
+        logger.info(
+            "Router: canonicalized slot %r.%r → %r.%r (ifc_type=%r)",
+            pset_in or "<inferred>",
+            prop_in,
+            inferred_pset,
+            canonical_prop,
+            ifc_type,
+        )

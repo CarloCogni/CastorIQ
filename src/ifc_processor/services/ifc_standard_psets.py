@@ -15,12 +15,18 @@ Usage:
     from ifc_processor.services.ifc_standard_psets import lookup_property, coerce_from_registry
 """
 
+import functools
+import re
+
 # Type constants
 BOOL = "bool"
 STRING = "string"
 REAL = "real"
 INT = "int"
 ENUM = "enum"
+
+# Pre-compiled regex for tolerant key normalization (see _normalize_key).
+_ALNUM_RE = re.compile(r"[^A-Za-z0-9]+")
 
 
 STANDARD_PSETS = {
@@ -2106,6 +2112,73 @@ def lookup_property(pset_name: str, prop_name: str):
     if pset is None:
         return None
     return pset.get(prop_name)
+
+
+# ── Tolerant resolvers ────────────────────────────────────────────────
+# The registry uses canonical IFC4 spelling (CamelCase pset and property
+# names). Users and LLM outputs frequently arrive with lower-case, spaces,
+# underscores or hyphens — "fire rating", "FIRE_RATING", "fire-rating".
+# These resolvers map any such variant to the canonical name when one
+# exists in the registry. They are *advisory*: callers that need a
+# strict equality check (typo detection, hint validation) keep using
+# ``lookup_property``; callers that want to canonicalize user wording
+# before persisting it (writeback router, IFC writers) use these.
+
+
+def _normalize_key(name: str) -> str:
+    """Strip non-alphanumerics and lowercase. The canonical key form."""
+    return _ALNUM_RE.sub("", name).lower() if name else ""
+
+
+@functools.cache
+def _normalized_pset_index() -> dict[str, str]:
+    """normalized_pset_name → canonical pset name for every standard pset."""
+    return {_normalize_key(name): name for name in STANDARD_PSETS}
+
+
+@functools.cache
+def _normalized_property_index(pset_name: str) -> dict[str, str] | None:
+    """normalized_prop_name → canonical prop name for one pset, or None."""
+    pset = STANDARD_PSETS.get(pset_name)
+    if pset is None:
+        return None
+    return {_normalize_key(prop): prop for prop in pset}
+
+
+def resolve_pset_name(pset_name: str) -> str | None:
+    """Return the canonical pset name under tolerant matching.
+
+    Case-insensitive and ignores non-alphanumerics. Returns None if no
+    standard pset matches.
+
+    Example: ``resolve_pset_name("pset_wallcommon") -> "Pset_WallCommon"``.
+    """
+    if not pset_name:
+        return None
+    if pset_name in STANDARD_PSETS:
+        return pset_name  # already canonical, fast path
+    return _normalized_pset_index().get(_normalize_key(pset_name))
+
+
+def resolve_property_name(pset_name: str, prop_name: str) -> str | None:
+    """Return the canonical property name for (pset, prop) under tolerant matching.
+
+    Case-insensitive and ignores spaces/underscores/hyphens. The pset
+    name is itself resolved tolerantly first, so callers can pass either
+    canonical or user-typed psets. Returns None if the pset or property
+    is not in the standard registry.
+
+    Example: ``resolve_property_name("Pset_WallCommon", "fire rating") -> "FireRating"``.
+    """
+    if not prop_name:
+        return None
+    canonical_pset = resolve_pset_name(pset_name)
+    if canonical_pset is None:
+        return None
+    index = _normalized_property_index(canonical_pset)
+    if index is None:
+        return None
+    return index.get(_normalize_key(prop_name))
 
 
 def is_standard_pset(pset_name: str) -> bool:

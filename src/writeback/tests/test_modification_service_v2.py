@@ -259,6 +259,71 @@ class TestV2Tier1Path:
 
 
 @pytest.mark.django_db
+class TestV2TolerantPropertyWording:
+    """Regression for the production trace where the V2 router rejected
+    a previously-working request because the slot extractor returned the
+    user's wording verbatim ("fire rating") and the registry lookup was
+    case-sensitive. After the fix, ``_maybe_infer_pset`` canonicalizes
+    both pset and property against the registry so the Tier1Writer
+    receives the IFC4-correct CamelCase form.
+    """
+
+    def test_set_fire_rating_of_all_walls_routes_t1(
+        self,
+        project,
+        ifc_file,
+        wall_entities,
+        user,
+        mock_guardian,
+        mock_git,
+    ):
+        message = "Set the fire rating of all walls to EI120"
+        triage_segments = [
+            {
+                "kind": "PROPERTY",
+                "target_phrase": "all walls",
+                "value_phrase": "fire rating to EI120",
+            }
+        ]
+        # Slot extractor returns the user's wording, NOT the canonical name —
+        # this is what currently happens in production and what triggered
+        # the regression. The router must canonicalize.
+        slot_payload = SlotResult(
+            slots={
+                "pset": "",
+                "property": "fire rating",
+                "value": "EI120",
+            },
+            warnings=[],
+        )
+        resolution = _resolution_for(wall_entities, scope="all_of_type", ifc_type_hint="IfcWall")
+
+        with (
+            patch(
+                "writeback.services.entity_resolver.EntityNameResolver.resolve",
+                return_value=resolution,
+            ),
+            patch(
+                "writeback.services.modification_service.TriageClassifier.classify",
+                return_value=TriageResult(segments=triage_segments),
+            ),
+            patch(
+                "writeback.services.modification_service.SlotExtractor.extract",
+                return_value=slot_payload,
+            ),
+        ):
+            svc = ModificationService(project)
+            proposal = svc.propose(message, user=user)
+
+        assert proposal.tier == 1
+        assert proposal.operation == "SET_PROPERTY"
+        # Critical: pset inferred AND property canonicalized to registry form.
+        assert proposal.intent_json["pset"] == "Pset_WallCommon"
+        assert proposal.intent_json["property"] == "FireRating"
+        assert proposal.intent_json["new_value"] == "EI120"
+
+
+@pytest.mark.django_db
 class TestV2Rejections:
     """V2 rejection paths via the deterministic tier router."""
 
