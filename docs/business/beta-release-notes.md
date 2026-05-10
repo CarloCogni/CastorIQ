@@ -79,3 +79,5 @@ In the meantime, you can learn more at https://castoriq.io.
 ### it should be castoriq.io/learn or something similar ###
 develop a learn experience!
 
+MAIL strainghtening? avoid spammers??
+
