@@ -20,10 +20,12 @@ from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.conf import settings
 
+from core.consumers import CastorConsumerMixin, capture_consumer_errors
+
 logger = logging.getLogger(__name__)
 
 
-class OCRConsumer(AsyncJsonWebsocketConsumer):
+class OCRConsumer(CastorConsumerMixin, AsyncJsonWebsocketConsumer):
     """
     Async WebSocket consumer that streams OCR processing progress to the browser.
 
@@ -31,6 +33,7 @@ class OCRConsumer(AsyncJsonWebsocketConsumer):
     Auth is handled by AuthMiddlewareStack in asgi.py.
     """
 
+    @capture_consumer_errors
     async def connect(self) -> None:
         self.user = self.scope["user"]
         self.project_id = self.scope["url_route"]["kwargs"]["project_id"]
@@ -51,6 +54,7 @@ class OCRConsumer(AsyncJsonWebsocketConsumer):
             self.project_id,
         )
 
+    @capture_consumer_errors
     async def disconnect(self, close_code: int) -> None:
         logger.debug(
             "OCRConsumer disconnected: user=%s code=%s",
@@ -58,26 +62,27 @@ class OCRConsumer(AsyncJsonWebsocketConsumer):
             close_code,
         )
 
+    @capture_consumer_errors
     async def receive_json(self, content: dict, **kwargs) -> None:
         action = content.get("action")
         if action == "run_ocr":
             await self._handle_run_ocr(content)
         else:
-            await self.send_json({"type": "ocr_failed", "error": f"Unknown action: {action}"})
+            await self.safe_send_json({"type": "ocr_failed", "error": f"Unknown action: {action}"})
 
     # ── Private handlers ───────────────────────────────────────────────────────
 
     async def _handle_run_ocr(self, content: dict) -> None:
         """Validate the request, run OCR via sync_to_async, and stream results."""
         if not getattr(settings, "GLM_OCR_ENABLED", False):
-            await self.send_json({"type": "ocr_failed", "error": "OCR subsystem is disabled."})
-            await self.send_json({"type": "done"})
+            await self.safe_send_json({"type": "ocr_failed", "error": "OCR subsystem is disabled."})
+            await self.safe_send_json({"type": "done"})
             return
 
         document_id = content.get("document_id", "").strip()
         if not document_id:
-            await self.send_json({"type": "ocr_failed", "error": "document_id is required."})
-            await self.send_json({"type": "done"})
+            await self.safe_send_json({"type": "ocr_failed", "error": "document_id is required."})
+            await self.safe_send_json({"type": "done"})
             return
 
         force_all_pages = bool(content.get("force_all_pages", False))
@@ -90,18 +95,19 @@ class OCRConsumer(AsyncJsonWebsocketConsumer):
             result = await self._run_ocr(document_id, force_all_pages, loop)
         except Exception as exc:
             logger.exception("OCR consumer pipeline error: %s", exc)
-            await self.send_json({"type": "ocr_failed", "error": str(exc)})
-            await self.send_json({"type": "done"})
+            await self.log_consumer_exception(exc, method="_handle_run_ocr")
+            await self.safe_send_json({"type": "ocr_failed", "error": str(exc)})
+            await self.safe_send_json({"type": "done"})
             return
 
-        await self.send_json(
+        await self.safe_send_json(
             {
                 "type": "ocr_complete",
                 "chunks_created": result.chunks_created,
                 "pages_ocrd": result.pages_processed,
             }
         )
-        await self.send_json({"type": "done"})
+        await self.safe_send_json({"type": "done"})
 
     @sync_to_async
     def _run_ocr(self, document_id: str, force_all_pages: bool, loop):

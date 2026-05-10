@@ -28,12 +28,15 @@ import threading
 from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
+from core.consumers import CastorConsumerMixin, capture_consumer_errors
+
 logger = logging.getLogger(__name__)
 
 
-class ExportConsumer(AsyncJsonWebsocketConsumer):
+class ExportConsumer(CastorConsumerMixin, AsyncJsonWebsocketConsumer):
     """Streams :class:`ExportReconciliationService.export` phases over WebSocket."""
 
+    @capture_consumer_errors
     async def connect(self) -> None:
         self.user = self.scope["user"]
         self.project_id = self.scope["url_route"]["kwargs"]["project_id"]
@@ -55,6 +58,7 @@ class ExportConsumer(AsyncJsonWebsocketConsumer):
             self.project_id,
         )
 
+    @capture_consumer_errors
     async def disconnect(self, close_code: int) -> None:
         cancel_event = getattr(self, "_cancel_event", None)
         if cancel_event is not None:
@@ -65,6 +69,7 @@ class ExportConsumer(AsyncJsonWebsocketConsumer):
             close_code,
         )
 
+    @capture_consumer_errors
     async def receive_json(self, content: dict, **kwargs) -> None:
         action = content.get("action")
         if action == "start_export":
@@ -73,14 +78,14 @@ class ExportConsumer(AsyncJsonWebsocketConsumer):
             self._cancel_event.set()
             logger.debug("ExportConsumer: cancel requested by %s", self.user.username)
         else:
-            await self.send_json({"type": "error", "message": f"Unknown action: {action}"})
+            await self.safe_send_json({"type": "error", "message": f"Unknown action: {action}"})
 
     # ── Private handlers ────────────────────────────────────────────────────
 
     async def _handle_start_export(self, content: dict) -> None:
         ifc_file_id = (content.get("ifc_file_id") or "").strip()
         if not ifc_file_id:
-            await self.send_json({"type": "error", "message": "ifc_file_id is required."})
+            await self.safe_send_json({"type": "error", "message": "ifc_file_id is required."})
             return
 
         self._cancel_event.clear()
@@ -92,19 +97,26 @@ class ExportConsumer(AsyncJsonWebsocketConsumer):
             from writeback.services.emitters import CancellationError
 
             if isinstance(e, CancellationError):
-                await self.send_json({"type": "cancelled"})
+                await self.safe_send_json({"type": "cancelled"})
                 return
             if isinstance(e, ExportError):
-                await self.send_json({"type": "error", "message": str(e)})
-                await self.send_json({"type": "done"})
+                # ExportError is a domain failure surfaced to the user — log
+                # at warning so it shows up in ErrorLog but doesn't poison the
+                # critical-error feed for the operator.
+                await self.log_consumer_exception(
+                    e, method="_handle_start_export", severity="warning"
+                )
+                await self.safe_send_json({"type": "error", "message": str(e)})
+                await self.safe_send_json({"type": "done"})
                 return
             logger.exception("Export consumer error: %s", e)
-            await self.send_json({"type": "error", "message": str(e)})
-            await self.send_json({"type": "done"})
+            await self.log_consumer_exception(e, method="_handle_start_export")
+            await self.safe_send_json({"type": "error", "message": str(e)})
+            await self.safe_send_json({"type": "done"})
             return
 
-        await self.send_json({"type": "export_complete", **job_info})
-        await self.send_json({"type": "done"})
+        await self.safe_send_json({"type": "export_complete", **job_info})
+        await self.safe_send_json({"type": "done"})
 
     # Mirrors the writeback ProposalConsumer rationale: `thread_sensitive=False`
     # keeps long-running writer I/O off the single shared sync thread so other
@@ -121,7 +133,12 @@ class ExportConsumer(AsyncJsonWebsocketConsumer):
         project = Project.objects.select_related("owner").get(pk=self.project_id)
         ifc_file = IFCFile.objects.select_related("project").get(pk=ifc_file_id, project=project)
 
-        emitter = WebSocketEmitter(self.send_json, cancel_event=self._cancel_event)
+        emitter = WebSocketEmitter(
+            self.send_json,
+            cancel_event=self._cancel_event,
+            scope=self.scope,
+            consumer_name=f"{type(self).__module__}.{type(self).__name__}",
+        )
         svc = ExportReconciliationService(project)
         job = svc.export(ifc_file=ifc_file, user=self.user, emitter=emitter)
         return {
@@ -157,7 +174,7 @@ def fm_wo_group_name(project_id) -> str:
     return f"fm-wo-{project_id}"
 
 
-class WorkOrderConsumer(AsyncJsonWebsocketConsumer):
+class WorkOrderConsumer(CastorConsumerMixin, AsyncJsonWebsocketConsumer):
     """Push-only WebSocket — broadcasts WO transitions to every connected client.
 
     Joins a per-project channel group on connect; the service layer fans out
@@ -166,6 +183,7 @@ class WorkOrderConsumer(AsyncJsonWebsocketConsumer):
     gating live in one place.
     """
 
+    @capture_consumer_errors
     async def connect(self) -> None:
         self.user = self.scope["user"]
         self.project_id = self.scope["url_route"]["kwargs"]["project_id"]
@@ -187,26 +205,28 @@ class WorkOrderConsumer(AsyncJsonWebsocketConsumer):
             self.project_id,
         )
 
+    @capture_consumer_errors
     async def disconnect(self, close_code: int) -> None:
         group_name = getattr(self, "group_name", None)
         if group_name is not None and self.channel_layer is not None:
             await self.channel_layer.group_discard(group_name, self.channel_name)
 
+    @capture_consumer_errors
     async def receive_json(self, content: dict, **kwargs) -> None:
         action = content.get("action")
         if action == "ping":
-            await self.send_json({"type": "pong"})
+            await self.safe_send_json({"type": "pong"})
         elif action == "subscribe":
-            await self.send_json({"type": "subscribed", "project_id": self.project_id})
+            await self.safe_send_json({"type": "subscribed", "project_id": self.project_id})
         else:
-            await self.send_json({"type": "error", "message": f"Unknown action: {action}"})
+            await self.safe_send_json({"type": "error", "message": f"Unknown action: {action}"})
 
     # Group-message handler — invoked by ``channel_layer.group_send`` with
     # ``{"type": "wo_updated", "payload": {...}}``. Channels dispatches the
     # ``type`` value to a method of the same name (dots replaced by
     # underscores), so service-layer broadcasts use ``"type": "wo_updated"``.
     async def wo_updated(self, event: dict) -> None:
-        await self.send_json({"type": "wo.updated", **event["payload"]})
+        await self.safe_send_json({"type": "wo.updated", **event["payload"]})
 
     @sync_to_async
     def _check_project_access(self) -> bool:
@@ -225,7 +245,7 @@ class WorkOrderConsumer(AsyncJsonWebsocketConsumer):
     # WO updates because the FM Requests page is part of the same workspace.
     # Service layer fires this with ``"type": "ar_updated"`` + an HTML payload.
     async def ar_updated(self, event: dict) -> None:
-        await self.send_json({"type": "ar.updated", **event["payload"]})
+        await self.safe_send_json({"type": "ar.updated", **event["payload"]})
 
 
 # ─── Occupant Portal (M4.C) ────────────────────────────────────────────────
@@ -241,9 +261,10 @@ def fm_portal_group_name(user_id, project_id) -> str:
     return f"fm-portal-{user_id}-{project_id}"
 
 
-class OccupantPortalConsumer(AsyncJsonWebsocketConsumer):
+class OccupantPortalConsumer(CastorConsumerMixin, AsyncJsonWebsocketConsumer):
     """Push-only WebSocket — broadcasts AR status updates to the submitter."""
 
+    @capture_consumer_errors
     async def connect(self) -> None:
         self.user = self.scope["user"]
         self.project_id = self.scope["url_route"]["kwargs"]["project_id"]
@@ -265,21 +286,23 @@ class OccupantPortalConsumer(AsyncJsonWebsocketConsumer):
             self.project_id,
         )
 
+    @capture_consumer_errors
     async def disconnect(self, close_code: int) -> None:
         group_name = getattr(self, "group_name", None)
         if group_name is not None and self.channel_layer is not None:
             await self.channel_layer.group_discard(group_name, self.channel_name)
 
+    @capture_consumer_errors
     async def receive_json(self, content: dict, **kwargs) -> None:
         action = content.get("action")
         if action == "ping":
-            await self.send_json({"type": "pong"})
+            await self.safe_send_json({"type": "pong"})
         else:
-            await self.send_json({"type": "error", "message": f"Unknown action: {action}"})
+            await self.safe_send_json({"type": "error", "message": f"Unknown action: {action}"})
 
     async def ar_updated(self, event: dict) -> None:
         """Server-rendered AR status card pushed by the service layer."""
-        await self.send_json({"type": "ar.updated", **event["payload"]})
+        await self.safe_send_json({"type": "ar.updated", **event["payload"]})
 
     @sync_to_async
     def _check_project_access(self) -> bool:

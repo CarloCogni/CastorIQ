@@ -246,7 +246,7 @@ cover that case.
 ### Outbound rules
 
 Leave **unrestricted** (the Hetzner default). Locking down outbound on a box
-that needs to reach Docker Hub, apt mirrors, Let's Encrypt, Mailgun, Sentry,
+that needs to reach Docker Hub, apt mirrors, Let's Encrypt, Brevo, Sentry,
 Ollama model downloads, and Hetzner Storage Box is a maintenance trap with
 near-zero security upside on a single-tenant VPS.
 
@@ -448,7 +448,7 @@ The next runbook covers the application layer — none of these are touched here
 - The Castor `docker-compose.prod.yml` stack (Daphne, persistent volumes)
 - Hetzner Storage Box + nightly backup cron (`pg_dump` + `MEDIA_ROOT` tarball)
 - Sentry SDK, UptimeRobot ping on `/healthz/`
-- Mailgun SMTP credentials and SPF/DKIM/DMARC records
+- Brevo SMTP credentials and SPF/DKIM records via Brevo's domain auth flow
 
 Architecture and rationale for all of the above already live in
 `vps-deployment.md` — read that next for the bigger picture before starting the

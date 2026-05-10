@@ -176,13 +176,13 @@ The usage log records every call and is queryable from Django admin. Manually ex
 
 **Shape of the work:**
 - Complete the production settings: SSL redirect on, secure cookies, HSTS with preload, the proxy SSL header (critical so Django knows requests are HTTPS even though the reverse proxy speaks HTTP to Daphne), allowed hosts and CSRF trusted origins from env vars.
-- Email backend wired through env vars. Mailgun's free tier (10k emails/month) is more than enough for a beta; alternative is Postmark. Plain SMTP, no fancy library.
+- Email backend wired through env vars. Brevo's free tier (300 emails/day) is more than enough for a vetted beta. Plain SMTP, no fancy library.
 - WhiteNoise for static files. Adding the dependency, the middleware, and the storage backend is three lines of config. Avoids needing nginx purely for static files.
 - Fix the Dockerfile (or systemd unit, depending on deploy style) so daphne is the actual process command. The codebase has the ASGI app ready; the entrypoint just needs to point at it.
 - Wire Django's built-in password reset URL patterns. Four patterns; takes minutes once the email backend exists.
 - Sentry on the developer (free) tier for error visibility in production. Initialise only in production settings, tagged with the environment.
 
-**Done when:** running locally with `DEBUG=False`, the production settings module, and WhiteNoise serves a fully-styled page. Triggering a password reset sends a real email through Mailgun. An intentionally-thrown exception shows up in Sentry within a minute.
+**Done when:** running locally with `DEBUG=False`, the production settings module, and WhiteNoise serves a fully-styled page. Triggering a password reset sends a real email through Brevo. An intentionally-thrown exception shows up in Sentry within a minute.
 
 ---
 
@@ -196,7 +196,7 @@ The usage log records every call and is queryable from Django admin. Manually ex
 - One new model: `BetaApplication` (email, name, job_title, description, status, notes, created_at, reviewed_at, reviewed_by). No separate "invite token" model — admin approval creates the `User` directly and dispatches the standard Django password-reset flow as the one-time set-password link, which already supports time-bounded single-use tokens out of the box.
 - A public landing page at `/` (unauth-safe). Dark theme, Castor blue, single focused page: hero text, embedded YouTube video (no VPS bandwidth cost), "what it does" in three bullets, the application form, a small footer link to privacy + terms. Bootstrap utility classes, no custom JS. The visual quality matters — this is the first impression.
 - A Django admin list view for `BetaApplication`. Filter by status (pending / called / approved / rejected). The "approve" admin action: creates a `User` (email = application email, unusable password until set), triggers a welcome email with the set-password link, marks the application approved with timestamp + reviewer.
-- A welcome email template (HTML + plaintext, Mailgun-rendered) that explains the beta scope, links to the privacy notice, and contains the one-time set-password link.
+- A welcome email template (HTML + plaintext, Brevo-relayed) that explains the beta scope, links to the privacy notice, and contains the one-time set-password link.
 - The set-password view itself is just Django's built-in `PasswordResetConfirmView` reused — no custom token machinery. The link expires in 7 days (Django default `PASSWORD_RESET_TIMEOUT`).
 - **Sample project auto-provisioning.** A single curated IFC (likely the BuildingSMART/NIST Duplex Apartment) plus 2–3 seed PDFs live in `fixtures/sample-project/`. A `provision_sample_project <user_id>` management command (idempotent) is wired into the admin "approve" action so every new user lands on a dashboard with a working project from second one — no friction, no empty state. The IFC is pre-indexed at deploy time; the embeddings ship as a fixture so the cold-start cost is paid once on the dev machine, not per-user on the VPS.
 - A short heads-up on the landing page that the beta is a private testing environment — uploaded IFCs are processed by cloud LLM providers (Anthropic + Groq) when those providers are active in the admin config. This is informational, not a legal disclosure: there is no company, no signed contract, and no formal privacy obligation behind Castor at this stage. Vetted users are knowingly opting into a research/test environment.
@@ -254,7 +254,7 @@ The usage log records every call and is queryable from Django admin. Manually ex
 | VPS (Hetzner CCX13) | ~€25/mo × 3 = €75 |
 | Hetzner Storage Box (1 TB, backups) | ~€4/mo × 3 = €12 |
 | Domain `castoriq.io` (Namecheap) | ~€15/year |
-| Mailgun free tier | $0 |
+| Brevo free tier | $0 |
 | Sentry developer tier | $0 |
 | Groq pre-paid (Modify) | $100 one-time |
 | Anthropic pre-paid (Ask) | $50–100 one-time |
@@ -269,7 +269,7 @@ Detailed cost model and per-user caps live in `docs/business/token-economics.md`
 1. **Tier 3 in-process exec().** The single biggest unresolved risk. Mitigations are: trusted-only audience, the new mandatory review checkpoint, full execution logging. **Hard stop:** if Tier 3 OOM-kills the worker during week-5 dogfood, halt external invites and add subprocess + ulimit isolation before resuming. Estimate ~3 days of work for that change.
 2. **CPU-only Ollama embedding latency.** The embedding model (`mxbai-embed-large`) is ~600 MB; embedding latency on CPU is 200–500 ms per chunk. Acceptable for retrieval (offline), adds noticeable cost to ingest. Pre-indexing the shared sample project at deploy time removes the most-trodden code path from the latency budget — only user-uploaded IFCs hit cold embedding. Measure during dogfood. If intolerable, switch to Voyage AI embeddings (they offer a 1024-dim option that fits the existing vector space without re-embed). The decision tree and switch-over procedure are documented in `vps-deployment.md`.
 3. **Demo IFC sourcing.** Need 2–3 non-confidential, mid-complexity IFC files. Open-source test models tend to be tiny; BlenderBIM and IfcOpenShell repos have some, but vetting is needed. Worst case: build small ones in FreeCAD/BlenderBIM. Don't leave this to week 6.
-4. **Mailgun deliverability cold-start.** Fresh sending domains hit spam filters until they build reputation. Set up SPF + DKIM + DMARC during week 5 and pre-warm by sending yourself test emails before any real beta invites go out.
+4. **Email deliverability cold-start.** Fresh sending identities hit spam filters until they build reputation, regardless of provider. Configure Brevo's domain auth (SPF + DKIM on `castoriq.io`) during week 5 and pre-warm by sending yourself test emails before any real beta invites go out. See `docs/business/sentry-and-email.md` Section 10 for the pre-warming routine.
 5. **Solo dev sustained focus.** Six weeks of single-track focus is achievable but exhausting. If a critical issue lands from real users mid-stream, scope must give. Build at least one buffer day per week into the plan.
 6. **Confidentiality posture (informational, not legal).** Castor is not a company yet — there's no entity, no contract, no formal privacy obligation. The beta is explicitly a vetted testing environment. The landing page should still mention that uploaded IFCs are processed by cloud LLMs when those providers are active, so vetted users opt in knowing what they're using. If a real product/company materialises post-Barcelona, that's the moment to write a real privacy notice and ToS — until then, the disclosure is a courtesy heads-up, nothing more.
 

@@ -85,9 +85,9 @@ Domain: `castoriq.io` (registered on Namecheap).
 |---|---|---|---|
 | A | `@` | `<vps_ip>` | 3600 |
 | A | `www` | `<vps_ip>` | 3600 |
-| MX | `@` | (Mailgun's MX records — only if we receive inbound mail; v1 is outbound-only via SMTP, so optional) | — |
-| TXT (SPF) | `@` | `v=spf1 include:mailgun.org ~all` | 3600 |
-| TXT (DKIM) | (Mailgun-provided selector) | (Mailgun-provided value) | 3600 |
+| MX | `@` | (only if inbound parsing is enabled in Brevo; v1 is outbound-only via SMTP relay, so optional) | — |
+| TXT (SPF) | `@` | `v=spf1 include:spf.brevo.com ~all` | 3600 |
+| TXT (DKIM) | (Brevo-provided selector) | (Brevo-provided value, copied from Senders & IP → Domains) | 3600 |
 | TXT (DMARC) | `_dmarc` | `v=DMARC1; p=none; rua=mailto:postmaster@castoriq.io` | 3600 |
 
 **No Cloudflare proxy at v1.** Reasons:
@@ -129,10 +129,11 @@ Storage Box: ~€4/mo for 1 TB, more than enough.
 
 ## Email
 
-- **Mailgun free tier** (5,000 emails/month for first 3 months, then ~100/day on free) — more than enough for ~30 users + admin notifications.
-- Outbound SMTP only (`smtp.eu.mailgun.org`, port 587, STARTTLS).
-- SPF + DKIM + DMARC set up at DNS level (see DNS table).
-- **Pre-warm:** send 5–10 test emails to your own inbox over a few days before launch — fresh sending domains hit spam filters until they build reputation.
+- **Brevo SMTP relay** (300 emails/day free, EU-hosted) — enough for ~30 beta users + admin notifications, same data residency as the Hetzner VPS.
+- Outbound SMTP only (`smtp-relay.brevo.com`, port 587, STARTTLS).
+- SPF + DKIM via Brevo's domain auth flow — recommended for deliverability, not strictly required to send.
+- **Pre-warm:** send 5–10 test emails to your own inbox over a few days before launch — fresh sending identities hit spam filters until they build reputation.
+- Operator walk-through (account creation through verified end-to-end): `docs/business/sentry-and-email.md`.
 
 ---
 
@@ -162,7 +163,7 @@ Storage Box: ~€4/mo for 1 TB, more than enough.
 | Hetzner CCX13 | €25 |
 | Hetzner Storage Box (1 TB) | €4 |
 | Domain (`castoriq.io`) | ~€1 (annualised ~€15/year) |
-| Mailgun free tier | €0 |
+| Brevo free tier | €0 |
 | Sentry developer | €0 |
 | UptimeRobot free | €0 |
 | **Infra subtotal** | **~€30/mo** |

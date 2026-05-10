@@ -688,6 +688,7 @@ const ModifyChat = {
         const projectPk = chatEl.dataset.projectPk;
         const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const url = `${proto}//${window.location.host}/ws/projects/${projectPk}/modify/`;
+        this._wsUrl = url;
 
         this._ws = new WebSocket(url);
 
@@ -705,14 +706,47 @@ const ModifyChat = {
         };
 
         this._ws.onclose = (event) => {
+            // 1000 = normal close, 4001/4003 = our auth/access policy closes.
+            // Anything else (1006 abnormal, 1011 server error, etc.) is a
+            // genuine fault the operator should see in ErrorLog — fire one
+            // beacon back before retrying.
             if (event.code !== 1000 && event.code !== 4001 && event.code !== 4003) {
+                this._reportWsError(event.reason || '', event.code);
                 this._attemptReconnect();
             }
         };
 
         this._ws.onerror = (err) => {
             console.warn('WebSocket error:', err);
+            this._reportWsError('onerror', '');
         };
+    },
+
+    _reportWsError(reason, code) {
+        // Beacon to /core/log/ws-error/ — fire-and-forget; never let
+        // telemetry bubble up and break the chat UI.
+        try {
+            const payload = JSON.stringify({
+                code: code !== undefined && code !== null ? String(code) : '',
+                reason: String(reason || ''),
+                url: window.location.href,
+                ws_path: this._wsUrl || '',
+            });
+            const endpoint = '/core/log/ws-error/';
+            if (navigator.sendBeacon) {
+                const blob = new Blob([payload], { type: 'application/json' });
+                navigator.sendBeacon(endpoint, blob);
+            } else {
+                fetch(endpoint, {
+                    method: 'POST',
+                    body: payload,
+                    keepalive: true,
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            }
+        } catch (e) {
+            console.warn('Failed to report WS error:', e);
+        }
     },
 
     _attemptReconnect() {
@@ -903,7 +937,11 @@ const ModifyChat = {
         this._appendBubble('user', text);
         this.inputEl.value = '';
         this.inputEl.style.height = 'auto';
-        this._showLoader();
+        // Surface that we're on the fallback path. Without this, a closed WS
+        // looks identical to a working one and the missing phase tracker
+        // gets blamed on the pipeline.
+        this._notifyFallbackOnce();
+        this._showFallbackLoader();
 
         try {
             const data = await this._post({ action: 'propose', message: text, conflict_ids: this._conflictIds || '' });
@@ -1290,6 +1328,40 @@ const ModifyChat = {
 
         this.chatEl.insertAdjacentHTML('beforeend', html);
         this.scrollToBottom();
+    },
+
+    _showFallbackLoader() {
+        const loaderHTML = CastorLoader.getHTML();
+        const html = `
+        <div class="message message-assistant" id="modify-loader">
+            <div class="message-avatar" style="background-color: var(--castor-accent);"><i class="bi bi-tools"></i></div>
+            <div class="message-content text-secondary d-flex align-items-center">
+                <div style="width: 50px; height: 50px;">${loaderHTML}</div>
+                <span class="ms-2 fs-7">
+                    Castor is thinking…
+                    <span class="badge bg-warning-subtle text-warning ms-2" title="WebSocket is closed; running without phase streaming.">
+                        <i class="bi bi-wifi-off me-1"></i>HTTP fallback
+                    </span>
+                </span>
+            </div>
+        </div>`;
+        this.chatEl.insertAdjacentHTML('beforeend', html);
+        this.scrollToBottom();
+    },
+
+    _notifyFallbackOnce() {
+        if (this._fallbackNotified) return;
+        this._fallbackNotified = true;
+        // Toast bridge is wired in core/templates/core/base.html; safe to
+        // dispatch even if absent — listener no-ops.
+        try {
+            window.dispatchEvent(new CustomEvent('castor:toast', {
+                detail: {
+                    message: 'Live phase streaming is unavailable — using HTTP fallback. Reload to retry.',
+                    level: 'info',
+                },
+            }));
+        } catch (_) { /* ignore */ }
     },
 
     _hideLoader() {

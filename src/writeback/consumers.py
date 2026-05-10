@@ -31,10 +31,12 @@ import threading
 from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
+from core.consumers import CastorConsumerMixin, capture_consumer_errors
+
 logger = logging.getLogger(__name__)
 
 
-class ProposalConsumer(AsyncJsonWebsocketConsumer):
+class ProposalConsumer(CastorConsumerMixin, AsyncJsonWebsocketConsumer):
     """
     Async WebSocket consumer that streams the proposal pipeline to the browser.
 
@@ -42,6 +44,7 @@ class ProposalConsumer(AsyncJsonWebsocketConsumer):
     Auth is handled by AuthMiddlewareStack in asgi.py.
     """
 
+    @capture_consumer_errors
     async def connect(self) -> None:
         self.user = self.scope["user"]
         self.project_id = self.scope["url_route"]["kwargs"]["project_id"]
@@ -63,6 +66,7 @@ class ProposalConsumer(AsyncJsonWebsocketConsumer):
             self.project_id,
         )
 
+    @capture_consumer_errors
     async def disconnect(self, close_code: int) -> None:
         logger.debug(
             "ProposalConsumer disconnected: user=%s code=%s",
@@ -70,6 +74,7 @@ class ProposalConsumer(AsyncJsonWebsocketConsumer):
             close_code,
         )
 
+    @capture_consumer_errors
     async def receive_json(self, content: dict, **kwargs) -> None:
         action = content.get("action")
         if action == "propose":
@@ -80,7 +85,7 @@ class ProposalConsumer(AsyncJsonWebsocketConsumer):
             self._cancel_event.set()
             logger.debug("ProposalConsumer: cancel requested by %s", self.user.username)
         else:
-            await self.send_json({"type": "error", "message": f"Unknown action: {action}"})
+            await self.safe_send_json({"type": "error", "message": f"Unknown action: {action}"})
 
     # ── Private handlers ───────────────────────────────────────────────────────
 
@@ -88,7 +93,7 @@ class ProposalConsumer(AsyncJsonWebsocketConsumer):
         """Run the proposal pipeline and stream phase events to the client."""
         message_text = (content.get("message") or "").strip()
         if not message_text:
-            await self.send_json({"type": "error", "message": "Message is required."})
+            await self.safe_send_json({"type": "error", "message": "Message is required."})
             return
 
         # Reset cancel state for each new request
@@ -106,25 +111,26 @@ class ProposalConsumer(AsyncJsonWebsocketConsumer):
             from writeback.services.modification_service import ModificationError
 
             if isinstance(e, CancellationError):
-                await self.send_json({"type": "cancelled"})
+                await self.safe_send_json({"type": "cancelled"})
                 return
             logger.exception("Proposal pipeline error: %s", e)
+            await self.log_consumer_exception(e, method="_handle_propose")
             failure_id = (
                 getattr(e, "failure_record_id", None) if isinstance(e, ModificationError) else None
             )
             if failure_id:
                 failure_data = await self._load_failure_data(failure_id)
-                await self.send_json(
+                await self.safe_send_json(
                     {"type": "failure", "failure": failure_data, "message": str(e)}
                 )
             else:
-                await self.send_json({"type": "error", "message": str(e)})
+                await self.safe_send_json({"type": "error", "message": str(e)})
             return
 
         serialized = await self._serialize_result(result, proposals)
         serialized["superseded_ids"] = superseded_ids
-        await self.send_json({"type": "proposal", **serialized})
-        await self.send_json({"type": "done"})
+        await self.safe_send_json({"type": "proposal", **serialized})
+        await self.safe_send_json({"type": "done"})
 
     # `thread_sensitive=False` puts the LLM-bound work on the asgiref shared
     # thread pool instead of the single shared sync thread. Without this, a
@@ -177,7 +183,12 @@ class ProposalConsumer(AsyncJsonWebsocketConsumer):
             content=message_text,
         )
 
-        emitter = WebSocketEmitter(self.send_json, cancel_event=self._cancel_event)
+        emitter = WebSocketEmitter(
+            self.send_json,
+            cancel_event=self._cancel_event,
+            scope=self.scope,
+            consumer_name=f"{type(self).__module__}.{type(self).__name__}",
+        )
         svc = ModificationService(project, user=self.user)
 
         # Supersede any prior pending proposals in this session before
@@ -250,7 +261,7 @@ class ProposalConsumer(AsyncJsonWebsocketConsumer):
         message_text = (content.get("message") or "").strip()
 
         if not failure_id or not message_text:
-            await self.send_json(
+            await self.safe_send_json(
                 {"type": "error", "message": "failure_id and message are required."}
             )
             return
@@ -274,25 +285,26 @@ class ProposalConsumer(AsyncJsonWebsocketConsumer):
             from writeback.services.modification_service import ModificationError
 
             if isinstance(e, CancellationError):
-                await self.send_json({"type": "cancelled"})
+                await self.safe_send_json({"type": "cancelled"})
                 return
             logger.exception("Retry pipeline error: %s", e)
+            await self.log_consumer_exception(e, method="_handle_propose_with_retry")
             failure_id_new = (
                 getattr(e, "failure_record_id", None) if isinstance(e, ModificationError) else None
             )
             if failure_id_new:
                 failure_data = await self._load_failure_data(failure_id_new)
-                await self.send_json(
+                await self.safe_send_json(
                     {"type": "failure", "failure": failure_data, "message": str(e)}
                 )
             else:
-                await self.send_json({"type": "error", "message": str(e)})
+                await self.safe_send_json({"type": "error", "message": str(e)})
             return
 
         serialized = await self._serialize_result(result, proposals)
         serialized["superseded_ids"] = superseded_ids
-        await self.send_json({"type": "proposal", **serialized})
-        await self.send_json({"type": "done"})
+        await self.safe_send_json({"type": "proposal", **serialized})
+        await self.safe_send_json({"type": "done"})
 
     @sync_to_async
     def _load_failure_data(self, failure_id: str) -> dict:
@@ -418,7 +430,7 @@ class ProposalConsumer(AsyncJsonWebsocketConsumer):
         return session
 
 
-class ScanConsumer(AsyncJsonWebsocketConsumer):
+class ScanConsumer(CastorConsumerMixin, AsyncJsonWebsocketConsumer):
     """
     Async WebSocket consumer that streams the conflict scan pipeline to the browser.
 
@@ -426,6 +438,7 @@ class ScanConsumer(AsyncJsonWebsocketConsumer):
     AuthMiddlewareStack in asgi.py.
     """
 
+    @capture_consumer_errors
     async def connect(self) -> None:
         self.user = self.scope["user"]
         self.project_id = self.scope["url_route"]["kwargs"]["project_id"]
@@ -447,6 +460,7 @@ class ScanConsumer(AsyncJsonWebsocketConsumer):
             self.project_id,
         )
 
+    @capture_consumer_errors
     async def disconnect(self, close_code: int) -> None:
         # Signal any running scan to abort at the next emit boundary. Without
         # this, the sync_to_async thread keeps invoking Ollama after the client
@@ -460,6 +474,7 @@ class ScanConsumer(AsyncJsonWebsocketConsumer):
             close_code,
         )
 
+    @capture_consumer_errors
     async def receive_json(self, content: dict, **kwargs) -> None:
         action = content.get("action")
         if action == "start_scan":
@@ -468,7 +483,7 @@ class ScanConsumer(AsyncJsonWebsocketConsumer):
             self._cancel_event.set()
             logger.debug("ScanConsumer: cancel requested by %s", self.user.username)
         else:
-            await self.send_json({"type": "error", "message": f"Unknown action: {action}"})
+            await self.safe_send_json({"type": "error", "message": f"Unknown action: {action}"})
 
     # ── Private handlers ───────────────────────────────────────────────────────
 
@@ -486,15 +501,16 @@ class ScanConsumer(AsyncJsonWebsocketConsumer):
 
             if isinstance(e, CancellationError):
                 logger.debug("Conflict scan cancelled for user=%s", self.user.username)
-                await self.send_json({"type": "cancelled"})
+                await self.safe_send_json({"type": "cancelled"})
                 return
             logger.exception("Conflict scan pipeline error: %s", e)
-            await self.send_json({"type": "error", "message": str(e)})
-            await self.send_json({"type": "done"})
+            await self.log_consumer_exception(e, method="_handle_start_scan")
+            await self.safe_send_json({"type": "error", "message": str(e)})
+            await self.safe_send_json({"type": "done"})
             return
 
-        await self.send_json({"type": "scan_complete", "stats": stats})
-        await self.send_json({"type": "done"})
+        await self.safe_send_json({"type": "scan_complete", "stats": stats})
+        await self.safe_send_json({"type": "done"})
 
     # See _run_pipeline above — same reason: keep LLM-bound work off the
     # single shared sync thread so connect()/auth on other tabs isn't blocked.
@@ -510,7 +526,12 @@ class ScanConsumer(AsyncJsonWebsocketConsumer):
         except Project.DoesNotExist:
             raise ValueError("Project not found.")
 
-        emitter = WebSocketEmitter(self.send_json, cancel_event=self._cancel_event)
+        emitter = WebSocketEmitter(
+            self.send_json,
+            cancel_event=self._cancel_event,
+            scope=self.scope,
+            consumer_name=f"{type(self).__module__}.{type(self).__name__}",
+        )
         svc = ConflictScanService(project, self.user, skip_low_value=skip_low_value)
         return svc.full_scan(emitter=emitter)
 
@@ -527,7 +548,7 @@ class ScanConsumer(AsyncJsonWebsocketConsumer):
             return False
 
 
-class SchemaConversionConsumer(AsyncJsonWebsocketConsumer):
+class SchemaConversionConsumer(CastorConsumerMixin, AsyncJsonWebsocketConsumer):
     """
     Async WebSocket consumer that streams the IFC schema conversion pipeline to the browser.
 
@@ -541,6 +562,7 @@ class SchemaConversionConsumer(AsyncJsonWebsocketConsumer):
         Server → Client:  {"type": "done"}
     """
 
+    @capture_consumer_errors
     async def connect(self) -> None:
         self.user = self.scope["user"]
         self.project_id = self.scope["url_route"]["kwargs"]["project_id"]
@@ -562,6 +584,7 @@ class SchemaConversionConsumer(AsyncJsonWebsocketConsumer):
             self.ifc_file_id,
         )
 
+    @capture_consumer_errors
     async def disconnect(self, close_code: int) -> None:
         logger.debug(
             "SchemaConversionConsumer disconnected: user=%s code=%s",
@@ -569,12 +592,13 @@ class SchemaConversionConsumer(AsyncJsonWebsocketConsumer):
             close_code,
         )
 
+    @capture_consumer_errors
     async def receive_json(self, content: dict, **kwargs) -> None:
         action = content.get("action")
         if action == "start_convert":
             await self._handle_start_convert()
         else:
-            await self.send_json({"type": "error", "message": f"Unknown action: {action}"})
+            await self.safe_send_json({"type": "error", "message": f"Unknown action: {action}"})
 
     # ── Private handlers ───────────────────────────────────────────────────────
 
@@ -584,12 +608,13 @@ class SchemaConversionConsumer(AsyncJsonWebsocketConsumer):
             result = await self._run_conversion()
         except Exception as e:
             logger.exception("Schema conversion consumer error: %s", e)
-            await self.send_json({"type": "error", "message": str(e)})
-            await self.send_json({"type": "done"})
+            await self.log_consumer_exception(e, method="_handle_start_convert")
+            await self.safe_send_json({"type": "error", "message": str(e)})
+            await self.safe_send_json({"type": "done"})
             return
 
-        await self.send_json({"type": "convert_complete", **result})
-        await self.send_json({"type": "done"})
+        await self.safe_send_json({"type": "convert_complete", **result})
+        await self.safe_send_json({"type": "done"})
 
     @sync_to_async
     def _run_conversion(self) -> dict:
@@ -599,7 +624,11 @@ class SchemaConversionConsumer(AsyncJsonWebsocketConsumer):
         from writeback.services.emitters import WebSocketEmitter
 
         ifc_file = IFCFile.objects.select_related("project").get(pk=self.ifc_file_id)
-        emitter = WebSocketEmitter(self.send_json)
+        emitter = WebSocketEmitter(
+            self.send_json,
+            scope=self.scope,
+            consumer_name=f"{type(self).__module__}.{type(self).__name__}",
+        )
         return IFCSchemaConverterService(ifc_file).convert(emitter=emitter)
 
     @sync_to_async

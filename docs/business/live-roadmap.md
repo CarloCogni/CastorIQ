@@ -139,8 +139,8 @@ Make it real. Daphne, security headers, email, backups, Sentry. M0's server full
 - [ ] `docker/Dockerfile` CMD: `gunicorn config.wsgi:application` → `daphne -b 0.0.0.0:8000 config.asgi:application`
 - [ ] `src/config/settings/production.py`: `SECURE_SSL_REDIRECT`, `SECURE_HSTS_SECONDS=31536000`, `SECURE_HSTS_PRELOAD`, `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE`, `SECURE_PROXY_SSL_HEADER`, env-driven `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS`
 - [ ] WhiteNoise middleware + `STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"`
-- [ ] Email backend: `EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend`, Mailgun SMTP creds from env
-- [ ] Mailgun domain SPF + DKIM + DMARC verified; pre-warm by sending yourself test emails before any real beta invites
+- [ ] Email backend: `EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend`, Brevo SMTP creds from env
+- [ ] Brevo domain auth (SPF + DKIM) configured; pre-warm by sending yourself test emails before any real beta invites
 - [ ] `nginx.conf` finalised: WS upgrade headers (`Upgrade`, `Connection`), `proxy_read_timeout 90s`, gzip on, static caching, certbot auto-renewal hook
 - [ ] Sentry SDK wired in `production.py` only; DSN from env; tagged with `environment=production`
 - [ ] Daily backup cron: `pg_dump` (gzipped) + `tar` of `MEDIA_ROOT` → rclone push to Hetzner Storage Box; retention 14 days

@@ -226,6 +226,15 @@ SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
 # loggers (httpx, ollama, langchain) stay at WARNING so they don't drown app
 # signal — without this, every Ollama request emits multiple DEBUG lines and
 # the scan trace is impossible to read.
+#
+# Daphne / Channels stay on the console handler only. ``ErrorLogDBHandler``
+# does a synchronous ORM write, which trips ``SynchronousOnlyOperation`` when
+# the record is emitted from inside the running ASGI event loop — i.e. exactly
+# when a Daphne or Channels WARNING fires during a WebSocket handshake. The
+# handler's own try/except swallows the failure, but every dropped record
+# still pays an exception round-trip, and the surface area for taking down a
+# mid-handshake worker is not worth the (currently zero) operator value of
+# DB-side library logs. Revisit once the handler is async-safe.
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -256,6 +265,10 @@ LOGGING = {
         "ollama": {"level": "WARNING"},
         "langchain_ollama": {"level": "WARNING"},
         "asyncio": {"level": "WARNING"},
+        "daphne": {"handlers": ["console"], "level": "WARNING", "propagate": False},
+        "daphne.server": {"handlers": ["console"], "level": "WARNING", "propagate": False},
+        "channels": {"handlers": ["console"], "level": "WARNING", "propagate": False},
+        "channels.server": {"handlers": ["console"], "level": "WARNING", "propagate": False},
     },
 }
 

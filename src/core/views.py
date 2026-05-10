@@ -9,13 +9,16 @@ from django.conf import settings
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
+from django.core.cache import cache
 from django.db import connections
 from django.db.utils import OperationalError
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render, resolve_url
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from django.views.generic import TemplateView, View
 
+from core.exceptions import get_client_ip
 from core.forms import LoginPasswordForm, LoginUsernameForm
 from core.http import toast_response, trigger_toast
 from core.llm_model_registry import (
@@ -100,11 +103,7 @@ def home_view(request):
     config = SiteLaunchConfig.load()
     if config.is_live:
         return render(request, "core/landing.html")
-    mode = (
-        "maintenance"
-        if config.state == SiteLaunchConfig.State.MAINTENANCE
-        else "coming_soon"
-    )
+    mode = "maintenance" if config.state == SiteLaunchConfig.State.MAINTENANCE else "coming_soon"
     return render(request, "core/coming_soon.html", {"mode": mode})
 
 
@@ -127,6 +126,66 @@ def loader_gallery(request):
 def test_landing_page(request):
     """Test view to trigger an error - REMOVE IN PRODUCTION"""
     return render(request, "registration/login-matrix.html")
+
+
+@csrf_exempt
+@require_POST
+def log_ws_client_error(request):
+    """Browser-side WebSocket-error beacon → ``ErrorLog``.
+
+    Called by page JS via ``navigator.sendBeacon`` when the WS layer reports
+    a problem the server has no other way to see — typically a 1006 abnormal
+    close (network drop, Daphne crash) or an ``onerror`` event. Lands one
+    ``ErrorLog`` row at ``severity="warning"`` so the operator's main feed
+    surfaces client-side WS faults alongside the server-side ones.
+
+    Per-user rate limit (1 row / 60 s) prevents an unhealthy client from
+    looping the endpoint into a thousand rows. The browser doesn't get to
+    see the throttle — every successful POST returns 204.
+
+    CSRF is intentionally exempted: ``sendBeacon`` cannot attach the CSRF
+    token. The session cookie still authenticates the request, and the
+    payload is treated as untrusted (truncated, no fields are rendered).
+    """
+    if not request.user.is_authenticated:
+        return HttpResponse(status=401)
+
+    throttle_key = f"ws_error_beacon:{request.user.pk}"
+    if cache.get(throttle_key):
+        return HttpResponse(status=204)
+    cache.set(throttle_key, 1, timeout=60)
+
+    try:
+        payload = json.loads(request.body or b"{}")
+    except json.JSONDecodeError:
+        return HttpResponse(status=400)
+
+    code = str(payload.get("code", ""))[:32]
+    reason = str(payload.get("reason", ""))[:255]
+    page_url = str(payload.get("url", ""))[:500]
+    ws_path = str(payload.get("ws_path", ""))[:500]
+
+    ErrorLog.objects.create(
+        severity="warning",
+        message=f"WS client beacon: code={code or '?'} reason={reason or '(none)'}",
+        exception_type="WebSocketClientBeacon",
+        stacktrace=(
+            f"WS path: {ws_path}\nPage URL: {page_url}\nClose code: {code}\nReason: {reason}"
+        ),
+        url=page_url,
+        method="WS",
+        view_name="core.views.log_ws_client_error",
+        user=request.user,
+        user_agent=request.META.get("HTTP_USER_AGENT", "")[:500],
+        ip_address=get_client_ip(request),
+        request_data={
+            "ws_path": ws_path,
+            "close_code": code,
+            "reason": reason,
+            "page_url": page_url,
+        },
+    )
+    return HttpResponse(status=204)
 
 
 @require_POST

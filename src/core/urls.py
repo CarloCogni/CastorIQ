@@ -19,6 +19,9 @@ urlpatterns = [
         views.pull_errors_from_supabase,
         name="pull_errors_from_supabase",
     ),
+    # Browser-side WebSocket error beacon. Called via navigator.sendBeacon
+    # from page JS — see writeback/templates/writeback/tabs/_modify.html.
+    path("log/ws-error/", views.log_ws_client_error, name="log_ws_client_error"),
     # Settings
     path("settings/", views.SettingsView.as_view(), name="settings"),
     path(
