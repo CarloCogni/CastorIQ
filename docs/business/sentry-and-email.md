@@ -242,7 +242,13 @@ EMAIL_HOST_PASSWORD=<your-brevo-smtp-key>
 EMAIL_USE_TLS=True
 DEFAULT_FROM_EMAIL=Castor <noreply@castoriq.io>
 SERVER_EMAIL=Castor <noreply@castoriq.io>
+OPERATOR_NOTIFICATION_EMAIL=<your-inbox@example.com>
 ```
+
+`OPERATOR_NOTIFICATION_EMAIL` is the inbox that gets a one-line ping every
+time someone submits the beta application form, with a deep link straight
+to the admin row. Leave it blank to disable — the applicant still receives
+their confirmation either way.
 
 Restart `web` so Django picks up the new SMTP settings:
 
