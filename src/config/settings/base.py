@@ -135,6 +135,11 @@ EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True").lower() == "true"
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Castor <noreply@castoriq.io>")
 SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
 
+# Operator inbox that receives a one-line ping every time someone submits the
+# beta application form. Empty = notifications disabled (dev default). The
+# applicant always gets their confirmation regardless.
+OPERATOR_NOTIFICATION_EMAIL = os.getenv("OPERATOR_NOTIFICATION_EMAIL", "")
+
 # Public-facing site URL — used to build absolute links in welcome emails.
 SITE_URL = os.getenv("SITE_URL", "http://localhost:8001")
 
@@ -280,3 +285,4 @@ LOGGING = {
 # ``writeback/services/hint_generator.py`` for the strategy contracts.
 WRITEBACK_HINT_LLM_FALLBACK = True
 WRITEBACK_HINT_LLM_CATEGORIES: tuple[str, ...] = ()
+

@@ -7,7 +7,7 @@ import time
 
 from django.conf import settings
 from django.contrib import messages
-from django.core.mail import EmailMultiAlternatives
+from django.core.mail import EmailMultiAlternatives, send_mail
 from django.shortcuts import redirect
 from django.template.loader import render_to_string
 from django.views.decorators.http import require_POST
@@ -50,6 +50,37 @@ def _send_confirmation_email(application: BetaApplication) -> None:
         msg.send(fail_silently=False)
     except Exception as exc:
         logger.warning("Could not send confirmation email to %s: %s", application.email, exc)
+
+
+def _send_operator_notification(application: BetaApplication) -> None:
+    """Ping the operator inbox so new applications get noticed without manual polling.
+
+    No-op when ``OPERATOR_NOTIFICATION_EMAIL`` is unset (dev default). Best-effort:
+    a failed operator ping must not affect the applicant flow.
+    """
+    operator = settings.OPERATOR_NOTIFICATION_EMAIL
+    if not operator:
+        return
+    try:
+        admin_url = f"{settings.SITE_URL.rstrip('/')}/admin/beta/betaapplication/{application.id}/change/"
+        body = (
+            f"New Castor beta application.\n\n"
+            f"Name:        {application.name}\n"
+            f"Email:       {application.email}\n"
+            f"Job title:   {application.job_title or '—'}\n"
+            f"Submitted:   {application.created_at:%Y-%m-%d %H:%M %Z}\n\n"
+            f"Why they're interested:\n{application.description}\n\n"
+            f"Review in admin: {admin_url}\n"
+        )
+        send_mail(
+            subject=f"New Castor beta application: {application.name} ({application.email})",
+            message=body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[operator],
+            fail_silently=False,
+        )
+    except Exception as exc:
+        logger.warning("Could not send operator notification for %s: %s", application.email, exc)
 
 
 @require_POST
@@ -139,6 +170,7 @@ def apply_view(request):
     logger.info("Beta application received from %s (id=%s)", email, application.id)
 
     _send_confirmation_email(application)
+    _send_operator_notification(application)
     messages.success(
         request,
         "Thanks! We received your application and will review it shortly.",
