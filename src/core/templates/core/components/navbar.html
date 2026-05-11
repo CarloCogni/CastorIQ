@@ -21,6 +21,14 @@
         </div>
 
          {% if user.is_staff %}
+        <a
+                href="{% url 'staff_dashboard' %}"
+                class="btn btn-link text-secondary opacity-50 hover-white p-0 border-0 text-decoration-none"
+                title="Staff Dashboard — usage, cost, health"
+        >
+            <i class="bi bi-speedometer2 fs-5"></i>
+        </a>
+
         <button
                 class="btn btn-link text-secondary opacity-50 hover-white p-0 border-0"
                 title="Leave a Team Note"

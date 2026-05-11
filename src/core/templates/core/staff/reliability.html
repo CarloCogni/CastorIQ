@@ -1,0 +1,533 @@
+{% extends "core/staff/dashboard_base.html" %}
+
+<!-- core/staff/reliability.html — Tab 3, Reliability & Performance. -->
+<!-- Provider success %, p95 latency Ask vs Modify, error donut, unresolved -->
+<!-- backlog, writeback failure taxonomy, ingestion health. -->
+
+{% block title %}Staff Dashboard — Reliability{% endblock %}
+{% block dashboard_title %}Staff Dashboard — Reliability{% endblock %}
+
+{% block dashboard_help_pill %}
+<button type="button"
+        class="help-pill"
+        data-bs-toggle="modal"
+        data-bs-target="#dashboardReliabilityHelpModal"
+        title="How the Reliability tab works"
+        aria-label="How the Reliability tab works">
+    <i class="bi bi-question-circle"></i>
+</button>
+{% endblock %}
+
+{% block tab_body %}
+
+<!-- KPI strip — 4 tiles -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="card h-100" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+            <div class="card-body py-3">
+                <div class="text-secondary fs-8 text-uppercase">Success % ({{ window_days }}d)</div>
+                <div class="fs-4 fw-semibold {% if kpis.success_pct is not None and kpis.success_pct < 95 %}text-warning{% endif %}">
+                    {% if kpis.success_pct is None %}—{% else %}{{ kpis.success_pct }}%{% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card h-100" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+            <div class="card-body py-3">
+                <div class="text-secondary fs-8 text-uppercase">Errors ({{ window_days }}d)</div>
+                <div class="fs-4 fw-semibold {% if kpis.errors > 0 %}text-warning{% endif %}">{{ kpis.errors }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card h-100" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+            <div class="card-body py-3">
+                <div class="text-secondary fs-8 text-uppercase">p95 latency · Ask</div>
+                <div class="fs-4 fw-semibold">
+                    {% if kpis.p95_latency_ask_ms %}{{ kpis.p95_latency_ask_ms }} ms{% else %}—{% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card h-100" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+            <div class="card-body py-3">
+                <div class="text-secondary fs-8 text-uppercase">p95 latency · Modify</div>
+                <div class="fs-4 fw-semibold">
+                    {% if kpis.p95_latency_modify_ms %}{{ kpis.p95_latency_modify_ms }} ms{% else %}—{% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Row A: provider success bar + p95 latency over time -->
+<div class="row g-3 mb-4">
+    <div class="col-12 col-lg-6">
+        <div class="card h-100" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <h6 class="mb-0 fs-7 text-secondary text-uppercase">Provider success rate ({{ window_days }}d)</h6>
+                    <span class="text-secondary fs-8">
+                        Threshold: <span style="color: var(--castor-danger);">{{ success_threshold_pct }}%</span>
+                    </span>
+                </div>
+                {% if provider_success %}
+                <div style="position: relative; height: 260px;">
+                    <canvas id="providerSuccessChart"></canvas>
+                </div>
+                {% else %}
+                <p class="text-secondary fs-7 mb-0">No LLM activity in this window.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-6">
+        <div class="card h-100" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <h6 class="mb-0 fs-7 text-secondary text-uppercase">p95 latency, Ask vs Modify (30d)</h6>
+                    <span class="text-secondary fs-8">gap = no calls that day</span>
+                </div>
+                <div style="position: relative; height: 260px;">
+                    <canvas id="p95LatencyChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Row B: error donut + unresolved backlog -->
+<div class="row g-3 mb-4">
+    <div class="col-12 col-lg-5">
+        <div class="card h-100" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <h6 class="mb-0 fs-7 text-secondary text-uppercase">Error type breakdown ({{ window_days }}d)</h6>
+                    <span class="text-secondary fs-8">total {{ error_breakdown.total }}</span>
+                </div>
+                {% if error_breakdown.total > 0 %}
+                <div style="position: relative; height: 240px;">
+                    <canvas id="errorBreakdownChart"></canvas>
+                </div>
+                {% else %}
+                <p class="text-secondary fs-7 mb-0">No errors recorded in this window.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-7">
+        <div class="card h-100" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <h6 class="mb-0 fs-7 text-secondary text-uppercase">Unresolved error backlog</h6>
+                    <span class="text-secondary fs-8">total {{ error_backlog.total }} open</span>
+                </div>
+
+                <!-- Age bucket strip — pure HTML/CSS, no Chart.js canvas. -->
+                <div class="d-flex flex-column gap-1 mb-3">
+                    {% for b in error_backlog.buckets %}
+                    <div class="d-flex align-items-center gap-2 fs-8">
+                        <div style="min-width: 72px;" class="text-secondary">{{ b.label }}</div>
+                        <div class="flex-grow-1">
+                            <div class="progress" style="height: 12px; background-color: var(--bs-body-bg);">
+                                {% if error_backlog.total > 0 %}
+                                <div class="progress-bar
+                                            {% if b.label == '>7d' %}bg-danger
+                                            {% elif b.label == '24h–7d' %}bg-warning
+                                            {% else %}bg-info{% endif %}"
+                                     style="width: {% widthratio b.count error_backlog.total 100 %}%;">
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div style="min-width: 40px; text-align: right;" class="text-secondary">{{ b.count }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <!-- Recent unresolved rows. -->
+                {% if error_backlog.recent %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-borderless mb-0 fs-8">
+                        <thead>
+                            <tr class="text-secondary text-uppercase fs-8">
+                                <th scope="col" style="width: 70px;">Severity</th>
+                                <th scope="col">Exception</th>
+                                <th scope="col">View</th>
+                                <th scope="col" style="width: 110px;">When</th>
+                                <th scope="col" style="width: 32px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for e in error_backlog.recent %}
+                            <tr>
+                                <td>
+                                    <span class="badge
+                                        {% if e.severity == 'critical' or e.severity == 'error' %}bg-danger
+                                        {% elif e.severity == 'warning' %}bg-warning
+                                        {% else %}bg-secondary{% endif %}">
+                                        {{ e.severity }}
+                                    </span>
+                                </td>
+                                <td class="text-truncate" style="max-width: 220px;">
+                                    <code>{{ e.exception_type|default:"—" }}</code>
+                                </td>
+                                <td class="text-secondary text-truncate" style="max-width: 160px;">
+                                    {{ e.view_name|default:"—" }}
+                                </td>
+                                <td class="text-secondary">{{ e.created_at|date:"M j, H:i" }}</td>
+                                <td>
+                                    <a href="/admin/core/errorlog/{{ e.id }}/change/"
+                                       class="text-secondary text-decoration-none"
+                                       title="Open in Django admin">
+                                        <i class="bi bi-box-arrow-up-right"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Row C: writeback failure taxonomy -->
+<div class="card mb-4" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+    <div class="card-body">
+        <h6 class="mb-3 fs-7 text-secondary text-uppercase">Writeback failure taxonomy ({{ window_days }}d)</h6>
+
+        {% if failure_taxonomy.total > 0 %}
+        <div class="row g-3">
+            <div class="col-12 col-lg-7">
+                <div style="position: relative; height: 220px;">
+                    <canvas id="failureTaxonomyChart"></canvas>
+                </div>
+            </div>
+            <div class="col-12 col-lg-5">
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0 fs-8">
+                        <thead>
+                            <tr class="text-secondary text-uppercase">
+                                <th scope="col">Tier</th>
+                                <th scope="col" class="text-end">Failures</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for tier, count in failure_taxonomy.tier_totals.items %}
+                            <tr>
+                                <td>
+                                    {% if tier is None %}<span class="text-secondary">— (early VALIDATION)</span>
+                                    {% else %}T{{ tier }}{% endif %}
+                                </td>
+                                <td class="text-end fw-semibold">{{ count }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <p class="text-secondary fs-7 mb-0">
+            <i class="bi bi-check2-circle me-1 text-success"></i>
+            No writeback failures recorded in this window — RAV/sandbox quiet.
+        </p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Row D: ingestion health — two compact cards -->
+<div class="row g-3 mb-4">
+    {% for kind, data in ingestion.items %}
+    <div class="col-12 col-md-6">
+        <div class="card h-100" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <h6 class="mb-0 fs-7 text-secondary text-uppercase">
+                        {% if kind == 'documents' %}Documents{% else %}IFC files{% endif %}
+                        <span class="text-secondary ms-2">({{ window_days }}d)</span>
+                    </h6>
+                    <span class="text-secondary fs-8">total {{ data.total }}</span>
+                </div>
+
+                {% if data.total > 0 %}
+                <div class="d-flex flex-wrap gap-3 fs-8 mb-3">
+                    <span>
+                        <span class="text-secondary">Success</span>
+                        <span class="fw-semibold ms-1 {% if data.success_pct is not None and data.success_pct < 90 %}text-warning{% endif %}">
+                            {% if data.success_pct is None %}—{% else %}{{ data.success_pct }}%{% endif %}
+                        </span>
+                    </span>
+                    <span>
+                        <span class="text-secondary">Failed</span>
+                        <span class="fw-semibold ms-1 {% if data.by_status.failed > 0 %}text-danger{% endif %}">
+                            {{ data.by_status.failed }}
+                        </span>
+                    </span>
+                </div>
+
+                <!-- pending/processing/completed/failed mini-strip -->
+                <div class="d-flex gap-1" style="height: 10px;">
+                    {% for status_key, count in data.by_status.items %}
+                    {% if count > 0 %}
+                    <div class="rounded"
+                         style="flex: {{ count }};
+                                background-color:
+                                {% if status_key == 'completed' %}var(--castor-success, #10b981)
+                                {% elif status_key == 'failed' %}var(--castor-danger, #ef4444)
+                                {% elif status_key == 'processing' %}var(--castor-primary, #3b82f6)
+                                {% else %}var(--bs-secondary-bg){% endif %};"
+                         title="{{ status_key }}: {{ count }}">
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+                <div class="d-flex flex-wrap gap-2 fs-8 mt-2 text-secondary">
+                    {% for status_key, count in data.by_status.items %}
+                    {% if count > 0 %}
+                    <span>{{ status_key }}: <strong class="text-body">{{ count }}</strong></span>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-secondary fs-7 mb-0">No uploads in this window.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Embedded chart data (Django json_script — XSS-safe). -->
+{{ provider_success|json_script:"provider-success-data" }}
+{{ p95_latency|json_script:"p95-latency-data" }}
+{{ error_breakdown|json_script:"error-breakdown-data" }}
+{{ failure_taxonomy|json_script:"failure-taxonomy-data" }}
+
+{% endblock %}
+
+{% block dashboard_help_modal %}
+{% include "core/staff/components/_dashboard_help_modal_reliability.html" %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+    "use strict";
+
+    // Donut palette — recycled accent colours so the donut isn't a Skittles
+    // chart. New labels past index 9 reuse colours in order; that's fine for
+    // top-10 + Other.
+    const DONUT_PALETTE = [
+        "#ef4444", "#3b82f6", "#8b5cf6", "#10b981", "#f59e0b",
+        "#06b6d4", "#ec4899", "#14b8a6", "#a78bfa", "#fb923c",
+        "#94a3b8",
+    ];
+
+    const PROVIDER_COLOR = {
+        ollama:    "#10b981",
+        anthropic: "#8b5cf6",
+        groq:      "#3b82f6",
+        unknown:   "#94a3b8",
+    };
+    const providerColor = (p) => PROVIDER_COLOR[p] || "#f59e0b";
+
+    function readJson(elementId) {
+        const node = document.getElementById(elementId);
+        if (!node) return null;
+        try { return JSON.parse(node.textContent); } catch (_) { return null; }
+    }
+
+    // ── Provider success rate (bar with threshold line) ──────────────────
+    const successData = readJson("provider-success-data");
+    if (successData && successData.length > 0) {
+        const threshold = Number("{{ success_threshold_pct }}") || 95;
+        new Chart(document.getElementById("providerSuccessChart"), {
+            type: "bar",
+            data: {
+                labels: successData.map((r) => r.provider),
+                datasets: [
+                    {
+                        label: "Success %",
+                        data: successData.map((r) => r.success_pct),
+                        backgroundColor: successData.map(
+                            (r) => providerColor(r.provider) + "AA"
+                        ),
+                        borderColor: successData.map((r) => providerColor(r.provider)),
+                        borderWidth: 1.5,
+                        borderRadius: 4,
+                    },
+                    {
+                        // Threshold drawn as a flat line dataset — no plugin needed.
+                        label: "Threshold",
+                        type: "line",
+                        data: successData.map(() => threshold),
+                        borderColor: "#ef4444",
+                        borderDash: [6, 4],
+                        borderWidth: 1.5,
+                        pointRadius: 0,
+                        fill: false,
+                    },
+                ],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 11 } } },
+                    tooltip: {
+                        callbacks: {
+                            afterBody: (items) => {
+                                const idx = items[0].dataIndex;
+                                const r = successData[idx];
+                                return r ? `${r.succeeded}/${r.calls} calls` : "";
+                            },
+                        },
+                    },
+                },
+                scales: {
+                    x: { grid: { display: false }, ticks: { font: { size: 11 } } },
+                    y: {
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: { font: { size: 10 }, callback: (v) => v + "%" },
+                    },
+                },
+            },
+        });
+    }
+
+    // ── p95 latency per purpose (line, Ask vs Modify) ────────────────────
+    const latencyData = readJson("p95-latency-data");
+    if (latencyData) {
+        new Chart(document.getElementById("p95LatencyChart"), {
+            type: "line",
+            data: {
+                labels: latencyData.labels,
+                datasets: [
+                    {
+                        label: "Ask",
+                        data: latencyData.series.ask,
+                        borderColor: "#3b82f6",
+                        backgroundColor: "#3b82f655",
+                        borderWidth: 2,
+                        fill: false,
+                        tension: 0.25,
+                        pointRadius: 0,
+                        spanGaps: false,
+                    },
+                    {
+                        label: "Modify",
+                        data: latencyData.series.modify,
+                        borderColor: "#8b5cf6",
+                        backgroundColor: "#8b5cf655",
+                        borderWidth: 2,
+                        fill: false,
+                        tension: 0.25,
+                        pointRadius: 0,
+                        spanGaps: false,
+                    },
+                ],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: "index", intersect: false },
+                plugins: {
+                    legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 11 } } },
+                    tooltip: {
+                        mode: "index",
+                        intersect: false,
+                        callbacks: {
+                            label: (item) =>
+                                `${item.dataset.label}: ${
+                                    item.parsed.y === null ? "—" : item.parsed.y + " ms"
+                                }`,
+                        },
+                    },
+                },
+                scales: {
+                    x: { ticks: { maxTicksLimit: 8, font: { size: 10 } }, grid: { display: false } },
+                    y: {
+                        beginAtZero: true,
+                        ticks: { font: { size: 10 }, callback: (v) => v + " ms" },
+                    },
+                },
+            },
+        });
+    }
+
+    // ── Error type breakdown (donut) ─────────────────────────────────────
+    const errorData = readJson("error-breakdown-data");
+    if (errorData && errorData.total > 0) {
+        const labels = errorData.top.map((r) => r.label);
+        const values = errorData.top.map((r) => r.count);
+        if (errorData.other > 0) {
+            labels.push("Other");
+            values.push(errorData.other);
+        }
+        new Chart(document.getElementById("errorBreakdownChart"), {
+            type: "doughnut",
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        data: values,
+                        backgroundColor: labels.map(
+                            (_, i) => DONUT_PALETTE[i % DONUT_PALETTE.length]
+                        ),
+                        borderColor: "var(--bs-tertiary-bg)",
+                        borderWidth: 2,
+                    },
+                ],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: "60%",
+                plugins: {
+                    legend: { position: "right", labels: { boxWidth: 10, font: { size: 11 } } },
+                },
+            },
+        });
+    }
+
+    // ── Failure taxonomy (stacked bar: phase × category) ─────────────────
+    const taxData = readJson("failure-taxonomy-data");
+    if (taxData && taxData.total > 0) {
+        const phases = taxData.phases;
+        const categories = taxData.categories;
+        const datasets = categories.map((cat, ci) => ({
+            label: cat,
+            data: phases.map((_, pi) => taxData.grid[pi][ci]),
+            backgroundColor:
+                cat === "RETRYABLE" ? "#f59e0bAA" : "#ef4444AA",
+            borderColor: cat === "RETRYABLE" ? "#f59e0b" : "#ef4444",
+            borderWidth: 1.5,
+        }));
+        new Chart(document.getElementById("failureTaxonomyChart"), {
+            type: "bar",
+            data: { labels: phases, datasets: datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 11 } } },
+                    tooltip: { mode: "index", intersect: false },
+                },
+                scales: {
+                    x: { stacked: true, grid: { display: false }, ticks: { font: { size: 11 } } },
+                    y: { stacked: true, beginAtZero: true, ticks: { font: { size: 10 } } },
+                },
+            },
+        });
+    }
+})();
+</script>
+{% endblock %}

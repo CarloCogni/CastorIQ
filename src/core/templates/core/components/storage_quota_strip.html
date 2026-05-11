@@ -1,0 +1,39 @@
+<!-- core/components/storage_quota_strip.html
+     Per-user storage quota banner.
+     Reads storage_used / storage_limit / storage_pct / storage_files /
+     storage_history from core.context_processors.storage_quota.
+     `storage_files` and `storage_history` are non-null only on /projects/. -->
+{% if storage_show %}
+<div class="px-3 py-1 small d-flex align-items-center justify-content-between border-bottom"
+     style="background: var(--bs-tertiary-bg);"
+     id="castor-storage-strip">
+    <span class="d-flex align-items-center gap-2 text-secondary flex-wrap">
+        <i class="bi bi-hdd"></i>
+        <span>
+            <strong class="{% if storage_pct >= 90 %}text-danger{% elif storage_pct >= 70 %}text-warning{% else %}text-light{% endif %}">{{ storage_used|filesizeformat }}</strong>
+            / {{ storage_limit|filesizeformat }} on disk
+        </span>
+        <div class="progress" style="width: 120px; height: 6px;">
+            <div class="progress-bar {% if storage_pct >= 90 %}bg-danger{% elif storage_pct >= 70 %}bg-warning{% else %}bg-primary{% endif %}"
+                 role="progressbar"
+                 style="width: {{ storage_pct }}%;"
+                 aria-valuenow="{{ storage_pct }}"
+                 aria-valuemin="0"
+                 aria-valuemax="100"></div>
+        </div>
+        {% if storage_files is not None %}
+        <span class="text-secondary fs-8">
+            Files {{ storage_files|filesizeformat }} · History {{ storage_history|filesizeformat }}
+        </span>
+        {% endif %}
+        {% if storage_blocked %}
+        <span class="badge bg-danger">paused</span>
+        {% endif %}
+    </span>
+    <a href="mailto:carlo.cogni@protonmail.com?subject=Castor%20beta%3A%20storage%20cap%20raise%20request"
+       class="text-decoration-none small"
+       title="Email the operator to request more storage">
+        <i class="bi bi-envelope-plus"></i> request more
+    </a>
+</div>
+{% endif %}

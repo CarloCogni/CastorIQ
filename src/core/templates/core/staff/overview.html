@@ -1,0 +1,284 @@
+{% extends "core/staff/dashboard_base.html" %}
+
+<!-- core/staff/overview.html — Tab 1, the Phase 1 ship gate. -->
+<!-- KPIs + tokens-per-day + cost-per-day + top users + system pulse. -->
+
+{% block title %}Staff Dashboard — Overview{% endblock %}
+
+{% block dashboard_title %}Staff Dashboard — Overview{% endblock %}
+
+{% block dashboard_help_pill %}
+<button type="button"
+        class="help-pill"
+        data-bs-toggle="modal"
+        data-bs-target="#dashboardOverviewHelpModal"
+        title="How the Overview tab works"
+        aria-label="How the Overview tab works">
+    <i class="bi bi-question-circle"></i>
+</button>
+{% endblock %}
+
+{% block tab_body %}
+
+<!-- System pulse strip — cheap counts pulled at render. /healthz/ is a separate live link in the chrome above. -->
+<div class="d-flex flex-wrap gap-3 mb-3 small text-secondary">
+    <span>
+        <i class="bi bi-activity me-1"></i>
+        Calls last hour: <strong class="text-body">{{ pulse.calls_last_hour }}</strong>
+    </span>
+    <span class="vr"></span>
+    <span>
+        <i class="bi bi-bug me-1"></i>
+        Unresolved errors: <strong class="text-body{% if pulse.unresolved_errors > 0 %} text-warning{% endif %}">{{ pulse.unresolved_errors }}</strong>
+    </span>
+    <span class="vr"></span>
+    <span>
+        <i class="bi bi-shield-exclamation me-1"></i>
+        Hard-blocked users: <strong class="text-body{% if pulse.hard_blocked_users > 0 %} text-danger{% endif %}">{{ pulse.hard_blocked_users }}</strong>
+    </span>
+</div>
+
+<!-- KPI strip (6 tiles) -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card h-100" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+            <div class="card-body py-3">
+                <div class="text-secondary fs-8 text-uppercase">Calls ({{ window_days }}d)</div>
+                <div class="fs-4 fw-semibold">{{ kpis.calls }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card h-100" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+            <div class="card-body py-3">
+                <div class="text-secondary fs-8 text-uppercase">Tokens ({{ window_days }}d)</div>
+                <div class="fs-4 fw-semibold">{{ kpis.tokens }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card h-100" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+            <div class="card-body py-3">
+                <div class="text-secondary fs-8 text-uppercase">Cost USD ({{ window_days }}d)</div>
+                <div class="fs-4 fw-semibold">${{ kpis.cost_usd|floatformat:4 }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card h-100" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+            <div class="card-body py-3">
+                <div class="text-secondary fs-8 text-uppercase">Active users</div>
+                <div class="fs-4 fw-semibold">{{ kpis.active_users }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card h-100" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+            <div class="card-body py-3">
+                <div class="text-secondary fs-8 text-uppercase">Errors ({{ window_days }}d)</div>
+                <div class="fs-4 fw-semibold {% if kpis.errors > 0 %}text-warning{% endif %}">{{ kpis.errors }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card h-100" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+            <div class="card-body py-3">
+                <div class="text-secondary fs-8 text-uppercase">p95 latency</div>
+                <div class="fs-4 fw-semibold">
+                    {% if kpis.p95_latency_ms %}{{ kpis.p95_latency_ms }} ms{% else %}—{% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts row: tokens-per-day + cost-per-day -->
+<div class="row g-3 mb-4">
+    <div class="col-12 col-lg-6">
+        <div class="card h-100" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <h6 class="mb-0 fs-7 text-secondary text-uppercase">Tokens per day, by provider (30d)</h6>
+                </div>
+                <!-- Fixed-height wrapper is required: Chart.js with maintainAspectRatio:false -->
+                <!-- expands to fill its parent, and without a constraint it grows forever. -->
+                <div style="position: relative; height: 260px;">
+                    <canvas id="tokensPerDayChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-6">
+        <div class="card h-100" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <h6 class="mb-0 fs-7 text-secondary text-uppercase">Cost USD per day, by provider (30d)</h6>
+                    <span class="text-secondary fs-8">
+                        Threshold line: <span style="color: var(--castor-danger);">${{ daily_cost_threshold_usd }}</span>/day
+                    </span>
+                </div>
+                <div style="position: relative; height: 260px;">
+                    <canvas id="costPerDayChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Top users by cost -->
+<div class="card mb-4" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+    <div class="card-body">
+        <h6 class="mb-3 fs-7 text-secondary text-uppercase">Top 10 users by cost ({{ window_days }}d)</h6>
+        {% if top_users %}
+        <div class="table-responsive">
+            <table class="table table-sm table-borderless mb-0 fs-7">
+                <thead>
+                    <tr class="text-secondary text-uppercase fs-8">
+                        <th scope="col">User</th>
+                        <th scope="col" class="text-end">Calls</th>
+                        <th scope="col" class="text-end">Tokens</th>
+                        <th scope="col" class="text-end">Cost USD</th>
+                        <th scope="col">Status</th>
+                        <th scope="col"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for u in top_users %}
+                    <tr>
+                        <td class="fw-semibold">{{ u.username }}</td>
+                        <td class="text-end">{{ u.calls }}</td>
+                        <td class="text-end">{{ u.tokens }}</td>
+                        <td class="text-end">${{ u.cost_usd|floatformat:4 }}</td>
+                        <td>
+                            {% if u.hard_blocked %}
+                            <span class="badge bg-danger">BLOCKED</span>
+                            {% else %}
+                            <span class="text-secondary fs-8">active</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="/admin/auth/user/{{ u.user_id }}/change/"
+                               class="text-secondary text-decoration-none fs-8"
+                               title="Open in Django admin">
+                                <i class="bi bi-box-arrow-up-right"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-secondary fs-7 mb-0">No LLM activity yet in this window.</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Embedded chart data (Django json_script — XSS-safe). -->
+{{ tokens_per_day|json_script:"tokens-per-day-data" }}
+{{ cost_per_day|json_script:"cost-per-day-data" }}
+
+{% endblock %}
+
+{% block dashboard_help_modal %}
+{% include "core/staff/components/_dashboard_help_modal_overview.html" %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+    "use strict";
+
+    // Stable provider → color map. Unknown providers fall through to the
+    // last hue in the palette so a new backend never crashes the chart.
+    const PROVIDER_COLORS = {
+        ollama:    "#10b981", // castor-success / green
+        anthropic: "#8b5cf6", // castor-accent  / purple
+        groq:      "#3b82f6", // castor-primary / blue
+        unknown:   "#94a3b8", // slate
+    };
+    const colorFor = (p) => PROVIDER_COLORS[p] || "#f59e0b";
+
+    function readData(elementId) {
+        const node = document.getElementById(elementId);
+        if (!node) return null;
+        try { return JSON.parse(node.textContent); } catch (_) { return null; }
+    }
+
+    function buildDatasets(data, opts) {
+        return data.providers.map((p) => ({
+            label: p,
+            data: data.series[p],
+            backgroundColor: colorFor(p) + "55", // ~33 % alpha for fill
+            borderColor: colorFor(p),
+            borderWidth: 1.5,
+            fill: opts.fill,
+            tension: 0.25,
+            pointRadius: 0,
+        }));
+    }
+
+    const stackedAreaOpts = {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+            legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 11 } } },
+            tooltip: { mode: "index", intersect: false },
+        },
+        scales: {
+            x: { ticks: { maxTicksLimit: 8, font: { size: 10 } }, grid: { display: false } },
+            y: { stacked: true, beginAtZero: true, ticks: { font: { size: 10 } } },
+        },
+    };
+
+    // ── Tokens per day ────────────────────────────────────────────────────
+    const tokensData = readData("tokens-per-day-data");
+    if (tokensData) {
+        new Chart(document.getElementById("tokensPerDayChart"), {
+            type: "line",
+            data: {
+                labels: tokensData.labels,
+                datasets: buildDatasets(tokensData, { fill: true }),
+            },
+            options: stackedAreaOpts,
+        });
+    }
+
+    // ── Cost per day, with red threshold line ────────────────────────────
+    const costData = readData("cost-per-day-data");
+    if (costData) {
+        const threshold = Number("{{ daily_cost_threshold_usd }}") || null;
+        const costOpts = JSON.parse(JSON.stringify(stackedAreaOpts));
+        if (threshold) {
+            // Inject the threshold as a synthetic non-stacked dataset so it
+            // renders as a flat red line on top of the stack. Avoids pulling
+            // chartjs-plugin-annotation just for one line.
+            costOpts.scales.y.stacked = true;
+        }
+
+        const datasets = buildDatasets(costData, { fill: true });
+        if (threshold) {
+            datasets.push({
+                label: "Daily threshold",
+                data: costData.labels.map(() => threshold),
+                borderColor: "#ef4444",
+                borderDash: [6, 4],
+                borderWidth: 1.5,
+                pointRadius: 0,
+                fill: false,
+                stack: "_threshold", // own stack so it doesn't add to providers
+                tension: 0,
+            });
+        }
+
+        new Chart(document.getElementById("costPerDayChart"), {
+            type: "line",
+            data: { labels: costData.labels, datasets: datasets },
+            options: costOpts,
+        });
+    }
+})();
+</script>
+{% endblock %}

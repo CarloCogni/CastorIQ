@@ -1,0 +1,28 @@
+{% extends "admin/change_form.html" %}
+{% load i18n %}
+
+<!-- core/templates/admin/core/sitellmconfig/change_form.html -->
+<!-- Adds two "Test connection" buttons below the standard submit row. -->
+<!-- Each button POSTs to a custom admin view that issues a 1-token ping -->
+<!-- against the SAVED config. Save your changes before clicking. -->
+
+{% block submit_buttons_bottom %}
+    {{ block.super }}
+    {% if original %}
+        <div class="submit-row" style="margin-top: 1em; padding: 1em; background: #f8f9fa; border-radius: 4px; display: block;">
+            <p style="margin: 0 0 0.75em 0; color: #555;">
+                <strong>{% trans "Verify connection." %}</strong>
+                {% trans "Issues a 1-token ping with the SAVED configuration. Save your changes first, then click." %}
+                {% trans "These tests ignore the Force Local Ollama switch — they always probe the configured provider." %}
+            </p>
+            <form method="post" action="{% url 'admin:sitellmconfig_test_ask' %}" style="display: inline-block; margin-right: 0.5em;">
+                {% csrf_token %}
+                <input type="submit" value="{% trans 'Test Ask connection' %}" class="default" />
+            </form>
+            <form method="post" action="{% url 'admin:sitellmconfig_test_modify' %}" style="display: inline-block;">
+                {% csrf_token %}
+                <input type="submit" value="{% trans 'Test Modify connection' %}" class="default" />
+            </form>
+        </div>
+    {% endif %}
+{% endblock %}

@@ -1,0 +1,295 @@
+{% extends "core/staff/dashboard_base.html" %}
+
+<!-- core/staff/cost.html — Tab 2, Cost & Usage Drill-down. -->
+<!-- Lenses on top of LLMCallLog: Ask-vs-Modify spend, local-vs-paid mix, -->
+<!-- cost-per-active-user trend, and a per-user budget heat strip. -->
+
+{% block title %}Staff Dashboard — Cost & Usage{% endblock %}
+{% block dashboard_title %}Staff Dashboard — Cost & Usage{% endblock %}
+
+{% block dashboard_help_pill %}
+<button type="button"
+        class="help-pill"
+        data-bs-toggle="modal"
+        data-bs-target="#dashboardCostHelpModal"
+        title="How the Cost tab works"
+        aria-label="How the Cost tab works">
+    <i class="bi bi-question-circle"></i>
+</button>
+{% endblock %}
+
+{% block tab_body %}
+
+<!-- Compact KPI strip — same source as Overview, redrawn for context. -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="card h-100" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+            <div class="card-body py-3">
+                <div class="text-secondary fs-8 text-uppercase">Cost USD ({{ window_days }}d)</div>
+                <div class="fs-4 fw-semibold">${{ kpis.cost_usd|floatformat:4 }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card h-100" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+            <div class="card-body py-3">
+                <div class="text-secondary fs-8 text-uppercase">Tokens ({{ window_days }}d)</div>
+                <div class="fs-4 fw-semibold">{{ kpis.tokens }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card h-100" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+            <div class="card-body py-3">
+                <div class="text-secondary fs-8 text-uppercase">Calls ({{ window_days }}d)</div>
+                <div class="fs-4 fw-semibold">{{ kpis.calls }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card h-100" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+            <div class="card-body py-3">
+                <div class="text-secondary fs-8 text-uppercase">Active users ({{ window_days }}d)</div>
+                <div class="fs-4 fw-semibold">{{ kpis.active_users }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Row 1: Cost by purpose + Tokens local vs paid -->
+<div class="row g-3 mb-4">
+    <div class="col-12 col-lg-6">
+        <div class="card h-100" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <h6 class="mb-0 fs-7 text-secondary text-uppercase">Cost USD per day, by purpose (30d)</h6>
+                    <span class="text-secondary fs-8">Ask vs Modify economics</span>
+                </div>
+                <div style="position: relative; height: 260px;">
+                    <canvas id="costByPurposeChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-6">
+        <div class="card h-100" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <h6 class="mb-0 fs-7 text-secondary text-uppercase">Tokens per day, local vs paid (30d)</h6>
+                    <span class="text-secondary fs-8">Gross-margin frame</span>
+                </div>
+                <div style="position: relative; height: 260px;">
+                    <canvas id="localVsPaidChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Row 2: Cost-per-active-user trendline (full width) -->
+<div class="card mb-4" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+    <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+            <h6 class="mb-0 fs-7 text-secondary text-uppercase">Cost USD per active user, daily (30d)</h6>
+            <span class="text-secondary fs-8">Vanity-resistant: rising line ⇒ each user costs more</span>
+        </div>
+        <div style="position: relative; height: 220px;">
+            <canvas id="costPerUserChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Row 3: Per-user budget heat strip -->
+<div class="card mb-4" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+    <div class="card-body">
+        <h6 class="mb-3 fs-7 text-secondary text-uppercase">Per-user daily budget — recently active</h6>
+
+        {% if budget_strip %}
+        <div class="d-flex flex-column gap-2">
+            {% for u in budget_strip %}
+            <div class="d-flex align-items-center gap-3 fs-8">
+
+                <!-- Username + status badge -->
+                <div style="min-width: 160px;">
+                    <span class="fw-semibold">{{ u.username }}</span>
+                    {% if u.hard_blocked %}
+                    <span class="badge bg-danger ms-1">BLOCKED</span>
+                    {% endif %}
+                </div>
+
+                <!-- Progress bar (handles unlimited cap = 0). -->
+                <div class="flex-grow-1">
+                    {% if u.percent is None %}
+                    <span class="text-secondary">unlimited cap — {{ u.used_today }} tokens today</span>
+                    {% else %}
+                    <div class="progress" style="height: 14px; background-color: var(--bs-body-bg);">
+                        <div class="progress-bar
+                                    {% if u.hard_blocked %}bg-danger
+                                    {% elif u.percent >= 80 %}bg-danger
+                                    {% elif u.percent >= 50 %}bg-warning
+                                    {% else %}bg-success{% endif %}"
+                             role="progressbar"
+                             style="width: {% if u.percent > 100 %}100{% else %}{{ u.percent }}{% endif %}%;"
+                             aria-valuenow="{{ u.percent }}"
+                             aria-valuemin="0"
+                             aria-valuemax="100">
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Numeric: used / cap -->
+                <div class="text-secondary text-nowrap" style="min-width: 140px; text-align: right;">
+                    {{ u.used_today }} / {% if u.daily_cap %}{{ u.daily_cap }}{% else %}∞{% endif %}
+                    {% if u.percent is not None %}
+                    <span class="ms-1 {% if u.percent >= 80 %}text-danger{% elif u.percent >= 50 %}text-warning{% endif %}">
+                        ({{ u.percent }}%)
+                    </span>
+                    {% endif %}
+                </div>
+
+                <!-- Admin link -->
+                <a href="/admin/auth/user/{{ u.user_id }}/change/"
+                   class="text-secondary text-decoration-none"
+                   title="Open in Django admin">
+                    <i class="bi bi-box-arrow-up-right"></i>
+                </a>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-secondary fs-7 mb-0">No recently active users yet.</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Embedded chart data (json_script — XSS-safe). -->
+{{ cost_by_purpose|json_script:"cost-by-purpose-data" }}
+{{ tokens_local_vs_paid|json_script:"local-vs-paid-data" }}
+{{ cost_per_user_per_day|json_script:"cost-per-user-data" }}
+
+{% endblock %}
+
+{% block dashboard_help_modal %}
+{% include "core/staff/components/_dashboard_help_modal_cost.html" %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+    "use strict";
+
+    // Stable category → color map. Keys cover every category that surfaces
+    // on this tab (purpose: ask/modify, class: local/paid, plus the same
+    // provider keys Tab 1 uses). New keys fall through to the orange below.
+    const COLOR = {
+        ask:       "#3b82f6", // castor-primary  — RAG (read)
+        modify:    "#8b5cf6", // castor-accent   — write-back
+        local:     "#10b981", // castor-success  — Ollama
+        paid:      "#ef4444", // castor-danger   — paid traffic erodes margin
+        ollama:    "#10b981",
+        anthropic: "#8b5cf6",
+        groq:      "#3b82f6",
+        unknown:   "#94a3b8",
+    };
+    const colorFor = (k) => COLOR[k] || "#f59e0b";
+
+    function readJson(elementId) {
+        const node = document.getElementById(elementId);
+        if (!node) return null;
+        try { return JSON.parse(node.textContent); } catch (_) { return null; }
+    }
+
+    function buildCategoryDatasets(payload, opts) {
+        const cats = payload.categories || payload.providers || [];
+        return cats.map((c) => ({
+            label: c,
+            data: payload.series[c],
+            backgroundColor: colorFor(c) + "55",
+            borderColor: colorFor(c),
+            borderWidth: 1.5,
+            fill: opts.fill,
+            tension: 0.25,
+            pointRadius: 0,
+        }));
+    }
+
+    const stackedAreaOpts = {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+            legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 11 } } },
+            tooltip: { mode: "index", intersect: false },
+        },
+        scales: {
+            x: { ticks: { maxTicksLimit: 8, font: { size: 10 } }, grid: { display: false } },
+            y: { stacked: true, beginAtZero: true, ticks: { font: { size: 10 } } },
+        },
+    };
+
+    const lineOpts = {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+            legend: { display: false },
+            tooltip: { mode: "index", intersect: false },
+        },
+        scales: {
+            x: { ticks: { maxTicksLimit: 8, font: { size: 10 } }, grid: { display: false } },
+            y: { beginAtZero: true, ticks: { font: { size: 10 } } },
+        },
+    };
+
+    // ── Cost per day, by purpose (Ask vs Modify) ──────────────────────────
+    const purposeData = readJson("cost-by-purpose-data");
+    if (purposeData) {
+        new Chart(document.getElementById("costByPurposeChart"), {
+            type: "line",
+            data: {
+                labels: purposeData.labels,
+                datasets: buildCategoryDatasets(purposeData, { fill: true }),
+            },
+            options: stackedAreaOpts,
+        });
+    }
+
+    // ── Tokens per day, local vs paid ────────────────────────────────────
+    const lvpData = readJson("local-vs-paid-data");
+    if (lvpData) {
+        new Chart(document.getElementById("localVsPaidChart"), {
+            type: "line",
+            data: {
+                labels: lvpData.labels,
+                datasets: buildCategoryDatasets(lvpData, { fill: true }),
+            },
+            options: stackedAreaOpts,
+        });
+    }
+
+    // ── Cost per active user per day (single line) ───────────────────────
+    const cpuData = readJson("cost-per-user-data");
+    if (cpuData) {
+        new Chart(document.getElementById("costPerUserChart"), {
+            type: "line",
+            data: {
+                labels: cpuData.labels,
+                datasets: [{
+                    label: "USD per active user",
+                    data: cpuData.values,
+                    borderColor: "#3b82f6",
+                    backgroundColor: "#3b82f655",
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 0,
+                }],
+            },
+            options: lineOpts,
+        });
+    }
+})();
+</script>
+{% endblock %}

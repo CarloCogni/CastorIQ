@@ -42,12 +42,19 @@ Before implementing, spend a minute thinking about how the change could break th
 - Client-side JS is not unit-tested in this repo. Manual verification only.
 - Before committing: mentally walk through these checks using the code you wrote — not just the code you edited, the whole game loop:
   1. Menu renders, pressing ENTER goes to game.
-  2. Castor runs, jumps (ground-only), shoots.
-  3. All 5 current enemy types still spawn with correct wave weighting.
-  4. Shooting a Geometry Drone still self-damages + shows overlay.
+  2. Castor runs, jumps (with coyote time + jump buffer), shoots.
+  3. All 5 current enemy types still spawn with correct wave weighting (and are suppressed during boss).
+  4. Shooting a Geometry Drone still self-damages + shows overlay (now with screen shake).
   5. Stomping a PSet still kills it with no HP loss.
   6. Stale Prop still drops a token.
   7. Gameover shows score, best, "play again" restarts cleanly.
+  8. Dash: double-tap A/D within 200ms triggers a horizontal burst with i-frames + cyan trail; 600ms cooldown.
+  9. Charged shot: hold J/Z ≥0.6s → piercing cyan-white bolt; charge ring visible; passes through stacked enemies.
+  10. Combo meter: 5 kills within 3s → `COMBO x2` HUD label; tier rises to x5; resets after 3s gap; multiplier scales kill score.
+  11. Powerups: ~8% drop rate on non-boss/non-taboo kills; Coverage Report = +1 HP (cap 3); Pytest Tick = 5s rapid fire (RAPID Ns indicator visible).
+  12. Pause: P or Esc toggles overlay; world freezes; same key resumes.
+  13. Mute: M toggles audio + persists in localStorage; menu indicator updates.
+  14. Boss: at wave 5, MERGE CONFLICT spawns (two halves linked by red line); normal enemies suppressed; kill one alone → partner revives in 2s; kill both within 2s → MERGED banner, +200 score, normal waves resume.
 - If you introduce a new mechanic, add a one-line smoke-check to this list in CLAUDE.md itself so future runs verify it too.
 
 ## If you can't figure out how to verify a change

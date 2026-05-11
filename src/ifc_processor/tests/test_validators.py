@@ -7,7 +7,6 @@ import pytest
 from django.core.exceptions import ValidationError
 
 from ifc_processor.services.validators import (
-    MAX_IFC_FILE_SIZE,
     IFCFileValidator,
     _has_valid_ifc_signature,
     validate_ifc_file,
@@ -76,13 +75,6 @@ class TestValidateIfcFile:
         is_valid, msg = validate_ifc_file(f)
         assert is_valid is False
         assert "empty" in msg.lower()
-
-    def test_oversized_file_returns_false(self):
-        """File exceeding MAX_IFC_FILE_SIZE returns validation error."""
-        f = _make_file("model.ifc", VALID_IFC_CONTENT, size=MAX_IFC_FILE_SIZE + 1)
-        is_valid, msg = validate_ifc_file(f)
-        assert is_valid is False
-        assert "large" in msg.lower() or "MB" in msg
 
     def test_invalid_content_returns_false(self):
         """File with wrong content (not IFC/STEP format) returns error."""
@@ -154,22 +146,9 @@ class TestIFCFileValidator:
         with pytest.raises(ValidationError):
             validator(f)
 
-    def test_equality_same_max_size(self):
-        """Two validators with same max_size are equal."""
-        v1 = IFCFileValidator(max_size=1000)
-        v2 = IFCFileValidator(max_size=1000)
-        assert v1 == v2
-
-    def test_inequality_different_max_size(self):
-        """Validators with different max_size are not equal."""
-        v1 = IFCFileValidator(max_size=1000)
-        v2 = IFCFileValidator(max_size=2000)
-        assert v1 != v2
-
-    def test_custom_max_size_stored(self):
-        """Custom max_size is stored on the validator instance."""
-        validator = IFCFileValidator(max_size=10)
-        assert validator.max_size == 10
+    def test_two_validators_are_equal(self):
+        """All IFCFileValidator instances are interchangeable."""
+        assert IFCFileValidator() == IFCFileValidator()
 
     def test_not_equal_to_different_type(self):
         """Validator is not equal to non-validator objects."""

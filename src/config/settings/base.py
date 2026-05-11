@@ -83,6 +83,7 @@ TEMPLATES = [
                 "core.context_processors.llm_context",
                 "core.context_processors.maintenance_banner",
                 "core.context_processors.token_budget",
+                "core.context_processors.storage_quota",
             ],
         },
     },
@@ -238,7 +239,7 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 ASK_PROVIDER = os.getenv("ASK_PROVIDER", "ollama")  # ollama | anthropic | groq
 ASK_MODEL = os.getenv("ASK_MODEL", "claude-sonnet-4-6")
 MODIFY_PROVIDER = os.getenv("MODIFY_PROVIDER", "ollama")  # ollama | anthropic | groq
-MODIFY_MODEL = os.getenv("MODIFY_MODEL", "llama-3.3-70b-versatile")
+MODIFY_MODEL = os.getenv("MODIFY_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
 # Last-resort circuit-breaker. When set, the dispatcher refuses every cloud call and
 # the site renders a "paused for maintenance" banner. Local Ollama still works.
 LLM_MASTER_KILL = os.getenv("LLM_MASTER_KILL", "0") == "1"
@@ -333,4 +334,3 @@ LOGGING = {
 # ``writeback/services/hint_generator.py`` for the strategy contracts.
 WRITEBACK_HINT_LLM_FALLBACK = True
 WRITEBACK_HINT_LLM_CATEGORIES: tuple[str, ...] = ()
-

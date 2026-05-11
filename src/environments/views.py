@@ -40,6 +40,7 @@ from core.mixins import (
     ProjectOwnerRequiredMixin,
     ProjectTabMixin,
 )
+from core.models import SiteStorageConfig, UserStorageQuota
 from core.token_budget import compute_budget, get_context_window
 from documents.models import Document
 from documents.services.document_processor import DocumentProcessor
@@ -66,6 +67,16 @@ logger = logging.getLogger(__name__)
 def _fmt_ctx(tokens: int) -> str:
     """Format a context window token count as a compact label, e.g. '8k', '32k'."""
     return f"{tokens // 1024}k" if tokens >= 1024 else str(tokens)
+
+
+def _fmt_bytes(num: int) -> str:
+    """Format a byte count as a compact human label, e.g. '4.2 MB'."""
+    step = 1024.0
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if num < step:
+            return f"{num:.1f} {unit}" if unit != "B" else f"{int(num)} {unit}"
+        num /= step
+    return f"{num:.1f} PB"
 
 
 class ProjectListView(LoginRequiredMixin, ListView):
@@ -706,17 +717,48 @@ class FileUploadView(ProjectAccessMixin, TemplateView):
         uploaded_file = request.FILES["file"]
         file_ext = uploaded_file.name.lower()
 
+        # Per-file cap and per-user quota — admin-tunable via SiteStorageConfig
+        # and UserStorageQuota in /admin/core/. Failing fast here keeps oversized
+        # uploads from touching disk at all.
+        site_cfg = SiteStorageConfig.load()
+        if site_cfg.per_file_cap_bytes and uploaded_file.size > site_cfg.per_file_cap_bytes:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": (
+                        f"File too large ({_fmt_bytes(uploaded_file.size)}). "
+                        f"Per-file cap is {_fmt_bytes(site_cfg.per_file_cap_bytes)}."
+                    ),
+                },
+                status=400,
+            )
+
+        quota = UserStorageQuota.load(request.user)
+        quota.recalculate()  # honest baseline before authorising new bytes
+        if quota.would_exceed(uploaded_file.size):
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": (
+                        f"Storage cap reached ({_fmt_bytes(quota.cached_used_bytes)} / "
+                        f"{_fmt_bytes(quota.effective_quota())}). "
+                        "Email the operator to request more."
+                    ),
+                },
+                status=400,
+            )
+
         # Route to appropriate handler
         if file_ext.endswith(".ifc"):
-            return self._handle_ifc_upload(project, uploaded_file)
+            return self._handle_ifc_upload(project, uploaded_file, quota)
         elif file_ext.endswith((".pdf", ".docx", ".txt")):
-            return self._handle_document_upload(project, uploaded_file)
+            return self._handle_document_upload(project, uploaded_file, quota)
         else:
             return JsonResponse(
                 {"success": False, "error": f"Unsupported file type: {file_ext}"}, status=400
             )
 
-    def _handle_ifc_upload(self, project, uploaded_file):
+    def _handle_ifc_upload(self, project, uploaded_file, quota):
         """Handle IFC file upload and parsing.
 
         Schema is detected before the pipeline runs. Legacy (non-IFC4) files are
@@ -738,6 +780,9 @@ class FileUploadView(ProjectAccessMixin, TemplateView):
                 file=uploaded_file,
                 status=IFCFile.Status.PENDING,
             )
+            # File is on disk regardless of whether parsing succeeds. Bump the
+            # cached quota immediately so concurrent uploads see the new total.
+            quota.record_upload(uploaded_file.size)
 
             if is_legacy:
                 ifc_file.schema_version = schema
@@ -790,7 +835,7 @@ class FileUploadView(ProjectAccessMixin, TemplateView):
             logger.exception("Error uploading IFC file: %s", e)
             return JsonResponse({"success": False, "error": str(e)}, status=500)
 
-    def _handle_document_upload(self, project, uploaded_file):
+    def _handle_document_upload(self, project, uploaded_file, quota):
         """Handle document (PDF/DOCX/TXT) upload"""
         try:
             name = uploaded_file.name.lower()
@@ -813,6 +858,7 @@ class FileUploadView(ProjectAccessMixin, TemplateView):
                 document_type=doc_type,
                 status=Document.Status.PENDING,
             )
+            quota.record_upload(uploaded_file.size)
 
             # Initialize and run the processor explicitly
             processor = DocumentProcessor(document)

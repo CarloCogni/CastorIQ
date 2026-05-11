@@ -60,12 +60,18 @@ class TokenBudgetExceededError(RuntimeError):
 _PRICE_TABLE: dict[tuple[str, str], tuple[float, float]] = {
     ("ollama", "*"): (0.0, 0.0),
     ("anthropic", "claude-sonnet-4-6"): (3.0, 15.0),
-    ("anthropic", "claude-opus-4-7"): (15.0, 75.0),
+    ("anthropic", "claude-opus-4-7"): (5.0, 25.0),
     ("anthropic", "claude-haiku-4-5"): (1.0, 5.0),
+    # Wildcard fallback for any future Anthropic model; mirrors Sonnet (the Ask default).
+    # Cache-aware pricing (write/read tiers) is not modelled here yet — see follow-up note.
     ("anthropic", "*"): (3.0, 15.0),
+    ("groq", "meta-llama/llama-4-scout-17b-16e-instruct"): (0.11, 0.34),
     ("groq", "llama-3.3-70b-versatile"): (0.59, 0.79),
-    ("groq", "llama-3.1-8b-instant"): (0.05, 0.08),
-    ("groq", "*"): (0.59, 0.79),
+    ("groq", "qwen/qwen3-32b"): (0.29, 0.59),
+    ("groq", "openai/gpt-oss-120b"): (0.15, 0.60),
+    # Wildcard fallback for any Groq model we haven't priced yet — picks the
+    # current default's prices so cost logging stays sane until the table is updated.
+    ("groq", "*"): (0.11, 0.34),
 }
 
 

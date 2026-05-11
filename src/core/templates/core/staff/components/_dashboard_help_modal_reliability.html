@@ -1,0 +1,186 @@
+<!-- core/staff/components/_dashboard_help_modal_reliability.html — "How the Reliability tab works" -->
+
+<div class="modal fade" id="dashboardReliabilityHelpModal" tabindex="-1" aria-labelledby="dashboardReliabilityHelpLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+
+            <div class="modal-header border-bottom px-4 py-3"
+                 style="border-color: var(--bs-border-color) !important;">
+                <h5 class="modal-title fw-semibold fs-6 mb-0" id="dashboardReliabilityHelpLabel">
+                    <i class="bi bi-heart-pulse me-2" style="color: var(--castor-primary, #3b82f6);"></i>
+                    How the Reliability tab works
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body px-4 py-4">
+
+                <!-- 1. What is it? -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-eye me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    What is it?
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    The <em>is anything on fire?</em> view — operator-side early-warning that surfaces
+                    a degraded provider, a writeback sandbox going sideways, or a stuck ingestion
+                    pipeline without you having to open Sentry, Django admin, or the Postgres console.
+                    Overview tells you <em>what's happening</em>; Cost tells you <em>what it costs</em>;
+                    Reliability tells you <em>whether it's actually working</em>.
+                </p>
+
+                <!-- 2. KPI strip -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-grid-3x3-gap me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    KPI strip
+                </p>
+                <div class="table-responsive mb-4">
+                    <table class="table table-sm mb-0 fs-8">
+                        <thead>
+                            <tr>
+                                <th scope="col" style="width: 28%;">Tile</th>
+                                <th scope="col">Reads</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Success %</strong></td>
+                                <td>Share of <code>LLMCallLog</code> calls with <code>succeeded=True</code>
+                                    in the window. Yellow when below 95%.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Errors</strong></td>
+                                <td>Failed LLM calls + <code>ErrorLog</code> rows in the window.
+                                    Yellow when non-zero.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>p95 latency · Ask</strong></td>
+                                <td>95th-percentile <code>latency_ms</code> for <code>purpose='ask'</code> calls
+                                    in the window. Reads "—" when no calls have a measured latency yet.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>p95 latency · Modify</strong></td>
+                                <td>Same shape, for <code>purpose='modify'</code> calls.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 3. Charts -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-graph-up me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    The charts
+                </p>
+                <div class="d-flex flex-column gap-2 fs-8 mb-4">
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge rounded-pill flex-shrink-0 mt-1"
+                              style="background-color: rgba(59, 130, 246, 0.15); color: var(--castor-primary, #3b82f6); border: 1px solid rgba(59, 130, 246, 0.3);">
+                            Provider success
+                        </span>
+                        <span class="text-secondary">
+                            One bar per provider. The dashed red line sits at <strong class="text-body">95%</strong> —
+                            anything below is a provider worth investigating. Providers with zero calls
+                            are hidden to keep the chart honest.
+                        </span>
+                    </div>
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge rounded-pill flex-shrink-0 mt-1"
+                              style="background-color: rgba(139, 92, 246, 0.15); color: var(--castor-accent, #8b5cf6); border: 1px solid rgba(139, 92, 246, 0.3);">
+                            p95 latency
+                        </span>
+                        <span class="text-secondary">
+                            Daily p95 latency for Ask (blue) and Modify (purple) over the last 30 days,
+                            regardless of the window selector. <strong class="text-body">Gaps are intentional</strong>
+                            — days with no calls leave a break in the line rather than dropping to zero.
+                        </span>
+                    </div>
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge rounded-pill flex-shrink-0 mt-1"
+                              style="background-color: rgba(239, 68, 68, 0.15); color: var(--castor-danger, #ef4444); border: 1px solid rgba(239, 68, 68, 0.3);">
+                            Error donut
+                        </span>
+                        <span class="text-secondary">
+                            Top 10 categories from <code>LLMCallLog.error_type</code> (failed calls only)
+                            unioned with <code>ErrorLog.exception_type</code>. Same label on both sides
+                            collapses to one slice. Anything past the top 10 falls into "Other".
+                            Empty labels normalise to <code>(unknown)</code>.
+                        </span>
+                    </div>
+                </div>
+
+                <!-- 4. Backlog -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-stack me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    Unresolved error backlog
+                </p>
+                <p class="text-secondary fs-7 mb-2">
+                    Counts every <code>ErrorLog.is_resolved=False</code> row — the count is
+                    <strong class="text-body">absolute, not window-respecting</strong>. An open error
+                    matters whether it landed today or three weeks ago. The strip below splits the
+                    backlog into three age buckets:
+                </p>
+                <div class="d-flex flex-column gap-1 fs-8 mb-4">
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="badge bg-info" style="width: 56px;">&lt;24h</span>
+                        <span class="text-secondary">Recent — probably still in the operator's working memory.</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="badge bg-warning" style="width: 56px;">24h–7d</span>
+                        <span class="text-secondary">This week — should have an owner already.</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="badge bg-danger" style="width: 56px;">&gt;7d</span>
+                        <span class="text-secondary">Stale — either a real bug or noise the resolution flow is dropping.</span>
+                    </div>
+                </div>
+                <p class="text-secondary fs-8 mb-4">
+                    The table below the strip shows the most recent 10 unresolved rows; click the
+                    arrow icon to open the row in Django admin and either resolve it or annotate
+                    the resolution path.
+                </p>
+
+                <!-- 5. Writeback failure taxonomy -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-diagram-3 me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    Writeback failure taxonomy
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    Reads from <code>metacastor.FailureRecord</code>. The stacked bar shows
+                    failures per <strong class="text-body">phase</strong> (VALIDATION /
+                    EXECUTION / SANDBOX), each segmented by <strong class="text-body">category</strong>
+                    (RETRYABLE in amber, NON_RETRYABLE in red). The side table breaks the totals
+                    down by RSAA <em>tier</em> — VALIDATION failures that happen before a tier is
+                    chosen surface in the <em>"— (early VALIDATION)"</em> row. When nothing has
+                    failed in the window, the section quietly says so rather than drawing an
+                    empty chart.
+                </p>
+
+                <!-- 6. Ingestion health -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-upload me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    Ingestion health
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    Documents and IFC files share the same lifecycle states
+                    (<code>pending → processing → completed | failed</code>). Each card shows
+                    total uploads, success % (completed ÷ terminal states — pending/processing
+                    don't count toward the denominator), and the failed count. The thin strip is
+                    a proportional bar of where the uploads currently sit; hover any segment for
+                    the count.
+                </p>
+
+                <!-- 7. Caveats -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-exclamation-circle me-1" style="color: var(--castor-accent, #8b5cf6);"></i>
+                    Caveats
+                </p>
+                <div class="d-flex flex-column gap-1 fs-8 text-secondary">
+                    <span><i class="bi bi-dot"></i><code>error_type</code> on <code>LLMCallLog</code> and <code>exception_type</code> on <code>ErrorLog</code> are free-form text — slices labeled identically collapse, slight typos do not.</span>
+                    <span><i class="bi bi-dot"></i>p95 needs at least 2 samples per (day, purpose) to be meaningful — a day with one call shows that call's latency, not a real percentile.</span>
+                    <span><i class="bi bi-dot"></i>nginx 4xx/5xx and Sentry deep-links are deliberately not on this tab. Add when a recurring symptom needs them, not preemptively.</span>
+                    <span><i class="bi bi-dot"></i>FailureRecord and writeback Conflict tables stay sparse until M5/M6 traffic — empty states are expected, not a bug.</span>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>

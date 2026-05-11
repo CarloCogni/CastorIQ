@@ -49,17 +49,17 @@ Perhaps there are other documents worth creating? anything else? be creative
 -----
 
 final vps bring up: 
-mail GUN - Brevo (formerly Sendinblue)	300 emails/day (~9,000/month)	Scales affordably
-Sentry
+Sentry - is it really useful?? 
 
 implement power BI
-test groq and Claude connections
 
+test groq and Claude connections and limit consumption
 
 test restore backup after night cronjob
 
-
-websocket errors logger
+DRIVE - limit how much users can upload - 2 GB per user? 
+groq and claude API and chatgpt keys for single users.
+on ifc file deletetion? -> git? does it gets deleted as well? 
 
 other user experience requirements? 
 

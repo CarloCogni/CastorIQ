@@ -1,0 +1,68 @@
+{% extends "core/base.html" %}
+{% load static %}
+
+<!-- core/staff/dashboard_base.html — shared chrome for every staff dashboard tab. -->
+<!-- Subclass templates fill `dashboard_title`, `dashboard_help_pill`, `tab_body`, -->
+<!-- and `dashboard_help_modal`. Window selector and tab nav are rendered here. -->
+
+{% block title %}Castor — Staff Dashboard{% endblock %}
+
+{% block content %}
+<!-- The base shell wraps content in `d-flex flex-grow-1 overflow-hidden` -->
+<!-- because most Castor pages own their internal scroll. The dashboard is a -->
+<!-- vanilla scroll page, so we mark this container as the scroll region. -->
+<div class="container-fluid py-4 flex-grow-1 overflow-y-auto">
+
+    <!-- Heading row: title + ? help pill + window selector + refresh -->
+    <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+        <h5 class="mb-0">
+            {% block dashboard_title %}Staff Dashboard{% endblock %}
+        </h5>
+
+        {% block dashboard_help_pill %}{% endblock %}
+
+        <div class="ms-auto d-flex align-items-center gap-2">
+
+            <!-- Window selector pills (24h / 7d / 30d) — KPI strip respects this. -->
+            <div class="btn-group btn-group-sm" role="group" aria-label="Window">
+                {% for choice in window_choices %}
+                <a href="?window={{ choice.value }}"
+                   class="btn btn-outline-secondary {% if window_days == choice.value %}active{% endif %}">
+                    {{ choice.label }}
+                </a>
+                {% endfor %}
+            </div>
+
+            <a href="{% url 'healthz' %}" target="_blank"
+               class="btn btn-sm btn-outline-secondary"
+               title="Open /healthz/ in a new tab — JSON probe of db + ollama">
+                <i class="bi bi-heart-pulse"></i>
+                <span class="d-none d-md-inline ms-1">healthz</span>
+            </a>
+
+            <button type="button" class="btn btn-sm btn-outline-secondary"
+                    onclick="location.reload()" title="Refresh">
+                <i class="bi bi-arrow-clockwise"></i>
+                <span class="d-none d-md-inline ms-1">Refresh</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Tab nav pills -->
+    <ul class="nav nav-pills mb-4 small">
+        {% for tab in tabs %}
+        <li class="nav-item">
+            <a class="nav-link {% if tab.slug == active_tab %}active{% endif %}"
+               href="{% url tab.url_name %}{% if window_days != 7 %}?window={{ window_days }}{% endif %}">
+                {{ tab.label }}
+            </a>
+        </li>
+        {% endfor %}
+    </ul>
+
+    {% block tab_body %}{% endblock %}
+
+    {% block dashboard_help_modal %}{% endblock %}
+
+</div>
+{% endblock %}

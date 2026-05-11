@@ -1,0 +1,157 @@
+<!-- core/staff/components/_dashboard_help_modal_investor.html — "How the Investor View works" -->
+
+<div class="modal fade" id="dashboardInvestorHelpModal" tabindex="-1" aria-labelledby="dashboardInvestorHelpLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+
+            <div class="modal-header border-bottom px-4 py-3"
+                 style="border-color: var(--bs-border-color) !important;">
+                <h5 class="modal-title fw-semibold fs-6 mb-0" id="dashboardInvestorHelpLabel">
+                    <i class="bi bi-easel me-2" style="color: var(--castor-primary, #3b82f6);"></i>
+                    How the Investor View works
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body px-4 py-4">
+
+                <!-- 1. What is it? -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-eye me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    What is it?
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    A screenshot-friendly composition of the five metrics that distinguish Castor
+                    from a generic SaaS dashboard. Audience is <strong class="text-body">early-stage
+                    SaaS investors</strong> — VC partners scanning a deck slide. Every section
+                    has a numbered badge so the slide order stays intentional; the dateline at
+                    the top is the cropping line for the screenshot.
+                </p>
+
+                <!-- 2. Header strip -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-bookmark-star me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    Header strip
+                </p>
+                <div class="table-responsive mb-4">
+                    <table class="table table-sm mb-0 fs-8">
+                        <thead>
+                            <tr>
+                                <th scope="col" style="width: 30%;">Tile</th>
+                                <th scope="col">Reads</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>MAU</strong></td>
+                                <td>Distinct users with ≥1 LLM call in the last 30 days. Pre-beta this is the design-partner count.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>W4 retention (avg)</strong></td>
+                                <td>Average W4 cell across all cohorts old enough to have one. Reads "—" until a cohort hits week 4.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Entities processed</strong></td>
+                                <td>Sum of <code>IFCFile.entity_count</code> across successfully ingested files. Frames the engine scale.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Ollama-local share</strong></td>
+                                <td>Local-vs-paid token mix over 30 days. Green when ≥80%.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 3. The five sections -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-list-ol me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    The five sections
+                </p>
+                <div class="d-flex flex-column gap-3 fs-8 mb-4">
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge flex-shrink-0 mt-1"
+                              style="background-color: rgba(59,130,246,0.18); color: var(--castor-primary, #3b82f6);">1</span>
+                        <span class="text-secondary">
+                            <strong class="text-body">Cohort retention.</strong> Same heatmap as
+                            the Engagement tab — the single cleanest PMF signal for early SaaS.
+                            Read down a column to compare cohorts at the same age. Flat 50%+
+                            retention across 4 weeks is the goal.
+                        </span>
+                    </div>
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge flex-shrink-0 mt-1"
+                              style="background-color: rgba(139,92,246,0.18); color: var(--castor-accent, #8b5cf6);">2</span>
+                        <span class="text-secondary">
+                            <strong class="text-body">Proposal acceptance by tier.</strong>
+                            % of <code>ModificationProposal</code> rows that reached
+                            <em>applied</em> (collapsing <em>approved + applied</em>), broken
+                            out by RSAA tier. Hypothesis targets: <strong class="text-body">T1
+                            ≥90%, T2 ≥70%, T3 ≥50%</strong>. Bar turns green when target is met,
+                            amber otherwise — that's the VC-readable trust signal.
+                        </span>
+                    </div>
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge flex-shrink-0 mt-1"
+                              style="background-color: rgba(16,185,129,0.18); color: var(--castor-success, #10b981);">3</span>
+                        <span class="text-secondary">
+                            <strong class="text-body">Token spend mix.</strong> Local (Ollama) vs
+                            paid (Anthropic, Groq, future cloud) over 30 days. ≥80% local is the
+                            "healthy gross margin" framing — paid token drift is the silent
+                            margin killer Castor's architecture is supposed to prevent.
+                        </span>
+                    </div>
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge flex-shrink-0 mt-1"
+                              style="background-color: rgba(245,158,11,0.18); color: var(--castor-warning, #f59e0b);">4</span>
+                        <span class="text-secondary">
+                            <strong class="text-body">IFC ingestion scatter.</strong> Each dot is
+                            one successfully parsed IFC file — x = entity count, y = parse
+                            latency in seconds. A flat-to-mildly-positive trend through 50k+
+                            entities is the "engine scales" claim. Failed and in-flight files
+                            are excluded so the chart only shows real successful runs.
+                        </span>
+                    </div>
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge flex-shrink-0 mt-1"
+                              style="background-color: rgba(20,184,166,0.18); color: var(--castor-facilities, #14b8a6);">5</span>
+                        <span class="text-secondary">
+                            <strong class="text-body">Design-partner engagement.</strong> Top 20
+                            users by call volume last 30 days, with proposal count and
+                            last-seen timestamp. Likert (1–5) is intentionally not stored — you
+                            annotate it on the screenshot by hand. Investors only need the
+                            quantitative signal here; the qualitative goes in the talking points.
+                        </span>
+                    </div>
+                </div>
+
+                <!-- 4. How to use it -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-camera me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    How to use it
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    Crop a screenshot starting at the dateline strip; everything below is
+                    composed to fit a single slide at standard 16:9. Empty states are quiet
+                    placeholders rather than empty charts — a section that can't yet show
+                    signal just notes that, rather than drawing a misleading "0 across the
+                    board" visual. The page composes existing helpers, so the numbers always
+                    match what the operational tabs (Overview, Cost, Engagement) show.
+                </p>
+
+                <!-- 5. Caveats -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-exclamation-circle me-1" style="color: var(--castor-accent, #8b5cf6);"></i>
+                    Caveats
+                </p>
+                <div class="d-flex flex-column gap-1 fs-8 text-secondary">
+                    <span><i class="bi bi-dot"></i>This is staff-only and never linked from the public site. Sharing the URL with an investor would expose the rest of the dashboard family.</span>
+                    <span><i class="bi bi-dot"></i>W4 retention reads "—" until at least one cohort is old enough — don't screenshot the page before that, or be ready to explain "still pre-W4".</span>
+                    <span><i class="bi bi-dot"></i>Acceptance targets (T1 90 / T2 70 / T3 50) are the hypothesis under test, not commitments — flag them as such in the deck.</span>
+                    <span><i class="bi bi-dot"></i>Tier-`None` proposals (early-validation failures) are excluded from Section 2 by design — they're not a meaningful tier signal.</span>
+                    <span><i class="bi bi-dot"></i>IFC scatter only includes <code>status='completed'</code> files; in-flight or failed parses don't appear, by design.</span>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>

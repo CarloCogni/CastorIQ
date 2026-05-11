@@ -10,8 +10,9 @@ from django.utils.deconstruct import deconstructible
 
 logger = logging.getLogger(__name__)
 
-# Maximum file size (100 MB)
-MAX_IFC_FILE_SIZE = 100 * 1024 * 1024
+# Size enforcement is owned by the upload view (see FileUploadView), which
+# reads the admin-tunable cap from core.models.SiteStorageConfig. The
+# validator now only checks content format.
 
 # IFC file signatures (STEP format)
 IFC_SIGNATURES = [
@@ -47,8 +48,12 @@ def validate_ifc_file(file: UploadedFile) -> tuple[bool, str]:
 
     Checks:
     1. File extension is exactly .ifc
-    2. File size is within limits
+    2. File is non-empty
     3. File content starts with valid IFC/STEP header
+
+    Size policy is enforced separately at the view layer using the
+    admin-tunable cap on ``core.models.SiteStorageConfig.per_file_cap_bytes``
+    so the limit can be raised/lowered without code changes.
 
     Args:
         file: The uploaded file to validate
@@ -63,12 +68,7 @@ def validate_ifc_file(file: UploadedFile) -> tuple[bool, str]:
     if ext != ".ifc":
         return False, f"Invalid file extension '{ext}'. Only .ifc files are allowed."
 
-    # 2. Check file size
-    if file.size > MAX_IFC_FILE_SIZE:
-        size_mb = file.size / (1024 * 1024)
-        max_mb = MAX_IFC_FILE_SIZE / (1024 * 1024)
-        return False, f"File too large ({size_mb:.1f} MB). Maximum size is {max_mb:.0f} MB."
-
+    # 2. Reject empty uploads (content check needs at least a header).
     if file.size == 0:
         return False, "File is empty."
 
@@ -138,10 +138,10 @@ class IFCFileValidator:
 
     Usage in model:
         file = models.FileField(validators=[IFCFileValidator()])
-    """
 
-    def __init__(self, max_size: int = MAX_IFC_FILE_SIZE):
-        self.max_size = max_size
+    Content-only: size enforcement lives in the upload view (admin-tunable
+    via ``SiteStorageConfig.per_file_cap_bytes``).
+    """
 
     def __call__(self, file: UploadedFile) -> None:
         is_valid, error_message = validate_ifc_file(file)
@@ -149,4 +149,4 @@ class IFCFileValidator:
             raise ValidationError(error_message)
 
     def __eq__(self, other):
-        return isinstance(other, IFCFileValidator) and self.max_size == other.max_size
+        return isinstance(other, IFCFileValidator)

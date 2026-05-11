@@ -39,7 +39,7 @@ GAMES: list[Game] = [
     Game(
         slug="castor-slug",
         title="Castor Slug",
-        subtitle="Gun down IFC defects while the scan grinds.",
+        subtitle="Dash, charge-shot, combo. Drop the MERGE CONFLICT at wave 5.",
         accent_color="#3b82f6",
         requires_project=True,
         url_name="castor_slug",
