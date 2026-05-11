@@ -99,11 +99,11 @@ docker compose -f docker/docker-compose.prod.yml exec web env | grep SENTRY_DSN
 docker compose -f docker/docker-compose.prod.yml logs web --tail 30
 ```
 
-- [ ] `env | grep SENTRY_DSN` returns the value (no typos, no stray
+- [X] `env | grep SENTRY_DSN` returns the value (no typos, no stray
       newlines)
-- [ ] `web` came back up cleanly — no `Sentry: HTTPSConnectionPool`
+- [X] `web` came back up cleanly — no `Sentry: HTTPSConnectionPool`
       errors, no Django startup tracebacks
-- [ ] `https://castoriq.io/healthz/` still returns 200
+- [X] `https://castoriq.io/healthz/` still returns 200
 
 ---
 

@@ -1,0 +1,456 @@
+{% extends "core/staff/dashboard_base.html" %}
+
+<!-- core/staff/engagement.html — Tab 4, Engagement & Cohorts (the VC tab). -->
+<!-- DAU/WAU/MAU lines, TTFV histogram, feature mix bar, Modify funnel, -->
+<!-- cohort retention heatmap (Plotly), activity heatmap (Plotly). -->
+
+{% block title %}Staff Dashboard — Engagement{% endblock %}
+{% block dashboard_title %}Staff Dashboard — Engagement{% endblock %}
+
+{% block dashboard_help_pill %}
+<button type="button"
+        class="help-pill"
+        data-bs-toggle="modal"
+        data-bs-target="#dashboardEngagementHelpModal"
+        title="How the Engagement tab works"
+        aria-label="How the Engagement tab works">
+    <i class="bi bi-question-circle"></i>
+</button>
+{% endblock %}
+
+{% block tab_body %}
+
+<!-- KPI strip — 6 tiles -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card h-100" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+            <div class="card-body py-3">
+                <div class="text-secondary fs-8 text-uppercase">DAU</div>
+                <div class="fs-4 fw-semibold">{{ kpis.dau }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card h-100" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+            <div class="card-body py-3">
+                <div class="text-secondary fs-8 text-uppercase">WAU</div>
+                <div class="fs-4 fw-semibold">{{ kpis.wau }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card h-100" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+            <div class="card-body py-3">
+                <div class="text-secondary fs-8 text-uppercase">MAU</div>
+                <div class="fs-4 fw-semibold">{{ kpis.mau }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card h-100" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+            <div class="card-body py-3">
+                <div class="text-secondary fs-8 text-uppercase">Stickiness</div>
+                <div class="fs-4 fw-semibold">
+                    {% if kpis.stickiness_pct is None %}—{% else %}{{ kpis.stickiness_pct }}%{% endif %}
+                </div>
+                <div class="text-secondary fs-8">DAU / MAU</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card h-100" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+            <div class="card-body py-3">
+                <div class="text-secondary fs-8 text-uppercase">Active ({{ window_days }}d)</div>
+                <div class="fs-4 fw-semibold">{{ kpis.active_users_window }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card h-100" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+            <div class="card-body py-3">
+                <div class="text-secondary fs-8 text-uppercase">Power users</div>
+                <div class="fs-4 fw-semibold">
+                    {% if kpis.proposal_generators_pct is None %}—{% else %}{{ kpis.proposal_generators_pct }}%{% endif %}
+                </div>
+                <div class="text-secondary fs-8">≥1 proposal</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Row A: DAU/WAU/MAU lines (full width) -->
+<div class="card mb-4" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+    <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+            <h6 class="mb-0 fs-7 text-secondary text-uppercase">DAU / WAU / MAU (60d)</h6>
+            <span class="text-secondary fs-8">a healthy product's DAU/MAU climbs toward 50%+</span>
+        </div>
+        <div style="position: relative; height: 240px;">
+            <canvas id="dauWauMauChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Row B: Cohort retention heatmap (full width — the VC visual) -->
+<div class="card mb-4" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+    <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+            <h6 class="mb-0 fs-7 text-secondary text-uppercase">Cohort retention — 8 weeks</h6>
+            <span class="text-secondary fs-8">% of cohort active each week after sign-up</span>
+        </div>
+        {% if cohort_grid.cohorts %}
+        <div id="cohortHeatmap" style="height: 320px;"></div>
+        {% else %}
+        <p class="text-secondary fs-7 mb-0">No users yet — cohort grid populates as users sign up and return.</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Row C: Time-to-first-value + Feature mix -->
+<div class="row g-3 mb-4">
+    <div class="col-12 col-lg-7">
+        <div class="card h-100" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <h6 class="mb-0 fs-7 text-secondary text-uppercase">Time-to-first-value</h6>
+                    <span class="text-secondary fs-8">{{ ttfv.user_total }} users total</span>
+                </div>
+                <div style="position: relative; height: 240px;">
+                    <canvas id="ttfvChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-5">
+        <div class="card h-100" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <h6 class="mb-0 fs-7 text-secondary text-uppercase">Feature mix (30d)</h6>
+                    <span class="text-secondary fs-8">{{ feature_mix.total }} active users</span>
+                </div>
+                {% if feature_mix.total > 0 %}
+                <div style="position: relative; height: 240px;">
+                    <canvas id="featureMixChart"></canvas>
+                </div>
+                {% else %}
+                <p class="text-secondary fs-7 mb-0">No activity in the last 30 days.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Row D: Modify funnel (full width) -->
+<div class="card mb-4" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+    <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+            <h6 class="mb-0 fs-7 text-secondary text-uppercase">Modify funnel by tier (30d)</h6>
+            <span class="text-secondary fs-8">{{ modify_funnel.total }} proposals</span>
+        </div>
+        {% if modify_funnel.total > 0 %}
+        <div style="position: relative; height: 240px;">
+            <canvas id="modifyFunnelChart"></canvas>
+        </div>
+        {% else %}
+        <p class="text-secondary fs-7 mb-0">
+            <i class="bi bi-clock-history me-1"></i>
+            No proposals in the last 30 days — funnel populates as Modify mode usage starts.
+        </p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Row E: Activity heatmap (hour × day-of-week) -->
+<div class="card mb-4" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+    <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+            <h6 class="mb-0 fs-7 text-secondary text-uppercase">Activity heatmap (30d)</h6>
+            <span class="text-secondary fs-8">hour-of-day × day-of-week (UTC)</span>
+        </div>
+        {% if activity_heatmap.max_count > 0 %}
+        <div id="activityHeatmap" style="height: 260px;"></div>
+        {% else %}
+        <p class="text-secondary fs-7 mb-0">No activity in the last 30 days.</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Embedded chart data (json_script — XSS-safe). -->
+{{ dau_wau_mau|json_script:"dau-wau-mau-data" }}
+{{ ttfv|json_script:"ttfv-data" }}
+{{ feature_mix|json_script:"feature-mix-data" }}
+{{ modify_funnel|json_script:"modify-funnel-data" }}
+{{ activity_heatmap|json_script:"activity-heatmap-data" }}
+{{ cohort_grid|json_script:"cohort-grid-data" }}
+
+{% endblock %}
+
+{% block dashboard_help_modal %}
+{% include "core/staff/components/_dashboard_help_modal_engagement.html" %}
+{% endblock %}
+
+{% block extra_js %}
+<!-- Chart.js for line / bar charts. -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{% if needs_plotly %}
+<!-- Plotly — only loaded on tabs that genuinely need heatmaps. ~3 MB. -->
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+{% endif %}
+<script>
+(function () {
+    "use strict";
+
+    function readJson(elementId) {
+        const node = document.getElementById(elementId);
+        if (!node) return null;
+        try { return JSON.parse(node.textContent); } catch (_) { return null; }
+    }
+
+    // ── DAU / WAU / MAU ───────────────────────────────────────────────────
+    const dauData = readJson("dau-wau-mau-data");
+    if (dauData) {
+        new Chart(document.getElementById("dauWauMauChart"), {
+            type: "line",
+            data: {
+                labels: dauData.labels,
+                datasets: [
+                    {
+                        label: "DAU",
+                        data: dauData.series.dau,
+                        borderColor: "#3b82f6",
+                        backgroundColor: "#3b82f655",
+                        borderWidth: 2,
+                        fill: false,
+                        tension: 0.3,
+                        pointRadius: 0,
+                    },
+                    {
+                        label: "WAU",
+                        data: dauData.series.wau,
+                        borderColor: "#8b5cf6",
+                        backgroundColor: "#8b5cf655",
+                        borderWidth: 2,
+                        fill: false,
+                        tension: 0.3,
+                        pointRadius: 0,
+                    },
+                    {
+                        label: "MAU",
+                        data: dauData.series.mau,
+                        borderColor: "#10b981",
+                        backgroundColor: "#10b98155",
+                        borderWidth: 2,
+                        fill: false,
+                        tension: 0.3,
+                        pointRadius: 0,
+                    },
+                ],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: "index", intersect: false },
+                plugins: {
+                    legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 11 } } },
+                    tooltip: { mode: "index", intersect: false },
+                },
+                scales: {
+                    x: { ticks: { maxTicksLimit: 10, font: { size: 10 } }, grid: { display: false } },
+                    y: { beginAtZero: true, ticks: { font: { size: 10 }, precision: 0 } },
+                },
+            },
+        });
+    }
+
+    // ── Time-to-first-value (grouped bars: first Ask vs first Proposal) ──
+    const ttfvData = readJson("ttfv-data");
+    if (ttfvData) {
+        const buckets = ttfvData.buckets;
+        new Chart(document.getElementById("ttfvChart"), {
+            type: "bar",
+            data: {
+                labels: buckets,
+                datasets: [
+                    {
+                        label: "First Ask",
+                        data: buckets.map((b) => ttfvData.first_ask[b] || 0),
+                        backgroundColor: "#3b82f6AA",
+                        borderColor: "#3b82f6",
+                        borderWidth: 1.5,
+                        borderRadius: 4,
+                    },
+                    {
+                        label: "First Proposal",
+                        data: buckets.map((b) => ttfvData.first_proposal[b] || 0),
+                        backgroundColor: "#8b5cf6AA",
+                        borderColor: "#8b5cf6",
+                        borderWidth: 1.5,
+                        borderRadius: 4,
+                    },
+                ],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 11 } } },
+                },
+                scales: {
+                    x: { grid: { display: false }, ticks: { font: { size: 11 } } },
+                    y: { beginAtZero: true, ticks: { font: { size: 10 }, precision: 0 } },
+                },
+            },
+        });
+    }
+
+    // ── Feature mix (Ask-only / Modify-only / Both) ──────────────────────
+    const fmData = readJson("feature-mix-data");
+    if (fmData && fmData.total > 0) {
+        new Chart(document.getElementById("featureMixChart"), {
+            type: "bar",
+            data: {
+                labels: ["Ask only", "Both", "Modify only"],
+                datasets: [{
+                    data: [fmData.ask_only, fmData.both, fmData.modify_only],
+                    backgroundColor: ["#3b82f6AA", "#8b5cf6AA", "#10b981AA"],
+                    borderColor: ["#3b82f6", "#8b5cf6", "#10b981"],
+                    borderWidth: 1.5,
+                    borderRadius: 4,
+                }],
+            },
+            options: {
+                indexAxis: "y",
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: (item) => {
+                                const pct = fmData.total
+                                    ? Math.round((item.parsed.x / fmData.total) * 100)
+                                    : 0;
+                                return `${item.parsed.x} users (${pct}%)`;
+                            },
+                        },
+                    },
+                },
+                scales: {
+                    x: { beginAtZero: true, ticks: { font: { size: 10 }, precision: 0 } },
+                    y: { grid: { display: false }, ticks: { font: { size: 11 } } },
+                },
+            },
+        });
+    }
+
+    // ── Modify funnel (grouped bars per tier × stage) ────────────────────
+    const mfData = readJson("modify-funnel-data");
+    if (mfData && mfData.total > 0) {
+        const STAGE_COLORS = {
+            pending:  "#94a3b8",
+            approved: "#3b82f6",
+            applied:  "#10b981",
+            rejected: "#f59e0b",
+            failed:   "#ef4444",
+        };
+        const datasets = mfData.stages.map((stage, sj) => ({
+            label: stage,
+            data: mfData.tiers.map((_, ti) => mfData.grid[ti][sj]),
+            backgroundColor: (STAGE_COLORS[stage] || "#94a3b8") + "AA",
+            borderColor: STAGE_COLORS[stage] || "#94a3b8",
+            borderWidth: 1.5,
+            borderRadius: 3,
+        }));
+        const tierLabels = mfData.tiers.map((t) =>
+            t === "untiered" ? "untiered" : `T${t}`
+        );
+        new Chart(document.getElementById("modifyFunnelChart"), {
+            type: "bar",
+            data: { labels: tierLabels, datasets: datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 11 } } },
+                    tooltip: { mode: "index", intersect: false },
+                },
+                scales: {
+                    x: { grid: { display: false }, ticks: { font: { size: 11 } } },
+                    y: { beginAtZero: true, ticks: { font: { size: 10 }, precision: 0 } },
+                },
+            },
+        });
+    }
+
+    // ── Plotly heatmaps — only attempt if Plotly was loaded. ─────────────
+    if (typeof Plotly === "undefined") return;
+
+    // Cohort retention heatmap.
+    const cohortData = readJson("cohort-grid-data");
+    if (cohortData && cohortData.cohorts.length > 0) {
+        const cohortNode = document.getElementById("cohortHeatmap");
+        if (cohortNode) {
+            Plotly.newPlot(
+                cohortNode,
+                [{
+                    type: "heatmap",
+                    z: cohortData.grid,
+                    x: cohortData.weeks_offsets.map((w) => `W${w}`),
+                    y: cohortData.cohorts.map((c) => `${c.label} (n=${c.size})`),
+                    colorscale: [
+                        [0,   "#1a1a1a"],
+                        [0.25,"#3b82f6"],
+                        [0.5, "#8b5cf6"],
+                        [0.75,"#10b981"],
+                        [1,   "#facc15"],
+                    ],
+                    zmin: 0, zmax: 100,
+                    hovertemplate: "%{y} · %{x}<br>%{z}% active<extra></extra>",
+                    colorbar: { title: "% active", tickfont: { size: 10 } },
+                }],
+                {
+                    margin: { l: 110, r: 30, t: 10, b: 30 },
+                    paper_bgcolor: "rgba(0,0,0,0)",
+                    plot_bgcolor:  "rgba(0,0,0,0)",
+                    font: { color: "#94a3b8", size: 10 },
+                    xaxis: { side: "top" },
+                    yaxis: { autorange: "reversed" },
+                },
+                { displayModeBar: false, responsive: true }
+            );
+        }
+    }
+
+    // Activity heatmap.
+    const actData = readJson("activity-heatmap-data");
+    if (actData && actData.max_count > 0) {
+        const actNode = document.getElementById("activityHeatmap");
+        if (actNode) {
+            Plotly.newPlot(
+                actNode,
+                [{
+                    type: "heatmap",
+                    z: actData.matrix,
+                    x: actData.hours.map((h) => `${h.toString().padStart(2, "0")}h`),
+                    y: actData.days,
+                    colorscale: [
+                        [0, "#1a1a1a"],
+                        [1, "#3b82f6"],
+                    ],
+                    hovertemplate: "%{y} %{x}<br>%{z} calls<extra></extra>",
+                    colorbar: { title: "calls", tickfont: { size: 10 } },
+                }],
+                {
+                    margin: { l: 50, r: 30, t: 10, b: 30 },
+                    paper_bgcolor: "rgba(0,0,0,0)",
+                    plot_bgcolor:  "rgba(0,0,0,0)",
+                    font: { color: "#94a3b8", size: 10 },
+                    yaxis: { autorange: "reversed" },
+                },
+                { displayModeBar: false, responsive: true }
+            );
+        }
+    }
+})();
+</script>
+{% endblock %}

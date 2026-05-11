@@ -1,0 +1,344 @@
+{% extends "core/staff/dashboard_base.html" %}
+
+<!-- core/staff/investor.html — Tab 7, Investor View. -->
+<!-- Screenshot-friendly composition of: cohort retention (Plotly), proposal -->
+<!-- acceptance by tier, Ollama-vs-paid token mix, IFC ingestion scatter, -->
+<!-- design-partner engagement table, printable dateline header. -->
+
+{% block title %}Staff Dashboard — Investor View{% endblock %}
+{% block dashboard_title %}Staff Dashboard — Investor View{% endblock %}
+
+{% block dashboard_help_pill %}
+<button type="button"
+        class="help-pill"
+        data-bs-toggle="modal"
+        data-bs-target="#dashboardInvestorHelpModal"
+        title="How the Investor View works"
+        aria-label="How the Investor View works">
+    <i class="bi bi-question-circle"></i>
+</button>
+{% endblock %}
+
+{% block tab_body %}
+
+<!-- Printable dateline — the top of every screenshot. -->
+<div class="card mb-4 border-0"
+     style="background: linear-gradient(90deg, rgba(59,130,246,0.12), rgba(139,92,246,0.06));">
+    <div class="card-body py-3 px-4 d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <div>
+            <div class="fs-7 text-secondary text-uppercase">Castor — beta progress</div>
+            <div class="fs-5 fw-semibold">Week ending {{ kpis.week_ending }}</div>
+        </div>
+        <div class="d-flex flex-wrap gap-4">
+            <div class="text-end">
+                <div class="text-secondary fs-8 text-uppercase">MAU</div>
+                <div class="fs-5 fw-semibold">{{ kpis.mau_30d }}</div>
+            </div>
+            <div class="text-end">
+                <div class="text-secondary fs-8 text-uppercase">W4 retention (avg)</div>
+                <div class="fs-5 fw-semibold">
+                    {% if kpis.avg_w4_retention_pct is None %}—{% else %}{{ kpis.avg_w4_retention_pct }}%{% endif %}
+                </div>
+                <div class="text-secondary fs-8">{{ kpis.cohorts_with_w4 }} cohorts</div>
+            </div>
+            <div class="text-end">
+                <div class="text-secondary fs-8 text-uppercase">Entities processed</div>
+                <div class="fs-5 fw-semibold">{{ kpis.total_entities_processed }}</div>
+            </div>
+            <div class="text-end">
+                <div class="text-secondary fs-8 text-uppercase">Ollama-local share</div>
+                <div class="fs-5 fw-semibold {% if kpis.local_token_share_pct is not None and kpis.local_token_share_pct >= 80 %}text-success{% endif %}">
+                    {% if kpis.local_token_share_pct is None %}—{% else %}{{ kpis.local_token_share_pct }}%{% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Section 1 — Cohort retention (the hero visual). -->
+<div class="card mb-4" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+    <div class="card-body">
+        <div class="d-flex align-items-baseline justify-content-between mb-2">
+            <h6 class="mb-0 fs-7 text-uppercase">
+                <span class="badge me-2" style="background-color: rgba(59,130,246,0.18); color: var(--castor-primary, #3b82f6);">1</span>
+                Cohort retention — 8 weeks
+            </h6>
+            <span class="text-secondary fs-8">% of sign-up cohort active each subsequent week</span>
+        </div>
+        {% if cohort_grid.cohorts %}
+        <div id="investorCohortHeatmap" style="height: 320px;"></div>
+        {% else %}
+        <p class="text-secondary fs-7 mb-0">No users yet — cohort grid populates as users sign up and return.</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Section 2 — Proposal acceptance by tier. -->
+<div class="card mb-4" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+    <div class="card-body">
+        <div class="d-flex align-items-baseline justify-content-between mb-3">
+            <h6 class="mb-0 fs-7 text-uppercase">
+                <span class="badge me-2" style="background-color: rgba(139,92,246,0.18); color: var(--castor-accent, #8b5cf6);">2</span>
+                Proposal acceptance by tier (30d)
+            </h6>
+            <span class="text-secondary fs-8">{{ acceptance.overall_total }} proposals total</span>
+        </div>
+
+        {% if acceptance.overall_total > 0 %}
+        <div class="d-flex flex-column gap-3">
+            {% for t in acceptance.by_tier %}
+            <div class="d-flex align-items-center gap-3 fs-7">
+                <div style="min-width: 90px;">
+                    <span class="fw-semibold">T{{ t.tier }}</span>
+                    <span class="text-secondary fs-8 ms-1">target ≥{{ t.target_pct }}%</span>
+                </div>
+                <div class="flex-grow-1">
+                    <div class="progress" style="height: 18px; background-color: var(--bs-body-bg);">
+                        {% if t.accepted_pct is not None %}
+                        <div class="progress-bar
+                                    {% if t.meets_target %}bg-success{% else %}bg-warning{% endif %}"
+                             role="progressbar"
+                             style="width: {{ t.accepted_pct }}%;"
+                             aria-valuenow="{{ t.accepted_pct }}"
+                             aria-valuemin="0"
+                             aria-valuemax="100">
+                            <span class="fs-8 px-2">{{ t.accepted_pct }}%</span>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                <div style="min-width: 110px; text-align: right;" class="text-secondary fs-8">
+                    {{ t.applied }} / {{ t.total }}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-secondary fs-7 mb-0">
+            <i class="bi bi-clock-history me-1"></i>
+            No proposals in the last 30 days — chart populates as Modify mode usage starts.
+        </p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Section 3 — Token mix (gross-margin frame). -->
+<div class="card mb-4" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+    <div class="card-body">
+        <div class="d-flex align-items-baseline justify-content-between mb-3">
+            <h6 class="mb-0 fs-7 text-uppercase">
+                <span class="badge me-2" style="background-color: rgba(16,185,129,0.18); color: var(--castor-success, #10b981);">3</span>
+                Token spend mix — local vs paid (30d)
+            </h6>
+            <span class="text-secondary fs-8">≥80% local = healthy gross margin</span>
+        </div>
+
+        {% if provider_mix.total_tokens > 0 %}
+        <div class="d-flex align-items-center gap-3 mb-3">
+            <div class="flex-grow-1">
+                <div class="progress" style="height: 28px; background-color: var(--bs-body-bg);">
+                    <div class="progress-bar"
+                         role="progressbar"
+                         style="width: {{ provider_mix.local_pct }}%; background-color: var(--castor-success, #10b981);"
+                         aria-valuenow="{{ provider_mix.local_pct }}"
+                         aria-valuemin="0"
+                         aria-valuemax="100">
+                        <span class="fs-7 px-2">Ollama-local · {{ provider_mix.local_pct }}%</span>
+                    </div>
+                    <div class="progress-bar"
+                         role="progressbar"
+                         style="width: {{ provider_mix.paid_pct }}%; background-color: var(--castor-danger, #ef4444);"
+                         aria-valuenow="{{ provider_mix.paid_pct }}"
+                         aria-valuemin="0"
+                         aria-valuemax="100">
+                        <span class="fs-7 px-2">Paid · {{ provider_mix.paid_pct }}%</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="d-flex flex-wrap gap-4 fs-8 text-secondary">
+            <span>Local tokens: <strong class="text-body">{{ provider_mix.local_tokens }}</strong></span>
+            <span>Paid tokens: <strong class="text-body">{{ provider_mix.paid_tokens }}</strong></span>
+            <span>Total: <strong class="text-body">{{ provider_mix.total_tokens }}</strong></span>
+        </div>
+        {% else %}
+        <p class="text-secondary fs-7 mb-0">No LLM activity in the last 30 days.</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Section 4 — IFC ingestion scatter (engine scales). -->
+<div class="card mb-4" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+    <div class="card-body">
+        <div class="d-flex align-items-baseline justify-content-between mb-2">
+            <h6 class="mb-0 fs-7 text-uppercase">
+                <span class="badge me-2" style="background-color: rgba(245,158,11,0.18); color: var(--castor-warning, #f59e0b);">4</span>
+                IFC ingestion — latency vs entity count
+            </h6>
+            <span class="text-secondary fs-8">
+                {{ ingestion_scatter.count }} files
+                {% if ingestion_scatter.p95_latency_s %}· p95 {{ ingestion_scatter.p95_latency_s }} s{% endif %}
+                {% if ingestion_scatter.median_entities %}· median {{ ingestion_scatter.median_entities }} entities{% endif %}
+            </span>
+        </div>
+        {% if ingestion_scatter.count > 0 %}
+        <div id="investorIngestionScatter" style="height: 280px;"></div>
+        {% else %}
+        <p class="text-secondary fs-7 mb-0">No successfully parsed IFC files yet.</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Section 5 — Design-partner engagement table. -->
+<div class="card mb-4" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
+    <div class="card-body">
+        <div class="d-flex align-items-baseline justify-content-between mb-2">
+            <h6 class="mb-0 fs-7 text-uppercase">
+                <span class="badge me-2" style="background-color: rgba(20,184,166,0.18); color: var(--castor-facilities, #14b8a6);">5</span>
+                Design-partner engagement (30d)
+            </h6>
+            <span class="text-secondary fs-8">top 20 by call volume</span>
+        </div>
+        {% if design_partners %}
+        <div class="table-responsive">
+            <table class="table table-sm mb-0 fs-7">
+                <thead>
+                    <tr class="text-secondary text-uppercase fs-8">
+                        <th scope="col">User</th>
+                        <th scope="col" class="text-end">Calls</th>
+                        <th scope="col" class="text-end">Proposals</th>
+                        <th scope="col">Last seen</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for u in design_partners %}
+                    <tr>
+                        <td class="fw-semibold">{{ u.username }}</td>
+                        <td class="text-end">{{ u.calls }}</td>
+                        <td class="text-end">
+                            <span class="{% if u.proposals > 0 %}text-body{% else %}text-secondary{% endif %}">
+                                {{ u.proposals }}
+                            </span>
+                        </td>
+                        <td class="text-secondary">{{ u.last_seen|date:"M j, H:i" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <p class="text-secondary fs-8 mt-2 mb-0">
+            <i class="bi bi-pencil me-1"></i>
+            Likert score (1–5) and qualitative notes overlay by hand on the screenshot.
+        </p>
+        {% else %}
+        <p class="text-secondary fs-7 mb-0">No active users in the last 30 days.</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Embedded data — json_script (XSS-safe). -->
+{{ cohort_grid|json_script:"investor-cohort-data" }}
+{{ ingestion_scatter|json_script:"investor-ingestion-data" }}
+
+{% endblock %}
+
+{% block dashboard_help_modal %}
+{% include "core/staff/components/_dashboard_help_modal_investor.html" %}
+{% endblock %}
+
+{% block extra_js %}
+{% if needs_plotly %}
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+{% endif %}
+<script>
+(function () {
+    "use strict";
+
+    function readJson(elementId) {
+        const node = document.getElementById(elementId);
+        if (!node) return null;
+        try { return JSON.parse(node.textContent); } catch (_) { return null; }
+    }
+
+    if (typeof Plotly === "undefined") return;
+
+    // ── Cohort retention heatmap (Section 1). ─────────────────────────────
+    const cohortData = readJson("investor-cohort-data");
+    if (cohortData && cohortData.cohorts.length > 0) {
+        const node = document.getElementById("investorCohortHeatmap");
+        if (node) {
+            Plotly.newPlot(
+                node,
+                [{
+                    type: "heatmap",
+                    z: cohortData.grid,
+                    x: cohortData.weeks_offsets.map((w) => `W${w}`),
+                    y: cohortData.cohorts.map((c) => `${c.label} (n=${c.size})`),
+                    colorscale: [
+                        [0,   "#1a1a1a"],
+                        [0.25,"#3b82f6"],
+                        [0.5, "#8b5cf6"],
+                        [0.75,"#10b981"],
+                        [1,   "#facc15"],
+                    ],
+                    zmin: 0, zmax: 100,
+                    hovertemplate: "%{y} · %{x}<br>%{z}% active<extra></extra>",
+                    colorbar: { title: "% active", tickfont: { size: 10 } },
+                }],
+                {
+                    margin: { l: 110, r: 30, t: 10, b: 30 },
+                    paper_bgcolor: "rgba(0,0,0,0)",
+                    plot_bgcolor:  "rgba(0,0,0,0)",
+                    font: { color: "#94a3b8", size: 10 },
+                    xaxis: { side: "top" },
+                    yaxis: { autorange: "reversed" },
+                },
+                { displayModeBar: false, responsive: true }
+            );
+        }
+    }
+
+    // ── IFC ingestion scatter (Section 4). ────────────────────────────────
+    const ingestionData = readJson("investor-ingestion-data");
+    if (ingestionData && ingestionData.points.length > 0) {
+        const node = document.getElementById("investorIngestionScatter");
+        if (node) {
+            Plotly.newPlot(
+                node,
+                [{
+                    type: "scatter",
+                    mode: "markers",
+                    x: ingestionData.points.map((p) => p.entities),
+                    y: ingestionData.points.map((p) => p.latency_seconds),
+                    text: ingestionData.points.map((p) => p.name),
+                    marker: {
+                        size: 9,
+                        color: "#3b82f6",
+                        line: { width: 1, color: "#1e3a8a" },
+                    },
+                    hovertemplate:
+                        "%{text}<br>%{x} entities<br>%{y} s<extra></extra>",
+                }],
+                {
+                    margin: { l: 60, r: 20, t: 10, b: 50 },
+                    paper_bgcolor: "rgba(0,0,0,0)",
+                    plot_bgcolor:  "rgba(0,0,0,0)",
+                    font: { color: "#94a3b8", size: 10 },
+                    xaxis: {
+                        title: { text: "entities parsed", standoff: 8 },
+                        gridcolor: "#2a2a2a",
+                        zerolinecolor: "#2a2a2a",
+                    },
+                    yaxis: {
+                        title: { text: "parse latency (s)", standoff: 8 },
+                        gridcolor: "#2a2a2a",
+                        zerolinecolor: "#2a2a2a",
+                    },
+                },
+                { displayModeBar: false, responsive: true }
+            );
+        }
+    }
+})();
+</script>
+{% endblock %}

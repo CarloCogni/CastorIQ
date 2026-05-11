@@ -1,0 +1,13 @@
+Castor weekly digest — week ending {{ week_ending }}
+{% for section in sections %}
+{{ section.heading }}
+{% for line in section.lines %}  - {{ line }}
+{% endfor %}{% endfor %}{% if top_users %}
+Top users by cost (7d):
+{% for u in top_users %}  - {{ u.username }} · {{ u.calls }} calls · ${{ u.cost_usd|floatformat:4 }}{% if u.hard_blocked %} (BLOCKED){% endif %}
+{% endfor %}{% endif %}
+--
+→ Dashboard:  {{ dashboard_url }}
+→ Configure:  {{ admin_url }}
+
+Castor — staff-only.

@@ -45,7 +45,7 @@ def _send_confirmation_email(application: BetaApplication) -> None:
         text_body = render_to_string("beta/email/application_received.txt", ctx)
         html_body = render_to_string("beta/email/application_received.html", ctx)
         msg = EmailMultiAlternatives(
-            subject="We received your Castor beta application",
+            subject="We received your CastorIQ beta application",
             body=text_body,
             from_email=settings.DEFAULT_FROM_EMAIL,
             to=[application.email],

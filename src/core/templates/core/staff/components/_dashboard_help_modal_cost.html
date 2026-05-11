@@ -1,0 +1,141 @@
+<!-- core/staff/components/_dashboard_help_modal_cost.html — "How the Cost tab works" -->
+
+<div class="modal fade" id="dashboardCostHelpModal" tabindex="-1" aria-labelledby="dashboardCostHelpLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+
+            <div class="modal-header border-bottom px-4 py-3"
+                 style="border-color: var(--bs-border-color) !important;">
+                <h5 class="modal-title fw-semibold fs-6 mb-0" id="dashboardCostHelpLabel">
+                    <i class="bi bi-cash-coin me-2" style="color: var(--castor-primary, #3b82f6);"></i>
+                    How the Cost &amp; Usage tab works
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body px-4 py-4">
+
+                <!-- 1. What is it? -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-eye me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    What is it?
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    Where the money goes, beyond the raw totals on Overview. Same data source
+                    (<code>LLMCallLog</code>) — different lenses. The trend charts span
+                    <strong class="text-body">30 days regardless of the window selector</strong>;
+                    short windows hide the patterns this tab is built to surface.
+                </p>
+
+                <!-- 2. The four sections -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-grid-3x3-gap me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    The four sections
+                </p>
+                <div class="table-responsive mb-4">
+                    <table class="table table-sm mb-0 fs-8">
+                        <thead>
+                            <tr>
+                                <th scope="col" style="width: 30%;">Section</th>
+                                <th scope="col">Read</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Cost by purpose</strong> (Ask vs Modify)</td>
+                                <td>
+                                    Splits the cost stack into RAG (Ask) vs write-back (Modify).
+                                    Useful when total cost rises — tells you which mode drove it.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Tokens local vs paid</strong></td>
+                                <td>
+                                    Ollama tokens collapsed under <em>local</em>; everything else
+                                    (Anthropic, Groq, future cloud providers) under <em>paid</em>.
+                                    Any drift of traffic from green toward red silently erodes
+                                    Castor's gross margin.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Cost per active user, daily</strong></td>
+                                <td>
+                                    Total daily cost ÷ distinct active users that day. Vanity-resistant
+                                    — a flat line as the user base grows means per-user spend is stable.
+                                    A rising line means each user is costing more; that's the trigger
+                                    to look at the budget heat strip below.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Per-user budget heat strip</strong></td>
+                                <td>
+                                    One bar per recently active user
+                                    (last 7 days, or non-zero <code>used_today</code> right now).
+                                    Bar colour: green &lt;50%, yellow 50–80%, red ≥80% or
+                                    <code>hard_blocked</code>. <strong class="text-body">BLOCKED</strong>
+                                    badge means cloud calls are being refused for that user.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 3. How "active" is defined -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-person-check me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    "Active" means
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    The KPI strip's <em>active users</em> tile counts distinct user IDs that fired
+                    at least one LLM call in the selected window. The budget strip uses the same
+                    definition with a fixed 7-day lookback OR a non-zero <code>used_today</code> —
+                    so a user who's at 60% of their cap right now still appears even if they
+                    haven't fired a call in the last week.
+                </p>
+
+                <!-- 4. Reading the bar colours -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-palette me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    Reading the budget bars
+                </p>
+                <div class="d-flex flex-column gap-1 fs-8 mb-4">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="progress flex-grow-0" style="width: 80px; height: 10px; background-color: var(--bs-body-bg);">
+                            <div class="progress-bar bg-success" style="width: 30%;"></div>
+                        </div>
+                        <span class="text-secondary">&lt; 50% — comfortable headroom.</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="progress flex-grow-0" style="width: 80px; height: 10px; background-color: var(--bs-body-bg);">
+                            <div class="progress-bar bg-warning" style="width: 65%;"></div>
+                        </div>
+                        <span class="text-secondary">50–80% — keep an eye on it.</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="progress flex-grow-0" style="width: 80px; height: 10px; background-color: var(--bs-body-bg);">
+                            <div class="progress-bar bg-danger" style="width: 90%;"></div>
+                        </div>
+                        <span class="text-secondary">≥ 80% — close to the daily cap; user may be cut off mid-session.</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="badge bg-danger">BLOCKED</span>
+                        <span class="text-secondary"><code>hard_blocked = True</code> — cloud calls already refused regardless of cap.</span>
+                    </div>
+                </div>
+
+                <!-- 5. Caveats -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-exclamation-circle me-1" style="color: var(--castor-accent, #8b5cf6);"></i>
+                    Caveats
+                </p>
+                <div class="d-flex flex-column gap-1 fs-8 text-secondary">
+                    <span><i class="bi bi-dot"></i>Costs are <em>estimated</em> — provider price table × token counts at write time. Reconcile against provider dashboards monthly.</span>
+                    <span><i class="bi bi-dot"></i><code>used_today</code> is reset lazily on the first call after midnight UTC. A user who hasn't fired a call yet today may still show yesterday's residual until they do.</span>
+                    <span><i class="bi bi-dot"></i>Unlimited cap (<code>daily_cap = 0</code>) renders as ∞ with no bar — the user can never hit a percentage.</span>
+                    <span><i class="bi bi-dot"></i>The trend charts always span 30 days. Use the window selector for the KPI strip, not the trend lines.</span>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>

@@ -500,6 +500,156 @@ class SiteLaunchConfig(SingletonModel):
         return self.state == self.State.LIVE
 
 
+class WeeklyDigestConfig(SingletonModel):
+    """
+    Admin-controlled config for the weekly operator digest email.
+
+    The dashboard family (``/staff/dashboard/*``) is reactive — the operator
+    has to remember to open it. The digest closes the loop: a Monday-morning
+    summary composed from the same ``core/services/usage_analytics.py``
+    helpers, sent to an admin-managed recipient list. All knobs live here so
+    nothing about the schedule or recipient list requires a redeploy.
+
+    The crontab on the VPS fires the command daily at 08:00 UTC; the command
+    itself checks ``send_day_of_week`` and skips on other days. That split
+    means the operator changes the schedule from this admin page rather than
+    SSH-ing into the server to edit crontab.
+    """
+
+    class Status(models.TextChoices):
+        SUCCESS = "success", "Sent"
+        FAILED = "failed", "Failed"
+        SKIPPED_DISABLED = "skipped_disabled", "Skipped — disabled"
+        SKIPPED_WRONG_DAY = "skipped_wrong_day", "Skipped — wrong day"
+        SKIPPED_NO_RECIPIENTS = "skipped_no_recipients", "Skipped — no recipients"
+        SKIPPED_QUOTA = "skipped_quota", "Skipped — Brevo daily cap"
+
+    DAY_CHOICES = [
+        (0, "Monday"),
+        (1, "Tuesday"),
+        (2, "Wednesday"),
+        (3, "Thursday"),
+        (4, "Friday"),
+        (5, "Saturday"),
+        (6, "Sunday"),
+    ]
+
+    enabled = models.BooleanField(
+        default=False,
+        verbose_name="Send the weekly digest",
+        help_text=(
+            "Master kill-switch. When off, the cron job runs but the command "
+            "returns 'skipped_disabled' without sending anything."
+        ),
+    )
+    recipients = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name="Recipient emails",
+        help_text=(
+            "JSON list of email addresses, e.g. "
+            '["you@castoriq.io", "cofounder@castoriq.io"]. '
+            "The first address goes in To:, the rest are Bcc'd. "
+            "Invalid addresses are rejected at save time."
+        ),
+    )
+    send_day_of_week = models.IntegerField(
+        default=0,
+        choices=DAY_CHOICES,
+        verbose_name="Send day",
+        help_text="Day of week the command actually sends. Monday is the default.",
+    )
+    include_investor_kpis = models.BooleanField(
+        default=True,
+        verbose_name="Section · Investor KPIs",
+        help_text="MAU, W4 retention, entities processed, Ollama-local share.",
+    )
+    include_cost_summary = models.BooleanField(
+        default=True,
+        verbose_name="Section · Cost summary",
+        help_text="7-day cost USD, top user, Ollama vs paid mix.",
+    )
+    include_reliability_summary = models.BooleanField(
+        default=True,
+        verbose_name="Section · Reliability summary",
+        help_text="Success %, p95 latency Ask/Modify, open ErrorLog count.",
+    )
+    include_engagement_summary = models.BooleanField(
+        default=True,
+        verbose_name="Section · Engagement summary",
+        help_text="DAU/WAU/MAU, cohort W4 retention, proposal-generator share.",
+    )
+    include_top_users_table = models.BooleanField(
+        default=False,
+        verbose_name="Section · Top users table",
+        help_text=(
+            "Verbose top-10 by cost. Off by default — keep the digest scannable. "
+            "Drill into /staff/dashboard/overview/ when you actually need the list."
+        ),
+    )
+
+    # Audit trail — readonly in admin.
+    last_sent_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Last send attempt",
+    )
+    last_send_status = models.CharField(
+        max_length=30,
+        choices=Status.choices,
+        blank=True,
+        default="",
+        verbose_name="Last status",
+    )
+    last_send_log = models.TextField(
+        blank=True,
+        default="",
+        verbose_name="Last send log",
+        help_text="Truncated stdout / error from the most recent send attempt.",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Weekly Digest Configuration"
+        verbose_name_plural = "Weekly Digest Configuration"
+
+    def __str__(self) -> str:
+        state = "ON" if self.enabled else "OFF"
+        return f"Weekly digest: {state} ({len(self.recipients or [])} recipients)"
+
+    @classmethod
+    def load(cls) -> "WeeklyDigestConfig":
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    def clean(self) -> None:
+        """Reject the save if any recipient isn't a syntactically valid email.
+
+        Per-entry validation surfaces typos at save time rather than
+        silently dropping them at send time. ``validate_email`` raises
+        ``ValidationError`` which Django's admin renders inline next to
+        the field.
+        """
+        from django.core.exceptions import ValidationError
+        from django.core.validators import validate_email
+
+        super().clean()
+        recipients = self.recipients or []
+        if not isinstance(recipients, list):
+            raise ValidationError({"recipients": "Must be a JSON list of email strings."})
+        bad: list[str] = []
+        for entry in recipients:
+            if not isinstance(entry, str):
+                bad.append(repr(entry))
+                continue
+            try:
+                validate_email(entry)
+            except ValidationError:
+                bad.append(entry)
+        if bad:
+            raise ValidationError({"recipients": f"Invalid email address(es): {', '.join(bad)}"})
+
+
 class UserTokenBudget(models.Model):
     """
     Per-user daily LLM token cap.
@@ -587,6 +737,173 @@ class UserTokenBudget(models.Model):
         if self.daily_cap == 0:
             return 0
         return max(0, self.daily_cap - self.used_today)
+
+
+class SiteStorageConfig(SingletonModel):
+    """
+    Site-wide storage caps (one row, ever).
+
+    Two knobs the operator tunes from the admin without a redeploy:
+
+    * ``default_per_user_quota_bytes`` — fallback cap applied when a
+      :class:`UserStorageQuota` row has ``quota_bytes == 0``. The default
+      (1 GB) is sized for the Barcelona beta on the Hetzner CCX13 +
+      ~100 GB Cloud Volume (see ``docs/business/VPS-extra-storage-setup.md``).
+    * ``per_file_cap_bytes`` — hard ceiling on any single upload (IFC or
+      document). Replaces the previously hardcoded 100 MB IFC limit.
+
+    Numbers stored as bytes so the admin form shows a single integer field;
+    the dashboard formats it for humans.
+    """
+
+    default_per_user_quota_bytes = models.PositiveBigIntegerField(
+        default=1 * 1024**3,  # 1 GB
+        verbose_name="Default per-user quota (bytes)",
+        help_text=(
+            "Total bytes a user can occupy across all their projects (files + "
+            "per-project Git history). Applied when the user's row has "
+            "quota_bytes=0. 1 GB by default."
+        ),
+    )
+    per_file_cap_bytes = models.PositiveBigIntegerField(
+        default=200 * 1024**2,  # 200 MB
+        verbose_name="Per-file upload cap (bytes)",
+        help_text=(
+            "Maximum size of any single uploaded file (IFC or document). "
+            "Enforced at upload time before the per-user quota check. "
+            "200 MB by default."
+        ),
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Site Storage Configuration"
+        verbose_name_plural = "Site Storage Configuration"
+
+    def __str__(self) -> str:
+        return (
+            f"per-user={self.default_per_user_quota_bytes} B · per-file={self.per_file_cap_bytes} B"
+        )
+
+    @classmethod
+    def load(cls) -> "SiteStorageConfig":
+        """Get-or-create the singleton with default caps on first read."""
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+
+class UserStorageQuota(models.Model):
+    """
+    Per-user storage cap (files + per-project Git history).
+
+    Mirrors :class:`UserTokenBudget` minus the daily-reset: storage is
+    cumulative, not periodic. Computation is on-demand via
+    ``core.services.storage_usage.compute_user_storage`` — we walk
+    ``MEDIA_ROOT`` rather than tracking incremental deltas, because the
+    per-project Git repo grows on every Modify approval without the upload
+    path knowing about it.
+
+    ``quota_bytes=0`` is a sentinel meaning "use the site default" so the
+    operator can raise an individual user's cap without rewriting the
+    singleton, and reverting is a single field clear.
+    """
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="storage_quota",
+        primary_key=True,
+    )
+    quota_bytes = models.PositiveBigIntegerField(
+        default=0,
+        verbose_name="Quota override (bytes)",
+        help_text="0 = use SiteStorageConfig.default_per_user_quota_bytes.",
+    )
+    cached_used_bytes = models.PositiveBigIntegerField(
+        default=0,
+        verbose_name="Used (cached bytes)",
+        help_text="Last computed total. Recalculated on upload and on the projects page.",
+    )
+    hard_blocked = models.BooleanField(
+        default=False,
+        verbose_name="Hard Blocked",
+        help_text="When set, refuse all uploads regardless of remaining quota.",
+    )
+    last_recalculated_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Last recalculated",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "User Storage Quota"
+        verbose_name_plural = "User Storage Quotas"
+
+    def __str__(self) -> str:
+        return f"{self.user.username} — {self.cached_used_bytes}/{self.effective_quota()} B"
+
+    @classmethod
+    def load(cls, user) -> "UserStorageQuota":
+        """Get-or-create the storage quota row for a user."""
+        obj, _ = cls.objects.get_or_create(user=user)
+        return obj
+
+    def effective_quota(self) -> int:
+        """Per-user override when set, otherwise the site default."""
+        if self.quota_bytes:
+            return self.quota_bytes
+        return SiteStorageConfig.load().default_per_user_quota_bytes
+
+    def would_exceed(self, estimated_bytes: int) -> bool:
+        """True if adding ``estimated_bytes`` would push past the effective quota."""
+        if self.hard_blocked:
+            return True
+        cap = self.effective_quota()
+        if cap == 0:
+            return False
+        return self.cached_used_bytes + max(0, estimated_bytes) > cap
+
+    def recalculate(self) -> int:
+        """Walk MEDIA_ROOT for this user's projects and refresh ``cached_used_bytes``.
+
+        Returns the new total in bytes.
+        """
+        from django.utils import timezone
+
+        from core.services.storage_usage import compute_user_storage
+
+        breakdown = compute_user_storage(self.user)
+        self.cached_used_bytes = breakdown.total_bytes
+        self.last_recalculated_at = timezone.now()
+        self.save(update_fields=["cached_used_bytes", "last_recalculated_at", "updated_at"])
+        return breakdown.total_bytes
+
+    def record_upload(self, bytes_added: int) -> None:
+        """Cheap incremental bump after a successful upload.
+
+        Drift is corrected by the next ``recalculate()`` call on the projects
+        page or admin action — incremental tracking is just to avoid a full
+        disk walk on every quota check inside a single request.
+        """
+        if bytes_added <= 0:
+            return
+        self.cached_used_bytes = (self.cached_used_bytes or 0) + bytes_added
+        self.save(update_fields=["cached_used_bytes", "updated_at"])
+
+    @property
+    def remaining_bytes(self) -> int:
+        cap = self.effective_quota()
+        if cap == 0:
+            return 0
+        return max(0, cap - self.cached_used_bytes)
+
+    @property
+    def pct_used(self) -> int:
+        cap = self.effective_quota()
+        if cap == 0:
+            return 0
+        return min(100, int((self.cached_used_bytes / cap) * 100))
 
 
 class LLMCallLog(models.Model):

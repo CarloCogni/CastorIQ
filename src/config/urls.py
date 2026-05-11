@@ -16,6 +16,14 @@ from core.views import (
     privacy_view,
     terms_view,
 )
+from core.views_staff_dashboard import (
+    CostView,
+    EngagementView,
+    InvestorView,
+    OverviewView,
+    ReliabilityView,
+    StaffDashboardRedirectView,
+)
 
 urlpatterns = [
     path("", home_view, name="home"),
@@ -30,6 +38,39 @@ urlpatterns = [
     path("core/", include("core.urls")),
     path("eastereggs/", include("eastereggs.urls")),
     path("beta/", include("beta.urls")),
+    # Staff-only BI/health dashboard. Gated by is_staff inside each view.
+    # Default lands on the Overview tab; future tabs (Cost, Reliability,
+    # Engagement, Quality, Security, Investor) mount under the same prefix.
+    path(
+        "staff/dashboard/",
+        StaffDashboardRedirectView.as_view(),
+        name="staff_dashboard",
+    ),
+    path(
+        "staff/dashboard/overview/",
+        OverviewView.as_view(),
+        name="staff_dashboard_overview",
+    ),
+    path(
+        "staff/dashboard/cost/",
+        CostView.as_view(),
+        name="staff_dashboard_cost",
+    ),
+    path(
+        "staff/dashboard/reliability/",
+        ReliabilityView.as_view(),
+        name="staff_dashboard_reliability",
+    ),
+    path(
+        "staff/dashboard/engagement/",
+        EngagementView.as_view(),
+        name="staff_dashboard_engagement",
+    ),
+    path(
+        "staff/dashboard/investor/",
+        InvestorView.as_view(),
+        name="staff_dashboard_investor",
+    ),
     # Authentication — two-step login (username, then password). The GET
     # endpoint keeps the historical name "login" so all `{% url 'login' %}`
     # references in the codebase resolve unchanged.

@@ -1,0 +1,178 @@
+<!-- core/staff/components/_dashboard_help_modal_engagement.html — "How the Engagement tab works" -->
+
+<div class="modal fade" id="dashboardEngagementHelpModal" tabindex="-1" aria-labelledby="dashboardEngagementHelpLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+
+            <div class="modal-header border-bottom px-4 py-3"
+                 style="border-color: var(--bs-border-color) !important;">
+                <h5 class="modal-title fw-semibold fs-6 mb-0" id="dashboardEngagementHelpLabel">
+                    <i class="bi bi-people me-2" style="color: var(--castor-primary, #3b82f6);"></i>
+                    How the Engagement tab works
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body px-4 py-4">
+
+                <!-- 1. What is it? -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-eye me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    What is it?
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    The product-side view of Castor — how often users come back, how fast they
+                    reach first value, and whether they go beyond Ask into Modify. This is the
+                    page that turns "5 users, 6 weeks of beta" into a credible PMF story for
+                    a VC conversation. Charts populate as users sign up and return; sparse early,
+                    meaningful by week 4 of beta.
+                </p>
+
+                <!-- 2. KPI strip -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-grid-3x3-gap me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    KPI strip
+                </p>
+                <div class="table-responsive mb-4">
+                    <table class="table table-sm mb-0 fs-8">
+                        <thead>
+                            <tr>
+                                <th scope="col" style="width: 28%;">Tile</th>
+                                <th scope="col">Reads</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>DAU</strong></td>
+                                <td>Distinct users who fired ≥1 LLM call today (UTC calendar day).</td>
+                            </tr>
+                            <tr>
+                                <td><strong>WAU / MAU</strong></td>
+                                <td>Same idea, rolling last 7 / 30 days from now.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Stickiness</strong></td>
+                                <td>DAU ÷ MAU. Healthy consumer products climb toward 50%+; tools
+                                    that get used once a week sit closer to 15%. Pre-beta this is mostly noise.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Active (window)</strong></td>
+                                <td>Distinct users with any LLM call in the selected window.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Power users</strong></td>
+                                <td>Share of active users who created at least one
+                                    <code>ModificationProposal</code> in the window. Proposal-generators
+                                    are the deep-engagement segment — Ask-only users churn faster.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 3. Cohort retention -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-grid me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    Cohort retention (the VC visual)
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    Each row is a sign-up week (ISO week of <code>User.date_joined</code>). Each
+                    column W0..W7 is the % of cohort members who fired ≥1 LLM call in that
+                    calendar week. Cells past "this week" stay blank rather than rendering as 0%
+                    — a cohort can't have a W3 number until W3 actually elapses. Read down a
+                    column to compare cohorts at the same age; read across a row to follow a
+                    cohort's curve. A flat 50%+ retention across 4 weeks is the cleanest single
+                    PMF signal an early-stage SaaS can produce.
+                </p>
+
+                <!-- 4. DAU/WAU/MAU lines -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-graph-up me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    DAU / WAU / MAU lines (60 days)
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    Three rolling distinct-user counts plotted daily. The window selector at the
+                    top doesn't change these — they always span 60 days so the lines have enough
+                    samples to read. MAU rises slowest and falls slowest; DAU jumps around;
+                    WAU sits in between. The shape that matters: MAU pulling away from DAU
+                    means new users are arriving but not coming back; the reverse means the
+                    base is consolidating.
+                </p>
+
+                <!-- 5. TTFV + feature mix -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-bar-chart me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    Time-to-first-value + Feature mix
+                </p>
+                <div class="d-flex flex-column gap-2 fs-8 mb-4">
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge rounded-pill flex-shrink-0 mt-1"
+                              style="background-color: rgba(59, 130, 246, 0.15); color: var(--castor-primary, #3b82f6); border: 1px solid rgba(59, 130, 246, 0.3);">
+                            TTFV
+                        </span>
+                        <span class="text-secondary">
+                            For every user, minutes from <code>date_joined</code> to their first
+                            successful Ask call (blue) and to their first proposal (purple),
+                            bucketed into <code>&lt;1h</code>, <code>1h–1d</code>, <code>1d–7d</code>,
+                            <code>7d–30d</code>, <code>&gt;30d</code>, <code>never</code>.
+                            A wall of "&lt;1h" means onboarding is clean; a wall of "never" means
+                            users are bouncing before activation.
+                        </span>
+                    </div>
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge rounded-pill flex-shrink-0 mt-1"
+                              style="background-color: rgba(16, 185, 129, 0.15); color: var(--castor-success, #10b981); border: 1px solid rgba(16, 185, 129, 0.3);">
+                            Feature mix
+                        </span>
+                        <span class="text-secondary">
+                            Last 30 days. Each active user lands in one of three rows —
+                            <em>Ask only</em>, <em>Both</em>, <em>Modify only</em>. The Both
+                            row is the deep-engagement segment; growing share of Both is the
+                            single best leading indicator of expansion revenue, post-monetisation.
+                        </span>
+                    </div>
+                </div>
+
+                <!-- 6. Modify funnel -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-funnel me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    Modify funnel by tier
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    Last 30 days of <code>ModificationProposal</code> rows, grouped by RSAA tier
+                    (T1 / T2 / T3, with an "untiered" column for rows that never picked a tier).
+                    Stages are <em>pending → approved → applied → rejected → failed</em> — each
+                    stage is its own coloured segment so you can read both within-tier
+                    progression and cross-tier patterns. The hypothesis under test (per the
+                    master plan): T1 lands ≥90% applied, T2 ≥70%, T3 ≥50%. Sparse during early
+                    beta — the section empty-states cleanly when no proposals exist.
+                </p>
+
+                <!-- 7. Activity heatmap -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-calendar-week me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    Activity heatmap
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    LLM calls bucketed by <em>hour-of-day × day-of-week</em>, UTC. Useful to see
+                    if Castor is being used during workdays (which is what you'd expect for an
+                    AEC tool) or evenings-and-weekends (which would suggest hobbyist usage).
+                    Hot spots in Mon–Fri 09:00–17:00 UTC are the encouraging shape.
+                </p>
+
+                <!-- 8. Caveats -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-exclamation-circle me-1" style="color: var(--castor-accent, #8b5cf6);"></i>
+                    Caveats
+                </p>
+                <div class="d-flex flex-column gap-1 fs-8 text-secondary">
+                    <span><i class="bi bi-dot"></i>DAU/WAU/MAU is computed over <code>LLMCallLog</code>, not <code>last_login</code> — a user who logged in but never fired a call doesn't count as active.</span>
+                    <span><i class="bi bi-dot"></i>Cohort cells past "this week" intentionally render blank, not 0%. Future weeks haven't elapsed.</span>
+                    <span><i class="bi bi-dot"></i>"First Ask" requires <code>succeeded=True</code> — a user whose only call failed lands in "never" until they retry.</span>
+                    <span><i class="bi bi-dot"></i>Stickiness needs MAU &gt; 0 to be meaningful. Reads as "—" otherwise.</span>
+                    <span><i class="bi bi-dot"></i>Plotly is lazy-loaded only on this tab. Other tabs in the family stay on Chart.js to keep page weight low.</span>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>

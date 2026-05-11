@@ -323,3 +323,25 @@ If you still want page-view analytics:
 - Service layer convention: `CLAUDE.md` § "Django Patterns"
 - Help modal convention: `CLAUDE.md` § "Help modals"
 - Sentry / UptimeRobot / `/healthz/` (the *other* monitoring layer this dashboard complements): `docs/business/vps-deployment.md`
+
+---
+
+## Tabbed expansion (post-v1)
+
+The Phase 1 page above ships at `/staff/dashboard/overview/` as the first of seven planned tabs. Each tab is independently shippable and reuses the same `core/services/usage_analytics.py` module — no rewrites between phases. Plotly is loaded only on the two tabs that need heatmaps / scatter; everything else is Chart.js.
+
+| Tab | URL slug | Purpose | Priority |
+|---|---|---|---|
+| 1. Overview | `overview` | Phase 1 of this doc — KPIs, cost, top users, system pulse from `/healthz/`. | **P1 — pre-Wave-1 gate** |
+| 2. Cost & Usage | `cost` | Tokens & cost split by Ask vs Modify; Ollama-local vs paid mix; cost-per-active-user; per-user budget heat strip; cost-per-IFC-entity. | P2 |
+| 3. Reliability | `reliability` | Provider success %, p95 latency per purpose, error donut, unresolved `ErrorLog` backlog, writeback `FailureRecord` taxonomy, ingestion success rates. | P2 |
+| 4. Engagement | `engagement` | Cohort retention grid, time-to-first-value, DAU/WAU/MAU, feature mix, Modify funnel, activity heatmap. **The VC tab.** | P2 |
+| 5. Quality | `quality` | Proposal acceptance rate by tier (T1 >90% / T2 >70% / T3 >50% targets), RAV catch rate, MessageFeedback ↑/↓, RAG citation density, time-to-decision per tier. | P2/P3 |
+| 6. Security | `security` | Failed-login bursts per IP, beta-application abuse (IP repeats, rate-limit hits), `hard_blocked` flips, anomalous request length / IFC upload size, nginx 4xx burst, Sentry deep-links. | P3 |
+| 7. Investor View | `investor` | Five-can't-skip metrics on a screenshot-friendly page: cohort M2/M3 return, design-partner engagement, proposal acceptance by tier, Ollama-local vs paid mix (gross-margin frame), IFC ingestion p95 vs entity count. | P3 |
+
+**Build order:** Tab 1 (this doc's Phase 1) is the only hard gate; Tabs 2–4 follow during the first 1–2 weeks of beta; Tabs 5–7 land as data accumulates and as the VC conversation gets concrete.
+
+**Reused infra (don't reinvent):** `@user_passes_test(lambda u: u.is_active and u.is_staff)`, `.help-pill` CSS in `core/templates/core/base.html:852–878`, `json_script` for chart data, `LLMCallLog` indexes on `[user, -created_at]` and `[provider, -created_at]`, `/healthz/` for live system pulse, the `facilities/components/asset_register_help_modal.html` help-modal shape (200 lines, canonical).
+
+**Schema policy:** zero new models for v1. A single optional `LoginAttempt` model may join in Tab 6 if Django's auth signals + cache prove insufficient for the failed-login bursts visualization — explicitly deferred until then.

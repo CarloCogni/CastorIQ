@@ -118,6 +118,36 @@ Storage Box: ~€4/mo for 1 TB, more than enough.
 
 ---
 
+## Weekly digest email
+
+The staff BI dashboard at `/staff/dashboard/` is reactive — the operator has to remember to open it. The weekly digest closes that loop: a Monday-morning summary composed from the same `core/services/usage_analytics.py` helpers, emailed to an admin-configurable recipient list.
+
+**Cron entry** (host crontab, not inside the container):
+
+```cron
+# Weekly digest — runs daily at 08:00 UTC; the command itself checks
+# WeeklyDigestConfig.send_day_of_week and skips on other days. Toggle the
+# day from /admin/core/weeklydigestconfig/ rather than editing this line.
+0 8 * * * cd /opt/castor && docker compose -f docker-compose.prod.yml exec -T daphne \
+          python manage.py send_weekly_digest >> /var/log/castor-digest.log 2>&1
+```
+
+**Admin controls** at `/admin/core/weeklydigestconfig/`:
+- `enabled` — master kill-switch. When off, the cron runs but the command returns `skipped_disabled` without sending.
+- `recipients` — JSON list of email addresses; first goes in To:, rest get Bcc. Invalid addresses are rejected at save time.
+- `send_day_of_week` — 0=Monday through 6=Sunday. Schedule lives here, not on the server.
+- `include_*` toggles for each section (Investor KPIs, Cost, Reliability, Engagement, optional Top Users table).
+- Audit panel shows `last_sent_at` / `last_send_status` / `last_send_log` for the most recent attempt.
+
+**Smoke testing** before turning `enabled` on:
+- One-click: admin action **Send digest now** ignores `enabled` + day checks and sends to the configured list.
+- CLI: `python manage.py send_weekly_digest --force` (same effect).
+- Preview without sending: `python manage.py send_weekly_digest --dry-run` writes the rendered HTML to `/tmp/castor-digest-<date>.html`.
+
+**Exit codes:** `0` for sent and any `skipped_*` (healthy noops). `1` for a real `FAILED` (template render error or SMTP exception) — cron surfaces these via the captured log file. Brevo daily cap (`BETA_DAILY_TOTAL_CAP`) is respected via the same `beta.throttle` helpers the application/operator emails use; the digest skips with `status=skipped_quota` rather than blowing the budget.
+
+---
+
 ## Monitoring
 
 - **Sentry** (developer tier, free) for errors. DSN in `production.py` only, tagged `environment=production`.
