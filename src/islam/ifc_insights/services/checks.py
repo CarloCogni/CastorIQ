@@ -62,6 +62,7 @@ def run_all_checks(ifc_file_path: str) -> dict:
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+
 def _issue(global_id: str, element_type: str, issue: str, severity: str, fix: str) -> dict:
     return {
         "global_id": global_id or "N/A",
@@ -77,7 +78,7 @@ def _storey_contained_ids(model) -> set[str]:
     contained: set[str] = set()
     for rel in model.by_type("IfcRelContainedInSpatialStructure"):
         if rel.RelatingStructure and rel.RelatingStructure.is_a("IfcBuildingStorey"):
-            for element in (rel.RelatedElements or ()):
+            for element in rel.RelatedElements or ():
                 if element.GlobalId:
                     contained.add(element.GlobalId)
     return contained
@@ -103,18 +104,22 @@ def _get_property(element, prop_name: str) -> str | None:
 # Check implementations
 # ---------------------------------------------------------------------------
 
+
 def _elements_without_storey(model) -> list[dict]:
     """SPATIAL 1: elements not spatially contained in any IfcBuildingStorey."""
     contained = _storey_contained_ids(model)
     issues = []
     for el in model.by_type("IfcElement"):
         if el.GlobalId not in contained:
-            issues.append(_issue(
-                el.GlobalId, el.is_a(),
-                "Not assigned to any IfcBuildingStorey",
-                CRITICAL,
-                "Assign via IfcRelContainedInSpatialStructure to a storey",
-            ))
+            issues.append(
+                _issue(
+                    el.GlobalId,
+                    el.is_a(),
+                    "Not assigned to any IfcBuildingStorey",
+                    CRITICAL,
+                    "Assign via IfcRelContainedInSpatialStructure to a storey",
+                )
+            )
     return issues
 
 
@@ -131,12 +136,15 @@ def _storey_count_mismatch(model) -> list[dict]:
     for storey in model.by_type("IfcBuildingStorey"):
         key = storey.GlobalId or storey.Name or "unknown"
         if storey_population.get(key, 0) == 0:
-            issues.append(_issue(
-                storey.GlobalId, "IfcBuildingStorey",
-                f"Storey '{storey.Name}' has no elements assigned to it",
-                WARNING,
-                "Check if this storey is intentionally empty or elements are missing",
-            ))
+            issues.append(
+                _issue(
+                    storey.GlobalId,
+                    "IfcBuildingStorey",
+                    f"Storey '{storey.Name}' has no elements assigned to it",
+                    WARNING,
+                    "Check if this storey is intentionally empty or elements are missing",
+                )
+            )
     return issues
 
 
@@ -148,12 +156,15 @@ def _geometry_outside_storey(model) -> list[dict]:
         if el.GlobalId in contained:
             continue
         if el.Representation:
-            issues.append(_issue(
-                el.GlobalId, el.is_a(),
-                "Has geometry but no storey assignment — breaks 4D linking",
-                CRITICAL,
-                "Assign to a storey; geometry without containment is invisible to TimeLiner",
-            ))
+            issues.append(
+                _issue(
+                    el.GlobalId,
+                    el.is_a(),
+                    "Has geometry but no storey assignment — breaks 4D linking",
+                    CRITICAL,
+                    "Assign to a storey; geometry without containment is invisible to TimeLiner",
+                )
+            )
     return issues
 
 
@@ -162,12 +173,15 @@ def _missing_activity_code(model) -> list[dict]:
     issues = []
     for el in model.by_type("IfcElement"):
         if not _get_property(el, "ActivityCode"):
-            issues.append(_issue(
-                el.GlobalId, el.is_a(),
-                "No ActivityCode property found",
-                WARNING,
-                "Add ActivityCode to an element pset for 4D schedule linking",
-            ))
+            issues.append(
+                _issue(
+                    el.GlobalId,
+                    el.is_a(),
+                    "No ActivityCode property found",
+                    WARNING,
+                    "Add ActivityCode to an element pset for 4D schedule linking",
+                )
+            )
     return issues
 
 
@@ -178,19 +192,25 @@ def _missing_guid(model) -> list[dict]:
     for el in model.by_type("IfcElement"):
         gid = el.GlobalId
         if not gid:
-            issues.append(_issue(
-                "N/A", el.is_a(),
-                "Null GlobalId",
-                CRITICAL,
-                "Assign a valid IFC GUID",
-            ))
+            issues.append(
+                _issue(
+                    "N/A",
+                    el.is_a(),
+                    "Null GlobalId",
+                    CRITICAL,
+                    "Assign a valid IFC GUID",
+                )
+            )
         elif gid in seen:
-            issues.append(_issue(
-                gid, el.is_a(),
-                f"Duplicate GlobalId — first seen on {seen[gid]}",
-                CRITICAL,
-                "Regenerate a unique GUID for this element",
-            ))
+            issues.append(
+                _issue(
+                    gid,
+                    el.is_a(),
+                    f"Duplicate GlobalId — first seen on {seen[gid]}",
+                    CRITICAL,
+                    "Regenerate a unique GUID for this element",
+                )
+            )
         else:
             seen[gid] = el.is_a()
     return issues
@@ -200,19 +220,22 @@ def _missing_material(model) -> list[dict]:
     """PARAM 6: elements with no material assignment."""
     has_material: set[str] = set()
     for rel in model.by_type("IfcRelAssociatesMaterial"):
-        for obj in (rel.RelatedObjects or ()):
+        for obj in rel.RelatedObjects or ():
             if hasattr(obj, "GlobalId") and obj.GlobalId:
                 has_material.add(obj.GlobalId)
 
     issues = []
     for el in model.by_type("IfcElement"):
         if el.GlobalId not in has_material:
-            issues.append(_issue(
-                el.GlobalId, el.is_a(),
-                "No material assignment",
-                INFO,
-                "Assign a material via IfcRelAssociatesMaterial",
-            ))
+            issues.append(
+                _issue(
+                    el.GlobalId,
+                    el.is_a(),
+                    "No material assignment",
+                    INFO,
+                    "Assign a material via IfcRelAssociatesMaterial",
+                )
+            )
     return issues
 
 
@@ -225,12 +248,15 @@ def _missing_level(model) -> list[dict]:
             continue
         level = _get_property(el, "Level") or _get_property(el, "Storey")
         if not level:
-            issues.append(_issue(
-                el.GlobalId, el.is_a(),
-                "No storey containment and no Level/Storey property",
-                WARNING,
-                "Assign to a storey or add a Level property in a pset",
-            ))
+            issues.append(
+                _issue(
+                    el.GlobalId,
+                    el.is_a(),
+                    "No storey containment and no Level/Storey property",
+                    WARNING,
+                    "Assign to a storey or add a Level property in a pset",
+                )
+            )
     return issues
 
 
@@ -245,12 +271,15 @@ def _duplicate_elements(model) -> list[dict]:
         if not gid:
             continue
         if gid in seen:
-            issues.append(_issue(
-                gid, product.is_a(),
-                f"Duplicate GlobalId across products — also used by {seen[gid]}",
-                CRITICAL,
-                "Each IfcProduct must have a globally unique GUID",
-            ))
+            issues.append(
+                _issue(
+                    gid,
+                    product.is_a(),
+                    f"Duplicate GlobalId across products — also used by {seen[gid]}",
+                    CRITICAL,
+                    "Each IfcProduct must have a globally unique GUID",
+                )
+            )
         else:
             seen[gid] = product.is_a()
     return issues
@@ -261,12 +290,15 @@ def _elements_no_geometry(model) -> list[dict]:
     issues = []
     for el in model.by_type("IfcElement"):
         if not el.Representation:
-            issues.append(_issue(
-                el.GlobalId, el.is_a(),
-                "No geometry representation (IfcProductRepresentation missing)",
-                WARNING,
-                "Add a representation or verify the export settings in your authoring tool",
-            ))
+            issues.append(
+                _issue(
+                    el.GlobalId,
+                    el.is_a(),
+                    "No geometry representation (IfcProductRepresentation missing)",
+                    WARNING,
+                    "Add a representation or verify the export settings in your authoring tool",
+                )
+            )
     return issues
 
 
@@ -275,10 +307,13 @@ def _empty_property_sets(model) -> list[dict]:
     issues = []
     for pset in model.by_type("IfcPropertySet"):
         if not pset.HasProperties:
-            issues.append(_issue(
-                pset.GlobalId, "IfcPropertySet",
-                f"Empty property set: '{pset.Name}'",
-                INFO,
-                "Populate or remove the empty property set",
-            ))
+            issues.append(
+                _issue(
+                    pset.GlobalId,
+                    "IfcPropertySet",
+                    f"Empty property set: '{pset.Name}'",
+                    INFO,
+                    "Populate or remove the empty property set",
+                )
+            )
     return issues

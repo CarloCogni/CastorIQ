@@ -28,6 +28,26 @@ urlpatterns = [
         name="viewer_fragments",
     ),
     path(
+        "projects/<uuid:pk>/viewer/colormap/",
+        viewer_views.ColormapView.as_view(),
+        name="viewer_colormap",
+    ),
+    path(
+        "projects/<uuid:pk>/viewer/gap_analysis/",
+        viewer_views.GapAnalysisView.as_view(),
+        name="viewer_gap_analysis",
+    ),
+    path(
+        "projects/<uuid:pk>/viewer/build_sequence/",
+        viewer_views.BuildSequenceView.as_view(),
+        name="viewer_build_sequence",
+    ),
+    path(
+        "projects/<uuid:pk>/viewer/timeline/",
+        viewer_views.TimelineView.as_view(),
+        name="viewer_timeline",
+    ),
+    path(
         "projects/<uuid:pk>/schedule/",
         scheduling_views.ScheduleView.as_view(),
         name="schedule",
@@ -106,12 +126,50 @@ urlpatterns = [
         name="link_search",
     ),
     # ------------------------------------------------------------------ #
+    # Level Panel                                                         #
+    # ------------------------------------------------------------------ #
+    path(
+        "projects/<uuid:pk>/levels/",
+        insights_views.LevelsView.as_view(),
+        name="levels",
+    ),
+    path(
+        "projects/<uuid:pk>/levels/suggest/",
+        insights_views.LevelSuggestView.as_view(),
+        name="level_suggest",
+    ),
+    path(
+        "projects/<uuid:pk>/levels/add/",
+        insights_views.LevelAddView.as_view(),
+        name="level_add",
+    ),
+    path(
+        "projects/<uuid:pk>/levels/<uuid:level_pk>/edit/",
+        insights_views.LevelEditView.as_view(),
+        name="level_edit",
+    ),
+    path(
+        "projects/<uuid:pk>/levels/<uuid:level_pk>/delete/",
+        insights_views.LevelDeleteView.as_view(),
+        name="level_delete",
+    ),
+    path(
+        "projects/<uuid:pk>/levels/apply/",
+        insights_views.LevelApplyView.as_view(),
+        name="level_apply",
+    ),
+    # ------------------------------------------------------------------ #
     # IFC Insights HTMX endpoints                                         #
     # ------------------------------------------------------------------ #
     path(
         "projects/<uuid:pk>/insights/rerun/",
         insights_views.InsightsRerunView.as_view(),
         name="insights_rerun",
+    ),
+    path(
+        "projects/<uuid:pk>/insights/breakdown/<str:breakdown_type>/",
+        insights_views.InsightsBreakdownView.as_view(),
+        name="insights_breakdown",
     ),
     path(
         "projects/<uuid:pk>/insights/export/",

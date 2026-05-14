@@ -1,4 +1,4 @@
-<!-- ifc_viewer/viewer.html — 3D IFC viewer, @thatopen/components v2 -->
+<!-- ifc_viewer/viewer.html — Castor Simulator: 3D viewer + 4D/5D controls -->
 {% load static %}
 <div class="d-flex flex-column h-100 position-relative" id="ifc-viewer-root">
 
@@ -11,94 +11,202 @@
     </div>
 
     {% else %}
-    <!-- Toolbar -->
-    <div class="d-flex align-items-center px-3 py-2 border-bottom bg-body flex-shrink-0" style="gap:0.5rem; font-size:0.82rem;">
-        <span class="text-secondary">{{ viewer_ifc_file.name }}</span>
-        <div class="ms-auto d-flex gap-2">
-            <button class="btn btn-sm btn-outline-secondary" id="viewer-reset-btn" title="Reset camera">
-                <i class="bi bi-aspect-ratio"></i> Reset
+
+    <!-- ── Toolbar ──────────────────────────────────────────────────────── -->
+    <div class="d-flex align-items-center px-3 py-2 border-bottom bg-body flex-shrink-0 flex-wrap gap-2"
+         style="font-size:0.82rem;">
+
+        <span class="fw-semibold me-1">Castor Simulator</span>
+        <span class="text-secondary text-truncate" style="font-size:0.78rem; max-width:200px;">{{ viewer_ifc_file.name }}</span>
+
+        <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
+
+            <!-- Color By -->
+            <div class="d-flex align-items-center gap-1">
+                <label class="text-secondary mb-0" style="white-space:nowrap;">Color by:</label>
+                <select id="colorby-select" class="form-select form-select-sm" style="width:auto; font-size:0.78rem;">
+                    <option value="none">None</option>
+                    <option value="material">Material</option>
+                    <option value="level">Level</option>
+                    <option value="element_type">Element Type</option>
+                    <option value="schedule_status">Schedule Status</option>
+                </select>
+            </div>
+
+            <!-- Gap Analysis -->
+            <button id="gap-btn"
+                    class="btn btn-sm btn-outline-secondary"
+                    hx-get="{% url 'islam:viewer_gap_analysis' project.pk %}"
+                    hx-target="#gap-panel-body"
+                    hx-swap="innerHTML"
+                    hx-trigger="click once"
+                    onclick="toggleGapPanel()">
+                <i class="bi bi-bar-chart-line me-1"></i>Gap Analysis
             </button>
+
+            <!-- Build Sequence -->
+            <button id="build-seq-btn" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-play-circle me-1"></i>Build Sequence
+            </button>
+
+            <!-- Reset -->
+            <button id="viewer-reset-btn" class="btn btn-sm btn-outline-secondary" title="Reset camera and colours">
+                <i class="bi bi-aspect-ratio me-1"></i>Reset
+            </button>
+
+            <!-- Help -->
+            <button type="button"
+                    class="help-pill"
+                    data-bs-toggle="modal"
+                    data-bs-target="#simulatorHelpModal"
+                    title="How Castor Simulator works"
+                    aria-label="How Castor Simulator works">
+                <i class="bi bi-question-circle"></i>
+            </button>
+
         </div>
     </div>
 
-    <!-- Viewer container — v2 SimpleRenderer creates its own canvas inside this div -->
-    <div class="flex-grow-1 position-relative overflow-hidden bg-dark">
-        <div id="ifc-container" style="width:100%; height:100%; position:relative;"></div>
+    <!-- ── Main content: viewer + collapsible gap panel ─────────────────── -->
+    <div class="d-flex flex-grow-1 overflow-hidden">
 
-        <!-- Loading overlay -->
-        <div id="viewer-loading" class="position-absolute top-0 start-0 w-100 h-100 d-flex flex-column align-items-center justify-content-center bg-dark text-light" style="z-index:10;">
-            <div class="spinner-border text-primary mb-3" role="status"></div>
-            <span id="viewer-loading-msg">Loading IFC model…</span>
+        <!-- 3D viewer -->
+        <div class="flex-grow-1 position-relative overflow-hidden bg-dark">
+            <div id="ifc-container" style="width:100%; height:100%; position:relative;"></div>
+
+            <!-- Loading overlay -->
+            <div id="viewer-loading"
+                 class="position-absolute top-0 start-0 w-100 h-100 d-flex flex-column align-items-center justify-content-center bg-dark text-light"
+                 style="z-index:10;">
+                <div class="spinner-border text-primary mb-3" role="status"></div>
+                <span id="viewer-loading-msg">Loading IFC model…</span>
+            </div>
+
+            <!-- Error overlay -->
+            <div id="viewer-error"
+                 class="position-absolute top-0 start-0 w-100 h-100 d-flex flex-column align-items-center justify-content-center bg-dark text-danger d-none"
+                 style="z-index:10;">
+                <i class="bi bi-exclamation-triangle fs-1 mb-2"></i>
+                <span id="viewer-error-msg">Failed to load model.</span>
+            </div>
+
+            <!-- Simulation legend (TimeLiner / timeline slider) -->
+            <div id="sim-legend"
+                 class="position-absolute bottom-0 start-0 m-3 p-2 rounded bg-dark bg-opacity-75 text-light d-none"
+                 style="font-size:0.75rem; z-index:5;">
+                <div class="d-flex align-items-center gap-2 mb-1"><span style="width:10px;height:10px;border-radius:2px;background:#22c55e;display:inline-block;"></span> Active</div>
+                <div class="d-flex align-items-center gap-2 mb-1"><span style="width:10px;height:10px;border-radius:2px;background:#3b82f6;display:inline-block;"></span> Complete</div>
+                <div class="d-flex align-items-center gap-2 mb-1"><span style="width:10px;height:10px;border-radius:2px;background:#94a3b8;display:inline-block;"></span> Pending</div>
+                <div class="d-flex align-items-center gap-2">       <span style="width:10px;height:10px;border-radius:2px;background:#f59e0b;display:inline-block;"></span> Delayed</div>
+            </div>
+
+            <!-- Color-by legend (top-right) -->
+            <div id="colorby-legend"
+                 class="position-absolute top-0 end-0 m-2 p-2 rounded bg-dark bg-opacity-75 text-light d-none"
+                 style="font-size:0.75rem; z-index:5; max-width:160px;">
+                <div id="colorby-legend-body" class="d-flex flex-column gap-1"></div>
+            </div>
         </div>
 
-        <!-- Error overlay -->
-        <div id="viewer-error" class="position-absolute top-0 start-0 w-100 h-100 d-flex flex-column align-items-center justify-content-center bg-dark text-danger d-none" style="z-index:10;">
-            <i class="bi bi-exclamation-triangle fs-1 mb-2"></i>
-            <span id="viewer-error-msg">Failed to load model.</span>
+        <!-- Gap Analysis side panel (hidden until toggled) -->
+        <div id="gap-panel"
+             class="border-start bg-body flex-shrink-0 d-none"
+             style="width:300px; overflow-y:auto;">
+            <div id="gap-panel-body" class="p-3 text-secondary" style="font-size:0.82rem;">
+                <span class="spinner-border spinner-border-sm me-1"></span> Loading…
+            </div>
         </div>
 
-        <!-- Simulation legend (hidden until simulate mode active) -->
-        <div id="sim-legend" class="position-absolute bottom-0 start-0 m-3 p-2 rounded bg-dark bg-opacity-75 text-light d-none" style="font-size:0.78rem; z-index:5;">
-            <div class="d-flex align-items-center gap-2 mb-1"><span style="width:12px;height:12px;border-radius:2px;background:#22c55e;display:inline-block;"></span> Active</div>
-            <div class="d-flex align-items-center gap-2 mb-1"><span style="width:12px;height:12px;border-radius:2px;background:#3b82f6;display:inline-block;"></span> Complete</div>
-            <div class="d-flex align-items-center gap-2 mb-1"><span style="width:12px;height:12px;border-radius:2px;background:#94a3b8;display:inline-block;"></span> Pending</div>
-            <div class="d-flex align-items-center gap-2"><span style="width:12px;height:12px;border-radius:2px;background:#f59e0b;display:inline-block;"></span> Delayed</div>
+    </div>
+
+    <!-- ── Timeline (shown only when tasks exist) ────────────────────────── -->
+    <div id="timeline-section"
+         class="border-top bg-body flex-shrink-0 px-3 py-2 d-none"
+         style="font-size:0.82rem;">
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+            <span class="fw-medium text-secondary" style="white-space:nowrap;">Timeline</span>
+            <span id="tl-min-date" class="text-secondary"></span>
+            <input id="timeline-slider" type="range" class="form-range flex-grow-1" min="0" value="0" style="min-width:120px;">
+            <span id="tl-max-date" class="text-secondary"></span>
+            <span id="tl-current-date" class="fw-semibold" style="min-width:90px; text-align:center;"></span>
+            <button id="tl-play-btn" class="btn btn-sm btn-primary" style="white-space:nowrap;">
+                <i class="bi bi-play-fill me-1"></i>Play
+            </button>
+            <button id="tl-pause-btn" class="btn btn-sm btn-outline-secondary d-none" style="white-space:nowrap;">
+                <i class="bi bi-pause-fill me-1"></i>Pause
+            </button>
+            <select id="tl-speed-select" class="form-select form-select-sm" style="width:auto;">
+                <option value="0.5">0.5×</option>
+                <option value="1" selected>1×</option>
+                <option value="2">2×</option>
+            </select>
         </div>
     </div>
 
+    <!-- No-schedule banner (shown if timeline fetch returns has_tasks=false) -->
+    <div id="no-tasks-banner"
+         class="border-top bg-body flex-shrink-0 px-3 py-2 d-none text-secondary"
+         style="font-size:0.8rem;">
+        <i class="bi bi-info-circle me-1"></i>
+        No schedule linked — import a schedule in 4D/5D Controls &gt; TimeLiner to enable the timeline.
+    </div>
+
+    <!-- ── importmap ─────────────────────────────────────────────────────── -->
     <script type="importmap">
     {
       "imports": {
-        "three": "{% static 'vendor/three/build/three.module.js' %}",
+        "three":               "{% static 'vendor/three/build/three.module.js' %}",
         "@thatopen/fragments": "{% static 'vendor/thatopen-fragments/dist/index.min.mjs' %}",
-        "web-ifc": "{% static 'vendor/web-ifc/web-ifc-api.js' %}?v=2"
+        "web-ifc":             "{% static 'vendor/web-ifc/web-ifc-api.js' %}?v=2"
       }
     }
     </script>
+
+    <!-- ── Module script ─────────────────────────────────────────────────── -->
     <script type="module">
     import * as OBC from "{% static 'vendor/thatopen-components/dist/index.min.mjs' %}";
 
-    const IFC_URL   = "{{ ifc_file_url }}";
-    const FRAG_URL  = "{% url 'islam:viewer_fragments' project.pk %}";
-    const CSRF_TOKEN = "{{ csrf_token }}";
-    const container = document.getElementById("ifc-container");
-    const loading   = document.getElementById("viewer-loading");
-    const loadMsg   = document.getElementById("viewer-loading-msg");
-    const errBox    = document.getElementById("viewer-error");
-    const errMsg    = document.getElementById("viewer-error-msg");
-    const legend    = document.getElementById("sim-legend");
+    const IFC_URL        = "{{ ifc_file_url }}";
+    const FRAG_URL       = "{% url 'islam:viewer_fragments'    project.pk %}";
+    const COLORMAP_URL   = "{% url 'islam:viewer_colormap'     project.pk %}";
+    const BUILD_SEQ_URL  = "{% url 'islam:viewer_build_sequence' project.pk %}";
+    const TIMELINE_URL   = "{% url 'islam:viewer_timeline'     project.pk %}";
+    const CSRF_TOKEN     = "{{ csrf_token }}";
 
-    // Status colours as plain {r,g,b} in [0-1] — Fragment.setColor reads
-    // .r/.g/.b directly via InstancedBufferAttribute.setXYZ; no THREE import needed.
+    const container  = document.getElementById("ifc-container");
+    const loading    = document.getElementById("viewer-loading");
+    const loadMsg    = document.getElementById("viewer-loading-msg");
+    const errBox     = document.getElementById("viewer-error");
+    const errMsg     = document.getElementById("viewer-error-msg");
+    const simLegend  = document.getElementById("sim-legend");
+
     const C = {
-        active:    { r: 0.133, g: 0.773, b: 0.369 },  // #22c55e
-        complete:  { r: 0.231, g: 0.510, b: 0.965 },  // #3b82f6
-        pending:   { r: 0.580, g: 0.639, b: 0.722 },  // #94a3b8
-        delayed:   { r: 0.961, g: 0.620, b: 0.043 },  // #f59e0b
-        highlight: { r: 1.000, g: 0.863, b: 0.000 },  // #ffdc00
+        active:    { r: 0.133, g: 0.773, b: 0.369 },
+        complete:  { r: 0.231, g: 0.510, b: 0.965 },
+        pending:   { r: 0.580, g: 0.639, b: 0.722 },
+        delayed:   { r: 0.961, g: 0.620, b: 0.043 },
+        highlight: { r: 1.000, g: 0.863, b: 0.000 },
     };
 
     let world = null;
-    let model = null;               // FragmentsGroup returned by IfcLoader
-    const globalIdIndex = new Map(); // GlobalId string → expressId number
-    const fragmentIndex = new Map(); // expressId number → Fragment
+    let model = null;
+    const globalIdIndex = new Map();
+    const fragmentIndex = new Map();
 
-    // ── 1. Init ──────────────────────────────────────────────────────────────
+    // ── 1. Init ──────────────────────────────────────────────────────────
 
     async function init() {
         try {
             loadMsg.textContent = "Initialising renderer…";
             const components = new OBC.Components();
-
             const worlds = components.get(OBC.Worlds);
             world = worlds.create();
             world.scene    = new OBC.SimpleScene(components);
             world.renderer = new OBC.SimpleRenderer(components, container);
             world.camera   = new OBC.SimpleCamera(components);
             components.init();
-            world.scene.setup();  // adds ambient + directional lights
+            world.scene.setup();
 
-            // ── Try fragment cache (fast path — skips WASM entirely) ──────
             loadMsg.textContent = "Checking geometry cache…";
             const fragResp = await fetch(FRAG_URL);
 
@@ -109,7 +217,6 @@
                 model = fragmentsManager.load(fragData);
                 world.scene.three.add(model);
             } else {
-                // ── Slow path: parse raw IFC, then save cache ──────────────
                 loadMsg.textContent = "Initialising WASM…";
                 const ifcLoader = components.get(OBC.IfcLoader);
                 ifcLoader.settings.wasm = {
@@ -126,13 +233,12 @@
                 const data = new Uint8Array(await resp.arrayBuffer());
                 model = await ifcLoader.load(data);
                 world.scene.three.add(model);
-
-                // Fire-and-forget — model is already visible before this resolves
                 _saveFragments(components, model);
             }
 
             loading.classList.add("d-none");
             buildIndex();
+            initTimeline();
 
         } catch (err) {
             console.error("IFC viewer init failed:", err);
@@ -142,7 +248,7 @@
         }
     }
 
-    // ── 1b. Fragment cache save (fire-and-forget after slow-path parse) ──────
+    // ── 1b. Fragment cache save ──────────────────────────────────────────
 
     async function _saveFragments(components, model) {
         try {
@@ -150,26 +256,17 @@
             const fragBinary = fragmentsManager.export(model);
             const resp = await fetch(FRAG_URL, {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/octet-stream",
-                    "X-CSRFToken": CSRF_TOKEN,
-                },
+                headers: { "Content-Type": "application/octet-stream", "X-CSRFToken": CSRF_TOKEN },
                 body: fragBinary,
             });
-            if (resp.ok) {
-                console.log("[viewer] Fragment cache saved (" + fragBinary.byteLength + " bytes).");
-            } else {
-                console.warn("[viewer] Fragment cache POST returned", resp.status);
-            }
+            if (resp.ok) console.log("[simulator] Fragment cache saved (" + fragBinary.byteLength + " bytes).");
+            else         console.warn("[simulator] Fragment cache POST returned", resp.status);
         } catch (e) {
-            console.warn("[viewer] Fragment cache save failed:", e);
+            console.warn("[simulator] Fragment cache save failed:", e);
         }
     }
 
-    // ── 2. GlobalId index ─────────────────────────────────────────────────────
-    // FragmentsGroup.items → Fragment[]
-    // Fragment.ids         → Set<expressId>
-    // FragmentsGroup.getLocalProperties(expressId) → raw IFC property map
+    // ── 2. GlobalId index ────────────────────────────────────────────────
 
     function buildIndex() {
         if (!model) return;
@@ -183,11 +280,11 @@
                 }
             }
         } catch (e) {
-            console.warn("GlobalId index build failed:", e);
+            console.warn("[simulator] GlobalId index build failed:", e);
         }
     }
 
-    // ── 3. Colour helpers ─────────────────────────────────────────────────────
+    // ── 3. Colour helpers ────────────────────────────────────────────────
 
     function colorByGlobalIds(globalIds, color) {
         for (const gid of globalIds) {
@@ -195,29 +292,33 @@
             if (expressId === undefined) continue;
             const fragment = fragmentIndex.get(expressId);
             if (!fragment) continue;
-            // Fragment.setColor(itemIDs: Iterable<number>, color: {r,g,b})
             fragment.setColor([expressId], color);
         }
     }
 
     function resetAllColors() {
         if (!model) return;
-        for (const fragment of model.items) {
-            fragment.resetColor();
-        }
+        for (const fragment of model.items) fragment.resetColor();
     }
 
-    // ── 4. TimeLiner events ───────────────────────────────────────────────────
+    function hexToRgb(hex) {
+        return {
+            r: parseInt(hex.slice(1, 3), 16) / 255,
+            g: parseInt(hex.slice(3, 5), 16) / 255,
+            b: parseInt(hex.slice(5, 7), 16) / 255,
+        };
+    }
+
+    // ── 4. Existing CustomEvent listeners (TimeLiner integration) ────────
 
     document.addEventListener("castor:highlight", (e) => {
         if (!model) return;
-        const { globalIds = [] } = e.detail || {};
-        colorByGlobalIds(globalIds, C.highlight);
+        colorByGlobalIds(e.detail?.globalIds || [], C.highlight);
     });
 
     document.addEventListener("castor:simulate", (e) => {
         if (!model) return;
-        legend.classList.remove("d-none");
+        simLegend.classList.remove("d-none");
         const { active = [], complete = [], pending = [], delayed = [] } = e.detail || {};
         resetAllColors();
         colorByGlobalIds(active,   C.active);
@@ -226,16 +327,228 @@
         colorByGlobalIds(delayed,  C.delayed);
     });
 
-    // ── 5. Toolbar ────────────────────────────────────────────────────────────
+    // ── 5. Color By ──────────────────────────────────────────────────────
+
+    async function applyColormap(by) {
+        if (by === "none") {
+            resetAllColors();
+            document.getElementById("colorby-legend").classList.add("d-none");
+            return;
+        }
+        if (!model) return;
+        try {
+            const resp = await fetch(`${COLORMAP_URL}?by=${by}`);
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const colormap = data.colormap || {};
+            const legend   = data.legend   || [];
+
+            /* group global_ids by colour hex for efficiency */
+            const byHex = {};
+            for (const [gid, hex] of Object.entries(colormap)) {
+                (byHex[hex] = byHex[hex] || []).push(gid);
+            }
+            resetAllColors();
+            for (const [hex, ids] of Object.entries(byHex)) {
+                colorByGlobalIds(ids, hexToRgb(hex));
+            }
+
+            const legendEl   = document.getElementById("colorby-legend");
+            const legendBody = document.getElementById("colorby-legend-body");
+            legendBody.innerHTML = legend.map(({ label, color }) =>
+                `<div class="d-flex align-items-center gap-2">` +
+                `<span style="width:10px;height:10px;border-radius:2px;background:${color};display:inline-block;flex-shrink:0;"></span>` +
+                `<span style="font-size:0.72rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:110px;" title="${label}">${label}</span>` +
+                `</div>`
+            ).join("");
+            legendEl.classList.remove("d-none");
+        } catch (e) {
+            console.warn("[simulator] Colormap fetch failed:", e);
+        }
+    }
+
+    document.getElementById("colorby-select")?.addEventListener("change", (e) => {
+        applyColormap(e.target.value);
+    });
+
+    // ── 6. Gap Analysis Panel ────────────────────────────────────────────
+
+    let gapPanelOpen = false;
+
+    function toggleGapPanel() {
+        gapPanelOpen = !gapPanelOpen;
+        document.getElementById("gap-panel").classList.toggle("d-none", !gapPanelOpen);
+        document.getElementById("gap-btn").classList.toggle("active", gapPanelOpen);
+        setTimeout(() => world?.renderer?.resize(), 50);
+    }
+
+    /* Exposed for gap panel row onclick handlers */
+    window.highlightEntities = function (globalIds) {
+        if (!model) return;
+        resetAllColors();
+        colorByGlobalIds(globalIds, C.highlight);
+    };
+
+    // ── 7. Build Sequence Animation ──────────────────────────────────────
+
+    let buildSeqRunning = false;
+
+    async function runBuildSequence() {
+        if (!model || buildSeqRunning) return;
+        buildSeqRunning = true;
+        const btn = document.getElementById("build-seq-btn");
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Animating…';
+
+        try {
+            const resp = await fetch(BUILD_SEQ_URL);
+            if (!resp.ok) throw new Error("fetch failed");
+            const data = await resp.json();
+            const levels = data.levels || [];
+            if (!levels.length) { console.warn("[simulator] No level data for build sequence."); return; }
+
+            /* Start: all elements dark */
+            const allIds = levels.flatMap(l => l.entity_global_ids);
+            resetAllColors();
+            colorByGlobalIds(allIds, { r: 0.12, g: 0.12, b: 0.12 });
+
+            for (let i = 0; i < levels.length; i++) {
+                const { entity_global_ids } = levels[i];
+                /* Fade new floor in from dark to blue */
+                await _fadeIn(entity_global_ids, C.complete, 800);
+                /* Previous floors stay complete-blue — no extra call needed */
+                await new Promise(r => setTimeout(r, 1200));
+            }
+        } catch (e) {
+            console.warn("[simulator] Build sequence failed:", e);
+        } finally {
+            buildSeqRunning = false;
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-play-circle me-1"></i>Build Sequence';
+        }
+    }
+
+    function _fadeIn(globalIds, targetColor, duration) {
+        return new Promise(resolve => {
+            const start = performance.now();
+            function step(now) {
+                const t = Math.min((now - start) / duration, 1);
+                colorByGlobalIds(globalIds, {
+                    r: targetColor.r * t,
+                    g: targetColor.g * t,
+                    b: targetColor.b * t,
+                });
+                if (t < 1) requestAnimationFrame(step);
+                else resolve();
+            }
+            requestAnimationFrame(step);
+        });
+    }
+
+    document.getElementById("build-seq-btn")?.addEventListener("click", runBuildSequence);
+
+    // ── 8. Timeline Slider ───────────────────────────────────────────────
+
+    let timelineWeeks = [];
+    let timelineTimer = null;
+    let timelineSpeed = 1;
+
+    async function initTimeline() {
+        try {
+            const resp = await fetch(TIMELINE_URL);
+            if (!resp.ok) return;
+            const data = await resp.json();
+
+            if (!data.has_tasks) {
+                document.getElementById("no-tasks-banner").classList.remove("d-none");
+                return;
+            }
+
+            timelineWeeks = data.weeks || [];
+            if (!timelineWeeks.length) return;
+
+            document.getElementById("tl-min-date").textContent    = data.min_date;
+            document.getElementById("tl-max-date").textContent    = data.max_date;
+            document.getElementById("tl-current-date").textContent = data.min_date;
+
+            const slider = document.getElementById("timeline-slider");
+            slider.max   = timelineWeeks.length - 1;
+            slider.value = 0;
+
+            document.getElementById("timeline-section").classList.remove("d-none");
+        } catch (e) {
+            console.warn("[simulator] Timeline init failed:", e);
+        }
+    }
+
+    function applyTimelineWeek(idx) {
+        if (!timelineWeeks.length || !model) return;
+        const week = timelineWeeks[Math.min(idx, timelineWeeks.length - 1)];
+        document.getElementById("tl-current-date").textContent = week.week_start;
+        resetAllColors();
+        colorByGlobalIds(week.active   || [], C.active);
+        colorByGlobalIds(week.complete || [], C.complete);
+        simLegend.classList.remove("d-none");
+    }
+
+    document.getElementById("timeline-slider")?.addEventListener("input", (e) => {
+        applyTimelineWeek(parseInt(e.target.value));
+    });
+
+    document.getElementById("tl-play-btn")?.addEventListener("click", () => {
+        document.getElementById("tl-play-btn").classList.add("d-none");
+        document.getElementById("tl-pause-btn").classList.remove("d-none");
+        _timelinePlay();
+    });
+
+    document.getElementById("tl-pause-btn")?.addEventListener("click", () => {
+        _timelinePause();
+        document.getElementById("tl-pause-btn").classList.add("d-none");
+        document.getElementById("tl-play-btn").classList.remove("d-none");
+    });
+
+    document.getElementById("tl-speed-select")?.addEventListener("change", (e) => {
+        timelineSpeed = parseFloat(e.target.value);
+        if (timelineTimer) { _timelinePause(); _timelinePlay(); }
+    });
+
+    function _timelinePlay() {
+        const slider = document.getElementById("timeline-slider");
+        timelineTimer = setInterval(() => {
+            const next = parseInt(slider.value) + 1;
+            if (next > parseInt(slider.max)) {
+                _timelinePause();
+                document.getElementById("tl-pause-btn").classList.add("d-none");
+                document.getElementById("tl-play-btn").classList.remove("d-none");
+                return;
+            }
+            slider.value = next;
+            applyTimelineWeek(next);
+        }, 1500 / timelineSpeed);
+    }
+
+    function _timelinePause() {
+        clearInterval(timelineTimer);
+        timelineTimer = null;
+    }
+
+    // ── 9. Reset button ──────────────────────────────────────────────────
 
     document.getElementById("viewer-reset-btn")?.addEventListener("click", () => {
         world?.camera?.controls?.setLookAt(10, 10, 10, 0, 0, 0, true);
-        legend.classList.add("d-none");
+        simLegend.classList.add("d-none");
+        document.getElementById("colorby-legend").classList.add("d-none");
+        document.getElementById("colorby-select").value = "none";
+        _timelinePause();
         resetAllColors();
     });
 
     init();
     </script>
+
     {% endif %}
+
+    <!-- Help modal (always in DOM so Bootstrap can find it) -->
+    {% include "ifc_viewer/components/simulator_help_modal.html" %}
 
 </div>

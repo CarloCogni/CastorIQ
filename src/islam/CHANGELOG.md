@@ -335,3 +335,175 @@
 - Action: Modified — three null-safety patches for ES module context where `document.currentScript` is always null:
   1. Both `_scriptDir` initialisations (lines ~372 and ~206800): fallback changed from `void 0` to `import.meta.url` so the worker thread URL resolves relative to the vendor file, not the page root
   2. `currentScriptData` null guard (line ~71860): added `currentScriptData &&` before the `.src` property access to prevent `TypeError: can't access property "src", currentScriptData is null` — when null, `currentScriptPath` stays `undefined` and OBC's `SetWasmPath`-provided prefix takes over at line 71914
+
+---
+
+## Feature 1 — Tab rename [2026-05-14]
+
+### environments/templates/environments/project_detail.html
+- Action: Modified (one line) — tab link text changed from `4D` to `Castor 4D/5D Controls`
+- Why: Reflects the full scope of the module (viewer + scheduling + insights + levels)
+
+---
+
+## Feature 2: IFC Insights Dashboard — [2026-05-14]
+
+### islam/ifc_insights/services/metrics.py
+- Action: Created
+- What it does: Pure-DB metrics module. `entity_metrics(ifc_file)` iterates IFCEntity rows in chunks, computes 4D readiness (Activity ID coverage), 5D readiness (Cost property coverage), activity schedule table, and cost breakdown by IFC type. `breakdown_data(ifc_file, breakdown_type)` returns label/count/pct rows for level, element_type, or material dimensions. `_ring(pct)` precomputes SVG stroke-dasharray + colour for donut rings. No ifcopenshell, no file I/O.
+- Depends on: ifc_processor.models.IFCEntity, django.db.models.Count
+
+### islam/ifc_insights/views.py
+- Action: Modified — added `InsightsBreakdownView`; refactored `InsightsView` and `InsightsRerunView` to use shared `_build_ctx()` helper that merges `entity_metrics()` output into panel context
+- `_build_ctx(project, ifc_file)` — single helper building full panel context from DB metrics + IFC checks; used by InsightsView, InsightsRerunView
+- `InsightsBreakdownView` — HTMX GET endpoint at `insights/breakdown/<str:breakdown_type>/`; validates type against `{"level", "element_type", "material"}`; returns `breakdown_card.html` partial
+- Depends on: .services.metrics.entity_metrics, .services.metrics.breakdown_data
+
+### islam/urls.py
+- Action: Modified — added `insights/breakdown/<str:breakdown_type>/` → `InsightsBreakdownView` as `insights_breakdown`
+
+### islam/ifc_insights/templates/ifc_insights/panel.html
+- Action: Redesigned — full replacement of the QA/QC-only panel with the new Insights dashboard:
+  - Engine selector toggle (Castor / Islam) persisted in localStorage
+  - Two SVG donut readiness rings (4D and 5D) with colour-coded fill
+  - Three HTMX lazy-loaded breakdown cards (level / element_type / material)
+  - Activity Schedule Summary table with JS search filter
+  - Cost Summary table (conditional on `has_cost_data`)
+  - Existing QA/QC section (summary_cards + issues_table) retained below a `<hr>`
+  - Help modal updated with descriptions of all new sections
+  - All comments use HTML `<!-- -->` syntax
+
+### islam/ifc_insights/templates/ifc_insights/components/breakdown_card.html
+- Action: Created
+- What it does: HTMX partial returned by `InsightsBreakdownView`. Renders a Bootstrap card with a title and up to 6 horizontal mini progress-bar rows (label, count, relative % bar). Shows "No data available" when rows is empty.
+- Depends on: `title`, `rows` context vars (each row has label, count, pct)
+
+---
+
+## Feature 4: Level Panel — [2026-05-14]
+
+### islam/ifc_insights/models.py
+- Action: Modified — replaced empty placeholder with `IslamLevel` model
+- `IslamLevel(UUIDModel)` — project FK, name, z_elevation (FloatField), ifc_storey_global_id (nullable CharField), source (TextChoices: ifc/suggested/manual), created_at (auto). Ordered by z_elevation. Indexed on project.
+- Depends on: core.models.UUIDModel, environments.models.Project
+
+### islam/ifc_insights/migrations/0001_initial.py
+- Action: Generated via `makemigrations islam_ifc_insights` — applied successfully
+
+### islam/ifc_insights/services/levels.py
+- Action: Created
+- What it does: Three public functions:
+  - `extract_levels_from_ifc(ifc_path)` — opens IFC file with ifcopenshell, reads all `IfcBuildingStorey` objects, extracts name and Z coordinate from ObjectPlacement. Returns list of `{global_id, name, z_elevation}` sorted by Z.
+  - `suggest_levels_from_entities(ifc_file)` — fallback when no storeys found; groups IFCEntity rows by spatial_container, assigns synthetic Z elevations (3 000 mm per floor). Returns `{name, z_elevation}` list.
+  - `apply_levels_to_ifc(ifc_path, levels)` — backs up IFC to `.ifc.bak`, opens model, updates existing storeys by global_id, creates new `IfcBuildingStorey` for levels with no global_id, writes file. Returns `{backup_path, updated, created, errors}`.
+- Also exports: `_backup_ifc(ifc_path)` helper
+- Depends on: ifcopenshell (already in Castor), ifc_processor.models.IFCEntity, .models.IslamLevel
+
+### islam/ifc_insights/views.py
+- Action: Modified — added imports for IslamLevel, levels service, and 6 new view classes:
+  - `LevelsView(ProjectTabMixin, TemplateView)` — main Level Panel page; passes `levels` queryset and `ifc_file` to context
+  - `LevelSuggestView(ProjectAccessMixin, View)` — HTMX GET; calls `extract_levels_from_ifc` then falls back to `suggest_levels_from_entities`; returns `level_suggest_results.html`
+  - `LevelAddView(ProjectAccessMixin, View)` — HTMX POST; validates name + z_elevation; creates `IslamLevel`; returns `level_row.html` with success toast
+  - `LevelEditView(ProjectAccessMixin, View)` — HTMX POST; updates name + z_elevation on existing level; returns updated `level_row.html`
+  - `LevelDeleteView(ProjectAccessMixin, View)` — HTMX DELETE; deletes level; returns empty 200 with toast
+  - `LevelApplyView(ProjectAccessMixin, View)` — POST; calls `apply_levels_to_ifc`; returns toast with updated/created/error counts
+- Depends on: core.http.toast_response, core.http.trigger_toast, .models.IslamLevel, .services.levels
+
+### islam/urls.py
+- Action: Modified — added 6 Level Panel URL patterns under `projects/<uuid:pk>/levels/`:
+  - `/` → `LevelsView` as `levels`
+  - `suggest/` → `LevelSuggestView` as `level_suggest`
+  - `add/` → `LevelAddView` as `level_add`
+  - `<uuid:level_pk>/edit/` → `LevelEditView` as `level_edit`
+  - `<uuid:level_pk>/delete/` → `LevelDeleteView` as `level_delete`
+  - `apply/` → `LevelApplyView` as `level_apply`
+
+### islam/templates/islam/panel.html
+- Action: Modified — added "Levels" nav item (bi-layers icon) and `{% elif islam_subtab == 'levels' %}` dispatcher branch
+
+### islam/ifc_insights/templates/ifc_insights/levels.html
+- Action: Created
+- What it does: Level Panel main page. Header with level count badge and `?` help pill. "Suggest from IFC" card with HTMX lazy-load button (renders `level_suggest_results.html`). Level Registry table (rows are `level_row.html` partials). Inline Add Level form (HTMX POST, appends row to table). "Apply to IFC" button (HTMX POST, swap=none, toast feedback). Inline JS for edit/cancel/save row toggling.
+- Depends on: ifc_insights/components/level_row.html, ifc_insights/components/level_suggest_results.html, ifc_insights/components/levels_help_modal.html
+
+### islam/ifc_insights/templates/ifc_insights/components/level_row.html
+- Action: Created
+- What it does: Single `<tr id="level-row-{pk}">` — HTMX outerHTML swap target. Display mode shows name, Z elevation, source badge, pencil/trash actions. Edit mode (toggled by `levelEditStart()` JS) reveals inline text/number inputs and save/cancel buttons. Delete uses `hx-delete` with `hx-confirm`. Edit save calls `htmx.ajax('POST', editUrl, ...)` from `levelEditSave()` JS.
+- Depends on: `{% url 'islam:level_edit' %}`, `{% url 'islam:level_delete' %}`
+
+### islam/ifc_insights/templates/ifc_insights/components/level_suggest_results.html
+- Action: Created
+- What it does: HTMX partial returned by `LevelSuggestView`. Lists suggested storeys (name + Z). Each has an "Import" button: `hx-post` to `level_add` with name/z_elevation baked into `hx-vals`, target `#levels-tbody`, swap `beforeend`.
+- Depends on: `{% url 'islam:level_add' %}`
+
+### islam/ifc_insights/templates/ifc_insights/components/levels_help_modal.html
+- Action: Created
+- What it does: Standard five-section help modal (`#levelsHelpModal`). Covers: what a Level is / three source types (IFC/Suggested/Manual) with badge explanations / four-step how-to / role permissions / caveats (backup behaviour, synthetic Z values, geometry out of scope).
+- Depends on: Bootstrap 5 modal, `.help-pill` CSS from core/base.html
+
+---
+
+## Feature 4 — Level Panel: Git audit trail fix [2026-05-14]
+
+### islam/ifc_insights/services/levels.py
+- Action: Modified — `apply_levels_to_ifc` refactored to use `Tier1Writer` + `GitService`
+- Signature gains `ifc_file` parameter (needed to reach `ifc_file.project` for `GitService`)
+- `model = ifcopenshell.open(ifc_path)` → `writer = Tier1Writer(ifc_path)`; all model access via `writer.model`
+- Name update uses `writer.set_attribute([gid], "Name", name)` instead of direct attribute assignment
+- `model.write(ifc_path)` → `writer.save()` then `GitService(ifc_file.project).commit_modification(...)` — creates the audit commit in the per-project Git repo
+- Return dict gains `"commit_hash"` key; backup step (`_backup_ifc`) unchanged — still the very first call
+- Why: direct `model.write()` bypassed Castor's Git audit trail entirely
+
+### islam/ifc_insights/views.py
+- Action: Modified — `LevelApplyView.post()` passes `ifc_file` as third arg to `apply_levels_to_ifc`; toast message now includes short commit hash when available
+
+---
+
+## Feature 3: Castor Simulator — [2026-05-14]
+
+### islam/ifc_viewer/services/__init__.py
+- Action: Created — package marker for ifc_viewer services sub-package
+
+### islam/ifc_viewer/services/colormap.py
+- Action: Created
+- What it does: `build_colormap(ifc_file, by)` returns `{"colormap": {global_id: hex}, "legend": [{label, color}]}`. Four modes: `level` (by spatial_container), `element_type` (by ifc_type), `material` (by material property suffix), `schedule_status` (green if Activity ID present, grey otherwise). Groups assigned colours from a 12-colour palette; legend tracks group→colour mapping for overlay rendering.
+- Depends on: ifc_processor.models.IFCEntity
+
+### islam/ifc_viewer/services/gap_analysis.py
+- Action: Created
+- What it does: `build_gap_analysis(ifc_file, by)` groups IFCEntity rows by level/element_type/material, counts total vs linked (has Activity ID), computes pct and gap. Returns rows sorted by gap descending. Each row includes `global_ids_json` (JSON-encoded list) for safe inline onclick rendering.
+- Depends on: ifc_processor.models.IFCEntity
+
+### islam/ifc_viewer/views.py
+- Action: Modified — 4 new view classes added; imports updated
+- `ColormapView(ProjectAccessMixin, View)` — GET `/viewer/colormap/?by=<field>`; validates field; returns JSON from `build_colormap`
+- `GapAnalysisView(ProjectAccessMixin, View)` — GET `/viewer/gap_analysis/?by=<field>`; renders `gap_analysis_panel.html`; `?export=1` returns CSV download via `_csv_response`
+- `BuildSequenceView(ProjectAccessMixin, View)` — GET `/viewer/build_sequence/`; groups IFCEntity by spatial_container; orders by IslamLevel Z (fallback: alphabetical); returns JSON `{levels: [{level_name, z_elevation, entity_global_ids}]}`
+- `TimelineView(ProjectAccessMixin, View)` — GET `/viewer/timeline/`; queries Task objects, generates weekly buckets with active/complete global_id lists; returns JSON `{has_tasks, min_date, max_date, weeks}`
+
+### islam/urls.py
+- Action: Modified — 4 new URL patterns added under `projects/<uuid:pk>/viewer/`:
+  - `colormap/` → `ColormapView` as `viewer_colormap`
+  - `gap_analysis/` → `GapAnalysisView` as `viewer_gap_analysis`
+  - `build_sequence/` → `BuildSequenceView` as `viewer_build_sequence`
+  - `timeline/` → `TimelineView` as `viewer_timeline`
+
+### islam/ifc_viewer/templates/ifc_viewer/viewer.html
+- Action: Redesigned — full replacement; renamed "IFC Viewer" → "Castor Simulator"
+- Toolbar: Color By dropdown (None/Material/Level/Element Type/Schedule Status), Gap Analysis button (HTMX `hx-trigger="click once"`), Build Sequence button, Reset button, help pill
+- Layout: outer flex-column; inner flex-row (viewer canvas + collapsible 300px gap panel); timeline bar below
+- Color By: `applyColormap(by)` fetches `viewer_colormap`, groups global_ids by hex for batch `colorByGlobalIds` calls, renders color-coded legend overlay (top-right)
+- Gap Analysis: `toggleGapPanel()` shows/hides panel + calls `world.renderer.resize()`; `window.highlightEntities(ids)` exposed for gap panel row onclick
+- Build Sequence: `runBuildSequence()` fetches `viewer_build_sequence`, dims all elements to near-black, fades in each floor over 800 ms via `_fadeIn()` using `requestAnimationFrame`, pauses 1.2 s between floors, marks all complete at end
+- Timeline: `initTimeline()` fetches `viewer_timeline` after model loads; shows `#timeline-section` if tasks exist or `#no-tasks-banner` if not; slider drives `applyTimelineWeek(idx)`; play/pause auto-advances at 1.5 s ÷ speed; speed select (0.5×/1×/2×) restarts timer on change
+- Simulation legend and castor:simulate / castor:highlight event listeners preserved unchanged
+
+### islam/ifc_viewer/templates/ifc_viewer/components/gap_analysis_panel.html
+- Action: Created
+- What it does: HTMX partial for the gap analysis side panel. Filter `<select>` fires `hx-get` to reload with new `by` value. Table rows are clickable — `onclick="highlightEntities(JSON.parse(this.dataset.ids))"` uses `data-ids` attribute to avoid inline array expansion. Gap column red if > 0, green if 0. Export CSV link appends `&export=1`. Empty state shown when no IFC data.
+- Depends on: `{% url 'islam:viewer_gap_analysis' %}`, `highlightEntities` (window global from viewer.html module script)
+
+### islam/ifc_viewer/templates/ifc_viewer/components/simulator_help_modal.html
+- Action: Created
+- What it does: Five-section help modal (`#simulatorHelpModal`) covering: What is Castor Simulator / Color By Filters (all 5 modes) / Gap Analysis Panel / Build Sequence / Timeline Slider / Caveats (color override order, level ordering, gap analysis scope, timeline performance).
+- Depends on: Bootstrap 5 modal, `.help-pill` CSS from core/base.html

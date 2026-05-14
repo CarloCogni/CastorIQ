@@ -1,0 +1,85 @@
+<!-- ifc_insights/components/levels_help_modal.html — "How Levels Work" -->
+
+<div class="modal fade" id="levelsHelpModal" tabindex="-1" aria-labelledby="levelsHelpLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+
+            <div class="modal-header border-bottom px-4 py-3"
+                 style="border-color: var(--bs-border-color) !important;">
+                <h5 class="modal-title fw-semibold fs-6 mb-0" id="levelsHelpLabel">
+                    <i class="bi bi-layers me-2" style="color: var(--castor-primary, #3b82f6);"></i>
+                    How Levels Work
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body px-4 py-4">
+
+                <!-- 1. What is it? -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-box-seam me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    What is a Level?
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    A Level represents a floor or storey in your building model at a specific Z-elevation (mm above datum).
+                    Castor reads them from <code>IfcBuildingStorey</code> objects in your IFC file, lets you edit them,
+                    and can write them back to the file so your model stays in sync.
+                </p>
+
+                <!-- 2. Lifecycle -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-arrow-repeat me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    Lifecycle
+                </p>
+                <div class="d-flex flex-column gap-2 mb-4 fs-7">
+                    <div>
+                        <span class="badge text-bg-secondary me-1">From IFC</span>
+                        Imported directly from <code>IfcBuildingStorey</code> — global ID is linked so Apply writes back to the same storey.
+                    </div>
+                    <div>
+                        <span class="badge text-bg-warning text-dark me-1">Suggested</span>
+                        Derived from entity spatial containers when the IFC has no storey objects. Z values are synthetic (3 m increments).
+                    </div>
+                    <div>
+                        <span class="badge text-bg-info text-dark me-1">Manual</span>
+                        Created directly by you. Apply creates a new <code>IfcBuildingStorey</code> in the file.
+                    </div>
+                </div>
+
+                <!-- 3. How to use -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-plus-circle me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    How to populate levels
+                </p>
+                <ol class="text-secondary fs-7 ps-3 mb-4">
+                    <li class="mb-1"><strong>Suggest from IFC</strong> — reads your uploaded IFC file and proposes storeys. Click Import next to any suggestion to add it.</li>
+                    <li class="mb-1"><strong>Add manually</strong> — type a name and Z elevation then click Add.</li>
+                    <li class="mb-1"><strong>Edit inline</strong> — click the pencil icon on any row to rename or adjust the elevation.</li>
+                    <li class="mb-1"><strong>Apply to IFC</strong> — writes all level records back into the IFC file, creating or updating <code>IfcBuildingStorey</code> objects. A <code>.ifc.bak</code> backup is made automatically before any write.</li>
+                </ol>
+
+                <!-- 4. Who can do what -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-person-check me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    Who can do what
+                </p>
+                <ul class="text-secondary fs-7 ps-3 mb-4">
+                    <li>Any project member can view and add levels.</li>
+                    <li>Apply to IFC modifies the IFC file on disk — treat it like a write-back operation.</li>
+                </ul>
+
+                <!-- 5. Caveats -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-exclamation-circle me-1" style="color: var(--castor-accent, #8b5cf6);"></i>
+                    Caveats
+                </p>
+                <div class="d-flex flex-column gap-1 fs-7 text-secondary">
+                    <span><i class="bi bi-dot"></i>Apply overwrites the IFC file in place. A <code>.ifc.bak</code> is created first but is not versioned.</span>
+                    <span><i class="bi bi-dot"></i>Suggested Z-elevations for entity-derived storeys are synthetic (3 m per floor) — verify before applying.</span>
+                    <span><i class="bi bi-dot"></i>Geometric placement (slab shape, thickness) is out of scope — only the storey name and Z-elevation are written.</span>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
