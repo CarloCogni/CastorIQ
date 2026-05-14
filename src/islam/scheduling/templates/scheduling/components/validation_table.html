@@ -1,0 +1,33 @@
+<!-- scheduling/components/validation_table.html — embed match review table -->
+{% if feedbacks %}
+<div class="mt-3">
+    <div class="d-flex align-items-center justify-content-between mb-2">
+        <span class="fw-semibold" style="font-size:0.9rem;">
+            <i class="bi bi-check2-all me-1 text-primary"></i>Review suggested links
+        </span>
+        <span class="text-secondary small">{{ feedbacks|length }} suggestion{{ feedbacks|length|pluralize }}</span>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle" style="font-size:0.83rem;">
+            <thead class="table-dark">
+                <tr>
+                    <th style="width:30%;">Task</th>
+                    <th style="width:30%;">Suggested entity</th>
+                    <th class="text-center" style="width:12%;">Confidence</th>
+                    <th class="text-center" style="width:28%;">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for fb in feedbacks %}
+                    {% include "scheduling/components/validation_row.html" with fb=fb project=project %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="text-center text-secondary py-4" style="font-size:0.85rem;">
+    <i class="bi bi-search fs-2 d-block mb-2"></i>
+    No embedding candidates found. Try AI matching or parameter mapping instead.
+</div>
+{% endif %}

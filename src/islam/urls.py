@@ -23,6 +23,11 @@ urlpatterns = [
         name="viewer",
     ),
     path(
+        "projects/<uuid:pk>/viewer/fragments/",
+        viewer_views.FragmentsCacheView.as_view(),
+        name="viewer_fragments",
+    ),
+    path(
         "projects/<uuid:pk>/schedule/",
         scheduling_views.ScheduleView.as_view(),
         name="schedule",
@@ -69,6 +74,36 @@ urlpatterns = [
         "projects/<uuid:pk>/schedule/gantt-data/",
         scheduling_views.GanttDataView.as_view(),
         name="gantt_data",
+    ),
+    path(
+        "projects/<uuid:pk>/schedule/mapping/submit/",
+        scheduling_views.MappingSubmitView.as_view(),
+        name="schedule_mapping_submit",
+    ),
+    path(
+        "projects/<uuid:pk>/schedule/link/embed/",
+        scheduling_views.EmbedLinkView.as_view(),
+        name="schedule_embed_link",
+    ),
+    path(
+        "projects/<uuid:pk>/schedule/link/accept/<uuid:feedback_pk>/",
+        scheduling_views.LinkAcceptView.as_view(),
+        name="link_accept",
+    ),
+    path(
+        "projects/<uuid:pk>/schedule/link/reject/<uuid:feedback_pk>/",
+        scheduling_views.LinkRejectView.as_view(),
+        name="link_reject",
+    ),
+    path(
+        "projects/<uuid:pk>/schedule/link/change/<uuid:feedback_pk>/",
+        scheduling_views.LinkChangeView.as_view(),
+        name="link_change",
+    ),
+    path(
+        "projects/<uuid:pk>/schedule/link/search/",
+        scheduling_views.LinkSearchView.as_view(),
+        name="link_search",
     ),
     # ------------------------------------------------------------------ #
     # IFC Insights HTMX endpoints                                         #

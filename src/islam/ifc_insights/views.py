@@ -36,7 +36,7 @@ class InsightsView(ProjectTabMixin, TemplateView):
             .first()
         )
 
-        if ifc_file:
+        if ifc_file and ifc_file.file.name:
             try:
                 ctx["check_results"] = run_all_checks(ifc_file.file.path)
             except Exception as exc:
@@ -67,7 +67,7 @@ class InsightsRerunView(ProjectAccessMixin, View):
             .first()
         )
 
-        if ifc_file:
+        if ifc_file and ifc_file.file.name:
             try:
                 check_results = run_all_checks(ifc_file.file.path)
             except Exception as exc:

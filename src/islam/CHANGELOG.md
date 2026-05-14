@@ -213,3 +213,125 @@
 - What it does: WebGPU 3D IFC viewer using `@thatopen/components` CDN. Loads IFC file from MEDIA_URL. Listens for `castor:highlight` (selection) and `castor:simulate` (colour groups) CustomEvents. No-file-found state included.
 - Why it was necessary: Core visualisation for 4D simulation
 - Depends on: https://cdn.jsdelivr.net/npm/@thatopen/components@latest (CDN, no local install)
+
+---
+
+---
+
+## Schedule Linking (Phase 1–3) — [2026-05-14]
+
+### islam/scheduling/models.py
+- Action: Modified — added `Task.Source.CSV`, `MappingProfile`, `LinkFeedback`
+- `Task.Source.CSV = "csv"` — new source choice for CSV imports
+- `MappingProfile(UUIDModel)` — persists user-defined column mappings (JSONField) per project; unique on (project, name)
+- `LinkFeedback(UUIDModel)` — tracks accept/reject/correct decisions on embedding suggestions; `accepted=None` means pending; `corrected_to` FK captures user-chosen override
+- Depends on: Task, IFCEntity, Project, core.models.UUIDModel
+
+### islam/scheduling/migrations/0002_alter_task_source_linkfeedback_mappingprofile.py
+- Action: Generated via `makemigrations` — applied successfully
+
+### islam/scheduling/services/column_mapper.py
+- Action: Created
+- What it does: `extract_columns(file_obj, filename)` reads headers + all data rows from Excel or CSV without any synonym auto-detection, returning raw data for the mapping UI. `apply_mapping(headers, raw_rows, column_mapping, source)` applies a user-chosen {field→column_name} dict and returns task dicts.
+- Why it was necessary: Users with non-standard column names need to map headers manually before parsing
+- Depends on: openpyxl, csv (stdlib)
+
+### islam/scheduling/services/embed_linker.py
+- Action: Created
+- What it does: `embed_match_tasks(tasks, entities_qs)` embeds each task name via EmbeddingService, queries IFCEntity via pgvector CosineDistance, returns best match per task within a 0.40 distance threshold. Returns list of match dicts sorted by confidence desc.
+- Why it was necessary: Embedding similarity gives a third linking method alongside LLM semantic match and parameter mapping
+- Depends on: embeddings.services.embedding_service.EmbeddingService, pgvector.django.CosineDistance, ifc_processor.models.IFCEntity
+
+### islam/scheduling/views.py
+- Action: Modified — TaskUploadView reroutes Excel/CSV to column mapping screen; 6 new view classes added
+- `TaskUploadView.post` — Excel/CSV now calls `extract_columns()`, stores raw headers/rows/source in session, renders `mapping.html`. XER/MSP bypass unchanged.
+- `MappingSubmitView` — reads session raw rows, applies user mapping, optionally saves a `MappingProfile`, renders task_list preview
+- `EmbedLinkView` — runs `embed_match_tasks`, clears pending feedback, creates `LinkFeedback` records, renders `validation_table.html`
+- `LinkAcceptView` — sets `feedback.accepted=True`, adds M2M link, returns updated row
+- `LinkRejectView` — sets `feedback.accepted=False`, returns updated row
+- `LinkChangeView` — sets `feedback.corrected_to`, accepts and links the override entity, returns updated row
+- `LinkSearchView` — IFCEntity name typeahead, returns `link_search.html`
+
+### islam/urls.py
+- Action: Modified — 6 new URL patterns added under `/projects/<uuid>/schedule/`:
+  - `mapping/submit/` → `schedule_mapping_submit`
+  - `link/embed/` → `schedule_embed_link`
+  - `link/accept/<uuid:feedback_pk>/` → `link_accept`
+  - `link/reject/<uuid:feedback_pk>/` → `link_reject`
+  - `link/change/<uuid:feedback_pk>/` → `link_change`
+  - `link/search/` → `link_search`
+
+### islam/scheduling/templates/scheduling/tabs/mapping.html
+- Action: Created
+- What it does: Column mapping UI — shows file headers as a scrollable sample table, renders one `<select>` per canonical field, supports loading a saved `MappingProfile` via a JS-powered dropdown, optional profile save. HTMX POST to `schedule_mapping_submit`.
+
+### islam/scheduling/templates/scheduling/components/validation_table.html
+- Action: Created
+- What it does: Wrapping table for embedding match results. Iterates `feedbacks` and `{% include %}`s `validation_row.html` for each.
+
+### islam/scheduling/templates/scheduling/components/validation_row.html
+- Action: Created
+- What it does: Single `<tr id="link-row-{fb.pk}">` — HTMX outerHTML swap target. Three states: pending (Accept/Reject/Change buttons + inline entity search), accepted (green tick + undo), rejected (red X + undo). Confidence shown as %-badge (green ≥85%, yellow ≥60%, red <60%).
+
+### islam/scheduling/components/link_search.html
+- Action: Created
+- What it does: Entity typeahead results rendered inside `validation_row.html`'s search panel. Each result is a mini HTMX form POSTing to `link_change`.
+
+### islam/scheduling/templates/scheduling/tabs/attach.html
+- Action: Modified — added "Embed match" method card (third card, before Parameter mapping). Added `<div id="embed-results">` below the two-column layout as HTMX target.
+
+### islam/scheduling/templates/scheduling/tabs/data_sources.html
+- Action: Modified — `accept` attribute now includes `.csv`; help text updated.
+
+---
+
+## Config
+
+### [2026-05-14] src/config/settings/local.py
+- Action: Modified — `PORT` changed from `"5432"` to `"5433"`
+- Why it was necessary: Local PostgreSQL instance runs on port 5433 (non-default, e.g. Docker mapping or side-by-side install)
+
+---
+
+## IFC Viewer — Fragment Caching & Three.js vendor [2026-05-14]
+
+### islam/ifc_viewer/views.py
+- Action: Modified — added `FragmentsCacheView(ProjectAccessMixin, View)`
+- GET: returns `.frag` binary from disk (derived from IFC file path with `.frag` extension) or 404 if not yet cached
+- POST: receives raw `application/octet-stream` body and writes it as the `.frag` cache file
+- Cache invalidation is automatic: new IFC uploads get a new UUID filename, so a new upload never collides with a stale cache
+- Depends on: core.mixins.ProjectAccessMixin, ifc_processor.models.IFCFile
+
+### islam/urls.py
+- Action: Modified — added `projects/<uuid:pk>/viewer/fragments/` → `FragmentsCacheView` as `viewer_fragments`
+
+### islam/ifc_viewer/templates/ifc_viewer/viewer.html
+- Action: Modified — two changes:
+  1. **Fragment caching**: viewer now tries GET `/viewer/fragments/` first (fast path — skips WASM entirely). On 404, falls back to WASM parse then fires `_saveFragments()` (POST octet-stream) as fire-and-forget so the model is visible before the cache write completes.
+  2. **Three.js importmap**: added `<script type="importmap">` before the module script, pointing `"three"` at the locally vendored `vendor/three/build/three.module.js`. Fixes "bare specifier 'three' was not remapped" error in browsers.
+- Depends on: vendor/thatopen-components, vendor/three, viewer_fragments URL, csrf_token
+
+### islam/frontend/vendor/three/build/three.module.js
+- Action: Created — vendored from `three@0.160.1` npm package (ESM build, 1.27 MB); upgraded from 0.160.0 to satisfy OBC 2.4.0 peer requirement `^0.160.1`
+- Why: `@thatopen/components` imports `"three"` as a bare specifier; without a local copy and importmap the browser throws a resolution error
+- Only `build/three.module.js` extracted (no addons needed — OBC bundle only imports `"three"` top-level)
+
+### islam/frontend/vendor/thatopen-fragments/dist/index.min.mjs
+- Action: Created — vendored from `@thatopen/fragments@2.4.0` npm package (129 KB)
+- Why: OBC bundle imports `"@thatopen/fragments"` as a bare specifier; peer dependency of `@thatopen/components@2.4.0`
+
+### islam/frontend/vendor/web-ifc/
+- Action: Updated — upgraded from `web-ifc@0.0.57` to `web-ifc@0.0.65` to satisfy OBC 2.4.0 peer requirement
+- Files: `web-ifc-api.js` (browser ESM), `web-ifc-mt.wasm`, `web-ifc-mt.worker.js`, `web-ifc.wasm`
+- importmap points `"web-ifc"` → `web-ifc-api.js` (the `browser`/`import` export of the package)
+
+### islam/ifc_viewer/templates/ifc_viewer/viewer.html (importmap + WASM path fix)
+- Action: Modified — three further changes on top of the importmap addition:
+  1. Added `@thatopen/fragments` and `web-ifc` entries to the importmap (all three bare specifiers now remapped)
+  2. Slow-path WASM setup: `ifcLoader.settings.wasm = { path: "{% static 'vendor/web-ifc/' %}", absolute: true }` then `await ifcLoader.setup()` — OBC calls `SetWasmPath` before `Init`, so the vendor path is passed correctly regardless of web-ifc's auto-detection
+  3. Removed `data-wasm-path` div attribute and `const wasmPath` JS variable (unnecessary — `{% static %}` used directly in the settings assignment)
+
+### islam/frontend/vendor/web-ifc/web-ifc-api.js
+- Action: Modified — three null-safety patches for ES module context where `document.currentScript` is always null:
+  1. Both `_scriptDir` initialisations (lines ~372 and ~206800): fallback changed from `void 0` to `import.meta.url` so the worker thread URL resolves relative to the vendor file, not the page root
+  2. `currentScriptData` null guard (line ~71860): added `currentScriptData &&` before the `.src` property access to prevent `TypeError: can't access property "src", currentScriptData is null` — when null, `currentScriptPath` stays `undefined` and OBC's `SetWasmPath`-provided prefix takes over at line 71914

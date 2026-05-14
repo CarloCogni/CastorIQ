@@ -77,7 +77,7 @@ def _storey_contained_ids(model) -> set[str]:
     contained: set[str] = set()
     for rel in model.by_type("IfcRelContainedInSpatialStructure"):
         if rel.RelatingStructure and rel.RelatingStructure.is_a("IfcBuildingStorey"):
-            for element in rel.RelatedElements:
+            for element in (rel.RelatedElements or ()):
                 if element.GlobalId:
                     contained.add(element.GlobalId)
     return contained
@@ -125,7 +125,7 @@ def _storey_count_mismatch(model) -> list[dict]:
         struc = rel.RelatingStructure
         if struc and struc.is_a("IfcBuildingStorey"):
             key = struc.GlobalId or struc.Name or "unknown"
-            storey_population[key] = storey_population.get(key, 0) + len(rel.RelatedElements)
+            storey_population[key] = storey_population.get(key, 0) + len(rel.RelatedElements or ())
 
     issues = []
     for storey in model.by_type("IfcBuildingStorey"):
@@ -200,7 +200,7 @@ def _missing_material(model) -> list[dict]:
     """PARAM 6: elements with no material assignment."""
     has_material: set[str] = set()
     for rel in model.by_type("IfcRelAssociatesMaterial"):
-        for obj in rel.RelatedObjects:
+        for obj in (rel.RelatedObjects or ()):
             if hasattr(obj, "GlobalId") and obj.GlobalId:
                 has_material.add(obj.GlobalId)
 
