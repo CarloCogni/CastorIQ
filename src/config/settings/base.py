@@ -47,6 +47,11 @@ INSTALLED_APPS = [
     "eastereggs",
     "facilities",
     "beta",
+    # 4D Insights module
+    "islam",
+    "islam.ifc_insights",
+    "islam.scheduling",
+    "islam.ifc_viewer",
     # Login lockout for /admin/ and /accounts/login. Must come after
     # django.contrib.auth so its signals are loaded first.
     "axes",
@@ -197,6 +202,7 @@ STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [
     BASE_DIR / "static",
+    BASE_DIR / "islam" / "frontend",
 ]
 
 # Media files

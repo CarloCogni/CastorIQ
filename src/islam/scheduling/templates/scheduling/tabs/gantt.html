@@ -1,0 +1,150 @@
+<!-- scheduling/tabs/gantt.html — vanilla JS Gantt chart -->
+
+{% if not tasks %}
+<div class="d-flex flex-column align-items-center justify-content-center text-secondary py-5">
+    <i class="bi bi-bar-chart-steps fs-1 mb-2"></i>
+    <span>No tasks to display — import a schedule in the Data Sources tab.</span>
+</div>
+
+{% else %}
+
+<!-- Filters -->
+<div class="d-flex align-items-center gap-3 mb-3 flex-wrap" style="font-size:0.85rem;">
+    <div>
+        <label class="me-1 text-secondary">Status:</label>
+        <select id="gantt-status-filter" class="form-select form-select-sm d-inline-block" style="width:auto;">
+            <option value="">All</option>
+            <option value="planned">Planned</option>
+            <option value="active">Active</option>
+            <option value="complete">Complete</option>
+            <option value="delayed">Delayed</option>
+        </select>
+    </div>
+    <div>
+        <label class="me-1 text-secondary">Linked:</label>
+        <select id="gantt-link-filter" class="form-select form-select-sm d-inline-block" style="width:auto;">
+            <option value="">All</option>
+            <option value="linked">Linked ✅</option>
+            <option value="partial">Partial ⚠️</option>
+            <option value="unlinked">Unlinked ❌</option>
+        </select>
+    </div>
+</div>
+
+<!-- Gantt chart container -->
+<div id="gantt-chart-wrapper" class="border rounded overflow-auto" style="max-height:70vh;">
+    {% include "scheduling/components/gantt_chart.html" %}
+</div>
+
+<script>
+(function () {
+    // Fetch task data and drive the Gantt
+    const GANTT_URL = "{% url 'islam:gantt_data' project.pk %}";
+
+    let allTasks = [];
+
+    async function loadTasks() {
+        const resp = await fetch(GANTT_URL);
+        const data = await resp.json();
+        allTasks = data.tasks || [];
+        render(allTasks);
+    }
+
+    function render(tasks) {
+        if (!tasks.length) return;
+
+        const wrapper = document.getElementById("gantt-chart-wrapper");
+        const dates   = tasks.flatMap(t => [new Date(t.start), new Date(t.end)]);
+        const minDate = new Date(Math.min(...dates));
+        const maxDate = new Date(Math.max(...dates));
+        const span    = maxDate - minDate || 1;
+
+        const header  = wrapper.querySelector(".gantt-header-row");
+        const body    = wrapper.querySelector(".gantt-body");
+        if (!header || !body) return;
+
+        // Build date markers (monthly)
+        header.innerHTML = '<div class="gantt-label-col"></div>';
+        const cur = new Date(minDate);
+        cur.setDate(1);
+        while (cur <= maxDate) {
+            const pct = ((cur - minDate) / span) * 100;
+            const lbl = document.createElement("div");
+            lbl.className = "gantt-date-marker";
+            lbl.style.left = pct + "%";
+            lbl.textContent = cur.toLocaleDateString(undefined, { month: "short", year: "2-digit" });
+            header.appendChild(lbl);
+            cur.setMonth(cur.getMonth() + 1);
+        }
+
+        // Build task rows
+        body.innerHTML = "";
+        tasks.forEach(task => {
+            const s   = new Date(task.start);
+            const e   = new Date(task.end);
+            const l   = ((s - minDate) / span) * 100;
+            const w   = Math.max(((e - s) / span) * 100, 0.5);
+
+            const icon = task.link_status === "linked" ? "✅" :
+                         task.link_status === "partial" ? "⚠️" : "❌";
+
+            const row = document.createElement("div");
+            row.className = "gantt-row";
+            row.dataset.taskId   = task.id;
+            row.dataset.status   = task.status;
+            row.dataset.linkStat = task.link_status;
+            row.dataset.entityIds = JSON.stringify(task.entity_global_ids || []);
+
+            row.innerHTML = `
+                <div class="gantt-label-col" title="${task.name}">${task.name}</div>
+                <div class="gantt-timeline-col">
+                    <div class="gantt-bar" style="left:${l}%;width:${w}%;background:${task.color};"
+                         title="${task.start} → ${task.end}"></div>
+                </div>
+                <div class="gantt-status-col">${icon}</div>
+            `;
+
+            // Click → highlight in 3D viewer
+            row.querySelector(".gantt-bar").addEventListener("click", () => {
+                const ids = JSON.parse(row.dataset.entityIds);
+                document.dispatchEvent(new CustomEvent("castor:highlight", { detail: { globalIds: ids } }));
+                wrapper.querySelectorAll(".gantt-row").forEach(r => r.classList.remove("gantt-row-selected"));
+                row.classList.add("gantt-row-selected");
+            });
+
+            body.appendChild(row);
+        });
+    }
+
+    function applyFilters() {
+        const statusF = document.getElementById("gantt-status-filter").value;
+        const linkF   = document.getElementById("gantt-link-filter").value;
+        const filtered = allTasks.filter(t =>
+            (!statusF || t.status === statusF) &&
+            (!linkF   || t.link_status === linkF)
+        );
+        render(filtered);
+    }
+
+    document.getElementById("gantt-status-filter")?.addEventListener("change", applyFilters);
+    document.getElementById("gantt-link-filter")?.addEventListener("change", applyFilters);
+
+    loadTasks();
+}());
+</script>
+
+<style>
+.gantt-header-row { position: relative; height: 28px; border-bottom: 1px solid var(--bs-border-color); background: var(--bs-body-bg); display: flex; align-items: stretch; }
+.gantt-label-col  { width: 220px; min-width: 220px; padding: 4px 8px; font-size: 0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-right: 1px solid var(--bs-border-color); }
+.gantt-date-marker { position: absolute; top: 4px; font-size: 0.72rem; color: var(--bs-secondary-color); white-space: nowrap; }
+.gantt-body { min-height: 40px; }
+.gantt-row  { display: flex; align-items: center; border-bottom: 1px solid var(--bs-border-color); height: 36px; }
+.gantt-row:hover { background: var(--bs-secondary-bg); }
+.gantt-row-selected { background: rgba(59,130,246,0.12) !important; }
+.gantt-timeline-col { flex: 1; position: relative; height: 100%; overflow: hidden; }
+.gantt-bar  { position: absolute; top: 8px; height: 20px; border-radius: 3px; cursor: pointer; opacity: 0.85; transition: opacity 0.15s; }
+.gantt-bar:hover { opacity: 1; }
+.gantt-status-col { width: 36px; text-align: center; font-size: 0.9rem; }
+</style>
+
+{% endif %}

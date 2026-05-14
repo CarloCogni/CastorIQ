@@ -1,0 +1,116 @@
+<!-- scheduling/tabs/attach.html — link tasks to IFC entities -->
+<div class="row g-4">
+
+    <!-- Method selector -->
+    <div class="col-12 col-lg-4">
+        <div class="card border-0 bg-body-secondary">
+            <div class="card-body">
+                <h6 class="card-title mb-3">
+                    <i class="bi bi-link-45deg me-2"></i>Linking method
+                </h6>
+
+                <!-- Auto (AI) -->
+                <div class="border rounded p-3 mb-3 {% if match_mode == 'auto' %}border-primary{% endif %}">
+                    <div class="fw-semibold mb-1" style="font-size:0.9rem;">
+                        <i class="bi bi-cpu me-1 text-primary"></i>Auto — AI semantic match
+                    </div>
+                    <p class="text-secondary mb-2" style="font-size:0.82rem;">
+                        The AI reads task names and IFC element names and finds likely matches.
+                        Best when naming conventions are descriptive.
+                    </p>
+                    <button class="btn btn-primary btn-sm w-100"
+                            hx-post="{% url 'islam:schedule_link_auto' project.pk %}"
+                            hx-target="#attach-results"
+                            hx-swap="innerHTML"
+                            hx-indicator="#auto-spinner"
+                            {% csrf_token %}>
+                        <span id="auto-spinner" class="htmx-indicator spinner-border spinner-border-sm me-1"></span>
+                        <i class="bi bi-stars me-1"></i>Run AI matching
+                    </button>
+                </div>
+
+                <!-- Parameter mapping -->
+                <div class="border rounded p-3 {% if match_mode == 'param' %}border-primary{% endif %}">
+                    <div class="fw-semibold mb-1" style="font-size:0.9rem;">
+                        <i class="bi bi-sliders me-1 text-info"></i>Parameter mapping
+                    </div>
+                    <p class="text-secondary mb-2" style="font-size:0.82rem;">
+                        Match by an IFC property value. Enter the property name that holds
+                        the activity code (e.g. <code>ActivityCode</code>, <code>WBS</code>).
+                    </p>
+                    <form hx-post="{% url 'islam:schedule_link_param' project.pk %}"
+                          hx-target="#attach-results"
+                          hx-swap="innerHTML"
+                          hx-indicator="#param-spinner">
+                        {% csrf_token %}
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="param_name" class="form-control"
+                                   placeholder="e.g. ActivityCode"
+                                   value="{{ param_name|default:'' }}">
+                            <button class="btn btn-info" type="submit">
+                                <span id="param-spinner" class="htmx-indicator spinner-border spinner-border-sm me-1"></span>
+                                Match
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Results area -->
+    <div class="col-12 col-lg-8">
+        <div id="attach-results">
+            {% if tasks %}
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Task Name</th>
+                            <th class="text-center">Linked Entities</th>
+                            <th class="text-center">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for task in tasks %}
+                        <tr>
+                            <td style="font-size:0.85rem;">{{ task.name }}</td>
+                            <td class="text-center">
+                                <span class="badge bg-secondary">{{ task.ifc_entities.count }}</span>
+                            </td>
+                            <td class="text-center">
+                                {% if task.link_status == 'linked' %}
+                                    <span title="All entities linked">✅</span>
+                                {% elif task.link_status == 'partial' %}
+                                    <span title="Partially linked">⚠️</span>
+                                {% else %}
+                                    <span title="No entities linked">❌</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="3" class="text-center text-secondary py-3">No tasks imported yet.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            {% if matches %}
+            <div class="alert alert-info py-2" style="font-size:0.82rem;">
+                <i class="bi bi-info-circle me-1"></i>
+                Showing results for <strong>{{ match_mode }}</strong> matching
+                {% if param_name %}on property <code>{{ param_name }}</code>{% endif %}.
+                {{ matches|length }} tasks processed.
+            </div>
+            {% endif %}
+
+            {% else %}
+            <div class="d-flex flex-column align-items-center justify-content-center text-secondary py-5">
+                <i class="bi bi-link-45deg fs-1 mb-2"></i>
+                <span>Import a schedule first, then choose a linking method.</span>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+</div>

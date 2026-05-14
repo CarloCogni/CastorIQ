@@ -38,6 +38,7 @@ urlpatterns = [
     path("core/", include("core.urls")),
     path("eastereggs/", include("eastereggs.urls")),
     path("beta/", include("beta.urls")),
+    path("islam/", include("islam.urls")),
     # Staff-only BI/health dashboard. Gated by is_staff inside each view.
     # Default lands on the Overview tab; future tabs (Cost, Reliability,
     # Engagement, Quality, Security, Investor) mount under the same prefix.
