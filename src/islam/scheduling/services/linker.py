@@ -121,13 +121,27 @@ def apply_matches(task_model_class, matches: list[dict]) -> dict[str, int]:
 # ---------------------------------------------------------------------------
 
 def _read_property(entity: IFCEntity, prop_name: str) -> str | None:
-    """Read a named property from entity.properties JSON blob."""
+    """Read a named property from entity.properties flat JSON blob.
+
+    Properties are stored as {"PsetName.PropertyName": value, ...}.
+    Matches on:
+      1. Full key equality ("Identity Data.Activity ID" == param_name)
+      2. Property-name suffix ("Activity ID" matches "Identity Data.Activity ID")
+    Both comparisons are case-insensitive. Keys ending in ".id" are skipped
+    (they are internal pset entity IDs, not user properties).
+    """
     props = entity.properties or {}
-    for pset_data in props.values():
-        if isinstance(pset_data, dict):
-            for key, val in pset_data.items():
-                if key.lower() == prop_name.lower():
-                    return str(val).strip() if val is not None else None
+    needle = prop_name.strip().lower()
+    for key, val in props.items():
+        # Skip internal pset ID entries
+        if key.lower().endswith(".id"):
+            continue
+        if key.lower() == needle:
+            return str(val).strip() if val is not None else None
+        # Match just the property-name portion after the first dot
+        dot = key.find(".")
+        if dot != -1 and key[dot + 1:].strip().lower() == needle:
+            return str(val).strip() if val is not None else None
     return None
 
 

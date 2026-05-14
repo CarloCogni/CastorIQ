@@ -1,4 +1,5 @@
-<!-- ifc_viewer/viewer.html — 3D IFC viewer using ifc-lite CDN (WebGPU) -->
+<!-- ifc_viewer/viewer.html — 3D IFC viewer, @thatopen/components v2 -->
+{% load static %}
 <div class="d-flex flex-column h-100 position-relative" id="ifc-viewer-root">
 
     {% if not ifc_file_url %}
@@ -17,15 +18,12 @@
             <button class="btn btn-sm btn-outline-secondary" id="viewer-reset-btn" title="Reset camera">
                 <i class="bi bi-aspect-ratio"></i> Reset
             </button>
-            <button class="btn btn-sm btn-outline-secondary" id="viewer-section-btn" title="Toggle section box">
-                <i class="bi bi-scissors"></i> Section
-            </button>
         </div>
     </div>
 
-    <!-- Canvas container -->
+    <!-- Viewer container — v2 SimpleRenderer creates its own canvas inside this div -->
     <div class="flex-grow-1 position-relative overflow-hidden bg-dark">
-        <canvas id="ifc-canvas" style="width:100%; height:100%; display:block;"></canvas>
+        <div id="ifc-container" style="width:100%; height:100%; position:relative;"></div>
 
         <!-- Loading overlay -->
         <div id="viewer-loading" class="position-absolute top-0 start-0 w-100 h-100 d-flex flex-column align-items-center justify-content-center bg-dark text-light" style="z-index:10;">
@@ -33,7 +31,7 @@
             <span id="viewer-loading-msg">Loading IFC model…</span>
         </div>
 
-        <!-- Error overlay (hidden by default) -->
+        <!-- Error overlay -->
         <div id="viewer-error" class="position-absolute top-0 start-0 w-100 h-100 d-flex flex-column align-items-center justify-content-center bg-dark text-danger d-none" style="z-index:10;">
             <i class="bi bi-exclamation-triangle fs-1 mb-2"></i>
             <span id="viewer-error-msg">Failed to load model.</span>
@@ -48,53 +46,94 @@
         </div>
     </div>
 
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "{% static 'vendor/three/build/three.module.js' %}",
+        "@thatopen/fragments": "{% static 'vendor/thatopen-fragments/dist/index.min.mjs' %}",
+        "web-ifc": "{% static 'vendor/web-ifc/web-ifc-api.js' %}?v=2"
+      }
+    }
+    </script>
     <script type="module">
-    // IFC Viewer — ifc-lite CDN (WebGPU)
-    // Communicates with TimeLiner via CustomEvents on document.
+    import * as OBC from "{% static 'vendor/thatopen-components/dist/index.min.mjs' %}";
 
-    const IFC_URL = "{{ ifc_file_url }}";
-    const canvas  = document.getElementById("ifc-canvas");
-    const loading = document.getElementById("viewer-loading");
-    const loadMsg = document.getElementById("viewer-loading-msg");
-    const errBox  = document.getElementById("viewer-error");
-    const errMsg  = document.getElementById("viewer-error-msg");
-    const legend  = document.getElementById("sim-legend");
+    const IFC_URL   = "{{ ifc_file_url }}";
+    const FRAG_URL  = "{% url 'islam:viewer_fragments' project.pk %}";
+    const CSRF_TOKEN = "{{ csrf_token }}";
+    const container = document.getElementById("ifc-container");
+    const loading   = document.getElementById("viewer-loading");
+    const loadMsg   = document.getElementById("viewer-loading-msg");
+    const errBox    = document.getElementById("viewer-error");
+    const errMsg    = document.getElementById("viewer-error-msg");
+    const legend    = document.getElementById("sim-legend");
 
-    // --- colour constants (RGBA, 0-255) ---
+    // Status colours as plain {r,g,b} in [0-1] — Fragment.setColor reads
+    // .r/.g/.b directly via InstancedBufferAttribute.setXYZ; no THREE import needed.
     const C = {
-        active:   [34,  197,  94, 255],
-        complete: [59,  130, 246, 255],
-        pending:  [148, 163, 184, 180],
-        delayed:  [245, 158,  11, 255],
-        default:  [200, 200, 200, 255],
-        highlight:[255, 220,   0, 255],
+        active:    { r: 0.133, g: 0.773, b: 0.369 },  // #22c55e
+        complete:  { r: 0.231, g: 0.510, b: 0.965 },  // #3b82f6
+        pending:   { r: 0.580, g: 0.639, b: 0.722 },  // #94a3b8
+        delayed:   { r: 0.961, g: 0.620, b: 0.043 },  // #f59e0b
+        highlight: { r: 1.000, g: 0.863, b: 0.000 },  // #ffdc00
     };
 
-    let viewer = null;   // ifc-lite viewer instance
-    let modelId = null;
+    let world = null;
+    let model = null;               // FragmentsGroup returned by IfcLoader
+    const globalIdIndex = new Map(); // GlobalId string → expressId number
+    const fragmentIndex = new Map(); // expressId number → Fragment
+
+    // ── 1. Init ──────────────────────────────────────────────────────────────
 
     async function init() {
         try {
-            loadMsg.textContent = "Initialising WebGPU renderer…";
+            loadMsg.textContent = "Initialising renderer…";
+            const components = new OBC.Components();
 
-            // ifc-lite ES module from CDN
-            const { IfcViewerAPI } = await import(
-                "https://cdn.jsdelivr.net/npm/@thatopen/components@latest/dist/index.js"
-            ).catch(() => import(
-                "https://unpkg.com/@thatopen/components@latest/dist/index.js"
-            ));
+            const worlds = components.get(OBC.Worlds);
+            world = worlds.create();
+            world.scene    = new OBC.SimpleScene(components);
+            world.renderer = new OBC.SimpleRenderer(components, container);
+            world.camera   = new OBC.SimpleCamera(components);
+            components.init();
+            world.scene.setup();  // adds ambient + directional lights
 
-            loadMsg.textContent = "Fetching IFC file…";
-            const resp = await fetch(IFC_URL);
-            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-            const buffer = await resp.arrayBuffer();
+            // ── Try fragment cache (fast path — skips WASM entirely) ──────
+            loadMsg.textContent = "Checking geometry cache…";
+            const fragResp = await fetch(FRAG_URL);
 
-            loadMsg.textContent = "Parsing IFC model…";
-            viewer = new IfcViewerAPI({ container: canvas });
-            await viewer.IFC.setWasmPath("https://unpkg.com/web-ifc@0.0.57/");
-            modelId = await viewer.IFC.loadIfcUrl(IFC_URL);
+            if (fragResp.ok) {
+                loadMsg.textContent = "Loading cached model…";
+                const fragData = new Uint8Array(await fragResp.arrayBuffer());
+                const fragmentsManager = components.get(OBC.FragmentsManager);
+                model = fragmentsManager.load(fragData);
+                world.scene.three.add(model);
+            } else {
+                // ── Slow path: parse raw IFC, then save cache ──────────────
+                loadMsg.textContent = "Initialising WASM…";
+                const ifcLoader = components.get(OBC.IfcLoader);
+                ifcLoader.settings.wasm = {
+                    path: "{% static 'vendor/web-ifc/' %}",
+                    absolute: true,
+                };
+                await ifcLoader.setup();
+
+                loadMsg.textContent = "Fetching IFC file…";
+                const resp = await fetch(IFC_URL);
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+                loadMsg.textContent = "Parsing IFC model…";
+                const data = new Uint8Array(await resp.arrayBuffer());
+                model = await ifcLoader.load(data);
+                world.scene.three.add(model);
+
+                // Fire-and-forget — model is already visible before this resolves
+                _saveFragments(components, model);
+            }
 
             loading.classList.add("d-none");
+            buildIndex();
+
         } catch (err) {
             console.error("IFC viewer init failed:", err);
             loading.classList.add("d-none");
@@ -103,36 +142,96 @@
         }
     }
 
-    // --- TimeLiner events ---
+    // ── 1b. Fragment cache save (fire-and-forget after slow-path parse) ──────
+
+    async function _saveFragments(components, model) {
+        try {
+            const fragmentsManager = components.get(OBC.FragmentsManager);
+            const fragBinary = fragmentsManager.export(model);
+            const resp = await fetch(FRAG_URL, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/octet-stream",
+                    "X-CSRFToken": CSRF_TOKEN,
+                },
+                body: fragBinary,
+            });
+            if (resp.ok) {
+                console.log("[viewer] Fragment cache saved (" + fragBinary.byteLength + " bytes).");
+            } else {
+                console.warn("[viewer] Fragment cache POST returned", resp.status);
+            }
+        } catch (e) {
+            console.warn("[viewer] Fragment cache save failed:", e);
+        }
+    }
+
+    // ── 2. GlobalId index ─────────────────────────────────────────────────────
+    // FragmentsGroup.items → Fragment[]
+    // Fragment.ids         → Set<expressId>
+    // FragmentsGroup.getLocalProperties(expressId) → raw IFC property map
+
+    function buildIndex() {
+        if (!model) return;
+        try {
+            for (const fragment of model.items) {
+                for (const expressId of fragment.ids) {
+                    fragmentIndex.set(expressId, fragment);
+                    const props = model.getLocalProperties(expressId);
+                    const gid = props?.GlobalId?.value;
+                    if (gid) globalIdIndex.set(gid, expressId);
+                }
+            }
+        } catch (e) {
+            console.warn("GlobalId index build failed:", e);
+        }
+    }
+
+    // ── 3. Colour helpers ─────────────────────────────────────────────────────
+
+    function colorByGlobalIds(globalIds, color) {
+        for (const gid of globalIds) {
+            const expressId = globalIdIndex.get(gid);
+            if (expressId === undefined) continue;
+            const fragment = fragmentIndex.get(expressId);
+            if (!fragment) continue;
+            // Fragment.setColor(itemIDs: Iterable<number>, color: {r,g,b})
+            fragment.setColor([expressId], color);
+        }
+    }
+
+    function resetAllColors() {
+        if (!model) return;
+        for (const fragment of model.items) {
+            fragment.resetColor();
+        }
+    }
+
+    // ── 4. TimeLiner events ───────────────────────────────────────────────────
 
     document.addEventListener("castor:highlight", (e) => {
-        if (!viewer) return;
-        const { globalIds } = e.detail || {};
-        if (!globalIds?.length) return;
-        viewer.IFC.selector.highlightIfcItemsByID(modelId, globalIds, true);
+        if (!model) return;
+        const { globalIds = [] } = e.detail || {};
+        colorByGlobalIds(globalIds, C.highlight);
     });
 
-    document.addEventListener("castor:simulate", async (e) => {
-        if (!viewer) return;
+    document.addEventListener("castor:simulate", (e) => {
+        if (!model) return;
         legend.classList.remove("d-none");
         const { active = [], complete = [], pending = [], delayed = [] } = e.detail || {};
-        // Colour each group — ifc-lite subset API
-        const colorGroups = [
-            { ids: active,   color: C.active   },
-            { ids: complete, color: C.complete  },
-            { ids: pending,  color: C.pending   },
-            { ids: delayed,  color: C.delayed   },
-        ];
-        for (const { ids, color } of colorGroups) {
-            if (ids.length) {
-                await viewer.IFC.selector.colorIfcItems(modelId, ids, color);
-            }
-        }
+        resetAllColors();
+        colorByGlobalIds(active,   C.active);
+        colorByGlobalIds(complete, C.complete);
+        colorByGlobalIds(pending,  C.pending);
+        colorByGlobalIds(delayed,  C.delayed);
     });
 
+    // ── 5. Toolbar ────────────────────────────────────────────────────────────
+
     document.getElementById("viewer-reset-btn")?.addEventListener("click", () => {
-        viewer?.context?.ifcCamera?.resetCamera();
+        world?.camera?.controls?.setLookAt(10, 10, 10, 0, 0, 0, true);
         legend.classList.add("d-none");
+        resetAllColors();
     });
 
     init();

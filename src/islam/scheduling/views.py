@@ -15,7 +15,9 @@ from core.http import toast_response, trigger_toast
 from core.mixins import ProjectAccessMixin, ProjectModifyAccessMixin, ProjectTabMixin
 from ifc_processor.models import IFCEntity, IFCFile
 
-from .models import Task
+from .models import LinkFeedback, MappingProfile, Task
+from .services.column_mapper import CANONICAL_FIELDS, CANONICAL_LABELS, apply_mapping, extract_columns
+from .services.embed_linker import embed_match_tasks
 from .services.excel_parser import parse_excel
 from .services.linker import apply_matches, auto_match_tasks, param_match_tasks
 from .services.msp_parser import parse_msp
@@ -71,9 +73,35 @@ class TaskUploadView(ProjectModifyAccessMixin, View):
 
         filename = uploaded.name.lower()
         try:
-            if filename.endswith(".xlsx") or filename.endswith(".xls"):
-                tasks = parse_excel(uploaded)
-                source = "excel"
+            # Excel and CSV go through the column-mapping UI first
+            if filename.endswith(".xlsx") or filename.endswith(".xls") or filename.endswith(".csv"):
+                col_data = extract_columns(uploaded, uploaded.name)
+                # Store raw rows in session so MappingSubmitView can apply the mapping
+                request.session[f"raw_headers_{project.pk}"] = json.dumps(col_data["headers"])
+                request.session[f"raw_rows_{project.pk}"] = json.dumps(col_data["raw_rows"])
+                request.session[f"raw_source_{project.pk}"] = col_data["source"]
+                # Load saved profiles — pre-serialize column_mapping to JSON for the template
+                profiles = [
+                    {
+                        "pk": str(p["pk"]),
+                        "name": p["name"],
+                        "column_mapping_json": json.dumps(p["column_mapping"]),
+                    }
+                    for p in MappingProfile.objects.filter(project=project).values("pk", "name", "column_mapping")
+                ]
+                return render(
+                    request,
+                    "scheduling/tabs/mapping.html",
+                    {
+                        "project": project,
+                        "headers": col_data["headers"],
+                        "sample_rows": col_data["sample_rows"],
+                        "canonical_fields": CANONICAL_FIELDS,
+                        "canonical_labels": CANONICAL_LABELS,
+                        "profiles": profiles,
+                        "filename": col_data["filename"],
+                    },
+                )
             elif filename.endswith(".xer"):
                 tasks = parse_xer(uploaded)
                 source = "xer"
@@ -82,7 +110,7 @@ class TaskUploadView(ProjectModifyAccessMixin, View):
                 source = "msp"
             else:
                 return toast_response(
-                    "Unsupported file type. Upload .xlsx, .xer, or .xml.", "error", status=400
+                    "Unsupported file type. Upload .xlsx, .xls, .csv, .xer, or .xml.", "error", status=400
                 )
         except ValueError as exc:
             return toast_response(str(exc), "error", status=400)
@@ -90,17 +118,14 @@ class TaskUploadView(ProjectModifyAccessMixin, View):
             logger.exception("Schedule file parse error for project %s", project.pk)
             return toast_response(f"Parse failed: {exc}", "error", status=500)
 
-        # AI validation (non-blocking)
+        # XER / MSP bypass mapping — parse directly and go to preview
         validation = validate_schedule(tasks, project_name=project.name)
-
-        # Store parsed tasks in session for the save step
         request.session[f"parsed_tasks_{project.pk}"] = json.dumps(
             [
                 {**t, "start_date": str(t["start_date"]), "end_date": str(t["end_date"])}
                 for t in tasks
             ]
         )
-
         return render(
             request,
             "scheduling/components/task_list.html",
@@ -290,3 +315,214 @@ class GanttDataView(ProjectAccessMixin, View):
             )
 
         return JsonResponse({"tasks": data})
+
+
+# ---------------------------------------------------------------------------
+# Column mapping — Excel / CSV flow
+# ---------------------------------------------------------------------------
+
+class MappingSubmitView(ProjectModifyAccessMixin, View):
+    """HTMX POST — apply user column mapping to raw rows, show preview."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+
+        raw_headers = request.session.get(f"raw_headers_{project.pk}")
+        raw_rows = request.session.get(f"raw_rows_{project.pk}")
+        source = request.session.get(f"raw_source_{project.pk}", "excel")
+
+        if not raw_headers or not raw_rows:
+            return toast_response("Session expired — please re-upload the file.", "error", status=400)
+
+        headers = json.loads(raw_headers)
+        rows = json.loads(raw_rows)
+
+        column_mapping = {
+            field: request.POST.get(f"col_{field}", "").strip()
+            for field in CANONICAL_FIELDS
+        }
+        # Remove unmapped optional fields so apply_mapping only sees real mappings
+        column_mapping = {k: v for k, v in column_mapping.items() if v}
+
+        try:
+            tasks = apply_mapping(headers, rows, column_mapping, source)
+        except ValueError as exc:
+            return toast_response(str(exc), "error", status=400)
+
+        if not tasks:
+            return toast_response("No valid task rows found with this mapping.", "error", status=400)
+
+        # Optionally save profile
+        profile_name = request.POST.get("profile_name", "").strip()
+        if profile_name:
+            MappingProfile.objects.update_or_create(
+                project=project,
+                name=profile_name,
+                defaults={"column_mapping": column_mapping},
+            )
+
+        validation = validate_schedule(tasks, project_name=project.name)
+        request.session[f"parsed_tasks_{project.pk}"] = json.dumps(
+            [
+                {**t, "start_date": str(t["start_date"]), "end_date": str(t["end_date"])}
+                for t in tasks
+            ]
+        )
+        # Clean up raw session data
+        for key in (f"raw_headers_{project.pk}", f"raw_rows_{project.pk}", f"raw_source_{project.pk}"):
+            request.session.pop(key, None)
+
+        return render(
+            request,
+            "scheduling/components/task_list.html",
+            {
+                "tasks_preview": tasks,
+                "source": source,
+                "validation": validation,
+                "project": project,
+                "preview_mode": True,
+            },
+        )
+
+
+# ---------------------------------------------------------------------------
+# Embedding-based linking
+# ---------------------------------------------------------------------------
+
+class EmbedLinkView(ProjectModifyAccessMixin, View):
+    """HTMX POST — run embedding similarity, create pending LinkFeedback rows."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        tasks = list(Task.objects.filter(project=project))
+        ifc_files = IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
+        entities_qs = IFCEntity.objects.filter(ifc_file__in=ifc_files)
+
+        if not tasks:
+            return toast_response("No tasks to link — import a schedule first.", "error", status=400)
+        if not entities_qs.exists():
+            return toast_response("No IFC entities found — process an IFC file first.", "error", status=400)
+
+        try:
+            matches = embed_match_tasks(tasks, entities_qs)
+        except Exception as exc:
+            logger.exception("Embed link failed for project %s", project.pk)
+            return toast_response(f"Embedding failed: {exc}", "error", status=500)
+
+        # Clear old pending feedback for these tasks, keep accepted/rejected
+        task_ids = [t.pk for t in tasks]
+        LinkFeedback.objects.filter(task_id__in=task_ids, accepted__isnull=True).delete()
+
+        for m in matches:
+            try:
+                entity = IFCEntity.objects.get(pk=m["entity_id"])
+                task = Task.objects.get(pk=m["task_id"])
+                LinkFeedback.objects.create(
+                    task=task,
+                    ifc_entity=entity,
+                    method=LinkFeedback.Method.EMBEDDING,
+                    confidence_at_time=m["confidence"],
+                )
+            except Exception as exc:
+                logger.warning("Could not create LinkFeedback: %s", exc)
+
+        feedbacks = (
+            LinkFeedback.objects
+            .filter(task__project=project)
+            .select_related("task", "ifc_entity", "corrected_to")
+            .order_by("-confidence_at_time")
+        )
+        msg = f"Found {len(matches)} candidate links from {len(tasks)} tasks."
+        response = render(
+            request,
+            "scheduling/components/validation_table.html",
+            {"feedbacks": feedbacks, "project": project},
+        )
+        return trigger_toast(response, msg, "success")
+
+
+class LinkAcceptView(ProjectModifyAccessMixin, View):
+    """HTMX POST — accept a suggested link and create the M2M connection."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        feedback = get_object_or_404(
+            LinkFeedback, pk=kwargs["feedback_pk"], task__project=project
+        )
+        feedback.accepted = True
+        feedback.save(update_fields=["accepted"])
+        feedback.task.ifc_entities.add(feedback.ifc_entity)
+
+        return render(
+            request,
+            "scheduling/components/validation_row.html",
+            {"fb": feedback, "project": project},
+        )
+
+
+class LinkRejectView(ProjectModifyAccessMixin, View):
+    """HTMX POST — reject a suggested link."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        feedback = get_object_or_404(
+            LinkFeedback, pk=kwargs["feedback_pk"], task__project=project
+        )
+        feedback.accepted = False
+        feedback.save(update_fields=["accepted"])
+
+        return render(
+            request,
+            "scheduling/components/validation_row.html",
+            {"fb": feedback, "project": project},
+        )
+
+
+class LinkChangeView(ProjectModifyAccessMixin, View):
+    """HTMX POST — override the suggested entity with a user-chosen one."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        feedback = get_object_or_404(
+            LinkFeedback, pk=kwargs["feedback_pk"], task__project=project
+        )
+        entity_id = request.POST.get("entity_id", "").strip()
+        if not entity_id:
+            return toast_response("No entity selected.", "error", status=400)
+
+        try:
+            entity = IFCEntity.objects.get(pk=entity_id, ifc_file__project=project)
+        except IFCEntity.DoesNotExist:
+            return toast_response("Entity not found.", "error", status=404)
+
+        feedback.corrected_to = entity
+        feedback.accepted = True
+        feedback.save(update_fields=["corrected_to", "accepted"])
+        feedback.task.ifc_entities.add(entity)
+
+        return render(
+            request,
+            "scheduling/components/validation_row.html",
+            {"fb": feedback, "project": project},
+        )
+
+
+class LinkSearchView(ProjectAccessMixin, View):
+    """HTMX GET — typeahead entity search for the change-entity panel."""
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        q = request.GET.get("q", "").strip()
+        feedback_pk = request.GET.get("feedback_pk", "")
+
+        ifc_files = IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
+        qs = IFCEntity.objects.filter(ifc_file__in=ifc_files)
+        if q:
+            qs = qs.filter(name__icontains=q)
+        entities = qs.order_by("name")[:10]
+
+        return render(
+            request,
+            "scheduling/components/link_search.html",
+            {"entities": entities, "project": project, "feedback_pk": feedback_pk},
+        )

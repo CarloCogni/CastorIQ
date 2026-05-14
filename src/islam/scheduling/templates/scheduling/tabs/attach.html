@@ -29,6 +29,27 @@
                     </button>
                 </div>
 
+                <!-- Embed match -->
+                <div class="border rounded p-3 mb-3 {% if match_mode == 'embed' %}border-primary{% endif %}">
+                    <div class="fw-semibold mb-1" style="font-size:0.9rem;">
+                        <i class="bi bi-graph-up me-1 text-success"></i>Embed match
+                    </div>
+                    <p class="text-secondary mb-2" style="font-size:0.82rem;">
+                        Uses vector embeddings to find similar element names.
+                        Results appear below for per-row accept/reject review.
+                    </p>
+                    <form hx-post="{% url 'islam:schedule_embed_link' project.pk %}"
+                          hx-target="#embed-results"
+                          hx-swap="innerHTML"
+                          hx-indicator="#embed-spinner">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-success btn-sm w-100">
+                            <span id="embed-spinner" class="htmx-indicator spinner-border spinner-border-sm me-1"></span>
+                            <i class="bi bi-graph-up me-1"></i>Run embed match
+                        </button>
+                    </form>
+                </div>
+
                 <!-- Parameter mapping -->
                 <div class="border rounded p-3 {% if match_mode == 'param' %}border-primary{% endif %}">
                     <div class="fw-semibold mb-1" style="font-size:0.9rem;">
@@ -67,6 +88,7 @@
                     <thead class="table-dark">
                         <tr>
                             <th>Task Name</th>
+                            <th>Activity ID</th>
                             <th class="text-center">Linked Entities</th>
                             <th class="text-center">Status</th>
                         </tr>
@@ -75,6 +97,13 @@
                         {% for task in tasks %}
                         <tr>
                             <td style="font-size:0.85rem;">{{ task.name }}</td>
+                            <td style="font-size:0.85rem;">
+                                {% if task.activity_code %}
+                                    <code class="text-info">{{ task.activity_code }}</code>
+                                {% else %}
+                                    <span class="text-secondary">—</span>
+                                {% endif %}
+                            </td>
                             <td class="text-center">
                                 <span class="badge bg-secondary">{{ task.ifc_entities.count }}</span>
                             </td>
@@ -89,7 +118,7 @@
                             </td>
                         </tr>
                         {% empty %}
-                        <tr><td colspan="3" class="text-center text-secondary py-3">No tasks imported yet.</td></tr>
+                        <tr><td colspan="4" class="text-center text-secondary py-3">No tasks imported yet.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -111,6 +140,11 @@
             </div>
             {% endif %}
         </div>
+    </div>
+
+    <!-- Embed match validation table — populated by EmbedLinkView -->
+    <div class="col-12">
+        <div id="embed-results"></div>
     </div>
 
 </div>

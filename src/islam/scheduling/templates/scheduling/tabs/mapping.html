@@ -1,0 +1,114 @@
+<!-- scheduling/tabs/mapping.html — column mapping UI for Excel/CSV uploads -->
+<div class="row g-4">
+
+    <div class="col-12">
+        <div class="d-flex align-items-center gap-2 mb-1">
+            <i class="bi bi-table text-primary"></i>
+            <h6 class="mb-0">Map columns from <code>{{ filename }}</code></h6>
+        </div>
+        <p class="text-secondary small mb-3">
+            Match each required field to a column from your file.
+            Starred fields (<span class="text-danger">*</span>) are required.
+        </p>
+    </div>
+
+    <!-- Sample preview -->
+    <div class="col-12">
+        <div class="table-responsive border rounded mb-3" style="max-height:160px; overflow:auto;">
+            <table class="table table-sm table-bordered mb-0" style="font-size:0.78rem; white-space:nowrap;">
+                <thead class="table-dark">
+                    <tr>
+                        {% for h in headers %}<th>{{ h }}</th>{% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in sample_rows %}
+                    <tr>
+                        {% for cell in row %}<td class="text-secondary">{{ cell|truncatechars:30 }}</td>{% endfor %}
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="{{ headers|length }}" class="text-center text-secondary">No data rows</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Mapping form -->
+    <div class="col-12">
+        <form hx-post="{% url 'islam:schedule_mapping_submit' project.pk %}"
+              hx-target="#task-preview-area"
+              hx-swap="innerHTML"
+              hx-indicator="#mapping-spinner">
+            {% csrf_token %}
+
+            <!-- Saved profiles loader -->
+            {% if profiles %}
+            <div class="mb-3">
+                <label class="form-label small fw-semibold">Load saved profile</label>
+                <select class="form-select form-select-sm" id="profile-loader">
+                    <option value="">— choose a saved profile —</option>
+                    {% for p in profiles %}
+                    <option value="{{ p.column_mapping_json }}">{{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+
+            <div class="row g-3 mb-3">
+                {% for field, label in canonical_labels.items %}
+                <div class="col-12 col-md-4">
+                    <label class="form-label small fw-semibold">{{ label }}</label>
+                    <select name="col_{{ field }}" class="form-select form-select-sm mapping-select" data-field="{{ field }}">
+                        <option value="">— not mapped —</option>
+                        {% for h in headers %}
+                        <option value="{{ h }}">{{ h }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- Save profile -->
+            <div class="mb-3 d-flex align-items-center gap-2" style="font-size:0.85rem;">
+                <input type="text" name="profile_name" class="form-control form-control-sm" style="max-width:240px;"
+                       placeholder="Save mapping as… (optional)">
+                <span class="text-secondary">saves for next time</span>
+            </div>
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary btn-sm">
+                    <span id="mapping-spinner" class="htmx-indicator spinner-border spinner-border-sm me-1"></span>
+                    <i class="bi bi-check2-circle me-1"></i>Apply mapping &amp; preview
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm"
+                        hx-get="{% url 'islam:task_list_partial' project.pk %}"
+                        hx-target="#task-preview-area"
+                        hx-swap="innerHTML">
+                    Cancel
+                </button>
+            </div>
+        </form>
+    </div>
+
+</div>
+
+<script>
+(function () {
+    /* Profile loader — when a saved profile is selected, auto-set the dropdowns */
+    const loader = document.getElementById("profile-loader");
+    if (!loader) return;
+    loader.addEventListener("change", function () {
+        if (!this.value) return;
+        let mapping;
+        try { mapping = JSON.parse(this.value); } catch { return; }
+        document.querySelectorAll(".mapping-select").forEach(function (sel) {
+            const field = sel.dataset.field;
+            const col = mapping[field] || "";
+            for (const opt of sel.options) {
+                if (opt.value === col) { opt.selected = true; break; }
+            }
+        });
+    });
+})();
+</script>
