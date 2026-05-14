@@ -69,6 +69,20 @@
                 {% endfor %}
             </div>
 
+            <!-- IFC parameter name -->
+            <div class="mb-3">
+                <label class="form-label small fw-semibold">
+                    IFC Property Name
+                    <span class="text-danger">*</span>
+                </label>
+                <input type="text" name="ifc_param_name" class="form-control form-control-sm" style="max-width:280px;"
+                       value="Activity ID" required
+                       placeholder="e.g. Activity ID, TaskCode">
+                <div class="form-text">
+                    The Pset property on IFC elements that holds the activity code (used by auto-link and the TimeLiner).
+                </div>
+            </div>
+
             <!-- Save profile -->
             <div class="mb-3 d-flex align-items-center gap-2" style="font-size:0.85rem;">
                 <input type="text" name="profile_name" class="form-control form-control-sm" style="max-width:240px;"

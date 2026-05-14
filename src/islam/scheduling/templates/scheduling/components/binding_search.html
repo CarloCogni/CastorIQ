@@ -1,0 +1,22 @@
+<!-- scheduling/components/binding_search.html — entity typeahead results for manual-link panel -->
+{% for entity in entities %}
+<div class="d-flex align-items-center justify-content-between py-1 border-bottom" style="font-size:0.8rem;">
+    <div>
+        <div class="fw-semibold">{{ entity.name|default:entity.global_id }}</div>
+        <div class="text-secondary" style="font-size:0.73rem;">{{ entity.ifc_type }}</div>
+    </div>
+    <form hx-post="{% url 'islam:binding_add' project.pk %}"
+          hx-target="#link-review-content"
+          hx-swap="outerHTML"
+          hx-indicator="#search-spinner-{{ task_pk }}">
+        {% csrf_token %}
+        <input type="hidden" name="task_pk" value="{{ task_pk }}">
+        <input type="hidden" name="entity_global_id" value="{{ entity.global_id }}">
+        <button type="submit" class="btn btn-outline-success btn-sm py-0 px-2 ms-2" title="Link this entity">
+            <i class="bi bi-link-45deg"></i>
+        </button>
+    </form>
+</div>
+{% empty %}
+<div class="text-secondary text-center py-2" style="font-size:0.8rem;">No entities match.</div>
+{% endfor %}
