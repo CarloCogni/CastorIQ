@@ -1,0 +1,155 @@
+<!-- ifc_insights/levels.html — Level Panel main page -->
+
+<div class="p-4 d-flex flex-column gap-4">
+
+    <!-- Header -->
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <i class="bi bi-layers fs-5" style="color: var(--castor-primary, #3b82f6);"></i>
+        <h5 class="m-0">Levels</h5>
+        {% if levels %}
+        <span class="badge rounded-pill"
+              style="background-color:rgba(59,130,246,0.12); color:var(--castor-primary,#3b82f6); border:1px solid rgba(59,130,246,0.3);">
+            {{ levels|length }} level{{ levels|length|pluralize }}
+        </span>
+        {% endif %}
+        <button type="button"
+                class="help-pill"
+                data-bs-toggle="modal"
+                data-bs-target="#levelsHelpModal"
+                title="How Levels work"
+                aria-label="How Levels work">
+            <i class="bi bi-question-circle"></i>
+        </button>
+
+        <!-- Apply to IFC -->
+        {% if ifc_file %}
+        <div class="ms-auto">
+            <button class="btn btn-sm btn-primary"
+                    hx-post="{% url 'islam:level_apply' project.pk %}"
+                    hx-swap="none"
+                    {% if not levels %}disabled{% endif %}>
+                <i class="bi bi-upload me-1"></i>Apply to IFC
+            </button>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Suggest from IFC -->
+    {% if ifc_file %}
+    <div class="card border">
+        <div class="card-header d-flex align-items-center justify-content-between py-2 px-3">
+            <span class="fw-medium fs-7">
+                <i class="bi bi-magic me-1 text-warning"></i>Suggest from IFC
+            </span>
+            <button class="btn btn-sm btn-outline-secondary"
+                    hx-get="{% url 'islam:level_suggest' project.pk %}"
+                    hx-target="#suggest-results"
+                    hx-swap="innerHTML"
+                    hx-indicator="#suggest-spinner">
+                <span id="suggest-spinner" class="htmx-indicator spinner-border spinner-border-sm me-1" role="status"></span>
+                <i class="bi bi-arrow-clockwise me-1"></i>Load suggestions
+            </button>
+        </div>
+        <div class="card-body py-3 px-3">
+            <div id="suggest-results">
+                <p class="text-secondary fs-7 mb-0">Click "Load suggestions" to read storeys from your IFC file.</p>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-secondary py-2 px-3 fs-7 mb-0">
+        <i class="bi bi-info-circle me-1"></i>
+        Upload and process an IFC file to enable storey suggestions.
+    </div>
+    {% endif %}
+
+    <!-- Levels table -->
+    <div class="card border">
+        <div class="card-header py-2 px-3 fw-medium fs-7">
+            <i class="bi bi-list-ul me-1"></i>Level Registry
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3 py-2 fw-medium fs-7">Name</th>
+                        <th class="py-2 fw-medium fs-7">Z Elevation</th>
+                        <th class="py-2 fw-medium fs-7">Source</th>
+                        <th class="py-2 pe-3 fw-medium fs-7"></th>
+                    </tr>
+                </thead>
+                <tbody id="levels-tbody">
+                    {% for level in levels %}
+                        {% include "ifc_insights/components/level_row.html" with level=level project=project %}
+                    {% empty %}
+                    <tr id="levels-empty-row">
+                        <td colspan="4" class="text-center text-secondary py-4 fs-7">
+                            <i class="bi bi-layers me-1"></i>No levels yet — suggest from IFC or add one below.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Add level form -->
+    <div class="card border">
+        <div class="card-header py-2 px-3 fw-medium fs-7">
+            <i class="bi bi-plus-circle me-1"></i>Add Level
+        </div>
+        <div class="card-body py-3 px-3">
+            <form hx-post="{% url 'islam:level_add' project.pk %}"
+                  hx-target="#levels-tbody"
+                  hx-swap="beforeend"
+                  hx-on::after-request="this.reset(); document.getElementById('levels-empty-row') && document.getElementById('levels-empty-row').remove();"
+                  class="d-flex gap-2 align-items-end flex-wrap">
+                {% csrf_token %}
+                <div>
+                    <label class="form-label fs-7 mb-1">Name</label>
+                    <input type="text" name="name" class="form-control form-control-sm" placeholder="e.g. Ground Floor" required style="min-width:160px;">
+                </div>
+                <div>
+                    <label class="form-label fs-7 mb-1">Z Elevation (mm)</label>
+                    <input type="number" step="any" name="z_elevation" class="form-control form-control-sm" placeholder="e.g. 0" required style="min-width:130px;">
+                </div>
+                <button type="submit" class="btn btn-sm btn-primary">
+                    <i class="bi bi-plus me-1"></i>Add
+                </button>
+            </form>
+        </div>
+    </div>
+
+</div>
+
+<!-- Help modal -->
+{% include "ifc_insights/components/levels_help_modal.html" %}
+
+<script>
+function levelEditStart(pk) {
+    const row = document.getElementById('level-row-' + pk);
+    row.querySelectorAll('.level-display-name, .level-display-z, .level-display-actions').forEach(el => el.classList.add('d-none'));
+    row.querySelectorAll('.level-edit-name, .level-edit-z, .level-edit-actions').forEach(el => el.classList.remove('d-none'));
+    row.querySelector('.level-edit-name').focus();
+}
+
+function levelEditCancel(pk) {
+    const row = document.getElementById('level-row-' + pk);
+    row.querySelectorAll('.level-display-name, .level-display-z, .level-display-actions').forEach(el => el.classList.remove('d-none'));
+    row.querySelectorAll('.level-edit-name, .level-edit-z, .level-edit-actions').forEach(el => el.classList.add('d-none'));
+}
+
+function levelEditSave(pk, url) {
+    const row = document.getElementById('level-row-' + pk);
+    const name = row.querySelector('.level-edit-name').value.trim();
+    const z = row.querySelector('.level-edit-z').value.trim();
+    if (!name) { alert('Name is required.'); return; }
+
+    const body = new URLSearchParams({ name, z_elevation: z, csrfmiddlewaretoken: '{{ csrf_token }}' });
+    htmx.ajax('POST', url, {
+        target: '#level-row-' + pk,
+        swap: 'outerHTML',
+        values: { name, z_elevation: z, csrfmiddlewaretoken: '{{ csrf_token }}' }
+    });
+}
+</script>

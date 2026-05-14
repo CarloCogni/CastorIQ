@@ -1,0 +1,23 @@
+<!-- ifc_insights/components/breakdown_card.html — mini horizontal bar chart card (HTMX partial) -->
+<div class="card h-100">
+    <div class="card-header py-2 px-3">
+        <span class="fw-semibold small">{{ title }}</span>
+    </div>
+    <div class="card-body py-2 px-3">
+        {% if rows %}
+            {% for row in rows %}
+            <div class="mb-2">
+                <div class="d-flex justify-content-between small mb-1">
+                    <span class="text-truncate me-2" style="max-width:60%;" title="{{ row.label }}">{{ row.label }}</span>
+                    <span class="text-secondary">{{ row.count }}</span>
+                </div>
+                <div class="progress" style="height:6px;">
+                    <div class="progress-bar bg-primary" style="width:{{ row.pct }}%;"></div>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <p class="text-secondary small mb-0">No data available.</p>
+        {% endif %}
+    </div>
+</div>

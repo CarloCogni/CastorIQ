@@ -1,0 +1,26 @@
+<!-- ifc_insights/components/level_suggest_results.html — IFC storey suggestions -->
+
+{% if suggestions %}
+<div class="d-flex flex-column gap-2">
+    {% for s in suggestions %}
+    <div class="d-flex align-items-center justify-content-between px-3 py-2 rounded border bg-body-secondary">
+        <div>
+            <span class="fw-medium me-2">{{ s.name }}</span>
+            <small class="text-secondary">Z = {{ s.z_elevation|floatformat:0 }} mm</small>
+        </div>
+        <button class="btn btn-sm btn-outline-primary"
+                hx-post="{% url 'islam:level_add' project.pk %}"
+                hx-vals='{"name": "{{ s.name|escapejs }}", "z_elevation": "{{ s.z_elevation }}"}'
+                hx-target="#levels-tbody"
+                hx-swap="beforeend">
+            <i class="bi bi-plus me-1"></i>Import
+        </button>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="text-secondary fs-7 mb-0">
+    <i class="bi bi-info-circle me-1"></i>
+    No storeys found in the IFC file. Add levels manually below.
+</p>
+{% endif %}

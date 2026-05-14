@@ -1,10 +1,11 @@
-<!-- ifc_insights/panel.html — QA/QC dashboard panel (partial, no base extend) -->
+<!-- ifc_insights/panel.html — redesigned Insights dashboard (partial) -->
+{% load static %}
 <div class="container-fluid py-3 px-4" id="ifc-insights-panel">
 
     <!-- Header row -->
-    <div class="d-flex align-items-center mb-3 gap-2">
+    <div class="d-flex align-items-center mb-3 gap-2 flex-wrap">
         <h5 class="mb-0">
-            <i class="bi bi-shield-check me-2 text-primary"></i>IFC Insights
+            <i class="bi bi-graph-up me-2 text-primary"></i>IFC Insights
         </h5>
         <button type="button"
                 class="help-pill"
@@ -14,7 +15,16 @@
                 aria-label="How IFC Insights works">
             <i class="bi bi-question-circle"></i>
         </button>
-        <div class="ms-auto d-flex gap-2">
+        <div class="ms-auto d-flex gap-2 align-items-center flex-wrap">
+            <!-- Engine selector -->
+            <div class="btn-group btn-group-sm" id="engine-selector">
+                <button type="button" class="btn btn-outline-secondary" id="btn-castor-engine" onclick="setInsightsEngine('castor')">
+                    <i class="bi bi-cpu me-1"></i>Castor Engine
+                </button>
+                <button type="button" class="btn btn-outline-secondary" id="btn-islam-engine" onclick="setInsightsEngine('islam')">
+                    <i class="bi bi-lightning me-1"></i>Islam Engine
+                </button>
+            </div>
             {% include "ifc_insights/components/export_btn.html" %}
             <button class="btn btn-sm btn-outline-secondary"
                     hx-get="{% url 'islam:insights_rerun' project.pk %}"
@@ -22,60 +32,229 @@
                     hx-swap="outerHTML"
                     hx-indicator="#insights-spinner">
                 <span id="insights-spinner" class="htmx-indicator spinner-border spinner-border-sm me-1" role="status"></span>
-                <i class="bi bi-arrow-clockwise me-1"></i>Re-run checks
+                <i class="bi bi-arrow-clockwise me-1"></i>Re-run
             </button>
         </div>
     </div>
 
+    <!-- Islam Engine banner (hidden by default, shown via JS) -->
+    <div id="islam-engine-banner" class="alert alert-warning d-flex align-items-center gap-2 d-none mb-3">
+        <i class="bi bi-lightning-fill"></i>
+        <span>Islam Engine — experimental</span>
+    </div>
+
     {% if not ifc_file %}
-    <!-- No IFC file -->
     <div class="alert alert-warning d-flex align-items-center gap-2">
         <i class="bi bi-exclamation-triangle-fill"></i>
-        No processed IFC file found for this project. Upload and process an IFC file first.
-    </div>
-
-    {% elif check_results.error %}
-    <div class="alert alert-danger d-flex align-items-center gap-2">
-        <i class="bi bi-x-circle-fill"></i>
-        <span>Could not open IFC file: {{ check_results.error }}</span>
-    </div>
-
-    {% elif check_results %}
-    <!-- Summary cards -->
-    {% include "ifc_insights/components/summary_cards.html" %}
-
-    <!-- Issues table -->
-    <div class="mt-4">
-        {% include "ifc_insights/components/issues_table.html" %}
+        No processed IFC file found. Upload and process an IFC file first.
     </div>
 
     {% else %}
-    <div class="text-secondary">No check results available.</div>
+    <!-- ── Readiness Rings ─────────────────────────────────────────────── -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-6">
+            <div class="card h-100 text-center">
+                <div class="card-body py-4">
+                    <svg viewBox="0 0 100 100" width="120" height="120" class="mb-2">
+                        <circle cx="50" cy="50" r="36" fill="none" stroke="#e5e7eb" stroke-width="10"/>
+                        <circle cx="50" cy="50" r="36" fill="none"
+                                stroke="{{ ring_4d.color }}" stroke-width="10"
+                                stroke-dasharray="{{ ring_4d.dasharray }}"
+                                stroke-linecap="round"
+                                transform="rotate(-90 50 50)"/>
+                        <text x="50" y="50" text-anchor="middle" dominant-baseline="central"
+                              font-size="20" font-weight="bold" fill="{{ ring_4d.color }}">{{ ring_4d.pct }}%</text>
+                    </svg>
+                    <h6 class="fw-semibold mb-1">4D Readiness</h6>
+                    <p class="text-secondary small mb-0">Activity ID linked &middot; {{ total_entities }} elements</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card h-100 text-center">
+                <div class="card-body py-4">
+                    <svg viewBox="0 0 100 100" width="120" height="120" class="mb-2">
+                        <circle cx="50" cy="50" r="36" fill="none" stroke="#e5e7eb" stroke-width="10"/>
+                        <circle cx="50" cy="50" r="36" fill="none"
+                                stroke="{{ ring_5d.color }}" stroke-width="10"
+                                stroke-dasharray="{{ ring_5d.dasharray }}"
+                                stroke-linecap="round"
+                                transform="rotate(-90 50 50)"/>
+                        <text x="50" y="50" text-anchor="middle" dominant-baseline="central"
+                              font-size="20" font-weight="bold" fill="{{ ring_5d.color }}">{{ ring_5d.pct }}%</text>
+                    </svg>
+                    <h6 class="fw-semibold mb-1">5D Readiness</h6>
+                    <p class="text-secondary small mb-0">Cost data present &middot; {{ total_entities }} elements</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Breakdown Cards (HTMX lazy-loaded) ─────────────────────────── -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-4"
+             hx-get="{% url 'islam:insights_breakdown' project.pk 'level' %}"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+            <div class="card h-100"><div class="card-body d-flex align-items-center justify-content-center text-secondary">
+                <div class="spinner-border spinner-border-sm me-2"></div>Loading&hellip;
+            </div></div>
+        </div>
+        <div class="col-md-4"
+             hx-get="{% url 'islam:insights_breakdown' project.pk 'element_type' %}"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+            <div class="card h-100"><div class="card-body d-flex align-items-center justify-content-center text-secondary">
+                <div class="spinner-border spinner-border-sm me-2"></div>Loading&hellip;
+            </div></div>
+        </div>
+        <div class="col-md-4"
+             hx-get="{% url 'islam:insights_breakdown' project.pk 'material' %}"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+            <div class="card h-100"><div class="card-body d-flex align-items-center justify-content-center text-secondary">
+                <div class="spinner-border spinner-border-sm me-2"></div>Loading&hellip;
+            </div></div>
+        </div>
+    </div>
+
+    <!-- ── Activity ID + Name Table ────────────────────────────────────── -->
+    {% if activity_table %}
+    <div class="card mb-4">
+        <div class="card-header d-flex align-items-center gap-2">
+            <i class="bi bi-table me-1 text-primary"></i>
+            <span class="fw-semibold">Activity Schedule Summary</span>
+            <span class="badge bg-secondary ms-1">{{ activity_table|length }} entries</span>
+            <div class="ms-auto">
+                <input type="text" id="activity-search" class="form-control form-control-sm"
+                       placeholder="Search activity&hellip;" style="width:200px;"
+                       oninput="filterActivityTable(this.value)">
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive" style="max-height:320px; overflow-y:auto;">
+                <table class="table table-sm table-hover mb-0" id="activity-table">
+                    <thead class="table-dark sticky-top">
+                        <tr>
+                            <th>Activity ID</th>
+                            <th>Activity Name</th>
+                            <th>IFC Type</th>
+                            <th class="text-end">Count</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in activity_table %}
+                        <tr>
+                            <td><code class="text-info">{{ row.act_id }}</code></td>
+                            <td>{{ row.act_name }}</td>
+                            <td><span class="badge bg-secondary">{{ row.ifc_type }}</span></td>
+                            <td class="text-end fw-semibold">{{ row.count }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
     {% endif %}
 
+    <!-- ── Cost Panel ──────────────────────────────────────────────────── -->
+    {% if has_cost_data %}
+    <div class="card mb-4">
+        <div class="card-header d-flex align-items-center gap-2">
+            <i class="bi bi-currency-dollar me-1 text-success"></i>
+            <span class="fw-semibold">Cost Summary</span>
+            <span class="ms-auto badge bg-success">Total: {{ total_cost|floatformat:2 }}</span>
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-sm mb-0">
+                <thead class="table-dark">
+                    <tr><th>IFC Type</th><th class="text-end">Cost</th></tr>
+                </thead>
+                <tbody>
+                    {% for row in cost_by_type %}
+                    <tr>
+                        <td>{{ row.ifc_type }}</td>
+                        <td class="text-end">{{ row.cost|floatformat:2 }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-info d-flex align-items-center gap-2 mb-4">
+        <i class="bi bi-info-circle-fill"></i>
+        No cost data found &mdash; add <code>Cost</code> or <code>Unit Cost</code> to IFC Property Sets to enable 5D costing.
+    </div>
+    {% endif %}
+
+    <!-- ── QA/QC Checks (existing) ─────────────────────────────────────── -->
+    {% if check_results %}
+        {% if check_results.error %}
+        <div class="alert alert-danger d-flex align-items-center gap-2">
+            <i class="bi bi-x-circle-fill"></i>
+            <span>Could not open IFC file: {{ check_results.error }}</span>
+        </div>
+        {% else %}
+        <hr class="my-4">
+        <h6 class="text-secondary mb-3"><i class="bi bi-shield-check me-1"></i>QA/QC Checks</h6>
+        {% include "ifc_insights/components/summary_cards.html" %}
+        <div class="mt-4">{% include "ifc_insights/components/issues_table.html" %}</div>
+        {% endif %}
+    {% endif %}
+
+    {% endif %}
 </div>
 
-<!-- Help modal -->
+<!-- ── Help modal ─────────────────────────────────────────────────────── -->
 <div class="modal fade" id="ifcInsightsHelpModal" tabindex="-1" aria-labelledby="ifcInsightsHelpModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="ifcInsightsHelpModalLabel">
-                    <i class="bi bi-shield-check me-2"></i>How IFC Insights works
+                    <i class="bi bi-graph-up me-2"></i>How IFC Insights works
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p><strong>What is it?</strong> IFC Insights runs 10 automated QA/QC checks on your IFC model to catch issues before they break 4D linking, exports, or coordination.</p>
-                <p><strong>Checks run:</strong></p>
-                <ul>
-                    <li><span class="badge bg-danger me-1">Critical</span> Elements without storey, geometry outside storey, null/duplicate GlobalIds, duplicate products</li>
-                    <li><span class="badge bg-warning text-dark me-1">Warning</span> Missing ActivityCode, empty storeys, elements with no geometry, missing level</li>
-                    <li><span class="badge bg-secondary me-1">Info</span> Missing material, empty property sets</li>
-                </ul>
-                <p><strong>How to use:</strong> The checks run automatically when you open this tab. Click <em>Re-run checks</em> after fixing issues in your authoring tool and re-uploading. Use <em>Export CSV</em> to share the issue report with your team.</p>
-                <p><strong>Caveats:</strong> Checks run on the most recently processed IFC file for this project. Re-upload and re-process to get results for an updated model.</p>
+                <p><strong>Readiness Rings</strong> &mdash; show what percentage of your IFC elements have Activity ID (4D) and Cost (5D) data populated. Green &ge; 80%, Amber 40&ndash;79%, Red &lt; 40%.</p>
+                <p><strong>Breakdown Cards</strong> &mdash; element counts grouped by Level, Element Type, and Material. Loaded live from the database.</p>
+                <p><strong>Activity Schedule Summary</strong> &mdash; table of all unique Activity ID / Activity Name pairs found in element properties, with element counts. Use the search box to filter.</p>
+                <p><strong>Cost Summary</strong> &mdash; appears only when Cost or Unit Cost properties exist. Shows total cost and breakdown by element type.</p>
+                <p><strong>QA/QC Checks</strong> &mdash; 10 automated quality checks run on the IFC file. Click <em>Re-run</em> after fixing issues and re-uploading.</p>
+                <p><strong>Engine Selector</strong> &mdash; Castor Engine uses the main analysis pipeline. Islam Engine is experimental.</p>
             </div>
         </div>
     </div>
 </div>
+
+<!-- ── Engine selector JS ─────────────────────────────────────────────── -->
+<script>
+function setInsightsEngine(engine) {
+    localStorage.setItem('insights_engine', engine);
+    var banner = document.getElementById('islam-engine-banner');
+    var btnCastor = document.getElementById('btn-castor-engine');
+    var btnIslam = document.getElementById('btn-islam-engine');
+    if (engine === 'islam') {
+        banner.classList.remove('d-none');
+        btnCastor.classList.remove('active');
+        btnIslam.classList.add('active');
+    } else {
+        banner.classList.add('d-none');
+        btnCastor.classList.add('active');
+        btnIslam.classList.remove('active');
+    }
+}
+function filterActivityTable(q) {
+    var rows = document.querySelectorAll('#activity-table tbody tr');
+    var needle = q.toLowerCase();
+    rows.forEach(function(row) {
+        row.style.display = row.textContent.toLowerCase().includes(needle) ? '' : 'none';
+    });
+}
+(function() {
+    var saved = localStorage.getItem('insights_engine') || 'castor';
+    setInsightsEngine(saved);
+})();
+</script>
