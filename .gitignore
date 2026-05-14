@@ -80,4 +80,4 @@ settings.local.json
 .castor/
 
 # Test Coverage
-htmlcov/
+htmlcov/ifc-lite/
