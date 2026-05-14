@@ -76,6 +76,11 @@ urlpatterns = [
         name="schedule_link_auto",
     ),
     path(
+        "projects/<uuid:pk>/schedule/link/smart/",
+        scheduling_views.AutoLinkView.as_view(),
+        name="schedule_link_smart",
+    ),
+    path(
         "projects/<uuid:pk>/schedule/link/param/",
         scheduling_views.LinkParamView.as_view(),
         name="schedule_link_param",
@@ -124,6 +129,44 @@ urlpatterns = [
         "projects/<uuid:pk>/schedule/link/search/",
         scheduling_views.LinkSearchView.as_view(),
         name="link_search",
+    ),
+    # ------------------------------------------------------------------ #
+    # Link Review — binding review tab                                     #
+    # ------------------------------------------------------------------ #
+    path(
+        "projects/<uuid:pk>/schedule/review/",
+        scheduling_views.LinkReviewView.as_view(),
+        name="review",
+    ),
+    path(
+        "projects/<uuid:pk>/schedule/review/<uuid:binding_pk>/accept/",
+        scheduling_views.BindingAcceptView.as_view(),
+        name="binding_accept",
+    ),
+    path(
+        "projects/<uuid:pk>/schedule/review/<uuid:binding_pk>/remove/",
+        scheduling_views.BindingRemoveView.as_view(),
+        name="binding_remove",
+    ),
+    path(
+        "projects/<uuid:pk>/schedule/review/bulk-accept/",
+        scheduling_views.BulkAcceptView.as_view(),
+        name="binding_bulk_accept",
+    ),
+    path(
+        "projects/<uuid:pk>/schedule/review/export/",
+        scheduling_views.BindingExportView.as_view(),
+        name="binding_export",
+    ),
+    path(
+        "projects/<uuid:pk>/schedule/review/add/",
+        scheduling_views.BindingAddView.as_view(),
+        name="binding_add",
+    ),
+    path(
+        "projects/<uuid:pk>/schedule/review/search/",
+        scheduling_views.BindingSearchView.as_view(),
+        name="binding_search",
     ),
     # ------------------------------------------------------------------ #
     # Level Panel                                                         #

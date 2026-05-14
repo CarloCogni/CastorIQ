@@ -151,6 +151,67 @@ class MappingProfile(UUIDModel):
         return f"{self.name} ({self.project.name})"
 
 
+class TaskEntityBinding(UUIDModel):
+    """Explicit scored binding between a schedule Task and an IFC entity global_id.
+
+    Created by the auto-link algorithm. Separate from the M2M ifc_entities field
+    so confidence, method, and review status are preserved alongside the link.
+    """
+
+    class LinkMethod(models.TextChoices):
+        EXACT = "exact", "Exact match"
+        NORMALIZED = "normalized", "Normalized match"
+        HEURISTIC = "heuristic", "Type heuristic"
+        EMBEDDING = "embedding", "Embedding similarity"
+
+    task = models.ForeignKey(
+        Task,
+        on_delete=models.CASCADE,
+        related_name="entity_bindings",
+        verbose_name="Task",
+    )
+    entity_global_id = models.CharField(
+        max_length=50,
+        db_index=True,
+        verbose_name="IFC Entity GlobalId",
+    )
+    confidence = models.FloatField(
+        default=1.0,
+        verbose_name="Confidence",
+        help_text="0.0–1.0 score assigned by the linking algorithm",
+    )
+    link_method = models.CharField(
+        max_length=20,
+        choices=LinkMethod.choices,
+        default=LinkMethod.EXACT,
+        verbose_name="Link Method",
+    )
+    needs_review = models.BooleanField(
+        default=False,
+        verbose_name="Needs Review",
+        help_text="True when confidence is below the auto-accept threshold (0.95)",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Task Entity Binding"
+        verbose_name_plural = "Task Entity Bindings"
+        ordering = ["-confidence", "created_at"]
+        indexes = [
+            models.Index(fields=["task", "needs_review"]),
+            models.Index(fields=["entity_global_id"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["task", "entity_global_id"],
+                name="unique_task_entity_binding",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.task.name} → {self.entity_global_id} ({self.link_method}, {self.confidence:.2f})"
+
+
 class LinkFeedback(UUIDModel):
     """User acceptance/rejection of an embedding-suggested task→entity link."""
 

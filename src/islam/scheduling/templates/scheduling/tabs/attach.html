@@ -50,6 +50,35 @@
                     </form>
                 </div>
 
+                <!-- Smart 4-layer pipeline -->
+                <div class="border rounded p-3 mb-3 {% if match_mode == 'smart' %}border-primary{% endif %}">
+                    <div class="fw-semibold mb-1" style="font-size:0.9rem;">
+                        <i class="bi bi-layers me-1" style="color:var(--castor-accent,#8b5cf6);"></i>Smart Pipeline
+                        <span class="badge bg-secondary ms-1" style="font-size:0.65rem;">4-layer</span>
+                    </div>
+                    <p class="text-secondary mb-2" style="font-size:0.82rem;">
+                        Runs exact → normalized → heuristic → embedding in one pass.
+                        Auto-accepts high-confidence matches; flags low-confidence for review.
+                    </p>
+                    <form hx-post="{% url 'islam:schedule_link_smart' project.pk %}"
+                          hx-target="#attach-results"
+                          hx-swap="innerHTML"
+                          hx-indicator="#smart-spinner">
+                        {% csrf_token %}
+                        <div class="mb-2">
+                            <input type="text" name="ifc_param_name"
+                                   class="form-control form-control-sm"
+                                   value="{{ ifc_param_name|default:'Activity ID' }}"
+                                   placeholder="IFC property name">
+                        </div>
+                        <button type="submit" class="btn btn-sm w-100"
+                                style="background-color:var(--castor-accent,#8b5cf6); color:#fff;">
+                            <span id="smart-spinner" class="htmx-indicator spinner-border spinner-border-sm me-1"></span>
+                            <i class="bi bi-layers me-1"></i>Run Smart Pipeline
+                        </button>
+                    </form>
+                </div>
+
                 <!-- Parameter mapping -->
                 <div class="border rounded p-3 {% if match_mode == 'param' %}border-primary{% endif %}">
                     <div class="fw-semibold mb-1" style="font-size:0.9rem;">

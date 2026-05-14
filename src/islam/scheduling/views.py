@@ -3,11 +3,13 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import logging
 
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, render
+from django.template.loader import render_to_string
 from django.views import View
 from django.views.generic import TemplateView
 
@@ -15,7 +17,8 @@ from core.http import toast_response, trigger_toast
 from core.mixins import ProjectAccessMixin, ProjectModifyAccessMixin, ProjectTabMixin
 from ifc_processor.models import IFCEntity, IFCFile
 
-from .models import LinkFeedback, MappingProfile, Task
+from .models import LinkFeedback, MappingProfile, Task, TaskEntityBinding
+from .services.autolink import run_autolink
 from .services.column_mapper import CANONICAL_FIELDS, CANONICAL_LABELS, apply_mapping, extract_columns
 from .services.embed_linker import embed_match_tasks
 from .services.excel_parser import parse_excel
@@ -55,6 +58,12 @@ class ScheduleView(ProjectTabMixin, TemplateView):
             ctx["gantt_min_date"] = None
             ctx["gantt_max_date"] = None
 
+        ctx["ifc_param_name"] = self.request.session.get(
+            f"ifc_param_name_{project.pk}", "Activity ID"
+        )
+        ctx["binding_review_count"] = TaskEntityBinding.objects.filter(
+            task__project=project, needs_review=True
+        ).count()
         return ctx
 
 
@@ -253,6 +262,41 @@ class LinkParamView(ProjectModifyAccessMixin, View):
         return trigger_toast(response, f"Parameter '{param_name}' matched {linked} tasks.", "success")
 
 
+class AutoLinkView(ProjectModifyAccessMixin, View):
+    """HTMX POST — run the 4-layer smart auto-link pipeline and return summary."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        # Prefer param from POST (attach tab form), fall back to session from mapping screen
+        ifc_param_name = (
+            request.POST.get("ifc_param_name", "").strip()
+            or request.session.get(f"ifc_param_name_{project.pk}", "Activity ID")
+        )
+
+        try:
+            summary = run_autolink(project, ifc_param_name)
+        except Exception as exc:
+            logger.exception("Auto-link pipeline failed for project %s", project.pk)
+            return toast_response(f"Auto-link failed: {exc}", "error", status=500)
+
+        total_linked = (
+            summary["linked_exact"]
+            + summary["linked_normalized"]
+            + summary["linked_heuristic"]
+            + summary["linked_embedding"]
+        )
+        response = render(
+            request,
+            "scheduling/components/autolink_summary.html",
+            {"summary": summary, "project": project, "ifc_param_name": ifc_param_name},
+        )
+        msg = (
+            f"Linked {total_linked} of {summary['total_tasks']} tasks."
+            f" {summary['needs_review']} need review."
+        )
+        return trigger_toast(response, msg, "success")
+
+
 # ---------------------------------------------------------------------------
 # Task management partials
 # ---------------------------------------------------------------------------
@@ -344,6 +388,10 @@ class MappingSubmitView(ProjectModifyAccessMixin, View):
         # Remove unmapped optional fields so apply_mapping only sees real mappings
         column_mapping = {k: v for k, v in column_mapping.items() if v}
 
+        ifc_param_name = request.POST.get("ifc_param_name", "Activity ID").strip() or "Activity ID"
+        # Persist for auto-link and TimeLiner to read back
+        request.session[f"ifc_param_name_{project.pk}"] = ifc_param_name
+
         try:
             tasks = apply_mapping(headers, rows, column_mapping, source)
         except ValueError as exc:
@@ -358,7 +406,7 @@ class MappingSubmitView(ProjectModifyAccessMixin, View):
             MappingProfile.objects.update_or_create(
                 project=project,
                 name=profile_name,
-                defaults={"column_mapping": column_mapping},
+                defaults={"column_mapping": column_mapping, "ifc_parameter_name": ifc_param_name},
             )
 
         validation = validate_schedule(tasks, project_name=project.name)
@@ -525,4 +573,301 @@ class LinkSearchView(ProjectAccessMixin, View):
             request,
             "scheduling/components/link_search.html",
             {"entities": entities, "project": project, "feedback_pk": feedback_pk},
+        )
+
+
+# ---------------------------------------------------------------------------
+# Link Review — 4-layer binding review tab
+# ---------------------------------------------------------------------------
+
+def _get_ifc_files(project):
+    return IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
+
+
+def _build_review_summary(project) -> dict:
+    qs = TaskEntityBinding.objects.filter(task__project=project)
+    total = qs.count()
+    needs_review = qs.filter(needs_review=True).count()
+    needs_review_high = qs.filter(needs_review=True, confidence__gte=0.95).count()
+    auto_accepted = qs.filter(needs_review=False).count()
+    all_pks = set(Task.objects.filter(project=project).values_list("pk", flat=True))
+    linked_pks = set(qs.values_list("task_id", flat=True))
+    return {
+        "total": total,
+        "needs_review": needs_review,
+        "needs_review_high": needs_review_high,
+        "auto_accepted": auto_accepted,
+        "unlinked_tasks": len(all_pks - linked_pks),
+    }
+
+
+def _make_row(binding: TaskEntityBinding, ifc_files) -> dict:
+    try:
+        entity = (
+            IFCEntity.objects
+            .only("global_id", "name", "ifc_type")
+            .get(ifc_file__in=ifc_files, global_id=binding.entity_global_id)
+        )
+        return {
+            "binding": binding,
+            "entity_name": entity.name or entity.global_id,
+            "entity_type": entity.ifc_type,
+        }
+    except IFCEntity.DoesNotExist:
+        return {
+            "binding": binding,
+            "entity_name": binding.entity_global_id[:14] + "…",
+            "entity_type": "",
+        }
+
+
+def _render_link_review(request, project, filter_by: str = "all") -> HttpResponse:
+    ifc_files = _get_ifc_files(project)
+
+    bindings_qs = (
+        TaskEntityBinding.objects
+        .filter(task__project=project)
+        .select_related("task")
+        .order_by("task__name", "-confidence")
+    )
+    if filter_by == "needs_review":
+        bindings_qs = bindings_qs.filter(needs_review=True)
+    elif filter_by == "auto_accepted":
+        bindings_qs = bindings_qs.filter(needs_review=False)
+    elif filter_by in ("exact", "normalized", "heuristic", "embedding"):
+        bindings_qs = bindings_qs.filter(link_method=filter_by)
+
+    binding_list = list(bindings_qs)
+    gids = {b.entity_global_id for b in binding_list}
+    entity_name_map = (
+        {
+            e.global_id: (e.name or e.global_id, e.ifc_type)
+            for e in IFCEntity.objects.filter(
+                ifc_file__in=ifc_files, global_id__in=gids
+            ).only("global_id", "name", "ifc_type")
+        }
+        if gids else {}
+    )
+    rows = [
+        {
+            "binding": b,
+            "entity_name": entity_name_map.get(b.entity_global_id, (b.entity_global_id[:14] + "…", ""))[0],
+            "entity_type": entity_name_map.get(b.entity_global_id, ("", ""))[1],
+        }
+        for b in binding_list
+    ]
+
+    unlinked_tasks = []
+    if filter_by in ("all", "unlinked"):
+        linked_pks = TaskEntityBinding.objects.filter(
+            task__project=project
+        ).values_list("task_id", flat=True)
+        unlinked_tasks = list(
+            Task.objects.filter(project=project).exclude(pk__in=linked_pks).order_by("name")
+        )
+
+    summary = _build_review_summary(project)
+    return render(
+        request,
+        "scheduling/tabs/link_review.html",
+        {
+            "project": project,
+            "rows": rows,
+            "unlinked_tasks": unlinked_tasks,
+            "summary": summary,
+            "filter_by": filter_by,
+        },
+    )
+
+
+class LinkReviewView(ProjectAccessMixin, View):
+    """GET — Smart Pipeline binding review tab."""
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        filter_by = request.GET.get("filter", "all")
+        return _render_link_review(request, project, filter_by)
+
+
+class BindingAcceptView(ProjectModifyAccessMixin, View):
+    """HTMX POST — accept one binding, write M2M, return updated row + OOB summary."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        binding = get_object_or_404(
+            TaskEntityBinding, pk=kwargs["binding_pk"], task__project=project
+        )
+        ifc_files = _get_ifc_files(project)
+
+        binding.needs_review = False
+        binding.save(update_fields=["needs_review"])
+
+        try:
+            entity = IFCEntity.objects.get(
+                ifc_file__in=ifc_files, global_id=binding.entity_global_id
+            )
+            binding.task.ifc_entities.add(entity)
+        except IFCEntity.DoesNotExist:
+            pass
+
+        row = _make_row(binding, ifc_files)
+        summary = _build_review_summary(project)
+        row_html = render_to_string(
+            "scheduling/components/link_review_row.html",
+            {"row": row, "project": project},
+            request=request,
+        )
+        summary_html = render_to_string(
+            "scheduling/components/link_review_summary.html",
+            {"summary": summary, "project": project},
+            request=request,
+        )
+        return HttpResponse(
+            row_html + f'<div id="lr-summary" hx-swap-oob="true">{summary_html}</div>'
+        )
+
+
+class BindingRemoveView(ProjectModifyAccessMixin, View):
+    """HTMX POST — delete one binding, remove M2M, return empty row + OOB summary."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        binding = get_object_or_404(
+            TaskEntityBinding, pk=kwargs["binding_pk"], task__project=project
+        )
+        ifc_files = _get_ifc_files(project)
+        binding_pk = str(binding.pk)
+
+        try:
+            entity = IFCEntity.objects.get(
+                ifc_file__in=ifc_files, global_id=binding.entity_global_id
+            )
+            binding.task.ifc_entities.remove(entity)
+        except IFCEntity.DoesNotExist:
+            pass
+
+        binding.delete()
+        summary = _build_review_summary(project)
+        summary_html = render_to_string(
+            "scheduling/components/link_review_summary.html",
+            {"summary": summary, "project": project},
+            request=request,
+        )
+        return HttpResponse(
+            f'<tr id="binding-row-{binding_pk}" style="display:none"></tr>'
+            f'<div id="lr-summary" hx-swap-oob="true">{summary_html}</div>'
+        )
+
+
+class BulkAcceptView(ProjectModifyAccessMixin, View):
+    """HTMX POST — accept all bindings with confidence ≥ 0.95, re-render full tab."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        ifc_files = _get_ifc_files(project)
+
+        pending = list(
+            TaskEntityBinding.objects
+            .filter(task__project=project, needs_review=True, confidence__gte=0.95)
+            .select_related("task")
+        )
+        accepted = 0
+        for binding in pending:
+            try:
+                entity = IFCEntity.objects.get(
+                    ifc_file__in=ifc_files, global_id=binding.entity_global_id
+                )
+                binding.task.ifc_entities.add(entity)
+                accepted += 1
+            except IFCEntity.DoesNotExist:
+                pass
+
+        TaskEntityBinding.objects.filter(pk__in=[b.pk for b in pending]).update(needs_review=False)
+
+        response = _render_link_review(request, project, "all")
+        return trigger_toast(response, f"Accepted {accepted} binding(s).", "success")
+
+
+class BindingExportView(ProjectAccessMixin, View):
+    """GET — download all bindings as CSV."""
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        bindings = (
+            TaskEntityBinding.objects
+            .filter(task__project=project)
+            .select_related("task")
+            .order_by("task__name", "-confidence")
+        )
+        response = HttpResponse(content_type="text/csv")
+        response["Content-Disposition"] = (
+            f'attachment; filename="link_review_{project.pk}.csv"'
+        )
+        writer = csv.writer(response)
+        writer.writerow([
+            "Task", "Activity Code", "Entity GlobalId",
+            "Confidence", "Method", "Needs Review",
+        ])
+        for b in bindings:
+            writer.writerow([
+                b.task.name,
+                b.task.activity_code,
+                b.entity_global_id,
+                f"{b.confidence:.2f}",
+                b.link_method,
+                "Yes" if b.needs_review else "No",
+            ])
+        return response
+
+
+class BindingAddView(ProjectModifyAccessMixin, View):
+    """HTMX POST — manually create a binding for an unlinked task, re-render full tab."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        task_pk = request.POST.get("task_pk", "").strip()
+        entity_global_id = request.POST.get("entity_global_id", "").strip()
+
+        if not task_pk or not entity_global_id:
+            return toast_response("Missing task or entity.", "error", status=400)
+
+        task = get_object_or_404(Task, pk=task_pk, project=project)
+        ifc_files = _get_ifc_files(project)
+
+        try:
+            entity = IFCEntity.objects.get(
+                ifc_file__in=ifc_files, global_id=entity_global_id
+            )
+        except IFCEntity.DoesNotExist:
+            return toast_response("Entity not found in this project.", "error", status=404)
+
+        TaskEntityBinding.objects.get_or_create(
+            task=task,
+            entity_global_id=entity_global_id,
+            defaults={"confidence": 1.0, "link_method": "exact", "needs_review": False},
+        )
+        task.ifc_entities.add(entity)
+
+        response = _render_link_review(request, project, "all")
+        return trigger_toast(response, f"Linked '{task.name}' manually.", "success")
+
+
+class BindingSearchView(ProjectAccessMixin, View):
+    """HTMX GET — entity typeahead for the manual-link panel in the review tab."""
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        q = request.GET.get("q", "").strip()
+        task_pk = request.GET.get("task_pk", "")
+
+        ifc_files = _get_ifc_files(project)
+        qs = IFCEntity.objects.filter(ifc_file__in=ifc_files)
+        if q:
+            qs = qs.filter(name__icontains=q)
+        entities = qs.order_by("name")[:10]
+
+        return render(
+            request,
+            "scheduling/components/binding_search.html",
+            {"entities": entities, "project": project, "task_pk": task_pk},
         )

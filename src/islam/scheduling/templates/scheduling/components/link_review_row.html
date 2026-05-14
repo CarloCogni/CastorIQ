@@ -1,0 +1,78 @@
+<!-- scheduling/components/link_review_row.html — one binding row, HTMX outerHTML swap target -->
+<tr id="binding-row-{{ row.binding.pk }}">
+
+    <!-- Task name -->
+    <td style="font-size:0.83rem; max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+        {{ row.binding.task.name }}
+    </td>
+
+    <!-- Entity -->
+    <td style="font-size:0.83rem; max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+        <div>{{ row.entity_name }}</div>
+        {% if row.entity_type %}
+        <div class="text-secondary" style="font-size:0.73rem;">{{ row.entity_type }}</div>
+        {% endif %}
+    </td>
+
+    <!-- Method badge -->
+    <td>
+        {% if row.binding.link_method == "exact" %}
+            <span class="badge bg-success">exact</span>
+        {% elif row.binding.link_method == "normalized" %}
+            <span class="badge bg-primary">normalized</span>
+        {% elif row.binding.link_method == "heuristic" %}
+            <span class="badge bg-warning text-dark">heuristic</span>
+        {% elif row.binding.link_method == "embedding" %}
+            <span class="badge bg-info text-dark">embedding</span>
+        {% else %}
+            <span class="badge bg-secondary">{{ row.binding.link_method }}</span>
+        {% endif %}
+    </td>
+
+    <!-- Confidence -->
+    <td class="text-center">
+        {% with c=row.binding.confidence %}
+        {% if c >= 0.95 %}
+            <span class="badge bg-success">{% widthratio c 1 100 %}%</span>
+        {% elif c >= 0.70 %}
+            <span class="badge bg-warning text-dark">{% widthratio c 1 100 %}%</span>
+        {% else %}
+            <span class="badge bg-secondary">{% widthratio c 1 100 %}%</span>
+        {% endif %}
+        {% endwith %}
+    </td>
+
+    <!-- Status -->
+    <td>
+        {% if row.binding.needs_review %}
+            <span class="badge bg-warning text-dark">Pending</span>
+        {% else %}
+            <span class="badge bg-success">Accepted</span>
+        {% endif %}
+    </td>
+
+    <!-- Actions -->
+    <td>
+        <div class="d-flex gap-1">
+            {% if row.binding.needs_review %}
+            <form hx-post="{% url 'islam:binding_accept' project.pk row.binding.pk %}"
+                  hx-target="#binding-row-{{ row.binding.pk }}"
+                  hx-swap="outerHTML">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-success btn-sm py-0 px-2" title="Accept link">
+                    <i class="bi bi-check-lg"></i>
+                </button>
+            </form>
+            {% endif %}
+            <form hx-post="{% url 'islam:binding_remove' project.pk row.binding.pk %}"
+                  hx-target="#binding-row-{{ row.binding.pk }}"
+                  hx-swap="outerHTML">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-danger btn-sm py-0 px-2" title="Remove binding">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </form>
+        </div>
+    </td>
+
+</tr>
