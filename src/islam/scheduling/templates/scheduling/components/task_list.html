@@ -1,0 +1,121 @@
+<!-- scheduling/components/task_list.html — task list partial (preview + live) -->
+
+{% if preview_mode and tasks_preview %}
+
+<!-- AI validation badge -->
+{% if validation %}
+<div class="alert {% if validation.looks_valid %}alert-success{% else %}alert-warning{% endif %} py-2 mb-3" style="font-size:0.83rem;">
+    <strong>AI check:</strong> {{ validation.summary }}
+    {% if validation.anomalies %}
+    <ul class="mb-0 mt-1">
+        {% for a in validation.anomalies %}<li>{{ a }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+</div>
+{% endif %}
+
+<div class="d-flex justify-content-between align-items-center mb-2">
+    <span class="text-secondary small">{{ tasks_preview|length }} task{{ tasks_preview|length|pluralize }} parsed from <strong>{{ source }}</strong></span>
+    <form hx-post="{% url 'islam:schedule_save' project.pk %}"
+          hx-target="#task-preview-area"
+          hx-swap="innerHTML"
+          hx-indicator="#save-spinner">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-sm btn-success">
+            <span id="save-spinner" class="htmx-indicator spinner-border spinner-border-sm me-1"></span>
+            <i class="bi bi-floppy me-1"></i>Save {{ tasks_preview|length }} tasks
+        </button>
+    </form>
+</div>
+
+<div class="table-responsive" style="max-height:50vh; overflow-y:auto;">
+    <table class="table table-sm table-hover align-middle mb-0">
+        <thead class="table-dark sticky-top">
+            <tr>
+                <th>Task Name</th>
+                <th>Start</th>
+                <th>End</th>
+                <th>Status</th>
+                <th>Activity Code</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for task in tasks_preview %}
+            <tr>
+                <td style="font-size:0.85rem;">{{ task.name }}</td>
+                <td style="font-size:0.82rem;">{{ task.start_date }}</td>
+                <td style="font-size:0.82rem;">{{ task.end_date }}</td>
+                <td>
+                    <span class="badge
+                        {% if task.status == 'active' %}bg-success
+                        {% elif task.status == 'complete' %}bg-primary
+                        {% elif task.status == 'delayed' %}bg-warning text-dark
+                        {% else %}bg-secondary{% endif %}">
+                        {{ task.status }}
+                    </span>
+                </td>
+                <td class="text-secondary" style="font-size:0.8rem;">{{ task.activity_code|default:"—" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% elif tasks %}
+
+<div class="table-responsive" style="max-height:60vh; overflow-y:auto;">
+    <table class="table table-sm table-hover align-middle mb-0">
+        <thead class="table-dark sticky-top">
+            <tr>
+                <th>Task Name</th>
+                <th>Start</th>
+                <th>End</th>
+                <th>Status</th>
+                <th>Source</th>
+                <th>Linked</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for task in tasks %}
+            <tr>
+                <td style="font-size:0.85rem;">{{ task.name }}</td>
+                <td style="font-size:0.82rem;">{{ task.start_date }}</td>
+                <td style="font-size:0.82rem;">{{ task.end_date }}</td>
+                <td>
+                    <span class="badge
+                        {% if task.status == 'active' %}bg-success
+                        {% elif task.status == 'complete' %}bg-primary
+                        {% elif task.status == 'delayed' %}bg-warning text-dark
+                        {% else %}bg-secondary{% endif %}">
+                        {{ task.status }}
+                    </span>
+                </td>
+                <td class="text-secondary" style="font-size:0.78rem;">{{ task.source }}</td>
+                <td class="text-center">
+                    {% with cnt=task.ifc_entities.count %}
+                        {% if cnt %}<span class="badge bg-primary">{{ cnt }}</span>{% else %}<span class="text-secondary">—</span>{% endif %}
+                    {% endwith %}
+                </td>
+                <td>
+                    <button class="btn btn-sm btn-outline-danger py-0"
+                            hx-post="{% url 'islam:task_delete' project.pk task.pk %}"
+                            hx-target="closest tbody"
+                            hx-swap="outerHTML"
+                            hx-confirm="Delete '{{ task.name }}'?"
+                            title="Delete task">
+                        <i class="bi bi-trash3"></i>
+                    </button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% else %}
+<div class="text-center text-secondary py-4">
+    <i class="bi bi-table fs-2 d-block mb-2"></i>
+    No tasks yet — upload a schedule file above.
+</div>
+{% endif %}

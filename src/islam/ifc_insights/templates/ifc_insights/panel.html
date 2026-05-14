@@ -1,0 +1,81 @@
+<!-- ifc_insights/panel.html — QA/QC dashboard panel (partial, no base extend) -->
+<div class="container-fluid py-3 px-4" id="ifc-insights-panel">
+
+    <!-- Header row -->
+    <div class="d-flex align-items-center mb-3 gap-2">
+        <h5 class="mb-0">
+            <i class="bi bi-shield-check me-2 text-primary"></i>IFC Insights
+        </h5>
+        <button type="button"
+                class="help-pill"
+                data-bs-toggle="modal"
+                data-bs-target="#ifcInsightsHelpModal"
+                title="How IFC Insights works"
+                aria-label="How IFC Insights works">
+            <i class="bi bi-question-circle"></i>
+        </button>
+        <div class="ms-auto d-flex gap-2">
+            {% include "ifc_insights/components/export_btn.html" %}
+            <button class="btn btn-sm btn-outline-secondary"
+                    hx-get="{% url 'islam:insights_rerun' project.pk %}"
+                    hx-target="#ifc-insights-panel"
+                    hx-swap="outerHTML"
+                    hx-indicator="#insights-spinner">
+                <span id="insights-spinner" class="htmx-indicator spinner-border spinner-border-sm me-1" role="status"></span>
+                <i class="bi bi-arrow-clockwise me-1"></i>Re-run checks
+            </button>
+        </div>
+    </div>
+
+    {% if not ifc_file %}
+    <!-- No IFC file -->
+    <div class="alert alert-warning d-flex align-items-center gap-2">
+        <i class="bi bi-exclamation-triangle-fill"></i>
+        No processed IFC file found for this project. Upload and process an IFC file first.
+    </div>
+
+    {% elif check_results.error %}
+    <div class="alert alert-danger d-flex align-items-center gap-2">
+        <i class="bi bi-x-circle-fill"></i>
+        <span>Could not open IFC file: {{ check_results.error }}</span>
+    </div>
+
+    {% elif check_results %}
+    <!-- Summary cards -->
+    {% include "ifc_insights/components/summary_cards.html" %}
+
+    <!-- Issues table -->
+    <div class="mt-4">
+        {% include "ifc_insights/components/issues_table.html" %}
+    </div>
+
+    {% else %}
+    <div class="text-secondary">No check results available.</div>
+    {% endif %}
+
+</div>
+
+<!-- Help modal -->
+<div class="modal fade" id="ifcInsightsHelpModal" tabindex="-1" aria-labelledby="ifcInsightsHelpModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="ifcInsightsHelpModalLabel">
+                    <i class="bi bi-shield-check me-2"></i>How IFC Insights works
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p><strong>What is it?</strong> IFC Insights runs 10 automated QA/QC checks on your IFC model to catch issues before they break 4D linking, exports, or coordination.</p>
+                <p><strong>Checks run:</strong></p>
+                <ul>
+                    <li><span class="badge bg-danger me-1">Critical</span> Elements without storey, geometry outside storey, null/duplicate GlobalIds, duplicate products</li>
+                    <li><span class="badge bg-warning text-dark me-1">Warning</span> Missing ActivityCode, empty storeys, elements with no geometry, missing level</li>
+                    <li><span class="badge bg-secondary me-1">Info</span> Missing material, empty property sets</li>
+                </ul>
+                <p><strong>How to use:</strong> The checks run automatically when you open this tab. Click <em>Re-run checks</em> after fixing issues in your authoring tool and re-uploading. Use <em>Export CSV</em> to share the issue report with your team.</p>
+                <p><strong>Caveats:</strong> Checks run on the most recently processed IFC file for this project. Re-upload and re-process to get results for an updated model.</p>
+            </div>
+        </div>
+    </div>
+</div>

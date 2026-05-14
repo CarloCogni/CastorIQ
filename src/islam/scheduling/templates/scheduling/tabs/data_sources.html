@@ -1,0 +1,60 @@
+<!-- scheduling/tabs/data_sources.html — file upload + preview -->
+<div class="row g-4">
+
+    <!-- Upload card -->
+    <div class="col-12 col-lg-5">
+        <div class="card border-0 bg-body-secondary h-100">
+            <div class="card-body">
+                <h6 class="card-title mb-3">
+                    <i class="bi bi-cloud-upload me-2"></i>Import Schedule
+                </h6>
+                <form id="schedule-upload-form"
+                      hx-post="{% url 'islam:schedule_upload' project.pk %}"
+                      hx-target="#task-preview-area"
+                      hx-swap="innerHTML"
+                      hx-encoding="multipart/form-data"
+                      hx-indicator="#upload-spinner">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold">Schedule file</label>
+                        <input type="file"
+                               name="schedule_file"
+                               class="form-control form-control-sm"
+                               accept=".xlsx,.xls,.xer,.xml"
+                               required>
+                        <div class="form-text">Supported: Excel (.xlsx), Primavera P6 (.xer), MS Project (.xml)</div>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-sm w-100">
+                        <span id="upload-spinner" class="htmx-indicator spinner-border spinner-border-sm me-1" role="status"></span>
+                        <i class="bi bi-upload me-1"></i>Parse &amp; Preview
+                    </button>
+                </form>
+
+                {% if task_count %}
+                <hr class="my-3">
+                <div class="alert alert-info py-2 mb-0" style="font-size:0.83rem;">
+                    <i class="bi bi-info-circle me-1"></i>
+                    {{ task_count }} task{{ task_count|pluralize }} already imported for this project.
+                    Re-uploading will <strong>add</strong> tasks (not replace).
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Preview area -->
+    <div class="col-12 col-lg-7">
+        <div id="task-preview-area">
+            {% if task_count %}
+                <div class="text-secondary small mb-2">Current tasks in this project:</div>
+                {% include "scheduling/components/task_list.html" with tasks=tasks preview_mode=False %}
+            {% else %}
+                <div class="d-flex flex-column align-items-center justify-content-center text-secondary py-5">
+                    <i class="bi bi-table fs-1 mb-2"></i>
+                    <span>Parsed tasks will appear here for review before saving.</span>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+</div>

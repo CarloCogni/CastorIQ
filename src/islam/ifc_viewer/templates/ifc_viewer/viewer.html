@@ -1,0 +1,142 @@
+<!-- ifc_viewer/viewer.html — 3D IFC viewer using ifc-lite CDN (WebGPU) -->
+<div class="d-flex flex-column h-100 position-relative" id="ifc-viewer-root">
+
+    {% if not ifc_file_url %}
+    <!-- No IFC file state -->
+    <div class="d-flex flex-column align-items-center justify-content-center h-100 text-secondary">
+        <i class="bi bi-box fs-1 mb-3"></i>
+        <p class="mb-1 fw-semibold">No processed IFC file</p>
+        <p class="small">Upload and process an IFC file from the project settings to enable the 3D viewer.</p>
+    </div>
+
+    {% else %}
+    <!-- Toolbar -->
+    <div class="d-flex align-items-center px-3 py-2 border-bottom bg-body flex-shrink-0" style="gap:0.5rem; font-size:0.82rem;">
+        <span class="text-secondary">{{ viewer_ifc_file.name }}</span>
+        <div class="ms-auto d-flex gap-2">
+            <button class="btn btn-sm btn-outline-secondary" id="viewer-reset-btn" title="Reset camera">
+                <i class="bi bi-aspect-ratio"></i> Reset
+            </button>
+            <button class="btn btn-sm btn-outline-secondary" id="viewer-section-btn" title="Toggle section box">
+                <i class="bi bi-scissors"></i> Section
+            </button>
+        </div>
+    </div>
+
+    <!-- Canvas container -->
+    <div class="flex-grow-1 position-relative overflow-hidden bg-dark">
+        <canvas id="ifc-canvas" style="width:100%; height:100%; display:block;"></canvas>
+
+        <!-- Loading overlay -->
+        <div id="viewer-loading" class="position-absolute top-0 start-0 w-100 h-100 d-flex flex-column align-items-center justify-content-center bg-dark text-light" style="z-index:10;">
+            <div class="spinner-border text-primary mb-3" role="status"></div>
+            <span id="viewer-loading-msg">Loading IFC model…</span>
+        </div>
+
+        <!-- Error overlay (hidden by default) -->
+        <div id="viewer-error" class="position-absolute top-0 start-0 w-100 h-100 d-flex flex-column align-items-center justify-content-center bg-dark text-danger d-none" style="z-index:10;">
+            <i class="bi bi-exclamation-triangle fs-1 mb-2"></i>
+            <span id="viewer-error-msg">Failed to load model.</span>
+        </div>
+
+        <!-- Simulation legend (hidden until simulate mode active) -->
+        <div id="sim-legend" class="position-absolute bottom-0 start-0 m-3 p-2 rounded bg-dark bg-opacity-75 text-light d-none" style="font-size:0.78rem; z-index:5;">
+            <div class="d-flex align-items-center gap-2 mb-1"><span style="width:12px;height:12px;border-radius:2px;background:#22c55e;display:inline-block;"></span> Active</div>
+            <div class="d-flex align-items-center gap-2 mb-1"><span style="width:12px;height:12px;border-radius:2px;background:#3b82f6;display:inline-block;"></span> Complete</div>
+            <div class="d-flex align-items-center gap-2 mb-1"><span style="width:12px;height:12px;border-radius:2px;background:#94a3b8;display:inline-block;"></span> Pending</div>
+            <div class="d-flex align-items-center gap-2"><span style="width:12px;height:12px;border-radius:2px;background:#f59e0b;display:inline-block;"></span> Delayed</div>
+        </div>
+    </div>
+
+    <script type="module">
+    // IFC Viewer — ifc-lite CDN (WebGPU)
+    // Communicates with TimeLiner via CustomEvents on document.
+
+    const IFC_URL = "{{ ifc_file_url }}";
+    const canvas  = document.getElementById("ifc-canvas");
+    const loading = document.getElementById("viewer-loading");
+    const loadMsg = document.getElementById("viewer-loading-msg");
+    const errBox  = document.getElementById("viewer-error");
+    const errMsg  = document.getElementById("viewer-error-msg");
+    const legend  = document.getElementById("sim-legend");
+
+    // --- colour constants (RGBA, 0-255) ---
+    const C = {
+        active:   [34,  197,  94, 255],
+        complete: [59,  130, 246, 255],
+        pending:  [148, 163, 184, 180],
+        delayed:  [245, 158,  11, 255],
+        default:  [200, 200, 200, 255],
+        highlight:[255, 220,   0, 255],
+    };
+
+    let viewer = null;   // ifc-lite viewer instance
+    let modelId = null;
+
+    async function init() {
+        try {
+            loadMsg.textContent = "Initialising WebGPU renderer…";
+
+            // ifc-lite ES module from CDN
+            const { IfcViewerAPI } = await import(
+                "https://cdn.jsdelivr.net/npm/@thatopen/components@latest/dist/index.js"
+            ).catch(() => import(
+                "https://unpkg.com/@thatopen/components@latest/dist/index.js"
+            ));
+
+            loadMsg.textContent = "Fetching IFC file…";
+            const resp = await fetch(IFC_URL);
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const buffer = await resp.arrayBuffer();
+
+            loadMsg.textContent = "Parsing IFC model…";
+            viewer = new IfcViewerAPI({ container: canvas });
+            await viewer.IFC.setWasmPath("https://unpkg.com/web-ifc@0.0.57/");
+            modelId = await viewer.IFC.loadIfcUrl(IFC_URL);
+
+            loading.classList.add("d-none");
+        } catch (err) {
+            console.error("IFC viewer init failed:", err);
+            loading.classList.add("d-none");
+            errMsg.textContent = `Failed to load model: ${err.message}`;
+            errBox.classList.remove("d-none");
+        }
+    }
+
+    // --- TimeLiner events ---
+
+    document.addEventListener("castor:highlight", (e) => {
+        if (!viewer) return;
+        const { globalIds } = e.detail || {};
+        if (!globalIds?.length) return;
+        viewer.IFC.selector.highlightIfcItemsByID(modelId, globalIds, true);
+    });
+
+    document.addEventListener("castor:simulate", async (e) => {
+        if (!viewer) return;
+        legend.classList.remove("d-none");
+        const { active = [], complete = [], pending = [], delayed = [] } = e.detail || {};
+        // Colour each group — ifc-lite subset API
+        const colorGroups = [
+            { ids: active,   color: C.active   },
+            { ids: complete, color: C.complete  },
+            { ids: pending,  color: C.pending   },
+            { ids: delayed,  color: C.delayed   },
+        ];
+        for (const { ids, color } of colorGroups) {
+            if (ids.length) {
+                await viewer.IFC.selector.colorIfcItems(modelId, ids, color);
+            }
+        }
+    });
+
+    document.getElementById("viewer-reset-btn")?.addEventListener("click", () => {
+        viewer?.context?.ifcCamera?.resetCamera();
+        legend.classList.add("d-none");
+    });
+
+    init();
+    </script>
+    {% endif %}
+
+</div>

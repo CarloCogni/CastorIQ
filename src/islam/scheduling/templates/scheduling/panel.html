@@ -1,0 +1,86 @@
+<!-- scheduling/panel.html — TimeLiner main panel (partial) -->
+<div class="d-flex flex-column h-100 overflow-hidden" id="timeliner-root">
+
+    <!-- Tab bar + help pill -->
+    <div class="d-flex align-items-center px-3 py-2 border-bottom bg-body flex-shrink-0">
+        <h5 class="mb-0 me-2">
+            <i class="bi bi-calendar3-range me-2 text-primary"></i>TimeLiner
+        </h5>
+        <button type="button"
+                class="help-pill"
+                data-bs-toggle="modal"
+                data-bs-target="#timelinerHelpModal"
+                title="How TimeLiner works"
+                aria-label="How TimeLiner works">
+            <i class="bi bi-question-circle"></i>
+        </button>
+
+        <!-- Internal sub-tabs -->
+        <ul class="nav nav-tabs border-0 ms-4 flex-grow-1" style="font-size:0.85rem;">
+            <li class="nav-item">
+                <a class="nav-link {% if schedule_tab == 'data_sources' %}active{% endif %}"
+                   href="{% url 'islam:schedule' project.pk %}?tab=data_sources">
+                    <i class="bi bi-upload me-1"></i>Data Sources
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if schedule_tab == 'attach' %}active{% endif %}"
+                   href="{% url 'islam:schedule' project.pk %}?tab=attach">
+                    <i class="bi bi-link-45deg me-1"></i>Attach
+                    {% if task_count %}<span class="badge bg-secondary ms-1">{{ task_count }}</span>{% endif %}
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if schedule_tab == 'gantt' %}active{% endif %}"
+                   href="{% url 'islam:schedule' project.pk %}?tab=gantt">
+                    <i class="bi bi-bar-chart-steps me-1"></i>Gantt
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if schedule_tab == 'simulate' %}active{% endif %}"
+                   href="{% url 'islam:schedule' project.pk %}?tab=simulate">
+                    <i class="bi bi-play-circle me-1"></i>Simulate
+                </a>
+            </li>
+        </ul>
+    </div>
+
+    <!-- Tab content -->
+    <div class="flex-grow-1 overflow-auto p-3">
+        {% if schedule_tab == 'data_sources' %}
+            {% include "scheduling/tabs/data_sources.html" %}
+        {% elif schedule_tab == 'attach' %}
+            {% include "scheduling/tabs/attach.html" %}
+        {% elif schedule_tab == 'gantt' %}
+            {% include "scheduling/tabs/gantt.html" %}
+        {% elif schedule_tab == 'simulate' %}
+            {% include "scheduling/tabs/simulate.html" %}
+        {% endif %}
+    </div>
+
+</div>
+
+<!-- Help modal -->
+<div class="modal fade" id="timelinerHelpModal" tabindex="-1" aria-labelledby="timelinerHelpLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="timelinerHelpLabel">
+                    <i class="bi bi-calendar3-range me-2"></i>How TimeLiner works
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p><strong>What is it?</strong> TimeLiner links your construction schedule to IFC model elements — exactly like Navisworks TimeLiner — enabling 4D simulation of your build sequence.</p>
+                <p><strong>Workflow:</strong></p>
+                <ol>
+                    <li><strong>Data Sources</strong> — upload a schedule file (.xlsx, .xer, or .xml). The system parses it and uses AI to validate it looks like a real construction programme.</li>
+                    <li><strong>Attach</strong> — link tasks to IFC elements. Choose <em>Auto</em> (AI semantic name matching) or <em>Parameter</em> (match by a property value like ActivityCode).</li>
+                    <li><strong>Gantt</strong> — review the bar chart. Green ✅ = all elements linked, amber ⚠️ = partial, red ❌ = unlinked. Click any bar to highlight that element in the 3D viewer.</li>
+                    <li><strong>Simulate</strong> — drag the date slider to animate the build sequence in 4D in the 3D viewer.</li>
+                </ol>
+                <p><strong>Caveats:</strong> AI matching is approximate — always review results in the Attach tab before simulating. Elements must be processed (IFC Insights should show &lt; 0 unlinked) for best results.</p>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,14 @@
+<!-- scheduling/components/gantt_chart.html — Gantt chart skeleton populated by JS -->
+<div id="gantt-chart" style="min-width: 900px;">
+    <!-- Header: label col + timeline col with date markers -->
+    <div class="gantt-header-row">
+        <div class="gantt-label-col" style="font-size:0.75rem; color:var(--bs-secondary-color); padding:4px 8px;">Task</div>
+        <!-- Date markers injected by gantt.html JS -->
+    </div>
+    <!-- Body: task rows injected by JS -->
+    <div class="gantt-body">
+        <div class="d-flex align-items-center justify-content-center text-secondary py-4" id="gantt-loading">
+            <div class="spinner-border spinner-border-sm me-2"></div>Loading…
+        </div>
+    </div>
+</div>

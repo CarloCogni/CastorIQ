@@ -1,0 +1,160 @@
+<!-- scheduling/tabs/simulate.html — 4D date slider simulation -->
+
+{% if not tasks %}
+<div class="d-flex flex-column align-items-center justify-content-center text-secondary py-5">
+    <i class="bi bi-play-circle fs-1 mb-2"></i>
+    <span>No tasks to simulate — import and link a schedule first.</span>
+</div>
+
+{% elif not gantt_min_date %}
+<div class="alert alert-warning">No date range found in tasks.</div>
+
+{% else %}
+
+<div class="d-flex flex-column gap-4">
+
+    <!-- Instructions -->
+    <div class="alert alert-info py-2" style="font-size:0.85rem;">
+        <i class="bi bi-info-circle me-1"></i>
+        Drag the slider to simulate the construction sequence in the 3D viewer.
+        Switch to the <strong>3D Viewer</strong> sub-tab to see the colour changes.
+    </div>
+
+    <!-- Date slider -->
+    <div class="card border-0 bg-body-secondary p-4">
+        <div class="d-flex justify-content-between mb-2 text-secondary" style="font-size:0.82rem;">
+            <span>{{ gantt_min_date }}</span>
+            <span id="sim-current-date" class="fw-bold text-body fs-5"></span>
+            <span>{{ gantt_max_date }}</span>
+        </div>
+        <input type="range"
+               id="sim-slider"
+               class="form-range"
+               data-min="{{ gantt_min_date|date:'U' }}000"
+               data-max="{{ gantt_max_date|date:'U' }}000"
+               style="width:100%;">
+        <div class="d-flex justify-content-center mt-3 gap-3">
+            <button id="sim-play-btn" class="btn btn-primary btn-sm">
+                <i class="bi bi-play-fill me-1"></i>Play
+            </button>
+            <button id="sim-pause-btn" class="btn btn-outline-secondary btn-sm d-none">
+                <i class="bi bi-pause-fill me-1"></i>Pause
+            </button>
+            <button id="sim-reset-btn" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-skip-backward-fill me-1"></i>Reset
+            </button>
+        </div>
+    </div>
+
+    <!-- Legend -->
+    <div class="d-flex gap-4 flex-wrap" style="font-size:0.85rem;">
+        <div class="d-flex align-items-center gap-2"><span class="sim-swatch" style="background:#22c55e;"></span> Active</div>
+        <div class="d-flex align-items-center gap-2"><span class="sim-swatch" style="background:#3b82f6;"></span> Complete</div>
+        <div class="d-flex align-items-center gap-2"><span class="sim-swatch" style="background:#94a3b8;"></span> Pending</div>
+        <div class="d-flex align-items-center gap-2"><span class="sim-swatch" style="background:#f59e0b;"></span> Delayed</div>
+    </div>
+
+    <!-- Summary at current date -->
+    <div id="sim-summary" class="row g-2" style="font-size:0.82rem;">
+        <div class="col-3"><div class="card border-0 bg-body-secondary text-center py-2"><div id="sim-count-active" class="fw-bold fs-5 text-success">0</div><div class="text-secondary">Active</div></div></div>
+        <div class="col-3"><div class="card border-0 bg-body-secondary text-center py-2"><div id="sim-count-complete" class="fw-bold fs-5 text-primary">0</div><div class="text-secondary">Complete</div></div></div>
+        <div class="col-3"><div class="card border-0 bg-body-secondary text-center py-2"><div id="sim-count-pending" class="fw-bold fs-5 text-secondary">0</div><div class="text-secondary">Pending</div></div></div>
+        <div class="col-3"><div class="card border-0 bg-body-secondary text-center py-2"><div id="sim-count-delayed" class="fw-bold fs-5 text-warning">0</div><div class="text-secondary">Delayed</div></div></div>
+    </div>
+
+</div>
+
+<style>
+.sim-swatch { width: 14px; height: 14px; border-radius: 3px; display: inline-block; flex-shrink: 0; }
+</style>
+
+<script>
+(function () {
+    const GANTT_URL = "{% url 'islam:gantt_data' project.pk %}";
+    const slider    = document.getElementById("sim-slider");
+    const dateLabel = document.getElementById("sim-current-date");
+    const playBtn   = document.getElementById("sim-play-btn");
+    const pauseBtn  = document.getElementById("sim-pause-btn");
+    const resetBtn  = document.getElementById("sim-reset-btn");
+
+    let tasks    = [];
+    let playTimer = null;
+
+    const minMs = parseInt(slider.dataset.min);
+    const maxMs = parseInt(slider.dataset.max);
+    slider.min  = minMs;
+    slider.max  = maxMs;
+    slider.step = 86400000; // 1 day
+    slider.value = minMs;
+
+    async function init() {
+        const resp = await fetch(GANTT_URL);
+        const data = await resp.json();
+        tasks = (data.tasks || []).map(t => ({
+            ...t,
+            startMs: new Date(t.start).getTime(),
+            endMs:   new Date(t.end).getTime(),
+        }));
+        update(minMs);
+    }
+
+    function update(ms) {
+        const d = new Date(ms);
+        dateLabel.textContent = d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+
+        const active = [], complete = [], pending = [], delayed = [];
+        tasks.forEach(t => {
+            const ids = t.entity_global_ids || [];
+            if (!ids.length) return;
+            if (t.endMs < ms) {
+                complete.push(...ids);
+            } else if (t.startMs <= ms) {
+                if (t.status === "delayed") delayed.push(...ids);
+                else active.push(...ids);
+            } else {
+                pending.push(...ids);
+            }
+        });
+
+        document.dispatchEvent(new CustomEvent("castor:simulate", {
+            detail: { active, complete, pending, delayed }
+        }));
+
+        document.getElementById("sim-count-active").textContent   = active.length;
+        document.getElementById("sim-count-complete").textContent = complete.length;
+        document.getElementById("sim-count-pending").textContent  = pending.length;
+        document.getElementById("sim-count-delayed").textContent  = delayed.length;
+    }
+
+    slider.addEventListener("input", () => update(parseInt(slider.value)));
+
+    playBtn.addEventListener("click", () => {
+        playBtn.classList.add("d-none");
+        pauseBtn.classList.remove("d-none");
+        playTimer = setInterval(() => {
+            const next = parseInt(slider.value) + 86400000 * 3; // 3 days per tick
+            if (next > maxMs) { clearInterval(playTimer); pauseBtn.classList.add("d-none"); playBtn.classList.remove("d-none"); return; }
+            slider.value = next;
+            update(next);
+        }, 120);
+    });
+
+    pauseBtn.addEventListener("click", () => {
+        clearInterval(playTimer);
+        pauseBtn.classList.add("d-none");
+        playBtn.classList.remove("d-none");
+    });
+
+    resetBtn.addEventListener("click", () => {
+        clearInterval(playTimer);
+        pauseBtn.classList.add("d-none");
+        playBtn.classList.remove("d-none");
+        slider.value = minMs;
+        update(minMs);
+    });
+
+    init();
+}());
+</script>
+
+{% endif %}

@@ -1,0 +1,44 @@
+<!-- islam/templates/islam/panel.html — master 4D Insights sub-tab dispatcher -->
+<div class="d-flex flex-column h-100 overflow-hidden">
+
+    <!-- Sub-tab navigation bar -->
+    <div class="d-flex align-items-center px-3 py-2 border-bottom bg-body flex-shrink-0" style="gap: 0.5rem;">
+        <span class="fw-semibold text-secondary me-2" style="font-size:0.8rem; letter-spacing:0.05em;">4D INSIGHTS</span>
+
+        <ul class="nav nav-pills" style="gap: 0.25rem;">
+            <li class="nav-item">
+                <a class="nav-link py-1 px-3 {% if islam_subtab == 'viewer' %}active{% endif %}"
+                   href="{% url 'islam:viewer' project.pk %}"
+                   style="font-size:0.85rem;">
+                    <i class="bi bi-cube me-1"></i>3D Viewer
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link py-1 px-3 {% if islam_subtab == 'schedule' %}active{% endif %}"
+                   href="{% url 'islam:schedule' project.pk %}"
+                   style="font-size:0.85rem;">
+                    <i class="bi bi-calendar3-range me-1"></i>TimeLiner
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link py-1 px-3 {% if islam_subtab == 'insights' %}active{% endif %}"
+                   href="{% url 'islam:insights' project.pk %}"
+                   style="font-size:0.85rem;">
+                    <i class="bi bi-shield-check me-1"></i>IFC Insights
+                </a>
+            </li>
+        </ul>
+    </div>
+
+    <!-- Sub-tab content -->
+    <div class="flex-grow-1 overflow-auto">
+        {% if islam_subtab == 'viewer' %}
+            {% include "ifc_viewer/viewer.html" %}
+        {% elif islam_subtab == 'schedule' %}
+            {% include "scheduling/panel.html" %}
+        {% elif islam_subtab == 'insights' %}
+            {% include "ifc_insights/panel.html" %}
+        {% endif %}
+    </div>
+
+</div>
