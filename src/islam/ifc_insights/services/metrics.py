@@ -147,6 +147,123 @@ def entity_metrics(ifc_file) -> dict:
     }
 
 
+def non_physical_metrics(project) -> dict:
+    """Compute non-physical task statistics for the Insights dashboard panel.
+
+    Returns np_total, np_auto (auto-detected), np_locked (manually set),
+    np_by_type (top activity types), np_by_stage (stage distribution).
+    """
+    try:
+        from islam.scheduling.models import Task
+
+        qs = Task.objects.filter(project=project, is_non_physical=True)
+        total = qs.count()
+
+        if total == 0:
+            return {"np_total": 0, "np_auto": 0, "np_locked": 0, "np_by_type": [], "np_by_stage": []}
+
+        np_locked = qs.filter(non_physical_locked=True).count()
+
+        np_by_type = [
+            {"activity_type": t, "count": c}
+            for t, c in (
+                qs.exclude(activity_type="")
+                .values_list("activity_type")
+                .annotate(cnt=Count("activity_type"))
+                .order_by("-cnt")
+                .values_list("activity_type", "cnt")[:6]
+            )
+        ]
+
+        np_by_stage = [
+            {"stage": s, "count": c}
+            for s, c in (
+                qs.exclude(stage="")
+                .values_list("stage")
+                .annotate(cnt=Count("stage"))
+                .order_by("-cnt")
+                .values_list("stage", "cnt")[:6]
+            )
+        ]
+
+        return {
+            "np_total": total,
+            "np_auto": total - np_locked,
+            "np_locked": np_locked,
+            "np_by_type": np_by_type,
+            "np_by_stage": np_by_stage,
+        }
+    except Exception:
+        return {"np_total": 0, "np_auto": 0, "np_locked": 0, "np_by_type": [], "np_by_stage": []}
+
+
+def schedule_progress_metrics(project, stage: str = "", sub_stage: str = "") -> dict:
+    """Compute weighted schedule completion % for the Schedule Progress ring.
+
+    Reads the project's IslamProgressMode (defaults to 'count').
+    If stage is given, only tasks with that stage value are included.
+    If sub_stage is given, tasks are further filtered to that sub_stage.
+    A task counts as complete when status == COMPLETE or actual_end is set.
+    Returns keys: ring_progress, progress_mode, progress_stage, progress_sub_stage,
+    progress_complete, progress_total.
+    """
+    try:
+        from islam.scheduling.models import IslamProgressMode, Task
+
+        mode_obj = IslamProgressMode.objects.filter(project=project).first()
+        mode: str = mode_obj.mode if mode_obj else IslamProgressMode.Mode.BY_COUNT
+
+        qs = Task.objects.filter(project=project, is_non_physical=False)
+        if stage:
+            qs = qs.filter(stage=stage)
+        if sub_stage:
+            qs = qs.filter(sub_stage=sub_stage)
+        tasks = list(qs.only("status", "actual_end", "cost", "start_date", "end_date", "weight"))
+
+        if not tasks:
+            return {
+                "ring_progress": _ring(0), "progress_mode": mode,
+                "progress_stage": stage, "progress_sub_stage": sub_stage,
+                "progress_complete": 0, "progress_total": 0,
+            }
+
+        complete_status = Task.Status.COMPLETE
+
+        def is_done(t: "Task") -> bool:
+            return t.status == complete_status or t.actual_end is not None
+
+        if mode == IslamProgressMode.Mode.BY_COST:
+            total_w = sum(float(t.cost or 0) for t in tasks) or float(len(tasks))
+            done_w = sum(float(t.cost or 0) for t in tasks if is_done(t))
+        elif mode == IslamProgressMode.Mode.BY_DURATION:
+            total_w = float(sum(max(1, (t.end_date - t.start_date).days) for t in tasks))
+            done_w = float(sum(max(1, (t.end_date - t.start_date).days) for t in tasks if is_done(t)))
+        elif mode == IslamProgressMode.Mode.BY_WEIGHT:
+            total_w = sum(t.weight for t in tasks) or float(len(tasks))
+            done_w = sum(t.weight for t in tasks if is_done(t))
+        else:  # count (default)
+            total_w = float(len(tasks))
+            done_w = float(sum(1 for t in tasks if is_done(t)))
+
+        pct = round(done_w / total_w * 100) if total_w > 0 else 0
+        complete_count = sum(1 for t in tasks if is_done(t))
+
+        return {
+            "ring_progress": _ring(pct),
+            "progress_mode": mode,
+            "progress_stage": stage,
+            "progress_sub_stage": sub_stage,
+            "progress_complete": complete_count,
+            "progress_total": len(tasks),
+        }
+    except Exception:
+        return {
+            "ring_progress": _ring(0), "progress_mode": "count",
+            "progress_stage": "", "progress_sub_stage": "",
+            "progress_complete": 0, "progress_total": 0,
+        }
+
+
 def breakdown_data(ifc_file, breakdown_type: str) -> dict:
     """Compute breakdown card rows for a single dimension.
 

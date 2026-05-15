@@ -28,7 +28,7 @@ from .services.levels import (
     match_storeys_to_tasks,
     suggest_levels_from_entities,
 )
-from .services.metrics import breakdown_data, entity_metrics
+from .services.metrics import breakdown_data, entity_metrics, non_physical_metrics, schedule_progress_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -40,9 +40,47 @@ _BLANK_CHECKS = {
 }
 
 
+def _available_stages(project) -> list[tuple[str, str]]:
+    """Return [(key, label)] for stages that have at least one physical task in this project."""
+    try:
+        from islam.scheduling.models import Task
+
+        present = set(
+            Task.objects.filter(project=project, is_non_physical=False)
+            .exclude(stage="")
+            .values_list("stage", flat=True)
+            .distinct()
+        )
+        return [(k, v) for k, v in Task.Stage.choices if k in present]
+    except Exception:
+        return []
+
+
+def _available_sub_stages(project, stage: str = "") -> list[tuple[str, str]]:
+    """Return [(key, label)] for sub_stages with ≥1 task in this project.
+
+    If stage is given, restricts to sub_stages whose parent is that stage.
+    """
+    try:
+        from islam.scheduling.models import Task
+
+        qs = Task.objects.filter(project=project, is_non_physical=False).exclude(sub_stage="")
+        if stage:
+            qs = qs.filter(stage=stage)
+        present = set(qs.values_list("sub_stage", flat=True).distinct())
+        return [(k, v) for k, v in Task.SubStage.choices if k in present]
+    except Exception:
+        return []
+
+
 def _build_ctx(project, ifc_file) -> dict:
     """Build the full panel context from DB metrics + IFC checks."""
     ctx: dict = {"project": project, "ifc_file": ifc_file}
+
+    ctx.update(schedule_progress_metrics(project))
+    ctx.update(non_physical_metrics(project))
+    ctx["available_stages"] = _available_stages(project)
+    ctx["available_sub_stages"] = _available_sub_stages(project)
 
     if not ifc_file:
         return ctx
@@ -172,6 +210,58 @@ class InsightsExportView(ProjectAccessMixin, View):
         response = HttpResponse(buf.getvalue(), content_type="text/csv")
         response["Content-Disposition"] = f'attachment; filename="ifc_insights_{safe_name}.csv"'
         return response
+
+
+# ---------------------------------------------------------------------------
+# Progress mode
+# ---------------------------------------------------------------------------
+
+
+class ProgressModeView(ProjectAccessMixin, View):
+    """HTMX POST — persist the schedule progress mode, return the updated ring card."""
+
+    _VALID_MODES = {"count", "cost", "duration", "weight"}
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        from islam.scheduling.models import IslamProgressMode
+
+        project = self.get_project()
+        mode = request.POST.get("mode", "count")
+        if mode not in self._VALID_MODES:
+            mode = "count"
+
+        obj, _ = IslamProgressMode.objects.get_or_create(project=project)
+        if obj.mode != mode:
+            obj.mode = mode
+            obj.save(update_fields=["mode"])
+
+        stage = request.POST.get("stage", "")
+        sub_stage = request.POST.get("sub_stage", "")
+        metrics = schedule_progress_metrics(project, stage=stage, sub_stage=sub_stage)
+        metrics["available_stages"] = _available_stages(project)
+        metrics["available_sub_stages"] = _available_sub_stages(project, stage=stage)
+        return render(
+            request,
+            "ifc_insights/components/progress_ring.html",
+            {"project": project, **metrics},
+        )
+
+
+class ProgressRingView(ProjectAccessMixin, View):
+    """HTMX GET — return progress ring filtered by construction stage / sub-stage."""
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        stage = request.GET.get("stage", "")
+        sub_stage = request.GET.get("sub_stage", "")
+        metrics = schedule_progress_metrics(project, stage=stage, sub_stage=sub_stage)
+        metrics["available_stages"] = _available_stages(project)
+        metrics["available_sub_stages"] = _available_sub_stages(project, stage=stage)
+        return render(
+            request,
+            "ifc_insights/components/progress_ring.html",
+            {"project": project, **metrics},
+        )
 
 
 # ---------------------------------------------------------------------------

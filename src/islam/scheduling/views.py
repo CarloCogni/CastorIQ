@@ -7,6 +7,7 @@ import csv
 import json
 import logging
 
+from django.db.models import Count
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.template.loader import render_to_string
@@ -18,7 +19,7 @@ from core.mixins import ProjectAccessMixin, ProjectModifyAccessMixin, ProjectTab
 from ifc_processor.models import IFCEntity, IFCFile
 
 from .models import LinkFeedback, MappingProfile, Task, TaskEntityBinding
-from .services.autolink import run_autolink
+from .services.autolink import autodetect_stages, run_autolink
 from .services.column_mapper import CANONICAL_FIELDS, CANONICAL_LABELS, apply_mapping, extract_columns
 from .services.embed_linker import embed_match_tasks
 from .services.excel_parser import parse_excel
@@ -181,12 +182,16 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
                     activity_code=td.get("activity_code", ""),
                     color=td.get("color", "#3b82f6"),
                     cost=Decimal(cost_str) if cost_str else None,
+                    activity_type=td.get("activity_type", ""),
                 )
                 created += 1
             except Exception as exc:
                 logger.warning("Skipping task row: %s", exc)
 
         del request.session[session_key]
+
+        all_tasks = list(Task.objects.filter(project=project).only("pk", "name", "stage", "sub_stage"))
+        autodetect_stages(all_tasks)
 
         tasks = Task.objects.filter(project=project).prefetch_related("ifc_entities")
         response = render(
@@ -595,12 +600,16 @@ def _build_review_summary(project) -> dict:
     auto_accepted = qs.filter(needs_review=False).count()
     all_pks = set(Task.objects.filter(project=project).values_list("pk", flat=True))
     linked_pks = set(qs.values_list("task_id", flat=True))
+    non_physical_pks = set(
+        Task.objects.filter(project=project, is_non_physical=True).values_list("pk", flat=True)
+    )
     return {
         "total": total,
         "needs_review": needs_review,
         "needs_review_high": needs_review_high,
         "auto_accepted": auto_accepted,
-        "unlinked_tasks": len(all_pks - linked_pks),
+        "unlinked_tasks": len(all_pks - linked_pks - non_physical_pks),
+        "non_physical_count": len(non_physical_pks),
     }
 
 
@@ -651,14 +660,27 @@ def _render_link_review(request, project, filter_by: str = "all") -> HttpRespons
         }
         if gids else {}
     )
+
+    # Sibling count: how many OTHER tasks share each entity_global_id in this project
+    entity_task_counts: dict[str, int] = dict(
+        TaskEntityBinding.objects
+        .filter(task__project=project)
+        .values("entity_global_id")
+        .annotate(cnt=Count("pk"))
+        .values_list("entity_global_id", "cnt")
+    )
+
     rows = [
         {
             "binding": b,
             "entity_name": entity_name_map.get(b.entity_global_id, (b.entity_global_id[:14] + "…", ""))[0],
             "entity_type": entity_name_map.get(b.entity_global_id, ("", ""))[1],
+            "siblings": max(0, entity_task_counts.get(b.entity_global_id, 1) - 1),
         }
         for b in binding_list
     ]
+    # Group by entity so shared-entity rows are adjacent
+    rows.sort(key=lambda r: (r["entity_name"].lower(), r["binding"].task.name.lower()))
 
     unlinked_tasks = []
     if filter_by in ("all", "unlinked"):
@@ -666,7 +688,15 @@ def _render_link_review(request, project, filter_by: str = "all") -> HttpRespons
             task__project=project
         ).values_list("task_id", flat=True)
         unlinked_tasks = list(
-            Task.objects.filter(project=project).exclude(pk__in=linked_pks).order_by("name")
+            Task.objects.filter(project=project, is_non_physical=False)
+            .exclude(pk__in=linked_pks)
+            .order_by("name")
+        )
+
+    non_physical_tasks = []
+    if filter_by in ("all", "non_physical"):
+        non_physical_tasks = list(
+            Task.objects.filter(project=project, is_non_physical=True).order_by("name")
         )
 
     summary = _build_review_summary(project)
@@ -677,6 +707,7 @@ def _render_link_review(request, project, filter_by: str = "all") -> HttpRespons
             "project": project,
             "rows": rows,
             "unlinked_tasks": unlinked_tasks,
+            "non_physical_tasks": non_physical_tasks,
             "summary": summary,
             "filter_by": filter_by,
         },
@@ -853,6 +884,26 @@ class BindingAddView(ProjectModifyAccessMixin, View):
 
         response = _render_link_review(request, project, "all")
         return trigger_toast(response, f"Linked '{task.name}' manually.", "success")
+
+
+class TaskToggleNonPhysicalView(ProjectModifyAccessMixin, View):
+    """HTMX POST — manually override a task's non-physical classification.
+
+    POST param 'target': 'non_physical' | 'physical'
+    Sets non_physical_locked=True so Layer 0 never auto-reverts the choice.
+    Re-renders the full review tab.
+    """
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        task = get_object_or_404(Task, pk=kwargs["task_pk"], project=project)
+        target = request.POST.get("target", "non_physical")
+        task.is_non_physical = target == "non_physical"
+        task.non_physical_locked = True
+        task.save(update_fields=["is_non_physical", "non_physical_locked"])
+        label = "non-physical" if task.is_non_physical else "physical"
+        response = _render_link_review(request, project, "all")
+        return trigger_toast(response, f"'{task.name}' marked as {label}.", "success")
 
 
 class BindingSearchView(ProjectAccessMixin, View):

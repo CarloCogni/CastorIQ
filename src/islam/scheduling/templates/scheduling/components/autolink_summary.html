@@ -47,9 +47,14 @@
             <i class="bi bi-eye me-1"></i>{{ summary.needs_review }} need review
         </span>
         {% endif %}
+        {% if summary.excluded_non_physical %}
+        <span class="text-secondary">
+            <i class="bi bi-slash-circle me-1"></i>{{ summary.excluded_non_physical }} excluded (non-physical)
+        </span>
+        {% endif %}
         {% if not summary.unlinked and not summary.needs_review %}
         <span class="text-success">
-            <i class="bi bi-check-circle me-1"></i>All tasks linked automatically
+            <i class="bi bi-check-circle me-1"></i>All physical tasks linked automatically
         </span>
         {% endif %}
         <span class="text-secondary ms-auto">
