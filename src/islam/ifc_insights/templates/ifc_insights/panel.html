@@ -1,4 +1,4 @@
-<!-- ifc_insights/panel.html — redesigned Insights dashboard (partial) -->
+﻿<!-- ifc_insights/panel.html — redesigned Insights dashboard (partial) -->
 {% load static %}
 <div class="container-fluid py-3 px-4" id="ifc-insights-panel">
 
@@ -135,21 +135,6 @@
         </div>
     </div>
 
-    <!-- ── QA/QC Checks (existing) ─────────────────────────────────────── -->
-    {% if check_results %}
-        {% if check_results.error %}
-        <div class="alert alert-danger d-flex align-items-center gap-2">
-            <i class="bi bi-x-circle-fill"></i>
-            <span>Could not open IFC file: {{ check_results.error }}</span>
-        </div>
-        {% else %}
-        <hr class="my-4">
-        <h6 class="text-secondary mb-3"><i class="bi bi-shield-check me-1"></i>QA/QC Checks</h6>
-        {% include "ifc_insights/components/summary_cards.html" %}
-        <div class="mt-4">{% include "ifc_insights/components/issues_table.html" %}</div>
-        {% endif %}
-    {% endif %}
-
     {% endif %}
 </div>
 
@@ -167,7 +152,7 @@
                 <p><strong>Readiness Rings</strong> &mdash; show what percentage of your IFC elements have Activity ID (4D) and Cost (5D) data populated. Green &ge; 80%, Amber 40&ndash;79%, Red &lt; 40%. The count beneath each ring shows how many elements are missing that property.</p>
                 <p><strong>View Issues &rarr;</strong> &mdash; opens the IFC Issues tab with four detailed audit sections: Missing Activity ID, Missing Cost, Activity ID &amp; Name Audit, and Levels Health.</p>
                 <p><strong>Breakdown Cards</strong> &mdash; element counts grouped by Level, Element Type, and Material. Loaded live from the database.</p>
-                <p><strong>QA/QC Checks</strong> &mdash; 10 automated quality checks run on the IFC file. Click <em>Re-run</em> after fixing issues and re-uploading.</p>
+                <p><strong>IFC Health Checks</strong> &mdash; detailed quality checks (severity, global ID, type, issue, suggested fix) are now in the <strong>IFC Issues</strong> tab under Section 0.</p>
                 <p><strong>Engine Selector</strong> &mdash; Castor Engine uses the main analysis pipeline. Islam Engine is experimental.</p>
             </div>
         </div>

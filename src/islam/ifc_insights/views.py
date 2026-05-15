@@ -505,13 +505,16 @@ def _activity_audit_rows(ifc_file, project) -> list[dict]:
 
 
 class IssuesView(ProjectTabMixin, TemplateView):
-    """IFC Issues tab — 4 lazy-loaded HTMX audit sections."""
+    """IFC Issues tab — IFC Health Checks (Section 0) + 4 lazy-loaded HTMX audit sections."""
 
     active_tab = "islam"
 
     def get_context_data(self, **kwargs: object) -> dict:
         ctx = super().get_context_data(**kwargs)
         ctx["islam_subtab"] = "ifc_issues"
+        project = ctx["project"]
+        ifc_file = _get_active_ifc_file(project)
+        ctx.update(_build_ctx(project, ifc_file))
         return ctx
 
 
