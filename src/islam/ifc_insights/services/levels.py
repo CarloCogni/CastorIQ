@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import shutil
 from pathlib import Path
 
@@ -12,10 +13,157 @@ logger = logging.getLogger(__name__)
 _Z_TOLERANCE_MM = 500  # storeys within 500 mm collapse into one cluster
 
 
+# ---------------------------------------------------------------------------
+# Section 1 helpers — reference points
+# ---------------------------------------------------------------------------
+
+
+def get_reference_points(ifc_file) -> dict:
+    """Read IfcSite elevation and named reference points from IFCEntity.properties.
+
+    Returns dict with keys:
+        project_base_point: {x, y, z} or None
+        survey_point:       {x, y, z} or None
+        site_elevation:     float or None
+    """
+    from ifc_processor.models import IFCEntity  # local — avoids circular
+
+    result: dict = {
+        "project_base_point": None,
+        "survey_point": None,
+        "site_elevation": None,
+    }
+
+    for entity in IFCEntity.objects.filter(ifc_file=ifc_file, ifc_type="IfcSite").only("properties"):
+        props = entity.properties or {}
+        for k, v in props.items():
+            k_lower = k.lower()
+            if "refelevation" in k_lower or "ref_elevation" in k_lower:
+                result["site_elevation"] = v
+                break
+
+    _name_map = {
+        "project base point": "project_base_point",
+        "survey point": "survey_point",
+    }
+    for entity in IFCEntity.objects.filter(ifc_file=ifc_file).only("name", "properties"):
+        key = _name_map.get((entity.name or "").lower())
+        if not key:
+            continue
+        props = entity.properties or {}
+        coords: dict = {}
+        for pk, pv in props.items():
+            pk_lower = pk.lower()
+            if pk_lower in ("x", "easting", "east/west"):
+                coords["x"] = pv
+            elif pk_lower in ("y", "northing", "north/south"):
+                coords["y"] = pv
+            elif pk_lower in ("z", "elevation", "altitude", "angle"):
+                coords["z"] = pv
+        result[key] = coords or None
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Section 2 helpers — storey registry
+# ---------------------------------------------------------------------------
+
+
+def get_storeys_from_db(ifc_file) -> list[dict]:
+    """Return all IfcBuildingStorey records from IFCSpatialElement with element counts.
+
+    Faster and more complete than parsing the raw IFC file when the DB is populated.
+    """
+    from django.db.models import Count
+    from ifc_processor.models import IFCSpatialElement  # local — avoids circular
+
+    rows = (
+        IFCSpatialElement.objects
+        .filter(ifc_file=ifc_file, spatial_type=IFCSpatialElement.SpatialType.BUILDING_STOREY)
+        .select_related("entity")
+        .annotate(element_count=Count("contained_entities"))
+        .order_by("elevation", "entity__name")
+    )
+
+    results: list[dict] = []
+    for s in rows:
+        entity = s.entity
+        results.append({
+            "global_id": entity.global_id,
+            "name": entity.name or entity.global_id,
+            "z_elevation": float(s.elevation) if s.elevation is not None else 0.0,
+            "element_count": s.element_count,
+            "long_name": s.long_name or "",
+        })
+    return results
+
+
+def match_storeys_to_tasks(storey_names: list[str], project) -> dict[str, bool]:
+    """Return {storey_name_lower: True} for names found in any task name or activity_code."""
+    try:
+        from islam.scheduling.models import Task  # local — avoids circular
+    except ImportError:
+        return {}
+
+    all_tasks = list(
+        Task.objects.filter(project=project).values_list("name", "activity_code")
+    )
+    corpus = " ".join(f"{n or ''} {ac or ''}" for n, ac in all_tasks).lower()
+    return {name.lower(): name.lower() in corpus for name in storey_names}
+
+
+# ---------------------------------------------------------------------------
+# Section 3 helpers — missing level hints
+# ---------------------------------------------------------------------------
+
+_LEVEL_RE = re.compile(
+    r"\b("
+    r"(?:level|floor|storey|story|lvl)\s*\d*\w*"
+    r"|l\d+"
+    r"|gf|rf|b\d+"
+    r"|ground\s*floor|ground\s*level|basement|roof\s*level|podium|mezzanine"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def get_missing_level_hints(storey_names_lower: set[str], project) -> list[dict]:
+    """Scan task names/codes for level keywords not matched by any known IFC storey name.
+
+    Returns list of {"hint": str, "task_names": list[str]} capped at 5 tasks per hint.
+    """
+    try:
+        from islam.scheduling.models import Task  # local — avoids circular
+    except ImportError:
+        return []
+
+    hits: dict[str, set] = {}
+    for task in Task.objects.filter(project=project).only("name", "activity_code"):
+        for field in (task.name, task.activity_code or ""):
+            for m in _LEVEL_RE.finditer(field):
+                hint_lower = m.group(0).strip().lower()
+                # Skip if any storey name contains or is contained by the hint
+                if any(hint_lower in sn or sn in hint_lower for sn in storey_names_lower):
+                    continue
+                hits.setdefault(hint_lower, set()).add(task.name)
+
+    return [
+        {"hint": k, "task_names": sorted(v)[:5]}
+        for k, v in sorted(hits.items())
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Existing helpers — kept unchanged
+# ---------------------------------------------------------------------------
+
+
 def extract_levels_from_ifc(ifc_path: str) -> list[dict]:
     """Parse IfcBuildingStorey objects from file and return dicts ready to display.
 
     Returns list of {"global_id", "name", "z_elevation"} sorted by z_elevation.
+    Prefer get_storeys_from_db() when the DB is populated — this is a fallback.
     """
     try:
         import ifcopenshell  # type: ignore[import-untyped]
@@ -51,34 +199,28 @@ def extract_levels_from_ifc(ifc_path: str) -> list[dict]:
 
 
 def suggest_levels_from_entities(ifc_file) -> list[dict]:
-    """Cluster entity Z-coordinates to propose floor levels (±500 mm tolerance).
+    """Cluster entity spatial containers to propose floor levels.
 
-    Uses IFCEntity.spatial_container groupings as a proxy for storey elevation when
-    IfcBuildingStorey parsing is unavailable or empty.
-
+    Fallback when both IFCSpatialElement and IfcBuildingStorey parsing are empty.
     Returns list of {"name", "z_elevation"} sorted by z_elevation.
     """
     from ifc_processor.models import IFCEntity  # local import to avoid circular
 
-    storeys_seen: dict[str, int] = {}
-    for entity in (
-        IFCEntity.objects.filter(ifc_file=ifc_file)
-        .exclude(spatial_container="")
-        .values_list("spatial_container", flat=True)
+    storey_names: list[str] = (
+        IFCEntity.objects
+        .filter(ifc_file=ifc_file, spatial_container__isnull=False)
+        .values_list("spatial_container__entity__name", flat=True)
         .distinct()
-    ):
-        if entity:
-            storeys_seen[entity] = storeys_seen.get(entity, 0) + 1
+    )
 
-    if not storeys_seen:
+    names = sorted(n for n in storey_names if n)
+    if not names:
         return []
 
-    # Assign synthetic Z values: 0, 3000, 6000, … mm per floor (alphabetical order)
-    suggestions = []
-    for idx, name in enumerate(sorted(storeys_seen)):
-        suggestions.append({"name": name, "z_elevation": float(idx * 3000)})
-
-    return suggestions
+    return [
+        {"name": name, "z_elevation": float(idx * 3000)}
+        for idx, name in enumerate(names)
+    ]
 
 
 def _backup_ifc(ifc_path: str) -> str:
@@ -108,7 +250,7 @@ def apply_levels_to_ifc(ifc_path: str, levels: list, ifc_file) -> dict:
     from ifc_processor.services.ifc_writer import IFCWriteError, Tier1Writer
     from writeback.services.git_service import GitService
 
-    backup_path = _backup_ifc(ifc_path)  # always first, before any open
+    backup_path = _backup_ifc(ifc_path)
 
     try:
         writer = Tier1Writer(ifc_path)
@@ -131,8 +273,6 @@ def apply_levels_to_ifc(ifc_path: str, levels: list, ifc_file) -> dict:
             storey = existing_storeys[gid]
             try:
                 writer.set_attribute([gid], "Name", name)
-                # Z-elevation is geometry — updated directly on writer.model;
-                # writer.save() persists it along with the name change.
                 placement = storey.ObjectPlacement
                 if placement and hasattr(placement, "RelativePlacement"):
                     loc = placement.RelativePlacement.Location

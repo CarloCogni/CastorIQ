@@ -108,6 +108,52 @@
 
 ---
 
+### [2026-05-14] Levels Panel redesign — IFC Storey Registry + 5-section layout
+
+### [2026-05-14] islam/ifc_insights/services/levels.py
+- Action: Rewritten
+- What it does: Added `get_reference_points(ifc_file)` — reads IfcSite RefElevation and named Project Base Point / Survey Point entities from IFCEntity.properties JSONField. Added `get_storeys_from_db(ifc_file)` — replaces raw IFC file parsing with a DB query on IFCSpatialElement (building_storey type), annotated with element_count via Count("contained_entities"), ordered by elevation. Added `match_storeys_to_tasks(storey_names, project)` — returns {name_lower: bool} by scanning task name/code corpus. Added `get_missing_level_hints(storey_names_lower, project)` — regex-scans task names for level keywords (level/floor/storey/lvl, l\d+, gf, rf, b\d+, ground floor, basement, roof level, podium, mezzanine) not matched by any known storey. Fixed `suggest_levels_from_entities` — corrected FK traversal from `.exclude(spatial_container="")` (invalid) to `spatial_container__isnull=False` and names via `spatial_container__entity__name` FK chain.
+- Why it was necessary: Fix "only one storey showing" bug (raw IFC parsing missed all but the first storey); fix Import button which had no global_id; expose reference point data for Section 1.
+- Depends on: IFCSpatialElement, IFCEntity, Task (scheduling)
+
+### [2026-05-14] islam/ifc_insights/views.py
+- Action: Rewritten
+- What it does: Added `_get_active_ifc_file(project)` helper. Added `_storey_registry_ctx(project)` helper — builds storey list with `linked_level` (IslamLevel|None) and `in_schedule` (bool) for each IFC storey. Updated `LevelsView.get_context_data` to provide reference_points (Section 1), all_storeys + imported_map + in_schedule_map (Section 2), missing_hints (Section 3), manual_levels filtered to `ifc_storey_global_id__isnull=True` (Section 4), apply_diff counts (Section 5). Updated `LevelSuggestView` to return `storey_registry_body.html` via `_storey_registry_ctx`. Updated `LevelAddView.post` — when `ifc_storey_global_id` present: `get_or_create` IslamLevel with source='ifc', returns full storey registry body; without: creates manual level, returns single `level_row.html`. Updated `LevelEditView.post` — when `refresh_registry=1` in POST: returns `storey_registry_body.html`; else: returns `level_row.html`. Updated `LevelDeleteView.delete` — when `storey_gid` + `refresh_registry=1` in GET: returns `storey_registry_body.html` (unlinked state); else: returns empty 200.
+- Why it was necessary: Fix broken Import (was creating manual levels, no dedup, no gid); wire up all five Level Panel sections.
+- Depends on: levels.py services, IslamLevel, IFCFile, storey_registry_body.html, level_row.html
+
+### [2026-05-14] islam/ifc_insights/templates/ifc_insights/levels.html
+- Action: Rewritten — full 5-section redesign
+- What it does: Section 1 — Reference Points info cards (Site Elevation, Project Base Point, Survey Point). Section 2 — IFC Storey Registry table (Name | Z mm | Elements | In Schedule | Actions) with `#storey-registry-body` tbody, Refresh button targeting it via HTMX GET. Section 3 — Missing Level Hints alert (conditional, badge per keyword). Section 4 — Manual Levels table with `#manual-levels-tbody` + inline Add form (no ifc_storey_global_id). Section 5 — Apply to IFC card with diff counts (will_update / will_create). Inline JS: `levelEditStart/Cancel/Save` for Section 4 rows; `storeyEditStart/Cancel/Save` for Section 2 rows (targets `#storey-registry-body` innerHTML).
+- Why it was necessary: New 5-section layout; old layout had a single "Level Registry" mixing IFC and manual levels with a broken "Suggest from IFC" card.
+- Depends on: storey_registry_body.html, level_row.html, levels_help_modal.html
+
+### [2026-05-14] islam/ifc_insights/templates/ifc_insights/components/storey_registry_body.html
+- Action: Created
+- What it does: Fragment template (no wrapper) — iterates `storeys` list, includes `storey_row.html` for each. Empty state `<tr>` when list is empty. Used as HTMX innerHTML swap target for `#storey-registry-body`.
+- Why it was necessary: Needed a discrete partial for the Refresh button and Import/Unlink actions to swap the full storey tbody without re-rendering the page.
+- Depends on: storey_row.html, LevelSuggestView, LevelAddView, LevelDeleteView
+
+### [2026-05-14] islam/ifc_insights/templates/ifc_insights/components/storey_row.html
+- Action: Created
+- What it does: Two-state `<tr id="storey-row-{safe_id}">`. Linked state (IslamLevel imported): shows linked_level.name (editable inline), linked_level.z_elevation (editable), element_count, in_schedule badge, "Imported" badge + pencil edit + x-circle unlink buttons. Edit save calls `storeyEditSave(safeId, url)` which POSTs with refresh_registry=1. Unlink uses hx-delete with `?storey_gid=<gid>&refresh_registry=1`. Unlinked state: shows IFC name/z in muted italic, Import button posting to level_add with name + z_elevation + ifc_storey_global_id in hx-vals. safe_id = global_id lowercased with $ removed.
+- Why it was necessary: Each storey needs its own interactive row component for the Import/Edit/Unlink flow.
+- Depends on: level_add, level_edit, level_delete URL patterns; storeyEditStart/Cancel/Save JS in levels.html
+
+### [2026-05-14] islam/ifc_insights/templates/ifc_insights/components/level_suggest_results.html
+- Action: Updated — superseded by storey_registry_body.html; Import button fixed to pass ifc_storey_global_id and target #storey-registry-body
+- What it does: Fallback template for the old suggest-from-IFC flow. LevelSuggestView no longer returns this template (returns storey_registry_body.html instead). Kept for backward compatibility.
+- Why it was necessary: Old Import button did not pass ifc_storey_global_id, causing every import to create a manual (unlinked) level.
+- Depends on: level_add
+
+### [2026-05-14] islam/ifc_insights/templates/ifc_insights/components/levels_help_modal.html
+- Action: Updated — rewritten for 5-section redesign
+- What it does: Describes all five panel sections (Reference Points, IFC Storey Registry, Missing Level Hints, Manual Levels, Apply to IFC). Typical workflow as numbered steps. Updated caveats: unlinking removes IslamLevel record only (not IFC file), In Schedule is text-match hint only.
+- Why it was necessary: Old modal described the single-table design; new design has five distinct sections requiring updated guidance.
+- Depends on: Nothing
+
+---
+
 ### [2026-05-14] islam/__init__.py
 - Action: Created
 - What it does: Makes `islam` a Python package recognised by Django
