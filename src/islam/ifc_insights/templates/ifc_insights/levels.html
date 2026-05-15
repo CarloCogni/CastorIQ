@@ -1,4 +1,4 @@
-<!-- ifc_insights/levels.html — Level Panel main page -->
+<!-- ifc_insights/levels.html — Level Panel (5-section redesign) -->
 
 <div class="p-4 d-flex flex-column gap-4">
 
@@ -6,12 +6,6 @@
     <div class="d-flex align-items-center gap-2 flex-wrap">
         <i class="bi bi-layers fs-5" style="color: var(--castor-primary, #3b82f6);"></i>
         <h5 class="m-0">Levels</h5>
-        {% if levels %}
-        <span class="badge rounded-pill"
-              style="background-color:rgba(59,130,246,0.12); color:var(--castor-primary,#3b82f6); border:1px solid rgba(59,130,246,0.3);">
-            {{ levels|length }} level{{ levels|length|pluralize }}
-        </span>
-        {% endif %}
         <button type="button"
                 class="help-pill"
                 data-bs-toggle="modal"
@@ -20,105 +14,237 @@
                 aria-label="How Levels work">
             <i class="bi bi-question-circle"></i>
         </button>
-
-        <!-- Apply to IFC -->
-        {% if ifc_file %}
-        <div class="ms-auto">
-            <button class="btn btn-sm btn-primary"
-                    hx-post="{% url 'islam:level_apply' project.pk %}"
-                    hx-swap="none"
-                    {% if not levels %}disabled{% endif %}>
-                <i class="bi bi-upload me-1"></i>Apply to IFC
-            </button>
-        </div>
-        {% endif %}
     </div>
 
-    <!-- Suggest from IFC -->
-    {% if ifc_file %}
+    <!-- ------------------------------------------------------------------ -->
+    <!-- Section 1: Reference Points                                         -->
+    <!-- ------------------------------------------------------------------ -->
+    <div class="card border">
+        <div class="card-header py-2 px-3 fw-medium fs-7">
+            <i class="bi bi-crosshair me-1"></i>Reference Points
+        </div>
+        <div class="card-body py-3 px-3">
+            {% if ifc_file %}
+            <div class="row g-3">
+
+                <div class="col-auto">
+                    <div class="border rounded px-3 py-2 bg-body-secondary text-center" style="min-width:150px;">
+                        <div class="fs-7 text-secondary mb-1">Site Elevation</div>
+                        <div class="fw-semibold">
+                            {% if reference_points.site_elevation is not None %}
+                                {{ reference_points.site_elevation|floatformat:2 }} m
+                            {% else %}
+                                <span class="text-secondary">—</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-auto">
+                    <div class="border rounded px-3 py-2 bg-body-secondary" style="min-width:190px;">
+                        <div class="fs-7 text-secondary mb-1">Project Base Point</div>
+                        {% if reference_points.project_base_point %}
+                            {% with p=reference_points.project_base_point %}
+                            <div class="fw-semibold fs-7">
+                                {% if p.x is not None %}X: {{ p.x }}{% endif %}
+                                {% if p.y is not None %}&nbsp; Y: {{ p.y }}{% endif %}
+                                {% if p.z is not None %}&nbsp; Z: {{ p.z }}{% endif %}
+                            </div>
+                            {% endwith %}
+                        {% else %}
+                            <span class="text-secondary fs-7">Not found in model</span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="col-auto">
+                    <div class="border rounded px-3 py-2 bg-body-secondary" style="min-width:190px;">
+                        <div class="fs-7 text-secondary mb-1">Survey Point</div>
+                        {% if reference_points.survey_point %}
+                            {% with p=reference_points.survey_point %}
+                            <div class="fw-semibold fs-7">
+                                {% if p.x is not None %}X: {{ p.x }}{% endif %}
+                                {% if p.y is not None %}&nbsp; Y: {{ p.y }}{% endif %}
+                                {% if p.z is not None %}&nbsp; Z: {{ p.z }}{% endif %}
+                            </div>
+                            {% endwith %}
+                        {% else %}
+                            <span class="text-secondary fs-7">Not found in model</span>
+                        {% endif %}
+                    </div>
+                </div>
+
+            </div>
+            {% else %}
+            <p class="text-secondary fs-7 mb-0">
+                <i class="bi bi-info-circle me-1"></i>Upload and process an IFC file to see reference points.
+            </p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- ------------------------------------------------------------------ -->
+    <!-- Section 2: IFC Storey Registry                                      -->
+    <!-- ------------------------------------------------------------------ -->
     <div class="card border">
         <div class="card-header d-flex align-items-center justify-content-between py-2 px-3">
             <span class="fw-medium fs-7">
-                <i class="bi bi-magic me-1 text-warning"></i>Suggest from IFC
+                <i class="bi bi-building me-1"></i>IFC Storey Registry
+                {% if all_storeys %}
+                <span class="badge rounded-pill ms-1 text-bg-secondary">{{ all_storeys|length }}</span>
+                {% endif %}
             </span>
+            {% if ifc_file %}
             <button class="btn btn-sm btn-outline-secondary"
                     hx-get="{% url 'islam:level_suggest' project.pk %}"
-                    hx-target="#suggest-results"
+                    hx-target="#storey-registry-body"
                     hx-swap="innerHTML"
-                    hx-indicator="#suggest-spinner">
-                <span id="suggest-spinner" class="htmx-indicator spinner-border spinner-border-sm me-1" role="status"></span>
-                <i class="bi bi-arrow-clockwise me-1"></i>Load suggestions
+                    hx-indicator="#storey-refresh-spinner">
+                <span id="storey-refresh-spinner"
+                      class="htmx-indicator spinner-border spinner-border-sm me-1"
+                      role="status"></span>
+                <i class="bi bi-arrow-clockwise me-1"></i>Refresh
             </button>
+            {% endif %}
         </div>
-        <div class="card-body py-3 px-3">
-            <div id="suggest-results">
-                <p class="text-secondary fs-7 mb-0">Click "Load suggestions" to read storeys from your IFC file.</p>
+        <div class="card-body p-0">
+            {% if ifc_file %}
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3 py-2 fw-medium fs-7" style="width:35%;">Name</th>
+                        <th class="py-2 fw-medium fs-7" style="width:18%;">Z (mm)</th>
+                        <th class="py-2 fw-medium fs-7" style="width:15%;">Elements</th>
+                        <th class="py-2 fw-medium fs-7" style="width:18%;">In Schedule</th>
+                        <th class="py-2 pe-3 fw-medium fs-7" style="width:14%;"></th>
+                    </tr>
+                </thead>
+                <tbody id="storey-registry-body">
+                    {% include "ifc_insights/components/storey_registry_body.html" with storeys=all_storeys %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="px-3 py-4 text-secondary fs-7 text-center">
+                <i class="bi bi-info-circle me-1"></i>No IFC file uploaded yet.
             </div>
+            {% endif %}
         </div>
     </div>
-    {% else %}
-    <div class="alert alert-secondary py-2 px-3 fs-7 mb-0">
-        <i class="bi bi-info-circle me-1"></i>
-        Upload and process an IFC file to enable storey suggestions.
+
+    <!-- ------------------------------------------------------------------ -->
+    <!-- Section 3: Missing Level Hints                                      -->
+    <!-- ------------------------------------------------------------------ -->
+    {% if missing_hints %}
+    <div class="alert alert-warning py-3 px-4 mb-0">
+        <div class="fw-semibold fs-7 mb-2">
+            <i class="bi bi-exclamation-triangle me-1"></i>
+            Schedule references {{ missing_hints|length }} level keyword{{ missing_hints|length|pluralize }} with no matching storey
+        </div>
+        <div class="d-flex flex-wrap gap-2 mb-2">
+            {% for hint in missing_hints %}
+            <span class="badge bg-warning text-dark"
+                  title="{{ hint.task_names|join:', ' }}">
+                {{ hint.hint }}
+            </span>
+            {% endfor %}
+        </div>
+        <div class="text-secondary fs-7">
+            Import or add levels matching these names to link schedule tasks to storeys.
+        </div>
     </div>
     {% endif %}
 
-    <!-- Levels table -->
+    <!-- ------------------------------------------------------------------ -->
+    <!-- Section 4: Manual Levels                                            -->
+    <!-- ------------------------------------------------------------------ -->
     <div class="card border">
-        <div class="card-header py-2 px-3 fw-medium fs-7">
-            <i class="bi bi-list-ul me-1"></i>Level Registry
+        <div class="card-header d-flex align-items-center justify-content-between py-2 px-3">
+            <span class="fw-medium fs-7">
+                <i class="bi bi-pencil-square me-1"></i>Manual Levels
+                {% if manual_levels %}
+                <span class="badge rounded-pill ms-1" style="background:rgba(13,202,240,0.15); color:#0dcaf0; border:1px solid rgba(13,202,240,0.3);">
+                    {{ manual_levels|length }}
+                </span>
+                {% endif %}
+            </span>
         </div>
         <div class="card-body p-0">
             <table class="table table-sm table-hover mb-0">
                 <thead class="table-light">
                     <tr>
                         <th class="ps-3 py-2 fw-medium fs-7">Name</th>
-                        <th class="py-2 fw-medium fs-7">Z Elevation</th>
-                        <th class="py-2 fw-medium fs-7">Source</th>
+                        <th class="py-2 fw-medium fs-7">Z (mm)</th>
                         <th class="py-2 pe-3 fw-medium fs-7"></th>
                     </tr>
                 </thead>
-                <tbody id="levels-tbody">
-                    {% for level in levels %}
+                <tbody id="manual-levels-tbody">
+                    {% for level in manual_levels %}
                         {% include "ifc_insights/components/level_row.html" with level=level project=project %}
                     {% empty %}
-                    <tr id="levels-empty-row">
-                        <td colspan="4" class="text-center text-secondary py-4 fs-7">
-                            <i class="bi bi-layers me-1"></i>No levels yet — suggest from IFC or add one below.
+                    <tr id="manual-empty-row">
+                        <td colspan="3" class="text-center text-secondary py-3 fs-7">
+                            <i class="bi bi-layers me-1"></i>No manual levels yet.
                         </td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
+            <div class="border-top px-3 py-3">
+                <form hx-post="{% url 'islam:level_add' project.pk %}"
+                      hx-target="#manual-levels-tbody"
+                      hx-swap="beforeend"
+                      hx-on::after-request="this.reset(); const e=document.getElementById('manual-empty-row'); if(e) e.remove();"
+                      class="d-flex gap-2 align-items-end flex-wrap">
+                    {% csrf_token %}
+                    <div>
+                        <label class="form-label fs-7 mb-1">Name</label>
+                        <input type="text" name="name" class="form-control form-control-sm"
+                               placeholder="e.g. Ground Floor" required style="min-width:160px;">
+                    </div>
+                    <div>
+                        <label class="form-label fs-7 mb-1">Z Elevation (mm)</label>
+                        <input type="number" step="any" name="z_elevation"
+                               class="form-control form-control-sm" placeholder="e.g. 0"
+                               required style="min-width:130px;">
+                    </div>
+                    <button type="submit" class="btn btn-sm btn-primary">
+                        <i class="bi bi-plus me-1"></i>Add
+                    </button>
+                </form>
+            </div>
         </div>
     </div>
 
-    <!-- Add level form -->
+    <!-- ------------------------------------------------------------------ -->
+    <!-- Section 5: Apply to IFC                                             -->
+    <!-- ------------------------------------------------------------------ -->
+    {% if ifc_file %}
     <div class="card border">
         <div class="card-header py-2 px-3 fw-medium fs-7">
-            <i class="bi bi-plus-circle me-1"></i>Add Level
+            <i class="bi bi-cloud-upload me-1"></i>Apply to IFC
         </div>
         <div class="card-body py-3 px-3">
-            <form hx-post="{% url 'islam:level_add' project.pk %}"
-                  hx-target="#levels-tbody"
-                  hx-swap="beforeend"
-                  hx-on::after-request="this.reset(); document.getElementById('levels-empty-row') && document.getElementById('levels-empty-row').remove();"
-                  class="d-flex gap-2 align-items-end flex-wrap">
-                {% csrf_token %}
-                <div>
-                    <label class="form-label fs-7 mb-1">Name</label>
-                    <input type="text" name="name" class="form-control form-control-sm" placeholder="e.g. Ground Floor" required style="min-width:160px;">
+            <div class="d-flex flex-wrap align-items-center gap-4">
+                <div class="fs-7 text-secondary">
+                    <i class="bi bi-arrow-up-circle text-primary me-1"></i>
+                    <strong>{{ apply_diff.will_update }}</strong>
+                    linked storey{{ apply_diff.will_update|pluralize }} will be <strong>updated</strong>
                 </div>
-                <div>
-                    <label class="form-label fs-7 mb-1">Z Elevation (mm)</label>
-                    <input type="number" step="any" name="z_elevation" class="form-control form-control-sm" placeholder="e.g. 0" required style="min-width:130px;">
+                <div class="fs-7 text-secondary">
+                    <i class="bi bi-plus-circle text-success me-1"></i>
+                    <strong>{{ apply_diff.will_create }}</strong>
+                    manual level{{ apply_diff.will_create|pluralize }} will be <strong>created</strong>
                 </div>
-                <button type="submit" class="btn btn-sm btn-primary">
-                    <i class="bi bi-plus me-1"></i>Add
+                <button class="ms-auto btn btn-sm btn-primary"
+                        hx-post="{% url 'islam:level_apply' project.pk %}"
+                        hx-swap="none"
+                        {% if not apply_diff.will_update and not apply_diff.will_create %}disabled{% endif %}>
+                    <i class="bi bi-cloud-upload me-1"></i>Apply to IFC
                 </button>
-            </form>
+            </div>
         </div>
     </div>
+    {% endif %}
 
 </div>
 
@@ -126,6 +252,7 @@
 {% include "ifc_insights/components/levels_help_modal.html" %}
 
 <script>
+/* Manual-level inline edit (Section 4) — targets individual row via outerHTML swap */
 function levelEditStart(pk) {
     const row = document.getElementById('level-row-' + pk);
     row.querySelectorAll('.level-display-name, .level-display-z, .level-display-actions').forEach(el => el.classList.add('d-none'));
@@ -144,12 +271,40 @@ function levelEditSave(pk, url) {
     const name = row.querySelector('.level-edit-name').value.trim();
     const z = row.querySelector('.level-edit-z').value.trim();
     if (!name) { alert('Name is required.'); return; }
-
-    const body = new URLSearchParams({ name, z_elevation: z, csrfmiddlewaretoken: '{{ csrf_token }}' });
     htmx.ajax('POST', url, {
         target: '#level-row-' + pk,
         swap: 'outerHTML',
         values: { name, z_elevation: z, csrfmiddlewaretoken: '{{ csrf_token }}' }
+    });
+}
+
+/* Storey-registry inline edit (Section 2) — targets #storey-registry-body via innerHTML swap */
+function storeyEditStart(safeId) {
+    const row = document.getElementById('storey-row-' + safeId);
+    if (!row) return;
+    row.querySelectorAll('.storey-display').forEach(el => el.classList.add('d-none'));
+    row.querySelectorAll('.storey-edit').forEach(el => el.classList.remove('d-none'));
+    const nameInput = row.querySelector('.storey-edit-name');
+    if (nameInput) nameInput.focus();
+}
+
+function storeyEditCancel(safeId) {
+    const row = document.getElementById('storey-row-' + safeId);
+    if (!row) return;
+    row.querySelectorAll('.storey-display').forEach(el => el.classList.remove('d-none'));
+    row.querySelectorAll('.storey-edit').forEach(el => el.classList.add('d-none'));
+}
+
+function storeyEditSave(safeId, url) {
+    const row = document.getElementById('storey-row-' + safeId);
+    if (!row) return;
+    const name = row.querySelector('.storey-edit-name').value.trim();
+    const z = row.querySelector('.storey-edit-z').value.trim();
+    if (!name) { alert('Name is required.'); return; }
+    htmx.ajax('POST', url, {
+        target: '#storey-registry-body',
+        swap: 'innerHTML',
+        values: { name, z_elevation: z, refresh_registry: '1', csrfmiddlewaretoken: '{{ csrf_token }}' }
     });
 }
 </script>

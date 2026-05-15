@@ -18,44 +18,63 @@
                 <!-- 1. What is it? -->
                 <p class="fw-semibold fs-7 mb-2">
                     <i class="bi bi-box-seam me-1" style="color: var(--castor-primary, #3b82f6);"></i>
-                    What is a Level?
+                    What is the Levels Panel?
                 </p>
                 <p class="text-secondary fs-7 mb-4">
-                    A Level represents a floor or storey in your building model at a specific Z-elevation (mm above datum).
-                    Castor reads them from <code>IfcBuildingStorey</code> objects in your IFC file, lets you edit them,
-                    and can write them back to the file so your model stays in sync.
+                    The Levels Panel is the authoritative registry of floor levels for your building model.
+                    It reads <code>IfcBuildingStorey</code> objects from your processed IFC file, shows
+                    reference coordinate points, flags storeys missing from your schedule, lets you add
+                    manual levels, and can write everything back into the IFC file.
                 </p>
 
-                <!-- 2. Lifecycle -->
+                <!-- 2. Sections -->
                 <p class="fw-semibold fs-7 mb-2">
-                    <i class="bi bi-arrow-repeat me-1" style="color: var(--castor-primary, #3b82f6);"></i>
-                    Lifecycle
+                    <i class="bi bi-layout-text-sidebar me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    Panel sections
                 </p>
-                <div class="d-flex flex-column gap-2 mb-4 fs-7">
+                <div class="d-flex flex-column gap-2 mb-4 fs-7 text-secondary">
                     <div>
-                        <span class="badge text-bg-secondary me-1">From IFC</span>
-                        Imported directly from <code>IfcBuildingStorey</code> — global ID is linked so Apply writes back to the same storey.
+                        <strong class="text-body">Reference Points</strong> —
+                        Reads <code>IfcSite</code> RefElevation and named entities ("Project Base Point",
+                        "Survey Point") from your IFC model so you know the coordinate datum.
                     </div>
                     <div>
-                        <span class="badge text-bg-warning text-dark me-1">Suggested</span>
-                        Derived from entity spatial containers when the IFC has no storey objects. Z values are synthetic (3 m increments).
+                        <strong class="text-body">IFC Storey Registry</strong> —
+                        Every <code>IfcBuildingStorey</code> in the model, sourced from the database.
+                        Shows element count and whether the storey name appears in your schedule.
+                        Use <strong>Import</strong> to add a storey to the Level Registry so you can edit
+                        its name and Z-elevation and write it back via Apply.
                     </div>
                     <div>
-                        <span class="badge text-bg-info text-dark me-1">Manual</span>
-                        Created directly by you. Apply creates a new <code>IfcBuildingStorey</code> in the file.
+                        <strong class="text-body">Missing Level Hints</strong> —
+                        Appears when your schedule tasks reference level keywords (e.g. "Level 3", "GF",
+                        "Basement") that do not match any storey name. Import or create matching levels
+                        to close the gap.
+                    </div>
+                    <div>
+                        <strong class="text-body">Manual Levels</strong> —
+                        Add levels that have no counterpart in the IFC file. Apply will create new
+                        <code>IfcBuildingStorey</code> objects for these.
+                    </div>
+                    <div>
+                        <strong class="text-body">Apply to IFC</strong> —
+                        Writes all linked storeys (name + Z) and creates new storeys for manual levels.
+                        Shows a diff preview before you click. A <code>.ifc.bak</code> backup is created
+                        automatically and a Git commit is recorded in the project audit log.
                     </div>
                 </div>
 
                 <!-- 3. How to use -->
                 <p class="fw-semibold fs-7 mb-2">
-                    <i class="bi bi-plus-circle me-1" style="color: var(--castor-primary, #3b82f6);"></i>
-                    How to populate levels
+                    <i class="bi bi-list-ol me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    Typical workflow
                 </p>
                 <ol class="text-secondary fs-7 ps-3 mb-4">
-                    <li class="mb-1"><strong>Suggest from IFC</strong> — reads your uploaded IFC file and proposes storeys. Click Import next to any suggestion to add it.</li>
-                    <li class="mb-1"><strong>Add manually</strong> — type a name and Z elevation then click Add.</li>
-                    <li class="mb-1"><strong>Edit inline</strong> — click the pencil icon on any row to rename or adjust the elevation.</li>
-                    <li class="mb-1"><strong>Apply to IFC</strong> — writes all level records back into the IFC file, creating or updating <code>IfcBuildingStorey</code> objects. A <code>.ifc.bak</code> backup is made automatically before any write.</li>
+                    <li class="mb-1">Process your IFC file (IFC Insights tab) so the storey registry populates.</li>
+                    <li class="mb-1">Click <strong>Import</strong> next to each storey you want in the Level Registry.</li>
+                    <li class="mb-1">Edit any storey name or Z-elevation inline with the pencil icon.</li>
+                    <li class="mb-1">Check the <em>Missing Level Hints</em> alert and add manual levels to cover any gaps.</li>
+                    <li class="mb-1">Click <strong>Apply to IFC</strong> to write changes back to the file.</li>
                 </ol>
 
                 <!-- 4. Who can do what -->
@@ -64,8 +83,8 @@
                     Who can do what
                 </p>
                 <ul class="text-secondary fs-7 ps-3 mb-4">
-                    <li>Any project member can view and add levels.</li>
-                    <li>Apply to IFC modifies the IFC file on disk — treat it like a write-back operation.</li>
+                    <li>Any project member can view the storey registry and reference points.</li>
+                    <li>Import, edit, add, and Apply all modify project data — treat Apply like a write-back operation.</li>
                 </ul>
 
                 <!-- 5. Caveats -->
@@ -74,9 +93,10 @@
                     Caveats
                 </p>
                 <div class="d-flex flex-column gap-1 fs-7 text-secondary">
-                    <span><i class="bi bi-dot"></i>Apply overwrites the IFC file in place. A <code>.ifc.bak</code> is created first but is not versioned.</span>
-                    <span><i class="bi bi-dot"></i>Suggested Z-elevations for entity-derived storeys are synthetic (3 m per floor) — verify before applying.</span>
-                    <span><i class="bi bi-dot"></i>Geometric placement (slab shape, thickness) is out of scope — only the storey name and Z-elevation are written.</span>
+                    <span><i class="bi bi-dot"></i>Apply overwrites the IFC file in place. A <code>.ifc.bak</code> sibling is created first but is not itself versioned.</span>
+                    <span><i class="bi bi-dot"></i>Only storey <em>name</em> and <em>Z-elevation</em> are written back — slab geometry and thickness are out of scope.</span>
+                    <span><i class="bi bi-dot"></i>The In Schedule badge is based on a simple text-match against task names and activity codes — it is a hint, not a guarantee.</span>
+                    <span><i class="bi bi-dot"></i>Unlinking a storey from the registry removes the IslamLevel record but does not modify the IFC file.</span>
                 </div>
 
             </div>
