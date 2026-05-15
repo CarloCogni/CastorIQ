@@ -202,6 +202,44 @@ urlpatterns = [
         name="level_apply",
     ),
     # ------------------------------------------------------------------ #
+    # IFC Issues tab                                                      #
+    # ------------------------------------------------------------------ #
+    path(
+        "projects/<uuid:pk>/ifc-issues/",
+        insights_views.IssuesView.as_view(),
+        name="ifc_issues",
+    ),
+    path(
+        "projects/<uuid:pk>/insights/issues/count/",
+        insights_views.IssuesCountView.as_view(),
+        name="issues_count",
+    ),
+    path(
+        "projects/<uuid:pk>/insights/issues/missing-activity-id/",
+        insights_views.IssuesMissingActivityView.as_view(),
+        name="issues_missing_activity",
+    ),
+    path(
+        "projects/<uuid:pk>/insights/issues/missing-cost/",
+        insights_views.IssuesMissingCostView.as_view(),
+        name="issues_missing_cost",
+    ),
+    path(
+        "projects/<uuid:pk>/insights/issues/activity-audit/",
+        insights_views.IssuesActivityAuditView.as_view(),
+        name="issues_activity_audit",
+    ),
+    path(
+        "projects/<uuid:pk>/insights/issues/levels-health/",
+        insights_views.IssuesLevelsHealthView.as_view(),
+        name="issues_levels_health",
+    ),
+    path(
+        "projects/<uuid:pk>/insights/issues/export/",
+        insights_views.IssuesExportView.as_view(),
+        name="issues_export",
+    ),
+    # ------------------------------------------------------------------ #
     # IFC Insights HTMX endpoints                                         #
     # ------------------------------------------------------------------ #
     path(

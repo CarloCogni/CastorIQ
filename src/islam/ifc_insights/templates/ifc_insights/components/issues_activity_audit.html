@@ -1,0 +1,56 @@
+<!-- ifc_insights/components/issues_activity_audit.html — Section 3 partial -->
+<!-- Context: audit_rows (list[dict]), project -->
+<!-- Each row: act_id, act_name, ifc_type, count, linked (bool) -->
+
+{% if not audit_rows %}
+<div class="card-body py-3 fs-7 text-secondary">
+    <i class="bi bi-info-circle me-1"></i>No Activity ID data found in this model.
+</div>
+{% else %}
+<div class="table-responsive" style="max-height:360px; overflow-y:auto;">
+    <table class="table table-sm table-hover mb-0">
+        <thead class="table-light sticky-top">
+            <tr>
+                <th class="ps-3 py-2 fw-medium fs-7">Activity ID</th>
+                <th class="py-2 fw-medium fs-7">Activity Name</th>
+                <th class="py-2 fw-medium fs-7">IFC Type</th>
+                <th class="py-2 fw-medium fs-7 text-end">Count</th>
+                <th class="py-2 pe-3 fw-medium fs-7 text-center">Linked to Task?</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in audit_rows %}
+            <tr>
+                <td class="ps-3 py-1">
+                    <code class="text-info" style="font-size:0.8rem;">{{ row.act_id }}</code>
+                </td>
+                <td class="py-1 fs-7">{{ row.act_name }}</td>
+                <td class="py-1">
+                    <span class="badge text-bg-secondary" style="font-size:0.68rem;">{{ row.ifc_type }}</span>
+                </td>
+                <td class="py-1 text-end fw-semibold fs-7">{{ row.count }}</td>
+                <td class="py-1 pe-3 text-center">
+                    {% if row.linked %}
+                    <span class="text-success fw-bold" title="At least one binding exists">&#10003;</span>
+                    {% else %}
+                    <span class="text-warning fw-bold" title="Activity ID present but no TaskEntityBinding found">&#9888;</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+<div class="px-3 py-2 border-top d-flex align-items-center justify-content-between">
+    <small class="text-secondary">
+        {{ audit_rows|length }} activity group{{ audit_rows|length|pluralize }}
+        &nbsp;&mdash;&nbsp;
+        <span class="text-success">&#10003;</span> linked &nbsp;
+        <span class="text-warning">&#9888;</span> unlinked to schedule
+    </small>
+    <a href="{% url 'islam:issues_export' project.pk %}?section=activity_audit"
+       class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-download me-1"></i>Export CSV
+    </a>
+</div>
+{% endif %}

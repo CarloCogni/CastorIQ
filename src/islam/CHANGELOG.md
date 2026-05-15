@@ -108,6 +108,76 @@
 
 ---
 
+### [2026-05-15] IFC Issues tab — 4-section data-quality audit dashboard
+
+### [2026-05-15] islam/ifc_insights/services/metrics.py
+- Action: Modified — added `missing_4d` and `missing_5d` keys to `entity_metrics` return dict
+- What it does: Both zero-total and normal return paths now include `missing_4d` (total - fourd_hits) and `missing_5d` (total - fived_hits), used by panel.html to display the count beneath each readiness ring.
+- Why it was necessary: panel.html redesign needed per-ring missing counts without re-computing metrics.
+- Depends on: entity_metrics (existing), panel.html
+
+### [2026-05-15] islam/ifc_insights/views.py
+- Action: Modified — added `reverse` + `IFCEntity` imports; added module-level helpers; added 7 new view classes
+- What it does: New helpers: `_has_activity_id`, `_has_cost`, `_entity_level`, `_missing_activity_rows`, `_missing_cost_rows`, `_activity_audit_rows`. New views: `IssuesView` (tab shell, islam_subtab='ifc_issues'), `IssuesCountView` (JSON badge count), `IssuesMissingActivityView` (HTMX partial), `IssuesMissingCostView` (HTMX partial), `IssuesActivityAuditView` (grouped audit, checks TaskEntityBinding), `IssuesLevelsHealthView` (reuses get_storeys_from_db + match_storeys_to_tasks), `IssuesExportView` (CSV, section= param: missing_activity | missing_cost | activity_audit). All HTMX views use .only() + .iterator(chunk_size=500). Display capped at 500 rows.
+- Why it was necessary: New IFC Issues tab endpoints.
+- Depends on: IFCEntity, IFCFile, IslamLevel, TaskEntityBinding (scheduling), levels.py services, 5 new partial templates
+
+### [2026-05-15] islam/urls.py
+- Action: Modified — added 7 new URL patterns
+- What it does: projects/<pk>/ifc-issues/ (IssuesView, name=ifc_issues), insights/issues/count/ (IssuesCountView, name=issues_count), insights/issues/missing-activity-id/ (IssuesMissingActivityView, name=issues_missing_activity), insights/issues/missing-cost/ (IssuesMissingCostView, name=issues_missing_cost), insights/issues/activity-audit/ (IssuesActivityAuditView, name=issues_activity_audit), insights/issues/levels-health/ (IssuesLevelsHealthView, name=issues_levels_health), insights/issues/export/ (IssuesExportView, name=issues_export).
+- Why it was necessary: Expose all IFC Issues views.
+- Depends on: new view classes in views.py
+
+### [2026-05-15] islam/ifc_insights/templates/ifc_insights/panel.html
+- Action: Modified — removed Activity ID table and Cost Panel; added missing-count lines under rings; added "View Issues →" button; updated help modal
+- What it does: Removed `{% if activity_table %}` Activity Schedule Summary card and `{% if has_cost_data %}` Cost Summary card (both moved to IFC Issues tab). Added conditional `missing_4d` / `missing_5d` count lines under each ring (red if > 0, green if 0). Added "View Issues →" outline-danger button linking to `islam:ifc_issues`. Updated help modal to remove stale section descriptions and add View Issues reference.
+- Why it was necessary: Separate readiness summary (panel.html) from element-level audit (IFC Issues tab).
+- Depends on: missing_4d, missing_5d context vars from entity_metrics, islam:ifc_issues URL
+
+### [2026-05-15] islam/templates/islam/panel.html
+- Action: Modified — added IFC Issues tab nav item, dispatch branch, badge fetch script
+- What it does: New nav-link "IFC Issues" between IFC Insights and Levels, with `id="ifc-issues-nav-badge"` span (hidden, bg-danger). Dispatch branch `{% elif islam_subtab == 'ifc_issues' %}` includes issues_panel.html. Inline `<script>` fetches `issues_count` JSON on every page render and shows the badge when total > 0.
+- Why it was necessary: Make the IFC Issues tab reachable from the 4D Insights navigation.
+- Depends on: IssuesView, IssuesCountView, issues_panel.html
+
+### [2026-05-15] islam/ifc_insights/templates/ifc_insights/issues_panel.html
+- Action: Created
+- What it does: Main IFC Issues tab panel. Header with help pill + total-count badge (JS-populated from issues_count). Four Bootstrap-collapsible sections, each containing a div with hx-trigger="load" that fires the corresponding HTMX endpoint independently on page load. Section 1 (Missing Activity ID) is open by default; sections 2–4 start collapsed. Inline JS fetches issues_count and populates the header badge.
+- Why it was necessary: New IFC Issues tab content panel.
+- Depends on: issues_missing_activity.html, issues_missing_cost.html, issues_activity_audit.html, issues_levels_health.html, issues_help_modal.html
+
+### [2026-05-15] islam/ifc_insights/templates/ifc_insights/components/issues_missing_activity.html
+- Action: Created
+- What it does: HTMX swap target for Section 1. Empty state (green ✓) when total_count=0. Table: Global ID (truncated, code) | IFC Type (badge) | Name | Level | Actions ([Copy GlobalId] clipboard JS, [Open in Viewer] link to viewer_url?highlight=<gid>). Footer: X elements affected + Export CSV link. Capped at 500 rows with "showing first 500" note when exceeded.
+- Why it was necessary: Section 1 partial for IssuesMissingActivityView.
+- Depends on: IssuesMissingActivityView, issues_export (missing_activity)
+
+### [2026-05-15] islam/ifc_insights/templates/ifc_insights/components/issues_missing_cost.html
+- Action: Created
+- What it does: Identical structure to issues_missing_activity.html but for Cost data. Empty state when total_count=0. Export link uses section=missing_cost.
+- Why it was necessary: Section 2 partial for IssuesMissingCostView.
+- Depends on: IssuesMissingCostView, issues_export (missing_cost)
+
+### [2026-05-15] islam/ifc_insights/templates/ifc_insights/components/issues_activity_audit.html
+- Action: Created
+- What it does: Section 3 partial. Empty state when no audit rows. Table: Activity ID (code, text-info) | Activity Name | IFC Type (badge) | Count (right-aligned) | Linked to Task? (✓ green = linked, ⚠ amber = unlinked). Footer legend + Export CSV. No row cap (groups are bounded by unique Activity IDs).
+- Why it was necessary: Section 3 partial for IssuesActivityAuditView.
+- Depends on: IssuesActivityAuditView, issues_export (activity_audit)
+
+### [2026-05-15] islam/ifc_insights/templates/ifc_insights/components/issues_levels_health.html
+- Action: Created
+- What it does: Section 4 partial. Empty state when no storeys. Table: Storey Name | Z (mm) | Elements (right-aligned) | In Schedule (Yes/No badge) | Status (✓ OK / ⚠ Not in schedule / ✗ No elements) | Fix in Levels → link. Footer legend.
+- Why it was necessary: Section 4 partial for IssuesLevelsHealthView.
+- Depends on: IssuesLevelsHealthView, levels_url (islam:levels)
+
+### [2026-05-15] islam/ifc_insights/templates/ifc_insights/components/issues_help_modal.html
+- Action: Created
+- What it does: Standard 5-section help modal (What is it / Sections / Workflow / Who can / Caveats). Describes all four issue sections, status badge meanings, and display cap caveat.
+- Why it was necessary: CLAUDE.md non-negotiable: every non-trivial tab must ship with a ? help pill + modal.
+- Depends on: issues_panel.html ({% include %})
+
+---
+
 ### [2026-05-14] Levels Panel redesign — IFC Storey Registry + 5-section layout
 
 ### [2026-05-14] islam/ifc_insights/services/levels.py

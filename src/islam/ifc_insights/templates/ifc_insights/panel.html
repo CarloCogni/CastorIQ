@@ -67,6 +67,11 @@
                     </svg>
                     <h6 class="fw-semibold mb-1">4D Readiness</h6>
                     <p class="text-secondary small mb-0">Activity ID linked &middot; {{ total_entities }} elements</p>
+                    {% if missing_4d > 0 %}
+                    <p class="small mt-1 mb-0 fw-medium" style="color:#ef4444;">{{ missing_4d }} missing Activity ID</p>
+                    {% else %}
+                    <p class="small mt-1 mb-0" style="color:#22c55e;">All elements have Activity ID</p>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -85,9 +90,21 @@
                     </svg>
                     <h6 class="fw-semibold mb-1">5D Readiness</h6>
                     <p class="text-secondary small mb-0">Cost data present &middot; {{ total_entities }} elements</p>
+                    {% if missing_5d > 0 %}
+                    <p class="small mt-1 mb-0 fw-medium" style="color:#ef4444;">{{ missing_5d }} missing Cost data</p>
+                    {% else %}
+                    <p class="small mt-1 mb-0" style="color:#22c55e;">All elements have Cost data</p>
+                    {% endif %}
                 </div>
             </div>
         </div>
+    </div>
+
+    <!-- ── View Issues link ──────────────────────────────────────────── -->
+    <div class="d-flex justify-content-end mb-1">
+        <a href="{% url 'islam:ifc_issues' project.pk %}" class="btn btn-sm btn-outline-danger">
+            <i class="bi bi-bug me-1"></i>View Issues &rarr;
+        </a>
     </div>
 
     <!-- ── Breakdown Cards (HTMX lazy-loaded) ─────────────────────────── -->
@@ -118,77 +135,6 @@
         </div>
     </div>
 
-    <!-- ── Activity ID + Name Table ────────────────────────────────────── -->
-    {% if activity_table %}
-    <div class="card mb-4">
-        <div class="card-header d-flex align-items-center gap-2">
-            <i class="bi bi-table me-1 text-primary"></i>
-            <span class="fw-semibold">Activity Schedule Summary</span>
-            <span class="badge bg-secondary ms-1">{{ activity_table|length }} entries</span>
-            <div class="ms-auto">
-                <input type="text" id="activity-search" class="form-control form-control-sm"
-                       placeholder="Search activity&hellip;" style="width:200px;"
-                       oninput="filterActivityTable(this.value)">
-            </div>
-        </div>
-        <div class="card-body p-0">
-            <div class="table-responsive" style="max-height:320px; overflow-y:auto;">
-                <table class="table table-sm table-hover mb-0" id="activity-table">
-                    <thead class="table-dark sticky-top">
-                        <tr>
-                            <th>Activity ID</th>
-                            <th>Activity Name</th>
-                            <th>IFC Type</th>
-                            <th class="text-end">Count</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for row in activity_table %}
-                        <tr>
-                            <td><code class="text-info">{{ row.act_id }}</code></td>
-                            <td>{{ row.act_name }}</td>
-                            <td><span class="badge bg-secondary">{{ row.ifc_type }}</span></td>
-                            <td class="text-end fw-semibold">{{ row.count }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-    {% endif %}
-
-    <!-- ── Cost Panel ──────────────────────────────────────────────────── -->
-    {% if has_cost_data %}
-    <div class="card mb-4">
-        <div class="card-header d-flex align-items-center gap-2">
-            <i class="bi bi-currency-dollar me-1 text-success"></i>
-            <span class="fw-semibold">Cost Summary</span>
-            <span class="ms-auto badge bg-success">Total: {{ total_cost|floatformat:2 }}</span>
-        </div>
-        <div class="card-body p-0">
-            <table class="table table-sm mb-0">
-                <thead class="table-dark">
-                    <tr><th>IFC Type</th><th class="text-end">Cost</th></tr>
-                </thead>
-                <tbody>
-                    {% for row in cost_by_type %}
-                    <tr>
-                        <td>{{ row.ifc_type }}</td>
-                        <td class="text-end">{{ row.cost|floatformat:2 }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-    {% else %}
-    <div class="alert alert-info d-flex align-items-center gap-2 mb-4">
-        <i class="bi bi-info-circle-fill"></i>
-        No cost data found &mdash; add <code>Cost</code> or <code>Unit Cost</code> to IFC Property Sets to enable 5D costing.
-    </div>
-    {% endif %}
-
     <!-- ── QA/QC Checks (existing) ─────────────────────────────────────── -->
     {% if check_results %}
         {% if check_results.error %}
@@ -218,10 +164,9 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p><strong>Readiness Rings</strong> &mdash; show what percentage of your IFC elements have Activity ID (4D) and Cost (5D) data populated. Green &ge; 80%, Amber 40&ndash;79%, Red &lt; 40%.</p>
+                <p><strong>Readiness Rings</strong> &mdash; show what percentage of your IFC elements have Activity ID (4D) and Cost (5D) data populated. Green &ge; 80%, Amber 40&ndash;79%, Red &lt; 40%. The count beneath each ring shows how many elements are missing that property.</p>
+                <p><strong>View Issues &rarr;</strong> &mdash; opens the IFC Issues tab with four detailed audit sections: Missing Activity ID, Missing Cost, Activity ID &amp; Name Audit, and Levels Health.</p>
                 <p><strong>Breakdown Cards</strong> &mdash; element counts grouped by Level, Element Type, and Material. Loaded live from the database.</p>
-                <p><strong>Activity Schedule Summary</strong> &mdash; table of all unique Activity ID / Activity Name pairs found in element properties, with element counts. Use the search box to filter.</p>
-                <p><strong>Cost Summary</strong> &mdash; appears only when Cost or Unit Cost properties exist. Shows total cost and breakdown by element type.</p>
                 <p><strong>QA/QC Checks</strong> &mdash; 10 automated quality checks run on the IFC file. Click <em>Re-run</em> after fixing issues and re-uploading.</p>
                 <p><strong>Engine Selector</strong> &mdash; Castor Engine uses the main analysis pipeline. Islam Engine is experimental.</p>
             </div>

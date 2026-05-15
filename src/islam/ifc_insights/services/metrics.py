@@ -44,6 +44,8 @@ def entity_metrics(ifc_file) -> dict:
             "has_cost_data": False,
             "total_cost": 0.0,
             "cost_by_type": [],
+            "missing_4d": 0,
+            "missing_5d": 0,
         }
 
     fourd_hits = 0
@@ -108,6 +110,8 @@ def entity_metrics(ifc_file) -> dict:
         "has_cost_data": total_cost > 0,
         "total_cost": total_cost,
         "cost_by_type": cost_table,
+        "missing_4d": total - fourd_hits,
+        "missing_5d": total - fived_hits,
     }
 
 

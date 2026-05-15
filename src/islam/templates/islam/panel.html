@@ -28,6 +28,16 @@
                 </a>
             </li>
             <li class="nav-item">
+                <a class="nav-link py-1 px-3 {% if islam_subtab == 'ifc_issues' %}active{% endif %}"
+                   href="{% url 'islam:ifc_issues' project.pk %}"
+                   style="font-size:0.85rem;">
+                    <i class="bi bi-bug me-1"></i>IFC Issues
+                    <span id="ifc-issues-nav-badge"
+                          class="badge bg-danger ms-1 d-none"
+                          style="font-size:0.65rem;"></span>
+                </a>
+            </li>
+            <li class="nav-item">
                 <a class="nav-link py-1 px-3 {% if islam_subtab == 'levels' %}active{% endif %}"
                    href="{% url 'islam:levels' project.pk %}"
                    style="font-size:0.85rem;">
@@ -45,9 +55,27 @@
             {% include "scheduling/panel.html" %}
         {% elif islam_subtab == 'insights' %}
             {% include "ifc_insights/panel.html" %}
+        {% elif islam_subtab == 'ifc_issues' %}
+            {% include "ifc_insights/issues_panel.html" %}
         {% elif islam_subtab == 'levels' %}
             {% include "ifc_insights/levels.html" %}
         {% endif %}
     </div>
 
 </div>
+
+<script>
+(function () {
+    var badge = document.getElementById('ifc-issues-nav-badge');
+    if (!badge) return;
+    fetch('{% url "islam:issues_count" project.pk %}')
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            if (d.total > 0) {
+                badge.textContent = d.total;
+                badge.classList.remove('d-none');
+            }
+        })
+        .catch(function () {});
+}());
+</script>

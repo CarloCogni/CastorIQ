@@ -14,7 +14,8 @@ from django.views.generic import TemplateView
 
 from core.http import toast_response, trigger_toast
 from core.mixins import ProjectAccessMixin, ProjectTabMixin
-from ifc_processor.models import IFCFile
+from django.urls import reverse
+from ifc_processor.models import IFCEntity, IFCFile
 
 from .models import IslamLevel
 from .services.checks import run_all_checks
@@ -380,3 +381,291 @@ class LevelApplyView(ProjectAccessMixin, View):
             msg += f" {len(result['errors'])} error(s) — check logs."
 
         return toast_response(msg, "success" if not result["errors"] else "info")
+
+
+# ---------------------------------------------------------------------------
+# IFC Issues — module-level helpers (used by both HTMX views and export)
+# ---------------------------------------------------------------------------
+
+_ISSUES_ONLY = ("global_id", "ifc_type", "name", "spatial_container_id", "properties")
+
+
+def _has_activity_id(props: dict) -> bool:
+    """Return True if props contains a non-empty Activity ID value."""
+    return any(k.lower().endswith("activity id") and v for k, v in props.items())
+
+
+def _has_cost(props: dict) -> bool:
+    """Return True if props contains a parseable Cost or Unit Cost value."""
+    for k, v in props.items():
+        if k.lower().endswith("cost") and v:
+            try:
+                float(str(v).replace(",", ""))
+                return True
+            except (TypeError, ValueError):
+                pass
+    return False
+
+
+def _entity_level(entity) -> str:
+    """Return storey name from spatial_container chain, or '—'."""
+    try:
+        return entity.spatial_container.entity.name or "—"
+    except AttributeError:
+        return "—"
+
+
+def _missing_activity_rows(ifc_file) -> list[dict]:
+    """Return dicts for all entities that have no valid Activity ID."""
+    rows: list[dict] = []
+    qs = (
+        IFCEntity.objects.filter(ifc_file=ifc_file)
+        .only(*_ISSUES_ONLY)
+        .select_related("spatial_container__entity")
+    )
+    for entity in qs.iterator(chunk_size=500):
+        if not _has_activity_id(entity.properties or {}):
+            rows.append({
+                "global_id": entity.global_id,
+                "ifc_type": entity.ifc_type or "—",
+                "name": entity.name or "—",
+                "level": _entity_level(entity),
+            })
+    return rows
+
+
+def _missing_cost_rows(ifc_file) -> list[dict]:
+    """Return dicts for all entities that have no valid Cost property."""
+    rows: list[dict] = []
+    qs = (
+        IFCEntity.objects.filter(ifc_file=ifc_file)
+        .only(*_ISSUES_ONLY)
+        .select_related("spatial_container__entity")
+    )
+    for entity in qs.iterator(chunk_size=500):
+        if not _has_cost(entity.properties or {}):
+            rows.append({
+                "global_id": entity.global_id,
+                "ifc_type": entity.ifc_type or "—",
+                "name": entity.name or "—",
+                "level": _entity_level(entity),
+            })
+    return rows
+
+
+def _activity_audit_rows(ifc_file, project) -> list[dict]:
+    """Group entities by (Activity ID, Activity Name, IFC Type) and check schedule binding."""
+    groups: dict = {}
+    for entity in (
+        IFCEntity.objects.filter(ifc_file=ifc_file)
+        .only("global_id", "ifc_type", "properties")
+        .iterator(chunk_size=500)
+    ):
+        props = entity.properties or {}
+        act_id = act_name = None
+        for k, v in props.items():
+            kl = k.lower()
+            if kl.endswith("activity id") and v:
+                act_id = str(v).strip()
+            elif kl.endswith("activity name") and v:
+                act_name = str(v).strip()
+        if not act_id:
+            continue
+        key = (act_id, act_name or "—", entity.ifc_type or "Unknown")
+        entry = groups.setdefault(key, {"count": 0, "global_ids": set()})
+        entry["count"] += 1
+        entry["global_ids"].add(entity.global_id)
+
+    try:
+        from islam.scheduling.models import TaskEntityBinding  # local — avoids circular
+        bound = set(
+            TaskEntityBinding.objects.filter(task__project=project)
+            .values_list("entity_global_id", flat=True)
+        )
+    except ImportError:
+        bound = set()
+
+    return [
+        {
+            "act_id": act_id,
+            "act_name": act_name,
+            "ifc_type": ifc_type,
+            "count": data["count"],
+            "linked": bool(data["global_ids"] & bound),
+        }
+        for (act_id, act_name, ifc_type), data in sorted(
+            groups.items(), key=lambda x: -x[1]["count"]
+        )
+    ]
+
+
+# ---------------------------------------------------------------------------
+# IFC Issues tab views
+# ---------------------------------------------------------------------------
+
+
+class IssuesView(ProjectTabMixin, TemplateView):
+    """IFC Issues tab — 4 lazy-loaded HTMX audit sections."""
+
+    active_tab = "islam"
+
+    def get_context_data(self, **kwargs: object) -> dict:
+        ctx = super().get_context_data(**kwargs)
+        ctx["islam_subtab"] = "ifc_issues"
+        return ctx
+
+
+class IssuesCountView(ProjectAccessMixin, View):
+    """JSON endpoint — total missing-activity + missing-cost count for badge."""
+
+    def get(self, request, **kwargs: object) -> JsonResponse:
+        project = self.get_project()
+        ifc_file = _get_active_ifc_file(project)
+        if not ifc_file:
+            return JsonResponse({"total": 0})
+        missing_4d = missing_5d = 0
+        for entity in (
+            IFCEntity.objects.filter(ifc_file=ifc_file)
+            .only("properties")
+            .iterator(chunk_size=500)
+        ):
+            props = entity.properties or {}
+            if not _has_activity_id(props):
+                missing_4d += 1
+            if not _has_cost(props):
+                missing_5d += 1
+        return JsonResponse({"total": missing_4d + missing_5d})
+
+
+class IssuesMissingActivityView(ProjectAccessMixin, View):
+    """HTMX partial — table of entities missing Activity ID."""
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        ifc_file = _get_active_ifc_file(project)
+        rows = _missing_activity_rows(ifc_file) if ifc_file else []
+        viewer_url = reverse("islam:viewer", kwargs={"pk": project.pk})
+        return render(
+            request,
+            "ifc_insights/components/issues_missing_activity.html",
+            {
+                "rows": rows[:500],
+                "total_count": len(rows),
+                "project": project,
+                "viewer_url": viewer_url,
+            },
+        )
+
+
+class IssuesMissingCostView(ProjectAccessMixin, View):
+    """HTMX partial — table of entities missing Cost data."""
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        ifc_file = _get_active_ifc_file(project)
+        rows = _missing_cost_rows(ifc_file) if ifc_file else []
+        viewer_url = reverse("islam:viewer", kwargs={"pk": project.pk})
+        return render(
+            request,
+            "ifc_insights/components/issues_missing_cost.html",
+            {
+                "rows": rows[:500],
+                "total_count": len(rows),
+                "project": project,
+                "viewer_url": viewer_url,
+            },
+        )
+
+
+class IssuesActivityAuditView(ProjectAccessMixin, View):
+    """HTMX partial — Activity ID / Name audit grouped table."""
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        ifc_file = _get_active_ifc_file(project)
+        audit_rows = _activity_audit_rows(ifc_file, project) if ifc_file else []
+        return render(
+            request,
+            "ifc_insights/components/issues_activity_audit.html",
+            {"audit_rows": audit_rows, "project": project},
+        )
+
+
+class IssuesLevelsHealthView(ProjectAccessMixin, View):
+    """HTMX partial — storey health (element count + schedule alignment)."""
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        ifc_file = _get_active_ifc_file(project)
+        storey_rows: list[dict] = []
+        if ifc_file:
+            from .services.levels import get_storeys_from_db, match_storeys_to_tasks
+            all_storeys = get_storeys_from_db(ifc_file)
+            in_schedule_map = match_storeys_to_tasks(
+                [s["name"] for s in all_storeys], project
+            )
+            for s in all_storeys:
+                in_sched = in_schedule_map.get(s["name"].lower(), False)
+                if s["element_count"] > 0 and in_sched:
+                    status = "ok"
+                elif s["element_count"] > 0:
+                    status = "no_schedule"
+                else:
+                    status = "no_elements"
+                storey_rows.append({**s, "in_schedule": in_sched, "status": status})
+
+        levels_url = reverse("islam:levels", kwargs={"pk": project.pk})
+        return render(
+            request,
+            "ifc_insights/components/issues_levels_health.html",
+            {"storey_rows": storey_rows, "project": project, "levels_url": levels_url},
+        )
+
+
+class IssuesExportView(ProjectAccessMixin, View):
+    """CSV download for a named issue section."""
+
+    _SECTION_FIELDS: dict[str, list[str]] = {
+        "missing_activity": ["global_id", "ifc_type", "name", "level"],
+        "missing_cost": ["global_id", "ifc_type", "name", "level"],
+        "activity_audit": ["activity_id", "activity_name", "ifc_type", "count", "linked_to_task"],
+    }
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        section = request.GET.get("section", "")
+        if section not in self._SECTION_FIELDS:
+            return HttpResponse("Unknown section.", status=400)
+
+        ifc_file = _get_active_ifc_file(project)
+        if not ifc_file:
+            return HttpResponse("No IFC file found.", status=404)
+
+        buf = io.StringIO()
+        writer = csv.DictWriter(buf, fieldnames=self._SECTION_FIELDS[section])
+        writer.writeheader()
+
+        if section == "missing_activity":
+            for row in _missing_activity_rows(ifc_file):
+                writer.writerow(row)
+        elif section == "missing_cost":
+            for row in _missing_cost_rows(ifc_file):
+                writer.writerow(row)
+        elif section == "activity_audit":
+            for row in _activity_audit_rows(ifc_file, project):
+                writer.writerow({
+                    "activity_id": row["act_id"],
+                    "activity_name": row["act_name"],
+                    "ifc_type": row["ifc_type"],
+                    "count": row["count"],
+                    "linked_to_task": "Yes" if row["linked"] else "No",
+                })
+
+        safe_name = "".join(
+            c if c.isalnum() or c in "-_ " else "_" for c in project.name
+        )
+        response = HttpResponse(buf.getvalue(), content_type="text/csv")
+        response["Content-Disposition"] = (
+            f'attachment; filename="ifc_issues_{section}_{safe_name}.csv"'
+        )
+        return response
