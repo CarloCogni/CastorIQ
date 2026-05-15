@@ -21,9 +21,15 @@ from ifc_processor.models import IFCEntity, IFCFile
 
 from .models import LinkFeedback, MappingProfile, Task, TaskEntityBinding
 from .services.autolink import autodetect_stages, run_autolink
-from .services.column_mapper import CANONICAL_FIELDS, CANONICAL_LABELS, apply_mapping, extract_columns
+from .services.column_mapper import (
+    CANONICAL_FIELDS,
+    CANONICAL_LABELS,
+    apply_mapping,
+    extract_columns,
+)
+from .services.critical_path import compute_critical_path
 from .services.embed_linker import embed_match_tasks
-from .services.excel_parser import parse_excel
+from .services.evm import compute_evm
 from .services.linker import apply_matches, auto_match_tasks, param_match_tasks
 from .services.msp_parser import parse_msp
 from .services.validator import validate_schedule
@@ -53,6 +59,7 @@ class ScheduleView(ProjectTabMixin, TemplateView):
         # Gantt + simulate date range
         if tasks.exists():
             from django.db.models import Max, Min
+
             agg = tasks.aggregate(min_start=Min("start_date"), max_end=Max("end_date"))
             ctx["gantt_min_date"] = agg["min_start"]
             ctx["gantt_max_date"] = agg["max_end"]
@@ -72,6 +79,7 @@ class ScheduleView(ProjectTabMixin, TemplateView):
 # ---------------------------------------------------------------------------
 # Upload + parse
 # ---------------------------------------------------------------------------
+
 
 class TaskUploadView(ProjectModifyAccessMixin, View):
     """HTMX POST — accept schedule file, parse it, return preview table."""
@@ -98,7 +106,9 @@ class TaskUploadView(ProjectModifyAccessMixin, View):
                         "name": p["name"],
                         "column_mapping_json": json.dumps(p["column_mapping"]),
                     }
-                    for p in MappingProfile.objects.filter(project=project).values("pk", "name", "column_mapping")
+                    for p in MappingProfile.objects.filter(project=project).values(
+                        "pk", "name", "column_mapping"
+                    )
                 ]
                 return render(
                     request,
@@ -121,7 +131,9 @@ class TaskUploadView(ProjectModifyAccessMixin, View):
                 source = "msp"
             else:
                 return toast_response(
-                    "Unsupported file type. Upload .xlsx, .xls, .csv, .xer, or .xml.", "error", status=400
+                    "Unsupported file type. Upload .xlsx, .xls, .csv, .xer, or .xml.",
+                    "error",
+                    status=400,
                 )
         except ValueError as exc:
             return toast_response(str(exc), "error", status=400)
@@ -158,9 +170,10 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
         session_key = f"parsed_tasks_{project.pk}"
         raw = request.session.get(session_key)
         if not raw:
-            return toast_response("No parsed tasks in session — re-upload the file.", "error", status=400)
+            return toast_response(
+                "No parsed tasks in session — re-upload the file.", "error", status=400
+            )
 
-        from datetime import date as Date
         from decimal import Decimal
 
         try:
@@ -176,8 +189,8 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
                     project=project,
                     name=td["name"],
                     description=td.get("description", ""),
-                    start_date=Date.fromisoformat(td["start_date"]),
-                    end_date=Date.fromisoformat(td["end_date"]),
+                    start_date=date.fromisoformat(td["start_date"]),
+                    end_date=date.fromisoformat(td["end_date"]),
                     status=td.get("status", "planned"),
                     source=td.get("source", "excel"),
                     activity_code=td.get("activity_code", ""),
@@ -191,7 +204,9 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
 
         del request.session[session_key]
 
-        all_tasks = list(Task.objects.filter(project=project).only("pk", "name", "stage", "sub_stage"))
+        all_tasks = list(
+            Task.objects.filter(project=project).only("pk", "name", "stage", "sub_stage")
+        )
         autodetect_stages(all_tasks)
 
         tasks = Task.objects.filter(project=project).prefetch_related("ifc_entities")
@@ -207,6 +222,7 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
 # Linking
 # ---------------------------------------------------------------------------
 
+
 class LinkAutoView(ProjectModifyAccessMixin, View):
     """HTMX POST — AI semantic matching of tasks to IFC entities."""
 
@@ -217,9 +233,13 @@ class LinkAutoView(ProjectModifyAccessMixin, View):
         entities = list(IFCEntity.objects.filter(ifc_file__in=ifc_files))
 
         if not tasks:
-            return toast_response("No tasks to link — import a schedule first.", "error", status=400)
+            return toast_response(
+                "No tasks to link — import a schedule first.", "error", status=400
+            )
         if not entities:
-            return toast_response("No IFC entities found — process an IFC file first.", "error", status=400)
+            return toast_response(
+                "No IFC entities found — process an IFC file first.", "error", status=400
+            )
 
         matches = auto_match_tasks(tasks, entities)
         if matches:
@@ -249,7 +269,9 @@ class LinkParamView(ProjectModifyAccessMixin, View):
         entities = list(IFCEntity.objects.filter(ifc_file__in=ifc_files))
 
         if not tasks:
-            return toast_response("No tasks to link — import a schedule first.", "error", status=400)
+            return toast_response(
+                "No tasks to link — import a schedule first.", "error", status=400
+            )
 
         matches = param_match_tasks(tasks, entities, param_name)
         if matches:
@@ -268,7 +290,9 @@ class LinkParamView(ProjectModifyAccessMixin, View):
             },
         )
         linked = sum(1 for m in matches if m["entity_ids"])
-        return trigger_toast(response, f"Parameter '{param_name}' matched {linked} tasks.", "success")
+        return trigger_toast(
+            response, f"Parameter '{param_name}' matched {linked} tasks.", "success"
+        )
 
 
 class AutoLinkView(ProjectModifyAccessMixin, View):
@@ -277,9 +301,8 @@ class AutoLinkView(ProjectModifyAccessMixin, View):
     def post(self, request, **kwargs: object) -> HttpResponse:
         project = self.get_project()
         # Prefer param from POST (attach tab form), fall back to session from mapping screen
-        ifc_param_name = (
-            request.POST.get("ifc_param_name", "").strip()
-            or request.session.get(f"ifc_param_name_{project.pk}", "Activity ID")
+        ifc_param_name = request.POST.get("ifc_param_name", "").strip() or request.session.get(
+            f"ifc_param_name_{project.pk}", "Activity ID"
         )
 
         try:
@@ -309,6 +332,7 @@ class AutoLinkView(ProjectModifyAccessMixin, View):
 # ---------------------------------------------------------------------------
 # Task management partials
 # ---------------------------------------------------------------------------
+
 
 class TaskListPartialView(ProjectAccessMixin, View):
     """HTMX GET — return the task list partial."""
@@ -347,12 +371,12 @@ class TaskDeleteView(ProjectModifyAccessMixin, View):
 
 _STAGE_COLORS: dict[str, str] = {
     "substructure": "#78350f",
-    "structure":    "#dc2626",
-    "envelope":     "#d97706",
-    "mep":          "#2563eb",
-    "finishes":     "#16a34a",
-    "external":     "#0891b2",
-    "":             "#6b7280",
+    "structure": "#dc2626",
+    "envelope": "#d97706",
+    "mep": "#2563eb",
+    "finishes": "#16a34a",
+    "external": "#0891b2",
+    "": "#6b7280",
 }
 
 
@@ -387,28 +411,31 @@ class GanttDataView(ProjectAccessMixin, View):
         for task in tasks:
             entities = list(task.ifc_entities.values("global_id", "name"))
             gids = [e["global_id"] for e in entities]
-            data.append({
-                "id": str(task.pk),
-                "name": task.name,
-                "start": task.start_date.isoformat(),
-                "end": task.end_date.isoformat(),
-                "actual_start": task.actual_start.isoformat() if task.actual_start else None,
-                "actual_end":   task.actual_end.isoformat()   if task.actual_end   else None,
-                "progress":     _compute_progress(task, today),
-                "stage":        task.stage     or "",
-                "sub_stage":    task.sub_stage or "",
-                "is_critical":  False,
-                "activity_code": task.activity_code or "",
-                "linked_entities": [
-                    {"name": e["name"] or e["global_id"], "global_id": e["global_id"]}
-                    for e in entities
-                ],
-                # kept for simulate.html backward compatibility
-                "status":           task.status,
-                "color":            task.color,
-                "link_status":      task.link_status,
-                "entity_global_ids": gids,
-            })
+            data.append(
+                {
+                    "id": str(task.pk),
+                    "name": task.name,
+                    "start": task.start_date.isoformat(),
+                    "end": task.end_date.isoformat(),
+                    "actual_start": task.actual_start.isoformat() if task.actual_start else None,
+                    "actual_end": task.actual_end.isoformat() if task.actual_end else None,
+                    "progress": _compute_progress(task, today),
+                    "stage": task.stage or "",
+                    "sub_stage": task.sub_stage or "",
+                    "is_critical": task.is_critical,
+                    "total_float": task.total_float,
+                    "activity_code": task.activity_code or "",
+                    "linked_entities": [
+                        {"name": e["name"] or e["global_id"], "global_id": e["global_id"]}
+                        for e in entities
+                    ],
+                    # kept for simulate.html backward compatibility
+                    "status": task.status,
+                    "color": task.color,
+                    "link_status": task.link_status,
+                    "entity_global_ids": gids,
+                }
+            )
 
         return JsonResponse({"tasks": data})
 
@@ -425,31 +452,139 @@ class TaskDetailView(ProjectAccessMixin, View):
 
         gids = [e.global_id for e in entities]
         siblings_count = (
-            Task.objects
-            .filter(project=project, ifc_entities__global_id__in=gids)
-            .exclude(pk=task.pk)
-            .distinct()
-            .count()
-        ) if gids else 0
+            (
+                Task.objects.filter(project=project, ifc_entities__global_id__in=gids)
+                .exclude(pk=task.pk)
+                .distinct()
+                .count()
+            )
+            if gids
+            else 0
+        )
 
         return render(
             request,
             "scheduling/components/task_detail.html",
             {
-                "task":                 task,
-                "entities":             entities,
-                "progress":             progress,
-                "siblings_count":       siblings_count,
-                "stage_color":          _STAGE_COLORS.get(task.stage or "", "#6b7280"),
+                "task": task,
+                "entities": entities,
+                "progress": progress,
+                "siblings_count": siblings_count,
+                "stage_color": _STAGE_COLORS.get(task.stage or "", "#6b7280"),
                 "entity_global_ids_json": json.dumps(gids),
-                "project":              project,
+                "project": project,
             },
+        )
+
+
+class CriticalPathView(ProjectModifyAccessMixin, View):
+    """POST — run CPM for the project and return JSON results."""
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        project = self.get_project()
+        try:
+            result = compute_critical_path(str(project.pk))
+        except Exception as exc:
+            logger.exception("CPM failed for project %s", project.pk)
+            return JsonResponse({"error": str(exc)}, status=500)
+        return JsonResponse(result)
+
+
+class EVMDataView(ProjectAccessMixin, View):
+    """JSON — EVM metrics and S-curve series for the EVM Dashboard tab."""
+
+    def get(self, request, **kwargs: object) -> JsonResponse:
+        project = self.get_project()
+        try:
+            result = compute_evm(str(project.pk))
+        except Exception as exc:
+            logger.exception("EVM failed for project %s", project.pk)
+            return JsonResponse({"error": str(exc)}, status=500)
+        return JsonResponse(result)
+
+
+class LookaheadDataView(ProjectAccessMixin, View):
+    """JSON — per-week task buckets (starting/in_progress/finishing) for the Look-ahead tab."""
+
+    _MAX_WEEKS = 12
+
+    def get(self, request, **kwargs: object) -> JsonResponse:
+        from datetime import timedelta
+
+        try:
+            weeks = max(1, min(self._MAX_WEEKS, int(request.GET.get("weeks", 3))))
+        except (ValueError, TypeError):
+            weeks = 3
+
+        project = self.get_project()
+        today = date.today()
+        today_monday = today - timedelta(days=today.weekday())  # snap to Monday
+
+        tasks = list(
+            Task.objects.filter(project=project, is_non_physical=False)
+            .exclude(start_date=None)
+            .exclude(end_date=None)
+            .order_by("start_date")
+        )
+
+        result_weeks = []
+        for w in range(weeks):
+            ws = today_monday + timedelta(weeks=w)
+            we = ws + timedelta(days=6)
+
+            starting = []
+            in_progress = []
+            finishing = []
+
+            for t in tasks:
+                s, e = t.start_date, t.end_date
+                in_week_start = ws <= s <= we
+                in_week_end = ws <= e <= we
+                spans_week = s < ws and e > we
+
+                entry = {
+                    "id": str(t.pk),
+                    "name": t.name,
+                    "start": s.isoformat(),
+                    "end": e.isoformat(),
+                    "stage": t.stage or "",
+                    "activity_code": t.activity_code or "",
+                    "is_critical": t.is_critical,
+                }
+
+                if in_week_start:
+                    starting.append(entry)
+                elif in_week_end:
+                    finishing.append(entry)
+                elif spans_week:
+                    in_progress.append(entry)
+
+            label = "This Week" if w == 0 else ("Next Week" if w == 1 else f"Week +{w}")
+            result_weeks.append(
+                {
+                    "week_num": w + 1,
+                    "start": ws.isoformat(),
+                    "end": we.isoformat(),
+                    "label": label,
+                    "starting": starting,
+                    "in_progress": in_progress,
+                    "finishing": finishing,
+                }
+            )
+
+        return JsonResponse(
+            {
+                "has_data": bool(tasks),
+                "as_of": today.isoformat(),
+                "weeks": result_weeks,
+            }
         )
 
 
 # ---------------------------------------------------------------------------
 # Column mapping — Excel / CSV flow
 # ---------------------------------------------------------------------------
+
 
 class MappingSubmitView(ProjectModifyAccessMixin, View):
     """HTMX POST — apply user column mapping to raw rows, show preview."""
@@ -462,14 +597,15 @@ class MappingSubmitView(ProjectModifyAccessMixin, View):
         source = request.session.get(f"raw_source_{project.pk}", "excel")
 
         if not raw_headers or not raw_rows:
-            return toast_response("Session expired — please re-upload the file.", "error", status=400)
+            return toast_response(
+                "Session expired — please re-upload the file.", "error", status=400
+            )
 
         headers = json.loads(raw_headers)
         rows = json.loads(raw_rows)
 
         column_mapping = {
-            field: request.POST.get(f"col_{field}", "").strip()
-            for field in CANONICAL_FIELDS
+            field: request.POST.get(f"col_{field}", "").strip() for field in CANONICAL_FIELDS
         }
         # Remove unmapped optional fields so apply_mapping only sees real mappings
         column_mapping = {k: v for k, v in column_mapping.items() if v}
@@ -484,7 +620,9 @@ class MappingSubmitView(ProjectModifyAccessMixin, View):
             return toast_response(str(exc), "error", status=400)
 
         if not tasks:
-            return toast_response("No valid task rows found with this mapping.", "error", status=400)
+            return toast_response(
+                "No valid task rows found with this mapping.", "error", status=400
+            )
 
         # Optionally save profile
         profile_name = request.POST.get("profile_name", "").strip()
@@ -503,7 +641,11 @@ class MappingSubmitView(ProjectModifyAccessMixin, View):
             ]
         )
         # Clean up raw session data
-        for key in (f"raw_headers_{project.pk}", f"raw_rows_{project.pk}", f"raw_source_{project.pk}"):
+        for key in (
+            f"raw_headers_{project.pk}",
+            f"raw_rows_{project.pk}",
+            f"raw_source_{project.pk}",
+        ):
             request.session.pop(key, None)
 
         return render(
@@ -523,6 +665,7 @@ class MappingSubmitView(ProjectModifyAccessMixin, View):
 # Embedding-based linking
 # ---------------------------------------------------------------------------
 
+
 class EmbedLinkView(ProjectModifyAccessMixin, View):
     """HTMX POST — run embedding similarity, create pending LinkFeedback rows."""
 
@@ -533,9 +676,13 @@ class EmbedLinkView(ProjectModifyAccessMixin, View):
         entities_qs = IFCEntity.objects.filter(ifc_file__in=ifc_files)
 
         if not tasks:
-            return toast_response("No tasks to link — import a schedule first.", "error", status=400)
+            return toast_response(
+                "No tasks to link — import a schedule first.", "error", status=400
+            )
         if not entities_qs.exists():
-            return toast_response("No IFC entities found — process an IFC file first.", "error", status=400)
+            return toast_response(
+                "No IFC entities found — process an IFC file first.", "error", status=400
+            )
 
         try:
             matches = embed_match_tasks(tasks, entities_qs)
@@ -561,8 +708,7 @@ class EmbedLinkView(ProjectModifyAccessMixin, View):
                 logger.warning("Could not create LinkFeedback: %s", exc)
 
         feedbacks = (
-            LinkFeedback.objects
-            .filter(task__project=project)
+            LinkFeedback.objects.filter(task__project=project)
             .select_related("task", "ifc_entity", "corrected_to")
             .order_by("-confidence_at_time")
         )
@@ -580,9 +726,7 @@ class LinkAcceptView(ProjectModifyAccessMixin, View):
 
     def post(self, request, **kwargs: object) -> HttpResponse:
         project = self.get_project()
-        feedback = get_object_or_404(
-            LinkFeedback, pk=kwargs["feedback_pk"], task__project=project
-        )
+        feedback = get_object_or_404(LinkFeedback, pk=kwargs["feedback_pk"], task__project=project)
         feedback.accepted = True
         feedback.save(update_fields=["accepted"])
         feedback.task.ifc_entities.add(feedback.ifc_entity)
@@ -599,9 +743,7 @@ class LinkRejectView(ProjectModifyAccessMixin, View):
 
     def post(self, request, **kwargs: object) -> HttpResponse:
         project = self.get_project()
-        feedback = get_object_or_404(
-            LinkFeedback, pk=kwargs["feedback_pk"], task__project=project
-        )
+        feedback = get_object_or_404(LinkFeedback, pk=kwargs["feedback_pk"], task__project=project)
         feedback.accepted = False
         feedback.save(update_fields=["accepted"])
 
@@ -617,9 +759,7 @@ class LinkChangeView(ProjectModifyAccessMixin, View):
 
     def post(self, request, **kwargs: object) -> HttpResponse:
         project = self.get_project()
-        feedback = get_object_or_404(
-            LinkFeedback, pk=kwargs["feedback_pk"], task__project=project
-        )
+        feedback = get_object_or_404(LinkFeedback, pk=kwargs["feedback_pk"], task__project=project)
         entity_id = request.POST.get("entity_id", "").strip()
         if not entity_id:
             return toast_response("No entity selected.", "error", status=400)
@@ -666,6 +806,7 @@ class LinkSearchView(ProjectAccessMixin, View):
 # Link Review — 4-layer binding review tab
 # ---------------------------------------------------------------------------
 
+
 def _get_ifc_files(project):
     return IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
 
@@ -693,10 +834,8 @@ def _build_review_summary(project) -> dict:
 
 def _make_row(binding: TaskEntityBinding, ifc_files) -> dict:
     try:
-        entity = (
-            IFCEntity.objects
-            .only("global_id", "name", "ifc_type")
-            .get(ifc_file__in=ifc_files, global_id=binding.entity_global_id)
+        entity = IFCEntity.objects.only("global_id", "name", "ifc_type").get(
+            ifc_file__in=ifc_files, global_id=binding.entity_global_id
         )
         return {
             "binding": binding,
@@ -715,8 +854,7 @@ def _render_link_review(request, project, filter_by: str = "all") -> HttpRespons
     ifc_files = _get_ifc_files(project)
 
     bindings_qs = (
-        TaskEntityBinding.objects
-        .filter(task__project=project)
+        TaskEntityBinding.objects.filter(task__project=project)
         .select_related("task")
         .order_by("task__name", "-confidence")
     )
@@ -732,17 +870,17 @@ def _render_link_review(request, project, filter_by: str = "all") -> HttpRespons
     entity_name_map = (
         {
             e.global_id: (e.name or e.global_id, e.ifc_type)
-            for e in IFCEntity.objects.filter(
-                ifc_file__in=ifc_files, global_id__in=gids
-            ).only("global_id", "name", "ifc_type")
+            for e in IFCEntity.objects.filter(ifc_file__in=ifc_files, global_id__in=gids).only(
+                "global_id", "name", "ifc_type"
+            )
         }
-        if gids else {}
+        if gids
+        else {}
     )
 
     # Sibling count: how many OTHER tasks share each entity_global_id in this project
     entity_task_counts: dict[str, int] = dict(
-        TaskEntityBinding.objects
-        .filter(task__project=project)
+        TaskEntityBinding.objects.filter(task__project=project)
         .values("entity_global_id")
         .annotate(cnt=Count("pk"))
         .values_list("entity_global_id", "cnt")
@@ -751,7 +889,9 @@ def _render_link_review(request, project, filter_by: str = "all") -> HttpRespons
     rows = [
         {
             "binding": b,
-            "entity_name": entity_name_map.get(b.entity_global_id, (b.entity_global_id[:14] + "…", ""))[0],
+            "entity_name": entity_name_map.get(
+                b.entity_global_id, (b.entity_global_id[:14] + "…", "")
+            )[0],
             "entity_type": entity_name_map.get(b.entity_global_id, ("", ""))[1],
             "siblings": max(0, entity_task_counts.get(b.entity_global_id, 1) - 1),
         }
@@ -762,9 +902,9 @@ def _render_link_review(request, project, filter_by: str = "all") -> HttpRespons
 
     unlinked_tasks = []
     if filter_by in ("all", "unlinked"):
-        linked_pks = TaskEntityBinding.objects.filter(
-            task__project=project
-        ).values_list("task_id", flat=True)
+        linked_pks = TaskEntityBinding.objects.filter(task__project=project).values_list(
+            "task_id", flat=True
+        )
         unlinked_tasks = list(
             Task.objects.filter(project=project, is_non_physical=False)
             .exclude(pk__in=linked_pks)
@@ -879,9 +1019,9 @@ class BulkAcceptView(ProjectModifyAccessMixin, View):
         ifc_files = _get_ifc_files(project)
 
         pending = list(
-            TaskEntityBinding.objects
-            .filter(task__project=project, needs_review=True, confidence__gte=0.95)
-            .select_related("task")
+            TaskEntityBinding.objects.filter(
+                task__project=project, needs_review=True, confidence__gte=0.95
+            ).select_related("task")
         )
         accepted = 0
         for binding in pending:
@@ -906,29 +1046,34 @@ class BindingExportView(ProjectAccessMixin, View):
     def get(self, request, **kwargs: object) -> HttpResponse:
         project = self.get_project()
         bindings = (
-            TaskEntityBinding.objects
-            .filter(task__project=project)
+            TaskEntityBinding.objects.filter(task__project=project)
             .select_related("task")
             .order_by("task__name", "-confidence")
         )
         response = HttpResponse(content_type="text/csv")
-        response["Content-Disposition"] = (
-            f'attachment; filename="link_review_{project.pk}.csv"'
-        )
+        response["Content-Disposition"] = f'attachment; filename="link_review_{project.pk}.csv"'
         writer = csv.writer(response)
-        writer.writerow([
-            "Task", "Activity Code", "Entity GlobalId",
-            "Confidence", "Method", "Needs Review",
-        ])
+        writer.writerow(
+            [
+                "Task",
+                "Activity Code",
+                "Entity GlobalId",
+                "Confidence",
+                "Method",
+                "Needs Review",
+            ]
+        )
         for b in bindings:
-            writer.writerow([
-                b.task.name,
-                b.task.activity_code,
-                b.entity_global_id,
-                f"{b.confidence:.2f}",
-                b.link_method,
-                "Yes" if b.needs_review else "No",
-            ])
+            writer.writerow(
+                [
+                    b.task.name,
+                    b.task.activity_code,
+                    b.entity_global_id,
+                    f"{b.confidence:.2f}",
+                    b.link_method,
+                    "Yes" if b.needs_review else "No",
+                ]
+            )
         return response
 
 
@@ -947,9 +1092,7 @@ class BindingAddView(ProjectModifyAccessMixin, View):
         ifc_files = _get_ifc_files(project)
 
         try:
-            entity = IFCEntity.objects.get(
-                ifc_file__in=ifc_files, global_id=entity_global_id
-            )
+            entity = IFCEntity.objects.get(ifc_file__in=ifc_files, global_id=entity_global_id)
         except IFCEntity.DoesNotExist:
             return toast_response("Entity not found in this project.", "error", status=404)
 

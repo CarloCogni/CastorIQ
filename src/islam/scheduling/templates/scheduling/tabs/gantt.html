@@ -33,6 +33,17 @@
             <button type="button" class="gantt-chip" data-stage="external"     style="--chip-c:#0891b2;">External</button>
         </div>
 
+        <!-- Critical path toggle -->
+        <div class="ms-auto d-flex align-items-center gap-2">
+            <button type="button" id="gantt-cp-btn"
+                    class="btn btn-sm btn-outline-danger"
+                    style="font-size:0.75rem; white-space:nowrap;"
+                    title="Highlight critical path tasks (zero float)">
+                <i class="bi bi-exclamation-diamond me-1"></i>Critical Path
+            </button>
+            <span id="gantt-cp-status" class="d-none" style="font-size:0.72rem; color:var(--bs-secondary-color);"></span>
+        </div>
+
     </div>
 
     <!-- ── Main layout: chart + detail panel ─────────────────────────────── -->
@@ -137,6 +148,17 @@
 /* Today marker */
 .gantt-today-line { position: absolute; top: 0; bottom: 0; border-left: 2px dashed #dc2626; z-index: 3; }
 .gantt-today-lbl  { position: absolute; top: 2px; font-size: 0.62rem; color: #dc2626; white-space: nowrap; padding-left: 3px; z-index: 3; }
+/* Critical path */
+.gantt-bar-critical { box-shadow: inset 3px 0 0 #dc2626; }
+.gantt-float-ext {
+    position: absolute;
+    top: 17px;
+    height: 6px;
+    border-radius: 0 2px 2px 0;
+    background: repeating-linear-gradient(90deg, #dc2626 0, #dc2626 4px, transparent 4px, transparent 8px);
+    opacity: 0.55;
+    pointer-events: none;
+}
 </style>
 
 <!-- ── Gantt script ───────────────────────────────────────────────────────── -->
@@ -157,6 +179,7 @@ window.jumpToSimulator = (function () {
 (function () {
     const GANTT_URL        = "{% url 'islam:gantt_data' project.pk %}";
     const DETAIL_URL_TPL   = "{% url 'islam:task_detail' project.pk '00000000-0000-0000-0000-000000000000' %}";
+    const CPM_URL          = "{% url 'islam:critical_path' project.pk %}";
     const DAY_MS           = 86400000;
 
     const STAGE_COLORS = {
@@ -175,6 +198,7 @@ window.jumpToSimulator = (function () {
     let allTasks    = [];
     let zoom        = "week";
     let stageFilter = "";
+    let criticalMode = false;
 
     // ── Fetch ─────────────────────────────────────────────────────────────
     async function load() {
@@ -332,6 +356,23 @@ window.jumpToSimulator = (function () {
                 bar.style.opacity    = opacity.toFixed(2);
             }
 
+            if (criticalMode && task.is_critical) {
+                bar.classList.add("gantt-bar-critical");
+            }
+
+            /* Float extension — shown in critical mode when float > 0 */
+            if (criticalMode && task.total_float != null && task.total_float > 0) {
+                const floatW = Math.round(task.total_float * ppd);
+                if (floatW >= 2) {
+                    const floatEl = document.createElement("div");
+                    floatEl.className = "gantt-float-ext";
+                    floatEl.style.left  = (x + w) + "px";
+                    floatEl.style.width = floatW + "px";
+                    floatEl.title = `Float: ${task.total_float} day(s)`;
+                    tlCell.appendChild(floatEl);
+                }
+            }
+
             bar.addEventListener("click", (ev) => {
                 ev.stopPropagation();
                 _selectTask(task, row);
@@ -404,6 +445,65 @@ window.jumpToSimulator = (function () {
         document.querySelectorAll(".gantt-chip").forEach(c => c.classList.remove("active"));
         chip.classList.add("active");
         stageFilter = chip.dataset.stage;
+        render();
+    });
+
+    /* ── Critical Path toggle ──────────────────────────────────────────── */
+    document.getElementById("gantt-cp-btn")?.addEventListener("click", async () => {
+        criticalMode = !criticalMode;
+        const btn = document.getElementById("gantt-cp-btn");
+        const status = document.getElementById("gantt-cp-status");
+
+        if (!criticalMode) {
+            btn.classList.remove("btn-danger");
+            btn.classList.add("btn-outline-danger");
+            status.classList.add("d-none");
+            render();
+            return;
+        }
+
+        btn.classList.remove("btn-outline-danger");
+        btn.classList.add("btn-danger");
+
+        /* If no tasks have CPM data yet, trigger computation */
+        const hasCpm = allTasks.some(t => t.total_float != null);
+        if (!hasCpm) {
+            btn.disabled = true;
+            status.textContent = "Computing…";
+            status.classList.remove("d-none");
+            try {
+                const resp = await fetch(CPM_URL, {
+                    method: "POST",
+                    headers: {
+                        "X-CSRFToken": (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || "",
+                        "X-Requested-With": "XMLHttpRequest",
+                    },
+                });
+                const result = await resp.json();
+                if (result.error) throw new Error(result.error);
+
+                /* Patch task data with computed fields */
+                const cpmMap = result.task_data || {};
+                allTasks.forEach(t => {
+                    const d = cpmMap[t.id];
+                    if (d) {
+                        t.is_critical   = d.is_critical;
+                        t.total_float   = d.total_float;
+                    }
+                });
+                const critCount = allTasks.filter(t => t.is_critical).length;
+                status.textContent = `${critCount} critical task(s)`;
+            } catch (err) {
+                status.textContent = "CPM failed";
+                console.error("CPM error:", err);
+            } finally {
+                btn.disabled = false;
+            }
+        } else {
+            const critCount = allTasks.filter(t => t.is_critical).length;
+            status.textContent = `${critCount} critical task(s)`;
+            status.classList.remove("d-none");
+        }
         render();
     });
 
