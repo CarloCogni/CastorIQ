@@ -17,7 +17,7 @@ import openpyxl
 
 logger = logging.getLogger(__name__)
 
-CANONICAL_FIELDS = ["name", "start_date", "end_date", "activity_code", "status", "color", "cost"]
+CANONICAL_FIELDS = ["name", "start_date", "end_date", "activity_code", "status", "color", "cost", "activity_type"]
 CANONICAL_LABELS = {
     "name": "Task Name *",
     "start_date": "Start Date *",
@@ -26,6 +26,7 @@ CANONICAL_LABELS = {
     "status": "Status",
     "color": "Colour (hex)",
     "cost": "Cost (optional)",
+    "activity_type": "Activity Type (optional)",
 }
 
 _STATUS_MAP = {
@@ -124,6 +125,7 @@ def apply_mapping(headers: list[str], raw_rows: list[list[str]], column_mapping:
             "source": source,
             "description": "",
             "cost": _parse_cost(cell("cost")),
+            "activity_type": cell("activity_type"),
         })
 
     return tasks

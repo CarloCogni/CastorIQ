@@ -25,6 +25,20 @@ from .linker import _read_property
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Layer 0 — non-physical activity pre-filter
+# ---------------------------------------------------------------------------
+
+_NON_PHYSICAL_KEYWORDS: frozenset[str] = frozenset({
+    "submittal", "approval", "rfi", "meeting", "inspection", "permit", "review",
+    "procurement", "delivery", "mobilization", "demobilization", "testing",
+    "commissioning", "handover", "closeout", "warranty", "training", "admin",
+})
+
+_SKIP_ACTIVITY_TYPES: frozenset[str] = frozenset({
+    "wbs summary", "milestone", "loe", "hammock",
+})
+
 # Confidence thresholds
 _HEURISTIC_CONF = 0.70
 _MAX_HEURISTIC = 50   # cap on entities returned by Layer 3
@@ -64,6 +78,184 @@ _IFC_KEYWORDS: dict[str, str] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Stage auto-detection
+# ---------------------------------------------------------------------------
+
+_STAGE_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "substructure": ("foundation", "footing", "pile", "piling", "excavat", "basement", "grade slab", "raft slab"),
+    "structure": ("column", "beam", "slab", "structural", "formwork", "rebar", "shear wall", "concrete pour", "steel erect", "rc frame"),
+    "envelope": ("facade", "cladding", "curtain wall", "roof", "waterproof", "glazing", "exterior wall"),
+    "mep": ("mep", "mechanical", "electrical", "plumbing", "hvac", "ductwork", "pipework", "cable tray", "sprinkler", "drainage"),
+    "finishes": ("finish", "plaster", "plasterboard", "paint", "tiling", "tile ", "flooring", "ceiling", "partition", "screed"),
+    "external": ("landscape", "hardscape", "paving", "road", "car park", "fence", "external works", "soft landscape"),
+}
+
+_SUB_STAGE_KEYWORDS: dict[str, tuple[str, ...]] = {
+    # Substructure
+    "excavation": ("excavat", "earthwork", "bulk cut", "trench"),
+    "blinding": ("blinding", "blind concrete", "lean concrete", "lean mix"),
+    "waterproofing": ("waterproof", "tanking", "membrane", "damp proof"),
+    "backfill": ("backfill", "back fill", "filling", "compaction"),
+    "piling": ("bored pile", "driven pile", "sheet pile", "piling"),
+    # Structure
+    "formwork": ("formwork", "shuttering", "form work", "falsework"),
+    "rebar": ("rebar", "reinforcement", "steel fixing", "bar bending", "brc mesh"),
+    "concrete": ("concrete pour", "casting", "in-situ concrete", "rcc pour"),
+    "stripping": ("strip form", "de-shutter", "deshutter", "form stripping"),
+    "steel_erection": ("steel erection", "structural steel", "erect steel", "steel frame"),
+    "precast": ("precast", "pre-cast", "prefab"),
+    # Envelope
+    "blockwork": ("blockwork", "block work", "masonry", "brickwork", "brick work"),
+    "cladding": ("cladding", "curtain wall", "facade panel", "rainscreen"),
+    "glazing": ("glazing", "glaze", "curtain glazing", "glass panel"),
+    "roofing": ("roofing", "roof cover", "roof membrane", "roof screed"),
+    "insulation": ("insulation", "insulate", "thermal insul", "acoustic insul"),
+    # MEP
+    "electrical": ("electrical", "wiring", "conduit", "cable laying", "switchgear", "db install"),
+    "plumbing": ("plumbing", "sanitary", "water supply", "drainage pipe", "soil pipe"),
+    "hvac": ("hvac", "ductwork", "air handling", "chiller", "ahu install", "fan coil"),
+    "firefighting": ("firefighting", "fire fighting", "fire protection", "sprinkler", "fire alarm"),
+    "lv_systems": ("lv systems", "low voltage", "data cabling", "cctv", "access control", "pa system"),
+    # Finishes
+    "plaster": ("plaster", "render", "skimming", "skim coat", "gypsum plaster"),
+    "painting": ("painting", "emulsion", "primer coat", "paint finish"),
+    "flooring": ("flooring", "floor finish", "floor screed", "epoxy floor"),
+    "tiling": ("tiling", "tile fix", "ceramic tile", "porcelain tile", "marble tile"),
+    "ceiling": ("false ceiling", "suspended ceiling", "gypsum ceiling", "ceiling board"),
+    "joinery": ("joinery", "door frame", "door leaf", "skirting", "architrave", "fitted furniture"),
+    # External
+    "landscaping": ("landscaping", "planting", "soft landscape", "turf"),
+    "paving": ("paving", "pavement", "road base", "car park surface"),
+    "fencing": ("fencing", "fence install", "boundary wall", "gate install"),
+    "hardscape": ("hardscape", "hard landscape", "external paving", "external concrete"),
+}
+
+_SUB_TO_PARENT_STAGE: dict[str, str] = {
+    "excavation": "substructure",
+    "blinding": "substructure",
+    "waterproofing": "substructure",
+    "backfill": "substructure",
+    "piling": "substructure",
+    "formwork": "structure",
+    "rebar": "structure",
+    "concrete": "structure",
+    "stripping": "structure",
+    "steel_erection": "structure",
+    "precast": "structure",
+    "blockwork": "envelope",
+    "cladding": "envelope",
+    "glazing": "envelope",
+    "roofing": "envelope",
+    "insulation": "envelope",
+    "electrical": "mep",
+    "plumbing": "mep",
+    "hvac": "mep",
+    "firefighting": "mep",
+    "lv_systems": "mep",
+    "plaster": "finishes",
+    "painting": "finishes",
+    "flooring": "finishes",
+    "tiling": "finishes",
+    "ceiling": "finishes",
+    "joinery": "finishes",
+    "landscaping": "external",
+    "paving": "external",
+    "fencing": "external",
+    "hardscape": "external",
+}
+
+
+def detect_task_stage(task_name: str) -> str:
+    """Return the Stage key matching the task name, or '' if none match."""
+    name = task_name.lower()
+    for stage_key, keywords in _STAGE_KEYWORDS.items():
+        if any(kw in name for kw in keywords):
+            return stage_key
+    return ""
+
+
+def detect_task_sub_stage(task_name: str) -> str:
+    """Return the SubStage key matching the task name, or '' if none match."""
+    name = task_name.lower()
+    for sub_key, keywords in _SUB_STAGE_KEYWORDS.items():
+        if any(kw in name for kw in keywords):
+            return sub_key
+    return ""
+
+
+def autodetect_stages(tasks: list["Task"]) -> int:
+    """Detect and set stage + sub_stage for tasks that don't have them yet.
+
+    Sub_stage is detected first; parent stage is derived from _SUB_TO_PARENT_STAGE.
+    Falls back to detect_task_stage() when no sub_stage matches.
+    Skips tasks where stage is already set (preserves overrides).
+    Returns count of tasks updated.
+    """
+    updates: list[Task] = []
+    for task in tasks:
+        if task.stage:
+            continue
+        sub_stage = detect_task_sub_stage(task.name)
+        if sub_stage:
+            task.sub_stage = sub_stage
+            task.stage = _SUB_TO_PARENT_STAGE[sub_stage]
+            updates.append(task)
+        else:
+            stage = detect_task_stage(task.name)
+            if stage:
+                task.stage = stage
+                updates.append(task)
+    if updates:
+        Task.objects.bulk_update(updates, ["stage", "sub_stage"])
+    return len(updates)
+
+
+def _is_non_physical_auto(task: "Task") -> bool:
+    """Return True if the task name or activity_type flags it as non-physical."""
+    name_lower = task.name.lower()
+    if any(kw in name_lower for kw in _NON_PHYSICAL_KEYWORDS):
+        return True
+    if task.activity_type and task.activity_type.strip().lower() in _SKIP_ACTIVITY_TYPES:
+        return True
+    return False
+
+
+def _run_layer0(tasks: list["Task"]) -> tuple[list["Task"], list["Task"]]:
+    """Separate tasks into (physical, non_physical).
+
+    Tasks with non_physical_locked=True keep their current is_non_physical value
+    and are never auto-reclassified. All others are detected by keyword + activity_type
+    on every pipeline run.
+
+    Returns (physical_tasks, non_physical_tasks).
+    """
+    physical: list[Task] = []
+    non_physical: list[Task] = []
+    mark_np: list = []
+    mark_physical: list = []
+
+    for task in tasks:
+        if task.non_physical_locked:
+            (non_physical if task.is_non_physical else physical).append(task)
+            continue
+        if _is_non_physical_auto(task):
+            non_physical.append(task)
+            if not task.is_non_physical:
+                mark_np.append(task.pk)
+        else:
+            physical.append(task)
+            if task.is_non_physical:
+                mark_physical.append(task.pk)
+
+    if mark_np:
+        Task.objects.filter(pk__in=mark_np).update(is_non_physical=True)
+    if mark_physical:
+        Task.objects.filter(pk__in=mark_physical).update(is_non_physical=False)
+
+    return physical, non_physical
+
+
 def run_autolink(project, ifc_param_name: str = "Activity ID") -> dict:
     """Run the 4-layer auto-link pipeline for all tasks in a project.
 
@@ -71,9 +263,21 @@ def run_autolink(project, ifc_param_name: str = "Activity ID") -> dict:
         {total_tasks, linked_exact, linked_normalized, linked_heuristic,
          linked_embedding, unlinked, needs_review}
     """
-    tasks = list(Task.objects.filter(project=project))
-    if not tasks:
+    all_tasks = list(Task.objects.filter(project=project))
+    if not all_tasks:
         return _empty_summary(0)
+
+    # ------------------------------------------------------------------ #
+    # Layer 0 — pre-filter non-physical activities                        #
+    # ------------------------------------------------------------------ #
+    tasks, non_physical_tasks = _run_layer0(all_tasks)
+    excluded = len(non_physical_tasks)
+
+    # Detect construction stages for physical tasks (skips already-set values)
+    autodetect_stages(tasks)
+
+    if not tasks:
+        return {**_empty_summary(0), "total_tasks": len(all_tasks), "excluded_non_physical": excluded}
 
     ifc_files = IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
     entity_list = list(
@@ -83,10 +287,10 @@ def run_autolink(project, ifc_param_name: str = "Activity ID") -> dict:
         )
     )
     if not entity_list:
-        return _empty_summary(len(tasks))
+        return {**_empty_summary(len(tasks)), "excluded_non_physical": excluded}
 
-    # Clear stale bindings so each run is idempotent
-    TaskEntityBinding.objects.filter(task__project=project).delete()
+    # Clear stale bindings for physical tasks only
+    TaskEntityBinding.objects.filter(task__in=tasks).delete()
 
     prop_index, norm_index = _build_prop_index(entity_list, ifc_param_name)
     type_index = _build_type_index(entity_list)
@@ -138,10 +342,8 @@ def run_autolink(project, ifc_param_name: str = "Activity ID") -> dict:
     # Layer 4 — embedding cosine similarity                               #
     # ------------------------------------------------------------------ #
     if embed_remaining:
-        matched_gids = {b.entity_global_id for b in new_bindings}
         embed_qs = (
             IFCEntity.objects.filter(ifc_file__in=ifc_files, embedding__isnull=False)
-            .exclude(global_id__in=matched_gids)
             .only("id", "global_id", "ifc_type", "name", "embedding")
         )
         if embed_qs.exists():
@@ -169,13 +371,14 @@ def run_autolink(project, ifc_param_name: str = "Activity ID") -> dict:
 
     total_linked = sum(counters.values())
     return {
-        "total_tasks": len(tasks),
+        "total_tasks": len(all_tasks),
         "linked_exact": counters["exact"],
         "linked_normalized": counters["normalized"],
         "linked_heuristic": counters["heuristic"],
         "linked_embedding": counters["embedding"],
         "unlinked": len(tasks) - total_linked,
         "needs_review": needs_review_count,
+        "excluded_non_physical": excluded,
     }
 
 
@@ -362,4 +565,5 @@ def _empty_summary(total: int) -> dict:
         "linked_embedding": 0,
         "unlinked": total,
         "needs_review": 0,
+        "excluded_non_physical": 0,
     }

@@ -14,6 +14,24 @@
         {% endif %}
     </td>
 
+    <!-- Stage / Sub-stage chips -->
+    <td style="font-size:0.78rem;">
+        {% with st=row.binding.task.stage ss=row.binding.task.sub_stage %}
+        {% if st %}
+            {% if st == "substructure" %}<span class="badge bg-warning text-dark d-block mb-1" style="font-size:0.68rem;">{{ st|title }}</span>
+            {% elif st == "structure" %}<span class="badge bg-danger d-block mb-1" style="font-size:0.68rem;">{{ st|title }}</span>
+            {% elif st == "envelope" %}<span class="badge bg-info text-dark d-block mb-1" style="font-size:0.68rem;">{{ st|title }}</span>
+            {% elif st == "mep" %}<span class="badge bg-primary d-block mb-1" style="font-size:0.68rem;">MEP</span>
+            {% elif st == "finishes" %}<span class="badge bg-success d-block mb-1" style="font-size:0.68rem;">{{ st|title }}</span>
+            {% else %}<span class="badge bg-secondary d-block mb-1" style="font-size:0.68rem;">{{ st|title }}</span>
+            {% endif %}
+            {% if ss %}<span class="badge bg-light text-secondary border" style="font-size:0.66rem;">{{ ss|title }}</span>{% endif %}
+        {% else %}
+            <span class="text-secondary" style="font-size:0.75rem;">—</span>
+        {% endif %}
+        {% endwith %}
+    </td>
+
     <!-- Method badge -->
     <td>
         {% if row.binding.link_method == "exact" %}
@@ -40,6 +58,17 @@
             <span class="badge bg-secondary">{% widthratio c 1 100 %}%</span>
         {% endif %}
         {% endwith %}
+    </td>
+
+    <!-- Siblings: other tasks sharing this entity -->
+    <td class="text-center">
+        {% if row.siblings %}
+            <span class="badge bg-secondary" title="{{ row.siblings }} other task{{ row.siblings|pluralize }} also bound to this entity">
+                +{{ row.siblings }}
+            </span>
+        {% else %}
+            <span class="text-secondary" style="font-size:0.75rem;">—</span>
+        {% endif %}
     </td>
 
     <!-- Status -->

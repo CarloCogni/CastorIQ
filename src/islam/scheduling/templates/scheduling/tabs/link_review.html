@@ -48,6 +48,13 @@
                 {% if summary.unlinked_tasks %}<span class="badge bg-danger ms-1">{{ summary.unlinked_tasks }}</span>{% endif %}
             </a>
         </li>
+        <li class="nav-item">
+            <a class="nav-link py-1 px-2 {% if filter_by == 'non_physical' %}active{% endif %}"
+               href="{% url 'islam:review' project.pk %}?filter=non_physical">
+                Non-Physical
+                {% if summary.non_physical_count %}<span class="badge bg-secondary ms-1">{{ summary.non_physical_count }}</span>{% endif %}
+            </a>
+        </li>
     </ul>
 
     <!-- Bindings table -->
@@ -56,12 +63,14 @@
         <table class="table table-sm table-hover align-middle" style="font-size:0.83rem;">
             <thead class="table-dark" style="position:sticky; top:0; z-index:1;">
                 <tr>
-                    <th class="ps-2" style="width:22%;">Task</th>
-                    <th style="width:22%;">Entity</th>
-                    <th style="width:12%;">Method</th>
-                    <th class="text-center" style="width:10%;">Conf.</th>
-                    <th style="width:12%;">Status</th>
-                    <th style="width:22%;">Actions</th>
+                    <th class="ps-2" style="width:18%;">Task</th>
+                    <th style="width:18%;">Entity</th>
+                    <th style="width:10%;">Stage</th>
+                    <th style="width:10%;">Method</th>
+                    <th class="text-center" style="width:8%;">Conf.</th>
+                    <th class="text-center" style="width:7%;" title="Other tasks also bound to this entity">Siblings</th>
+                    <th style="width:10%;">Status</th>
+                    <th style="width:19%;">Actions</th>
                 </tr>
             </thead>
             <tbody id="bindings-table-body">
@@ -102,11 +111,23 @@
                     {% endif %}
                 </td>
                 <td>
-                    <button class="btn btn-sm btn-outline-primary py-0 px-2"
-                            onclick="document.getElementById('search-task-{{ task.pk }}').classList.toggle('d-none')"
-                            title="Manually link this task">
-                        <i class="bi bi-plus-circle me-1"></i>Link
-                    </button>
+                    <div class="d-flex gap-1">
+                        <button class="btn btn-sm btn-outline-primary py-0 px-2"
+                                onclick="document.getElementById('search-task-{{ task.pk }}').classList.toggle('d-none')"
+                                title="Manually link this task">
+                            <i class="bi bi-plus-circle me-1"></i>Link
+                        </button>
+                        <form hx-post="{% url 'islam:task_toggle_physical' project.pk task.pk %}"
+                              hx-target="#link-review-content"
+                              hx-swap="outerHTML">
+                            {% csrf_token %}
+                            <input type="hidden" name="target" value="non_physical">
+                            <button type="submit" class="btn btn-sm btn-outline-secondary py-0 px-2"
+                                    title="Exclude from matching (non-physical activity)">
+                                <i class="bi bi-slash-circle"></i>
+                            </button>
+                        </form>
+                    </div>
                 </td>
             </tr>
             <!-- Inline entity search row (hidden by default) -->
@@ -134,6 +155,61 @@
     </div>
     {% endif %}
 
+    {% endif %}
+
+    <!-- Non-physical tasks section -->
+    {% if non_physical_tasks %}
+    <div class="border rounded p-3 mt-3" style="font-size:0.83rem;">
+        <div class="fw-semibold mb-2" style="font-size:0.85rem;">
+            <i class="bi bi-slash-circle text-secondary me-1"></i>
+            Non-Physical Activities
+            <span class="badge bg-secondary ms-1">{{ non_physical_tasks|length }}</span>
+            <span class="text-muted fw-normal ms-2" style="font-size:0.78rem;">excluded from IFC matching</span>
+        </div>
+        <table class="table table-sm mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Task Name</th>
+                    <th style="width:130px;">Activity Code</th>
+                    <th style="width:80px;">Source</th>
+                    <th style="width:110px;"></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for task in non_physical_tasks %}
+            <tr>
+                <td class="text-truncate" style="max-width:0;">{{ task.name }}</td>
+                <td>
+                    {% if task.activity_code %}
+                    <code class="text-info">{{ task.activity_code }}</code>
+                    {% else %}
+                    <span class="text-secondary">—</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if task.non_physical_locked %}
+                    <span class="badge bg-secondary" title="Manually set by user">manual</span>
+                    {% else %}
+                    <span class="badge bg-light text-secondary border">auto</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <form hx-post="{% url 'islam:task_toggle_physical' project.pk task.pk %}"
+                          hx-target="#link-review-content"
+                          hx-swap="outerHTML">
+                        {% csrf_token %}
+                        <input type="hidden" name="target" value="physical">
+                        <button type="submit" class="btn btn-sm btn-outline-success py-0 px-2"
+                                title="Include in IFC matching">
+                            <i class="bi bi-plus-circle me-1"></i>Mark Physical
+                        </button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
     {% endif %}
 
 </div>

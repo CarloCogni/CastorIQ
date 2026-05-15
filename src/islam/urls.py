@@ -168,6 +168,11 @@ urlpatterns = [
         scheduling_views.BindingSearchView.as_view(),
         name="binding_search",
     ),
+    path(
+        "projects/<uuid:pk>/schedule/review/task/<uuid:task_pk>/toggle-physical/",
+        scheduling_views.TaskToggleNonPhysicalView.as_view(),
+        name="task_toggle_physical",
+    ),
     # ------------------------------------------------------------------ #
     # Level Panel                                                         #
     # ------------------------------------------------------------------ #
@@ -246,6 +251,16 @@ urlpatterns = [
         "projects/<uuid:pk>/insights/rerun/",
         insights_views.InsightsRerunView.as_view(),
         name="insights_rerun",
+    ),
+    path(
+        "projects/<uuid:pk>/insights/progress-mode/",
+        insights_views.ProgressModeView.as_view(),
+        name="insights_progress_mode",
+    ),
+    path(
+        "projects/<uuid:pk>/insights/progress-ring/",
+        insights_views.ProgressRingView.as_view(),
+        name="insights_progress_ring",
     ),
     path(
         "projects/<uuid:pk>/insights/breakdown/<str:breakdown_type>/",

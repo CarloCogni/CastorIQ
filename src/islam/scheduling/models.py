@@ -23,6 +23,53 @@ class Task(UUIDModel):
         COMPLETE = "complete", "Complete"
         DELAYED = "delayed", "Delayed"
 
+    class Stage(models.TextChoices):
+        SUBSTRUCTURE = "substructure", "Substructure"
+        STRUCTURE = "structure", "Structure"
+        ENVELOPE = "envelope", "Envelope"
+        MEP = "mep", "MEP"
+        FINISHES = "finishes", "Finishes"
+        EXTERNAL = "external", "External Works"
+
+    class SubStage(models.TextChoices):
+        # Substructure
+        EXCAVATION = "excavation", "Excavation"
+        BLINDING = "blinding", "Blinding"
+        WATERPROOFING = "waterproofing", "Waterproofing"
+        BACKFILL = "backfill", "Backfill"
+        PILING = "piling", "Piling"
+        # Structure
+        FORMWORK = "formwork", "Formwork"
+        REBAR = "rebar", "Rebar"
+        CONCRETE = "concrete", "Concrete"
+        STRIPPING = "stripping", "Stripping"
+        STEEL_ERECTION = "steel_erection", "Steel Erection"
+        PRECAST = "precast", "Precast"
+        # Envelope
+        BLOCKWORK = "blockwork", "Blockwork"
+        CLADDING = "cladding", "Cladding"
+        GLAZING = "glazing", "Glazing"
+        ROOFING = "roofing", "Roofing"
+        INSULATION = "insulation", "Insulation"
+        # MEP
+        ELECTRICAL = "electrical", "Electrical"
+        PLUMBING = "plumbing", "Plumbing"
+        HVAC = "hvac", "HVAC"
+        FIREFIGHTING = "firefighting", "Firefighting"
+        LV_SYSTEMS = "lv_systems", "LV Systems"
+        # Finishes
+        PLASTER = "plaster", "Plaster"
+        PAINTING = "painting", "Painting"
+        FLOORING = "flooring", "Flooring"
+        TILING = "tiling", "Tiling"
+        CEILING = "ceiling", "Ceiling"
+        JOINERY = "joinery", "Joinery"
+        # External
+        LANDSCAPING = "landscaping", "Landscaping"
+        PAVING = "paving", "Paving"
+        FENCING = "fencing", "Fencing"
+        HARDSCAPE = "hardscape", "Hardscape"
+
     class Source(models.TextChoices):
         EXCEL = "excel", "Excel (.xlsx)"
         CSV = "csv", "CSV (.csv)"
@@ -63,6 +110,23 @@ class Task(UUIDModel):
         blank=True,
         verbose_name="Actual End",
     )
+    is_non_physical = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name="Non-Physical",
+        help_text="Excluded from IFC linking — pure schedule activity with no physical element.",
+    )
+    non_physical_locked = models.BooleanField(
+        default=False,
+        verbose_name="Non-Physical Locked",
+        help_text="True when is_non_physical was set manually by the user; prevents Layer 0 from overriding it.",
+    )
+    activity_type = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Activity Type",
+        help_text="Raw activity type from the schedule file (e.g. WBS Summary, Milestone, Task Dependent).",
+    )
     cost = models.DecimalField(
         max_digits=14,
         decimal_places=2,
@@ -90,6 +154,27 @@ class Task(UUIDModel):
         db_index=True,
         verbose_name="Activity Code",
         help_text="Used to match this task to IFC elements by parameter value",
+    )
+    stage = models.CharField(
+        max_length=20,
+        blank=True,
+        choices=Stage.choices,
+        db_index=True,
+        verbose_name="Stage",
+        help_text="Construction stage auto-detected from task name keywords. Blank = unassigned.",
+    )
+    sub_stage = models.CharField(
+        max_length=30,
+        blank=True,
+        choices=SubStage.choices,
+        db_index=True,
+        verbose_name="Sub-Stage",
+        help_text="Trade-level detail within the parent stage. Auto-detected; also sets parent stage.",
+    )
+    weight = models.FloatField(
+        default=1.0,
+        verbose_name="Custom Weight",
+        help_text="Used by the Custom Weight progress mode. Defaults to 1.0 for equal weighting.",
     )
     color = models.CharField(
         max_length=20,
@@ -127,7 +212,9 @@ class Task(UUIDModel):
 
     @property
     def link_status(self) -> str:
-        """'linked', 'partial', or 'unlinked' based on entity count."""
+        """'non_physical' | 'linked' | 'partial' | 'unlinked'."""
+        if self.is_non_physical:
+            return "non_physical"
         count = self.ifc_entities.count()
         if count == 0:
             return "unlinked"
@@ -135,6 +222,36 @@ class Task(UUIDModel):
         if self.source != self.Source.MANUAL and count < 3:
             return "partial"
         return "linked"
+
+
+class IslamProgressMode(UUIDModel):
+    """Per-project schedule progress calculation mode for the Insights dashboard ring."""
+
+    class Mode(models.TextChoices):
+        BY_COUNT = "count", "By Task Count"
+        BY_COST = "cost", "By Cost"
+        BY_DURATION = "duration", "By Duration"
+        BY_WEIGHT = "weight", "Custom Weight"
+
+    project = models.OneToOneField(
+        Project,
+        on_delete=models.CASCADE,
+        related_name="islam_progress_mode",
+        verbose_name="Project",
+    )
+    mode = models.CharField(
+        max_length=20,
+        choices=Mode.choices,
+        default=Mode.BY_COUNT,
+        verbose_name="Progress Mode",
+    )
+
+    class Meta:
+        verbose_name = "Progress Mode"
+        verbose_name_plural = "Progress Modes"
+
+    def __str__(self) -> str:
+        return f"{self.project.name} — {self.get_mode_display()}"
 
 
 class MappingProfile(UUIDModel):

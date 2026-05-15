@@ -29,6 +29,16 @@
     </div>
 </div>
 
+{% if summary.non_physical_count %}
+<div class="mb-2" style="font-size:0.8rem;">
+    <i class="bi bi-slash-circle text-secondary me-1"></i>
+    <span class="text-secondary">
+        {{ summary.non_physical_count }} activit{{ summary.non_physical_count|pluralize:"y,ies" }} excluded as non-physical
+        — <a href="{% url 'islam:review' project.pk %}?filter=non_physical" class="text-secondary">view</a>
+    </span>
+</div>
+{% endif %}
+
 <div class="d-flex flex-wrap gap-2 mb-3">
     {% if summary.needs_review_high %}
     <form hx-post="{% url 'islam:binding_bulk_accept' project.pk %}"
