@@ -26,6 +26,29 @@ def _ring(pct: int) -> dict:
     return {"pct": pct, "dasharray": f"{filled} {gap}", "color": color}
 
 
+def _build_schedule_cost_map(ifc_file) -> dict[str, float]:
+    """Return {entity_global_id: task_cost} for entities linked to tasks that have cost set.
+
+    Used to implement schedule cost priority over IFC property cost.
+    Returns an empty dict if the scheduling app is unavailable or no tasks have cost.
+    """
+    try:
+        from islam.scheduling.models import Task as ScheduleTask
+        cost_map: dict[str, float] = {}
+        for task in (
+            ScheduleTask.objects
+            .filter(project=ifc_file.project, cost__isnull=False)
+            .only("cost")
+            .prefetch_related("ifc_entities")
+        ):
+            task_cost = float(task.cost)
+            for entity in task.ifc_entities.filter(ifc_file=ifc_file).only("global_id"):
+                cost_map[entity.global_id] = task_cost
+        return cost_map
+    except Exception:
+        return {}
+
+
 def entity_metrics(ifc_file) -> dict:
     """Compute all Insights dashboard metrics in a single pass over IFCEntity rows.
 
@@ -48,13 +71,16 @@ def entity_metrics(ifc_file) -> dict:
             "missing_5d": 0,
         }
 
+    # Schedule cost map: global_id → float cost (overrides IFC property cost)
+    schedule_cost_map = _build_schedule_cost_map(ifc_file)
+
     fourd_hits = 0
     fived_hits = 0
     activity_groups: dict[tuple, int] = {}
     cost_by_type: dict[str, float] = defaultdict(float)
     total_cost = 0.0
 
-    for entity in qs.only("ifc_type", "properties").iterator(chunk_size=500):
+    for entity in qs.only("global_id", "ifc_type", "properties").iterator(chunk_size=500):
         props = entity.properties or {}
         act_id = None
         act_name = None
@@ -81,7 +107,13 @@ def entity_metrics(ifc_file) -> dict:
             key = (act_id, act_name or "—", entity.ifc_type or "Unknown")
             activity_groups[key] = activity_groups.get(key, 0) + 1
 
-        if has_cost and entity_cost:
+        # Priority: schedule cost > IFC cost
+        sched_cost = schedule_cost_map.get(entity.global_id)
+        if sched_cost is not None:
+            fived_hits += 1
+            total_cost += sched_cost
+            cost_by_type[entity.ifc_type or "Unknown"] += sched_cost
+        elif has_cost and entity_cost:
             fived_hits += 1
             total_cost += entity_cost
             cost_by_type[entity.ifc_type or "Unknown"] += entity_cost

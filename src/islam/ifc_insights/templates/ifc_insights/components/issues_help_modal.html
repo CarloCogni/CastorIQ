@@ -20,19 +20,26 @@
                     What is the IFC Issues tab?
                 </p>
                 <p class="text-secondary fs-7 mb-4">
-                    IFC Issues gives you a targeted audit of data quality problems in your model —
-                    specifically which elements are missing the properties needed for 4D and 5D workflows,
+                    IFC Issues gives you a targeted audit of data quality problems in your model.
+                    Section 0 runs 10 automated health checks against the IFC file itself.
+                    Sections 1–4 audit which elements are missing properties needed for 4D and 5D workflows,
                     how your Activity IDs relate to the schedule, and whether your floor levels are
                     correctly populated and matched to tasks.
-                    Each section loads independently so slow sections never block faster ones.
+                    Sections 1–4 load independently via HTMX so slow sections never block faster ones.
                 </p>
 
                 <!-- 2. Sections -->
                 <p class="fw-semibold fs-7 mb-2">
                     <i class="bi bi-layout-text-sidebar me-1" style="color: var(--castor-primary, #3b82f6);"></i>
-                    The four sections
+                    The five sections
                 </p>
                 <div class="d-flex flex-column gap-3 mb-4 fs-7 text-secondary">
+                    <div>
+                        <span class="fw-semibold text-body"><i class="bi bi-shield-check text-danger me-1"></i>IFC Health Checks</span> —
+                        10 automated quality checks run against the IFC file.
+                        Summary cards show total elements, total issues, and a breakdown by severity (Critical / Warning / Info).
+                        Use the filter buttons to focus on a specific severity. All three are active by default.
+                    </div>
                     <div>
                         <span class="fw-semibold text-body"><i class="bi bi-tag text-warning me-1"></i>Missing Activity ID</span> —
                         Every IFC element that has no <code>Activity ID</code> property (or has an empty value).
@@ -70,6 +77,7 @@
                     Typical workflow
                 </p>
                 <ol class="text-secondary fs-7 ps-3 mb-4">
+                    <li class="mb-1">Check <strong>IFC Health Checks</strong> — resolve any Critical issues first; they indicate structural problems in the file that affect all downstream workflows.</li>
                     <li class="mb-1">Check <strong>Missing Activity ID</strong> — export the CSV and share with your BIM team to populate the property in their authoring tool, then re-upload and re-process the IFC.</li>
                     <li class="mb-1">Check <strong>Activity ID &amp; Name Audit</strong> — confirm every Activity ID group is linked to a schedule task. Unlinked groups (&#9888;) should be re-run through the TimeLiner auto-link.</li>
                     <li class="mb-1">Check <strong>Levels Health</strong> — storeys with no elements indicate spatial containment gaps; storeys not in schedule need task names that reference the storey name.</li>

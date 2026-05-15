@@ -53,6 +53,24 @@ class Task(UUIDModel):
         db_index=True,
         verbose_name="End Date",
     )
+    actual_start = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="Actual Start",
+    )
+    actual_end = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="Actual End",
+    )
+    cost = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="Cost",
+        help_text="Task cost from schedule. Overrides IFC element cost when set.",
+    )
     status = models.CharField(
         max_length=20,
         choices=Status.choices,

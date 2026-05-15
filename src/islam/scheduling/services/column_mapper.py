@@ -10,13 +10,14 @@ from __future__ import annotations
 import csv
 import io
 import logging
+import re
 from datetime import date, datetime
 
 import openpyxl
 
 logger = logging.getLogger(__name__)
 
-CANONICAL_FIELDS = ["name", "start_date", "end_date", "activity_code", "status", "color"]
+CANONICAL_FIELDS = ["name", "start_date", "end_date", "activity_code", "status", "color", "cost"]
 CANONICAL_LABELS = {
     "name": "Task Name *",
     "start_date": "Start Date *",
@@ -24,6 +25,7 @@ CANONICAL_LABELS = {
     "activity_code": "Activity Code",
     "status": "Status",
     "color": "Colour (hex)",
+    "cost": "Cost (optional)",
 }
 
 _STATUS_MAP = {
@@ -121,6 +123,7 @@ def apply_mapping(headers: list[str], raw_rows: list[list[str]], column_mapping:
             "color": color,
             "source": source,
             "description": "",
+            "cost": _parse_cost(cell("cost")),
         })
 
     return tasks
@@ -178,3 +181,21 @@ def _to_date(value: str) -> date | None:
         except ValueError:
             pass
     return None
+
+
+def _parse_cost(value: str) -> str | None:
+    """Strip currency symbols and commas; return decimal string or None.
+
+    "$1,200.00" → "1200.00".  Returns None if value is absent or non-numeric.
+    Stored as str so it survives JSON serialisation without float precision loss.
+    """
+    if not value:
+        return None
+    cleaned = re.sub(r"[^\d.]", "", value)
+    if not cleaned or cleaned == ".":
+        return None
+    try:
+        float(cleaned)  # validate; raises ValueError for "1.2.3" etc.
+        return cleaned
+    except ValueError:
+        return None

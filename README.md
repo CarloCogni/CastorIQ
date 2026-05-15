@@ -1,4 +1,4 @@
-# 🦫 Castor
+c# 🦫 Castor
 
 **Bi-Directional LLM Assistant: Bridging the Gap Between IFC Models and Technical Reporting**
 

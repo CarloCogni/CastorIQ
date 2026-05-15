@@ -159,6 +159,7 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
             return toast_response("No parsed tasks in session — re-upload the file.", "error", status=400)
 
         from datetime import date as Date
+        from decimal import Decimal
 
         try:
             tasks_data = json.loads(raw)
@@ -168,6 +169,7 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
         created = 0
         for td in tasks_data:
             try:
+                cost_str = td.get("cost")
                 Task.objects.create(
                     project=project,
                     name=td["name"],
@@ -178,6 +180,7 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
                     source=td.get("source", "excel"),
                     activity_code=td.get("activity_code", ""),
                     color=td.get("color", "#3b82f6"),
+                    cost=Decimal(cost_str) if cost_str else None,
                 )
                 created += 1
             except Exception as exc:
