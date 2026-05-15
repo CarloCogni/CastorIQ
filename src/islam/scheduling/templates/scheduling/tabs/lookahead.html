@@ -1,0 +1,261 @@
+<!-- scheduling/tabs/lookahead.html — Look-ahead window: per-week collapsible task cards -->
+
+{% if not tasks %}
+<div class="d-flex flex-column align-items-center justify-content-center text-secondary py-5">
+    <i class="bi bi-calendar-week fs-1 mb-2"></i>
+    <span>No tasks to display — import a schedule in the Data Sources tab.</span>
+</div>
+{% else %}
+
+<div id="lookahead-root" style="display:flex; flex-direction:column; gap:12px;">
+
+    <!-- Toolbar: week-count chips -->
+    <div style="flex-shrink:0; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <span style="font-size:0.78rem; color:var(--bs-secondary-color);">Window:</span>
+        <div class="d-flex gap-2" id="la-week-chips">
+            <button type="button" class="la-chip" data-weeks="2">2 weeks</button>
+            <button type="button" class="la-chip active" data-weeks="3">3 weeks</button>
+            <button type="button" class="la-chip" data-weeks="4">4 weeks</button>
+            <button type="button" class="la-chip" data-weeks="6">6 weeks</button>
+        </div>
+        <span id="la-as-of" style="margin-left:auto; font-size:0.72rem; color:var(--bs-secondary-color);"></span>
+    </div>
+
+    <!-- Week cards body -->
+    <div id="la-body">
+        <div class="d-flex align-items-center justify-content-center text-secondary py-4" style="font-size:0.82rem;">
+            <span class="spinner-border spinner-border-sm me-2"></span>Loading…
+        </div>
+    </div>
+
+</div>
+
+<style>
+.la-chip {
+    font-size: 0.73rem;
+    padding: 2px 12px;
+    border-radius: 20px;
+    border: 1px solid var(--bs-border-color);
+    background: var(--bs-secondary-bg);
+    color: var(--bs-body-color);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.la-chip.active {
+    background: var(--bs-primary);
+    border-color: var(--bs-primary);
+    color: #fff;
+}
+.la-chip:not(.active):hover {
+    border-color: var(--bs-primary);
+    color: var(--bs-primary);
+}
+.la-week-card {
+    border: 1px solid var(--bs-border-color);
+    border-radius: 8px;
+    overflow: hidden;
+}
+.la-week-header {
+    display: flex;
+    align-items: center;
+    padding: 10px 14px;
+    cursor: pointer;
+    background: var(--bs-secondary-bg);
+    user-select: none;
+    gap: 10px;
+}
+.la-week-header:hover { background: var(--bs-tertiary-bg); }
+.la-week-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; }
+.la-section-title {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--bs-secondary-color);
+    margin-bottom: 6px;
+}
+.la-task-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.78rem;
+    padding: 5px 8px;
+    border-radius: 5px;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+}
+.la-task-row:hover { background: var(--bs-tertiary-bg); }
+.la-stage-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.la-empty {
+    font-size: 0.75rem;
+    color: var(--bs-secondary-color);
+    font-style: italic;
+    padding: 2px 0;
+}
+</style>
+
+<script>
+(function () {
+    const LA_URL_BASE = "{% url 'islam:lookahead_data' project.pk %}";
+
+    const STAGE_COLORS = {
+        substructure: "#78350f",
+        structure:    "#dc2626",
+        envelope:     "#d97706",
+        mep:          "#2563eb",
+        finishes:     "#16a34a",
+        external:     "#0891b2",
+        "":           "#6b7280",
+    };
+
+    let currentWeeks = 3;
+
+    async function load(weeks) {
+        currentWeeks = weeks;
+        const body = document.getElementById("la-body");
+        body.innerHTML = '<div class="d-flex align-items-center justify-content-center text-secondary py-4" style="font-size:0.82rem;"><span class="spinner-border spinner-border-sm me-2"></span>Loading…</div>';
+
+        let data;
+        try {
+            const resp = await fetch(`${LA_URL_BASE}?weeks=${weeks}`);
+            data = await resp.json();
+        } catch (_) {
+            body.innerHTML = '<div class="text-danger p-3" style="font-size:0.82rem;">Failed to load look-ahead data.</div>';
+            return;
+        }
+
+        if (!data.has_data) {
+            body.innerHTML = '<div class="text-secondary p-3" style="font-size:0.82rem;">No tasks in the schedule.</div>';
+            return;
+        }
+
+        const asOf = document.getElementById("la-as-of");
+        if (asOf) asOf.textContent = `As of ${_fmtDate(data.as_of)}`;
+
+        body.innerHTML = "";
+        data.weeks.forEach((week, idx) => {
+            body.appendChild(_buildWeekCard(week, idx === 0));
+        });
+    }
+
+    /* ── Week card ────────────────────────────────────────────────────── */
+    function _buildWeekCard(week, expanded) {
+        const totalCount = week.starting.length + week.in_progress.length + week.finishing.length;
+
+        const card = document.createElement("div");
+        card.className = "la-week-card";
+
+        /* Header */
+        const hdr = document.createElement("div");
+        hdr.className = "la-week-header";
+        hdr.innerHTML = `
+            <i class="bi bi-chevron-${expanded ? "down" : "right"}" style="font-size:0.75rem; color:var(--bs-secondary-color); flex-shrink:0;"></i>
+            <span style="font-weight:600; font-size:0.85rem;">${_esc(week.label)}</span>
+            <span style="font-size:0.75rem; color:var(--bs-secondary-color);">
+                ${_fmtDate(week.start)} – ${_fmtDate(week.end)}
+            </span>
+            <span style="margin-left:auto; font-size:0.72rem; color:var(--bs-secondary-color);">
+                ${totalCount} task${totalCount !== 1 ? "s" : ""}
+            </span>
+        `;
+
+        /* Body */
+        const bdy = document.createElement("div");
+        bdy.className = "la-week-body";
+        if (!expanded) bdy.style.display = "none";
+
+        _addSection(bdy, "Starting", week.starting, "#16a34a");
+        _addSection(bdy, "In Progress", week.in_progress, "#f59e0b");
+        _addSection(bdy, "Finishing", week.finishing, "#6366f1");
+
+        /* Collapse toggle */
+        hdr.addEventListener("click", () => {
+            const icon = hdr.querySelector(".bi");
+            if (bdy.style.display === "none") {
+                bdy.style.display = "flex";
+                icon.className = "bi bi-chevron-down";
+                icon.style.cssText = "font-size:0.75rem; color:var(--bs-secondary-color); flex-shrink:0;";
+            } else {
+                bdy.style.display = "none";
+                icon.className = "bi bi-chevron-right";
+                icon.style.cssText = "font-size:0.75rem; color:var(--bs-secondary-color); flex-shrink:0;";
+            }
+        });
+
+        card.append(hdr, bdy);
+        return card;
+    }
+
+    /* ── Section (Starting / In Progress / Finishing) ─────────────────── */
+    function _addSection(parent, label, tasks, accentColor) {
+        const wrap = document.createElement("div");
+
+        const title = document.createElement("div");
+        title.className = "la-section-title";
+        title.innerHTML = `<span style="color:${accentColor}; margin-right:4px;">●</span>${label} <span style="font-weight:400;">(${tasks.length})</span>`;
+        wrap.appendChild(title);
+
+        if (!tasks.length) {
+            const empty = document.createElement("div");
+            empty.className = "la-empty";
+            empty.textContent = "None";
+            wrap.appendChild(empty);
+        } else {
+            tasks.forEach(t => wrap.appendChild(_buildTaskRow(t)));
+        }
+
+        parent.appendChild(wrap);
+    }
+
+    /* ── Task row ──────────────────────────────────────────────────────── */
+    function _buildTaskRow(task) {
+        const row = document.createElement("div");
+        row.className = "la-task-row";
+
+        const stageColor = STAGE_COLORS[task.stage] || STAGE_COLORS[""];
+        const critBadge  = task.is_critical
+            ? `<span style="font-size:0.65rem; background:#fee2e2; color:#dc2626; border-radius:3px; padding:1px 5px; flex-shrink:0;">CP</span>`
+            : "";
+
+        row.innerHTML = `
+            <div class="la-stage-dot" style="background:${stageColor};" title="${_esc(task.stage || 'Unassigned')}"></div>
+            <div class="text-truncate" style="flex:1;" title="${_esc(task.name)}">${_esc(task.name)}</div>
+            ${critBadge}
+            <div style="font-size:0.7rem; color:var(--bs-secondary-color); white-space:nowrap; flex-shrink:0;">
+                ${_fmtDate(task.start)} – ${_fmtDate(task.end)}
+            </div>
+        `;
+        return row;
+    }
+
+    /* ── Utilities ─────────────────────────────────────────────────────── */
+    function _fmtDate(iso) {
+        const d = new Date(iso + "T00:00:00");
+        return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+    }
+
+    function _esc(str) {
+        return String(str)
+            .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+
+    /* ── Week chips ────────────────────────────────────────────────────── */
+    document.getElementById("la-week-chips")?.addEventListener("click", (e) => {
+        const chip = e.target.closest(".la-chip");
+        if (!chip) return;
+        document.querySelectorAll(".la-chip").forEach(c => c.classList.remove("active"));
+        chip.classList.add("active");
+        load(parseInt(chip.dataset.weeks, 10));
+    });
+
+    load(currentWeeks);
+}());
+</script>
+
+{% endif %}

@@ -190,6 +190,21 @@ class Task(UUIDModel):
         help_text="Read-only from the IFC perspective — set only by the TimeLiner",
     )
 
+    # ------------------------------------------------------------------
+    # CPM fields — populated by compute_critical_path()
+    # ------------------------------------------------------------------
+    early_start = models.DateField(null=True, blank=True, verbose_name="Early Start")
+    early_finish = models.DateField(null=True, blank=True, verbose_name="Early Finish")
+    late_start = models.DateField(null=True, blank=True, verbose_name="Late Start")
+    late_finish = models.DateField(null=True, blank=True, verbose_name="Late Finish")
+    total_float = models.IntegerField(null=True, blank=True, verbose_name="Total Float (days)")
+    is_critical = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name="Critical",
+        help_text="True when total float == 0 (on the critical path).",
+    )
+
     class Meta:
         verbose_name = "Schedule Task"
         verbose_name_plural = "Schedule Tasks"
@@ -222,6 +237,54 @@ class Task(UUIDModel):
         if self.source != self.Source.MANUAL and count < 3:
             return "partial"
         return "linked"
+
+
+class TaskDependency(UUIDModel):
+    """Finish-to-Start (and other) dependency between two schedule tasks."""
+
+    class DepType(models.TextChoices):
+        FS = "FS", "Finish-to-Start"
+        SS = "SS", "Start-to-Start"
+        FF = "FF", "Finish-to-Finish"
+        SF = "SF", "Start-to-Finish"
+
+    predecessor = models.ForeignKey(
+        Task,
+        on_delete=models.CASCADE,
+        related_name="successors",
+        verbose_name="Predecessor",
+    )
+    successor = models.ForeignKey(
+        Task,
+        on_delete=models.CASCADE,
+        related_name="predecessors",
+        verbose_name="Successor",
+    )
+    dep_type = models.CharField(
+        max_length=2,
+        choices=DepType.choices,
+        default=DepType.FS,
+        verbose_name="Dependency Type",
+    )
+    lag_days = models.IntegerField(
+        default=0,
+        verbose_name="Lag (days)",
+        help_text="Positive = lag, negative = lead.",
+    )
+
+    class Meta:
+        verbose_name = "Task Dependency"
+        verbose_name_plural = "Task Dependencies"
+        ordering = ["predecessor__start_date"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["predecessor", "successor", "dep_type"],
+                name="unique_task_dependency",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.predecessor.name} →[{self.dep_type}+{self.lag_days}d]→ {self.successor.name}"
 
 
 class IslamProgressMode(UUIDModel):

@@ -106,6 +106,21 @@ urlpatterns = [
         name="task_detail",
     ),
     path(
+        "projects/<uuid:pk>/schedule/critical-path/",
+        scheduling_views.CriticalPathView.as_view(),
+        name="critical_path",
+    ),
+    path(
+        "projects/<uuid:pk>/schedule/evm/",
+        scheduling_views.EVMDataView.as_view(),
+        name="evm_data",
+    ),
+    path(
+        "projects/<uuid:pk>/schedule/lookahead/",
+        scheduling_views.LookaheadDataView.as_view(),
+        name="lookahead_data",
+    ),
+    path(
         "projects/<uuid:pk>/schedule/mapping/submit/",
         scheduling_views.MappingSubmitView.as_view(),
         name="schedule_mapping_submit",

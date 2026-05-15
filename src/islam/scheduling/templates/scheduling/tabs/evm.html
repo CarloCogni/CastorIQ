@@ -1,0 +1,295 @@
+<!-- scheduling/tabs/evm.html — EVM Dashboard: S-curve + KPI cards -->
+
+{% if not tasks %}
+<div class="d-flex flex-column align-items-center justify-content-center text-secondary py-5">
+    <i class="bi bi-graph-up fs-1 mb-2"></i>
+    <span>No tasks to analyse — import a schedule in the Data Sources tab.</span>
+</div>
+{% else %}
+
+<div id="evm-root" style="display:flex; flex-direction:column; gap:16px;">
+
+    <!-- KPI cards row -->
+    <div id="evm-kpi-row" class="row g-3">
+        <!-- Skeleton while loading -->
+        {% for _ in "1234" %}
+        <div class="col-6 col-md-3">
+            <div class="card border-0 rounded-3 h-100" style="background:var(--bs-secondary-bg);">
+                <div class="card-body p-3">
+                    <div class="placeholder-glow"><span class="placeholder col-6"></span></div>
+                    <div class="placeholder-glow mt-1"><span class="placeholder col-4" style="height:1.6rem;"></span></div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- S-curve chart -->
+    <div style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+            <span style="font-size:0.8rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:0.05em;">S-Curve</span>
+            <div class="d-flex gap-3" style="font-size:0.72rem; color:var(--bs-secondary-color);">
+                <span><span style="display:inline-block;width:22px;height:2px;background:#3b82f6;margin-bottom:3px;border-top:2px dashed #3b82f6;"></span> Planned Value</span>
+                <span><span style="display:inline-block;width:22px;height:2px;background:#16a34a;margin-bottom:3px;border-top:2px solid #16a34a;"></span> Earned Value</span>
+                <span><span style="display:inline-block;width:22px;height:2px;background:#f59e0b;margin-bottom:3px;border-top:2px solid #f59e0b;"></span> Actual Cost</span>
+            </div>
+        </div>
+        <div id="evm-chart-wrap" style="position:relative; height:260px;">
+            <canvas id="evm-canvas" style="width:100%; height:100%;"></canvas>
+            <div id="evm-chart-loading"
+                 class="d-flex align-items-center justify-content-center"
+                 style="position:absolute; inset:0; background:var(--bs-body-bg); font-size:0.82rem; color:var(--bs-secondary-color);">
+                <span class="spinner-border spinner-border-sm me-2"></span>Loading…
+            </div>
+        </div>
+        <div id="evm-basis-note" class="d-none mt-2" style="font-size:0.72rem; color:var(--bs-secondary-color); text-align:center;"></div>
+    </div>
+
+    <!-- Secondary metrics row -->
+    <div id="evm-secondary-row" class="d-none">
+        <div class="row g-2" style="font-size:0.78rem;">
+            <div class="col-auto">
+                <span class="text-secondary">SV:</span>
+                <span id="evm-sv" class="fw-semibold ms-1">—</span>
+            </div>
+            <div class="col-auto">
+                <span class="text-secondary">CV:</span>
+                <span id="evm-cv" class="fw-semibold ms-1">—</span>
+            </div>
+            <div class="col-auto ms-auto text-secondary" id="evm-as-of" style="font-size:0.72rem;"></div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+(function () {
+    const EVM_URL = "{% url 'islam:evm_data' project.pk %}";
+
+    async function loadEvm() {
+        let data;
+        try {
+            const resp = await fetch(EVM_URL);
+            data = await resp.json();
+        } catch (_) {
+            _showError("Failed to load EVM data.");
+            return;
+        }
+
+        if (!data.has_data) {
+            _showError("No schedule data available.");
+            return;
+        }
+
+        _renderKpis(data);
+        _renderChart(data);
+        _renderSecondary(data);
+    }
+
+    /* ── KPI cards ─────────────────────────────────────────────────────── */
+    function _renderKpis(d) {
+        const kpis = [
+            {
+                label: "SPI",
+                value: d.spi.toFixed(2),
+                sub: "Schedule Performance",
+                good: d.spi >= 1,
+                neutral: Math.abs(d.spi - 1) < 0.02,
+            },
+            {
+                label: "CPI",
+                value: d.cpi.toFixed(2),
+                sub: "Cost Performance",
+                good: d.cpi >= 1,
+                neutral: Math.abs(d.cpi - 1) < 0.02,
+            },
+            {
+                label: "EAC",
+                value: _fmt(d.eac, d.use_cost),
+                sub: "Estimate at Completion",
+                good: d.eac <= d.bac,
+                neutral: false,
+            },
+            {
+                label: "VAC",
+                value: _fmt(d.vac, d.use_cost),
+                sub: "Variance at Completion",
+                good: d.vac >= 0,
+                neutral: Math.abs(d.vac) < d.bac * 0.02,
+            },
+        ];
+
+        const row = document.getElementById("evm-kpi-row");
+        row.innerHTML = kpis.map(k => {
+            const color = k.neutral ? "var(--bs-secondary-color)"
+                        : k.good   ? "#16a34a"
+                                   : "#dc2626";
+            return `<div class="col-6 col-md-3">
+                <div class="card border-0 rounded-3 h-100" style="background:var(--bs-secondary-bg);">
+                    <div class="card-body p-3">
+                        <div style="font-size:0.72rem; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:0.05em; font-weight:600;">${k.label}</div>
+                        <div style="font-size:1.55rem; font-weight:700; color:${color}; line-height:1.15;">${k.value}</div>
+                        <div style="font-size:0.7rem; color:var(--bs-secondary-color);">${k.sub}</div>
+                    </div>
+                </div>
+            </div>`;
+        }).join("");
+    }
+
+    /* ── S-curve canvas ────────────────────────────────────────────────── */
+    function _renderChart(d) {
+        const loading = document.getElementById("evm-chart-loading");
+        const canvas  = document.getElementById("evm-canvas");
+        const wrap    = document.getElementById("evm-chart-wrap");
+        const note    = document.getElementById("evm-basis-note");
+
+        if (loading) loading.remove();
+
+        /* DPR-aware sizing */
+        const dpr = window.devicePixelRatio || 1;
+        const W   = wrap.clientWidth;
+        const H   = wrap.clientHeight;
+        canvas.width  = W * dpr;
+        canvas.height = H * dpr;
+        canvas.style.width  = W + "px";
+        canvas.style.height = H + "px";
+
+        const ctx = canvas.getContext("2d");
+        ctx.scale(dpr, dpr);
+
+        const PAD = { top: 12, right: 16, bottom: 36, left: 48 };
+        const cW  = W - PAD.left - PAD.right;
+        const cH  = H - PAD.top  - PAD.bottom;
+
+        /* All dates from PV series */
+        const pvPts  = d.series.pv;
+        const evPts  = d.series.ev;
+        const acPts  = d.series.ac;
+        if (!pvPts.length) { _showError("No series data."); return; }
+
+        const allDates = pvPts.map(p => p.date);
+        const minDate  = new Date(allDates[0]);
+        const maxDate  = new Date(allDates[allDates.length - 1]);
+        const spanMs   = maxDate - minDate || 1;
+
+        function xOf(dateStr) {
+            return PAD.left + ((new Date(dateStr) - minDate) / spanMs) * cW;
+        }
+        function yOf(pct) {
+            return PAD.top + cH - (pct / 100) * cH;
+        }
+
+        /* Grid lines */
+        ctx.strokeStyle = getComputedStyle(document.documentElement)
+            .getPropertyValue("--bs-border-color") || "#dee2e6";
+        ctx.lineWidth = 0.5;
+        for (let g = 0; g <= 4; g++) {
+            const y = PAD.top + (g / 4) * cH;
+            ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left + cW, y); ctx.stroke();
+        }
+
+        /* Y-axis labels */
+        ctx.fillStyle = getComputedStyle(document.documentElement)
+            .getPropertyValue("--bs-secondary-color") || "#6c757d";
+        ctx.font = `${10 * dpr / dpr}px system-ui`;
+        ctx.textAlign = "right";
+        for (let g = 0; g <= 4; g++) {
+            const y = PAD.top + (g / 4) * cH;
+            ctx.fillText((100 - g * 25) + "%", PAD.left - 4, y + 4);
+        }
+
+        /* X-axis date labels (first + last + midpoint) */
+        ctx.textAlign = "center";
+        const labelIdxs = [0, Math.floor(pvPts.length / 2), pvPts.length - 1];
+        labelIdxs.forEach(i => {
+            const p = pvPts[i];
+            if (!p) return;
+            const x = xOf(p.date);
+            ctx.fillText(_fmtDateShort(p.date), x, PAD.top + cH + 16);
+        });
+
+        /* Draw a line series */
+        function drawLine(pts, color, dashed) {
+            if (!pts.length) return;
+            ctx.save();
+            ctx.strokeStyle = color;
+            ctx.lineWidth   = 2;
+            if (dashed) ctx.setLineDash([5, 4]);
+            ctx.beginPath();
+            pts.forEach((p, i) => {
+                const x = xOf(p.date);
+                const y = yOf(p.pct);
+                i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        drawLine(pvPts, "#3b82f6", true);
+        drawLine(evPts, "#16a34a", false);
+        drawLine(acPts, "#f59e0b", false);
+
+        /* Today marker */
+        const todayStr = new Date().toISOString().slice(0, 10);
+        if (todayStr >= allDates[0] && todayStr <= allDates[allDates.length - 1]) {
+            const tx = xOf(todayStr);
+            ctx.save();
+            ctx.strokeStyle = "#dc2626";
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath(); ctx.moveTo(tx, PAD.top); ctx.lineTo(tx, PAD.top + cH); ctx.stroke();
+            ctx.restore();
+        }
+
+        note.textContent = d.use_cost
+            ? "Values based on task costs."
+            : "Values based on task durations (no costs in schedule).";
+        note.classList.remove("d-none");
+    }
+
+    /* ── Secondary metrics ─────────────────────────────────────────────── */
+    function _renderSecondary(d) {
+        const row = document.getElementById("evm-secondary-row");
+        row.classList.remove("d-none");
+
+        const fmt  = v => _fmt(v, d.use_cost);
+        const sign = v => v >= 0 ? "+" : "";
+        const col  = v => v >= 0 ? "#16a34a" : "#dc2626";
+
+        document.getElementById("evm-sv").textContent = `${sign(d.sv)}${fmt(d.sv)}`;
+        document.getElementById("evm-sv").style.color = col(d.sv);
+        document.getElementById("evm-cv").textContent = `${sign(d.cv)}${fmt(d.cv)}`;
+        document.getElementById("evm-cv").style.color = col(d.cv);
+        document.getElementById("evm-as-of").textContent = `As of ${_fmtDateShort(d.as_of)}`;
+    }
+
+    /* ── Utilities ─────────────────────────────────────────────────────── */
+    function _fmt(v, useCost) {
+        if (useCost) {
+            return new Intl.NumberFormat(undefined, {
+                style: "currency",
+                currency: "USD",
+                maximumFractionDigits: 0,
+                notation: Math.abs(v) >= 1e6 ? "compact" : "standard",
+            }).format(v);
+        }
+        return Math.round(v) + " d";
+    }
+
+    function _fmtDateShort(iso) {
+        const d = new Date(iso + "T00:00:00");
+        return d.toLocaleDateString(undefined, { month: "short", year: "2-digit" });
+    }
+
+    function _showError(msg) {
+        const loading = document.getElementById("evm-chart-loading");
+        if (loading) loading.textContent = msg;
+        document.getElementById("evm-kpi-row").innerHTML =
+            `<div class="col-12 text-secondary" style="font-size:0.82rem;">${msg}</div>`;
+    }
+
+    loadEvm();
+}());
+</script>
+
+{% endif %}
