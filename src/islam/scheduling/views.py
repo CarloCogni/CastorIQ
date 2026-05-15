@@ -6,6 +6,7 @@ from __future__ import annotations
 import csv
 import json
 import logging
+from datetime import date
 
 from django.db.models import Count
 from django.http import HttpResponse, JsonResponse
@@ -344,29 +345,106 @@ class TaskDeleteView(ProjectModifyAccessMixin, View):
 # Data endpoints
 # ---------------------------------------------------------------------------
 
+_STAGE_COLORS: dict[str, str] = {
+    "substructure": "#78350f",
+    "structure":    "#dc2626",
+    "envelope":     "#d97706",
+    "mep":          "#2563eb",
+    "finishes":     "#16a34a",
+    "external":     "#0891b2",
+    "":             "#6b7280",
+}
+
+
+def _compute_progress(task: Task, today: date) -> int:
+    """Estimate task completion 0–100% from actual/planned dates and status."""
+    if task.actual_end or task.status == Task.Status.COMPLETE:
+        return 100
+    if task.actual_start:
+        dur = max((task.end_date - task.actual_start).days, 1)
+        elapsed = (today - task.actual_start).days
+        return max(0, min(99, int(elapsed / dur * 100)))
+    if task.status == Task.Status.ACTIVE and task.start_date <= today:
+        dur = max((task.end_date - task.start_date).days, 1)
+        elapsed = (today - task.start_date).days
+        return max(0, min(99, int(elapsed / dur * 100)))
+    return 0
+
+
 class GanttDataView(ProjectAccessMixin, View):
-    """JSON endpoint — return task data for the Gantt chart renderer."""
+    """JSON endpoint — task data for the Gantt chart and Simulate tab."""
 
     def get(self, request, **kwargs: object) -> JsonResponse:
         project = self.get_project()
-        tasks = Task.objects.filter(project=project).prefetch_related("ifc_entities")
+        tasks = (
+            Task.objects.filter(project=project, is_non_physical=False)
+            .prefetch_related("ifc_entities")
+            .order_by("start_date", "activity_code")
+        )
+        today = date.today()
 
         data = []
         for task in tasks:
-            data.append(
-                {
-                    "id": str(task.pk),
-                    "name": task.name,
-                    "start": task.start_date.isoformat(),
-                    "end": task.end_date.isoformat(),
-                    "status": task.status,
-                    "color": task.color,
-                    "link_status": task.link_status,
-                    "entity_global_ids": task.entity_global_ids(),
-                }
-            )
+            entities = list(task.ifc_entities.values("global_id", "name"))
+            gids = [e["global_id"] for e in entities]
+            data.append({
+                "id": str(task.pk),
+                "name": task.name,
+                "start": task.start_date.isoformat(),
+                "end": task.end_date.isoformat(),
+                "actual_start": task.actual_start.isoformat() if task.actual_start else None,
+                "actual_end":   task.actual_end.isoformat()   if task.actual_end   else None,
+                "progress":     _compute_progress(task, today),
+                "stage":        task.stage     or "",
+                "sub_stage":    task.sub_stage or "",
+                "is_critical":  False,
+                "activity_code": task.activity_code or "",
+                "linked_entities": [
+                    {"name": e["name"] or e["global_id"], "global_id": e["global_id"]}
+                    for e in entities
+                ],
+                # kept for simulate.html backward compatibility
+                "status":           task.status,
+                "color":            task.color,
+                "link_status":      task.link_status,
+                "entity_global_ids": gids,
+            })
 
         return JsonResponse({"tasks": data})
+
+
+class TaskDetailView(ProjectAccessMixin, View):
+    """HTMX GET — task detail side panel for the Gantt chart."""
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        task = get_object_or_404(Task, pk=kwargs["task_pk"], project=project)
+        entities = list(task.ifc_entities.only("global_id", "name", "ifc_type"))
+        today = date.today()
+        progress = _compute_progress(task, today)
+
+        gids = [e.global_id for e in entities]
+        siblings_count = (
+            Task.objects
+            .filter(project=project, ifc_entities__global_id__in=gids)
+            .exclude(pk=task.pk)
+            .distinct()
+            .count()
+        ) if gids else 0
+
+        return render(
+            request,
+            "scheduling/components/task_detail.html",
+            {
+                "task":                 task,
+                "entities":             entities,
+                "progress":             progress,
+                "siblings_count":       siblings_count,
+                "stage_color":          _STAGE_COLORS.get(task.stage or "", "#6b7280"),
+                "entity_global_ids_json": json.dumps(gids),
+                "project":              project,
+            },
+        )
 
 
 # ---------------------------------------------------------------------------

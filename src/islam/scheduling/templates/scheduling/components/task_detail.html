@@ -1,0 +1,85 @@
+<!-- scheduling/components/task_detail.html — Task detail side panel (HTMX partial) -->
+
+<!-- Header: code + name -->
+<div class="mb-3">
+    {% if task.activity_code %}
+    <div style="font-size:0.68rem; color:var(--bs-secondary-color); font-family:monospace; letter-spacing:0.03em;">{{ task.activity_code }}</div>
+    {% endif %}
+    <div class="fw-semibold" style="font-size:0.87rem; line-height:1.3;">{{ task.name }}</div>
+</div>
+
+<!-- Stage / Sub-stage badges -->
+{% if task.stage or task.sub_stage %}
+<div class="d-flex gap-2 flex-wrap mb-3">
+    {% if task.stage %}
+    <span class="badge" style="background:{{ stage_color }}; font-size:0.72rem;">{{ task.get_stage_display }}</span>
+    {% endif %}
+    {% if task.sub_stage %}
+    <span class="badge bg-secondary-subtle text-secondary-emphasis" style="font-size:0.72rem;">{{ task.get_sub_stage_display }}</span>
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- Planned / Actual dates -->
+<div class="row g-2 mb-3" style="font-size:0.77rem;">
+    <div class="col-6">
+        <div class="text-secondary mb-1">Planned Start</div>
+        <div>{{ task.start_date }}</div>
+    </div>
+    <div class="col-6">
+        <div class="text-secondary mb-1">Planned End</div>
+        <div>{{ task.end_date }}</div>
+    </div>
+    <div class="col-6">
+        <div class="text-secondary mb-1">Actual Start</div>
+        <div>{% if task.actual_start %}{{ task.actual_start }}{% else %}<span class="text-secondary">—</span>{% endif %}</div>
+    </div>
+    <div class="col-6">
+        <div class="text-secondary mb-1">Actual End</div>
+        <div>{% if task.actual_end %}{{ task.actual_end }}{% else %}<span class="text-secondary">—</span>{% endif %}</div>
+    </div>
+</div>
+
+<!-- Progress bar -->
+<div class="mb-3">
+    <div class="d-flex justify-content-between mb-1" style="font-size:0.77rem;">
+        <span class="text-secondary">Progress</span>
+        <span class="fw-semibold">{{ progress }}%</span>
+    </div>
+    <div class="progress" style="height:5px; border-radius:3px;">
+        <div class="progress-bar bg-success" role="progressbar" style="width:{{ progress }}%;"></div>
+    </div>
+</div>
+
+<!-- Linked elements -->
+<div class="mb-3">
+    <div class="text-secondary mb-2" style="font-size:0.73rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em;">
+        Linked Elements ({{ entities|length }}{% if siblings_count > 0 %}&nbsp;&middot;&nbsp;<span style="color:var(--bs-warning-text-emphasis);">{{ siblings_count }} shared</span>{% endif %})
+    </div>
+    {% if entities %}
+    <div class="d-flex flex-column gap-1" style="max-height:130px; overflow-y:auto;">
+        {% for entity in entities %}
+        <a href="{% url 'islam:viewer' project.pk %}?highlight={{ entity.global_id }}"
+           class="d-flex align-items-center gap-2 rounded text-decoration-none px-2 py-1"
+           style="font-size:0.75rem; background:var(--bs-tertiary-bg); color:var(--bs-body-color);"
+           title="{{ entity.global_id }}"
+           target="_self">
+            <i class="bi bi-box" style="font-size:0.7rem; flex-shrink:0; color:var(--bs-primary);"></i>
+            <span class="text-truncate">{{ entity.name|default:entity.global_id|truncatechars:30 }}</span>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-secondary" style="font-size:0.75rem;">No elements linked to this task.</div>
+    {% endif %}
+</div>
+
+<!-- View in Simulator (dispatches event; Feature 2 will handle it) -->
+{% if entities %}
+<hr class="my-2">
+<button class="btn btn-sm btn-primary w-100"
+        style="font-size:0.78rem;"
+        onclick="window.jumpToSimulator('{{ task.start_date|date:'Y-m-d' }}', {{ entity_global_ids_json }})">
+    <i class="bi bi-play-fill me-1"></i>View in Simulator
+</button>
+{% endif %}

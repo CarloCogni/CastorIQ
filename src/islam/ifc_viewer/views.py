@@ -205,50 +205,91 @@ class BuildSequenceView(ProjectAccessMixin, View):
 
 
 class TimelineView(ProjectAccessMixin, View):
-    """JSON — weekly timeline buckets of active/complete entity global_ids from Task schedule."""
+    """JSON — weekly 4D timeline intervals with 3-state entity buckets and stats."""
 
     def get(self, request, **kwargs: object) -> HttpResponse:
-        project = self.get_project()
+        from collections import defaultdict
 
+        from ifc_processor.models import IFCEntity as IFCEntityModel
         from islam.scheduling.models import Task
 
+        project = self.get_project()
+
         tasks = list(
-            Task.objects.filter(project=project)
+            Task.objects.filter(project=project, is_non_physical=False)
             .prefetch_related("ifc_entities")
             .exclude(start_date=None)
             .exclude(end_date=None)
         )
 
         if not tasks:
-            return JsonResponse({"has_tasks": False, "weeks": []})
+            return JsonResponse({"has_tasks": False, "intervals": []})
+
+        # entity GID → [(start_date, end_date), ...] — uses prefetch cache
+        entity_tasks: dict[str, list] = defaultdict(list)
+        for task in tasks:
+            for entity in task.ifc_entities.all():
+                entity_tasks[entity.global_id].append((task.start_date, task.end_date))
+
+        # All entity GIDs across all completed IFC files for this project
+        ifc_files = IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
+        all_gids: list[str] = list(
+            IFCEntityModel.objects
+            .filter(ifc_file__in=ifc_files)
+            .values_list("global_id", flat=True)
+            .iterator(chunk_size=1000)
+        ) or list(entity_tasks.keys())
+
+        linked_set   = set(entity_tasks.keys())
+        no_task_gids = [gid for gid in all_gids if gid not in linked_set]
+        task_gids    = [gid for gid in all_gids if gid     in linked_set]
+        total        = len(all_gids)
 
         min_date = min(t.start_date for t in tasks)
-        max_date = max(t.end_date for t in tasks)
+        max_date = max(t.end_date   for t in tasks)
 
-        weeks = []
-        current = min_date
+        intervals = []
+        current  = min_date
+        week_num = 1
         while current <= max_date:
-            week_end = current + timedelta(days=6)
-            active: list[str] = []
-            complete: list[str] = []
-            for task in tasks:
-                ids = list(task.ifc_entities.values_list("global_id", flat=True))
-                if not ids:
-                    continue
-                if task.end_date < current:
-                    complete.extend(ids)
-                elif task.start_date <= week_end:
-                    active.extend(ids)
-            weeks.append({
-                "week_start": current.isoformat(),
-                "active": active,
-                "complete": complete,
+            not_started: list[str] = []
+            in_progress: list[str] = []
+            complete:    list[str] = []
+
+            for gid in task_gids:
+                ranges = entity_tasks[gid]
+                # complete: all linked tasks ended at or before T
+                if all(end <= current for _, end in ranges):
+                    complete.append(gid)
+                # in_progress: at least one task started but not yet ended
+                elif any(start <= current < end for start, end in ranges):
+                    in_progress.append(gid)
+                else:
+                    not_started.append(gid)
+
+            intervals.append({
+                "date":  current.isoformat(),
+                "label": f"Week {week_num}",
+                "entities": {
+                    "not_started": not_started,
+                    "in_progress": in_progress,
+                    "complete":    complete,
+                },
+                "stats": {
+                    "total":       total,
+                    "complete":    len(complete),
+                    "in_progress": len(in_progress),
+                    "not_started": len(not_started) + len(no_task_gids),
+                },
             })
-            current += timedelta(weeks=1)
+
+            current  += timedelta(weeks=1)
+            week_num += 1
 
         return JsonResponse({
-            "has_tasks": True,
-            "min_date": min_date.isoformat(),
-            "max_date": max_date.isoformat(),
-            "weeks": weeks,
+            "has_tasks":     True,
+            "project_start": min_date.isoformat(),
+            "project_end":   max_date.isoformat(),
+            "no_task":       no_task_gids,
+            "intervals":     intervals,
         })

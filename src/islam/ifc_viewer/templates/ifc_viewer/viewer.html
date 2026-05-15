@@ -119,28 +119,67 @@
 
     </div>
 
-    <!-- ── Timeline (shown only when tasks exist) ────────────────────────── -->
+    <!-- ── 4D Timeline (shown only when tasks exist) ────────────────────── -->
     <div id="timeline-section"
          class="border-top bg-body flex-shrink-0 px-3 py-2 d-none"
          style="font-size:0.82rem;">
-        <div class="d-flex align-items-center gap-3 flex-wrap">
-            <span class="fw-medium text-secondary" style="white-space:nowrap;">Timeline</span>
-            <span id="tl-min-date" class="text-secondary"></span>
-            <input id="timeline-slider" type="range" class="form-range flex-grow-1" min="0" value="0" style="min-width:120px;">
-            <span id="tl-max-date" class="text-secondary"></span>
-            <span id="tl-current-date" class="fw-semibold" style="min-width:90px; text-align:center;"></span>
-            <button id="tl-play-btn" class="btn btn-sm btn-primary" style="white-space:nowrap;">
-                <i class="bi bi-play-fill me-1"></i>Play
+
+        <!-- Row 1: controls + current date -->
+        <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+            <span class="fw-medium text-secondary me-1" style="white-space:nowrap; font-size:0.8rem;">4D Timeline</span>
+            <button id="tl-prev-btn"  class="btn btn-sm btn-outline-secondary" title="Previous week">
+                <i class="bi bi-skip-backward-fill"></i>
             </button>
-            <button id="tl-pause-btn" class="btn btn-sm btn-outline-secondary d-none" style="white-space:nowrap;">
-                <i class="bi bi-pause-fill me-1"></i>Pause
+            <button id="tl-play-btn"  class="btn btn-sm btn-primary" title="Play">
+                <i class="bi bi-play-fill"></i>
             </button>
-            <select id="tl-speed-select" class="form-select form-select-sm" style="width:auto;">
+            <button id="tl-pause-btn" class="btn btn-sm btn-outline-secondary d-none" title="Pause">
+                <i class="bi bi-pause-fill"></i>
+            </button>
+            <button id="tl-next-btn"  class="btn btn-sm btn-outline-secondary" title="Next week">
+                <i class="bi bi-skip-forward-fill"></i>
+            </button>
+            <select id="tl-speed-select" class="form-select form-select-sm" style="width:auto; font-size:0.78rem;">
                 <option value="0.5">0.5×</option>
                 <option value="1" selected>1×</option>
                 <option value="2">2×</option>
             </select>
+            <span id="tl-current-date" class="fw-bold ms-1" style="font-size:0.92rem; min-width:110px;"></span>
+            <button id="tl-close-btn" class="btn btn-sm btn-link text-secondary ms-auto p-0" title="Close timeline" style="font-size:0.8rem;">
+                <i class="bi bi-x-lg"></i>
+            </button>
         </div>
+
+        <!-- Row 2: slider with project start / end labels -->
+        <div class="d-flex align-items-center gap-2">
+            <span id="tl-min-date" class="text-secondary" style="font-size:0.75rem; white-space:nowrap;"></span>
+            <input id="timeline-slider" type="range" class="form-range flex-grow-1" min="0" value="0" style="min-width:120px;">
+            <span id="tl-max-date" class="text-secondary" style="font-size:0.75rem; white-space:nowrap;"></span>
+        </div>
+
+        <!-- Row 3: live stats bar -->
+        <div id="tl-stats-bar" class="d-flex align-items-center gap-3 mt-2 flex-wrap" style="font-size:0.77rem;">
+            <div class="d-flex align-items-center gap-1">
+                <span style="width:9px;height:9px;border-radius:2px;background:#10B981;display:inline-block;flex-shrink:0;"></span>
+                <span id="tl-stat-complete" class="fw-semibold">0</span>
+                <span class="text-secondary">Complete</span>
+            </div>
+            <div class="d-flex align-items-center gap-1">
+                <span style="width:9px;height:9px;border-radius:2px;background:#F59E0B;display:inline-block;flex-shrink:0;"></span>
+                <span id="tl-stat-in-progress" class="fw-semibold">0</span>
+                <span class="text-secondary">In Progress</span>
+            </div>
+            <div class="d-flex align-items-center gap-1">
+                <span style="width:9px;height:9px;border-radius:2px;background:#9CA3AF;display:inline-block;flex-shrink:0;"></span>
+                <span id="tl-stat-not-started" class="fw-semibold">0</span>
+                <span class="text-secondary">Not Started</span>
+            </div>
+            <div class="d-flex align-items-center gap-1 ms-2">
+                <span id="tl-stat-pct" class="fw-bold text-success">0%</span>
+                <span class="text-secondary">complete</span>
+            </div>
+        </div>
+
     </div>
 
     <!-- No-schedule banner (shown if timeline fetch returns has_tasks=false) -->
@@ -182,11 +221,17 @@
     const simLegend  = document.getElementById("sim-legend");
 
     const C = {
+        /* legacy castor:simulate colours (simulate.html) */
         active:    new THREE.Color(0.133, 0.773, 0.369),
         complete:  new THREE.Color(0.231, 0.510, 0.965),
         pending:   new THREE.Color(0.580, 0.639, 0.722),
         delayed:   new THREE.Color(0.961, 0.620, 0.043),
         highlight: new THREE.Color(1.000, 0.863, 0.000),
+        /* 4D timeline colours (#10B981 / #F59E0B / #9CA3AF / #D1D5DB) */
+        tl_complete:    new THREE.Color(0.063, 0.722, 0.506),
+        tl_in_progress: new THREE.Color(0.961, 0.620, 0.043),
+        tl_not_started: new THREE.Color(0.612, 0.639, 0.686),
+        tl_no_task:     new THREE.Color(0.820, 0.839, 0.863),
     };
 
     let world = null;
@@ -325,8 +370,12 @@
         colorByGlobalIds(e.detail?.globalIds || [], C.highlight);
     });
 
+    /* Original legend markup — restored when castor:simulate fires after timeline use */
+    const _simLegendOrig = simLegend.innerHTML;
+
     document.addEventListener("castor:simulate", (e) => {
         if (!model) return;
+        simLegend.innerHTML = _simLegendOrig;
         simLegend.classList.remove("d-none");
         const { active = [], complete = [], pending = [], delayed = [] } = e.detail || {};
         resetAllColors();
@@ -458,11 +507,12 @@
 
     document.getElementById("build-seq-btn")?.addEventListener("click", runBuildSequence);
 
-    // ── 8. Timeline Slider ───────────────────────────────────────────────
+    // ── 8. 4D Timeline Slider ────────────────────────────────────────────
 
-    let timelineWeeks = [];
-    let timelineTimer = null;
-    let timelineSpeed = 1;
+    let timelineIntervals = [];
+    let timelineNoTask    = [];
+    let timelineTimer     = null;
+    let timelineSpeed     = 1;
 
     async function initTimeline() {
         try {
@@ -475,52 +525,134 @@
                 return;
             }
 
-            timelineWeeks = data.weeks || [];
-            if (!timelineWeeks.length) return;
+            timelineIntervals = data.intervals || [];
+            timelineNoTask    = data.no_task   || [];
+            if (!timelineIntervals.length) return;
 
-            document.getElementById("tl-min-date").textContent    = data.min_date;
-            document.getElementById("tl-max-date").textContent    = data.max_date;
-            document.getElementById("tl-current-date").textContent = data.min_date;
+            document.getElementById("tl-min-date").textContent = data.project_start || "";
+            document.getElementById("tl-max-date").textContent = data.project_end   || "";
 
             const slider = document.getElementById("timeline-slider");
-            slider.max   = timelineWeeks.length - 1;
+            slider.max   = timelineIntervals.length - 1;
             slider.value = 0;
 
+            _applyIntervalAt(0);
             document.getElementById("timeline-section").classList.remove("d-none");
+
+            _checkPendingJump();
         } catch (e) {
             console.warn("[simulator] Timeline init failed:", e);
         }
     }
 
-    function applyTimelineWeek(idx) {
-        if (!timelineWeeks.length || !model) return;
-        const week = timelineWeeks[Math.min(idx, timelineWeeks.length - 1)];
-        document.getElementById("tl-current-date").textContent = week.week_start;
+    function _applyIntervalAt(idx) {
+        if (!timelineIntervals.length || !model) return;
+        const iv = timelineIntervals[Math.min(idx, timelineIntervals.length - 1)];
+
         resetAllColors();
-        colorByGlobalIds(week.active   || [], C.active);
-        colorByGlobalIds(week.complete || [], C.complete);
+        /* paint in ascending priority so complete always wins */
+        colorByGlobalIds(timelineNoTask              || [], C.tl_no_task);
+        colorByGlobalIds(iv.entities.not_started     || [], C.tl_not_started);
+        colorByGlobalIds(iv.entities.in_progress     || [], C.tl_in_progress);
+        colorByGlobalIds(iv.entities.complete        || [], C.tl_complete);
+
+        /* Update date label */
+        const label = new Date(iv.date + "T00:00:00").toLocaleDateString(undefined, {
+            year: "numeric", month: "short", day: "numeric",
+        });
+        document.getElementById("tl-current-date").textContent = label;
+        document.getElementById("timeline-slider").value = idx;
+
+        /* Update stats bar */
+        const s = iv.stats || {};
+        const total = s.total || 1;
+        const cmp   = s.complete    || 0;
+        const inp   = s.in_progress || 0;
+        const ns    = s.not_started || 0;
+        const pct   = Math.round((cmp / total) * 100);
+        document.getElementById("tl-stat-complete").textContent    = cmp.toLocaleString();
+        document.getElementById("tl-stat-in-progress").textContent = inp.toLocaleString();
+        document.getElementById("tl-stat-not-started").textContent = ns.toLocaleString();
+        document.getElementById("tl-stat-pct").textContent         = pct + "%";
+
+        /* Update legend */
+        simLegend.innerHTML =
+            `<div class="d-flex align-items-center gap-2 mb-1"><span style="width:10px;height:10px;border-radius:2px;background:#10B981;display:inline-block;"></span> Complete</div>` +
+            `<div class="d-flex align-items-center gap-2 mb-1"><span style="width:10px;height:10px;border-radius:2px;background:#F59E0B;display:inline-block;"></span> In Progress</div>` +
+            `<div class="d-flex align-items-center gap-2 mb-1"><span style="width:10px;height:10px;border-radius:2px;background:#9CA3AF;display:inline-block;"></span> Not Started</div>` +
+            `<div class="d-flex align-items-center gap-2">       <span style="width:10px;height:10px;border-radius:2px;background:#D1D5DB;display:inline-block;"></span> No Task</div>`;
         simLegend.classList.remove("d-none");
     }
 
+    /* Pending jump: set from Gantt detail via localStorage, applied on load */
+    function _checkPendingJump() {
+        try {
+            const raw = localStorage.getItem("castor:pending-jump");
+            if (!raw) return;
+            localStorage.removeItem("castor:pending-jump");
+            const { date: targetDate, globalIds } = JSON.parse(raw);
+
+            const target = new Date(targetDate).getTime();
+            let bestIdx  = 0;
+            let bestDiff = Infinity;
+            timelineIntervals.forEach((iv, i) => {
+                const diff = Math.abs(new Date(iv.date).getTime() - target);
+                if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
+            });
+
+            _applyIntervalAt(bestIdx);
+            if (globalIds && globalIds.length && model) {
+                setTimeout(() => colorByGlobalIds(globalIds, C.highlight), 60);
+            }
+        } catch (e) {
+            console.warn("[simulator] Pending jump failed:", e);
+        }
+    }
+
+    /* Slider input */
     document.getElementById("timeline-slider")?.addEventListener("input", (e) => {
-        applyTimelineWeek(parseInt(e.target.value));
+        _applyIntervalAt(parseInt(e.target.value));
     });
 
+    /* Prev / Next */
+    document.getElementById("tl-prev-btn")?.addEventListener("click", () => {
+        const s = document.getElementById("timeline-slider");
+        _applyIntervalAt(Math.max(0, parseInt(s.value) - 1));
+    });
+    document.getElementById("tl-next-btn")?.addEventListener("click", () => {
+        const s = document.getElementById("timeline-slider");
+        _applyIntervalAt(Math.min(parseInt(s.max), parseInt(s.value) + 1));
+    });
+
+    /* Play / Pause */
     document.getElementById("tl-play-btn")?.addEventListener("click", () => {
         document.getElementById("tl-play-btn").classList.add("d-none");
         document.getElementById("tl-pause-btn").classList.remove("d-none");
         _timelinePlay();
     });
-
     document.getElementById("tl-pause-btn")?.addEventListener("click", () => {
         _timelinePause();
         document.getElementById("tl-pause-btn").classList.add("d-none");
         document.getElementById("tl-play-btn").classList.remove("d-none");
     });
 
+    /* Speed */
     document.getElementById("tl-speed-select")?.addEventListener("change", (e) => {
         timelineSpeed = parseFloat(e.target.value);
         if (timelineTimer) { _timelinePause(); _timelinePlay(); }
+    });
+
+    /* Close timeline — restore previous Color By state */
+    document.getElementById("tl-close-btn")?.addEventListener("click", () => {
+        _timelinePause();
+        document.getElementById("tl-pause-btn").classList.add("d-none");
+        document.getElementById("tl-play-btn").classList.remove("d-none");
+        simLegend.classList.add("d-none");
+        simLegend.innerHTML = _simLegendOrig;
+        document.getElementById("timeline-section").classList.add("d-none");
+        resetAllColors();
+        const cb = document.getElementById("colorby-select")?.value;
+        if (cb && cb !== "none") applyColormap(cb);
     });
 
     function _timelinePlay() {
@@ -533,8 +665,7 @@
                 document.getElementById("tl-play-btn").classList.remove("d-none");
                 return;
             }
-            slider.value = next;
-            applyTimelineWeek(next);
+            _applyIntervalAt(next);
         }, 1500 / timelineSpeed);
     }
 
@@ -547,10 +678,11 @@
 
     document.getElementById("viewer-reset-btn")?.addEventListener("click", () => {
         world?.camera?.controls?.setLookAt(10, 10, 10, 0, 0, 0, true);
+        _timelinePause();
+        simLegend.innerHTML = _simLegendOrig;
         simLegend.classList.add("d-none");
         document.getElementById("colorby-legend").classList.add("d-none");
         document.getElementById("colorby-select").value = "none";
-        _timelinePause();
         resetAllColors();
     });
 
