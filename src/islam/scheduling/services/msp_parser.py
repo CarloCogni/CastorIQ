@@ -58,7 +58,11 @@ def parse_msp(file_obj) -> tuple[list[dict], list[dict]]:
 
     for task_el in tasks_el.findall(f"{ns}Task"):
         uid = _text_el(task_el, ns, "UID")
-        task = _parse_task_element(task_el, ns)
+        try:
+            task = _parse_task_element(task_el, ns)
+        except Exception as exc:
+            logger.warning("msp_parser: skipping task uid=%s: %s", uid, exc)
+            continue
         if task:
             task["_msp_uid"] = uid  # stored for dependency matching
             tasks.append(task)
@@ -102,11 +106,11 @@ def _parse_task_element(el: ET.Element, ns: str) -> dict | None:
         child = el.find(f"{ns}{tag}")
         return (child.text or "").strip() if child is not None else ""
 
-    # Summary/milestone rows have no date — skip them
-    is_summary = text("Summary").lower() in ("1", "true")
-    is_milestone = text("Milestone").lower() in ("1", "true")
     uid = text("UID")
-    if uid == "0" or is_summary or is_milestone:
+    is_milestone = text("Milestone").lower() in ("1", "true")
+    # Skip UID 0 (invisible project root) and zero-duration milestone markers.
+    # Summary tasks are intentionally kept — WBS phase rows are valid construction tasks.
+    if uid == "0" or is_milestone:
         return None
 
     name = text("Name")
@@ -118,7 +122,10 @@ def _parse_task_element(el: ET.Element, ns: str) -> dict | None:
     if not start or not end:
         return None
 
-    percent_complete = int(text("PercentComplete") or "0")
+    try:
+        percent_complete = int(float(text("PercentComplete") or "0"))
+    except (ValueError, TypeError):
+        percent_complete = 0
     status_code = text("Status") or (
         "2" if percent_complete == 100 else "1" if percent_complete > 0 else "0"
     )
