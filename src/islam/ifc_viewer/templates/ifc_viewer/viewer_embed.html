@@ -94,10 +94,11 @@ const globalIdIndex = new Map();
 const fragmentIndex = new Map();
 
 const C = {
-    tl_complete:    new THREE.Color(0.063, 0.722, 0.506),
-    tl_in_progress: new THREE.Color(0.961, 0.620, 0.043),
-    tl_not_started: new THREE.Color(0.612, 0.639, 0.686),
-    tl_no_task:     new THREE.Color(0.820, 0.839, 0.863),
+    /* 4D build sequence — colours pre-multiplied against #111 background */
+    tl_complete:    new THREE.Color(0.063, 0.722, 0.506),   // #10B981 opacity 1.0
+    tl_in_progress: new THREE.Color(0.335, 0.233, 0.060),   // #F59E0B blended @ 0.3
+    tl_no_task:     new THREE.Color(0.104, 0.105, 0.106),   // #D1D5DB blended @ 0.05
+    // not_started → hidden via fragment.setVisibility(false)
 };
 
 // ── 1. Init ──────────────────────────────────────────────────────────
@@ -214,7 +215,20 @@ function colorByGlobalIds(globalIds, color) {
 
 function resetAllColors() {
     if (!model) return;
-    for (const fragment of model.items) fragment.resetColor();
+    for (const fragment of model.items) {
+        fragment.resetColor();
+        fragment.setVisibility(true);   // restore any instances hidden by timeline mode
+    }
+}
+
+function hideGlobalIds(globalIds) {
+    for (const gid of globalIds) {
+        const expressId = globalIdIndex.get(gid);
+        if (expressId === undefined) continue;
+        const fragment = fragmentIndex.get(expressId);
+        if (!fragment) continue;
+        fragment.setVisibility(false, [expressId]);
+    }
 }
 
 function makeColor(hex) {
@@ -231,10 +245,10 @@ window.addEventListener("message", async (e) => {
         if (!model) return;
         const { not_started = [], in_progress = [], complete = [], no_task = [] } = msg;
         resetAllColors();
-        colorByGlobalIds(no_task,     C.tl_no_task);
-        colorByGlobalIds(not_started, C.tl_not_started);
-        colorByGlobalIds(in_progress, C.tl_in_progress);
-        colorByGlobalIds(complete,    C.tl_complete);
+        colorByGlobalIds(no_task,     C.tl_no_task);      // faint ghost — nearly invisible
+        colorByGlobalIds(in_progress, C.tl_in_progress);  // ghost amber (0.3 opacity blend)
+        colorByGlobalIds(complete,    C.tl_complete);      // solid green
+        hideGlobalIds(not_started);                        // fully hidden — not yet built
         _showTimelineLegend();
         return;
     }
@@ -279,9 +293,9 @@ window.addEventListener("message", async (e) => {
 function _showTimelineLegend() {
     legendEl.innerHTML =
         `<div class="leg-row"><span class="leg-swatch" style="background:#10B981;"></span>Complete</div>` +
-        `<div class="leg-row"><span class="leg-swatch" style="background:#F59E0B;"></span>In Progress</div>` +
-        `<div class="leg-row"><span class="leg-swatch" style="background:#9CA3AF;"></span>Not Started</div>` +
-        `<div class="leg-row"><span class="leg-swatch" style="background:#D1D5DB;"></span>No Task</div>`;
+        `<div class="leg-row"><span class="leg-swatch" style="background:#F59E0B; opacity:0.3;"></span>In Progress</div>` +
+        `<div class="leg-row"><span class="leg-swatch" style="background:#333; border:1px solid #444;"></span>Not Started (hidden)</div>` +
+        `<div class="leg-row"><span class="leg-swatch" style="background:#1B1B1B;"></span>No Task</div>`;
     legendEl.style.display = "block";
 }
 
