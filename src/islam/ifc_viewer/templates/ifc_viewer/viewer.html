@@ -227,11 +227,11 @@
         pending:   new THREE.Color(0.580, 0.639, 0.722),
         delayed:   new THREE.Color(0.961, 0.620, 0.043),
         highlight: new THREE.Color(1.000, 0.863, 0.000),
-        /* 4D timeline colours (#10B981 / #F59E0B / #9CA3AF / #D1D5DB) */
-        tl_complete:    new THREE.Color(0.063, 0.722, 0.506),
-        tl_in_progress: new THREE.Color(0.961, 0.620, 0.043),
-        tl_not_started: new THREE.Color(0.612, 0.639, 0.686),
-        tl_no_task:     new THREE.Color(0.820, 0.839, 0.863),
+        /* 4D timeline — colours pre-multiplied against #111 background */
+        tl_complete:    new THREE.Color(0.063, 0.722, 0.506),   // #10B981 opacity 1.0
+        tl_in_progress: new THREE.Color(0.335, 0.233, 0.060),   // #F59E0B blended @ 0.3
+        tl_no_task:     new THREE.Color(0.104, 0.105, 0.106),   // #D1D5DB blended @ 0.05
+        // not_started → hidden via fragment.setVisibility(false)
     };
 
     let world = null;
@@ -356,7 +356,20 @@
 
     function resetAllColors() {
         if (!model) return;
-        for (const fragment of model.items) fragment.resetColor();
+        for (const fragment of model.items) {
+            fragment.resetColor();
+            fragment.setVisibility(true);   // restore any instances hidden by timeline mode
+        }
+    }
+
+    function hideGlobalIds(globalIds) {
+        for (const gid of globalIds) {
+            const expressId = globalIdIndex.get(gid);
+            if (expressId === undefined) continue;
+            const fragment = fragmentIndex.get(expressId);
+            if (!fragment) continue;
+            fragment.setVisibility(false, [expressId]);
+        }
     }
 
     function makeColor(hex) {
@@ -550,11 +563,11 @@
         const iv = timelineIntervals[Math.min(idx, timelineIntervals.length - 1)];
 
         resetAllColors();
-        /* paint in ascending priority so complete always wins */
-        colorByGlobalIds(timelineNoTask              || [], C.tl_no_task);
-        colorByGlobalIds(iv.entities.not_started     || [], C.tl_not_started);
-        colorByGlobalIds(iv.entities.in_progress     || [], C.tl_in_progress);
-        colorByGlobalIds(iv.entities.complete        || [], C.tl_complete);
+        /* paint in ascending priority so complete always wins; not_started is hidden */
+        colorByGlobalIds(timelineNoTask              || [], C.tl_no_task);      // near-invisible
+        colorByGlobalIds(iv.entities.in_progress     || [], C.tl_in_progress);  // ghost amber
+        colorByGlobalIds(iv.entities.complete        || [], C.tl_complete);     // solid green
+        hideGlobalIds(iv.entities.not_started        || []);                    // fully hidden
 
         /* Update date label */
         const label = new Date(iv.date + "T00:00:00").toLocaleDateString(undefined, {
@@ -578,9 +591,9 @@
         /* Update legend */
         simLegend.innerHTML =
             `<div class="d-flex align-items-center gap-2 mb-1"><span style="width:10px;height:10px;border-radius:2px;background:#10B981;display:inline-block;"></span> Complete</div>` +
-            `<div class="d-flex align-items-center gap-2 mb-1"><span style="width:10px;height:10px;border-radius:2px;background:#F59E0B;display:inline-block;"></span> In Progress</div>` +
-            `<div class="d-flex align-items-center gap-2 mb-1"><span style="width:10px;height:10px;border-radius:2px;background:#9CA3AF;display:inline-block;"></span> Not Started</div>` +
-            `<div class="d-flex align-items-center gap-2">       <span style="width:10px;height:10px;border-radius:2px;background:#D1D5DB;display:inline-block;"></span> No Task</div>`;
+            `<div class="d-flex align-items-center gap-2 mb-1"><span style="width:10px;height:10px;border-radius:2px;background:#F59E0B;opacity:0.3;display:inline-block;"></span> In Progress</div>` +
+            `<div class="d-flex align-items-center gap-2 mb-1"><span style="width:10px;height:10px;border-radius:2px;background:#333;border:1px solid #555;display:inline-block;"></span> Not Started (hidden)</div>` +
+            `<div class="d-flex align-items-center gap-2">       <span style="width:10px;height:10px;border-radius:2px;background:#1B1B1B;display:inline-block;"></span> No Task</div>`;
         simLegend.classList.remove("d-none");
     }
 
