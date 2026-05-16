@@ -193,8 +193,9 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
             return toast_response("Session data corrupt — re-upload the file.", "error", status=400)
 
         created = 0
-        xer_id_map: dict[str, str] = {}  # _xer_task_id → str(task.pk)
-        msp_uid_map: dict[str, str] = {}  # _msp_uid → str(task.pk)
+        xer_id_map: dict[str, str] = {}  # _xer_task_id  → str(task.pk)
+        msp_uid_map: dict[str, str] = {}  # _msp_uid      → str(task.pk)
+        p6_obj_id_map: dict[str, str] = {}  # _p6_obj_id    → str(task.pk)
         activity_code_map: dict[str, str] = {}  # activity_code → str(task.pk)
         tasks_with_preds: list[tuple[str, str]] = []  # (task_pk, raw_predecessors)
 
@@ -224,6 +225,8 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
                     xer_id_map[td["_xer_task_id"]] = pk
                 if td.get("_msp_uid"):
                     msp_uid_map[td["_msp_uid"]] = pk
+                if td.get("_p6_obj_id"):
+                    p6_obj_id_map[td["_p6_obj_id"]] = pk
                 if td.get("activity_code"):
                     activity_code_map[td["activity_code"]] = pk
                 raw_preds = td.get("_raw_predecessors", "").strip()
@@ -262,6 +265,9 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
             elif "pred_uid" in d:
                 pred_pk = msp_uid_map.get(d["pred_uid"])
                 succ_pk = msp_uid_map.get(d["succ_uid"])
+            elif "pred_p6_obj_id" in d:
+                pred_pk = p6_obj_id_map.get(d["pred_p6_obj_id"])
+                succ_pk = p6_obj_id_map.get(d["succ_p6_obj_id"])
             else:
                 continue
             if pred_pk and succ_pk:
