@@ -31,46 +31,51 @@ _STATUS_MAP = {
 }
 
 
-def parse_excel(file_obj) -> list[dict]:
+def parse_excel(file_obj, preview_only: bool = False) -> list[dict]:
     """Parse an openpyxl-compatible file object and return a list of task dicts.
 
+    Uses read_only + lazy streaming; when preview_only=True stops after 200 tasks.
     Each dict has: name, start_date, end_date, status, activity_code, color.
     Raises ValueError if the file cannot be parsed or has no recognisable headers.
     """
     wb = openpyxl.load_workbook(file_obj, read_only=True, data_only=True)
     ws = wb.active
 
-    rows = list(ws.iter_rows(values_only=True))
-    if not rows:
-        raise ValueError("Spreadsheet is empty.")
+    max_tasks = 200 if preview_only else None
+    rows_iter = ws.iter_rows(values_only=True)
 
-    # Find header row — first row where we can match at least name + start + end
-    header_row_idx, col_map = _find_header_row(rows)
-    if header_row_idx is None:
+    # Scan up to 20 rows to find the header
+    col_map: dict[str, int] = {}
+    scanned: list[tuple] = []
+    for row in rows_iter:
+        scanned.append(row)
+        cm = _map_columns(row)
+        if "name" in cm and "start_date" in cm and "end_date" in cm:
+            col_map = cm
+            break
+        if len(scanned) > 20:
+            break
+
+    if not col_map:
         raise ValueError(
             "Could not find a header row with recognisable column names "
             "(need at least: task name, start date, end date)."
         )
 
-    tasks = []
-    for raw in rows[header_row_idx + 1 :]:
-        task = _parse_row(raw, col_map)
+    # Stream data rows — continues from where the header scan left off
+    tasks: list[dict] = []
+    for row in rows_iter:
+        task = _parse_row(row, col_map)
         if task:
             tasks.append(task)
+        if max_tasks is not None and len(tasks) >= max_tasks:
+            break
 
     if not tasks:
         raise ValueError("Header row found but no data rows could be parsed.")
 
     logger.info("excel_parser: parsed %d tasks", len(tasks))
     return tasks
-
-
-def _find_header_row(rows: list[tuple]) -> tuple[int | None, dict]:
-    for idx, row in enumerate(rows):
-        col_map = _map_columns(row)
-        if "name" in col_map and "start_date" in col_map and "end_date" in col_map:
-            return idx, col_map
-    return None, {}
 
 
 def _map_columns(header_row: tuple) -> dict[str, int]:
@@ -133,7 +138,6 @@ def _to_date(value) -> date | None:
         return value.date()
     if isinstance(value, date):
         return value
-    # Try common string formats
     for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y"):
         try:
             return datetime.strptime(str(value).strip(), fmt).date()

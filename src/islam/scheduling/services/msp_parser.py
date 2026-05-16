@@ -1,16 +1,30 @@
 # islam/scheduling/services/msp_parser.py
 """Parse MS Project XML (.xml) and Primavera P6 XML files into Task dicts.
 
-Format is auto-detected from the root element tag:
-  - <APIBusinessObjects>  → Primavera P6 XML
+Format is auto-detected from the initial bytes of the file:
+  - <APIBusinessObjects>  → Primavera P6 XML (Oracle namespace)
   - <Project> + <Tasks>   → MS Project XML (2003 / 2007 namespaces)
+
+lxml is used when available (transitive dep via python-pptx) for faster parsing
+and memory-efficient iterparse on large P6 XML files.
 """
 
 from __future__ import annotations
 
+import io
 import logging
-import xml.etree.ElementTree as ET
 from datetime import date, datetime
+
+try:
+    from lxml import etree as lxml_et
+
+    _LXML = True
+    _PARSE_EXC: type[Exception] = lxml_et.XMLSyntaxError
+except ImportError:
+    import xml.etree.ElementTree as lxml_et  # type: ignore[no-redef]  # noqa: N813
+
+    _LXML = False
+    _PARSE_EXC = lxml_et.ParseError  # type: ignore[attr-defined]
 
 logger = logging.getLogger(__name__)
 
@@ -33,14 +47,16 @@ _P6_STATUS_MAP: dict[str, str] = {
     "in progress": "active",
     "completed": "complete",
     "complete": "complete",
-    # P6 internal enum values
     "tk_notstart": "planned",
     "tk_active": "active",
     "tk_complete": "complete",
 }
 
-# P6 uses the same PR_FS / PR_SS codes as XER
 _P6_DEP_TYPE: dict[str, str] = {
+    "Finish to Start": "FS",
+    "Start to Start": "SS",
+    "Finish to Finish": "FF",
+    "Start to Finish": "SF",
     "PR_FS": "FS",
     "PR_SS": "SS",
     "PR_FF": "FF",
@@ -51,10 +67,11 @@ _P6_DEP_TYPE: dict[str, str] = {
 # ── Public entry point ────────────────────────────────────────────────────────
 
 
-def parse_msp(file_obj) -> tuple[list[dict], list[dict]]:
+def parse_msp(file_obj, preview_only: bool = False) -> tuple[list[dict], list[dict]]:
     """Parse an MS Project XML or Primavera P6 XML file.
 
-    Format is auto-detected from the root element tag.
+    Format is auto-detected from the initial bytes.
+    When preview_only=True: returns up to 200 tasks with no dependency data.
 
     Returns (tasks, raw_deps):
       tasks    — list of task dicts for TaskSaveView
@@ -63,23 +80,28 @@ def parse_msp(file_obj) -> tuple[list[dict], list[dict]]:
     Raises ValueError if the file is not valid XML or has no parseable tasks.
     """
     try:
-        tree = ET.parse(file_obj)
-    except ET.ParseError as exc:
-        raise ValueError(f"Invalid XML: {exc}") from exc
+        file_bytes: bytes = file_obj.read()
+        if isinstance(file_bytes, str):
+            file_bytes = file_bytes.encode("utf-8")
+    except Exception as exc:
+        raise ValueError(f"Cannot read file: {exc}") from exc
 
-    root = tree.getroot()
-    local_tag = root.tag.split("}")[-1] if "}" in root.tag else root.tag
+    sample = file_bytes[:2048]
+    if b"APIBusinessObjects" in sample or b"<Activity" in sample:
+        return _parse_p6_xml(file_bytes, preview_only)
 
-    if local_tag in ("APIBusinessObjects",) or root.find("Activity") is not None:
-        return _parse_p6_xml(root)
-
-    return _parse_msp_xml(root)
+    return _parse_msp_xml(file_bytes, preview_only)
 
 
 # ── MS Project XML ────────────────────────────────────────────────────────────
 
 
-def _parse_msp_xml(root: ET.Element) -> tuple[list[dict], list[dict]]:
+def _parse_msp_xml(file_bytes: bytes, preview_only: bool) -> tuple[list[dict], list[dict]]:
+    try:
+        root = lxml_et.fromstring(file_bytes)
+    except _PARSE_EXC as exc:
+        raise ValueError(f"Invalid XML: {exc}") from exc
+
     ns_uri = _detect_namespace(root.tag)
     ns = f"{{{ns_uri}}}" if ns_uri else ""
 
@@ -87,10 +109,13 @@ def _parse_msp_xml(root: ET.Element) -> tuple[list[dict], list[dict]]:
     if tasks_el is None:
         raise ValueError("No <Tasks> element found in MS Project XML.")
 
+    max_tasks = 200 if preview_only else None
     tasks: list[dict] = []
     raw_deps: list[dict] = []
 
     for task_el in tasks_el.findall(f"{ns}Task"):
+        if max_tasks is not None and len(tasks) >= max_tasks:
+            break
         uid = _text_el(task_el, ns, "UID")
         try:
             task = _parse_msp_task(task_el, ns)
@@ -101,20 +126,26 @@ def _parse_msp_xml(root: ET.Element) -> tuple[list[dict], list[dict]]:
             task["_msp_uid"] = uid
             tasks.append(task)
 
-        for pred_link in task_el.findall(f"{ns}PredecessorLink"):
-            pred_uid = _text_el(pred_link, ns, "PredecessorUID")
-            if not pred_uid or not uid:
-                continue
-            dep_type = _MSP_DEP_TYPE.get(_text_el(pred_link, ns, "Type"), "FS")
-            lag_raw = _text_el(pred_link, ns, "LinkLag")
-            try:
-                # LinkLag is in tenths of minutes; 1 day = 60 × 24 × 10 = 14400
-                lag_days = round(float(lag_raw) / 14400) if lag_raw else 0
-            except ValueError:
-                lag_days = 0
-            raw_deps.append(
-                {"succ_uid": uid, "pred_uid": pred_uid, "dep_type": dep_type, "lag_days": lag_days}
-            )
+        if not preview_only:
+            for pred_link in task_el.findall(f"{ns}PredecessorLink"):
+                pred_uid = _text_el(pred_link, ns, "PredecessorUID")
+                if not pred_uid or not uid:
+                    continue
+                dep_type = _MSP_DEP_TYPE.get(_text_el(pred_link, ns, "Type"), "FS")
+                lag_raw = _text_el(pred_link, ns, "LinkLag")
+                try:
+                    # LinkLag is in tenths of minutes; 1 day = 60 × 24 × 10 = 14400
+                    lag_days = round(float(lag_raw) / 14400) if lag_raw else 0
+                except ValueError:
+                    lag_days = 0
+                raw_deps.append(
+                    {
+                        "succ_uid": uid,
+                        "pred_uid": pred_uid,
+                        "dep_type": dep_type,
+                        "lag_days": lag_days,
+                    }
+                )
 
     if not tasks:
         raise ValueError("<Tasks> element found but no parseable tasks.")
@@ -123,15 +154,13 @@ def _parse_msp_xml(root: ET.Element) -> tuple[list[dict], list[dict]]:
     return tasks, raw_deps
 
 
-def _parse_msp_task(el: ET.Element, ns: str) -> dict | None:
+def _parse_msp_task(el, ns: str) -> dict | None:
     def text(tag: str) -> str:
         child = el.find(f"{ns}{tag}")
         return (child.text or "").strip() if child is not None else ""
 
     uid = text("UID")
     is_milestone = text("Milestone").lower() in ("1", "true")
-    # Skip UID 0 (invisible project root) and zero-duration milestone markers.
-    # Summary tasks are intentionally kept — WBS phase rows are valid construction tasks.
     if uid == "0" or is_milestone:
         return None
 
@@ -170,75 +199,164 @@ def _parse_msp_task(el: ET.Element, ns: str) -> dict | None:
 # ── Primavera P6 XML ──────────────────────────────────────────────────────────
 
 
-def _parse_p6_xml(root: ET.Element) -> tuple[list[dict], list[dict]]:
+def _parse_p6_xml(file_bytes: bytes, preview_only: bool) -> tuple[list[dict], list[dict]]:
+    max_tasks = 200 if preview_only else None
     tasks: list[dict] = []
+    raw_deps: list[dict] = []
 
-    for act_el in root.iter("Activity"):
-        obj_id = _p6_text(act_el, "ObjectId")
+    # Detect Oracle namespace from root element using a lightweight start-event pass.
+    ns_uri = ""
+    for _, root_el in lxml_et.iterparse(io.BytesIO(file_bytes), events=("start",)):
+        tag = root_el.tag
+        ns_uri = tag.split("}")[0].lstrip("{") if "}" in tag else ""
+        break
+
+    nsp = f"{{{ns_uri}}}" if ns_uri else ""
+
+    if _LXML:
+        _parse_p6_lxml(io.BytesIO(file_bytes), nsp, max_tasks, preview_only, tasks, raw_deps)
+    else:
+        _parse_p6_stdlib(io.BytesIO(file_bytes), nsp, max_tasks, preview_only, tasks, raw_deps)
+
+    if not tasks:
+        raise ValueError("No parseable Activity elements found in P6 XML.")
+
+    logger.info("p6_xml: parsed %d tasks, %d deps", len(tasks), len(raw_deps))
+    return tasks, raw_deps
+
+
+def _parse_p6_lxml(
+    source: io.BytesIO,
+    nsp: str,
+    max_tasks: int | None,
+    preview_only: bool,
+    tasks: list[dict],
+    raw_deps: list[dict],
+) -> None:
+    """lxml iterparse path — streams Activity + Relationship elements, clears after use."""
+    act_tag = f"{nsp}Activity"
+    rel_tag = f"{nsp}Relationship"
+    filter_tags = [act_tag] if preview_only else [act_tag, rel_tag]
+
+    context = lxml_et.iterparse(source, events=("end",), tag=filter_tags)
+    try:
+        for _, elem in context:
+            local = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
+
+            if local == "Activity":
+                if max_tasks is None or len(tasks) < max_tasks:
+                    obj_id = _ns_text(elem, nsp, "ObjectId")
+                    if obj_id:
+                        task = _parse_p6_activity(elem, nsp, obj_id)
+                        if task:
+                            tasks.append(task)
+                elem.clear()
+
+            elif local == "Relationship":
+                pred_id = _ns_text(elem, nsp, "PredecessorActivityObjectId")
+                succ_id = _ns_text(elem, nsp, "SuccessorActivityObjectId")
+                if pred_id and succ_id:
+                    dep_type = _P6_DEP_TYPE.get(_ns_text(elem, nsp, "Type"), "FS")
+                    lag_raw = _ns_text(elem, nsp, "Lag")
+                    try:
+                        lag_days = round(float(lag_raw) / 8) if lag_raw else 0
+                    except (ValueError, TypeError):
+                        lag_days = 0
+                    raw_deps.append(
+                        {
+                            "pred_p6_obj_id": pred_id,
+                            "succ_p6_obj_id": succ_id,
+                            "dep_type": dep_type,
+                            "lag_days": lag_days,
+                        }
+                    )
+                elem.clear()
+    finally:
+        del context
+
+
+def _parse_p6_stdlib(
+    source: io.BytesIO,
+    nsp: str,
+    max_tasks: int | None,
+    preview_only: bool,
+    tasks: list[dict],
+    raw_deps: list[dict],
+) -> None:
+    """stdlib ElementTree fallback — loads full tree, then walks it."""
+    try:
+        root = lxml_et.parse(source).getroot()
+    except _PARSE_EXC as exc:
+        raise ValueError(f"Invalid XML: {exc}") from exc
+
+    container = root.find(f"{nsp}Project") or root
+
+    for act_el in container.findall(f"{nsp}Activity"):
+        if max_tasks is not None and len(tasks) >= max_tasks:
+            break
+        obj_id = _ns_text(act_el, nsp, "ObjectId")
         if not obj_id:
             continue
         try:
-            task = _parse_p6_activity(act_el, obj_id)
+            task = _parse_p6_activity(act_el, nsp, obj_id)
         except Exception as exc:
             logger.warning("p6_xml: skipping activity ObjectId=%s: %s", obj_id, exc)
             continue
         if task:
             tasks.append(task)
 
-    if not tasks:
-        raise ValueError("No parseable Activity elements found in P6 XML.")
-
-    raw_deps: list[dict] = []
-    for rel_el in root.iter("Relationship"):
-        pred_id = _p6_text(rel_el, "PredecessorActivityObjectId")
-        succ_id = _p6_text(rel_el, "SuccessorActivityObjectId")
-        if not pred_id or not succ_id:
-            continue
-        dep_type = _P6_DEP_TYPE.get(_p6_text(rel_el, "Type"), "FS")
-        lag_raw = _p6_text(rel_el, "Lag")
-        try:
-            # P6 Lag is in hours; assume 8h/day
-            lag_days = round(float(lag_raw) / 8) if lag_raw else 0
-        except (ValueError, TypeError):
-            lag_days = 0
-        raw_deps.append(
-            {
-                "pred_p6_obj_id": pred_id,
-                "succ_p6_obj_id": succ_id,
-                "dep_type": dep_type,
-                "lag_days": lag_days,
-            }
-        )
-
-    logger.info("p6_xml: parsed %d tasks, %d deps", len(tasks), len(raw_deps))
-    return tasks, raw_deps
+    if not preview_only:
+        for rel_el in container.findall(f"{nsp}Relationship"):
+            pred_id = _ns_text(rel_el, nsp, "PredecessorActivityObjectId")
+            succ_id = _ns_text(rel_el, nsp, "SuccessorActivityObjectId")
+            if not pred_id or not succ_id:
+                continue
+            dep_type = _P6_DEP_TYPE.get(_ns_text(rel_el, nsp, "Type"), "FS")
+            lag_raw = _ns_text(rel_el, nsp, "Lag")
+            try:
+                lag_days = round(float(lag_raw) / 8) if lag_raw else 0
+            except (ValueError, TypeError):
+                lag_days = 0
+            raw_deps.append(
+                {
+                    "pred_p6_obj_id": pred_id,
+                    "succ_p6_obj_id": succ_id,
+                    "dep_type": dep_type,
+                    "lag_days": lag_days,
+                }
+            )
 
 
-def _parse_p6_activity(el: ET.Element, obj_id: str) -> dict | None:
-    name = _p6_text(el, "Name")
+def _parse_p6_activity(el, nsp: str, obj_id: str) -> dict | None:
+    def t(tag: str) -> str:
+        return _ns_text(el, nsp, tag)
+
+    name = t("Name")
     if not name:
         return None
 
-    start = _to_date(_p6_text(el, "PlannedStartDate"))
-    end = _to_date(_p6_text(el, "PlannedFinishDate"))
+    start = _to_date(t("PlannedStartDate") or t("StartDate"))
+    end = _to_date(t("PlannedFinishDate") or t("FinishDate"))
     if not start or not end:
         return None
     if end < start:
         end = start
 
-    actual_start = _to_actual_date(_p6_text(el, "ActualStartDate"))
-    actual_end = _to_actual_date(_p6_text(el, "ActualFinishDate"))
+    actual_start = _to_actual_date(t("ActualStartDate"))
+    actual_end = _to_actual_date(t("ActualFinishDate"))
 
-    status_raw = _p6_text(el, "Status").lower()
+    status_raw = t("Status").lower()
     try:
-        pct = int(float(_p6_text(el, "PercentComplete") or "0"))
+        pct = float(t("PercentComplete") or "0")
+        # P6 Professional stores as 0–1 fraction; older exports use integer %
+        pct_int = int(pct * 100) if pct <= 1.0 else int(pct)
     except (ValueError, TypeError):
-        pct = 0
+        pct_int = 0
     status = _P6_STATUS_MAP.get(status_raw) or (
-        "complete" if pct == 100 else "active" if pct > 0 else "planned"
+        "complete" if pct_int >= 100 else "active" if pct_int > 0 else "planned"
     )
 
-    activity_code = _p6_text(el, "Id") or _p6_text(el, "ActivityId") or obj_id
+    activity_code = t("Id") or t("ActivityId") or obj_id
 
     return {
         "name": name,
@@ -258,9 +376,9 @@ def _parse_p6_activity(el: ET.Element, obj_id: str) -> dict | None:
 # ── Shared helpers ────────────────────────────────────────────────────────────
 
 
-def _p6_text(el: ET.Element, tag: str) -> str:
-    """Return text of a direct child element (P6 XML — no namespace)."""
-    child = el.find(tag)
+def _ns_text(el, nsp: str, tag: str) -> str:
+    """Return text of a direct child element, namespace-aware (nsp may be empty)."""
+    child = el.find(f"{nsp}{tag}")
     return (child.text or "").strip() if child is not None else ""
 
 
@@ -288,7 +406,7 @@ def _to_date(value: str) -> date | None:
     return None
 
 
-def _text_el(el: ET.Element, ns: str, tag: str) -> str:
+def _text_el(el, ns: str, tag: str) -> str:
     """Return text of a direct child element (MSP XML — with namespace prefix)."""
     child = el.find(f"{ns}{tag}")
     return (child.text or "").strip() if child is not None else ""
