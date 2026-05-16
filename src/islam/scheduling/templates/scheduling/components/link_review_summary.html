@@ -34,7 +34,11 @@
     <i class="bi bi-slash-circle text-secondary me-1"></i>
     <span class="text-secondary">
         {{ summary.non_physical_count }} activit{{ summary.non_physical_count|pluralize:"y,ies" }} excluded as non-physical
-        — <a href="{% url 'islam:review' project.pk %}?filter=non_physical" class="text-secondary">view</a>
+        — <a hx-get="{% url 'islam:review' project.pk %}?filter=non_physical"
+               hx-target="#link-review-content"
+               hx-swap="outerHTML"
+               class="text-secondary"
+               style="cursor:pointer;">view</a>
     </span>
 </div>
 {% endif %}

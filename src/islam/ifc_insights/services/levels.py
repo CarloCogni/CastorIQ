@@ -34,7 +34,9 @@ def get_reference_points(ifc_file) -> dict:
         "site_elevation": None,
     }
 
-    for entity in IFCEntity.objects.filter(ifc_file=ifc_file, ifc_type="IfcSite").only("properties"):
+    for entity in IFCEntity.objects.filter(ifc_file=ifc_file, ifc_type="IfcSite").only(
+        "properties"
+    ):
         props = entity.properties or {}
         for k, v in props.items():
             k_lower = k.lower()
@@ -76,11 +78,13 @@ def get_storeys_from_db(ifc_file) -> list[dict]:
     Faster and more complete than parsing the raw IFC file when the DB is populated.
     """
     from django.db.models import Count
+
     from ifc_processor.models import IFCSpatialElement  # local — avoids circular
 
     rows = (
-        IFCSpatialElement.objects
-        .filter(ifc_file=ifc_file, spatial_type=IFCSpatialElement.SpatialType.BUILDING_STOREY)
+        IFCSpatialElement.objects.filter(
+            ifc_file=ifc_file, spatial_type=IFCSpatialElement.SpatialType.BUILDING_STOREY
+        )
         .select_related("entity")
         .annotate(element_count=Count("contained_entities"))
         .order_by("elevation", "entity__name")
@@ -89,13 +93,15 @@ def get_storeys_from_db(ifc_file) -> list[dict]:
     results: list[dict] = []
     for s in rows:
         entity = s.entity
-        results.append({
-            "global_id": entity.global_id,
-            "name": entity.name or entity.global_id,
-            "z_elevation": float(s.elevation) if s.elevation is not None else 0.0,
-            "element_count": s.element_count,
-            "long_name": s.long_name or "",
-        })
+        results.append(
+            {
+                "global_id": entity.global_id,
+                "name": entity.name or entity.global_id,
+                "z_elevation": float(s.elevation) if s.elevation is not None else 0.0,
+                "element_count": s.element_count,
+                "long_name": s.long_name or "",
+            }
+        )
     return results
 
 
@@ -106,9 +112,7 @@ def match_storeys_to_tasks(storey_names: list[str], project) -> dict[str, bool]:
     except ImportError:
         return {}
 
-    all_tasks = list(
-        Task.objects.filter(project=project).values_list("name", "activity_code")
-    )
+    all_tasks = list(Task.objects.filter(project=project).values_list("name", "activity_code"))
     corpus = " ".join(f"{n or ''} {ac or ''}" for n, ac in all_tasks).lower()
     return {name.lower(): name.lower() in corpus for name in storey_names}
 
@@ -148,10 +152,7 @@ def get_missing_level_hints(storey_names_lower: set[str], project) -> list[dict]
                     continue
                 hits.setdefault(hint_lower, set()).add(task.name)
 
-    return [
-        {"hint": k, "task_names": sorted(v)[:5]}
-        for k, v in sorted(hits.items())
-    ]
+    return [{"hint": k, "task_names": sorted(v)[:5]} for k, v in sorted(hits.items())]
 
 
 # ---------------------------------------------------------------------------
@@ -189,11 +190,13 @@ def extract_levels_from_ifc(ifc_path: str) -> list[dict]:
                         z = float(loc.Coordinates[2]) if len(loc.Coordinates) > 2 else 0.0
             except Exception:
                 z = 0.0
-        results.append({
-            "global_id": storey.GlobalId,
-            "name": storey.Name or storey.GlobalId,
-            "z_elevation": z,
-        })
+        results.append(
+            {
+                "global_id": storey.GlobalId,
+                "name": storey.Name or storey.GlobalId,
+                "z_elevation": z,
+            }
+        )
 
     return sorted(results, key=lambda r: r["z_elevation"])
 
@@ -207,8 +210,7 @@ def suggest_levels_from_entities(ifc_file) -> list[dict]:
     from ifc_processor.models import IFCEntity  # local import to avoid circular
 
     storey_names: list[str] = (
-        IFCEntity.objects
-        .filter(ifc_file=ifc_file, spatial_container__isnull=False)
+        IFCEntity.objects.filter(ifc_file=ifc_file, spatial_container__isnull=False)
         .values_list("spatial_container__entity__name", flat=True)
         .distinct()
     )
@@ -217,10 +219,7 @@ def suggest_levels_from_entities(ifc_file) -> list[dict]:
     if not names:
         return []
 
-    return [
-        {"name": name, "z_elevation": float(idx * 3000)}
-        for idx, name in enumerate(names)
-    ]
+    return [{"name": name, "z_elevation": float(idx * 3000)} for idx, name in enumerate(names)]
 
 
 def _backup_ifc(ifc_path: str) -> str:
@@ -244,8 +243,13 @@ def apply_levels_to_ifc(ifc_path: str, levels: list, ifc_file) -> dict:
         import ifcopenshell  # type: ignore[import-untyped]
         import ifcopenshell.api  # type: ignore[import-untyped]
     except ImportError:
-        return {"backup_path": "", "updated": 0, "created": 0,
-                "errors": ["ifcopenshell not installed"], "commit_hash": ""}
+        return {
+            "backup_path": "",
+            "updated": 0,
+            "created": 0,
+            "errors": ["ifcopenshell not installed"],
+            "commit_hash": "",
+        }
 
     from ifc_processor.services.ifc_writer import IFCWriteError, Tier1Writer
     from writeback.services.git_service import GitService
@@ -255,8 +259,13 @@ def apply_levels_to_ifc(ifc_path: str, levels: list, ifc_file) -> dict:
     try:
         writer = Tier1Writer(ifc_path)
     except Exception as exc:
-        return {"backup_path": backup_path, "updated": 0, "created": 0,
-                "errors": [str(exc)], "commit_hash": ""}
+        return {
+            "backup_path": backup_path,
+            "updated": 0,
+            "created": 0,
+            "errors": [str(exc)],
+            "commit_hash": "",
+        }
 
     updated = 0
     created = 0
@@ -281,8 +290,11 @@ def apply_levels_to_ifc(ifc_path: str, levels: list, ifc_file) -> dict:
                         if len(coords) > 2:
                             coords[2] = z
                         else:
-                            coords = [coords[0] if coords else 0.0,
-                                      coords[1] if len(coords) > 1 else 0.0, z]
+                            coords = [
+                                coords[0] if coords else 0.0,
+                                coords[1] if len(coords) > 1 else 0.0,
+                                z,
+                            ]
                         loc.Coordinates = coords
                 updated += 1
             except (IFCWriteError, Exception) as exc:
@@ -343,6 +355,7 @@ def apply_levels_to_ifc(ifc_path: str, levels: list, ifc_file) -> dict:
 def _z_matrix(z_mm: float):
     """Return a 4×4 identity matrix with Z translation set."""
     import numpy as np  # type: ignore[import-untyped]
+
     m = np.eye(4)
     m[2][3] = z_mm
     return m

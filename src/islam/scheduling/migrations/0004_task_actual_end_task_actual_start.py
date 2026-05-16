@@ -4,20 +4,19 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('islam_scheduling', '0003_task_entity_binding'),
+        ("islam_scheduling", "0003_task_entity_binding"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='task',
-            name='actual_end',
-            field=models.DateField(blank=True, null=True, verbose_name='Actual End'),
+            model_name="task",
+            name="actual_end",
+            field=models.DateField(blank=True, null=True, verbose_name="Actual End"),
         ),
         migrations.AddField(
-            model_name='task',
-            name='actual_start',
-            field=models.DateField(blank=True, null=True, verbose_name='Actual Start'),
+            model_name="task",
+            name="actual_start",
+            field=models.DateField(blank=True, null=True, verbose_name="Actual Start"),
         ),
     ]

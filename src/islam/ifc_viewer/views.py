@@ -178,8 +178,7 @@ class BuildSequenceView(ProjectAccessMixin, View):
         from islam.ifc_insights.models import IslamLevel
 
         level_z: dict[str, float] = {
-            lvl.name: lvl.z_elevation
-            for lvl in IslamLevel.objects.filter(project=project)
+            lvl.name: lvl.z_elevation for lvl in IslamLevel.objects.filter(project=project)
         }
 
         groups: dict[str, list[str]] = {}
@@ -202,6 +201,31 @@ class BuildSequenceView(ProjectAccessMixin, View):
         ]
 
         return JsonResponse({"levels": levels})
+
+
+class ViewerEmbedView(ProjectAccessMixin, View):
+    """GET — minimal self-contained viewer page designed to be loaded in an <iframe>.
+
+    Returns X-Frame-Options: SAMEORIGIN so browsers allow it to be framed
+    from the same origin.  Has no page chrome — just the WebGL canvas,
+    a loading overlay, and a postMessage API for the parent tab.
+    """
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        ifc_file = (
+            IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
+            .order_by("-created_at")
+            .first()
+        )
+        ctx = {
+            "project": project,
+            "viewer_ifc_file": ifc_file,
+            "ifc_file_url": ifc_file.file.url if ifc_file else None,
+        }
+        response = render(request, "ifc_viewer/viewer_embed.html", ctx)
+        response["X-Frame-Options"] = "SAMEORIGIN"
+        return response
 
 
 class TimelineView(ProjectAccessMixin, View):
@@ -234,27 +258,26 @@ class TimelineView(ProjectAccessMixin, View):
         # All entity GIDs across all completed IFC files for this project
         ifc_files = IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
         all_gids: list[str] = list(
-            IFCEntityModel.objects
-            .filter(ifc_file__in=ifc_files)
+            IFCEntityModel.objects.filter(ifc_file__in=ifc_files)
             .values_list("global_id", flat=True)
             .iterator(chunk_size=1000)
         ) or list(entity_tasks.keys())
 
-        linked_set   = set(entity_tasks.keys())
+        linked_set = set(entity_tasks.keys())
         no_task_gids = [gid for gid in all_gids if gid not in linked_set]
-        task_gids    = [gid for gid in all_gids if gid     in linked_set]
-        total        = len(all_gids)
+        task_gids = [gid for gid in all_gids if gid in linked_set]
+        total = len(all_gids)
 
         min_date = min(t.start_date for t in tasks)
-        max_date = max(t.end_date   for t in tasks)
+        max_date = max(t.end_date for t in tasks)
 
         intervals = []
-        current  = min_date
+        current = min_date
         week_num = 1
         while current <= max_date:
             not_started: list[str] = []
             in_progress: list[str] = []
-            complete:    list[str] = []
+            complete: list[str] = []
 
             for gid in task_gids:
                 ranges = entity_tasks[gid]
@@ -267,29 +290,33 @@ class TimelineView(ProjectAccessMixin, View):
                 else:
                     not_started.append(gid)
 
-            intervals.append({
-                "date":  current.isoformat(),
-                "label": f"Week {week_num}",
-                "entities": {
-                    "not_started": not_started,
-                    "in_progress": in_progress,
-                    "complete":    complete,
-                },
-                "stats": {
-                    "total":       total,
-                    "complete":    len(complete),
-                    "in_progress": len(in_progress),
-                    "not_started": len(not_started) + len(no_task_gids),
-                },
-            })
+            intervals.append(
+                {
+                    "date": current.isoformat(),
+                    "label": f"Week {week_num}",
+                    "entities": {
+                        "not_started": not_started,
+                        "in_progress": in_progress,
+                        "complete": complete,
+                    },
+                    "stats": {
+                        "total": total,
+                        "complete": len(complete),
+                        "in_progress": len(in_progress),
+                        "not_started": len(not_started) + len(no_task_gids),
+                    },
+                }
+            )
 
-            current  += timedelta(weeks=1)
+            current += timedelta(weeks=1)
             week_num += 1
 
-        return JsonResponse({
-            "has_tasks":     True,
-            "project_start": min_date.isoformat(),
-            "project_end":   max_date.isoformat(),
-            "no_task":       no_task_gids,
-            "intervals":     intervals,
-        })
+        return JsonResponse(
+            {
+                "has_tasks": True,
+                "project_start": min_date.isoformat(),
+                "project_end": max_date.isoformat(),
+                "no_task": no_task_gids,
+                "intervals": intervals,
+            }
+        )

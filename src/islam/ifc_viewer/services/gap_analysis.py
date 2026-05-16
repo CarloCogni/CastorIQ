@@ -38,14 +38,16 @@ def build_gap_analysis(ifc_file, by: str) -> list[dict]:
         total = data["total"]
         linked = data["linked"]
         pct = round(linked / total * 100) if total else 0
-        rows.append({
-            "group": group,
-            "total": total,
-            "linked": linked,
-            "pct": pct,
-            "gap": total - linked,
-            "global_ids_json": json.dumps(data["global_ids"]),
-        })
+        rows.append(
+            {
+                "group": group,
+                "total": total,
+                "linked": linked,
+                "pct": pct,
+                "gap": total - linked,
+                "global_ids_json": json.dumps(data["global_ids"]),
+            }
+        )
 
     return sorted(rows, key=lambda r: -r["gap"])
 

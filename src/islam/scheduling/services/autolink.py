@@ -29,21 +29,43 @@ logger = logging.getLogger(__name__)
 # Layer 0 — non-physical activity pre-filter
 # ---------------------------------------------------------------------------
 
-_NON_PHYSICAL_KEYWORDS: frozenset[str] = frozenset({
-    "submittal", "approval", "rfi", "meeting", "inspection", "permit", "review",
-    "procurement", "delivery", "mobilization", "demobilization", "testing",
-    "commissioning", "handover", "closeout", "warranty", "training", "admin",
-})
+_NON_PHYSICAL_KEYWORDS: frozenset[str] = frozenset(
+    {
+        "submittal",
+        "approval",
+        "rfi",
+        "meeting",
+        "inspection",
+        "permit",
+        "review",
+        "procurement",
+        "delivery",
+        "mobilization",
+        "demobilization",
+        "testing",
+        "commissioning",
+        "handover",
+        "closeout",
+        "warranty",
+        "training",
+        "admin",
+    }
+)
 
-_SKIP_ACTIVITY_TYPES: frozenset[str] = frozenset({
-    "wbs summary", "milestone", "loe", "hammock",
-})
+_SKIP_ACTIVITY_TYPES: frozenset[str] = frozenset(
+    {
+        "wbs summary",
+        "milestone",
+        "loe",
+        "hammock",
+    }
+)
 
 # Confidence thresholds
 _HEURISTIC_CONF = 0.70
-_MAX_HEURISTIC = 50   # cap on entities returned by Layer 3
-_EMBED_HIGH = 0.82   # embedding auto-accept floor
-_EMBED_LOW = 0.65    # embedding minimum (below → skip)
+_MAX_HEURISTIC = 50  # cap on entities returned by Layer 3
+_EMBED_HIGH = 0.82  # embedding auto-accept floor
+_EMBED_LOW = 0.65  # embedding minimum (below → skip)
 
 # Keyword → IFC entity type map (all keys lowercase, no spaces)
 _IFC_KEYWORDS: dict[str, str] = {
@@ -83,12 +105,71 @@ _IFC_KEYWORDS: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 _STAGE_KEYWORDS: dict[str, tuple[str, ...]] = {
-    "substructure": ("foundation", "footing", "pile", "piling", "excavat", "basement", "grade slab", "raft slab"),
-    "structure": ("column", "beam", "slab", "structural", "formwork", "rebar", "shear wall", "concrete pour", "steel erect", "rc frame"),
-    "envelope": ("facade", "cladding", "curtain wall", "roof", "waterproof", "glazing", "exterior wall"),
-    "mep": ("mep", "mechanical", "electrical", "plumbing", "hvac", "ductwork", "pipework", "cable tray", "sprinkler", "drainage"),
-    "finishes": ("finish", "plaster", "plasterboard", "paint", "tiling", "tile ", "flooring", "ceiling", "partition", "screed"),
-    "external": ("landscape", "hardscape", "paving", "road", "car park", "fence", "external works", "soft landscape"),
+    "substructure": (
+        "foundation",
+        "footing",
+        "pile",
+        "piling",
+        "excavat",
+        "basement",
+        "grade slab",
+        "raft slab",
+    ),
+    "structure": (
+        "column",
+        "beam",
+        "slab",
+        "structural",
+        "formwork",
+        "rebar",
+        "shear wall",
+        "concrete pour",
+        "steel erect",
+        "rc frame",
+    ),
+    "envelope": (
+        "facade",
+        "cladding",
+        "curtain wall",
+        "roof",
+        "waterproof",
+        "glazing",
+        "exterior wall",
+    ),
+    "mep": (
+        "mep",
+        "mechanical",
+        "electrical",
+        "plumbing",
+        "hvac",
+        "ductwork",
+        "pipework",
+        "cable tray",
+        "sprinkler",
+        "drainage",
+    ),
+    "finishes": (
+        "finish",
+        "plaster",
+        "plasterboard",
+        "paint",
+        "tiling",
+        "tile ",
+        "flooring",
+        "ceiling",
+        "partition",
+        "screed",
+    ),
+    "external": (
+        "landscape",
+        "hardscape",
+        "paving",
+        "road",
+        "car park",
+        "fence",
+        "external works",
+        "soft landscape",
+    ),
 }
 
 _SUB_STAGE_KEYWORDS: dict[str, tuple[str, ...]] = {
@@ -116,7 +197,14 @@ _SUB_STAGE_KEYWORDS: dict[str, tuple[str, ...]] = {
     "plumbing": ("plumbing", "sanitary", "water supply", "drainage pipe", "soil pipe"),
     "hvac": ("hvac", "ductwork", "air handling", "chiller", "ahu install", "fan coil"),
     "firefighting": ("firefighting", "fire fighting", "fire protection", "sprinkler", "fire alarm"),
-    "lv_systems": ("lv systems", "low voltage", "data cabling", "cctv", "access control", "pa system"),
+    "lv_systems": (
+        "lv systems",
+        "low voltage",
+        "data cabling",
+        "cctv",
+        "access control",
+        "pa system",
+    ),
     # Finishes
     "plaster": ("plaster", "render", "skimming", "skim coat", "gypsum plaster"),
     "painting": ("painting", "emulsion", "primer coat", "paint finish"),
@@ -184,7 +272,7 @@ def detect_task_sub_stage(task_name: str) -> str:
     return ""
 
 
-def autodetect_stages(tasks: list["Task"]) -> int:
+def autodetect_stages(tasks: list[Task]) -> int:
     """Detect and set stage + sub_stage for tasks that don't have them yet.
 
     Sub_stage is detected first; parent stage is derived from _SUB_TO_PARENT_STAGE.
@@ -211,7 +299,7 @@ def autodetect_stages(tasks: list["Task"]) -> int:
     return len(updates)
 
 
-def _is_non_physical_auto(task: "Task") -> bool:
+def _is_non_physical_auto(task: Task) -> bool:
     """Return True if the task name or activity_type flags it as non-physical."""
     name_lower = task.name.lower()
     if any(kw in name_lower for kw in _NON_PHYSICAL_KEYWORDS):
@@ -221,7 +309,7 @@ def _is_non_physical_auto(task: "Task") -> bool:
     return False
 
 
-def _run_layer0(tasks: list["Task"]) -> tuple[list["Task"], list["Task"]]:
+def _run_layer0(tasks: list[Task]) -> tuple[list[Task], list[Task]]:
     """Separate tasks into (physical, non_physical).
 
     Tasks with non_physical_locked=True keep their current is_non_physical value
@@ -277,12 +365,21 @@ def run_autolink(project, ifc_param_name: str = "Activity ID") -> dict:
     autodetect_stages(tasks)
 
     if not tasks:
-        return {**_empty_summary(0), "total_tasks": len(all_tasks), "excluded_non_physical": excluded}
+        return {
+            **_empty_summary(0),
+            "total_tasks": len(all_tasks),
+            "excluded_non_physical": excluded,
+        }
 
     ifc_files = IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
     entity_list = list(
         IFCEntity.objects.filter(ifc_file__in=ifc_files).only(
-            "id", "global_id", "ifc_type", "name", "properties", "embedding",
+            "id",
+            "global_id",
+            "ifc_type",
+            "name",
+            "properties",
+            "embedding",
             "spatial_container",
         )
     )
@@ -299,7 +396,7 @@ def run_autolink(project, ifc_param_name: str = "Activity ID") -> dict:
     counters: dict[str, int] = {"exact": 0, "normalized": 0, "heuristic": 0, "embedding": 0}
     needs_review_count = 0
     new_bindings: list[TaskEntityBinding] = []
-    m2m_adds: dict[str, list[IFCEntity]] = {}   # task_pk (str) → entities
+    m2m_adds: dict[str, list[IFCEntity]] = {}  # task_pk (str) → entities
     remaining: list[Task] = []
 
     # ------------------------------------------------------------------ #
@@ -342,9 +439,8 @@ def run_autolink(project, ifc_param_name: str = "Activity ID") -> dict:
     # Layer 4 — embedding cosine similarity                               #
     # ------------------------------------------------------------------ #
     if embed_remaining:
-        embed_qs = (
-            IFCEntity.objects.filter(ifc_file__in=ifc_files, embedding__isnull=False)
-            .only("id", "global_id", "ifc_type", "name", "embedding")
+        embed_qs = IFCEntity.objects.filter(ifc_file__in=ifc_files, embedding__isnull=False).only(
+            "id", "global_id", "ifc_type", "name", "embedding"
         )
         if embed_qs.exists():
             for task in embed_remaining:
@@ -386,6 +482,7 @@ def run_autolink(project, ifc_param_name: str = "Activity ID") -> dict:
 # Index builders
 # ---------------------------------------------------------------------------
 
+
 def _build_prop_index(
     entities: list[IFCEntity], param_name: str
 ) -> tuple[dict[str, list[IFCEntity]], dict[str, list[IFCEntity]]]:
@@ -414,20 +511,17 @@ def _build_container_names(ifc_files) -> dict[str, str]:
     """Return {str(IFCSpatialElement.pk): lowercase storey name} for building storeys."""
     from ifc_processor.models import IFCSpatialElement
 
-    storeys = (
-        IFCSpatialElement.objects
-        .filter(
-            ifc_file__in=ifc_files,
-            spatial_type=IFCSpatialElement.SpatialType.BUILDING_STOREY,
-        )
-        .select_related("entity")
-    )
+    storeys = IFCSpatialElement.objects.filter(
+        ifc_file__in=ifc_files,
+        spatial_type=IFCSpatialElement.SpatialType.BUILDING_STOREY,
+    ).select_related("entity")
     return {str(s.pk): (s.entity.name or "").lower() for s in storeys}
 
 
 # ---------------------------------------------------------------------------
 # Per-layer match helpers
 # ---------------------------------------------------------------------------
+
 
 def _record(
     task: Task,
@@ -476,7 +570,8 @@ def _heuristic_match(
         level_hint = _extract_level_hint(task.name)
         if level_hint and container_names:
             spatial = [
-                e for e in candidates
+                e
+                for e in candidates
                 if e.spatial_container_id is not None
                 and level_hint in container_names.get(str(e.spatial_container_id), "")
             ]
@@ -494,15 +589,15 @@ def _embedding_match(task: Task, entities_qs) -> tuple[IFCEntity, float] | None:
 
     try:
         from embeddings.services.embedding_service import EmbeddingService
+
         vec = EmbeddingService().embed_query(task.name)
     except Exception as exc:
         logger.warning("Embed failed for task '%s': %s", task.name, exc)
         return None
 
-    max_dist = round(1.0 - _EMBED_LOW, 4)   # 0.35
+    max_dist = round(1.0 - _EMBED_LOW, 4)  # 0.35
     match = (
-        entities_qs
-        .annotate(dist=CosineDistance("embedding", vec))
+        entities_qs.annotate(dist=CosineDistance("embedding", vec))
         .filter(dist__lte=max_dist)
         .order_by("dist")
         .first()
@@ -516,6 +611,7 @@ def _embedding_match(task: Task, entities_qs) -> tuple[IFCEntity, float] | None:
 # ---------------------------------------------------------------------------
 # String utilities
 # ---------------------------------------------------------------------------
+
 
 def _extract_level_hint(task_name: str) -> str | None:
     """Return a normalised lowercase token to match against storey names.

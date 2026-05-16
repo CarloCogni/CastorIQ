@@ -21,8 +21,8 @@ _NS = {
 _DATE_FMTS = ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d")
 
 _STATUS_MAP = {
-    "0": "planned",   # Not Started
-    "1": "active",    # In Progress
+    "0": "planned",  # Not Started
+    "1": "active",  # In Progress
     "2": "complete",  # Completed
 }
 
@@ -86,7 +86,9 @@ def _parse_task_element(el: ET.Element, ns: str) -> dict | None:
         return None
 
     percent_complete = int(text("PercentComplete") or "0")
-    status_code = text("Status") or ("2" if percent_complete == 100 else "1" if percent_complete > 0 else "0")
+    status_code = text("Status") or (
+        "2" if percent_complete == 100 else "1" if percent_complete > 0 else "0"
+    )
     status = _STATUS_MAP.get(status_code, "planned")
 
     return {
