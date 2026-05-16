@@ -26,6 +26,9 @@ CANONICAL_FIELDS = [
     "color",
     "cost",
     "activity_type",
+    "predecessors",
+    "actual_start",
+    "actual_end",
 ]
 CANONICAL_LABELS = {
     "name": "Task Name *",
@@ -36,6 +39,9 @@ CANONICAL_LABELS = {
     "color": "Colour (hex)",
     "cost": "Cost (optional)",
     "activity_type": "Activity Type (optional)",
+    "predecessors": "Predecessors (optional)",
+    "actual_start": "Actual Start (optional)",
+    "actual_end": "Actual End (optional)",
 }
 
 _STATUS_MAP = {
@@ -132,6 +138,8 @@ def apply_mapping(
                 "name": name,
                 "start_date": start,
                 "end_date": end,
+                "actual_start": _to_date(cell("actual_start")),
+                "actual_end": _to_date(cell("actual_end")),
                 "status": status,
                 "activity_code": cell("activity_code"),
                 "color": color,
@@ -139,6 +147,7 @@ def apply_mapping(
                 "description": "",
                 "cost": _parse_cost(cell("cost")),
                 "activity_type": cell("activity_type"),
+                "_raw_predecessors": cell("predecessors"),
             }
         )
 
@@ -195,6 +204,37 @@ def _to_date(value: str) -> date | None:
         except ValueError:
             pass
     return None
+
+
+_PRED_RE = re.compile(
+    r"^([A-Za-z0-9._\-]+?)(FS|SS|FF|SF)?([+-]\d+[dD])?$",
+    re.IGNORECASE,
+)
+
+
+def parse_predecessor_string(raw: str) -> list[dict]:
+    """Parse a predecessor cell like 'A1010FS,A1020SS+2d' into dep dicts.
+
+    Each dict has: activity_code (str), dep_type (FS/SS/FF/SF), lag_days (int).
+    Splits on comma or semicolon; silently skips unrecognised tokens.
+    """
+    result = []
+    for part in re.split(r"[,;]", raw):
+        part = part.strip()
+        if not part:
+            continue
+        m = _PRED_RE.match(part)
+        if not m:
+            continue
+        code = m.group(1).strip()
+        dep_type = (m.group(2) or "FS").upper()
+        lag_str = (m.group(3) or "0d").lower().rstrip("d")
+        try:
+            lag_days = int(lag_str)
+        except ValueError:
+            lag_days = 0
+        result.append({"activity_code": code, "dep_type": dep_type, "lag_days": lag_days})
+    return result
 
 
 def _parse_cost(value: str) -> str | None:
