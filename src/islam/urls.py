@@ -101,6 +101,11 @@ urlpatterns = [
         name="task_delete",
     ),
     path(
+        "projects/<uuid:pk>/schedule/tasks/<uuid:task_pk>/actual-dates/",
+        scheduling_views.TaskActualDateView.as_view(),
+        name="task_actual_dates",
+    ),
+    path(
         "projects/<uuid:pk>/schedule/gantt-data/",
         scheduling_views.GanttDataView.as_view(),
         name="gantt_data",

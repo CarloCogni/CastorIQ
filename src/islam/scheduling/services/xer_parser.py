@@ -17,11 +17,22 @@ logger = logging.getLogger(__name__)
 
 _DATE_FMTS = ("%Y-%m-%d %H:%M", "%Y-%m-%d", "%d-%b-%y", "%d/%m/%Y")
 
+_DEP_TYPE_XER: dict[str, str] = {
+    "PR_FS": "FS",
+    "PR_SS": "SS",
+    "PR_FF": "FF",
+    "PR_SF": "SF",
+}
 
-def parse_xer(file_obj) -> list[dict]:
-    """Parse a Primavera XER file and return a list of task dicts.
 
-    Reads TASK table (activities) and maps to the standard task structure.
+def parse_xer(file_obj) -> tuple[list[dict], list[dict]]:
+    """Parse a Primavera XER file.
+
+    Returns (tasks, raw_deps):
+      tasks    — list of task dicts for TaskSaveView
+      raw_deps — list of {pred_xer_id, succ_xer_id, dep_type, lag_days} for
+                 TaskDependency creation; xer_ids are TASK.task_id values.
+
     Raises ValueError if file is not valid XER or no activities found.
     """
     content = _decode(file_obj)
@@ -41,8 +52,13 @@ def parse_xer(file_obj) -> list[dict]:
     if not tasks:
         raise ValueError("TASK table found but no activities could be parsed.")
 
-    logger.info("xer_parser: parsed %d tasks", len(tasks))
-    return tasks
+    raw_deps: list[dict] = []
+    taskpred_table = tables.get("TASKPRED") or tables.get("taskpred")
+    if taskpred_table:
+        raw_deps = _parse_taskpred(taskpred_table)
+
+    logger.info("xer_parser: parsed %d tasks, %d dependencies", len(tasks), len(raw_deps))
+    return tasks, raw_deps
 
 
 def _decode(file_obj) -> str:
@@ -97,23 +113,33 @@ def _map_task_row(fields: list[str], values: list[str]) -> dict | None:
     if not name:
         return None
 
-    start = _to_date(get("target_start_date") or get("act_start_date") or get("early_start_date"))
-    end = _to_date(get("target_end_date") or get("act_end_date") or get("early_end_date"))
+    start = _to_date(get("target_start_date") or get("early_start_date"))
+    if not start:
+        start = _to_date(get("act_start_date"))
+    end = _to_date(get("target_end_date") or get("early_end_date"))
+    if not end:
+        end = _to_date(get("act_end_date"))
     if not start or not end:
         return None
 
     status_raw = get("status_code") or get("task_type") or ""
     status = _map_status(status_raw)
 
+    actual_start = _to_actual_date(get("act_start_date"))
+    actual_end = _to_actual_date(get("act_end_date"))
+
     return {
         "name": name,
         "start_date": start,
         "end_date": end,
+        "actual_start": actual_start,
+        "actual_end": actual_end,
         "status": status,
         "activity_code": get("task_code") or get("wbs_id") or "",
         "color": "#3b82f6",
         "source": "xer",
         "description": get("task_memo") or "",
+        "_xer_task_id": get("task_id"),
     }
 
 
@@ -128,6 +154,13 @@ def _map_status(raw: str) -> str:
     return "planned"
 
 
+def _to_actual_date(value: str) -> date | None:
+    """Parse actual date; treats '*' placeholder as absent."""
+    if not value or value.strip() == "*":
+        return None
+    return _to_date(value)
+
+
 def _to_date(value: str) -> date | None:
     if not value:
         return None
@@ -137,3 +170,39 @@ def _to_date(value: str) -> date | None:
         except ValueError:
             pass
     return None
+
+
+def _parse_taskpred(table: tuple) -> list[dict]:
+    """Parse TASKPRED rows into raw dependency dicts keyed by XER task_id."""
+    fields, rows = table
+    deps = []
+    for row in rows:
+
+        def get(name: str) -> str:
+            try:
+                idx = fields.index(name)
+                return row[idx].strip() if idx < len(row) else ""
+            except ValueError:
+                return ""
+
+        task_id = get("task_id")  # successor
+        pred_task_id = get("pred_task_id")  # predecessor
+        if not task_id or not pred_task_id:
+            continue
+
+        dep_type = _DEP_TYPE_XER.get(get("pred_type"), "FS")
+        lag_raw = get("lag_hr_cnt")
+        try:
+            lag_days = round(float(lag_raw) / 8) if lag_raw else 0
+        except ValueError:
+            lag_days = 0
+
+        deps.append(
+            {
+                "succ_xer_id": task_id,
+                "pred_xer_id": pred_task_id,
+                "dep_type": dep_type,
+                "lag_days": lag_days,
+            }
+        )
+    return deps

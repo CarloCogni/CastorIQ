@@ -26,9 +26,17 @@ _STATUS_MAP = {
     "2": "complete",  # Completed
 }
 
+# MSP PredecessorLink Type values → DepType
+_DEP_TYPE_MSP: dict[str, str] = {"0": "FF", "1": "FS", "2": "SF", "3": "SS"}
 
-def parse_msp(file_obj) -> list[dict]:
-    """Parse an MS Project XML file and return a list of task dicts.
+
+def parse_msp(file_obj) -> tuple[list[dict], list[dict]]:
+    """Parse an MS Project XML file.
+
+    Returns (tasks, raw_deps):
+      tasks    — list of task dicts for TaskSaveView
+      raw_deps — list of {pred_uid, succ_uid, dep_type, lag_days} for
+                 TaskDependency creation; uids are MSP Task UID values.
 
     Raises ValueError if the file is not valid XML or has no task data.
     """
@@ -46,16 +54,41 @@ def parse_msp(file_obj) -> list[dict]:
         raise ValueError("No <Tasks> element found in MS Project XML.")
 
     tasks = []
+    raw_deps: list[dict] = []
+
     for task_el in tasks_el.findall(f"{ns}Task"):
+        uid = _text_el(task_el, ns, "UID")
         task = _parse_task_element(task_el, ns)
         if task:
+            task["_msp_uid"] = uid  # stored for dependency matching
             tasks.append(task)
+
+        # Parse PredecessorLink elements — uid is the successor
+        for pred_link in task_el.findall(f"{ns}PredecessorLink"):
+            pred_uid = _text_el(pred_link, ns, "PredecessorUID")
+            if not pred_uid or not uid:
+                continue
+            dep_type = _DEP_TYPE_MSP.get(_text_el(pred_link, ns, "Type"), "FS")
+            lag_raw = _text_el(pred_link, ns, "LinkLag")
+            try:
+                # LinkLag is in tenths of minutes; 1 day = 60 * 24 * 10 = 14400
+                lag_days = round(float(lag_raw) / 14400) if lag_raw else 0
+            except ValueError:
+                lag_days = 0
+            raw_deps.append(
+                {
+                    "succ_uid": uid,
+                    "pred_uid": pred_uid,
+                    "dep_type": dep_type,
+                    "lag_days": lag_days,
+                }
+            )
 
     if not tasks:
         raise ValueError("<Tasks> element found but no parseable tasks.")
 
-    logger.info("msp_parser: parsed %d tasks", len(tasks))
-    return tasks
+    logger.info("msp_parser: parsed %d tasks, %d dependencies", len(tasks), len(raw_deps))
+    return tasks, raw_deps
 
 
 def _detect_namespace(tag: str) -> str | None:
@@ -91,16 +124,28 @@ def _parse_task_element(el: ET.Element, ns: str) -> dict | None:
     )
     status = _STATUS_MAP.get(status_code, "planned")
 
+    actual_start = _to_actual_date(text("ActualStart"))
+    actual_end = _to_actual_date(text("ActualFinish"))
+
     return {
         "name": name,
         "start_date": start,
         "end_date": end,
+        "actual_start": actual_start,
+        "actual_end": actual_end,
         "status": status,
         "activity_code": text("WBS") or text("OutlineNumber") or uid,
         "color": "#3b82f6",
         "source": "msp",
         "description": text("Notes"),
     }
+
+
+def _to_actual_date(value: str) -> date | None:
+    """Parse actual date; treats 'NA' placeholder as absent."""
+    if not value or value.strip().upper() == "NA":
+        return None
+    return _to_date(value)
 
 
 def _to_date(value: str) -> date | None:
@@ -112,3 +157,9 @@ def _to_date(value: str) -> date | None:
         except ValueError:
             pass
     return None
+
+
+def _text_el(el: ET.Element, ns: str, tag: str) -> str:
+    """Return text of a direct child element, or empty string."""
+    child = el.find(f"{ns}{tag}")
+    return (child.text or "").strip() if child is not None else ""

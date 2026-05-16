@@ -19,7 +19,7 @@ from core.http import toast_response, trigger_toast
 from core.mixins import ProjectAccessMixin, ProjectModifyAccessMixin, ProjectTabMixin
 from ifc_processor.models import IFCEntity, IFCFile
 
-from .models import LinkFeedback, MappingProfile, Task, TaskEntityBinding
+from .models import LinkFeedback, MappingProfile, Task, TaskDependency, TaskEntityBinding
 from .services.autolink import autodetect_stages, run_autolink
 from .services.column_mapper import (
     CANONICAL_FIELDS,
@@ -73,6 +73,7 @@ class ScheduleView(ProjectTabMixin, TemplateView):
         ctx["binding_review_count"] = TaskEntityBinding.objects.filter(
             task__project=project, needs_review=True
         ).count()
+        ctx["dep_count"] = TaskDependency.objects.filter(predecessor__project=project).count()
         return ctx
 
 
@@ -124,10 +125,10 @@ class TaskUploadView(ProjectModifyAccessMixin, View):
                     },
                 )
             elif filename.endswith(".xer"):
-                tasks = parse_xer(uploaded)
+                tasks, raw_deps = parse_xer(uploaded)
                 source = "xer"
             elif filename.endswith(".xml"):
-                tasks = parse_msp(uploaded)
+                tasks, raw_deps = parse_msp(uploaded)
                 source = "msp"
             else:
                 return toast_response(
@@ -145,10 +146,18 @@ class TaskUploadView(ProjectModifyAccessMixin, View):
         validation = validate_schedule(tasks, project_name=project.name)
         request.session[f"parsed_tasks_{project.pk}"] = json.dumps(
             [
-                {**t, "start_date": str(t["start_date"]), "end_date": str(t["end_date"])}
+                {
+                    **t,
+                    "start_date": str(t["start_date"]),
+                    "end_date": str(t["end_date"]),
+                    "actual_start": str(t["actual_start"]) if t.get("actual_start") else None,
+                    "actual_end": str(t["actual_end"]) if t.get("actual_end") else None,
+                }
                 for t in tasks
             ]
         )
+        if raw_deps:
+            request.session[f"parsed_deps_{project.pk}"] = json.dumps(raw_deps)
         return render(
             request,
             "scheduling/components/task_list.html",
@@ -176,21 +185,32 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
 
         from decimal import Decimal
 
+        from .services.column_mapper import parse_predecessor_string
+
         try:
             tasks_data = json.loads(raw)
         except json.JSONDecodeError:
             return toast_response("Session data corrupt — re-upload the file.", "error", status=400)
 
         created = 0
+        xer_id_map: dict[str, str] = {}  # _xer_task_id → str(task.pk)
+        msp_uid_map: dict[str, str] = {}  # _msp_uid → str(task.pk)
+        activity_code_map: dict[str, str] = {}  # activity_code → str(task.pk)
+        tasks_with_preds: list[tuple[str, str]] = []  # (task_pk, raw_predecessors)
+
         for td in tasks_data:
             try:
                 cost_str = td.get("cost")
-                Task.objects.create(
+                actual_start_raw = td.get("actual_start")
+                actual_end_raw = td.get("actual_end")
+                task = Task.objects.create(
                     project=project,
                     name=td["name"],
                     description=td.get("description", ""),
                     start_date=date.fromisoformat(td["start_date"]),
                     end_date=date.fromisoformat(td["end_date"]),
+                    actual_start=date.fromisoformat(actual_start_raw) if actual_start_raw else None,
+                    actual_end=date.fromisoformat(actual_end_raw) if actual_end_raw else None,
                     status=td.get("status", "planned"),
                     source=td.get("source", "excel"),
                     activity_code=td.get("activity_code", ""),
@@ -199,10 +219,75 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
                     activity_type=td.get("activity_type", ""),
                 )
                 created += 1
+                pk = str(task.pk)
+                if td.get("_xer_task_id"):
+                    xer_id_map[td["_xer_task_id"]] = pk
+                if td.get("_msp_uid"):
+                    msp_uid_map[td["_msp_uid"]] = pk
+                if td.get("activity_code"):
+                    activity_code_map[td["activity_code"]] = pk
+                raw_preds = td.get("_raw_predecessors", "").strip()
+                if raw_preds:
+                    tasks_with_preds.append((pk, raw_preds))
             except Exception as exc:
                 logger.warning("Skipping task row: %s", exc)
 
         del request.session[session_key]
+
+        # ── Dependency resolution ────────────────────────────────────────
+        raw_deps_json = request.session.pop(f"parsed_deps_{project.pk}", None)
+        raw_deps: list[dict] = json.loads(raw_deps_json) if raw_deps_json else []
+
+        dep_objects: list[TaskDependency] = []
+        dep_set: set[tuple] = set()
+
+        def _add(pred_pk: str, succ_pk: str, dep_type: str, lag_days: int) -> None:
+            key = (pred_pk, succ_pk, dep_type)
+            if key in dep_set or pred_pk == succ_pk:
+                return
+            dep_set.add(key)
+            dep_objects.append(
+                TaskDependency(
+                    predecessor_id=pred_pk,
+                    successor_id=succ_pk,
+                    dep_type=dep_type,
+                    lag_days=lag_days,
+                )
+            )
+
+        for d in raw_deps:
+            if "pred_xer_id" in d:
+                pred_pk = xer_id_map.get(d["pred_xer_id"])
+                succ_pk = xer_id_map.get(d["succ_xer_id"])
+            elif "pred_uid" in d:
+                pred_pk = msp_uid_map.get(d["pred_uid"])
+                succ_pk = msp_uid_map.get(d["succ_uid"])
+            else:
+                continue
+            if pred_pk and succ_pk:
+                _add(pred_pk, succ_pk, d.get("dep_type", "FS"), d.get("lag_days", 0))
+
+        for task_pk, raw_preds in tasks_with_preds:
+            for ref in parse_predecessor_string(raw_preds):
+                pred_pk = activity_code_map.get(ref["activity_code"])
+                if pred_pk:
+                    _add(pred_pk, task_pk, ref["dep_type"], ref["lag_days"])
+
+        dep_count = 0
+        if dep_objects:
+            TaskDependency.objects.filter(predecessor__project=project).delete()
+            TaskDependency.objects.bulk_create(dep_objects, ignore_conflicts=True)
+            dep_count = len(dep_objects)
+            logger.info("Dependencies saved: %d for project %s", dep_count, project.pk)
+            try:
+                cpm = compute_critical_path(str(project.pk))
+                logger.info(
+                    "CPM computed: %d critical of %d tasks",
+                    len(cpm["critical_task_ids"]),
+                    len(cpm["task_data"]),
+                )
+            except Exception as exc:
+                logger.warning("CPM auto-run failed: %s", exc)
 
         all_tasks = list(
             Task.objects.filter(project=project).only("pk", "name", "stage", "sub_stage")
@@ -213,9 +298,47 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
         response = render(
             request,
             "scheduling/components/task_list.html",
-            {"tasks": tasks, "project": project, "preview_mode": False},
+            {"tasks": tasks, "project": project, "preview_mode": False, "dep_count": dep_count},
         )
-        return trigger_toast(response, f"{created} tasks saved successfully.", "success")
+        msg = f"{created} tasks saved."
+        if dep_count:
+            msg += (
+                f" {dep_count} dependenc{'y' if dep_count == 1 else 'ies'} imported, CPM computed."
+            )
+        return trigger_toast(response, msg, "success")
+
+
+class TaskActualDateView(ProjectModifyAccessMixin, View):
+    """HTMX POST — update actual_start / actual_end on a single task inline."""
+
+    def post(self, request, task_pk: str, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        task = get_object_or_404(Task, pk=task_pk, project=project)
+
+        actual_start_raw = request.POST.get("actual_start", "").strip()
+        actual_end_raw = request.POST.get("actual_end", "").strip()
+
+        try:
+            actual_start = date.fromisoformat(actual_start_raw) if actual_start_raw else None
+            actual_end = date.fromisoformat(actual_end_raw) if actual_end_raw else None
+        except ValueError as exc:
+            return toast_response(f"Invalid date: {exc}", "error", status=400)
+
+        if actual_start and actual_end and actual_end < actual_start:
+            return toast_response(
+                "Actual end must be on or after actual start.", "error", status=400
+            )
+
+        task.actual_start = actual_start
+        task.actual_end = actual_end
+        task.save(update_fields=["actual_start", "actual_end"])
+
+        response = render(
+            request,
+            "scheduling/components/actual_date_cells.html",
+            {"task": task, "project": project},
+        )
+        return trigger_toast(response, "Actual dates updated.", "success")
 
 
 # ---------------------------------------------------------------------------
@@ -636,7 +759,13 @@ class MappingSubmitView(ProjectModifyAccessMixin, View):
         validation = validate_schedule(tasks, project_name=project.name)
         request.session[f"parsed_tasks_{project.pk}"] = json.dumps(
             [
-                {**t, "start_date": str(t["start_date"]), "end_date": str(t["end_date"])}
+                {
+                    **t,
+                    "start_date": str(t["start_date"]),
+                    "end_date": str(t["end_date"]),
+                    "actual_start": str(t["actual_start"]) if t.get("actual_start") else None,
+                    "actual_end": str(t["actual_end"]) if t.get("actual_end") else None,
+                }
                 for t in tasks
             ]
         )
