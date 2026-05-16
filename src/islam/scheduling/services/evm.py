@@ -9,6 +9,51 @@ from datetime import date, timedelta
 logger = logging.getLogger(__name__)
 
 
+def _qto_task_costs(project_id: str, tasks: list) -> dict[str, float]:
+    """Return QTO-derived cost estimate per task (keyed by task PK string).
+
+    Only considers tasks with no schedule cost.  Requires QTOCache to exist
+    and unit costs to be configured for at least some element types.
+    Returns an empty dict if any prerequisite is missing.
+    """
+    try:
+        from islam.ifc_insights.models import QTOCache
+        from islam.scheduling.models import TaskEntityBinding
+    except ImportError:
+        return {}
+
+    cache = QTOCache.objects.filter(project_id=project_id).first()
+    if not cache:
+        return {}
+
+    # Build entity → cost lookup (quantity × unit_cost) from the per-entity cache
+    entity_costs: dict[str, float] = {}
+    for item in cache.items_json:
+        gid = item.get("global_id")
+        qty = item.get("quantity")
+        uc = item.get("unit_cost")
+        if gid and qty is not None and uc is not None:
+            entity_costs[gid] = float(qty) * float(uc)
+
+    if not entity_costs:
+        return {}
+
+    no_cost_pks = {str(t.pk) for t in tasks if not float(t.cost or 0)}
+    if not no_cost_pks:
+        return {}
+
+    result: dict[str, float] = {}
+    for binding in TaskEntityBinding.objects.filter(task_id__in=no_cost_pks).values(
+        "task_id", "entity_global_id"
+    ):
+        cost = entity_costs.get(binding["entity_global_id"], 0.0)
+        if cost > 0:
+            pk_str = str(binding["task_id"])
+            result[pk_str] = result.get(pk_str, 0.0) + cost
+
+    return result
+
+
 def _planned_pct_at(task, d: date) -> float:
     """Linear schedule progress 0-1 for task planned dates at date *d*."""
     if d >= task.end_date:
@@ -62,18 +107,42 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
     today = as_of_date or date.today()
 
     # ------------------------------------------------------------------
-    # Value basis: use costs when at least one task has a cost > 0
+    # Value basis: schedule costs → QTO estimates → duration weighting
     # ------------------------------------------------------------------
-    total_cost = sum(float(t.cost or 0) for t in tasks)
-    use_cost = total_cost > 0
+    sched_costs = {str(t.pk): float(t.cost or 0) for t in tasks}
+    total_sched = sum(sched_costs.values())
+
+    qto_costs = _qto_task_costs(str(project_id), tasks)
+
+    values: dict[str, float] = {}
+    used_qto = False
+    for t in tasks:
+        pk = str(t.pk)
+        sc = sched_costs.get(pk, 0.0)
+        if sc > 0:
+            values[pk] = sc
+        elif pk in qto_costs:
+            values[pk] = qto_costs[pk]
+            used_qto = True
+        else:
+            values[pk] = 0.0
+
+    total_value = sum(values.values())
+    use_cost = total_value > 0
 
     if use_cost:
-        bac = total_cost
-        values = {str(t.pk): float(t.cost or 0) for t in tasks}
+        bac = total_value
+        if total_sched > 0 and used_qto:
+            cost_basis = "schedule costs + QTO estimates"
+        elif total_sched > 0:
+            cost_basis = "schedule costs"
+        else:
+            cost_basis = "QTO estimates"
     else:
-        # Duration-weighted: each task's "budget" = its calendar days
+        # Pure duration-weighted fallback
         values = {str(t.pk): float(max((t.end_date - t.start_date).days + 1, 1)) for t in tasks}
         bac = sum(values.values())
+        cost_basis = "task durations"
 
     project_start = min(t.start_date for t in tasks)
     project_end = max(t.end_date for t in tasks)
@@ -148,6 +217,7 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
         "sv": sv,
         "cv": cv,
         "use_cost": use_cost,
+        "cost_basis": cost_basis,
         "as_of": today.isoformat(),
         "project_start": project_start.isoformat(),
         "project_end": project_end.isoformat(),

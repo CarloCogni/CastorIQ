@@ -292,4 +292,32 @@ urlpatterns = [
         insights_views.InsightsExportView.as_view(),
         name="insights_export",
     ),
+    # ------------------------------------------------------------------ #
+    # QTO (Quantity Take-Off)                                             #
+    # ------------------------------------------------------------------ #
+    path(
+        "projects/<uuid:pk>/qto/",
+        insights_views.QTOView.as_view(),
+        name="qto",
+    ),
+    path(
+        "projects/<uuid:pk>/qto/data/",
+        insights_views.QTODataView.as_view(),
+        name="qto_data",
+    ),
+    path(
+        "projects/<uuid:pk>/qto/recompute/",
+        insights_views.QTORecomputeView.as_view(),
+        name="qto_recompute",
+    ),
+    path(
+        "projects/<uuid:pk>/qto/unit-cost/",
+        insights_views.QTOUnitCostUpdateView.as_view(),
+        name="qto_unit_cost",
+    ),
+    path(
+        "projects/<uuid:pk>/qto/export/",
+        insights_views.QTOExportView.as_view(),
+        name="qto_export",
+    ),
 ]

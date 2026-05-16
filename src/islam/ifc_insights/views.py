@@ -9,26 +9,29 @@ import logging
 
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, render
+from django.urls import reverse
 from django.views import View
 from django.views.generic import TemplateView
 
 from core.http import toast_response, trigger_toast
 from core.mixins import ProjectAccessMixin, ProjectTabMixin
-from django.urls import reverse
 from ifc_processor.models import IFCEntity, IFCFile
 
-from .models import IslamLevel
+from .models import IslamLevel, QTOCache
 from .services.checks import run_all_checks
 from .services.levels import (
     apply_levels_to_ifc,
-    extract_levels_from_ifc,
     get_missing_level_hints,
     get_reference_points,
     get_storeys_from_db,
     match_storeys_to_tasks,
-    suggest_levels_from_entities,
 )
-from .services.metrics import breakdown_data, entity_metrics, non_physical_metrics, schedule_progress_metrics
+from .services.metrics import (
+    breakdown_data,
+    entity_metrics,
+    non_physical_metrics,
+    schedule_progress_metrics,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +97,7 @@ def _build_ctx(project, ifc_file) -> dict:
             logger.error("IFC checks failed for project %s: %s", project.pk, exc)
             ctx["check_results"] = {"error": str(exc), **_BLANK_CHECKS}
 
+    ctx["qto_cache"] = QTOCache.objects.filter(project=project).first()
     return ctx
 
 
@@ -115,9 +119,7 @@ def _storey_registry_ctx(project) -> dict:
     all_storeys = get_storeys_from_db(ifc_file)
     imported_map = {
         lv.ifc_storey_global_id: lv
-        for lv in IslamLevel.objects.filter(
-            project=project, ifc_storey_global_id__isnull=False
-        )
+        for lv in IslamLevel.objects.filter(project=project, ifc_storey_global_id__isnull=False)
         if lv.ifc_storey_global_id
     }
     storey_names = [s["name"] for s in all_storeys]
@@ -288,12 +290,14 @@ class LevelsView(ProjectTabMixin, TemplateView):
         )
 
         if not ifc_file:
-            ctx.update({
-                "all_storeys": [],
-                "reference_points": {},
-                "missing_hints": [],
-                "apply_diff": {"will_update": 0, "will_create": 0},
-            })
+            ctx.update(
+                {
+                    "all_storeys": [],
+                    "reference_points": {},
+                    "missing_hints": [],
+                    "apply_diff": {"will_update": 0, "will_create": 0},
+                }
+            )
             return ctx
 
         # Section 1: reference points
@@ -303,9 +307,7 @@ class LevelsView(ProjectTabMixin, TemplateView):
         all_storeys = get_storeys_from_db(ifc_file)
         imported_map = {
             lv.ifc_storey_global_id: lv
-            for lv in IslamLevel.objects.filter(
-                project=project, ifc_storey_global_id__isnull=False
-            )
+            for lv in IslamLevel.objects.filter(project=project, ifc_storey_global_id__isnull=False)
             if lv.ifc_storey_global_id
         }
         in_schedule_map = match_storeys_to_tasks([s["name"] for s in all_storeys], project)
@@ -382,7 +384,9 @@ class LevelAddView(ProjectAccessMixin, View):
             z_elevation=z,
             source=IslamLevel.Source.MANUAL,
         )
-        response = render(request, "ifc_insights/components/level_row.html", {"level": level, "project": project})
+        response = render(
+            request, "ifc_insights/components/level_row.html", {"level": level, "project": project}
+        )
         return trigger_toast(response, f"Level '{level.name}' added.")
 
 
@@ -417,7 +421,11 @@ class LevelEditView(ProjectAccessMixin, View):
             ctx = _storey_registry_ctx(project)
             response = render(request, "ifc_insights/components/storey_registry_body.html", ctx)
         else:
-            response = render(request, "ifc_insights/components/level_row.html", {"level": level, "project": project})
+            response = render(
+                request,
+                "ifc_insights/components/level_row.html",
+                {"level": level, "project": project},
+            )
         return trigger_toast(response, "Level updated.")
 
 
@@ -515,12 +523,14 @@ def _missing_activity_rows(ifc_file) -> list[dict]:
     )
     for entity in qs.iterator(chunk_size=500):
         if not _has_activity_id(entity.properties or {}):
-            rows.append({
-                "global_id": entity.global_id,
-                "ifc_type": entity.ifc_type or "—",
-                "name": entity.name or "—",
-                "level": _entity_level(entity),
-            })
+            rows.append(
+                {
+                    "global_id": entity.global_id,
+                    "ifc_type": entity.ifc_type or "—",
+                    "name": entity.name or "—",
+                    "level": _entity_level(entity),
+                }
+            )
     return rows
 
 
@@ -534,12 +544,14 @@ def _missing_cost_rows(ifc_file) -> list[dict]:
     )
     for entity in qs.iterator(chunk_size=500):
         if not _has_cost(entity.properties or {}):
-            rows.append({
-                "global_id": entity.global_id,
-                "ifc_type": entity.ifc_type or "—",
-                "name": entity.name or "—",
-                "level": _entity_level(entity),
-            })
+            rows.append(
+                {
+                    "global_id": entity.global_id,
+                    "ifc_type": entity.ifc_type or "—",
+                    "name": entity.name or "—",
+                    "level": _entity_level(entity),
+                }
+            )
     return rows
 
 
@@ -568,9 +580,11 @@ def _activity_audit_rows(ifc_file, project) -> list[dict]:
 
     try:
         from islam.scheduling.models import TaskEntityBinding  # local — avoids circular
+
         bound = set(
-            TaskEntityBinding.objects.filter(task__project=project)
-            .values_list("entity_global_id", flat=True)
+            TaskEntityBinding.objects.filter(task__project=project).values_list(
+                "entity_global_id", flat=True
+            )
         )
     except ImportError:
         bound = set()
@@ -618,9 +632,7 @@ class IssuesCountView(ProjectAccessMixin, View):
             return JsonResponse({"total": 0})
         missing_4d = missing_5d = 0
         for entity in (
-            IFCEntity.objects.filter(ifc_file=ifc_file)
-            .only("properties")
-            .iterator(chunk_size=500)
+            IFCEntity.objects.filter(ifc_file=ifc_file).only("properties").iterator(chunk_size=500)
         ):
             props = entity.properties or {}
             if not _has_activity_id(props):
@@ -693,10 +705,9 @@ class IssuesLevelsHealthView(ProjectAccessMixin, View):
         storey_rows: list[dict] = []
         if ifc_file:
             from .services.levels import get_storeys_from_db, match_storeys_to_tasks
+
             all_storeys = get_storeys_from_db(ifc_file)
-            in_schedule_map = match_storeys_to_tasks(
-                [s["name"] for s in all_storeys], project
-            )
+            in_schedule_map = match_storeys_to_tasks([s["name"] for s in all_storeys], project)
             for s in all_storeys:
                 in_sched = in_schedule_map.get(s["name"].lower(), False)
                 if s["element_count"] > 0 and in_sched:
@@ -713,6 +724,178 @@ class IssuesLevelsHealthView(ProjectAccessMixin, View):
             "ifc_insights/components/issues_levels_health.html",
             {"storey_rows": storey_rows, "project": project, "levels_url": levels_url},
         )
+
+
+# ---------------------------------------------------------------------------
+# QTO views
+# ---------------------------------------------------------------------------
+
+
+class QTOView(ProjectTabMixin, TemplateView):
+    """QTO tab — Quantity Take-Off dashboard."""
+
+    active_tab = "islam"
+
+    def get_context_data(self, **kwargs: object) -> dict:
+        ctx = super().get_context_data(**kwargs)
+        ctx["islam_subtab"] = "qto"
+        project = ctx["project"]
+        ctx["qto_cache"] = QTOCache.objects.filter(project=project).first()
+        return ctx
+
+
+class QTODataView(ProjectAccessMixin, View):
+    """JSON endpoint — QTO cache payload (excludes items_json)."""
+
+    def get(self, request, **kwargs: object) -> JsonResponse:
+        project = self.get_project()
+        cache = QTOCache.objects.filter(project=project).first()
+        if not cache:
+            return JsonResponse({"has_data": False})
+        return JsonResponse(
+            {
+                "has_data": True,
+                "total_entities": cache.total_entities,
+                "entities_with_qty": cache.entities_with_qty,
+                "coverage_pct": cache.coverage_pct,
+                "total_cost_estimate": cache.total_cost_estimate,
+                "summary": cache.summary_json,
+                "by_level": cache.by_level_json,
+                "by_material": cache.by_material_json,
+            }
+        )
+
+
+class QTORecomputeView(ProjectAccessMixin, View):
+    """HTMX POST — trigger QTO recomputation and return a toast."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        try:
+            from .services.quantities import compute_qto
+
+            result = compute_qto(project)
+        except Exception as exc:
+            logger.error("QTO recompute failed for project %s: %s", project.pk, exc)
+            return toast_response(f"Recompute failed: {exc}", "error", status=500)
+
+        if not result.get("has_data"):
+            return toast_response("No processed IFC file found.", "error", status=404)
+
+        return toast_response(
+            f"QTO recomputed — {result['total_entities']} elements, "
+            f"{result['coverage_pct']:.0f}% coverage.",
+            "success",
+        )
+
+
+class QTOUnitCostUpdateView(ProjectAccessMixin, View):
+    """HTMX POST — set unit cost for one IFC type; persist to QTOCache."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        ifc_type = request.POST.get("ifc_type", "").strip()
+        cost_raw = request.POST.get("unit_cost", "").strip()
+
+        if not ifc_type:
+            return toast_response("IFC type is required.", "error", status=400)
+
+        cache = QTOCache.objects.filter(project=project).first()
+        if not cache:
+            return toast_response("No QTO data found — recompute first.", "error", status=404)
+
+        costs = dict(cache.unit_costs_json)
+        if cost_raw:
+            try:
+                costs[ifc_type] = float(cost_raw)
+            except ValueError:
+                return toast_response("Unit cost must be a number.", "error", status=400)
+        else:
+            costs.pop(ifc_type, None)
+
+        cache.unit_costs_json = costs
+        cache.save(update_fields=["unit_costs_json"])
+        return toast_response(f"Unit cost for {ifc_type} updated.", "success")
+
+
+class QTOExportView(ProjectAccessMixin, View):
+    """GET — export QTO data to Excel (3 sheets: Summary / By Level / Detail)."""
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        from openpyxl import Workbook
+
+        project = self.get_project()
+        cache = QTOCache.objects.filter(project=project).first()
+        if not cache:
+            return HttpResponse("No QTO data found — run Recompute first.", status=404)
+
+        wb = Workbook()
+
+        ws1 = wb.active
+        ws1.title = "Summary"
+        ws1.append(
+            ["IFC Type", "Count", "Total Qty", "Unit", "Coverage %", "Unit Cost", "Total Cost"]
+        )
+        for row in cache.summary_json:
+            ws1.append(
+                [
+                    row.get("type"),
+                    row.get("count"),
+                    row.get("total_qty"),
+                    row.get("unit"),
+                    row.get("coverage_pct"),
+                    row.get("unit_cost"),
+                    row.get("total_cost"),
+                ]
+            )
+
+        ws2 = wb.create_sheet("By Level")
+        ws2.append(["Level", "Entity Count", "Estimated Cost"])
+        for row in cache.by_level_json:
+            ws2.append([row.get("level"), row.get("entity_count"), row.get("cost")])
+
+        ws3 = wb.create_sheet("Detail")
+        ws3.append(
+            [
+                "Global ID",
+                "Name",
+                "IFC Type",
+                "Level",
+                "Material",
+                "Quantity",
+                "Unit",
+                "Source",
+                "Unit Cost",
+                "Total Cost",
+            ]
+        )
+        for item in cache.items_json:
+            ws3.append(
+                [
+                    item.get("global_id"),
+                    item.get("name"),
+                    item.get("type"),
+                    item.get("level"),
+                    item.get("material"),
+                    item.get("quantity"),
+                    item.get("unit"),
+                    item.get("source"),
+                    item.get("unit_cost"),
+                    item.get("total_cost"),
+                ]
+            )
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+
+        safe_name = "".join(c if c.isalnum() or c in "-_ " else "_" for c in project.name)
+        response = HttpResponse(
+            buf.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        response["Content-Disposition"] = f'attachment; filename="qto_{safe_name}.xlsx"'
+        return response
 
 
 class IssuesExportView(ProjectAccessMixin, View):
@@ -746,17 +929,17 @@ class IssuesExportView(ProjectAccessMixin, View):
                 writer.writerow(row)
         elif section == "activity_audit":
             for row in _activity_audit_rows(ifc_file, project):
-                writer.writerow({
-                    "activity_id": row["act_id"],
-                    "activity_name": row["act_name"],
-                    "ifc_type": row["ifc_type"],
-                    "count": row["count"],
-                    "linked_to_task": "Yes" if row["linked"] else "No",
-                })
+                writer.writerow(
+                    {
+                        "activity_id": row["act_id"],
+                        "activity_name": row["act_name"],
+                        "ifc_type": row["ifc_type"],
+                        "count": row["count"],
+                        "linked_to_task": "Yes" if row["linked"] else "No",
+                    }
+                )
 
-        safe_name = "".join(
-            c if c.isalnum() or c in "-_ " else "_" for c in project.name
-        )
+        safe_name = "".join(c if c.isalnum() or c in "-_ " else "_" for c in project.name)
         response = HttpResponse(buf.getvalue(), content_type="text/csv")
         response["Content-Disposition"] = (
             f'attachment; filename="ifc_issues_{section}_{safe_name}.csv"'

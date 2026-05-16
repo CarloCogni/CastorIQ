@@ -241,9 +241,14 @@
             ctx.restore();
         }
 
-        note.textContent = d.use_cost
-            ? "Values based on task costs."
-            : "Values based on task durations (no costs in schedule).";
+        const _basisLabels = {
+            "schedule costs": "Cost basis: schedule task costs.",
+            "QTO estimates": "Cost basis: QTO quantity estimates (no schedule costs set).",
+            "schedule costs + QTO estimates": "Cost basis: schedule costs supplemented with QTO estimates for uncosted tasks.",
+            "task durations": "Cost basis: task durations — no schedule costs or QTO data available.",
+        };
+        note.textContent = _basisLabels[d.cost_basis] ||
+            (d.use_cost ? "Cost basis: task costs." : "Cost basis: task durations.");
         note.classList.remove("d-none");
     }
 
