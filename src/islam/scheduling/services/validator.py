@@ -49,7 +49,7 @@ def validate_schedule(tasks: list[dict], project_name: str = "") -> dict:
         "2. Are there any obvious anomalies (overlapping dates, tasks lasting > 5 years, "
         "missing activity codes on all tasks, etc.)?\n\n"
         "Respond ONLY with a JSON object: "
-        "{\"looks_valid\": true/false, \"summary\": \"...\", \"anomalies\": [\"...\"]}"
+        '{"looks_valid": true/false, "summary": "...", "anomalies": ["..."]}'
     )
 
     try:

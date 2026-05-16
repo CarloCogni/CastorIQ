@@ -19,38 +19,53 @@
 
     {% else %}
 
-    <!-- Filter bar -->
+    <!-- Filter bar — all filters load inline via HTMX, never navigate away -->
     <ul class="nav nav-pills mb-3" style="font-size:0.82rem;">
         <li class="nav-item">
             <a class="nav-link py-1 px-2 {% if filter_by == 'all' %}active{% endif %}"
-               href="{% url 'islam:review' project.pk %}?filter=all">
+               hx-get="{% url 'islam:review' project.pk %}?filter=all"
+               hx-target="#link-review-content"
+               hx-swap="outerHTML"
+               style="cursor:pointer;">
                 All <span class="badge bg-secondary ms-1">{{ summary.total }}</span>
             </a>
         </li>
         <li class="nav-item">
             <a class="nav-link py-1 px-2 {% if filter_by == 'needs_review' %}active{% endif %}"
-               href="{% url 'islam:review' project.pk %}?filter=needs_review">
+               hx-get="{% url 'islam:review' project.pk %}?filter=needs_review"
+               hx-target="#link-review-content"
+               hx-swap="outerHTML"
+               style="cursor:pointer;">
                 Needs Review
                 {% if summary.needs_review %}<span class="badge bg-warning text-dark ms-1">{{ summary.needs_review }}</span>{% endif %}
             </a>
         </li>
         <li class="nav-item">
             <a class="nav-link py-1 px-2 {% if filter_by == 'auto_accepted' %}active{% endif %}"
-               href="{% url 'islam:review' project.pk %}?filter=auto_accepted">
+               hx-get="{% url 'islam:review' project.pk %}?filter=auto_accepted"
+               hx-target="#link-review-content"
+               hx-swap="outerHTML"
+               style="cursor:pointer;">
                 Auto-accepted
                 {% if summary.auto_accepted %}<span class="badge bg-success ms-1">{{ summary.auto_accepted }}</span>{% endif %}
             </a>
         </li>
         <li class="nav-item">
             <a class="nav-link py-1 px-2 {% if filter_by == 'unlinked' %}active{% endif %}"
-               href="{% url 'islam:review' project.pk %}?filter=unlinked">
+               hx-get="{% url 'islam:review' project.pk %}?filter=unlinked"
+               hx-target="#link-review-content"
+               hx-swap="outerHTML"
+               style="cursor:pointer;">
                 Unlinked
                 {% if summary.unlinked_tasks %}<span class="badge bg-danger ms-1">{{ summary.unlinked_tasks }}</span>{% endif %}
             </a>
         </li>
         <li class="nav-item">
             <a class="nav-link py-1 px-2 {% if filter_by == 'non_physical' %}active{% endif %}"
-               href="{% url 'islam:review' project.pk %}?filter=non_physical">
+               hx-get="{% url 'islam:review' project.pk %}?filter=non_physical"
+               hx-target="#link-review-content"
+               hx-swap="outerHTML"
+               style="cursor:pointer;">
                 Non-Physical
                 {% if summary.non_physical_count %}<span class="badge bg-secondary ms-1">{{ summary.non_physical_count }}</span>{% endif %}
             </a>

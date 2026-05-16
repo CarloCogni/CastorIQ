@@ -34,7 +34,7 @@ def auto_match_tasks(tasks: list, ifc_entities: list) -> list[dict]:
         f"IFC Entities (JSON, first 200):\n{json.dumps(entity_names[:200], ensure_ascii=False)}\n\n"
         "For each task, list the IFC entity IDs that best match by name similarity.\n"
         "Return ONLY a JSON array. Each item: "
-        "{\"task_id\": \"...\", \"entity_ids\": [\"...\"], \"confidence\": 0.0}\n"
+        '{"task_id": "...", "entity_ids": ["..."], "confidence": 0.0}\n'
         "confidence range: 0.0 = no match, 1.0 = exact. Include only matches with confidence >= 0.3."
     )
 
@@ -87,13 +87,15 @@ def param_match_tasks(tasks: list, ifc_entities: list, param_name: str) -> list[
     for task in tasks:
         tid = str(task.pk)
         entity_ids = match_map.get(tid, [])
-        results.append({
-            "task_id": tid,
-            "task_name": task.name,
-            "entity_ids": entity_ids,
-            "entity_names": match_names.get(tid, []),
-            "confidence": 1.0 if entity_ids else 0.0,
-        })
+        results.append(
+            {
+                "task_id": tid,
+                "task_name": task.name,
+                "entity_ids": entity_ids,
+                "entity_names": match_names.get(tid, []),
+                "confidence": 1.0 if entity_ids else 0.0,
+            }
+        )
 
     return results
 
@@ -120,6 +122,7 @@ def apply_matches(task_model_class, matches: list[dict]) -> dict[str, int]:
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _read_property(entity: IFCEntity, prop_name: str) -> str | None:
     """Read a named property from entity.properties flat JSON blob.
 
@@ -140,7 +143,7 @@ def _read_property(entity: IFCEntity, prop_name: str) -> str | None:
             return str(val).strip() if val is not None else None
         # Match just the property-name portion after the first dot
         dot = key.find(".")
-        if dot != -1 and key[dot + 1:].strip().lower() == needle:
+        if dot != -1 and key[dot + 1 :].strip().lower() == needle:
             return str(val).strip() if val is not None else None
     return None
 
@@ -148,7 +151,5 @@ def _read_property(entity: IFCEntity, prop_name: str) -> str | None:
 def _enrich_matches(raw_matches: list[dict], entity_index: dict[str, str]) -> list[dict]:
     """Add entity_names field to LLM match results."""
     for match in raw_matches:
-        match["entity_names"] = [
-            entity_index.get(eid, eid) for eid in match.get("entity_ids", [])
-        ]
+        match["entity_names"] = [entity_index.get(eid, eid) for eid in match.get("entity_ids", [])]
     return raw_matches

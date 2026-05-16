@@ -1,4 +1,4 @@
-<!-- scheduling/tabs/simulate.html — 4D date slider simulation -->
+<!-- scheduling/tabs/simulate.html — 4D Simulate: embedded viewer + postMessage timeline -->
 
 {% if not tasks %}
 <div class="d-flex flex-column align-items-center justify-content-center text-secondary py-5">
@@ -11,149 +11,303 @@
 
 {% else %}
 
-<div class="d-flex flex-column gap-4">
+<div id="sim-root" class="d-flex flex-column gap-2">
 
-    <!-- Instructions -->
-    <div class="alert alert-info py-2" style="font-size:0.85rem;">
-        <i class="bi bi-info-circle me-1"></i>
-        Drag the slider to simulate the construction sequence in the 3D viewer.
-        Switch to the <strong>3D Viewer</strong> sub-tab to see the colour changes.
-    </div>
-
-    <!-- Date slider -->
-    <div class="card border-0 bg-body-secondary p-4">
-        <div class="d-flex justify-content-between mb-2 text-secondary" style="font-size:0.82rem;">
-            <span>{{ gantt_min_date }}</span>
-            <span id="sim-current-date" class="fw-bold text-body fs-5"></span>
-            <span>{{ gantt_max_date }}</span>
-        </div>
-        <input type="range"
-               id="sim-slider"
-               class="form-range"
-               data-min="{{ gantt_min_date|date:'U' }}000"
-               data-max="{{ gantt_max_date|date:'U' }}000"
-               style="width:100%;">
-        <div class="d-flex justify-content-center mt-3 gap-3">
-            <button id="sim-play-btn" class="btn btn-primary btn-sm">
-                <i class="bi bi-play-fill me-1"></i>Play
+    <!-- Color scheme toolbar -->
+    <div class="d-flex align-items-center gap-2 flex-wrap" style="font-size:0.82rem;">
+        <span class="text-secondary fw-medium me-1">Color by:</span>
+        <div class="btn-group btn-group-sm" id="sim-colorby-group">
+            <button class="btn btn-primary btn-sm" data-mode="timeline">
+                <i class="bi bi-calendar-week me-1"></i>4D Timeline
             </button>
-            <button id="sim-pause-btn" class="btn btn-outline-secondary btn-sm d-none">
-                <i class="bi bi-pause-fill me-1"></i>Pause
+            <button class="btn btn-outline-secondary btn-sm" data-mode="level">
+                <i class="bi bi-layers me-1"></i>Level
             </button>
-            <button id="sim-reset-btn" class="btn btn-outline-secondary btn-sm">
-                <i class="bi bi-skip-backward-fill me-1"></i>Reset
+            <button class="btn btn-outline-secondary btn-sm" data-mode="element_type">
+                <i class="bi bi-bounding-box me-1"></i>Type
+            </button>
+            <button class="btn btn-outline-secondary btn-sm" data-mode="material">
+                <i class="bi bi-palette me-1"></i>Material
             </button>
         </div>
+        <button class="btn btn-sm btn-outline-secondary ms-auto" id="sim-reset-view-btn" title="Reset colours">
+            <i class="bi bi-arrow-counterclockwise"></i>
+        </button>
     </div>
 
-    <!-- Legend -->
-    <div class="d-flex gap-4 flex-wrap" style="font-size:0.85rem;">
-        <div class="d-flex align-items-center gap-2"><span class="sim-swatch" style="background:#22c55e;"></span> Active</div>
-        <div class="d-flex align-items-center gap-2"><span class="sim-swatch" style="background:#3b82f6;"></span> Complete</div>
-        <div class="d-flex align-items-center gap-2"><span class="sim-swatch" style="background:#94a3b8;"></span> Pending</div>
-        <div class="d-flex align-items-center gap-2"><span class="sim-swatch" style="background:#f59e0b;"></span> Delayed</div>
+    <!-- Viewer iframe + loading overlay -->
+    <div style="position:relative; height:60vh; border:1px solid var(--bs-border-color); border-radius:6px; overflow:hidden; background:#111;">
+        <iframe id="sim-viewer-iframe"
+                src="{% url 'islam:viewer_embed' project.pk %}"
+                style="width:100%; height:100%; border:0;"
+                title="3D IFC Viewer">
+        </iframe>
+        <div id="sim-iframe-loading"
+             style="position:absolute; inset:0; background:#111; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#94a3b8; font-size:0.85rem; font-family:system-ui,sans-serif; z-index:10;">
+            <div style="width:34px; height:34px; border:3px solid #1e293b; border-top-color:#3b82f6; border-radius:50%; animation:sim-spin 0.8s linear infinite; margin-bottom:12px;"></div>
+            <span>Loading 3D viewer…</span>
+        </div>
     </div>
 
-    <!-- Summary at current date -->
-    <div id="sim-summary" class="row g-2" style="font-size:0.82rem;">
-        <div class="col-3"><div class="card border-0 bg-body-secondary text-center py-2"><div id="sim-count-active" class="fw-bold fs-5 text-success">0</div><div class="text-secondary">Active</div></div></div>
-        <div class="col-3"><div class="card border-0 bg-body-secondary text-center py-2"><div id="sim-count-complete" class="fw-bold fs-5 text-primary">0</div><div class="text-secondary">Complete</div></div></div>
-        <div class="col-3"><div class="card border-0 bg-body-secondary text-center py-2"><div id="sim-count-pending" class="fw-bold fs-5 text-secondary">0</div><div class="text-secondary">Pending</div></div></div>
-        <div class="col-3"><div class="card border-0 bg-body-secondary text-center py-2"><div id="sim-count-delayed" class="fw-bold fs-5 text-warning">0</div><div class="text-secondary">Delayed</div></div></div>
+    <!-- 4D Timeline controls (visible when mode = timeline) -->
+    <div id="sim-timeline-section" class="border rounded px-3 py-2" style="font-size:0.82rem; background:var(--bs-body-bg);">
+
+        <!-- Row 1: playback controls + date label -->
+        <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+            <button id="sim-to-start-btn" class="btn btn-sm btn-outline-secondary" title="Jump to start">
+                <i class="bi bi-skip-start-fill"></i>
+            </button>
+            <button id="sim-prev-btn" class="btn btn-sm btn-outline-secondary" title="Previous week">
+                <i class="bi bi-skip-backward-fill"></i>
+            </button>
+            <button id="sim-play-btn" class="btn btn-sm btn-primary" title="Play">
+                <i class="bi bi-play-fill"></i>
+            </button>
+            <button id="sim-pause-btn" class="btn btn-sm btn-outline-secondary d-none" title="Pause">
+                <i class="bi bi-pause-fill"></i>
+            </button>
+            <button id="sim-next-btn" class="btn btn-sm btn-outline-secondary" title="Next week">
+                <i class="bi bi-skip-forward-fill"></i>
+            </button>
+            <select id="sim-speed-select" class="form-select form-select-sm" style="width:auto; font-size:0.78rem;">
+                <option value="0.5">0.5×</option>
+                <option value="1" selected>1×</option>
+                <option value="2">2×</option>
+                <option value="4">4×</option>
+            </select>
+            <span id="sim-current-date" class="fw-bold ms-1" style="min-width:130px; font-size:0.9rem;"></span>
+        </div>
+
+        <!-- Row 2: range slider -->
+        <div class="d-flex align-items-center gap-2 mb-2">
+            <span id="sim-min-date" class="text-secondary" style="font-size:0.75rem; white-space:nowrap;"></span>
+            <input id="sim-slider" type="range" class="form-range flex-grow-1" min="0" value="0" style="min-width:100px;">
+            <span id="sim-max-date" class="text-secondary" style="font-size:0.75rem; white-space:nowrap;"></span>
+        </div>
+
+        <!-- Row 3: progress stats -->
+        <div class="d-flex align-items-center gap-3 flex-wrap" style="font-size:0.77rem;">
+            <div class="d-flex align-items-center gap-1">
+                <span style="width:9px;height:9px;border-radius:2px;background:#10B981;display:inline-block;flex-shrink:0;"></span>
+                <span id="sim-stat-complete" class="fw-semibold">0</span>
+                <span class="text-secondary">Complete</span>
+            </div>
+            <div class="d-flex align-items-center gap-1">
+                <span style="width:9px;height:9px;border-radius:2px;background:#F59E0B;display:inline-block;flex-shrink:0;"></span>
+                <span id="sim-stat-in-progress" class="fw-semibold">0</span>
+                <span class="text-secondary">In Progress</span>
+            </div>
+            <div class="d-flex align-items-center gap-1">
+                <span style="width:9px;height:9px;border-radius:2px;background:#9CA3AF;display:inline-block;flex-shrink:0;"></span>
+                <span id="sim-stat-not-started" class="fw-semibold">0</span>
+                <span class="text-secondary">Not Started</span>
+            </div>
+            <div class="d-flex align-items-center gap-1 ms-2">
+                <span id="sim-stat-pct" class="fw-bold text-success">0%</span>
+                <span class="text-secondary">complete</span>
+            </div>
+            <span id="sim-no-tasks-note" class="d-none text-secondary ms-auto" style="font-size:0.75rem;">
+                <i class="bi bi-info-circle me-1"></i>No schedule linked — import a schedule to enable timeline.
+            </span>
+        </div>
     </div>
 
 </div>
 
 <style>
-.sim-swatch { width: 14px; height: 14px; border-radius: 3px; display: inline-block; flex-shrink: 0; }
+@keyframes sim-spin { to { transform: rotate(360deg); } }
 </style>
 
 <script>
 (function () {
-    const GANTT_URL = "{% url 'islam:gantt_data' project.pk %}";
-    const slider    = document.getElementById("sim-slider");
-    const dateLabel = document.getElementById("sim-current-date");
-    const playBtn   = document.getElementById("sim-play-btn");
-    const pauseBtn  = document.getElementById("sim-pause-btn");
-    const resetBtn  = document.getElementById("sim-reset-btn");
+    const TIMELINE_URL = "{% url 'islam:viewer_timeline' project.pk %}";
 
-    let tasks    = [];
-    let playTimer = null;
+    const iframe       = document.getElementById("sim-viewer-iframe");
+    const iframeOvl    = document.getElementById("sim-iframe-loading");
+    const colorbyBtns  = document.querySelectorAll("#sim-colorby-group button");
+    const tlSection    = document.getElementById("sim-timeline-section");
 
-    const minMs = parseInt(slider.dataset.min);
-    const maxMs = parseInt(slider.dataset.max);
-    slider.min  = minMs;
-    slider.max  = maxMs;
-    slider.step = 86400000; // 1 day
-    slider.value = minMs;
+    let viewerReady      = false;
+    let pendingMsg       = null;
+    let currentMode      = "timeline";
+    let timelineIntervals = [];
+    let timelineNoTask   = [];
+    let timelineTimer    = null;
+    let timelineSpeed    = 1;
 
-    async function init() {
-        const resp = await fetch(GANTT_URL);
-        const data = await resp.json();
-        tasks = (data.tasks || []).map(t => ({
-            ...t,
-            startMs: new Date(t.start).getTime(),
-            endMs:   new Date(t.end).getTime(),
-        }));
-        update(minMs);
+    // ── postMessage helpers ──────────────────────────────────────────
+
+    function sendToViewer(msg) {
+        if (!viewerReady) { pendingMsg = msg; return; }
+        iframe.contentWindow.postMessage(msg, "*");
     }
 
-    function update(ms) {
-        const d = new Date(ms);
-        dateLabel.textContent = d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+    window.addEventListener("message", (e) => {
+        if (e.source !== iframe.contentWindow) return;
+        const msg = e.data;
+        if (!msg) return;
 
-        const active = [], complete = [], pending = [], delayed = [];
-        tasks.forEach(t => {
-            const ids = t.entity_global_ids || [];
-            if (!ids.length) return;
-            if (t.endMs < ms) {
-                complete.push(...ids);
-            } else if (t.startMs <= ms) {
-                if (t.status === "delayed") delayed.push(...ids);
-                else active.push(...ids);
+        if (msg.type === "castor:viewer-ready") {
+            viewerReady = true;
+            iframeOvl.style.display = "none";
+            if (pendingMsg) {
+                iframe.contentWindow.postMessage(pendingMsg, "*");
+                pendingMsg = null;
+            }
+            if (currentMode === "timeline" && timelineIntervals.length) {
+                _applyInterval(0);
+            }
+        }
+        if (msg.type === "castor:viewer-error") {
+            iframeOvl.innerHTML =
+                `<span style="color:#ef4444;">&#9888; ${msg.message || "Viewer error"}</span>`;
+        }
+    });
+
+    // ── Color by toolbar ─────────────────────────────────────────────
+
+    colorbyBtns.forEach(btn => {
+        btn.addEventListener("click", () => {
+            colorbyBtns.forEach(b => {
+                b.classList.remove("active", "btn-primary");
+                b.classList.add("btn-outline-secondary");
+            });
+            btn.classList.remove("btn-outline-secondary");
+            btn.classList.add("active", "btn-primary");
+
+            const mode = btn.dataset.mode;
+            currentMode = mode;
+            _pauseTimeline();
+
+            if (mode === "timeline") {
+                tlSection.style.display = "";
+                if (timelineIntervals.length) {
+                    _applyInterval(parseInt(document.getElementById("sim-slider").value));
+                }
             } else {
-                pending.push(...ids);
+                tlSection.style.display = "none";
+                sendToViewer({ type: "castor:colorby", by: mode });
             }
         });
+    });
 
-        document.dispatchEvent(new CustomEvent("castor:simulate", {
-            detail: { active, complete, pending, delayed }
-        }));
+    document.getElementById("sim-reset-view-btn").addEventListener("click", () => {
+        sendToViewer({ type: "castor:reset" });
+    });
 
-        document.getElementById("sim-count-active").textContent   = active.length;
-        document.getElementById("sim-count-complete").textContent = complete.length;
-        document.getElementById("sim-count-pending").textContent  = pending.length;
-        document.getElementById("sim-count-delayed").textContent  = delayed.length;
+    // ── Timeline data ────────────────────────────────────────────────
+
+    async function loadTimeline() {
+        try {
+            const resp = await fetch(TIMELINE_URL);
+            if (!resp.ok) return;
+            const data = await resp.json();
+
+            if (!data.has_tasks) {
+                document.getElementById("sim-no-tasks-note").classList.remove("d-none");
+                document.getElementById("sim-slider").disabled = true;
+                return;
+            }
+
+            timelineIntervals = data.intervals || [];
+            timelineNoTask    = data.no_task   || [];
+            if (!timelineIntervals.length) return;
+
+            document.getElementById("sim-min-date").textContent = data.project_start || "";
+            document.getElementById("sim-max-date").textContent = data.project_end   || "";
+
+            const slider = document.getElementById("sim-slider");
+            slider.max   = timelineIntervals.length - 1;
+            slider.value = 0;
+
+            if (viewerReady && currentMode === "timeline") {
+                _applyInterval(0);
+            }
+        } catch (e) {
+            console.warn("[simulate] Timeline load failed:", e);
+        }
     }
 
-    slider.addEventListener("input", () => update(parseInt(slider.value)));
+    // ── Apply interval ───────────────────────────────────────────────
 
-    playBtn.addEventListener("click", () => {
-        playBtn.classList.add("d-none");
-        pauseBtn.classList.remove("d-none");
-        playTimer = setInterval(() => {
-            const next = parseInt(slider.value) + 86400000 * 3; // 3 days per tick
-            if (next > maxMs) { clearInterval(playTimer); pauseBtn.classList.add("d-none"); playBtn.classList.remove("d-none"); return; }
-            slider.value = next;
-            update(next);
-        }, 120);
+    function _applyInterval(idx) {
+        if (!timelineIntervals.length) return;
+        const iv = timelineIntervals[Math.min(idx, timelineIntervals.length - 1)];
+        const { not_started = [], in_progress = [], complete = [] } = iv.entities || {};
+
+        sendToViewer({
+            type: "castor:timeline-colors",
+            not_started,
+            in_progress,
+            complete,
+            no_task: timelineNoTask,
+        });
+
+        const label = new Date(iv.date + "T00:00:00").toLocaleDateString(undefined, {
+            year: "numeric", month: "short", day: "numeric",
+        });
+        document.getElementById("sim-current-date").textContent = label;
+        document.getElementById("sim-slider").value = idx;
+
+        const s   = iv.stats || {};
+        const tot = s.total || 1;
+        const cmp = s.complete    || 0;
+        const inp = s.in_progress || 0;
+        const ns  = s.not_started || 0;
+        document.getElementById("sim-stat-complete").textContent    = cmp.toLocaleString();
+        document.getElementById("sim-stat-in-progress").textContent = inp.toLocaleString();
+        document.getElementById("sim-stat-not-started").textContent = ns.toLocaleString();
+        document.getElementById("sim-stat-pct").textContent         = Math.round((cmp / tot) * 100) + "%";
+    }
+
+    // ── Playback controls ────────────────────────────────────────────
+
+    function _pauseTimeline() {
+        clearInterval(timelineTimer);
+        timelineTimer = null;
+        document.getElementById("sim-pause-btn").classList.add("d-none");
+        document.getElementById("sim-play-btn").classList.remove("d-none");
+    }
+
+    function _playTimeline() {
+        const slider = document.getElementById("sim-slider");
+        timelineTimer = setInterval(() => {
+            const next = parseInt(slider.value) + 1;
+            if (next > parseInt(slider.max)) { _pauseTimeline(); return; }
+            _applyInterval(next);
+        }, 1500 / timelineSpeed);
+    }
+
+    document.getElementById("sim-play-btn").addEventListener("click", () => {
+        document.getElementById("sim-play-btn").classList.add("d-none");
+        document.getElementById("sim-pause-btn").classList.remove("d-none");
+        _playTimeline();
+    });
+    document.getElementById("sim-pause-btn").addEventListener("click", _pauseTimeline);
+
+    document.getElementById("sim-prev-btn").addEventListener("click", () => {
+        const s = document.getElementById("sim-slider");
+        _applyInterval(Math.max(0, parseInt(s.value) - 1));
+    });
+    document.getElementById("sim-next-btn").addEventListener("click", () => {
+        const s = document.getElementById("sim-slider");
+        _applyInterval(Math.min(parseInt(s.max), parseInt(s.value) + 1));
+    });
+    document.getElementById("sim-to-start-btn").addEventListener("click", () => {
+        _pauseTimeline();
+        _applyInterval(0);
     });
 
-    pauseBtn.addEventListener("click", () => {
-        clearInterval(playTimer);
-        pauseBtn.classList.add("d-none");
-        playBtn.classList.remove("d-none");
+    document.getElementById("sim-speed-select").addEventListener("change", (e) => {
+        timelineSpeed = parseFloat(e.target.value);
+        if (timelineTimer) { _pauseTimeline(); _playTimeline(); }
     });
 
-    resetBtn.addEventListener("click", () => {
-        clearInterval(playTimer);
-        pauseBtn.classList.add("d-none");
-        playBtn.classList.remove("d-none");
-        slider.value = minMs;
-        update(minMs);
+    document.getElementById("sim-slider").addEventListener("input", (e) => {
+        _applyInterval(parseInt(e.target.value));
     });
 
-    init();
+    loadTimeline();
 }());
 </script>
 

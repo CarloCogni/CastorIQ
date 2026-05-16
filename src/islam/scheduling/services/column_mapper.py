@@ -17,7 +17,16 @@ import openpyxl
 
 logger = logging.getLogger(__name__)
 
-CANONICAL_FIELDS = ["name", "start_date", "end_date", "activity_code", "status", "color", "cost", "activity_type"]
+CANONICAL_FIELDS = [
+    "name",
+    "start_date",
+    "end_date",
+    "activity_code",
+    "status",
+    "color",
+    "cost",
+    "activity_type",
+]
 CANONICAL_LABELS = {
     "name": "Task Name *",
     "start_date": "Start Date *",
@@ -61,7 +70,9 @@ def extract_columns(file_obj, filename: str) -> dict:
     raise ValueError(f"Unsupported file type for column mapping: {filename}")
 
 
-def apply_mapping(headers: list[str], raw_rows: list[list[str]], column_mapping: dict, source: str) -> list[dict]:
+def apply_mapping(
+    headers: list[str], raw_rows: list[list[str]], column_mapping: dict, source: str
+) -> list[dict]:
     """Apply a user-chosen column mapping to raw rows and return task dicts.
 
     Args:
@@ -91,6 +102,7 @@ def apply_mapping(headers: list[str], raw_rows: list[list[str]], column_mapping:
 
     tasks = []
     for row in raw_rows:
+
         def cell(field: str) -> str:
             idx = col_idx(field)
             if idx is None or idx >= len(row):
@@ -115,18 +127,20 @@ def apply_mapping(headers: list[str], raw_rows: list[list[str]], column_mapping:
         if not color.startswith("#"):
             color = "#3b82f6"
 
-        tasks.append({
-            "name": name,
-            "start_date": start,
-            "end_date": end,
-            "status": status,
-            "activity_code": cell("activity_code"),
-            "color": color,
-            "source": source,
-            "description": "",
-            "cost": _parse_cost(cell("cost")),
-            "activity_type": cell("activity_type"),
-        })
+        tasks.append(
+            {
+                "name": name,
+                "start_date": start,
+                "end_date": end,
+                "status": status,
+                "activity_code": cell("activity_code"),
+                "color": color,
+                "source": source,
+                "description": "",
+                "cost": _parse_cost(cell("cost")),
+                "activity_type": cell("activity_type"),
+            }
+        )
 
     return tasks
 
@@ -135,6 +149,7 @@ def apply_mapping(headers: list[str], raw_rows: list[list[str]], column_mapping:
 # Internal readers
 # ---------------------------------------------------------------------------
 
+
 def _from_excel(file_obj, filename: str) -> dict:
     wb = openpyxl.load_workbook(file_obj, read_only=True, data_only=True)
     ws = wb.active
@@ -142,11 +157,8 @@ def _from_excel(file_obj, filename: str) -> dict:
     if not rows:
         raise ValueError("Spreadsheet is empty.")
 
-    headers = [str(c).strip() if c is not None else f"Col{i+1}" for i, c in enumerate(rows[0])]
-    raw_rows = [
-        [str(c).strip() if c is not None else "" for c in row]
-        for row in rows[1:]
-    ]
+    headers = [str(c).strip() if c is not None else f"Col{i + 1}" for i, c in enumerate(rows[0])]
+    raw_rows = [[str(c).strip() if c is not None else "" for c in row] for row in rows[1:]]
     return {
         "headers": headers,
         "sample_rows": raw_rows[:3],

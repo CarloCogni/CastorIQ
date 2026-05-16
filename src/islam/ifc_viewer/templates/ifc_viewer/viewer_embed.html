@@ -1,0 +1,306 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Castor Viewer</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; background: #111; overflow: hidden; }
+#embed-container { width: 100%; height: 100%; position: relative; }
+#embed-canvas-wrap { width: 100%; height: 100%; }
+#embed-loading {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: #111; color: #94a3b8;
+    font-family: system-ui, sans-serif; font-size: 0.85rem;
+    z-index: 10;
+}
+.embed-spinner {
+    width: 32px; height: 32px;
+    border: 3px solid #1e293b; border-top-color: #3b82f6;
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+    margin-bottom: 12px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+#embed-error {
+    position: absolute; inset: 0;
+    display: none; flex-direction: column; align-items: center; justify-content: center;
+    background: #111; color: #ef4444;
+    font-family: system-ui, sans-serif; font-size: 0.85rem;
+    text-align: center; padding: 16px;
+    z-index: 10;
+}
+#embed-legend {
+    position: absolute; bottom: 12px; left: 12px;
+    background: rgba(0,0,0,0.70); color: #e2e8f0;
+    padding: 8px 10px; border-radius: 6px;
+    font-family: system-ui, sans-serif; font-size: 0.72rem;
+    display: none; z-index: 5; line-height: 1.75;
+    pointer-events: none;
+}
+.leg-row { display: flex; align-items: center; gap: 6px; }
+.leg-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+</style>
+</head>
+<body>
+<div id="embed-container">
+    <div id="embed-canvas-wrap"></div>
+
+    <div id="embed-loading">
+        <div class="embed-spinner"></div>
+        <span id="embed-loading-msg">Loading IFC model…</span>
+    </div>
+
+    <div id="embed-error">
+        <span style="font-size:1.8rem; margin-bottom:8px;">&#9888;</span>
+        <span id="embed-error-msg">Failed to load model.</span>
+    </div>
+
+    <div id="embed-legend"></div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three":               "{% static 'vendor/three/build/three.module.js' %}",
+    "@thatopen/fragments": "{% static 'vendor/thatopen-fragments/dist/index.min.mjs' %}",
+    "web-ifc":             "{% static 'vendor/web-ifc/web-ifc-api.js' %}?v=2"
+  }
+}
+</script>
+
+<script type="module">
+import * as OBC   from "{% static 'vendor/thatopen-components/dist/index.min.mjs' %}";
+import * as THREE from "three";
+
+{% if ifc_file_url %}
+const IFC_URL      = "{{ ifc_file_url }}";
+const FRAG_URL     = "{% url 'islam:viewer_fragments' project.pk %}";
+const COLORMAP_URL = "{% url 'islam:viewer_colormap' project.pk %}";
+const CSRF_TOKEN   = "{{ csrf_token }}";
+
+const container = document.getElementById("embed-canvas-wrap");
+const loadingEl = document.getElementById("embed-loading");
+const loadMsg   = document.getElementById("embed-loading-msg");
+const errorEl   = document.getElementById("embed-error");
+const errorMsg  = document.getElementById("embed-error-msg");
+const legendEl  = document.getElementById("embed-legend");
+
+let world = null;
+let model = null;
+const globalIdIndex = new Map();
+const fragmentIndex = new Map();
+
+const C = {
+    tl_complete:    new THREE.Color(0.063, 0.722, 0.506),
+    tl_in_progress: new THREE.Color(0.961, 0.620, 0.043),
+    tl_not_started: new THREE.Color(0.612, 0.639, 0.686),
+    tl_no_task:     new THREE.Color(0.820, 0.839, 0.863),
+};
+
+// ── 1. Init ──────────────────────────────────────────────────────────
+
+async function init() {
+    try {
+        loadMsg.textContent = "Initialising renderer…";
+        const components = new OBC.Components();
+        const worlds = components.get(OBC.Worlds);
+        world = worlds.create();
+        world.scene    = new OBC.SimpleScene(components);
+        world.renderer = new OBC.SimpleRenderer(components, container);
+        world.camera   = new OBC.SimpleCamera(components);
+        components.init();
+        world.scene.setup();
+
+        loadMsg.textContent = "Checking geometry cache…";
+        const fragResp = await fetch(FRAG_URL);
+
+        if (fragResp.ok) {
+            loadMsg.textContent = "Loading cached model…";
+            const fragData = new Uint8Array(await fragResp.arrayBuffer());
+            const fragmentsManager = components.get(OBC.FragmentsManager);
+            model = fragmentsManager.load(fragData);
+            world.scene.three.add(model);
+            buildIndex();
+            if (globalIdIndex.size === 0) {
+                world.scene.three.remove(model);
+                globalIdIndex.clear();
+                fragmentIndex.clear();
+                model = null;
+            }
+        }
+
+        if (!model) {
+            loadMsg.textContent = "Initialising WASM…";
+            const ifcLoader = components.get(OBC.IfcLoader);
+            ifcLoader.settings.wasm = {
+                path: "{% static 'vendor/web-ifc/' %}",
+                absolute: true,
+            };
+            await ifcLoader.setup();
+
+            loadMsg.textContent = "Fetching IFC file…";
+            const resp = await fetch(IFC_URL);
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+            loadMsg.textContent = "Parsing IFC model…";
+            const data = new Uint8Array(await resp.arrayBuffer());
+            model = await ifcLoader.load(data);
+            world.scene.three.add(model);
+            _saveFragments(components, model);
+            buildIndex();
+        }
+
+        loadingEl.style.display = "none";
+        window.parent.postMessage({ type: "castor:viewer-ready" }, "*");
+
+    } catch (err) {
+        console.error("[embed] IFC init failed:", err);
+        loadingEl.style.display = "none";
+        errorMsg.textContent = `Failed to load model: ${err.message}`;
+        errorEl.style.display = "flex";
+        window.parent.postMessage({ type: "castor:viewer-error", message: err.message }, "*");
+    }
+}
+
+// ── 1b. Fragment cache save ──────────────────────────────────────────
+
+async function _saveFragments(components, model) {
+    try {
+        const fragmentsManager = components.get(OBC.FragmentsManager);
+        const fragBinary = fragmentsManager.export(model);
+        const resp = await fetch(FRAG_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/octet-stream", "X-CSRFToken": CSRF_TOKEN },
+            body: fragBinary,
+        });
+        if (!resp.ok) console.warn("[embed] Fragment cache POST returned", resp.status);
+    } catch (e) {
+        console.warn("[embed] Fragment cache save failed:", e);
+    }
+}
+
+// ── 2. GlobalId index ────────────────────────────────────────────────
+
+function buildIndex() {
+    if (!model) return;
+    try {
+        for (const fragment of model.items) {
+            for (const expressId of fragment.ids) {
+                fragmentIndex.set(expressId, fragment);
+            }
+        }
+        for (const [gid, expressId] of model.globalToExpressIDs) {
+            globalIdIndex.set(gid, expressId);
+        }
+    } catch (e) {
+        console.warn("[embed] GlobalId index build failed:", e);
+    }
+}
+
+// ── 3. Colour helpers ────────────────────────────────────────────────
+
+function colorByGlobalIds(globalIds, color) {
+    for (const gid of globalIds) {
+        const expressId = globalIdIndex.get(gid);
+        if (expressId === undefined) continue;
+        const fragment = fragmentIndex.get(expressId);
+        if (!fragment) continue;
+        fragment.setColor(color, [expressId]);
+    }
+}
+
+function resetAllColors() {
+    if (!model) return;
+    for (const fragment of model.items) fragment.resetColor();
+}
+
+function makeColor(hex) {
+    return new THREE.Color(hex);
+}
+
+// ── 4. postMessage API ───────────────────────────────────────────────
+
+window.addEventListener("message", async (e) => {
+    const msg = e.data;
+    if (!msg || !msg.type) return;
+
+    if (msg.type === "castor:timeline-colors") {
+        if (!model) return;
+        const { not_started = [], in_progress = [], complete = [], no_task = [] } = msg;
+        resetAllColors();
+        colorByGlobalIds(no_task,     C.tl_no_task);
+        colorByGlobalIds(not_started, C.tl_not_started);
+        colorByGlobalIds(in_progress, C.tl_in_progress);
+        colorByGlobalIds(complete,    C.tl_complete);
+        _showTimelineLegend();
+        return;
+    }
+
+    if (msg.type === "castor:colorby") {
+        if (!model) return;
+        const by = msg.by;
+        if (!by || by === "none") {
+            resetAllColors();
+            legendEl.style.display = "none";
+            return;
+        }
+        try {
+            const resp = await fetch(`${COLORMAP_URL}?by=${by}`);
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const colormap = data.colormap || {};
+            const legend   = data.legend   || [];
+            const byHex = {};
+            for (const [gid, hex] of Object.entries(colormap)) {
+                (byHex[hex] = byHex[hex] || []).push(gid);
+            }
+            resetAllColors();
+            for (const [hex, ids] of Object.entries(byHex)) {
+                colorByGlobalIds(ids, makeColor(hex));
+            }
+            _showColormapLegend(legend);
+        } catch (err) {
+            console.warn("[embed] Colormap fetch failed:", err);
+        }
+        return;
+    }
+
+    if (msg.type === "castor:reset") {
+        if (!model) return;
+        resetAllColors();
+        legendEl.style.display = "none";
+        return;
+    }
+});
+
+function _showTimelineLegend() {
+    legendEl.innerHTML =
+        `<div class="leg-row"><span class="leg-swatch" style="background:#10B981;"></span>Complete</div>` +
+        `<div class="leg-row"><span class="leg-swatch" style="background:#F59E0B;"></span>In Progress</div>` +
+        `<div class="leg-row"><span class="leg-swatch" style="background:#9CA3AF;"></span>Not Started</div>` +
+        `<div class="leg-row"><span class="leg-swatch" style="background:#D1D5DB;"></span>No Task</div>`;
+    legendEl.style.display = "block";
+}
+
+function _showColormapLegend(legend) {
+    if (!legend.length) { legendEl.style.display = "none"; return; }
+    legendEl.innerHTML = legend.map(({ label, color }) =>
+        `<div class="leg-row"><span class="leg-swatch" style="background:${color};"></span>${label}</div>`
+    ).join("");
+    legendEl.style.display = "block";
+}
+
+init();
+
+{% else %}
+document.getElementById("embed-loading").style.display = "none";
+document.getElementById("embed-error").style.display = "flex";
+document.getElementById("embed-error-msg").textContent = "No IFC file processed for this project.";
+window.parent.postMessage({ type: "castor:viewer-error", message: "No IFC file" }, "*");
+{% endif %}
+</script>
+</body>
+</html>

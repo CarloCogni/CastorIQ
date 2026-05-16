@@ -12,12 +12,10 @@ import logging
 
 from pgvector.django import CosineDistance
 
-from ifc_processor.models import IFCEntity
-
 logger = logging.getLogger(__name__)
 
 # cosine distance thresholds — confidence = 1 - distance
-_REVIEW_DIST = 0.40   # distance > 0.40 → confidence < 0.60 → skip entirely
+_REVIEW_DIST = 0.40  # distance > 0.40 → confidence < 0.60 → skip entirely
 
 
 def embed_match_tasks(tasks, entities_qs) -> list[dict]:
@@ -47,8 +45,7 @@ def embed_match_tasks(tasks, entities_qs) -> list[dict]:
             continue
 
         match = (
-            entities_qs
-            .annotate(dist=CosineDistance("embedding", vec))
+            entities_qs.annotate(dist=CosineDistance("embedding", vec))
             .filter(dist__lte=_REVIEW_DIST)
             .order_by("dist")
             .first()
@@ -57,15 +54,17 @@ def embed_match_tasks(tasks, entities_qs) -> list[dict]:
             continue
 
         confidence = round(1.0 - float(match.dist), 4)
-        results.append({
-            "task_id": str(task.pk),
-            "task_name": task.name,
-            "entity_id": str(match.pk),
-            "entity_name": match.name or match.global_id or str(match.pk),
-            "entity_type": match.ifc_type or "",
-            "confidence": confidence,
-            "method": "embedding",
-        })
+        results.append(
+            {
+                "task_id": str(task.pk),
+                "task_name": task.name,
+                "entity_id": str(match.pk),
+                "entity_name": match.name or match.global_id or str(match.pk),
+                "entity_type": match.ifc_type or "",
+                "confidence": confidence,
+                "method": "embedding",
+            }
+        )
 
     results.sort(key=lambda r: r["confidence"], reverse=True)
     return results
