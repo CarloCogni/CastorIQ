@@ -1,60 +1,1196 @@
-<!-- scheduling/tabs/data_sources.html — file upload + preview -->
-<div class="row g-4">
+<!-- scheduling/tabs/data_sources.html — dynamic preview table + mapping pills -->
+<div id="ds-root"
+     data-preview-url="{% url 'islam:schedule_preview' project.pk %}"
+     data-save-url="{% url 'islam:schedule_save' project.pk %}"
+     data-mapping-url="{% url 'islam:schedule_mapping_submit' project.pk %}"
+     data-gantt-url="{% url 'islam:schedule' project.pk %}?tab=gantt"
+     data-csrf="{{ csrf_token }}">
 
-    <!-- Upload card -->
-    <div class="col-12 col-lg-5">
-        <div class="card border-0 bg-body-secondary h-100">
-            <div class="card-body">
-                <h6 class="card-title mb-3">
-                    <i class="bi bi-cloud-upload me-2"></i>Import Schedule
-                </h6>
-                <form id="schedule-upload-form"
-                      hx-post="{% url 'islam:schedule_upload' project.pk %}"
-                      hx-target="#task-preview-area"
-                      hx-swap="innerHTML"
-                      hx-encoding="multipart/form-data"
-                      hx-indicator="#upload-spinner">
-                    {% csrf_token %}
-                    <div class="mb-3">
-                        <label class="form-label small fw-semibold">Schedule file</label>
-                        <input type="file"
-                               name="schedule_file"
-                               class="form-control form-control-sm"
-                               accept=".xlsx,.xls,.csv,.xer,.xml"
-                               required>
-                        <div class="form-text">Supported: Excel (.xlsx), CSV (.csv), Primavera P6 (.xer), MS Project (.xml)</div>
-                    </div>
-                    <button type="submit" class="btn btn-primary btn-sm w-100">
-                        <span id="upload-spinner" class="htmx-indicator spinner-border spinner-border-sm me-1" role="status"></span>
-                        <i class="bi bi-upload me-1"></i>Parse &amp; Preview
-                    </button>
-                </form>
+    <!-- ── Upload bar ──────────────────────────────────────────────── -->
+    <div class="d-flex align-items-center gap-3 flex-wrap mb-2" id="ds-upload-bar">
+        <div>
+            <label class="form-label small fw-semibold mb-1 d-block">
+                <i class="bi bi-cloud-upload me-1"></i>Import Schedule
+            </label>
+            <input type="file" id="ds-file-input"
+                   class="form-control form-control-sm"
+                   style="width:320px;"
+                   accept=".xlsx,.xls,.csv,.xer,.xml">
+            <div class="form-text">Excel · CSV · Primavera XER · MS Project XML</div>
+        </div>
+        <div id="ds-status" class="small mt-3"></div>
+        {% if task_count %}
+        <div class="alert alert-info py-1 px-2 mb-0 small ms-auto" style="font-size:0.8rem;">
+            <i class="bi bi-info-circle me-1"></i>
+            {{ task_count }} task{{ task_count|pluralize }} already imported — re-upload <strong>adds</strong> tasks.
+        </div>
+        {% endif %}
+    </div>
 
-                {% if task_count %}
-                <hr class="my-3">
-                <div class="alert alert-info py-2 mb-0" style="font-size:0.83rem;">
-                    <i class="bi bi-info-circle me-1"></i>
-                    {{ task_count }} task{{ task_count|pluralize }} already imported for this project.
-                    Re-uploading will <strong>add</strong> tasks (not replace).
-                </div>
-                {% endif %}
+    <!-- ── Dynamic table (hidden until file loaded) ─────────────────── -->
+    <div id="ds-table-section" style="display:none;">
+        <div id="ds-table-wrapper"
+             style="max-height:40vh; overflow:auto; border:1px solid var(--bs-border-color); border-radius:4px;">
+            <table id="ds-table"
+                   class="table table-sm table-bordered mb-0"
+                   style="min-width:max-content; table-layout:auto;">
+                <thead>
+                    <tr id="ds-mapping-row"></tr>
+                    <tr id="ds-source-row"></tr>
+                </thead>
+                <tbody id="ds-tbody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ── Gantt section placeholder (Step 3) ───────────────────────── -->
+    <div id="ds-gantt-section" style="display:none; min-height:40vh; margin-top:0.75rem;"></div>
+
+    <!-- ── Summary bar (hidden until file loaded) ───────────────────── -->
+    <div id="ds-summary-bar"
+         style="display:none;"
+         class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-2 px-2 py-2 bg-body-secondary rounded">
+        <div id="ds-summary-left" class="small"></div>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <input id="ds-ifc-param"
+                   type="text"
+                   class="form-control form-control-sm"
+                   style="width:170px;"
+                   value="Activity ID"
+                   placeholder="IFC Property Name"
+                   title="IFC Property Name — used by auto-link">
+            <button id="ds-reset-btn" type="button" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-arrow-counterclockwise me-1"></i>Reset
+            </button>
+            <button id="ds-import-btn" type="button" class="btn btn-primary btn-sm" disabled>
+                <span class="spinner-border spinner-border-sm me-1 d-none" id="ds-spin"></span>
+                <span id="ds-import-lbl">Import →</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- ── Import result (task_list renders here after save) ────────── -->
+    <div id="task-preview-area" class="mt-3"></div>
+
+    <!-- ── Floating mapping dropdown ────────────────────────────────── -->
+    <div id="ds-map-dd"
+         style="display:none; position:fixed; z-index:1060;
+                background:var(--bs-body-bg); border:1px solid var(--bs-border-color);
+                border-radius:6px; box-shadow:0 4px 20px rgba(0,0,0,.18);
+                min-width:200px; max-height:320px; overflow-y:auto;">
+    </div>
+
+    <!-- ── Floating add-column dropdown ─────────────────────────────── -->
+    <div id="ds-add-dd"
+         style="display:none; position:fixed; z-index:1060;
+                background:var(--bs-body-bg); border:1px solid var(--bs-border-color);
+                border-radius:6px; box-shadow:0 4px 20px rgba(0,0,0,.18);
+                min-width:200px; max-height:280px; overflow-y:auto;">
+    </div>
+
+</div><!-- #ds-root -->
+
+<!-- ── Styles ──────────────────────────────────────────────────────── -->
+<style>
+.ds-pill {
+    display: inline-flex; align-items: center; gap: 3px;
+    border-radius: 20px; padding: 2px 6px 2px 9px;
+    cursor: pointer; font-size: 0.72rem; font-weight: 600;
+    user-select: none; max-width: 150px; white-space: nowrap;
+    transition: opacity .15s;
+}
+.ds-pill:hover { opacity: .82; }
+.ds-pill-mapped   { background: #1d4ed8; color: #fff; }
+.ds-pill-unmapped { background: #b45309; color: #fff; }
+.ds-pill-lbl { overflow: hidden; text-overflow: ellipsis; }
+.ds-pill-x {
+    background: none; border: none; color: inherit;
+    padding: 0; margin-left: 1px; font-size: .9em; line-height: 1;
+    cursor: pointer; opacity: .65; flex-shrink: 0;
+}
+.ds-pill-x:hover { opacity: 1; }
+
+.ds-th-pill  { padding: 4px 6px !important; vertical-align: middle !important; border-bottom: 0 !important; }
+.ds-th-src   { padding: 2px 6px !important; font-size: .7rem !important; font-weight: 400 !important;
+               font-family: monospace; color: rgba(255,255,255,.7) !important;
+               background: #1e293b !important; white-space: nowrap; }
+.ds-td       { font-size: .78rem; max-width: 180px; overflow: hidden;
+               text-overflow: ellipsis; white-space: nowrap; padding: 3px 6px !important; }
+
+.ds-add-btn  { font-size: .7rem; padding: 2px 8px; }
+
+.ds-dd-item  { padding: 5px 14px; font-size: .82rem; cursor: pointer; white-space: nowrap; }
+.ds-dd-item:hover:not(.ds-dd-used):not(.ds-dd-empty) { background: var(--bs-primary); color: #fff; }
+.ds-dd-active { font-weight: 700; }
+.ds-dd-used  { opacity: .38; cursor: default; }
+.ds-dd-empty { opacity: .5; font-style: italic; cursor: default; }
+.ds-dd-clear { color: #dc3545 !important; }
+.ds-dd-sep   { border-top: 1px solid var(--bs-border-color); margin: 3px 0; }
+
+/* Gantt */
+.ds-zoom-btn.active { background:#1d4ed8 !important; color:#fff !important; border-color:#1d4ed8 !important; }
+.ds-stage-chip { font-size:.7rem; padding:2px 8px; border-radius:20px; }
+.ds-stage-chip.active { background:#1d4ed8; color:#fff; border-color:#1d4ed8; }
+</style>
+
+<!-- ── Script ──────────────────────────────────────────────────────── -->
+<script>
+(function () {
+    'use strict';
+
+    /* ── DOM refs ───────────────────────────────────────────────────── */
+    const root       = document.getElementById('ds-root');
+    if (!root) return;
+    const PREVIEW_URL  = root.dataset.previewUrl;
+    const SAVE_URL     = root.dataset.saveUrl;
+    const MAPPING_URL  = root.dataset.mappingUrl;
+    const GANTT_URL    = root.dataset.ganttUrl;
+    const CSRF         = root.dataset.csrf;
+
+    const fileInput    = document.getElementById('ds-file-input');
+    const statusEl     = document.getElementById('ds-status');
+    const tableSection = document.getElementById('ds-table-section');
+    const ganttSection = document.getElementById('ds-gantt-section');
+    const summaryBar   = document.getElementById('ds-summary-bar');
+    const summaryLeft  = document.getElementById('ds-summary-left');
+    const importBtn    = document.getElementById('ds-import-btn');
+    const importLbl    = document.getElementById('ds-import-lbl');
+    const importSpin   = document.getElementById('ds-spin');
+    const resetBtn     = document.getElementById('ds-reset-btn');
+    const resultEl     = document.getElementById('task-preview-area');
+    const mapDd        = document.getElementById('ds-map-dd');
+    const addDd        = document.getElementById('ds-add-dd');
+
+    /* ── Canonical field definitions ────────────────────────────────── */
+    const FIELDS = [
+        { key: 'name',          label: 'Task Name',      req: true  },
+        { key: 'start_date',    label: 'Planned Start',  req: true  },
+        { key: 'end_date',      label: 'Planned End',    req: true  },
+        { key: 'activity_code', label: 'Activity Code',  req: false },
+        { key: 'actual_start',  label: 'Actual Start',   req: false },
+        { key: 'actual_end',    label: 'Actual End',     req: false },
+        { key: 'cost',          label: 'Cost',           req: false },
+        { key: 'activity_type', label: 'Stage / Trade',  req: false },
+        { key: 'predecessors',  label: 'Predecessors',   req: false },
+        { key: 'status',        label: 'Status',         req: false },
+        { key: 'color',         label: 'Colour',         req: false },
+    ];
+    const BY_KEY = Object.fromEntries(FIELDS.map(f => [f.key, f]));
+    const REQUIRED = ['name', 'start_date', 'end_date'];
+
+    /* ── Gantt constants ─────────────────────────────────────────────── */
+    const ROW_H   = 28;
+    const BAR_H   = 14;
+    const BAR_T   = 7;
+    const HDR_H   = 30;
+    const NAME_W  = 200;
+
+    const PX_PER_DAY = { day: 20, week: 10, month: 2 };
+
+    const STATUS_CLR = {
+        complete: '#166534', active: '#1e40af', in_progress: '#1e40af',
+        delayed:  '#92400e', planned: '#1e3a5f',
+    };
+    const STAGE_CLR = {
+        structure:'#4f46e5', substructure:'#7c3aed',
+        mep:'#d97706', mechanical:'#d97706', electrical:'#9333ea',
+        plumbing:'#0891b2', finishes:'#059669', cladding:'#059669',
+        external:'#dc2626', civil:'#0f766e', demolition:'#6b7280',
+    };
+    const MON_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+    const GS = { zoom: 'week', stageFilter: 'all', hasCpm: false };
+    let _ganttBuilt = false;
+
+    /* ── CPM helpers ────────────────────────────────────────────────── */
+    const _EPOCH_MS = new Date(2000, 0, 1).getTime();
+    function dayNum(d) { return Math.round((d.getTime() - _EPOCH_MS) / 86400000); }
+
+    function parsePreds(raw) {
+        if (!raw) return [];
+        return raw.split(/[,;]/).reduce((acc, part) => {
+            const s = part.trim();
+            if (!s) return acc;
+            let m = /^([A-Za-z0-9._\-]+?)(FS|SS|FF|SF)?([+-]\d+)[dD]?$/i.exec(s);
+            if (!m) m = /^([A-Za-z0-9._\-]+)(FS|SS|FF|SF)?$/.exec(s);
+            if (!m) return acc;
+            acc.push({ code: m[1].trim(), type: (m[2] || 'FS').toUpperCase(), lag: m[3] ? parseInt(m[3], 10) : 0 });
+            return acc;
+        }, []);
+    }
+
+    function runCPM(allTasks) {
+        GS.hasCpm = false;
+        const codeIdx = getColIdx('activity_code');
+        const predIdx = getColIdx('predecessors');
+        if (codeIdx < 0 || predIdx < 0) return;
+
+        const nodes = allTasks.map((t, i) => ({
+            id:    (t.row[codeIdx] ?? '').toString().trim() || `__i${i}`,
+            task:  t,
+            es:    dayNum(t.start),
+            ef:    dayNum(t.end),
+            dur:   dayNum(t.end) - dayNum(t.start) + 1,
+            preds: parsePreds((t.row[predIdx] ?? '').toString()),
+            succs: [],
+            ls: 0, lf: 0,
+        }));
+
+        if (!nodes.some(n => n.preds.length > 0)) return;
+
+        const byId = Object.fromEntries(nodes.map(n => [n.id, n]));
+
+        nodes.forEach(n => {
+            n.preds = n.preds.filter(p => byId[p.code]);
+            n.preds.forEach(p => byId[p.code].succs.push({ id: n.id, type: p.type, lag: p.lag }));
+        });
+
+        /* Topological sort — Kahn's algorithm */
+        const inDeg = Object.fromEntries(nodes.map(n => [n.id, n.preds.length]));
+        const queue = nodes.filter(n => inDeg[n.id] === 0).map(n => n.id);
+        const topo  = [];
+        while (queue.length) {
+            const id = queue.shift();
+            topo.push(id);
+            byId[id].succs.forEach(s => { if (--inDeg[s.id] === 0) queue.push(s.id); });
+        }
+        if (topo.length < nodes.length) return; /* cycle — skip CPM */
+
+        GS.hasCpm = true;
+
+        /* Forward pass */
+        topo.forEach(id => {
+            const n = byId[id];
+            let minES = dayNum(n.task.start); /* floor: planned start */
+            n.preds.forEach(p => {
+                const pred = byId[p.code];
+                let c;
+                if      (p.type === 'FS') c = pred.ef + 1 + p.lag;
+                else if (p.type === 'SS') c = pred.es     + p.lag;
+                else if (p.type === 'FF') c = pred.ef + p.lag - n.dur + 1;
+                else                      c = pred.es + p.lag - n.dur + 1; /* SF */
+                if (c > minES) minES = c;
+            });
+            n.es = minES;
+            n.ef = minES + n.dur - 1;
+        });
+
+        const projEF = nodes.reduce((m, n) => Math.max(m, n.ef), nodes[0].ef);
+        nodes.forEach(n => { n.lf = projEF; n.ls = projEF - n.dur + 1; });
+
+        /* Backward pass */
+        [...topo].reverse().forEach(id => {
+            const n = byId[id];
+            if (!n.succs.length) return;
+            let minLF = projEF;
+            n.succs.forEach(s => {
+                const succ = byId[s.id];
+                let c;
+                if      (s.type === 'FS') c = succ.ls - 1         - s.lag;
+                else if (s.type === 'SS') c = succ.ls + n.dur - 1 - s.lag;
+                else if (s.type === 'FF') c = succ.lf              - s.lag;
+                else                      c = succ.lf - s.lag + n.dur - 1; /* SF */
+                if (c < minLF) minLF = c;
+            });
+            n.lf = minLF;
+            n.ls = minLF - n.dur + 1;
+        });
+
+        /* Float + write back to task objects */
+        nodes.forEach(n => {
+            const tf = n.ls - n.es;
+            n.task.critical   = tf <= 0;
+            n.task.totalFloat = tf;
+        });
+    }
+
+    /* ── State ──────────────────────────────────────────────────────── */
+    const S = {
+        allCols:    [],   // all raw column names
+        visible:    [],   // currently shown columns
+        mapping:    {},   // rawCol → canonicalKey | 'ignore'
+        rows:       [],   // up to 200 preview rows
+        format:     '',
+        totalRows:  0,
+        suggested:  {},   // original auto-suggestion (canonical → rawCol)
+        dateRange:  null, // { start: ISO, end: ISO } | null
+    };
+
+    /* ── File upload ────────────────────────────────────────────────── */
+    fileInput.addEventListener('change', async function () {
+        const file = this.files[0];
+        if (!file) return;
+
+        statusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Parsing…';
+        tableSection.style.display = 'none';
+        ganttSection.style.display = 'none';
+        summaryBar.style.display   = 'none';
+        resultEl.innerHTML = '';
+
+        const fd = new FormData();
+        fd.append('schedule_file', file);
+        fd.append('csrfmiddlewaretoken', CSRF);
+
+        let data;
+        try {
+            const r = await fetch(PREVIEW_URL, { method: 'POST', body: fd });
+            data = await r.json();
+            if (!r.ok) {
+                statusEl.innerHTML = `<span class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>${esc(data.error || 'Upload failed')}</span>`;
+                return;
+            }
+        } catch {
+            statusEl.innerHTML = '<span class="text-danger"><i class="bi bi-wifi-off me-1"></i>Network error</span>';
+            return;
+        }
+
+        initFromData(data);
+    });
+
+    /* ── Initialise from JSON response ─────────────────────────────── */
+    function initFromData(data) {
+        S.allCols   = data.raw_columns || [];
+        S.format    = data.format || '';
+        S.totalRows = data.total_rows || 0;
+        S.rows      = data.rows || [];
+        S.suggested = data.suggested_mapping || {};
+        S.dateRange = data.project_date_range || null;
+
+        /* invert suggested_mapping: { canonical → raw } → { raw → canonical } */
+        S.mapping = {};
+        for (const [field, col] of Object.entries(S.suggested)) {
+            S.mapping[col] = field;
+        }
+
+        /* default visible = server suggestion, else first 8 */
+        const dflt = data.default_visible || S.allCols.slice(0, 8);
+        S.visible = dflt.filter(c => S.allCols.includes(c));
+
+        const n = S.totalRows, w = n === 1 ? 'row' : 'rows';
+        statusEl.innerHTML = `<span class="text-success"><i class="bi bi-check-circle me-1"></i>${n.toLocaleString()} ${w} · ${S.format.toUpperCase()}</span>`;
+
+        renderTable();
+        renderSummary();
+
+        tableSection.style.display = '';
+        summaryBar.style.display   = '';
+
+        buildGanttShell();
+        renderGantt();
+    }
+
+    /* ── Table rendering ────────────────────────────────────────────── */
+    function renderTable() {
+        renderPillRow();
+        renderSourceRow();
+        renderBody();
+    }
+
+    function renderPillRow() {
+        const tr = document.getElementById('ds-mapping-row');
+        tr.innerHTML = '';
+
+        S.visible.forEach(col => {
+            const field  = S.mapping[col];
+            const mapped = field && field !== 'ignore';
+            const label  = mapped ? (BY_KEY[field]?.label || field) : '— map —';
+            const cls    = mapped ? 'ds-pill-mapped' : 'ds-pill-unmapped';
+
+            const th = document.createElement('th');
+            th.className = 'ds-th-pill';
+
+            const pill = document.createElement('div');
+            pill.className = `ds-pill ${cls}`;
+            pill.dataset.col = col;
+            pill.innerHTML =
+                `<span class="ds-pill-lbl">${esc(label)}</span>` +
+                `<button class="ds-pill-x" data-col="${esc(col)}" title="Hide column">&times;</button>`;
+
+            pill.addEventListener('click', function (e) {
+                if (e.target.classList.contains('ds-pill-x')) return;
+                openMapDd(col, pill);
+            });
+            pill.querySelector('.ds-pill-x').addEventListener('click', function (e) {
+                e.stopPropagation();
+                removeCol(col);
+            });
+
+            th.appendChild(pill);
+            tr.appendChild(th);
+        });
+
+        /* [+ Add] button */
+        const thAdd = document.createElement('th');
+        thAdd.className = 'ds-th-pill';
+        const addBtn = document.createElement('button');
+        addBtn.id = 'ds-add-col-btn';
+        addBtn.type = 'button';
+        addBtn.className = 'btn btn-outline-secondary btn-sm ds-add-btn';
+        addBtn.textContent = '+ Add';
+        addBtn.addEventListener('click', openAddDd);
+        thAdd.appendChild(addBtn);
+        tr.appendChild(thAdd);
+    }
+
+    function renderSourceRow() {
+        const tr = document.getElementById('ds-source-row');
+        tr.innerHTML = '';
+        S.visible.forEach(col => {
+            const th = document.createElement('th');
+            th.className = 'ds-th-src';
+            th.textContent = col;
+            tr.appendChild(th);
+        });
+        tr.appendChild(document.createElement('th')); /* spacer for + btn */
+    }
+
+    function renderBody() {
+        const tbody = document.getElementById('ds-tbody');
+        tbody.innerHTML = '';
+        const idxs = S.visible.map(c => S.allCols.indexOf(c));
+
+        S.rows.forEach(row => {
+            const tr = document.createElement('tr');
+            idxs.forEach(i => {
+                const td = document.createElement('td');
+                td.className = 'ds-td';
+                const v = i >= 0 && i < row.length ? (row[i] ?? '') : '';
+                td.textContent = v;
+                td.title = v;
+                tr.appendChild(td);
+            });
+            tr.appendChild(document.createElement('td')); /* spacer */
+            tbody.appendChild(tr);
+        });
+    }
+
+    /* ── Summary bar ────────────────────────────────────────────────── */
+    function renderSummary() {
+        const mappedPairs  = Object.entries(S.mapping).filter(([, v]) => v && v !== 'ignore');
+        const mappedCount  = mappedPairs.length;
+        const mappedFields = new Set(mappedPairs.map(([, v]) => v));
+        const unmapped     = S.visible.filter(c => !S.mapping[c] || S.mapping[c] === 'ignore').length;
+
+        const badges = REQUIRED.map(k => {
+            const ok  = mappedFields.has(k);
+            const lbl = BY_KEY[k]?.label || k;
+            return `<span class="badge ${ok ? 'bg-success' : 'bg-danger'} me-1" style="font-size:.68rem;">${ok ? '✓' : '✗'} ${esc(lbl)}</span>`;
+        }).join('');
+
+        summaryLeft.innerHTML =
+            `<strong>${mappedCount}</strong> mapped &middot; <strong>${unmapped}</strong> unmapped &nbsp;${badges}`;
+
+        const canImport = REQUIRED.every(k => mappedFields.has(k));
+        importBtn.disabled = !canImport;
+        importLbl.textContent = `Import ${S.totalRows.toLocaleString()} tasks →`;
+        importBtn.style.cursor = canImport ? '' : 'not-allowed';
+
+        /* warning hint for missing required fields */
+        const missing = REQUIRED.filter(k => !mappedFields.has(k));
+        if (missing.length) {
+            summaryLeft.insertAdjacentHTML('beforeend',
+                ` &nbsp;<span class="text-warning" style="font-size:.76rem;">⚠ map ${missing.map(k => BY_KEY[k].label).join(', ')}</span>`
+            );
+        }
+
+        /* project date span */
+        if (S.dateRange) {
+            const fmtD = iso => {
+                const d = new Date(iso);
+                return MON_ABBR[d.getUTCMonth()] + ' ' + d.getUTCFullYear();
+            };
+            summaryLeft.insertAdjacentHTML('beforeend',
+                ` &nbsp;<span class="text-secondary" style="font-size:.76rem;">
+                    <i class="bi bi-calendar-range me-1"></i>${fmtD(S.dateRange.start)} – ${fmtD(S.dateRange.end)}
+                 </span>`
+            );
+        }
+    }
+
+    /* ── Import button ──────────────────────────────────────────────── */
+    importBtn.addEventListener('click', async function () {
+        if (this.disabled) return;
+
+        const isTabular = S.format === 'excel' || S.format === 'csv';
+        const url = isTabular ? MAPPING_URL : SAVE_URL;
+
+        importSpin.classList.remove('d-none');
+        importBtn.disabled = true;
+        importLbl.textContent = 'Importing…';
+
+        const fd = new FormData();
+        fd.append('csrfmiddlewaretoken', CSRF);
+        if (isTabular) {
+            /* invert mapping: { raw → canonical } → POST col_{canonical}=raw */
+            const used = {};
+            for (const [col, field] of Object.entries(S.mapping)) {
+                if (field && field !== 'ignore' && !used[field]) {
+                    fd.append(`col_${field}`, col);
+                    used[field] = true;
+                }
+            }
+            fd.append('ifc_param_name',
+                document.getElementById('ds-ifc-param')?.value.trim() || 'Activity ID');
+        }
+
+        let r, html;
+        try {
+            r    = await fetch(url, { method: 'POST', body: fd });
+            html = await r.text();
+        } catch {
+            _importReset();
+            resultEl.innerHTML = '<div class="alert alert-danger small mt-2">Import failed — network error.</div>';
+            return;
+        }
+
+        /* Forward any HX-Trigger toast regardless of outcome */
+        const trigger = r.headers.get('HX-Trigger');
+        if (trigger) {
+            try {
+                const evts = JSON.parse(trigger);
+                for (const [name, detail] of Object.entries(evts)) {
+                    document.body.dispatchEvent(new CustomEvent(name, { detail, bubbles: true }));
+                }
+            } catch { /* malformed header — ignore */ }
+        }
+
+        if (!r.ok) {
+            _importReset();
+            resultEl.innerHTML = html;
+            htmx.process(resultEl);
+            summaryLeft.insertAdjacentHTML('beforeend',
+                ` <span class="text-danger" style="font-size:.76rem;">⚠ Import failed (${r.status})</span>`
+            );
+            return;
+        }
+
+        /* ── Success ─────────────────────────────────────────────────── */
+        resultEl.innerHTML = html;
+        htmx.process(resultEl);
+
+        importSpin.classList.add('d-none');
+        importLbl.textContent = '✓ Imported';
+
+        const n   = S.totalRows;
+        const lbl = `<strong>${n.toLocaleString()}</strong> task${n === 1 ? '' : 's'} imported`;
+        summaryLeft.innerHTML =
+            `<span class="text-success"><i class="bi bi-check-circle me-1"></i>${lbl}</span>` +
+            (GANTT_URL
+                ? ` &nbsp;<span class="text-secondary" style="font-size:.76rem;">Redirecting to Gantt…</span>`
+                : '');
+
+        if (GANTT_URL) {
+            setTimeout(() => { window.location.href = GANTT_URL; }, 1600);
+        }
+    });
+
+    function _importReset() {
+        importSpin.classList.add('d-none');
+        importBtn.disabled = false;
+        importLbl.textContent = `Import ${S.totalRows.toLocaleString()} tasks →`;
+    }
+
+    /* ── Reset button ───────────────────────────────────────────────── */
+    resetBtn.addEventListener('click', function () {
+        S.mapping = {};
+        for (const [field, col] of Object.entries(S.suggested)) {
+            S.mapping[col] = field;
+        }
+        renderTable();
+        renderSummary();
+        renderGantt();
+    });
+
+    /* ── Mapping dropdown ───────────────────────────────────────────── */
+    function openMapDd(col, anchor) {
+        const cur     = S.mapping[col] || '';
+        const usedSet = new Set(
+            Object.entries(S.mapping)
+                .filter(([c, v]) => c !== col && v && v !== 'ignore')
+                .map(([, v]) => v)
+        );
+
+        let html = '';
+        FIELDS.forEach(f => {
+            const used   = usedSet.has(f.key);
+            const active = f.key === cur;
+            html += `<div class="ds-dd-item${active ? ' ds-dd-active' : ''}${used ? ' ds-dd-used' : ''}"
+                          data-field="${f.key}">
+                ${active ? '✓ ' : used ? '⊘ ' : ''}${esc(f.label)}${f.req ? ' <span style="color:#dc3545;font-size:.8em;">*</span>' : ''}
+            </div>`;
+        });
+        html += '<div class="ds-dd-sep"></div>';
+        html += `<div class="ds-dd-item${cur === 'ignore' ? ' ds-dd-active' : ''}" data-field="ignore">${cur === 'ignore' ? '✓ ' : ''}Ignore column</div>`;
+        if (cur) html += `<div class="ds-dd-item ds-dd-clear" data-field="">Clear mapping</div>`;
+
+        mapDd.innerHTML = html;
+        mapDd.querySelectorAll('.ds-dd-item').forEach(item => {
+            item.addEventListener('click', function () {
+                if (this.classList.contains('ds-dd-used')) return;
+                applyMapping(col, this.dataset.field);
+                closeMapDd();
+            });
+        });
+
+        placeDd(mapDd, anchor);
+        mapDd.style.display = '';
+    }
+
+    function closeMapDd() { mapDd.style.display = 'none'; }
+
+    /* ── Add-column dropdown ────────────────────────────────────────── */
+    function openAddDd() {
+        const hidden = S.allCols.filter(c => !S.visible.includes(c));
+
+        if (!hidden.length) {
+            addDd.innerHTML = '<div class="ds-dd-item ds-dd-empty">All columns visible</div>';
+        } else {
+            addDd.innerHTML = hidden.map(c => {
+                const field = S.mapping[c];
+                const hint  = field && field !== 'ignore' ? ` <span class="text-secondary" style="font-size:.75em;">(${esc(BY_KEY[field]?.label || field)})</span>` : '';
+                return `<div class="ds-dd-item" data-col="${esc(c)}">${esc(c)}${hint}</div>`;
+            }).join('');
+            addDd.querySelectorAll('.ds-dd-item').forEach(item => {
+                item.addEventListener('click', function () {
+                    if (this.dataset.col) addCol(this.dataset.col);
+                    closeAddDd();
+                });
+            });
+        }
+
+        const btn = document.getElementById('ds-add-col-btn');
+        if (btn) placeDd(addDd, btn);
+        addDd.style.display = '';
+    }
+
+    function closeAddDd() { addDd.style.display = 'none'; }
+
+    /* ── Column add / remove ────────────────────────────────────────── */
+    function addCol(col) {
+        if (!S.visible.includes(col)) {
+            S.visible.push(col);
+            renderTable();
+            renderSummary();
+        }
+    }
+
+    function removeCol(col) {
+        S.visible = S.visible.filter(c => c !== col);
+        renderTable();
+        renderSummary();
+    }
+
+    /* ── Apply mapping ──────────────────────────────────────────────── */
+    function applyMapping(col, field) {
+        if (!col) return;
+        if (field === '') {
+            delete S.mapping[col];
+        } else {
+            /* ensure field is not used by another column */
+            if (field && field !== 'ignore') {
+                for (const [c] of Object.entries(S.mapping)) {
+                    if (S.mapping[c] === field && c !== col) delete S.mapping[c];
+                }
+            }
+            S.mapping[col] = field;
+        }
+        renderTable();
+        renderSummary();
+        renderGantt();
+    }
+
+    /* ── Dropdown positioning ───────────────────────────────────────── */
+    function placeDd(dd, anchor) {
+        const r = anchor.getBoundingClientRect();
+        dd.style.left = r.left + 'px';
+        dd.style.top  = (r.bottom + 4) + 'px';
+        /* flip up if overflows viewport bottom */
+        const est = dd.offsetHeight || 220;
+        if (r.bottom + est + 8 > window.innerHeight) {
+            dd.style.top = Math.max(4, r.top - est - 4) + 'px';
+        }
+    }
+
+    /* ── Global close on outside click / scroll ─────────────────────── */
+    document.addEventListener('click', function (e) {
+        if (!mapDd.contains(e.target) && !e.target.closest('.ds-pill')) closeMapDd();
+        if (!addDd.contains(e.target) && !e.target.closest('#ds-add-col-btn'))  closeAddDd();
+    });
+    document.addEventListener('scroll', () => { closeMapDd(); closeAddDd(); }, true);
+
+    /* ── HTML escape ────────────────────────────────────────────────── */
+    function esc(s) {
+        return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       GANTT CHART
+       ═══════════════════════════════════════════════════════════════ */
+
+    /* ── Date helpers ───────────────────────────────────────────────── */
+    function parseDate(s) {
+        if (!s) return null;
+        let m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+        if (m) return new Date(+m[1], +m[2]-1, +m[3]);
+        m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(s);
+        if (m) return new Date(+m[3], +m[2]-1, +m[1]);
+        return null;
+    }
+
+    function dateDiff(a, b) { return Math.round((b - a) / 86400000); }
+
+    function addDays(d, n) {
+        const r = new Date(d); r.setDate(r.getDate() + n); return r;
+    }
+
+    function fmtDate(d) {
+        return d ? d.getDate() + ' ' + MON_ABBR[d.getMonth()] + ' ' + d.getFullYear() : '';
+    }
+
+    function startOfWeek(d) {
+        const r = new Date(d);
+        const diff = r.getDay() === 0 ? -6 : 1 - r.getDay();
+        r.setDate(r.getDate() + diff);
+        return r;
+    }
+
+    /* ── Column lookup helpers ──────────────────────────────────────── */
+    function getColIdx(field) {
+        for (const [col, f] of Object.entries(S.mapping)) {
+            if (f === field) {
+                const i = S.allCols.indexOf(col);
+                if (i >= 0) return i;
+            }
+        }
+        return -1;
+    }
+
+    function getVal(row, field) {
+        const i = getColIdx(field);
+        if (i < 0 || i >= row.length) return '';
+        return (row[i] ?? '').toString().trim();
+    }
+
+    /* ── Task color ─────────────────────────────────────────────────── */
+    function getTaskColor(row) {
+        const stageRaw = getVal(row, 'activity_type').toLowerCase();
+        if (stageRaw) {
+            for (const [key, clr] of Object.entries(STAGE_CLR)) {
+                if (stageRaw.includes(key)) return clr;
+            }
+        }
+        return STATUS_CLR[getVal(row, 'status').toLowerCase()] || STATUS_CLR.planned;
+    }
+
+    /* ── Interval computation ───────────────────────────────────────── */
+    function getIntervals(projStart, totalDays, zoom) {
+        const ivs = [];
+        if (zoom === 'day') {
+            for (let i = 0; i < totalDays; i++) {
+                const d = addDays(projStart, i);
+                ivs.push({ label: d.getDate() + ' ' + MON_ABBR[d.getMonth()], days: 1 });
+            }
+        } else if (zoom === 'week') {
+            let day = 0;
+            while (day < totalDays) {
+                const d   = addDays(projStart, day);
+                const mon = startOfWeek(d);
+                const days = Math.min(7, totalDays - day);
+                ivs.push({ label: mon.getDate() + ' ' + MON_ABBR[mon.getMonth()], days });
+                day += days;
+            }
+        } else {
+            let d = new Date(projStart);
+            while (dateDiff(projStart, d) < totalDays) {
+                const nextM   = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+                const mEnd    = addDays(nextM, -1);
+                const projEnd = addDays(projStart, totalDays - 1);
+                const eff     = mEnd < projEnd ? mEnd : projEnd;
+                const days    = dateDiff(d, eff) + 1;
+                ivs.push({ label: MON_ABBR[d.getMonth()] + ' ' + d.getFullYear(), days });
+                d = nextM;
+            }
+        }
+        return ivs;
+    }
+
+    /* ── Build shell (once) ─────────────────────────────────────────── */
+    function buildGanttShell() {
+        if (_ganttBuilt) return;
+        _ganttBuilt = true;
+        ganttSection.innerHTML = `
+            <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+                <span class="text-secondary" style="font-size:.78rem;">Zoom:</span>
+                <button class="ds-zoom-btn btn btn-sm btn-outline-secondary active" data-zoom="week">Week</button>
+                <button class="ds-zoom-btn btn btn-sm btn-outline-secondary" data-zoom="day">Day</button>
+                <button class="ds-zoom-btn btn btn-sm btn-outline-secondary" data-zoom="month">Month</button>
+                <div id="ds-stage-chips" class="d-flex gap-1 flex-wrap ms-2"></div>
             </div>
-        </div>
-    </div>
-
-    <!-- Preview area -->
-    <div class="col-12 col-lg-7">
-        <div id="task-preview-area">
-            {% if task_count %}
-                <div class="text-secondary small mb-2">Current tasks in this project:</div>
-                {% include "scheduling/components/task_list.html" with tasks=tasks preview_mode=False %}
-            {% else %}
-                <div class="d-flex flex-column align-items-center justify-content-center text-secondary py-5">
-                    <i class="bi bi-table fs-1 mb-2"></i>
-                    <span>Parsed tasks will appear here for review before saving.</span>
+            <div id="ds-gantt-scroll" style="overflow:auto; max-height:45vh; border:1px solid var(--bs-border-color); border-radius:4px; background:#0f172a;">
+                <div id="ds-gantt-inner">
+                    <div id="ds-gantt-hdr" style="display:flex; position:sticky; top:0; z-index:10; background:#1e293b; height:${HDR_H}px; border-bottom:1px solid #334155;">
+                        <div style="min-width:${NAME_W}px; max-width:${NAME_W}px; padding:0 8px; display:flex; align-items:center;
+                                    font-size:.72rem; font-weight:600; color:rgba(255,255,255,.45);
+                                    position:sticky; left:0; background:#1e293b; z-index:11; border-right:1px solid #334155;">Task</div>
+                        <div id="ds-gantt-timeline-hdr" style="display:flex; flex-shrink:0; height:100%;"></div>
+                    </div>
+                    <div id="ds-gantt-body"></div>
+                    <div id="ds-gantt-empty" style="display:none; padding:1.5rem; text-align:center; color:rgba(255,255,255,.35); font-size:.82rem;"></div>
                 </div>
-            {% endif %}
-        </div>
-    </div>
+            </div>
+            <div id="ds-gantt-legend" class="d-flex gap-3 flex-wrap mt-2" style="font-size:.73rem;"></div>
+        `;
+        ganttSection.querySelectorAll('.ds-zoom-btn').forEach(btn => {
+            btn.addEventListener('click', function () {
+                GS.zoom = this.dataset.zoom;
+                ganttSection.querySelectorAll('.ds-zoom-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                renderGantt();
+            });
+        });
+    }
 
-</div>
+    /* ── Main Gantt render ──────────────────────────────────────────── */
+    function renderGantt() {
+        if (!_ganttBuilt) return;
+
+        const nameIdx  = getColIdx('name');
+        const startIdx = getColIdx('start_date');
+        const endIdx   = getColIdx('end_date');
+        const emptyEl  = document.getElementById('ds-gantt-empty');
+        const bodyEl   = document.getElementById('ds-gantt-body');
+        const hdrEl    = document.getElementById('ds-gantt-timeline-hdr');
+
+        if (nameIdx < 0 || startIdx < 0 || endIdx < 0) {
+            ganttSection.style.display = 'none';
+            return;
+        }
+
+        const today = new Date(); today.setHours(0,0,0,0);
+
+        const allTasks = [];
+        for (const row of S.rows) {
+            const name  = (row[nameIdx]  ?? '').toString().trim();
+            const start = parseDate((row[startIdx] ?? '').toString());
+            const end   = parseDate((row[endIdx]   ?? '').toString());
+            if (!name || !start || !end) continue;
+            allTasks.push({ name, start, end, row });
+        }
+
+        if (!allTasks.length) {
+            bodyEl.innerHTML = hdrEl.innerHTML = '';
+            emptyEl.textContent = 'No parseable tasks in preview rows.';
+            emptyEl.style.display = '';
+            ganttSection.style.display = '';
+            return;
+        }
+
+        /* CPM — runs on full task set before stage filtering */
+        allTasks.forEach(t => { t.critical = false; t.totalFloat = null; });
+        runCPM(allTasks);
+
+        const stageIdx = getColIdx('activity_type');
+        const tasks = GS.stageFilter === 'all'
+            ? allTasks
+            : allTasks.filter(t => {
+                const v = stageIdx >= 0 ? (t.row[stageIdx] ?? '').toString().trim() : '';
+                return v.toLowerCase() === GS.stageFilter.toLowerCase();
+            });
+
+        if (!tasks.length) {
+            bodyEl.innerHTML = hdrEl.innerHTML = '';
+            emptyEl.textContent = `No tasks for stage "${GS.stageFilter}".`;
+            emptyEl.style.display = '';
+            ganttSection.style.display = '';
+            renderStageChips(allTasks);
+            return;
+        }
+        emptyEl.style.display = 'none';
+
+        const projStart = new Date(tasks.reduce((m, t) => t.start < m ? t.start : m, tasks[0].start));
+        projStart.setHours(0,0,0,0);
+        const projEnd   = new Date(tasks.reduce((m, t) => t.end   > m ? t.end   : m, tasks[0].end));
+        projEnd.setHours(0,0,0,0);
+
+        const ppd       = PX_PER_DAY[GS.zoom];
+        const totalDays = dateDiff(projStart, projEnd) + 1;
+        const ivs       = getIntervals(projStart, totalDays, GS.zoom);
+        const totalW    = ivs.reduce((s, iv) => s + iv.days * ppd, 0);
+        const todayX    = dateDiff(projStart, today) * ppd;
+        const showToday = todayX >= 0 && todayX <= totalW;
+
+        renderGanttHeader(hdrEl, projStart, ivs, ppd, today);
+        renderGanttRows(bodyEl, tasks, projStart, ppd, totalW, todayX, showToday);
+        renderDependencyArrows(bodyEl, tasks, projStart, ppd, totalW);
+        renderStageChips(allTasks);
+        renderLegend(showToday);
+
+        ganttSection.style.display = '';
+    }
+
+    /* ── Header row ─────────────────────────────────────────────────── */
+    function renderGanttHeader(hdrEl, projStart, ivs, ppd, today) {
+        hdrEl.innerHTML = '';
+        let offsetDays = 0;
+        ivs.forEach(iv => {
+            const w       = iv.days * ppd;
+            const ivStart = addDays(projStart, offsetDays);
+            const ivEnd   = addDays(projStart, offsetDays + iv.days - 1);
+            const hi      = today >= ivStart && today <= ivEnd;
+            const div     = document.createElement('div');
+            div.style.cssText = `
+                width:${w}px; min-width:${w}px; height:100%;
+                display:flex; align-items:center; justify-content:center;
+                font-size:.65rem; font-weight:600; padding:0 2px;
+                border-right:1px solid #334155; box-sizing:border-box;
+                white-space:nowrap; overflow:hidden;
+                color:${hi ? '#f87171' : 'rgba(255,255,255,.45)'};
+                ${hi ? 'border-bottom:2px solid #ef4444;' : ''}
+            `;
+            if (w >= 22) div.textContent = iv.label;
+            else if (w >= 8) div.textContent = iv.label.substring(0, 3);
+            hdrEl.appendChild(div);
+            offsetDays += iv.days;
+        });
+    }
+
+    /* ── Task rows ──────────────────────────────────────────────────── */
+    function renderGanttRows(bodyEl, tasks, projStart, ppd, totalW, todayX, showToday) {
+        bodyEl.innerHTML = '';
+        tasks.forEach((t, i) => {
+            const barLeft = Math.max(0, dateDiff(projStart, t.start)) * ppd;
+            const barDays = Math.max(1, dateDiff(t.start, t.end) + 1);
+            const barW    = Math.max(3, barDays * ppd);
+            const clr     = getTaskColor(t.row);
+            const bg      = i % 2 === 0 ? '#0f172a' : '#111827';
+
+            const rowEl = document.createElement('div');
+            rowEl.style.cssText = `display:flex; height:${ROW_H}px; background:${bg};`;
+
+            const nameDiv = document.createElement('div');
+            nameDiv.style.cssText = `
+                min-width:${NAME_W}px; max-width:${NAME_W}px;
+                padding:0 8px; display:flex; align-items:center;
+                font-size:.72rem; color:rgba(255,255,255,.8);
+                position:sticky; left:0; z-index:5; background:${bg};
+                border-right:1px solid #1e293b;
+                overflow:hidden; white-space:nowrap;
+            `;
+            nameDiv.textContent = t.name;
+            nameDiv.title = t.name;
+
+            const barArea = document.createElement('div');
+            barArea.style.cssText = `width:${totalW}px; min-width:${totalW}px; height:${ROW_H}px; position:relative; flex-shrink:0;`;
+
+            const isCrit    = GS.hasCpm && t.critical;
+            const opacity   = GS.hasCpm && !t.critical ? 0.42 : 0.88;
+            const shadow    = isCrit ? 'box-shadow:0 0 0 1.5px #ef4444;' : '';
+            const floatHint = GS.hasCpm && t.totalFloat !== null
+                ? `\nFloat: ${t.totalFloat} day${t.totalFloat === 1 ? '' : 's'}${isCrit ? ' ⚠ Critical' : ''}`
+                : '';
+
+            const bar = document.createElement('div');
+            bar.style.cssText = `
+                position:absolute; left:${barLeft}px; top:${BAR_T}px;
+                width:${barW}px; height:${BAR_H}px;
+                background:${clr}; border-radius:3px;
+                opacity:${opacity}; ${shadow}
+            `;
+            bar.title = `${t.name}\n${fmtDate(t.start)} → ${fmtDate(t.end)}${floatHint}`;
+            barArea.appendChild(bar);
+
+            /* Float extension — dashed bar showing available slack */
+            if (GS.hasCpm && t.totalFloat !== null && t.totalFloat > 0) {
+                const floatW = Math.min(t.totalFloat * ppd, totalW - barLeft - barW);
+                if (floatW >= 2) {
+                    const fb = document.createElement('div');
+                    fb.style.cssText = `
+                        position:absolute; left:${barLeft + barW}px; top:${BAR_T + 2}px;
+                        width:${floatW}px; height:${BAR_H - 4}px;
+                        border:1px dashed rgba(255,255,255,.22); border-left:none;
+                        border-radius:0 3px 3px 0; pointer-events:none;
+                    `;
+                    fb.title = `Float: ${t.totalFloat} days`;
+                    barArea.appendChild(fb);
+                }
+            }
+
+            if (showToday) {
+                const line = document.createElement('div');
+                line.style.cssText = `
+                    position:absolute; left:${todayX}px; top:0;
+                    width:1px; height:100%; background:#ef4444; opacity:.6;
+                    pointer-events:none;
+                `;
+                barArea.appendChild(line);
+            }
+
+            rowEl.appendChild(nameDiv);
+            rowEl.appendChild(barArea);
+            bodyEl.appendChild(rowEl);
+        });
+    }
+
+    /* ── Stage filter chips ─────────────────────────────────────────── */
+    function renderStageChips(allTasks) {
+        const chipsEl = document.getElementById('ds-stage-chips');
+        if (!chipsEl) return;
+        chipsEl.innerHTML = '';
+        const stageIdx = getColIdx('activity_type');
+        if (stageIdx < 0 || !allTasks.length) return;
+
+        const stages = [...new Set(
+            allTasks.map(t => (t.row[stageIdx] ?? '').toString().trim()).filter(Boolean)
+        )].sort();
+        if (!stages.length) return;
+
+        [{ v: 'all', label: 'All' }, ...stages.map(s => ({ v: s, label: s }))].forEach(({ v, label }) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = `btn btn-sm btn-outline-secondary ds-stage-chip${GS.stageFilter === v ? ' active' : ''}`;
+            btn.textContent = label;
+            btn.dataset.stage = v;
+            btn.addEventListener('click', function () {
+                GS.stageFilter = this.dataset.stage;
+                renderGantt();
+            });
+            chipsEl.appendChild(btn);
+        });
+    }
+
+    /* ── Legend ─────────────────────────────────────────────────────── */
+    function renderLegend(showToday) {
+        const leg = document.getElementById('ds-gantt-legend');
+        if (!leg) return;
+        const items = [
+            { clr: STATUS_CLR.planned,  label: 'Planned'  },
+            { clr: STATUS_CLR.active,   label: 'Active'   },
+            { clr: STATUS_CLR.delayed,  label: 'Delayed'  },
+            { clr: STATUS_CLR.complete, label: 'Complete' },
+        ];
+        leg.innerHTML = items.map(it =>
+            `<span style="display:inline-flex;align-items:center;gap:4px;color:rgba(255,255,255,.55);">
+                <span style="display:inline-block;width:12px;height:10px;border-radius:2px;background:${it.clr};"></span>${it.label}
+            </span>`
+        ).join('');
+        if (showToday) {
+            leg.innerHTML +=
+                `<span style="display:inline-flex;align-items:center;gap:4px;color:rgba(255,255,255,.55);">
+                    <span style="display:inline-block;width:2px;height:13px;background:#ef4444;"></span>Today
+                </span>`;
+        }
+        if (GS.hasCpm) {
+            leg.innerHTML +=
+                `<span style="display:inline-flex;align-items:center;gap:4px;color:rgba(255,255,255,.55);">
+                    <span style="display:inline-block;width:12px;height:10px;border-radius:2px;background:#1e40af;box-shadow:0 0 0 1.5px #ef4444;"></span>Critical path
+                </span>
+                <span style="display:inline-flex;align-items:center;gap:4px;color:rgba(255,255,255,.4);">
+                    <span style="display:inline-block;width:12px;height:10px;border-radius:2px;background:#1e40af;opacity:.42;"></span>Non-critical
+                </span>
+                <span style="display:inline-flex;align-items:center;gap:4px;color:rgba(255,255,255,.4);">
+                    <span style="display:inline-block;width:14px;height:8px;border:1px dashed rgba(255,255,255,.35);border-radius:0 2px 2px 0;border-left:none;"></span>Float
+                </span>`;
+        }
+    }
+
+    /* ── Dependency arrows (SVG overlay) ───────────────────────────── */
+    function renderDependencyArrows(bodyEl, tasks, projStart, ppd, totalW) {
+        /* Remove previous overlay */
+        const old = bodyEl.querySelector('.ds-dep-arrows');
+        if (old) old.remove();
+
+        if (!GS.hasCpm) return;
+        const codeIdx = getColIdx('activity_code');
+        const predIdx = getColIdx('predecessors');
+        if (codeIdx < 0 || predIdx < 0) return;
+
+        /* Build per-code metrics + criticality */
+        const metricsMap = new Map(); /* code → {barLeft, barW, rowIdx} */
+        const critMap    = new Map(); /* code → bool */
+        tasks.forEach((t, i) => {
+            const code = (t.row[codeIdx] ?? '').toString().trim();
+            if (!code) return;
+            const barLeft = Math.max(0, dateDiff(projStart, t.start)) * ppd;
+            const barW    = Math.max(3, (dateDiff(t.start, t.end) + 1) * ppd);
+            metricsMap.set(code, { barLeft, barW, rowIdx: i });
+            critMap.set(code, t.critical);
+        });
+
+        /* Collect arrows where both endpoints are visible (max 150) */
+        const arrows = [];
+        outer: for (const t of tasks) {
+            const succCode = (t.row[codeIdx] ?? '').toString().trim();
+            if (!succCode || !metricsMap.has(succCode)) continue;
+            for (const p of parsePreds((t.row[predIdx] ?? '').toString())) {
+                if (!metricsMap.has(p.code)) continue;
+                if (arrows.length >= 150) break outer;
+                arrows.push({
+                    from:     p.code,
+                    to:       succCode,
+                    critical: critMap.get(p.code) === true && t.critical,
+                });
+            }
+        }
+        if (!arrows.length) return;
+
+        const NS   = 'http://www.w3.org/2000/svg';
+        const svgW = NAME_W + totalW;
+        const svgH = tasks.length * ROW_H;
+
+        const svg = document.createElementNS(NS, 'svg');
+        svg.setAttribute('class', 'ds-dep-arrows');
+        svg.setAttribute('width',  svgW);
+        svg.setAttribute('height', svgH);
+        svg.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;z-index:2;overflow:visible;';
+
+        /* Arrowhead markers — one for critical, one for dim */
+        const defs = document.createElementNS(NS, 'defs');
+        for (const [id, fill] of [['ar-c','#ef4444'],['ar-d','#475569']]) {
+            const mk = document.createElementNS(NS, 'marker');
+            mk.setAttribute('id', id);
+            mk.setAttribute('markerWidth',  '5');
+            mk.setAttribute('markerHeight', '5');
+            mk.setAttribute('refX', '4');
+            mk.setAttribute('refY', '2.5');
+            mk.setAttribute('orient', 'auto');
+            const tip = document.createElementNS(NS, 'path');
+            tip.setAttribute('d', 'M 0 0 L 5 2.5 L 0 5 Z');
+            tip.setAttribute('fill', fill);
+            mk.appendChild(tip);
+            defs.appendChild(mk);
+        }
+        svg.appendChild(defs);
+
+        /* Draw each arrow as an L-shaped path */
+        arrows.forEach(({ from, to, critical }) => {
+            const pred = metricsMap.get(from);
+            const succ = metricsMap.get(to);
+
+            /* px = right edge of predecessor bar; sx = left edge of successor bar */
+            const px = NAME_W + pred.barLeft + pred.barW;
+            const py = pred.rowIdx * ROW_H + ROW_H / 2;
+            const sx = NAME_W + succ.barLeft - 2;
+            const sy = succ.rowIdx * ROW_H + ROW_H / 2;
+
+            /* Elbow x: far enough right that both horizontal segments are left-to-right */
+            const ex = Math.max(px, sx) + 8;
+
+            const d = py === sy
+                ? `M ${px} ${py} H ${sx}`                     /* same row — flat line */
+                : `M ${px} ${py} H ${ex} V ${sy} H ${sx}`;   /* L-shape */
+
+            const path = document.createElementNS(NS, 'path');
+            path.setAttribute('d', d);
+            path.setAttribute('stroke',       critical ? '#ef4444' : '#475569');
+            path.setAttribute('stroke-width', critical ? '1.5'     : '1');
+            path.setAttribute('fill', 'none');
+            path.setAttribute('marker-end', critical ? 'url(#ar-c)' : 'url(#ar-d)');
+            svg.appendChild(path);
+        });
+
+        bodyEl.style.position = 'relative';
+        bodyEl.appendChild(svg);
+    }
+
+}());
+</script>

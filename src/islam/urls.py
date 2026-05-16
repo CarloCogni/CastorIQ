@@ -66,6 +66,11 @@ urlpatterns = [
     # Scheduling HTMX endpoints                                           #
     # ------------------------------------------------------------------ #
     path(
+        "projects/<uuid:pk>/schedule/preview/",
+        scheduling_views.SchedulePreviewView.as_view(),
+        name="schedule_preview",
+    ),
+    path(
         "projects/<uuid:pk>/schedule/upload/",
         scheduling_views.TaskUploadView.as_view(),
         name="schedule_upload",
