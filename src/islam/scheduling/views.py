@@ -25,7 +25,9 @@ from .services.column_mapper import (
     CANONICAL_FIELDS,
     CANONICAL_LABELS,
     apply_mapping,
+    default_visible_columns,
     extract_columns,
+    suggest_mapping,
 )
 from .services.critical_path import compute_critical_path
 from .services.embed_linker import embed_match_tasks
@@ -75,6 +77,170 @@ class ScheduleView(ProjectTabMixin, TemplateView):
         ).count()
         ctx["dep_count"] = TaskDependency.objects.filter(predecessor__project=project).count()
         return ctx
+
+
+# ---------------------------------------------------------------------------
+# Preview endpoint — returns raw columns + suggested mapping + 200 sample rows
+# ---------------------------------------------------------------------------
+
+
+def _scan_date_range(
+    rows: list[list],
+    headers: list[str],
+    start_header: str,
+    end_header: str,
+) -> dict | None:
+    """Scan all rows and return {"start": ISO, "end": ISO} or None."""
+    try:
+        si, ei = headers.index(start_header), headers.index(end_header)
+    except ValueError:
+        return None
+    from .services.column_mapper import _to_date  # co-located private helper
+
+    min_s = max_e = None
+    for row in rows:
+        sv = str(row[si]).strip() if si < len(row) and row[si] is not None else ""
+        ev = str(row[ei]).strip() if ei < len(row) and row[ei] is not None else ""
+        s, e = _to_date(sv), _to_date(ev)
+        if s and (min_s is None or s < min_s):
+            min_s = s
+        if e and (max_e is None or e > max_e):
+            max_e = e
+    return {"start": min_s.isoformat(), "end": max_e.isoformat()} if min_s and max_e else None
+
+
+_PREVIEW_PARSED_COLS = [
+    "name",
+    "start_date",
+    "end_date",
+    "status",
+    "activity_code",
+    "actual_start",
+    "actual_end",
+]
+_PREVIEW_PARSED_VISIBLE = ["name", "start_date", "end_date", "status", "activity_code"]
+
+
+class SchedulePreviewView(ProjectModifyAccessMixin, View):
+    """JSON POST — detect format, return columns + suggested mapping + ≤200 rows.
+
+    Used by the Dynamic Preview Table UI to render an interactive column-mapping
+    experience before the user commits to saving the schedule.
+
+    Response schema (all formats):
+        format           — "excel" | "csv" | "xer" | "msp" | "p6xml"
+        needs_mapping    — bool: True for Excel/CSV, False for XER/XML
+        raw_columns      — list[str]: header names (Excel/CSV) or canonical field names
+        suggested_mapping — dict[str, str]: {canonical_field: matched_column}
+                           Empty for XER/XML (already fully mapped)
+        default_visible  — list[str]: columns to show initially in the preview table
+        rows             — list[list[str]]: up to 200 rows of raw values
+        total_rows       — int: true total for Excel/CSV; ≤200 for XER/XML (preview cap)
+    """
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        project = self.get_project()
+        uploaded = request.FILES.get("schedule_file")
+        if not uploaded:
+            return JsonResponse({"error": "No file selected."}, status=400)
+
+        filename = uploaded.name.lower()
+        try:
+            if filename.endswith((".xlsx", ".xls", ".csv")):
+                return self._preview_tabular(request, project, uploaded)
+            elif filename.endswith(".xer"):
+                return self._preview_parsed(request, project, uploaded, parse_xer)
+            elif filename.endswith(".xml"):
+                return self._preview_parsed(request, project, uploaded, parse_msp)
+            else:
+                return JsonResponse(
+                    {"error": ("Unsupported file type. Upload .xlsx, .xls, .csv, .xer, or .xml.")},
+                    status=400,
+                )
+        except ValueError as exc:
+            return JsonResponse({"error": str(exc)}, status=400)
+        except Exception as exc:
+            logger.exception("Schedule preview failed")
+            return JsonResponse({"error": f"Preview failed: {exc}"}, status=500)
+
+    def _preview_tabular(self, request, project, file_obj) -> JsonResponse:
+        col_data = extract_columns(file_obj, file_obj.name)
+        headers: list[str] = col_data["headers"]
+        raw_rows: list[list] = col_data["raw_rows"]
+
+        # Store in session so MappingSubmitView can apply the mapping without a re-upload.
+        request.session[f"raw_headers_{project.pk}"] = json.dumps(headers)
+        request.session[f"raw_rows_{project.pk}"] = json.dumps(raw_rows)
+        request.session[f"raw_source_{project.pk}"] = col_data["source"]
+
+        mapping = suggest_mapping(headers)
+        visible = default_visible_columns(headers, mapping)
+
+        date_range = None
+        start_h, end_h = mapping.get("start_date"), mapping.get("end_date")
+        if start_h and end_h:
+            date_range = _scan_date_range(raw_rows, headers, start_h, end_h)
+
+        preview_rows = raw_rows[:200]
+        return JsonResponse(
+            {
+                "format": col_data["source"],
+                "needs_mapping": True,
+                "raw_columns": headers,
+                "suggested_mapping": mapping,
+                "default_visible": visible,
+                "rows": [[str(v) if v is not None else "" for v in row] for row in preview_rows],
+                "total_rows": len(raw_rows),
+                "preview_rows": len(preview_rows),
+                "project_date_range": date_range,
+            }
+        )
+
+    def _preview_parsed(self, request, project, file_obj, parser_fn) -> JsonResponse:
+        tasks, raw_deps = parser_fn(file_obj)
+
+        # Full parse — store in session so TaskSaveView can persist without a re-upload.
+        request.session[f"parsed_tasks_{project.pk}"] = json.dumps(
+            [
+                {
+                    **t,
+                    "start_date": str(t["start_date"]),
+                    "end_date": str(t["end_date"]),
+                    "actual_start": str(t["actual_start"]) if t.get("actual_start") else None,
+                    "actual_end": str(t["actual_end"]) if t.get("actual_end") else None,
+                }
+                for t in tasks
+            ]
+        )
+        if raw_deps:
+            request.session[f"parsed_deps_{project.pk}"] = json.dumps(raw_deps)
+
+        cols = _PREVIEW_PARSED_COLS
+        all_rows = [[str(t.get(c) or "") for c in cols] for t in tasks]
+        fmt = tasks[0].get("source", "msp") if tasks else "msp"
+
+        starts = [t["start_date"] for t in tasks if t.get("start_date")]
+        ends = [t["end_date"] for t in tasks if t.get("end_date")]
+        date_range = (
+            {"start": min(starts).isoformat(), "end": max(ends).isoformat()}
+            if starts and ends
+            else None
+        )
+
+        preview = all_rows[:200]
+        return JsonResponse(
+            {
+                "format": fmt,
+                "needs_mapping": False,
+                "raw_columns": cols,
+                "suggested_mapping": {},
+                "default_visible": _PREVIEW_PARSED_VISIBLE,
+                "rows": preview,
+                "total_rows": len(tasks),
+                "preview_rows": len(preview),
+                "project_date_range": date_range,
+            }
+        )
 
 
 # ---------------------------------------------------------------------------

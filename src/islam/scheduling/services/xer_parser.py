@@ -3,8 +3,8 @@
 
 XER format is a tab-delimited text file structured as:
   %T  <TableName>
-  %F  <field1>\t<field2>\t...
-  %R  <val1>\t<val2>\t...     (one row per line)
+  %F  <field1>\\t<field2>\\t...
+  %R  <val1>\\t<val2>\\t...     (one row per line)
   %E  (end of table)
 """
 
@@ -24,9 +24,14 @@ _DEP_TYPE_XER: dict[str, str] = {
     "PR_SF": "SF",
 }
 
+# Only materialise rows from these tables; everything else is skipped.
+_NEEDED_TABLES = frozenset({"TASK", "TASKPRED", "PROJECT", "PROJWBS", "RSRC", "TASKRSRC"})
 
-def parse_xer(file_obj) -> tuple[list[dict], list[dict]]:
+
+def parse_xer(file_obj, preview_only: bool = False) -> tuple[list[dict], list[dict]]:
     """Parse a Primavera XER file.
+
+    When preview_only=True: returns up to 200 tasks with no dependency data.
 
     Returns (tasks, raw_deps):
       tasks    — list of task dicts for TaskSaveView
@@ -36,29 +41,50 @@ def parse_xer(file_obj) -> tuple[list[dict], list[dict]]:
     Raises ValueError if file is not valid XER or no activities found.
     """
     content = _decode(file_obj)
-    tables = _split_tables(content)
+    max_tasks = 200 if preview_only else None
 
-    task_table = tables.get("TASK") or tables.get("task")
-    if not task_table:
-        raise ValueError("XER file does not contain a TASK table.")
+    tasks: list[dict] = []
+    raw_deps: list[dict] = []
 
-    fields, rows = task_table
-    tasks = []
-    for row in rows:
-        task = _map_task_row(fields, row)
-        if task:
-            tasks.append(task)
+    for table, record in _stream_xer(content):
+        if table == "TASK":
+            if max_tasks is None or len(tasks) < max_tasks:
+                task = _map_task_row(record)
+                if task:
+                    tasks.append(task)
+        elif table == "TASKPRED" and not preview_only:
+            dep = _map_dep_row(record)
+            if dep:
+                raw_deps.append(dep)
 
     if not tasks:
-        raise ValueError("TASK table found but no activities could be parsed.")
-
-    raw_deps: list[dict] = []
-    taskpred_table = tables.get("TASKPRED") or tables.get("taskpred")
-    if taskpred_table:
-        raw_deps = _parse_taskpred(taskpred_table)
+        raise ValueError("XER file does not contain parseable TASK rows.")
 
     logger.info("xer_parser: parsed %d tasks, %d dependencies", len(tasks), len(raw_deps))
     return tasks, raw_deps
+
+
+def _stream_xer(content: str):
+    """Yield (table_name, record_dict) for rows in NEEDED_TABLES only.
+
+    Skips all tables not in _NEEDED_TABLES without storing their rows.
+    """
+    current_table: str | None = None
+    headers: list[str] = []
+
+    for line in content.splitlines():
+        line = line.rstrip("\r")
+        if line.startswith("%T"):
+            current_table = line[2:].strip()
+            headers = []
+        elif line.startswith("%F"):
+            headers = line[2:].strip().split("\t")
+        elif line.startswith("%R") and current_table in _NEEDED_TABLES:
+            values = line[2:].strip().split("\t")
+            yield current_table, dict(zip(headers, values))
+        elif line.startswith("%E"):
+            current_table = None
+            headers = []
 
 
 def _decode(file_obj) -> str:
@@ -73,41 +99,11 @@ def _decode(file_obj) -> str:
     return raw
 
 
-def _split_tables(content: str) -> dict[str, tuple[list[str], list[list[str]]]]:
-    """Return {table_name: (fields_list, list_of_value_lists)}."""
-    tables: dict[str, tuple[list[str], list[list[str]]]] = {}
-    current_table: str | None = None
-    fields: list[str] = []
-    rows: list[list[str]] = []
+def _map_task_row(record: dict) -> dict | None:
+    """Map an XER TASK record dict to a task dict."""
 
-    for line in content.splitlines():
-        line = line.rstrip("\r")
-        if line.startswith("%T"):
-            if current_table:
-                tables[current_table] = (fields, rows)
-            current_table = line[2:].strip()
-            fields = []
-            rows = []
-        elif line.startswith("%F"):
-            fields = line[2:].strip().split("\t")
-        elif line.startswith("%R"):
-            rows.append(line[2:].strip().split("\t"))
-        elif line.startswith("%E") and current_table:
-            tables[current_table] = (fields, rows)
-            current_table = None
-            fields = []
-            rows = []
-
-    return tables
-
-
-def _map_task_row(fields: list[str], values: list[str]) -> dict | None:
     def get(name: str) -> str:
-        try:
-            idx = fields.index(name)
-            return values[idx].strip() if idx < len(values) else ""
-        except ValueError:
-            return ""
+        return record.get(name, "").strip()
 
     name = get("task_name") or get("task_code")
     if not name:
@@ -143,6 +139,28 @@ def _map_task_row(fields: list[str], values: list[str]) -> dict | None:
     }
 
 
+def _map_dep_row(record: dict) -> dict | None:
+    """Map an XER TASKPRED record dict to a dependency dict."""
+    task_id = record.get("task_id", "").strip()
+    pred_task_id = record.get("pred_task_id", "").strip()
+    if not task_id or not pred_task_id:
+        return None
+
+    dep_type = _DEP_TYPE_XER.get(record.get("pred_type", "").strip(), "FS")
+    lag_raw = record.get("lag_hr_cnt", "").strip()
+    try:
+        lag_days = round(float(lag_raw) / 8) if lag_raw else 0
+    except ValueError:
+        lag_days = 0
+
+    return {
+        "succ_xer_id": task_id,
+        "pred_xer_id": pred_task_id,
+        "dep_type": dep_type,
+        "lag_days": lag_days,
+    }
+
+
 def _map_status(raw: str) -> str:
     raw = raw.lower()
     if raw in ("completed", "complete", "tf_complete"):
@@ -170,39 +188,3 @@ def _to_date(value: str) -> date | None:
         except ValueError:
             pass
     return None
-
-
-def _parse_taskpred(table: tuple) -> list[dict]:
-    """Parse TASKPRED rows into raw dependency dicts keyed by XER task_id."""
-    fields, rows = table
-    deps = []
-    for row in rows:
-
-        def get(name: str) -> str:
-            try:
-                idx = fields.index(name)
-                return row[idx].strip() if idx < len(row) else ""
-            except ValueError:
-                return ""
-
-        task_id = get("task_id")  # successor
-        pred_task_id = get("pred_task_id")  # predecessor
-        if not task_id or not pred_task_id:
-            continue
-
-        dep_type = _DEP_TYPE_XER.get(get("pred_type"), "FS")
-        lag_raw = get("lag_hr_cnt")
-        try:
-            lag_days = round(float(lag_raw) / 8) if lag_raw else 0
-        except ValueError:
-            lag_days = 0
-
-        deps.append(
-            {
-                "succ_xer_id": task_id,
-                "pred_xer_id": pred_task_id,
-                "dep_type": dep_type,
-                "lag_days": lag_days,
-            }
-        )
-    return deps

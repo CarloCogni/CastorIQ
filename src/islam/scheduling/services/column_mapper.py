@@ -17,6 +17,56 @@ import openpyxl
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Synonym sets for auto-suggestion (shared with suggest_mapping below)
+# ---------------------------------------------------------------------------
+
+_SYN_NAME = frozenset({"name", "task name", "task", "activity", "activity name", "description"})
+_SYN_START = frozenset(
+    {"start", "start date", "startdate", "planned start", "early start", "begin"}
+)
+_SYN_END = frozenset(
+    {"end", "end date", "enddate", "finish", "planned finish", "early finish", "complete"}
+)
+_SYN_CODE = frozenset({"activity code", "activitycode", "code", "wbs", "wbs code", "id", "task id"})
+_SYN_STATUS = frozenset({"status", "state"})
+_SYN_COLOR = frozenset({"color", "colour"})
+_SYN_COST = frozenset({"cost", "budget", "planned cost", "total cost", "value"})
+_SYN_TYPE = frozenset({"type", "activity type", "task type", "wbs type"})
+_SYN_PREDS = frozenset(
+    {"predecessor", "predecessors", "pred", "dependency", "dependencies", "depends on"}
+)
+_SYN_ACT_START = frozenset({"actual start", "actualstart", "act start", "a_start"})
+_SYN_ACT_END = frozenset(
+    {"actual end", "actual finish", "actualend", "act end", "act finish", "a_finish"}
+)
+
+_FIELD_SYNONYMS: dict[str, frozenset[str]] = {
+    "name": _SYN_NAME,
+    "start_date": _SYN_START,
+    "end_date": _SYN_END,
+    "activity_code": _SYN_CODE,
+    "status": _SYN_STATUS,
+    "color": _SYN_COLOR,
+    "cost": _SYN_COST,
+    "activity_type": _SYN_TYPE,
+    "predecessors": _SYN_PREDS,
+    "actual_start": _SYN_ACT_START,
+    "actual_end": _SYN_ACT_END,
+}
+
+# Columns shown by default in preview (in order of importance)
+_DEFAULT_VISIBLE_ORDER = [
+    "name",
+    "start_date",
+    "end_date",
+    "activity_code",
+    "status",
+    "actual_start",
+    "actual_end",
+    "cost",
+]
+
 CANONICAL_FIELDS = [
     "name",
     "start_date",
@@ -152,6 +202,39 @@ def apply_mapping(
         )
 
     return tasks
+
+
+def suggest_mapping(headers: list[str]) -> dict[str, str]:
+    """Auto-detect which canonical field each header column likely contains.
+
+    Returns {canonical_field: original_header_string} for each matched field.
+    Unmatched headers are silently omitted.  First match per field wins.
+    """
+    lower_to_orig: dict[str, str] = {h.strip().lower(): h for h in headers}
+    mapping: dict[str, str] = {}
+    for field, syns in _FIELD_SYNONYMS.items():
+        for key, orig in lower_to_orig.items():
+            if key in syns:
+                mapping[field] = orig
+                break
+    return mapping
+
+
+def default_visible_columns(headers: list[str], mapping: dict[str, str], cap: int = 8) -> list[str]:
+    """Return up to *cap* column names to display by default in the preview table.
+
+    Mapped columns appear first (in canonical priority order); remaining unmapped
+    columns fill the rest up to the cap.
+    """
+    mapped_headers = {v for v in mapping.values()}
+    priority = []
+    for field in _DEFAULT_VISIBLE_ORDER:
+        h = mapping.get(field)
+        if h and h in headers:
+            priority.append(h)
+
+    extras = [h for h in headers if h not in mapped_headers]
+    return (priority + extras)[:cap]
 
 
 # ---------------------------------------------------------------------------
