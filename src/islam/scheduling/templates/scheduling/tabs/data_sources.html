@@ -1083,7 +1083,9 @@
         allTasks.forEach(t => { t.critical = false; t.totalFloat = null; });
         runCPM(allTasks);
 
-        /* P6 pre-computed float — authoritative when present; overrides client CPM */
+        /* P6 pre-computed float — authoritative when present; overrides client CPM.
+           Use the rounded integer for BOTH display and the critical check so that
+           a task showing "Float: 0 days" is always highlighted as critical. */
         const floatColIdx = getColIdx('total_float_days');
         if (floatColIdx >= 0) {
             const hasFloat = allTasks.some(t => (t.row[floatColIdx] ?? '').toString().trim() !== '');
@@ -1094,7 +1096,7 @@
                     const tf = parseFloat(raw);
                     if (!isNaN(tf)) {
                         t.totalFloat = Math.round(tf);
-                        t.critical   = tf <= 0;
+                        t.critical   = t.totalFloat <= 0;   /* consistent with displayed value */
                     }
                 });
                 GS.hasCpm = true;
@@ -1212,12 +1214,16 @@
     /* ── Task rows ──────────────────────────────────────────────────── */
     function renderGanttRows(bodyEl, tasks, projStart, ppd, totalW, todayX, showToday) {
         bodyEl.innerHTML = '';
+        /* rowMinW ensures the sticky containing-block spans the full scroll range.
+           Without this, position:sticky; left:0 only holds within the viewport width
+           and breaks as soon as the scroll exceeds the container's auto width. */
+        const rowMinW = _nameW + totalW;
         let taskIdx = 0;
         tasks.forEach((t, i) => {
             /* WBS group header row */
             if (t.isGroup) {
                 const groupEl = document.createElement('div');
-                groupEl.style.cssText = `display:flex; height:${ROW_H}px; background:#1e293b; border-top:1px solid #334155; border-bottom:1px solid #243344;`;
+                groupEl.style.cssText = `display:flex; height:${ROW_H}px; background:#1e293b; border-top:1px solid #334155; border-bottom:1px solid #243344; min-width:${rowMinW}px;`;
                 const nameDiv = document.createElement('div');
                 nameDiv.className = 'ds-gantt-name-cell';
                 nameDiv.style.cssText = `
@@ -1246,7 +1252,7 @@
             taskIdx++;
 
             const rowEl = document.createElement('div');
-            rowEl.style.cssText = `display:flex; height:${ROW_H}px; background:${bg};`;
+            rowEl.style.cssText = `display:flex; height:${ROW_H}px; background:${bg}; min-width:${rowMinW}px;`;
 
             const nameDiv = document.createElement('div');
             nameDiv.className = 'ds-gantt-name-cell';
