@@ -277,7 +277,7 @@ class SchedulePreviewView(ProjectModifyAccessMixin, View):
                 "format": fmt,
                 "needs_mapping": False,
                 "raw_columns": cols,
-                "suggested_mapping": {},
+                "suggested_mapping": {col: col for col in cols},
                 "default_visible": _PREVIEW_PARSED_VISIBLE,
                 "rows": preview,
                 "total_rows": len(tasks),
@@ -402,6 +402,15 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
             tasks_data = json.loads(raw)
         except json.JSONDecodeError:
             return toast_response("Session data corrupt — re-upload the file.", "error", status=400)
+
+        # Replace mode: wipe existing tasks before saving (cascades deps + bindings)
+        replace_mode = request.POST.get("replace") == "true" or bool(
+            request.session.pop(f"schedule_replace_{project.pk}", False)
+        )
+        if replace_mode:
+            existing = Task.objects.filter(project=project).count()
+            Task.objects.filter(project=project).delete()
+            logger.info("Replace mode: cleared %d tasks for project %s", existing, project.pk)
 
         created = 0
         xer_id_map: dict[str, str] = {}  # _xer_task_id  → str(task.pk)
@@ -953,6 +962,9 @@ class MappingSubmitView(ProjectModifyAccessMixin, View):
         ifc_param_name = request.POST.get("ifc_param_name", "Activity ID").strip() or "Activity ID"
         # Persist for auto-link and TimeLiner to read back
         request.session[f"ifc_param_name_{project.pk}"] = ifc_param_name
+        # Propagate replace flag so TaskSaveView deletes existing tasks on confirm
+        if request.POST.get("replace") == "true":
+            request.session[f"schedule_replace_{project.pk}"] = True
 
         try:
             tasks = apply_mapping(headers, rows, column_mapping, source)

@@ -4,7 +4,8 @@
      data-save-url="{% url 'islam:schedule_save' project.pk %}"
      data-mapping-url="{% url 'islam:schedule_mapping_submit' project.pk %}"
      data-gantt-url="{% url 'islam:schedule' project.pk %}?tab=gantt"
-     data-csrf="{{ csrf_token }}">
+     data-csrf="{{ csrf_token }}"
+     data-task-count="{{ task_count }}">
 
     <!-- ── Upload bar ──────────────────────────────────────────────── -->
     <div class="d-flex align-items-center gap-3 flex-wrap mb-2" id="ds-upload-bar">
@@ -20,9 +21,12 @@
         </div>
         <div id="ds-status" class="small mt-3"></div>
         {% if task_count %}
-        <div class="alert alert-info py-1 px-2 mb-0 small ms-auto" style="font-size:0.8rem;">
-            <i class="bi bi-info-circle me-1"></i>
-            {{ task_count }} task{{ task_count|pluralize }} already imported — re-upload <strong>adds</strong> tasks.
+        <div class="badge bg-secondary-subtle text-secondary-emphasis ms-auto px-2 py-2"
+             style="font-size:.78rem; font-weight:400; white-space:normal; text-align:left; border:1px solid var(--bs-border-color); border-radius:6px;">
+            <i class="bi bi-database me-1"></i>
+            <strong>{{ task_count }}</strong> task{{ task_count|pluralize }} already imported.
+            Re-uploading will <strong>add</strong> new tasks (duplicates skipped), or use
+            <em>Replace all</em> to start fresh.
         </div>
         {% endif %}
     </div>
@@ -61,15 +65,25 @@
          class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-2 px-2 py-2 bg-body-secondary rounded">
         <div id="ds-summary-left" class="small"></div>
         <div class="d-flex align-items-center gap-2 flex-wrap">
-            <input id="ds-ifc-param"
-                   type="text"
-                   class="form-control form-control-sm"
-                   style="width:170px;"
-                   value="Activity ID"
-                   placeholder="IFC Property Name"
-                   title="IFC Property Name — used by auto-link">
+            <div class="d-flex flex-column gap-0">
+                <label for="ds-ifc-param"
+                       class="small text-secondary mb-0"
+                       style="font-size:.7rem;"
+                       title="The IFC element property that holds the activity code — e.g. ActivityCode, WBS, TaskID">
+                    IFC Property Name (for AutoLink) <i class="bi bi-question-circle" style="font-size:.75em;"></i>
+                </label>
+                <input id="ds-ifc-param"
+                       type="text"
+                       class="form-control form-control-sm"
+                       style="width:200px;"
+                       value="Activity ID"
+                       placeholder="e.g. ActivityCode, WBS">
+            </div>
             <button id="ds-reset-btn" type="button" class="btn btn-outline-secondary btn-sm">
                 <i class="bi bi-arrow-counterclockwise me-1"></i>Reset
+            </button>
+            <button id="ds-replace-btn" type="button" class="btn btn-outline-danger btn-sm d-none">
+                <i class="bi bi-arrow-repeat me-1"></i>Replace all
             </button>
             <button id="ds-import-btn" type="button" class="btn btn-primary btn-sm" disabled>
                 <span class="spinner-border spinner-border-sm me-1 d-none" id="ds-spin"></span>
@@ -162,6 +176,8 @@
     const GANTT_URL    = root.dataset.ganttUrl;
     const CSRF         = root.dataset.csrf;
 
+    const _TASK_COUNT  = parseInt(root.dataset.taskCount || '0', 10);
+
     const fileInput    = document.getElementById('ds-file-input');
     const statusEl     = document.getElementById('ds-status');
     const tableSection = document.getElementById('ds-table-section');
@@ -172,6 +188,7 @@
     const importLbl    = document.getElementById('ds-import-lbl');
     const importSpin   = document.getElementById('ds-spin');
     const resetBtn     = document.getElementById('ds-reset-btn');
+    const replaceBtn   = document.getElementById('ds-replace-btn');
     const resultEl     = document.getElementById('task-preview-area');
     const tableWrapper = document.getElementById('ds-table-wrapper');
     const mapDd        = document.getElementById('ds-map-dd');
@@ -419,6 +436,12 @@
         const n = S.totalRows, w = n === 1 ? 'row' : 'rows';
         statusEl.innerHTML = `<span class="text-success"><i class="bi bi-check-circle me-1"></i>${n.toLocaleString()} ${w} · ${S.format.toUpperCase()}</span>`;
 
+        /* Conditional button labels based on existing tasks */
+        importLbl.textContent = _TASK_COUNT > 0
+            ? `Add ${n.toLocaleString()} tasks →`
+            : `Import ${n.toLocaleString()} tasks →`;
+        if (replaceBtn && _TASK_COUNT > 0) replaceBtn.classList.remove('d-none');
+
         renderTable();
         renderSummary();
 
@@ -471,24 +494,20 @@
                 `<span class="ds-pill-lbl">${esc(label)}</span>` +
                 `<button class="ds-pill-x" data-col="${esc(col)}" title="Hide column">&times;</button>`;
 
-            pill.addEventListener('click', function (e) {
-                if (e.target.classList.contains('ds-pill-x')) return;
+            pill.addEventListener('mousedown', function (e) {
+                if (e.target.closest('.ds-pill-x')) return;
+                e.stopPropagation();
                 openMapDd(col, pill);
             });
-            pill.querySelector('.ds-pill-x').addEventListener('click', function (e) {
+            pill.querySelector('.ds-pill-x').addEventListener('mousedown', function (e) {
                 e.stopPropagation();
                 removeCol(col);
             });
 
-            /* Resize handle */
+            /* Resize handle — mousedown handled via delegation on tableWrapper */
             const handle = document.createElement('div');
             handle.className = 'col-resize-handle';
             handle.style.cssText = 'position:absolute;right:0;top:0;bottom:0;width:5px;cursor:col-resize;z-index:2;';
-            handle.addEventListener('mousedown', function (e) {
-                e.stopPropagation();
-                e.preventDefault();
-                startColResize(col, e.clientX, w);
-            });
 
             /* Drag-to-reorder */
             th.addEventListener('dragstart', function (e) {
@@ -535,7 +554,7 @@
         addBtn.type = 'button';
         addBtn.className = 'btn btn-outline-secondary btn-sm ds-add-btn';
         addBtn.textContent = '+ Add';
-        addBtn.addEventListener('click', openAddDd);
+        addBtn.addEventListener('mousedown', function (e) { e.stopPropagation(); openAddDd(); });
         thAdd.appendChild(addBtn);
         tr.appendChild(thAdd);
     }
@@ -618,21 +637,20 @@
         }
     }
 
-    /* ── Import button ──────────────────────────────────────────────── */
-    importBtn.addEventListener('click', async function () {
-        if (this.disabled) return;
-
+    /* ── Import / Replace shared submit ────────────────────────────── */
+    async function _submitImport(replace) {
         const isTabular = S.format === 'excel' || S.format === 'csv';
         const url = isTabular ? MAPPING_URL : SAVE_URL;
 
         importSpin.classList.remove('d-none');
         importBtn.disabled = true;
-        importLbl.textContent = 'Importing…';
+        if (replaceBtn) replaceBtn.disabled = true;
+        importLbl.textContent = replace ? 'Replacing…' : 'Importing…';
 
         const fd = new FormData();
         fd.append('csrfmiddlewaretoken', CSRF);
+        if (replace) fd.append('replace', 'true');
         if (isTabular) {
-            /* invert mapping: { raw → canonical } → POST col_{canonical}=raw */
             const used = {};
             for (const [col, field] of Object.entries(S.mapping)) {
                 if (field && field !== 'ignore' && !used[field]) {
@@ -654,7 +672,6 @@
             return;
         }
 
-        /* Forward any HX-Trigger toast regardless of outcome */
         const trigger = r.headers.get('HX-Trigger');
         if (trigger) {
             try {
@@ -670,20 +687,18 @@
             resultEl.innerHTML = html;
             htmx.process(resultEl);
             summaryLeft.insertAdjacentHTML('beforeend',
-                ` <span class="text-danger" style="font-size:.76rem;">⚠ Import failed (${r.status})</span>`
+                ` <span class="text-danger" style="font-size:.76rem;">⚠ ${replace ? 'Replace' : 'Import'} failed (${r.status})</span>`
             );
             return;
         }
 
-        /* ── Success ─────────────────────────────────────────────────── */
         resultEl.innerHTML = html;
         htmx.process(resultEl);
-
         importSpin.classList.add('d-none');
-        importLbl.textContent = '✓ Imported';
+        importLbl.textContent = replace ? '✓ Replaced' : '✓ Imported';
 
         const n   = S.totalRows;
-        const lbl = `<strong>${n.toLocaleString()}</strong> task${n === 1 ? '' : 's'} imported`;
+        const lbl = `<strong>${n.toLocaleString()}</strong> task${n === 1 ? '' : 's'} ${replace ? 'replaced' : 'imported'}`;
         summaryLeft.innerHTML =
             `<span class="text-success"><i class="bi bi-check-circle me-1"></i>${lbl}</span>` +
             (GANTT_URL
@@ -693,12 +708,32 @@
         if (GANTT_URL) {
             setTimeout(() => { window.location.href = GANTT_URL; }, 1600);
         }
+    }
+
+    importBtn.addEventListener('click', function () {
+        if (this.disabled) return;
+        _submitImport(false);
     });
+
+    if (replaceBtn) {
+        replaceBtn.addEventListener('click', function () {
+            const n = _TASK_COUNT;
+            if (!confirm(
+                `⚠ This will DELETE all ${n.toLocaleString()} existing task${n === 1 ? '' : 's'} and their links, ` +
+                `then import ${S.totalRows.toLocaleString()} task${S.totalRows === 1 ? '' : 's'} from the uploaded file.\n\n` +
+                `This cannot be undone. Proceed?`
+            )) return;
+            _submitImport(true);
+        });
+    }
 
     function _importReset() {
         importSpin.classList.add('d-none');
         importBtn.disabled = false;
-        importLbl.textContent = `Import ${S.totalRows.toLocaleString()} tasks →`;
+        if (replaceBtn) replaceBtn.disabled = false;
+        importLbl.textContent = _TASK_COUNT > 0
+            ? `Add ${S.totalRows.toLocaleString()} tasks →`
+            : `Import ${S.totalRows.toLocaleString()} tasks →`;
     }
 
     /* ── Reset button ───────────────────────────────────────────────── */
@@ -736,8 +771,9 @@
 
         mapDd.innerHTML = html;
         mapDd.querySelectorAll('.ds-dd-item').forEach(item => {
-            item.addEventListener('click', function () {
-                if (this.classList.contains('ds-dd-used')) return;
+            item.addEventListener('mousedown', function (e) {
+                e.stopPropagation();
+                if (this.classList.contains('ds-dd-empty')) return;
                 applyMapping(col, this.dataset.field);
                 closeMapDd();
             });
@@ -762,7 +798,8 @@
                 return `<div class="ds-dd-item" data-col="${esc(c)}">${esc(c)}${hint}</div>`;
             }).join('');
             addDd.querySelectorAll('.ds-dd-item').forEach(item => {
-                item.addEventListener('click', function () {
+                item.addEventListener('mousedown', function (e) {
+                    e.stopPropagation();
                     if (this.dataset.col) addCol(this.dataset.col);
                     closeAddDd();
                 });
@@ -823,9 +860,9 @@
     }
 
     /* ── Global close on outside click / scroll ─────────────────────── */
-    document.addEventListener('click', function (e) {
+    document.addEventListener('mousedown', function (e) {
         if (!mapDd.contains(e.target) && !e.target.closest('.ds-pill')) closeMapDd();
-        if (!addDd.contains(e.target) && !e.target.closest('#ds-add-col-btn'))  closeAddDd();
+        if (!addDd.contains(e.target) && !e.target.closest('#ds-add-col-btn')) closeAddDd();
     });
     document.addEventListener('scroll', () => { closeMapDd(); closeAddDd(); }, true);
 
@@ -1333,6 +1370,17 @@
         bodyEl.style.position = 'relative';
         bodyEl.appendChild(svg);
     }
+
+    /* ── Column resize delegation ────────────────────────────────────── */
+    tableWrapper.addEventListener('mousedown', function (e) {
+        const handle = e.target.closest('.col-resize-handle');
+        if (!handle) return;
+        e.stopPropagation();
+        e.preventDefault();
+        const th = handle.closest('th[data-col]');
+        if (!th) return;
+        startColResize(th.dataset.col, e.clientX, th.offsetWidth);
+    });
 
     /* ═══════════════════════════════════════════════════════════════
        SPLITTER — draggable divider between table and Gantt
