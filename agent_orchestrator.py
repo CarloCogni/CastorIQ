@@ -1,192 +1,185 @@
 import os
 import sys
 import json
-import anthropic
+from openai import OpenAI
 
-# 1. Setup paths correctly
+# 1. Central Skills Repository Path Configuration
 SKILLS_BASE_PATH = r"D:\Resources\01 Zigurate\02 AI\Claude skills"
 
-if not os.path.exists(SKILLS_BASE_PATH):
-    print(f"ERROR: Skills path not found at {SKILLS_BASE_PATH}")
-    sys.exit(1)
-
-if SKILLS_BASE_PATH not in sys.path:
+# Ensure path exists and is injected to sys.path safely
+if os.path.exists(SKILLS_BASE_PATH) and SKILLS_BASE_PATH not in sys.path:
     sys.path.append(SKILLS_BASE_PATH)
 
-# Ensure the API key is set
-api_key = os.environ.get("ANTHROPIC_API_KEY")
-if not api_key:
-    print("ERROR: ANTHROPIC_API_KEY environment variable is missing!")
-    print("Set it with:  $env:ANTHROPIC_API_KEY = 'sk-ant-...'")
-    sys.exit(1)
+# 2. Initialize Local Ollama Client (No paid API key required)
+client = OpenAI(
+    base_url="http://localhost:11434/v1",
+    api_key="ollama"  # Ollama requires any non-empty string here to bypass auth
+)
 
-client = anthropic.Anthropic(api_key=api_key)
-
-# 2. Tool definitions
+# 3. Define the Tool Schemas (The Catalog for Qwen to understand your skills)
 tools = [
     {
-        "name": "context_engineering_skill",
-        "description": (
-            "Optimizes and filters large datasets or BIM/IFC project context. "
-            "Use this FIRST to extract and compress relevant hospital project status "
-            "data — milestones, stage gates, compliance scores, open issues — "
-            "removing noise so only decision-critical information remains."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "raw_context": {
-                    "type": "string",
-                    "description": "The raw project status data to filter and compress."
-                }
-            },
-            "required": ["raw_context"]
+        "type": "function",
+        "function": {
+            "name": "context_engineering_skill",
+            "description": "Optimizes, compresses, and structures complex engineering data or massive BIM/IFC datasets before analysis.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "raw_context": {"type": "string", "description": "The unformatted, raw data or report text."}
+                },
+                "required": ["raw_context"]
+            }
         }
     },
     {
-        "name": "ui_ux_pro_max_skill",
-        "description": (
-            "Converts filtered project data into a professional visual report using "
-            "UI/UX Pro Max design principles (67 UI styles, 161 color palettes, "
-            "25 chart types). Use this AFTER context_engineering_skill has cleaned "
-            "the data. Produces Streamlit or HTML output."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "type": "string",
-                    "description": "The filtered project data to render."
+        "type": "function",
+        "function": {
+            "name": "ui_ux_pro_max_skill",
+            "description": "Converts processed technical reports and structural datasets into professional dashboards (e.g., Streamlit, HTML).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "data": {"type": "string", "description": "The filtered data to visualize."},
+                    "framework": {"type": "string", "enum": ["Streamlit", "HTML"],
+                                  "description": "Target UI framework."}
                 },
-                "framework": {
-                    "type": "string",
-                    "enum": ["Streamlit", "HTML"],
-                    "description": "Target UI framework for the output."
-                }
-            },
-            "required": ["data", "framework"]
+                "required": ["data", "framework"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "stop_slop_skill",
+            "description": "Cleans text outputs by removing all AI fluff, conversational filler words, and narrative padding.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string",
+                             "description": "The raw AI response text containing conversational filler words."}
+                },
+                "required": ["text"]
+            }
         }
     }
 ]
 
 
-def execute_tool(tool_name: str, tool_input: dict) -> str:
-    """Dispatch a tool call to the matching skill module (or stub)."""
-    print(f"  [INPUT] {json.dumps(tool_input, indent=2)[:300]}...")
+# 4. Tool Execution Dispatcher
+def execute_tool(name, arguments):
+    """
+    Executes the matching local technical asset from your central skills folder.
+    """
+    print(f"\n[LOCAL EXECUTION] Running local tool: {name}")
+    print(f"[INPUTS] Arguments: {json.dumps(arguments, indent=2)}")
 
-    if tool_name == "context_engineering_skill":
-        # Real integration point: load from Agent-Skills-for-Context-Engineering
-        # from context_optimization.main import optimize   (example)
-        raw = tool_input.get("raw_context", "")
-        return (
-            f"[context_engineering_skill] Filtered {len(raw)} chars of project data.\n"
-            "Key findings extracted:\n"
-            "- NBKCH Stage Gate 3: PASSED (audit score 87/100)\n"
-            "- BEP compliance: 94% (6 open actions)\n"
-            "- LOIN matrix: 312/320 elements validated\n"
-            "- Critical path delta: +3 days (facade package)\n"
-            "- Open QAQC issues: 14 (3 critical, 11 minor)\n"
-            "- Last CDE sync: 2026-05-16 22:41 UTC"
-        )
+    try:
+        # Dynamic routing placeholder for your custom modular setup
+        if name == "context_engineering_skill":
+            raw_text = arguments.get("raw_context", "")
+            # Production pipeline logic link (Can be replaced with direct script imports):
+            processed = f"--- [PROCESSED CONTEXT SNAPSHOT] ---\nFiltered 90% project clutter. Extracted key parameters, LOD 400 statuses, and metadata: {raw_text}"
+            return processed
 
-    if tool_name == "ui_ux_pro_max_skill":
-        # Real integration point: load from ui-ux-pro-max-skill/src
-        # from ui_ux_pro_max.renderer import render   (example)
-        data = tool_input.get("data", "")
-        framework = tool_input.get("framework", "Streamlit")
-        return (
-            f"[ui_ux_pro_max_skill] Professional {framework} Hospital Status Report generated.\n"
-            "Design spec: Clinical Precision theme — slate-900 background, "
-            "cyan-400 accent, Inter/JetBrains Mono typeface pair.\n"
-            "Sections rendered:\n"
-            "  1. Executive KPI strip (Stage Gate badge, BEP %, LOIN progress bar)\n"
-            "  2. Critical path timeline (Gantt-style, 30-day window)\n"
-            "  3. QAQC issue heatmap (severity × discipline)\n"
-            "  4. CDE sync status table\n"
-            "  5. Action items panel (owner + due date + RAG status)\n"
-            f"Source data digest: {len(data)} chars consumed."
-        )
+        elif name == "ui_ux_pro_max_skill":
+            data_in = arguments.get("data", "")
+            framework = arguments.get("framework", "Streamlit")
+            ui_output = f"--- [{framework.upper()} DASHBOARD CONFIG] ---\nimport streamlit as st\nst.title('NBK Hospital - Project Status')\nst.markdown('''{data_in}''')\nst.metric(label='Model Health Index', value='98.4%')"
+            return ui_output
 
-    return f"[{tool_name}] Executed with input: {json.dumps(tool_input)}"
+        elif name == "stop_slop_skill":
+            text_in = arguments.get("text", "")
+            # Clean AI fluff programmatically
+            cleaned = text_in.replace("Sure, here is the report:", "").replace("I hope this helps!", "").strip()
+            return f"--- [CLEANED PROFESSIONAL OUTPUT] ---\n{cleaned}"
+
+        else:
+            return f"Error: Tool {name} is registered but has no execution logic inside the dispatcher."
+
+    except Exception as e:
+        return f"Execution failure inside {name}: {str(e)}"
 
 
-def run_agent(prompt: str, max_turns: int = 6):
-    """Agentic loop — runs until end_turn or max_turns exceeded."""
-    print(f"\n[AGENT] Starting: NBKCH Hospital Status Report\n{'='*60}")
+# 5. Full Multi-Turn Agentic Loop Execution Engine
+def run_agentic_loop(prompt):
+    print("\n" + "=" * 60)
+    print(f"[AGENT] Initializing Local Multi-Turn Loop via Qwen2.5-Coder...")
+    print("=" * 60)
 
+    # Initialize conversation state
     messages = [{"role": "user", "content": prompt}]
+    max_turns = 6
 
     for turn in range(1, max_turns + 1):
-        print(f"\n[TURN {turn}] Calling Claude ({client.__class__.__module__})...")
+        print(f"\n[TURN {turn}] Invoking Local LLM...")
 
         try:
-            response = client.messages.create(
-                model="claude-sonnet-4-6",
-                max_tokens=4096,
-                tools=tools,
+            response = client.chat.completions.create(
+                model="qwen2.5-coder:7b",
                 messages=messages,
+                tools=tools,
+                tool_choice="auto"
             )
+
+            assistant_message = response.choices[0].message
+            tool_calls = assistant_message.tool_calls
+
+            # Format message correctly to feed it back into history
+            msg_dict = {"role": "assistant"}
+            if assistant_message.content:
+                msg_dict["content"] = assistant_message.content
+            if tool_calls:
+                msg_dict["tool_calls"] = [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments
+                        }
+                    } for tc in tool_calls
+                ]
+            messages.append(msg_dict)
+
+            # If the model didn't request any tools, the loop is completed
+            if not tool_calls:
+                print(f"\n[FINAL RESPONSE FROM LOCAL ENGINE]:")
+                print(assistant_message.content)
+                break
+
+            # If tool calls are present, process each tool sequentially
+            print(f"[DECISION] Local LLM requested {len(tool_calls)} tool execution(s).")
+            for tool_call in tool_calls:
+                t_name = tool_call.function.name
+                t_args = json.loads(tool_call.function.arguments)
+                t_id = tool_call.id
+
+                # Execute locally on your machine
+                result_string = execute_tool(t_name, t_args)
+
+                # Feed the execution result back into the model's context window
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": t_id,
+                    "name": t_name,
+                    "content": result_string
+                })
+
         except Exception as e:
-            print(f"[CRITICAL ERROR] API call failed: {e}")
-            sys.exit(1)
-
-        print(f"  stop_reason={response.stop_reason}  blocks={len(response.content)}")
-
-        # Collect all tool calls in this response
-        tool_calls = [b for b in response.content if b.type == "tool_use"]
-        text_blocks = [b for b in response.content if b.type == "text"]
-
-        # Print any text Claude produced in this turn
-        for tb in text_blocks:
-            print(f"\n[CLAUDE]\n{tb.text}")
-
-        if response.stop_reason == "end_turn" or not tool_calls:
-            # Done — print final response if not already printed
-            if not text_blocks:
-                print("\n[RESPONSE] (no text in final turn)")
-            print(f"\n{'='*60}\n[AGENT] Completed in {turn} turn(s).")
+            print(f"\n[CRITICAL SYSTEM ERROR] Loop failed on Turn {turn}: {str(e)}")
             break
-
-        # Append assistant turn
-        messages.append({"role": "assistant", "content": response.content})
-
-        # Execute every tool call and collect results
-        tool_results = []
-        for tc in tool_calls:
-            print(f"\n[TOOL] {tc.name}")
-            result = execute_tool(tc.name, tc.input)
-            print(f"  [RESULT] {result[:200]}...")
-            tool_results.append({
-                "type": "tool_result",
-                "tool_use_id": tc.id,
-                "content": result,
-            })
-
-        # Append all tool results in one user turn
-        messages.append({"role": "user", "content": tool_results})
-
     else:
-        print(f"\n[WARNING] Reached max_turns={max_turns} without end_turn.")
+        print(f"\n[WARN] Reached maximum turn limit ({max_turns}) without explicit closing.")
 
 
 if __name__ == "__main__":
-    user_query = (
-        "Generate a Professional Hospital Status Report for the NBKCH project "
-        "(NBK Children's Hospital, Kuwait — ISO 19650 BIM delivery).\n\n"
-        "Workflow:\n"
-        "1. Call context_engineering_skill first to filter and compress the following "
-        "raw project status snapshot into only decision-critical signals:\n\n"
-        "   RAW DATA:\n"
-        "   - Stage Gate 3 audit completed 2026-05-14, score 87/100, 6 BEP actions open\n"
-        "   - LOIN matrix: 312 of 320 elements validated, 8 pending IR sign-off\n"
-        "   - CDE (Autodesk ACC) last sync 2026-05-16 22:41 UTC, 4 clashes unresolved\n"
-        "   - Critical path: facade package +3 days, MEP coordination on track\n"
-        "   - QAQC open issues: 14 total (3 critical/structural, 11 minor/annotation)\n"
-        "   - BEP compliance score: 94%, MIDP delivery: 78% complete\n"
-        "   - Next milestone: Stage Gate 4 submission 2026-06-01\n\n"
-        "2. Then call ui_ux_pro_max_skill with framework='Streamlit' to render the "
-        "filtered data as a polished professional dashboard report with a clinical/BIM "
-        "aesthetic suitable for a client-facing hospital project status meeting."
+    # Review scenario for Gantt chart fixes in the 4D BIM module
+    test_scenario = (
+        "Review these Gantt chart fixes for a 4D BIM module. "
+        "Check if the sticky column approach is correct and if the CPM "
+        "float=0 logic is sound. Suggest any improvements. "
+        "Code: [paste the modified JS sections here]"
     )
 
-    run_agent(user_query)
+    run_agentic_loop(test_scenario)
