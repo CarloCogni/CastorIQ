@@ -215,17 +215,17 @@
     const REQUIRED = ['name', 'start_date', 'end_date'];
 
     /* ── Gantt constants ─────────────────────────────────────────────── */
-    const ROW_H   = 28;
-    const BAR_H   = 10;  /* planned bar height */
-    const BAR_T   = 4;   /* planned bar top */
-    const ACT_H   = 6;   /* actual bar height */
-    const ACT_T   = 17;  /* actual bar top (below planned) */
-    const HDR_H   = 46;  /* two-tier date header */
+    const ROW_H   = 48;   /* increased to fit activity code + name two-line cell */
+    const BAR_H   = 10;   /* planned bar height */
+    const BAR_T   = 14;   /* planned bar top (centred in taller row) */
+    const ACT_H   = 6;    /* actual bar height */
+    const ACT_T   = 30;   /* actual bar top (below planned, in taller row) */
+    const HDR_H   = 46;   /* two-tier date header */
 
     /* Gantt name panel width — mutable, persisted to localStorage */
     let _nameW = (() => {
-        try { return Math.max(80, parseInt(localStorage.getItem('ds-gantt-name-width') || '', 10)) || 220; }
-        catch { return 220; }
+        try { return Math.max(80, parseInt(localStorage.getItem('ds-gantt-name-width') || '', 10)) || 260; }
+        catch { return 260; }
     })();
 
     const PX_PER_DAY  = { day: 20, week: 10, month: 2 };
@@ -413,8 +413,9 @@
                 statusEl.innerHTML = `<span class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>${esc(data.error || 'Upload failed')}</span>`;
                 return;
             }
-        } catch {
-            statusEl.innerHTML = '<span class="text-danger"><i class="bi bi-wifi-off me-1"></i>Network error</span>';
+        } catch (e) {
+            console.error('[ISLAM DEBUG]', e.message, e.stack);
+            statusEl.innerHTML = `<span class="text-danger"><i class="bi bi-wifi-off me-1"></i>${esc(e.message)} — check console for details</span>`;
             return;
         }
 
@@ -674,9 +675,10 @@
         try {
             r    = await fetch(url, { method: 'POST', body: fd });
             html = await r.text();
-        } catch {
+        } catch (e) {
+            console.error('[ISLAM DEBUG]', e.message, e.stack);
             _importReset();
-            resultEl.innerHTML = '<div class="alert alert-danger small mt-2">Import failed — network error.</div>';
+            resultEl.innerHTML = `<div class="alert alert-danger small mt-2">Import failed — ${esc(e.message)} — check console for details.</div>`;
             return;
         }
 
@@ -687,7 +689,9 @@
                 for (const [name, detail] of Object.entries(evts)) {
                     document.body.dispatchEvent(new CustomEvent(name, { detail, bubbles: true }));
                 }
-            } catch { /* malformed header — ignore */ }
+            } catch (e) {
+                console.error('[ISLAM DEBUG] HX-Trigger parse failed:', e.message, e.stack);
+            }
         }
 
         if (!r.ok) {
@@ -1003,7 +1007,7 @@
                         <div id="ds-gantt-name-hdr" class="ds-gantt-name-cell"
                              style="min-width:${_nameW}px; max-width:${_nameW}px; padding:0 8px; display:flex; align-items:center;
                                     font-size:.72rem; font-weight:600; color:rgba(255,255,255,.45);
-                                    position:sticky; left:0; background:#1e293b; z-index:11; border-right:1px solid #334155;">Task</div>
+                                    position:sticky; left:0; background:#1e293b; z-index:11; border-right:1px solid #334155;">Code · Task</div>
                         <div id="ds-gantt-timeline-hdr" style="display:flex; flex-shrink:0; height:100%;"></div>
                     </div>
                     <div id="ds-gantt-body"></div>
@@ -1038,6 +1042,9 @@
 
     /* ── Main Gantt render ──────────────────────────────────────────── */
     function renderGantt() {
+        console.log('[GANTT] rows:', S.rows?.length);
+        console.log('[GANTT] deps:', S.deps?.length);
+        console.log('[GANTT] hasCpm:', GS.hasCpm);
         if (!_ganttBuilt) return;
 
         const nameIdx  = getColIdx('name');
@@ -1082,6 +1089,7 @@
         /* CPM — runs on full task set before stage filtering */
         allTasks.forEach(t => { t.critical = false; t.totalFloat = null; });
         runCPM(allTasks);
+        console.log('[GANTT] criticalCount (post-CPM):', allTasks.filter(t => t.critical).length);
 
         /* P6 pre-computed float — authoritative when present; overrides client CPM.
            Use the rounded integer for BOTH display and the critical check so that
@@ -1185,10 +1193,14 @@
             offsetDays += iv.days;
         });
 
-        /* Today vertical pin in timeline header */
+        /* Today vertical pin in timeline header with "TODAY" label */
         if (showToday && todayX >= 0) {
             const pin = document.createElement('div');
-            pin.style.cssText = `position:absolute; left:${todayX}px; top:0; bottom:0; width:2px; background:#ef4444; opacity:.7; pointer-events:none; z-index:1;`;
+            pin.style.cssText = `position:absolute; left:${todayX}px; top:0; bottom:0; width:2px; background:#ef4444; pointer-events:none; z-index:1;`;
+            const lbl = document.createElement('span');
+            lbl.textContent = 'TODAY';
+            lbl.style.cssText = `position:absolute; top:2px; left:50%; transform:translateX(-50%); background:#ef4444; color:#fff; font-size:9px; font-weight:700; padding:1px 3px; border-radius:2px; white-space:nowrap;`;
+            pin.appendChild(lbl);
             hdrEl.appendChild(pin);
         }
     }
@@ -1258,14 +1270,22 @@
             nameDiv.className = 'ds-gantt-name-cell';
             nameDiv.style.cssText = `
                 min-width:${_nameW}px; max-width:${_nameW}px;
-                padding:0 8px; display:flex; align-items:center;
-                font-size:.72rem; color:rgba(255,255,255,.8);
+                padding:0 8px; display:flex; flex-direction:column; justify-content:center;
                 position:sticky; left:0; z-index:5; background:${bg};
-                border-right:1px solid #1e293b;
-                overflow:hidden; white-space:nowrap;
+                border-right:1px solid #1e293b; overflow:hidden;
             `;
-            nameDiv.textContent = t.name;
-            nameDiv.title = t.name;
+            const actCode = getVal(t.row, 'activity_code');
+            if (actCode) {
+                const codeEl = document.createElement('div');
+                codeEl.style.cssText = 'font-size:10px; color:rgba(255,255,255,.4); font-family:monospace; margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;';
+                codeEl.textContent = actCode;
+                nameDiv.appendChild(codeEl);
+            }
+            const nameEl = document.createElement('div');
+            nameEl.style.cssText = 'font-size:.72rem; color:rgba(255,255,255,.8); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;';
+            nameEl.textContent = t.name;
+            nameDiv.appendChild(nameEl);
+            nameDiv.title = actCode ? `${actCode} · ${t.name}` : t.name;
 
             const barArea = document.createElement('div');
             barArea.style.cssText = `width:${totalW}px; min-width:${totalW}px; height:${ROW_H}px; position:relative; flex-shrink:0;`;
@@ -1337,11 +1357,7 @@
 
             if (showToday) {
                 const line = document.createElement('div');
-                line.style.cssText = `
-                    position:absolute; left:${todayX}px; top:0;
-                    width:1px; height:100%; background:#ef4444; opacity:.6;
-                    pointer-events:none;
-                `;
+                line.style.cssText = `position:absolute; left:${todayX}px; top:0; width:2px; height:100%; background:#ef4444; pointer-events:none;`;
                 barArea.appendChild(line);
             }
 
