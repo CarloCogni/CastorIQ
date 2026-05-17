@@ -233,10 +233,12 @@ def _parse_p6_lxml(
     tasks: list[dict],
     raw_deps: list[dict],
 ) -> None:
-    """lxml iterparse path — streams Activity + Relationship elements, clears after use."""
+    """lxml iterparse path — streams Activity + Relationship + WBS elements, clears after use."""
     act_tag = f"{nsp}Activity"
     rel_tag = f"{nsp}Relationship"
-    filter_tags = [act_tag] if preview_only else [act_tag, rel_tag]
+    wbs_tag = f"{nsp}WBS"
+    filter_tags = [act_tag, wbs_tag] if preview_only else [act_tag, rel_tag, wbs_tag]
+    wbs_map: dict[str, str] = {}
 
     context = lxml_et.iterparse(source, events=("end",), tag=filter_tags)
     try:
@@ -250,6 +252,13 @@ def _parse_p6_lxml(
                         task = _parse_p6_activity(elem, nsp, obj_id)
                         if task:
                             tasks.append(task)
+                elem.clear()
+
+            elif local == "WBS":
+                wbs_id = _ns_text(elem, nsp, "ObjectId")
+                wbs_name_val = _ns_text(elem, nsp, "Name")
+                if wbs_id:
+                    wbs_map[wbs_id] = wbs_name_val
                 elem.clear()
 
             elif local == "Relationship":
@@ -274,6 +283,9 @@ def _parse_p6_lxml(
     finally:
         del context
 
+    for task in tasks:
+        task["wbs_name"] = wbs_map.get(task.get("_wbs_obj_id", ""), "")
+
 
 def _parse_p6_stdlib(
     source: io.BytesIO,
@@ -291,6 +303,12 @@ def _parse_p6_stdlib(
 
     container = root.find(f"{nsp}Project") or root
 
+    wbs_map: dict[str, str] = {}
+    for wbs_el in container.findall(f"{nsp}WBS"):
+        wbs_id = _ns_text(wbs_el, nsp, "ObjectId")
+        if wbs_id:
+            wbs_map[wbs_id] = _ns_text(wbs_el, nsp, "Name")
+
     for act_el in container.findall(f"{nsp}Activity"):
         if max_tasks is not None and len(tasks) >= max_tasks:
             break
@@ -303,6 +321,7 @@ def _parse_p6_stdlib(
             logger.warning("p6_xml: skipping activity ObjectId=%s: %s", obj_id, exc)
             continue
         if task:
+            task["wbs_name"] = wbs_map.get(task.get("_wbs_obj_id", ""), "")
             tasks.append(task)
 
     if not preview_only:
@@ -358,6 +377,39 @@ def _parse_p6_activity(el, nsp: str, obj_id: str) -> dict | None:
 
     activity_code = t("Id") or t("ActivityId") or obj_id
 
+    # Duration (hours → days)
+    planned_dur_raw = t("PlannedDuration")
+    try:
+        duration_days: int | None = round(float(planned_dur_raw) / 8) if planned_dur_raw else None
+    except (ValueError, TypeError):
+        duration_days = None
+
+    # Cost
+    budgeted_cost = t("BudgetedCost") or t("PlannedCost") or ""
+    actual_cost = t("ActualCost") or ""
+
+    # P6 pre-computed CPM dates
+    early_start = _to_actual_date(t("EarlyStartDate"))
+    early_finish = _to_actual_date(t("EarlyFinishDate"))
+    late_start = _to_actual_date(t("LateStartDate"))
+    late_finish = _to_actual_date(t("LateFinishDate"))
+
+    # Total float (hours → days)
+    total_float_raw = t("TotalFloat")
+    try:
+        total_float_days: int | None = (
+            round(float(total_float_raw) / 8) if total_float_raw else None
+        )
+    except (ValueError, TypeError):
+        total_float_days = None
+
+    # P6 activity type (Task Dependent, Milestone, WBS Summary, etc.)
+    activity_type = t("Type") or t("ActivityType") or ""
+
+    # Expected finish and WBS back-reference
+    expected_finish = _to_actual_date(t("ExpectedFinishDate"))
+    wbs_obj_id = t("WBSObjectId")
+
     return {
         "name": name,
         "start_date": start,
@@ -366,10 +418,22 @@ def _parse_p6_activity(el, nsp: str, obj_id: str) -> dict | None:
         "actual_end": actual_end,
         "status": status,
         "activity_code": activity_code,
+        "activity_type": activity_type,
         "color": "#3b82f6",
         "source": "p6xml",
         "description": "",
         "_p6_obj_id": obj_id,
+        "_wbs_obj_id": wbs_obj_id,
+        "duration_days": duration_days,
+        "budgeted_cost": budgeted_cost,
+        "actual_cost": actual_cost,
+        "early_start": early_start,
+        "early_finish": early_finish,
+        "late_start": late_start,
+        "late_finish": late_finish,
+        "total_float_days": total_float_days,
+        "expected_finish": expected_finish,
+        "wbs_name": "",  # filled in by _parse_p6_lxml / _parse_p6_stdlib
     }
 
 

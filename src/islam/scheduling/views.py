@@ -113,12 +113,15 @@ _PREVIEW_PARSED_COLS = [
     "name",
     "start_date",
     "end_date",
+    "wbs_name",
     "status",
     "activity_code",
     "actual_start",
     "actual_end",
+    "activity_type",
+    "total_float_days",
 ]
-_PREVIEW_PARSED_VISIBLE = ["name", "start_date", "end_date", "status", "activity_code"]
+_PREVIEW_PARSED_VISIBLE = ["name", "start_date", "end_date", "status", "activity_code", "activity_type"]
 
 
 class SchedulePreviewView(ProjectModifyAccessMixin, View):
@@ -209,6 +212,13 @@ class SchedulePreviewView(ProjectModifyAccessMixin, View):
                     "end_date": str(t["end_date"]),
                     "actual_start": str(t["actual_start"]) if t.get("actual_start") else None,
                     "actual_end": str(t["actual_end"]) if t.get("actual_end") else None,
+                    "early_start": str(t["early_start"]) if t.get("early_start") else None,
+                    "early_finish": str(t["early_finish"]) if t.get("early_finish") else None,
+                    "late_start": str(t["late_start"]) if t.get("late_start") else None,
+                    "late_finish": str(t["late_finish"]) if t.get("late_finish") else None,
+                    "expected_finish": str(t["expected_finish"])
+                    if t.get("expected_finish")
+                    else None,
                 }
                 for t in tasks
             ]
@@ -260,7 +270,17 @@ class SchedulePreviewView(ProjectModifyAccessMixin, View):
         normalized_deps = normalized_deps[:5000]
 
         cols = _PREVIEW_PARSED_COLS
-        all_rows = [[str(t.get(c) or "") for c in cols] for t in tasks]
+        # total_float_days=0 means critical — must not collapse to "" like falsy `or ""` would
+        _NUMERIC_COLS = {"total_float_days"}
+        all_rows = [
+            [
+                (str(t.get(c)) if t.get(c) is not None else "")
+                if c in _NUMERIC_COLS
+                else str(t.get(c) or "")
+                for c in cols
+            ]
+            for t in tasks
+        ]
         fmt = tasks[0].get("source", "msp") if tasks else "msp"
 
         starts = [t["start_date"] for t in tasks if t.get("start_date")]
@@ -363,6 +383,13 @@ class TaskUploadView(ProjectModifyAccessMixin, View):
                     "end_date": str(t["end_date"]),
                     "actual_start": str(t["actual_start"]) if t.get("actual_start") else None,
                     "actual_end": str(t["actual_end"]) if t.get("actual_end") else None,
+                    "early_start": str(t["early_start"]) if t.get("early_start") else None,
+                    "early_finish": str(t["early_finish"]) if t.get("early_finish") else None,
+                    "late_start": str(t["late_start"]) if t.get("late_start") else None,
+                    "late_finish": str(t["late_finish"]) if t.get("late_finish") else None,
+                    "expected_finish": str(t["expected_finish"])
+                    if t.get("expected_finish")
+                    else None,
                 }
                 for t in tasks
             ]
@@ -419,11 +446,20 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
         activity_code_map: dict[str, str] = {}  # activity_code → str(task.pk)
         tasks_with_preds: list[tuple[str, str]] = []  # (task_pk, raw_predecessors)
 
+        has_p6_cpm = any(
+            td.get("total_float_days") is not None or td.get("early_start") for td in tasks_data
+        )
+
         for td in tasks_data:
             try:
-                cost_str = td.get("cost")
+                cost_str = td.get("cost") or td.get("budgeted_cost")
                 actual_start_raw = td.get("actual_start")
                 actual_end_raw = td.get("actual_end")
+                early_start_raw = td.get("early_start")
+                early_finish_raw = td.get("early_finish")
+                late_start_raw = td.get("late_start")
+                late_finish_raw = td.get("late_finish")
+                total_float_val = td.get("total_float_days")
                 task = Task.objects.create(
                     project=project,
                     name=td["name"],
@@ -438,6 +474,12 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
                     color=td.get("color", "#3b82f6"),
                     cost=Decimal(cost_str) if cost_str else None,
                     activity_type=td.get("activity_type", ""),
+                    early_start=date.fromisoformat(early_start_raw) if early_start_raw else None,
+                    early_finish=date.fromisoformat(early_finish_raw) if early_finish_raw else None,
+                    late_start=date.fromisoformat(late_start_raw) if late_start_raw else None,
+                    late_finish=date.fromisoformat(late_finish_raw) if late_finish_raw else None,
+                    total_float=int(total_float_val) if total_float_val is not None else None,
+                    is_critical=total_float_val is not None and int(total_float_val) == 0,
                 )
                 created += 1
                 pk = str(task.pk)
@@ -505,15 +547,16 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
             TaskDependency.objects.bulk_create(dep_objects, ignore_conflicts=True)
             dep_count = len(dep_objects)
             logger.info("Dependencies saved: %d for project %s", dep_count, project.pk)
-            try:
-                cpm = compute_critical_path(str(project.pk))
-                logger.info(
-                    "CPM computed: %d critical of %d tasks",
-                    len(cpm["critical_task_ids"]),
-                    len(cpm["task_data"]),
-                )
-            except Exception as exc:
-                logger.warning("CPM auto-run failed: %s", exc)
+            if not has_p6_cpm:
+                try:
+                    cpm = compute_critical_path(str(project.pk))
+                    logger.info(
+                        "CPM computed: %d critical of %d tasks",
+                        len(cpm["critical_task_ids"]),
+                        len(cpm["task_data"]),
+                    )
+                except Exception as exc:
+                    logger.warning("CPM auto-run failed: %s", exc)
 
         all_tasks = list(
             Task.objects.filter(project=project).only("pk", "name", "stage", "sub_stage")
@@ -994,6 +1037,13 @@ class MappingSubmitView(ProjectModifyAccessMixin, View):
                     "end_date": str(t["end_date"]),
                     "actual_start": str(t["actual_start"]) if t.get("actual_start") else None,
                     "actual_end": str(t["actual_end"]) if t.get("actual_end") else None,
+                    "early_start": str(t["early_start"]) if t.get("early_start") else None,
+                    "early_finish": str(t["early_finish"]) if t.get("early_finish") else None,
+                    "late_start": str(t["late_start"]) if t.get("late_start") else None,
+                    "late_finish": str(t["late_finish"]) if t.get("late_finish") else None,
+                    "expected_finish": str(t["expected_finish"])
+                    if t.get("expected_finish")
+                    else None,
                 }
                 for t in tasks
             ]

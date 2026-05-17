@@ -201,9 +201,11 @@
         { key: 'start_date',    label: 'Planned Start',  req: true  },
         { key: 'end_date',      label: 'Planned End',    req: true  },
         { key: 'activity_code', label: 'Activity Code',  req: false },
+        { key: 'wbs_name',      label: 'WBS',            req: false },
         { key: 'actual_start',  label: 'Actual Start',   req: false },
-        { key: 'actual_end',    label: 'Actual End',     req: false },
-        { key: 'cost',          label: 'Cost',           req: false },
+        { key: 'actual_end',       label: 'Actual End',      req: false },
+        { key: 'total_float_days', label: 'Total Float (d)',  req: false },
+        { key: 'cost',             label: 'Cost',            req: false },
         { key: 'activity_type', label: 'Stage / Trade',  req: false },
         { key: 'predecessors',  label: 'Predecessors',   req: false },
         { key: 'status',        label: 'Status',         req: false },
@@ -214,9 +216,11 @@
 
     /* ── Gantt constants ─────────────────────────────────────────────── */
     const ROW_H   = 28;
-    const BAR_H   = 14;
-    const BAR_T   = 7;
-    const HDR_H   = 30;
+    const BAR_H   = 10;  /* planned bar height */
+    const BAR_T   = 4;   /* planned bar top */
+    const ACT_H   = 6;   /* actual bar height */
+    const ACT_T   = 17;  /* actual bar top (below planned) */
+    const HDR_H   = 46;  /* two-tier date header */
 
     /* Gantt name panel width — mutable, persisted to localStorage */
     let _nameW = (() => {
@@ -247,7 +251,11 @@
     };
     const MON_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-    const GS = { zoom: 'week', stageFilter: 'all', hasCpm: false };
+    const GS = {
+        zoom: (() => { try { return localStorage.getItem('ds-gantt-zoom') || 'week'; } catch { return 'week'; } })(),
+        stageFilter: 'all',
+        hasCpm: false,
+    };
     let _ganttBuilt = false;
 
     /* ── CPM helpers ────────────────────────────────────────────────── */
@@ -936,15 +944,23 @@
         if (zoom === 'day') {
             for (let i = 0; i < totalDays; i++) {
                 const d = addDays(projStart, i);
-                ivs.push({ label: d.getDate() + ' ' + MON_ABBR[d.getMonth()], days: 1 });
+                ivs.push({
+                    label:      String(d.getDate()),
+                    superLabel: MON_ABBR[d.getMonth()] + ' ' + d.getFullYear(),
+                    days: 1,
+                });
             }
         } else if (zoom === 'week') {
             let day = 0;
             while (day < totalDays) {
-                const d   = addDays(projStart, day);
-                const mon = startOfWeek(d);
+                const d    = addDays(projStart, day);
+                const mon  = startOfWeek(d);
                 const days = Math.min(7, totalDays - day);
-                ivs.push({ label: mon.getDate() + ' ' + MON_ABBR[mon.getMonth()], days });
+                ivs.push({
+                    label:      mon.getDate() + ' ' + MON_ABBR[mon.getMonth()],
+                    superLabel: MON_ABBR[mon.getMonth()] + ' ' + mon.getFullYear(),
+                    days,
+                });
                 day += days;
             }
         } else {
@@ -955,7 +971,11 @@
                 const projEnd = addDays(projStart, totalDays - 1);
                 const eff     = mEnd < projEnd ? mEnd : projEnd;
                 const days    = dateDiff(d, eff) + 1;
-                ivs.push({ label: MON_ABBR[d.getMonth()] + ' ' + d.getFullYear(), days });
+                ivs.push({
+                    label:      MON_ABBR[d.getMonth()],
+                    superLabel: String(d.getFullYear()),
+                    days,
+                });
                 d = nextM;
             }
         }
@@ -972,7 +992,7 @@
         ganttSection.innerHTML = `
             <div class="d-flex align-items-center gap-2 flex-wrap mb-2" style="flex-shrink:0;">
                 <span class="text-secondary" style="font-size:.78rem;">Zoom:</span>
-                <button class="ds-zoom-btn btn btn-sm btn-outline-secondary active" data-zoom="week">Week</button>
+                <button class="ds-zoom-btn btn btn-sm btn-outline-secondary" data-zoom="week">Week</button>
                 <button class="ds-zoom-btn btn btn-sm btn-outline-secondary" data-zoom="day">Day</button>
                 <button class="ds-zoom-btn btn btn-sm btn-outline-secondary" data-zoom="month">Month</button>
                 <div id="ds-stage-chips" class="d-flex gap-1 flex-wrap ms-2"></div>
@@ -1005,8 +1025,10 @@
             nameHdr.appendChild(nh);
         }
         ganttSection.querySelectorAll('.ds-zoom-btn').forEach(btn => {
+            if (btn.dataset.zoom === GS.zoom) btn.classList.add('active');
             btn.addEventListener('click', function () {
                 GS.zoom = this.dataset.zoom;
+                try { localStorage.setItem('ds-gantt-zoom', GS.zoom); } catch {}
                 ganttSection.querySelectorAll('.ds-zoom-btn').forEach(b => b.classList.remove('active'));
                 this.classList.add('active');
                 renderGantt();
@@ -1032,13 +1054,21 @@
 
         const today = new Date(); today.setHours(0,0,0,0);
 
+        const actualStartIdx = getColIdx('actual_start');
+        const actualEndIdx   = getColIdx('actual_end');
+        const actTypeIdx     = getColIdx('activity_type');
+
         const allTasks = [];
         for (const row of S.rows) {
             const name  = (row[nameIdx]  ?? '').toString().trim();
             const start = parseDate((row[startIdx] ?? '').toString());
             const end   = parseDate((row[endIdx]   ?? '').toString());
             if (!name || !start || !end) continue;
-            allTasks.push({ name, start, end, row });
+            const actualStart = actualStartIdx >= 0 ? parseDate((row[actualStartIdx] ?? '').toString()) : null;
+            const actualEnd   = actualEndIdx   >= 0 ? parseDate((row[actualEndIdx]   ?? '').toString()) : null;
+            const actType     = actTypeIdx     >= 0 ? (row[actTypeIdx] ?? '').toString().trim().toLowerCase() : '';
+            const isMilestone = dateDiff(start, end) === 0 || actType.includes('milestone');
+            allTasks.push({ name, start, end, actualStart, actualEnd, isMilestone, row });
         }
 
         if (!allTasks.length) {
@@ -1052,6 +1082,24 @@
         /* CPM — runs on full task set before stage filtering */
         allTasks.forEach(t => { t.critical = false; t.totalFloat = null; });
         runCPM(allTasks);
+
+        /* P6 pre-computed float — authoritative when present; overrides client CPM */
+        const floatColIdx = getColIdx('total_float_days');
+        if (floatColIdx >= 0) {
+            const hasFloat = allTasks.some(t => (t.row[floatColIdx] ?? '').toString().trim() !== '');
+            if (hasFloat) {
+                allTasks.forEach(t => {
+                    const raw = (t.row[floatColIdx] ?? '').toString().trim();
+                    if (raw === '') return;
+                    const tf = parseFloat(raw);
+                    if (!isNaN(tf)) {
+                        t.totalFloat = Math.round(tf);
+                        t.critical   = tf <= 0;
+                    }
+                });
+                GS.hasCpm = true;
+            }
+        }
 
         const stageIdx = getColIdx('activity_type');
         const tasks = GS.stageFilter === 'all'
@@ -1083,9 +1131,12 @@
         const todayX    = dateDiff(projStart, today) * ppd;
         const showToday = todayX >= 0 && todayX <= totalW;
 
-        renderGanttHeader(hdrEl, projStart, ivs, ppd, today);
-        renderGanttRows(bodyEl, tasks, projStart, ppd, totalW, todayX, showToday);
-        renderDependencyArrows(bodyEl, tasks, projStart, ppd, totalW);
+        const wbsIdx  = getColIdx('wbs_name');
+        const flatRows = buildFlatRows(tasks, wbsIdx);
+
+        renderGanttHeader(hdrEl, projStart, ivs, ppd, today, todayX, showToday);
+        renderGanttRows(bodyEl, flatRows, projStart, ppd, totalW, todayX, showToday);
+        renderDependencyArrows(bodyEl, flatRows, projStart, ppd, totalW);
         renderStageChips(allTasks);
         renderLegend(showToday);
 
@@ -1093,9 +1144,11 @@
     }
 
     /* ── Header row ─────────────────────────────────────────────────── */
-    function renderGanttHeader(hdrEl, projStart, ivs, ppd, today) {
+    function renderGanttHeader(hdrEl, projStart, ivs, ppd, today, todayX, showToday) {
         hdrEl.innerHTML = '';
+        hdrEl.style.position = 'relative';
         let offsetDays = 0;
+        let prevSuper  = null;
         ivs.forEach(iv => {
             const w       = iv.days * ppd;
             const ivStart = addDays(projStart, offsetDays);
@@ -1104,29 +1157,93 @@
             const div     = document.createElement('div');
             div.style.cssText = `
                 width:${w}px; min-width:${w}px; height:100%;
-                display:flex; align-items:center; justify-content:center;
-                font-size:.65rem; font-weight:600; padding:0 2px;
+                display:flex; flex-direction:column; align-items:center; justify-content:space-evenly;
+                font-size:.65rem; font-weight:600; padding:2px 2px;
                 border-right:1px solid #334155; box-sizing:border-box;
-                white-space:nowrap; overflow:hidden;
+                overflow:hidden;
                 color:${hi ? '#f87171' : 'rgba(255,255,255,.45)'};
                 ${hi ? 'border-bottom:2px solid #ef4444;' : ''}
             `;
-            if (w >= 22) div.textContent = iv.label;
-            else if (w >= 8) div.textContent = iv.label.substring(0, 3);
+
+            /* Upper tier — super-label, shown only when period changes */
+            const superEl = document.createElement('span');
+            superEl.style.cssText = 'font-size:.58rem; font-weight:500; opacity:.55; white-space:nowrap; overflow:hidden; max-width:100%; text-align:center;';
+            if (iv.superLabel !== prevSuper && w >= 30) superEl.textContent = iv.superLabel;
+            prevSuper = iv.superLabel;
+
+            /* Lower tier — main label */
+            const mainEl = document.createElement('span');
+            mainEl.style.cssText = 'white-space:nowrap; overflow:hidden; max-width:100%; text-align:center;';
+            if (w >= 22) mainEl.textContent = iv.label;
+            else if (w >= 8) mainEl.textContent = iv.label.substring(0, 3);
+
+            div.appendChild(superEl);
+            div.appendChild(mainEl);
             hdrEl.appendChild(div);
             offsetDays += iv.days;
         });
+
+        /* Today vertical pin in timeline header */
+        if (showToday && todayX >= 0) {
+            const pin = document.createElement('div');
+            pin.style.cssText = `position:absolute; left:${todayX}px; top:0; bottom:0; width:2px; background:#ef4444; opacity:.7; pointer-events:none; z-index:1;`;
+            hdrEl.appendChild(pin);
+        }
+    }
+
+    /* ── WBS group row builder ──────────────────────────────────────── */
+    function buildFlatRows(tasks, wbsIdx) {
+        if (wbsIdx < 0) return tasks;
+        const hasAny = tasks.some(t => (t.row[wbsIdx] ?? '').toString().trim());
+        if (!hasAny) return tasks;
+        const flat = [];
+        let prevWbs = undefined;
+        for (const t of tasks) {
+            const wbs = (t.row[wbsIdx] ?? '').toString().trim();
+            if (wbs && wbs !== prevWbs) {
+                flat.push({ isGroup: true, wbsName: wbs });
+                prevWbs = wbs;
+            }
+            flat.push(t);
+        }
+        return flat;
     }
 
     /* ── Task rows ──────────────────────────────────────────────────── */
     function renderGanttRows(bodyEl, tasks, projStart, ppd, totalW, todayX, showToday) {
         bodyEl.innerHTML = '';
+        let taskIdx = 0;
         tasks.forEach((t, i) => {
+            /* WBS group header row */
+            if (t.isGroup) {
+                const groupEl = document.createElement('div');
+                groupEl.style.cssText = `display:flex; height:${ROW_H}px; background:#1e293b; border-top:1px solid #334155; border-bottom:1px solid #243344;`;
+                const nameDiv = document.createElement('div');
+                nameDiv.className = 'ds-gantt-name-cell';
+                nameDiv.style.cssText = `
+                    min-width:${_nameW}px; max-width:${_nameW}px;
+                    padding:0 8px; display:flex; align-items:center; gap:5px;
+                    font-size:.68rem; font-weight:700; color:rgba(255,255,255,.65);
+                    position:sticky; left:0; z-index:5; background:#1e293b;
+                    border-right:1px solid #334155;
+                    overflow:hidden; white-space:nowrap; letter-spacing:.04em;
+                `;
+                nameDiv.innerHTML = `<span style="opacity:.45;font-size:.8em;">&#9656;</span>${t.wbsName}`;
+                nameDiv.title = t.wbsName;
+                const barArea = document.createElement('div');
+                barArea.style.cssText = `width:${totalW}px; min-width:${totalW}px; height:${ROW_H}px; background:#1e293b; flex-shrink:0;`;
+                groupEl.appendChild(nameDiv);
+                groupEl.appendChild(barArea);
+                bodyEl.appendChild(groupEl);
+                return;
+            }
+
             const barLeft = Math.max(0, dateDiff(projStart, t.start)) * ppd;
             const barDays = Math.max(1, dateDiff(t.start, t.end) + 1);
             const barW    = Math.max(3, barDays * ppd);
             const clr     = getTaskColor(t.row);
-            const bg      = i % 2 === 0 ? '#0f172a' : '#111827';
+            const bg      = taskIdx % 2 === 0 ? '#0f172a' : '#111827';
+            taskIdx++;
 
             const rowEl = document.createElement('div');
             rowEl.style.cssText = `display:flex; height:${ROW_H}px; background:${bg};`;
@@ -1154,29 +1271,61 @@
                 ? `\nFloat: ${t.totalFloat} day${t.totalFloat === 1 ? '' : 's'}${isCrit ? ' ⚠ Critical' : ''}`
                 : '';
 
-            const bar = document.createElement('div');
-            bar.style.cssText = `
-                position:absolute; left:${barLeft}px; top:${BAR_T}px;
-                width:${barW}px; height:${BAR_H}px;
-                background:${clr}; border-radius:3px;
-                opacity:${opacity}; ${shadow}
-            `;
-            bar.title = `${t.name}\n${fmtDate(t.start)} → ${fmtDate(t.end)}${floatHint}`;
-            barArea.appendChild(bar);
+            if (t.isMilestone) {
+                /* Diamond centered on the milestone date */
+                const s = 8;
+                const cx = barLeft + ppd / 2;
+                const diamond = document.createElement('div');
+                diamond.style.cssText = `
+                    position:absolute; left:${cx - s}px; top:${ROW_H / 2 - s}px;
+                    width:${s * 2}px; height:${s * 2}px;
+                    background:${clr}; opacity:${opacity}; ${shadow}
+                    transform:rotate(45deg); border-radius:1px;
+                `;
+                diamond.title = `◆ ${t.name}\n${fmtDate(t.start)}${floatHint}`;
+                barArea.appendChild(diamond);
+            } else {
+                /* Planned bar */
+                const bar = document.createElement('div');
+                bar.style.cssText = `
+                    position:absolute; left:${barLeft}px; top:${BAR_T}px;
+                    width:${barW}px; height:${BAR_H}px;
+                    background:${clr}; border-radius:3px;
+                    opacity:${opacity}; ${shadow}
+                `;
+                bar.title = `${t.name}\nPlanned: ${fmtDate(t.start)} → ${fmtDate(t.end)}${floatHint}`;
+                barArea.appendChild(bar);
 
-            /* Float extension — dashed bar showing available slack */
-            if (GS.hasCpm && t.totalFloat !== null && t.totalFloat > 0) {
-                const floatW = Math.min(t.totalFloat * ppd, totalW - barLeft - barW);
-                if (floatW >= 2) {
-                    const fb = document.createElement('div');
-                    fb.style.cssText = `
-                        position:absolute; left:${barLeft + barW}px; top:${BAR_T + 2}px;
-                        width:${floatW}px; height:${BAR_H - 4}px;
-                        border:1px dashed rgba(255,255,255,.22); border-left:none;
-                        border-radius:0 3px 3px 0; pointer-events:none;
+                /* Float extension — dashed bar showing available slack */
+                if (GS.hasCpm && t.totalFloat !== null && t.totalFloat > 0) {
+                    const floatW = Math.min(t.totalFloat * ppd, totalW - barLeft - barW);
+                    if (floatW >= 2) {
+                        const fb = document.createElement('div');
+                        fb.style.cssText = `
+                            position:absolute; left:${barLeft + barW}px; top:${BAR_T + 1}px;
+                            width:${floatW}px; height:${BAR_H - 2}px;
+                            border:1px dashed rgba(255,255,255,.22); border-left:none;
+                            border-radius:0 3px 3px 0; pointer-events:none;
+                        `;
+                        fb.title = `Float: ${t.totalFloat} days`;
+                        barArea.appendChild(fb);
+                    }
+                }
+
+                /* Actual bar */
+                if (t.actualStart) {
+                    const actLeft = Math.max(0, dateDiff(projStart, t.actualStart)) * ppd;
+                    const actEnd  = t.actualEnd || new Date();
+                    const actDays = Math.max(1, dateDiff(t.actualStart, actEnd) + 1);
+                    const actW    = Math.max(3, actDays * ppd);
+                    const actBar  = document.createElement('div');
+                    actBar.style.cssText = `
+                        position:absolute; left:${actLeft}px; top:${ACT_T}px;
+                        width:${actW}px; height:${ACT_H}px;
+                        background:rgba(34,197,94,.75); border-radius:2px;
                     `;
-                    fb.title = `Float: ${t.totalFloat} days`;
-                    barArea.appendChild(fb);
+                    actBar.title = `${t.name}\nActual: ${fmtDate(t.actualStart)} → ${t.actualEnd ? fmtDate(t.actualEnd) : 'ongoing'}`;
+                    barArea.appendChild(actBar);
                 }
             }
 
@@ -1238,6 +1387,13 @@
                 <span style="display:inline-block;width:12px;height:10px;border-radius:2px;background:${it.clr};"></span>${it.label}
             </span>`
         ).join('');
+        leg.innerHTML +=
+            `<span style="display:inline-flex;align-items:center;gap:4px;color:rgba(255,255,255,.55);">
+                <span style="display:inline-block;width:12px;height:6px;border-radius:1px;background:rgba(34,197,94,.75);"></span>Actual
+            </span>
+            <span style="display:inline-flex;align-items:center;gap:4px;color:rgba(255,255,255,.55);">
+                <span style="display:inline-block;width:10px;height:10px;border-radius:1px;background:#3b82f6;transform:rotate(45deg);margin:0 2px;"></span>Milestone
+            </span>`;
         if (showToday) {
             leg.innerHTML +=
                 `<span style="display:inline-flex;align-items:center;gap:4px;color:rgba(255,255,255,.55);">
@@ -1271,10 +1427,11 @@
         if (codeIdx < 0) return;
         if (!useServerDeps && predIdx < 0) return;
 
-        /* Build per-code metrics + criticality */
+        /* Build per-code metrics + criticality (skip WBS group header rows) */
         const metricsMap = new Map(); /* code → {barLeft, barW, rowIdx} */
         const critMap    = new Map(); /* code → bool */
         tasks.forEach((t, i) => {
+            if (t.isGroup) return;
             const code = (t.row[codeIdx] ?? '').toString().trim();
             if (!code) return;
             const barLeft = Math.max(0, dateDiff(projStart, t.start)) * ppd;
@@ -1297,6 +1454,7 @@
             }
         } else {
             outer: for (const t of tasks) {
+                if (t.isGroup) continue;
                 const succCode = (t.row[codeIdx] ?? '').toString().trim();
                 if (!succCode || !metricsMap.has(succCode)) continue;
                 for (const p of parsePreds((t.row[predIdx] ?? '').toString())) {
@@ -1314,7 +1472,7 @@
 
         const NS   = 'http://www.w3.org/2000/svg';
         const svgW = _nameW + totalW;
-        const svgH = tasks.length * ROW_H;
+        const svgH = tasks.length * ROW_H;  /* tasks here is flatRows — includes group rows */
 
         const svg = document.createElementNS(NS, 'svg');
         svg.setAttribute('class', 'ds-dep-arrows');
