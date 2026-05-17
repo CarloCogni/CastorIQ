@@ -119,10 +119,10 @@
 
     </div>
 
-    <!-- ── 4D Timeline (shown only when tasks exist) ────────────────────── -->
+    <!-- Timeline is disabled in standalone 3D viewer — use Simulate tab for 4D -->
     <div id="timeline-section"
          class="border-top bg-body flex-shrink-0 px-3 py-2 d-none"
-         style="font-size:0.82rem;">
+         style="display:none!important; font-size:0.82rem;">
 
         <!-- Row 1: controls + current date -->
         <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
@@ -182,10 +182,10 @@
 
     </div>
 
-    <!-- No-schedule banner (shown if timeline fetch returns has_tasks=false) -->
+    <!-- No-schedule banner is suppressed in standalone 3D viewer -->
     <div id="no-tasks-banner"
          class="border-top bg-body flex-shrink-0 px-3 py-2 d-none text-secondary"
-         style="font-size:0.8rem;">
+         style="display:none!important; font-size:0.8rem;">
         <i class="bi bi-info-circle me-1"></i>
         No schedule linked — import a schedule in 4D/5D Controls &gt; TimeLiner to enable the timeline.
     </div>
@@ -294,7 +294,7 @@
             }
 
             loading.classList.add("d-none");
-            initTimeline();
+            resetAllColors();
 
         } catch (err) {
             console.error("IFC viewer init failed:", err);
@@ -521,6 +521,7 @@
     document.getElementById("build-seq-btn")?.addEventListener("click", runBuildSequence);
 
     // ── 8. 4D Timeline Slider ────────────────────────────────────────────
+    // Timeline is disabled in standalone 3D viewer — use Simulate tab for 4D
 
     let timelineIntervals = [];
     let timelineNoTask    = [];
