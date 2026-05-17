@@ -193,6 +193,7 @@ class SchedulePreviewView(ProjectModifyAccessMixin, View):
                 "total_rows": len(raw_rows),
                 "preview_rows": len(preview_rows),
                 "project_date_range": date_range,
+                "deps": [],
             }
         )
 
@@ -214,6 +215,49 @@ class SchedulePreviewView(ProjectModifyAccessMixin, View):
         )
         if raw_deps:
             request.session[f"parsed_deps_{project.pk}"] = json.dumps(raw_deps)
+
+        # Build ID → activity_code maps to normalise raw deps for the browser
+        xer_to_code: dict[str, str] = {
+            t["_xer_task_id"]: t["activity_code"]
+            for t in tasks
+            if t.get("_xer_task_id") and t.get("activity_code")
+        }
+        uid_to_code: dict[str, str] = {
+            t["_msp_uid"]: t["activity_code"]
+            for t in tasks
+            if t.get("_msp_uid") and t.get("activity_code")
+        }
+        p6_to_code: dict[str, str] = {
+            t["_p6_obj_id"]: t["activity_code"]
+            for t in tasks
+            if t.get("_p6_obj_id") and t.get("activity_code")
+        }
+
+        normalized_deps: list[dict] = []
+        for d in raw_deps or []:
+            if "pred_xer_id" in d:
+                pred_code = xer_to_code.get(d["pred_xer_id"])
+                succ_code = xer_to_code.get(d["succ_xer_id"])
+            elif "pred_uid" in d:
+                pred_code = uid_to_code.get(d["pred_uid"])
+                succ_code = uid_to_code.get(d["succ_uid"])
+            elif "pred_p6_obj_id" in d:
+                pred_code = p6_to_code.get(d["pred_p6_obj_id"])
+                succ_code = p6_to_code.get(d["succ_p6_obj_id"])
+            else:
+                continue
+            if pred_code and succ_code:
+                normalized_deps.append(
+                    {
+                        "pred": pred_code,
+                        "succ": succ_code,
+                        "type": d.get("dep_type", "FS"),
+                        "lag": d.get("lag_days", 0),
+                    }
+                )
+
+        normalized_deps.sort(key=lambda x: x["pred"])
+        normalized_deps = normalized_deps[:5000]
 
         cols = _PREVIEW_PARSED_COLS
         all_rows = [[str(t.get(c) or "") for c in cols] for t in tasks]
@@ -239,6 +283,7 @@ class SchedulePreviewView(ProjectModifyAccessMixin, View):
                 "total_rows": len(tasks),
                 "preview_rows": len(preview),
                 "project_date_range": date_range,
+                "deps": normalized_deps,
             }
         )
 
