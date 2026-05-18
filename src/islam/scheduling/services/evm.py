@@ -65,16 +65,25 @@ def _planned_pct_at(task, d: date) -> float:
 
 
 def _earned_pct_at(task, d: date) -> float:
-    """Actual earned progress 0-1 for task at date *d* (mirrors _compute_progress logic)."""
-    if task.actual_end or task.status == "complete":
-        return 1.0
+    """Actual earned progress 0-1 for task at date *d*.
+
+    When actual_start is recorded it gates all EV (nothing earned before work
+    begins).  When only status="complete" is set (no actual dates), we treat
+    planned end_date as the completion reference so EV stays at 0 before that
+    date — preventing complete tasks from inflating the EV curve at project
+    start.
+    """
     if task.actual_start:
-        ref = task.actual_start
-        dur = max((task.end_date - ref).days, 1)
-        return max(0.0, min(1.0, (d - ref).days / dur))
-    if task.status == "active" and task.start_date <= d:
-        dur = max((task.end_date - task.start_date).days, 1)
-        return max(0.0, min(1.0, (d - task.start_date).days / dur))
+        if task.actual_start > d:
+            return 0.0
+        if task.status == "complete" or (task.actual_end and task.actual_end <= d):
+            return 1.0
+        dur = max((task.end_date - task.actual_start).days, 1)
+        return max(0.0, min(1.0, (d - task.actual_start).days / dur))
+
+    # No actual_start recorded
+    if task.status == "complete":
+        return 1.0 if d >= task.end_date else 0.0
     return 0.0
 
 

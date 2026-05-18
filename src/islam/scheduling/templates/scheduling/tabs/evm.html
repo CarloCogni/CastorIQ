@@ -9,6 +9,16 @@
 
 <div id="evm-root" style="display:flex; flex-direction:column; gap:16px;">
 
+    <!-- Cost guidance banner — shown when no schedule costs or QTO data available -->
+    <div id="evm-cost-banner" class="d-none alert alert-warning alert-dismissible py-2 px-3 mb-0" role="alert" style="font-size:0.82rem;">
+        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+        <strong>No cost data found.</strong>
+        EVM values are weighted by task duration — add costs to your schedule or configure
+        unit costs in the <a href="#" id="evm-qto-link" class="alert-link">QTO tab</a> for
+        accurate monetary figures.
+        <button type="button" class="btn-close btn-sm" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+
     <!-- KPI cards row -->
     <div id="evm-kpi-row" class="row g-3">
         <!-- Skeleton while loading -->
@@ -81,9 +91,21 @@
             return;
         }
 
+        _renderBanner(data);
         _renderKpis(data);
         _renderChart(data);
         _renderSecondary(data);
+    }
+
+    /* ── Cost guidance banner ──────────────────────────────────────────── */
+    function _renderBanner(d) {
+        if (d.cost_basis !== "task durations") return;
+        const banner = document.getElementById("evm-cost-banner");
+        if (banner) {
+            banner.classList.remove("d-none");
+            const qtoLink = document.getElementById("evm-qto-link");
+            if (qtoLink) qtoLink.href = "{% url 'islam:qto' project.pk %}";
+        }
     }
 
     /* ── KPI cards ─────────────────────────────────────────────────────── */
@@ -278,7 +300,7 @@
                 notation: Math.abs(v) >= 1e6 ? "compact" : "standard",
             }).format(v);
         }
-        return Math.round(v) + " d";
+        return Math.round(v).toLocaleString();
     }
 
     function _fmtDateShort(iso) {

@@ -19,7 +19,7 @@ from core.http import toast_response, trigger_toast
 from core.mixins import ProjectAccessMixin, ProjectModifyAccessMixin, ProjectTabMixin
 from ifc_processor.models import IFCEntity, IFCFile
 
-from .models import LinkFeedback, MappingProfile, Task, TaskDependency, TaskEntityBinding
+from .models import LinkFeedback, MappingProfile, ScheduleSource, Task, TaskDependency, TaskEntityBinding
 from .services.autolink import autodetect_stages, run_autolink
 from .services.column_mapper import (
     CANONICAL_FIELDS,
@@ -76,6 +76,9 @@ class ScheduleView(ProjectTabMixin, TemplateView):
             task__project=project, needs_review=True
         ).count()
         ctx["dep_count"] = TaskDependency.objects.filter(predecessor__project=project).count()
+        ctx["schedule_sources"] = list(
+            ScheduleSource.objects.filter(project=project).order_by("-imported_at")[:10]
+        )
         return ctx
 
 
@@ -182,6 +185,7 @@ class SchedulePreviewView(ProjectModifyAccessMixin, View):
         request.session[f"raw_headers_{project.pk}"] = json.dumps(headers)
         request.session[f"raw_rows_{project.pk}"] = json.dumps(raw_rows)
         request.session[f"raw_source_{project.pk}"] = col_data["source"]
+        request.session[f"schedule_filename_{project.pk}"] = file_obj.name
 
         mapping = suggest_mapping(headers)
         visible = default_visible_columns(headers, mapping)
@@ -209,6 +213,7 @@ class SchedulePreviewView(ProjectModifyAccessMixin, View):
 
     def _preview_parsed(self, request, project, file_obj, parser_fn) -> JsonResponse:
         tasks, raw_deps = parser_fn(file_obj)
+        request.session[f"schedule_filename_{project.pk}"] = file_obj.name
 
         # Full parse — store in session so TaskSaveView can persist without a re-upload.
         request.session[f"parsed_tasks_{project.pk}"] = json.dumps(
@@ -448,6 +453,7 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
 
         created = 0
         updated = 0
+        unchanged = 0
         xer_id_map: dict[str, str] = {}  # _xer_task_id  → str(task.pk)
         msp_uid_map: dict[str, str] = {}  # _msp_uid      → str(task.pk)
         p6_obj_id_map: dict[str, str] = {}  # _p6_obj_id    → str(task.pk)
@@ -503,10 +509,14 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
 
                 if activity_code and activity_code in existing_by_code:
                     task = existing_by_code[activity_code]
-                    for field, val in task_fields.items():
-                        setattr(task, field, val)
-                    task.save(update_fields=list(task_fields.keys()))
-                    updated += 1
+                    dirty = [f for f, v in task_fields.items() if getattr(task, f) != v]
+                    if dirty:
+                        for f in dirty:
+                            setattr(task, f, task_fields[f])
+                        task.save(update_fields=dirty)
+                        updated += 1
+                    else:
+                        unchanged += 1
                 else:
                     task = Task.objects.create(project=project, **task_fields)
                     created += 1
@@ -592,6 +602,16 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
         )
         autodetect_stages(all_tasks)
 
+        # Record this import event so the Data Sources tab can show source chips.
+        filename = request.session.pop(f"schedule_filename_{project.pk}", "")
+        source_format = tasks_data[0].get("source", "excel") if tasks_data else "excel"
+        ScheduleSource.objects.create(
+            project=project,
+            filename=filename,
+            source_format=source_format,
+            task_count=created + updated + unchanged,
+        )
+
         tasks = Task.objects.filter(project=project).prefetch_related("ifc_entities")
         response = render(
             request,
@@ -603,11 +623,11 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
             parts.append(f"{created} task{'s' if created != 1 else ''} created")
         if updated:
             parts.append(f"{updated} updated")
+        if unchanged:
+            parts.append(f"{unchanged} unchanged")
         msg = (", ".join(parts) or "No new tasks") + "."
         if dep_count:
-            msg += (
-                f" {dep_count} dependenc{'y' if dep_count == 1 else 'ies'} imported, CPM computed."
-            )
+            msg += f" {dep_count} dependenc{'y' if dep_count == 1 else 'ies'} imported, CPM computed."
         return trigger_toast(response, msg, "success")
 
 
