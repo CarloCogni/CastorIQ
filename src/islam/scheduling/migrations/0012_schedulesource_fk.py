@@ -5,15 +5,22 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('islam_scheduling', '0011_schedulesource'),
+        ("islam_scheduling", "0011_schedulesource"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='task',
-            name='schedule_source',
-            field=models.ForeignKey(blank=True, help_text='Import event that last created or updated this task.', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='tasks', to='islam_scheduling.schedulesource', verbose_name='Schedule Source'),
+            model_name="task",
+            name="schedule_source",
+            field=models.ForeignKey(
+                blank=True,
+                help_text="Import event that last created or updated this task.",
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="tasks",
+                to="islam_scheduling.schedulesource",
+                verbose_name="Schedule Source",
+            ),
         ),
     ]

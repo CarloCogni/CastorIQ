@@ -19,7 +19,14 @@ from core.http import toast_response, trigger_toast
 from core.mixins import ProjectAccessMixin, ProjectModifyAccessMixin, ProjectTabMixin
 from ifc_processor.models import IFCEntity, IFCFile
 
-from .models import LinkFeedback, MappingProfile, ScheduleSource, Task, TaskDependency, TaskEntityBinding
+from .models import (
+    LinkFeedback,
+    MappingProfile,
+    ScheduleSource,
+    Task,
+    TaskDependency,
+    TaskEntityBinding,
+)
 from .services.autolink import autodetect_stages, run_autolink
 from .services.column_mapper import (
     CANONICAL_FIELDS,
@@ -79,6 +86,13 @@ class ScheduleView(ProjectTabMixin, TemplateView):
         ctx["schedule_sources"] = list(
             ScheduleSource.objects.filter(project=project).order_by("-imported_at")[:10]
         )
+        ctx["intel_suggestions"] = [
+            "Which tasks are delayed and by how much?",
+            "What is the overall schedule performance?",
+            "Summarise MEP stage progress.",
+            "Which tasks are at risk of missing their deadline?",
+            "What work is planned to start next week?",
+        ]
         return ctx
 
 
@@ -665,7 +679,9 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
             parts.append(f"{unchanged} unchanged")
         msg = (", ".join(parts) or "No new tasks") + "."
         if dep_count:
-            msg += f" {dep_count} dependenc{'y' if dep_count == 1 else 'ies'} imported, CPM computed."
+            msg += (
+                f" {dep_count} dependenc{'y' if dep_count == 1 else 'ies'} imported, CPM computed."
+            )
         if cleaned:
             msg += f" Cleaned {cleaned} duplicate task{'s' if cleaned != 1 else ''}."
         return trigger_toast(response, msg, "success")

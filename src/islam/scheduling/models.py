@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import logging
 
+from django.conf import settings
 from django.db import models
+from pgvector.django import VectorField
 
 from core.models import UUIDModel
 from environments.models import Project
@@ -517,3 +519,30 @@ class LinkFeedback(UUIDModel):
     def effective_entity(self):
         """The entity the user chose — corrected_to if set, else ifc_entity."""
         return self.corrected_to or self.ifc_entity
+
+
+class IslamTaskEmbedding(UUIDModel):
+    """Cached embedding vector for a schedule task — used by the Intelligence tab."""
+
+    task = models.OneToOneField(
+        Task,
+        on_delete=models.CASCADE,
+        related_name="embedding",
+        verbose_name="Task",
+    )
+    vector = VectorField(
+        dimensions=settings.PGVECTOR_DIMENSIONS,
+        verbose_name="Embedding Vector",
+    )
+    embedded_text = models.TextField(
+        verbose_name="Embedded Text",
+        help_text="The text that was embedded — used to detect staleness.",
+    )
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Updated At")
+
+    class Meta:
+        verbose_name = "Task Embedding"
+        verbose_name_plural = "Task Embeddings"
+
+    def __str__(self) -> str:
+        return f"Embedding({self.task.name[:40]})"

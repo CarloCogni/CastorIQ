@@ -9,6 +9,7 @@ from django.urls import path
 
 from islam.ifc_insights import views as insights_views
 from islam.ifc_viewer import views as viewer_views
+from islam.intelligence import views as intelligence_views
 from islam.scheduling import views as scheduling_views
 
 app_name = "islam"
@@ -354,5 +355,23 @@ urlpatterns = [
         "projects/<uuid:pk>/qto/export/",
         insights_views.QTOExportView.as_view(),
         name="qto_export",
+    ),
+    # ------------------------------------------------------------------ #
+    # Intelligence tab                                                     #
+    # ------------------------------------------------------------------ #
+    path(
+        "projects/<uuid:pk>/schedule/intelligence/status/",
+        intelligence_views.IntelligenceStatusView.as_view(),
+        name="intelligence_status",
+    ),
+    path(
+        "projects/<uuid:pk>/schedule/intelligence/embed/",
+        intelligence_views.IntelligenceEmbedView.as_view(),
+        name="intelligence_embed",
+    ),
+    path(
+        "projects/<uuid:pk>/schedule/intelligence/ask/",
+        intelligence_views.IntelligenceAskView.as_view(),
+        name="intelligence_ask",
     ),
 ]
