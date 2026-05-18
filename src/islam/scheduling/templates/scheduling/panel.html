@@ -31,6 +31,13 @@
                 </a>
             </li>
             <li class="nav-item">
+                <a class="nav-link {% if schedule_tab == 'gantt' %}active{% endif %}"
+                   href="{% url 'islam:schedule' project.pk %}?tab=gantt">
+                    <i class="bi bi-bar-chart-steps me-1"></i>Gantt
+                    {% if task_count %}<span class="badge bg-secondary ms-1">{{ task_count }}</span>{% endif %}
+                </a>
+            </li>
+            <li class="nav-item">
                 <a class="nav-link {% if schedule_tab == 'simulate' %}active{% endif %}"
                    href="{% url 'islam:schedule' project.pk %}?tab=simulate">
                     <i class="bi bi-play-circle me-1"></i>Simulate
@@ -70,6 +77,8 @@
             {% include "scheduling/tabs/data_sources.html" %}
         {% elif schedule_tab == 'attach' %}
             {% include "scheduling/tabs/attach.html" %}
+        {% elif schedule_tab == 'gantt' %}
+            {% include "scheduling/tabs/gantt.html" %}
         {% elif schedule_tab == 'simulate' %}
             {% include "scheduling/tabs/simulate.html" %}
         {% elif schedule_tab == 'review' %}
@@ -109,9 +118,9 @@
                 <ol>
                     <li><strong>Data Sources</strong> — upload a schedule file (.xlsx, .xer, or .xml). The system parses it and uses AI to validate it looks like a real construction programme.</li>
                     <li><strong>Attach</strong> — link tasks to IFC elements. Use <em>Smart Pipeline</em> (4-layer: exact → normalised → heuristic → embedding) or the legacy AI / parameter methods. Smart Pipeline auto-accepts high-confidence matches and flags lower-confidence ones for review.</li>
-                    <li><strong>Review</strong> — inspect every binding the Smart Pipeline created. Accept or remove individual links, bulk-accept all bindings with ≥ 95% confidence, manually link tasks that were left unlinked, and export the full binding table as CSV.</li>
-                    <li><strong>Gantt</strong> — review the bar chart. Green ✅ = all elements linked, amber ⚠️ = partial, red ❌ = unlinked. Click any bar to highlight that element in the 3D viewer.</li>
+                    <li><strong>Gantt</strong> — review the bar chart. Green ✅ = all elements linked, amber ⚠️ = partial, red ❌ = unlinked. Click any bar to highlight that element in the 3D viewer. Zoom to Day / Week / Month and filter by construction stage.</li>
                     <li><strong>Simulate</strong> — drag the date slider to animate the build sequence in 4D in the 3D viewer.</li>
+                    <li><strong>Review</strong> — inspect every binding the Smart Pipeline created. Accept or remove individual links, bulk-accept all bindings with ≥ 95% confidence, manually link tasks that were left unlinked, and export the full binding table as CSV.</li>
                     <li><strong>EVM</strong> — Earned Value Management dashboard. Shows SPI, CPI, EAC, and VAC KPI cards plus a cumulative S-curve (PV, EV, AC). Uses task costs when available; falls back to duration weighting when no costs are in the schedule.</li>
                     <li><strong>Look-ahead</strong> — Rolling window showing what starts, is in progress, and finishes across the next 2–6 weeks. Critical path tasks are flagged with a CP badge. Click a week card to expand/collapse it.</li>
                     <li><strong>Intelligence</strong> — AI-powered Q&amp;A over your schedule. Ask natural-language questions such as "Which tasks are delayed?" or "Summarise MEP progress." The system embeds all tasks into a vector store and retrieves the most relevant ones as context for the LLM. Click <em>Embed Tasks</em> before asking for the first time, or after uploading a new schedule.</li>
