@@ -506,15 +506,7 @@
                 `<span class="ds-pill-lbl">${esc(label)}</span>` +
                 `<button class="ds-pill-x" data-col="${esc(col)}" title="Hide column">&times;</button>`;
 
-            pill.addEventListener('mousedown', function (e) {
-                if (e.target.closest('.ds-pill-x')) return;
-                e.stopPropagation();
-                openMapDd(col, pill);
-            });
-            pill.querySelector('.ds-pill-x').addEventListener('mousedown', function (e) {
-                e.stopPropagation();
-                removeCol(col);
-            });
+            /* pill mousedown/mouseup handled via delegation on #ds-mapping-row */
 
             /* Resize handle — mousedown handled via delegation on tableWrapper */
             const handle = document.createElement('div');
@@ -523,11 +515,14 @@
 
             /* Drag-to-reorder */
             th.addEventListener('dragstart', function (e) {
+                _pillDragging = true;
+                _pillDown = false;
                 S.dragSrcCol = col;
                 e.dataTransfer.effectAllowed = 'move';
                 this.style.opacity = '0.5';
             });
             th.addEventListener('dragend', function () {
+                _pillDragging = false;
                 this.style.opacity = '';
                 S.dragSrcCol = null;
                 tr.querySelectorAll('th').forEach(t => t.classList.remove('ds-drag-over'));
@@ -902,6 +897,45 @@
             dd.style.top = Math.max(4, r.top - est - 4) + 'px';
         }
     }
+
+    /* ── Pill drag threshold (separates click from column drag) ─────── */
+    let _pillMouseDownX = 0, _pillMouseDownY = 0, _pillDragging = false, _pillDown = false;
+
+    document.getElementById('ds-mapping-row').addEventListener('mousedown', function (e) {
+        if (e.target.closest('.col-resize-handle')) return; /* handled by tableWrapper */
+        const xBtn = e.target.closest('.ds-pill-x');
+        if (xBtn) {
+            e.stopPropagation();
+            removeCol(xBtn.dataset.col);
+            return;
+        }
+        const pill = e.target.closest('.ds-pill');
+        if (!pill) return;
+        e.stopPropagation();
+        _pillDown = true;
+        _pillMouseDownX = e.clientX;
+        _pillMouseDownY = e.clientY;
+        _pillDragging = false;
+    });
+
+    document.getElementById('ds-mapping-row').addEventListener('mouseup', function (e) {
+        if (!_pillDown) return;
+        _pillDown = false;
+        if (_pillDragging) return;
+        const pill = e.target.closest('.ds-pill');
+        if (!pill || e.target.closest('.ds-pill-x')) return;
+        const col = pill.dataset.col;
+        if (col) openMapDd(col, pill);
+    });
+
+    document.addEventListener('mousemove', function (e) {
+        if (!_pillDown) return;
+        if (Math.hypot(e.clientX - _pillMouseDownX, e.clientY - _pillMouseDownY) > 5) {
+            _pillDragging = true;
+        }
+    });
+
+    document.addEventListener('mouseup', function () { _pillDown = false; });
 
     /* ── Global close on outside click / scroll ─────────────────────── */
     document.addEventListener('mousedown', function (e) {

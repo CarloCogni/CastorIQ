@@ -31,12 +31,6 @@
                 </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link {% if schedule_tab == 'gantt' %}active{% endif %}"
-                   href="{% url 'islam:schedule' project.pk %}?tab=gantt">
-                    <i class="bi bi-bar-chart-steps me-1"></i>Gantt
-                </a>
-            </li>
-            <li class="nav-item">
                 <a class="nav-link {% if schedule_tab == 'simulate' %}active{% endif %}"
                    href="{% url 'islam:schedule' project.pk %}?tab=simulate">
                     <i class="bi bi-play-circle me-1"></i>Simulate
@@ -70,12 +64,18 @@
             {% include "scheduling/tabs/data_sources.html" %}
         {% elif schedule_tab == 'attach' %}
             {% include "scheduling/tabs/attach.html" %}
-        {% elif schedule_tab == 'gantt' %}
-            {% include "scheduling/tabs/gantt.html" %}
         {% elif schedule_tab == 'simulate' %}
             {% include "scheduling/tabs/simulate.html" %}
         {% elif schedule_tab == 'review' %}
-            {% include "scheduling/tabs/link_review.html" %}
+            <!-- Load via LinkReviewView so summary/rows context is populated correctly -->
+            <div hx-get="{% url 'islam:review' project.pk %}"
+                 hx-trigger="load"
+                 hx-target="this"
+                 hx-swap="outerHTML">
+                <div class="text-center text-secondary py-5">
+                    <span class="spinner-border spinner-border-sm me-2"></span>Loading review…
+                </div>
+            </div>
         {% elif schedule_tab == 'evm' %}
             {% include "scheduling/tabs/evm.html" %}
         {% elif schedule_tab == 'lookahead' %}
