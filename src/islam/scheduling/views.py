@@ -454,6 +454,7 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
         created = 0
         updated = 0
         unchanged = 0
+        touched_pks: list[str] = []  # PKs of tasks created or updated in this import
         xer_id_map: dict[str, str] = {}  # _xer_task_id  → str(task.pk)
         msp_uid_map: dict[str, str] = {}  # _msp_uid      → str(task.pk)
         p6_obj_id_map: dict[str, str] = {}  # _p6_obj_id    → str(task.pk)
@@ -465,14 +466,35 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
         #   secondary key — (name, start_date) for tasks without an activity code
         existing_by_code: dict[str, Task] = {}
         existing_by_name_date: dict[tuple, Task] = {}
+        cleaned = 0
         if not replace_mode:
             for t in Task.objects.filter(project=project).only(
                 "pk", "activity_code", "name", "start_date", "end_date"
             ):
                 if t.activity_code:
                     existing_by_code[t.activity_code] = t
-                else:
-                    existing_by_name_date[(t.name, str(t.start_date))] = t
+                existing_by_name_date[(t.name, str(t.start_date))] = t
+
+            # Clean pre-existing duplicates: same (project, activity_code) — keep first, delete rest
+            dup_codes = list(
+                Task.objects.filter(project=project)
+                .exclude(activity_code="")
+                .values("activity_code")
+                .annotate(cnt=Count("pk"))
+                .filter(cnt__gt=1)
+                .values_list("activity_code", flat=True)
+            )
+            for code in dup_codes:
+                tasks_for_code = list(
+                    Task.objects.filter(project=project, activity_code=code).order_by(
+                        "start_date", "name"
+                    )
+                )
+                to_delete = [t.pk for t in tasks_for_code[1:]]
+                Task.objects.filter(pk__in=to_delete).delete()
+                cleaned += len(to_delete)
+            if cleaned:
+                logger.info("Cleaned %d duplicate tasks for project %s", cleaned, project.pk)
 
         has_p6_cpm = any(
             td.get("total_float_days") is not None or td.get("early_start") for td in tasks_data
@@ -514,7 +536,7 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
                 existing = None
                 if activity_code and activity_code in existing_by_code:
                     existing = existing_by_code[activity_code]
-                elif not activity_code:
+                else:
                     existing = existing_by_name_date.get(
                         (task_fields["name"], str(task_fields["start_date"]))
                     )
@@ -526,12 +548,14 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
                             setattr(existing, f, task_fields[f])
                         existing.save(update_fields=dirty)
                         updated += 1
+                        touched_pks.append(str(existing.pk))
                     else:
                         unchanged += 1
                     task = existing
                 else:
                     task = Task.objects.create(project=project, **task_fields)
                     created += 1
+                    touched_pks.append(str(task.pk))
 
                 pk = str(task.pk)
                 if td.get("_xer_task_id"):
@@ -617,12 +641,14 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
         # Record this import event so the Data Sources tab can show source chips.
         filename = request.session.pop(f"schedule_filename_{project.pk}", "")
         source_format = tasks_data[0].get("source", "excel") if tasks_data else "excel"
-        ScheduleSource.objects.create(
+        current_source = ScheduleSource.objects.create(
             project=project,
             filename=filename,
             source_format=source_format,
             task_count=created + updated + unchanged,
         )
+        if touched_pks:
+            Task.objects.filter(pk__in=touched_pks).update(schedule_source=current_source)
 
         tasks = Task.objects.filter(project=project).prefetch_related("ifc_entities")
         response = render(
@@ -640,6 +666,8 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
         msg = (", ".join(parts) or "No new tasks") + "."
         if dep_count:
             msg += f" {dep_count} dependenc{'y' if dep_count == 1 else 'ies'} imported, CPM computed."
+        if cleaned:
+            msg += f" Cleaned {cleaned} duplicate task{'s' if cleaned != 1 else ''}."
         return trigger_toast(response, msg, "success")
 
 
@@ -650,8 +678,27 @@ class ScheduleClearView(ProjectModifyAccessMixin, View):
         project = self.get_project()
         TaskDependency.objects.filter(predecessor__project=project).delete()
         deleted, _ = Task.objects.filter(project=project).delete()
+        ScheduleSource.objects.filter(project=project).delete()
         logger.info("Cleared %d tasks for project %s", deleted, project.pk)
         return JsonResponse({"deleted": deleted, "status": "ok"})
+
+
+class ScheduleSourceDeleteView(ProjectModifyAccessMixin, View):
+    """POST — delete one ScheduleSource record and all tasks imported from it."""
+
+    def post(self, request, source_pk: str, **kwargs: object) -> JsonResponse:
+        project = self.get_project()
+        source = get_object_or_404(ScheduleSource, pk=source_pk, project=project)
+        task_count = Task.objects.filter(project=project, schedule_source=source).count()
+        Task.objects.filter(project=project, schedule_source=source).delete()
+        source.delete()
+        logger.info(
+            "Deleted source '%s' and %d tasks for project %s",
+            source.filename,
+            task_count,
+            project.pk,
+        )
+        return JsonResponse({"deleted_tasks": task_count, "status": "ok"})
 
 
 class TaskActualDateView(ProjectModifyAccessMixin, View):
@@ -968,6 +1015,36 @@ class EVMDataView(ProjectAccessMixin, View):
             result = compute_evm(str(project.pk))
         except Exception as exc:
             logger.exception("EVM failed for project %s", project.pk)
+            return JsonResponse({"error": str(exc)}, status=500)
+        return JsonResponse(result)
+
+
+class WBSHeatmapView(ProjectAccessMixin, View):
+    """JSON — per-stage performance metrics for the WBS heatmap."""
+
+    def get(self, request, **kwargs: object) -> JsonResponse:
+        project = self.get_project()
+        try:
+            from .services.evm import compute_wbs_heatmap
+
+            stages = compute_wbs_heatmap(str(project.pk))
+        except Exception as exc:
+            logger.exception("WBS heatmap failed for project %s", project.pk)
+            return JsonResponse({"error": str(exc)}, status=500)
+        return JsonResponse({"stages": stages})
+
+
+class DelayDistributionView(ProjectAccessMixin, View):
+    """JSON — delay bucket distribution for the Delay Distribution chart."""
+
+    def get(self, request, **kwargs: object) -> JsonResponse:
+        project = self.get_project()
+        try:
+            from .services.evm import compute_delay_distribution
+
+            result = compute_delay_distribution(str(project.pk))
+        except Exception as exc:
+            logger.exception("Delay distribution failed for project %s", project.pk)
             return JsonResponse({"error": str(exc)}, status=500)
         return JsonResponse(result)
 

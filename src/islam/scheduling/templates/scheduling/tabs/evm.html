@@ -19,6 +19,17 @@
         <button type="button" class="btn-close btn-sm" data-bs-dismiss="alert" aria-label="Close"></button>
     </div>
 
+    <!-- Currency selector -->
+    <div class="d-flex align-items-center justify-content-end gap-2">
+        <span style="font-size:0.72rem; color:var(--bs-secondary-color); font-weight:600; text-transform:uppercase; letter-spacing:.05em;">Currency</span>
+        <select id="evm-currency-select" class="form-select form-select-sm" style="width:auto; font-size:0.78rem;">
+            <option value="USD">USD — US Dollar</option>
+            <option value="AED">AED — UAE Dirham</option>
+            <option value="KWD">KWD — Kuwaiti Dinar</option>
+            <option value="EGP">EGP — Egyptian Pound</option>
+        </select>
+    </div>
+
     <!-- KPI cards row -->
     <div id="evm-kpi-row" class="row g-3">
         <!-- Skeleton while loading -->
@@ -55,6 +66,50 @@
         <div id="evm-basis-note" class="d-none mt-2" style="font-size:0.72rem; color:var(--bs-secondary-color); text-align:center;"></div>
     </div>
 
+    <!-- WBS Performance Heatmap -->
+    <div id="evm-wbs-section">
+        <div class="d-flex align-items-center gap-2 mb-2">
+            <span style="font-size:0.8rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:0.05em;">WBS Performance</span>
+            <span style="font-size:0.7rem; color:var(--bs-secondary-color);">by stage · SPI = earned ÷ planned</span>
+        </div>
+        <div id="evm-wbs-grid" class="row g-2">
+            <!-- Skeleton while loading -->
+            {% for _ in "123456" %}
+            <div class="col-6 col-sm-4 col-lg-2">
+                <div class="rounded-3 p-3" style="background:var(--bs-secondary-bg); min-height:110px;">
+                    <div class="placeholder-glow mb-2"><span class="placeholder col-8" style="height:.7rem;"></span></div>
+                    <div class="placeholder-glow mb-1"><span class="placeholder col-5" style="height:1.4rem;"></span></div>
+                    <div class="placeholder-glow"><span class="placeholder col-10" style="height:.6rem;"></span></div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Delay Distribution Chart -->
+    <div id="evm-delay-section"
+         style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+            <span style="font-size:0.8rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:0.05em;">Delay Distribution</span>
+            <span id="evm-delay-meta" style="font-size:0.72rem; color:var(--bs-secondary-color);"></span>
+        </div>
+        <div id="evm-delay-bars">
+            <!-- Skeleton -->
+            {% for w in "8765432" %}
+            <div class="d-flex align-items-center gap-2 mb-2">
+                <div class="placeholder-glow" style="width:72px;flex-shrink:0;"><span class="placeholder col-12" style="height:.7rem;"></span></div>
+                <div class="placeholder-glow" style="flex:1;"><span class="placeholder" style="height:18px; width:{{ w }}0%; display:block; border-radius:3px;"></span></div>
+                <div class="placeholder-glow" style="width:24px;"><span class="placeholder col-12" style="height:.7rem;"></span></div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Forecast Completion Timeline -->
+    <div id="evm-forecast-section" class="d-none"
+         style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
+    </div>
+
     <!-- Secondary metrics row -->
     <div id="evm-secondary-row" class="d-none">
         <div class="row g-2" style="font-size:0.78rem;">
@@ -75,6 +130,24 @@
 <script>
 (function () {
     const EVM_URL = "{% url 'islam:evm_data' project.pk %}";
+    const LS_KEY  = "castor_evm_currency";
+
+    let _evmData  = null;
+    let _currency = localStorage.getItem(LS_KEY) || "USD";
+
+    /* Restore selector to saved value */
+    const _currSel = document.getElementById("evm-currency-select");
+    if (_currSel) {
+        _currSel.value = _currency;
+        _currSel.addEventListener("change", function () {
+            _currency = this.value;
+            localStorage.setItem(LS_KEY, _currency);
+            if (_evmData) {
+                _renderKpis(_evmData);
+                _renderSecondary(_evmData);
+            }
+        });
+    }
 
     async function loadEvm() {
         let data;
@@ -91,9 +164,11 @@
             return;
         }
 
+        _evmData = data;
         _renderBanner(data);
         _renderKpis(data);
         _renderChart(data);
+        _renderForecast(data);
         _renderSecondary(data);
     }
 
@@ -183,7 +258,6 @@
         const cW  = W - PAD.left - PAD.right;
         const cH  = H - PAD.top  - PAD.bottom;
 
-        /* All dates from PV series */
         const pvPts  = d.series.pv;
         const evPts  = d.series.ev;
         const acPts  = d.series.ac;
@@ -194,6 +268,12 @@
         const maxDate  = new Date(allDates[allDates.length - 1]);
         const spanMs   = maxDate - minDate || 1;
 
+        /* Build date-keyed lookups for EV/AC (only populated up to today) */
+        const evByDate = {};
+        evPts.forEach(p => { evByDate[p.date] = p.pct; });
+        const acByDate = {};
+        acPts.forEach(p => { acByDate[p.date] = p.pct; });
+
         function xOf(dateStr) {
             return PAD.left + ((new Date(dateStr) - minDate) / spanMs) * cW;
         }
@@ -201,68 +281,173 @@
             return PAD.top + cH - (pct / 100) * cH;
         }
 
-        /* Grid lines */
-        ctx.strokeStyle = getComputedStyle(document.documentElement)
-            .getPropertyValue("--bs-border-color") || "#dee2e6";
-        ctx.lineWidth = 0.5;
-        for (let g = 0; g <= 4; g++) {
-            const y = PAD.top + (g / 4) * cH;
-            ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left + cW, y); ctx.stroke();
+        /* ── Core draw — called on every render + hover update ──────────── */
+        function drawChart(hoverIdx) {
+            ctx.clearRect(0, 0, W, H);
+
+            /* Grid */
+            ctx.strokeStyle = getComputedStyle(document.documentElement)
+                .getPropertyValue("--bs-border-color") || "#dee2e6";
+            ctx.lineWidth = 0.5;
+            for (let g = 0; g <= 4; g++) {
+                const y = PAD.top + (g / 4) * cH;
+                ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left + cW, y); ctx.stroke();
+            }
+
+            /* Y-axis labels */
+            ctx.fillStyle = getComputedStyle(document.documentElement)
+                .getPropertyValue("--bs-secondary-color") || "#6c757d";
+            ctx.font = "10px system-ui";
+            ctx.textAlign = "right";
+            for (let g = 0; g <= 4; g++) {
+                const y = PAD.top + (g / 4) * cH;
+                ctx.fillText((100 - g * 25) + "%", PAD.left - 4, y + 4);
+            }
+
+            /* X-axis labels */
+            ctx.textAlign = "center";
+            [0, Math.floor(pvPts.length / 2), pvPts.length - 1].forEach(i => {
+                const p = pvPts[i];
+                if (!p) return;
+                ctx.fillText(_fmtDateShort(p.date), xOf(p.date), PAD.top + cH + 16);
+            });
+
+            /* Series lines */
+            function drawLine(pts, color, dashed) {
+                if (!pts.length) return;
+                ctx.save();
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2;
+                if (dashed) ctx.setLineDash([5, 4]);
+                ctx.beginPath();
+                pts.forEach((p, i) => {
+                    const x = xOf(p.date), y = yOf(p.pct);
+                    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+                });
+                ctx.stroke();
+                ctx.restore();
+            }
+            drawLine(pvPts, "#3b82f6", true);
+            drawLine(evPts, "#16a34a", false);
+            drawLine(acPts, "#f59e0b", false);
+
+            /* Today marker */
+            const todayStr = new Date().toISOString().slice(0, 10);
+            if (todayStr >= allDates[0] && todayStr <= allDates[allDates.length - 1]) {
+                const tx = xOf(todayStr);
+                ctx.save();
+                ctx.strokeStyle = "#dc2626";
+                ctx.lineWidth = 1;
+                ctx.setLineDash([3, 3]);
+                ctx.beginPath(); ctx.moveTo(tx, PAD.top); ctx.lineTo(tx, PAD.top + cH); ctx.stroke();
+                ctx.restore();
+            }
+
+            /* Crosshair + dots */
+            if (hoverIdx != null) {
+                const hp = pvPts[hoverIdx];
+                if (hp) {
+                    const hx = xOf(hp.date);
+                    ctx.save();
+                    ctx.strokeStyle = "rgba(120,120,120,0.55)";
+                    ctx.lineWidth = 1;
+                    ctx.setLineDash([4, 3]);
+                    ctx.beginPath(); ctx.moveTo(hx, PAD.top); ctx.lineTo(hx, PAD.top + cH); ctx.stroke();
+                    ctx.restore();
+
+                    [
+                        { map: { [hp.date]: hp.pct }, color: "#3b82f6" },
+                        { map: evByDate, color: "#16a34a" },
+                        { map: acByDate, color: "#f59e0b" },
+                    ].forEach(({ map, color }) => {
+                        const pct = map[hp.date];
+                        if (pct == null) return;
+                        ctx.save();
+                        ctx.fillStyle = color;
+                        ctx.strokeStyle = "var(--bs-body-bg)";
+                        ctx.lineWidth = 1.5;
+                        ctx.beginPath();
+                        ctx.arc(hx, yOf(pct), 4.5, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.stroke();
+                        ctx.restore();
+                    });
+                }
+            }
         }
 
-        /* Y-axis labels */
-        ctx.fillStyle = getComputedStyle(document.documentElement)
-            .getPropertyValue("--bs-secondary-color") || "#6c757d";
-        ctx.font = `${10 * dpr / dpr}px system-ui`;
-        ctx.textAlign = "right";
-        for (let g = 0; g <= 4; g++) {
-            const y = PAD.top + (g / 4) * cH;
-            ctx.fillText((100 - g * 25) + "%", PAD.left - 4, y + 4);
+        drawChart(null);
+
+        /* ── Tooltip overlay ────────────────────────────────────────────── */
+        let tooltip = document.getElementById("evm-crosshair-tooltip");
+        if (!tooltip) {
+            tooltip = document.createElement("div");
+            tooltip.id = "evm-crosshair-tooltip";
+            tooltip.style.cssText =
+                "position:absolute;pointer-events:none;display:none;" +
+                "background:var(--bs-body-bg);border:1px solid var(--bs-border-color);" +
+                "border-radius:6px;padding:8px 11px;font-size:0.74rem;" +
+                "box-shadow:0 2px 10px rgba(0,0,0,.16);z-index:10;min-width:130px;" +
+                "color:var(--bs-body-color);";
+            wrap.appendChild(tooltip);
         }
 
-        /* X-axis date labels (first + last + midpoint) */
-        ctx.textAlign = "center";
-        const labelIdxs = [0, Math.floor(pvPts.length / 2), pvPts.length - 1];
-        labelIdxs.forEach(i => {
-            const p = pvPts[i];
-            if (!p) return;
-            const x = xOf(p.date);
-            ctx.fillText(_fmtDateShort(p.date), x, PAD.top + cH + 16);
+        canvas.addEventListener("mousemove", function (e) {
+            const rect = canvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+
+            /* Find nearest PV point by x distance */
+            let bestIdx = 0, bestDist = Infinity;
+            pvPts.forEach((p, i) => {
+                const dist = Math.abs(xOf(p.date) - mx);
+                if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+            });
+
+            if (mx < PAD.left || mx > PAD.left + cW) {
+                tooltip.style.display = "none";
+                drawChart(null);
+                return;
+            }
+
+            drawChart(bestIdx);
+
+            const hp   = pvPts[bestIdx];
+            const evP  = evByDate[hp.date];
+            const acP  = acByDate[hp.date];
+            const dot  = c => `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${c};margin-right:4px;flex-shrink:0;"></span>`;
+            const row  = (color, label, val) =>
+                `<div style="display:flex;align-items:center;gap:2px;margin-bottom:2px;">${dot(color)}<span>${label}</span><span style="margin-left:auto;font-weight:600;padding-left:8px;">${val}</span></div>`;
+
+            let html = `<div style="font-weight:600;margin-bottom:5px;font-size:0.76rem;">${_fmtDateShort(hp.date)}</div>`;
+            html += row("#3b82f6", "PV", hp.pct.toFixed(1) + "%");
+            if (evP != null) html += row("#16a34a", "EV", evP.toFixed(1) + "%");
+            if (acP != null) html += row("#f59e0b", "AC", acP.toFixed(1) + "%");
+
+            if (d.use_cost && evP != null) {
+                const sv = (evP - hp.pct) / 100 * d.bac;
+                const svSign = sv >= 0 ? "+" : "";
+                const svCol  = sv >= 0 ? "#16a34a" : "#dc2626";
+                html += `<div style="border-top:1px solid var(--bs-border-color);margin-top:5px;padding-top:4px;font-size:0.7rem;">SV <span style="color:${svCol};font-weight:600;">${svSign}${_fmt(sv, true)}</span></div>`;
+            }
+
+            tooltip.innerHTML = html;
+            tooltip.style.display = "block";
+
+            /* Position: right of crosshair; flip left if near right edge */
+            const hx = xOf(hp.date);
+            const tw = tooltip.offsetWidth || 140;
+            let left = hx + 12;
+            if (left + tw > W - 4) left = hx - tw - 12;
+            tooltip.style.left = Math.max(PAD.left, left) + "px";
+            tooltip.style.top  = (PAD.top + 2) + "px";
         });
 
-        /* Draw a line series */
-        function drawLine(pts, color, dashed) {
-            if (!pts.length) return;
-            ctx.save();
-            ctx.strokeStyle = color;
-            ctx.lineWidth   = 2;
-            if (dashed) ctx.setLineDash([5, 4]);
-            ctx.beginPath();
-            pts.forEach((p, i) => {
-                const x = xOf(p.date);
-                const y = yOf(p.pct);
-                i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-            });
-            ctx.stroke();
-            ctx.restore();
-        }
+        canvas.addEventListener("mouseleave", function () {
+            tooltip.style.display = "none";
+            drawChart(null);
+        });
 
-        drawLine(pvPts, "#3b82f6", true);
-        drawLine(evPts, "#16a34a", false);
-        drawLine(acPts, "#f59e0b", false);
-
-        /* Today marker */
-        const todayStr = new Date().toISOString().slice(0, 10);
-        if (todayStr >= allDates[0] && todayStr <= allDates[allDates.length - 1]) {
-            const tx = xOf(todayStr);
-            ctx.save();
-            ctx.strokeStyle = "#dc2626";
-            ctx.lineWidth = 1;
-            ctx.setLineDash([3, 3]);
-            ctx.beginPath(); ctx.moveTo(tx, PAD.top); ctx.lineTo(tx, PAD.top + cH); ctx.stroke();
-            ctx.restore();
-        }
-
+        /* Basis note */
         const _basisLabels = {
             "schedule costs": "Cost basis: schedule task costs.",
             "QTO estimates": "Cost basis: QTO quantity estimates (no schedule costs set).",
@@ -295,7 +480,7 @@
         if (useCost) {
             return new Intl.NumberFormat(undefined, {
                 style: "currency",
-                currency: "USD",
+                currency: _currency,
                 maximumFractionDigits: 0,
                 notation: Math.abs(v) >= 1e6 ? "compact" : "standard",
             }).format(v);
@@ -315,7 +500,234 @@
             `<div class="col-12 text-secondary" style="font-size:0.82rem;">${msg}</div>`;
     }
 
+    /* ── Forecast Completion Timeline ─────────────────────────────────── */
+    function _renderForecast(d) {
+        const section = document.getElementById("evm-forecast-section");
+        if (!section || !d.project_start || !d.project_end) return;
+
+        const start    = new Date(d.project_start + "T00:00:00");
+        const baseline = new Date(d.project_end   + "T00:00:00");
+        const today    = new Date(d.as_of         + "T00:00:00");
+        const totalMs  = Math.max(baseline - start, 1);
+
+        /* Forecast end: spi-adjusted remaining duration */
+        const spi = Math.max(d.spi || 1.0, 0.05);
+        const remainingMs = Math.max(baseline - today, 0);
+        const elapsedMs   = Math.max(today - start, 0);
+        const forecastMs  = today < baseline
+            ? elapsedMs + remainingMs / spi
+            : elapsedMs / spi;
+        const forecast = new Date(start.getTime() + forecastMs);
+
+        const varianceDays = Math.round((baseline - forecast) / 86400000);
+        const varColor = varianceDays === 0 ? "var(--bs-secondary-color)"
+            : varianceDays > 0 ? "#16a34a" : "#dc2626";
+        const varLabel = varianceDays === 0 ? "On time"
+            : varianceDays > 0 ? `${varianceDays}d early` : `${Math.abs(varianceDays)}d late`;
+
+        /* Timeline spans start → max(baseline, forecast) */
+        const spanEnd = forecast > baseline ? forecast : baseline;
+        const spanMs  = Math.max(spanEnd - start, 1);
+        const pct = dt => Math.max(1, Math.min(99, (dt - start) / spanMs * 100));
+
+        const todayP    = pct(today);
+        const baselineP = pct(baseline);
+        const forecastP = pct(forecast);
+        /* Earned equivalent: ev/bac fraction of total planned duration */
+        const earnedEquiv = new Date(start.getTime() + (d.ev / Math.max(d.bac, 1)) * totalMs);
+        const earnedP     = pct(earnedEquiv);
+
+        const fmtD = dt  => dt.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "2-digit" });
+        const fmtI = iso => fmtD(new Date(iso + "T00:00:00"));
+
+        const elapsedDays   = Math.round(elapsedMs   / 86400000);
+        const remainingDays = Math.round(remainingMs / 86400000);
+
+        /* Marker helper: vertical line + label centred at left% */
+        const marker = (leftPct, color, label) =>
+            `<div style="position:absolute; left:${leftPct}%; top:8px; transform:translateX(-50%); text-align:center; pointer-events:none;">
+                <div style="width:2px; height:26px; background:${color}; border-radius:1px; margin:0 auto;"></div>
+                <div style="font-size:0.59rem; color:${color}; white-space:nowrap; margin-top:2px; font-weight:600;">${label}</div>
+            </div>`;
+
+        section.innerHTML =
+            `<div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+                <span style="font-size:0.8rem; font-weight:600; color:var(--bs-secondary-color);
+                             text-transform:uppercase; letter-spacing:0.05em;">Forecast Completion</span>
+                <span style="font-size:0.8rem; font-weight:700; color:${varColor};
+                             background:${varColor}18; border:1px solid ${varColor}40;
+                             border-radius:12px; padding:2px 10px;">${varLabel}</span>
+            </div>
+
+            <div class="row g-3 mb-3" style="font-size:0.82rem;">
+                <div class="col-auto">
+                    <div style="font-size:0.64rem; color:var(--bs-secondary-color); text-transform:uppercase;
+                                font-weight:600; letter-spacing:.06em; margin-bottom:2px;">Baseline End</div>
+                    <div style="font-weight:700;">${fmtI(d.project_end)}</div>
+                </div>
+                <div class="col-auto">
+                    <div style="font-size:0.64rem; color:${varColor}; text-transform:uppercase;
+                                font-weight:600; letter-spacing:.06em; margin-bottom:2px;">Forecast End</div>
+                    <div style="font-weight:700; color:${varColor};">${fmtD(forecast)}</div>
+                </div>
+                <div class="col-auto ms-auto text-end">
+                    <div style="font-size:0.64rem; color:var(--bs-secondary-color); text-transform:uppercase;
+                                font-weight:600; letter-spacing:.06em; margin-bottom:2px;">SPI</div>
+                    <div style="font-weight:700;">${d.spi.toFixed(2)}</div>
+                </div>
+            </div>
+
+            <!-- Timeline strip -->
+            <div style="position:relative; height:58px; margin-bottom:4px;">
+                <!-- Background track -->
+                <div style="position:absolute; top:18px; left:0; right:0; height:6px;
+                            background:var(--bs-secondary-bg); border-radius:3px;"></div>
+                <!-- Planned (baseline) fill -->
+                <div style="position:absolute; top:18px; left:0; width:${baselineP}%; height:6px;
+                            background:#3b82f628; border:1px solid #3b82f640; border-radius:3px;"></div>
+                <!-- Earned progress fill -->
+                <div style="position:absolute; top:18px; left:0; width:${earnedP}%; height:6px;
+                            background:#16a34a; opacity:.85; border-radius:3px;
+                            transition:width .6s ease-out;"></div>
+                <!-- Markers -->
+                ${marker(todayP,    "#6b7280", "Today")}
+                ${marker(baselineP, "#3b82f6", fmtI(d.project_end))}
+                ${Math.abs(varianceDays) >= 1 ? marker(forecastP, varColor, fmtD(forecast)) : ""}
+            </div>
+
+            <div class="d-flex gap-3 flex-wrap mt-2" style="font-size:0.7rem; color:var(--bs-secondary-color);">
+                <span><strong>Start:</strong> ${fmtI(d.project_start)}</span>
+                <span><strong>Elapsed:</strong> ${elapsedDays}d</span>
+                <span><strong>Remaining (planned):</strong> ${remainingDays}d</span>
+            </div>`;
+
+        section.classList.remove("d-none");
+    }
+
+    /* ── WBS Heatmap ───────────────────────────────────────────────────── */
+    async function loadWbsHeatmap() {
+        let data;
+        try {
+            const resp = await fetch("{% url 'islam:wbs_heatmap' project.pk %}");
+            data = await resp.json();
+        } catch (_) {
+            document.getElementById("evm-wbs-section").style.display = "none";
+            return;
+        }
+        if (!data.stages || !data.stages.length) {
+            document.getElementById("evm-wbs-section").style.display = "none";
+            return;
+        }
+        _renderWbsHeatmap(data.stages);
+    }
+
+    function _renderWbsHeatmap(stages) {
+        const grid = document.getElementById("evm-wbs-grid");
+
+        grid.innerHTML = stages.map(s => {
+            const notStarted = s.planned_pct === 0 && s.earned_pct === 0;
+            const spiLabel   = notStarted ? "—" : s.spi.toFixed(2);
+            const pBar = notStarted ? 0 : Math.min(100, s.planned_pct);
+            const eBar = notStarted ? 0 : Math.min(100, s.earned_pct);
+            const ahead = s.earned_pct >= s.planned_pct;
+
+            return `<div class="col-6 col-sm-4 col-lg-2">
+                <div class="rounded-3 p-3 h-100"
+                     style="background:${s.color}18; border:1px solid ${s.color}40; transition:box-shadow .15s;"
+                     onmouseenter="this.style.boxShadow='0 0 0 2px ${s.color}60'"
+                     onmouseleave="this.style.boxShadow=''">
+                    <div style="font-size:0.68rem; font-weight:700; text-transform:uppercase;
+                                letter-spacing:.07em; color:${s.color}; margin-bottom:5px;
+                                white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"
+                         title="${s.label}">${s.label}</div>
+                    <div style="font-size:1.45rem; font-weight:700; color:${s.color}; line-height:1.1;">${spiLabel}</div>
+                    <div style="font-size:0.65rem; color:var(--bs-secondary-color); margin-bottom:7px;">SPI</div>
+                    <div style="font-size:0.7rem; color:var(--bs-body-color); margin-bottom:5px;">
+                        <div class="d-flex justify-content-between mb-1">
+                            <span style="opacity:.75;">Planned</span>
+                            <span style="font-weight:600;">${s.planned_pct}%</span>
+                        </div>
+                        <div style="height:3px; border-radius:2px; background:var(--bs-secondary-bg); overflow:hidden; margin-bottom:4px;">
+                            <div style="height:100%; width:${pBar}%; background:${s.color}; opacity:.45; border-radius:2px;"></div>
+                        </div>
+                        <div class="d-flex justify-content-between mb-1">
+                            <span style="opacity:.75;">Earned</span>
+                            <span style="font-weight:600;">${s.earned_pct}%</span>
+                        </div>
+                        <div style="height:3px; border-radius:2px; background:var(--bs-secondary-bg); overflow:hidden;">
+                            <div style="height:100%; width:${eBar}%; background:${s.color}; border-radius:2px;"></div>
+                        </div>
+                    </div>
+                    <div style="font-size:0.65rem; color:var(--bs-secondary-color);">
+                        ${s.completed}/${s.task_count} complete
+                    </div>
+                </div>
+            </div>`;
+        }).join("");
+    }
+
+    /* ── Delay Distribution Chart ──────────────────────────────────────── */
+    async function loadDelayDistribution() {
+        let data;
+        try {
+            const resp = await fetch("{% url 'islam:delay_distribution' project.pk %}");
+            data = await resp.json();
+        } catch (_) {
+            document.getElementById("evm-delay-section").style.display = "none";
+            return;
+        }
+        if (!data.has_data) {
+            document.getElementById("evm-delay-section").style.display = "none";
+            return;
+        }
+        _renderDelayChart(data);
+    }
+
+    function _renderDelayChart(data) {
+        const barsEl = document.getElementById("evm-delay-bars");
+        const metaEl = document.getElementById("evm-delay-meta");
+
+        const maxCount = Math.max(...data.buckets.map(b => b.count), 1);
+
+        metaEl.textContent =
+            `${data.total} task${data.total !== 1 ? "s" : ""} in scope` +
+            (data.not_yet_due ? ` · ${data.not_yet_due} not yet due` : "");
+
+        barsEl.innerHTML = data.buckets.map(b => {
+            const barW  = Math.round(b.count / maxCount * 100);
+            const tip   = b.sample_tasks.length
+                ? b.sample_tasks.join(", ") + (b.count > 3 ? ` +${b.count - 3} more` : "")
+                : "";
+            const labelColor = b.count > 0 ? b.color : "var(--bs-secondary-color)";
+            const countColor = b.count > 0 ? b.color : "var(--bs-secondary-color)";
+
+            return `<div class="d-flex align-items-center gap-2 mb-2"
+                        ${tip ? `title="${tip.replace(/"/g, "&quot;")}"` : ""}>
+                <div style="width:72px; flex-shrink:0; font-size:0.72rem;
+                            text-align:right; color:${labelColor}; font-weight:${b.count > 0 ? 600 : 400};">
+                    ${b.label}
+                </div>
+                <div style="flex:1; height:20px; background:var(--bs-secondary-bg);
+                            border-radius:3px; overflow:hidden;">
+                    <div style="height:100%; width:${barW}%; background:${b.color};
+                                border-radius:3px; opacity:${b.count > 0 ? 0.85 : 0};
+                                transition:width .55s ease-out;"></div>
+                </div>
+                <div style="width:28px; font-size:0.74rem; font-weight:700;
+                            color:${countColor}; text-align:right;">
+                    ${b.count}
+                </div>
+                <div style="width:38px; font-size:0.68rem; color:var(--bs-secondary-color);
+                            text-align:right;">
+                    ${b.count > 0 ? b.pct + "%" : ""}
+                </div>
+            </div>`;
+        }).join("");
+    }
+
     loadEvm();
+    loadWbsHeatmap();
+    loadDelayDistribution();
 }());
 </script>
 
