@@ -792,17 +792,17 @@
     /* ── Import / Replace shared submit ────────────────────────────── */
     async function _submitImport(replace) {
         const isTabular = S.format === 'excel' || S.format === 'csv';
-        const url = isTabular ? MAPPING_URL : SAVE_URL;
 
         importSpin.classList.remove('d-none');
         importBtn.disabled = true;
         if (replaceBtn) replaceBtn.disabled = true;
         importLbl.textContent = replace ? 'Replacing…' : 'Importing…';
 
-        const fd = new FormData();
-        fd.append('csrfmiddlewaretoken', CSRF);
-        if (replace) fd.append('replace', 'true');
+        /* ── Step 1 (tabular only): apply column mapping, write parsed_tasks to session ── */
         if (isTabular) {
+            const fd = new FormData();
+            fd.append('csrfmiddlewaretoken', CSRF);
+            if (replace) fd.append('replace', 'true');
             const used = {};
             for (const [col, field] of Object.entries(S.mapping)) {
                 if (field && field !== 'ignore' && !used[field]) {
@@ -812,11 +812,35 @@
             }
             fd.append('ifc_param_name',
                 document.getElementById('ds-ifc-param')?.value.trim() || 'Activity ID');
+
+            let r1;
+            try {
+                r1 = await fetch(MAPPING_URL, { method: 'POST', body: fd });
+            } catch (e) {
+                console.error('[ISLAM DEBUG] mapping step failed:', e.message, e.stack);
+                _importReset();
+                resultEl.innerHTML = `<div class="alert alert-danger small mt-2">Import failed — ${esc(e.message)} — check console for details.</div>`;
+                return;
+            }
+            if (!r1.ok) {
+                _importReset();
+                resultEl.innerHTML = await r1.text();
+                htmx.process(resultEl);
+                summaryLeft.insertAdjacentHTML('beforeend',
+                    ` <span class="text-danger" style="font-size:.76rem;">⚠ ${replace ? 'Replace' : 'Import'} failed (${r1.status})</span>`
+                );
+                return;
+            }
         }
+
+        /* ── Step 2: persist tasks to DB ── */
+        const fd2 = new FormData();
+        fd2.append('csrfmiddlewaretoken', CSRF);
+        if (replace) fd2.append('replace', 'true');
 
         let r, html;
         try {
-            r    = await fetch(url, { method: 'POST', body: fd });
+            r    = await fetch(SAVE_URL, { method: 'POST', body: fd2 });
             html = await r.text();
         } catch (e) {
             console.error('[ISLAM DEBUG]', e.message, e.stack);
