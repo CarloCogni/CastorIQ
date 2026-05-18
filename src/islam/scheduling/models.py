@@ -241,7 +241,8 @@ class Task(UUIDModel):
         """'non_physical' | 'linked' | 'partial' | 'unlinked'."""
         if self.is_non_physical:
             return "non_physical"
-        count = self.ifc_entities.count()
+        # Use all() so prefetch_related cache is honoured — .count() bypasses it.
+        count = len(self.ifc_entities.all())
         if count == 0:
             return "unlinked"
         # "partial" heuristic: fewer than 3 entities for a non-manual task
