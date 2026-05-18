@@ -111,63 +111,7 @@
     <!-- Results area -->
     <div class="col-12 col-lg-8">
         <div id="attach-results">
-            {% if tasks %}
-            <div class="table-responsive">
-                <table class="table table-sm table-hover align-middle">
-                    <thead class="table-dark">
-                        <tr>
-                            <th>Task Name</th>
-                            <th>Activity ID</th>
-                            <th class="text-center">Linked Entities</th>
-                            <th class="text-center">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for task in tasks %}
-                        <tr>
-                            <td style="font-size:0.85rem;">{{ task.name }}</td>
-                            <td style="font-size:0.85rem;">
-                                {% if task.activity_code %}
-                                    <code class="text-info">{{ task.activity_code }}</code>
-                                {% else %}
-                                    <span class="text-secondary">—</span>
-                                {% endif %}
-                            </td>
-                            <td class="text-center">
-                                <span class="badge bg-secondary">{{ task.ifc_entities.all|length }}</span>
-                            </td>
-                            <td class="text-center">
-                                {% if task.link_status == 'linked' %}
-                                    <span title="All entities linked">✅</span>
-                                {% elif task.link_status == 'partial' %}
-                                    <span title="Partially linked">⚠️</span>
-                                {% else %}
-                                    <span title="No entities linked">❌</span>
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% empty %}
-                        <tr><td colspan="4" class="text-center text-secondary py-3">No tasks imported yet.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-
-            {% if matches %}
-            <div class="alert alert-info py-2" style="font-size:0.82rem;">
-                <i class="bi bi-info-circle me-1"></i>
-                Showing results for <strong>{{ match_mode }}</strong> matching
-                {% if param_name %}on property <code>{{ param_name }}</code>{% endif %}.
-                {{ matches|length }} tasks processed.
-            </div>
-            {% endif %}
-
-            {% else %}
-            <div class="d-flex flex-column align-items-center justify-content-center text-secondary py-5">
-                <i class="bi bi-link-45deg fs-1 mb-2"></i>
-                <span>Import a schedule first, then choose a linking method.</span>
-            </div>
-            {% endif %}
+            {% include "scheduling/components/attach_results.html" %}
         </div>
     </div>
 

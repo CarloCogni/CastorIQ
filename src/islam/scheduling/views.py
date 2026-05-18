@@ -868,7 +868,7 @@ class LinkAutoView(ProjectModifyAccessMixin, View):
         tasks_qs = Task.objects.filter(project=project).prefetch_related("ifc_entities")
         response = render(
             request,
-            "scheduling/tabs/attach.html",
+            "scheduling/components/attach_results.html",
             {"tasks": tasks_qs, "matches": matches, "project": project, "match_mode": "auto"},
         )
         msg = f"AI matched {sum(1 for m in matches if m['entity_ids'])} of {len(tasks)} tasks."
@@ -900,7 +900,7 @@ class LinkParamView(ProjectModifyAccessMixin, View):
         tasks_qs = Task.objects.filter(project=project).prefetch_related("ifc_entities")
         response = render(
             request,
-            "scheduling/tabs/attach.html",
+            "scheduling/components/attach_results.html",
             {
                 "tasks": tasks_qs,
                 "matches": matches,
