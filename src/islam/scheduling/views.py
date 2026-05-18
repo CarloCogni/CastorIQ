@@ -731,6 +731,12 @@ class ScheduleSourcePreviewView(ProjectAccessMixin, View):
         tasks = list(
             Task.objects.filter(schedule_source=source).order_by("start_date", "name")
         )
+        # Old imports predating the schedule_source FK have schedule_source=NULL.
+        # Fall back to all project tasks so the preview still shows the full schedule.
+        if not tasks:
+            tasks = list(
+                Task.objects.filter(project=project).order_by("start_date", "name")
+            )
 
         task_pks = {t.pk for t in tasks}
         raw_deps = (
