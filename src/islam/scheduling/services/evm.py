@@ -88,11 +88,11 @@ def _earned_pct_at(task, d: date) -> float:
 
 
 _DELAY_BUCKETS = [
-    {"label": "On Time",    "min": 0,  "max": 0,    "color": "#16a34a"},
-    {"label": "1–7 days",   "min": 1,  "max": 7,    "color": "#84cc16"},
-    {"label": "8–14 days",  "min": 8,  "max": 14,   "color": "#d97706"},
-    {"label": "15–30 days", "min": 15, "max": 30,   "color": "#ea580c"},
-    {"label": "31+ days",   "min": 31, "max": None, "color": "#dc2626"},
+    {"label": "On Time", "min": 0, "max": 0, "color": "#16a34a"},
+    {"label": "1–7 days", "min": 1, "max": 7, "color": "#84cc16"},
+    {"label": "8–14 days", "min": 8, "max": 14, "color": "#d97706"},
+    {"label": "15–30 days", "min": 15, "max": 30, "color": "#ea580c"},
+    {"label": "31+ days", "min": 31, "max": None, "color": "#dc2626"},
 ]
 
 
@@ -238,11 +238,7 @@ def compute_wbs_heatmap(project_id: str) -> list[dict]:
             }
         )
 
-    result.sort(
-        key=lambda r: _STAGE_ORDER.index(r["stage"])
-        if r["stage"] in _STAGE_ORDER
-        else 99
-    )
+    result.sort(key=lambda r: _STAGE_ORDER.index(r["stage"]) if r["stage"] in _STAGE_ORDER else 99)
     return result
 
 
