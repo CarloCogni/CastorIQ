@@ -349,6 +349,40 @@ class MappingProfile(UUIDModel):
         return f"{self.name} ({self.project.name})"
 
 
+class ScheduleSource(UUIDModel):
+    """Audit record of each schedule file imported into a project.
+
+    Created by TaskSaveView after a successful import.  Used by the
+    Data Sources tab to show the user which files have been imported and
+    when — without requiring a FK from every Task back to its source file.
+    """
+
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name="schedule_sources",
+        verbose_name="Project",
+    )
+    filename = models.CharField(max_length=500, verbose_name="Filename")
+    source_format = models.CharField(
+        max_length=20,
+        choices=Task.Source.choices,
+        default=Task.Source.EXCEL,
+        verbose_name="Format",
+    )
+    task_count = models.IntegerField(default=0, verbose_name="Tasks in file")
+    imported_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Schedule Source"
+        verbose_name_plural = "Schedule Sources"
+        ordering = ["-imported_at"]
+        indexes = [models.Index(fields=["project", "imported_at"])]
+
+    def __str__(self) -> str:
+        return f"{self.filename} ({self.task_count} tasks)"
+
+
 class TaskEntityBinding(UUIDModel):
     """Explicit scored binding between a schedule Task and an IFC entity global_id.
 

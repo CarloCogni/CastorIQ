@@ -4,9 +4,32 @@
      data-preview-url="{% url 'islam:schedule_preview' project.pk %}"
      data-save-url="{% url 'islam:schedule_save' project.pk %}"
      data-mapping-url="{% url 'islam:schedule_mapping_submit' project.pk %}"
-     data-gantt-url="{% url 'islam:schedule' project.pk %}?tab=gantt"
+     data-review-url="{% url 'islam:schedule' project.pk %}?tab=review"
      data-csrf="{{ csrf_token }}"
      data-task-count="{{ task_count }}">
+
+    <!-- ── Imported sources (chips, shown when at least one import exists) ─ -->
+    {% if schedule_sources %}
+    <div class="d-flex align-items-center gap-2 flex-wrap mb-2" id="ds-sources-row" style="flex-shrink:0;">
+        <span class="text-secondary" style="font-size:.75rem; font-weight:600; white-space:nowrap;">
+            <i class="bi bi-folder2-open me-1"></i>Imported:
+        </span>
+        {% for src in schedule_sources %}
+        <span class="badge d-inline-flex align-items-center gap-1 px-2 py-1"
+              style="background:var(--bs-secondary-bg); color:var(--bs-body-color);
+                     border:1px solid var(--bs-border-color); border-radius:20px;
+                     font-size:.72rem; font-weight:400;"
+              title="{{ src.imported_at|date:'d M Y H:i' }}">
+            <i class="bi bi-file-earmark-text" style="font-size:.78rem; opacity:.6;"></i>
+            <span style="max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                {{ src.filename|default:"(unknown)" }}
+            </span>
+            <span class="badge bg-secondary ms-1" style="font-size:.65rem;">{{ src.source_format|upper }}</span>
+            <span class="text-secondary ms-1" style="font-size:.68rem;">{{ src.task_count }} tasks</span>
+        </span>
+        {% endfor %}
+    </div>
+    {% endif %}
 
     <!-- ── Upload bar ──────────────────────────────────────────────── -->
     <div class="d-flex align-items-center gap-3 flex-wrap mb-2" id="ds-upload-bar">
@@ -176,7 +199,7 @@
     const PREVIEW_URL  = root.dataset.previewUrl;
     const SAVE_URL     = root.dataset.saveUrl;
     const MAPPING_URL  = root.dataset.mappingUrl;
-    const GANTT_URL    = root.dataset.ganttUrl;
+    const REVIEW_URL   = root.dataset.reviewUrl;
     const CSRF         = root.dataset.csrf;
 
     const _TASK_COUNT  = parseInt(root.dataset.taskCount || '0', 10);
@@ -702,22 +725,23 @@
             return;
         }
 
-        resultEl.innerHTML = html;
-        htmx.process(resultEl);
         importSpin.classList.add('d-none');
         importLbl.textContent = replace ? '✓ Replaced' : '✓ Imported';
 
         const n   = S.totalRows;
         const lbl = `<strong>${n.toLocaleString()}</strong> task${n === 1 ? '' : 's'} ${replace ? 'replaced' : 'imported'}`;
         summaryLeft.innerHTML =
-            `<span class="text-success"><i class="bi bi-check-circle me-1"></i>${lbl}</span>` +
-            (GANTT_URL
-                ? ` &nbsp;<span class="text-secondary" style="font-size:.76rem;">Redirecting to Gantt…</span>`
-                : '');
+            `<span class="text-success"><i class="bi bi-check-circle me-1"></i>${lbl}.</span>`;
 
-        if (GANTT_URL) {
-            setTimeout(() => { window.location.href = GANTT_URL; }, 1600);
-        }
+        resultEl.innerHTML =
+            `<div class="alert alert-success alert-dismissible py-2 px-3 mb-2 d-flex align-items-center gap-2 flex-wrap"
+                  role="alert" style="font-size:.82rem;">
+                <i class="bi bi-check-circle-fill"></i>
+                <span>${lbl} — links can now be reviewed.</span>
+                <a href="${REVIEW_URL}" class="btn btn-sm btn-success ms-auto">Go to Review →</a>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>` + html;
+        htmx.process(resultEl);
     }
 
     importBtn.addEventListener('click', function () {
