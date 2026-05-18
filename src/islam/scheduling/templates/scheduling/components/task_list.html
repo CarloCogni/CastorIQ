@@ -183,7 +183,7 @@
                 </td>
                 <td class="text-secondary" style="font-size:0.78rem;">{{ task.source }}</td>
                 <td class="text-center">
-                    {% with cnt=task.ifc_entities.count %}
+                    {% with cnt=task.ifc_entities.all|length %}
                         {% if cnt %}<span class="badge bg-primary">{{ cnt }}</span>{% else %}<span class="text-secondary">—</span>{% endif %}
                     {% endwith %}
                 </td>
