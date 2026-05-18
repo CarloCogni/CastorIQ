@@ -134,7 +134,7 @@
                                 {% endif %}
                             </td>
                             <td class="text-center">
-                                <span class="badge bg-secondary">{{ task.ifc_entities.count }}</span>
+                                <span class="badge bg-secondary">{{ task.ifc_entities.all|length }}</span>
                             </td>
                             <td class="text-center">
                                 {% if task.link_status == 'linked' %}
