@@ -121,7 +121,14 @@ _PREVIEW_PARSED_COLS = [
     "activity_type",
     "total_float_days",
 ]
-_PREVIEW_PARSED_VISIBLE = ["name", "start_date", "end_date", "status", "activity_code", "activity_type"]
+_PREVIEW_PARSED_VISIBLE = [
+    "name",
+    "start_date",
+    "end_date",
+    "status",
+    "activity_code",
+    "activity_type",
+]
 
 
 class SchedulePreviewView(ProjectModifyAccessMixin, View):
@@ -440,11 +447,22 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
             logger.info("Replace mode: cleared %d tasks for project %s", existing, project.pk)
 
         created = 0
+        updated = 0
         xer_id_map: dict[str, str] = {}  # _xer_task_id  → str(task.pk)
         msp_uid_map: dict[str, str] = {}  # _msp_uid      → str(task.pk)
         p6_obj_id_map: dict[str, str] = {}  # _p6_obj_id    → str(task.pk)
         activity_code_map: dict[str, str] = {}  # activity_code → str(task.pk)
         tasks_with_preds: list[tuple[str, str]] = []  # (task_pk, raw_predecessors)
+
+        # Pre-load existing tasks by activity_code so re-importing the same file
+        # updates tasks in place rather than creating duplicates.
+        existing_by_code: dict[str, Task] = {}
+        if not replace_mode:
+            for t in Task.objects.filter(project=project).only(
+                "pk", "activity_code", "name", "start_date", "end_date"
+            ):
+                if t.activity_code:
+                    existing_by_code[t.activity_code] = t
 
         has_p6_cpm = any(
             td.get("total_float_days") is not None or td.get("early_start") for td in tasks_data
@@ -460,8 +478,9 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
                 late_start_raw = td.get("late_start")
                 late_finish_raw = td.get("late_finish")
                 total_float_val = td.get("total_float_days")
-                task = Task.objects.create(
-                    project=project,
+                activity_code = td.get("activity_code", "")
+
+                task_fields = dict(
                     name=td["name"],
                     description=td.get("description", ""),
                     start_date=date.fromisoformat(td["start_date"]),
@@ -470,7 +489,7 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
                     actual_end=date.fromisoformat(actual_end_raw) if actual_end_raw else None,
                     status=td.get("status", "planned"),
                     source=td.get("source", "excel"),
-                    activity_code=td.get("activity_code", ""),
+                    activity_code=activity_code,
                     color=td.get("color", "#3b82f6"),
                     cost=Decimal(cost_str) if cost_str else None,
                     activity_type=td.get("activity_type", ""),
@@ -481,7 +500,17 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
                     total_float=int(total_float_val) if total_float_val is not None else None,
                     is_critical=total_float_val is not None and int(total_float_val) == 0,
                 )
-                created += 1
+
+                if activity_code and activity_code in existing_by_code:
+                    task = existing_by_code[activity_code]
+                    for field, val in task_fields.items():
+                        setattr(task, field, val)
+                    task.save(update_fields=list(task_fields.keys()))
+                    updated += 1
+                else:
+                    task = Task.objects.create(project=project, **task_fields)
+                    created += 1
+
                 pk = str(task.pk)
                 if td.get("_xer_task_id"):
                     xer_id_map[td["_xer_task_id"]] = pk
@@ -489,8 +518,8 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
                     msp_uid_map[td["_msp_uid"]] = pk
                 if td.get("_p6_obj_id"):
                     p6_obj_id_map[td["_p6_obj_id"]] = pk
-                if td.get("activity_code"):
-                    activity_code_map[td["activity_code"]] = pk
+                if activity_code:
+                    activity_code_map[activity_code] = pk
                 raw_preds = td.get("_raw_predecessors", "").strip()
                 if raw_preds:
                     tasks_with_preds.append((pk, raw_preds))
@@ -569,12 +598,28 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
             "scheduling/components/task_list.html",
             {"tasks": tasks, "project": project, "preview_mode": False, "dep_count": dep_count},
         )
-        msg = f"{created} tasks saved."
+        parts = []
+        if created:
+            parts.append(f"{created} task{'s' if created != 1 else ''} created")
+        if updated:
+            parts.append(f"{updated} updated")
+        msg = (", ".join(parts) or "No new tasks") + "."
         if dep_count:
             msg += (
                 f" {dep_count} dependenc{'y' if dep_count == 1 else 'ies'} imported, CPM computed."
             )
         return trigger_toast(response, msg, "success")
+
+
+class ScheduleClearView(ProjectModifyAccessMixin, View):
+    """POST — delete all tasks and dependencies for this project."""
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        project = self.get_project()
+        TaskDependency.objects.filter(predecessor__project=project).delete()
+        deleted, _ = Task.objects.filter(project=project).delete()
+        logger.info("Cleared %d tasks for project %s", deleted, project.pk)
+        return JsonResponse({"deleted": deleted, "status": "ok"})
 
 
 class TaskActualDateView(ProjectModifyAccessMixin, View):

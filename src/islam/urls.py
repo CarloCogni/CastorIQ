@@ -81,6 +81,11 @@ urlpatterns = [
         name="schedule_save",
     ),
     path(
+        "projects/<uuid:pk>/schedule/clear/",
+        scheduling_views.ScheduleClearView.as_view(),
+        name="schedule_clear",
+    ),
+    path(
         "projects/<uuid:pk>/schedule/link/auto/",
         scheduling_views.LinkAutoView.as_view(),
         name="schedule_link_auto",
