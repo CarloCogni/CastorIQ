@@ -87,6 +87,165 @@ def _earned_pct_at(task, d: date) -> float:
     return 0.0
 
 
+_DELAY_BUCKETS = [
+    {"label": "On Time",    "min": 0,  "max": 0,    "color": "#16a34a"},
+    {"label": "1–7 days",   "min": 1,  "max": 7,    "color": "#84cc16"},
+    {"label": "8–14 days",  "min": 8,  "max": 14,   "color": "#d97706"},
+    {"label": "15–30 days", "min": 15, "max": 30,   "color": "#ea580c"},
+    {"label": "31+ days",   "min": 31, "max": None, "color": "#dc2626"},
+]
+
+
+def _task_delay_days(task, today: date) -> int | None:
+    """Days a task is delayed as of *today*.  None = not yet due (skip)."""
+    if task.start_date > today:
+        return None  # future task
+    if task.status == "complete":
+        return max(0, (task.actual_end - task.end_date).days) if task.actual_end else 0
+    if today > task.end_date:
+        return (today - task.end_date).days
+    if today > task.start_date and not task.actual_start:
+        return (today - task.start_date).days
+    return 0
+
+
+def compute_delay_distribution(project_id: str) -> dict:
+    """Distribution of tasks across delay buckets for the Delay Chart.
+
+    Returns:
+        has_data      — bool
+        buckets       — list[{label, color, count, pct, sample_tasks}]
+        total         — int (tasks in scope, excludes not-yet-due)
+        not_yet_due   — int
+    """
+    from islam.scheduling.models import Task
+
+    today = date.today()
+    tasks = list(
+        Task.objects.filter(project_id=project_id, is_non_physical=False)
+        .exclude(start_date=None)
+        .exclude(end_date=None)
+    )
+    if not tasks:
+        return {"has_data": False}
+
+    counts: list[int] = [0] * len(_DELAY_BUCKETS)
+    samples: list[list[str]] = [[] for _ in _DELAY_BUCKETS]
+    not_yet_due = 0
+
+    for t in tasks:
+        delay = _task_delay_days(t, today)
+        if delay is None:
+            not_yet_due += 1
+            continue
+        for i, b in enumerate(_DELAY_BUCKETS):
+            if b["max"] is None:
+                if delay >= b["min"]:
+                    counts[i] += 1
+                    if len(samples[i]) < 3:
+                        samples[i].append(t.name)
+                    break
+            elif b["min"] <= delay <= b["max"]:
+                counts[i] += 1
+                if len(samples[i]) < 3:
+                    samples[i].append(t.name)
+                break
+
+    total = sum(counts)
+    buckets = []
+    for i, b in enumerate(_DELAY_BUCKETS):
+        buckets.append(
+            {
+                "label": b["label"],
+                "color": b["color"],
+                "count": counts[i],
+                "pct": round(counts[i] / total * 100, 1) if total else 0,
+                "sample_tasks": samples[i],
+            }
+        )
+
+    return {
+        "has_data": True,
+        "buckets": buckets,
+        "total": total,
+        "not_yet_due": not_yet_due,
+    }
+
+
+_STAGE_ORDER = ["substructure", "structure", "envelope", "mep", "finishes", "external", ""]
+_STAGE_LABELS = {
+    "substructure": "Substructure",
+    "structure": "Structure",
+    "envelope": "Envelope",
+    "mep": "MEP",
+    "finishes": "Finishes",
+    "external": "External Works",
+    "": "Unassigned",
+}
+
+
+def compute_wbs_heatmap(project_id: str) -> list[dict]:
+    """Per-stage performance metrics for the WBS heatmap.
+
+    Each entry: stage, label, task_count, completed, planned_pct, earned_pct,
+    spi, color.  Uses equal-weight (task count) SPI so no cost data is needed.
+    """
+    from islam.scheduling.models import Task
+
+    today = date.today()
+    tasks = list(
+        Task.objects.filter(project_id=project_id, is_non_physical=False)
+        .exclude(start_date=None)
+        .exclude(end_date=None)
+    )
+    if not tasks:
+        return []
+
+    groups: dict[str, list] = {}
+    for t in tasks:
+        groups.setdefault(t.stage or "", []).append(t)
+
+    result = []
+    for stage, stage_tasks in groups.items():
+        n = len(stage_tasks)
+        completed = sum(1 for t in stage_tasks if t.status == "complete")
+        planned_sum = sum(_planned_pct_at(t, today) for t in stage_tasks)
+        earned_sum = sum(_earned_pct_at(t, today) for t in stage_tasks)
+
+        planned_pct = round(planned_sum / n * 100, 1)
+        earned_pct = round(earned_sum / n * 100, 1)
+        spi = round(earned_sum / planned_sum, 2) if planned_sum > 0 else 1.0
+
+        if planned_pct == 0 and earned_pct == 0:
+            color = "#6b7280"
+        elif spi >= 1.0:
+            color = "#16a34a"
+        elif spi >= 0.85:
+            color = "#d97706"
+        else:
+            color = "#dc2626"
+
+        result.append(
+            {
+                "stage": stage,
+                "label": _STAGE_LABELS.get(stage, stage.title()),
+                "task_count": n,
+                "completed": completed,
+                "planned_pct": planned_pct,
+                "earned_pct": earned_pct,
+                "spi": spi,
+                "color": color,
+            }
+        )
+
+    result.sort(
+        key=lambda r: _STAGE_ORDER.index(r["stage"])
+        if r["stage"] in _STAGE_ORDER
+        else 99
+    )
+    return result
+
+
 def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
     """Compute EVM metrics and weekly S-curve series for *project_id*.
 

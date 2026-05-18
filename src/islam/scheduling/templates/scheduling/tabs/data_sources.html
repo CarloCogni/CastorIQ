@@ -16,6 +16,7 @@
         </span>
         {% for src in schedule_sources %}
         <span class="badge d-inline-flex align-items-center gap-1 px-2 py-1"
+              id="ds-source-chip-{{ src.pk }}"
               style="background:var(--bs-secondary-bg); color:var(--bs-body-color);
                      border:1px solid var(--bs-border-color); border-radius:20px;
                      font-size:.72rem; font-weight:400;"
@@ -26,6 +27,14 @@
             </span>
             <span class="badge bg-secondary ms-1" style="font-size:.65rem;">{{ src.source_format|upper }}</span>
             <span class="text-secondary ms-1" style="font-size:.68rem;">{{ src.task_count }} tasks</span>
+            <button type="button"
+                    class="ds-source-delete-btn btn-close btn-close-sm ms-1"
+                    data-delete-url="{% url 'islam:schedule_source_delete' project.pk src.pk %}"
+                    data-chip-id="ds-source-chip-{{ src.pk }}"
+                    data-filename="{{ src.filename|default:'this source' }}"
+                    style="font-size:.55rem; opacity:.5;"
+                    title="Delete this source and its tasks"
+                    aria-label="Delete source"></button>
         </span>
         {% endfor %}
     </div>
@@ -140,6 +149,30 @@
 #ds-gantt-section { flex: 1; min-height: 180px; overflow: hidden; }
 #ds-summary-bar  { flex-shrink: 0; background: var(--color-background-secondary); }
 #task-preview-area { flex-shrink: 0; overflow: auto; max-height: 30vh; }
+
+/* ── Skeleton shimmer ─────────────────────────────────────────────── */
+@keyframes ds-shimmer {
+    0%   { background-position: -600px 0; }
+    100% { background-position:  600px 0; }
+}
+.ds-skeleton-cell {
+    height: 12px; border-radius: 3px;
+    background: linear-gradient(90deg,
+        var(--bs-secondary-bg) 25%,
+        var(--bs-tertiary-bg, #e9ecef) 50%,
+        var(--bs-secondary-bg) 75%);
+    background-size: 600px 100%;
+    animation: ds-shimmer 1.4s infinite linear;
+}
+.ds-skeleton-bar {
+    height: 18px; border-radius: 4px; margin: 3px 0;
+    background: linear-gradient(90deg,
+        var(--bs-secondary-bg) 25%,
+        var(--bs-tertiary-bg, #e9ecef) 50%,
+        var(--bs-secondary-bg) 75%);
+    background-size: 600px 100%;
+    animation: ds-shimmer 1.4s infinite linear;
+}
 
 .ds-pill {
     display: inline-flex; align-items: center; gap: 3px;
@@ -416,16 +449,55 @@
         dragSrcCol:   null, // col name being dragged for reorder
     };
 
+    /* ── Skeleton loader ────────────────────────────────────────────── */
+    function showSkeleton() {
+        /* Table skeleton: 3 header pills + 8 data rows × 6 cols */
+        const headCells = Array.from({length: 6}, (_, i) =>
+            `<th class="ds-th-pill" style="min-width:${80 + i * 12}px;">
+                <div class="ds-skeleton-cell" style="width:${55 + i * 8}%;"></div>
+             </th>`
+        ).join('');
+        const bodyRows = Array.from({length: 8}, (_, r) =>
+            '<tr>' + Array.from({length: 6}, (_, c) =>
+                `<td class="ds-td">
+                    <div class="ds-skeleton-cell" style="width:${30 + ((r * 7 + c * 13) % 55)}%;"></div>
+                 </td>`
+            ).join('') + '</tr>'
+        ).join('');
+
+        document.getElementById('ds-mapping-row').innerHTML = headCells;
+        document.getElementById('ds-source-row').innerHTML  =
+            Array.from({length: 6}, () => '<th class="ds-th-src"><div class="ds-skeleton-cell" style="width:60%;opacity:.4;"></div></th>').join('');
+        document.getElementById('ds-tbody').innerHTML = bodyRows;
+        tableSection.style.display = '';
+
+        /* Gantt skeleton: stacked bars of varying width */
+        ganttSection.innerHTML = '<div style="padding:12px 8px;">' +
+            Array.from({length: 10}, (_, i) => {
+                const left  = 5 + (i * 17) % 35;
+                const width = 15 + (i * 11 + 7) % 45;
+                return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;">
+                    <div class="ds-skeleton-cell" style="width:110px;flex-shrink:0;"></div>
+                    <div style="flex:1;position:relative;height:18px;">
+                        <div class="ds-skeleton-bar"
+                             style="position:absolute;left:${left}%;width:${width}%;
+                                    animation-delay:${(i * 0.08).toFixed(2)}s;"></div>
+                    </div>
+                </div>`;
+            }).join('') +
+        '</div>';
+        ganttSection.style.display = '';
+    }
+
     /* ── File upload ────────────────────────────────────────────────── */
     fileInput.addEventListener('change', async function () {
         const file = this.files[0];
         if (!file) return;
 
         statusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Parsing…';
-        tableSection.style.display = 'none';
-        ganttSection.style.display = 'none';
-        summaryBar.style.display   = 'none';
+        summaryBar.style.display = 'none';
         resultEl.innerHTML = '';
+        showSkeleton();
 
         const fd = new FormData();
         fd.append('schedule_file', file);
@@ -782,6 +854,36 @@
 
     const clearBtn  = document.getElementById('ds-clear-btn');
     const clearSpin = document.getElementById('ds-clear-spin');
+    /* ── Source chip × delete ──────────────────────────────────────────── */
+    document.querySelectorAll('.ds-source-delete-btn').forEach(btn => {
+        btn.addEventListener('click', async function (e) {
+            e.stopPropagation();
+            const name = btn.dataset.filename || 'this source';
+            if (!confirm(`Delete "${name}" and all its imported tasks? This cannot be undone.`)) return;
+            btn.disabled = true;
+            try {
+                const r = await fetch(btn.dataset.deleteUrl, {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': CSRF },
+                });
+                const data = await r.json();
+                if (data.status === 'ok') {
+                    const chip = document.getElementById(btn.dataset.chipId);
+                    if (chip) chip.remove();
+                    /* Reload if no chips remain or if task count might have changed */
+                    const remaining = document.querySelectorAll('.ds-source-delete-btn').length;
+                    if (remaining === 0) window.location.reload();
+                } else {
+                    alert('Delete failed: ' + (data.error || r.status));
+                    btn.disabled = false;
+                }
+            } catch (err) {
+                alert('Delete failed — ' + err.message);
+                btn.disabled = false;
+            }
+        });
+    });
+
     if (clearBtn) {
         clearBtn.addEventListener('click', async function () {
             if (!confirm('Delete all tasks for this project? This cannot be undone.')) return;

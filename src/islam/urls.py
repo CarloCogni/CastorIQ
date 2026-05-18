@@ -86,6 +86,21 @@ urlpatterns = [
         name="schedule_clear",
     ),
     path(
+        "projects/<uuid:pk>/schedule/source/<uuid:source_pk>/delete/",
+        scheduling_views.ScheduleSourceDeleteView.as_view(),
+        name="schedule_source_delete",
+    ),
+    path(
+        "projects/<uuid:pk>/schedule/wbs-heatmap/",
+        scheduling_views.WBSHeatmapView.as_view(),
+        name="wbs_heatmap",
+    ),
+    path(
+        "projects/<uuid:pk>/schedule/delay-distribution/",
+        scheduling_views.DelayDistributionView.as_view(),
+        name="delay_distribution",
+    ),
+    path(
         "projects/<uuid:pk>/schedule/link/auto/",
         scheduling_views.LinkAutoView.as_view(),
         name="schedule_link_auto",

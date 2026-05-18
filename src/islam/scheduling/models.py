@@ -189,6 +189,15 @@ class Task(UUIDModel):
         verbose_name="Linked IFC Entities",
         help_text="Read-only from the IFC perspective — set only by the TimeLiner",
     )
+    schedule_source = models.ForeignKey(
+        "ScheduleSource",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="tasks",
+        verbose_name="Schedule Source",
+        help_text="Import event that last created or updated this task.",
+    )
 
     # ------------------------------------------------------------------
     # CPM fields — populated by compute_critical_path()
