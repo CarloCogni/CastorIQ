@@ -460,15 +460,19 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
         activity_code_map: dict[str, str] = {}  # activity_code → str(task.pk)
         tasks_with_preds: list[tuple[str, str]] = []  # (task_pk, raw_predecessors)
 
-        # Pre-load existing tasks by activity_code so re-importing the same file
-        # updates tasks in place rather than creating duplicates.
+        # Pre-load existing tasks for dedup:
+        #   primary key   — activity_code (str)
+        #   secondary key — (name, start_date) for tasks without an activity code
         existing_by_code: dict[str, Task] = {}
+        existing_by_name_date: dict[tuple, Task] = {}
         if not replace_mode:
             for t in Task.objects.filter(project=project).only(
                 "pk", "activity_code", "name", "start_date", "end_date"
             ):
                 if t.activity_code:
                     existing_by_code[t.activity_code] = t
+                else:
+                    existing_by_name_date[(t.name, str(t.start_date))] = t
 
         has_p6_cpm = any(
             td.get("total_float_days") is not None or td.get("early_start") for td in tasks_data
@@ -507,16 +511,24 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
                     is_critical=total_float_val is not None and int(total_float_val) == 0,
                 )
 
+                existing = None
                 if activity_code and activity_code in existing_by_code:
-                    task = existing_by_code[activity_code]
-                    dirty = [f for f, v in task_fields.items() if getattr(task, f) != v]
+                    existing = existing_by_code[activity_code]
+                elif not activity_code:
+                    existing = existing_by_name_date.get(
+                        (task_fields["name"], str(task_fields["start_date"]))
+                    )
+
+                if existing is not None:
+                    dirty = [f for f, v in task_fields.items() if getattr(existing, f) != v]
                     if dirty:
                         for f in dirty:
-                            setattr(task, f, task_fields[f])
-                        task.save(update_fields=dirty)
+                            setattr(existing, f, task_fields[f])
+                        existing.save(update_fields=dirty)
                         updated += 1
                     else:
                         unchanged += 1
+                    task = existing
                 else:
                     task = Task.objects.create(project=project, **task_fields)
                     created += 1
