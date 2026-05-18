@@ -656,7 +656,6 @@
         addBtn.type = 'button';
         addBtn.className = 'btn btn-outline-secondary btn-sm ds-add-btn';
         addBtn.textContent = '+ Add';
-        addBtn.addEventListener('mousedown', function (e) { e.stopPropagation(); openAddDd(); });
         thAdd.appendChild(addBtn);
         tr.appendChild(thAdd);
     }
@@ -1028,6 +1027,8 @@
 
     document.getElementById('ds-mapping-row').addEventListener('mousedown', function (e) {
         if (e.target.closest('.col-resize-handle')) return; /* handled by tableWrapper */
+        const addBtnEl = e.target.closest('.ds-add-btn');
+        if (addBtnEl) { e.stopPropagation(); openAddDd(); return; }
         const xBtn = e.target.closest('.ds-pill-x');
         if (xBtn) {
             e.stopPropagation();
