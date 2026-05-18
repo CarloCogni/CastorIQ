@@ -92,6 +92,11 @@ urlpatterns = [
         name="schedule_source_delete",
     ),
     path(
+        "projects/<uuid:pk>/schedule/source/<uuid:source_pk>/preview/",
+        scheduling_views.ScheduleSourcePreviewView.as_view(),
+        name="schedule_source_preview",
+    ),
+    path(
         "projects/<uuid:pk>/schedule/wbs-heatmap/",
         scheduling_views.WBSHeatmapView.as_view(),
         name="wbs_heatmap",

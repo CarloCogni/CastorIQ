@@ -10,17 +10,22 @@
 
     <!-- ── Imported sources (chips, shown when at least one import exists) ─ -->
     {% if schedule_sources %}
-    <div class="d-flex align-items-center gap-2 flex-wrap mb-2" id="ds-sources-row" style="flex-shrink:0;">
+    <div class="d-flex align-items-center gap-2 flex-wrap mb-2" id="ds-sources-row"
+         data-autoload-url="{% url 'islam:schedule_source_preview' project.pk schedule_sources.0.pk %}"
+         data-autoload-name="{{ schedule_sources.0.filename|default:'source' }}"
+         style="flex-shrink:0;">
         <span class="text-secondary" style="font-size:.75rem; font-weight:600; white-space:nowrap;">
             <i class="bi bi-folder2-open me-1"></i>Imported:
         </span>
         {% for src in schedule_sources %}
-        <span class="badge d-inline-flex align-items-center gap-1 px-2 py-1"
+        <span class="badge d-inline-flex align-items-center gap-1 px-2 py-1 ds-source-chip"
               id="ds-source-chip-{{ src.pk }}"
+              data-source-preview-url="{% url 'islam:schedule_source_preview' project.pk src.pk %}"
+              data-source-filename="{{ src.filename|default:'source' }}"
               style="background:var(--bs-secondary-bg); color:var(--bs-body-color);
                      border:1px solid var(--bs-border-color); border-radius:20px;
-                     font-size:.72rem; font-weight:400;"
-              title="{{ src.imported_at|date:'d M Y H:i' }}">
+                     font-size:.72rem; font-weight:400; cursor:pointer;"
+              title="Click to preview · {{ src.imported_at|date:'d M Y H:i' }}">
             <i class="bi bi-file-earmark-text" style="font-size:.78rem; opacity:.6;"></i>
             <span style="max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
                 {{ src.filename|default:"(unknown)" }}
@@ -559,6 +564,52 @@
         renderGantt();
         splitterEl.style.display = 'flex';
         initSplitterPos();
+    }
+
+    /* ── Source chip preview ─────────────────────────────────────────── */
+    async function loadSourcePreview(url, filename) {
+        showSkeleton();
+        tableSection.style.display = '';
+        statusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Loading…';
+
+        let data;
+        try {
+            const r = await fetch(url, { headers: { 'X-CSRFToken': CSRF } });
+            data = await r.json();
+            if (!r.ok) {
+                statusEl.innerHTML = `<span class="text-danger">Load failed: ${esc(data.error || r.status)}</span>`;
+                return;
+            }
+        } catch (e) {
+            statusEl.innerHTML = `<span class="text-danger">${esc(e.message)}</span>`;
+            return;
+        }
+
+        initFromData(data);
+        /* View-only: these tasks are already imported — disable import actions */
+        importBtn.disabled = true;
+        importLbl.textContent = 'Already imported';
+        if (replaceBtn) replaceBtn.classList.add('d-none');
+        statusEl.innerHTML =
+            `<span class="text-secondary"><i class="bi bi-folder2-open me-1"></i>${esc(filename)} — ${data.total_rows.toLocaleString()} tasks</span>`;
+    }
+
+    /* Delegated click on source chips row */
+    const sourcesRow = document.getElementById('ds-sources-row');
+    if (sourcesRow) {
+        sourcesRow.addEventListener('click', function (e) {
+            if (e.target.closest('.ds-source-delete-btn')) return; /* handled elsewhere */
+            const chip = e.target.closest('.ds-source-chip');
+            if (!chip) return;
+            const url = chip.dataset.sourcePreviewUrl;
+            const name = chip.dataset.sourceFilename || 'source';
+            if (url) loadSourcePreview(url, name);
+        });
+
+        /* Auto-load most recent source on tab open */
+        const autoUrl  = sourcesRow.dataset.autoloadUrl;
+        const autoName = sourcesRow.dataset.autoloadName || 'source';
+        if (autoUrl) loadSourcePreview(autoUrl, autoName);
     }
 
     /* ── Column width helpers ────────────────────────────────────────── */
