@@ -835,9 +835,9 @@
             ["GlobalId",  `<code style="color:#67e8f9;font-size:0.73rem;">${_esc(data.global_id)}</code>`],
             ["Type",      _esc(data.ifc_type)],
             ["Name",      _esc(data.name || "—")],
-            data.tag              ? ["Tag",     _esc(data.tag)]              : null,
-            data.location         ? ["Level",   _esc(data.location)]         : null,
-            data.element_type_name? ["Type Def",_esc(data.element_type_name)]: null,
+            data.tag               ? ["Tag",      _esc(data.tag)]               : null,
+            data.location          ? ["Level",    _esc(data.location)]          : null,
+            data.element_type_name ? ["Type Def", _esc(data.element_type_name)] : null,
         ].filter(Boolean);
 
         let html = `<table style="width:100%;border-collapse:collapse;font-size:0.78rem;">`;
@@ -848,17 +848,29 @@
         }
         html += `</table>`;
 
-        for (const [pset, attrs] of Object.entries(data.properties || {})) {
-            if (!attrs || typeof attrs !== "object") continue;
-            const entries = Object.entries(attrs);
-            if (!entries.length) continue;
+        /* Properties are stored as flat dot-notation keys: "Pset_WallCommon.IsExternal": true.
+           Group by prefix (before first dot), skip internal .id entries. */
+        const groups = {};
+        for (const [key, val] of Object.entries(data.properties || {})) {
+            if (key.endsWith('.id')) continue;
+            const dot   = key.indexOf('.');
+            const group = dot >= 0 ? key.substring(0, dot) : 'General';
+            const attr  = dot >= 0 ? key.substring(dot + 1) : key;
+            (groups[group] = groups[group] || []).push([attr, val]);
+        }
+
+        for (const [group, entries] of Object.entries(groups)) {
             html += `<div style="border-top:1px solid #334155;margin-top:8px;padding-top:5px;
-                                  color:#94a3b8;font-size:0.73rem;font-weight:600;">${_esc(pset)}</div>
+                                  color:#94a3b8;font-size:0.73rem;font-weight:600;">${_esc(group)}</div>
                      <table style="width:100%;border-collapse:collapse;font-size:0.75rem;margin-top:2px;">`;
             for (const [k, v] of entries) {
+                const display = v == null      ? "—"
+                              : typeof v === "boolean" ? (v ? "✓" : "✗")
+                              : typeof v === "number"  ? v.toLocaleString(undefined, {maximumFractionDigits: 4})
+                              : String(v);
                 html += `<tr>
                     <td style="color:#94a3b8;padding:1px 8px 1px 0;white-space:nowrap;">${_esc(k)}</td>
-                    <td style="padding:1px 0;">${_esc(String(v ?? "—"))}</td></tr>`;
+                    <td style="padding:1px 0;word-break:break-word;">${_esc(display)}</td></tr>`;
             }
             html += `</table>`;
         }
