@@ -33,22 +33,6 @@
                 </select>
             </div>
 
-            <!-- Gap Analysis -->
-            <button id="gap-btn"
-                    class="btn btn-sm btn-outline-secondary"
-                    hx-get="{% url 'islam:viewer_gap_analysis' project.pk %}"
-                    hx-target="#gap-panel-body"
-                    hx-swap="innerHTML"
-                    hx-trigger="click once"
-                    onclick="toggleGapPanel()">
-                <i class="bi bi-bar-chart-line me-1"></i>Gap Analysis
-            </button>
-
-            <!-- Build Sequence -->
-            <button id="build-seq-btn" class="btn btn-sm btn-outline-secondary">
-                <i class="bi bi-play-circle me-1"></i>Build Sequence
-            </button>
-
             <!-- Reset -->
             <button id="viewer-reset-btn" class="btn btn-sm btn-outline-secondary" title="Reset camera and colours">
                 <i class="bi bi-aspect-ratio me-1"></i>Reset
@@ -91,10 +75,10 @@
                 style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);
                        color:#fff;border-radius:4px;padding:2px 4px;font-size:11px;
                        cursor:pointer;height:26px;outline:none;">
-            <option value="3d"  style="background:#1e293b;">3D</option>
-            <option value="x"   style="background:#1e293b;">ΔX</option>
-            <option value="y"   style="background:#1e293b;">ΔY</option>
-            <option value="z"   style="background:#1e293b;">ΔZ</option>
+            <option value="3d"  style="background:#1e293b;">Point to Point</option>
+            <option value="x"   style="background:#1e293b;">Horizontal X</option>
+            <option value="y"   style="background:#1e293b;">Vertical (Height)</option>
+            <option value="z"   style="background:#1e293b;">Horizontal Z</option>
         </select>
         <button id="show-hidden-btn" class="vctl-btn" title="Show all hidden elements"
                 style="font-size:12px;">👁 Show</button>
@@ -291,14 +275,6 @@
 
         </div>
 
-        <!-- Gap Analysis side panel (hidden until toggled) -->
-        <div id="gap-panel"
-             class="border-start bg-body flex-shrink-0 d-none"
-             style="width:300px; overflow-y:auto;">
-            <div id="gap-panel-body" class="p-3 text-secondary" style="font-size:0.82rem;">
-                <span class="spinner-border spinner-border-sm me-1"></span> Loading…
-            </div>
-        </div>
 
     </div>
 
@@ -666,84 +642,7 @@
         applyColormap(e.target.value);
     });
 
-    // ── 6. Gap Analysis Panel ────────────────────────────────────────────
-
-    let gapPanelOpen = false;
-
-    function toggleGapPanel() {
-        gapPanelOpen = !gapPanelOpen;
-        document.getElementById("gap-panel").classList.toggle("d-none", !gapPanelOpen);
-        document.getElementById("gap-btn").classList.toggle("active", gapPanelOpen);
-        setTimeout(() => world?.renderer?.resize(), 50);
-    }
-    window.toggleGapPanel = toggleGapPanel;
-
-    /* Exposed for gap panel row onclick handlers */
-    window.highlightEntities = function (globalIds) {
-        if (!model) return;
-        resetAllColors();
-        colorByGlobalIds(globalIds, C.highlight);
-    };
-
-    // ── 7. Build Sequence Animation ──────────────────────────────────────
-
-    let buildSeqRunning = false;
-
-    async function runBuildSequence() {
-        if (!model || buildSeqRunning) return;
-        buildSeqRunning = true;
-        const btn = document.getElementById("build-seq-btn");
-        btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Animating…';
-
-        try {
-            const resp = await fetch(BUILD_SEQ_URL);
-            if (!resp.ok) throw new Error("fetch failed");
-            const data = await resp.json();
-            const levels = data.levels || [];
-            if (!levels.length) { console.warn("[simulator] No level data for build sequence."); return; }
-
-            /* Start: all elements dark */
-            const allIds = levels.flatMap(l => l.entity_global_ids);
-            resetAllColors();
-            colorByGlobalIds(allIds, new THREE.Color(0.12, 0.12, 0.12));
-
-            for (let i = 0; i < levels.length; i++) {
-                const { entity_global_ids } = levels[i];
-                /* Fade new floor in from dark to blue */
-                await _fadeIn(entity_global_ids, C.complete, 800);
-                /* Previous floors stay complete-blue — no extra call needed */
-                await new Promise(r => setTimeout(r, 1200));
-            }
-        } catch (e) {
-            console.warn("[simulator] Build sequence failed:", e);
-        } finally {
-            buildSeqRunning = false;
-            btn.disabled = false;
-            btn.innerHTML = '<i class="bi bi-play-circle me-1"></i>Build Sequence';
-        }
-    }
-
-    function _fadeIn(globalIds, targetColor, duration) {
-        return new Promise(resolve => {
-            const start = performance.now();
-            function step(now) {
-                const t = Math.min((now - start) / duration, 1);
-                colorByGlobalIds(globalIds, new THREE.Color(
-                    targetColor.r * t,
-                    targetColor.g * t,
-                    targetColor.b * t,
-                ));
-                if (t < 1) requestAnimationFrame(step);
-                else resolve();
-            }
-            requestAnimationFrame(step);
-        });
-    }
-
-    document.getElementById("build-seq-btn")?.addEventListener("click", runBuildSequence);
-
-    // ── 8. 4D Timeline Slider ────────────────────────────────────────────
+    // ── 6. 4D Timeline Slider ────────────────────────────────────────────
     // Timeline is disabled in standalone 3D viewer — use Simulate tab for 4D
 
     let timelineIntervals = [];
@@ -1317,15 +1216,20 @@
             const aspect = size.width / size.height;
 
             if (current instanceof THREE.PerspectiveCamera) {
-                /* Perspective → Orthographic */
+                /* Perspective → Orthographic — use model bbox for frustum size */
                 _perspCam = current;
-                const target = new THREE.Vector3();
-                camControls.getTarget(target);
-                const dist  = current.position.distanceTo(target);
-                const halfH = Math.tan((current.fov * Math.PI / 180) / 2) * dist;
-                const halfW = halfH * aspect;
 
-                const ortho = new THREE.OrthographicCamera(-halfW, halfW, halfH, -halfH, 0.01, 10000);
+                const bbox    = _getSceneBBox();
+                const bboxSz  = new THREE.Vector3();
+                bbox.getSize(bboxSz);
+                const maxDim  = Math.max(bboxSz.x, bboxSz.y, bboxSz.z, 1);
+                const halfH   = maxDim * 0.6;
+                const halfW   = halfH * aspect;
+
+                console.log("[PROJ] bbox size =", bboxSz.x.toFixed(2), bboxSz.y.toFixed(2), bboxSz.z.toFixed(2),
+                            "  maxDim =", maxDim.toFixed(2), "  halfH =", halfH.toFixed(2));
+
+                const ortho = new THREE.OrthographicCamera(-halfW, halfW, halfH, -halfH, 0.1, maxDim * 10);
                 ortho.position.copy(current.position);
                 ortho.quaternion.copy(current.quaternion);
                 ortho.updateProjectionMatrix();
@@ -1334,7 +1238,7 @@
                 camControls.camera    = ortho;
                 btn.textContent       = "Ortho";
                 btn.style.outline     = "1px solid rgba(59,130,246,0.7)";
-                console.log("[PROJ] → OrthographicCamera  halfH =", halfH.toFixed(2));
+                console.log("[PROJ] → OrthographicCamera  near=0.1  far =", (maxDim * 10).toFixed(1));
 
             } else {
                 /* Orthographic → Perspective */
@@ -1352,17 +1256,24 @@
             }
         });
 
-        /* Zoom buttons — dolly to scaled distance */
+        /* Zoom buttons — dolly in perspective, zoom factor in orthographic */
         document.querySelectorAll(".vctl-btn[data-zoom]").forEach(btn => {
             btn.addEventListener("click", () => {
                 if (!controls) return;
                 const factor = btn.dataset.zoom === "+" ? 0.75 : 1.33;
-                if (typeof controls.dollyTo === "function" && controls.distance != null) {
-                    controls.dollyTo(Math.max(0.5, controls.distance * factor), true);
-                } else if (btn.dataset.zoom === "+" && typeof controls.dollyIn === "function") {
-                    controls.dollyIn(0.5, true);
-                } else if (typeof controls.dollyOut === "function") {
-                    controls.dollyOut(0.5, true);
+                const cam = world?.camera?.three;
+                if (cam instanceof THREE.OrthographicCamera) {
+                    cam.zoom = Math.max(0.01, cam.zoom / factor);
+                    cam.updateProjectionMatrix();
+                    console.log("[PROJ] ortho zoom =", cam.zoom.toFixed(3));
+                } else {
+                    if (typeof controls.dollyTo === "function" && controls.distance != null) {
+                        controls.dollyTo(Math.max(0.5, controls.distance * factor), true);
+                    } else if (btn.dataset.zoom === "+" && typeof controls.dollyIn === "function") {
+                        controls.dollyIn(0.5, true);
+                    } else if (typeof controls.dollyOut === "function") {
+                        controls.dollyOut(0.5, true);
+                    }
                 }
             });
         });
@@ -2066,15 +1977,30 @@
         if (!geo?.attributes?.position || !hit.face) return hit.point.clone();
         const posAttr = geo.attributes.position;
         const { a, b, c } = hit.face;
-        /* Snap threshold: 3% of camera-to-hit distance */
-        const threshold = hit.distance * 0.03;
+        const threshold = hit.distance * 0.15;
         let best = hit.point.clone(), bestD = threshold;
+
+        /* Corner vertices */
         for (const idx of [a, b, c]) {
-            const v = new THREE.Vector3().fromBufferAttribute(posAttr, idx);
-            hit.object.localToWorld(v);
+            const v = new THREE.Vector3().fromBufferAttribute(posAttr, idx)
+                .applyMatrix4(hit.object.matrixWorld);
             const d = v.distanceTo(hit.point);
             if (d < bestD) { bestD = d; best = v.clone(); }
         }
+
+        /* Edge midpoints */
+        const vA = new THREE.Vector3().fromBufferAttribute(posAttr, a).applyMatrix4(hit.object.matrixWorld);
+        const vB = new THREE.Vector3().fromBufferAttribute(posAttr, b).applyMatrix4(hit.object.matrixWorld);
+        const vC = new THREE.Vector3().fromBufferAttribute(posAttr, c).applyMatrix4(hit.object.matrixWorld);
+        for (const mid of [
+            vA.clone().lerp(vB, 0.5),
+            vB.clone().lerp(vC, 0.5),
+            vC.clone().lerp(vA, 0.5),
+        ]) {
+            const d = mid.distanceTo(hit.point);
+            if (d < bestD) { bestD = d; best = mid; }
+        }
+
         return best;
     }
 
@@ -2127,7 +2053,7 @@
             } else if (axisMode === "y") {
                 lineEnd = new THREE.Vector3(ptA.x, ptB.y, ptA.z);
                 dist    = Math.abs(ptB.y - ptA.y);
-                text    = `ΔY: ${Math.round(dist * 1000).toLocaleString()} mm`;
+                text    = `Height: ${Math.round(dist * 1000).toLocaleString()} mm`;
             } else if (axisMode === "z") {
                 lineEnd = new THREE.Vector3(ptA.x, ptA.y, ptB.z);
                 dist    = Math.abs(ptB.z - ptA.z);
@@ -2213,17 +2139,19 @@
             }
             _snapPoint = effectivePt;
 
-            /* Snap indicator at effective (possibly axis-projected) point */
+            /* Snap indicator — billboarded ring at effective (possibly axis-projected) point */
             if (!_snapIndicator) {
-                const r = _markerRadius(effectivePt) * 1.5;
                 _snapIndicator = new THREE.Mesh(
-                    new THREE.SphereGeometry(r, 10, 10),
-                    new THREE.MeshBasicMaterial({ color: 0xffd700, wireframe: true, depthTest: false }),
+                    new THREE.RingGeometry(0.6, 1.0, 16),
+                    new THREE.MeshBasicMaterial({ color: 0xffd700, side: THREE.DoubleSide, depthTest: false }),
                 );
                 _snapIndicator.renderOrder = 1000;
                 world.scene.three.add(_snapIndicator);
             }
+            const _snapR = _markerRadius(effectivePt) * 2.0;
+            _snapIndicator.scale.setScalar(_snapR);
             _snapIndicator.position.copy(effectivePt);
+            _snapIndicator.quaternion.copy(world.camera.three.quaternion);
 
             /* Axis guide rail — colored line along the constrained axis from ptA.
                Only rebuild when axis mode changes; otherwise leave existing line. */
