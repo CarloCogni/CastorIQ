@@ -805,6 +805,74 @@ class ScheduleSourcePreviewView(ProjectAccessMixin, View):
         )
 
 
+class AllTasksPreviewView(ProjectAccessMixin, View):
+    """GET — all tasks for the project in Gantt preview format, capped at 500."""
+
+    def get(self, request, **kwargs: object) -> JsonResponse:
+        project = self.get_project()
+        total = Task.objects.filter(project=project).count()
+        tasks = list(Task.objects.filter(project=project).order_by("start_date", "name")[:500])
+        task_pks = {t.pk for t in tasks}
+        raw_deps = (
+            TaskDependency.objects.filter(predecessor__in=task_pks, successor__in=task_pks)
+            .select_related("predecessor", "successor")
+            .order_by("predecessor__activity_code")
+        )
+        normalized_deps = [
+            {
+                "pred": d.predecessor.activity_code,
+                "succ": d.successor.activity_code,
+                "type": d.dep_type,
+                "lag": d.lag_days,
+            }
+            for d in raw_deps
+            if d.predecessor.activity_code and d.successor.activity_code
+        ]
+        cols = _PREVIEW_PARSED_COLS
+        rows = []
+        for t in tasks:
+            row = []
+            for c in cols:
+                if c == "name":
+                    row.append(t.name)
+                elif c == "start_date":
+                    row.append(str(t.start_date))
+                elif c == "end_date":
+                    row.append(str(t.end_date))
+                elif c == "wbs_name":
+                    row.append("")
+                elif c == "status":
+                    row.append(t.status)
+                elif c == "activity_code":
+                    row.append(t.activity_code)
+                elif c == "actual_start":
+                    row.append(str(t.actual_start) if t.actual_start else "")
+                elif c == "actual_end":
+                    row.append(str(t.actual_end) if t.actual_end else "")
+                elif c == "activity_type":
+                    row.append(t.activity_type)
+                elif c == "total_float_days":
+                    row.append(str(t.total_float) if t.total_float is not None else "")
+                else:
+                    row.append("")
+            rows.append(row)
+        starts = [t.start_date for t in tasks if t.start_date]
+        ends = [t.end_date for t in tasks if t.end_date]
+        date_range = (
+            {"start": min(starts).isoformat(), "end": max(ends).isoformat()}
+            if starts and ends
+            else None
+        )
+        return JsonResponse(
+            {
+                "rows": rows,
+                "deps": normalized_deps,
+                "total_rows": total,
+                "project_date_range": date_range,
+            }
+        )
+
+
 class TaskActualDateView(ProjectModifyAccessMixin, View):
     """HTMX POST — update actual_start / actual_end on a single task inline."""
 
