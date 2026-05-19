@@ -1902,29 +1902,6 @@
         _measurePtA = null;
     }
 
-    function _getBBoxCorners(bbox) {
-        const { min, max } = bbox;
-        return [
-            new THREE.Vector3(min.x, min.y, min.z), new THREE.Vector3(max.x, min.y, min.z),
-            new THREE.Vector3(min.x, max.y, min.z), new THREE.Vector3(max.x, max.y, min.z),
-            new THREE.Vector3(min.x, min.y, max.z), new THREE.Vector3(max.x, min.y, max.z),
-            new THREE.Vector3(min.x, max.y, max.z), new THREE.Vector3(max.x, max.y, max.z),
-        ];
-    }
-
-    function _getBBoxEdgeMidpoints(bbox) {
-        const { min, max } = bbox;
-        const mx = (min.x + max.x) / 2, my = (min.y + max.y) / 2, mz = (min.z + max.z) / 2;
-        return [
-            new THREE.Vector3(mx, min.y, min.z), new THREE.Vector3(mx, min.y, max.z),
-            new THREE.Vector3(min.x, min.y, mz),  new THREE.Vector3(max.x, min.y, mz),
-            new THREE.Vector3(mx, max.y, min.z), new THREE.Vector3(mx, max.y, max.z),
-            new THREE.Vector3(min.x, max.y, mz),  new THREE.Vector3(max.x, max.y, mz),
-            new THREE.Vector3(min.x, my, min.z),  new THREE.Vector3(max.x, my, min.z),
-            new THREE.Vector3(min.x, my, max.z),  new THREE.Vector3(max.x, my, max.z),
-        ];
-    }
-
     function _snapToInstance(intersection) {
         const mesh       = intersection.object;
         const instanceId = intersection.instanceId;
@@ -1932,33 +1909,55 @@
         if (instanceId === undefined || !mesh.isInstancedMesh)
             return { point: intersection.point.clone(), type: 'free' };
 
-        /* Get this instance's world matrix */
-        const matrix = new THREE.Matrix4();
-        mesh.getMatrixAt(instanceId, matrix);
+        const pos = mesh.geometry.attributes.position;
+        if (!pos) return { point: intersection.point.clone(), type: 'free' };
 
-        /* Transform the geometry's local bbox into world space */
-        if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
-        const localBBox = mesh.geometry.boundingBox.clone();
-        localBBox.applyMatrix4(matrix);
+        const matrix    = new THREE.Matrix4();
+        mesh.getMatrixAt(instanceId, matrix);
 
         const camDist   = world.camera.three.position.distanceTo(intersection.point);
         const threshold = camDist * 0.03;
 
-        let best = null, bestDist = Infinity;
+        /* ── Pass 1: vertex snap ──────────────────────────────────────────── */
+        const MAX_VERTS = 500;
+        const vtxCount  = Math.min(pos.count, MAX_VERTS);
+        const vtx       = new THREE.Vector3();
+        let bestVtx = null, bestVtxD = Infinity;
 
-        /* Priority 1: 8 corners */
-        for (const c of _getBBoxCorners(localBBox)) {
-            const d = c.distanceTo(intersection.point);
-            if (d < threshold && d < bestDist) { bestDist = d; best = c; }
+        for (let i = 0; i < vtxCount; i++) {
+            vtx.fromBufferAttribute(pos, i).applyMatrix4(matrix);
+            const d = vtx.distanceTo(intersection.point);
+            if (d < threshold && d < bestVtxD) { bestVtxD = d; bestVtx = vtx.clone(); }
         }
-        if (best) return { point: best, type: 'corner' };
+        if (bestVtx) return { point: bestVtx, type: 'corner' };
 
-        /* Priority 2: 12 edge midpoints */
-        for (const e of _getBBoxEdgeMidpoints(localBBox)) {
-            const d = e.distanceTo(intersection.point);
-            if (d < threshold && d < bestDist) { bestDist = d; best = e; }
+        /* ── Pass 2: edge snap — closest point on each triangle edge ─────── */
+        const idx = mesh.geometry.index;
+        if (idx) {
+            const MAX_TRIS = 200;
+            const triCount  = Math.min(Math.floor(idx.count / 3), MAX_TRIS);
+            const vA = new THREE.Vector3(), vB = new THREE.Vector3();
+            const seg = new THREE.Line3();
+            const cp  = new THREE.Vector3();
+            let bestEdgePt = null, bestEdgeD = Infinity;
+
+            for (let t = 0; t < triCount; t++) {
+                const i0 = idx.getX(t * 3),
+                      i1 = idx.getX(t * 3 + 1),
+                      i2 = idx.getX(t * 3 + 2);
+
+                const pairs = [[i0, i1], [i1, i2], [i2, i0]];
+                for (const [ia, ib] of pairs) {
+                    vA.fromBufferAttribute(pos, ia).applyMatrix4(matrix);
+                    vB.fromBufferAttribute(pos, ib).applyMatrix4(matrix);
+                    seg.set(vA, vB);
+                    seg.closestPointToPoint(intersection.point, true, cp);
+                    const d = cp.distanceTo(intersection.point);
+                    if (d < threshold && d < bestEdgeD) { bestEdgeD = d; bestEdgePt = cp.clone(); }
+                }
+            }
+            if (bestEdgePt) return { point: bestEdgePt, type: 'edge' };
         }
-        if (best) return { point: best, type: 'edge' };
 
         return { point: intersection.point.clone(), type: 'free' };
     }
