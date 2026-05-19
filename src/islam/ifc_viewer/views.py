@@ -22,6 +22,47 @@ from .services.gap_analysis import build_gap_analysis
 
 logger = logging.getLogger(__name__)
 
+UNITS_MAP: dict[str, str] = {
+    "volume": "m³",
+    "netvolume": "m³",
+    "grossvolume": "m³",
+    "area": "m²",
+    "netarea": "m²",
+    "grossarea": "m²",
+    "netsidearea": "m²",
+    "grosssidearea": "m²",
+    "length": "mm",
+    "width": "mm",
+    "height": "mm",
+    "thickness": "mm",
+    "depth": "mm",
+    "perimeter": "mm",
+    "weight": "kg",
+    "count": "ea",
+}
+
+
+def _apply_units(props: dict) -> dict:
+    """Format numeric property values: 3dp, comma-separated thousands, units where known."""
+    result: dict = {}
+    for key, value in props.items():
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            result[key] = value
+            continue
+        rounded = round(float(value), 3)
+        formatted = f"{rounded:,.3f}".rstrip("0").rstrip(".")
+        attr = key.rsplit(".", 1)[-1].lower().replace(" ", "")
+        unit = UNITS_MAP.get(attr)
+        if unit:
+            display = f"{formatted} {unit}"
+            if unit == "mm" and abs(value) > 1000:
+                m_str = f"{round(value / 1000, 3):.3f}".rstrip("0").rstrip(".")
+                display += f" ({m_str} m)"
+        else:
+            display = formatted
+        result[key] = display
+    return result
+
 
 class ViewerView(ProjectTabMixin, TemplateView):
     """Renders the 3D IFC viewer partial."""
@@ -161,6 +202,140 @@ class GapAnalysisView(ProjectAccessMixin, View):
         return response
 
 
+class EntityTypesView(ProjectAccessMixin, View):
+    """JSON — distinct IFC types and level names for the Selection sidebar dropdowns.
+
+    No params  → {types: [...], levels: [...]}
+    ?type=X    → {global_ids: [...]} all entities of that IFC type
+    ?level=X   → {global_ids: [...]} all entities in that building storey
+    """
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        from ifc_processor.models import IFCEntity, IFCSpatialElement
+
+        project = self.get_project()
+        ifc_file = (
+            IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
+            .order_by("-created_at")
+            .first()
+        )
+        if not ifc_file:
+            return JsonResponse({"types": [], "levels": [], "global_ids": []})
+
+        select_type = request.GET.get("type")
+        select_level = request.GET.get("level")
+
+        if select_type:
+            gids = list(
+                IFCEntity.objects.filter(ifc_file=ifc_file, ifc_type=select_type).values_list(
+                    "global_id", flat=True
+                )
+            )
+            return JsonResponse({"global_ids": gids})
+
+        if select_level:
+            gids = list(
+                IFCEntity.objects.filter(
+                    ifc_file=ifc_file,
+                    spatial_container__entity__name=select_level,
+                ).values_list("global_id", flat=True)
+            )
+            return JsonResponse({"global_ids": gids})
+
+        types = list(
+            IFCEntity.objects.filter(ifc_file=ifc_file)
+            .values_list("ifc_type", flat=True)
+            .distinct()
+            .order_by("ifc_type")
+        )
+        levels = list(
+            IFCSpatialElement.objects.filter(
+                ifc_file=ifc_file,
+                spatial_type=IFCSpatialElement.SpatialType.BUILDING_STOREY,
+            )
+            .select_related("entity")
+            .order_by("elevation")
+            .values_list("entity__name", flat=True)
+        )
+        return JsonResponse({"types": types, "levels": levels})
+
+
+class SpatialTreeView(ProjectAccessMixin, View):
+    """JSON — spatial tree grouped by building storey → IFC type → elements.
+
+    Returns {tree: [{name, type, count, global_ids, children: [{name, count, global_ids,
+    children: [{globalId, name}]}]}]}.  Each type group is capped at MAX_PER_GROUP
+    leaf elements for response-size safety.
+    """
+
+    MAX_PER_GROUP = 50
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        from collections import defaultdict
+
+        from ifc_processor.models import IFCEntity, IFCSpatialElement
+
+        project = self.get_project()
+        ifc_file = (
+            IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
+            .order_by("-created_at")
+            .first()
+        )
+        if not ifc_file:
+            return JsonResponse({"tree": []})
+
+        storeys = list(
+            IFCSpatialElement.objects.filter(
+                ifc_file=ifc_file,
+                spatial_type=IFCSpatialElement.SpatialType.BUILDING_STOREY,
+            )
+            .select_related("entity")
+            .order_by("elevation")
+        )
+
+        tree = []
+        for storey in storeys:
+            storey_name = storey.entity.name if storey.entity_id else "Unknown Level"
+
+            entities = list(
+                IFCEntity.objects.filter(ifc_file=ifc_file, spatial_container=storey)
+                .only("global_id", "name", "ifc_type")
+                .order_by("ifc_type", "name")
+            )
+            if not entities:
+                continue
+
+            by_type: dict[str, list] = defaultdict(list)
+            for e in entities:
+                by_type[e.ifc_type].append(e)
+
+            all_gids = [e.global_id for e in entities]
+            type_groups = [
+                {
+                    "name": ifc_type,
+                    "count": len(items),
+                    "global_ids": [e.global_id for e in items],
+                    "children": [
+                        {"globalId": e.global_id, "name": e.name or e.global_id[:8]}
+                        for e in items[: self.MAX_PER_GROUP]
+                    ],
+                }
+                for ifc_type, items in sorted(by_type.items())
+            ]
+
+            tree.append(
+                {
+                    "name": storey_name,
+                    "type": "IfcBuildingStorey",
+                    "count": len(entities),
+                    "global_ids": all_gids,
+                    "children": type_groups,
+                }
+            )
+
+        return JsonResponse({"tree": tree})
+
+
 class BuildSequenceView(ProjectAccessMixin, View):
     """JSON — [{level_name, z_elevation, entity_global_ids}] sorted by Z for Build Sequence animation."""
 
@@ -292,7 +467,7 @@ class ElementPropertiesView(ProjectAccessMixin, View):
                 "ifc_description": entity.ifc_description,
                 "tag": entity.tag,
                 "location": location,
-                "properties": filtered_props,
+                "properties": _apply_units(filtered_props),
                 "linked_tasks": linked_tasks,
             }
         )
