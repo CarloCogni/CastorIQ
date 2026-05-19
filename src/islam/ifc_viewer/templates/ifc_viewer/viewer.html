@@ -76,9 +76,9 @@
                        color:#fff;border-radius:4px;padding:2px 4px;font-size:11px;
                        cursor:pointer;height:26px;outline:none;">
             <option value="3d"  style="background:#1e293b;">Point to Point</option>
-            <option value="x"   style="background:#1e293b;">Horizontal X</option>
-            <option value="y"   style="background:#1e293b;">Vertical (Height)</option>
-            <option value="z"   style="background:#1e293b;">Horizontal Z</option>
+            <option value="x"   style="background:#1e293b;">X (Horizontal)</option>
+            <option value="z"   style="background:#1e293b;">Y (Horizontal)</option>
+            <option value="y"   style="background:#1e293b;">Z (Vertical ↕)</option>
         </select>
         <button id="show-hidden-btn" class="vctl-btn" title="Show all hidden elements"
                 style="font-size:12px;">👁 Show</button>
@@ -1998,36 +1998,58 @@
         _measurePtA = null;
     }
 
-    function _snapToVertex(hit) {
-        const geo = hit.object?.geometry;
-        if (!geo?.attributes?.position || !hit.face) return hit.point.clone();
-        const posAttr = geo.attributes.position;
-        const { a, b, c } = hit.face;
-        const threshold = hit.distance * 0.15;
-        let best = hit.point.clone(), bestD = threshold;
+    function _getBBoxCorners(bbox) {
+        const { min, max } = bbox;
+        return [
+            new THREE.Vector3(min.x, min.y, min.z), new THREE.Vector3(max.x, min.y, min.z),
+            new THREE.Vector3(min.x, max.y, min.z), new THREE.Vector3(max.x, max.y, min.z),
+            new THREE.Vector3(min.x, min.y, max.z), new THREE.Vector3(max.x, min.y, max.z),
+            new THREE.Vector3(min.x, max.y, max.z), new THREE.Vector3(max.x, max.y, max.z),
+        ];
+    }
 
-        /* Corner vertices */
-        for (const idx of [a, b, c]) {
-            const v = new THREE.Vector3().fromBufferAttribute(posAttr, idx)
-                .applyMatrix4(hit.object.matrixWorld);
-            const d = v.distanceTo(hit.point);
-            if (d < bestD) { bestD = d; best = v.clone(); }
+    function _getBBoxEdgeMidpoints(bbox) {
+        const { min, max } = bbox;
+        const mx = (min.x + max.x) / 2, my = (min.y + max.y) / 2, mz = (min.z + max.z) / 2;
+        return [
+            new THREE.Vector3(mx, min.y, min.z), new THREE.Vector3(mx, min.y, max.z),
+            new THREE.Vector3(min.x, min.y, mz),  new THREE.Vector3(max.x, min.y, mz),
+            new THREE.Vector3(mx, max.y, min.z), new THREE.Vector3(mx, max.y, max.z),
+            new THREE.Vector3(min.x, max.y, mz),  new THREE.Vector3(max.x, max.y, mz),
+            new THREE.Vector3(min.x, my, min.z),  new THREE.Vector3(max.x, my, min.z),
+            new THREE.Vector3(min.x, my, max.z),  new THREE.Vector3(max.x, my, max.z),
+        ];
+    }
+
+    function _snapToBBox(hit) {
+        if (!hit.object?.geometry) return { point: hit.point.clone(), snapType: null };
+
+        /* Only check the single hit mesh — avoids iterating all 6000+ elements */
+        const bbox      = new THREE.Box3().setFromObject(hit.object);
+        const threshold = hit.distance * 0.02;
+
+        /* Priority 1: corners */
+        let best = null, bestD = threshold;
+        for (const corner of _getBBoxCorners(bbox)) {
+            const d = corner.distanceTo(hit.point);
+            if (d < bestD) { bestD = d; best = corner; }
         }
+        if (best) return { point: best, snapType: 'corner' };
 
-        /* Edge midpoints */
-        const vA = new THREE.Vector3().fromBufferAttribute(posAttr, a).applyMatrix4(hit.object.matrixWorld);
-        const vB = new THREE.Vector3().fromBufferAttribute(posAttr, b).applyMatrix4(hit.object.matrixWorld);
-        const vC = new THREE.Vector3().fromBufferAttribute(posAttr, c).applyMatrix4(hit.object.matrixWorld);
-        for (const mid of [
-            vA.clone().lerp(vB, 0.5),
-            vB.clone().lerp(vC, 0.5),
-            vC.clone().lerp(vA, 0.5),
-        ]) {
+        /* Priority 2: edge midpoints */
+        bestD = threshold;
+        for (const mid of _getBBoxEdgeMidpoints(bbox)) {
             const d = mid.distanceTo(hit.point);
             if (d < bestD) { bestD = d; best = mid; }
         }
+        if (best) return { point: best, snapType: 'edge' };
 
-        return best;
+        /* Priority 3: bbox centre */
+        const center = new THREE.Vector3();
+        bbox.getCenter(center);
+        if (center.distanceTo(hit.point) < threshold) return { point: center, snapType: 'face' };
+
+        return { point: hit.point.clone(), snapType: null };
     }
 
     function _handleMeasureClick(e) {
@@ -2056,7 +2078,7 @@
                 h.object !== _measureMkrA
             );
             if (!modelHit) return;
-            pt = _snapToVertex(modelHit);
+            pt = _snapToBBox(modelHit).point;
         }
 
         if (!_measurePtA) {
@@ -2083,7 +2105,7 @@
             } else if (axisMode === "z") {
                 lineEnd = new THREE.Vector3(ptA.x, ptA.y, ptB.z);
                 dist    = Math.abs(ptB.z - ptA.z);
-                text    = `ΔZ: ${Math.round(dist * 1000).toLocaleString()} mm`;
+                text    = `ΔY: ${Math.round(dist * 1000).toLocaleString()} mm`;
             } else {
                 lineEnd = ptB;
                 dist    = ptA.distanceTo(ptB);
@@ -2152,7 +2174,11 @@
 
             if (!hit) { _clearMeasurePreview(); return; }
 
-            const snapPt  = _snapToVertex(hit);
+            /* [AXIS DEBUG] Log hit point every 30 events — move mouse up/down to see which coordinate changes */
+            if (!((_axisDbgN = ((_axisDbgN ?? 0) + 1)) % 30))
+                console.log('[AXIS] hit.point x=', hit.point.x.toFixed(3), ' y=', hit.point.y.toFixed(3), ' z=', hit.point.z.toFixed(3));
+
+            const { point: snapPt, snapType } = _snapToBBox(hit);
             const axisMode = document.getElementById("meas-axis-select")?.value ?? "3d";
 
             /* Axis projection — constrain snap point to the chosen axis through ptA */
@@ -2178,6 +2204,12 @@
             _snapIndicator.scale.setScalar(_snapR);
             _snapIndicator.position.copy(effectivePt);
             _snapIndicator.quaternion.copy(world.camera.three.quaternion);
+            /* Yellow = corner, cyan = edge midpoint, white = bbox centre, grey = free */
+            _snapIndicator.material.color.setHex(
+                snapType === 'corner' ? 0xffd700 :
+                snapType === 'edge'   ? 0x00ffff :
+                snapType === 'face'   ? 0xffffff : 0x888888
+            );
 
             /* Axis guide rail — colored line along the constrained axis from ptA.
                Only rebuild when axis mode changes; otherwise leave existing line. */
