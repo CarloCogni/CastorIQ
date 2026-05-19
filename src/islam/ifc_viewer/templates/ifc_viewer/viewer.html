@@ -87,12 +87,17 @@
                 style="font-size:12px;">📏 Measure</button>
         <button id="meas-clear-btn" class="vctl-btn" title="Clear all measurements"
                 style="font-size:12px;">🗑</button>
-        <div style="width:1px;height:16px;background:rgba(255,255,255,0.2);margin:0 4px;"></div>
-        <span style="color:#94a3b8;font-size:11px;white-space:nowrap;"
-              title="Ghost opacity: 0%=fully hidden, 30%=semi-transparent">👻</span>
-        <input type="range" id="ghost-opacity-slider" min="0" max="30" value="10"
-               title="Ghost opacity" style="width:64px;cursor:pointer;accent-color:#8b5cf6;">
-        <span id="ghost-opacity-val" style="color:white;font-size:11px;min-width:26px;">10%</span>
+        <select id="meas-axis-select" title="Measurement axis constraint"
+                style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);
+                       color:#fff;border-radius:4px;padding:2px 4px;font-size:11px;
+                       cursor:pointer;height:26px;outline:none;">
+            <option value="3d"  style="background:#1e293b;">3D</option>
+            <option value="x"   style="background:#1e293b;">ΔX</option>
+            <option value="y"   style="background:#1e293b;">ΔY</option>
+            <option value="z"   style="background:#1e293b;">ΔZ</option>
+        </select>
+        <button id="show-hidden-btn" class="vctl-btn" title="Show all hidden elements"
+                style="font-size:12px;">👁 Show</button>
         <div style="flex:1;"></div>
         <button class="vctl-btn" data-zoom="+" title="Zoom In">+</button>
         <button class="vctl-btn" data-zoom="-" title="Zoom Out">−</button>
@@ -260,8 +265,14 @@
                         transform:translateX(-280px);transition:transform 0.25s ease;
                         z-index:52;overflow:hidden;display:flex;flex-direction:column;">
                 <div style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0;">
-                    <div style="font-size:10px;color:#94a3b8;font-weight:600;text-transform:uppercase;
-                                letter-spacing:.5px;margin-bottom:6px;">Spatial Structure</div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                        <span style="font-size:10px;color:#94a3b8;font-weight:600;
+                                     text-transform:uppercase;letter-spacing:.5px;">Spatial Structure</span>
+                        <button id="tree-clear-btn"
+                                style="background:none;border:none;color:#64748b;cursor:pointer;
+                                       font-size:11px;padding:0 2px;line-height:1;"
+                                title="Clear selection">✕ Clear</button>
+                    </div>
                     <input type="text" id="tree-search" placeholder="Filter elements…"
                            style="width:100%;background:#1e293b;color:#e2e8f0;
                                   border:1px solid rgba(255,255,255,0.15);border-radius:4px;
@@ -492,7 +503,6 @@
             _initSectionBox();
             _initMeasureTool();
             _initSpatialTree();
-            _initGhostSlider();
 
         } catch (err) {
             console.error("IFC viewer init failed:", err);
@@ -560,6 +570,8 @@
             fragment.resetColor();
             fragment.setVisibility(true);   // restore any instances hidden by timeline mode
         }
+        /* Re-apply user-hidden elements so they survive color/timeline resets */
+        if (_hiddenGlobalIds.size) hideGlobalIds([..._hiddenGlobalIds]);
     }
 
     function hideGlobalIds(globalIds) {
@@ -909,6 +921,7 @@
         document.getElementById("colorby-legend").classList.add("d-none");
         document.getElementById("colorby-select").value = "none";
         _selectedGlobalIds.clear();
+        _hiddenGlobalIds.clear();   // clear BEFORE resetAllColors so nothing gets re-hidden
         _updateSelCounter();
         resetAllColors();
         if (_sectionEnabled) {
@@ -920,9 +933,16 @@
         _clearMeasurements();
     });
 
+    document.getElementById("show-hidden-btn")?.addEventListener("click", () => {
+        if (!_hiddenGlobalIds.size) return;
+        showGlobalIds([..._hiddenGlobalIds]);
+        _hiddenGlobalIds.clear();
+    });
+
     // ── 10. Element selection — click → identify GlobalId, multi-select ──
 
-    const _selectedGlobalIds = new Set();   // replaces single _selectedGlobalId
+    const _selectedGlobalIds = new Set();   // elements with cyan highlight
+    const _hiddenGlobalIds   = new Set();   // elements hidden by user — re-applied after every resetAllColors
     const _SEL_COLOR = new THREE.Color('#00BCD4');
 
     function _updateSelCounter() {
@@ -932,6 +952,12 @@
         el.textContent = n === 0 ? "0 elements selected"
                        : n === 1 ? "1 element selected"
                        : `${n} elements selected`;
+    }
+
+    function _clearAllSelections() {
+        _selectedGlobalIds.clear();
+        resetAllColors();
+        _updateSelCounter();
     }
 
     function _findGlobalIdFromHit(intersection) {
@@ -958,7 +984,7 @@
         canvas.addEventListener('pointermove', () => { _pointerMoved = true; });
 
         canvas.addEventListener('click', (e) => {
-            if (_hitSectionHandle) { _hitSectionHandle = false; return; }
+            if (_activeDrag) return;   // section handle drag — not a real click
             if (_measureMode) { _handleMeasureClick(e); return; }
             if (_pointerMoved || !model) return;
             const rect = canvas.getBoundingClientRect();
@@ -1147,24 +1173,10 @@
         const gid = _ctxMenuEl?.dataset.globalId;
         if (_ctxMenuEl) _ctxMenuEl.style.display = "none";
         if (!gid || !model) return;
-        resetAllColors();
-        if (_ghostOpacity === 0) {
-            for (const fragment of model.items) fragment.setVisibility(false);
-        } else {
-            const gc = _ghostColorFromPct(_ghostOpacity);
-            for (const fragment of model.items) {
-                fragment.setVisibility(true);
-                fragment.setColor(gc);
-            }
-        }
-        /* Restore the isolated element */
+        for (const fragment of model.items) { fragment.setVisibility(false); }
         const expressId = globalIdIndex.get(gid);
         if (expressId !== undefined) {
-            if (_ghostOpacity === 0) {
-                fragmentIndex.get(expressId)?.setVisibility(true, [expressId]);
-            } else {
-                try { fragmentIndex.get(expressId)?.resetColor([expressId]); } catch (_) {}
-            }
+            fragmentIndex.get(expressId)?.setVisibility(true, [expressId]);
         }
         colorByGlobalIds([gid], _SEL_COLOR);
     });
@@ -1173,15 +1185,22 @@
         const gid = _ctxMenuEl?.dataset.globalId;
         if (_ctxMenuEl) _ctxMenuEl.style.display = "none";
         if (!gid) return;
-        ghostOrHideGlobalIds([gid]);
+        _hiddenGlobalIds.add(gid);
+        hideGlobalIds([gid]);
         _selectedGlobalIds.delete(gid);
         _updateSelCounter();
     });
 
     document.getElementById("sel-ctx-deselect")?.addEventListener("click", () => {
+        const gid = _ctxMenuEl?.dataset.globalId;
         if (_ctxMenuEl) _ctxMenuEl.style.display = "none";
-        resetAllColors();
-        _selectedGlobalIds.clear();
+        if (!gid) return;
+        _selectedGlobalIds.delete(gid);
+        /* Reset colour for this element only — it stays fully visible */
+        const expressId = globalIdIndex.get(gid);
+        if (expressId !== undefined) {
+            try { fragmentIndex.get(expressId)?.resetColor([expressId]); } catch (_) {}
+        }
         _updateSelCounter();
     });
 
@@ -1197,6 +1216,7 @@
         if (e.key !== "Escape") return;
         if (_ctxMenuEl) _ctxMenuEl.style.display = "none";
         if (_propsPanelEl) _propsPanelEl.style.display = "none";
+        _clearAllSelections();
     });
 
     // ── 12. View Controls toolbar ────────────────────────────────────────
@@ -1263,17 +1283,19 @@
             });
         });
 
-        /* Projection toggle — uses OBC 2.x projection API if available */
-        let _isOrtho = false;
-        document.getElementById("proj-toggle")?.addEventListener("click", () => {
+        /* Projection toggle — async: awaits OBC ProjectionManager.toggle() then reads back .current */
+        document.getElementById("proj-toggle")?.addEventListener("click", async () => {
             const btn = document.getElementById("proj-toggle");
-            if (world.camera.projection?.set) {
-                _isOrtho = !_isOrtho;
-                world.camera.projection.set(_isOrtho ? "Orthographic" : "Perspective");
-                btn.textContent = _isOrtho ? "Ortho" : "Persp";
-            } else {
-                console.warn("[viewer] Projection toggle: OBC projection API not available in this build.");
+            if (!world?.camera?.projection?.toggle) {
+                console.warn("[viewer] Projection toggle: OBC projection API not available.");
+                return;
             }
+            btn.disabled = true;
+            await world.camera.projection.toggle();
+            const isOrtho = world.camera.projection.current === "Orthographic";
+            btn.textContent = isOrtho ? "Ortho" : "Persp";
+            btn.style.outline = isOrtho ? "1px solid rgba(59,130,246,0.7)" : "";
+            btn.disabled = false;
         });
 
         /* Zoom buttons — dolly to scaled distance */
@@ -1298,7 +1320,6 @@
     let _sectionPlanes      = null;
     let _sectionHandles     = [];
     let _activeDrag         = null;
-    let _hitSectionHandle   = false;
 
     const _HANDLE_COLORS = [0xef4444, 0xef4444, 0x22c55e, 0x22c55e, 0x3b82f6, 0x3b82f6];
 
@@ -1370,16 +1391,26 @@
             ray.setFromCamera(mouse, world.camera.three);
             const hits = ray.intersectObjects(_sectionHandles);
             if (!hits.length) return;
-            _hitSectionHandle = true;
             const handle   = hits[0].object;
             const planeIdx = _sectionHandles.indexOf(handle);
             world.camera.three.getWorldDirection(camDir);
             dragPlane.setFromNormalAndCoplanarPoint(camDir.clone().negate(), hits[0].point);
             _activeDrag = { handle, planeIdx };
             canvas.setPointerCapture(e.pointerId);
+            canvas.style.cursor = "grabbing";
+            /* Pause camera orbit so the drag isn't stolen by CameraControls */
+            if (world?.camera?.controls) world.camera.controls.enabled = false;
         });
 
         canvas.addEventListener("pointermove", (e) => {
+            if (_sectionEnabled && _sectionHandles.length && !_activeDrag) {
+                /* Hover feedback — change cursor when over a handle */
+                const rect = canvas.getBoundingClientRect();
+                mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
+                mouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
+                ray.setFromCamera(mouse, world.camera.three);
+                canvas.style.cursor = ray.intersectObjects(_sectionHandles).length ? "grab" : "";
+            }
             if (!_activeDrag) return;
             const rect = canvas.getBoundingClientRect();
             mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
@@ -1397,7 +1428,7 @@
             newConst = Math.max(newConst, MIN_GAP - pairConst);
             plane.constant = newConst;
 
-            /* move handle to new face-center position */
+            /* move handle mesh to new face-center position */
             const bbox = _getSceneBBox();
             const center = new THREE.Vector3();
             bbox.getCenter(center);
@@ -1409,6 +1440,9 @@
             if (!_activeDrag) return;
             canvas.releasePointerCapture(e.pointerId);
             _activeDrag = null;
+            canvas.style.cursor = "";
+            /* Resume camera orbit */
+            if (world?.camera?.controls) world.camera.controls.enabled = true;
         });
     }
 
@@ -1438,9 +1472,7 @@
     }
 
     function _applyHideCategory(gids, sliderVal) {
-        /* If vis panel slider is 0, fall back to global ghost opacity from toolbar */
-        const effective = sliderVal > 0 ? sliderVal : _ghostOpacity;
-        if (effective === 0) {
+        if (sliderVal === 0) {
             hideGlobalIds(gids);
         } else {
             for (const gid of gids) {
@@ -1448,7 +1480,7 @@
                 if (expressId === undefined) continue;
                 fragmentIndex.get(expressId)?.setVisibility(true, [expressId]);
             }
-            colorByGlobalIds(gids, sliderVal > 0 ? _ghostColor(sliderVal) : _ghostColorFromPct(_ghostOpacity));
+            colorByGlobalIds(gids, _ghostColor(sliderVal));
         }
     }
 
@@ -1680,6 +1712,8 @@
             _renderTree(search.value.trim().toLowerCase(), _treeData);
         });
 
+        document.getElementById("tree-clear-btn")?.addEventListener("click", () => _clearAllSelections());
+
         function _renderTree(filter, treeData) {
             if (!body) return;
             body.innerHTML = "";
@@ -1856,6 +1890,11 @@
                 row.style.color = "#cbd5e1";
             });
             row.addEventListener("click", () => {
+                /* Toggle: clicking the already-selected element clears the selection */
+                if (_selectedGlobalIds.size === 1 && _selectedGlobalIds.has(child.globalId)) {
+                    _clearAllSelections();
+                    return;
+                }
                 _selectedGlobalIds.clear();
                 _selectedGlobalIds.add(child.globalId);
                 resetAllColors();
@@ -1954,8 +1993,26 @@
         _measurePtA = null;
     }
 
+    function _snapToVertex(hit) {
+        const geo = hit.object?.geometry;
+        if (!geo?.attributes?.position || !hit.face) return hit.point.clone();
+        const posAttr = geo.attributes.position;
+        const { a, b, c } = hit.face;
+        /* Snap threshold: 3% of camera-to-hit distance */
+        const threshold = hit.distance * 0.03;
+        let best = hit.point.clone(), bestD = threshold;
+        for (const idx of [a, b, c]) {
+            const v = new THREE.Vector3().fromBufferAttribute(posAttr, idx);
+            hit.object.localToWorld(v);
+            const d = v.distanceTo(hit.point);
+            if (d < bestD) { bestD = d; best = v.clone(); }
+        }
+        return best;
+    }
+
     function _handleMeasureClick(e) {
         if (!model) return;
+        const axisMode = document.getElementById("meas-axis-select")?.value ?? "3d";
         const canvas = world.renderer.three.domElement;
         const rect   = canvas.getBoundingClientRect();
         const mouse  = new THREE.Vector2(
@@ -1972,23 +2029,39 @@
         );
         if (!modelHit) return;
 
-        const pt = modelHit.point.clone();
+        const pt = _snapToVertex(modelHit);
 
         if (!_measurePtA) {
             _measurePtA  = pt;
             _measureMkrA = _makeSphere(pt, 0x22c55e);
         } else {
-            const ptA    = _measurePtA;
-            const ptB    = pt;
-            const dist   = ptA.distanceTo(ptB);
-            const distMm = Math.round(dist * 1000);
-            const distM  = dist.toFixed(3);
-            const text   = `${distMm.toLocaleString()} mm (${distM} m)`;
+            const ptA = _measurePtA;
+            const ptB = pt;
+
+            /* Axis constraint: project ptB onto the constrained axis through ptA */
+            let lineEnd, dist, text;
+            if (axisMode === "x") {
+                lineEnd = new THREE.Vector3(ptB.x, ptA.y, ptA.z);
+                dist    = Math.abs(ptB.x - ptA.x);
+                text    = `ΔX: ${Math.round(dist * 1000).toLocaleString()} mm`;
+            } else if (axisMode === "y") {
+                lineEnd = new THREE.Vector3(ptA.x, ptB.y, ptA.z);
+                dist    = Math.abs(ptB.y - ptA.y);
+                text    = `ΔY: ${Math.round(dist * 1000).toLocaleString()} mm`;
+            } else if (axisMode === "z") {
+                lineEnd = new THREE.Vector3(ptA.x, ptA.y, ptB.z);
+                dist    = Math.abs(ptB.z - ptA.z);
+                text    = `ΔZ: ${Math.round(dist * 1000).toLocaleString()} mm`;
+            } else {
+                lineEnd = ptB;
+                dist    = ptA.distanceTo(ptB);
+                text    = `${Math.round(dist * 1000).toLocaleString()} mm (${dist.toFixed(3)} m)`;
+            }
 
             const mkrA    = _measureMkrA;
-            const mkrB    = _makeSphere(ptB, 0xef4444);
-            const line    = _makeLine(ptA, ptB);
-            const midpt   = ptA.clone().lerp(ptB, 0.5);
+            const mkrB    = _makeSphere(lineEnd, 0xef4444);
+            const line    = _makeLine(ptA, lineEnd);
+            const midpt   = ptA.clone().lerp(lineEnd, 0.5);
             const labelEl = _makeMeasureLabel(text);
 
             _measurements.push({ mkrA, mkrB, line, midpoint: midpt, labelEl });
@@ -2016,41 +2089,6 @@
         });
 
         clearBtn?.addEventListener("click", () => { _clearMeasurements(); });
-    }
-
-    // ── 18. Ghosting mode ────────────────────────────────────────────────
-
-    let _ghostOpacity = 10;   /* 0–30; 0=fully hidden, >0=ghost (% brightness) */
-
-    function _ghostColorFromPct(pct) {
-        const v = (pct / 30) * 0.18;
-        return new THREE.Color(v, v, v);
-    }
-
-    function ghostOrHideGlobalIds(gids) {
-        if (_ghostOpacity === 0) {
-            hideGlobalIds(gids);
-            return;
-        }
-        const gc = _ghostColorFromPct(_ghostOpacity);
-        for (const gid of gids) {
-            const expressId = globalIdIndex.get(gid);
-            if (expressId === undefined) continue;
-            const fragment = fragmentIndex.get(expressId);
-            if (!fragment) continue;
-            fragment.setVisibility(true, [expressId]);
-        }
-        colorByGlobalIds(gids, gc);
-    }
-
-    function _initGhostSlider() {
-        const slider = document.getElementById("ghost-opacity-slider");
-        const valEl  = document.getElementById("ghost-opacity-val");
-        if (!slider) return;
-        slider.addEventListener("input", () => {
-            _ghostOpacity = parseInt(slider.value);
-            if (valEl) valEl.textContent = _ghostOpacity + "%";
-        });
     }
 
     init();
