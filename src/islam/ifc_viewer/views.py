@@ -228,6 +228,48 @@ class ViewerEmbedView(ProjectAccessMixin, View):
         return response
 
 
+class ElementPropertiesView(ProjectAccessMixin, View):
+    """JSON — IFC entity properties for a GlobalId clicked in the 3D viewer."""
+
+    def get(self, request, global_id: str, **kwargs: object) -> HttpResponse:
+        from ifc_processor.models import IFCEntity, IFCFile
+
+        project = self.get_project()
+        ifc_file = (
+            IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
+            .order_by("-created_at")
+            .first()
+        )
+        if not ifc_file:
+            return JsonResponse({"found": False, "global_id": global_id})
+
+        try:
+            entity = IFCEntity.objects.select_related(
+                "spatial_container__entity",
+                "element_type",
+            ).get(ifc_file=ifc_file, global_id=global_id)
+        except IFCEntity.DoesNotExist:
+            return JsonResponse({"found": False, "global_id": global_id})
+
+        location = None
+        if entity.spatial_container_id and entity.spatial_container.entity_id:
+            location = entity.spatial_container.entity.name or None
+
+        return JsonResponse(
+            {
+                "found": True,
+                "global_id": entity.global_id,
+                "ifc_type": entity.ifc_type,
+                "name": entity.name,
+                "ifc_description": entity.ifc_description,
+                "tag": entity.tag,
+                "location": location,
+                "properties": entity.properties,
+                "element_type_name": entity.element_type.name if entity.element_type_id else None,
+            }
+        )
+
+
 class TimelineView(ProjectAccessMixin, View):
     """JSON — weekly 4D timeline intervals with 3-state entity buckets and stats."""
 

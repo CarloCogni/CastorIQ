@@ -106,6 +106,38 @@
                  style="font-size:0.75rem; z-index:5; max-width:160px;">
                 <div id="colorby-legend-body" class="d-flex flex-column gap-1"></div>
             </div>
+
+            <!-- Element selection — context menu -->
+            <div id="sel-ctx-menu"
+                 class="position-absolute bg-dark border border-secondary rounded shadow-sm py-1"
+                 style="display:none; z-index:100; min-width:164px; font-size:0.82rem;">
+                <button class="btn btn-link text-light d-flex align-items-center gap-2 w-100 text-start px-3 py-1"
+                        id="sel-ctx-props"><i class="bi bi-info-circle"></i>Properties</button>
+                <button class="btn btn-link text-light d-flex align-items-center gap-2 w-100 text-start px-3 py-1"
+                        id="sel-ctx-isolate"><i class="bi bi-bounding-box"></i>Isolate</button>
+                <button class="btn btn-link text-light d-flex align-items-center gap-2 w-100 text-start px-3 py-1"
+                        id="sel-ctx-hide"><i class="bi bi-eye-slash"></i>Hide</button>
+                <div class="border-top border-secondary my-1"></div>
+                <button class="btn btn-link text-secondary d-flex align-items-center gap-2 w-100 text-start px-3 py-1"
+                        id="sel-ctx-deselect"><i class="bi bi-x-circle"></i>Deselect</button>
+            </div>
+
+            <!-- Element selection — properties float panel -->
+            <div id="sel-props-panel"
+                 class="position-absolute bg-dark border border-secondary rounded shadow"
+                 style="display:none; z-index:99; width:280px; top:8px; right:8px;">
+                <div class="d-flex align-items-center justify-content-between px-3 py-2 border-bottom border-secondary">
+                    <span class="fw-semibold text-light" style="font-size:0.83rem;">
+                        <i class="bi bi-layers me-1 text-info"></i>Element Info
+                    </span>
+                    <button id="sel-props-close" class="btn btn-sm btn-link text-secondary p-0" title="Close">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+                <div id="sel-props-body" class="p-2 text-light"
+                     style="max-height:55vh; overflow-y:auto; font-size:0.78rem;"></div>
+            </div>
+
         </div>
 
         <!-- Gap Analysis side panel (hidden until toggled) -->
@@ -236,8 +268,10 @@
 
     let world = null;
     let model = null;
-    const globalIdIndex = new Map();
-    const fragmentIndex = new Map();
+    const globalIdIndex     = new Map();
+    const fragmentIndex     = new Map();
+    const meshToFragment    = new Map();   // InstancedMesh → Fragment (raycaster hit lookup)
+    const expressIdToGlobalId = new Map(); // expressId → globalId (reverse of globalIdIndex)
 
     // ── 1. Init ──────────────────────────────────────────────────────────
 
@@ -295,6 +329,7 @@
 
             loading.classList.add("d-none");
             resetAllColors();
+            _initSelector();
 
         } catch (err) {
             console.error("IFC viewer init failed:", err);
@@ -329,12 +364,14 @@
         if (!model) return;
         try {
             for (const fragment of model.items) {
+                meshToFragment.set(fragment.mesh, fragment);
                 for (const expressId of fragment.ids) {
                     fragmentIndex.set(expressId, fragment);
                 }
             }
             for (const [gid, expressId] of model.globalToExpressIDs) {
                 globalIdIndex.set(gid, expressId);
+                expressIdToGlobalId.set(expressId, gid);
             }
         } catch (e) {
             console.warn("[simulator] GlobalId index build failed:", e);
@@ -697,7 +734,191 @@
         simLegend.classList.add("d-none");
         document.getElementById("colorby-legend").classList.add("d-none");
         document.getElementById("colorby-select").value = "none";
+        _selectedGlobalId = null;
         resetAllColors();
+    });
+
+    // ── 10. Element selection — Step 1: click → identify GlobalId ───────
+
+    let _selectedGlobalId = null;
+    const _SEL_COLOR = new THREE.Color('#00BCD4');
+
+    function _findGlobalIdFromHit(intersection) {
+        if (intersection.instanceId === undefined) return null;
+        const fragment = meshToFragment.get(intersection.object);
+        if (!fragment) return null;
+        let expressId;
+        if (typeof fragment.getItemID === 'function') {
+            expressId = fragment.getItemID(intersection.instanceId);
+        } else if (fragment.instanceToId instanceof Map) {
+            expressId = fragment.instanceToId.get(intersection.instanceId);
+        }
+        if (expressId == null) return null;
+        return expressIdToGlobalId.get(expressId) ?? null;
+    }
+
+    function _initSelector() {
+        const raycaster = new THREE.Raycaster();
+        const mouse     = new THREE.Vector2();
+        const canvas    = world.renderer.three.domElement;
+        let   _pointerMoved = false;
+
+        canvas.addEventListener('pointerdown', () => { _pointerMoved = false; });
+        canvas.addEventListener('pointermove', () => { _pointerMoved = true; });
+
+        canvas.addEventListener('click', (e) => {
+            if (_pointerMoved || !model) return;
+            const rect = canvas.getBoundingClientRect();
+            mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
+            mouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
+            raycaster.setFromCamera(mouse, world.camera.three);
+            const hits = raycaster.intersectObjects(world.scene.three.children, true);
+            if (!hits.length) {
+                if (_selectedGlobalId) { resetAllColors(); _selectedGlobalId = null; }
+                return;
+            }
+            const globalId = _findGlobalIdFromHit(hits[0]);
+            if (!globalId) return;
+            console.log('[selector] clicked globalId:', globalId);
+            if (globalId === _selectedGlobalId) {
+                resetAllColors();
+                _selectedGlobalId = null;
+                return;
+            }
+            if (_selectedGlobalId) resetAllColors();
+            _selectedGlobalId = globalId;
+            colorByGlobalIds([globalId], _SEL_COLOR);
+        });
+
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            if (!model) return;
+            const rect = canvas.getBoundingClientRect();
+            mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
+            mouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
+            raycaster.setFromCamera(mouse, world.camera.three);
+            const hits = raycaster.intersectObjects(world.scene.three.children, true);
+            if (!hits.length) { if (_ctxMenuEl) _ctxMenuEl.style.display = "none"; return; }
+            const globalId = _findGlobalIdFromHit(hits[0]);
+            if (!globalId) return;
+            if (globalId !== _selectedGlobalId) {
+                if (_selectedGlobalId) resetAllColors();
+                _selectedGlobalId = globalId;
+                colorByGlobalIds([globalId], _SEL_COLOR);
+            }
+            if (!_ctxMenuEl) return;
+            const cRect = _ctxMenuEl.parentElement.getBoundingClientRect();
+            _ctxMenuEl.style.left = Math.min(e.clientX - cRect.left, cRect.width  - 170) + "px";
+            _ctxMenuEl.style.top  = Math.min(e.clientY - cRect.top,  cRect.height - 140) + "px";
+            _ctxMenuEl.dataset.globalId = globalId;
+            _ctxMenuEl.style.display = "block";
+        });
+    }
+
+    // ── 11. Context menu & Properties panel ─────────────────────────────
+
+    const ELEM_PROPS_URL_TMPL = "{% url 'islam:viewer_element_props' project.pk 'ELEM_PH' %}";
+
+    const _ctxMenuEl    = document.getElementById("sel-ctx-menu");
+    const _propsPanelEl = document.getElementById("sel-props-panel");
+    const _propsBodyEl  = document.getElementById("sel-props-body");
+
+    function _esc(s) {
+        return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    function _renderProps(data) {
+        if (!data.found) {
+            return `<div style="color:#94a3b8;"><code style="color:#67e8f9;font-size:0.73rem;">${_esc(data.global_id)}</code><p class="mt-1 mb-0 small">Not indexed in database.</p></div>`;
+        }
+        const meta = [
+            ["GlobalId",  `<code style="color:#67e8f9;font-size:0.73rem;">${_esc(data.global_id)}</code>`],
+            ["Type",      _esc(data.ifc_type)],
+            ["Name",      _esc(data.name || "—")],
+            data.tag              ? ["Tag",     _esc(data.tag)]              : null,
+            data.location         ? ["Level",   _esc(data.location)]         : null,
+            data.element_type_name? ["Type Def",_esc(data.element_type_name)]: null,
+        ].filter(Boolean);
+
+        let html = `<table style="width:100%;border-collapse:collapse;font-size:0.78rem;">`;
+        for (const [label, val] of meta) {
+            html += `<tr>
+                <td style="color:#94a3b8;padding:2px 8px 2px 0;white-space:nowrap;vertical-align:top;">${label}</td>
+                <td style="padding:2px 0;vertical-align:top;">${val}</td></tr>`;
+        }
+        html += `</table>`;
+
+        for (const [pset, attrs] of Object.entries(data.properties || {})) {
+            if (!attrs || typeof attrs !== "object") continue;
+            const entries = Object.entries(attrs);
+            if (!entries.length) continue;
+            html += `<div style="border-top:1px solid #334155;margin-top:8px;padding-top:5px;
+                                  color:#94a3b8;font-size:0.73rem;font-weight:600;">${_esc(pset)}</div>
+                     <table style="width:100%;border-collapse:collapse;font-size:0.75rem;margin-top:2px;">`;
+            for (const [k, v] of entries) {
+                html += `<tr>
+                    <td style="color:#94a3b8;padding:1px 8px 1px 0;white-space:nowrap;">${_esc(k)}</td>
+                    <td style="padding:1px 0;">${_esc(String(v ?? "—"))}</td></tr>`;
+            }
+            html += `</table>`;
+        }
+        return html;
+    }
+
+    function _openPropsPanel(globalId) {
+        if (!_propsPanelEl) return;
+        _propsPanelEl.style.display = "block";
+        _propsBodyEl.innerHTML = '<div class="py-3 text-center"><div class="spinner-border spinner-border-sm text-secondary" role="status"></div></div>';
+        fetch(ELEM_PROPS_URL_TMPL.replace("ELEM_PH", encodeURIComponent(globalId)))
+            .then(r => r.json())
+            .then(data => { _propsBodyEl.innerHTML = _renderProps(data); })
+            .catch(() => { _propsBodyEl.innerHTML = '<span class="text-danger small">Failed to load properties.</span>'; });
+    }
+
+    document.getElementById("sel-ctx-props")?.addEventListener("click", () => {
+        const gid = _ctxMenuEl?.dataset.globalId;
+        if (_ctxMenuEl) _ctxMenuEl.style.display = "none";
+        if (gid) _openPropsPanel(gid);
+    });
+
+    document.getElementById("sel-ctx-isolate")?.addEventListener("click", () => {
+        const gid = _ctxMenuEl?.dataset.globalId;
+        if (_ctxMenuEl) _ctxMenuEl.style.display = "none";
+        if (!gid || !model) return;
+        for (const fragment of model.items) { fragment.setVisibility(false); }
+        const expressId = globalIdIndex.get(gid);
+        if (expressId !== undefined) {
+            fragmentIndex.get(expressId)?.setVisibility(true, [expressId]);
+        }
+        colorByGlobalIds([gid], _SEL_COLOR);
+    });
+
+    document.getElementById("sel-ctx-hide")?.addEventListener("click", () => {
+        const gid = _ctxMenuEl?.dataset.globalId;
+        if (_ctxMenuEl) _ctxMenuEl.style.display = "none";
+        if (!gid) return;
+        hideGlobalIds([gid]);
+        if (_selectedGlobalId === gid) _selectedGlobalId = null;
+    });
+
+    document.getElementById("sel-ctx-deselect")?.addEventListener("click", () => {
+        if (_ctxMenuEl) _ctxMenuEl.style.display = "none";
+        resetAllColors();
+        _selectedGlobalId = null;
+    });
+
+    document.getElementById("sel-props-close")?.addEventListener("click", () => {
+        if (_propsPanelEl) _propsPanelEl.style.display = "none";
+    });
+
+    document.addEventListener("click", (e) => {
+        if (_ctxMenuEl && !_ctxMenuEl.contains(e.target)) _ctxMenuEl.style.display = "none";
+    });
+
+    document.addEventListener("keydown", (e) => {
+        if (e.key !== "Escape") return;
+        if (_ctxMenuEl) _ctxMenuEl.style.display = "none";
+        if (_propsPanelEl) _propsPanelEl.style.display = "none";
     });
 
     init();

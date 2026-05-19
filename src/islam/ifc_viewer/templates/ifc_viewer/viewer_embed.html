@@ -59,6 +59,34 @@ html, body { width: 100%; height: 100%; background: #111; overflow: hidden; }
     </div>
 
     <div id="embed-legend"></div>
+
+    <!-- Element selection — context menu -->
+    <div id="sel-ctx-menu" style="
+        position:absolute; display:none; z-index:100; min-width:160px;
+        background:#1e293b; border:1px solid #475569; border-radius:6px;
+        box-shadow:0 4px 12px rgba(0,0,0,0.5); padding:4px 0;
+        font-family:system-ui,sans-serif; font-size:0.82rem; color:#e2e8f0;">
+        <button id="sel-ctx-props"    style="display:block;width:100%;background:none;border:none;color:#e2e8f0;text-align:left;padding:6px 12px;cursor:pointer;">Properties</button>
+        <button id="sel-ctx-isolate"  style="display:block;width:100%;background:none;border:none;color:#e2e8f0;text-align:left;padding:6px 12px;cursor:pointer;">Isolate</button>
+        <button id="sel-ctx-hide"     style="display:block;width:100%;background:none;border:none;color:#e2e8f0;text-align:left;padding:6px 12px;cursor:pointer;">Hide</button>
+        <div style="border-top:1px solid #475569;margin:4px 0;"></div>
+        <button id="sel-ctx-deselect" style="display:block;width:100%;background:none;border:none;color:#94a3b8;text-align:left;padding:6px 12px;cursor:pointer;">Deselect</button>
+    </div>
+
+    <!-- Element selection — properties float panel -->
+    <div id="sel-props-panel" style="
+        position:absolute; display:none; z-index:99; width:260px; top:8px; right:8px;
+        background:#1e293b; border:1px solid #475569; border-radius:6px;
+        box-shadow:0 4px 12px rgba(0,0,0,0.5);
+        font-family:system-ui,sans-serif; font-size:0.78rem; color:#e2e8f0;">
+        <div style="display:flex;justify-content:space-between;align-items:center;
+                    padding:8px 12px;border-bottom:1px solid #475569;">
+            <span style="font-size:0.83rem;font-weight:600;color:#93c5fd;">Element Info</span>
+            <button id="sel-props-close" style="background:none;border:none;color:#94a3b8;cursor:pointer;padding:0;font-size:1.1rem;line-height:1;">&times;</button>
+        </div>
+        <div id="sel-props-body" style="padding:8px;max-height:50vh;overflow-y:auto;"></div>
+    </div>
+
 </div>
 
 <script type="importmap">
@@ -90,8 +118,10 @@ const legendEl  = document.getElementById("embed-legend");
 
 let world = null;
 let model = null;
-const globalIdIndex = new Map();
-const fragmentIndex = new Map();
+const globalIdIndex       = new Map();
+const fragmentIndex       = new Map();
+const meshToFragment      = new Map();   // InstancedMesh → Fragment (raycaster hit lookup)
+const expressIdToGlobalId = new Map();   // expressId → globalId (reverse of globalIdIndex)
 
 const C = {
     /* 4D build sequence — colours pre-multiplied against #111 background */
@@ -155,6 +185,7 @@ async function init() {
         }
 
         loadingEl.style.display = "none";
+        _initSelector();
         window.parent.postMessage({ type: "castor:viewer-ready" }, "*");
 
     } catch (err) {
@@ -189,12 +220,14 @@ function buildIndex() {
     if (!model) return;
     try {
         for (const fragment of model.items) {
+            meshToFragment.set(fragment.mesh, fragment);
             for (const expressId of fragment.ids) {
                 fragmentIndex.set(expressId, fragment);
             }
         }
         for (const [gid, expressId] of model.globalToExpressIDs) {
             globalIdIndex.set(gid, expressId);
+            expressIdToGlobalId.set(expressId, gid);
         }
     } catch (e) {
         console.warn("[embed] GlobalId index build failed:", e);
@@ -306,6 +339,189 @@ function _showColormapLegend(legend) {
     ).join("");
     legendEl.style.display = "block";
 }
+
+// ── 5. Element selection — Step 1: click → identify GlobalId ────────
+
+let _selectedGlobalId = null;
+const _SEL_COLOR = new THREE.Color('#00BCD4');
+
+function _findGlobalIdFromHit(intersection) {
+    if (intersection.instanceId === undefined) return null;
+    const fragment = meshToFragment.get(intersection.object);
+    if (!fragment) return null;
+    let expressId;
+    if (typeof fragment.getItemID === 'function') {
+        expressId = fragment.getItemID(intersection.instanceId);
+    } else if (fragment.instanceToId instanceof Map) {
+        expressId = fragment.instanceToId.get(intersection.instanceId);
+    }
+    if (expressId == null) return null;
+    return expressIdToGlobalId.get(expressId) ?? null;
+}
+
+function _initSelector() {
+    const raycaster = new THREE.Raycaster();
+    const mouse     = new THREE.Vector2();
+    const canvas    = world.renderer.three.domElement;
+    let   _pointerMoved = false;
+
+    canvas.addEventListener('pointerdown', () => { _pointerMoved = false; });
+    canvas.addEventListener('pointermove', () => { _pointerMoved = true; });
+
+    canvas.addEventListener('click', (e) => {
+        if (_pointerMoved || !model) return;
+        const rect = canvas.getBoundingClientRect();
+        mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
+        mouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
+        raycaster.setFromCamera(mouse, world.camera.three);
+        const hits = raycaster.intersectObjects(world.scene.three.children, true);
+        if (!hits.length) {
+            if (_selectedGlobalId) { resetAllColors(); _selectedGlobalId = null; }
+            return;
+        }
+        const globalId = _findGlobalIdFromHit(hits[0]);
+        if (!globalId) return;
+        console.log('[selector] clicked globalId:', globalId);
+        if (globalId === _selectedGlobalId) {
+            resetAllColors();
+            _selectedGlobalId = null;
+            return;
+        }
+        if (_selectedGlobalId) resetAllColors();
+        _selectedGlobalId = globalId;
+        colorByGlobalIds([globalId], _SEL_COLOR);
+    });
+
+    canvas.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        if (!model) return;
+        const rect = canvas.getBoundingClientRect();
+        mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
+        mouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
+        raycaster.setFromCamera(mouse, world.camera.three);
+        const hits = raycaster.intersectObjects(world.scene.three.children, true);
+        if (!hits.length) { if (_ctxMenuEl) _ctxMenuEl.style.display = "none"; return; }
+        const globalId = _findGlobalIdFromHit(hits[0]);
+        if (!globalId) return;
+        if (globalId !== _selectedGlobalId) {
+            if (_selectedGlobalId) resetAllColors();
+            _selectedGlobalId = globalId;
+            colorByGlobalIds([globalId], _SEL_COLOR);
+        }
+        if (!_ctxMenuEl) return;
+        const cRect = document.getElementById("embed-container").getBoundingClientRect();
+        _ctxMenuEl.style.left = Math.min(e.clientX - cRect.left, cRect.width  - 165) + "px";
+        _ctxMenuEl.style.top  = Math.min(e.clientY - cRect.top,  cRect.height - 140) + "px";
+        _ctxMenuEl.dataset.globalId = globalId;
+        _ctxMenuEl.style.display = "block";
+    });
+}
+
+// ── 6. Context menu & Properties panel ──────────────────────────────
+
+const ELEM_PROPS_URL_TMPL = "{% url 'islam:viewer_element_props' project.pk 'ELEM_PH' %}";
+
+const _ctxMenuEl    = document.getElementById("sel-ctx-menu");
+const _propsPanelEl = document.getElementById("sel-props-panel");
+const _propsBodyEl  = document.getElementById("sel-props-body");
+
+function _esc(s) {
+    return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function _renderProps(data) {
+    if (!data.found) {
+        return `<div style="color:#94a3b8;"><code style="color:#67e8f9;font-size:0.73rem;">${_esc(data.global_id)}</code><p style="margin:4px 0 0;font-size:0.8rem;">Not indexed in database.</p></div>`;
+    }
+    const meta = [
+        ["GlobalId",  `<code style="color:#67e8f9;font-size:0.73rem;">${_esc(data.global_id)}</code>`],
+        ["Type",      _esc(data.ifc_type)],
+        ["Name",      _esc(data.name || "—")],
+        data.tag               ? ["Tag",      _esc(data.tag)]               : null,
+        data.location          ? ["Level",    _esc(data.location)]          : null,
+        data.element_type_name ? ["Type Def", _esc(data.element_type_name)] : null,
+    ].filter(Boolean);
+
+    let html = `<table style="width:100%;border-collapse:collapse;font-size:0.78rem;">`;
+    for (const [label, val] of meta) {
+        html += `<tr>
+            <td style="color:#94a3b8;padding:2px 8px 2px 0;white-space:nowrap;vertical-align:top;">${label}</td>
+            <td style="padding:2px 0;vertical-align:top;">${val}</td></tr>`;
+    }
+    html += `</table>`;
+
+    for (const [pset, attrs] of Object.entries(data.properties || {})) {
+        if (!attrs || typeof attrs !== "object") continue;
+        const entries = Object.entries(attrs);
+        if (!entries.length) continue;
+        html += `<div style="border-top:1px solid #334155;margin-top:8px;padding-top:5px;
+                              color:#94a3b8;font-size:0.73rem;font-weight:600;">${_esc(pset)}</div>
+                 <table style="width:100%;border-collapse:collapse;font-size:0.75rem;margin-top:2px;">`;
+        for (const [k, v] of entries) {
+            html += `<tr>
+                <td style="color:#94a3b8;padding:1px 8px 1px 0;white-space:nowrap;">${_esc(k)}</td>
+                <td style="padding:1px 0;">${_esc(String(v ?? "—"))}</td></tr>`;
+        }
+        html += `</table>`;
+    }
+    return html;
+}
+
+function _openPropsPanel(globalId) {
+    if (!_propsPanelEl) return;
+    _propsPanelEl.style.display = "block";
+    _propsBodyEl.innerHTML = '<div style="text-align:center;padding:16px;"><div class="embed-spinner" style="margin:0 auto;"></div></div>';
+    fetch(ELEM_PROPS_URL_TMPL.replace("ELEM_PH", encodeURIComponent(globalId)))
+        .then(r => r.json())
+        .then(data => { _propsBodyEl.innerHTML = _renderProps(data); })
+        .catch(() => { _propsBodyEl.innerHTML = '<span style="color:#ef4444;font-size:0.8rem;">Failed to load properties.</span>'; });
+}
+
+document.getElementById("sel-ctx-props")?.addEventListener("click", () => {
+    const gid = _ctxMenuEl?.dataset.globalId;
+    if (_ctxMenuEl) _ctxMenuEl.style.display = "none";
+    if (gid) _openPropsPanel(gid);
+});
+
+document.getElementById("sel-ctx-isolate")?.addEventListener("click", () => {
+    const gid = _ctxMenuEl?.dataset.globalId;
+    if (_ctxMenuEl) _ctxMenuEl.style.display = "none";
+    if (!gid || !model) return;
+    for (const fragment of model.items) { fragment.setVisibility(false); }
+    const expressId = globalIdIndex.get(gid);
+    if (expressId !== undefined) {
+        fragmentIndex.get(expressId)?.setVisibility(true, [expressId]);
+    }
+    colorByGlobalIds([gid], _SEL_COLOR);
+});
+
+document.getElementById("sel-ctx-hide")?.addEventListener("click", () => {
+    const gid = _ctxMenuEl?.dataset.globalId;
+    if (_ctxMenuEl) _ctxMenuEl.style.display = "none";
+    if (!gid) return;
+    hideGlobalIds([gid]);
+    if (_selectedGlobalId === gid) _selectedGlobalId = null;
+});
+
+document.getElementById("sel-ctx-deselect")?.addEventListener("click", () => {
+    if (_ctxMenuEl) _ctxMenuEl.style.display = "none";
+    resetAllColors();
+    _selectedGlobalId = null;
+});
+
+document.getElementById("sel-props-close")?.addEventListener("click", () => {
+    if (_propsPanelEl) _propsPanelEl.style.display = "none";
+});
+
+document.addEventListener("click", (e) => {
+    if (_ctxMenuEl && !_ctxMenuEl.contains(e.target)) _ctxMenuEl.style.display = "none";
+});
+
+document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (_ctxMenuEl) _ctxMenuEl.style.display = "none";
+    if (_propsPanelEl) _propsPanelEl.style.display = "none";
+});
 
 init();
 

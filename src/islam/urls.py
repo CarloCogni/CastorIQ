@@ -54,6 +54,11 @@ urlpatterns = [
         name="viewer_embed",
     ),
     path(
+        "projects/<uuid:pk>/viewer/element/<str:global_id>/",
+        viewer_views.ElementPropertiesView.as_view(),
+        name="viewer_element_props",
+    ),
+    path(
         "projects/<uuid:pk>/schedule/",
         scheduling_views.ScheduleView.as_view(),
         name="schedule",
