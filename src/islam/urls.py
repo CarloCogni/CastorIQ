@@ -39,6 +39,16 @@ urlpatterns = [
         name="viewer_gap_analysis",
     ),
     path(
+        "projects/<uuid:pk>/viewer/entity-types/",
+        viewer_views.EntityTypesView.as_view(),
+        name="viewer_entity_types",
+    ),
+    path(
+        "projects/<uuid:pk>/viewer/spatial-tree/",
+        viewer_views.SpatialTreeView.as_view(),
+        name="viewer_spatial_tree",
+    ),
+    path(
         "projects/<uuid:pk>/viewer/build_sequence/",
         viewer_views.BuildSequenceView.as_view(),
         name="viewer_build_sequence",

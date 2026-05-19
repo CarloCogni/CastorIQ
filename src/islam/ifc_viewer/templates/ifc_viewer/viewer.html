@@ -67,12 +67,48 @@
         </div>
     </div>
 
+    <!-- ── View Controls secondary toolbar ──────────────────────────────── -->
+    <div id="view-controls-bar" style="display:flex;align-items:center;gap:4px;
+         padding:4px 8px;border-top:1px solid rgba(255,255,255,0.1);
+         background:rgba(0,0,0,0.3);flex-shrink:0;">
+        <button class="vctl-btn" data-view="home"  title="Fit All">⌂</button>
+        <button class="vctl-btn" data-view="top"   title="Top View">⊤</button>
+        <button class="vctl-btn" data-view="front" title="Front View">↑</button>
+        <button class="vctl-btn" data-view="right" title="Right View">→</button>
+        <button class="vctl-btn" data-view="left"  title="Left View">←</button>
+        <div style="width:1px;height:16px;background:rgba(255,255,255,0.2);margin:0 4px;"></div>
+        <button id="proj-toggle" class="vctl-btn" title="Toggle Perspective/Orthographic"
+                style="min-width:48px;">Persp</button>
+        <button id="vis-toggle-btn" class="vctl-btn" title="Visibility Controls"
+                style="font-size:12px;">👁 Vis</button>
+        <button id="sect-toggle-btn" class="vctl-btn" title="Section Box — clip model with 6 planes"
+                style="font-size:12px;">✂ Sect</button>
+        <button id="meas-toggle-btn" class="vctl-btn" title="Measurement Tool — click two points"
+                style="font-size:12px;">📏 Measure</button>
+        <button id="meas-clear-btn" class="vctl-btn" title="Clear all measurements"
+                style="font-size:12px;">🗑</button>
+        <div style="width:1px;height:16px;background:rgba(255,255,255,0.2);margin:0 4px;"></div>
+        <span style="color:#94a3b8;font-size:11px;white-space:nowrap;"
+              title="Ghost opacity: 0%=fully hidden, 30%=semi-transparent">👻</span>
+        <input type="range" id="ghost-opacity-slider" min="0" max="30" value="10"
+               title="Ghost opacity" style="width:64px;cursor:pointer;accent-color:#8b5cf6;">
+        <span id="ghost-opacity-val" style="color:white;font-size:11px;min-width:26px;">10%</span>
+        <div style="flex:1;"></div>
+        <button class="vctl-btn" data-zoom="+" title="Zoom In">+</button>
+        <button class="vctl-btn" data-zoom="-" title="Zoom Out">−</button>
+    </div>
+
     <!-- ── Main content: viewer + collapsible gap panel ─────────────────── -->
     <div class="d-flex flex-grow-1 overflow-hidden">
 
         <!-- 3D viewer -->
         <div class="flex-grow-1 position-relative overflow-hidden bg-dark">
             <div id="ifc-container" style="width:100%; height:100%; position:relative;"></div>
+
+            <!-- Measurement distance labels (HTML overlay, updated by rAF loop) -->
+            <div id="measure-labels"
+                 style="position:absolute;top:0;left:0;width:100%;height:100%;
+                        pointer-events:none;z-index:6;overflow:hidden;"></div>
 
             <!-- Loading overlay -->
             <div id="viewer-loading"
@@ -137,6 +173,110 @@
                 <div id="sel-props-body" class="p-2 text-light"
                      style="max-height:55vh; overflow-y:auto; font-size:0.78rem;"></div>
             </div>
+
+            <!-- Selection sidebar (slides in from left) -->
+            <div id="selection-sidebar"
+                 style="position:absolute;left:0;top:0;bottom:0;width:220px;
+                        background:rgba(15,23,42,0.95);border-right:1px solid rgba(255,255,255,0.1);
+                        transform:translateX(-220px);transition:transform 0.25s ease;
+                        z-index:50;overflow-y:auto;padding:10px 8px;">
+                <div style="font-size:10px;color:#94a3b8;font-weight:600;
+                            text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Selection</div>
+                <div id="sel-counter" style="color:#e2e8f0;font-size:12px;margin-bottom:8px;">
+                    0 elements selected
+                </div>
+                <div style="display:flex;gap:4px;margin-bottom:10px;">
+                    <button id="sel-all-btn"   class="vctl-btn" style="flex:1;font-size:11px;">All</button>
+                    <button id="sel-clear-btn" class="vctl-btn" style="flex:1;font-size:11px;">None</button>
+                </div>
+                <div style="color:#94a3b8;font-size:10px;font-weight:600;
+                            text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">By Type</div>
+                <select id="sel-by-type"
+                        style="width:100%;margin-bottom:4px;background:#1e293b;color:#e2e8f0;
+                               border:1px solid rgba(255,255,255,0.15);border-radius:4px;
+                               padding:4px 6px;font-size:11px;">
+                    <option value="">— choose type —</option>
+                </select>
+                <button id="sel-type-btn" class="vctl-btn"
+                        style="width:100%;font-size:11px;margin-bottom:10px;">Select Type</button>
+                <div style="color:#94a3b8;font-size:10px;font-weight:600;
+                            text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">By Level</div>
+                <select id="sel-by-level"
+                        style="width:100%;margin-bottom:4px;background:#1e293b;color:#e2e8f0;
+                               border:1px solid rgba(255,255,255,0.15);border-radius:4px;
+                               padding:4px 6px;font-size:11px;">
+                    <option value="">— choose level —</option>
+                </select>
+                <button id="sel-level-btn" class="vctl-btn"
+                        style="width:100%;font-size:11px;">Select Level</button>
+            </div>
+            <!-- Sidebar toggle tab on left edge -->
+            <button id="sel-sidebar-toggle"
+                    style="position:absolute;left:8px;top:50%;transform:translateY(-50%);
+                           z-index:51;background:rgba(0,0,0,0.7);color:white;
+                           border:1px solid rgba(255,255,255,0.2);border-radius:4px;
+                           padding:6px 4px;cursor:pointer;writing-mode:vertical-rl;
+                           font-size:11px;letter-spacing:.5px;white-space:nowrap;"
+                    title="Toggle selection panel">Selection</button>
+
+            <!-- Visibility controls panel (top-right, z:90 — below props panel z:99) -->
+            <div id="visibility-panel"
+                 style="position:absolute;right:8px;top:8px;width:240px;max-height:50vh;
+                        overflow-y:auto;background:rgba(15,23,42,0.93);
+                        border:1px solid rgba(255,255,255,0.15);border-radius:8px;
+                        padding:10px;z-index:90;display:none;">
+                <div style="display:flex;justify-content:space-between;align-items:center;
+                            margin-bottom:8px;">
+                    <span style="color:white;font-weight:600;font-size:13px;">Visibility</span>
+                    <span id="vis-close"
+                          style="cursor:pointer;color:#94a3b8;font-size:14px;line-height:1;">✕</span>
+                </div>
+                <div style="color:#94a3b8;font-size:11px;margin-bottom:4px;">
+                    Hidden element opacity
+                </div>
+                <input type="range" id="vis-opacity" min="0" max="50" value="0"
+                       style="width:100%;margin-bottom:10px;">
+                <div style="color:#94a3b8;font-size:10px;font-weight:600;
+                            text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">
+                    Levels
+                </div>
+                <div id="vis-levels-list" style="margin-bottom:8px;"></div>
+                <div style="color:#94a3b8;font-size:10px;font-weight:600;
+                            text-transform:uppercase;letter-spacing:.4px;
+                            margin:4px 0 4px;">Types</div>
+                <div id="vis-types-list" style="margin-bottom:8px;"></div>
+                <div style="display:flex;gap:4px;">
+                    <button id="vis-show-all" class="vctl-btn"
+                            style="flex:1;font-size:11px;">Show All</button>
+                    <button id="vis-hide-all" class="vctl-btn"
+                            style="flex:1;font-size:11px;">Hide All</button>
+                </div>
+            </div>
+
+            <!-- Spatial tree sidebar (slides from left, z:52 — above selection z:50) -->
+            <div id="tree-sidebar"
+                 style="position:absolute;left:0;top:0;bottom:0;width:280px;
+                        background:rgba(13,20,38,0.97);border-right:1px solid rgba(255,255,255,0.1);
+                        transform:translateX(-280px);transition:transform 0.25s ease;
+                        z-index:52;overflow:hidden;display:flex;flex-direction:column;">
+                <div style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0;">
+                    <div style="font-size:10px;color:#94a3b8;font-weight:600;text-transform:uppercase;
+                                letter-spacing:.5px;margin-bottom:6px;">Spatial Structure</div>
+                    <input type="text" id="tree-search" placeholder="Filter elements…"
+                           style="width:100%;background:#1e293b;color:#e2e8f0;
+                                  border:1px solid rgba(255,255,255,0.15);border-radius:4px;
+                                  padding:4px 7px;font-size:11px;outline:none;box-sizing:border-box;">
+                </div>
+                <div id="tree-body" style="flex:1;overflow-y:auto;padding:6px 8px;font-size:11px;"></div>
+            </div>
+            <!-- Tree toggle on left edge, above selection toggle -->
+            <button id="tree-toggle"
+                    style="position:absolute;left:8px;top:28%;transform:translateY(-50%);
+                           z-index:53;background:rgba(0,0,0,0.7);color:white;
+                           border:1px solid rgba(255,255,255,0.2);border-radius:4px;
+                           padding:6px 4px;cursor:pointer;writing-mode:vertical-rl;
+                           font-size:11px;letter-spacing:.5px;white-space:nowrap;"
+                    title="Toggle spatial tree">🌳 Tree</button>
 
         </div>
 
@@ -222,6 +362,20 @@
         No schedule linked — import a schedule in 4D/5D Controls &gt; TimeLiner to enable the timeline.
     </div>
 
+    <style>
+    .vctl-btn {
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.15);
+        color: white;
+        border-radius: 4px;
+        padding: 3px 8px;
+        cursor: pointer;
+        font-size: 13px;
+        line-height: 1.4;
+    }
+    .vctl-btn:hover { background: rgba(255,255,255,0.16); }
+    </style>
+
     <!-- ── importmap ─────────────────────────────────────────────────────── -->
     <script type="importmap">
     {
@@ -238,12 +392,14 @@
     import * as OBC   from "{% static 'vendor/thatopen-components/dist/index.min.mjs' %}";
     import * as THREE from "three";
 
-    const IFC_URL        = "{{ ifc_file_url }}";
-    const FRAG_URL       = "{% url 'islam:viewer_fragments'    project.pk %}";
-    const COLORMAP_URL   = "{% url 'islam:viewer_colormap'     project.pk %}";
-    const BUILD_SEQ_URL  = "{% url 'islam:viewer_build_sequence' project.pk %}";
-    const TIMELINE_URL   = "{% url 'islam:viewer_timeline'     project.pk %}";
-    const CSRF_TOKEN     = "{{ csrf_token }}";
+    const IFC_URL           = "{{ ifc_file_url }}";
+    const FRAG_URL          = "{% url 'islam:viewer_fragments'      project.pk %}";
+    const COLORMAP_URL      = "{% url 'islam:viewer_colormap'       project.pk %}";
+    const BUILD_SEQ_URL     = "{% url 'islam:viewer_build_sequence' project.pk %}";
+    const TIMELINE_URL      = "{% url 'islam:viewer_timeline'       project.pk %}";
+    const ENTITY_TYPES_URL  = "{% url 'islam:viewer_entity_types'   project.pk %}";
+    const SPATIAL_TREE_URL  = "{% url 'islam:viewer_spatial_tree'   project.pk %}";
+    const CSRF_TOKEN        = "{{ csrf_token }}";
 
     const container  = document.getElementById("ifc-container");
     const loading    = document.getElementById("viewer-loading");
@@ -330,6 +486,13 @@
             loading.classList.add("d-none");
             resetAllColors();
             _initSelector();
+            _initViewControls();
+            _initSelectionSidebar();
+            _initVisibilityPanel();
+            _initSectionBox();
+            _initMeasureTool();
+            _initSpatialTree();
+            _initGhostSlider();
 
         } catch (err) {
             console.error("IFC viewer init failed:", err);
@@ -406,6 +569,17 @@
             const fragment = fragmentIndex.get(expressId);
             if (!fragment) continue;
             fragment.setVisibility(false, [expressId]);
+        }
+    }
+
+    function showGlobalIds(globalIds) {
+        for (const gid of globalIds) {
+            const expressId = globalIdIndex.get(gid);
+            if (expressId === undefined) continue;
+            const fragment = fragmentIndex.get(expressId);
+            if (!fragment) continue;
+            fragment.setVisibility(true, [expressId]);
+            try { fragment.resetColor([expressId]); } catch (_) { /* OBC v1 fallback */ }
         }
     }
 
@@ -734,14 +908,31 @@
         simLegend.classList.add("d-none");
         document.getElementById("colorby-legend").classList.add("d-none");
         document.getElementById("colorby-select").value = "none";
-        _selectedGlobalId = null;
+        _selectedGlobalIds.clear();
+        _updateSelCounter();
         resetAllColors();
+        if (_sectionEnabled) {
+            _disableSectionBox();
+            _sectionEnabled = false;
+            const sb = document.getElementById("sect-toggle-btn");
+            if (sb) sb.style.background = "rgba(255,255,255,0.08)";
+        }
+        _clearMeasurements();
     });
 
-    // ── 10. Element selection — Step 1: click → identify GlobalId ───────
+    // ── 10. Element selection — click → identify GlobalId, multi-select ──
 
-    let _selectedGlobalId = null;
+    const _selectedGlobalIds = new Set();   // replaces single _selectedGlobalId
     const _SEL_COLOR = new THREE.Color('#00BCD4');
+
+    function _updateSelCounter() {
+        const el = document.getElementById("sel-counter");
+        if (!el) return;
+        const n = _selectedGlobalIds.size;
+        el.textContent = n === 0 ? "0 elements selected"
+                       : n === 1 ? "1 element selected"
+                       : `${n} elements selected`;
+    }
 
     function _findGlobalIdFromHit(intersection) {
         if (intersection.instanceId === undefined) return null;
@@ -767,6 +958,8 @@
         canvas.addEventListener('pointermove', () => { _pointerMoved = true; });
 
         canvas.addEventListener('click', (e) => {
+            if (_hitSectionHandle) { _hitSectionHandle = false; return; }
+            if (_measureMode) { _handleMeasureClick(e); return; }
             if (_pointerMoved || !model) return;
             const rect = canvas.getBoundingClientRect();
             mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
@@ -774,25 +967,42 @@
             raycaster.setFromCamera(mouse, world.camera.three);
             const hits = raycaster.intersectObjects(world.scene.three.children, true);
             if (!hits.length) {
-                if (_selectedGlobalId) { resetAllColors(); _selectedGlobalId = null; }
+                if (_selectedGlobalIds.size) {
+                    resetAllColors();
+                    _selectedGlobalIds.clear();
+                    _updateSelCounter();
+                }
                 return;
             }
             const globalId = _findGlobalIdFromHit(hits[0]);
             if (!globalId) return;
             console.log('[selector] clicked globalId:', globalId);
-            if (globalId === _selectedGlobalId) {
-                resetAllColors();
-                _selectedGlobalId = null;
-                return;
+
+            if (e.ctrlKey || e.metaKey) {
+                /* Ctrl/Cmd+Click — toggle element in set */
+                if (_selectedGlobalIds.has(globalId)) {
+                    _selectedGlobalIds.delete(globalId);
+                } else {
+                    _selectedGlobalIds.add(globalId);
+                }
+            } else {
+                /* Regular click — replace selection; deselect if same single element */
+                if (_selectedGlobalIds.size === 1 && _selectedGlobalIds.has(globalId)) {
+                    _selectedGlobalIds.clear();
+                } else {
+                    _selectedGlobalIds.clear();
+                    _selectedGlobalIds.add(globalId);
+                }
             }
-            if (_selectedGlobalId) resetAllColors();
-            _selectedGlobalId = globalId;
-            colorByGlobalIds([globalId], _SEL_COLOR);
+            resetAllColors();
+            if (_selectedGlobalIds.size) colorByGlobalIds([..._selectedGlobalIds], _SEL_COLOR);
+            _updateSelCounter();
         });
 
         canvas.addEventListener('contextmenu', (e) => {
             e.preventDefault();
             if (!model) return;
+            if (_measureMode) return;
             const rect = canvas.getBoundingClientRect();
             mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
             mouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
@@ -801,10 +1011,13 @@
             if (!hits.length) { if (_ctxMenuEl) _ctxMenuEl.style.display = "none"; return; }
             const globalId = _findGlobalIdFromHit(hits[0]);
             if (!globalId) return;
-            if (globalId !== _selectedGlobalId) {
-                if (_selectedGlobalId) resetAllColors();
-                _selectedGlobalId = globalId;
-                colorByGlobalIds([globalId], _SEL_COLOR);
+            /* Right-click on an unselected element: select it alone */
+            if (!_selectedGlobalIds.has(globalId)) {
+                _selectedGlobalIds.clear();
+                _selectedGlobalIds.add(globalId);
+                resetAllColors();
+                colorByGlobalIds([..._selectedGlobalIds], _SEL_COLOR);
+                _updateSelCounter();
             }
             if (!_ctxMenuEl) return;
             const cRect = _ctxMenuEl.parentElement.getBoundingClientRect();
@@ -934,10 +1147,24 @@
         const gid = _ctxMenuEl?.dataset.globalId;
         if (_ctxMenuEl) _ctxMenuEl.style.display = "none";
         if (!gid || !model) return;
-        for (const fragment of model.items) { fragment.setVisibility(false); }
+        resetAllColors();
+        if (_ghostOpacity === 0) {
+            for (const fragment of model.items) fragment.setVisibility(false);
+        } else {
+            const gc = _ghostColorFromPct(_ghostOpacity);
+            for (const fragment of model.items) {
+                fragment.setVisibility(true);
+                fragment.setColor(gc);
+            }
+        }
+        /* Restore the isolated element */
         const expressId = globalIdIndex.get(gid);
         if (expressId !== undefined) {
-            fragmentIndex.get(expressId)?.setVisibility(true, [expressId]);
+            if (_ghostOpacity === 0) {
+                fragmentIndex.get(expressId)?.setVisibility(true, [expressId]);
+            } else {
+                try { fragmentIndex.get(expressId)?.resetColor([expressId]); } catch (_) {}
+            }
         }
         colorByGlobalIds([gid], _SEL_COLOR);
     });
@@ -946,14 +1173,16 @@
         const gid = _ctxMenuEl?.dataset.globalId;
         if (_ctxMenuEl) _ctxMenuEl.style.display = "none";
         if (!gid) return;
-        hideGlobalIds([gid]);
-        if (_selectedGlobalId === gid) _selectedGlobalId = null;
+        ghostOrHideGlobalIds([gid]);
+        _selectedGlobalIds.delete(gid);
+        _updateSelCounter();
     });
 
     document.getElementById("sel-ctx-deselect")?.addEventListener("click", () => {
         if (_ctxMenuEl) _ctxMenuEl.style.display = "none";
         resetAllColors();
-        _selectedGlobalId = null;
+        _selectedGlobalIds.clear();
+        _updateSelCounter();
     });
 
     document.getElementById("sel-props-close")?.addEventListener("click", () => {
@@ -969,6 +1198,860 @@
         if (_ctxMenuEl) _ctxMenuEl.style.display = "none";
         if (_propsPanelEl) _propsPanelEl.style.display = "none";
     });
+
+    // ── 12. View Controls toolbar ────────────────────────────────────────
+
+    function _getSceneBBox() {
+        const bbox = new THREE.Box3();
+        if (!model) return bbox;
+        for (const fragment of model.items) {
+            const mesh = fragment.mesh;
+            if (mesh && mesh.geometry) {
+                mesh.updateMatrixWorld(true);
+                bbox.union(new THREE.Box3().setFromObject(mesh));
+            }
+        }
+        return bbox;
+    }
+
+    function _initViewControls() {
+        const controls = world?.camera?.controls;
+        if (!controls) return;
+
+        /* View preset buttons */
+        document.querySelectorAll(".vctl-btn[data-view]").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const bbox   = _getSceneBBox();
+                const center = new THREE.Vector3();
+                const size   = new THREE.Vector3();
+                if (!bbox.isEmpty()) { bbox.getCenter(center); bbox.getSize(size); }
+                const dist = Math.max(size.x, size.y, size.z, 5) * 2.5;
+
+                switch (btn.dataset.view) {
+                    case "home":
+                        if (!bbox.isEmpty() && typeof controls.fitToBox === "function") {
+                            controls.fitToBox(bbox, true);
+                        } else {
+                            controls.setLookAt(10, 10, 10, 0, 0, 0, true);
+                        }
+                        break;
+                    case "top":
+                        world.camera.three.up.set(0, 0, -1);
+                        controls.setLookAt(
+                            center.x, center.y + dist, center.z,
+                            center.x, center.y, center.z, true);
+                        break;
+                    case "front":
+                        world.camera.three.up.set(0, 1, 0);
+                        controls.setLookAt(
+                            center.x, center.y, center.z + dist,
+                            center.x, center.y, center.z, true);
+                        break;
+                    case "right":
+                        world.camera.three.up.set(0, 1, 0);
+                        controls.setLookAt(
+                            center.x + dist, center.y, center.z,
+                            center.x, center.y, center.z, true);
+                        break;
+                    case "left":
+                        world.camera.three.up.set(0, 1, 0);
+                        controls.setLookAt(
+                            center.x - dist, center.y, center.z,
+                            center.x, center.y, center.z, true);
+                        break;
+                }
+            });
+        });
+
+        /* Projection toggle — uses OBC 2.x projection API if available */
+        let _isOrtho = false;
+        document.getElementById("proj-toggle")?.addEventListener("click", () => {
+            const btn = document.getElementById("proj-toggle");
+            if (world.camera.projection?.set) {
+                _isOrtho = !_isOrtho;
+                world.camera.projection.set(_isOrtho ? "Orthographic" : "Perspective");
+                btn.textContent = _isOrtho ? "Ortho" : "Persp";
+            } else {
+                console.warn("[viewer] Projection toggle: OBC projection API not available in this build.");
+            }
+        });
+
+        /* Zoom buttons — dolly to scaled distance */
+        document.querySelectorAll(".vctl-btn[data-zoom]").forEach(btn => {
+            btn.addEventListener("click", () => {
+                if (!controls) return;
+                const factor = btn.dataset.zoom === "+" ? 0.75 : 1.33;
+                if (typeof controls.dollyTo === "function" && controls.distance != null) {
+                    controls.dollyTo(Math.max(0.5, controls.distance * factor), true);
+                } else if (btn.dataset.zoom === "+" && typeof controls.dollyIn === "function") {
+                    controls.dollyIn(0.5, true);
+                } else if (typeof controls.dollyOut === "function") {
+                    controls.dollyOut(0.5, true);
+                }
+            });
+        });
+    }
+
+    // ── 15. Section Box (clipping planes) ───────────────────────────────
+
+    let _sectionEnabled     = false;
+    let _sectionPlanes      = null;
+    let _sectionHandles     = [];
+    let _activeDrag         = null;
+    let _hitSectionHandle   = false;
+
+    const _HANDLE_COLORS = [0xef4444, 0xef4444, 0x22c55e, 0x22c55e, 0x3b82f6, 0x3b82f6];
+
+    function _enableSectionBox() {
+        const bbox = _getSceneBBox();
+        if (bbox.isEmpty()) return;
+        const min = bbox.min, max = bbox.max;
+        const size = new THREE.Vector3();
+        bbox.getSize(size);
+        const hSize = Math.max(0.05, Math.min(Math.min(size.x, size.y, size.z) * 0.05, 1.5));
+        const hGeo  = new THREE.BoxGeometry(hSize, hSize, hSize);
+
+        _sectionPlanes = [
+            new THREE.Plane(new THREE.Vector3(-1, 0, 0),  max.x),
+            new THREE.Plane(new THREE.Vector3( 1, 0, 0), -min.x),
+            new THREE.Plane(new THREE.Vector3( 0,-1, 0),  max.y),
+            new THREE.Plane(new THREE.Vector3( 0, 1, 0), -min.y),
+            new THREE.Plane(new THREE.Vector3( 0, 0,-1),  max.z),
+            new THREE.Plane(new THREE.Vector3( 0, 0, 1), -min.z),
+        ];
+        world.renderer.three.clippingPlanes = _sectionPlanes;
+
+        const center = new THREE.Vector3();
+        bbox.getCenter(center);
+
+        _sectionHandles = _sectionPlanes.map((plane, i) => {
+            const mat  = new THREE.MeshBasicMaterial({ color: _HANDLE_COLORS[i] });
+            const mesh = new THREE.Mesh(hGeo, mat);
+            /* place handle at the face center on this clipping plane */
+            const t = -plane.constant - plane.normal.dot(center);
+            mesh.position.copy(center).addScaledVector(plane.normal, t);
+            mesh.renderOrder = 999;
+            world.scene.three.add(mesh);
+            return mesh;
+        });
+    }
+
+    function _disableSectionBox() {
+        _sectionHandles.forEach(h => world.scene.three.remove(h));
+        _sectionHandles = [];
+        if (world?.renderer?.three) world.renderer.three.clippingPlanes = [];
+        _sectionPlanes = null;
+    }
+
+    function _initSectionBox() {
+        const btn = document.getElementById("sect-toggle-btn");
+        if (!btn) return;
+
+        btn.addEventListener("click", () => {
+            _sectionEnabled = !_sectionEnabled;
+            btn.style.background = _sectionEnabled
+                ? "rgba(239,68,68,0.35)" : "rgba(255,255,255,0.08)";
+            if (_sectionEnabled) _enableSectionBox();
+            else                  _disableSectionBox();
+        });
+
+        const canvas     = world.renderer.three.domElement;
+        const ray        = new THREE.Raycaster();
+        const mouse      = new THREE.Vector2();
+        const dragPlane  = new THREE.Plane();
+        const dragTarget = new THREE.Vector3();
+        const camDir     = new THREE.Vector3();
+
+        canvas.addEventListener("pointerdown", (e) => {
+            if (!_sectionEnabled || !_sectionHandles.length) return;
+            const rect = canvas.getBoundingClientRect();
+            mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
+            mouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
+            ray.setFromCamera(mouse, world.camera.three);
+            const hits = ray.intersectObjects(_sectionHandles);
+            if (!hits.length) return;
+            _hitSectionHandle = true;
+            const handle   = hits[0].object;
+            const planeIdx = _sectionHandles.indexOf(handle);
+            world.camera.three.getWorldDirection(camDir);
+            dragPlane.setFromNormalAndCoplanarPoint(camDir.clone().negate(), hits[0].point);
+            _activeDrag = { handle, planeIdx };
+            canvas.setPointerCapture(e.pointerId);
+        });
+
+        canvas.addEventListener("pointermove", (e) => {
+            if (!_activeDrag) return;
+            const rect = canvas.getBoundingClientRect();
+            mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
+            mouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
+            ray.setFromCamera(mouse, world.camera.three);
+            if (!ray.ray.intersectPlane(dragPlane, dragTarget)) return;
+
+            const { handle, planeIdx } = _activeDrag;
+            const plane     = _sectionPlanes[planeIdx];
+            const pairConst = _sectionPlanes[planeIdx ^ 1].constant;
+            const MIN_GAP   = 0.05;
+
+            /* new constant = -dot(normal, dragTarget), clamped against paired plane */
+            let newConst = -plane.normal.dot(dragTarget);
+            newConst = Math.max(newConst, MIN_GAP - pairConst);
+            plane.constant = newConst;
+
+            /* move handle to new face-center position */
+            const bbox = _getSceneBBox();
+            const center = new THREE.Vector3();
+            bbox.getCenter(center);
+            const t = -newConst - plane.normal.dot(center);
+            handle.position.copy(center).addScaledVector(plane.normal, t);
+        });
+
+        canvas.addEventListener("pointerup", (e) => {
+            if (!_activeDrag) return;
+            canvas.releasePointerCapture(e.pointerId);
+            _activeDrag = null;
+        });
+    }
+
+    // ── 14. Visibility Controls panel ───────────────────────────────────
+
+    window._visibilityState = { hidden: { level: {}, type: {} } };
+    const _visCache = { level: {}, type: {} };  // lazy cache: name → [globalId, ...]
+
+    function _ghostColor(sliderVal) {
+        /* Map slider 1-50 to a dark gray (nearly black → dark grey) */
+        const t = Math.max(1, sliderVal) / 50;
+        const v = t * 0.15;
+        return new THREE.Color(v, v, v);
+    }
+
+    async function _fetchVisCache(kind, name) {
+        if (_visCache[kind][name]) return _visCache[kind][name];
+        const param = kind === "level" ? "level" : "type";
+        try {
+            const resp = await fetch(`${ENTITY_TYPES_URL}?${param}=${encodeURIComponent(name)}`);
+            const data = await resp.json();
+            _visCache[kind][name] = data.global_ids || [];
+        } catch (_) {
+            _visCache[kind][name] = [];
+        }
+        return _visCache[kind][name];
+    }
+
+    function _applyHideCategory(gids, sliderVal) {
+        /* If vis panel slider is 0, fall back to global ghost opacity from toolbar */
+        const effective = sliderVal > 0 ? sliderVal : _ghostOpacity;
+        if (effective === 0) {
+            hideGlobalIds(gids);
+        } else {
+            for (const gid of gids) {
+                const expressId = globalIdIndex.get(gid);
+                if (expressId === undefined) continue;
+                fragmentIndex.get(expressId)?.setVisibility(true, [expressId]);
+            }
+            colorByGlobalIds(gids, sliderVal > 0 ? _ghostColor(sliderVal) : _ghostColorFromPct(_ghostOpacity));
+        }
+    }
+
+    async function _initVisibilityPanel() {
+        const panel      = document.getElementById("visibility-panel");
+        const toggleBtn  = document.getElementById("vis-toggle-btn");
+        const closeSpan  = document.getElementById("vis-close");
+        const levelsDiv  = document.getElementById("vis-levels-list");
+        const typesDiv   = document.getElementById("vis-types-list");
+        const opacitySlider = document.getElementById("vis-opacity");
+        if (!panel) return;
+
+        /* Toggle */
+        function _setPanelVisible(on) {
+            panel.style.display = on ? "block" : "none";
+            if (toggleBtn) toggleBtn.style.background =
+                on ? "rgba(59,130,246,0.35)" : "rgba(255,255,255,0.08)";
+        }
+        toggleBtn?.addEventListener("click", () => _setPanelVisible(panel.style.display === "none"));
+        closeSpan?.addEventListener("click", () => _setPanelVisible(false));
+
+        /* Build a checkbox row for one visibility category */
+        function _mkCheckbox(kind, name) {
+            const row = document.createElement("div");
+            row.style.cssText = "display:flex;align-items:center;gap:6px;margin-bottom:3px;";
+            const cb  = document.createElement("input");
+            cb.type = "checkbox"; cb.checked = true; cb.style.cursor = "pointer";
+            const lbl = document.createElement("label");
+            lbl.textContent = name;
+            lbl.style.cssText = "font-size:11px;color:#e2e8f0;cursor:pointer;user-select:none;";
+            row.appendChild(cb); row.appendChild(lbl);
+
+            cb.addEventListener("change", async () => {
+                const sliderVal = parseInt(opacitySlider?.value ?? 0);
+                const gids = await _fetchVisCache(kind, name);
+                if (!cb.checked) {
+                    window._visibilityState.hidden[kind][name] = true;
+                    _applyHideCategory(gids, sliderVal);
+                } else {
+                    delete window._visibilityState.hidden[kind][name];
+                    showGlobalIds(gids);
+                    /* Restore selection highlight on any restored gids */
+                    const selHit = gids.filter(g => _selectedGlobalIds.has(g));
+                    if (selHit.length) colorByGlobalIds(selHit, _SEL_COLOR);
+                }
+            });
+            return row;
+        }
+
+        /* Populate from backend */
+        try {
+            const resp = await fetch(ENTITY_TYPES_URL);
+            if (resp.ok) {
+                const data = await resp.json();
+                (data.levels || []).forEach(n => levelsDiv?.appendChild(_mkCheckbox("level", n)));
+                (data.types  || []).forEach(n => typesDiv?.appendChild(_mkCheckbox("type",  n)));
+            }
+        } catch (e) { console.warn("[vis] Populate failed:", e); }
+
+        /* Opacity slider — re-apply all currently hidden categories */
+        opacitySlider?.addEventListener("input", async () => {
+            const sliderVal = parseInt(opacitySlider.value);
+            const hidden = window._visibilityState.hidden;
+            for (const name of Object.keys(hidden.level)) {
+                _applyHideCategory(await _fetchVisCache("level", name), sliderVal);
+            }
+            for (const name of Object.keys(hidden.type)) {
+                _applyHideCategory(await _fetchVisCache("type", name), sliderVal);
+            }
+        });
+
+        /* Show All */
+        document.getElementById("vis-show-all")?.addEventListener("click", () => {
+            window._visibilityState.hidden = { level: {}, type: {} };
+            panel.querySelectorAll("input[type=checkbox]").forEach(cb => { cb.checked = true; });
+            if (opacitySlider) opacitySlider.value = "0";
+            resetAllColors();
+            if (_selectedGlobalIds.size) colorByGlobalIds([..._selectedGlobalIds], _SEL_COLOR);
+        });
+
+        /* Hide All */
+        document.getElementById("vis-hide-all")?.addEventListener("click", () => {
+            panel.querySelectorAll("input[type=checkbox]").forEach(cb => {
+                if (cb.checked) { cb.checked = false; cb.dispatchEvent(new Event("change")); }
+            });
+        });
+    }
+
+    // ── 13. Selection sidebar ────────────────────────────────────────────
+
+    async function _initSelectionSidebar() {
+        const sidebar = document.getElementById("selection-sidebar");
+        const toggle  = document.getElementById("sel-sidebar-toggle");
+        if (!sidebar || !toggle) return;
+
+        /* Toggle open/closed */
+        let _sidebarOpen = false;
+        toggle.addEventListener("click", () => {
+            _sidebarOpen = !_sidebarOpen;
+            sidebar.style.transform = _sidebarOpen ? "translateX(0)" : "translateX(-220px)";
+            toggle.style.left       = _sidebarOpen ? "228px" : "8px";
+            if (_sidebarOpen) {
+                /* Collapse tree sidebar when selection opens */
+                const ts = document.getElementById("tree-sidebar");
+                const tt = document.getElementById("tree-toggle");
+                if (ts) ts.style.transform = "translateX(-280px)";
+                if (tt) { tt.style.left = "8px"; tt.style.background = "rgba(0,0,0,0.7)"; }
+            }
+            setTimeout(() => world?.renderer?.resize(), 260);
+        });
+
+        /* Populate dropdowns from backend */
+        try {
+            const resp = await fetch(ENTITY_TYPES_URL);
+            if (resp.ok) {
+                const data = await resp.json();
+                const typeSelect  = document.getElementById("sel-by-type");
+                const levelSelect = document.getElementById("sel-by-level");
+                (data.types  || []).forEach(t => {
+                    const o = document.createElement("option"); o.value = t; o.textContent = t;
+                    typeSelect.appendChild(o);
+                });
+                (data.levels || []).forEach(l => {
+                    const o = document.createElement("option"); o.value = l; o.textContent = l;
+                    levelSelect.appendChild(o);
+                });
+            }
+        } catch (e) {
+            console.warn("[sidebar] Entity types fetch failed:", e);
+        }
+
+        /* Select All */
+        document.getElementById("sel-all-btn")?.addEventListener("click", () => {
+            if (!model) return;
+            _selectedGlobalIds.clear();
+            for (const gid of globalIdIndex.keys()) _selectedGlobalIds.add(gid);
+            resetAllColors();
+            colorByGlobalIds([..._selectedGlobalIds], _SEL_COLOR);
+            _updateSelCounter();
+        });
+
+        /* Deselect All */
+        document.getElementById("sel-clear-btn")?.addEventListener("click", () => {
+            _selectedGlobalIds.clear();
+            resetAllColors();
+            _updateSelCounter();
+        });
+
+        /* Select by Type */
+        document.getElementById("sel-type-btn")?.addEventListener("click", async () => {
+            const type = document.getElementById("sel-by-type")?.value;
+            if (!type) return;
+            try {
+                const resp = await fetch(`${ENTITY_TYPES_URL}?type=${encodeURIComponent(type)}`);
+                const data = await resp.json();
+                _selectedGlobalIds.clear();
+                (data.global_ids || []).forEach(g => _selectedGlobalIds.add(g));
+                resetAllColors();
+                if (_selectedGlobalIds.size) colorByGlobalIds([..._selectedGlobalIds], _SEL_COLOR);
+                _updateSelCounter();
+            } catch (e) { console.warn("[sidebar] Type select failed:", e); }
+        });
+
+        /* Select by Level */
+        document.getElementById("sel-level-btn")?.addEventListener("click", async () => {
+            const level = document.getElementById("sel-by-level")?.value;
+            if (!level) return;
+            try {
+                const resp = await fetch(`${ENTITY_TYPES_URL}?level=${encodeURIComponent(level)}`);
+                const data = await resp.json();
+                _selectedGlobalIds.clear();
+                (data.global_ids || []).forEach(g => _selectedGlobalIds.add(g));
+                resetAllColors();
+                if (_selectedGlobalIds.size) colorByGlobalIds([..._selectedGlobalIds], _SEL_COLOR);
+                _updateSelCounter();
+            } catch (e) { console.warn("[sidebar] Level select failed:", e); }
+        });
+    }
+
+    // ── 17. Spatial Structure Tree ───────────────────────────────────────
+
+    function _initSpatialTree() {
+        const sidebar = document.getElementById("tree-sidebar");
+        const toggle  = document.getElementById("tree-toggle");
+        const body    = document.getElementById("tree-body");
+        const search  = document.getElementById("tree-search");
+        if (!sidebar || !toggle) return;
+
+        let _treeOpen = false;
+        let _loaded   = false;
+        let _treeData = [];
+
+        function _setTreeOpen(on) {
+            _treeOpen = on;
+            sidebar.style.transform = on ? "translateX(0)" : "translateX(-280px)";
+            toggle.style.left       = on ? "288px" : "8px";
+            toggle.style.background = on ? "rgba(34,197,94,0.3)" : "rgba(0,0,0,0.7)";
+            if (on) {
+                /* Collapse selection sidebar */
+                const ss = document.getElementById("selection-sidebar");
+                const st = document.getElementById("sel-sidebar-toggle");
+                if (ss) ss.style.transform = "translateX(-220px)";
+                if (st) st.style.left = "8px";
+            }
+            setTimeout(() => world?.renderer?.resize(), 260);
+        }
+
+        toggle.addEventListener("click", () => {
+            const opening = !_treeOpen;
+            _setTreeOpen(opening);
+            if (opening && !_loaded) { _loaded = true; _loadTree(); }
+        });
+
+        async function _loadTree() {
+            if (!body) return;
+            body.innerHTML = '<div style="color:#94a3b8;padding:8px 0;">Loading…</div>';
+            try {
+                const resp = await fetch(SPATIAL_TREE_URL);
+                if (!resp.ok) throw new Error("fetch failed");
+                const data = await resp.json();
+                _treeData = data.tree || [];
+                _renderTree("", _treeData);
+            } catch (e) {
+                body.innerHTML = '<div style="color:#ef4444;padding:8px 0;">Failed to load structure.</div>';
+            }
+        }
+
+        search?.addEventListener("input", () => {
+            _renderTree(search.value.trim().toLowerCase(), _treeData);
+        });
+
+        function _renderTree(filter, treeData) {
+            if (!body) return;
+            body.innerHTML = "";
+            if (!treeData.length) {
+                body.innerHTML = '<div style="color:#94a3b8;padding:4px 0;">No spatial data.</div>';
+                return;
+            }
+            for (const storey of treeData) {
+                const el = _makeStoreyNode(storey, filter);
+                if (el) body.appendChild(el);
+            }
+        }
+
+        function _mkHiBtn(symbol, color, title) {
+            const btn = document.createElement("button");
+            btn.textContent = symbol;
+            btn.title = title;
+            btn.style.cssText = `background:none;border:none;color:${color};cursor:pointer;` +
+                                "font-size:12px;padding:0 2px;flex-shrink:0;line-height:1;";
+            return btn;
+        }
+
+        function _makeStoreyNode(storey, filter) {
+            const childWrap = document.createElement("div");
+            childWrap.style.cssText =
+                "display:none;padding-left:12px;" +
+                "border-left:1px solid rgba(255,255,255,0.06);margin-left:5px;";
+
+            let matchCount = 0;
+            for (const tg of storey.children) {
+                const tgEl = _makeTypeNode(tg, filter);
+                if (tgEl) { childWrap.appendChild(tgEl); matchCount++; }
+            }
+
+            const hasFilter = !!filter;
+            if (hasFilter && !matchCount && !storey.name.toLowerCase().includes(filter)) {
+                return null;
+            }
+
+            const wrap  = document.createElement("div");
+            wrap.style.cssText = "margin-bottom:3px;";
+
+            const arrow = document.createElement("span");
+            arrow.textContent = "▶";
+            arrow.style.cssText =
+                "font-size:9px;color:#64748b;transition:transform .15s;" +
+                "flex-shrink:0;display:inline-block;margin-right:4px;";
+
+            const hdr = document.createElement("div");
+            hdr.style.cssText = "display:flex;align-items:center;cursor:pointer;padding:3px 2px;border-radius:3px;";
+
+            const nameSpan = document.createElement("span");
+            nameSpan.textContent = storey.name;
+            nameSpan.style.cssText = "color:#e2e8f0;font-weight:600;flex:1;font-size:12px;";
+
+            const cntSpan = document.createElement("span");
+            cntSpan.textContent = storey.count;
+            cntSpan.style.cssText = "color:#64748b;font-size:10px;margin-right:4px;";
+
+            const hiBtn = _mkHiBtn("◎", "#3b82f6", "Highlight level");
+            hiBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                resetAllColors();
+                colorByGlobalIds(storey.global_ids, C.highlight);
+            });
+
+            hdr.appendChild(arrow); hdr.appendChild(nameSpan);
+            hdr.appendChild(cntSpan); hdr.appendChild(hiBtn);
+            hdr.addEventListener("mouseenter", () => { hdr.style.background = "rgba(255,255,255,0.04)"; });
+            hdr.addEventListener("mouseleave", () => { hdr.style.background = ""; });
+
+            let expanded = hasFilter && matchCount > 0;
+            if (expanded) {
+                childWrap.style.display = "block";
+                arrow.style.transform = "rotate(90deg)";
+            }
+
+            hdr.addEventListener("click", () => {
+                expanded = !expanded;
+                childWrap.style.display = expanded ? "block" : "none";
+                arrow.style.transform   = expanded ? "rotate(90deg)" : "";
+            });
+
+            wrap.appendChild(hdr);
+            wrap.appendChild(childWrap);
+            return wrap;
+        }
+
+        function _makeTypeNode(tg, filter) {
+            let visChildren = tg.children;
+            if (filter) {
+                const typeMatch = tg.name.toLowerCase().includes(filter);
+                visChildren = typeMatch
+                    ? tg.children
+                    : tg.children.filter(c => (c.name || "").toLowerCase().includes(filter));
+                if (!visChildren.length) return null;
+            }
+
+            const wrap  = document.createElement("div");
+            wrap.style.cssText = "margin-bottom:2px;";
+
+            const arrow = document.createElement("span");
+            arrow.textContent = "▶";
+            arrow.style.cssText =
+                "font-size:8px;color:#475569;transition:transform .15s;" +
+                "flex-shrink:0;display:inline-block;margin-right:4px;";
+
+            const hdr = document.createElement("div");
+            hdr.style.cssText = "display:flex;align-items:center;cursor:pointer;padding:2px 2px;border-radius:2px;";
+
+            const lbl = document.createElement("span");
+            lbl.textContent = tg.name;
+            lbl.style.cssText = "color:#94a3b8;flex:1;";
+
+            const cnt = document.createElement("span");
+            cnt.textContent = tg.count;
+            cnt.style.cssText = "color:#475569;font-size:10px;margin-right:4px;";
+
+            const hiBtn = _mkHiBtn("◎", "#22c55e", "Highlight type in level");
+            hiBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                resetAllColors();
+                colorByGlobalIds(tg.global_ids, C.highlight);
+            });
+
+            hdr.appendChild(arrow); hdr.appendChild(lbl);
+            hdr.appendChild(cnt);   hdr.appendChild(hiBtn);
+            hdr.addEventListener("mouseenter", () => { hdr.style.background = "rgba(255,255,255,0.03)"; });
+            hdr.addEventListener("mouseleave", () => { hdr.style.background = ""; });
+
+            const childWrap = document.createElement("div");
+            childWrap.style.cssText = "display:none;padding-left:10px;";
+
+            let expanded = !!filter;
+            if (expanded) {
+                childWrap.style.display = "block";
+                arrow.style.transform = "rotate(90deg)";
+            }
+
+            for (const child of visChildren) {
+                childWrap.appendChild(_makeLeafNode(child, tg.name));
+            }
+            if (!filter && tg.count > tg.children.length) {
+                const more = document.createElement("div");
+                more.textContent = `+ ${tg.count - tg.children.length} more`;
+                more.style.cssText = "color:#475569;font-size:10px;padding:1px 0;";
+                childWrap.appendChild(more);
+            }
+
+            hdr.addEventListener("click", () => {
+                expanded = !expanded;
+                childWrap.style.display = expanded ? "block" : "none";
+                arrow.style.transform   = expanded ? "rotate(90deg)" : "";
+            });
+
+            wrap.appendChild(hdr);
+            wrap.appendChild(childWrap);
+            return wrap;
+        }
+
+        function _makeLeafNode(child, ifcType) {
+            const row = document.createElement("div");
+            row.textContent = child.name;
+            row.title = `${child.name} (${ifcType}) — ${child.globalId}`;
+            row.style.cssText =
+                "padding:2px 2px;color:#cbd5e1;cursor:pointer;white-space:nowrap;" +
+                "overflow:hidden;text-overflow:ellipsis;border-radius:2px;";
+            row.addEventListener("mouseenter", () => {
+                row.style.background = "rgba(255,255,255,0.06)";
+                row.style.color = "#fff";
+            });
+            row.addEventListener("mouseleave", () => {
+                row.style.background = "";
+                row.style.color = "#cbd5e1";
+            });
+            row.addEventListener("click", () => {
+                _selectedGlobalIds.clear();
+                _selectedGlobalIds.add(child.globalId);
+                resetAllColors();
+                colorByGlobalIds([child.globalId], _SEL_COLOR);
+                _updateSelCounter();
+            });
+            return row;
+        }
+    }
+
+    // ── 16. Measurement Tool ─────────────────────────────────────────────
+
+    let _measureMode    = false;
+    let _measurePtA     = null;
+    let _measureMkrA    = null;
+    const _measurements = [];
+    let _measureLabelLoopRunning = false;
+
+    function _markerRadius(point) {
+        const camDist = point.distanceTo(world.camera.three.position);
+        return Math.min(Math.max(camDist * 0.008, 0.02), 0.5);
+    }
+
+    function _makeSphere(point, color) {
+        const r    = _markerRadius(point);
+        const mesh = new THREE.Mesh(
+            new THREE.SphereGeometry(r, 8, 8),
+            new THREE.MeshBasicMaterial({ color, depthTest: false }),
+        );
+        mesh.position.copy(point);
+        mesh.renderOrder = 999;
+        world.scene.three.add(mesh);
+        return mesh;
+    }
+
+    function _makeLine(a, b) {
+        const geo  = new THREE.BufferGeometry().setFromPoints([a, b]);
+        const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffd700, depthTest: false }));
+        line.renderOrder = 999;
+        world.scene.three.add(line);
+        return line;
+    }
+
+    function _makeMeasureLabel(text) {
+        const el = document.createElement("div");
+        el.textContent = text;
+        el.style.cssText =
+            "position:absolute;transform:translate(-50%,-120%);background:rgba(0,0,0,0.8);" +
+            "color:#ffd700;padding:2px 7px;border-radius:3px;font-size:11px;font-weight:600;" +
+            "white-space:nowrap;pointer-events:none;border:1px solid rgba(255,215,0,0.4);";
+        document.getElementById("measure-labels")?.appendChild(el);
+        return el;
+    }
+
+    function _worldToScreen(pos) {
+        if (!world?.camera?.three || !world?.renderer?.three) return null;
+        const v = pos.clone().project(world.camera.three);
+        if (v.z > 1) return null;
+        const canvas = world.renderer.three.domElement;
+        return {
+            x: (v.x + 1) / 2 * canvas.clientWidth,
+            y: (-v.y + 1) / 2 * canvas.clientHeight,
+        };
+    }
+
+    function _updateMeasureLabels() {
+        for (const m of _measurements) {
+            if (!m.labelEl || !m.midpoint) continue;
+            const s = _worldToScreen(m.midpoint);
+            if (!s) { m.labelEl.style.display = "none"; continue; }
+            m.labelEl.style.display = "block";
+            m.labelEl.style.left = s.x + "px";
+            m.labelEl.style.top  = s.y + "px";
+        }
+    }
+
+    function _startLabelLoop() {
+        if (_measureLabelLoopRunning) return;
+        _measureLabelLoopRunning = true;
+        (function tick() {
+            if (!_measurements.length) { _measureLabelLoopRunning = false; return; }
+            _updateMeasureLabels();
+            requestAnimationFrame(tick);
+        })();
+    }
+
+    function _clearMeasurements() {
+        for (const m of _measurements) {
+            if (m.mkrA)    world.scene.three.remove(m.mkrA);
+            if (m.mkrB)    world.scene.three.remove(m.mkrB);
+            if (m.line)    world.scene.three.remove(m.line);
+            if (m.labelEl) m.labelEl.remove();
+        }
+        _measurements.length = 0;
+        if (_measureMkrA) { world.scene.three.remove(_measureMkrA); _measureMkrA = null; }
+        _measurePtA = null;
+    }
+
+    function _handleMeasureClick(e) {
+        if (!model) return;
+        const canvas = world.renderer.three.domElement;
+        const rect   = canvas.getBoundingClientRect();
+        const mouse  = new THREE.Vector2(
+             ((e.clientX - rect.left) / rect.width)  * 2 - 1,
+            -((e.clientY - rect.top)  / rect.height) * 2 + 1,
+        );
+        const ray = new THREE.Raycaster();
+        ray.setFromCamera(mouse, world.camera.three);
+        const hits = ray.intersectObjects(world.scene.three.children, true);
+        const modelHit = hits.find(h =>
+            !_sectionHandles.includes(h.object) &&
+            !_measurements.some(m => m.mkrA === h.object || m.mkrB === h.object) &&
+            h.object !== _measureMkrA
+        );
+        if (!modelHit) return;
+
+        const pt = modelHit.point.clone();
+
+        if (!_measurePtA) {
+            _measurePtA  = pt;
+            _measureMkrA = _makeSphere(pt, 0x22c55e);
+        } else {
+            const ptA    = _measurePtA;
+            const ptB    = pt;
+            const dist   = ptA.distanceTo(ptB);
+            const distMm = Math.round(dist * 1000);
+            const distM  = dist.toFixed(3);
+            const text   = `${distMm.toLocaleString()} mm (${distM} m)`;
+
+            const mkrA    = _measureMkrA;
+            const mkrB    = _makeSphere(ptB, 0xef4444);
+            const line    = _makeLine(ptA, ptB);
+            const midpt   = ptA.clone().lerp(ptB, 0.5);
+            const labelEl = _makeMeasureLabel(text);
+
+            _measurements.push({ mkrA, mkrB, line, midpoint: midpt, labelEl });
+            _startLabelLoop();
+
+            _measurePtA  = null;
+            _measureMkrA = null;
+        }
+    }
+
+    function _initMeasureTool() {
+        const btn      = document.getElementById("meas-toggle-btn");
+        const clearBtn = document.getElementById("meas-clear-btn");
+        if (!btn) return;
+
+        btn.addEventListener("click", () => {
+            _measureMode = !_measureMode;
+            btn.style.background = _measureMode ? "rgba(255,215,0,0.3)" : "rgba(255,255,255,0.08)";
+            if (!_measureMode && _measureMkrA) {
+                world.scene.three.remove(_measureMkrA);
+                _measureMkrA = null;
+                _measurePtA  = null;
+            }
+            world.renderer.three.domElement.style.cursor = _measureMode ? "crosshair" : "";
+        });
+
+        clearBtn?.addEventListener("click", () => { _clearMeasurements(); });
+    }
+
+    // ── 18. Ghosting mode ────────────────────────────────────────────────
+
+    let _ghostOpacity = 10;   /* 0–30; 0=fully hidden, >0=ghost (% brightness) */
+
+    function _ghostColorFromPct(pct) {
+        const v = (pct / 30) * 0.18;
+        return new THREE.Color(v, v, v);
+    }
+
+    function ghostOrHideGlobalIds(gids) {
+        if (_ghostOpacity === 0) {
+            hideGlobalIds(gids);
+            return;
+        }
+        const gc = _ghostColorFromPct(_ghostOpacity);
+        for (const gid of gids) {
+            const expressId = globalIdIndex.get(gid);
+            if (expressId === undefined) continue;
+            const fragment = fragmentIndex.get(expressId);
+            if (!fragment) continue;
+            fragment.setVisibility(true, [expressId]);
+        }
+        colorByGlobalIds(gids, gc);
+    }
+
+    function _initGhostSlider() {
+        const slider = document.getElementById("ghost-opacity-slider");
+        const valEl  = document.getElementById("ghost-opacity-val");
+        if (!slider) return;
+        slider.addEventListener("input", () => {
+            _ghostOpacity = parseInt(slider.value);
+            if (valEl) valEl.textContent = _ghostOpacity + "%";
+        });
+    }
 
     init();
     </script>
