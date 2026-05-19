@@ -61,6 +61,8 @@
         <button class="vctl-btn" data-view="right" title="Right View">→</button>
         <button class="vctl-btn" data-view="left"  title="Left View">←</button>
         <div style="width:1px;height:16px;background:rgba(255,255,255,0.2);margin:0 4px;"></div>
+        <button id="proj-toggle" class="vctl-btn" title="Toggle Perspective/Orthographic"
+                style="min-width:48px;">Persp</button>
         <button id="vis-toggle-btn" class="vctl-btn" title="Visibility Controls"
                 style="font-size:12px;">👁 Vis</button>
         <button id="sect-toggle-btn" class="vctl-btn" title="Section Box — clip model with 6 planes"
@@ -424,7 +426,7 @@
             world = worlds.create();
             world.scene    = new OBC.SimpleScene(components);
             world.renderer = new OBC.SimpleRenderer(components, container);
-            world.camera   = new OBC.SimpleCamera(components);
+            world.camera   = new OBC.OrthoPerspectiveCamera(components);
             components.init();
             world.scene.setup();
 
@@ -1194,6 +1196,21 @@
                 }
             });
         });
+
+        /* Projection toggle — OrthoPerspectiveCamera native API */
+        const projBtn = document.getElementById("proj-toggle");
+        if (projBtn && world.camera.projection) {
+            world.camera.projection.onChanged.add(() => {
+                const isOrtho = world.camera.projection.current === "Orthographic";
+                projBtn.textContent   = isOrtho ? "Ortho" : "Persp";
+                projBtn.style.outline = isOrtho ? "1px solid rgba(59,130,246,0.7)" : "";
+                projBtn.disabled      = false;
+            });
+            projBtn.addEventListener("click", async () => {
+                projBtn.disabled = true;
+                await world.camera.projection.toggle();
+            });
+        }
     }
 
     // ── 15. Section Box (clipping planes) ───────────────────────────────
@@ -1912,35 +1929,42 @@
         ];
     }
 
-    function _snapToBBox(hit) {
-        if (!hit.object?.geometry) return { point: hit.point.clone(), snapType: null };
+    function _snapToInstance(intersection) {
+        const mesh       = intersection.object;
+        const instanceId = intersection.instanceId;
 
-        /* Only check the single hit mesh — avoids iterating all 6000+ elements */
-        const bbox      = new THREE.Box3().setFromObject(hit.object);
-        const threshold = hit.distance * 0.02;
+        if (instanceId === undefined || !mesh.isInstancedMesh)
+            return { point: intersection.point.clone(), type: 'free' };
 
-        /* Priority 1: corners */
-        let best = null, bestD = threshold;
-        for (const corner of _getBBoxCorners(bbox)) {
-            const d = corner.distanceTo(hit.point);
-            if (d < bestD) { bestD = d; best = corner; }
+        /* Get this instance's world matrix */
+        const matrix = new THREE.Matrix4();
+        mesh.getMatrixAt(instanceId, matrix);
+
+        /* Transform the geometry's local bbox into world space */
+        if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+        const localBBox = mesh.geometry.boundingBox.clone();
+        localBBox.applyMatrix4(matrix);
+
+        const camDist   = world.camera.three.position.distanceTo(intersection.point);
+        const threshold = camDist * 0.03;
+
+        let best = null, bestDist = Infinity;
+
+        /* Priority 1: 8 corners */
+        for (const c of _getBBoxCorners(localBBox)) {
+            const d = c.distanceTo(intersection.point);
+            if (d < threshold && d < bestDist) { bestDist = d; best = c; }
         }
-        if (best) return { point: best, snapType: 'corner' };
+        if (best) return { point: best, type: 'corner' };
 
-        /* Priority 2: edge midpoints */
-        bestD = threshold;
-        for (const mid of _getBBoxEdgeMidpoints(bbox)) {
-            const d = mid.distanceTo(hit.point);
-            if (d < bestD) { bestD = d; best = mid; }
+        /* Priority 2: 12 edge midpoints */
+        for (const e of _getBBoxEdgeMidpoints(localBBox)) {
+            const d = e.distanceTo(intersection.point);
+            if (d < threshold && d < bestDist) { bestDist = d; best = e; }
         }
-        if (best) return { point: best, snapType: 'edge' };
+        if (best) return { point: best, type: 'edge' };
 
-        /* Priority 3: bbox centre */
-        const center = new THREE.Vector3();
-        bbox.getCenter(center);
-        if (center.distanceTo(hit.point) < threshold) return { point: center, snapType: 'face' };
-
-        return { point: hit.point.clone(), snapType: null };
+        return { point: intersection.point.clone(), type: 'free' };
     }
 
     function _handleMeasureClick(e) {
@@ -1969,7 +1993,7 @@
                 h.object !== _measureMkrA
             );
             if (!modelHit) return;
-            pt = _snapToBBox(modelHit).point;
+            pt = _snapToInstance(modelHit).point;
         }
 
         if (!_measurePtA) {
@@ -2070,9 +2094,9 @@
                 console.log('[AXIS] hit.point x=', hit.point.x.toFixed(3), ' y=', hit.point.y.toFixed(3), ' z=', hit.point.z.toFixed(3));
 
             let _snapResult;
-            try { _snapResult = _snapToBBox(hit); }
-            catch (err) { console.warn('[SNAP] _snapToBBox failed:', err); _snapResult = { point: hit.point.clone(), snapType: null }; }
-            const { point: snapPt, snapType } = _snapResult;
+            try { _snapResult = _snapToInstance(hit); }
+            catch (err) { console.warn('[SNAP] _snapToInstance failed:', err); _snapResult = { point: hit.point.clone(), type: 'free' }; }
+            const { point: snapPt, type: snapType } = _snapResult;
             const axisMode = document.getElementById("meas-axis-select")?.value ?? "3d";
 
             /* Axis projection — constrain snap point to the chosen axis through ptA */
@@ -2100,11 +2124,10 @@
             _snapIndicator.scale.setScalar(_snapR);
             _snapIndicator.position.copy(effectivePt);
             _snapIndicator.lookAt(world.camera.three.position);  // billboard: ring normal faces camera
-            /* Yellow = corner, cyan = edge midpoint, white = bbox centre, grey = free float */
+            /* Yellow = corner snap, cyan = edge midpoint snap, grey = free float */
             _snapIndicator.material.color.setHex(
                 snapType === 'corner' ? 0xffd700 :
-                snapType === 'edge'   ? 0x00ffff :
-                snapType === 'face'   ? 0xffffff : 0x888888
+                snapType === 'edge'   ? 0x00ffff : 0x555555
             );
 
             /* Axis guide rail — colored line along the constrained axis from ptA.
