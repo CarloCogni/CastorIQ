@@ -2089,10 +2089,6 @@
 
             if (!hit) { _clearMeasurePreview(); return; }
 
-            /* [AXIS DEBUG] Log hit point every 30 events — move mouse up/down to see which coordinate changes */
-            if (!((_axisDbgN = ((_axisDbgN ?? 0) + 1)) % 30))
-                console.log('[AXIS] hit.point x=', hit.point.x.toFixed(3), ' y=', hit.point.y.toFixed(3), ' z=', hit.point.z.toFixed(3));
-
             let _snapResult;
             try { _snapResult = _snapToInstance(hit); }
             catch (err) { console.warn('[SNAP] _snapToInstance failed:', err); _snapResult = { point: hit.point.clone(), type: 'free' }; }
