@@ -280,6 +280,9 @@ class ElementPropertiesView(ProjectAccessMixin, View):
             for b in bindings
         ]
 
+        # Type.* keys duplicate instance-level properties (15/16 identical values).
+        filtered_props = {k: v for k, v in entity.properties.items() if not k.startswith("Type.")}
+
         return JsonResponse(
             {
                 "found": True,
@@ -289,8 +292,7 @@ class ElementPropertiesView(ProjectAccessMixin, View):
                 "ifc_description": entity.ifc_description,
                 "tag": entity.tag,
                 "location": location,
-                "properties": entity.properties,
-                "element_type_name": entity.element_type.name if entity.element_type_id else None,
+                "properties": filtered_props,
                 "linked_tasks": linked_tasks,
             }
         )
