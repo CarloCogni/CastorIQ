@@ -476,6 +476,44 @@ function _renderProps(data) {
         }
         html += `</table>`;
     }
+
+    /* ── 4D linked tasks ─────────────────────────────────────────────── */
+    const _4dTasks = data.linked_tasks || [];
+    const _SC = {
+        complete: { icon: "✅", color: "#10B981", label: "complete" },
+        active:   { icon: "🔄", color: "#185FA5", label: "active"   },
+        delayed:  { icon: "⚠️", color: "#EF4444", label: "delayed"  },
+        planned:  { icon: "⏳", color: "#94a3b8", label: "planned"  },
+    };
+    const _fmtD = (iso) => iso
+        ? new Date(iso + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })
+        : "—";
+
+    html += `<div style="border-top:1px solid #334155;margin-top:8px;padding-top:5px;
+                          color:#94a3b8;font-size:0.73rem;font-weight:600;">4D</div>`;
+
+    if (!_4dTasks.length) {
+        html += `<div style="font-size:0.74rem;color:#f59e0b;padding:4px 0;">
+            ⚠️ No linked tasks — run AutoLink in TimeLiner → Attach</div>`;
+    } else {
+        html += `<div style="font-size:0.74rem;color:#94a3b8;padding:2px 0 4px;">
+            🔗 ${_4dTasks.length} linked task${_4dTasks.length === 1 ? "" : "s"}</div>`;
+        _4dTasks.forEach((t, i) => {
+            const last    = i === _4dTasks.length - 1;
+            const cfg     = _SC[t.status] || _SC.planned;
+            const code    = t.activity_code ? `${_esc(t.activity_code)} — ` : "";
+            const planned = `${_fmtD(t.planned_start)} → ${_fmtD(t.planned_end)}`;
+            const actual  = t.actual_start
+                ? ` | Actual: ${_fmtD(t.actual_start)} → ${_fmtD(t.actual_end)}`
+                : "";
+            html += `<div style="font-size:0.74rem;padding:2px 0;">
+                <span style="color:#475569;">${last ? "└──" : "├──"}</span>
+                <span style="color:${cfg.color};margin:0 3px;">[${cfg.label} ${cfg.icon}]</span>
+                <span>${code}${_esc(t.name)}</span></div>
+            <div style="font-size:0.71rem;color:#64748b;padding-left:22px;margin-bottom:2px;">
+                Planned: ${planned}${actual}</div>`;
+        });
+    }
     return html;
 }
 

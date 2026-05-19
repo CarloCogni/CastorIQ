@@ -255,6 +255,31 @@ class ElementPropertiesView(ProjectAccessMixin, View):
         if entity.spatial_container_id and entity.spatial_container.entity_id:
             location = entity.spatial_container.entity.name or None
 
+        from islam.scheduling.models import TaskEntityBinding
+
+        bindings = (
+            TaskEntityBinding.objects.filter(
+                entity_global_id=global_id,
+                task__project=project,
+            )
+            .select_related("task")
+            .order_by("task__start_date")
+        )
+        linked_tasks = [
+            {
+                "activity_code": b.task.activity_code,
+                "name": b.task.name,
+                "status": b.task.status,
+                "planned_start": b.task.start_date.isoformat() if b.task.start_date else None,
+                "planned_end": b.task.end_date.isoformat() if b.task.end_date else None,
+                "actual_start": b.task.actual_start.isoformat() if b.task.actual_start else None,
+                "actual_end": b.task.actual_end.isoformat() if b.task.actual_end else None,
+                "stage": b.task.stage,
+                "sub_stage": b.task.sub_stage,
+            }
+            for b in bindings
+        ]
+
         return JsonResponse(
             {
                 "found": True,
@@ -266,6 +291,7 @@ class ElementPropertiesView(ProjectAccessMixin, View):
                 "location": location,
                 "properties": entity.properties,
                 "element_type_name": entity.element_type.name if entity.element_type_id else None,
+                "linked_tasks": linked_tasks,
             }
         )
 
