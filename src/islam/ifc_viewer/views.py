@@ -604,8 +604,17 @@ def _month_ticks(start: date, end: date):
         d = date(d.year + 1, 1, 1) if d.month == 12 else date(d.year, d.month + 1, 1)
 
 
-def generate_gantt_svg(tasks: list, width: int = 1100, row_h: int = 26) -> str:
-    """Return a self-contained SVG Gantt chart from Task objects."""
+def generate_gantt_svg(
+    tasks: list,
+    deps: list | None = None,
+    width: int = 1100,
+    row_h: int = 26,
+) -> str:
+    """Return a self-contained SVG Gantt chart from Task objects.
+
+    deps: list of {pred: activity_code, succ: activity_code} dicts.
+    Critical-path arrows are drawn red; others gray.
+    """
     HDR_H = 44
     LEFT_W = 280
 
@@ -643,8 +652,13 @@ def generate_gantt_svg(tasks: list, width: int = 1100, row_h: int = 26) -> str:
     p: list[str] = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{svg_h}" '
         'style="font-family:Arial,sans-serif;background:#0f172a;">'
-        f'<defs><clipPath id="lcp"><rect x="0" y="0" width="{LEFT_W - 8}" height="{svg_h}"/>'
-        "</clipPath></defs>",
+        "<defs>"
+        f'<clipPath id="lcp"><rect x="0" y="0" width="{LEFT_W - 8}" height="{svg_h}"/></clipPath>'
+        '<marker id="ar-c" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto">'
+        '<path d="M 0 0 L 5 2.5 L 0 5 Z" fill="#ef4444"/></marker>'
+        '<marker id="ar-d" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto">'
+        '<path d="M 0 0 L 5 2.5 L 0 5 Z" fill="#475569"/></marker>'
+        "</defs>",
     ]
 
     for days_off, _ in _month_ticks(proj_start, proj_end):
@@ -681,6 +695,9 @@ def generate_gantt_svg(tasks: list, width: int = 1100, row_h: int = 26) -> str:
             ' fill="#ef4444" font-size="7" font-weight="700">TODAY</text>'
         )
 
+    pos_map: dict[str, tuple[float, float, int]] = {}
+    crit_map: dict[str, bool] = {}
+
     for i, row in enumerate(rows):
         y = HDR_H + i * row_h
         if row[0] == "group":
@@ -704,6 +721,9 @@ def generate_gantt_svg(tasks: list, width: int = 1100, row_h: int = 26) -> str:
                 continue
             bar_x = LEFT_W + (task.start_date - proj_start).days * ppd
             bar_w = max(3.0, (task.end_date - task.start_date).days * ppd)
+            if task.activity_code:
+                pos_map[task.activity_code] = (bar_x, bar_w, i)
+                crit_map[task.activity_code] = bool(task.is_critical)
             color = _STATUS_BAR_COLOR.get(task.status or "", "#1e3a5f")
             crit = ' stroke="#ef4444" stroke-width="1.5"' if task.is_critical else ""
             p.append(
@@ -718,6 +738,32 @@ def generate_gantt_svg(tasks: list, width: int = 1100, row_h: int = 26) -> str:
                     f'<rect x="{act_x:.1f}" y="{y + 17}" width="{act_w:.1f}" height="5"'
                     ' fill="#22c55e" rx="1" opacity="0.8"/>'
                 )
+
+    if deps and pos_map:
+        for dep in deps[:200]:
+            pred_code = dep.get("pred", "")
+            succ_code = dep.get("succ", "")
+            if pred_code not in pos_map or succ_code not in pos_map:
+                continue
+            pbx, pbw, pi = pos_map[pred_code]
+            sbx, _sbw, si = pos_map[succ_code]
+            is_crit = crit_map.get(pred_code, False) and crit_map.get(succ_code, False)
+            color = "#ef4444" if is_crit else "#475569"
+            sw = "1.5" if is_crit else "1"
+            marker = "url(#ar-c)" if is_crit else "url(#ar-d)"
+            px_coord = pbx + pbw
+            py_coord = HDR_H + pi * row_h + row_h / 2
+            sx_coord = sbx - 2
+            sy_coord = HDR_H + si * row_h + row_h / 2
+            ex = max(px_coord, sx_coord) + 8
+            if abs(py_coord - sy_coord) < 1:
+                d = f"M {px_coord:.1f} {py_coord:.1f} H {sx_coord:.1f}"
+            else:
+                d = f"M {px_coord:.1f} {py_coord:.1f} H {ex:.1f} V {sy_coord:.1f} H {sx_coord:.1f}"
+            p.append(
+                f'<path d="{d}" stroke="{color}" stroke-width="{sw}"'
+                f' fill="none" marker-end="{marker}" opacity="0.7"/>'
+            )
 
     p.append("</svg>")
     return "".join(p)
@@ -819,7 +865,7 @@ class ExportReportView(ProjectAccessMixin, View):
     """GET -- generate and download a standalone HTML stakeholder report."""
 
     def get(self, request, **kwargs: object) -> HttpResponse:
-        from islam.scheduling.models import Task
+        from islam.scheduling.models import Task, TaskDependency
         from islam.scheduling.services.evm import compute_evm, compute_wbs_heatmap
 
         project = self.get_project()
@@ -830,10 +876,23 @@ class ExportReportView(ProjectAccessMixin, View):
             .order_by("stage", "start_date")
         )
 
+        task_pks = {t.pk for t in tasks}
+        raw_deps = TaskDependency.objects.filter(
+            predecessor__project=project, successor__project=project
+        ).select_related("predecessor", "successor")
+        deps = [
+            {"pred": d.predecessor.activity_code, "succ": d.successor.activity_code}
+            for d in raw_deps
+            if d.predecessor.pk in task_pks
+            and d.successor.pk in task_pks
+            and d.predecessor.activity_code
+            and d.successor.activity_code
+        ]
+
         evm = compute_evm(str(project.pk))
         wbs_stages = compute_wbs_heatmap(str(project.pk))
 
-        gantt_svg = generate_gantt_svg(tasks)
+        gantt_svg = generate_gantt_svg(tasks, deps)
         scurve_svg = generate_scurve_svg(evm.get("series", {}) if evm.get("has_data") else {})
 
         total = len(tasks)
