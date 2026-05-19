@@ -382,7 +382,6 @@
     const IFC_URL           = "{{ ifc_file_url }}";
     const FRAG_URL          = "{% url 'islam:viewer_fragments'      project.pk %}";
     const COLORMAP_URL      = "{% url 'islam:viewer_colormap'       project.pk %}";
-    const BUILD_SEQ_URL     = "{% url 'islam:viewer_build_sequence' project.pk %}";
     const TIMELINE_URL      = "{% url 'islam:viewer_timeline'       project.pk %}";
     const ENTITY_TYPES_URL  = "{% url 'islam:viewer_entity_types'   project.pk %}";
     const SPATIAL_TREE_URL  = "{% url 'islam:viewer_spatial_tree'   project.pk %}";
@@ -493,7 +492,6 @@
     async function _saveFragments(components, model) {
         try {
             const fragmentsManager = components.get(OBC.FragmentsManager);
-            console.log("[debug] _saveFragments: globalToExpressIDs.size =", model.globalToExpressIDs.size, "| fragments:", model.items.length);
             const fragBinary = fragmentsManager.export(model);
             const resp = await fetch(FRAG_URL, {
                 method: "POST",
@@ -525,7 +523,6 @@
         } catch (e) {
             console.warn("[simulator] GlobalId index build failed:", e);
         }
-        console.log("[debug] buildIndex complete: globalIdIndex.size =", globalIdIndex.size);
     }
 
     // ── 3. Colour helpers ────────────────────────────────────────────────
@@ -612,7 +609,6 @@
             const data = await resp.json();
             const colormap = data.colormap || {};
             const legend   = data.legend   || [];
-            console.log("[debug] globalIdIndex.size:", globalIdIndex.size, "| colormap entries:", Object.keys(colormap).length);
 
             /* group global_ids by colour hex for efficiency */
             const byHex = {};
