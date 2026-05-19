@@ -1187,8 +1187,23 @@
            and CameraControls.camera setter keeps the controls in sync. */
         let _perspCam = null;   // stored PerspectiveCamera so we can swap back
 
+        /* Animate ortho camera zoom between two values with ease-in-out cubic. */
+        function _animateOrthoZoom(cam, fromZoom, toZoom, duration, onDone) {
+            const start = performance.now();
+            function step(now) {
+                let t = Math.min((now - start) / duration, 1);
+                t = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; // ease-in-out cubic
+                cam.zoom = fromZoom + (toZoom - fromZoom) * t;
+                cam.updateProjectionMatrix();
+                if (t < 1) requestAnimationFrame(step);
+                else { cam.zoom = toZoom; cam.updateProjectionMatrix(); onDone?.(); }
+            }
+            requestAnimationFrame(step);
+        }
+
         document.getElementById("proj-toggle")?.addEventListener("click", async () => {
             const btn = document.getElementById("proj-toggle");
+            if (btn.disabled) return;
             console.log("[PROJ] toggle clicked; world.camera.projection =",
                         world?.camera?.projection ?? "undefined (SimpleCamera — using THREE.js swap)");
 
@@ -1214,6 +1229,7 @@
 
             const size   = world.renderer.getSize();
             const aspect = size.width / size.height;
+            btn.disabled = true;
 
             if (current instanceof THREE.PerspectiveCamera) {
                 /* Perspective → Orthographic — use model bbox for frustum size */
@@ -1232,27 +1248,37 @@
                 const ortho = new THREE.OrthographicCamera(-halfW, halfW, halfH, -halfH, 0.1, maxDim * 10);
                 ortho.position.copy(current.position);
                 ortho.quaternion.copy(current.quaternion);
+                ortho.zoom = 0.25;
                 ortho.updateProjectionMatrix();
 
-                world.camera.three    = ortho;
-                camControls.camera    = ortho;
-                btn.textContent       = "Ortho";
-                btn.style.outline     = "1px solid rgba(59,130,246,0.7)";
+                world.camera.three = ortho;
+                camControls.camera = ortho;
+                btn.textContent    = "Ortho";
+                btn.style.outline  = "1px solid rgba(59,130,246,0.7)";
                 console.log("[PROJ] → OrthographicCamera  near=0.1  far =", (maxDim * 10).toFixed(1));
 
-            } else {
-                /* Orthographic → Perspective */
-                if (!_perspCam) { console.warn("[PROJ] no stored perspective camera to restore"); return; }
-                _perspCam.position.copy(current.position);
-                _perspCam.quaternion.copy(current.quaternion);
-                _perspCam.aspect = aspect;
-                _perspCam.updateProjectionMatrix();
+                _animateOrthoZoom(ortho, 0.25, 1.0, 350, () => {
+                    btn.disabled = false;
+                    console.log("[PROJ] ortho enter transition complete");
+                });
 
-                world.camera.three = _perspCam;
-                camControls.camera = _perspCam;
-                btn.textContent    = "Persp";
-                btn.style.outline  = "";
-                console.log("[PROJ] → PerspectiveCamera");
+            } else {
+                /* Orthographic → Perspective — animate zoom out, then swap */
+                if (!_perspCam) { console.warn("[PROJ] no stored perspective camera to restore"); btn.disabled = false; return; }
+
+                _animateOrthoZoom(current, current.zoom, 0.25, 350, () => {
+                    _perspCam.position.copy(current.position);
+                    _perspCam.quaternion.copy(current.quaternion);
+                    _perspCam.aspect = aspect;
+                    _perspCam.updateProjectionMatrix();
+
+                    world.camera.three = _perspCam;
+                    camControls.camera = _perspCam;
+                    btn.textContent    = "Persp";
+                    btn.style.outline  = "";
+                    btn.disabled       = false;
+                    console.log("[PROJ] → PerspectiveCamera");
+                });
             }
         });
 
