@@ -215,10 +215,10 @@
                 <button id="sel-level-btn" class="vctl-btn"
                         style="width:100%;font-size:11px;">Select Level</button>
             </div>
-            <!-- Sidebar toggle tab on left edge -->
+            <!-- Sidebar toggle tab on left edge — z:54 keeps it above both sidebars (tree z:52, sel z:50) -->
             <button id="sel-sidebar-toggle"
                     style="position:absolute;left:8px;top:50%;transform:translateY(-50%);
-                           z-index:51;background:rgba(0,0,0,0.7);color:white;
+                           z-index:54;background:rgba(0,0,0,0.7);color:white;
                            border:1px solid rgba(255,255,255,0.2);border-radius:4px;
                            padding:6px 4px;cursor:pointer;writing-mode:vertical-rl;
                            font-size:11px;letter-spacing:.5px;white-space:nowrap;"
@@ -1283,19 +1283,73 @@
             });
         });
 
-        /* Projection toggle — async: awaits OBC ProjectionManager.toggle() then reads back .current */
+        /* Projection toggle — THREE.js direct camera swap.
+           SimpleCamera has no .projection API; the renderer reads world.camera.three every frame,
+           and CameraControls.camera setter keeps the controls in sync. */
+        let _perspCam = null;   // stored PerspectiveCamera so we can swap back
+
         document.getElementById("proj-toggle")?.addEventListener("click", async () => {
             const btn = document.getElementById("proj-toggle");
-            if (!world?.camera?.projection?.toggle) {
-                console.warn("[viewer] Projection toggle: OBC projection API not available.");
+            console.log("[PROJ] toggle clicked; world.camera.projection =",
+                        world?.camera?.projection ?? "undefined (SimpleCamera — using THREE.js swap)");
+
+            /* Try OBC built-in first (not available on SimpleCamera, kept for future-proofing) */
+            if (world?.camera?.projection?.toggle) {
+                btn.disabled = true;
+                await world.camera.projection.toggle();
+                const isOrtho = world.camera.projection.current === "Orthographic";
+                btn.textContent   = isOrtho ? "Ortho" : "Persp";
+                btn.style.outline = isOrtho ? "1px solid rgba(59,130,246,0.7)" : "";
+                btn.disabled = false;
+                console.log("[PROJ] OBC toggle → now", world.camera.projection.current);
                 return;
             }
-            btn.disabled = true;
-            await world.camera.projection.toggle();
-            const isOrtho = world.camera.projection.current === "Orthographic";
-            btn.textContent = isOrtho ? "Ortho" : "Persp";
-            btn.style.outline = isOrtho ? "1px solid rgba(59,130,246,0.7)" : "";
-            btn.disabled = false;
+
+            /* ── THREE.js direct swap ─────────────────────────────────────────── */
+            const camControls = world?.camera?.controls;
+            const current     = world?.camera?.three;
+            if (!current || !camControls) {
+                console.warn("[PROJ] camera or controls not ready");
+                return;
+            }
+
+            const size   = world.renderer.getSize();
+            const aspect = size.width / size.height;
+
+            if (current instanceof THREE.PerspectiveCamera) {
+                /* Perspective → Orthographic */
+                _perspCam = current;
+                const target = new THREE.Vector3();
+                camControls.getTarget(target);
+                const dist  = current.position.distanceTo(target);
+                const halfH = Math.tan((current.fov * Math.PI / 180) / 2) * dist;
+                const halfW = halfH * aspect;
+
+                const ortho = new THREE.OrthographicCamera(-halfW, halfW, halfH, -halfH, 0.01, 10000);
+                ortho.position.copy(current.position);
+                ortho.quaternion.copy(current.quaternion);
+                ortho.updateProjectionMatrix();
+
+                world.camera.three    = ortho;
+                camControls.camera    = ortho;
+                btn.textContent       = "Ortho";
+                btn.style.outline     = "1px solid rgba(59,130,246,0.7)";
+                console.log("[PROJ] → OrthographicCamera  halfH =", halfH.toFixed(2));
+
+            } else {
+                /* Orthographic → Perspective */
+                if (!_perspCam) { console.warn("[PROJ] no stored perspective camera to restore"); return; }
+                _perspCam.position.copy(current.position);
+                _perspCam.quaternion.copy(current.quaternion);
+                _perspCam.aspect = aspect;
+                _perspCam.updateProjectionMatrix();
+
+                world.camera.three = _perspCam;
+                camControls.camera = _perspCam;
+                btn.textContent    = "Persp";
+                btn.style.outline  = "";
+                console.log("[PROJ] → PerspectiveCamera");
+            }
         });
 
         /* Zoom buttons — dolly to scaled distance */
@@ -1912,6 +1966,11 @@
     let _measureMkrA    = null;
     const _measurements = [];
     let _measureLabelLoopRunning = false;
+    let _snapIndicator  = null;   // wireframe yellow sphere tracking snap point on mousemove
+    let _snapPoint      = null;   // last snapped world point (used by click handler)
+    let _previewLine    = null;   // semi-transparent line from ptA to current snap point
+    let _axisGuideLine  = null;   // colored rail along axis from ptA (ΔX=red, ΔY=green, ΔZ=blue)
+    let _axisGuideMode  = null;   // which axis the current guide line was built for
 
     function _markerRadius(point) {
         const camDist = point.distanceTo(world.camera.three.position);
@@ -1981,7 +2040,16 @@
         })();
     }
 
+    function _clearMeasurePreview() {
+        if (_snapIndicator) { world.scene.three.remove(_snapIndicator); _snapIndicator = null; }
+        if (_previewLine)   { world.scene.three.remove(_previewLine);   _previewLine   = null; }
+        if (_axisGuideLine) { world.scene.three.remove(_axisGuideLine); _axisGuideLine = null; }
+        _axisGuideMode = null;
+        _snapPoint     = null;
+    }
+
     function _clearMeasurements() {
+        _clearMeasurePreview();
         for (const m of _measurements) {
             if (m.mkrA)    world.scene.three.remove(m.mkrA);
             if (m.mkrB)    world.scene.three.remove(m.mkrB);
@@ -2013,30 +2081,42 @@
     function _handleMeasureClick(e) {
         if (!model) return;
         const axisMode = document.getElementById("meas-axis-select")?.value ?? "3d";
-        const canvas = world.renderer.three.domElement;
-        const rect   = canvas.getBoundingClientRect();
-        const mouse  = new THREE.Vector2(
-             ((e.clientX - rect.left) / rect.width)  * 2 - 1,
-            -((e.clientY - rect.top)  / rect.height) * 2 + 1,
-        );
-        const ray = new THREE.Raycaster();
-        ray.setFromCamera(mouse, world.camera.three);
-        const hits = ray.intersectObjects(world.scene.three.children, true);
-        const modelHit = hits.find(h =>
-            !_sectionHandles.includes(h.object) &&
-            !_measurements.some(m => m.mkrA === h.object || m.mkrB === h.object) &&
-            h.object !== _measureMkrA
-        );
-        if (!modelHit) return;
 
-        const pt = _snapToVertex(modelHit);
+        /* Use the snap point cached by the last mousemove — avoids a duplicate raycast
+           and ensures the click lands exactly where the indicator was showing. */
+        let pt = _snapPoint ? _snapPoint.clone() : null;
+
+        if (!pt) {
+            /* Fallback: fresh raycast (covers touch / no-mousemove scenarios) */
+            const canvas = world.renderer.three.domElement;
+            const rect   = canvas.getBoundingClientRect();
+            const mouse  = new THREE.Vector2(
+                 ((e.clientX - rect.left) / rect.width)  * 2 - 1,
+                -((e.clientY - rect.top)  / rect.height) * 2 + 1,
+            );
+            const ray = new THREE.Raycaster();
+            ray.setFromCamera(mouse, world.camera.three);
+            const hits = ray.intersectObjects(world.scene.three.children, true);
+            const modelHit = hits.find(h =>
+                !_sectionHandles.includes(h.object) &&
+                h.object !== _snapIndicator &&
+                !_measurements.some(m => m.mkrA === h.object || m.mkrB === h.object) &&
+                h.object !== _measureMkrA
+            );
+            if (!modelHit) return;
+            pt = _snapToVertex(modelHit);
+        }
 
         if (!_measurePtA) {
             _measurePtA  = pt;
             _measureMkrA = _makeSphere(pt, 0x22c55e);
+            /* Remove preview line — it will be re-created on next mousemove from the new ptA */
+            if (_previewLine) { world.scene.three.remove(_previewLine); _previewLine = null; }
         } else {
             const ptA = _measurePtA;
             const ptB = pt;
+
+            _clearMeasurePreview();  // remove snap indicator + preview line before committing
 
             /* Axis constraint: project ptB onto the constrained axis through ptA */
             let lineEnd, dist, text;
@@ -2080,15 +2160,118 @@
         btn.addEventListener("click", () => {
             _measureMode = !_measureMode;
             btn.style.background = _measureMode ? "rgba(255,215,0,0.3)" : "rgba(255,255,255,0.08)";
-            if (!_measureMode && _measureMkrA) {
-                world.scene.three.remove(_measureMkrA);
-                _measureMkrA = null;
-                _measurePtA  = null;
+            if (!_measureMode) {
+                _clearMeasurePreview();
+                if (_measureMkrA) { world.scene.three.remove(_measureMkrA); _measureMkrA = null; }
+                _measurePtA = null;
             }
             world.renderer.three.domElement.style.cursor = _measureMode ? "crosshair" : "";
         });
 
-        clearBtn?.addEventListener("click", () => { _clearMeasurements(); });
+        clearBtn?.addEventListener("click", () => _clearMeasurements());
+
+        /* ── Mousemove preview: snap indicator + preview line ─────────────── */
+        const canvas   = world.renderer.three.domElement;
+        const _mvRay   = new THREE.Raycaster();
+        const _mvMouse = new THREE.Vector2();
+
+        canvas.addEventListener("pointermove", (e) => {
+            if (!_measureMode) {
+                /* Clean up any leftover preview if mode was switched off externally */
+                if (_snapIndicator || _previewLine) _clearMeasurePreview();
+                return;
+            }
+            if (_activeDrag) return;   // section drag in progress
+
+            const rect = canvas.getBoundingClientRect();
+            _mvMouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
+            _mvMouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
+            _mvRay.setFromCamera(_mvMouse, world.camera.three);
+
+            const hits = _mvRay.intersectObjects(world.scene.three.children, true);
+            const hit  = hits.find(h =>
+                !_sectionHandles.includes(h.object) &&
+                h.object !== _snapIndicator &&
+                h.object !== _axisGuideLine &&
+                h.object !== _previewLine &&
+                !_measurements.some(m => m.mkrA === h.object || m.mkrB === h.object) &&
+                h.object !== _measureMkrA
+            );
+
+            if (!hit) { _clearMeasurePreview(); return; }
+
+            const snapPt  = _snapToVertex(hit);
+            const axisMode = document.getElementById("meas-axis-select")?.value ?? "3d";
+
+            /* Axis projection — constrain snap point to the chosen axis through ptA */
+            let effectivePt = snapPt.clone();
+            let axisColor   = null;
+            if (_measurePtA && axisMode !== "3d") {
+                if      (axisMode === "x") { effectivePt.set(snapPt.x,      _measurePtA.y, _measurePtA.z); axisColor = 0xef4444; }
+                else if (axisMode === "y") { effectivePt.set(_measurePtA.x, snapPt.y,      _measurePtA.z); axisColor = 0x22c55e; }
+                else if (axisMode === "z") { effectivePt.set(_measurePtA.x, _measurePtA.y, snapPt.z);      axisColor = 0x3b82f6; }
+            }
+            _snapPoint = effectivePt;
+
+            /* Snap indicator at effective (possibly axis-projected) point */
+            if (!_snapIndicator) {
+                const r = _markerRadius(effectivePt) * 1.5;
+                _snapIndicator = new THREE.Mesh(
+                    new THREE.SphereGeometry(r, 10, 10),
+                    new THREE.MeshBasicMaterial({ color: 0xffd700, wireframe: true, depthTest: false }),
+                );
+                _snapIndicator.renderOrder = 1000;
+                world.scene.three.add(_snapIndicator);
+            }
+            _snapIndicator.position.copy(effectivePt);
+
+            /* Axis guide rail — colored line along the constrained axis from ptA.
+               Only rebuild when axis mode changes; otherwise leave existing line. */
+            if (_measurePtA && axisColor !== null) {
+                if (!_axisGuideLine || _axisGuideMode !== axisMode) {
+                    if (_axisGuideLine) world.scene.three.remove(_axisGuideLine);
+                    const bbox = _getSceneBBox();
+                    const size = new THREE.Vector3();
+                    bbox.getSize(size);
+                    const ext = Math.max(size.x, size.y, size.z) * 0.7 + 1;
+                    const p = _measurePtA;
+                    const rA = axisMode === "x" ? new THREE.Vector3(p.x - ext, p.y, p.z)
+                             : axisMode === "y" ? new THREE.Vector3(p.x, p.y - ext, p.z)
+                             :                   new THREE.Vector3(p.x, p.y, p.z - ext);
+                    const rB = axisMode === "x" ? new THREE.Vector3(p.x + ext, p.y, p.z)
+                             : axisMode === "y" ? new THREE.Vector3(p.x, p.y + ext, p.z)
+                             :                   new THREE.Vector3(p.x, p.y, p.z + ext);
+                    _axisGuideLine = new THREE.Line(
+                        new THREE.BufferGeometry().setFromPoints([rA, rB]),
+                        new THREE.LineBasicMaterial({ color: axisColor, transparent: true, opacity: 0.6, depthTest: false }),
+                    );
+                    _axisGuideLine.renderOrder = 997;
+                    world.scene.three.add(_axisGuideLine);
+                    _axisGuideMode = axisMode;
+                }
+            } else {
+                /* No axis constraint active — remove any stale guide line */
+                if (_axisGuideLine) { world.scene.three.remove(_axisGuideLine); _axisGuideLine = null; _axisGuideMode = null; }
+            }
+
+            /* Preview line from ptA → effective point (only once first point is placed) */
+            if (_measurePtA) {
+                if (!_previewLine) {
+                    const geo = new THREE.BufferGeometry().setFromPoints([_measurePtA, effectivePt]);
+                    _previewLine = new THREE.Line(
+                        geo,
+                        new THREE.LineBasicMaterial({ color: 0xffd700, transparent: true, opacity: 0.4, depthTest: false }),
+                    );
+                    _previewLine.renderOrder = 998;
+                    world.scene.three.add(_previewLine);
+                } else {
+                    const pos = _previewLine.geometry.attributes.position;
+                    pos.setXYZ(0, _measurePtA.x, _measurePtA.y, _measurePtA.z);
+                    pos.setXYZ(1, effectivePt.x, effectivePt.y, effectivePt.z);
+                    pos.needsUpdate = true;
+                }
+            }
+        });
     }
 
     init();
