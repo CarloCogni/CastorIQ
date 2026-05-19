@@ -1886,7 +1886,7 @@
     }
 
     function _clearMeasurePreview() {
-        if (_snapIndicator) { world.scene.three.remove(_snapIndicator); _snapIndicator = null; }
+        if (_snapIndicator) _snapIndicator.visible = false;
         if (_previewLine)   { world.scene.three.remove(_previewLine);   _previewLine   = null; }
         if (_axisGuideLine) { world.scene.three.remove(_axisGuideLine); _axisGuideLine = null; }
         _axisGuideMode = null;
@@ -2046,6 +2046,18 @@
         const clearBtn = document.getElementById("meas-clear-btn");
         if (!btn) return;
 
+        try {
+
+        /* Create snap indicator once — visibility is toggled; never removed/re-added */
+        _snapIndicator = new THREE.Mesh(
+            new THREE.RingGeometry(0.6, 1.0, 16),
+            new THREE.MeshBasicMaterial({ color: 0xffd700, side: THREE.DoubleSide, depthTest: false, depthWrite: false }),
+        );
+        _snapIndicator.renderOrder = 1000;
+        _snapIndicator.frustumCulled = false;
+        _snapIndicator.visible = false;
+        world.scene.three.add(_snapIndicator);
+
         btn.addEventListener("click", () => {
             _measureMode = !_measureMode;
             btn.style.background = _measureMode ? "rgba(255,215,0,0.3)" : "rgba(255,255,255,0.08)";
@@ -2067,7 +2079,7 @@
         canvas.addEventListener("pointermove", (e) => {
             if (!_measureMode) {
                 /* Clean up any leftover preview if mode was switched off externally */
-                if (_snapIndicator || _previewLine) _clearMeasurePreview();
+                if ((_snapIndicator?.visible) || _previewLine) _clearMeasurePreview();
                 return;
             }
             if (_activeDrag) return;   // section drag in progress
@@ -2106,16 +2118,7 @@
             _snapPoint = effectivePt;
 
             /* Snap indicator — billboarded ring at effective (possibly axis-projected) point */
-            if (!_snapIndicator) {
-                _snapIndicator = new THREE.Mesh(
-                    new THREE.RingGeometry(0.6, 1.0, 16),
-                    new THREE.MeshBasicMaterial({ color: 0xffd700, side: THREE.DoubleSide, depthTest: false, depthWrite: false }),
-                );
-                _snapIndicator.renderOrder = 1000;
-                _snapIndicator.frustumCulled = false;
-                world.scene.three.add(_snapIndicator);
-                console.log('[SNAP] indicator added to scene', _snapIndicator.uuid);
-            }
+            _snapIndicator.visible = true;
             const _snapR = _markerRadius(effectivePt) * 2.0;
             _snapIndicator.scale.setScalar(_snapR);
             _snapIndicator.position.copy(effectivePt);
@@ -2173,6 +2176,10 @@
                 }
             }
         });
+
+        } catch(e) {
+            console.error('[MEAS INIT ERROR]', e.message, e.stack);
+        }
     }
 
     init();
