@@ -61,8 +61,6 @@
         <button class="vctl-btn" data-view="right" title="Right View">→</button>
         <button class="vctl-btn" data-view="left"  title="Left View">←</button>
         <div style="width:1px;height:16px;background:rgba(255,255,255,0.2);margin:0 4px;"></div>
-        <button id="proj-toggle" class="vctl-btn" title="Toggle Perspective/Orthographic"
-                style="min-width:48px;">Persp</button>
         <button id="vis-toggle-btn" class="vctl-btn" title="Visibility Controls"
                 style="font-size:12px;">👁 Vis</button>
         <button id="sect-toggle-btn" class="vctl-btn" title="Section Box — clip model with 6 planes"
@@ -1182,124 +1180,17 @@
             });
         });
 
-        /* Projection toggle — THREE.js direct camera swap.
-           SimpleCamera has no .projection API; the renderer reads world.camera.three every frame,
-           and CameraControls.camera setter keeps the controls in sync. */
-        let _perspCam = null;   // stored PerspectiveCamera so we can swap back
-
-        /* Animate ortho camera zoom between two values with ease-in-out cubic. */
-        function _animateOrthoZoom(cam, fromZoom, toZoom, duration, onDone) {
-            const start = performance.now();
-            function step(now) {
-                let t = Math.min((now - start) / duration, 1);
-                t = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; // ease-in-out cubic
-                cam.zoom = fromZoom + (toZoom - fromZoom) * t;
-                cam.updateProjectionMatrix();
-                if (t < 1) requestAnimationFrame(step);
-                else { cam.zoom = toZoom; cam.updateProjectionMatrix(); onDone?.(); }
-            }
-            requestAnimationFrame(step);
-        }
-
-        document.getElementById("proj-toggle")?.addEventListener("click", async () => {
-            const btn = document.getElementById("proj-toggle");
-            if (btn.disabled) return;
-            console.log("[PROJ] toggle clicked; world.camera.projection =",
-                        world?.camera?.projection ?? "undefined (SimpleCamera — using THREE.js swap)");
-
-            /* Try OBC built-in first (not available on SimpleCamera, kept for future-proofing) */
-            if (world?.camera?.projection?.toggle) {
-                btn.disabled = true;
-                await world.camera.projection.toggle();
-                const isOrtho = world.camera.projection.current === "Orthographic";
-                btn.textContent   = isOrtho ? "Ortho" : "Persp";
-                btn.style.outline = isOrtho ? "1px solid rgba(59,130,246,0.7)" : "";
-                btn.disabled = false;
-                console.log("[PROJ] OBC toggle → now", world.camera.projection.current);
-                return;
-            }
-
-            /* ── THREE.js direct swap ─────────────────────────────────────────── */
-            const camControls = world?.camera?.controls;
-            const current     = world?.camera?.three;
-            if (!current || !camControls) {
-                console.warn("[PROJ] camera or controls not ready");
-                return;
-            }
-
-            const size   = world.renderer.getSize();
-            const aspect = size.width / size.height;
-            btn.disabled = true;
-
-            if (current instanceof THREE.PerspectiveCamera) {
-                /* Perspective → Orthographic — use model bbox for frustum size */
-                _perspCam = current;
-
-                const bbox    = _getSceneBBox();
-                const bboxSz  = new THREE.Vector3();
-                bbox.getSize(bboxSz);
-                const maxDim  = Math.max(bboxSz.x, bboxSz.y, bboxSz.z, 1);
-                const halfH   = maxDim * 0.6;
-                const halfW   = halfH * aspect;
-
-                console.log("[PROJ] bbox size =", bboxSz.x.toFixed(2), bboxSz.y.toFixed(2), bboxSz.z.toFixed(2),
-                            "  maxDim =", maxDim.toFixed(2), "  halfH =", halfH.toFixed(2));
-
-                const ortho = new THREE.OrthographicCamera(-halfW, halfW, halfH, -halfH, 0.1, maxDim * 10);
-                ortho.position.copy(current.position);
-                ortho.quaternion.copy(current.quaternion);
-                ortho.zoom = 0.25;
-                ortho.updateProjectionMatrix();
-
-                world.camera.three = ortho;
-                camControls.camera = ortho;
-                btn.textContent    = "Ortho";
-                btn.style.outline  = "1px solid rgba(59,130,246,0.7)";
-                console.log("[PROJ] → OrthographicCamera  near=0.1  far =", (maxDim * 10).toFixed(1));
-
-                _animateOrthoZoom(ortho, 0.25, 1.0, 350, () => {
-                    btn.disabled = false;
-                    console.log("[PROJ] ortho enter transition complete");
-                });
-
-            } else {
-                /* Orthographic → Perspective — animate zoom out, then swap */
-                if (!_perspCam) { console.warn("[PROJ] no stored perspective camera to restore"); btn.disabled = false; return; }
-
-                _animateOrthoZoom(current, current.zoom, 0.25, 350, () => {
-                    _perspCam.position.copy(current.position);
-                    _perspCam.quaternion.copy(current.quaternion);
-                    _perspCam.aspect = aspect;
-                    _perspCam.updateProjectionMatrix();
-
-                    world.camera.three = _perspCam;
-                    camControls.camera = _perspCam;
-                    btn.textContent    = "Persp";
-                    btn.style.outline  = "";
-                    btn.disabled       = false;
-                    console.log("[PROJ] → PerspectiveCamera");
-                });
-            }
-        });
-
-        /* Zoom buttons — dolly in perspective, zoom factor in orthographic */
+        /* Zoom buttons — dolly to scaled distance */
         document.querySelectorAll(".vctl-btn[data-zoom]").forEach(btn => {
             btn.addEventListener("click", () => {
                 if (!controls) return;
                 const factor = btn.dataset.zoom === "+" ? 0.75 : 1.33;
-                const cam = world?.camera?.three;
-                if (cam instanceof THREE.OrthographicCamera) {
-                    cam.zoom = Math.max(0.01, cam.zoom / factor);
-                    cam.updateProjectionMatrix();
-                    console.log("[PROJ] ortho zoom =", cam.zoom.toFixed(3));
-                } else {
-                    if (typeof controls.dollyTo === "function" && controls.distance != null) {
-                        controls.dollyTo(Math.max(0.5, controls.distance * factor), true);
-                    } else if (btn.dataset.zoom === "+" && typeof controls.dollyIn === "function") {
-                        controls.dollyIn(0.5, true);
-                    } else if (typeof controls.dollyOut === "function") {
-                        controls.dollyOut(0.5, true);
-                    }
+                if (typeof controls.dollyTo === "function" && controls.distance != null) {
+                    controls.dollyTo(Math.max(0.5, controls.distance * factor), true);
+                } else if (btn.dataset.zoom === "+" && typeof controls.dollyIn === "function") {
+                    controls.dollyIn(0.5, true);
+                } else if (typeof controls.dollyOut === "function") {
+                    controls.dollyOut(0.5, true);
                 }
             });
         });
@@ -2178,7 +2069,10 @@
             if (!((_axisDbgN = ((_axisDbgN ?? 0) + 1)) % 30))
                 console.log('[AXIS] hit.point x=', hit.point.x.toFixed(3), ' y=', hit.point.y.toFixed(3), ' z=', hit.point.z.toFixed(3));
 
-            const { point: snapPt, snapType } = _snapToBBox(hit);
+            let _snapResult;
+            try { _snapResult = _snapToBBox(hit); }
+            catch (err) { console.warn('[SNAP] _snapToBBox failed:', err); _snapResult = { point: hit.point.clone(), snapType: null }; }
+            const { point: snapPt, snapType } = _snapResult;
             const axisMode = document.getElementById("meas-axis-select")?.value ?? "3d";
 
             /* Axis projection — constrain snap point to the chosen axis through ptA */
@@ -2195,16 +2089,18 @@
             if (!_snapIndicator) {
                 _snapIndicator = new THREE.Mesh(
                     new THREE.RingGeometry(0.6, 1.0, 16),
-                    new THREE.MeshBasicMaterial({ color: 0xffd700, side: THREE.DoubleSide, depthTest: false }),
+                    new THREE.MeshBasicMaterial({ color: 0xffd700, side: THREE.DoubleSide, depthTest: false, depthWrite: false }),
                 );
                 _snapIndicator.renderOrder = 1000;
+                _snapIndicator.frustumCulled = false;
                 world.scene.three.add(_snapIndicator);
+                console.log('[SNAP] indicator added to scene', _snapIndicator.uuid);
             }
             const _snapR = _markerRadius(effectivePt) * 2.0;
             _snapIndicator.scale.setScalar(_snapR);
             _snapIndicator.position.copy(effectivePt);
-            _snapIndicator.quaternion.copy(world.camera.three.quaternion);
-            /* Yellow = corner, cyan = edge midpoint, white = bbox centre, grey = free */
+            _snapIndicator.lookAt(world.camera.three.position);  // billboard: ring normal faces camera
+            /* Yellow = corner, cyan = edge midpoint, white = bbox centre, grey = free float */
             _snapIndicator.material.color.setHex(
                 snapType === 'corner' ? 0xffd700 :
                 snapType === 'edge'   ? 0x00ffff :
