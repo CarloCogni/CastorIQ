@@ -112,6 +112,11 @@ urlpatterns = [
         name="schedule_source_preview",
     ),
     path(
+        "projects/<uuid:pk>/schedule/all-tasks-preview/",
+        scheduling_views.AllTasksPreviewView.as_view(),
+        name="all_tasks_preview",
+    ),
+    path(
         "projects/<uuid:pk>/schedule/wbs-heatmap/",
         scheduling_views.WBSHeatmapView.as_view(),
         name="wbs_heatmap",

@@ -5,6 +5,7 @@
      data-save-url="{% url 'islam:schedule_save' project.pk %}"
      data-mapping-url="{% url 'islam:schedule_mapping_submit' project.pk %}"
      data-review-url="{% url 'islam:schedule' project.pk %}?tab=review"
+     data-all-tasks-url="{% url 'islam:all_tasks_preview' project.pk %}"
      data-csrf="{{ csrf_token }}"
      data-task-count="{{ task_count }}">
 
@@ -234,11 +235,12 @@
     /* ── DOM refs ───────────────────────────────────────────────────── */
     const root       = document.getElementById('ds-root');
     if (!root) return;
-    const PREVIEW_URL  = root.dataset.previewUrl;
-    const SAVE_URL     = root.dataset.saveUrl;
-    const MAPPING_URL  = root.dataset.mappingUrl;
-    const REVIEW_URL   = root.dataset.reviewUrl;
-    const CSRF         = root.dataset.csrf;
+    const PREVIEW_URL    = root.dataset.previewUrl;
+    const SAVE_URL       = root.dataset.saveUrl;
+    const MAPPING_URL    = root.dataset.mappingUrl;
+    const REVIEW_URL     = root.dataset.reviewUrl;
+    const ALL_TASKS_URL  = root.dataset.allTasksUrl;
+    const CSRF           = root.dataset.csrf;
 
     const _TASK_COUNT  = parseInt(root.dataset.taskCount || '0', 10);
 
@@ -319,8 +321,13 @@
         zoom: (() => { try { return localStorage.getItem('ds-gantt-zoom') || 'week'; } catch { return 'week'; } })(),
         stageFilter: 'all',
         hasCpm: false,
+        mode: 'source',          /* 'all' | 'source' */
+        currentSourceName: null, /* filename of the source currently shown in the table */
     };
     let _ganttBuilt = false;
+
+    /* All-project tasks for the Gantt (loaded once on page open if tasks exist) */
+    const G = { rows: [], deps: [], cols: [], totalRows: 0, dateRange: null };
 
     /* ── CPM helpers ────────────────────────────────────────────────── */
     const _EPOCH_MS = new Date(2000, 0, 1).getTime();
@@ -562,6 +569,7 @@
 
         buildGanttShell();
         renderGantt();
+        updateGanttModeBar();
         splitterEl.style.display = 'flex';
         initSplitterPos();
     }
@@ -585,6 +593,7 @@
             return;
         }
 
+        GS.currentSourceName = filename;
         initFromData(data);
         /* View-only: these tasks are already imported — disable import actions */
         importBtn.disabled = true;
@@ -592,6 +601,77 @@
         if (replaceBtn) replaceBtn.classList.add('d-none');
         statusEl.innerHTML =
             `<span class="text-secondary"><i class="bi bi-folder2-open me-1"></i>${esc(filename)} — ${data.total_rows.toLocaleString()} tasks</span>`;
+        updateGanttModeBar();
+    }
+
+    /* ── Gantt mode bar ─────────────────────────────────────────────── */
+    function updateGanttModeBar() {
+        const bar     = document.getElementById('ds-gantt-mode-bar');
+        const labelEl = document.getElementById('ds-gantt-mode-label');
+        const togBtns = document.getElementById('ds-gantt-toggle-btns');
+        if (!bar || !labelEl) return;
+
+        const hasAll = G.rows.length > 0;
+        const hasSrc = S.rows.length > 0;
+
+        if (GS.mode === 'all' && hasAll) {
+            const showing = G.rows.length;
+            const total   = G.totalRows;
+            labelEl.textContent = showing < total
+                ? `Showing ${showing.toLocaleString()} of ${total.toLocaleString()} project tasks`
+                : `Showing all ${total.toLocaleString()} project tasks`;
+            labelEl.style.color = '#38bdf8';
+        } else if (hasSrc) {
+            const src = GS.currentSourceName ? ` from ${GS.currentSourceName}` : '';
+            labelEl.textContent = `Showing ${S.rows.length.toLocaleString()} tasks${src}`;
+            labelEl.style.color = '';
+        } else {
+            labelEl.textContent = '';
+        }
+
+        if (togBtns) {
+            togBtns.style.display = (hasAll && hasSrc) ? '' : 'none';
+            togBtns.querySelectorAll('[data-gantt-mode]').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.ganttMode === GS.mode);
+            });
+        }
+    }
+
+    /* ── Load all project tasks for the Gantt ────────────────────────── */
+    async function loadAllTasksGantt() {
+        if (!ALL_TASKS_URL) return;
+        try {
+            const r = await fetch(ALL_TASKS_URL);
+            if (!r.ok) return;
+            const data = await r.json();
+            G.rows      = data.rows || [];
+            G.deps      = data.deps || [];
+            G.totalRows = data.total_rows || 0;
+            G.dateRange = data.project_date_range || null;
+            G.cols      = [
+                'name','start_date','end_date','wbs_name','status',
+                'activity_code','actual_start','actual_end','activity_type','total_float_days',
+            ];
+            if (!G.rows.length) return;
+
+            /* Bootstrap S.allCols / S.mapping so getColIdx() works before any source loads */
+            if (!S.allCols.length) {
+                S.allCols  = [...G.cols];
+                S.mapping  = Object.fromEntries(G.cols.map(c => [c, c]));
+                S.visible  = ['name','start_date','end_date','status','activity_code','activity_type'];
+                S.dateRange = G.dateRange;
+                S.deps     = [...G.deps];
+            }
+
+            GS.mode = 'all';
+            buildGanttShell();
+            splitterEl.style.display = 'flex';
+            initSplitterPos();
+            renderGantt();
+            updateGanttModeBar();
+        } catch (e) {
+            console.warn('[DS] all-tasks-preview failed:', e.message);
+        }
     }
 
     /* Delegated click on source chips row */
@@ -611,6 +691,9 @@
         const autoName = sourcesRow.dataset.autoloadName || 'source';
         if (autoUrl) loadSourcePreview(autoUrl, autoName);
     }
+
+    /* Show all-project tasks in Gantt on page open (independent of source auto-load) */
+    if (_TASK_COUNT > 0) loadAllTasksGantt();
 
     /* ── Column width helpers ────────────────────────────────────────── */
     function getColWidth(col) {
@@ -1261,6 +1344,13 @@
         ganttSection.style.flexDirection = 'column';
         if (!ganttSection.style.height) ganttSection.style.height = GANTT_DEF_H + 'px';
         ganttSection.innerHTML = `
+            <div id="ds-gantt-mode-bar" class="d-flex align-items-center gap-2 flex-wrap mb-1" style="flex-shrink:0; min-height:24px;">
+                <span id="ds-gantt-mode-label" class="small" style="font-size:.75rem;"></span>
+                <div class="btn-group btn-group-sm ms-auto" id="ds-gantt-toggle-btns" style="display:none;">
+                    <button class="btn btn-outline-secondary" data-gantt-mode="all">&#128202; All Tasks</button>
+                    <button class="btn btn-outline-secondary" data-gantt-mode="source">&#128196; This Source</button>
+                </div>
+            </div>
             <div class="d-flex align-items-center gap-2 flex-wrap mb-2" style="flex-shrink:0;">
                 <span class="text-secondary" style="font-size:.78rem;">Zoom:</span>
                 <button class="ds-zoom-btn btn btn-sm btn-outline-secondary" data-zoom="week">Week</button>
@@ -1305,14 +1395,42 @@
                 renderGantt();
             });
         });
+
+        /* Mode toggle (all-tasks ↔ this-source) */
+        ganttSection.addEventListener('click', function (e) {
+            const btn = e.target.closest('[data-gantt-mode]');
+            if (!btn) return;
+            const mode = btn.dataset.ganttMode;
+            if (mode === GS.mode) return;
+            if (mode === 'all'    && !G.rows.length)  return;
+            if (mode === 'source' && !S.rows.length)  return;
+            GS.mode = mode;
+            renderGantt();
+            updateGanttModeBar();
+        });
     }
 
     /* ── Main Gantt render ──────────────────────────────────────────── */
     function renderGantt() {
-        console.log('[GANTT] rows:', S.rows?.length);
-        console.log('[GANTT] deps:', S.deps?.length);
-        console.log('[GANTT] hasCpm:', GS.hasCpm);
         if (!_ganttBuilt) return;
+
+        /* When in 'all' mode, temporarily remap S to the canonical G columns so
+           all getColIdx() calls inside this function (and helpers it calls) work
+           correctly against the G.rows data, which is always in canonical order. */
+        const _allMode = GS.mode === 'all' && G.rows.length > 0;
+        let _origCols, _origMapping, _origDeps;
+        if (_allMode) {
+            _origCols    = S.allCols;
+            _origMapping = S.mapping;
+            _origDeps    = S.deps;
+            S.allCols  = G.cols;
+            S.mapping  = Object.fromEntries(G.cols.map(c => [c, c]));
+            S.deps     = G.deps;
+        }
+
+        try {
+
+        const _rowsToRender = _allMode ? G.rows : S.rows;
 
         const nameIdx  = getColIdx('name');
         const startIdx = getColIdx('start_date');
@@ -1333,7 +1451,7 @@
         const actTypeIdx     = getColIdx('activity_type');
 
         const allTasks = [];
-        for (const row of S.rows) {
+        for (const row of _rowsToRender) {
             const name  = (row[nameIdx]  ?? '').toString().trim();
             const start = parseDate((row[startIdx] ?? '').toString());
             const end   = parseDate((row[endIdx]   ?? '').toString());
@@ -1356,7 +1474,6 @@
         /* CPM — runs on full task set before stage filtering */
         allTasks.forEach(t => { t.critical = false; t.totalFloat = null; });
         runCPM(allTasks);
-        console.log('[GANTT] criticalCount (post-CPM):', allTasks.filter(t => t.critical).length);
 
         /* P6 pre-computed float — authoritative when present; overrides client CPM.
            Use the rounded integer for BOTH display and the critical check so that
@@ -1418,6 +1535,14 @@
         renderLegend(showToday);
 
         ganttSection.style.display = 'flex';
+
+        } finally {
+            if (_allMode) {
+                S.allCols  = _origCols;
+                S.mapping  = _origMapping;
+                S.deps     = _origDeps;
+            }
+        }
     }
 
     /* ── Header row ─────────────────────────────────────────────────── */
