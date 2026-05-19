@@ -82,6 +82,10 @@
         </select>
         <button id="show-hidden-btn" class="vctl-btn" title="Show all hidden elements"
                 style="font-size:12px;">👁 Show</button>
+        <button id="export-report-btn" class="vctl-btn"
+                title="Download standalone stakeholder report (HTML)"
+                style="font-size:12px;"
+                onclick="window.location.href='{% url 'islam:export_report' project.pk %}'">📤 Export</button>
         <div style="flex:1;"></div>
         <button class="vctl-btn" data-zoom="+" title="Zoom In">+</button>
         <button class="vctl-btn" data-zoom="-" title="Zoom Out">−</button>
