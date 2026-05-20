@@ -17,11 +17,17 @@
   }
   @keyframes fd-spin { to { transform: rotate(360deg); } }
   .fd-splitter {
-    width: 6px;
+    width: 8px;
     flex-shrink: 0;
     cursor: col-resize;
     position: relative;
     z-index: 5;
+    background: var(--bs-border-color);
+    transition: background 0.15s;
+  }
+  .fd-splitter:hover,
+  .fd-splitter.fd-dragging {
+    background: var(--bs-primary);
   }
   .fd-splitter::after {
     content: '';
@@ -29,16 +35,17 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    width: 2px;
-    height: 48px;
-    background: var(--bs-border-color);
+    width: 4px;
+    height: 40px;
+    background: var(--bs-secondary-bg);
     border-radius: 2px;
-    transition: background 0.15s, height 0.15s;
+    opacity: 0.7;
+    transition: height 0.15s, opacity 0.15s;
   }
   .fd-splitter:hover::after,
   .fd-splitter.fd-dragging::after {
-    background: var(--bs-primary);
-    height: 72px;
+    height: 64px;
+    opacity: 1;
   }
 </style>
 
@@ -54,8 +61,8 @@
 
   <!-- LEFT: Gantt Panel -->
   <div id="fourD-gantt" style="
-    width: 300px;
-    min-width: 200px;
+    width: 280px;
+    min-width: 220px;
     flex-shrink: 0;
     background: var(--bs-body-bg);
     border: 1px solid var(--bs-border-color);
@@ -189,7 +196,7 @@
 
   <!-- RIGHT: AI Chat Panel -->
   <div id="fourD-chat" style="
-    width: 320px;
+    width: 280px;
     min-width: 200px;
     flex-shrink: 0;
     background: var(--bs-body-bg);
@@ -763,14 +770,27 @@
   /* ── Resizable panels ───────────────────────────────────────────── */
 
   function initSplitters() {
-    const STORAGE_KEY = "fourD-layout";
-    const MIN_W = { "fourD-gantt": 200, "fourD-viewer": 400, "fourD-chat": 200 };
+    const STORAGE_KEY  = "fourD-layout";
+    const SPLITTER_PX  = 16; // 2 splitters × 8px each
+    const MIN_W = { "fourD-gantt": 220, "fourD-viewer": 400, "fourD-chat": 200 };
+    const DEFAULT_W = { "fourD-gantt": 280, "fourD-chat": 280 };
 
-    /* Restore saved widths */
+    /* Restore saved widths — clamp to valid range for current viewport */
     try {
-      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
-      if (saved.gantt) document.getElementById("fourD-gantt").style.width = saved.gantt + "px";
-      if (saved.chat)  document.getElementById("fourD-chat").style.width  = saved.chat  + "px";
+      const saved   = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+      const panelsW = document.getElementById("fourD-panels").offsetWidth || 1200;
+      /* Each side panel can take at most 45% of the row (leaves room for the viewer) */
+      const cap = Math.floor(panelsW * 0.45);
+
+      const ganttW = saved.gantt
+        ? Math.max(MIN_W["fourD-gantt"], Math.min(cap, saved.gantt))
+        : DEFAULT_W["fourD-gantt"];
+      const chatW  = saved.chat
+        ? Math.max(MIN_W["fourD-chat"],  Math.min(cap, saved.chat))
+        : DEFAULT_W["fourD-chat"];
+
+      document.getElementById("fourD-gantt").style.width = ganttW + "px";
+      document.getElementById("fourD-chat").style.width  = chatW  + "px";
     } catch (e) { /* ignore corrupt storage */ }
 
     function saveLayout() {
@@ -785,30 +805,30 @@
     document.querySelectorAll(".fd-splitter").forEach(splitter => {
       splitter.addEventListener("mousedown", (e) => {
         e.preventDefault();
-        const leftId  = splitter.dataset.left;
-        const rightId = splitter.dataset.right;
+        const leftId = splitter.dataset.left;
 
-        /* Viewer is always flex:1; only Gantt and Chat have fixed widths.
-           Dragging split-1 → resize Gantt. Dragging split-2 → resize Chat. */
-        const fixedId  = leftId  !== "fourD-viewer" ? leftId : rightId;
-        const fixedEl  = document.getElementById(fixedId);
-        const startX   = e.clientX;
-        const startW   = fixedEl.offsetWidth;
-        const minW     = MIN_W[fixedId] || 200;
-        /* Positive delta grows the fixed panel when it is on the left */
-        const sign     = leftId !== "fourD-viewer" ? 1 : -1;
+        /* Viewer is always flex:1. Only Gantt (left of split-1) and Chat (right of
+           split-2) carry explicit pixel widths. Determine which panel this drag moves. */
+        const fixedId = leftId !== "fourD-viewer" ? leftId : splitter.dataset.right;
+        const fixedEl = document.getElementById(fixedId);
+        const startX  = e.clientX;
+        const startW  = fixedEl.offsetWidth;
+        const minW    = MIN_W[fixedId] || 200;
+        /* sign=+1: drag right → panel grows (Gantt is left of splitter).
+           sign=-1: drag right → panel shrinks (Chat is right of splitter). */
+        const sign = leftId !== "fourD-viewer" ? 1 : -1;
 
         splitter.classList.add("fd-dragging");
         document.body.style.cursor     = "col-resize";
         document.body.style.userSelect = "none";
 
         function onMove(ev) {
-          const delta  = (ev.clientX - startX) * sign;
-          const panels = document.getElementById("fourD-panels");
-          /* Reserve MIN for viewer and the other fixed panel */
-          const otherId  = fixedId === "fourD-gantt" ? "fourD-chat" : "fourD-gantt";
-          const otherW   = document.getElementById(otherId).offsetWidth;
-          const maxW     = panels.offsetWidth - otherW - 12 - MIN_W["fourD-viewer"];
+          const delta   = (ev.clientX - startX) * sign;
+          const panels  = document.getElementById("fourD-panels");
+          const otherId = fixedId === "fourD-gantt" ? "fourD-chat" : "fourD-gantt";
+          const otherW  = document.getElementById(otherId).offsetWidth;
+          /* maxW: leave room for the other fixed panel, both splitters, and the viewer min */
+          const maxW = panels.offsetWidth - otherW - SPLITTER_PX - MIN_W["fourD-viewer"];
           fixedEl.style.width = Math.max(minW, Math.min(maxW, startW + delta)) + "px";
         }
 
