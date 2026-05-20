@@ -132,11 +132,6 @@ urlpatterns = [
         name="delay_distribution",
     ),
     path(
-        "projects/<uuid:pk>/schedule/link/auto/",
-        scheduling_views.LinkAutoView.as_view(),
-        name="schedule_link_auto",
-    ),
-    path(
         "projects/<uuid:pk>/schedule/link/smart/",
         scheduling_views.AutoLinkView.as_view(),
         name="schedule_link_smart",
@@ -190,31 +185,6 @@ urlpatterns = [
         "projects/<uuid:pk>/schedule/mapping/submit/",
         scheduling_views.MappingSubmitView.as_view(),
         name="schedule_mapping_submit",
-    ),
-    path(
-        "projects/<uuid:pk>/schedule/link/embed/",
-        scheduling_views.EmbedLinkView.as_view(),
-        name="schedule_embed_link",
-    ),
-    path(
-        "projects/<uuid:pk>/schedule/link/accept/<uuid:feedback_pk>/",
-        scheduling_views.LinkAcceptView.as_view(),
-        name="link_accept",
-    ),
-    path(
-        "projects/<uuid:pk>/schedule/link/reject/<uuid:feedback_pk>/",
-        scheduling_views.LinkRejectView.as_view(),
-        name="link_reject",
-    ),
-    path(
-        "projects/<uuid:pk>/schedule/link/change/<uuid:feedback_pk>/",
-        scheduling_views.LinkChangeView.as_view(),
-        name="link_change",
-    ),
-    path(
-        "projects/<uuid:pk>/schedule/link/search/",
-        scheduling_views.LinkSearchView.as_view(),
-        name="link_search",
     ),
     # ------------------------------------------------------------------ #
     # Link Review — binding review tab                                     #
