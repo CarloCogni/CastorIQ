@@ -493,7 +493,8 @@
         document.getElementById('ds-tbody').innerHTML = bodyRows;
         tableSection.style.display = '';
 
-        /* Gantt skeleton: stacked bars of varying width */
+        /* Gantt skeleton: wipe shell so buildGanttShell() rebuilds after load */
+        _ganttBuilt = false;
         ganttSection.innerHTML = '<div style="padding:12px 8px;">' +
             Array.from({length: 10}, (_, i) => {
                 const left  = 5 + (i * 17) % 35;
@@ -588,6 +589,7 @@
 
     /* ── Source chip preview ─────────────────────────────────────────── */
     async function loadSourcePreview(url, filename) {
+        console.log('[SOURCE] fetching:', url);
         showSkeleton();
         tableSection.style.display = '';
         statusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Loading…';
@@ -595,12 +597,15 @@
         let data;
         try {
             const r = await fetch(url, { headers: { 'X-CSRFToken': CSRF } });
+            console.log('[SOURCE] response status:', r.status);
             data = await r.json();
+            console.log('[SOURCE] data keys:', Object.keys(data));
             if (!r.ok) {
                 statusEl.innerHTML = `<span class="text-danger">Load failed: ${esc(data.error || r.status)}</span>`;
                 return;
             }
         } catch (e) {
+            console.error('[SOURCE] fetch error:', e.message, e.stack);
             statusEl.innerHTML = `<span class="text-danger">${esc(e.message)}</span>`;
             return;
         }
