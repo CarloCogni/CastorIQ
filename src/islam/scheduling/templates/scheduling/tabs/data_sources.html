@@ -1430,7 +1430,8 @@
 
     /* ── Main Gantt render ──────────────────────────────────────────── */
     function renderGantt() {
-        if (!_ganttBuilt) return;
+        if (!ganttSection) return;
+        buildGanttShell(); /* idempotent — creates DOM elements on first call only */
 
         /* When in 'all' mode, temporarily remap S to the canonical G columns so
            all getColIdx() calls inside this function (and helpers it calls) work
@@ -1482,9 +1483,9 @@
         }
 
         if (!allTasks.length) {
-            bodyEl.innerHTML = hdrEl.innerHTML = '';
-            emptyEl.textContent = 'No parseable tasks in preview rows.';
-            emptyEl.style.display = '';
+            if (bodyEl) bodyEl.innerHTML = '';
+            if (hdrEl)  hdrEl.innerHTML  = '';
+            if (emptyEl) { emptyEl.textContent = 'No parseable tasks in preview rows.'; emptyEl.style.display = ''; }
             ganttSection.style.display = 'flex';
             return;
         }
@@ -1522,14 +1523,14 @@
             });
 
         if (!tasks.length) {
-            bodyEl.innerHTML = hdrEl.innerHTML = '';
-            emptyEl.textContent = `No tasks for stage "${GS.stageFilter}".`;
-            emptyEl.style.display = '';
+            if (bodyEl) bodyEl.innerHTML = '';
+            if (hdrEl)  hdrEl.innerHTML  = '';
+            if (emptyEl) { emptyEl.textContent = `No tasks for stage "${GS.stageFilter}".`; emptyEl.style.display = ''; }
             ganttSection.style.display = 'flex';
             renderStageChips(allTasks);
             return;
         }
-        emptyEl.style.display = 'none';
+        if (emptyEl) emptyEl.style.display = 'none';
 
         const projStart = new Date(tasks.reduce((m, t) => t.start < m ? t.start : m, tasks[0].start));
         projStart.setHours(0,0,0,0);
