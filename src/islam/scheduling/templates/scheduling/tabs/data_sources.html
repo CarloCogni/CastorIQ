@@ -336,6 +336,8 @@
 
     /* All-project tasks for the Gantt (loaded once on page open if tasks exist) */
     const G = { rows: [], deps: [], cols: [], totalRows: 0, dateRange: null };
+    /* Snapshot of the most-recently-loaded source — survives mode switches that overwrite S.* */
+    const _sourceS = { rows: [], allCols: [], visible: [], mapping: {}, deps: [], totalRows: 0 };
 
     /* ── CPM helpers ────────────────────────────────────────────────── */
     const _EPOCH_MS = new Date(2000, 0, 1).getTime();
@@ -560,6 +562,12 @@
         const dflt = data.default_visible || S.allCols.slice(0, 8);
         S.visible = dflt.filter(c => S.allCols.includes(c));
 
+        /* Snapshot source state before any mode switch can overwrite S.* */
+        Object.assign(_sourceS, {
+            rows: S.rows, allCols: S.allCols, visible: S.visible,
+            mapping: S.mapping, deps: S.deps, totalRows: S.totalRows,
+        });
+
         const n = S.totalRows, w = n === 1 ? 'row' : 'rows';
         statusEl.innerHTML = `<span class="text-success"><i class="bi bi-check-circle me-1"></i>${n.toLocaleString()} ${w} · ${S.format.toUpperCase()}</span>`;
 
@@ -569,17 +577,13 @@
             : `Import ${n.toLocaleString()} tasks →`;
         if (replaceBtn && _TASK_COUNT > 0) replaceBtn.classList.remove('d-none');
 
-        renderTable();
         renderSummary();
-
         tableSection.style.display = '';
         summaryBar.style.display   = '';
-
         buildGanttShell();
-        renderGantt();
-        updateGanttModeBar();
         splitterEl.style.display = 'flex';
         initSplitterPos();
+        switchMode('source'); /* syncs both table and Gantt to the loaded source */
     }
 
     /* ── Source chip preview ─────────────────────────────────────────── */
@@ -620,7 +624,7 @@
         if (!bar || !labelEl) return;
 
         const hasAll = G.rows.length > 0;
-        const hasSrc = S.rows.length > 0;
+        const hasSrc = _sourceS.rows.length > 0;
 
         if (GS.mode === 'all' && hasAll) {
             const showing = G.rows.length;
@@ -643,6 +647,32 @@
                 btn.classList.toggle('active', btn.dataset.ganttMode === GS.mode);
             });
         }
+    }
+
+    /* ── Bidirectional mode switch — syncs both table and Gantt ─────── */
+    function switchMode(mode) {
+        if (mode === 'all') {
+            if (!G.rows.length) return;
+            GS.mode    = 'all';
+            S.rows     = G.rows;
+            S.allCols  = G.cols;
+            S.visible  = ['name','start_date','end_date','status','activity_code','activity_type'];
+            S.mapping  = Object.fromEntries(G.cols.map(c => [c, c]));
+            S.deps     = G.deps;
+            S.totalRows = G.totalRows;
+        } else {
+            if (!_sourceS.rows.length) return;
+            GS.mode    = 'source';
+            S.rows     = _sourceS.rows;
+            S.allCols  = _sourceS.allCols;
+            S.visible  = _sourceS.visible;
+            S.mapping  = _sourceS.mapping;
+            S.deps     = _sourceS.deps;
+            S.totalRows = _sourceS.totalRows;
+        }
+        renderGantt();
+        renderTable();
+        updateGanttModeBar();
     }
 
     /* ── Load all project tasks for the Gantt ────────────────────────── */
@@ -671,7 +701,8 @@
                 S.deps     = [...G.deps];
             }
 
-            GS.mode = 'all';
+            /* Only default to 'all' mode on initial load — if a source loaded first, respect it */
+            if (!_sourceS.rows.length) GS.mode = 'all';
             buildGanttShell();
             splitterEl.style.display = 'flex';
             initSplitterPos();
@@ -1410,11 +1441,7 @@
             if (!btn) return;
             const mode = btn.dataset.ganttMode;
             if (mode === GS.mode) return;
-            if (mode === 'all'    && !G.rows.length)  return;
-            if (mode === 'source' && !S.rows.length)  return;
-            GS.mode = mode;
-            renderGantt();
-            updateGanttModeBar();
+            switchMode(mode);
         });
 
         /* Virtual scroll — fire _vsRefresh on each scroll tick via rAF */
