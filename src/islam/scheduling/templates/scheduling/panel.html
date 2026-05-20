@@ -24,23 +24,10 @@
                 </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link {% if schedule_tab == 'attach' %}active{% endif %}"
-                   href="{% url 'islam:schedule' project.pk %}?tab=attach">
-                    <i class="bi bi-link-45deg me-1"></i>Attach
+                <a class="nav-link {% if schedule_tab == 'fourD_link' %}active{% endif %}"
+                   href="{% url 'islam:schedule' project.pk %}?tab=fourD_link">
+                    <i class="bi bi-boxes me-1"></i>4D Link
                     {% if task_count %}<span class="badge bg-secondary ms-1">{{ task_count }}</span>{% endif %}
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link {% if schedule_tab == 'simulate' %}active{% endif %}"
-                   href="{% url 'islam:schedule' project.pk %}?tab=simulate">
-                    <i class="bi bi-play-circle me-1"></i>Simulate
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link {% if schedule_tab == 'review' %}active{% endif %}"
-                   href="{% url 'islam:schedule' project.pk %}?tab=review">
-                    <i class="bi bi-eye me-1"></i>Review
-                    {% if binding_review_count %}<span class="badge bg-warning text-dark ms-1">{{ binding_review_count }}</span>{% endif %}
                 </a>
             </li>
             <li class="nav-item">
@@ -68,20 +55,8 @@
     <div class="flex-grow-1 overflow-auto p-3">
         {% if schedule_tab == 'data_sources' %}
             {% include "scheduling/tabs/data_sources.html" %}
-        {% elif schedule_tab == 'attach' %}
-            {% include "scheduling/tabs/attach.html" %}
-        {% elif schedule_tab == 'simulate' %}
-            {% include "scheduling/tabs/simulate.html" %}
-        {% elif schedule_tab == 'review' %}
-            <!-- Load via LinkReviewView so summary/rows context is populated correctly -->
-            <div hx-get="{% url 'islam:review' project.pk %}"
-                 hx-trigger="load"
-                 hx-target="this"
-                 hx-swap="outerHTML">
-                <div class="text-center text-secondary py-5">
-                    <span class="spinner-border spinner-border-sm me-2"></span>Loading review…
-                </div>
-            </div>
+        {% elif schedule_tab == 'fourD_link' %}
+            {% include "scheduling/tabs/fourD_link.html" %}
         {% elif schedule_tab == 'evm' %}
             {% include "scheduling/tabs/evm.html" %}
         {% elif schedule_tab == 'lookahead' %}
@@ -108,14 +83,12 @@
                 <p><strong>Workflow:</strong></p>
                 <ol>
                     <li><strong>Data Sources</strong> — upload a schedule file (.xlsx, .xer, or .xml). The system parses it and uses AI to validate it looks like a real construction programme.</li>
-                    <li><strong>Attach</strong> — link tasks to IFC elements. Use <em>Smart Pipeline</em> (4-layer: exact → normalised → heuristic → embedding) or the legacy AI / parameter methods. Smart Pipeline auto-accepts high-confidence matches and flags lower-confidence ones for review.</li>
-                    <li><strong>Simulate</strong> — drag the date slider to animate the build sequence in 4D in the 3D viewer.</li>
-                    <li><strong>Review</strong> — inspect every binding the Smart Pipeline created. Accept or remove individual links, bulk-accept all bindings with ≥ 95% confidence, manually link tasks that were left unlinked, and export the full binding table as CSV.</li>
+                    <li><strong>4D Link</strong> — the unified linking, simulation, and review workspace. Run <em>Castor Link Engine</em> (5-layer: exact → normalised → heuristic → embedding, with LLM schedule context analysis) or match by IFC property name. The 3D viewer shows the model in real time; drag the 4D timeline slider to animate the build sequence. Review Links loads every binding — accept, remove, bulk-accept at ≥ 95% confidence, or manually add links. Export the binding table as CSV from the Review panel.</li>
                     <li><strong>EVM</strong> — Earned Value Management dashboard. Shows SPI, CPI, EAC, and VAC KPI cards plus a cumulative S-curve (PV, EV, AC). Uses task costs when available; falls back to duration weighting when no costs are in the schedule.</li>
                     <li><strong>Look-ahead</strong> — Rolling window showing what starts, is in progress, and finishes across the next 2–6 weeks. Critical path tasks are flagged with a CP badge. Click a week card to expand/collapse it.</li>
                     <li><strong>Intelligence</strong> — AI-powered Q&amp;A over your schedule. Ask natural-language questions such as "Which tasks are delayed?" or "Summarise MEP progress." The system embeds all tasks into a vector store and retrieves the most relevant ones as context for the LLM. Click <em>Embed Tasks</em> before asking for the first time, or after uploading a new schedule.</li>
                 </ol>
-                <p><strong>Caveats:</strong> Smart Pipeline matching is probabilistic — always review heuristic and embedding results in the Review tab before simulating. Elements must be processed (IFC Insights complete) for best coverage. EVM actual cost (AC) is estimated as EV × 1.05; replace with real cost data for accurate CPI. Intelligence answers are only as good as the schedule data — always verify LLM output against your programme.</p>
+                <p><strong>Caveats:</strong> Castor Link Engine matching is probabilistic — always review heuristic and embedding results via Review Links before relying on 4D simulation. Elements must be processed (IFC Insights complete) for best coverage. EVM actual cost (AC) is estimated as EV × 1.05; replace with real cost data for accurate CPI. Intelligence answers are only as good as the schedule data — always verify LLM output against your programme.</p>
             </div>
         </div>
     </div>

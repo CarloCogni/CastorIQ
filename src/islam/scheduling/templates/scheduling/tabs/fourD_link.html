@@ -1,0 +1,481 @@
+<!-- scheduling/tabs/fourD_link.html — unified 4D Link workspace (link + simulate + review) -->
+
+<style>
+  .fd-zoom-btn {
+    padding: 2px 8px;
+    font-size: 11px;
+    background: transparent;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 4px;
+    color: var(--bs-body-color);
+    cursor: pointer;
+  }
+  .fd-zoom-btn.active {
+    background: var(--bs-primary);
+    color: #fff;
+    border-color: var(--bs-primary);
+  }
+  @keyframes fd-spin { to { transform: rotate(360deg); } }
+</style>
+
+<div id="fourD-root" style="
+  display: grid;
+  grid-template-columns: 1fr 1.5fr 320px;
+  grid-template-rows: 1fr auto;
+  height: calc(100vh - 140px);
+  gap: 8px;
+">
+
+  <!-- LEFT: Gantt Panel -->
+  <div id="fourD-gantt" style="
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  ">
+    <div style="padding: 8px 12px; border-bottom: 1px solid var(--bs-border-color);
+                display: flex; align-items: center; justify-content: space-between;">
+      <span style="font-size: 12px; font-weight: 600;">Schedule</span>
+      <div style="display: flex; gap: 4px;">
+        <button class="fd-zoom-btn active" data-zoom="week">Week</button>
+        <button class="fd-zoom-btn" data-zoom="month">Month</button>
+      </div>
+    </div>
+    <div id="fourD-gantt-body" style="flex: 1; overflow: auto; padding: 4px;">
+      <div style="padding: 20px; text-align: center; color: var(--bs-secondary-color);">
+        <div class="spinner-border spinner-border-sm"></div>
+        <div style="margin-top: 8px; font-size: 12px;">Loading tasks…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MIDDLE: 3D Viewer + Timeline -->
+  <div id="fourD-viewer" style="
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  ">
+    <!-- Color scheme toolbar -->
+    <div class="d-flex align-items-center gap-2 px-2 py-1 border-bottom flex-shrink-0" style="font-size: 0.8rem;">
+      <span class="text-secondary fw-medium" style="font-size: 11px;">Color by:</span>
+      <div class="btn-group btn-group-sm" id="fd-colorby-group">
+        <button class="btn btn-primary btn-sm" data-mode="timeline" style="font-size: 11px; padding: 2px 8px;">
+          <i class="bi bi-calendar-week me-1"></i>4D
+        </button>
+        <button class="btn btn-outline-secondary btn-sm" data-mode="level" style="font-size: 11px; padding: 2px 8px;">
+          <i class="bi bi-layers me-1"></i>Level
+        </button>
+        <button class="btn btn-outline-secondary btn-sm" data-mode="element_type" style="font-size: 11px; padding: 2px 8px;">
+          <i class="bi bi-bounding-box me-1"></i>Type
+        </button>
+      </div>
+      <button class="btn btn-sm btn-outline-secondary ms-auto" id="fd-reset-view-btn"
+              title="Reset colours" style="font-size: 11px; padding: 2px 6px;">
+        <i class="bi bi-arrow-counterclockwise"></i>
+      </button>
+    </div>
+
+    <!-- 3D Viewer iframe -->
+    <div style="flex: 1; position: relative; min-height: 0;">
+      <iframe
+        id="fd-iframe"
+        src="{% url 'islam:viewer_embed' project.pk %}"
+        style="width: 100%; height: 100%; border: none;"
+        allow="fullscreen">
+      </iframe>
+      <div id="fd-iframe-loading"
+           style="position: absolute; inset: 0; background: #111; display: flex; flex-direction: column;
+                  align-items: center; justify-content: center; color: #94a3b8;
+                  font-family: system-ui, sans-serif; z-index: 10;">
+        <div style="width: 34px; height: 34px; border: 3px solid #1e293b; border-top-color: #3b82f6;
+                    border-radius: 50%; animation: fd-spin 0.8s linear infinite; margin-bottom: 12px;"></div>
+        <span style="font-size: 0.85rem;">Loading 3D viewer…</span>
+      </div>
+    </div>
+
+    <!-- 4D Timeline controls -->
+    <div id="fd-timeline-section" class="flex-shrink-0 border-top px-3 py-2"
+         style="font-size: 0.82rem; background: var(--bs-body-bg);">
+      <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+        <button id="fd-to-start-btn" class="btn btn-sm btn-outline-secondary" title="Jump to start"
+                style="padding: 2px 6px;"><i class="bi bi-skip-start-fill"></i></button>
+        <button id="fd-prev-btn" class="btn btn-sm btn-outline-secondary" title="Previous week"
+                style="padding: 2px 6px;"><i class="bi bi-skip-backward-fill"></i></button>
+        <button id="fd-play-btn" class="btn btn-sm btn-primary" title="Play"
+                style="padding: 2px 6px;"><i class="bi bi-play-fill"></i></button>
+        <button id="fd-pause-btn" class="btn btn-sm btn-outline-secondary d-none" title="Pause"
+                style="padding: 2px 6px;"><i class="bi bi-pause-fill"></i></button>
+        <button id="fd-next-btn" class="btn btn-sm btn-outline-secondary" title="Next week"
+                style="padding: 2px 6px;"><i class="bi bi-skip-forward-fill"></i></button>
+        <select id="fd-speed-select" class="form-select form-select-sm"
+                style="width: auto; font-size: 0.78rem; padding: 2px 20px 2px 6px;">
+          <option value="0.5">0.5×</option>
+          <option value="1" selected>1×</option>
+          <option value="2">2×</option>
+          <option value="4">4×</option>
+        </select>
+        <span id="fd-current-date" class="fw-bold ms-1" style="min-width: 110px; font-size: 0.85rem;"></span>
+      </div>
+      <div class="d-flex align-items-center gap-2 mb-1">
+        <span id="fd-min-date" class="text-secondary" style="font-size: 0.72rem; white-space: nowrap;"></span>
+        <input id="fd-slider" type="range" class="form-range flex-grow-1" min="0" value="0" style="min-width: 60px;">
+        <span id="fd-max-date" class="text-secondary" style="font-size: 0.72rem; white-space: nowrap;"></span>
+      </div>
+      <div class="d-flex align-items-center gap-3 flex-wrap" style="font-size: 0.72rem;">
+        <div class="d-flex align-items-center gap-1">
+          <span style="width: 8px; height: 8px; border-radius: 2px; background: #10B981; display: inline-block;"></span>
+          <span id="fd-stat-complete" class="fw-semibold">0</span>
+          <span class="text-secondary">Complete</span>
+        </div>
+        <div class="d-flex align-items-center gap-1">
+          <span style="width: 8px; height: 8px; border-radius: 2px; background: #F59E0B; display: inline-block;"></span>
+          <span id="fd-stat-in-progress" class="fw-semibold">0</span>
+          <span class="text-secondary">In Progress</span>
+        </div>
+        <div class="d-flex align-items-center gap-1">
+          <span style="width: 8px; height: 8px; border-radius: 2px; background: #9CA3AF; display: inline-block;"></span>
+          <span id="fd-stat-not-started" class="fw-semibold">0</span>
+          <span class="text-secondary">Not Started</span>
+        </div>
+        <div class="d-flex align-items-center gap-1 ms-2">
+          <span id="fd-stat-pct" class="fw-bold text-success">0%</span>
+          <span class="text-secondary">complete</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: AI Chat Panel -->
+  <div id="fourD-chat" style="
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  ">
+    <div style="padding: 8px 12px; border-bottom: 1px solid var(--bs-border-color);">
+      <span style="font-size: 12px; font-weight: 600;"><i class="bi bi-robot me-1"></i>AI Assistant</span>
+    </div>
+    <div id="fourD-messages" style="
+      flex: 1; overflow-y: auto; padding: 12px;
+      display: flex; flex-direction: column; gap: 8px;
+    ">
+      <div style="background: rgba(99,102,241,.1); border-radius: 8px; padding: 10px 12px; font-size: 12px;">
+        <strong style="color: #818cf8;">Castor AI</strong>
+        <p style="margin: 4px 0 0; color: var(--bs-body-color);">
+          Hello! Use <strong>Castor Link Engine</strong> in the toolbar below to auto-link tasks to IFC elements,
+          or switch to the <strong>Intelligence</strong> tab for full AI Q&amp;A over your schedule.
+        </p>
+      </div>
+    </div>
+    <div style="padding: 8px; border-top: 1px solid var(--bs-border-color);">
+      <div style="display: flex; gap: 6px;">
+        <input id="fourD-chat-input" type="text"
+               placeholder="Ask about your schedule…"
+               style="flex: 1; padding: 6px 10px; font-size: 12px;
+                      background: var(--bs-body-bg);
+                      border: 1px solid var(--bs-border-color);
+                      border-radius: 6px; color: var(--bs-body-color);">
+        <button id="fourD-chat-send"
+                style="padding: 6px 12px; background: #6366f1; color: white;
+                       border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- BOTTOM FOOTER: Controls bar (spans all 3 columns) -->
+  <div id="fourD-footer" style="
+    grid-column: 1 / -1;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: 8px;
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  ">
+    <!-- Castor Link Engine -->
+    <form hx-post="{% url 'islam:schedule_link_smart' project.pk %}"
+          hx-target="#fourD-link-results"
+          hx-swap="innerHTML"
+          hx-indicator="#fd-link-spinner"
+          style="display: contents;">
+      {% csrf_token %}
+      <button type="submit"
+              style="padding: 6px 16px; background: #6366f1; color: white;
+                     border: none; border-radius: 6px; cursor: pointer;
+                     font-size: 12px; font-weight: 600;
+                     display: inline-flex; align-items: center; gap: 6px;">
+        <span id="fd-link-spinner" class="htmx-indicator spinner-border spinner-border-sm"></span>
+        <i class="bi bi-lightning-charge-fill"></i> Castor Link Engine
+      </button>
+    </form>
+
+    <!-- Review Links (GET — no CSRF needed) -->
+    <button
+      hx-get="{% url 'islam:review' project.pk %}"
+      hx-target="#fourD-link-results"
+      hx-swap="innerHTML"
+      hx-indicator="#fd-review-spinner"
+      style="padding: 6px 16px; background: transparent;
+             color: var(--bs-body-color);
+             border: 1px solid var(--bs-border-color);
+             border-radius: 6px; cursor: pointer; font-size: 12px;
+             display: inline-flex; align-items: center; gap: 6px;">
+      <span id="fd-review-spinner" class="htmx-indicator spinner-border spinner-border-sm"></span>
+      <i class="bi bi-eye"></i> Review Links
+      {% if binding_review_count %}<span class="badge bg-warning text-dark" style="font-size: 10px;">{{ binding_review_count }}</span>{% endif %}
+    </button>
+
+    <!-- Separator -->
+    <div style="height: 24px; width: 1px; background: var(--bs-border-color);"></div>
+
+    <!-- Parameter Match -->
+    <form hx-post="{% url 'islam:schedule_link_param' project.pk %}"
+          hx-target="#fourD-link-results"
+          hx-swap="innerHTML"
+          hx-indicator="#fd-param-spinner"
+          style="display: contents;">
+      {% csrf_token %}
+      <input type="text" name="param_name" id="fourD-param-input"
+             placeholder="e.g. ActivityCode"
+             value="{{ ifc_param_name|default:'' }}"
+             style="padding: 5px 10px; font-size: 12px; width: 160px;
+                    background: var(--bs-body-bg);
+                    border: 1px solid var(--bs-border-color);
+                    border-radius: 6px; color: var(--bs-body-color);">
+      <button type="submit"
+              style="padding: 5px 12px; background: #0ea5e9; color: white;
+                     border: none; border-radius: 6px; cursor: pointer; font-size: 12px;
+                     display: inline-flex; align-items: center; gap: 4px;">
+        <span id="fd-param-spinner" class="htmx-indicator spinner-border spinner-border-sm"></span>
+        Match
+      </button>
+    </form>
+  </div>
+
+</div>
+
+<!-- Results area: Castor Link Engine output / Review panel (rendered below grid) -->
+<div id="fourD-link-results" style="padding: 8px;"></div>
+
+<script>
+(function () {
+  "use strict";
+  const TASKS_URL    = "{% url 'islam:all_tasks_preview' project.pk %}";
+  const TIMELINE_URL = "{% url 'islam:viewer_timeline' project.pk %}";
+
+  /* ── Mini Gantt ──────────────────────────────────────────────────── */
+
+  async function loadGantt() {
+    const body = document.getElementById("fourD-gantt-body");
+    try {
+      const resp = await fetch(TASKS_URL);
+      if (!resp.ok) throw new Error(resp.status);
+      const data = await resp.json();
+      renderMiniGantt(body, data);
+    } catch (e) {
+      body.innerHTML = '<div style="padding:20px;color:var(--bs-secondary-color);font-size:12px;text-align:center;">Could not load tasks.</div>';
+    }
+  }
+
+  function renderMiniGantt(container, data) {
+    const tasks = data.tasks || [];
+    if (!tasks.length) {
+      container.innerHTML = '<div style="padding:20px;color:var(--bs-secondary-color);font-size:12px;text-align:center;">No tasks — import a schedule in Data Sources.</div>';
+      return;
+    }
+    const starts = tasks.map(t => new Date(t.start)).filter(d => !isNaN(d));
+    const ends   = tasks.map(t => new Date(t.end)).filter(d => !isNaN(d));
+    if (!starts.length) { container.innerHTML = '<div style="padding:12px;font-size:11px;color:var(--bs-secondary-color);">No dates found.</div>'; return; }
+    const minMs = Math.min(...starts), maxMs = Math.max(...ends);
+    const span  = Math.max((maxMs - minMs) / 86400000, 1);
+
+    let html = '<div style="font-size:10px;">';
+    const limit = Math.min(tasks.length, 200);
+    for (let i = 0; i < limit; i++) {
+      const t = tasks[i];
+      const s = new Date(t.start).getTime(), e = new Date(t.end).getTime();
+      const left  = Math.max(0, (s - minMs) / 86400000 / span * 100).toFixed(1);
+      const width = Math.max(0.5, (e - s) / 86400000 / span * 100).toFixed(1);
+      const isCrit   = t.total_float !== undefined && t.total_float <= 0;
+      const barColor = isCrit ? "#ef4444" : "#3b82f6";
+      const esc = (str) => String(str || "").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+      html += `<div style="display:flex;align-items:center;height:20px;gap:4px;border-bottom:1px solid var(--bs-border-color);padding:0 4px;">`
+            + `<div style="width:110px;flex-shrink:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:10px;color:var(--bs-body-color);" title="${esc(t.name)}">${esc(t.name)}</div>`
+            + `<div style="flex:1;position:relative;height:10px;background:var(--bs-secondary-bg);border-radius:2px;">`
+            + `<div style="position:absolute;left:${left}%;width:${width}%;height:100%;background:${barColor};border-radius:2px;"></div>`
+            + `</div></div>`;
+    }
+    if (tasks.length > limit) {
+      html += `<div style="padding:6px 4px;font-size:10px;color:var(--bs-secondary-color);">… and ${tasks.length - limit} more tasks</div>`;
+    }
+    html += "</div>";
+    container.innerHTML = html;
+  }
+
+  document.querySelectorAll(".fd-zoom-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".fd-zoom-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+    });
+  });
+
+  /* ── Viewer + Timeline ───────────────────────────────────────────── */
+
+  const iframe    = document.getElementById("fd-iframe");
+  const iframeOvl = document.getElementById("fd-iframe-loading");
+  const colorBtns = document.querySelectorAll("#fd-colorby-group button");
+
+  let viewerReady = false, pendingMsg = null, currentMode = "timeline";
+  let tlIntervals = [], tlNoTask = [], tlTimer = null, tlSpeed = 1;
+
+  function sendToViewer(msg) {
+    if (!viewerReady) { pendingMsg = msg; return; }
+    iframe.contentWindow.postMessage(msg, "*");
+  }
+
+  window.addEventListener("message", (e) => {
+    if (e.source !== iframe.contentWindow) return;
+    const msg = e.data;
+    if (!msg) return;
+    if (msg.type === "castor:viewer-ready") {
+      viewerReady = true;
+      iframeOvl.style.display = "none";
+      if (pendingMsg) { iframe.contentWindow.postMessage(pendingMsg, "*"); pendingMsg = null; }
+      if (currentMode === "timeline" && tlIntervals.length) _applyInterval(0);
+    }
+    if (msg.type === "castor:viewer-error") {
+      iframeOvl.innerHTML = `<span style="color:#ef4444;">&#9888; ${msg.message || "Viewer error"}</span>`;
+    }
+  });
+
+  colorBtns.forEach(btn => {
+    btn.addEventListener("click", () => {
+      colorBtns.forEach(b => { b.classList.remove("active", "btn-primary"); b.classList.add("btn-outline-secondary"); });
+      btn.classList.remove("btn-outline-secondary");
+      btn.classList.add("active", "btn-primary");
+      currentMode = btn.dataset.mode;
+      _pauseTimeline();
+      const tlSection = document.getElementById("fd-timeline-section");
+      if (currentMode === "timeline") {
+        tlSection.style.display = "";
+        if (tlIntervals.length) _applyInterval(parseInt(document.getElementById("fd-slider").value));
+      } else {
+        tlSection.style.display = "none";
+        sendToViewer({ type: "castor:colorby", by: currentMode });
+      }
+    });
+  });
+
+  document.getElementById("fd-reset-view-btn").addEventListener("click", () => sendToViewer({ type: "castor:reset" }));
+
+  async function loadTimeline() {
+    try {
+      const resp = await fetch(TIMELINE_URL);
+      if (!resp.ok) return;
+      const data = await resp.json();
+      if (!data.has_tasks) { document.getElementById("fd-slider").disabled = true; return; }
+      tlIntervals = data.intervals || [];
+      tlNoTask    = data.no_task   || [];
+      if (!tlIntervals.length) return;
+      document.getElementById("fd-min-date").textContent = data.project_start || "";
+      document.getElementById("fd-max-date").textContent = data.project_end   || "";
+      const slider = document.getElementById("fd-slider");
+      slider.max   = tlIntervals.length - 1;
+      slider.value = 0;
+      if (viewerReady && currentMode === "timeline") _applyInterval(0);
+    } catch (e) { /* no timeline — slider stays disabled */ }
+  }
+
+  function _applyInterval(idx) {
+    if (!tlIntervals.length) return;
+    const iv = tlIntervals[Math.min(idx, tlIntervals.length - 1)];
+    const { not_started = [], in_progress = [], complete = [] } = iv.entities || {};
+    sendToViewer({ type: "castor:timeline-colors", not_started, in_progress, complete, no_task: tlNoTask });
+    document.getElementById("fd-current-date").textContent = new Date(iv.date + "T00:00:00")
+      .toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+    document.getElementById("fd-slider").value = idx;
+    const s = iv.stats || {}, tot = s.total || 1;
+    document.getElementById("fd-stat-complete").textContent    = (s.complete    || 0).toLocaleString();
+    document.getElementById("fd-stat-in-progress").textContent = (s.in_progress || 0).toLocaleString();
+    document.getElementById("fd-stat-not-started").textContent = (s.not_started || 0).toLocaleString();
+    document.getElementById("fd-stat-pct").textContent         = Math.round(((s.complete || 0) / tot) * 100) + "%";
+  }
+
+  function _pauseTimeline() {
+    clearInterval(tlTimer); tlTimer = null;
+    document.getElementById("fd-pause-btn").classList.add("d-none");
+    document.getElementById("fd-play-btn").classList.remove("d-none");
+  }
+
+  function _playTimeline() {
+    const slider = document.getElementById("fd-slider");
+    tlTimer = setInterval(() => {
+      const next = parseInt(slider.value) + 1;
+      if (next > parseInt(slider.max)) { _pauseTimeline(); return; }
+      _applyInterval(next);
+    }, 1500 / tlSpeed);
+  }
+
+  document.getElementById("fd-play-btn").addEventListener("click", () => {
+    document.getElementById("fd-play-btn").classList.add("d-none");
+    document.getElementById("fd-pause-btn").classList.remove("d-none");
+    _playTimeline();
+  });
+  document.getElementById("fd-pause-btn").addEventListener("click", _pauseTimeline);
+  document.getElementById("fd-prev-btn").addEventListener("click", () => {
+    const s = document.getElementById("fd-slider");
+    _applyInterval(Math.max(0, parseInt(s.value) - 1));
+  });
+  document.getElementById("fd-next-btn").addEventListener("click", () => {
+    const s = document.getElementById("fd-slider");
+    _applyInterval(Math.min(parseInt(s.max), parseInt(s.value) + 1));
+  });
+  document.getElementById("fd-to-start-btn").addEventListener("click", () => { _pauseTimeline(); _applyInterval(0); });
+  document.getElementById("fd-speed-select").addEventListener("change", (e) => {
+    tlSpeed = parseFloat(e.target.value);
+    if (tlTimer) { _pauseTimeline(); _playTimeline(); }
+  });
+  document.getElementById("fd-slider").addEventListener("input", (e) => _applyInterval(parseInt(e.target.value)));
+
+  /* ── AI Chat stub ────────────────────────────────────────────────── */
+
+  function addMessage(role, text) {
+    const msgs = document.getElementById("fourD-messages");
+    const isAI = role === "ai";
+    const div  = document.createElement("div");
+    div.style.cssText = `background:${isAI ? "rgba(99,102,241,.1)" : "rgba(59,130,246,.08)"};`
+                      + `border-radius:8px;padding:10px 12px;font-size:12px;`
+                      + `align-self:${isAI ? "flex-start" : "flex-end"};max-width:90%;`;
+    div.innerHTML = `<strong style="color:${isAI ? "#818cf8" : "#3b82f6"};">${isAI ? "Castor AI" : "You"}</strong>`
+                  + `<p style="margin:4px 0 0;color:var(--bs-body-color);">${text}</p>`;
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+
+  document.getElementById("fourD-chat-send").addEventListener("click", () => {
+    const input = document.getElementById("fourD-chat-input");
+    const msg   = input.value.trim();
+    if (!msg) return;
+    input.value = "";
+    addMessage("user", msg);
+    addMessage("ai", "For full AI Q&amp;A over your schedule, switch to the <strong>Intelligence</strong> tab.");
+  });
+
+  document.getElementById("fourD-chat-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("fourD-chat-send").click();
+  });
+
+  /* ── Init ────────────────────────────────────────────────────────── */
+  loadGantt();
+  loadTimeline();
+}());
+</script>
