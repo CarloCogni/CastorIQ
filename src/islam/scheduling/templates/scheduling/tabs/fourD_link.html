@@ -72,7 +72,7 @@
         <button class="fd-zoom-btn" data-zoom="month">Month</button>
       </div>
     </div>
-    <div id="fourD-gantt-body" style="flex: 1; overflow: auto; padding: 4px;">
+    <div id="fourD-gantt-body" style="flex: 1; overflow: auto;">
       <div style="padding: 20px; text-align: center; color: var(--bs-secondary-color);">
         <div class="spinner-border spinner-border-sm"></div>
         <div style="margin-top: 8px; font-size: 12px;">Loading tasks…</div>
@@ -337,6 +337,45 @@
     }
   }
 
+  function buildDateHeader(minMs, maxMs, spanMs) {
+    const todayMs   = Date.now();
+    const showToday = todayMs >= minMs && todayMs <= maxMs;
+    const todayPct  = ((todayMs - minMs) / spanMs * 100).toFixed(2);
+
+    /* Step: 1 month for spans ≤18 mo, 3 months ≤36 mo, else 6 months */
+    const totalMonths = Math.round(spanMs / (30.44 * 24 * 3600 * 1000));
+    const step = totalMonths > 36 ? 6 : totalMonths > 18 ? 3 : 1;
+
+    let track = "";
+    const dMin = new Date(minMs);
+    let cur = new Date(dMin.getFullYear(), dMin.getMonth(), 1);
+    let idx = 0;
+    while (cur.getTime() <= maxMs) {
+      const pct = Math.max(0, (cur.getTime() - minMs) / spanMs * 100).toFixed(2);
+      track += `<div style="position:absolute;left:${pct}%;top:0;bottom:0;width:1px;background:var(--bs-border-color);pointer-events:none;"></div>`;
+      if (idx % step === 0) {
+        const label = cur.toLocaleDateString(undefined, { month: "short", year: "numeric" });
+        track += `<div style="position:absolute;left:${pct}%;top:0;padding-left:3px;font-size:9px;`
+               + `color:var(--bs-secondary-color);white-space:nowrap;line-height:24px;">${label}</div>`;
+      }
+      cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+      idx++;
+    }
+
+    if (showToday) {
+      track += `<div style="position:absolute;left:${todayPct}%;top:0;bottom:0;width:2px;background:#ef4444;z-index:3;pointer-events:none;">`
+             + `<span style="position:absolute;left:3px;top:2px;font-size:9px;color:#ef4444;font-weight:700;white-space:nowrap;">TODAY</span>`
+             + `</div>`;
+    }
+
+    return `<div style="position:sticky;top:0;z-index:10;display:flex;align-items:stretch;height:24px;`
+         + `padding:0 4px;background:var(--bs-body-bg);border-bottom:1px solid var(--bs-border-color);flex-shrink:0;">`
+         + `<div style="width:180px;flex-shrink:0;border-right:1px solid var(--bs-border-color);"></div>`
+         + `<div style="flex:1;position:relative;overflow:hidden;">`
+         + track
+         + `</div></div>`;
+  }
+
   function renderMiniGantt(container, data) {
     const tasks = data.tasks || [];
     if (!tasks.length) {
@@ -379,7 +418,7 @@
 
     const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 
-    let html = '<div style="font-size:10px;">';
+    let html = '<div style="font-size:10px;">' + buildDateHeader(minMs, maxMs, spanMs);
     let rendered = 0;
     const ROW_LIMIT = 500;
 
