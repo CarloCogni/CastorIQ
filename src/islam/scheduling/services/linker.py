@@ -3,55 +3,11 @@
 
 from __future__ import annotations
 
-import json
 import logging
 
 from ifc_processor.models import IFCEntity
 
 logger = logging.getLogger(__name__)
-
-
-def auto_match_tasks(tasks: list, ifc_entities: list) -> list[dict]:
-    """Use the site LLM to semantically match task names to IFC entity names.
-
-    Returns a list of match dicts:
-        { task_id, task_name, entity_ids: [...], entity_names: [...], confidence: 0.0–1.0 }
-
-    Falls back to an empty match list if LLM is unavailable.
-    """
-    from core.llm import get_llm
-
-    if not tasks or not ifc_entities:
-        return []
-
-    entity_index = {str(e.id): e.name for e in ifc_entities}
-    task_names = [{"id": str(t.pk), "name": t.name} for t in tasks]
-    entity_names = [{"id": eid, "name": name} for eid, name in entity_index.items()]
-
-    prompt = (
-        "You are matching construction schedule tasks to IFC building elements.\n\n"
-        f"Tasks (JSON):\n{json.dumps(task_names, ensure_ascii=False)}\n\n"
-        f"IFC Entities (JSON, first 200):\n{json.dumps(entity_names[:200], ensure_ascii=False)}\n\n"
-        "For each task, list the IFC entity IDs that best match by name similarity.\n"
-        "Return ONLY a JSON array. Each item: "
-        '{"task_id": "...", "entity_ids": ["..."], "confidence": 0.0}\n'
-        "confidence range: 0.0 = no match, 1.0 = exact. Include only matches with confidence >= 0.3."
-    )
-
-    try:
-        llm = get_llm(purpose="ask", temperature=0.1, format_json=True)
-        response = llm.invoke(prompt)
-        raw = response.content.strip()
-        # Strip markdown fences if present
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-        matches = json.loads(raw)
-        return _enrich_matches(matches, entity_index)
-    except Exception as exc:
-        logger.warning("auto_match_tasks LLM call failed: %s", exc)
-        return []
 
 
 def param_match_tasks(tasks: list, ifc_entities: list, param_name: str) -> list[dict]:
@@ -101,20 +57,32 @@ def param_match_tasks(tasks: list, ifc_entities: list, param_name: str) -> list[
 
 
 def apply_matches(task_model_class, matches: list[dict]) -> dict[str, int]:
-    """Persist match results by setting Task.ifc_entities M2M.
+    """Persist match results by replacing each task's ifc_entities M2M links.
 
+    Uses delete + bulk_create to avoid N+1 queries.
     Returns {task_id: entity_count} summary.
     """
     summary: dict[str, int] = {}
+    ThroughModel = task_model_class.ifc_entities.through
+    through_rows: list = []
+    task_ids_to_clear: list = []
+
     for match in matches:
         try:
-            task = task_model_class.objects.get(pk=match["task_id"])
+            task_pk = match["task_id"]
             entity_ids = match.get("entity_ids", [])
-            entities = IFCEntity.objects.filter(id__in=entity_ids)
-            task.ifc_entities.set(entities)
-            summary[match["task_id"]] = entities.count()
+            entities = list(IFCEntity.objects.filter(id__in=entity_ids)) if entity_ids else []
+            task_ids_to_clear.append(task_pk)
+            through_rows.extend(ThroughModel(task_id=task_pk, ifcentity_id=e.pk) for e in entities)
+            summary[task_pk] = len(entities)
         except Exception as exc:
             logger.warning("apply_matches: failed on task %s: %s", match.get("task_id"), exc)
+
+    if task_ids_to_clear:
+        ThroughModel.objects.filter(task_id__in=task_ids_to_clear).delete()
+    if through_rows:
+        ThroughModel.objects.bulk_create(through_rows, ignore_conflicts=True)
+
     return summary
 
 
@@ -146,10 +114,3 @@ def _read_property(entity: IFCEntity, prop_name: str) -> str | None:
         if dot != -1 and key[dot + 1 :].strip().lower() == needle:
             return str(val).strip() if val is not None else None
     return None
-
-
-def _enrich_matches(raw_matches: list[dict], entity_index: dict[str, str]) -> list[dict]:
-    """Add entity_names field to LLM match results."""
-    for match in raw_matches:
-        match["entity_names"] = [entity_index.get(eid, eid) for eid in match.get("entity_ids", [])]
-    return raw_matches
