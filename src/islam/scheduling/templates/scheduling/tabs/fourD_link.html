@@ -387,6 +387,8 @@
   let _gRows      = [];
   let _gMinMs     = 0, _gSpanMs = 1;
   let _gShowToday = false, _gTodayPct = "0";
+  let _ganttContainer = null, _ganttInner = null;
+  let _selectedGi = -1, _selectedTi = -1;
 
   const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 
@@ -430,10 +432,12 @@
   function _taskRowHtml(gi, ti, top) {
     const t = _gGroups[gi].tasks[ti];
     const s = new Date(t.start).getTime(), e = new Date(t.end).getTime();
+    const isSel = gi === _selectedGi && ti === _selectedTi;
+    const selStr = isSel ? "background:rgba(59,130,246,0.10);border-left:2px solid #3b82f6;" : "";
     const baseStyle = `position:absolute;left:0;right:0;top:${top}px;height:${TASK_H}px;`
-                    + `display:flex;align-items:center;gap:4px;font-size:10px;`
-                    + `border-bottom:1px solid var(--bs-border-color);padding:0 4px;`;
-    if (isNaN(s) || isNaN(e)) return `<div style="${baseStyle}"></div>`;
+                    + `display:flex;align-items:center;gap:4px;font-size:10px;cursor:pointer;`
+                    + `border-bottom:1px solid var(--bs-border-color);padding:0 4px;${selStr}`;
+    if (isNaN(s) || isNaN(e)) return `<div data-gi="${gi}" data-ti="${ti}" style="${baseStyle}"></div>`;
 
     const left  = Math.max(0,   (s - _gMinMs) / _gSpanMs * 100).toFixed(2);
     const width = Math.max(0.3, (e - s)       / _gSpanMs * 100).toFixed(2);
@@ -446,13 +450,77 @@
     const todayLine = _gShowToday
       ? `<div style="position:absolute;left:${_gTodayPct}%;top:0;bottom:0;width:2px;background:#ef4444;z-index:2;pointer-events:none;"></div>`
       : "";
-    return `<div style="${baseStyle}">`
+    return `<div data-gi="${gi}" data-ti="${ti}" style="${baseStyle}">`
          + `<div style="width:180px;flex-shrink:0;overflow:hidden;white-space:nowrap;`
          + `text-overflow:ellipsis;color:var(--bs-body-color);padding-left:14px;" title="${esc(t.name)}">${esc(t.name)}</div>`
          + `<div style="flex:1;position:relative;height:10px;background:var(--bs-secondary-bg);border-radius:2px;">`
          + todayLine
          + `<div style="position:absolute;left:${left}%;width:${width}%;height:100%;border-radius:2px;background:${barBg};${barBorder}"></div>`
          + `</div></div>`;
+  }
+
+  function buildFlatRows() {
+    _gRows = [];
+    let top = 0;
+    for (let gi = 0; gi < _gGroups.length; gi++) {
+      const g = _gGroups[gi];
+      _gRows.push({ type: "group", top, height: GRP_H, gi });
+      top += GRP_H;
+      if (g.expanded) {
+        for (let ti = 0; ti < g.tasks.length; ti++) {
+          _gRows.push({ type: "task", top, height: TASK_H, gi, ti });
+          top += TASK_H;
+        }
+      }
+    }
+    if (_ganttInner) _ganttInner.style.height = top + "px";
+  }
+
+  function renderVisible() {
+    if (!_ganttContainer || !_ganttInner) return;
+    const innerScrollTop = Math.max(0, _ganttContainer.scrollTop - HDR_H);
+    const viewH          = _ganttContainer.clientHeight - HDR_H;
+    const first = Math.max(0,             _findFirst(_gRows, innerScrollTop) - OVERSCAN);
+    const last  = Math.min(_gRows.length, _findLast(_gRows, innerScrollTop + viewH) + OVERSCAN);
+
+    let html = "";
+    for (let i = first; i < last; i++) {
+      const r = _gRows[i];
+      html += r.type === "group" ? _grpRowHtml(r.gi, r.top) : _taskRowHtml(r.gi, r.ti, r.top);
+    }
+    _ganttInner.innerHTML = html;
+
+    _ganttInner.querySelectorAll(".fd-grp-hdr").forEach(hdr => {
+      hdr.addEventListener("click", () => {
+        const gi = parseInt(hdr.dataset.gi);
+        _gGroups[gi].expanded = !_gGroups[gi].expanded;
+        buildFlatRows();
+        renderVisible();
+        const row = _gRows.find(r => r.type === "group" && r.gi === gi);
+        if (row) {
+          const absTop = row.top + HDR_H;
+          if (absTop < _ganttContainer.scrollTop) _ganttContainer.scrollTop = absTop;
+        }
+      });
+    });
+  }
+
+  function selectTaskByGlobalId(gid) {
+    for (let gi = 0; gi < _gGroups.length; gi++) {
+      const g = _gGroups[gi];
+      for (let ti = 0; ti < g.tasks.length; ti++) {
+        if ((g.tasks[ti].entity_global_ids || []).includes(gid)) {
+          _selectedGi = gi; _selectedTi = ti;
+          if (!g.expanded) { g.expanded = true; buildFlatRows(); }
+          renderVisible();
+          const row = _gRows.find(r => r.type === "task" && r.gi === gi && r.ti === ti);
+          if (row && _ganttContainer) {
+            _ganttContainer.scrollTop = Math.max(0, row.top + HDR_H - _ganttContainer.clientHeight / 3);
+          }
+          return;
+        }
+      }
+    }
   }
 
   function renderMiniGantt(container, data) {
@@ -489,66 +557,42 @@
     }
     _gGroups = [...groupMap.entries()]
       .sort(([a], [b]) => {
-        const ai = STAGE_ORDER.indexOf(a), bi = STAGE_ORDER.indexOf(b);
+        const ai = STAGE_ORDER.indexOf(a.toLowerCase()), bi = STAGE_ORDER.indexOf(b.toLowerCase());
         return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
       })
-      .map(([stageKey, stTasks]) => ({
-        label:    STAGE_LABELS[stageKey] || (stageKey ? stageKey[0].toUpperCase() + stageKey.slice(1) : "General"),
-        color:    STAGE_COLORS[stageKey] || "#6b7280",
-        tasks:    stTasks,
-        expanded: false,
-      }));
+      .map(([stageKey, stTasks]) => {
+        const normKey = stageKey.toLowerCase();
+        return {
+          label:    STAGE_LABELS[normKey] || (stageKey ? stageKey[0].toUpperCase() + stageKey.slice(1) : "General"),
+          color:    STAGE_COLORS[normKey] || "#6b7280",
+          tasks:    stTasks,
+          expanded: false,
+        };
+      });
+    _selectedGi = -1; _selectedTi = -1;
 
     /* DOM scaffold: sticky header + absolutely-positioned virtual inner */
     container.innerHTML = buildDateHeader(minMs, maxMs, spanMs)
       + `<div class="fd-vinner" style="position:relative;"></div>`;
-    const inner = container.querySelector(".fd-vinner");
+    _ganttContainer = container;
+    _ganttInner = container.querySelector(".fd-vinner");
 
-    function buildFlatRows() {
-      _gRows = [];
-      let top = 0;
-      for (let gi = 0; gi < _gGroups.length; gi++) {
-        const g = _gGroups[gi];
-        _gRows.push({ type: "group", top, height: GRP_H, gi });
-        top += GRP_H;
-        if (g.expanded) {
-          for (let ti = 0; ti < g.tasks.length; ti++) {
-            _gRows.push({ type: "task", top, height: TASK_H, gi, ti });
-            top += TASK_H;
-          }
-        }
+    /* Task-row click: highlight linked IFC elements in the viewer (click again to deselect) */
+    _ganttInner.addEventListener("click", (e) => {
+      const row = e.target.closest("[data-gi][data-ti]");
+      if (!row || row.classList.contains("fd-grp-hdr")) return;
+      const gi = parseInt(row.dataset.gi), ti = parseInt(row.dataset.ti);
+      if (_selectedGi === gi && _selectedTi === ti) {
+        _selectedGi = -1; _selectedTi = -1;
+        renderVisible();
+        sendToViewer({ type: "castor:reset" });
+        return;
       }
-      inner.style.height = top + "px";
-    }
-
-    function renderVisible() {
-      const innerScrollTop = Math.max(0, container.scrollTop - HDR_H);
-      const viewH          = container.clientHeight - HDR_H;
-      const first = Math.max(0,           _findFirst(_gRows, innerScrollTop) - OVERSCAN);
-      const last  = Math.min(_gRows.length, _findLast(_gRows, innerScrollTop + viewH) + OVERSCAN);
-
-      let html = "";
-      for (let i = first; i < last; i++) {
-        const r = _gRows[i];
-        html += r.type === "group" ? _grpRowHtml(r.gi, r.top) : _taskRowHtml(r.gi, r.ti, r.top);
-      }
-      inner.innerHTML = html;
-
-      inner.querySelectorAll(".fd-grp-hdr").forEach(hdr => {
-        hdr.addEventListener("click", () => {
-          const gi = parseInt(hdr.dataset.gi);
-          _gGroups[gi].expanded = !_gGroups[gi].expanded;
-          buildFlatRows();
-          renderVisible();
-          /* Keep toggled group in view after expand/collapse */
-          const row = _gRows.find(r => r.type === "group" && r.gi === gi);
-          if (row) {
-            const absTop = row.top + HDR_H;
-            if (absTop < container.scrollTop) container.scrollTop = absTop;
-          }
-        });
-      });
-    }
+      _selectedGi = gi; _selectedTi = ti;
+      renderVisible();
+      const ids = _gGroups[gi].tasks[ti].entity_global_ids || [];
+      if (ids.length) sendToViewer({ type: "castor:highlight", global_ids: ids });
+    });
 
     container.addEventListener("scroll", renderVisible, { passive: true });
     buildFlatRows();
@@ -588,6 +632,14 @@
     }
     if (msg.type === "castor:viewer-error") {
       iframeOvl.innerHTML = `<span style="color:#ef4444;">&#9888; ${msg.message || "Viewer error"}</span>`;
+    }
+    if (msg.type === "castor:element-selected") {
+      if (msg.global_id) {
+        selectTaskByGlobalId(msg.global_id);
+      } else {
+        _selectedGi = -1; _selectedTi = -1;
+        renderVisible();
+      }
     }
   });
 
