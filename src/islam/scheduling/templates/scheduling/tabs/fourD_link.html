@@ -269,24 +269,24 @@
 <script>
 (function () {
   "use strict";
-  const TASKS_URL    = "{% url 'islam:all_tasks_preview' project.pk %}";
+  const GANTT_URL    = "{% url 'islam:gantt_data' project.pk %}";
   const TIMELINE_URL = "{% url 'islam:viewer_timeline' project.pk %}";
 
   /* ── Mini Gantt ──────────────────────────────────────────────────── */
 
-  /* Columns from _PREVIEW_PARSED_COLS:
-     0=name  1=start_date  2=end_date  3=wbs_name  4=status
-     5=activity_code  6=actual_start  7=actual_end  8=activity_type  9=total_float_days */
-  const COL = { name: 0, start: 1, end: 2, act_code: 5, float: 9 };
+  /* GanttDataView returns data.tasks — named objects with stage, is_critical, status */
+  const STAGE_ORDER  = ["substructure", "structure", "envelope", "mep", "finishes", "external", ""];
+  const STAGE_LABELS = { substructure: "Substructure", structure: "Structure", envelope: "Envelope", mep: "MEP", finishes: "Finishes", external: "External", "": "General" };
+  const STAGE_COLORS = { substructure: "#78350f", structure: "#dc2626", envelope: "#d97706", mep: "#2563eb", finishes: "#16a34a", external: "#0891b2", "": "#6b7280" };
 
   async function loadGantt() {
     const body = document.getElementById("fourD-gantt-body");
-    console.log("[4D] fetching:", TASKS_URL);
+    console.log("[4D] fetching:", GANTT_URL);
     try {
-      const resp = await fetch(TASKS_URL);
+      const resp = await fetch(GANTT_URL);
       if (!resp.ok) throw new Error(resp.status);
       const data = await resp.json();
-      console.log("[4D] response: total_rows=", data.total_rows, "rows.length=", (data.rows || []).length);
+      console.log("[4D] response: tasks.length=", (data.tasks || []).length);
       renderMiniGantt(body, data);
     } catch (e) {
       console.error("[4D] loadGantt error:", e);
@@ -295,25 +295,18 @@
   }
 
   function renderMiniGantt(container, data) {
-    const rows = data.rows || [];
-    if (!rows.length) {
+    const tasks = data.tasks || [];
+    if (!tasks.length) {
       container.innerHTML = '<div style="padding:20px;color:var(--bs-secondary-color);font-size:12px;text-align:center;">No tasks — import a schedule in Data Sources.</div>';
       return;
     }
 
-    /* Date range — prefer project_date_range from API to avoid spreading 800+ item array */
-    let minMs, maxMs;
-    const dr = data.project_date_range;
-    if (dr && dr.start && dr.end) {
-      minMs = new Date(dr.start).getTime();
-      maxMs = new Date(dr.end).getTime();
-    } else {
-      minMs = Infinity; maxMs = -Infinity;
-      for (const r of rows) {
-        const s = new Date(r[COL.start]).getTime(), e = new Date(r[COL.end]).getTime();
-        if (!isNaN(s) && s < minMs) minMs = s;
-        if (!isNaN(e) && e > maxMs) maxMs = e;
-      }
+    /* Date range via O(n) loop — avoids spread stack-limit on large arrays */
+    let minMs = Infinity, maxMs = -Infinity;
+    for (const t of tasks) {
+      const s = new Date(t.start).getTime(), e = new Date(t.end).getTime();
+      if (!isNaN(s) && s < minMs) minMs = s;
+      if (!isNaN(e) && e > maxMs) maxMs = e;
     }
     if (!isFinite(minMs) || !isFinite(maxMs) || maxMs <= minMs) {
       container.innerHTML = '<div style="padding:12px;font-size:11px;color:var(--bs-secondary-color);">No valid dates.</div>';
@@ -321,23 +314,25 @@
     }
     const spanMs = maxMs - minMs;
 
-    /* Today marker position (% across bar track) */
-    const todayMs  = Date.now();
-    const todayPct = ((todayMs - minMs) / spanMs * 100).toFixed(2);
+    /* Today marker */
+    const todayMs   = Date.now();
+    const todayPct  = ((todayMs - minMs) / spanMs * 100).toFixed(2);
     const showToday = todayMs >= minMs && todayMs <= maxMs;
     const todayLine = showToday
       ? `<div style="position:absolute;left:${todayPct}%;top:0;bottom:0;width:2px;background:#ef4444;z-index:2;pointer-events:none;" title="Today"></div>`
       : "";
 
-    /* Group by first '.' segment of activity_code (WBS parent) */
+    /* Group by stage */
     const groups = new Map();
-    for (let i = 0; i < rows.length; i++) {
-      const code = String(rows[i][COL.act_code] || "");
-      const dot  = code.indexOf(".");
-      const key  = dot > 0 ? code.slice(0, dot) : (code.slice(0, 6) || "—");
+    for (const t of tasks) {
+      const key = t.stage || "";
       if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(i);
+      groups.get(key).push(t);
     }
+    const sortedGroups = [...groups.entries()].sort(([a], [b]) => {
+      const ai = STAGE_ORDER.indexOf(a), bi = STAGE_ORDER.indexOf(b);
+      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+    });
 
     const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 
@@ -345,47 +340,55 @@
     let rendered = 0;
     const ROW_LIMIT = 500;
 
-    for (const [groupKey, indices] of groups) {
+    for (const [stageKey, stageTasks] of sortedGroups) {
       if (rendered >= ROW_LIMIT) break;
-      const gid = "fdg_" + groupKey.replace(/[^a-zA-Z0-9]/g, "_");
+      const label = STAGE_LABELS[stageKey] || (stageKey ? stageKey[0].toUpperCase() + stageKey.slice(1) : "General");
+      const color = STAGE_COLORS[stageKey] || "#6b7280";
+      const gid   = "fdg_" + (stageKey || "general");
+
       html += `<div class="fd-grp-hdr" data-gid="${gid}"`
             + ` style="display:flex;align-items:center;height:22px;gap:4px;`
             + `background:var(--bs-secondary-bg);cursor:pointer;`
-            + `border-bottom:1px solid var(--bs-border-color);padding:0 4px;`
-            + `font-weight:600;color:var(--bs-body-color);">`
-            + `<span class="fd-grp-arrow" style="width:12px;display:inline-block;flex-shrink:0;">▶</span>`
-            + `<span style="width:168px;flex-shrink:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="${esc(groupKey)}">${esc(groupKey)}</span>`
-            + `<span style="flex:1;position:relative;height:6px;background:var(--bs-secondary-bg);">${todayLine}</span>`
-            + `<span style="color:var(--bs-secondary-color);font-weight:400;font-size:9px;padding-right:4px;">${indices.length}</span>`
+            + `border-bottom:1px solid var(--bs-border-color);padding:0 4px;font-weight:600;">`
+            + `<span class="fd-grp-arrow" style="width:12px;display:inline-block;flex-shrink:0;color:${color};">▶</span>`
+            + `<span style="width:168px;flex-shrink:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:${color};">${esc(label)}</span>`
+            + `<span style="flex:1;position:relative;height:6px;">${todayLine}</span>`
+            + `<span style="color:var(--bs-secondary-color);font-weight:400;font-size:9px;padding-right:4px;">${stageTasks.length}</span>`
             + `</div>`;
 
       html += `<div id="${gid}" style="display:none;">`;
-      for (const i of indices) {
+      for (const t of stageTasks) {
         if (rendered >= ROW_LIMIT) break;
-        const r = rows[i];
-        const s = new Date(r[COL.start]).getTime(), e = new Date(r[COL.end]).getTime();
+        const s = new Date(t.start).getTime(), e = new Date(t.end).getTime();
         if (isNaN(s) || isNaN(e)) { rendered++; continue; }
         const left  = Math.max(0,   (s - minMs) / spanMs * 100).toFixed(2);
         const width = Math.max(0.3, (e - s)     / spanMs * 100).toFixed(2);
-        const fv    = r[COL.float];
-        const isCrit = fv !== "" && fv !== null && parseFloat(fv) <= 0;
-        const barStyle = isCrit
-          ? "background:#ef4444;border:1px solid #b91c1c;"
-          : "background:#3b82f6;";
+
+        let barBg, barBorder = "";
+        if (t.is_critical) {
+          barBg = "#ef4444"; barBorder = "border:1px solid #b91c1c;";
+        } else if (t.status === "complete") {
+          barBg = "#10b981";
+        } else if (t.status === "active" || t.status === "delayed") {
+          barBg = "#3b82f6";
+        } else {
+          barBg = "rgba(59,130,246,0.4)";
+        }
+
         html += `<div style="display:flex;align-items:center;height:20px;gap:4px;`
               + `border-bottom:1px solid var(--bs-border-color);padding:0 4px;">`
               + `<div style="width:180px;flex-shrink:0;overflow:hidden;white-space:nowrap;`
-              + `text-overflow:ellipsis;color:var(--bs-body-color);padding-left:14px;" title="${esc(r[COL.name])}">${esc(r[COL.name])}</div>`
+              + `text-overflow:ellipsis;color:var(--bs-body-color);padding-left:14px;" title="${esc(t.name)}">${esc(t.name)}</div>`
               + `<div style="flex:1;position:relative;height:10px;background:var(--bs-secondary-bg);border-radius:2px;">`
               + todayLine
-              + `<div style="position:absolute;left:${left}%;width:${width}%;height:100%;border-radius:2px;${barStyle}"></div>`
+              + `<div style="position:absolute;left:${left}%;width:${width}%;height:100%;border-radius:2px;background:${barBg};${barBorder}"></div>`
               + `</div></div>`;
         rendered++;
       }
       html += `</div>`;
     }
-    if (rows.length > ROW_LIMIT) {
-      html += `<div style="padding:6px 4px;color:var(--bs-secondary-color);">… ${rows.length - ROW_LIMIT} more tasks not shown</div>`;
+    if (tasks.length > ROW_LIMIT) {
+      html += `<div style="padding:6px 4px;color:var(--bs-secondary-color);">… ${tasks.length - ROW_LIMIT} more tasks not shown</div>`;
     }
     html += "</div>";
     container.innerHTML = html;
@@ -393,10 +396,10 @@
     /* Toggle groups */
     container.querySelectorAll(".fd-grp-hdr").forEach(hdr => {
       hdr.addEventListener("click", () => {
-        const body = document.getElementById(hdr.dataset.gid);
-        if (!body) return;
-        const open = body.style.display !== "none";
-        body.style.display = open ? "none" : "";
+        const grpBody = document.getElementById(hdr.dataset.gid);
+        if (!grpBody) return;
+        const open = grpBody.style.display !== "none";
+        grpBody.style.display = open ? "none" : "";
         hdr.querySelector(".fd-grp-arrow").textContent = open ? "▶" : "▼";
       });
     });
