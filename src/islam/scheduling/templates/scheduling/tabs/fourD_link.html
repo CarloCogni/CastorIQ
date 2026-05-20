@@ -376,6 +376,85 @@
          + `</div></div>`;
   }
 
+  /* ── Virtual scroll helpers ─────────────────────────────────────── */
+
+  const GRP_H    = 22;
+  const TASK_H   = 20;
+  const HDR_H    = 24;
+  const OVERSCAN = 8;
+
+  let _gGroups    = [];
+  let _gRows      = [];
+  let _gMinMs     = 0, _gSpanMs = 1;
+  let _gShowToday = false, _gTodayPct = "0";
+
+  const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+
+  function _findFirst(rows, minVisible) {
+    let lo = 0, hi = rows.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (rows[mid].top + rows[mid].height <= minVisible) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
+  function _findLast(rows, maxTop) {
+    let lo = 0, hi = rows.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (rows[mid].top < maxTop) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
+  function _grpRowHtml(gi, top) {
+    const g = _gGroups[gi];
+    const todayLine = _gShowToday
+      ? `<div style="position:absolute;left:${_gTodayPct}%;top:0;bottom:0;width:2px;background:#ef4444;z-index:2;pointer-events:none;"></div>`
+      : "";
+    return `<div class="fd-grp-hdr" data-gi="${gi}"`
+         + ` style="position:absolute;left:0;right:0;top:${top}px;height:${GRP_H}px;`
+         + `display:flex;align-items:center;gap:4px;font-size:10px;font-weight:600;`
+         + `background:var(--bs-secondary-bg);cursor:pointer;`
+         + `border-bottom:1px solid var(--bs-border-color);padding:0 4px;">`
+         + `<span style="width:12px;display:inline-block;flex-shrink:0;color:${g.color};">${g.expanded ? "▼" : "▶"}</span>`
+         + `<span style="width:168px;flex-shrink:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:${g.color};">${esc(g.label)}</span>`
+         + `<span style="flex:1;position:relative;height:6px;">${todayLine}</span>`
+         + `<span style="color:var(--bs-secondary-color);font-weight:400;font-size:9px;padding-right:4px;">${g.tasks.length}</span>`
+         + `</div>`;
+  }
+
+  function _taskRowHtml(gi, ti, top) {
+    const t = _gGroups[gi].tasks[ti];
+    const s = new Date(t.start).getTime(), e = new Date(t.end).getTime();
+    const baseStyle = `position:absolute;left:0;right:0;top:${top}px;height:${TASK_H}px;`
+                    + `display:flex;align-items:center;gap:4px;font-size:10px;`
+                    + `border-bottom:1px solid var(--bs-border-color);padding:0 4px;`;
+    if (isNaN(s) || isNaN(e)) return `<div style="${baseStyle}"></div>`;
+
+    const left  = Math.max(0,   (s - _gMinMs) / _gSpanMs * 100).toFixed(2);
+    const width = Math.max(0.3, (e - s)       / _gSpanMs * 100).toFixed(2);
+    let barBg, barBorder = "";
+    if (t.is_critical)                                        { barBg = "#ef4444"; barBorder = "border:1px solid #b91c1c;"; }
+    else if (t.status === "complete")                         { barBg = "#10b981"; }
+    else if (t.status === "active" || t.status === "delayed") { barBg = "#3b82f6"; }
+    else                                                      { barBg = "rgba(59,130,246,0.4)"; }
+
+    const todayLine = _gShowToday
+      ? `<div style="position:absolute;left:${_gTodayPct}%;top:0;bottom:0;width:2px;background:#ef4444;z-index:2;pointer-events:none;"></div>`
+      : "";
+    return `<div style="${baseStyle}">`
+         + `<div style="width:180px;flex-shrink:0;overflow:hidden;white-space:nowrap;`
+         + `text-overflow:ellipsis;color:var(--bs-body-color);padding-left:14px;" title="${esc(t.name)}">${esc(t.name)}</div>`
+         + `<div style="flex:1;position:relative;height:10px;background:var(--bs-secondary-bg);border-radius:2px;">`
+         + todayLine
+         + `<div style="position:absolute;left:${left}%;width:${width}%;height:100%;border-radius:2px;background:${barBg};${barBorder}"></div>`
+         + `</div></div>`;
+  }
+
   function renderMiniGantt(container, data) {
     const tasks = data.tasks || [];
     if (!tasks.length) {
@@ -383,7 +462,7 @@
       return;
     }
 
-    /* Date range via O(n) loop — avoids spread stack-limit on large arrays */
+    /* Date range */
     let minMs = Infinity, maxMs = -Infinity;
     for (const t of tasks) {
       const s = new Date(t.start).getTime(), e = new Date(t.end).getTime();
@@ -396,95 +475,84 @@
     }
     const spanMs = maxMs - minMs;
 
-    /* Today marker */
-    const todayMs   = Date.now();
-    const todayPct  = ((todayMs - minMs) / spanMs * 100).toFixed(2);
-    const showToday = todayMs >= minMs && todayMs <= maxMs;
-    const todayLine = showToday
-      ? `<div style="position:absolute;left:${todayPct}%;top:0;bottom:0;width:2px;background:#ef4444;z-index:2;pointer-events:none;" title="Today"></div>`
-      : "";
+    _gMinMs = minMs; _gSpanMs = spanMs;
+    const todayMs = Date.now();
+    _gShowToday = todayMs >= minMs && todayMs <= maxMs;
+    _gTodayPct  = ((todayMs - minMs) / spanMs * 100).toFixed(2);
 
-    /* Group by stage */
-    const groups = new Map();
+    /* Build stage groups */
+    const groupMap = new Map();
     for (const t of tasks) {
       const key = t.stage || "";
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(t);
+      if (!groupMap.has(key)) groupMap.set(key, []);
+      groupMap.get(key).push(t);
     }
-    const sortedGroups = [...groups.entries()].sort(([a], [b]) => {
-      const ai = STAGE_ORDER.indexOf(a), bi = STAGE_ORDER.indexOf(b);
-      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-    });
+    _gGroups = [...groupMap.entries()]
+      .sort(([a], [b]) => {
+        const ai = STAGE_ORDER.indexOf(a), bi = STAGE_ORDER.indexOf(b);
+        return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+      })
+      .map(([stageKey, stTasks]) => ({
+        label:    STAGE_LABELS[stageKey] || (stageKey ? stageKey[0].toUpperCase() + stageKey.slice(1) : "General"),
+        color:    STAGE_COLORS[stageKey] || "#6b7280",
+        tasks:    stTasks,
+        expanded: false,
+      }));
 
-    const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+    /* DOM scaffold: sticky header + absolutely-positioned virtual inner */
+    container.innerHTML = buildDateHeader(minMs, maxMs, spanMs)
+      + `<div class="fd-vinner" style="position:relative;"></div>`;
+    const inner = container.querySelector(".fd-vinner");
 
-    let html = '<div style="font-size:10px;">' + buildDateHeader(minMs, maxMs, spanMs);
-    let rendered = 0;
-    const ROW_LIMIT = 500;
-
-    for (const [stageKey, stageTasks] of sortedGroups) {
-      if (rendered >= ROW_LIMIT) break;
-      const label = STAGE_LABELS[stageKey] || (stageKey ? stageKey[0].toUpperCase() + stageKey.slice(1) : "General");
-      const color = STAGE_COLORS[stageKey] || "#6b7280";
-      const gid   = "fdg_" + (stageKey || "general");
-
-      html += `<div class="fd-grp-hdr" data-gid="${gid}"`
-            + ` style="display:flex;align-items:center;height:22px;gap:4px;`
-            + `background:var(--bs-secondary-bg);cursor:pointer;`
-            + `border-bottom:1px solid var(--bs-border-color);padding:0 4px;font-weight:600;">`
-            + `<span class="fd-grp-arrow" style="width:12px;display:inline-block;flex-shrink:0;color:${color};">▶</span>`
-            + `<span style="width:168px;flex-shrink:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:${color};">${esc(label)}</span>`
-            + `<span style="flex:1;position:relative;height:6px;">${todayLine}</span>`
-            + `<span style="color:var(--bs-secondary-color);font-weight:400;font-size:9px;padding-right:4px;">${stageTasks.length}</span>`
-            + `</div>`;
-
-      html += `<div id="${gid}" style="display:none;">`;
-      for (const t of stageTasks) {
-        if (rendered >= ROW_LIMIT) break;
-        const s = new Date(t.start).getTime(), e = new Date(t.end).getTime();
-        if (isNaN(s) || isNaN(e)) { rendered++; continue; }
-        const left  = Math.max(0,   (s - minMs) / spanMs * 100).toFixed(2);
-        const width = Math.max(0.3, (e - s)     / spanMs * 100).toFixed(2);
-
-        let barBg, barBorder = "";
-        if (t.is_critical) {
-          barBg = "#ef4444"; barBorder = "border:1px solid #b91c1c;";
-        } else if (t.status === "complete") {
-          barBg = "#10b981";
-        } else if (t.status === "active" || t.status === "delayed") {
-          barBg = "#3b82f6";
-        } else {
-          barBg = "rgba(59,130,246,0.4)";
+    function buildFlatRows() {
+      _gRows = [];
+      let top = 0;
+      for (let gi = 0; gi < _gGroups.length; gi++) {
+        const g = _gGroups[gi];
+        _gRows.push({ type: "group", top, height: GRP_H, gi });
+        top += GRP_H;
+        if (g.expanded) {
+          for (let ti = 0; ti < g.tasks.length; ti++) {
+            _gRows.push({ type: "task", top, height: TASK_H, gi, ti });
+            top += TASK_H;
+          }
         }
-
-        html += `<div style="display:flex;align-items:center;height:20px;gap:4px;`
-              + `border-bottom:1px solid var(--bs-border-color);padding:0 4px;">`
-              + `<div style="width:180px;flex-shrink:0;overflow:hidden;white-space:nowrap;`
-              + `text-overflow:ellipsis;color:var(--bs-body-color);padding-left:14px;" title="${esc(t.name)}">${esc(t.name)}</div>`
-              + `<div style="flex:1;position:relative;height:10px;background:var(--bs-secondary-bg);border-radius:2px;">`
-              + todayLine
-              + `<div style="position:absolute;left:${left}%;width:${width}%;height:100%;border-radius:2px;background:${barBg};${barBorder}"></div>`
-              + `</div></div>`;
-        rendered++;
       }
-      html += `</div>`;
+      inner.style.height = top + "px";
     }
-    if (tasks.length > ROW_LIMIT) {
-      html += `<div style="padding:6px 4px;color:var(--bs-secondary-color);">… ${tasks.length - ROW_LIMIT} more tasks not shown</div>`;
-    }
-    html += "</div>";
-    container.innerHTML = html;
 
-    /* Toggle groups */
-    container.querySelectorAll(".fd-grp-hdr").forEach(hdr => {
-      hdr.addEventListener("click", () => {
-        const grpBody = document.getElementById(hdr.dataset.gid);
-        if (!grpBody) return;
-        const open = grpBody.style.display !== "none";
-        grpBody.style.display = open ? "none" : "";
-        hdr.querySelector(".fd-grp-arrow").textContent = open ? "▶" : "▼";
+    function renderVisible() {
+      const innerScrollTop = Math.max(0, container.scrollTop - HDR_H);
+      const viewH          = container.clientHeight - HDR_H;
+      const first = Math.max(0,           _findFirst(_gRows, innerScrollTop) - OVERSCAN);
+      const last  = Math.min(_gRows.length, _findLast(_gRows, innerScrollTop + viewH) + OVERSCAN);
+
+      let html = "";
+      for (let i = first; i < last; i++) {
+        const r = _gRows[i];
+        html += r.type === "group" ? _grpRowHtml(r.gi, r.top) : _taskRowHtml(r.gi, r.ti, r.top);
+      }
+      inner.innerHTML = html;
+
+      inner.querySelectorAll(".fd-grp-hdr").forEach(hdr => {
+        hdr.addEventListener("click", () => {
+          const gi = parseInt(hdr.dataset.gi);
+          _gGroups[gi].expanded = !_gGroups[gi].expanded;
+          buildFlatRows();
+          renderVisible();
+          /* Keep toggled group in view after expand/collapse */
+          const row = _gRows.find(r => r.type === "group" && r.gi === gi);
+          if (row) {
+            const absTop = row.top + HDR_H;
+            if (absTop < container.scrollTop) container.scrollTop = absTop;
+          }
+        });
       });
-    });
+    }
+
+    container.addEventListener("scroll", renderVisible, { passive: true });
+    buildFlatRows();
+    renderVisible();
   }
 
   document.querySelectorAll(".fd-zoom-btn").forEach(btn => {
