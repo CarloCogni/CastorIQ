@@ -297,6 +297,14 @@
     const PX_PER_DAY  = { day: 20, week: 10, month: 2 };
     const GANTT_DEF_H = 320;
 
+    /* ── Virtual scroll ─────────────────────────────────────────────── */
+    const VS_OVERSCAN = 8;   /* rows to render above/below the visible window */
+    const _vs = {
+        tasks: [], projStart: null, ppd: 0, totalW: 0,
+        todayX: 0, showToday: false,
+        startIdx: 0, endIdx: 0, raf: null,
+    };
+
     /* Default table column widths by canonical field name */
     const _COL_DEFAULT_W = {
         activity_code: 140, name:         240,
@@ -1408,6 +1416,16 @@
             renderGantt();
             updateGanttModeBar();
         });
+
+        /* Virtual scroll — fire _vsRefresh on each scroll tick via rAF */
+        const _vsScrollEl = document.getElementById('ds-gantt-scroll');
+        if (_vsScrollEl) {
+            _vsScrollEl.addEventListener('scroll', function () {
+                if (!_vs.tasks.length) return;
+                if (_vs.raf) return;
+                _vs.raf = requestAnimationFrame(function () { _vs.raf = null; _vsRefresh(); });
+            }, { passive: true });
+        }
     }
 
     /* ── Main Gantt render ──────────────────────────────────────────── */
@@ -1530,7 +1548,7 @@
 
         renderGanttHeader(hdrEl, projStart, ivs, ppd, today, todayX, showToday);
         renderGanttRows(bodyEl, flatRows, projStart, ppd, totalW, todayX, showToday);
-        renderDependencyArrows(bodyEl, flatRows, projStart, ppd, totalW);
+        renderDependencyArrows(bodyEl, flatRows, projStart, ppd, totalW, _vs.startIdx, _vs.endIdx);
         renderStageChips(allTasks);
         renderLegend(showToday);
 
@@ -1616,14 +1634,11 @@
     }
 
     /* ── Task rows ──────────────────────────────────────────────────── */
-    function renderGanttRows(bodyEl, tasks, projStart, ppd, totalW, todayX, showToday) {
-        bodyEl.innerHTML = '';
-        /* rowMinW ensures the sticky containing-block spans the full scroll range.
-           Without this, position:sticky; left:0 only holds within the viewport width
-           and breaks as soon as the scroll exceeds the container's auto width. */
-        const rowMinW = _nameW + totalW;
-        let taskIdx = 0;
-        tasks.forEach((t, i) => {
+    /* ── Core row renderer — draws one range of flatRows into containerEl ── */
+    function _renderRows(containerEl, tasks, fromIdx, toIdx, taskIdxStart, rowMinW, projStart, ppd, totalW, todayX, showToday) {
+        let taskIdx = taskIdxStart;
+        for (let i = fromIdx; i < toIdx; i++) {
+            const t = tasks[i];
             /* WBS group header row */
             if (t.isGroup) {
                 const groupEl = document.createElement('div');
@@ -1644,8 +1659,8 @@
                 barArea.style.cssText = `width:${totalW}px; min-width:${totalW}px; height:${ROW_H}px; background:#1e293b; flex-shrink:0;`;
                 groupEl.appendChild(nameDiv);
                 groupEl.appendChild(barArea);
-                bodyEl.appendChild(groupEl);
-                return;
+                containerEl.appendChild(groupEl);
+                continue;
             }
 
             const barLeft = Math.max(0, dateDiff(projStart, t.start)) * ppd;
@@ -1755,8 +1770,88 @@
 
             rowEl.appendChild(nameDiv);
             rowEl.appendChild(barArea);
-            bodyEl.appendChild(rowEl);
+            containerEl.appendChild(rowEl);
+        }
+    }
+
+    function renderGanttRows(bodyEl, tasks, projStart, ppd, totalW, todayX, showToday) {
+        /* Cache all params so the scroll handler can re-render without a full renderGantt() */
+        _vs.tasks = tasks; _vs.projStart = projStart; _vs.ppd = ppd;
+        _vs.totalW = totalW; _vs.todayX = todayX; _vs.showToday = showToday;
+
+        bodyEl.innerHTML = '';
+        /* rowMinW ensures the sticky containing-block spans the full scroll range.
+           Without this, position:sticky; left:0 only holds within the viewport width
+           and breaks as soon as the scroll exceeds the container's auto width. */
+        const rowMinW = _nameW + totalW;
+        const scrollEl = document.getElementById('ds-gantt-scroll');
+        const scrollTop = scrollEl ? scrollEl.scrollTop : 0;
+        const viewH    = scrollEl ? (scrollEl.clientHeight || 400) : 400;
+
+        const startIdx = Math.max(0, Math.floor(scrollTop / ROW_H) - VS_OVERSCAN);
+        const endIdx   = Math.min(tasks.length, Math.ceil((scrollTop + viewH) / ROW_H) + VS_OVERSCAN);
+        _vs.startIdx = startIdx;
+        _vs.endIdx   = endIdx;
+
+        /* Top spacer — fills the scroll range above the rendered window */
+        const padTop = document.createElement('div');
+        padTop.id = 'ds-vs-pad-top';
+        padTop.style.height = (startIdx * ROW_H) + 'px';
+        bodyEl.appendChild(padTop);
+
+        /* taskIdx must match what it would have been at startIdx for correct alternating bg */
+        let taskIdxStart = 0;
+        for (let i = 0; i < startIdx; i++) { if (!tasks[i].isGroup) taskIdxStart++; }
+
+        _renderRows(bodyEl, tasks, startIdx, endIdx, taskIdxStart, rowMinW, projStart, ppd, totalW, todayX, showToday);
+
+        /* Bottom spacer — maintains total scroll height */
+        const padBot = document.createElement('div');
+        padBot.id = 'ds-vs-pad-bot';
+        padBot.style.height = ((tasks.length - endIdx) * ROW_H) + 'px';
+        bodyEl.appendChild(padBot);
+    }
+
+    /* ── Virtual scroll refresh — called on every scroll tick ──────── */
+    function _vsRefresh() {
+        const bodyEl   = document.getElementById('ds-gantt-body');
+        const scrollEl = document.getElementById('ds-gantt-scroll');
+        if (!bodyEl || !scrollEl || !_vs.tasks.length) return;
+
+        const scrollTop = scrollEl.scrollTop;
+        const viewH     = scrollEl.clientHeight || 400;
+        const tasks     = _vs.tasks;
+
+        const startIdx = Math.max(0, Math.floor(scrollTop / ROW_H) - VS_OVERSCAN);
+        const endIdx   = Math.min(tasks.length, Math.ceil((scrollTop + viewH) / ROW_H) + VS_OVERSCAN);
+        if (startIdx === _vs.startIdx && endIdx === _vs.endIdx) return;
+        _vs.startIdx = startIdx;
+        _vs.endIdx   = endIdx;
+
+        const padTop = document.getElementById('ds-vs-pad-top');
+        const padBot = document.getElementById('ds-vs-pad-bot');
+        if (!padTop || !padBot) return;
+        padTop.style.height = (startIdx * ROW_H) + 'px';
+        padBot.style.height = ((tasks.length - endIdx) * ROW_H) + 'px';
+
+        /* Remove old rendered rows — leave spacers and dep-arrow SVG in place */
+        Array.from(bodyEl.children).forEach(child => {
+            if (child.id !== 'ds-vs-pad-top' && child.id !== 'ds-vs-pad-bot' &&
+                !child.classList.contains('ds-dep-arrows')) child.remove();
         });
+
+        /* taskIdx offset so alternating backgrounds remain correct mid-list */
+        let taskIdxStart = 0;
+        for (let i = 0; i < startIdx; i++) { if (!tasks[i].isGroup) taskIdxStart++; }
+
+        /* Render into a fragment, then splice after padTop in one DOM op */
+        const frag    = document.createDocumentFragment();
+        const rowMinW = _nameW + _vs.totalW;
+        _renderRows(frag, tasks, startIdx, endIdx, taskIdxStart, rowMinW,
+                    _vs.projStart, _vs.ppd, _vs.totalW, _vs.todayX, _vs.showToday);
+        padTop.after(frag);
+
+        renderDependencyArrows(bodyEl, tasks, _vs.projStart, _vs.ppd, _vs.totalW, startIdx, endIdx);
     }
 
     /* ── Stage filter chips ─────────────────────────────────────────── */
@@ -1829,7 +1924,7 @@
     }
 
     /* ── Dependency arrows (SVG overlay) ───────────────────────────── */
-    function renderDependencyArrows(bodyEl, tasks, projStart, ppd, totalW) {
+    function renderDependencyArrows(bodyEl, tasks, projStart, ppd, totalW, vsStart = 0, vsEnd = Infinity) {
         /* Remove previous overlay */
         const old = bodyEl.querySelector('.ds-dep-arrows');
         if (old) old.remove();
@@ -1841,11 +1936,12 @@
         if (codeIdx < 0) return;
         if (!useServerDeps && predIdx < 0) return;
 
-        /* Build per-code metrics + criticality (skip WBS group header rows) */
+        /* Build per-code metrics + criticality — only for the visible VS window */
         const metricsMap = new Map(); /* code → {barLeft, barW, rowIdx} */
         const critMap    = new Map(); /* code → bool */
         tasks.forEach((t, i) => {
             if (t.isGroup) return;
+            if (i < vsStart || i >= vsEnd) return;
             const code = (t.row[codeIdx] ?? '').toString().trim();
             if (!code) return;
             const barLeft = Math.max(0, dateDiff(projStart, t.start)) * ppd;
