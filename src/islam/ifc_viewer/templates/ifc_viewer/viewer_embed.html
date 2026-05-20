@@ -321,6 +321,18 @@ window.addEventListener("message", async (e) => {
         legendEl.style.display = "none";
         return;
     }
+
+    if (msg.type === "castor:highlight") {
+        if (!model) return;
+        resetAllColors();
+        _selectedGlobalId = null;
+        const ids = msg.global_ids || [];
+        if (ids.length) {
+            colorByGlobalIds(ids, new THREE.Color('#f59e0b'));
+            _selectedGlobalId = ids[0];
+        }
+        return;
+    }
 });
 
 function _showTimelineLegend() {
@@ -376,20 +388,23 @@ function _initSelector() {
         raycaster.setFromCamera(mouse, world.camera.three);
         const hits = raycaster.intersectObjects(world.scene.three.children, true);
         if (!hits.length) {
-            if (_selectedGlobalId) { resetAllColors(); _selectedGlobalId = null; }
+            if (_selectedGlobalId) {
+                resetAllColors(); _selectedGlobalId = null;
+                window.parent.postMessage({ type: "castor:element-selected", global_id: null }, "*");
+            }
             return;
         }
         const globalId = _findGlobalIdFromHit(hits[0]);
         if (!globalId) return;
-        console.log('[selector] clicked globalId:', globalId);
         if (globalId === _selectedGlobalId) {
-            resetAllColors();
-            _selectedGlobalId = null;
+            resetAllColors(); _selectedGlobalId = null;
+            window.parent.postMessage({ type: "castor:element-selected", global_id: null }, "*");
             return;
         }
         if (_selectedGlobalId) resetAllColors();
         _selectedGlobalId = globalId;
         colorByGlobalIds([globalId], _SEL_COLOR);
+        window.parent.postMessage({ type: "castor:element-selected", global_id: globalId }, "*");
     });
 
     canvas.addEventListener('contextmenu', (e) => {
