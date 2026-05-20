@@ -802,49 +802,58 @@
       } catch (e) { /* ignore */ }
     }
 
+    /* Single drag-state object — set on mousedown, cleared on mouseup/mouseleave.
+       The mousemove listener lives permanently on document and checks _drag first,
+       so it is always a no-op when no drag is in progress. */
+    let _drag = null;
+
     document.querySelectorAll(".fd-splitter").forEach(splitter => {
       splitter.addEventListener("mousedown", (e) => {
+        if (e.button !== 0) return;   // left button only
         e.preventDefault();
-        const leftId = splitter.dataset.left;
-
-        /* Viewer is always flex:1. Only Gantt (left of split-1) and Chat (right of
-           split-2) carry explicit pixel widths. Determine which panel this drag moves. */
+        const leftId  = splitter.dataset.left;
         const fixedId = leftId !== "fourD-viewer" ? leftId : splitter.dataset.right;
         const fixedEl = document.getElementById(fixedId);
-        const startX  = e.clientX;
-        const startW  = fixedEl.offsetWidth;
-        const minW    = MIN_W[fixedId] || 200;
-        /* sign=+1: drag right → panel grows (Gantt is left of splitter).
-           sign=-1: drag right → panel shrinks (Chat is right of splitter). */
-        const sign = leftId !== "fourD-viewer" ? 1 : -1;
-
+        _drag = {
+          splitter,
+          fixedId,
+          fixedEl,
+          startX: e.clientX,
+          startW: fixedEl.offsetWidth,
+          minW:   MIN_W[fixedId] || 200,
+          /* +1: drag right grows the panel (Gantt, left of splitter).
+             -1: drag right shrinks the panel (Chat, right of splitter). */
+          sign: leftId !== "fourD-viewer" ? 1 : -1,
+        };
         splitter.classList.add("fd-dragging");
         document.body.style.cursor     = "col-resize";
         document.body.style.userSelect = "none";
-
-        function onMove(ev) {
-          const delta   = (ev.clientX - startX) * sign;
-          const panels  = document.getElementById("fourD-panels");
-          const otherId = fixedId === "fourD-gantt" ? "fourD-chat" : "fourD-gantt";
-          const otherW  = document.getElementById(otherId).offsetWidth;
-          /* maxW: leave room for the other fixed panel, both splitters, and the viewer min */
-          const maxW = panels.offsetWidth - otherW - SPLITTER_PX - MIN_W["fourD-viewer"];
-          fixedEl.style.width = Math.max(minW, Math.min(maxW, startW + delta)) + "px";
-        }
-
-        function onUp() {
-          splitter.classList.remove("fd-dragging");
-          document.body.style.cursor     = "";
-          document.body.style.userSelect = "";
-          document.removeEventListener("mousemove", onMove);
-          document.removeEventListener("mouseup",   onUp);
-          saveLayout();
-        }
-
-        document.addEventListener("mousemove", onMove);
-        document.addEventListener("mouseup",   onUp);
       });
     });
+
+    function _stopDrag() {
+      if (!_drag) return;
+      _drag.splitter.classList.remove("fd-dragging");
+      document.body.style.cursor     = "";
+      document.body.style.userSelect = "";
+      saveLayout();
+      _drag = null;
+    }
+
+    document.addEventListener("mousemove", (e) => {
+      if (!_drag) return;                          // no-op when not dragging
+      const { fixedId, fixedEl, startX, startW, minW, sign } = _drag;
+      const delta   = (e.clientX - startX) * sign;
+      const panels  = document.getElementById("fourD-panels");
+      const otherId = fixedId === "fourD-gantt" ? "fourD-chat" : "fourD-gantt";
+      const otherW  = document.getElementById(otherId).offsetWidth;
+      const maxW    = panels.offsetWidth - otherW - SPLITTER_PX - MIN_W["fourD-viewer"];
+      fixedEl.style.width = Math.max(minW, Math.min(maxW, startW + delta)) + "px";
+    });
+
+    /* mouseup anywhere ends the drag; mouseleave handles "released outside window" */
+    document.addEventListener("mouseup",    _stopDrag);
+    document.addEventListener("mouseleave", _stopDrag);
   }
 
   /* ── Init ────────────────────────────────────────────────────────── */
