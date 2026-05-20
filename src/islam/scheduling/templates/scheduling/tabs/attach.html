@@ -25,12 +25,6 @@
                           hx-swap="innerHTML"
                           hx-indicator="#smart-spinner">
                         {% csrf_token %}
-                        <div class="mb-2">
-                            <input type="text" name="ifc_param_name"
-                                   class="form-control form-control-sm"
-                                   value="{{ ifc_param_name|default:'Activity ID' }}"
-                                   placeholder="IFC property name">
-                        </div>
                         <button type="submit" class="btn btn-sm w-100"
                                 style="background-color:var(--castor-accent,#8b5cf6); color:#fff;">
                             <span id="smart-spinner" class="htmx-indicator spinner-border spinner-border-sm me-1"></span>

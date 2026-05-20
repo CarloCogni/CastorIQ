@@ -954,10 +954,7 @@ class AutoLinkView(ProjectModifyAccessMixin, View):
 
     def post(self, request, **kwargs: object) -> HttpResponse:
         project = self.get_project()
-        # Prefer param from POST (attach tab form), fall back to session from mapping screen
-        ifc_param_name = request.POST.get("ifc_param_name", "").strip() or request.session.get(
-            f"ifc_param_name_{project.pk}", "Activity ID"
-        )
+        ifc_param_name = request.session.get(f"ifc_param_name_{project.pk}") or None
 
         try:
             summary = run_autolink(project, ifc_param_name)
