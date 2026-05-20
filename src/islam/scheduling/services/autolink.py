@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import logging
 import re
-from difflib import SequenceMatcher
 
 import numpy as np
 
@@ -64,10 +63,12 @@ _SKIP_ACTIVITY_TYPES: frozenset[str] = frozenset(
 )
 
 # Confidence thresholds
-_HEURISTIC_CONF = 0.70
 _MAX_HEURISTIC = 50  # cap on entities returned by Layer 3
 _EMBED_HIGH = 0.82  # embedding auto-accept floor
 _EMBED_LOW = 0.65  # embedding minimum (below → skip)
+_HEURISTIC_TYPE_ONLY = 0.50  # Layer 3: type keyword match only
+_HEURISTIC_ZONE_MATCH = 0.75  # Layer 3: type + zone/level spatial match
+_HEURISTIC_FULL_MATCH = 0.85  # Layer 3: type + zone + trade context → auto-accept
 
 # Keyword → IFC entity type map (all keys lowercase, no spaces)
 _IFC_KEYWORDS: dict[str, str] = {
@@ -346,8 +347,53 @@ def _run_layer0(tasks: list[Task]) -> tuple[list[Task], list[Task]]:
     return physical, non_physical
 
 
-def run_autolink(project, ifc_param_name: str = "Activity ID") -> dict:
-    """Run the 4-layer auto-link pipeline for all tasks in a project.
+def analyse_schedule_context(tasks: list[Task]) -> dict:
+    """Use LLM to extract project patterns from a task sample.
+
+    Returns a context dict used by Layer 3 to improve match quality.
+    Returns {} on any failure — run_autolink() continues without context.
+    """
+    import json
+
+    from core.llm import get_llm
+
+    if not tasks:
+        return {}
+
+    sample = sorted(tasks[:150], key=lambda t: t.activity_code or "")
+    task_sample = "\n".join(f"{t.activity_code or '—'} | {t.name}" for t in sample)
+    prompt = (
+        "You are a construction project analyst.\n"
+        "Analyze these schedule tasks and extract patterns.\n"
+        "Return ONLY valid JSON, no other text.\n\n"
+        f"Tasks (activity_code | name):\n{task_sample}\n\n"
+        "Return this exact JSON structure:\n"
+        "{\n"
+        '  "id_patterns": ["pattern description"],\n'
+        '  "zones": ["B01", "B02"],\n'
+        '  "levels": ["Basement 01", "Ground Floor"],\n'
+        '  "trades": {"keyword": "ifc_type_hint"},\n'
+        '  "non_physical_prefixes": ["GENDA", "SCCAS"],\n'
+        '  "physical_prefixes": ["B01ZI", "FNDZ1"],\n'
+        '  "template_tasks": ["task name pattern that repeats per zone"]\n'
+        "}"
+    )
+    try:
+        llm = get_llm(purpose="ask", temperature=0.1, format_json=True)
+        response = llm.invoke(prompt)
+        raw = response.content.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        return json.loads(raw)
+    except Exception as exc:
+        logger.warning("analyse_schedule_context failed: %s", exc)
+        return {}
+
+
+def run_autolink(project, ifc_param_name: str | None = None) -> dict:
+    """Run the 5-layer auto-link pipeline for all tasks in a project.
 
     Returns:
         {total_tasks, linked_exact, linked_normalized, linked_heuristic,
@@ -391,9 +437,17 @@ def run_autolink(project, ifc_param_name: str = "Activity ID") -> dict:
     # Clear stale bindings for physical tasks only
     TaskEntityBinding.objects.filter(task__in=tasks).delete()
 
+    # Analyze schedule patterns — graceful no-op on LLM failure
+    context = analyse_schedule_context(tasks)
+
+    # Auto-discover IFC property key when none provided
+    if not ifc_param_name:
+        ifc_param_name = _discover_ifc_param(entity_list, tasks)
+
     prop_index, norm_index = _build_prop_index(entity_list, ifc_param_name)
     type_index = _build_type_index(entity_list)
     container_names = _build_container_names(ifc_files)
+    storey_elevations = _build_storey_elevations(ifc_files)
 
     counters: dict[str, int] = {"exact": 0, "normalized": 0, "heuristic": 0, "embedding": 0}
     needs_review_count = 0
@@ -425,15 +479,18 @@ def run_autolink(project, ifc_param_name: str = "Activity ID") -> dict:
         remaining.append(task)
 
     # ------------------------------------------------------------------ #
-    # Layer 3 — IFC-type keyword heuristic                                #
+    # Layer 3 — IFC-type keyword heuristic with zone/trade context        #
     # ------------------------------------------------------------------ #
     embed_remaining: list[Task] = []
     for task in remaining:
-        entities = _heuristic_match(task, type_index, container_names)
+        entities, confidence, needs_review = _run_layer3(
+            task, type_index, container_names, storey_elevations, context
+        )
         if entities:
-            _record(task, entities, _HEURISTIC_CONF, "heuristic", True, new_bindings, m2m_adds)
+            _record(task, entities, confidence, "heuristic", needs_review, new_bindings, m2m_adds)
             counters["heuristic"] += 1
-            needs_review_count += 1
+            if needs_review:
+                needs_review_count += 1
         else:
             embed_remaining.append(task)
 
@@ -517,9 +574,11 @@ def run_autolink(project, ifc_param_name: str = "Activity ID") -> dict:
 
 
 def _build_prop_index(
-    entities: list[IFCEntity], param_name: str
+    entities: list[IFCEntity], param_name: str | None
 ) -> tuple[dict[str, list[IFCEntity]], dict[str, list[IFCEntity]]]:
     """Return (exact_index, normalized_index) keyed by entity property value."""
+    if not param_name:
+        return {}, {}
     exact: dict[str, list[IFCEntity]] = {}
     norm: dict[str, list[IFCEntity]] = {}
     for entity in entities:
@@ -551,6 +610,53 @@ def _build_container_names(ifc_files) -> dict[str, str]:
     return {str(s.pk): (s.entity.name or "").lower() for s in storeys}
 
 
+def _build_storey_elevations(ifc_files) -> dict[float, str]:
+    """Return {elevation: lowercase_storey_name} for all completed building storeys."""
+    from ifc_processor.models import IFCSpatialElement
+
+    storeys = IFCSpatialElement.objects.filter(
+        ifc_file__in=ifc_files,
+        spatial_type=IFCSpatialElement.SpatialType.BUILDING_STOREY,
+    ).select_related("entity")
+    result: dict[float, str] = {}
+    for s in storeys:
+        if s.elevation is not None:
+            result[float(s.elevation)] = (s.entity.name or "").lower()
+    return result
+
+
+def _discover_ifc_param(entities: list[IFCEntity], tasks: list[Task]) -> str | None:
+    """Scan IFC property keys to find the one whose values best match task activity codes.
+
+    Returns the property-name suffix with the highest hit rate, or None if no match
+    reaches the 5% threshold on the sampled entities.
+    """
+    if not entities or not tasks:
+        return None
+    codes = {t.activity_code.strip() for t in tasks if t.activity_code}
+    if not codes:
+        return None
+
+    sample = entities[:200]
+    key_hits: dict[str, int] = {}
+    for entity in sample:
+        for key, val in (entity.properties or {}).items():
+            if key.lower().endswith(".id"):
+                continue
+            if val is not None and str(val).strip() in codes:
+                key_hits[key] = key_hits.get(key, 0) + 1
+
+    if not key_hits:
+        return None
+
+    best_key = max(key_hits, key=lambda k: key_hits[k])
+    if key_hits[best_key] < max(1, len(sample) * 0.05):
+        return None
+
+    dot = best_key.rfind(".")
+    return best_key[dot + 1 :].strip() if dot != -1 else best_key
+
+
 # ---------------------------------------------------------------------------
 # Per-layer match helpers
 # ---------------------------------------------------------------------------
@@ -580,40 +686,66 @@ def _record(
         m2m.setdefault(str(task.pk), []).extend(entities)
 
 
-def _heuristic_match(
+def _infer_entity_level(entity: IFCEntity, container_names: dict[str, str]) -> str | None:
+    """Return the lowercase storey name for an entity via its spatial container index."""
+    if entity.spatial_container_id is None:
+        return None
+    return container_names.get(str(entity.spatial_container_id))
+
+
+def _run_layer3(
     task: Task,
     type_index: dict[str, list[IFCEntity]],
     container_names: dict[str, str],
-) -> list[IFCEntity]:
-    """Return up to _MAX_HEURISTIC entities matching the task's IFC-type keyword.
+    storey_elevations: dict[float, str],
+    context: dict,
+) -> tuple[list[IFCEntity], float, bool]:
+    """Heuristic match with variable confidence scoring.
 
-    If the task name contains a level/floor hint the candidates are first narrowed
-    to entities whose spatial_container storey name contains that hint.  Falls back
-    to the full type-matched list when the hint yields no spatial matches.
+    Resolves IFC type from built-in keywords then LLM-extracted context trades.
+    Returns (entities, confidence, needs_review).
+
+    Confidence tiers:
+      0.50  type keyword match only          → needs_review=True
+      0.75  type + zone/level match          → needs_review=True
+      0.85  type + zone + trade context hit  → needs_review=False (auto-accept)
     """
-    words = re.findall(r"\w+", task.name.lower())
-    for word in words:
-        ifc_type = _IFC_KEYWORDS.get(word)
-        if not ifc_type:
-            continue
-        candidates = type_index.get(ifc_type)
-        if not candidates:
-            continue
+    name_lower = task.name.lower()
+    context_trades: dict[str, str] = (context.get("trades") or {}) if context else {}
 
-        level_hint = _extract_level_hint(task.name)
-        if level_hint and container_names:
-            spatial = [
-                e
-                for e in candidates
-                if e.spatial_container_id is not None
-                and level_hint in container_names.get(str(e.spatial_container_id), "")
-            ]
-            if spatial:
-                return spatial[:_MAX_HEURISTIC]
-            # Hint present but no spatial match — return unfiltered list
+    ifc_type: str | None = None
+    from_context_trade = False
+    for word in re.findall(r"\w+", name_lower):
+        if word in _IFC_KEYWORDS:
+            ifc_type = _IFC_KEYWORDS[word]
+            break
+        if word in context_trades:
+            ifc_type = context_trades[word]
+            from_context_trade = True
+            break
 
-        return candidates[:_MAX_HEURISTIC]
-    return []
+    if not ifc_type:
+        return [], 0.0, False
+
+    candidates = type_index.get(ifc_type)
+    if not candidates:
+        return [], 0.0, False
+
+    level_hint = _extract_level_hint(task.name)
+    zone_match = False
+    if level_hint and container_names:
+        spatial = [
+            e for e in candidates if level_hint in (_infer_entity_level(e, container_names) or "")
+        ]
+        if spatial:
+            candidates = spatial
+            zone_match = True
+
+    if zone_match and from_context_trade:
+        return candidates[:_MAX_HEURISTIC], _HEURISTIC_FULL_MATCH, False
+    if zone_match:
+        return candidates[:_MAX_HEURISTIC], _HEURISTIC_ZONE_MATCH, True
+    return candidates[:_MAX_HEURISTIC], _HEURISTIC_TYPE_ONLY, True
 
 
 # ---------------------------------------------------------------------------
@@ -654,10 +786,6 @@ def _normalize(s: str) -> str:
     s = re.sub(r"[\s\-_]+", " ", s)
     s = re.sub(r"[^\w\s]", "", s)
     return s.strip()
-
-
-def _sim(a: str, b: str) -> float:
-    return SequenceMatcher(None, a, b).ratio()
 
 
 def _empty_summary(total: int) -> dict:
