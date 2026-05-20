@@ -806,12 +806,12 @@ class ScheduleSourcePreviewView(ProjectAccessMixin, View):
 
 
 class AllTasksPreviewView(ProjectAccessMixin, View):
-    """GET — all tasks for the project in Gantt preview format, capped at 500."""
+    """GET — all tasks for the project in Gantt preview format."""
 
     def get(self, request, **kwargs: object) -> JsonResponse:
         project = self.get_project()
         total = Task.objects.filter(project=project).count()
-        tasks = list(Task.objects.filter(project=project).order_by("start_date", "name")[:500])
+        tasks = list(Task.objects.filter(project=project).order_by("start_date", "name"))
         task_pks = {t.pk for t in tasks}
         raw_deps = (
             TaskDependency.objects.filter(predecessor__in=task_pks, successor__in=task_pks)
