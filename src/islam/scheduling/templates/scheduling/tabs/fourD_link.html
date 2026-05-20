@@ -277,7 +277,7 @@
   /* Columns from _PREVIEW_PARSED_COLS:
      0=name  1=start_date  2=end_date  3=wbs_name  4=status
      5=activity_code  6=actual_start  7=actual_end  8=activity_type  9=total_float_days */
-  const COL = { name: 0, start: 1, end: 2, float: 9 };
+  const COL = { name: 0, start: 1, end: 2, act_code: 5, float: 9 };
 
   async function loadGantt() {
     const body = document.getElementById("fourD-gantt-body");
@@ -300,36 +300,106 @@
       container.innerHTML = '<div style="padding:20px;color:var(--bs-secondary-color);font-size:12px;text-align:center;">No tasks — import a schedule in Data Sources.</div>';
       return;
     }
-    const starts = rows.map(r => new Date(r[COL.start])).filter(d => !isNaN(d));
-    const ends   = rows.map(r => new Date(r[COL.end])).filter(d => !isNaN(d));
-    if (!starts.length) { container.innerHTML = '<div style="padding:12px;font-size:11px;color:var(--bs-secondary-color);">No dates found.</div>'; return; }
-    const minMs = Math.min(...starts), maxMs = Math.max(...ends);
-    const span  = Math.max((maxMs - minMs) / 86400000, 1);
 
-    const esc = (str) => String(str || "").replace(/"/g, "&quot;").replace(/</g, "&lt;");
-    let html = '<div style="font-size:10px;">';
-    const limit = Math.min(rows.length, 200);
-    for (let i = 0; i < limit; i++) {
-      const r    = rows[i];
-      const name = r[COL.name];
-      const s    = new Date(r[COL.start]).getTime();
-      const e    = new Date(r[COL.end]).getTime();
-      const left  = Math.max(0, (s - minMs) / 86400000 / span * 100).toFixed(1);
-      const width = Math.max(0.5, (e - s) / 86400000 / span * 100).toFixed(1);
-      const floatVal = r[COL.float];
-      const isCrit   = floatVal !== "" && floatVal !== null && parseFloat(floatVal) <= 0;
-      const barColor = isCrit ? "#ef4444" : "#3b82f6";
-      html += `<div style="display:flex;align-items:center;height:20px;gap:4px;border-bottom:1px solid var(--bs-border-color);padding:0 4px;">`
-            + `<div style="width:110px;flex-shrink:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:10px;color:var(--bs-body-color);" title="${esc(name)}">${esc(name)}</div>`
-            + `<div style="flex:1;position:relative;height:10px;background:var(--bs-secondary-bg);border-radius:2px;">`
-            + `<div style="position:absolute;left:${left}%;width:${width}%;height:100%;background:${barColor};border-radius:2px;"></div>`
-            + `</div></div>`;
+    /* Date range — prefer project_date_range from API to avoid spreading 800+ item array */
+    let minMs, maxMs;
+    const dr = data.project_date_range;
+    if (dr && dr.start && dr.end) {
+      minMs = new Date(dr.start).getTime();
+      maxMs = new Date(dr.end).getTime();
+    } else {
+      minMs = Infinity; maxMs = -Infinity;
+      for (const r of rows) {
+        const s = new Date(r[COL.start]).getTime(), e = new Date(r[COL.end]).getTime();
+        if (!isNaN(s) && s < minMs) minMs = s;
+        if (!isNaN(e) && e > maxMs) maxMs = e;
+      }
     }
-    if (rows.length > limit) {
-      html += `<div style="padding:6px 4px;font-size:10px;color:var(--bs-secondary-color);">… and ${rows.length - limit} more tasks</div>`;
+    if (!isFinite(minMs) || !isFinite(maxMs) || maxMs <= minMs) {
+      container.innerHTML = '<div style="padding:12px;font-size:11px;color:var(--bs-secondary-color);">No valid dates.</div>';
+      return;
+    }
+    const spanMs = maxMs - minMs;
+
+    /* Today marker position (% across bar track) */
+    const todayMs  = Date.now();
+    const todayPct = ((todayMs - minMs) / spanMs * 100).toFixed(2);
+    const showToday = todayMs >= minMs && todayMs <= maxMs;
+    const todayLine = showToday
+      ? `<div style="position:absolute;left:${todayPct}%;top:0;bottom:0;width:2px;background:#ef4444;z-index:2;pointer-events:none;" title="Today"></div>`
+      : "";
+
+    /* Group by first '.' segment of activity_code (WBS parent) */
+    const groups = new Map();
+    for (let i = 0; i < rows.length; i++) {
+      const code = String(rows[i][COL.act_code] || "");
+      const dot  = code.indexOf(".");
+      const key  = dot > 0 ? code.slice(0, dot) : (code.slice(0, 6) || "—");
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(i);
+    }
+
+    const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+
+    let html = '<div style="font-size:10px;">';
+    let rendered = 0;
+    const ROW_LIMIT = 500;
+
+    for (const [groupKey, indices] of groups) {
+      if (rendered >= ROW_LIMIT) break;
+      const gid = "fdg_" + groupKey.replace(/[^a-zA-Z0-9]/g, "_");
+      html += `<div class="fd-grp-hdr" data-gid="${gid}"`
+            + ` style="display:flex;align-items:center;height:22px;gap:4px;`
+            + `background:var(--bs-secondary-bg);cursor:pointer;`
+            + `border-bottom:1px solid var(--bs-border-color);padding:0 4px;`
+            + `font-weight:600;color:var(--bs-body-color);">`
+            + `<span class="fd-grp-arrow" style="width:12px;display:inline-block;flex-shrink:0;">▶</span>`
+            + `<span style="width:168px;flex-shrink:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="${esc(groupKey)}">${esc(groupKey)}</span>`
+            + `<span style="flex:1;position:relative;height:6px;background:var(--bs-secondary-bg);">${todayLine}</span>`
+            + `<span style="color:var(--bs-secondary-color);font-weight:400;font-size:9px;padding-right:4px;">${indices.length}</span>`
+            + `</div>`;
+
+      html += `<div id="${gid}" style="display:none;">`;
+      for (const i of indices) {
+        if (rendered >= ROW_LIMIT) break;
+        const r = rows[i];
+        const s = new Date(r[COL.start]).getTime(), e = new Date(r[COL.end]).getTime();
+        if (isNaN(s) || isNaN(e)) { rendered++; continue; }
+        const left  = Math.max(0,   (s - minMs) / spanMs * 100).toFixed(2);
+        const width = Math.max(0.3, (e - s)     / spanMs * 100).toFixed(2);
+        const fv    = r[COL.float];
+        const isCrit = fv !== "" && fv !== null && parseFloat(fv) <= 0;
+        const barStyle = isCrit
+          ? "background:#ef4444;border:1px solid #b91c1c;"
+          : "background:#3b82f6;";
+        html += `<div style="display:flex;align-items:center;height:20px;gap:4px;`
+              + `border-bottom:1px solid var(--bs-border-color);padding:0 4px;">`
+              + `<div style="width:180px;flex-shrink:0;overflow:hidden;white-space:nowrap;`
+              + `text-overflow:ellipsis;color:var(--bs-body-color);padding-left:14px;" title="${esc(r[COL.name])}">${esc(r[COL.name])}</div>`
+              + `<div style="flex:1;position:relative;height:10px;background:var(--bs-secondary-bg);border-radius:2px;">`
+              + todayLine
+              + `<div style="position:absolute;left:${left}%;width:${width}%;height:100%;border-radius:2px;${barStyle}"></div>`
+              + `</div></div>`;
+        rendered++;
+      }
+      html += `</div>`;
+    }
+    if (rows.length > ROW_LIMIT) {
+      html += `<div style="padding:6px 4px;color:var(--bs-secondary-color);">… ${rows.length - ROW_LIMIT} more tasks not shown</div>`;
     }
     html += "</div>";
     container.innerHTML = html;
+
+    /* Toggle groups */
+    container.querySelectorAll(".fd-grp-hdr").forEach(hdr => {
+      hdr.addEventListener("click", () => {
+        const body = document.getElementById(hdr.dataset.gid);
+        if (!body) return;
+        const open = body.style.display !== "none";
+        body.style.display = open ? "none" : "";
+        hdr.querySelector(".fd-grp-arrow").textContent = open ? "▶" : "▼";
+      });
+    });
   }
 
   document.querySelectorAll(".fd-zoom-btn").forEach(btn => {
