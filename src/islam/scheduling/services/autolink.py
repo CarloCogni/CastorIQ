@@ -18,6 +18,8 @@ import logging
 import re
 from difflib import SequenceMatcher
 
+import numpy as np
+
 from ifc_processor.models import IFCEntity, IFCFile
 
 from ..models import Task, TaskEntityBinding
@@ -436,34 +438,65 @@ def run_autolink(project, ifc_param_name: str = "Activity ID") -> dict:
             embed_remaining.append(task)
 
     # ------------------------------------------------------------------ #
-    # Layer 4 — embedding cosine similarity                               #
+    # Layer 4 — embedding cosine similarity (batched)                     #
+    # FIX 1: one embed_documents() call for all tasks instead of N calls  #
+    # FIX 2: one entity fetch + numpy matrix multiply instead of N queries #
     # ------------------------------------------------------------------ #
     if embed_remaining:
-        embed_qs = IFCEntity.objects.filter(ifc_file__in=ifc_files, embedding__isnull=False).only(
-            "id", "global_id", "ifc_type", "name", "embedding"
-        )
-        if embed_qs.exists():
-            for task in embed_remaining:
-                result = _embedding_match(task, embed_qs)
-                if result is None:
-                    continue
-                entity, confidence = result
-                review = confidence < _EMBED_HIGH
-                _record(task, [entity], confidence, "embedding", review, new_bindings, m2m_adds)
-                counters["embedding"] += 1
-                if review:
-                    needs_review_count += 1
+        try:
+            from embeddings.services.embedding_service import EmbeddingService
+
+            task_vecs = EmbeddingService().embed_documents([t.name for t in embed_remaining])
+        except Exception as exc:
+            logger.warning("Batch embed failed, skipping Layer 4: %s", exc)
+            task_vecs = []
+
+        if task_vecs:
+            embed_entities = list(
+                IFCEntity.objects.filter(ifc_file__in=ifc_files, embedding__isnull=False).only(
+                    "id", "global_id", "ifc_type", "name", "embedding"
+                )
+            )
+            if embed_entities:
+                ent_mat = np.array([e.embedding for e in embed_entities], dtype=np.float32)
+                ent_norms = np.linalg.norm(ent_mat, axis=1, keepdims=True)
+                ent_norms[ent_norms == 0] = 1.0
+                ent_mat /= ent_norms
+
+                for task, vec in zip(embed_remaining, task_vecs):
+                    if not vec:
+                        continue
+                    tv = np.array(vec, dtype=np.float32)
+                    n = float(np.linalg.norm(tv))
+                    if n == 0:
+                        continue
+                    sims = ent_mat @ (tv / n)
+                    best_idx = int(np.argmax(sims))
+                    confidence = round(float(sims[best_idx]), 4)
+                    if confidence < _EMBED_LOW:
+                        continue
+                    entity = embed_entities[best_idx]
+                    review = confidence < _EMBED_HIGH
+                    _record(task, [entity], confidence, "embedding", review, new_bindings, m2m_adds)
+                    counters["embedding"] += 1
+                    if review:
+                        needs_review_count += 1
 
     # ------------------------------------------------------------------ #
     # Persist                                                             #
     # ------------------------------------------------------------------ #
     TaskEntityBinding.objects.bulk_create(new_bindings, ignore_conflicts=True)
 
-    # Apply M2M only for auto-accepted bindings (needs_review=False)
-    for task in tasks:
-        adds = m2m_adds.get(str(task.pk))
-        if adds:
-            task.ifc_entities.add(*adds)
+    # FIX 3: one bulk_create instead of N individual M2M .add() calls
+    ThroughModel = Task.ifc_entities.through
+    through_rows = [
+        ThroughModel(task_id=task.pk, ifcentity_id=entity.pk)
+        for task in tasks
+        if (adds := m2m_adds.get(str(task.pk)))
+        for entity in adds
+    ]
+    if through_rows:
+        ThroughModel.objects.bulk_create(through_rows, ignore_conflicts=True)
 
     total_linked = sum(counters.values())
     return {
@@ -581,31 +614,6 @@ def _heuristic_match(
 
         return candidates[:_MAX_HEURISTIC]
     return []
-
-
-def _embedding_match(task: Task, entities_qs) -> tuple[IFCEntity, float] | None:
-    """Return (entity, confidence) for the closest embedding match above _EMBED_LOW."""
-    from pgvector.django import CosineDistance
-
-    try:
-        from embeddings.services.embedding_service import EmbeddingService
-
-        vec = EmbeddingService().embed_query(task.name)
-    except Exception as exc:
-        logger.warning("Embed failed for task '%s': %s", task.name, exc)
-        return None
-
-    max_dist = round(1.0 - _EMBED_LOW, 4)  # 0.35
-    match = (
-        entities_qs.annotate(dist=CosineDistance("embedding", vec))
-        .filter(dist__lte=max_dist)
-        .order_by("dist")
-        .first()
-    )
-    if match is None:
-        return None
-
-    return match, round(1.0 - float(match.dist), 4)
 
 
 # ---------------------------------------------------------------------------
