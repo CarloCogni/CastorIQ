@@ -274,48 +274,59 @@
 
   /* ── Mini Gantt ──────────────────────────────────────────────────── */
 
+  /* Columns from _PREVIEW_PARSED_COLS:
+     0=name  1=start_date  2=end_date  3=wbs_name  4=status
+     5=activity_code  6=actual_start  7=actual_end  8=activity_type  9=total_float_days */
+  const COL = { name: 0, start: 1, end: 2, float: 9 };
+
   async function loadGantt() {
     const body = document.getElementById("fourD-gantt-body");
+    console.log("[4D] fetching:", TASKS_URL);
     try {
       const resp = await fetch(TASKS_URL);
       if (!resp.ok) throw new Error(resp.status);
       const data = await resp.json();
+      console.log("[4D] response: total_rows=", data.total_rows, "rows.length=", (data.rows || []).length);
       renderMiniGantt(body, data);
     } catch (e) {
+      console.error("[4D] loadGantt error:", e);
       body.innerHTML = '<div style="padding:20px;color:var(--bs-secondary-color);font-size:12px;text-align:center;">Could not load tasks.</div>';
     }
   }
 
   function renderMiniGantt(container, data) {
-    const tasks = data.tasks || [];
-    if (!tasks.length) {
+    const rows = data.rows || [];
+    if (!rows.length) {
       container.innerHTML = '<div style="padding:20px;color:var(--bs-secondary-color);font-size:12px;text-align:center;">No tasks — import a schedule in Data Sources.</div>';
       return;
     }
-    const starts = tasks.map(t => new Date(t.start)).filter(d => !isNaN(d));
-    const ends   = tasks.map(t => new Date(t.end)).filter(d => !isNaN(d));
+    const starts = rows.map(r => new Date(r[COL.start])).filter(d => !isNaN(d));
+    const ends   = rows.map(r => new Date(r[COL.end])).filter(d => !isNaN(d));
     if (!starts.length) { container.innerHTML = '<div style="padding:12px;font-size:11px;color:var(--bs-secondary-color);">No dates found.</div>'; return; }
     const minMs = Math.min(...starts), maxMs = Math.max(...ends);
     const span  = Math.max((maxMs - minMs) / 86400000, 1);
 
+    const esc = (str) => String(str || "").replace(/"/g, "&quot;").replace(/</g, "&lt;");
     let html = '<div style="font-size:10px;">';
-    const limit = Math.min(tasks.length, 200);
+    const limit = Math.min(rows.length, 200);
     for (let i = 0; i < limit; i++) {
-      const t = tasks[i];
-      const s = new Date(t.start).getTime(), e = new Date(t.end).getTime();
+      const r    = rows[i];
+      const name = r[COL.name];
+      const s    = new Date(r[COL.start]).getTime();
+      const e    = new Date(r[COL.end]).getTime();
       const left  = Math.max(0, (s - minMs) / 86400000 / span * 100).toFixed(1);
       const width = Math.max(0.5, (e - s) / 86400000 / span * 100).toFixed(1);
-      const isCrit   = t.total_float !== undefined && t.total_float <= 0;
+      const floatVal = r[COL.float];
+      const isCrit   = floatVal !== "" && floatVal !== null && parseFloat(floatVal) <= 0;
       const barColor = isCrit ? "#ef4444" : "#3b82f6";
-      const esc = (str) => String(str || "").replace(/"/g, "&quot;").replace(/</g, "&lt;");
       html += `<div style="display:flex;align-items:center;height:20px;gap:4px;border-bottom:1px solid var(--bs-border-color);padding:0 4px;">`
-            + `<div style="width:110px;flex-shrink:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:10px;color:var(--bs-body-color);" title="${esc(t.name)}">${esc(t.name)}</div>`
+            + `<div style="width:110px;flex-shrink:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:10px;color:var(--bs-body-color);" title="${esc(name)}">${esc(name)}</div>`
             + `<div style="flex:1;position:relative;height:10px;background:var(--bs-secondary-bg);border-radius:2px;">`
             + `<div style="position:absolute;left:${left}%;width:${width}%;height:100%;background:${barColor};border-radius:2px;"></div>`
             + `</div></div>`;
     }
-    if (tasks.length > limit) {
-      html += `<div style="padding:6px 4px;font-size:10px;color:var(--bs-secondary-color);">… and ${tasks.length - limit} more tasks</div>`;
+    if (rows.length > limit) {
+      html += `<div style="padding:6px 4px;font-size:10px;color:var(--bs-secondary-color);">… and ${rows.length - limit} more tasks</div>`;
     }
     html += "</div>";
     container.innerHTML = html;
