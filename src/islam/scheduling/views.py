@@ -20,7 +20,6 @@ from core.mixins import ProjectAccessMixin, ProjectModifyAccessMixin, ProjectTab
 from ifc_processor.models import IFCEntity, IFCFile
 
 from .models import (
-    LinkFeedback,
     MappingProfile,
     ScheduleSource,
     Task,
@@ -37,9 +36,8 @@ from .services.column_mapper import (
     suggest_mapping,
 )
 from .services.critical_path import compute_critical_path
-from .services.embed_linker import embed_match_tasks
 from .services.evm import compute_evm
-from .services.linker import apply_matches, auto_match_tasks, param_match_tasks
+from .services.linker import apply_matches, param_match_tasks
 from .services.msp_parser import parse_msp
 from .services.validator import validate_schedule
 from .services.xer_parser import parse_xer
@@ -911,38 +909,6 @@ class TaskActualDateView(ProjectModifyAccessMixin, View):
 # ---------------------------------------------------------------------------
 
 
-class LinkAutoView(ProjectModifyAccessMixin, View):
-    """HTMX POST — AI semantic matching of tasks to IFC entities."""
-
-    def post(self, request, **kwargs: object) -> HttpResponse:
-        project = self.get_project()
-        tasks = list(Task.objects.filter(project=project))
-        ifc_files = IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
-        entities = list(IFCEntity.objects.filter(ifc_file__in=ifc_files))
-
-        if not tasks:
-            return toast_response(
-                "No tasks to link — import a schedule first.", "error", status=400
-            )
-        if not entities:
-            return toast_response(
-                "No IFC entities found — process an IFC file first.", "error", status=400
-            )
-
-        matches = auto_match_tasks(tasks, entities)
-        if matches:
-            apply_matches(Task, matches)
-
-        tasks_qs = Task.objects.filter(project=project).prefetch_related("ifc_entities")
-        response = render(
-            request,
-            "scheduling/components/attach_results.html",
-            {"tasks": tasks_qs, "matches": matches, "project": project, "match_mode": "auto"},
-        )
-        msg = f"AI matched {sum(1 for m in matches if m['entity_ids'])} of {len(tasks)} tasks."
-        return trigger_toast(response, msg, "success")
-
-
 class LinkParamView(ProjectModifyAccessMixin, View):
     """HTMX POST — parameter mapping of tasks to IFC entities."""
 
@@ -1396,148 +1362,7 @@ class MappingSubmitView(ProjectModifyAccessMixin, View):
 
 
 # ---------------------------------------------------------------------------
-# Embedding-based linking
-# ---------------------------------------------------------------------------
-
-
-class EmbedLinkView(ProjectModifyAccessMixin, View):
-    """HTMX POST — run embedding similarity, create pending LinkFeedback rows."""
-
-    def post(self, request, **kwargs: object) -> HttpResponse:
-        project = self.get_project()
-        tasks = list(Task.objects.filter(project=project))
-        ifc_files = IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
-        entities_qs = IFCEntity.objects.filter(ifc_file__in=ifc_files)
-
-        if not tasks:
-            return toast_response(
-                "No tasks to link — import a schedule first.", "error", status=400
-            )
-        if not entities_qs.exists():
-            return toast_response(
-                "No IFC entities found — process an IFC file first.", "error", status=400
-            )
-
-        try:
-            matches = embed_match_tasks(tasks, entities_qs)
-        except Exception as exc:
-            logger.exception("Embed link failed for project %s", project.pk)
-            return toast_response(f"Embedding failed: {exc}", "error", status=500)
-
-        # Clear old pending feedback for these tasks, keep accepted/rejected
-        task_ids = [t.pk for t in tasks]
-        LinkFeedback.objects.filter(task_id__in=task_ids, accepted__isnull=True).delete()
-
-        for m in matches:
-            try:
-                entity = IFCEntity.objects.get(pk=m["entity_id"])
-                task = Task.objects.get(pk=m["task_id"])
-                LinkFeedback.objects.create(
-                    task=task,
-                    ifc_entity=entity,
-                    method=LinkFeedback.Method.EMBEDDING,
-                    confidence_at_time=m["confidence"],
-                )
-            except Exception as exc:
-                logger.warning("Could not create LinkFeedback: %s", exc)
-
-        feedbacks = (
-            LinkFeedback.objects.filter(task__project=project)
-            .select_related("task", "ifc_entity", "corrected_to")
-            .order_by("-confidence_at_time")
-        )
-        msg = f"Found {len(matches)} candidate links from {len(tasks)} tasks."
-        response = render(
-            request,
-            "scheduling/components/validation_table.html",
-            {"feedbacks": feedbacks, "project": project},
-        )
-        return trigger_toast(response, msg, "success")
-
-
-class LinkAcceptView(ProjectModifyAccessMixin, View):
-    """HTMX POST — accept a suggested link and create the M2M connection."""
-
-    def post(self, request, **kwargs: object) -> HttpResponse:
-        project = self.get_project()
-        feedback = get_object_or_404(LinkFeedback, pk=kwargs["feedback_pk"], task__project=project)
-        feedback.accepted = True
-        feedback.save(update_fields=["accepted"])
-        feedback.task.ifc_entities.add(feedback.ifc_entity)
-
-        return render(
-            request,
-            "scheduling/components/validation_row.html",
-            {"fb": feedback, "project": project},
-        )
-
-
-class LinkRejectView(ProjectModifyAccessMixin, View):
-    """HTMX POST — reject a suggested link."""
-
-    def post(self, request, **kwargs: object) -> HttpResponse:
-        project = self.get_project()
-        feedback = get_object_or_404(LinkFeedback, pk=kwargs["feedback_pk"], task__project=project)
-        feedback.accepted = False
-        feedback.save(update_fields=["accepted"])
-
-        return render(
-            request,
-            "scheduling/components/validation_row.html",
-            {"fb": feedback, "project": project},
-        )
-
-
-class LinkChangeView(ProjectModifyAccessMixin, View):
-    """HTMX POST — override the suggested entity with a user-chosen one."""
-
-    def post(self, request, **kwargs: object) -> HttpResponse:
-        project = self.get_project()
-        feedback = get_object_or_404(LinkFeedback, pk=kwargs["feedback_pk"], task__project=project)
-        entity_id = request.POST.get("entity_id", "").strip()
-        if not entity_id:
-            return toast_response("No entity selected.", "error", status=400)
-
-        try:
-            entity = IFCEntity.objects.get(pk=entity_id, ifc_file__project=project)
-        except IFCEntity.DoesNotExist:
-            return toast_response("Entity not found.", "error", status=404)
-
-        feedback.corrected_to = entity
-        feedback.accepted = True
-        feedback.save(update_fields=["corrected_to", "accepted"])
-        feedback.task.ifc_entities.add(entity)
-
-        return render(
-            request,
-            "scheduling/components/validation_row.html",
-            {"fb": feedback, "project": project},
-        )
-
-
-class LinkSearchView(ProjectAccessMixin, View):
-    """HTMX GET — typeahead entity search for the change-entity panel."""
-
-    def get(self, request, **kwargs: object) -> HttpResponse:
-        project = self.get_project()
-        q = request.GET.get("q", "").strip()
-        feedback_pk = request.GET.get("feedback_pk", "")
-
-        ifc_files = IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
-        qs = IFCEntity.objects.filter(ifc_file__in=ifc_files)
-        if q:
-            qs = qs.filter(name__icontains=q)
-        entities = qs.order_by("name")[:10]
-
-        return render(
-            request,
-            "scheduling/components/link_search.html",
-            {"entities": entities, "project": project, "feedback_pk": feedback_pk},
-        )
-
-
-# ---------------------------------------------------------------------------
-# Link Review — 4-layer binding review tab
+# Link Review — binding review tab
 # ---------------------------------------------------------------------------
 
 
