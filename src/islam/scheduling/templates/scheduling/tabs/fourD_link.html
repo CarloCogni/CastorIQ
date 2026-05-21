@@ -355,6 +355,7 @@
   const GANTT_URL               = "{% url 'islam:gantt_data' project.pk %}";
   const TIMELINE_URL            = "{% url 'islam:viewer_timeline' project.pk %}";
   const FD_INTELLIGENCE_ASK_URL = "{% url 'islam:intelligence_ask' project.pk %}";
+  const FD_WRITEBACK_URL        = "{% url 'islam:schedule_writeback' project.pk %}";
   const FD_CSRF                 = "{{ csrf_token }}";
 
   /* ── Full Gantt (fd_ prefix) ─────────────────────────────────────── */
@@ -1033,6 +1034,95 @@
     msgs.scrollTop = msgs.scrollHeight;
   }
 
+  /* Writeback action words — if the user message contains any of these, route
+     to the schedule writeback pipeline instead of the Q&A intelligence endpoint. */
+  const FD_ACTION_WORDS = /\b(delay|push\s+back|move|reschedule|update|change|set|mark|complete|finish|start|activate|extend|shorten|add\s+dependency|remove\s+dependency|link)\b/i;
+
+  function _fdReplaceLoading(loadingId, html) {
+    const el = document.getElementById(loadingId);
+    if (el) el.closest(".fd-msg").querySelector(".fd-msg-text").innerHTML = html;
+  }
+
+  async function _fdAskIntelligence(msg, loadingId) {
+    const resp = await fetch(FD_INTELLIGENCE_ASK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRFToken": FD_CSRF },
+      body: JSON.stringify({ question: msg }),
+    });
+    const data = await resp.json();
+    _fdReplaceLoading(loadingId, data.answer || data.error || "No response.");
+  }
+
+  async function _fdWriteback(msg, loadingId) {
+    const resp = await fetch(FD_WRITEBACK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRFToken": FD_CSRF },
+      body: JSON.stringify({ message: msg }),
+    });
+    const data = await resp.json();
+
+    if (data.type === "unclear" || data.type === "out_of_scope" || data.type === "no_matches") {
+      _fdReplaceLoading(loadingId, esc(data.message || "Could not process request."));
+      return;
+    }
+
+    if (data.type === "proposals") {
+      const proposals = data.proposals || [];
+      const warnings  = data.warnings  || [];
+
+      let html = `<strong style="color:#818cf8;">Proposed changes:</strong>`;
+      html += `<div style="margin:8px 0;display:flex;flex-direction:column;gap:6px;">`;
+      for (const p of proposals) {
+        html += `<div style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:8px 10px;font-size:11px;">`;
+        html += `<div style="font-weight:600;color:#e2e8f0;margin-bottom:4px;">${esc(p.task_name)}</div>`;
+        if (p.activity_code) html += `<div style="color:rgba(255,255,255,.4);font-size:10px;margin-bottom:4px;">${esc(p.activity_code)}</div>`;
+        for (const [fname, chg] of Object.entries(p.changes || {})) {
+          html += `<div style="color:#94a3b8;">• ${esc(fname)}: <span style="color:#f87171;">${esc(String(chg.from))}</span> → <span style="color:#86efac;">${esc(String(chg.to))}</span></div>`;
+        }
+        html += `</div>`;
+      }
+      html += `</div>`;
+      if (warnings.length) {
+        html += `<div style="color:#fbbf24;font-size:10px;margin-bottom:6px;">⚠ ${warnings.map(esc).join(" · ")}</div>`;
+      }
+      // Store proposals on the button for the confirm handler
+      const confirmId = "fd-confirm-" + Date.now();
+      html += `<div style="display:flex;gap:8px;margin-top:4px;">`;
+      html += `<button id="${confirmId}" data-proposals='${JSON.stringify(proposals).replace(/'/g, "&#39;")}'`
+            + ` style="padding:4px 12px;background:#166534;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:11px;">✅ Confirm</button>`;
+      html += `<button onclick="this.closest('.fd-msg').remove()" style="padding:4px 12px;background:#7f1d1d;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:11px;">❌ Cancel</button>`;
+      html += `</div>`;
+
+      _fdReplaceLoading(loadingId, html);
+
+      // Attach confirm handler after the DOM is updated
+      requestAnimationFrame(() => {
+        const btn = document.getElementById(confirmId);
+        if (!btn) return;
+        btn.addEventListener("click", async () => {
+          btn.disabled = true;
+          btn.textContent = "Applying…";
+          try {
+            const cResp = await fetch(FD_WRITEBACK_URL, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "X-CSRFToken": FD_CSRF },
+              body: JSON.stringify({ confirm: true, proposals }),
+            });
+            const cData = await cResp.json();
+            const n = cData.updated || 0;
+            const msgEl = btn.closest(".fd-msg").querySelector(".fd-msg-text");
+            if (msgEl) msgEl.innerHTML = `✅ Updated ${n} task${n !== 1 ? "s" : ""}. Refreshing Gantt…`;
+            // Refresh Gantt
+            loadGantt();
+          } catch (err) {
+            btn.textContent = "Error — retry?";
+            btn.disabled = false;
+          }
+        });
+      });
+    }
+  }
+
   document.getElementById("fourD-chat-send").addEventListener("click", async () => {
     const input = document.getElementById("fourD-chat-input");
     const msg   = input.value.trim();
@@ -1042,22 +1132,13 @@
     const loadingId = "fd-loading-" + Date.now();
     addFdMessage("ai", `<span id="${loadingId}">Thinking…</span>`);
     try {
-      const resp = await fetch(FD_INTELLIGENCE_ASK_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-CSRFToken": FD_CSRF },
-        body: JSON.stringify({ question: msg }),
-      });
-      const data = await resp.json();
-      const loadingEl = document.getElementById(loadingId);
-      if (loadingEl) {
-        loadingEl.closest(".fd-msg").querySelector(".fd-msg-text").innerHTML =
-          data.answer || data.error || "No response";
+      if (FD_ACTION_WORDS.test(msg)) {
+        await _fdWriteback(msg, loadingId);
+      } else {
+        await _fdAskIntelligence(msg, loadingId);
       }
     } catch (e) {
-      const loadingEl = document.getElementById(loadingId);
-      if (loadingEl) {
-        loadingEl.closest(".fd-msg").querySelector(".fd-msg-text").textContent = "Error connecting to AI";
-      }
+      _fdReplaceLoading(loadingId, "Error connecting to AI.");
     }
   });
 

@@ -374,4 +374,12 @@ urlpatterns = [
         intelligence_views.IntelligenceAskView.as_view(),
         name="intelligence_ask",
     ),
+    # ------------------------------------------------------------------ #
+    # Schedule writeback                                                   #
+    # ------------------------------------------------------------------ #
+    path(
+        "projects/<uuid:pk>/schedule/writeback/",
+        scheduling_views.ScheduleWritebackView.as_view(),
+        name="schedule_writeback",
+    ),
 ]
