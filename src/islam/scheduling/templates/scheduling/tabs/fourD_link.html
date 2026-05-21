@@ -802,15 +802,19 @@
       } catch (e) { /* ignore */ }
     }
 
-    /* Single drag-state object — set on mousedown, cleared on mouseup/mouseleave.
-       The mousemove listener lives permanently on document and checks _drag first,
-       so it is always a no-op when no drag is in progress. */
-    let _drag = null;
+    /* Pointer-capture drag — no ghost drag, no "released outside window" leaks.
+       Pointer capture routes all pointermove/pointerup to the splitter element
+       even when the cursor leaves the window, so no document-level cleanup needed. */
+    let _drag       = null;
+    let _rafPending = false;
 
     document.querySelectorAll(".fd-splitter").forEach(splitter => {
-      splitter.addEventListener("mousedown", (e) => {
-        if (e.button !== 0) return;   // left button only
+
+      splitter.addEventListener("pointerdown", (e) => {
+        if (e.button !== 0) return;
         e.preventDefault();
+        splitter.setPointerCapture(e.pointerId);
+
         const leftId  = splitter.dataset.left;
         const fixedId = leftId !== "fourD-viewer" ? leftId : splitter.dataset.right;
         const fixedEl = document.getElementById(fixedId);
@@ -829,31 +833,44 @@
         document.body.style.cursor     = "col-resize";
         document.body.style.userSelect = "none";
       });
+
+      splitter.addEventListener("pointermove", (e) => {
+        if (!_drag || _drag.splitter !== splitter) return;
+        if (_rafPending) return;
+        _rafPending = true;
+        const clientX = e.clientX;           // capture before rAF fires
+        requestAnimationFrame(() => {
+          _rafPending = false;
+          if (!_drag) return;                // drag may have ended during the frame wait
+          const { fixedId, fixedEl, startX, startW, minW, sign } = _drag;
+          const delta   = (clientX - startX) * sign;
+          const panels  = document.getElementById("fourD-panels");
+          const otherId = fixedId === "fourD-gantt" ? "fourD-chat" : "fourD-gantt";
+          const otherW  = document.getElementById(otherId).offsetWidth;
+          const maxW    = panels.offsetWidth - otherW - SPLITTER_PX - MIN_W["fourD-viewer"];
+          fixedEl.style.width = Math.max(minW, Math.min(maxW, startW + delta)) + "px";
+        });
+      });
+
+      splitter.addEventListener("pointerup", (e) => {
+        if (!_drag || _drag.splitter !== splitter) return;
+        splitter.releasePointerCapture(e.pointerId);
+        splitter.classList.remove("fd-dragging");
+        document.body.style.cursor     = "";
+        document.body.style.userSelect = "";
+        saveLayout();
+        _drag = null;
+      });
+
+      splitter.addEventListener("pointercancel", (e) => {
+        if (!_drag || _drag.splitter !== splitter) return;
+        splitter.releasePointerCapture(e.pointerId);
+        splitter.classList.remove("fd-dragging");
+        document.body.style.cursor     = "";
+        document.body.style.userSelect = "";
+        _drag = null;
+      });
     });
-
-    function _stopDrag() {
-      if (!_drag) return;
-      _drag.splitter.classList.remove("fd-dragging");
-      document.body.style.cursor     = "";
-      document.body.style.userSelect = "";
-      saveLayout();
-      _drag = null;
-    }
-
-    document.addEventListener("mousemove", (e) => {
-      if (!_drag) return;                          // no-op when not dragging
-      const { fixedId, fixedEl, startX, startW, minW, sign } = _drag;
-      const delta   = (e.clientX - startX) * sign;
-      const panels  = document.getElementById("fourD-panels");
-      const otherId = fixedId === "fourD-gantt" ? "fourD-chat" : "fourD-gantt";
-      const otherW  = document.getElementById(otherId).offsetWidth;
-      const maxW    = panels.offsetWidth - otherW - SPLITTER_PX - MIN_W["fourD-viewer"];
-      fixedEl.style.width = Math.max(minW, Math.min(maxW, startW + delta)) + "px";
-    });
-
-    /* mouseup anywhere ends the drag; mouseleave handles "released outside window" */
-    document.addEventListener("mouseup",    _stopDrag);
-    document.addEventListener("mouseleave", _stopDrag);
   }
 
   /* ── Init ────────────────────────────────────────────────────────── */
