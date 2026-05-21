@@ -146,6 +146,12 @@
               title="Reset colours" style="font-size: 11px; padding: 2px 6px;">
         <i class="bi bi-arrow-counterclockwise"></i>
       </button>
+      <button id="fd-chat-toggle" title="AI Assistant"
+              style="padding: 4px 10px; background: rgba(99,102,241,.2);
+                     color: #818cf8; border: 1px solid rgba(99,102,241,.3);
+                     border-radius: 6px; cursor: pointer; font-size: 12px; flex-shrink: 0;">
+        🧠
+      </button>
     </div>
 
     <!-- 3D Viewer iframe -->
@@ -223,8 +229,8 @@
 
   <!-- RIGHT: AI Chat Panel -->
   <div id="fourD-chat" style="
-    width: 280px;
-    min-width: 200px;
+    width: 0px;
+    min-width: 0;
     flex-shrink: 0;
     background: var(--bs-body-bg);
     border: 1px solid var(--bs-border-color);
@@ -346,8 +352,10 @@
 <script>
 (function () {
   "use strict";
-  const GANTT_URL    = "{% url 'islam:gantt_data' project.pk %}";
-  const TIMELINE_URL = "{% url 'islam:viewer_timeline' project.pk %}";
+  const GANTT_URL               = "{% url 'islam:gantt_data' project.pk %}";
+  const TIMELINE_URL            = "{% url 'islam:viewer_timeline' project.pk %}";
+  const FD_INTELLIGENCE_ASK_URL = "{% url 'islam:intelligence_ask' project.pk %}";
+  const FD_CSRF                 = "{{ csrf_token }}";
 
   /* ── Full Gantt (fd_ prefix) ─────────────────────────────────────── */
 
@@ -367,7 +375,7 @@
 
   const FD_STATUS_CLR = {
     complete: "#166534", active: "#1e40af", in_progress: "#1e40af",
-    delayed:  "#92400e", planned: "#1e3a5f",
+    delayed:  "#c2410c", planned: "#1e3a5f",
   };
   const FD_STAGE_CLR = {
     structure: "#4f46e5", substructure: "#7c3aed",
@@ -444,7 +452,26 @@
     return ivs;
   }
 
+  function fd_isDelayed(t) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const plannedEnd   = t.end          ? new Date(t.end)          : null;
+    const plannedStart = t.start        ? new Date(t.start)        : null;
+    const actualEnd    = t.actual_end   ? new Date(t.actual_end)   : null;
+    const actualStart  = t.actual_start ? new Date(t.actual_start) : null;
+    // Completed but finished late
+    if (actualEnd && plannedEnd && actualEnd > plannedEnd) return true;
+    // In-progress but past planned end
+    if (actualStart && !actualEnd && plannedEnd && today > plannedEnd) return true;
+    // Not started but past planned start
+    if (!actualStart && plannedStart && today > plannedStart) return true;
+    // Negative float
+    if (t.total_float !== null && t.total_float !== "" && parseFloat(t.total_float) < 0) return true;
+    return false;
+  }
+
   function fd_getTaskColor(t) {
+    if (fd_isDelayed(t)) return FD_STATUS_CLR.delayed;
     const stageRaw = (t.stage || "").toLowerCase();
     if (stageRaw) {
       for (const [key, clr] of Object.entries(FD_STAGE_CLR)) {
@@ -992,26 +1019,46 @@
 
   /* ── AI Chat stub ────────────────────────────────────────────────── */
 
-  function addMessage(role, text) {
+  function addFdMessage(role, html) {
     const msgs = document.getElementById("fourD-messages");
     const isAI = role === "ai";
     const div  = document.createElement("div");
+    div.className = "fd-msg";
     div.style.cssText = `background:${isAI ? "rgba(99,102,241,.1)" : "rgba(59,130,246,.08)"};`
                       + `border-radius:8px;padding:10px 12px;font-size:12px;`
                       + `align-self:${isAI ? "flex-start" : "flex-end"};max-width:90%;`;
     div.innerHTML = `<strong style="color:${isAI ? "#818cf8" : "#3b82f6"};">${isAI ? "Castor AI" : "You"}</strong>`
-                  + `<p style="margin:4px 0 0;color:var(--bs-body-color);">${text}</p>`;
+                  + `<p class="fd-msg-text" style="margin:4px 0 0;color:var(--bs-body-color);">${html}</p>`;
     msgs.appendChild(div);
     msgs.scrollTop = msgs.scrollHeight;
   }
 
-  document.getElementById("fourD-chat-send").addEventListener("click", () => {
+  document.getElementById("fourD-chat-send").addEventListener("click", async () => {
     const input = document.getElementById("fourD-chat-input");
     const msg   = input.value.trim();
     if (!msg) return;
     input.value = "";
-    addMessage("user", msg);
-    addMessage("ai", "For full AI Q&amp;A over your schedule, switch to the <strong>Intelligence</strong> tab.");
+    addFdMessage("user", esc(msg));
+    const loadingId = "fd-loading-" + Date.now();
+    addFdMessage("ai", `<span id="${loadingId}">Thinking…</span>`);
+    try {
+      const resp = await fetch(FD_INTELLIGENCE_ASK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": FD_CSRF },
+        body: JSON.stringify({ question: msg }),
+      });
+      const data = await resp.json();
+      const loadingEl = document.getElementById(loadingId);
+      if (loadingEl) {
+        loadingEl.closest(".fd-msg").querySelector(".fd-msg-text").innerHTML =
+          data.answer || data.error || "No response";
+      }
+    } catch (e) {
+      const loadingEl = document.getElementById(loadingId);
+      if (loadingEl) {
+        loadingEl.closest(".fd-msg").querySelector(".fd-msg-text").textContent = "Error connecting to AI";
+      }
+    }
   });
 
   document.getElementById("fourD-chat-input").addEventListener("keydown", (e) => {
@@ -1046,10 +1093,13 @@
 
     function saveLayout() {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({
-          gantt: document.getElementById("fourD-gantt").offsetWidth,
-          chat:  document.getElementById("fourD-chat").offsetWidth,
-        }));
+        const chatW = document.getElementById("fourD-chat").offsetWidth;
+        const data  = { gantt: document.getElementById("fourD-gantt").offsetWidth };
+        if (chatW > 0) {
+          data.chat = chatW;
+          try { localStorage.setItem("fd-chat-open", "1"); } catch(e2) {}
+        }
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
       } catch (e) { /* ignore */ }
     }
 
@@ -1123,6 +1173,40 @@
       });
     });
   }
+
+  /* ── Chat panel toggle ──────────────────────────────────────────── */
+
+  (function initChatPanel() {
+    const chat = document.getElementById("fourD-chat");
+    let isOpen = false;
+    try { isOpen = localStorage.getItem("fd-chat-open") === "1"; } catch(e) {}
+    if (isOpen) {
+      let w = 280;
+      try { w = parseInt(localStorage.getItem("fd-chat-width") || "280") || 280; } catch(e) {}
+      chat.style.width    = w + "px";
+      chat.style.minWidth = "200px";
+      chat.style.overflow = "";
+    }
+  })();
+
+  document.getElementById("fd-chat-toggle").addEventListener("click", () => {
+    const chat   = document.getElementById("fourD-chat");
+    const isOpen = chat.offsetWidth > 0;
+    if (isOpen) {
+      try { localStorage.setItem("fd-chat-width", String(chat.offsetWidth)); } catch(e) {}
+      chat.style.width    = "0px";
+      chat.style.minWidth = "0";
+      chat.style.overflow = "hidden";
+      try { localStorage.setItem("fd-chat-open", "0"); } catch(e) {}
+    } else {
+      let w = 280;
+      try { w = parseInt(localStorage.getItem("fd-chat-width") || "280") || 280; } catch(e) {}
+      chat.style.width    = w + "px";
+      chat.style.minWidth = "200px";
+      chat.style.overflow = "";
+      try { localStorage.setItem("fd-chat-open", "1"); } catch(e) {}
+    }
+  });
 
   /* ── Init ────────────────────────────────────────────────────────── */
   initSplitters();
