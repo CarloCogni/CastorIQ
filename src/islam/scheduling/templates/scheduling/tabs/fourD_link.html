@@ -21,7 +21,7 @@
     flex-shrink: 0;
     cursor: col-resize;
     position: relative;
-    z-index: 5;
+    z-index: 10;
     background: var(--bs-border-color);
     transition: background 0.15s;
   }
@@ -52,12 +52,12 @@
 <div id="fourD-root" style="
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 140px);
+  height: 100%;
   gap: 8px;
 ">
 
-  <!-- Panels row: Gantt + splitter + Viewer + splitter + Chat -->
-  <div id="fourD-panels" style="flex: 1; display: flex; min-height: 0; overflow: hidden; gap: 0;">
+  <!-- Main row: Gantt + Viewer + Chat -->
+  <div id="fourD-main" style="flex: 1; display: flex; min-height: 0; gap: 0;">
 
   <!-- LEFT: Gantt Panel -->
   <div id="fourD-gantt" style="
@@ -147,7 +147,6 @@
         <i class="bi bi-arrow-counterclockwise"></i>
       </button>
       <button id="fd-chat-toggle" title="AI Assistant"
-              onclick="console.log('button clicked')"
               style="padding: 4px 10px; background: rgba(99,102,241,.2);
                      color: #818cf8; border: 1px solid rgba(99,102,241,.3);
                      border-radius: 6px; cursor: pointer; font-size: 12px; flex-shrink: 0;
@@ -225,7 +224,6 @@
       </div>
     </div>
   </div>
-
   <!-- Splitter: Viewer ↔ Chat -->
   <div class="fd-splitter" id="fd-split-2" data-left="fourD-viewer" data-right="fourD-chat"></div>
 
@@ -238,6 +236,7 @@
     border: 1px solid var(--bs-border-color);
     border-radius: 8px;
     overflow: hidden;
+    transition: width 0.2s ease;
     display: flex;
     flex-direction: column;
   ">
@@ -272,7 +271,7 @@
   </div>
 
   </div>
-  <!-- /fourD-panels -->
+  <!-- /fourD-main -->
 
   <!-- BOTTOM FOOTER: Controls bar -->
   <div id="fourD-footer" style="
@@ -1159,7 +1158,7 @@
     /* Restore saved widths — clamp to valid range for current viewport */
     try {
       const saved   = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
-      const panelsW = document.getElementById("fourD-panels").offsetWidth || 1200;
+      const panelsW = document.getElementById("fourD-main").offsetWidth || 1200;
       /* Each side panel can take at most 45% of the row (leaves room for the viewer) */
       const cap = Math.floor(panelsW * 0.45);
 
@@ -1225,10 +1224,10 @@
           if (!_drag) return;                // drag may have ended during the frame wait
           const { fixedId, fixedEl, startX, startW, minW, sign } = _drag;
           const delta   = (clientX - startX) * sign;
-          const panels  = document.getElementById("fourD-panels");
+          const container = document.getElementById("fourD-main");
           const otherId = fixedId === "fourD-gantt" ? "fourD-chat" : "fourD-gantt";
           const otherW  = document.getElementById(otherId).offsetWidth;
-          const maxW    = panels.offsetWidth - otherW - SPLITTER_PX - MIN_W["fourD-viewer"];
+          const maxW    = container.offsetWidth - otherW - SPLITTER_PX - MIN_W["fourD-viewer"];
           fixedEl.style.width = Math.max(minW, Math.min(maxW, startW + delta)) + "px";
         });
       });
@@ -1276,7 +1275,7 @@
 
   document.getElementById("fd-chat-toggle").addEventListener("click", () => {
     const chat   = document.getElementById("fourD-chat");
-    const isOpen = chat.offsetWidth > 0;
+    const isOpen = parseInt(chat.style.width) > 10;
     if (isOpen) {
       try { localStorage.setItem("fd-chat-width", String(chat.offsetWidth)); } catch(e) {}
       chat.style.width    = "0px";
