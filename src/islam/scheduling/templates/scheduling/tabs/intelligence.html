@@ -43,15 +43,6 @@
         <span id="intel-coverage-label">
             <span class="placeholder-glow"><span class="placeholder col-8"></span></span>
         </span>
-        <button id="intel-embed-btn"
-                class="btn btn-sm btn-outline-secondary"
-                style="font-size:0.78rem;"
-                title="Embed tasks into vector store for semantic search">
-            <i class="bi bi-lightning-charge me-1"></i>Embed Tasks
-        </button>
-        <span id="intel-embed-spinner" class="d-none text-secondary" style="font-size:0.78rem;">
-            <span class="spinner-border spinner-border-sm me-1"></span>Embedding…
-        </span>
     </div>
 
     <!-- Q&A panel ----------------------------------------------------- -->
@@ -119,8 +110,6 @@
     /* DOM refs                                                            */
     /* ------------------------------------------------------------------ */
     const coverageLabel  = document.getElementById("intel-coverage-label");
-    const embedBtn       = document.getElementById("intel-embed-btn");
-    const embedSpinner   = document.getElementById("intel-embed-spinner");
     const questionTA     = document.getElementById("intel-question");
     const askBtn         = document.getElementById("intel-ask-btn");
     const askError       = document.getElementById("intel-ask-error");
@@ -213,41 +202,6 @@
                 coverageLabel.textContent = "Could not load coverage stats.";
             });
     }
-
-    /* ------------------------------------------------------------------ */
-    /* Embed                                                               */
-    /* ------------------------------------------------------------------ */
-    embedBtn.addEventListener("click", () => {
-        embedBtn.classList.add("d-none");
-        embedSpinner.classList.remove("d-none");
-        fetch(EMBED_URL, {
-            method: "POST",
-            headers: { "X-CSRFToken": CSRF, "Content-Type": "application/json" },
-            body: JSON.stringify({ force: false }),
-        })
-            .then(r => r.json())
-            .then(d => {
-                embedSpinner.classList.add("d-none");
-                embedBtn.classList.remove("d-none");
-                if (d.ok) {
-                    document.dispatchEvent(new CustomEvent("castor:toast", {
-                        detail: { message: `Embedded ${d.embedded} tasks (${d.skipped} skipped, ${d.errors} errors)`, level: "success" }
-                    }));
-                    loadStatus();
-                } else {
-                    document.dispatchEvent(new CustomEvent("castor:toast", {
-                        detail: { message: d.error || "Embedding failed.", level: "error" }
-                    }));
-                }
-            })
-            .catch(err => {
-                embedSpinner.classList.add("d-none");
-                embedBtn.classList.remove("d-none");
-                document.dispatchEvent(new CustomEvent("castor:toast", {
-                    detail: { message: "Embedding request failed: " + err, level: "error" }
-                }));
-            });
-    });
 
     /* ------------------------------------------------------------------ */
     /* Ask                                                                 */

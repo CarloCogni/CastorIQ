@@ -321,6 +321,21 @@
     <!-- Separator -->
     <div style="height: 24px; width: 1px; background: var(--bs-border-color);"></div>
 
+    <!-- Embed Tasks for AI chat -->
+    <div style="display: inline-flex; align-items: center; gap: 8px;">
+      <button id="fd-embed-btn"
+              style="padding: 5px 12px; background: #7c3aed; color: white;
+                     border: none; border-radius: 6px; cursor: pointer; font-size: 12px;
+                     display: inline-flex; align-items: center; gap: 6px;">
+        <span id="fd-embed-spinner" class="spinner-border spinner-border-sm d-none"></span>
+        🧠 Embed Tasks
+      </button>
+      <span id="fd-embed-status" style="font-size: 11px; color: var(--bs-secondary-color);"></span>
+    </div>
+
+    <!-- Separator -->
+    <div style="height: 24px; width: 1px; background: var(--bs-border-color);"></div>
+
     <!-- Parameter Match -->
     <form hx-post="{% url 'islam:schedule_link_param' project.pk %}"
           hx-target="#fourD-link-results"
@@ -355,8 +370,9 @@
   "use strict";
   const GANTT_URL               = "{% url 'islam:gantt_data' project.pk %}";
   const TIMELINE_URL            = "{% url 'islam:viewer_timeline' project.pk %}";
-  const FD_INTELLIGENCE_ASK_URL = "{% url 'islam:intelligence_ask' project.pk %}";
-  const FD_WRITEBACK_URL        = "{% url 'islam:schedule_writeback' project.pk %}";
+  const FD_INTELLIGENCE_ASK_URL   = "{% url 'islam:intelligence_ask' project.pk %}";
+  const FD_INTELLIGENCE_EMBED_URL = "{% url 'islam:intelligence_embed' project.pk %}";
+  const FD_WRITEBACK_URL          = "{% url 'islam:schedule_writeback' project.pk %}";
   const FD_CSRF                 = "{{ csrf_token }}";
 
   /* ── Full Gantt (fd_ prefix) ─────────────────────────────────────── */
@@ -1289,6 +1305,34 @@
       chat.style.minWidth = "200px";
       chat.style.overflow = "";
       try { localStorage.setItem("fd-chat-open", "1"); } catch(e) {}
+    }
+  });
+
+  /* ── Embed Tasks ────────────────────────────────────────────────── */
+  document.getElementById("fd-embed-btn").addEventListener("click", async () => {
+    const btn     = document.getElementById("fd-embed-btn");
+    const spinner = document.getElementById("fd-embed-spinner");
+    const status  = document.getElementById("fd-embed-status");
+    btn.disabled = true;
+    spinner.classList.remove("d-none");
+    status.textContent = "Embedding tasks…";
+    try {
+      const resp = await fetch(FD_INTELLIGENCE_EMBED_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": FD_CSRF },
+        body: JSON.stringify({ force: false }),
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        status.textContent = `✅ Embedded ${data.embedded} tasks`;
+      } else {
+        status.textContent = `❌ ${data.error || "Embedding failed"}`;
+      }
+    } catch (err) {
+      status.textContent = `❌ ${err}`;
+    } finally {
+      btn.disabled = false;
+      spinner.classList.add("d-none");
     }
   });
 
