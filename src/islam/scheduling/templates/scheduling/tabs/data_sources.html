@@ -315,7 +315,7 @@
 
     const STATUS_CLR = {
         complete: '#166534', active: '#1e40af', in_progress: '#1e40af',
-        delayed:  '#92400e', planned: '#1e3a5f',
+        delayed:  '#c2410c', planned: '#1e3a5f',
     };
     const STAGE_CLR = {
         structure:'#4f46e5', substructure:'#7c3aed',
@@ -1326,7 +1326,27 @@
     }
 
     /* ── Task color ─────────────────────────────────────────────────── */
+    function isDelayed(row) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const plannedEnd   = parseDate(getVal(row, 'end_date'));
+        const plannedStart = parseDate(getVal(row, 'start_date'));
+        const actualEnd    = parseDate(getVal(row, 'actual_end'));
+        const actualStart  = parseDate(getVal(row, 'actual_start'));
+        // Completed but finished late
+        if (actualEnd && plannedEnd && actualEnd > plannedEnd) return true;
+        // In-progress but past planned end
+        if (actualStart && !actualEnd && plannedEnd && today > plannedEnd) return true;
+        // Not started but past planned start
+        if (!actualStart && plannedStart && today > plannedStart) return true;
+        // Negative float
+        const floatVal = getVal(row, 'total_float_days');
+        if (floatVal !== '' && parseFloat(floatVal) < 0) return true;
+        return false;
+    }
+
     function getTaskColor(row) {
+        if (isDelayed(row)) return STATUS_CLR.delayed;
         const stageRaw = getVal(row, 'activity_type').toLowerCase();
         if (stageRaw) {
             for (const [key, clr] of Object.entries(STAGE_CLR)) {
