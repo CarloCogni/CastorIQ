@@ -1702,3 +1702,125 @@ class BindingSearchView(ProjectAccessMixin, View):
             "scheduling/components/binding_search.html",
             {"entities": entities, "project": project, "task_pk": task_pk},
         )
+
+
+class ScheduleWritebackView(ProjectModifyAccessMixin, View):
+    """POST — two-phase schedule modification via the RSAA pipeline.
+
+    Phase 1 (no ``confirm`` key): analyse *message* and return proposed changes.
+    Phase 2 (``confirm=true`` + ``proposals`` list): apply confirmed changes.
+
+    Request body (JSON):
+      Phase 1: {"message": "delay Casting Columns by one week"}
+      Phase 2: {"confirm": true, "proposals": [...]}
+    """
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        from .services.schedule_writeback.modification_service import (
+            ModificationProposal,
+            ScheduleModificationService,
+        )
+        from .services.schedule_writeback.slot_extractor import ScheduleSlotExtractor
+        from .services.schedule_writeback.task_resolver import TaskResolver
+        from .services.schedule_writeback.triage import ScheduleTriageClassifier
+
+        project = self.get_project()
+        try:
+            body = json.loads(request.body or b"{}")
+        except (json.JSONDecodeError, ValueError):
+            return JsonResponse({"error": "Invalid JSON body."}, status=400)
+
+        # ── Phase 2: apply confirmed proposals ────────────────────────────
+        if body.get("confirm") and body.get("proposals"):
+            svc = ScheduleModificationService()
+            proposals = [
+                ModificationProposal(
+                    task_id=p["task_id"],
+                    task_name=p["task_name"],
+                    activity_code=p.get("activity_code", ""),
+                    changes=p["changes"],
+                    action=p["action"],
+                )
+                for p in body["proposals"]
+            ]
+            result = svc.apply(proposals)
+            return JsonResponse({
+                "status": "applied",
+                "updated": result["updated"],
+                "errors": result["errors"],
+            })
+
+        # ── Phase 1: analyse and propose ──────────────────────────────────
+        message = (body.get("message") or "").strip()
+        if not message:
+            return JsonResponse({"error": "No message provided."}, status=400)
+
+        triage = ScheduleTriageClassifier(user=request.user)
+        triage_result = triage.classify(message)
+
+        if triage_result.is_unclear:
+            return JsonResponse({
+                "type": "unclear",
+                "message": "I couldn't understand the request. Please name the task and describe what should change.",
+            })
+
+        if triage_result.is_out_of_scope:
+            seg = next((s for s in triage_result.segments if s.kind == "OUT_OF_SCOPE"), None)
+            reason = seg.reason if seg else ""
+            return JsonResponse({
+                "type": "out_of_scope",
+                "message": f"This type of change is not supported in schedule writeback. {reason}",
+            })
+
+        extractor = ScheduleSlotExtractor(user=request.user)
+        resolver = TaskResolver()
+        svc = ScheduleModificationService()
+
+        all_proposals: list[dict] = []
+        warnings: list[str] = []
+
+        for segment in triage_result.segments:
+            if segment.kind in ("OUT_OF_SCOPE", "UNCLEAR"):
+                continue
+
+            slot_result = extractor.extract(segment, message)
+            if not slot_result.ok:
+                warnings.extend(slot_result.warnings)
+                continue
+            if slot_result.warnings:
+                warnings.extend(slot_result.warnings)
+
+            resolution = resolver.resolve(segment.target_phrase, project)
+            if resolution.is_empty:
+                warnings.append(f"Could not find task: '{segment.target_phrase}'. {resolution.diagnostic}")
+                continue
+
+            proposals = svc.build_proposals(
+                resolution.tasks[:5],
+                slot_result.slots,
+                segment.kind,
+            )
+            all_proposals.extend(
+                {
+                    "task_id": p.task_id,
+                    "task_name": p.task_name,
+                    "activity_code": p.activity_code,
+                    "changes": p.changes,
+                    "action": p.action,
+                    "description": p.describe(),
+                }
+                for p in proposals
+            )
+
+        if not all_proposals:
+            return JsonResponse({
+                "type": "no_matches",
+                "message": "Could not find matching tasks or compute changes. "
+                + ("; ".join(warnings) if warnings else "Please try rephrasing."),
+            })
+
+        return JsonResponse({
+            "type": "proposals",
+            "proposals": all_proposals,
+            "warnings": warnings,
+        })
