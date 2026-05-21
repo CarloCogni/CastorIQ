@@ -52,7 +52,11 @@
     </div>
 
     <!-- Tab content -->
+    {% if schedule_tab == 'fourD_link' %}
+    <div class="flex-grow-1" style="overflow: hidden; padding: 0;">
+    {% else %}
     <div class="flex-grow-1 overflow-auto p-3">
+    {% endif %}
         {% if schedule_tab == 'data_sources' %}
             {% include "scheduling/tabs/data_sources.html" %}
         {% elif schedule_tab == 'fourD_link' %}
