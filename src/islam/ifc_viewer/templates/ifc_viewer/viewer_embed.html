@@ -60,6 +60,13 @@ html, body { width: 100%; height: 100%; background: #111; overflow: hidden; }
 
     <div id="embed-legend"></div>
 
+    <!-- Focus button — shown when an element is selected -->
+    <button id="embed-focus-btn" style="
+        position:absolute; bottom:12px; right:12px; display:none; z-index:6;
+        background:rgba(15,23,42,0.85); color:#e2e8f0; border:1px solid #475569;
+        border-radius:6px; padding:5px 10px; font-size:0.8rem; cursor:pointer;
+        font-family:system-ui,sans-serif;">🎯 Focus</button>
+
     <!-- Element selection — context menu -->
     <div id="sel-ctx-menu" style="
         position:absolute; display:none; z-index:100; min-width:160px;
@@ -268,6 +275,45 @@ function makeColor(hex) {
     return new THREE.Color(hex);
 }
 
+// ── 3b. Focus helpers ────────────────────────────────────────────────
+
+function focusOnGlobalId(gid) {
+    if (!gid || !model) return;
+    const expressId = globalIdIndex.get(gid);
+    if (expressId === undefined) return;
+    const fragment = fragmentIndex.get(expressId);
+    if (!fragment || !fragment.mesh) return;
+
+    const box = new THREE.Box3().setFromObject(fragment.mesh);
+    if (box.isEmpty()) return;
+
+    const controls = world.camera.controls;
+    if (controls && typeof controls.fitToBox === "function") {
+        controls.fitToBox(box, true);
+        return;
+    }
+    if (typeof world.camera.fit === "function") {
+        world.camera.fit([fragment.mesh]);
+        return;
+    }
+    /* Manual fallback: reposition camera to fit bounding box */
+    const center = box.getCenter(new THREE.Vector3());
+    const size   = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const cam    = world.camera.three;
+    const dist   = (maxDim / 2) / Math.tan(cam.fov * Math.PI / 360) * 2;
+    const dir    = cam.position.clone().sub(center).normalize();
+    cam.position.copy(center.clone().addScaledVector(dir, dist));
+    cam.lookAt(center);
+    if (controls?.target) controls.target.copy(center);
+    if (controls?.update) controls.update();
+}
+
+function _syncFocusBtn() {
+    const btn = document.getElementById("embed-focus-btn");
+    if (btn) btn.style.display = _selectedGlobalId ? "block" : "none";
+}
+
 // ── 4. postMessage API ───────────────────────────────────────────────
 
 window.addEventListener("message", async (e) => {
@@ -319,6 +365,8 @@ window.addEventListener("message", async (e) => {
         if (!model) return;
         resetAllColors();
         legendEl.style.display = "none";
+        _selectedGlobalId = null;
+        _syncFocusBtn();
         return;
     }
 
@@ -328,9 +376,11 @@ window.addEventListener("message", async (e) => {
         _selectedGlobalId = null;
         const ids = msg.global_ids || [];
         if (ids.length) {
+            colorByGlobalIds([...globalIdIndex.keys()], C.tl_no_task);
             colorByGlobalIds(ids, new THREE.Color('#f59e0b'));
             _selectedGlobalId = ids[0];
         }
+        _syncFocusBtn();
         return;
     }
 
@@ -352,6 +402,12 @@ window.addEventListener("message", async (e) => {
             else if (filter === "partial")  colorByGlobalIds(partial,  new THREE.Color('#EF9F27'));
             else if (filter === "unlinked") colorByGlobalIds(unlinked, new THREE.Color('#4B5563'));
         }
+        return;
+    }
+
+    if (msg.type === "castor:focus-element") {
+        if (!model || !msg.global_id) return;
+        focusOnGlobalId(msg.global_id);
         return;
     }
 });
@@ -412,6 +468,7 @@ function _initSelector() {
             if (_selectedGlobalId) {
                 resetAllColors(); _selectedGlobalId = null;
                 window.parent.postMessage({ type: "castor:element-selected", global_id: null }, "*");
+                _syncFocusBtn();
             }
             return;
         }
@@ -420,12 +477,14 @@ function _initSelector() {
         if (globalId === _selectedGlobalId) {
             resetAllColors(); _selectedGlobalId = null;
             window.parent.postMessage({ type: "castor:element-selected", global_id: null }, "*");
+            _syncFocusBtn();
             return;
         }
         if (_selectedGlobalId) resetAllColors();
         _selectedGlobalId = globalId;
         colorByGlobalIds([globalId], _SEL_COLOR);
         window.parent.postMessage({ type: "castor:element-selected", global_id: globalId }, "*");
+        _syncFocusBtn();
     });
 
     canvas.addEventListener('contextmenu', (e) => {
@@ -592,10 +651,15 @@ document.getElementById("sel-ctx-deselect")?.addEventListener("click", () => {
     if (_ctxMenuEl) _ctxMenuEl.style.display = "none";
     resetAllColors();
     _selectedGlobalId = null;
+    _syncFocusBtn();
 });
 
 document.getElementById("sel-props-close")?.addEventListener("click", () => {
     if (_propsPanelEl) _propsPanelEl.style.display = "none";
+});
+
+document.getElementById("embed-focus-btn")?.addEventListener("click", () => {
+    if (_selectedGlobalId) focusOnGlobalId(_selectedGlobalId);
 });
 
 document.addEventListener("click", (e) => {
