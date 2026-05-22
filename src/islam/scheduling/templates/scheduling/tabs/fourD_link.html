@@ -402,11 +402,11 @@
   const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 
   /* Constants */
-  const FD_ROW_H       = 48;
-  const FD_BAR_H       = 10;
-  const FD_BAR_T       = 14;
-  const FD_ACT_H       = 6;
-  const FD_ACT_T       = 30;
+  const FD_ROW_H       = 36;
+  const FD_BAR_H       = 8;
+  const FD_BAR_T       = 10;
+  const FD_ACT_H       = 4;
+  const FD_ACT_T       = 22;
   const FD_HDR_H       = 46;
   const FD_VS_OVERSCAN = 8;
   const FD_NAME_W      = 160;
@@ -643,12 +643,12 @@
         + `border-right:1px solid #1e293b;overflow:hidden;height:100%;`;
       if (t.activity_code) {
         const codeEl = document.createElement("div");
-        codeEl.style.cssText = "font-size:10px;color:rgba(255,255,255,.4);font-family:monospace;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+        codeEl.style.cssText = "font-size:12px;font-weight:600;color:var(--bs-body-color);font-family:monospace;margin-bottom:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
         codeEl.textContent = t.activity_code;
         nameDiv.appendChild(codeEl);
       }
       const nameEl = document.createElement("div");
-      nameEl.style.cssText = "font-size:.72rem;color:rgba(255,255,255,.8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px;";
+      nameEl.style.cssText = "font-size:10px;color:var(--bs-secondary-color);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px;";
       const _lnkClr = { linked: "#1D9E75", partial: "#EF9F27", unlinked: "#4B5563" };
       const dotClr = !t.is_non_physical && t.link_status ? _lnkClr[t.link_status] : null;
       if (dotClr) {
@@ -968,7 +968,7 @@
       else if (t.link_status === "unlinked") unlinked.push(...ids);
     }
     console.log('[FILTER] sending link-colors, linked:', linked.length, 'partial:', partial.length, 'unlinked:', unlinked.length);
-    sendToViewer({ type: "castor:link-colors", linked, partial, unlinked });
+    sendToViewer({ type: "castor:link-colors", linked, partial, unlinked, filter: _fdLinkFilter });
   }
 
   document.querySelectorAll(".fd-lf-btn").forEach(btn => {
