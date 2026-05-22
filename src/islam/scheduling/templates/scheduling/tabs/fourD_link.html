@@ -358,12 +358,12 @@
         Match
       </button>
     </form>
-  </div>
+  </div><!-- /fourD-footer -->
 
-</div>
+  <!-- Results area: Link Engine / Review response — inside root so parent overflow:hidden doesn't clip it -->
+  <div id="fourD-link-results" style="padding: 8px; overflow-y: auto; flex-shrink: 0; max-height: 40vh;"></div>
 
-<!-- Results area: Castor Link Engine output / Review panel (rendered below grid) -->
-<div id="fourD-link-results" style="padding: 8px;"></div>
+</div><!-- /fourD-root -->
 
 <script>
 (function () {
@@ -1211,6 +1211,13 @@
         e.preventDefault();
         splitter.setPointerCapture(e.pointerId);
 
+        /* Freeze iframe so it can't swallow pointer events mid-drag */
+        const iframeEl = document.getElementById("fd-iframe");
+        if (iframeEl) iframeEl.style.pointerEvents = "none";
+        /* Suppress chat CSS transition — otherwise splitter 2 drag feels laggy */
+        const chatEl = document.getElementById("fourD-chat");
+        if (chatEl) chatEl.style.transition = "none";
+
         const leftId  = splitter.dataset.left;
         const fixedId = leftId !== "fourD-viewer" ? leftId : splitter.dataset.right;
         const fixedEl = document.getElementById(fixedId);
@@ -1254,6 +1261,10 @@
         splitter.classList.remove("fd-dragging");
         document.body.style.cursor     = "";
         document.body.style.userSelect = "";
+        const iframeEl = document.getElementById("fd-iframe");
+        if (iframeEl) iframeEl.style.pointerEvents = "";
+        const chatEl = document.getElementById("fourD-chat");
+        if (chatEl) chatEl.style.transition = "";
         saveLayout();
         _drag = null;
       });
@@ -1264,6 +1275,10 @@
         splitter.classList.remove("fd-dragging");
         document.body.style.cursor     = "";
         document.body.style.userSelect = "";
+        const iframeEl = document.getElementById("fd-iframe");
+        if (iframeEl) iframeEl.style.pointerEvents = "";
+        const chatEl = document.getElementById("fourD-chat");
+        if (chatEl) chatEl.style.transition = "";
         _drag = null;
       });
     });
