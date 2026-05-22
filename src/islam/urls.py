@@ -196,6 +196,11 @@ urlpatterns = [
         scheduling_views.SaveMappingLookupView.as_view(),
         name="schedule_save_mapping_lookup",
     ),
+    path(
+        "projects/<uuid:pk>/schedule/health-check/",
+        scheduling_views.ScheduleHealthCheckView.as_view(),
+        name="schedule_health_check",
+    ),
     # ------------------------------------------------------------------ #
     # Link Review — binding review tab                                     #
     # ------------------------------------------------------------------ #

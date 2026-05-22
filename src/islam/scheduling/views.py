@@ -1451,6 +1451,17 @@ class SaveMappingLookupView(ProjectModifyAccessMixin, View):
         return JsonResponse({"status": "saved"})
 
 
+class ScheduleHealthCheckView(ProjectAccessMixin, View):
+    """JSON GET — run deterministic health checks on the project's schedule tasks."""
+
+    def get(self, request, **kwargs: object) -> JsonResponse:
+        project = self.get_project()
+        from .services.health_check import run_health_check
+
+        result = run_health_check(project)
+        return JsonResponse(result)
+
+
 # ---------------------------------------------------------------------------
 # Link Review — binding review tab
 # ---------------------------------------------------------------------------
