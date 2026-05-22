@@ -6,8 +6,6 @@
      data-mapping-url="{% url 'islam:schedule_mapping_submit' project.pk %}"
      data-detect-url="{% url 'islam:schedule_detect_columns' project.pk %}"
      data-save-lookup-url="{% url 'islam:schedule_save_mapping_lookup' project.pk %}"
-     data-health-url="{% url 'islam:schedule_health_check' project.pk %}"
-     data-comprehension-url="{% url 'islam:schedule_comprehension' project.pk %}"
      data-review-url="{% url 'islam:schedule' project.pk %}?tab=review"
      data-all-tasks-url="{% url 'islam:all_tasks_preview' project.pk %}"
      data-csrf="{{ csrf_token }}"
@@ -176,20 +174,6 @@
     <!-- ── Import result (task_list renders here after save) ────────── -->
     <div id="task-preview-area" class="mt-3"></div>
 
-    <!-- ── Project Comprehension panel (populated after import / on page load) ── -->
-    <div id="ds-comprehension-panel" style="display:none;" class="mt-2"></div>
-
-    <!-- ── Schedule Health panel (auto-populated after import / on page load) ── -->
-    <div id="ds-health-panel" style="display:none;" class="mt-2">
-        <div id="ds-health-loading"
-             class="small text-secondary d-flex align-items-center gap-2 py-1"
-             style="display:none;">
-            <span class="spinner-border spinner-border-sm" style="width:.85rem;height:.85rem;"></span>
-            Running schedule health check…
-        </div>
-        <div id="ds-health-result"></div>
-    </div>
-
     <!-- ── Floating mapping dropdown ────────────────────────────────── -->
     <div id="ds-map-dd"
          style="display:none; position:fixed; z-index:1060;
@@ -302,8 +286,6 @@
     const MAPPING_URL    = root.dataset.mappingUrl;
     const DETECT_URL      = root.dataset.detectUrl;
     const SAVE_LOOKUP_URL = root.dataset.saveLookupUrl;
-    const HEALTH_URL        = root.dataset.healthUrl;
-    const COMPREHENSION_URL = root.dataset.comprehensionUrl;
     const REVIEW_URL        = root.dataset.reviewUrl;
     const ALL_TASKS_URL  = root.dataset.allTasksUrl;
     const CSRF           = root.dataset.csrf;
@@ -326,10 +308,6 @@
     const mapDd        = document.getElementById('ds-map-dd');
     const addDd        = document.getElementById('ds-add-dd');
     const splitterEl   = document.getElementById('ds-splitter');
-    const healthPanel         = document.getElementById('ds-health-panel');
-    const _healthLoad         = document.getElementById('ds-health-loading');
-    const _healthRes          = document.getElementById('ds-health-result');
-    const comprehensionPanel  = document.getElementById('ds-comprehension-panel');
 
     /* ── Canonical field definitions ────────────────────────────────── */
     const FIELDS = [
@@ -1090,8 +1068,6 @@
                 <a href="${REVIEW_URL}" class="btn btn-sm btn-success ms-auto">Go to Review →</a>
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             </div>`;
-        await _runComprehension(true);
-        _runHealthCheck();
     }
 
     importBtn.addEventListener('click', function () {
@@ -1288,176 +1264,6 @@
         _aiResult.style.display = '';
     }
 
-    /* ── Project Comprehension ──────────────────────────────────────── */
-    async function _runComprehension(rebuild) {
-        if (!COMPREHENSION_URL || !comprehensionPanel) return;
-        const method = rebuild ? 'POST' : 'GET';
-        if (rebuild) {
-            comprehensionPanel.style.display = '';
-            comprehensionPanel.innerHTML =
-                '<div class="small text-secondary d-flex align-items-center gap-2 py-1">' +
-                '<span class="spinner-border spinner-border-sm" style="width:.85rem;height:.85rem;"></span>' +
-                'Analysing project structure…</div>';
-        }
-        try {
-            const r    = await fetch(COMPREHENSION_URL, { method, headers: { 'X-CSRFToken': CSRF } });
-            const data = await r.json();
-            if (!r.ok) { comprehensionPanel.innerHTML = ''; comprehensionPanel.style.display = 'none'; return; }
-            if (!rebuild && !data.exists) { return; }  /* nothing saved yet — stay hidden */
-            const html = _buildComprehensionPanel(data, rebuild);
-            if (html) {
-                comprehensionPanel.innerHTML = html;
-                comprehensionPanel.style.display = '';
-                if (rebuild) comprehensionPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            } else { comprehensionPanel.style.display = 'none'; }
-        } catch (e) {
-            comprehensionPanel.innerHTML = '';
-            comprehensionPanel.style.display = 'none';
-        }
-    }
-
-    function _buildComprehensionPanel(data, expanded) {
-        if (!data.total_activities) return '';
-        const confidence = Math.round((data.confidence_score || 0) * 100);
-        const confCls = confidence >= 80 ? 'success' : confidence >= 60 ? 'warning' : 'secondary';
-        const legend  = data.code_prefix_meanings || data.naming_conventions || {};
-        const phases  = data.construction_sequence || data.phases || [];
-
-        let body = '';
-
-        if (data.ai_summary) {
-            body += `<div class="small mb-2 px-2 py-1 rounded"
-                         style="background:rgba(59,130,246,.08); border-left:3px solid var(--bs-primary);">
-                ${esc(data.ai_summary)}
-            </div>`;
-        }
-
-        const pills = [
-            { icon: 'bi-buildings', label: `${(data.physical_activities || 0).toLocaleString()} physical` },
-            { icon: 'bi-exclamation-diamond-fill', label: `${data.critical_activities || 0} critical`, cls: 'text-danger' },
-        ].map(p =>
-            `<span class="badge bg-body-secondary border text-body-secondary" style="font-size:.7rem; font-weight:400;">
-                <i class="${p.icon} ${p.cls || ''} me-1"></i>${p.label}
-            </span>`
-        ).join('');
-        body += `<div class="d-flex flex-wrap gap-1 mb-2">${pills}</div>`;
-
-        if (phases.length) {
-            body += `<div class="mb-2"><span class="text-secondary" style="font-size:.7rem; text-transform:uppercase; letter-spacing:.4px;">Phases</span>
-                <div class="d-flex flex-wrap gap-1 mt-1">
-                    ${phases.map(p => `<span class="badge" style="font-size:.7rem; font-weight:400; background:rgba(16,185,129,.15); color:#34d399;">${esc(p)}</span>`).join('')}
-                </div></div>`;
-        }
-
-        const legendEntries = Object.entries(legend).slice(0, 8);
-        if (legendEntries.length) {
-            body += `<div><span class="text-secondary" style="font-size:.7rem; text-transform:uppercase; letter-spacing:.4px;">Activity Code Legend</span>
-                <div class="d-flex flex-wrap gap-1 mt-1">
-                    ${legendEntries.map(([k, v]) =>
-                        `<span class="badge bg-body-secondary border" style="font-size:.7rem; font-weight:400;">
-                            <strong>${esc(String(k))}</strong> = ${esc(String(v))}
-                        </span>`
-                    ).join('')}
-                </div></div>`;
-        }
-
-        return `<div class="rounded border mb-1" style="font-size:.8rem;">
-            <div class="d-flex align-items-center gap-2 px-3 py-2 flex-wrap"
-                 style="cursor:pointer;"
-                 data-bs-toggle="collapse" data-bs-target="#ds-comp-body"
-                 aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="ds-comp-body">
-                <span class="fw-semibold small">
-                    <i class="bi bi-cpu me-1 text-primary"></i>Project Understanding
-                </span>
-                <span class="badge bg-${confCls} ms-1" style="font-size:.72rem;">${confidence}% confidence</span>
-                <span class="text-secondary ms-auto" style="font-size:.72rem;">
-                    ${(data.total_activities || 0).toLocaleString()} activities
-                    &nbsp;·&nbsp; ${data.project_start || '?'} → ${data.project_finish || '?'}
-                </span>
-            </div>
-            <div class="collapse${expanded ? ' show' : ''}" id="ds-comp-body">
-                <div class="px-3 pb-2">${body}</div>
-            </div>
-        </div>`;
-    }
-
-    /* ── Schedule Health Check ──────────────────────────────────────── */
-    async function _runHealthCheck() {
-        if (!HEALTH_URL || !healthPanel) return;
-        healthPanel.style.display = '';
-        _healthLoad.style.display = '';
-        _healthRes.innerHTML = '';
-        try {
-            const r    = await fetch(HEALTH_URL, { headers: { 'X-CSRFToken': CSRF } });
-            const data = await r.json();
-            _healthLoad.style.display = 'none';
-            if (!r.ok || data.error) {
-                _healthRes.innerHTML =
-                    `<div class="small text-warning">Health check failed — ${esc(data.error || r.status)}</div>`;
-                return;
-            }
-            _healthRes.innerHTML = _renderHealthPanel(data);
-        } catch (e) {
-            _healthLoad.style.display = 'none';
-            _healthRes.innerHTML = `<div class="small text-secondary">Health check unavailable.</div>`;
-        }
-    }
-
-    function _renderHealthPanel(data) {
-        if (!data.total_tasks) return '';
-        const score    = data.score;
-        const scoreCls = score === null ? 'secondary'
-                       : score >= 90 ? 'success'
-                       : score >= 70 ? 'warning'
-                       : 'danger';
-        const SEV_ICON = {
-            error:   '<i class="bi bi-x-circle-fill text-danger me-1" style="font-size:.8rem;"></i>',
-            warning: '<i class="bi bi-exclamation-triangle-fill text-warning me-1" style="font-size:.8rem;"></i>',
-            info:    '<i class="bi bi-info-circle-fill text-info me-1" style="font-size:.8rem;"></i>',
-        };
-        const issueRows = (data.issues || []).map(c => {
-            const icon  = SEV_ICON[c.severity] || '';
-            const badge = `<span class="badge ms-auto" style="font-size:.68rem; background:${
-                c.severity === 'error' ? '#dc3545' : c.severity === 'warning' ? '#fd7e14' : '#0dcaf0'
-              }; color:#fff;">${c.count}</span>`;
-            const sample = c.sample && c.sample.length
-                ? `<div class="text-secondary" style="font-size:.7rem; padding-left:1.4rem; margin-top:1px;">`
-                  + c.sample.map(s => esc(s)).join(' · ')
-                  + `</div>`
-                : '';
-            return `<div class="d-flex align-items-center py-1" style="gap:4px; border-bottom:1px solid var(--bs-border-color); min-height:2rem;">`
-                + icon
-                + `<span style="font-size:.78rem;">${esc(c.label)}</span>`
-                + badge
-                + `</div>`
-                + sample;
-        }).join('');
-        const passedRows = (data.passed || []).map(c =>
-            `<div class="d-flex align-items-center py-1" style="gap:4px; border-bottom:1px solid var(--bs-border-color); min-height:2rem;">`
-            + `<i class="bi bi-check-circle-fill text-success me-1" style="font-size:.8rem;"></i>`
-            + `<span style="font-size:.78rem;">${esc(c.label)}</span>`
-            + `<span class="badge bg-success ms-auto" style="font-size:.68rem;">✓</span>`
-            + `</div>`
-        ).join('');
-
-        const passedCount = (data.passed || []).length;
-        const totalChecks = passedCount + (data.issues || []).length;
-
-        return `<div class="rounded border px-3 py-2" style="font-size:.8rem;">
-            <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
-                <span class="fw-semibold small">
-                    <i class="bi bi-clipboard-pulse me-1 text-primary"></i>Schedule Health
-                </span>
-                <span class="badge bg-${scoreCls} ms-1" style="font-size:.75rem;">${score !== null ? score + '/100' : '—'} · ${esc(data.label || '')}</span>
-                <span class="text-secondary ms-auto" style="font-size:.72rem;">
-                    ${passedCount}/${totalChecks} checks passed
-                    &nbsp;·&nbsp; ${data.total_tasks.toLocaleString()} tasks
-                </span>
-            </div>
-            ${issueRows}${passedRows}
-        </div>`;
-    }
-
     function _saveMappingLookup(fingerprint, filenamePattern, mapping) {
         /* Fire-and-forget: persist confirmed mapping so future uploads auto-apply it */
         fetch(SAVE_LOOKUP_URL, {
@@ -1471,7 +1277,6 @@
     resetBtn.addEventListener('click', function () {
         _aiPanelReset();
         tableSection.style.display = '';
-        if (healthPanel) { healthPanel.style.display = 'none'; _healthRes.innerHTML = ''; }
         S.mapping = {};
         for (const [field, col] of Object.entries(S.suggested)) {
             S.mapping[col] = field;
@@ -2660,9 +2465,6 @@
         try { localStorage.setItem('ds-gantt-name-width', String(_nameW)); } catch { /* ok */ }
         renderGantt(); /* re-render to recalculate SVG arrow offsets */
     }
-
-    /* On page load with existing tasks: load saved comprehension (GET) then health check */
-    if (_TASK_COUNT > 0) { _runComprehension(false); _runHealthCheck(); }
 
 }());
 </script>
