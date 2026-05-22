@@ -1271,12 +1271,12 @@
 
   /* ── Chat panel toggle ──────────────────────────────────────────── */
 
+  let _chatOpen = false;
+
   function initChatPanel() {
-    console.log('[CHAT] toggle button found:', !!document.getElementById('fd-chat-toggle'));
     const chat = document.getElementById("fourD-chat");
-    let isOpen = false;
-    try { isOpen = localStorage.getItem("fd-chat-open") === "1"; } catch(e) {}
-    if (isOpen) {
+    try { _chatOpen = localStorage.getItem("fd-chat-open") === "1"; } catch(e) {}
+    if (_chatOpen) {
       let w = 280;
       try { w = parseInt(localStorage.getItem("fd-chat-width") || "280") || 280; } catch(e) {}
       chat.style.width    = w + "px";
@@ -1290,22 +1290,21 @@
   }
 
   document.getElementById("fd-chat-toggle").addEventListener("click", () => {
-    const chat   = document.getElementById("fourD-chat");
-    const isOpen = parseInt(chat.style.width) > 10;
-    if (isOpen) {
-      try { localStorage.setItem("fd-chat-width", String(chat.offsetWidth)); } catch(e) {}
-      chat.style.width    = "0px";
-      chat.style.minWidth = "0";
-      chat.style.overflow = "hidden";
-      try { localStorage.setItem("fd-chat-open", "0"); } catch(e) {}
-    } else {
+    const chat = document.getElementById("fourD-chat");
+    _chatOpen = !_chatOpen;
+    if (_chatOpen) {
       let w = 280;
       try { w = parseInt(localStorage.getItem("fd-chat-width") || "280") || 280; } catch(e) {}
       chat.style.width    = w + "px";
       chat.style.minWidth = "200px";
       chat.style.overflow = "";
-      try { localStorage.setItem("fd-chat-open", "1"); } catch(e) {}
+    } else {
+      try { localStorage.setItem("fd-chat-width", String(chat.offsetWidth)); } catch(e) {}
+      chat.style.width    = "0px";
+      chat.style.minWidth = "0";
+      chat.style.overflow = "hidden";
     }
+    try { localStorage.setItem("fd-chat-open", _chatOpen ? "1" : "0"); } catch(e) {}
   });
 
   /* ── Embed Tasks ────────────────────────────────────────────────── */

@@ -33,8 +33,6 @@ def _task_text(task: Task) -> str:
         parts.append(f"Actual start: {task.actual_start.isoformat()}")
     if task.actual_end:
         parts.append(f"Actual end: {task.actual_end.isoformat()}")
-    if task.progress is not None:
-        parts.append(f"Progress: {task.progress}%")
     if task.cost:
         parts.append(f"Cost: {task.cost}")
     return "\n".join(parts)
