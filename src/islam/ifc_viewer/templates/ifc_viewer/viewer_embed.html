@@ -333,6 +333,16 @@ window.addEventListener("message", async (e) => {
         }
         return;
     }
+
+    if (msg.type === "castor:link-colors") {
+        if (!model) return;
+        const { linked = [], partial = [], unlinked = [] } = msg;
+        resetAllColors();
+        colorByGlobalIds(linked,   new THREE.Color('#1D9E75'));
+        colorByGlobalIds(partial,  new THREE.Color('#EF9F27'));
+        colorByGlobalIds(unlinked, new THREE.Color('#4B5563'));
+        return;
+    }
 });
 
 function _showTimelineLegend() {
