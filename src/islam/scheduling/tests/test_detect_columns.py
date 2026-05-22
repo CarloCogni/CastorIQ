@@ -271,7 +271,9 @@ def test_fingerprint_headers_order_independent():
 
 def test_fingerprint_headers_case_independent():
     """Fingerprint is case-insensitive."""
-    assert fingerprint_headers(["TASK NAME", "START"]) == fingerprint_headers(["task name", "start"])
+    assert fingerprint_headers(["TASK NAME", "START"]) == fingerprint_headers(
+        ["task name", "start"]
+    )
 
 
 def test_fingerprint_headers_different_sets_differ():

@@ -92,7 +92,10 @@
                 </span>
                 <span id="ds-ai-notes" class="text-secondary" style="font-size:.72rem;"></span>
             </div>
-            <div id="ds-ai-mapping-list" class="d-flex flex-wrap gap-1 mb-2"></div>
+            <div id="ds-ai-mapping-list" class="d-flex flex-wrap gap-1 mb-1"></div>
+            <!-- Unmapped columns — grey dashed pills -->
+            <div id="ds-ai-unmapped-list" class="d-flex flex-wrap gap-1 mb-1" style="display:none;"></div>
+            <div id="ds-ai-unmapped-note" class="small text-secondary mb-2" style="display:none;"></div>
             <div id="ds-ai-missing-warn" class="small text-warning mb-2" style="display:none;">
                 <i class="bi bi-exclamation-triangle me-1"></i>
                 <span id="ds-ai-missing-msg"></span>
@@ -1102,16 +1105,20 @@
     const _aiConfBadge  = document.getElementById('ds-ai-confidence');
     const _aiNotes      = document.getElementById('ds-ai-notes');
     const _aiMapList    = document.getElementById('ds-ai-mapping-list');
-    const _aiMissWarn   = document.getElementById('ds-ai-missing-warn');
-    const _aiMissMsg    = document.getElementById('ds-ai-missing-msg');
-    const _aiConfirmBtn = document.getElementById('ds-ai-confirm-btn');
-    const _aiEditBtn    = document.getElementById('ds-ai-edit-btn');
+    const _aiMissWarn      = document.getElementById('ds-ai-missing-warn');
+    const _aiMissMsg       = document.getElementById('ds-ai-missing-msg');
+    const _aiUnmappedList  = document.getElementById('ds-ai-unmapped-list');
+    const _aiUnmappedNote  = document.getElementById('ds-ai-unmapped-note');
+    const _aiConfirmBtn    = document.getElementById('ds-ai-confirm-btn');
+    const _aiEditBtn       = document.getElementById('ds-ai-edit-btn');
 
     const _AI_FIELD_LABELS = {
         name: 'Task Name', start_date: 'Start Date', end_date: 'End Date',
         activity_code: 'Activity Code', status: 'Status', color: 'Colour',
         cost: 'Cost', activity_type: 'Activity Type',
         predecessors: 'Predecessors', actual_start: 'Actual Start', actual_end: 'Actual End',
+        total_float: 'Total Float', wbs_name: 'WBS Name',
+        duration: 'Duration', weight: 'Weight', is_critical: 'Critical Path',
     };
 
     function _aiPanelReset() {
@@ -1194,6 +1201,30 @@
                     `<i class="bi bi-check-circle-fill text-success" style="font-size:.68rem;"></i>`;
                 _aiMapList.appendChild(chip);
             }
+        }
+
+        /* Unmapped columns — grey dashed pills with "→ ?" */
+        const mappedHeaders = new Set(Object.values(mapping));
+        const unmapped = headers.filter(h => !mappedHeaders.has(h));
+        _aiUnmappedList.innerHTML = '';
+        if (unmapped.length > 0) {
+            for (const col of unmapped) {
+                const chip = document.createElement('span');
+                chip.className = 'badge bg-body-secondary border d-inline-flex align-items-center gap-1 px-2 py-1';
+                chip.style.cssText = 'font-size:.75rem; font-weight:400; color:var(--bs-secondary-color,#6c757d); border-style:dashed;';
+                chip.innerHTML =
+                    `<span>${esc(col)}</span>` +
+                    `<i class="bi bi-arrow-right" style="font-size:.62rem;opacity:.35;"></i>` +
+                    `<span class="fst-italic" style="opacity:.5;">?</span>`;
+                _aiUnmappedList.appendChild(chip);
+            }
+            _aiUnmappedNote.textContent =
+                `${unmapped.length} column${unmapped.length === 1 ? '' : 's'} not mapped — click Edit Mapping to review`;
+            _aiUnmappedList.style.display = '';
+            _aiUnmappedNote.style.display = '';
+        } else {
+            _aiUnmappedList.style.display = 'none';
+            _aiUnmappedNote.style.display = 'none';
         }
 
         /* Warn about missing required fields */

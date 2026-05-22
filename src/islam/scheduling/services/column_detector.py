@@ -33,6 +33,22 @@ _FIELD_DESCRIPTIONS = {
     "predecessors": "Predecessor task codes or dependencies",
     "actual_start": "Actual start date (vs planned)",
     "actual_end": "Actual end or finish date (vs planned)",
+    "total_float": "Total float or slack in days (e.g. Total_Float, Float, TF, Slack)",
+    "wbs_name": "WBS name or work breakdown structure path (e.g. WBS, WBS_Code, WBS Name)",
+    "duration": "Task duration in days or working days (e.g. Duration, Duration_Days, Dur)",
+    "weight": "Task weight or resource loading (e.g. Weight, Resource, Loading)",
+    "is_critical": "Whether the task is on the critical path (e.g. Critical, Is_Critical, CP)",
+}
+
+# Fields the detector recognises — superset of column_mapper.CANONICAL_FIELDS.
+# The extra fields are informational: the LLM can detect them, they show in the
+# panel, but apply_mapping silently ignores any that aren't in CANONICAL_FIELDS.
+_DETECTOR_FIELDS = frozenset(CANONICAL_FIELDS) | {
+    "total_float",
+    "wbs_name",
+    "duration",
+    "weight",
+    "is_critical",
 }
 
 _SYSTEM_PROMPT = """\
@@ -97,7 +113,7 @@ def detect_columns(
         valid_mapping = {
             k: v
             for k, v in (data.get("mapping") or {}).items()
-            if k in CANONICAL_FIELDS and v in header_set
+            if k in _DETECTOR_FIELDS and v in header_set
         }
 
         confidence = float(data.get("confidence", 0.5))
