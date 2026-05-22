@@ -1125,10 +1125,11 @@
     async function _runDetectColumns(headers, sampleRows, filename) {
         if (!_aiPanel || !DETECT_URL) return;
 
-        _aiPanel.style.display = '';
+        _aiPanel.style.display     = '';
         _aiDetecting.style.display = '';
         _aiResult.style.display    = 'none';
         _aiError.style.display     = 'none';
+        tableSection.style.display = 'none'; /* hidden until user clicks Edit Mapping */
 
         let data;
         try {
@@ -1224,6 +1225,7 @@
         _aiEditBtn.onclick = () => {
             S.mapping = inverted;
             _aiPanelReset();
+            tableSection.style.display = '';
             renderTable();
             renderSummary();
         };
@@ -1243,6 +1245,7 @@
     /* ── Reset button ───────────────────────────────────────────────── */
     resetBtn.addEventListener('click', function () {
         _aiPanelReset();
+        tableSection.style.display = '';
         S.mapping = {};
         for (const [field, col] of Object.entries(S.suggested)) {
             S.mapping[col] = field;
