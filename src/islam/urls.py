@@ -186,6 +186,11 @@ urlpatterns = [
         scheduling_views.MappingSubmitView.as_view(),
         name="schedule_mapping_submit",
     ),
+    path(
+        "projects/<uuid:pk>/schedule/detect-columns/",
+        scheduling_views.DetectColumnsView.as_view(),
+        name="schedule_detect_columns",
+    ),
     # ------------------------------------------------------------------ #
     # Link Review — binding review tab                                     #
     # ------------------------------------------------------------------ #

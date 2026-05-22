@@ -4,6 +4,7 @@
      data-preview-url="{% url 'islam:schedule_preview' project.pk %}"
      data-save-url="{% url 'islam:schedule_save' project.pk %}"
      data-mapping-url="{% url 'islam:schedule_mapping_submit' project.pk %}"
+     data-detect-url="{% url 'islam:schedule_detect_columns' project.pk %}"
      data-review-url="{% url 'islam:schedule' project.pk %}?tab=review"
      data-all-tasks-url="{% url 'islam:all_tasks_preview' project.pk %}"
      data-csrf="{{ csrf_token }}"
@@ -68,6 +69,47 @@
             <em>Replace all</em> to start fresh.
         </div>
         {% endif %}
+    </div>
+
+    <!-- ── AI Column Detection panel (Excel/CSV only) ──────────────── -->
+    <div id="ds-ai-panel"
+         style="display:none;"
+         class="rounded border mb-2 px-3 py-2"
+         data-bs-theme="">
+        <!-- Detecting state -->
+        <div id="ds-ai-detecting"
+             class="d-flex align-items-center gap-2 text-secondary small py-1">
+            <span class="spinner-border spinner-border-sm" style="width:.85rem;height:.85rem;"></span>
+            AI is detecting column mapping…
+        </div>
+        <!-- Result state -->
+        <div id="ds-ai-result" style="display:none;">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-1 mb-2">
+                <span class="small fw-semibold">
+                    <i class="bi bi-cpu me-1 text-primary"></i>Auto-detected mapping
+                    <span id="ds-ai-confidence" class="badge ms-1"></span>
+                </span>
+                <span id="ds-ai-notes" class="text-secondary" style="font-size:.72rem;"></span>
+            </div>
+            <div id="ds-ai-mapping-list" class="d-flex flex-wrap gap-1 mb-2"></div>
+            <div id="ds-ai-missing-warn" class="small text-warning mb-2" style="display:none;">
+                <i class="bi bi-exclamation-triangle me-1"></i>
+                <span id="ds-ai-missing-msg"></span>
+            </div>
+            <div class="d-flex gap-2 mt-1">
+                <button id="ds-ai-confirm-btn" type="button" class="btn btn-sm btn-primary">
+                    <i class="bi bi-check-circle me-1"></i>Confirm &amp; Import
+                </button>
+                <button id="ds-ai-edit-btn" type="button" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-pencil me-1"></i>Edit Mapping
+                </button>
+            </div>
+        </div>
+        <!-- Error state -->
+        <div id="ds-ai-error" style="display:none;" class="small text-warning py-1">
+            <i class="bi bi-exclamation-triangle me-1"></i>
+            <span id="ds-ai-error-msg"></span>
+        </div>
     </div>
 
     <!-- ── Dynamic table (hidden until file loaded) ─────────────────── -->
@@ -238,6 +280,7 @@
     const PREVIEW_URL    = root.dataset.previewUrl;
     const SAVE_URL       = root.dataset.saveUrl;
     const MAPPING_URL    = root.dataset.mappingUrl;
+    const DETECT_URL     = root.dataset.detectUrl;
     const REVIEW_URL     = root.dataset.reviewUrl;
     const ALL_TASKS_URL  = root.dataset.allTasksUrl;
     const CSRF           = root.dataset.csrf;
@@ -520,6 +563,7 @@
         statusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Parsing…';
         summaryBar.style.display = 'none';
         resultEl.innerHTML = '';
+        _aiPanelReset();
         showSkeleton();
 
         const fd = new FormData();
@@ -541,6 +585,11 @@
         }
 
         initFromData(data);
+
+        /* Fire AI column detection for Excel/CSV only */
+        if (data.needs_mapping && DETECT_URL) {
+            _runDetectColumns(data.raw_columns || [], (data.rows || []).slice(0, 5), file.name);
+        }
     });
 
     /* ── Initialise from JSON response ─────────────────────────────── */
@@ -1042,8 +1091,129 @@
             : `Import ${S.totalRows.toLocaleString()} tasks →`;
     }
 
+    /* ── AI Column Detection ─────────────────────────────────────────── */
+    const _aiPanel      = document.getElementById('ds-ai-panel');
+    const _aiDetecting  = document.getElementById('ds-ai-detecting');
+    const _aiResult     = document.getElementById('ds-ai-result');
+    const _aiError      = document.getElementById('ds-ai-error');
+    const _aiErrorMsg   = document.getElementById('ds-ai-error-msg');
+    const _aiConfBadge  = document.getElementById('ds-ai-confidence');
+    const _aiNotes      = document.getElementById('ds-ai-notes');
+    const _aiMapList    = document.getElementById('ds-ai-mapping-list');
+    const _aiMissWarn   = document.getElementById('ds-ai-missing-warn');
+    const _aiMissMsg    = document.getElementById('ds-ai-missing-msg');
+    const _aiConfirmBtn = document.getElementById('ds-ai-confirm-btn');
+    const _aiEditBtn    = document.getElementById('ds-ai-edit-btn');
+
+    const _AI_FIELD_LABELS = {
+        name: 'Task Name', start_date: 'Start Date', end_date: 'End Date',
+        activity_code: 'Activity Code', status: 'Status', color: 'Colour',
+        cost: 'Cost', activity_type: 'Activity Type',
+        predecessors: 'Predecessors', actual_start: 'Actual Start', actual_end: 'Actual End',
+    };
+
+    function _aiPanelReset() {
+        if (!_aiPanel) return;
+        _aiPanel.style.display = 'none';
+        if (_aiDetecting) _aiDetecting.style.display = 'none';
+        if (_aiResult)    _aiResult.style.display    = 'none';
+        if (_aiError)     _aiError.style.display     = 'none';
+    }
+
+    async function _runDetectColumns(headers, sampleRows, filename) {
+        if (!_aiPanel || !DETECT_URL) return;
+
+        _aiPanel.style.display = '';
+        _aiDetecting.style.display = '';
+        _aiResult.style.display    = 'none';
+        _aiError.style.display     = 'none';
+
+        let data;
+        try {
+            const r = await fetch(DETECT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+                body: JSON.stringify({ headers, sample_rows: sampleRows, filename }),
+            });
+            data = await r.json();
+            if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+        } catch (e) {
+            _aiDetecting.style.display = 'none';
+            _aiError.style.display     = '';
+            _aiErrorMsg.textContent    = `Detection failed: ${e.message}. Use manual mapping below.`;
+            return;
+        }
+
+        _aiDetecting.style.display = 'none';
+
+        const mapping    = data.mapping    || {};
+        const confidence = data.confidence || 0;
+        const notes      = data.notes      || '';
+
+        /* Confidence badge */
+        const pct = Math.round(confidence * 100);
+        _aiConfBadge.textContent = `${pct}% confidence`;
+        if (pct >= 70)      { _aiConfBadge.className = 'badge ms-1 bg-success-subtle text-success-emphasis'; }
+        else if (pct >= 40) { _aiConfBadge.className = 'badge ms-1 bg-warning-subtle text-warning-emphasis'; }
+        else                { _aiConfBadge.className = 'badge ms-1 bg-secondary-subtle text-secondary-emphasis'; }
+
+        _aiNotes.textContent = notes;
+
+        /* Mapping chips */
+        _aiMapList.innerHTML = '';
+        const entries = Object.entries(mapping);
+        if (entries.length === 0) {
+            _aiMapList.innerHTML = '<span class="text-secondary small">No columns detected automatically.</span>';
+        } else {
+            for (const [field, col] of entries) {
+                const label = _AI_FIELD_LABELS[field] || field;
+                const chip  = document.createElement('span');
+                chip.className = 'badge bg-body-secondary border d-inline-flex align-items-center gap-1 px-2 py-1';
+                chip.style.cssText = 'font-size:.75rem; font-weight:400; color:var(--bs-body-color);';
+                chip.innerHTML =
+                    `<span class="text-secondary">${esc(col)}</span>` +
+                    `<i class="bi bi-arrow-right" style="font-size:.62rem;opacity:.5;"></i>` +
+                    `<span class="fw-semibold">${esc(label)}</span>` +
+                    `<i class="bi bi-check-circle-fill text-success" style="font-size:.68rem;"></i>`;
+                _aiMapList.appendChild(chip);
+            }
+        }
+
+        /* Warn about missing required fields */
+        const required = ['name', 'start_date', 'end_date'];
+        const missing  = required.filter(f => !(f in mapping));
+        if (missing.length) {
+            _aiMissMsg.textContent = `Missing required: ${missing.map(f => _AI_FIELD_LABELS[f] || f).join(', ')} — use Edit Mapping to fix.`;
+            _aiMissWarn.style.display    = '';
+            _aiConfirmBtn.disabled       = true;
+        } else {
+            _aiMissWarn.style.display    = 'none';
+            _aiConfirmBtn.disabled       = false;
+        }
+
+        /* Build inverted mapping: col → field (matches S.mapping format) */
+        const inverted = {};
+        for (const [field, col] of entries) { inverted[col] = field; }
+
+        _aiConfirmBtn.onclick = () => {
+            S.mapping = inverted;
+            _aiPanelReset();
+            _submitImport(false);
+        };
+
+        _aiEditBtn.onclick = () => {
+            S.mapping = inverted;
+            _aiPanelReset();
+            renderTable();
+            renderSummary();
+        };
+
+        _aiResult.style.display = '';
+    }
+
     /* ── Reset button ───────────────────────────────────────────────── */
     resetBtn.addEventListener('click', function () {
+        _aiPanelReset();
         S.mapping = {};
         for (const [field, col] of Object.entries(S.suggested)) {
             S.mapping[col] = field;
