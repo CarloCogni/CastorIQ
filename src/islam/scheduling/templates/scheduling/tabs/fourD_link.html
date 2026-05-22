@@ -947,15 +947,28 @@
   /* Link filter buttons */
   function _applyLinkFilter() {
     if (!_fdLastData) return;
+
     if (_fdLinkFilter === "all") {
       fd_renderGantt(_fdLastData);
-      return;
+    } else {
+      const filtered = {
+        ..._fdLastData,
+        tasks: (_fdLastData.tasks || []).filter(t => t.link_status === _fdLinkFilter),
+      };
+      fd_renderGantt(filtered);
     }
-    const filtered = {
-      ..._fdLastData,
-      tasks: (_fdLastData.tasks || []).filter(t => t.link_status === _fdLinkFilter),
-    };
-    fd_renderGantt(filtered);
+
+    /* Colour viewer by link status using the full dataset */
+    const linked = [], partial = [], unlinked = [];
+    for (const t of (_fdLastData.tasks || [])) {
+      const ids = t.entity_global_ids || [];
+      if (!ids.length) continue;
+      if (t.link_status === "linked")        linked.push(...ids);
+      else if (t.link_status === "partial")  partial.push(...ids);
+      else if (t.link_status === "unlinked") unlinked.push(...ids);
+    }
+    console.log('[FILTER] sending link-colors, linked:', linked.length, 'partial:', partial.length, 'unlinked:', unlinked.length);
+    sendToViewer({ type: "castor:link-colors", linked, partial, unlinked });
   }
 
   document.querySelectorAll(".fd-lf-btn").forEach(btn => {
