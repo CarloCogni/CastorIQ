@@ -568,6 +568,83 @@ class LinkFeedback(UUIDModel):
         return self.corrected_to or self.ifc_entity
 
 
+class ProjectComprehension(UUIDModel):
+    """Semantic understanding of a project schedule, built by the Comprehension Engine.
+
+    Stores both statistical profile (fast, no LLM) and LLM-derived semantic
+    understanding (project type, activity code meanings, naming conventions).
+    Updated by build_comprehension() after each import.
+    """
+
+    project = models.OneToOneField(
+        Project,
+        on_delete=models.CASCADE,
+        related_name="schedule_comprehension",
+        verbose_name="Project",
+    )
+
+    # WBS / Hierarchy
+    wbs_levels = models.IntegerField(default=0, verbose_name="WBS Levels")
+    wbs_structure = models.JSONField(
+        default=dict,
+        verbose_name="WBS Structure",
+        help_text='Hierarchy by level, e.g. {"L1": ["Structure", "MEP"]}',
+    )
+
+    # Activity Code Pattern
+    code_pattern = models.CharField(
+        max_length=500,
+        blank=True,
+        verbose_name="Code Pattern",
+        help_text='Detected pattern, e.g. "[ALPHA][N]-[N].[N]"',
+    )
+    code_segments = models.JSONField(
+        default=dict,
+        verbose_name="Code Segments",
+        help_text="Most-common values per positional segment",
+    )
+
+    # Counts
+    total_activities = models.IntegerField(default=0, verbose_name="Total Activities")
+    physical_activities = models.IntegerField(default=0, verbose_name="Physical Activities")
+    non_physical_activities = models.IntegerField(default=0, verbose_name="Non-Physical Activities")
+    critical_activities = models.IntegerField(default=0, verbose_name="Critical Activities")
+
+    # Date Profile
+    project_start = models.DateField(null=True, blank=True, verbose_name="Project Start")
+    project_finish = models.DateField(null=True, blank=True, verbose_name="Project Finish")
+    avg_duration_days = models.FloatField(default=0.0, verbose_name="Avg Duration (days)")
+
+    # Distributions
+    type_distribution = models.JSONField(
+        default=dict,
+        verbose_name="Type Distribution",
+        help_text="Stage or activity-type counts",
+    )
+
+    # Naming Conventions — populated from LLM code_prefix_meanings
+    naming_conventions = models.JSONField(
+        default=dict,
+        verbose_name="Naming Conventions",
+        help_text='Code prefix meanings, e.g. {"GENDA": "Admin approval"}',
+    )
+
+    # Phases & Milestones
+    phases = models.JSONField(default=list, verbose_name="Phases")
+    milestones = models.JSONField(default=list, verbose_name="Milestones")
+
+    # LLM Output
+    ai_summary = models.TextField(blank=True, verbose_name="AI Summary")
+    confidence_score = models.FloatField(default=0.0, verbose_name="Confidence Score")
+
+    class Meta:
+        verbose_name = "Project Comprehension"
+        verbose_name_plural = "Project Comprehensions"
+
+    def __str__(self) -> str:
+        return f"Comprehension({self.project.name}, {self.total_activities} tasks)"
+
+
 class IslamTaskEmbedding(UUIDModel):
     """Cached embedding vector for a schedule task — used by the Intelligence tab."""
 

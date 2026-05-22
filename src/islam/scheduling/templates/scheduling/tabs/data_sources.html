@@ -7,6 +7,7 @@
      data-detect-url="{% url 'islam:schedule_detect_columns' project.pk %}"
      data-save-lookup-url="{% url 'islam:schedule_save_mapping_lookup' project.pk %}"
      data-health-url="{% url 'islam:schedule_health_check' project.pk %}"
+     data-comprehension-url="{% url 'islam:schedule_comprehension' project.pk %}"
      data-review-url="{% url 'islam:schedule' project.pk %}?tab=review"
      data-all-tasks-url="{% url 'islam:all_tasks_preview' project.pk %}"
      data-csrf="{{ csrf_token }}"
@@ -175,6 +176,9 @@
     <!-- ── Import result (task_list renders here after save) ────────── -->
     <div id="task-preview-area" class="mt-3"></div>
 
+    <!-- ── Project Comprehension panel (populated after import / on page load) ── -->
+    <div id="ds-comprehension-panel" style="display:none;" class="mt-2"></div>
+
     <!-- ── Schedule Health panel (auto-populated after import / on page load) ── -->
     <div id="ds-health-panel" style="display:none;" class="mt-2">
         <div id="ds-health-loading"
@@ -298,8 +302,9 @@
     const MAPPING_URL    = root.dataset.mappingUrl;
     const DETECT_URL      = root.dataset.detectUrl;
     const SAVE_LOOKUP_URL = root.dataset.saveLookupUrl;
-    const HEALTH_URL      = root.dataset.healthUrl;
-    const REVIEW_URL      = root.dataset.reviewUrl;
+    const HEALTH_URL        = root.dataset.healthUrl;
+    const COMPREHENSION_URL = root.dataset.comprehensionUrl;
+    const REVIEW_URL        = root.dataset.reviewUrl;
     const ALL_TASKS_URL  = root.dataset.allTasksUrl;
     const CSRF           = root.dataset.csrf;
 
@@ -321,9 +326,10 @@
     const mapDd        = document.getElementById('ds-map-dd');
     const addDd        = document.getElementById('ds-add-dd');
     const splitterEl   = document.getElementById('ds-splitter');
-    const healthPanel  = document.getElementById('ds-health-panel');
-    const _healthLoad  = document.getElementById('ds-health-loading');
-    const _healthRes   = document.getElementById('ds-health-result');
+    const healthPanel         = document.getElementById('ds-health-panel');
+    const _healthLoad         = document.getElementById('ds-health-loading');
+    const _healthRes          = document.getElementById('ds-health-result');
+    const comprehensionPanel  = document.getElementById('ds-comprehension-panel');
 
     /* ── Canonical field definitions ────────────────────────────────── */
     const FIELDS = [
@@ -1084,6 +1090,7 @@
                 <a href="${REVIEW_URL}" class="btn btn-sm btn-success ms-auto">Go to Review →</a>
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             </div>`;
+        _runComprehension(true);
         _runHealthCheck();
     }
 
@@ -1279,6 +1286,90 @@
         };
 
         _aiResult.style.display = '';
+    }
+
+    /* ── Project Comprehension ──────────────────────────────────────── */
+    async function _runComprehension(rebuild) {
+        if (!COMPREHENSION_URL || !comprehensionPanel) return;
+        const method = rebuild ? 'POST' : 'GET';
+        if (rebuild) {
+            comprehensionPanel.style.display = '';
+            comprehensionPanel.innerHTML =
+                '<div class="small text-secondary d-flex align-items-center gap-2 py-1">' +
+                '<span class="spinner-border spinner-border-sm" style="width:.85rem;height:.85rem;"></span>' +
+                'Analysing project structure…</div>';
+        }
+        try {
+            const r    = await fetch(COMPREHENSION_URL, { method, headers: { 'X-CSRFToken': CSRF } });
+            const data = await r.json();
+            if (!r.ok) { comprehensionPanel.innerHTML = ''; comprehensionPanel.style.display = 'none'; return; }
+            if (!rebuild && !data.exists) { return; }  /* nothing saved yet — stay hidden */
+            const html = _buildComprehensionPanel(data);
+            if (html) { comprehensionPanel.innerHTML = html; comprehensionPanel.style.display = ''; }
+            else       { comprehensionPanel.style.display = 'none'; }
+        } catch (e) {
+            comprehensionPanel.innerHTML = '';
+            comprehensionPanel.style.display = 'none';
+        }
+    }
+
+    function _buildComprehensionPanel(data) {
+        if (!data.total_activities) return '';
+        const confidence = Math.round((data.confidence_score || 0) * 100);
+        const confCls = confidence >= 80 ? 'success' : confidence >= 60 ? 'warning' : 'secondary';
+        const legend  = data.code_prefix_meanings || data.naming_conventions || {};
+        const phases  = data.construction_sequence || data.phases || [];
+
+        let html = `<div class="rounded border px-3 py-2 mb-1" style="font-size:.8rem;">
+            <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+                <span class="fw-semibold small">
+                    <i class="bi bi-cpu me-1 text-primary"></i>Project Understanding
+                </span>
+                <span class="badge bg-${confCls} ms-1" style="font-size:.72rem;">${confidence}% confidence</span>
+                <span class="text-secondary ms-auto" style="font-size:.72rem;">
+                    ${(data.total_activities || 0).toLocaleString()} activities
+                    &nbsp;·&nbsp; ${data.project_start || '?'} → ${data.project_finish || '?'}
+                </span>
+            </div>`;
+
+        if (data.ai_summary) {
+            html += `<div class="small mb-2 px-2 py-1 rounded"
+                         style="background:rgba(59,130,246,.08); border-left:3px solid var(--bs-primary);">
+                ${esc(data.ai_summary)}
+            </div>`;
+        }
+
+        const pills = [
+            { icon: 'bi-buildings', label: `${(data.physical_activities || 0).toLocaleString()} physical` },
+            { icon: 'bi-exclamation-diamond-fill', label: `${data.critical_activities || 0} critical`, cls: 'text-danger' },
+        ].map(p =>
+            `<span class="badge bg-body-secondary border text-body-secondary" style="font-size:.7rem; font-weight:400;">
+                <i class="${p.icon} ${p.cls || ''} me-1"></i>${p.label}
+            </span>`
+        ).join('');
+        html += `<div class="d-flex flex-wrap gap-1 mb-2">${pills}</div>`;
+
+        if (phases.length) {
+            html += `<div class="mb-2"><span class="text-secondary" style="font-size:.7rem; text-transform:uppercase; letter-spacing:.4px;">Phases</span>
+                <div class="d-flex flex-wrap gap-1 mt-1">
+                    ${phases.map(p => `<span class="badge" style="font-size:.7rem; font-weight:400; background:rgba(16,185,129,.15); color:#34d399;">${esc(p)}</span>`).join('')}
+                </div></div>`;
+        }
+
+        const legendEntries = Object.entries(legend).slice(0, 8);
+        if (legendEntries.length) {
+            html += `<div><span class="text-secondary" style="font-size:.7rem; text-transform:uppercase; letter-spacing:.4px;">Activity Code Legend</span>
+                <div class="d-flex flex-wrap gap-1 mt-1">
+                    ${legendEntries.map(([k, v]) =>
+                        `<span class="badge bg-body-secondary border" style="font-size:.7rem; font-weight:400;">
+                            <strong>${esc(String(k))}</strong> = ${esc(String(v))}
+                        </span>`
+                    ).join('')}
+                </div></div>`;
+        }
+
+        html += '</div>';
+        return html;
     }
 
     /* ── Schedule Health Check ──────────────────────────────────────── */
@@ -2561,8 +2652,8 @@
         renderGantt(); /* re-render to recalculate SVG arrow offsets */
     }
 
-    /* Auto-run health check on page load when tasks already exist */
-    if (_TASK_COUNT > 0) { _runHealthCheck(); }
+    /* On page load with existing tasks: load saved comprehension (GET) then health check */
+    if (_TASK_COUNT > 0) { _runComprehension(false); _runHealthCheck(); }
 
 }());
 </script>
