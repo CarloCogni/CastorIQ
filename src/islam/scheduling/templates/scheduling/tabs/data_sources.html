@@ -1090,7 +1090,7 @@
                 <a href="${REVIEW_URL}" class="btn btn-sm btn-success ms-auto">Go to Review →</a>
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             </div>`;
-        _runComprehension(true);
+        await _runComprehension(true);
         _runHealthCheck();
     }
 
@@ -1304,36 +1304,29 @@
             const data = await r.json();
             if (!r.ok) { comprehensionPanel.innerHTML = ''; comprehensionPanel.style.display = 'none'; return; }
             if (!rebuild && !data.exists) { return; }  /* nothing saved yet — stay hidden */
-            const html = _buildComprehensionPanel(data);
-            if (html) { comprehensionPanel.innerHTML = html; comprehensionPanel.style.display = ''; }
-            else       { comprehensionPanel.style.display = 'none'; }
+            const html = _buildComprehensionPanel(data, rebuild);
+            if (html) {
+                comprehensionPanel.innerHTML = html;
+                comprehensionPanel.style.display = '';
+                if (rebuild) comprehensionPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            } else { comprehensionPanel.style.display = 'none'; }
         } catch (e) {
             comprehensionPanel.innerHTML = '';
             comprehensionPanel.style.display = 'none';
         }
     }
 
-    function _buildComprehensionPanel(data) {
+    function _buildComprehensionPanel(data, expanded) {
         if (!data.total_activities) return '';
         const confidence = Math.round((data.confidence_score || 0) * 100);
         const confCls = confidence >= 80 ? 'success' : confidence >= 60 ? 'warning' : 'secondary';
         const legend  = data.code_prefix_meanings || data.naming_conventions || {};
         const phases  = data.construction_sequence || data.phases || [];
 
-        let html = `<div class="rounded border px-3 py-2 mb-1" style="font-size:.8rem;">
-            <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
-                <span class="fw-semibold small">
-                    <i class="bi bi-cpu me-1 text-primary"></i>Project Understanding
-                </span>
-                <span class="badge bg-${confCls} ms-1" style="font-size:.72rem;">${confidence}% confidence</span>
-                <span class="text-secondary ms-auto" style="font-size:.72rem;">
-                    ${(data.total_activities || 0).toLocaleString()} activities
-                    &nbsp;·&nbsp; ${data.project_start || '?'} → ${data.project_finish || '?'}
-                </span>
-            </div>`;
+        let body = '';
 
         if (data.ai_summary) {
-            html += `<div class="small mb-2 px-2 py-1 rounded"
+            body += `<div class="small mb-2 px-2 py-1 rounded"
                          style="background:rgba(59,130,246,.08); border-left:3px solid var(--bs-primary);">
                 ${esc(data.ai_summary)}
             </div>`;
@@ -1347,10 +1340,10 @@
                 <i class="${p.icon} ${p.cls || ''} me-1"></i>${p.label}
             </span>`
         ).join('');
-        html += `<div class="d-flex flex-wrap gap-1 mb-2">${pills}</div>`;
+        body += `<div class="d-flex flex-wrap gap-1 mb-2">${pills}</div>`;
 
         if (phases.length) {
-            html += `<div class="mb-2"><span class="text-secondary" style="font-size:.7rem; text-transform:uppercase; letter-spacing:.4px;">Phases</span>
+            body += `<div class="mb-2"><span class="text-secondary" style="font-size:.7rem; text-transform:uppercase; letter-spacing:.4px;">Phases</span>
                 <div class="d-flex flex-wrap gap-1 mt-1">
                     ${phases.map(p => `<span class="badge" style="font-size:.7rem; font-weight:400; background:rgba(16,185,129,.15); color:#34d399;">${esc(p)}</span>`).join('')}
                 </div></div>`;
@@ -1358,7 +1351,7 @@
 
         const legendEntries = Object.entries(legend).slice(0, 8);
         if (legendEntries.length) {
-            html += `<div><span class="text-secondary" style="font-size:.7rem; text-transform:uppercase; letter-spacing:.4px;">Activity Code Legend</span>
+            body += `<div><span class="text-secondary" style="font-size:.7rem; text-transform:uppercase; letter-spacing:.4px;">Activity Code Legend</span>
                 <div class="d-flex flex-wrap gap-1 mt-1">
                     ${legendEntries.map(([k, v]) =>
                         `<span class="badge bg-body-secondary border" style="font-size:.7rem; font-weight:400;">
@@ -1368,8 +1361,24 @@
                 </div></div>`;
         }
 
-        html += '</div>';
-        return html;
+        return `<div class="rounded border mb-1" style="font-size:.8rem;">
+            <div class="d-flex align-items-center gap-2 px-3 py-2 flex-wrap"
+                 style="cursor:pointer;"
+                 data-bs-toggle="collapse" data-bs-target="#ds-comp-body"
+                 aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="ds-comp-body">
+                <span class="fw-semibold small">
+                    <i class="bi bi-cpu me-1 text-primary"></i>Project Understanding
+                </span>
+                <span class="badge bg-${confCls} ms-1" style="font-size:.72rem;">${confidence}% confidence</span>
+                <span class="text-secondary ms-auto" style="font-size:.72rem;">
+                    ${(data.total_activities || 0).toLocaleString()} activities
+                    &nbsp;·&nbsp; ${data.project_start || '?'} → ${data.project_finish || '?'}
+                </span>
+            </div>
+            <div class="collapse${expanded ? ' show' : ''}" id="ds-comp-body">
+                <div class="px-3 pb-2">${body}</div>
+            </div>
+        </div>`;
     }
 
     /* ── Schedule Health Check ──────────────────────────────────────── */
