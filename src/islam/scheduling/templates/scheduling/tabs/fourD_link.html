@@ -168,6 +168,12 @@
               title="Reset colours" style="font-size: 11px; padding: 2px 6px;">
         <i class="bi bi-arrow-counterclockwise"></i>
       </button>
+      <button id="fd-focus-btn" title="Focus on selected element"
+              style="display:none; font-size:11px; padding:2px 8px; background:transparent;
+                     border:1px solid var(--bs-border-color); border-radius:4px;
+                     color:var(--bs-body-color); cursor:pointer;">
+        🎯 Focus
+      </button>
       <button id="fd-chat-toggle" title="AI Assistant"
               style="padding: 4px 10px; background: rgba(99,102,241,.2);
                      color: #818cf8; border: 1px solid rgba(99,102,241,.3);
@@ -438,6 +444,7 @@
   let fd_listenersAttached = false;
   let _fdLinkFilter    = "all";
   let _fdLastData      = null;
+  let _fdFocusGlobalId = null;
 
   const fd_vs = {
     tasks: [], projStart: null, ppd: 0, totalW: 0,
@@ -884,6 +891,8 @@
             fd_vs.dirty = true;
             fd_vsRefresh(true);
             sendToViewer({ type: "castor:reset" });
+            _fdFocusGlobalId = null;
+            _updateFocusBtn();
             return;
           }
           fd_selectedRowIdx = rowIdx;
@@ -891,6 +900,8 @@
           fd_vsRefresh(true);
           const ids = t.entity_global_ids || [];
           if (ids.length) sendToViewer({ type: "castor:highlight", global_ids: ids });
+          _fdFocusGlobalId = ids.length ? ids[0] : null;
+          _updateFocusBtn();
         });
       }
     }
@@ -970,6 +981,15 @@
     console.log('[FILTER] sending link-colors, linked:', linked.length, 'partial:', partial.length, 'unlinked:', unlinked.length);
     sendToViewer({ type: "castor:link-colors", linked, partial, unlinked, filter: _fdLinkFilter });
   }
+
+  function _updateFocusBtn() {
+    const btn = document.getElementById("fd-focus-btn");
+    if (btn) btn.style.display = _fdFocusGlobalId ? "inline-block" : "none";
+  }
+
+  document.getElementById("fd-focus-btn")?.addEventListener("click", () => {
+    if (_fdFocusGlobalId) sendToViewer({ type: "castor:focus-element", global_id: _fdFocusGlobalId });
+  });
 
   document.querySelectorAll(".fd-lf-btn").forEach(btn => {
     btn.classList.toggle("active", btn.dataset.filter === _fdLinkFilter);
