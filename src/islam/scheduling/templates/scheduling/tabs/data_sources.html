@@ -5,6 +5,7 @@
      data-save-url="{% url 'islam:schedule_save' project.pk %}"
      data-mapping-url="{% url 'islam:schedule_mapping_submit' project.pk %}"
      data-detect-url="{% url 'islam:schedule_detect_columns' project.pk %}"
+     data-save-lookup-url="{% url 'islam:schedule_save_mapping_lookup' project.pk %}"
      data-review-url="{% url 'islam:schedule' project.pk %}?tab=review"
      data-all-tasks-url="{% url 'islam:all_tasks_preview' project.pk %}"
      data-csrf="{{ csrf_token }}"
@@ -280,8 +281,9 @@
     const PREVIEW_URL    = root.dataset.previewUrl;
     const SAVE_URL       = root.dataset.saveUrl;
     const MAPPING_URL    = root.dataset.mappingUrl;
-    const DETECT_URL     = root.dataset.detectUrl;
-    const REVIEW_URL     = root.dataset.reviewUrl;
+    const DETECT_URL      = root.dataset.detectUrl;
+    const SAVE_LOOKUP_URL = root.dataset.saveLookupUrl;
+    const REVIEW_URL      = root.dataset.reviewUrl;
     const ALL_TASKS_URL  = root.dataset.allTasksUrl;
     const CSRF           = root.dataset.csrf;
 
@@ -1146,16 +1148,30 @@
 
         _aiDetecting.style.display = 'none';
 
-        const mapping    = data.mapping    || {};
-        const confidence = data.confidence || 0;
-        const notes      = data.notes      || '';
+        const mapping     = data.mapping    || {};
+        const confidence  = data.confidence || 0;
+        const notes       = data.notes      || '';
+        const fromLookup  = !!data.from_lookup;
+        const fingerprint = data.fingerprint || '';
+        const fnPattern   = data.filename_pattern || filename.replace(/\.[^.]+$/, '');
+
+        /* Header: different label for saved vs AI-detected */
+        const headEl = _aiResult.querySelector('.fw-semibold');
+        if (headEl) {
+            if (fromLookup) {
+                headEl.innerHTML = '<i class="bi bi-bookmark-check me-1 text-success"></i>Using saved mapping';
+            } else {
+                headEl.innerHTML = '<i class="bi bi-cpu me-1 text-primary"></i>Auto-detected mapping';
+            }
+        }
 
         /* Confidence badge */
         const pct = Math.round(confidence * 100);
-        _aiConfBadge.textContent = `${pct}% confidence`;
-        if (pct >= 70)      { _aiConfBadge.className = 'badge ms-1 bg-success-subtle text-success-emphasis'; }
-        else if (pct >= 40) { _aiConfBadge.className = 'badge ms-1 bg-warning-subtle text-warning-emphasis'; }
-        else                { _aiConfBadge.className = 'badge ms-1 bg-secondary-subtle text-secondary-emphasis'; }
+        _aiConfBadge.textContent = fromLookup ? 'saved' : `${pct}% confidence`;
+        if (fromLookup)         { _aiConfBadge.className = 'badge ms-1 bg-success-subtle text-success-emphasis'; }
+        else if (pct >= 70)     { _aiConfBadge.className = 'badge ms-1 bg-success-subtle text-success-emphasis'; }
+        else if (pct >= 40)     { _aiConfBadge.className = 'badge ms-1 bg-warning-subtle text-warning-emphasis'; }
+        else                    { _aiConfBadge.className = 'badge ms-1 bg-secondary-subtle text-secondary-emphasis'; }
 
         _aiNotes.textContent = notes;
 
@@ -1184,11 +1200,11 @@
         const missing  = required.filter(f => !(f in mapping));
         if (missing.length) {
             _aiMissMsg.textContent = `Missing required: ${missing.map(f => _AI_FIELD_LABELS[f] || f).join(', ')} — use Edit Mapping to fix.`;
-            _aiMissWarn.style.display    = '';
-            _aiConfirmBtn.disabled       = true;
+            _aiMissWarn.style.display = '';
+            _aiConfirmBtn.disabled    = true;
         } else {
-            _aiMissWarn.style.display    = 'none';
-            _aiConfirmBtn.disabled       = false;
+            _aiMissWarn.style.display = 'none';
+            _aiConfirmBtn.disabled    = false;
         }
 
         /* Build inverted mapping: col → field (matches S.mapping format) */
@@ -1198,6 +1214,10 @@
         _aiConfirmBtn.onclick = () => {
             S.mapping = inverted;
             _aiPanelReset();
+            /* Save new AI mapping to lookup (fire-and-forget; skip if already from lookup) */
+            if (!fromLookup && fingerprint && SAVE_LOOKUP_URL) {
+                _saveMappingLookup(fingerprint, fnPattern, mapping);
+            }
             _submitImport(false);
         };
 
@@ -1209,6 +1229,15 @@
         };
 
         _aiResult.style.display = '';
+    }
+
+    function _saveMappingLookup(fingerprint, filenamePattern, mapping) {
+        /* Fire-and-forget: persist confirmed mapping so future uploads auto-apply it */
+        fetch(SAVE_LOOKUP_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+            body: JSON.stringify({ fingerprint, filename_pattern: filenamePattern, mapping }),
+        }).catch(() => { /* silently ignore — lookup is a best-effort cache */ });
     }
 
     /* ── Reset button ───────────────────────────────────────────────── */

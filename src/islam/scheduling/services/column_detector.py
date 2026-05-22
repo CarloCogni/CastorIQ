@@ -8,8 +8,10 @@ Falls back to synonym-based matching if the LLM is unavailable.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import os
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -116,3 +118,21 @@ def detect_columns(
         "confidence": 0.0,
         "notes": "Used keyword matching (AI unavailable)",
     }
+
+
+def fingerprint_headers(headers: list[str]) -> str:
+    """Return a stable SHA-1 hex digest for a set of column headers.
+
+    The digest is order-independent and case-insensitive so the same set of
+    columns always produces the same fingerprint regardless of column order.
+    """
+    key = "|".join(sorted(h.strip().lower() for h in headers))
+    return hashlib.sha1(key.encode()).hexdigest()
+
+
+def filename_to_pattern(filename: str) -> str:
+    """Extract a stable display name from a raw filename.
+
+    Strips the directory path and file extension, capped at 255 characters.
+    """
+    return os.path.splitext(os.path.basename(filename))[0][:255]

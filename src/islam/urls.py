@@ -191,6 +191,11 @@ urlpatterns = [
         scheduling_views.DetectColumnsView.as_view(),
         name="schedule_detect_columns",
     ),
+    path(
+        "projects/<uuid:pk>/schedule/mapping-lookup/save/",
+        scheduling_views.SaveMappingLookupView.as_view(),
+        name="schedule_save_mapping_lookup",
+    ),
     # ------------------------------------------------------------------ #
     # Link Review — binding review tab                                     #
     # ------------------------------------------------------------------ #

@@ -9,7 +9,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from environments.tests.factories import ProjectFactory, UserFactory
-from islam.scheduling.services.column_detector import detect_columns
+from islam.scheduling.services.column_detector import (
+    detect_columns,
+    filename_to_pattern,
+    fingerprint_headers,
+)
 
 # ---------------------------------------------------------------------------
 # Service tests — no DB needed
@@ -250,4 +254,188 @@ def test_detect_columns_view_rejects_invalid_json(client):
 
     url = f"/islam/projects/{project.pk}/schedule/detect-columns/"
     r = client.post(url, data="not json at all", content_type="application/json")
+    assert r.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# fingerprint / pattern helpers — no DB needed
+# ---------------------------------------------------------------------------
+
+
+def test_fingerprint_headers_order_independent():
+    """Same headers in different order produce the same fingerprint."""
+    a = fingerprint_headers(["Task Name", "Start", "Finish"])
+    b = fingerprint_headers(["Finish", "Task Name", "Start"])
+    assert a == b
+
+
+def test_fingerprint_headers_case_independent():
+    """Fingerprint is case-insensitive."""
+    assert fingerprint_headers(["TASK NAME", "START"]) == fingerprint_headers(["task name", "start"])
+
+
+def test_fingerprint_headers_different_sets_differ():
+    """Distinct header sets produce different fingerprints."""
+    assert fingerprint_headers(["A", "B"]) != fingerprint_headers(["A", "C"])
+
+
+def test_filename_to_pattern_strips_extension():
+    """Extension and path are removed, only the base name remains."""
+    assert filename_to_pattern("IBS_5D_Schedule.xlsx") == "IBS_5D_Schedule"
+    assert filename_to_pattern("/some/path/plan.csv") == "plan"
+
+
+def test_filename_to_pattern_caps_at_255():
+    """Very long filenames are capped at 255 characters."""
+    long_name = "x" * 300 + ".xlsx"
+    assert len(filename_to_pattern(long_name)) == 255
+
+
+# ---------------------------------------------------------------------------
+# Lookup table — DB required
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_detect_columns_view_returns_from_lookup_on_second_upload(client):
+    """Second upload with same headers hits the lookup, skips the LLM."""
+    from islam.scheduling.models import ColumnMappingLookup
+    from islam.scheduling.services.column_detector import fingerprint_headers
+
+    user = UserFactory()
+    project = ProjectFactory(owner=user)
+    client.force_login(user)
+
+    headers = ["Task Name", "Start", "Finish"]
+    fp = fingerprint_headers(headers)
+    saved_mapping = {"name": "Task Name", "start_date": "Start", "end_date": "Finish"}
+    ColumnMappingLookup.objects.create(
+        project=project,
+        column_fingerprint=fp,
+        filename_pattern="plan",
+        mapping=saved_mapping,
+        hit_count=2,
+    )
+
+    url = f"/islam/projects/{project.pk}/schedule/detect-columns/"
+    with patch("islam.scheduling.services.column_detector.get_llm") as mock_llm:
+        r = client.post(
+            url,
+            data=json.dumps({"headers": headers, "sample_rows": [], "filename": "plan.xlsx"}),
+            content_type="application/json",
+        )
+        mock_llm.assert_not_called()  # LLM must not be invoked
+
+    assert r.status_code == 200
+    data = r.json()
+    assert data["from_lookup"] is True
+    assert data["mapping"] == saved_mapping
+    assert data["confidence"] == 1.0
+
+
+@pytest.mark.django_db
+def test_detect_columns_view_increments_hit_count_on_lookup_hit(client):
+    """Each lookup hit increments hit_count by 1."""
+    from islam.scheduling.models import ColumnMappingLookup
+    from islam.scheduling.services.column_detector import fingerprint_headers
+
+    user = UserFactory()
+    project = ProjectFactory(owner=user)
+    client.force_login(user)
+
+    headers = ["Name", "Start Date", "End Date"]
+    fp = fingerprint_headers(headers)
+    lookup = ColumnMappingLookup.objects.create(
+        project=project,
+        column_fingerprint=fp,
+        filename_pattern="sched",
+        mapping={"name": "Name", "start_date": "Start Date", "end_date": "End Date"},
+        hit_count=5,
+    )
+
+    url = f"/islam/projects/{project.pk}/schedule/detect-columns/"
+    client.post(
+        url,
+        data=json.dumps({"headers": headers, "sample_rows": [], "filename": "sched.xlsx"}),
+        content_type="application/json",
+    )
+
+    lookup.refresh_from_db()
+    assert lookup.hit_count == 6
+
+
+@pytest.mark.django_db
+def test_save_mapping_lookup_creates_record(client):
+    """POST to save-lookup endpoint creates a ColumnMappingLookup row."""
+    from islam.scheduling.models import ColumnMappingLookup
+
+    user = UserFactory()
+    project = ProjectFactory(owner=user)
+    client.force_login(user)
+
+    fp = "abc123def456" + "0" * 28  # 40-char fake sha1
+    mapping = {"name": "Task", "start_date": "Begin", "end_date": "End"}
+
+    url = f"/islam/projects/{project.pk}/schedule/mapping-lookup/save/"
+    r = client.post(
+        url,
+        data=json.dumps({"fingerprint": fp, "filename_pattern": "myfile", "mapping": mapping}),
+        content_type="application/json",
+    )
+
+    assert r.status_code == 200
+    assert r.json()["status"] == "saved"
+    assert ColumnMappingLookup.objects.filter(project=project, column_fingerprint=fp).exists()
+
+
+@pytest.mark.django_db
+def test_save_mapping_lookup_updates_existing_record(client):
+    """Saving a mapping for an existing fingerprint updates rather than duplicates."""
+    from islam.scheduling.models import ColumnMappingLookup
+
+    user = UserFactory()
+    project = ProjectFactory(owner=user)
+    client.force_login(user)
+
+    fp = "abc123def456" + "0" * 28
+    ColumnMappingLookup.objects.create(
+        project=project,
+        column_fingerprint=fp,
+        filename_pattern="old",
+        mapping={"name": "OldName"},
+        hit_count=3,
+    )
+
+    url = f"/islam/projects/{project.pk}/schedule/mapping-lookup/save/"
+    client.post(
+        url,
+        data=json.dumps(
+            {
+                "fingerprint": fp,
+                "filename_pattern": "new",
+                "mapping": {"name": "Task", "start_date": "Start", "end_date": "End"},
+            }
+        ),
+        content_type="application/json",
+    )
+
+    assert ColumnMappingLookup.objects.filter(project=project, column_fingerprint=fp).count() == 1
+    lookup = ColumnMappingLookup.objects.get(project=project, column_fingerprint=fp)
+    assert lookup.mapping["name"] == "Task"
+    assert lookup.filename_pattern == "new"
+
+
+@pytest.mark.django_db
+def test_save_mapping_lookup_rejects_missing_fields(client):
+    """Request without fingerprint or mapping returns 400."""
+    user = UserFactory()
+    project = ProjectFactory(owner=user)
+    client.force_login(user)
+
+    url = f"/islam/projects/{project.pk}/schedule/mapping-lookup/save/"
+    r = client.post(
+        url,
+        data=json.dumps({"filename_pattern": "x"}),
+        content_type="application/json",
+    )
     assert r.status_code == 400
