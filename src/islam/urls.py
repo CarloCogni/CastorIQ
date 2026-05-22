@@ -201,6 +201,11 @@ urlpatterns = [
         scheduling_views.ScheduleHealthCheckView.as_view(),
         name="schedule_health_check",
     ),
+    path(
+        "projects/<uuid:pk>/schedule/comprehension/",
+        scheduling_views.ProjectComprehensionView.as_view(),
+        name="schedule_comprehension",
+    ),
     # ------------------------------------------------------------------ #
     # Link Review — binding review tab                                     #
     # ------------------------------------------------------------------ #

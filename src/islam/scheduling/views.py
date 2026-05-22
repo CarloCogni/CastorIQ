@@ -1462,6 +1462,52 @@ class ScheduleHealthCheckView(ProjectAccessMixin, View):
         return JsonResponse(result)
 
 
+class ProjectComprehensionView(ProjectAccessMixin, View):
+    """GET: return existing comprehension. POST: rebuild from current tasks.
+
+    POST triggers the full Comprehension Engine pipeline (stats + LLM sample).
+    GET returns the last saved result or {"exists": False} if none yet.
+    """
+
+    def get(self, request, **kwargs: object) -> JsonResponse:
+        project = self.get_project()
+        from .models import ProjectComprehension
+
+        try:
+            comp = ProjectComprehension.objects.get(project=project)
+            return JsonResponse(
+                {
+                    "exists": True,
+                    "ai_summary": comp.ai_summary,
+                    "project_type": comp.naming_conventions.get("project_type", ""),
+                    "total_activities": comp.total_activities,
+                    "physical_activities": comp.physical_activities,
+                    "critical_activities": comp.critical_activities,
+                    "wbs_levels": comp.wbs_levels,
+                    "phases": comp.phases,
+                    "milestones": comp.milestones[:5],
+                    "confidence_score": comp.confidence_score,
+                    "naming_conventions": comp.naming_conventions,
+                    "code_prefix_meanings": comp.naming_conventions,
+                    "code_pattern": comp.code_pattern,
+                    "project_start": str(comp.project_start) if comp.project_start else None,
+                    "project_finish": str(comp.project_finish) if comp.project_finish else None,
+                    "avg_duration_days": comp.avg_duration_days,
+                    "key_observations": [],
+                    "updated_at": str(comp.updated_at),
+                }
+            )
+        except ProjectComprehension.DoesNotExist:
+            return JsonResponse({"exists": False})
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        project = self.get_project()
+        from .services.comprehension import build_comprehension
+
+        result = build_comprehension(project, user=request.user)
+        return JsonResponse(result)
+
+
 # ---------------------------------------------------------------------------
 # Link Review — binding review tab
 # ---------------------------------------------------------------------------
