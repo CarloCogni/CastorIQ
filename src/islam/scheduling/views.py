@@ -1359,6 +1359,37 @@ class MappingSubmitView(ProjectModifyAccessMixin, View):
 
 
 # ---------------------------------------------------------------------------
+# Auto column detection
+# ---------------------------------------------------------------------------
+
+
+class DetectColumnsView(ProjectModifyAccessMixin, View):
+    """JSON POST — use LLM to detect column mapping from headers + sample rows.
+
+    Body: {"headers": [...], "sample_rows": [[...], ...], "filename": "..."}
+    Response: {"mapping": {...}, "confidence": 0.85, "notes": "..."}
+    """
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        try:
+            body = json.loads(request.body)
+        except (json.JSONDecodeError, ValueError):
+            return JsonResponse({"error": "Invalid JSON body."}, status=400)
+
+        headers = body.get("headers") or []
+        sample_rows = body.get("sample_rows") or []
+        filename = str(body.get("filename") or "")
+
+        if not headers:
+            return JsonResponse({"error": "headers required."}, status=400)
+
+        from .services.column_detector import detect_columns
+
+        result = detect_columns(headers, sample_rows, filename, user=request.user)
+        return JsonResponse(result)
+
+
+# ---------------------------------------------------------------------------
 # Link Review — binding review tab
 # ---------------------------------------------------------------------------
 
@@ -1744,11 +1775,13 @@ class ScheduleWritebackView(ProjectModifyAccessMixin, View):
                 for p in body["proposals"]
             ]
             result = svc.apply(proposals)
-            return JsonResponse({
-                "status": "applied",
-                "updated": result["updated"],
-                "errors": result["errors"],
-            })
+            return JsonResponse(
+                {
+                    "status": "applied",
+                    "updated": result["updated"],
+                    "errors": result["errors"],
+                }
+            )
 
         # ── Phase 1: analyse and propose ──────────────────────────────────
         message = (body.get("message") or "").strip()
@@ -1759,18 +1792,22 @@ class ScheduleWritebackView(ProjectModifyAccessMixin, View):
         triage_result = triage.classify(message)
 
         if triage_result.is_unclear:
-            return JsonResponse({
-                "type": "unclear",
-                "message": "I couldn't understand the request. Please name the task and describe what should change.",
-            })
+            return JsonResponse(
+                {
+                    "type": "unclear",
+                    "message": "I couldn't understand the request. Please name the task and describe what should change.",
+                }
+            )
 
         if triage_result.is_out_of_scope:
             seg = next((s for s in triage_result.segments if s.kind == "OUT_OF_SCOPE"), None)
             reason = seg.reason if seg else ""
-            return JsonResponse({
-                "type": "out_of_scope",
-                "message": f"This type of change is not supported in schedule writeback. {reason}",
-            })
+            return JsonResponse(
+                {
+                    "type": "out_of_scope",
+                    "message": f"This type of change is not supported in schedule writeback. {reason}",
+                }
+            )
 
         extractor = ScheduleSlotExtractor(user=request.user)
         resolver = TaskResolver()
@@ -1792,7 +1829,9 @@ class ScheduleWritebackView(ProjectModifyAccessMixin, View):
 
             resolution = resolver.resolve(segment.target_phrase, project)
             if resolution.is_empty:
-                warnings.append(f"Could not find task: '{segment.target_phrase}'. {resolution.diagnostic}")
+                warnings.append(
+                    f"Could not find task: '{segment.target_phrase}'. {resolution.diagnostic}"
+                )
                 continue
 
             proposals = svc.build_proposals(
@@ -1813,14 +1852,18 @@ class ScheduleWritebackView(ProjectModifyAccessMixin, View):
             )
 
         if not all_proposals:
-            return JsonResponse({
-                "type": "no_matches",
-                "message": "Could not find matching tasks or compute changes. "
-                + ("; ".join(warnings) if warnings else "Please try rephrasing."),
-            })
+            return JsonResponse(
+                {
+                    "type": "no_matches",
+                    "message": "Could not find matching tasks or compute changes. "
+                    + ("; ".join(warnings) if warnings else "Please try rephrasing."),
+                }
+            )
 
-        return JsonResponse({
-            "type": "proposals",
-            "proposals": all_proposals,
-            "warnings": warnings,
-        })
+        return JsonResponse(
+            {
+                "type": "proposals",
+                "proposals": all_proposals,
+                "warnings": warnings,
+            }
+        )
