@@ -389,18 +389,15 @@ window.addEventListener("message", async (e) => {
         if (!model) return;
         const { linked = [], partial = [], unlinked = [], filter = "all" } = msg;
         resetAllColors();
+        /* Ghost everything first — same pattern as castor:highlight */
+        colorByGlobalIds([...globalIdIndex.keys()], C.tl_no_task);
         if (filter === "all") {
-            colorByGlobalIds(linked,   new THREE.Color('#1D9E75'));
-            colorByGlobalIds(partial,  new THREE.Color('#EF9F27'));
-            colorByGlobalIds(unlinked, new THREE.Color('#4B5563'));
+            colorByGlobalIds(linked,  new THREE.Color('#1D9E75'));
+            colorByGlobalIds(partial, new THREE.Color('#EF9F27'));
+            /* unlinked arrays are empty (no entity_global_ids); stays ghosted */
         } else {
-            /* Ghost every element that isn't in the active filter group */
-            colorByGlobalIds(linked,   C.tl_no_task);
-            colorByGlobalIds(partial,  C.tl_no_task);
-            colorByGlobalIds(unlinked, C.tl_no_task);
-            if (filter === "linked")        colorByGlobalIds(linked,   new THREE.Color('#1D9E75'));
-            else if (filter === "partial")  colorByGlobalIds(partial,  new THREE.Color('#EF9F27'));
-            else if (filter === "unlinked") colorByGlobalIds(unlinked, new THREE.Color('#4B5563'));
+            if (filter === "linked")       colorByGlobalIds(linked,  new THREE.Color('#1D9E75'));
+            else if (filter === "partial") colorByGlobalIds(partial, new THREE.Color('#EF9F27'));
         }
         return;
     }
