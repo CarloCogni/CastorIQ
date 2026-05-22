@@ -47,6 +47,21 @@
     height: 64px;
     opacity: 1;
   }
+  .fd-lf-btn {
+    padding: 2px 8px;
+    font-size: 11px;
+    background: transparent;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 4px;
+    color: var(--bs-body-color);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .fd-lf-btn.active {
+    background: var(--bs-primary);
+    color: #fff;
+    border-color: var(--bs-primary);
+  }
 </style>
 
 <div id="fourD-root" style="
@@ -80,6 +95,13 @@
         <button class="fd-zoom-btn" data-zoom="week" style="font-size: 10px; padding: 2px 7px;">Week</button>
         <button class="fd-zoom-btn active" data-zoom="month" style="font-size: 10px; padding: 2px 7px;">Month</button>
       </div>
+    </div>
+    <!-- Link Filter Bar -->
+    <div id="fd-link-filter" style="display: flex; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--bs-border-color); flex-shrink: 0; flex-wrap: wrap;">
+      <button class="fd-lf-btn active" data-filter="all">All</button>
+      <button class="fd-lf-btn" data-filter="linked"><span style="color:#1D9E75;">●</span> Linked</button>
+      <button class="fd-lf-btn" data-filter="partial"><span style="color:#EF9F27;">●</span> Partial</button>
+      <button class="fd-lf-btn" data-filter="unlinked"><span style="color:#4B5563;">●</span> Unlinked</button>
     </div>
     <!-- Dark Gantt scroll area — single scroll container; name col is position:sticky left:0 -->
     <div id="fd-gantt-scroll" style="overflow: auto; flex: 1; min-height: 0; background: #0f172a;">
@@ -414,6 +436,8 @@
   let fd_hasCpm         = false;
   let fd_rawData        = null;
   let fd_listenersAttached = false;
+  let _fdLinkFilter    = "all";
+  let _fdLastData      = null;
 
   const fd_vs = {
     tasks: [], projStart: null, ppd: 0, totalW: 0,
@@ -624,10 +648,21 @@
         nameDiv.appendChild(codeEl);
       }
       const nameEl = document.createElement("div");
-      nameEl.style.cssText = "font-size:.72rem;color:rgba(255,255,255,.8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
-      nameEl.textContent = t.name;
+      nameEl.style.cssText = "font-size:.72rem;color:rgba(255,255,255,.8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px;";
+      const _lnkClr = { linked: "#1D9E75", partial: "#EF9F27", unlinked: "#4B5563" };
+      const dotClr = !t.is_non_physical && t.link_status ? _lnkClr[t.link_status] : null;
+      if (dotClr) {
+        const dot = document.createElement("span");
+        dot.style.cssText = `flex-shrink:0;width:6px;height:6px;border-radius:50%;background:${dotClr};`;
+        dot.title = t.link_status;
+        nameEl.appendChild(dot);
+      }
+      const nameText = document.createElement("span");
+      nameText.style.cssText = "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;";
+      nameText.textContent = t.name;
+      nameEl.appendChild(nameText);
       nameDiv.appendChild(nameEl);
-      nameDiv.title = (t.activity_code ? t.activity_code + " · " : "") + t.name;
+      nameDiv.title = (t.activity_code ? t.activity_code + " · " : "") + t.name + (t.link_status ? " [" + t.link_status + "]" : "");
 
       const barArea = document.createElement("div");
       barArea.style.cssText = `width:${totalW}px;min-width:${totalW}px;height:${FD_ROW_H}px;position:relative;flex-shrink:0;`;
@@ -886,7 +921,8 @@
       if (!resp.ok) throw new Error(resp.status);
       const data = await resp.json();
       console.log("[4D] response: tasks.length=", (data.tasks || []).length);
-      fd_renderGantt(data);
+      _fdLastData = data;
+      _applyLinkFilter();
     } catch (e) {
       console.error("[4D] loadGantt error:", e);
       const emptyEl = document.getElementById("fd-gantt-empty");
@@ -904,7 +940,31 @@
       try { localStorage.setItem("fd-gantt-zoom", fd_zoom); } catch {}
       document.querySelectorAll(".fd-zoom-btn").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
-      if (fd_rawData) fd_renderGantt(fd_rawData);
+      if (_fdLastData) _applyLinkFilter();
+    });
+  });
+
+  /* Link filter buttons */
+  function _applyLinkFilter() {
+    if (!_fdLastData) return;
+    if (_fdLinkFilter === "all") {
+      fd_renderGantt(_fdLastData);
+      return;
+    }
+    const filtered = {
+      ..._fdLastData,
+      tasks: (_fdLastData.tasks || []).filter(t => t.link_status === _fdLinkFilter),
+    };
+    fd_renderGantt(filtered);
+  }
+
+  document.querySelectorAll(".fd-lf-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.filter === _fdLinkFilter);
+    btn.addEventListener("click", () => {
+      _fdLinkFilter = btn.dataset.filter;
+      document.querySelectorAll(".fd-lf-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      _applyLinkFilter();
     });
   });
 
