@@ -395,6 +395,52 @@ class ScheduleSource(UUIDModel):
         return f"{self.filename} ({self.task_count} tasks)"
 
 
+class ColumnMappingLookup(UUIDModel):
+    """Fingerprint-keyed cache of confirmed column mappings.
+
+    When a user confirms an AI-detected mapping, it is saved here keyed by a
+    hash of the file's sorted column headers.  On the next upload whose headers
+    produce the same hash, the mapping is auto-applied — skipping the AI call
+    entirely and showing "Using saved mapping".
+    """
+
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name="column_mapping_lookups",
+        verbose_name="Project",
+    )
+    filename_pattern = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="Filename Pattern",
+        help_text="Base filename (no extension) of the file that produced this mapping",
+    )
+    column_fingerprint = models.CharField(
+        max_length=64,
+        db_index=True,
+        verbose_name="Column Fingerprint",
+        help_text="SHA-1 of sorted, lowercased header names — used as the lookup key",
+    )
+    mapping = models.JSONField(
+        verbose_name="Column Mapping",
+        help_text="Maps canonical Task fields to original header strings, e.g. {name: 'Task Name'}",
+    )
+    hit_count = models.IntegerField(default=1, verbose_name="Hit Count")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Column Mapping Lookup"
+        verbose_name_plural = "Column Mapping Lookups"
+        ordering = ["-updated_at"]
+        unique_together = [("project", "column_fingerprint")]
+        indexes = [models.Index(fields=["project", "column_fingerprint"])]
+
+    def __str__(self) -> str:
+        return f"{self.filename_pattern or 'unknown'} ({self.hit_count} uses)"
+
+
 class TaskEntityBinding(UUIDModel):
     """Explicit scored binding between a schedule Task and an IFC entity global_id.
 

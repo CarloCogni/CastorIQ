@@ -1366,11 +1366,15 @@ class MappingSubmitView(ProjectModifyAccessMixin, View):
 class DetectColumnsView(ProjectModifyAccessMixin, View):
     """JSON POST — use LLM to detect column mapping from headers + sample rows.
 
+    Checks ColumnMappingLookup first; falls back to LLM if no saved mapping exists.
+
     Body: {"headers": [...], "sample_rows": [[...], ...], "filename": "..."}
-    Response: {"mapping": {...}, "confidence": 0.85, "notes": "..."}
+    Response: {"mapping": {...}, "confidence": float, "notes": str,
+               "from_lookup": bool, "fingerprint": str}
     """
 
     def post(self, request, **kwargs: object) -> JsonResponse:
+        project = self.get_project()
         try:
             body = json.loads(request.body)
         except (json.JSONDecodeError, ValueError):
@@ -1383,10 +1387,68 @@ class DetectColumnsView(ProjectModifyAccessMixin, View):
         if not headers:
             return JsonResponse({"error": "headers required."}, status=400)
 
-        from .services.column_detector import detect_columns
+        from .models import ColumnMappingLookup
+        from .services.column_detector import (
+            detect_columns,
+            filename_to_pattern,
+            fingerprint_headers,
+        )
+
+        fp = fingerprint_headers(headers)
+
+        # Return saved mapping immediately if one exists for this header set.
+        try:
+            lookup = ColumnMappingLookup.objects.get(project=project, column_fingerprint=fp)
+            new_count = lookup.hit_count + 1
+            ColumnMappingLookup.objects.filter(pk=lookup.pk).update(hit_count=new_count)
+            lookup.hit_count = new_count
+            return JsonResponse(
+                {
+                    "mapping": lookup.mapping,
+                    "confidence": 1.0,
+                    "notes": f"Using saved mapping · {lookup.hit_count} previous uses",
+                    "from_lookup": True,
+                    "fingerprint": fp,
+                }
+            )
+        except ColumnMappingLookup.DoesNotExist:
+            pass
 
         result = detect_columns(headers, sample_rows, filename, user=request.user)
+        result["from_lookup"] = False
+        result["fingerprint"] = fp
+        result.setdefault("filename_pattern", filename_to_pattern(filename))
         return JsonResponse(result)
+
+
+class SaveMappingLookupView(ProjectModifyAccessMixin, View):
+    """JSON POST — persist a confirmed mapping so future uploads auto-apply it.
+
+    Body: {"fingerprint": str, "filename_pattern": str, "mapping": {...}}
+    """
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        project = self.get_project()
+        try:
+            body = json.loads(request.body)
+        except (json.JSONDecodeError, ValueError):
+            return JsonResponse({"error": "Invalid JSON."}, status=400)
+
+        fp = str(body.get("fingerprint") or "").strip()
+        pattern = str(body.get("filename_pattern") or "").strip()[:255]
+        mapping = body.get("mapping")
+
+        if not fp or not mapping or not isinstance(mapping, dict):
+            return JsonResponse({"error": "fingerprint and mapping required."}, status=400)
+
+        from .models import ColumnMappingLookup
+
+        ColumnMappingLookup.objects.update_or_create(
+            project=project,
+            column_fingerprint=fp,
+            defaults={"filename_pattern": pattern, "mapping": mapping},
+        )
+        return JsonResponse({"status": "saved"})
 
 
 # ---------------------------------------------------------------------------
