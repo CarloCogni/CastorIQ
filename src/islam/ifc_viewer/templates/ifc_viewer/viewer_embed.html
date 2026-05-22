@@ -335,6 +335,7 @@ window.addEventListener("message", async (e) => {
     }
 
     if (msg.type === "castor:link-colors") {
+        console.log('[VIEWER] castor:link-colors received', Object.keys(msg.payload || {}));
         if (!model) return;
         const { linked = [], partial = [], unlinked = [] } = msg;
         resetAllColors();
