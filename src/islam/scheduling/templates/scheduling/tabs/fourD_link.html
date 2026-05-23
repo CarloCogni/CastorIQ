@@ -175,7 +175,7 @@
         🎯 Focus
       </button>
       <button id="fd-link-mode-btn" title="Click an IFC element to link it to the selected task"
-              style="display:none; font-size:11px; padding:2px 8px; background:transparent;
+              style="display:inline-block; font-size:11px; padding:2px 8px; background:transparent;
                      border:1px solid var(--bs-border-color); border-radius:4px;
                      color:var(--bs-body-color); cursor:pointer;">
         🔗 Link Mode
@@ -1013,8 +1013,8 @@
   function _updateFocusBtn() {
     const btn     = document.getElementById("fd-focus-btn");
     const linkBtn = document.getElementById("fd-link-mode-btn");
-    if (btn)     btn.style.display     = _fdFocusGlobalId ? "inline-block" : "none";
-    if (linkBtn) linkBtn.style.display = _fdFocusGlobalId ? "inline-block" : "none";
+    if (btn)     btn.style.display = _fdFocusGlobalId ? "inline-block" : "none";
+    if (linkBtn) linkBtn.style.display = "inline-block";
     if (!_fdFocusGlobalId && _fdLinkMode) _exitLinkMode();
   }
 

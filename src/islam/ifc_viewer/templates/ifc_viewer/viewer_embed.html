@@ -42,6 +42,8 @@ html, body { width: 100%; height: 100%; background: #111; overflow: hidden; }
 }
 .leg-row { display: flex; align-items: center; gap: 6px; }
 .leg-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+.ctx-item { display:block; width:100%; background:none; border:none; color:#e2e8f0; text-align:left; padding:6px 12px; cursor:pointer; font-size:0.82rem; }
+.ctx-item:hover { background:#2d3f5c; }
 </style>
 </head>
 <body>
@@ -85,6 +87,19 @@ html, body { width: 100%; height: 100%; background: #111; overflow: hidden; }
         <button id="sel-ctx-hide"     style="display:block;width:100%;background:none;border:none;color:#e2e8f0;text-align:left;padding:6px 12px;cursor:pointer;">Hide</button>
         <div style="border-top:1px solid #475569;margin:4px 0;"></div>
         <button id="sel-ctx-deselect" style="display:block;width:100%;background:none;border:none;color:#94a3b8;text-align:left;padding:6px 12px;cursor:pointer;">Deselect</button>
+    </div>
+
+    <!-- Link-action context menu — shown on right-click in wireframe mode -->
+    <div id="embed-ctx-menu" style="
+        position:absolute; display:none; z-index:101; min-width:170px;
+        background:#1e293b; border:1px solid #475569; border-radius:6px;
+        box-shadow:0 4px 12px rgba(0,0,0,0.5); padding:4px 0;
+        font-family:system-ui,sans-serif; font-size:0.82rem; color:#e2e8f0;">
+        <button class="ctx-item" data-action="link">🔗 Link to selected task</button>
+        <button class="ctx-item" data-action="unlink">✂️ Unlink</button>
+        <div style="border-top:1px solid #475569;margin:4px 0;"></div>
+        <button class="ctx-item" data-action="add-task">➕ Add new task</button>
+        <button class="ctx-item" data-action="view-tasks">📋 View linked tasks</button>
     </div>
 
     <!-- Element selection — properties float panel -->
@@ -410,8 +425,25 @@ function focusOnGlobalId(gid) {
 function _syncFocusBtn() {
     const btn  = document.getElementById("embed-focus-btn");
     const wBtn = document.getElementById("embed-wireframe-btn");
-    if (btn)  btn.style.display  = _selectedGlobalId ? "block" : "none";
-    if (wBtn) wBtn.style.display = _sectionEnabled   ? "block" : "none";
+    if (btn)  btn.style.display  = "none";
+    if (wBtn) wBtn.style.display = _sectionEnabled ? "block" : "none";
+}
+
+function _showEmbedCtxMenu(clientX, clientY, globalId) {
+    const menu = document.getElementById("embed-ctx-menu");
+    if (!menu) return;
+    const cRect = document.getElementById("embed-container").getBoundingClientRect();
+    menu.style.left = Math.min(clientX - cRect.left, cRect.width  - 175) + "px";
+    menu.style.top  = Math.min(clientY - cRect.top,  cRect.height - 160) + "px";
+    menu.dataset.globalId = globalId;
+    _embedCtxGlobalId = globalId;
+    menu.style.display = "block";
+}
+
+function _hideEmbedCtxMenu() {
+    const menu = document.getElementById("embed-ctx-menu");
+    if (menu) menu.style.display = "none";
+    _embedCtxGlobalId = null;
 }
 
 // ── 4. postMessage API ───────────────────────────────────────────────
@@ -487,35 +519,16 @@ window.addEventListener("message", async (e) => {
 
     if (msg.type === "castor:link-colors") {
         const { linked = [], partial = [], unlinked = [], filter = "all" } = msg;
-        console.log('[VIEWER] link-colors, filter:', filter, 'linked:', linked.length);
-        console.log('[VIEWER] globalIdIndex size:', globalIdIndex?.size);
         if (!model) return;
-        console.log('[VIEWER] about to ghost all:', [...globalIdIndex.keys()].length);
-        console.log('[VIEWER] sample linked IDs:', linked.slice(0,3));
-        console.log('[VIEWER] linked IDs in globalIdIndex:',
-          linked.filter(id => globalIdIndex.has(id)).length, 'of', linked.length);
         resetAllColors();
         if (filter === "all") {
-            /* No ghost — show all elements at original colour, paint linked/partial on top */
             colorByGlobalIds(linked,  new THREE.Color('#1D9E75'));
             colorByGlobalIds(partial, new THREE.Color('#EF9F27'));
         } else {
-            /* Ghost entire model, then paint active filter group at full colour */
             colorByGlobalIds([...globalIdIndex.keys()], C.tl_no_task);
             if (filter === "linked")        colorByGlobalIds(linked,   new THREE.Color('#1D9E75'));
             else if (filter === "partial")  colorByGlobalIds(partial,  new THREE.Color('#EF9F27'));
             else if (filter === "unlinked") colorByGlobalIds(unlinked, new THREE.Color('#6B7280'));
-            let coloredCount = 0;
-            for (const gid of linked) {
-                const expressId = globalIdIndex.get(gid);
-                if (expressId === undefined) continue;
-                const fragment = fragmentIndex.get(expressId);
-                if (!fragment) continue;
-                coloredCount++;
-            }
-            console.log('[VIEWER] coloredCount for linked:', coloredCount);
-            console.log('[VIEWER] sample expressId:', globalIdIndex.get(linked[0]));
-            console.log('[VIEWER] sample fragment:', !!fragmentIndex.get(globalIdIndex.get(linked[0])));
         }
         return;
     }
@@ -552,6 +565,14 @@ window.addEventListener("message", async (e) => {
         else if (msg.direction === "out") controls.dollyOut(0.5, true);
         return;
     }
+
+    if (msg.type === "castor:link-mode") {
+        _linkModeActive = msg.active === true;
+        if (world?.renderer?.three?.domElement) {
+            world.renderer.three.domElement.style.cursor = _linkModeActive ? "crosshair" : "";
+        }
+        return;
+    }
 });
 
 function _showTimelineLegend() {
@@ -581,6 +602,9 @@ let _savedCameraPos    = null;
 let _savedCameraTarget = null;
 let _lastHighlightIds  = [];
 const _SEL_COLOR = new THREE.Color('#00BCD4');
+let _multiSelectedIds  = [];
+let _linkModeActive    = false;
+let _embedCtxGlobalId  = null;
 
 function _findGlobalIdFromHit(intersection) {
     if (intersection.instanceId === undefined) return null;
@@ -607,11 +631,38 @@ function _initSelector() {
 
     canvas.addEventListener('click', (e) => {
         if (_pointerMoved || !model) return;
+        _hideEmbedCtxMenu();
         const rect = canvas.getBoundingClientRect();
         mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
         mouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
         raycaster.setFromCamera(mouse, world.camera.three);
         const hits = raycaster.intersectObjects(world.scene.three.children, true);
+
+        if (_linkModeActive) {
+            if (!hits.length) return;
+            const globalId = _findGlobalIdFromHit(hits[0]);
+            if (!globalId) return;
+            window.parent.postMessage({ type: "castor:element-action", action: "link", global_id: globalId }, "*");
+            return;
+        }
+
+        if (e.shiftKey) {
+            if (!hits.length) return;
+            const globalId = _findGlobalIdFromHit(hits[0]);
+            if (!globalId) return;
+            const idx = _multiSelectedIds.indexOf(globalId);
+            if (idx >= 0) _multiSelectedIds.splice(idx, 1);
+            else          _multiSelectedIds.push(globalId);
+            const idsToColor = [..._multiSelectedIds];
+            resetAllColors();
+            _multiSelectedIds = idsToColor;
+            if (_multiSelectedIds.length) {
+                colorByGlobalIds(_multiSelectedIds, new THREE.Color('#00BCD4'));
+                window.parent.postMessage({ type: "castor:multi-select", global_ids: _multiSelectedIds }, "*");
+            }
+            return;
+        }
+
         if (!hits.length) {
             if (_selectedGlobalId) {
                 resetAllColors(); _selectedGlobalId = null;
@@ -637,26 +688,18 @@ function _initSelector() {
 
     canvas.addEventListener('contextmenu', (e) => {
         e.preventDefault();
-        if (_sectionEnabled || !model) return; /* no context menu during focus/section mode */
+        if (!model || _sectionEnabled) return;
         const rect = canvas.getBoundingClientRect();
         mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
         mouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
         raycaster.setFromCamera(mouse, world.camera.three);
         const hits = raycaster.intersectObjects(world.scene.three.children, true);
-        if (!hits.length) { if (_ctxMenuEl) _ctxMenuEl.style.display = "none"; return; }
+
+        if (!hits.length) { _hideEmbedCtxMenu(); if (_ctxMenuEl) _ctxMenuEl.style.display = "none"; return; }
         const globalId = _findGlobalIdFromHit(hits[0]);
         if (!globalId) return;
-        if (globalId !== _selectedGlobalId) {
-            if (_selectedGlobalId) resetAllColors();
-            _selectedGlobalId = globalId;
-            colorByGlobalIds([globalId], _SEL_COLOR);
-        }
-        if (!_ctxMenuEl) return;
-        const cRect = document.getElementById("embed-container").getBoundingClientRect();
-        _ctxMenuEl.style.left = Math.min(e.clientX - cRect.left, cRect.width  - 165) + "px";
-        _ctxMenuEl.style.top  = Math.min(e.clientY - cRect.top,  cRect.height - 140) + "px";
-        _ctxMenuEl.dataset.globalId = globalId;
-        _ctxMenuEl.style.display = "block";
+        if (_ctxMenuEl) _ctxMenuEl.style.display = "none";
+        _showEmbedCtxMenu(e.clientX, e.clientY, globalId);
     });
 }
 
@@ -818,12 +861,25 @@ document.getElementById("embed-wireframe-btn")?.addEventListener("click", () => 
 
 document.addEventListener("click", (e) => {
     if (_ctxMenuEl && !_ctxMenuEl.contains(e.target)) _ctxMenuEl.style.display = "none";
+    const embedMenu = document.getElementById("embed-ctx-menu");
+    if (embedMenu && !embedMenu.contains(e.target)) _hideEmbedCtxMenu();
 });
 
 document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
     if (_ctxMenuEl) _ctxMenuEl.style.display = "none";
     if (_propsPanelEl) _propsPanelEl.style.display = "none";
+    _hideEmbedCtxMenu();
+});
+
+document.getElementById("embed-ctx-menu")?.addEventListener("click", (e) => {
+    const btn = e.target.closest(".ctx-item");
+    if (!btn) return;
+    const action   = btn.dataset.action;
+    const globalId = document.getElementById("embed-ctx-menu")?.dataset.globalId;
+    _hideEmbedCtxMenu();
+    if (!globalId) return;
+    window.parent.postMessage({ type: "castor:element-action", action, global_id: globalId }, "*");
 });
 
 init();
