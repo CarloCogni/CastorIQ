@@ -385,8 +385,14 @@ window.addEventListener("message", async (e) => {
     }
 
     if (msg.type === "castor:link-colors") {
-        if (!model) return;
         const { linked = [], partial = [], unlinked = [], filter = "all" } = msg;
+        console.log('[VIEWER] link-colors, filter:', filter, 'linked:', linked.length);
+        console.log('[VIEWER] globalIdIndex size:', globalIdIndex?.size);
+        if (!model) return;
+        console.log('[VIEWER] about to ghost all:', [...globalIdIndex.keys()].length);
+        console.log('[VIEWER] sample linked IDs:', linked.slice(0,3));
+        console.log('[VIEWER] linked IDs in globalIdIndex:',
+          linked.filter(id => globalIdIndex.has(id)).length, 'of', linked.length);
         resetAllColors();
         if (filter === "all") {
             /* No ghost — show all elements at original colour, paint linked/partial on top */
@@ -398,6 +404,17 @@ window.addEventListener("message", async (e) => {
             if (filter === "linked")        colorByGlobalIds(linked,   new THREE.Color('#1D9E75'));
             else if (filter === "partial")  colorByGlobalIds(partial,  new THREE.Color('#EF9F27'));
             else if (filter === "unlinked") colorByGlobalIds(unlinked, new THREE.Color('#6B7280'));
+            let coloredCount = 0;
+            for (const gid of linked) {
+                const expressId = globalIdIndex.get(gid);
+                if (expressId === undefined) continue;
+                const fragment = fragmentIndex.get(expressId);
+                if (!fragment) continue;
+                coloredCount++;
+            }
+            console.log('[VIEWER] coloredCount for linked:', coloredCount);
+            console.log('[VIEWER] sample expressId:', globalIdIndex.get(linked[0]));
+            console.log('[VIEWER] sample fragment:', !!fragmentIndex.get(globalIdIndex.get(linked[0])));
         }
         return;
     }
