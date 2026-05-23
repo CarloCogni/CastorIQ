@@ -445,6 +445,7 @@
   let _fdLinkFilter    = "all";
   let _fdLastData      = null;
   let _fdFocusGlobalId = null;
+  let _fdTaskSelected  = false;
 
   const fd_vs = {
     tasks: [], projStart: null, ppd: 0, totalW: 0,
@@ -892,7 +893,9 @@
             fd_vsRefresh(true);
             sendToViewer({ type: "castor:reset" });
             _fdFocusGlobalId = null;
+            _fdTaskSelected  = false;
             _updateFocusBtn();
+            _applyLinkFilter();
             return;
           }
           fd_selectedRowIdx = rowIdx;
@@ -901,6 +904,7 @@
           const ids = t.entity_global_ids || [];
           if (ids.length) sendToViewer({ type: "castor:highlight", global_ids: ids });
           _fdFocusGlobalId = ids.length ? ids[0] : null;
+          _fdTaskSelected  = ids.length > 0;
           _updateFocusBtn();
         });
       }
@@ -969,7 +973,9 @@
       fd_renderGantt(filtered);
     }
 
-    /* Colour viewer by link status using the full dataset */
+    /* Colour viewer by link status — skip if a task highlight is active */
+    if (_fdTaskSelected) return;
+
     const linked = [], partial = [], unlinked = [];
     for (const t of (_fdLastData.tasks || [])) {
       const ids = t.entity_global_ids || [];
@@ -978,7 +984,6 @@
       else if (t.link_status === "partial")  partial.push(...ids);
       else if (t.link_status === "unlinked") unlinked.push(...ids);
     }
-    console.log('[FILTER] sending link-colors, linked:', linked.length, 'partial:', partial.length, 'unlinked:', unlinked.length);
     sendToViewer({ type: "castor:link-colors", linked, partial, unlinked, filter: _fdLinkFilter });
   }
 

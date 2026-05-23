@@ -385,19 +385,19 @@ window.addEventListener("message", async (e) => {
     }
 
     if (msg.type === "castor:link-colors") {
-        console.log('[VIEWER] castor:link-colors received', Object.keys(msg.payload || {}));
         if (!model) return;
         const { linked = [], partial = [], unlinked = [], filter = "all" } = msg;
         resetAllColors();
-        /* Ghost everything first — same pattern as castor:highlight */
-        colorByGlobalIds([...globalIdIndex.keys()], C.tl_no_task);
         if (filter === "all") {
+            /* No ghost — show all elements at original colour, paint linked/partial on top */
             colorByGlobalIds(linked,  new THREE.Color('#1D9E75'));
             colorByGlobalIds(partial, new THREE.Color('#EF9F27'));
-            /* unlinked arrays are empty (no entity_global_ids); stays ghosted */
         } else {
-            if (filter === "linked")       colorByGlobalIds(linked,  new THREE.Color('#1D9E75'));
-            else if (filter === "partial") colorByGlobalIds(partial, new THREE.Color('#EF9F27'));
+            /* Ghost entire model, then paint active filter group at full colour */
+            colorByGlobalIds([...globalIdIndex.keys()], C.tl_no_task);
+            if (filter === "linked")        colorByGlobalIds(linked,   new THREE.Color('#1D9E75'));
+            else if (filter === "partial")  colorByGlobalIds(partial,  new THREE.Color('#EF9F27'));
+            else if (filter === "unlinked") colorByGlobalIds(unlinked, new THREE.Color('#6B7280'));
         }
         return;
     }
