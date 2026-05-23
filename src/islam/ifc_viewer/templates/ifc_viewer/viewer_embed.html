@@ -67,6 +67,13 @@ html, body { width: 100%; height: 100%; background: #111; overflow: hidden; }
         border-radius:6px; padding:5px 10px; font-size:0.8rem; cursor:pointer;
         font-family:system-ui,sans-serif;">🎯 Focus</button>
 
+    <!-- Wireframe toggle — shown while in section/focus mode -->
+    <button id="embed-wireframe-btn" style="
+        position:absolute; bottom:12px; right:90px; display:none; z-index:6;
+        background:rgba(15,23,42,0.85); color:#e2e8f0; border:1px solid #475569;
+        border-radius:6px; padding:5px 10px; font-size:0.8rem; cursor:pointer;
+        font-family:system-ui,sans-serif;">🔲 Wireframe</button>
+
     <!-- Element selection — context menu -->
     <div id="sel-ctx-menu" style="
         position:absolute; display:none; z-index:100; min-width:160px;
@@ -253,11 +260,86 @@ function colorByGlobalIds(globalIds, color) {
     }
 }
 
+function enableWireframe() {
+    if (_wireframeActive || !model) return;
+    _wireframeActive = true;
+    for (const fragment of model.items) {
+        const mat = fragment.mesh.material;
+        if (Array.isArray(mat)) mat.forEach(m => { m.wireframe = true; });
+        else mat.wireframe = true;
+    }
+}
+
+function disableWireframe() {
+    if (!model) return;
+    _wireframeActive = false;
+    for (const fragment of model.items) {
+        const mat = fragment.mesh.material;
+        if (Array.isArray(mat)) mat.forEach(m => { m.wireframe = false; });
+        else mat.wireframe = false;
+    }
+}
+
+function _enableSectionBoxAroundElements(globalIds) {
+    _disableSectionBox();
+    const bbox = new THREE.Box3();
+    for (const gid of globalIds) {
+        const expressId = globalIdIndex.get(gid);
+        if (expressId === undefined) continue;
+        const fragment = fragmentIndex.get(expressId);
+        if (!fragment || !fragment.mesh) continue;
+        const fb = new THREE.Box3().setFromObject(fragment.mesh);
+        if (!fb.isEmpty()) bbox.union(fb);
+    }
+    if (bbox.isEmpty()) return;
+    bbox.expandByScalar(0.5);
+    const { min, max } = bbox;
+    _sectionPlanes = [
+        new THREE.Plane(new THREE.Vector3(-1,  0,  0),  max.x),
+        new THREE.Plane(new THREE.Vector3( 1,  0,  0), -min.x),
+        new THREE.Plane(new THREE.Vector3( 0, -1,  0),  max.y),
+        new THREE.Plane(new THREE.Vector3( 0,  1,  0), -min.y),
+        new THREE.Plane(new THREE.Vector3( 0,  0, -1),  max.z),
+        new THREE.Plane(new THREE.Vector3( 0,  0,  1), -min.z),
+    ];
+    world.renderer.three.clippingPlanes = _sectionPlanes;
+    _sectionEnabled = true;
+}
+
+function _disableSectionBox() {
+    if (!world?.renderer) return;
+    world.renderer.three.clippingPlanes = [];
+    _sectionPlanes  = null;
+    _sectionEnabled = false;
+}
+
+function _saveCameraState() {
+    const controls = world?.camera?.controls;
+    if (!controls) return;
+    _savedCameraPos    = world.camera.three.position.clone();
+    _savedCameraTarget = (controls.target ?? new THREE.Vector3()).clone();
+}
+
+function _restoreCameraState() {
+    const controls = world?.camera?.controls;
+    if (!controls || !_savedCameraPos || !_savedCameraTarget) return;
+    controls.setLookAt(
+        _savedCameraPos.x,    _savedCameraPos.y,    _savedCameraPos.z,
+        _savedCameraTarget.x, _savedCameraTarget.y, _savedCameraTarget.z,
+        true
+    );
+}
+
 function resetAllColors() {
     if (!model) return;
+    disableWireframe();
+    _disableSectionBox();
+    _savedCameraPos    = null;
+    _savedCameraTarget = null;
+    _lastHighlightIds  = [];
     for (const fragment of model.items) {
         fragment.resetColor();
-        fragment.setVisibility(true);   // restore any instances hidden by timeline mode
+        fragment.setVisibility(true);
     }
 }
 
@@ -310,8 +392,10 @@ function focusOnGlobalId(gid) {
 }
 
 function _syncFocusBtn() {
-    const btn = document.getElementById("embed-focus-btn");
-    if (btn) btn.style.display = _selectedGlobalId ? "block" : "none";
+    const btn  = document.getElementById("embed-focus-btn");
+    const wBtn = document.getElementById("embed-wireframe-btn");
+    if (btn)  btn.style.display  = _selectedGlobalId ? "block" : "none";
+    if (wBtn) wBtn.style.display = _sectionEnabled   ? "block" : "none";
 }
 
 // ── 4. postMessage API ───────────────────────────────────────────────
@@ -375,8 +459,9 @@ window.addEventListener("message", async (e) => {
         resetAllColors();
         _selectedGlobalId = null;
         const ids = msg.global_ids || [];
+        _lastHighlightIds = ids;
         if (ids.length) {
-            colorByGlobalIds([...globalIdIndex.keys()], C.tl_no_task);
+            enableWireframe();
             colorByGlobalIds(ids, new THREE.Color('#f59e0b'));
             _selectedGlobalId = ids[0];
         }
@@ -421,7 +506,34 @@ window.addEventListener("message", async (e) => {
 
     if (msg.type === "castor:focus-element") {
         if (!model || !msg.global_id) return;
-        focusOnGlobalId(msg.global_id);
+        if (!_sectionEnabled) {
+            /* First click: save camera, ghost all, highlight selected, section box, zoom in */
+            _saveCameraState();
+            disableWireframe();
+            for (const fragment of model.items) {
+                fragment.resetColor();
+                fragment.setVisibility(true);
+            }
+            colorByGlobalIds([...globalIdIndex.keys()], C.tl_no_task);
+            colorByGlobalIds(_lastHighlightIds, new THREE.Color('#f59e0b'));
+            _enableSectionBoxAroundElements(_lastHighlightIds);
+            focusOnGlobalId(msg.global_id);
+        } else {
+            /* Second click: exit focus mode, restore camera, re-apply wireframe */
+            _disableSectionBox();
+            _restoreCameraState();
+            enableWireframe();
+            colorByGlobalIds(_lastHighlightIds, new THREE.Color('#f59e0b'));
+        }
+        _syncFocusBtn();
+        return;
+    }
+
+    if (msg.type === "castor:zoom") {
+        const controls = world?.camera?.controls;
+        if (!controls) return;
+        if (msg.direction === "in")       controls.dollyIn(0.5,  true);
+        else if (msg.direction === "out") controls.dollyOut(0.5, true);
         return;
     }
 });
@@ -445,7 +557,13 @@ function _showColormapLegend(legend) {
 
 // ── 5. Element selection — Step 1: click → identify GlobalId ────────
 
-let _selectedGlobalId = null;
+let _selectedGlobalId  = null;
+let _wireframeActive   = false;
+let _sectionEnabled    = false;
+let _sectionPlanes     = null;
+let _savedCameraPos    = null;
+let _savedCameraTarget = null;
+let _lastHighlightIds  = [];
 const _SEL_COLOR = new THREE.Color('#00BCD4');
 
 function _findGlobalIdFromHit(intersection) {
@@ -674,6 +792,12 @@ document.getElementById("sel-props-close")?.addEventListener("click", () => {
 
 document.getElementById("embed-focus-btn")?.addEventListener("click", () => {
     if (_selectedGlobalId) focusOnGlobalId(_selectedGlobalId);
+});
+
+document.getElementById("embed-wireframe-btn")?.addEventListener("click", () => {
+    if (_wireframeActive) disableWireframe();
+    else                  enableWireframe();
+    colorByGlobalIds(_lastHighlightIds, new THREE.Color('#f59e0b'));
 });
 
 document.addEventListener("click", (e) => {

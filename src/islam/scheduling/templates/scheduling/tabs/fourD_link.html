@@ -174,6 +174,14 @@
                      color:var(--bs-body-color); cursor:pointer;">
         🎯 Focus
       </button>
+      <button id="fd-zoom-in-btn" title="Zoom in"
+              style="font-size:13px; padding:2px 8px; background:transparent;
+                     border:1px solid var(--bs-border-color); border-radius:4px;
+                     color:var(--bs-body-color); cursor:pointer;">+</button>
+      <button id="fd-zoom-out-btn" title="Zoom out"
+              style="font-size:13px; padding:2px 8px; background:transparent;
+                     border:1px solid var(--bs-border-color); border-radius:4px;
+                     color:var(--bs-body-color); cursor:pointer;">−</button>
       <button id="fd-chat-toggle" title="AI Assistant"
               style="padding: 4px 10px; background: rgba(99,102,241,.2);
                      color: #818cf8; border: 1px solid rgba(99,102,241,.3);
@@ -982,6 +990,13 @@
 
   document.getElementById("fd-focus-btn")?.addEventListener("click", () => {
     if (_fdFocusGlobalId) sendToViewer({ type: "castor:focus-element", global_id: _fdFocusGlobalId });
+  });
+
+  document.getElementById("fd-zoom-in-btn")?.addEventListener("click", () => {
+    sendToViewer({ type: "castor:zoom", direction: "in" });
+  });
+  document.getElementById("fd-zoom-out-btn")?.addEventListener("click", () => {
+    sendToViewer({ type: "castor:zoom", direction: "out" });
   });
 
   document.querySelectorAll(".fd-lf-btn").forEach(btn => {
