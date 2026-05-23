@@ -260,13 +260,22 @@ function colorByGlobalIds(globalIds, color) {
     }
 }
 
-function enableWireframe() {
-    if (_wireframeActive || !model) return;
+function enableWireframe(selectedIds = []) {
+    if (!model) return;
     _wireframeActive = true;
+    /* Fragments that contain a selected element stay solid so amber is visible */
+    const solidFragments = new Set();
+    for (const gid of selectedIds) {
+        const expressId = globalIdIndex.get(gid);
+        if (expressId === undefined) continue;
+        const frag = fragmentIndex.get(expressId);
+        if (frag) solidFragments.add(frag);
+    }
     for (const fragment of model.items) {
-        const mat = fragment.mesh.material;
-        if (Array.isArray(mat)) mat.forEach(m => { m.wireframe = true; });
-        else mat.wireframe = true;
+        const wire = !solidFragments.has(fragment);
+        const mat  = fragment.mesh.material;
+        if (Array.isArray(mat)) mat.forEach(m => { m.wireframe = wire; });
+        else mat.wireframe = wire;
     }
 }
 
@@ -461,7 +470,7 @@ window.addEventListener("message", async (e) => {
         const ids = msg.global_ids || [];
         _lastHighlightIds = ids;
         if (ids.length) {
-            enableWireframe();
+            enableWireframe(ids);
             colorByGlobalIds(ids, new THREE.Color('#f59e0b'));
             _selectedGlobalId = ids[0];
         }
@@ -522,7 +531,7 @@ window.addEventListener("message", async (e) => {
             /* Second click: exit focus mode, restore camera, re-apply wireframe */
             _disableSectionBox();
             _restoreCameraState();
-            enableWireframe();
+            enableWireframe(_lastHighlightIds);
             colorByGlobalIds(_lastHighlightIds, new THREE.Color('#f59e0b'));
         }
         _syncFocusBtn();
@@ -796,7 +805,7 @@ document.getElementById("embed-focus-btn")?.addEventListener("click", () => {
 
 document.getElementById("embed-wireframe-btn")?.addEventListener("click", () => {
     if (_wireframeActive) disableWireframe();
-    else                  enableWireframe();
+    else                  enableWireframe(_lastHighlightIds);
     colorByGlobalIds(_lastHighlightIds, new THREE.Color('#f59e0b'));
 });
 
