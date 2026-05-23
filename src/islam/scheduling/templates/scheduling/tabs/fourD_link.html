@@ -174,6 +174,12 @@
                      color:var(--bs-body-color); cursor:pointer;">
         🎯 Focus
       </button>
+      <button id="fd-link-mode-btn" title="Click an IFC element to link it to the selected task"
+              style="display:none; font-size:11px; padding:2px 8px; background:transparent;
+                     border:1px solid var(--bs-border-color); border-radius:4px;
+                     color:var(--bs-body-color); cursor:pointer;">
+        🔗 Link Mode
+      </button>
       <button id="fd-zoom-in-btn" title="Zoom in"
               style="font-size:13px; padding:2px 8px; background:transparent;
                      border:1px solid var(--bs-border-color); border-radius:4px;
@@ -396,6 +402,10 @@
 
   const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 
+  function _showToast(message, level) {
+    document.dispatchEvent(new CustomEvent("castor:toast", { bubbles: true, detail: { message, level: level || "info" } }));
+  }
+
   /* Constants */
   const FD_ROW_H       = 36;
   const FD_BAR_H       = 8;
@@ -431,11 +441,14 @@
   let fd_hasCpm         = false;
   let fd_rawData        = null;
   let fd_listenersAttached = false;
-  let _fdLinkFilter    = "all";
-  let _fdLastData      = null;
+  let _fdLinkFilter         = "all";
+  let _fdLastData           = null;
   let _fdFocusGlobalId      = null;
   let _fdTaskSelected       = false;
   let _fdLinkFilterActive   = false;
+  let _fdLinkMode           = false;
+  let _fdMultiSelectedTasks = [];
+  const _fdMultiSelectedSet = new Set();
 
   const fd_vs = {
     tasks: [], projStart: null, ppd: 0, totalW: 0,
@@ -627,12 +640,15 @@
       const floatHint  = fd_hasCpm && totalFloat !== null
         ? "\nFloat: " + totalFloat + " day" + (totalFloat === 1 ? "" : "s") + (isCrit ? " ⚠ Critical" : "")
         : "";
-      const isSelected = i === fd_selectedRowIdx;
+      const isSelected      = i === fd_selectedRowIdx;
+      const isMultiSelected = _fdMultiSelectedSet.has(t.pk || t.id);
+      const outlineStyle    = isSelected      ? "outline:2px solid #3b82f6;outline-offset:-2px;"
+                            : isMultiSelected ? "outline:2px solid #00BCD4;outline-offset:-2px;"
+                            : "";
 
       const rowEl = document.createElement("div");
       rowEl.dataset.rowIdx = i;
-      rowEl.style.cssText = `display:flex;height:${FD_ROW_H}px;background:${bg};min-width:${rowMinW}px;cursor:pointer;`
-        + (isSelected ? "outline:2px solid #3b82f6;outline-offset:-2px;" : "");
+      rowEl.style.cssText = `display:flex;height:${FD_ROW_H}px;background:${bg};min-width:${rowMinW}px;cursor:pointer;${outlineStyle}`;
 
       const nameDiv = document.createElement("div");
       nameDiv.style.cssText = `min-width:${FD_NAME_W}px;max-width:${FD_NAME_W}px;padding:0 8px;`
@@ -877,6 +893,23 @@
           const rowIdx = parseInt(rowEl.dataset.rowIdx);
           const t = fd_vs.tasks[rowIdx];
           if (!t || t.isGroup) return;
+
+          if (e.shiftKey) {
+            const taskKey = t.pk || t.id;
+            if (_fdMultiSelectedSet.has(taskKey)) {
+              _fdMultiSelectedSet.delete(taskKey);
+              _fdMultiSelectedTasks = _fdMultiSelectedTasks.filter(x => (x.pk || x.id) !== taskKey);
+            } else {
+              _fdMultiSelectedSet.add(taskKey);
+              _fdMultiSelectedTasks.push(t);
+            }
+            fd_vs.dirty = true;
+            fd_vsRefresh(true);
+            const allIds = _fdMultiSelectedTasks.flatMap(x => x.entity_global_ids || []);
+            if (allIds.length) sendToViewer({ type: "castor:highlight", global_ids: allIds });
+            return;
+          }
+
           if (fd_selectedRowIdx === rowIdx) {
             fd_selectedRowIdx = -1;
             fd_vs.dirty = true;
@@ -884,6 +917,7 @@
             sendToViewer({ type: "castor:reset" });
             _fdFocusGlobalId = null;
             _fdTaskSelected  = false;
+            if (_fdLinkMode) _exitLinkMode();
             _updateFocusBtn();
             _applyLinkFilter();
             return;
@@ -920,12 +954,10 @@
   }
 
   async function loadGantt() {
-    console.log("[4D] fetching:", GANTT_URL);
     try {
       const resp = await fetch(GANTT_URL);
       if (!resp.ok) throw new Error(resp.status);
       const data = await resp.json();
-      console.log("[4D] response: tasks.length=", (data.tasks || []).length);
       _fdLastData = data;
       _applyLinkFilter();
     } catch (e) {
@@ -965,9 +997,6 @@
       fd_renderGantt(filtered);
     }
 
-    /* Colour viewer by link status — skip if a task highlight is active */
-    console.log('[FILTER] _fdLinkFilter:', _fdLinkFilter);
-    console.log('[FILTER] _fdTaskSelected:', _fdTaskSelected);
     if (_fdTaskSelected) return;
 
     const linked = [], partial = [], unlinked = [];
@@ -978,18 +1007,99 @@
       else if (t.link_status === "partial")  partial.push(...ids);
       else if (t.link_status === "unlinked") unlinked.push(...ids);
     }
-    console.log('[FILTER] linked:', linked.length, 'partial:', partial.length, 'unlinked:', unlinked.length);
-    console.log('[FILTER] sending to viewer:', _fdLinkFilter);
     sendToViewer({ type: "castor:link-colors", linked, partial, unlinked, filter: _fdLinkFilter });
   }
 
   function _updateFocusBtn() {
-    const btn = document.getElementById("fd-focus-btn");
-    if (btn) btn.style.display = _fdFocusGlobalId ? "inline-block" : "none";
+    const btn     = document.getElementById("fd-focus-btn");
+    const linkBtn = document.getElementById("fd-link-mode-btn");
+    if (btn)     btn.style.display     = _fdFocusGlobalId ? "inline-block" : "none";
+    if (linkBtn) linkBtn.style.display = _fdFocusGlobalId ? "inline-block" : "none";
+    if (!_fdFocusGlobalId && _fdLinkMode) _exitLinkMode();
+  }
+
+  function _enterLinkMode() {
+    _fdLinkMode = true;
+    const btn = document.getElementById("fd-link-mode-btn");
+    if (btn) {
+      btn.style.background = "#6366f1";
+      btn.style.color      = "#fff";
+      btn.textContent      = "🔗 Linking… (click element)";
+    }
+    sendToViewer({ type: "castor:link-mode", active: true });
+  }
+
+  function _exitLinkMode() {
+    _fdLinkMode = false;
+    const btn = document.getElementById("fd-link-mode-btn");
+    if (btn) {
+      btn.style.background = "transparent";
+      btn.style.color      = "var(--bs-body-color)";
+      btn.textContent      = "🔗 Link Mode";
+    }
+    sendToViewer({ type: "castor:link-mode", active: false });
+  }
+
+  async function _doLinkElement(globalId) {
+    const tasks  = fd_vs.tasks;
+    const task   = fd_selectedRowIdx >= 0 ? tasks[fd_selectedRowIdx] : null;
+    if (!task || task.isGroup) { _showToast("No task selected — click a task first", "error"); return; }
+    const taskId = task.pk || task.id;
+    if (!taskId) { _showToast("Task has no ID", "error"); return; }
+    const url = `/islam/projects/{{ project.pk }}/tasks/${taskId}/link-element/`;
+    try {
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": FD_CSRF },
+        body: JSON.stringify({ global_id: globalId }),
+      });
+      const data = await resp.json();
+      if (resp.ok) {
+        _showToast(`Linked ${globalId} to "${task.name}"`, "success");
+        loadGantt();
+      } else {
+        _showToast(data.error || "Link failed", "error");
+      }
+    } catch (err) {
+      _showToast("Link request failed", "error");
+    }
+    _exitLinkMode();
+  }
+
+  async function _doUnlinkElement(globalId) {
+    const tasks  = fd_vs.tasks;
+    const task   = fd_selectedRowIdx >= 0 ? tasks[fd_selectedRowIdx] : null;
+    if (!task || task.isGroup) { _showToast("No task selected — click a task first", "error"); return; }
+    const taskId = task.pk || task.id;
+    if (!taskId) { _showToast("Task has no ID", "error"); return; }
+    const url = `/islam/projects/{{ project.pk }}/tasks/${taskId}/unlink-element/`;
+    try {
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": FD_CSRF },
+        body: JSON.stringify({ global_id: globalId }),
+      });
+      const data = await resp.json();
+      if (resp.ok) {
+        _showToast("Unlinked from task", "success");
+        loadGantt();
+      } else if (resp.status === 404) {
+        _showToast("No link found", "error");
+      } else {
+        _showToast(data.error || "Unlink failed", "error");
+      }
+    } catch (err) {
+      _showToast("Unlink request failed", "error");
+    }
   }
 
   document.getElementById("fd-focus-btn")?.addEventListener("click", () => {
     if (_fdFocusGlobalId) sendToViewer({ type: "castor:focus-element", global_id: _fdFocusGlobalId });
+  });
+
+  document.getElementById("fd-link-mode-btn")?.addEventListener("click", () => {
+    if (_fdLinkMode) _exitLinkMode();
+    else             _enterLinkMode();
   });
 
   document.getElementById("fd-zoom-in-btn")?.addEventListener("click", () => {
@@ -1002,7 +1112,6 @@
   document.querySelectorAll(".fd-lf-btn").forEach(btn => {
     btn.classList.toggle("active", btn.dataset.filter === _fdLinkFilter);
     btn.addEventListener("click", () => {
-      console.log('[CLICK] filter button clicked, data-filter:', btn.dataset.filter);
       _fdLinkFilter = btn.dataset.filter;
       document.querySelectorAll(".fd-lf-btn").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
@@ -1055,6 +1164,31 @@
         fd_vs.dirty = true;
         fd_vsRefresh(true);
       }
+    }
+    if (msg.type === "castor:element-action") {
+      const { action, global_id } = msg;
+      if (action === "link" || action === "add-task") {
+        _doLinkElement(global_id);
+      } else if (action === "unlink") {
+        _doUnlinkElement(global_id);
+      } else {
+        if (action === "view-tasks") _showToast("View tasks: coming soon", "info");
+        _exitLinkMode();
+      }
+    }
+    if (msg.type === "castor:multi-select") {
+      const ids = msg.global_ids || [];
+      _fdMultiSelectedTasks = [];
+      _fdMultiSelectedSet.clear();
+      for (const t of fd_vs.tasks) {
+        if (t.isGroup) continue;
+        if ((t.entity_global_ids || []).some(id => ids.includes(id))) {
+          _fdMultiSelectedTasks.push(t);
+          _fdMultiSelectedSet.add(t.pk || t.id);
+        }
+      }
+      fd_vs.dirty = true;
+      fd_vsRefresh(true);
     }
   });
 
@@ -1154,7 +1288,7 @@
   });
   document.getElementById("fd-slider").addEventListener("input", (e) => _applyInterval(parseInt(e.target.value)));
 
-  /* ── AI Chat stub ────────────────────────────────────────────────── */
+  /* ── AI Chat ────────────────────────────────────────────────────── */
 
   function addFdMessage(role, html) {
     const msgs = document.getElementById("fourD-messages");
