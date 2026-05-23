@@ -274,8 +274,15 @@ function enableWireframe(selectedIds = []) {
     for (const fragment of model.items) {
         const wire = !solidFragments.has(fragment);
         const mat  = fragment.mesh.material;
-        if (Array.isArray(mat)) mat.forEach(m => { m.wireframe = wire; });
-        else mat.wireframe = wire;
+        if (Array.isArray(mat)) {
+            mat.forEach(m => {
+                m.wireframe = wire;
+                if (wire) { m.wireframeLinewidth = 0.5; m.wireframeLinejoin = 'round'; }
+            });
+        } else {
+            mat.wireframe = wire;
+            if (wire) { mat.wireframeLinewidth = 0.5; mat.wireframeLinejoin = 'round'; }
+        }
     }
 }
 
@@ -630,7 +637,7 @@ function _initSelector() {
 
     canvas.addEventListener('contextmenu', (e) => {
         e.preventDefault();
-        if (!model) return;
+        if (_sectionEnabled || !model) return; /* no context menu during focus/section mode */
         const rect = canvas.getBoundingClientRect();
         mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
         mouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
