@@ -402,4 +402,17 @@ urlpatterns = [
         scheduling_views.ScheduleWritebackView.as_view(),
         name="schedule_writeback",
     ),
+    # ------------------------------------------------------------------ #
+    # Manual element linking                                               #
+    # ------------------------------------------------------------------ #
+    path(
+        "projects/<uuid:pk>/tasks/<uuid:task_pk>/link-element/",
+        scheduling_views.LinkElementView.as_view(),
+        name="link_element",
+    ),
+    path(
+        "projects/<uuid:pk>/tasks/<uuid:task_pk>/unlink-element/",
+        scheduling_views.UnlinkElementView.as_view(),
+        name="unlink_element",
+    ),
 ]

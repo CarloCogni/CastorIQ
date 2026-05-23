@@ -1986,3 +1986,65 @@ class ScheduleWritebackView(ProjectModifyAccessMixin, View):
                 "warnings": warnings,
             }
         )
+
+
+# ---------------------------------------------------------------------------
+# Manual element linking
+# ---------------------------------------------------------------------------
+
+
+class LinkElementView(ProjectModifyAccessMixin, View):
+    """POST — manually link a single IFC element globalId to a task."""
+
+    def post(self, request, task_pk: str, **kwargs: object) -> JsonResponse:
+        project = self.get_project()
+        task = get_object_or_404(Task, pk=task_pk, project=project)
+
+        try:
+            body = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+        global_id = body.get("global_id", "").strip()
+        if not global_id:
+            return JsonResponse({"error": "global_id is required"}, status=400)
+
+        binding, created = TaskEntityBinding.objects.get_or_create(
+            task=task,
+            entity_global_id=global_id,
+            defaults={
+                "confidence": 1.0,
+                "link_method": TaskEntityBinding.LinkMethod.EXACT,
+                "needs_review": False,
+            },
+        )
+        status_code = 201 if created else 200
+        return JsonResponse(
+            {"status": "linked", "binding_id": str(binding.id)}, status=status_code
+        )
+
+
+class UnlinkElementView(ProjectModifyAccessMixin, View):
+    """POST — remove the link between a single IFC element globalId and a task."""
+
+    def post(self, request, task_pk: str, **kwargs: object) -> JsonResponse:
+        project = self.get_project()
+        task = get_object_or_404(Task, pk=task_pk, project=project)
+
+        try:
+            body = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+        global_id = body.get("global_id", "").strip()
+        if not global_id:
+            return JsonResponse({"error": "global_id is required"}, status=400)
+
+        deleted, _ = TaskEntityBinding.objects.filter(
+            task=task, entity_global_id=global_id
+        ).delete()
+
+        if not deleted:
+            return JsonResponse({"error": "Binding not found"}, status=404)
+
+        return JsonResponse({"status": "unlinked"})
