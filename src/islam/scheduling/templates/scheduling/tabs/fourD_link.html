@@ -330,25 +330,6 @@
       </button>
     </form>
 
-    <!-- Review Links (GET — no CSRF needed) -->
-    <button
-      hx-get="{% url 'islam:review' project.pk %}"
-      hx-target="#fourD-link-results"
-      hx-swap="innerHTML"
-      hx-indicator="#fd-review-spinner"
-      style="padding: 6px 16px; background: transparent;
-             color: var(--bs-body-color);
-             border: 1px solid var(--bs-border-color);
-             border-radius: 6px; cursor: pointer; font-size: 12px;
-             display: inline-flex; align-items: center; gap: 6px;">
-      <span id="fd-review-spinner" class="htmx-indicator spinner-border spinner-border-sm"></span>
-      <i class="bi bi-eye"></i> Review Links
-      {% if binding_review_count %}<span class="badge bg-warning text-dark" style="font-size: 10px;">{{ binding_review_count }}</span>{% endif %}
-    </button>
-
-    <!-- Separator -->
-    <div style="height: 24px; width: 1px; background: var(--bs-border-color);"></div>
-
     <!-- Embed Tasks for AI chat -->
     <div style="display: inline-flex; align-items: center; gap: 8px;">
       <button id="fd-embed-btn"
@@ -388,7 +369,7 @@
     </form>
   </div><!-- /fourD-footer -->
 
-  <!-- Results area: Link Engine / Review response — inside root so parent overflow:hidden doesn't clip it -->
+  <!-- Results area: Link Engine / param match response — inside root so parent overflow:hidden doesn't clip it -->
   <div id="fourD-link-results" style="padding: 8px; overflow-y: auto; flex-shrink: 0; max-height: 40vh;"></div>
 
 </div><!-- /fourD-root -->
