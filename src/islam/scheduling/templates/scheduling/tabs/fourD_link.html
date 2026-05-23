@@ -425,8 +425,9 @@
   let fd_listenersAttached = false;
   let _fdLinkFilter    = "all";
   let _fdLastData      = null;
-  let _fdFocusGlobalId = null;
-  let _fdTaskSelected  = false;
+  let _fdFocusGlobalId      = null;
+  let _fdTaskSelected       = false;
+  let _fdLinkFilterActive   = false;
 
   const fd_vs = {
     tasks: [], projStart: null, ppd: 0, totalW: 0,
@@ -944,6 +945,8 @@
   function _applyLinkFilter() {
     if (!_fdLastData) return;
 
+    _fdLinkFilterActive = _fdLinkFilter !== "all";
+
     if (_fdLinkFilter === "all") {
       fd_renderGantt(_fdLastData);
     } else {
@@ -955,6 +958,8 @@
     }
 
     /* Colour viewer by link status — skip if a task highlight is active */
+    console.log('[FILTER] _fdLinkFilter:', _fdLinkFilter);
+    console.log('[FILTER] _fdTaskSelected:', _fdTaskSelected);
     if (_fdTaskSelected) return;
 
     const linked = [], partial = [], unlinked = [];
@@ -965,6 +970,8 @@
       else if (t.link_status === "partial")  partial.push(...ids);
       else if (t.link_status === "unlinked") unlinked.push(...ids);
     }
+    console.log('[FILTER] linked:', linked.length, 'partial:', partial.length, 'unlinked:', unlinked.length);
+    console.log('[FILTER] sending to viewer:', _fdLinkFilter);
     sendToViewer({ type: "castor:link-colors", linked, partial, unlinked, filter: _fdLinkFilter });
   }
 
@@ -980,9 +987,19 @@
   document.querySelectorAll(".fd-lf-btn").forEach(btn => {
     btn.classList.toggle("active", btn.dataset.filter === _fdLinkFilter);
     btn.addEventListener("click", () => {
+      console.log('[CLICK] filter button clicked, data-filter:', btn.dataset.filter);
       _fdLinkFilter = btn.dataset.filter;
       document.querySelectorAll(".fd-lf-btn").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
+      /* Explicit filter click clears task selection so link colors always reach the viewer */
+      if (_fdTaskSelected) {
+        _fdTaskSelected  = false;
+        _fdFocusGlobalId = null;
+        fd_selectedRowIdx = -1;
+        fd_vs.dirty = true;
+        fd_vsRefresh(true);
+        _updateFocusBtn();
+      }
       _applyLinkFilter();
     });
   });
@@ -1032,6 +1049,12 @@
       btn.classList.remove("btn-outline-secondary");
       btn.classList.add("active", "btn-primary");
       currentMode = btn.dataset.mode;
+      /* Reset link filter so timeline coloring isn't suppressed */
+      _fdLinkFilter = "all";
+      _fdLinkFilterActive = false;
+      document.querySelectorAll(".fd-lf-btn").forEach(b => {
+        b.classList.toggle("active", b.dataset.filter === "all");
+      });
       _pauseTimeline();
       const tlSection = document.getElementById("fd-timeline-section");
       if (currentMode === "timeline") {
@@ -1066,6 +1089,7 @@
 
   function _applyInterval(idx) {
     if (!tlIntervals.length) return;
+    if (_fdLinkFilterActive) return;
     const iv = tlIntervals[Math.min(idx, tlIntervals.length - 1)];
     const { not_started = [], in_progress = [], complete = [] } = iv.entities || {};
     sendToViewer({ type: "castor:timeline-colors", not_started, in_progress, complete, no_task: tlNoTask });
