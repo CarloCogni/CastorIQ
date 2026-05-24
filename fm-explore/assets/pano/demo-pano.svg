@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2048 1024" width="2048" height="1024" font-family="ui-monospace, monospace">
+  <!-- Demo equirectangular panorama (2:1): a simple room with 4 windows.
+       Content sits near the horizon (y≈512) where equirectangular projection is
+       least distorted. Replace by uploading a real 360° photo. -->
+  <defs>
+    <linearGradient id="ceil" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d9dde8"/>
+      <stop offset="1" stop-color="#b4bac8"/>
+    </linearGradient>
+    <linearGradient id="wall" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9aa0b2"/>
+      <stop offset="1" stop-color="#7e8497"/>
+    </linearGradient>
+    <linearGradient id="flr" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8a7e70"/>
+      <stop offset="1" stop-color="#5f564b"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#bfe0ef"/>
+      <stop offset="1" stop-color="#7ba9c4"/>
+    </linearGradient>
+  </defs>
+
+  <!-- ceiling / wall / floor bands -->
+  <rect x="0" y="0"   width="2048" height="360" fill="url(#ceil)"/>
+  <rect x="0" y="360" width="2048" height="320" fill="url(#wall)"/>
+  <rect x="0" y="680" width="2048" height="344" fill="url(#flr)"/>
+
+  <!-- subtle ceiling grid -->
+  <g stroke="#ffffff" stroke-opacity="0.18" stroke-width="2">
+    <line x1="0" y1="120" x2="2048" y2="120"/><line x1="0" y1="240" x2="2048" y2="240"/>
+  </g>
+  <!-- floor planks -->
+  <g stroke="#000000" stroke-opacity="0.12" stroke-width="2">
+    <line x1="0" y1="780" x2="2048" y2="780"/><line x1="0" y1="880" x2="2048" y2="880"/><line x1="0" y1="980" x2="2048" y2="980"/>
+  </g>
+  <!-- baseboard + ceiling trim -->
+  <rect x="0" y="668" width="2048" height="14" fill="#5a606e"/>
+  <rect x="0" y="356" width="2048" height="10" fill="#c7ccd8"/>
+
+  <!-- four windows centred at the cardinal longitudes (x = 256,768,1280,1792) -->
+  <g>
+    <!-- N -->
+    <rect x="146" y="404" width="220" height="170" fill="url(#glass)" stroke="#566" stroke-width="6"/>
+    <line x1="256" y1="404" x2="256" y2="574" stroke="#566" stroke-width="5"/>
+    <line x1="146" y1="489" x2="366" y2="489" stroke="#566" stroke-width="5"/>
+    <!-- E -->
+    <rect x="658" y="404" width="220" height="170" fill="url(#glass)" stroke="#566" stroke-width="6"/>
+    <line x1="768" y1="404" x2="768" y2="574" stroke="#566" stroke-width="5"/>
+    <line x1="658" y1="489" x2="878" y2="489" stroke="#566" stroke-width="5"/>
+    <!-- S -->
+    <rect x="1170" y="404" width="220" height="170" fill="url(#glass)" stroke="#566" stroke-width="6"/>
+    <line x1="1280" y1="404" x2="1280" y2="574" stroke="#566" stroke-width="5"/>
+    <line x1="1170" y1="489" x2="1390" y2="489" stroke="#566" stroke-width="5"/>
+    <!-- W -->
+    <rect x="1682" y="404" width="220" height="170" fill="url(#glass)" stroke="#566" stroke-width="6"/>
+    <line x1="1792" y1="404" x2="1792" y2="574" stroke="#566" stroke-width="5"/>
+    <line x1="1682" y1="489" x2="1902" y2="489" stroke="#566" stroke-width="5"/>
+  </g>
+
+  <!-- small, horizon-level direction tags (subtle, not giant) -->
+  <g text-anchor="middle" fill="#3a4150" font-size="34" font-weight="600">
+    <text x="256"  y="632">N</text>
+    <text x="768"  y="632">E</text>
+    <text x="1280" y="632">S</text>
+    <text x="1792" y="632">W</text>
+  </g>
+
+  <text x="1024" y="330" text-anchor="middle" font-size="30" fill="#5a6070">DEMO ROOM · 360° · drag to look around</text>
+</svg>

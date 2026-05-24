@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" width="800" height="500" font-family="ui-monospace, 'DM Mono', monospace">
+  <defs>
+    <pattern id="grid2" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0 H0 V40" fill="none" stroke="#23243440" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect x="0" y="0" width="800" height="500" fill="#0d0e16"/>
+  <rect x="0" y="0" width="800" height="500" fill="url(#grid2)"/>
+  <rect x="20" y="20" width="760" height="460" fill="none" stroke="#5b5d78" stroke-width="3"/>
+
+  <!-- Reception / lobby (center top) -->
+  <rect x="280" y="20" width="240" height="200" fill="#42b880" fill-opacity="0.06" stroke="#464760" stroke-width="1.5"/>
+  <text x="400" y="112" text-anchor="middle" font-size="18" fill="#e2e3ef">Reception</text>
+  <text x="400" y="134" text-anchor="middle" font-size="11" fill="#42b880">lobby · entrance</text>
+
+  <!-- Retail unit A (left) -->
+  <rect x="20" y="20" width="260" height="320" fill="#d4903a" fill-opacity="0.05" stroke="#464760" stroke-width="1.5"/>
+  <text x="150" y="178" text-anchor="middle" font-size="16" fill="#e2e3ef">Retail A</text>
+  <text x="150" y="198" text-anchor="middle" font-size="11" fill="#9294ab">180 m²</text>
+
+  <!-- Retail unit B (right) -->
+  <rect x="520" y="20" width="260" height="320" fill="#d4903a" fill-opacity="0.05" stroke="#464760" stroke-width="1.5"/>
+  <text x="650" y="178" text-anchor="middle" font-size="16" fill="#e2e3ef">Retail B</text>
+  <text x="650" y="198" text-anchor="middle" font-size="11" fill="#9294ab">160 m²</text>
+
+  <!-- Café (center) -->
+  <rect x="280" y="220" width="240" height="120" fill="#ffffff" fill-opacity="0.02" stroke="#464760" stroke-width="1.5"/>
+  <text x="400" y="285" text-anchor="middle" font-size="14" fill="#e2e3ef">Café</text>
+
+  <!-- Core + services (bottom band) -->
+  <rect x="20" y="340" width="760" height="140" fill="#8b7fd4" fill-opacity="0.05" stroke="#464760" stroke-width="1.5"/>
+  <text x="400" y="416" text-anchor="middle" font-size="13" fill="#8b7fd4">Core · lifts · stairs · services</text>
+
+  <text x="34" y="44" font-size="11" fill="#555770">PALÁC JIRÁSKOVO · 2F</text>
+</svg>

@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Castor · Explore</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./src/style/tokens.css" />
+  <link rel="stylesheet" href="./src/style/layout.css" />
+  <link rel="stylesheet" href="./src/style/components.css" />
+  <!-- Bare-specifier imports for the no-build setup. Swap for npm/Vite later by removing this map. -->
+  <script type="importmap">
+  {
+    "imports": {
+      "pdfjs-dist": "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.7.76/build/pdf.min.mjs",
+      "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="app" class="exp-app">
+
+    <!-- ── Module header (this module's own toolbar; Castor's top nav lives in the host) ── -->
+    <header class="mh">
+      <div class="mh-titles">
+        <div class="mh-title" id="mhTitle">Explore</div>
+        <div class="mh-sub" id="mhSub">Floor plan</div>
+      </div>
+      <span class="mh-tag">EXPLORE</span>
+      <span class="mh-build" id="mhBuild" title="Build marker — if this looks old, you're on a cached JS: run python serve.py + Ctrl+Shift+R"></span>
+      <div class="numbering" id="numbering"></div>
+      <div class="mh-spacer"></div>
+      <button class="btn" id="btnKnockout" title="Knock out white background of this floor's plan (best-effort)">⬚ White-out</button>
+      <button class="btn" id="btnImport">⤓ Import plans</button>
+      <input type="file" id="fileInput" accept="image/png,image/jpeg,image/webp,application/pdf" multiple hidden />
+      <input type="file" id="photoUpload" accept="image/*" multiple hidden />
+      <input type="file" id="photoCamera" accept="image/*" capture="environment" hidden />
+      <button class="btn" id="btnPoints" title="All points — search & jump across floors">≣ Points</button>
+      <button class="btn" id="btnAddPoint">+ Point</button>
+      <div class="vmode" role="group" aria-label="Actions">
+        <button class="btn vb vb-cmp" id="btnCmp" disabled title="Select a point with 2+ photo versions">⇔ Compare</button>
+      </div>
+      <button class="btn" id="btnTheme" title="Toggle light / dark theme">◐</button>
+    </header>
+
+    <div class="exp-shell">
+
+      <!-- ── Center: floor-plan viewer + timeline ── -->
+      <main class="exp-center">
+        <div class="exp-viewer" id="viewer">
+          <div class="plan-stage" id="planStage">
+            <img class="plan-img" id="planImg" src="./assets/plans/floor-4.svg" alt="Floor plan" draggable="false" />
+            <div class="pin-layer" id="pinLayer"></div>
+          </div>
+          <div class="v-label"><span class="v-ld"></span><span id="vLabel">Floor plan</span></div>
+          <div class="floor-switcher" id="floorSwitcher"></div>
+          <div class="exp-legend" id="legend" hidden></div>
+        </div>
+
+        <div class="exp-timeline" id="expTimeline">
+          <div class="etl-head">
+            <span class="etl-label">Photo timeline</span>
+            <span class="etl-room" id="tlRoom">—</span>
+            <div class="etl-sort" id="tlSort"></div>
+            <div class="etl-types" id="tlTypes"></div>
+            <div class="etl-view" id="tlView"></div>
+          </div>
+          <div class="etl-track" id="tlTrack">
+            <span class="etl-empty">Select a point to see its photo versions</span>
+          </div>
+        </div>
+      </main>
+
+      <!-- ── Right: detail panel ── -->
+      <aside class="detail-panel">
+        <div class="dp-head">
+          <div class="dp-title" id="dpTitle">No point selected</div>
+          <div class="dp-sub" id="dpSub">Click the plan to place one</div>
+        </div>
+        <div class="dp-body" id="dpBody">
+          <div class="dp-empty">
+            <div class="dp-empty-icon">◎</div>
+            <div class="dp-empty-text">Click anywhere on the floor plan to drop a point, then attach a photo to it. (Placement lands in Step 2.)</div>
+          </div>
+        </div>
+        <div class="dp-actions" id="dpActions" hidden>
+          <button class="btn btn-p btn-sm">FM detail</button>
+          <button class="btn btn-sm">Leasing</button>
+          <button class="btn btn-sm">BIM</button>
+        </div>
+      </aside>
+
+    </div>
+  </div>
+
+  <!-- Compare: two versions side-by-side with a draggable divider -->
+  <div id="compare" class="cmp" hidden>
+    <div class="cmp-top">
+      <div class="cmp-sel"><span>Left</span><select id="cmpLeft"></select></div>
+      <div class="cmp-sel"><span>Right</span><select id="cmpRight"></select></div>
+      <span class="cmp-hint" id="cmpHint">drag the divider ⇔</span>
+      <button class="lb-close" id="cmpClose" title="Close" style="margin-left:auto;position:static;">✕</button>
+    </div>
+    <div class="cmp-stage" id="cmpStage">
+      <div class="cmp-media" id="cmpMediaL"></div>
+      <div class="cmp-media cmp-clip" id="cmpMediaR"></div>
+      <div class="cmp-pano" id="cmpPano"></div>
+      <div class="cmp-lbl cmp-lbl-l" id="cmpLblL"></div>
+      <div class="cmp-lbl cmp-lbl-r" id="cmpLblR"></div>
+      <div class="cmp-divider" id="cmpDivider"><div class="cmp-handle">⇔</div></div>
+    </div>
+  </div>
+
+  <!-- Reusable modal (floor manager, add-phase) -->
+  <div id="modalOverlay" class="modal-overlay" hidden>
+    <div class="modal-box">
+      <div class="modal-head"><span class="modal-title" id="modalTitle"></span><button class="modal-x" id="modalX" title="Close">✕</button></div>
+      <div class="modal-body" id="modalBody"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <!-- Lightbox for viewing a flat photo full-size -->
+  <div id="lightbox" class="lightbox" hidden>
+    <button class="lb-close" id="lbClose" title="Close">✕</button>
+    <img class="lb-img" id="lbImg" alt="" />
+  </div>
+
+  <!-- 360° panoramic viewer (Three.js) -->
+  <div id="pano" class="pano" hidden>
+    <div class="pano-mount" id="panoMount"></div>
+    <div class="pano-label" id="panoLabel"><span class="v-ld"></span><span id="panoTitle">360°</span></div>
+    <div class="pano-warn" id="panoWarn" hidden></div>
+    <div class="pano-hint">drag to look · scroll to zoom</div>
+    <button class="lb-close" id="panoReset" style="right:60px;" title="Reset view">⊕</button>
+    <button class="lb-close" id="panoClose" title="Close">✕</button>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

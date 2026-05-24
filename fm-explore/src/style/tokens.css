@@ -1,0 +1,47 @@
+/* tokens.css — design tokens copied from the Castor prototype (castor_complete.html :root).
+   Single source of truth for colors + fonts. Light theme override is refined in Step 9. */
+
+:root{
+  /* surfaces */
+  --sb:#161720; --bg:#1c1d28; --p1:#20212e; --p2:#252637; --p3:#2c2d40;
+  --viewer-bg:#0a0b12; /* floor-plan stage backdrop (flips in light theme) */
+  /* borders */
+  --b1:#2e2f42; --b2:#383950; --b3:#464760;
+  /* text */
+  --t1:#e2e3ef; --t2:#9294ab; --t3:#555770; --t4:#383a50;
+  /* accent (cyan) */
+  --acc:#4fc4cf; --acc-d:#0f2a2e; --acc-b:#1e4a50;
+  /* semantic */
+  --red:#e05858; --red-d:#2a1010;
+  --amb:#d4903a; --amb-d:#281808;
+  --grn:#42b880; --grn-d:#0c2018;
+  --vio:#8b7fd4; --vio-d:#1a1628;
+  /* shadows */
+  --sh:0 1px 6px rgba(0,0,0,.45); --sh2:0 4px 20px rgba(0,0,0,.6);
+  /* fonts */
+  --font-ui:'Inter',system-ui,sans-serif;
+  --font-mono:'DM Mono',ui-monospace,'Cascadia Code',monospace;
+}
+
+/* Light theme — placeholder mapping, polished in Step 9. Toggled by Castor via SET_THEME. */
+html[data-theme="light"]{
+  --sb:#f0f1f5; --bg:#ffffff; --p1:#f7f8fa; --p2:#eceef3; --p3:#e2e5ec;
+  --b1:#e3e5ec; --b2:#cdd0da; --b3:#b4b8c6;
+  --t1:#1c1d28; --t2:#55586d; --t3:#888aa0; --t4:#b4b8c6;
+  --acc-d:#e6f7f8; --acc-b:#bfe9ec;
+  --viewer-bg:#dfe2e9;
+  --sh:0 1px 6px rgba(0,0,0,.10); --sh2:0 4px 20px rgba(0,0,0,.16);
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+/* Respect the [hidden] attribute even when an element has display:flex/grid. */
+[hidden]{display:none !important;}
+html,body{height:100%;}
+body{
+  background:var(--bg);
+  color:var(--t1);
+  font-family:var(--font-ui);
+  font-size:13px;
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
