@@ -42,8 +42,6 @@ html, body { width: 100%; height: 100%; background: #111; overflow: hidden; }
 }
 .leg-row { display: flex; align-items: center; gap: 6px; }
 .leg-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
-.ctx-item { display:block; width:100%; background:none; border:none; color:#e2e8f0; text-align:left; padding:6px 12px; cursor:pointer; font-size:0.82rem; }
-.ctx-item:hover { background:#2d3f5c; }
 </style>
 </head>
 <body>
@@ -78,7 +76,7 @@ html, body { width: 100%; height: 100%; background: #111; overflow: hidden; }
 
     <!-- Element selection — context menu -->
     <div id="sel-ctx-menu" style="
-        position:absolute; display:none; z-index:100; min-width:160px;
+        position:absolute; display:none; z-index:100; min-width:180px;
         background:#1e293b; border:1px solid #475569; border-radius:6px;
         box-shadow:0 4px 12px rgba(0,0,0,0.5); padding:4px 0;
         font-family:system-ui,sans-serif; font-size:0.82rem; color:#e2e8f0;">
@@ -87,19 +85,10 @@ html, body { width: 100%; height: 100%; background: #111; overflow: hidden; }
         <button id="sel-ctx-hide"     style="display:block;width:100%;background:none;border:none;color:#e2e8f0;text-align:left;padding:6px 12px;cursor:pointer;">Hide</button>
         <div style="border-top:1px solid #475569;margin:4px 0;"></div>
         <button id="sel-ctx-deselect" style="display:block;width:100%;background:none;border:none;color:#94a3b8;text-align:left;padding:6px 12px;cursor:pointer;">Deselect</button>
-    </div>
-
-    <!-- Link-action context menu — shown on right-click in wireframe mode -->
-    <div id="embed-ctx-menu" style="
-        position:absolute; display:none; z-index:101; min-width:170px;
-        background:#1e293b; border:1px solid #475569; border-radius:6px;
-        box-shadow:0 4px 12px rgba(0,0,0,0.5); padding:4px 0;
-        font-family:system-ui,sans-serif; font-size:0.82rem; color:#e2e8f0;">
-        <button class="ctx-item" data-action="link">🔗 Link to selected task</button>
-        <button class="ctx-item" data-action="unlink">✂️ Unlink</button>
         <div style="border-top:1px solid #475569;margin:4px 0;"></div>
-        <button class="ctx-item" data-action="add-task">➕ Add new task</button>
-        <button class="ctx-item" data-action="view-tasks">📋 View linked tasks</button>
+        <button id="sel-ctx-link"     data-action="link"     style="display:block;width:100%;background:none;border:none;color:#e2e8f0;text-align:left;padding:6px 12px;cursor:pointer;">🔗 Link to selected task</button>
+        <button id="sel-ctx-unlink"   data-action="unlink"   style="display:block;width:100%;background:none;border:none;color:#e2e8f0;text-align:left;padding:6px 12px;cursor:pointer;">✂️ Unlink from task</button>
+        <button id="sel-ctx-addtask"  data-action="add-task" style="display:block;width:100%;background:none;border:none;color:#e2e8f0;text-align:left;padding:6px 12px;cursor:pointer;">➕ Add another task</button>
     </div>
 
     <!-- Element selection — properties float panel -->
@@ -429,22 +418,6 @@ function _syncFocusBtn() {
     if (wBtn) wBtn.style.display = _sectionEnabled ? "block" : "none";
 }
 
-function _showEmbedCtxMenu(clientX, clientY, globalId) {
-    const menu = document.getElementById("embed-ctx-menu");
-    if (!menu) return;
-    const cRect = document.getElementById("embed-container").getBoundingClientRect();
-    menu.style.left = Math.min(clientX - cRect.left, cRect.width  - 175) + "px";
-    menu.style.top  = Math.min(clientY - cRect.top,  cRect.height - 160) + "px";
-    menu.dataset.globalId = globalId;
-    _embedCtxGlobalId = globalId;
-    menu.style.display = "block";
-}
-
-function _hideEmbedCtxMenu() {
-    const menu = document.getElementById("embed-ctx-menu");
-    if (menu) menu.style.display = "none";
-    _embedCtxGlobalId = null;
-}
 
 // ── 4. postMessage API ───────────────────────────────────────────────
 
@@ -604,7 +577,6 @@ let _lastHighlightIds  = [];
 const _SEL_COLOR = new THREE.Color('#00BCD4');
 let _multiSelectedIds  = [];
 let _linkModeActive    = false;
-let _embedCtxGlobalId  = null;
 
 function _findGlobalIdFromHit(intersection) {
     if (intersection.instanceId === undefined) return null;
@@ -631,7 +603,7 @@ function _initSelector() {
 
     canvas.addEventListener('click', (e) => {
         if (_pointerMoved || !model) return;
-        _hideEmbedCtxMenu();
+        if (_ctxMenuEl) _ctxMenuEl.style.display = "none";
         const rect = canvas.getBoundingClientRect();
         mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
         mouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
@@ -695,11 +667,20 @@ function _initSelector() {
         raycaster.setFromCamera(mouse, world.camera.three);
         const hits = raycaster.intersectObjects(world.scene.three.children, true);
 
-        if (!hits.length) { _hideEmbedCtxMenu(); if (_ctxMenuEl) _ctxMenuEl.style.display = "none"; return; }
+        if (!hits.length) { if (_ctxMenuEl) _ctxMenuEl.style.display = "none"; return; }
         const globalId = _findGlobalIdFromHit(hits[0]);
         if (!globalId) return;
-        if (_ctxMenuEl) _ctxMenuEl.style.display = "none";
-        _showEmbedCtxMenu(e.clientX, e.clientY, globalId);
+        if (globalId !== _selectedGlobalId) {
+            if (_selectedGlobalId) resetAllColors();
+            _selectedGlobalId = globalId;
+            colorByGlobalIds([globalId], _SEL_COLOR);
+        }
+        if (!_ctxMenuEl) return;
+        const cRect = document.getElementById("embed-container").getBoundingClientRect();
+        _ctxMenuEl.style.left = Math.min(e.clientX - cRect.left, cRect.width  - 185) + "px";
+        _ctxMenuEl.style.top  = Math.min(e.clientY - cRect.top,  cRect.height - 200) + "px";
+        _ctxMenuEl.dataset.globalId = globalId;
+        _ctxMenuEl.style.display = "block";
     });
 }
 
@@ -861,25 +842,22 @@ document.getElementById("embed-wireframe-btn")?.addEventListener("click", () => 
 
 document.addEventListener("click", (e) => {
     if (_ctxMenuEl && !_ctxMenuEl.contains(e.target)) _ctxMenuEl.style.display = "none";
-    const embedMenu = document.getElementById("embed-ctx-menu");
-    if (embedMenu && !embedMenu.contains(e.target)) _hideEmbedCtxMenu();
 });
 
 document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
     if (_ctxMenuEl) _ctxMenuEl.style.display = "none";
     if (_propsPanelEl) _propsPanelEl.style.display = "none";
-    _hideEmbedCtxMenu();
 });
 
-document.getElementById("embed-ctx-menu")?.addEventListener("click", (e) => {
-    const btn = e.target.closest(".ctx-item");
-    if (!btn) return;
-    const action   = btn.dataset.action;
-    const globalId = document.getElementById("embed-ctx-menu")?.dataset.globalId;
-    _hideEmbedCtxMenu();
-    if (!globalId) return;
-    window.parent.postMessage({ type: "castor:element-action", action, global_id: globalId }, "*");
+["sel-ctx-link", "sel-ctx-unlink", "sel-ctx-addtask"].forEach(id => {
+    document.getElementById(id)?.addEventListener("click", () => {
+        const action   = document.getElementById(id).dataset.action;
+        const globalId = _ctxMenuEl?.dataset.globalId;
+        if (_ctxMenuEl) _ctxMenuEl.style.display = "none";
+        if (!globalId) return;
+        window.parent.postMessage({ type: "castor:element-action", action, global_id: globalId }, "*");
+    });
 });
 
 init();
