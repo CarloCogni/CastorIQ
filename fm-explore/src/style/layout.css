@@ -1,0 +1,86 @@
+/* layout.css — app shell: header / center (viewer + timeline) / right detail panel. */
+
+.exp-app{display:flex;flex-direction:column;height:100vh;overflow:hidden;}
+
+/* ── Module header ── */
+.mh{display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--p1);border-bottom:1px solid var(--b1);flex-shrink:0;}
+.mh-titles{display:flex;flex-direction:column;}
+.mh-title{font-size:13.5px;font-weight:600;color:var(--t1);}
+.mh-sub{font-family:var(--font-mono);font-size:9.5px;color:var(--t3);}
+.mh-tag{font-family:var(--font-mono);font-size:9px;padding:2px 7px;border-radius:3px;background:var(--acc-d);color:var(--acc);border:1px solid var(--acc-b);}
+.mh-build{font-family:var(--font-mono);font-size:8.5px;color:var(--t4);cursor:help;}
+.mh-spacer{flex:1;}
+.vmode{display:flex;gap:4px;}
+.numbering{display:flex;align-items:center;gap:6px;}
+.num-lbl{font-family:var(--font-mono);font-size:12px;color:var(--t3);}
+
+/* ── Shell ── */
+.exp-shell{display:flex;flex:1;min-height:0;overflow:hidden;}
+.exp-center{flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden;}
+
+/* ── Viewer (floor-plan stage) ── */
+.exp-viewer{flex:1;position:relative;overflow:hidden;background:var(--viewer-bg);display:flex;align-items:center;justify-content:center;}
+.plan-stage{position:relative;line-height:0;max-width:100%;max-height:100%;}
+.plan-img{display:block;max-width:100%;max-height:100%;width:auto;height:auto;user-select:none;-webkit-user-drag:none;}
+/* Pin layer overlays the image box exactly; pins are positioned in % of this box. */
+.pin-layer{position:absolute;inset:0;pointer-events:none;}
+
+.v-label{position:absolute;top:10px;left:10px;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.12);border-radius:4px;padding:4px 10px;font-family:var(--font-mono);font-size:9px;color:rgba(255,255,255,.85);display:flex;align-items:center;gap:6px;}
+.v-ld{width:5px;height:5px;border-radius:50%;background:var(--acc);animation:blink 2s infinite;}
+
+/* Floor switcher (vertical, right edge of the viewer) */
+.floor-switcher{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:4px;z-index:5;max-height:84%;overflow-y:auto;padding:2px;}
+.floor-btn{width:38px;height:30px;border-radius:5px;background:rgba(28,29,40,.85);border:1px solid var(--b1);color:var(--t3);font-family:var(--font-mono);font-size:10.5px;cursor:pointer;display:grid;place-items:center;transition:all .12s;flex-shrink:0;}
+.floor-btn:hover{background:var(--p1);color:var(--t2);}
+.floor-btn.on{background:var(--acc-d);border-color:var(--acc-b);color:var(--acc);}
+
+/* Phase legend (bottom-left of the plan) */
+.exp-legend{position:absolute;bottom:10px;left:10px;z-index:5;background:rgba(10,11,18,.82);border:1px solid var(--b1);border-radius:5px;padding:6px 10px;display:flex;gap:12px;flex-wrap:wrap;max-width:70%;}
+.exp-legend[hidden]{display:none;}
+.leg-i{display:flex;align-items:center;gap:5px;font-family:var(--font-mono);font-size:9px;color:var(--t2);}
+.leg-d{width:9px;height:9px;border-radius:2px;flex-shrink:0;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+
+/* ── Timeline ── */
+.exp-timeline{height:96px;background:var(--p1);border-top:1px solid var(--b1);flex-shrink:0;display:flex;flex-direction:column;}
+.exp-timeline.details{height:150px;}
+.etl-head{padding:6px 14px 3px;display:flex;align-items:center;gap:10px;}
+.etl-label{font-family:var(--font-mono);font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);}
+.etl-room{font-size:12px;font-weight:600;color:var(--t1);}
+.etl-track{flex:1;padding:2px 14px 8px;display:flex;align-items:center;gap:6px;overflow-x:auto;}
+.etl-empty{font-family:var(--font-mono);font-size:10px;color:var(--t3);}
+.etl-conn{width:18px;height:1px;background:var(--b2);flex-shrink:0;align-self:center;margin-top:-14px;}
+
+/* ── Detail panel ── */
+.detail-panel{width:300px;background:var(--sb);border-left:1px solid var(--b1);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden;}
+.dp-head{padding:10px 14px;border-bottom:1px solid var(--b1);}
+.dp-title{font-size:12.5px;font-weight:600;color:var(--t1);}
+.dp-sub{font-family:var(--font-mono);font-size:9px;color:var(--t3);margin-top:1px;}
+.dp-body{flex:1;overflow-y:auto;padding:12px 14px;}
+.dp-empty{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;color:var(--t3);padding:30px 10px;}
+.dp-empty-icon{font-size:30px;opacity:.45;color:var(--acc);}
+.dp-empty-text{font-size:11.5px;line-height:1.5;max-width:210px;}
+.dp-actions{padding:10px 14px;border-top:1px solid var(--b1);display:flex;gap:5px;flex-wrap:wrap;}
+
+/* Detail-panel sections + fields */
+.dp-sec{margin-bottom:16px;}
+.dp-sec-lbl{display:flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin-bottom:8px;}
+.dp-cfg{margin-left:auto;background:none;border:none;color:var(--t3);cursor:pointer;font-size:11px;line-height:1;padding:0 2px;}
+.dp-cfg:hover{color:var(--acc);}
+.info-rows{margin-top:8px;border-top:1px solid var(--b1);padding-top:4px;}
+.info-row{display:flex;justify-content:space-between;gap:8px;padding:3px 0;}
+.info-k{font-size:11px;color:var(--t2);}
+.info-v{font-family:var(--font-mono);font-size:10.5px;color:var(--t1);text-align:right;}
+.fld{display:flex;flex-direction:column;gap:3px;margin-bottom:9px;}
+.fld span{font-size:10.5px;color:var(--t2);}
+.fld-in{background:var(--p2);border:1px solid var(--b1);border-radius:4px;padding:6px 9px;font-size:11.5px;color:var(--t1);font-family:var(--font-mono);outline:none;transition:border-color .12s;width:100%;}
+.fld-in:focus{border-color:var(--acc-b);}
+.fld-in::placeholder{color:var(--t3);}
+.fld-in[readonly]{opacity:.6;cursor:not-allowed;background:var(--p1);}
+select.fld-in{cursor:pointer;}
+.dp-photos-empty{font-family:var(--font-mono);font-size:10.5px;color:var(--t3);margin-bottom:9px;}
+
+/* ── Scrollbars ── */
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-thumb{background:var(--b2);border-radius:4px;}
+::-webkit-scrollbar-track{background:transparent;}
