@@ -238,16 +238,13 @@ class Task(UUIDModel):
 
     @property
     def link_status(self) -> str:
-        """'non_physical' | 'linked' | 'partial' | 'unlinked'."""
+        """'non_physical' | 'linked' | 'unlinked'."""
         if self.is_non_physical:
             return "non_physical"
         # Use all() so prefetch_related cache is honoured — .count() bypasses it.
         count = len(self.ifc_entities.all())
         if count == 0:
             return "unlinked"
-        # "partial" heuristic: fewer than 3 entities for a non-manual task
-        if self.source != self.Source.MANUAL and count < 3:
-            return "partial"
         return "linked"
 
 

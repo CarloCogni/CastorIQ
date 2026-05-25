@@ -491,16 +491,14 @@ window.addEventListener("message", async (e) => {
     }
 
     if (msg.type === "castor:link-colors") {
-        const { linked = [], partial = [], unlinked = [], filter = "all" } = msg;
+        const { linked = [], unlinked = [], filter = "all" } = msg;
         if (!model) return;
         resetAllColors();
         if (filter === "all") {
-            colorByGlobalIds(linked,  new THREE.Color('#1D9E75'));
-            colorByGlobalIds(partial, new THREE.Color('#EF9F27'));
+            colorByGlobalIds(linked, new THREE.Color('#1D9E75'));
         } else {
             colorByGlobalIds([...globalIdIndex.keys()], C.tl_no_task);
             if (filter === "linked")        colorByGlobalIds(linked,   new THREE.Color('#1D9E75'));
-            else if (filter === "partial")  colorByGlobalIds(partial,  new THREE.Color('#EF9F27'));
             else if (filter === "unlinked") colorByGlobalIds(unlinked, new THREE.Color('#6B7280'));
         }
         return;

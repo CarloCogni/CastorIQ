@@ -100,7 +100,6 @@
     <div id="fd-link-filter" style="display: flex; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--bs-border-color); flex-shrink: 0; flex-wrap: wrap;">
       <button class="fd-lf-btn active" data-filter="all">All</button>
       <button class="fd-lf-btn" data-filter="linked"><span style="color:#1D9E75;">●</span> Linked</button>
-      <button class="fd-lf-btn" data-filter="partial"><span style="color:#EF9F27;">●</span> Partial</button>
       <button class="fd-lf-btn" data-filter="unlinked"><span style="color:#4B5563;">●</span> Unlinked</button>
     </div>
     <!-- Dark Gantt scroll area — single scroll container; name col is position:sticky left:0 -->
@@ -663,7 +662,7 @@
       }
       const nameEl = document.createElement("div");
       nameEl.style.cssText = "font-size:10px;color:var(--bs-secondary-color);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px;";
-      const _lnkClr = { linked: "#1D9E75", partial: "#EF9F27", unlinked: "#4B5563" };
+      const _lnkClr = { linked: "#1D9E75", unlinked: "#4B5563" };
       const dotClr = !t.is_non_physical && t.link_status ? _lnkClr[t.link_status] : null;
       if (dotClr) {
         const dot = document.createElement("span");
@@ -999,15 +998,14 @@
 
     if (_fdTaskSelected) return;
 
-    const linked = [], partial = [], unlinked = [];
+    const linked = [], unlinked = [];
     for (const t of (_fdLastData.tasks || [])) {
       const ids = t.entity_global_ids || [];
       if (!ids.length) continue;
       if (t.link_status === "linked")        linked.push(...ids);
-      else if (t.link_status === "partial")  partial.push(...ids);
       else if (t.link_status === "unlinked") unlinked.push(...ids);
     }
-    sendToViewer({ type: "castor:link-colors", linked, partial, unlinked, filter: _fdLinkFilter });
+    sendToViewer({ type: "castor:link-colors", linked, unlinked, filter: _fdLinkFilter });
   }
 
   function _updateFocusBtn() {
