@@ -2019,9 +2019,32 @@ class LinkElementView(ProjectModifyAccessMixin, View):
             },
         )
         status_code = 201 if created else 200
-        return JsonResponse(
-            {"status": "linked", "binding_id": str(binding.id)}, status=status_code
-        )
+        return JsonResponse({"status": "linked", "binding_id": str(binding.id)}, status=status_code)
+
+
+class UnlinkAllElementView(ProjectModifyAccessMixin, View):
+    """POST — remove all task bindings for a given IFC element globalId across the project."""
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        project = self.get_project()
+
+        try:
+            body = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+        global_id = body.get("global_id", "").strip()
+        if not global_id:
+            return JsonResponse({"error": "global_id is required"}, status=400)
+
+        deleted, _ = TaskEntityBinding.objects.filter(
+            task__project=project, entity_global_id=global_id
+        ).delete()
+
+        if not deleted:
+            return JsonResponse({"error": "No bindings found"}, status=404)
+
+        return JsonResponse({"status": "unlinked", "deleted": deleted})
 
 
 class UnlinkElementView(ProjectModifyAccessMixin, View):

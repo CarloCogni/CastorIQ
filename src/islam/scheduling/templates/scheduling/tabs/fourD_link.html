@@ -1065,12 +1065,7 @@
   }
 
   async function _doUnlinkElement(globalId) {
-    const tasks  = fd_vs.tasks;
-    const task   = fd_selectedRowIdx >= 0 ? tasks[fd_selectedRowIdx] : null;
-    if (!task || task.isGroup) { _showToast("No task selected — click a task first", "error"); return; }
-    const taskId = task.pk || task.id;
-    if (!taskId) { _showToast("Task has no ID", "error"); return; }
-    const url = `/islam/projects/{{ project.pk }}/tasks/${taskId}/unlink-element/`;
+    const url = `/islam/projects/{{ project.pk }}/elements/unlink-all/`;
     try {
       const resp = await fetch(url, {
         method: "POST",
@@ -1079,7 +1074,7 @@
       });
       const data = await resp.json();
       if (resp.ok) {
-        _showToast("Unlinked from task", "success");
+        _showToast("Unlinked from all tasks", "success");
         loadGantt();
       } else if (resp.status === 404) {
         _showToast("No link found", "error");

@@ -54,9 +54,12 @@ def test_link_element_idempotent(client):
     assert r2.status_code == 200
     assert r2.json()["status"] == "linked"
     # Still only one binding row
-    assert TaskEntityBinding.objects.filter(
-        task=task, entity_global_id="19iO7YoRr7ze7jVuR7Kvet"
-    ).count() == 1
+    assert (
+        TaskEntityBinding.objects.filter(
+            task=task, entity_global_id="19iO7YoRr7ze7jVuR7Kvet"
+        ).count()
+        == 1
+    )
 
 
 @pytest.mark.django_db
@@ -85,6 +88,42 @@ def test_unlink_element_removes_binding(client):
     assert not TaskEntityBinding.objects.filter(
         task=task, entity_global_id="19iO7YoRr7ze7jVuR7Kvet"
     ).exists()
+
+
+@pytest.mark.django_db
+def test_unlink_all_removes_all_bindings(client):
+    """POST unlink-all deletes all bindings for a globalId across tasks and returns deleted count."""
+    user = UserFactory()
+    project = ProjectFactory(owner=user)
+    task_a = TaskFactory(project=project)
+    task_b = TaskFactory(project=project)
+    global_id = "19iO7YoRr7ze7jVuR7Kvet"
+    TaskEntityBinding.objects.create(
+        task=task_a,
+        entity_global_id=global_id,
+        confidence=1.0,
+        link_method=TaskEntityBinding.LinkMethod.EXACT,
+    )
+    TaskEntityBinding.objects.create(
+        task=task_b,
+        entity_global_id=global_id,
+        confidence=1.0,
+        link_method=TaskEntityBinding.LinkMethod.EXACT,
+    )
+    client.force_login(user)
+
+    url = f"/islam/projects/{project.pk}/elements/unlink-all/"
+    r = client.post(
+        url,
+        data=json.dumps({"global_id": global_id}),
+        content_type="application/json",
+    )
+
+    assert r.status_code == 200
+    data = r.json()
+    assert data["status"] == "unlinked"
+    assert data["deleted"] == 2
+    assert not TaskEntityBinding.objects.filter(entity_global_id=global_id).exists()
 
 
 @pytest.mark.django_db
