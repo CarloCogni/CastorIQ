@@ -1,5 +1,20 @@
 /* components.css — buttons, pins, toast. */
 
+/* ── Castor embedded mode (set by VIEWER_INIT { embedded:true }) ──
+   Hides standalone-only controls whose responsibility moved to the
+   host page (plan upload, theme, demo reset, floor-manager edits).
+   The rest of the module — point placement, photos, 360°, compare,
+   phase manager, IFC room link — behaves identically.
+
+   The floor switcher (vertical list of floor buttons) stays visible
+   because users still need to switch between floors; only the ✎ edit
+   button and the import-plan affordance inside its modal are hidden. */
+body.castor-embedded #btnImport,
+body.castor-embedded #btnTheme,
+body.castor-embedded .fm-reset,
+body.castor-embedded .floor-edit,
+body.castor-embedded .fm-add { display: none !important; }
+
 /* ── Buttons ── */
 .btn{display:inline-flex;align-items:center;gap:4px;padding:5px 11px;border-radius:4px;font-size:11.5px;font-weight:500;cursor:pointer;border:1px solid var(--b2);background:transparent;color:var(--t2);font-family:var(--font-ui);transition:all .12s;}
 .btn:hover:not(:disabled){background:var(--p2);color:var(--t1);}

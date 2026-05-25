@@ -207,4 +207,49 @@ urlpatterns = [
         views.WorkOrderIntentRejectView.as_view(),
         name="work_intent_reject",
     ),
+    # Explore — floor-plan + photo / 360° viewer (iframe-embedded).
+    path(
+        "<uuid:pk>/facilities/explore/",
+        views.ExploreView.as_view(),
+        name="explore",
+    ),
+    # Serves Pavla's vendored module assets from facilities/explore/ (NOT
+    # under collectstatic — peer module, not Django static). The iframe loads
+    # `embed/index.html`; every relative asset Pavla's code references is
+    # delivered through the same `<path:resource>` capture.
+    path(
+        "<uuid:pk>/facilities/explore/embed/<path:resource>",
+        views.ExploreEmbedView.as_view(),
+        name="explore_embed",
+    ),
+    path(
+        "<uuid:pk>/facilities/explore/floors/",
+        views.ExploreFloorsApiView.as_view(),
+        name="explore_floors",
+    ),
+    path(
+        "<uuid:pk>/facilities/explore/rooms/<uuid:storey_pk>/",
+        views.ExploreRoomsApiView.as_view(),
+        name="explore_rooms",
+    ),
+    path(
+        "<uuid:pk>/facilities/explore/catalog/",
+        views.ExploreCatalogApiView.as_view(),
+        name="explore_catalog",
+    ),
+    path(
+        "<uuid:pk>/facilities/explore/state/",
+        views.ExploreUserStateApiView.as_view(),
+        name="explore_state",
+    ),
+    path(
+        "<uuid:pk>/facilities/explore/floor-plans/<uuid:storey_pk>/upload/",
+        views.ExploreFloorPlanUploadView.as_view(),
+        name="explore_floor_plan_upload",
+    ),
+    path(
+        "<uuid:pk>/facilities/explore/floor-plans/<uuid:storey_pk>/delete/",
+        views.ExploreFloorPlanDeleteView.as_view(),
+        name="explore_floor_plan_delete",
+    ),
 ]

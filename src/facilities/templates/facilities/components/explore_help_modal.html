@@ -1,0 +1,131 @@
+<!-- facilities/components/explore_help_modal.html — "How Explore works" -->
+
+<div class="modal fade" id="exploreHelpModal" tabindex="-1" aria-labelledby="exploreHelpLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+
+            <div class="modal-header border-bottom px-4 py-3"
+                 style="border-color: var(--bs-border-color) !important;">
+                <h5 class="modal-title fw-semibold fs-6 mb-0" id="exploreHelpLabel">
+                    <i class="bi bi-map me-2" style="color: var(--castor-facilities, #14b8a6);"></i>
+                    How Explore Works
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body px-4 py-4">
+
+                <!-- 1. What is Explore? -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-binoculars me-1" style="color: var(--castor-facilities, #14b8a6);"></i>
+                    What is Explore?
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    Explore is a 2D floor-plan workspace for facility managers. Drop
+                    <strong class="text-body">points</strong> on a floor plan, attach
+                    <strong class="text-body">photos</strong> or
+                    <strong class="text-body">360° panoramas</strong> to each one, and
+                    track how a space changes over time. Each point can link to an IFC
+                    <code>IfcSpace</code> so a click can drive the 3D viewer (coming soon)
+                    and a panel can pull rows from the Asset Register, Work Orders and Permits
+                    filtered to that room.
+                </p>
+
+                <!-- 2. Floor plans -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-layers me-1" style="color: var(--castor-facilities, #14b8a6);"></i>
+                    Floor plans
+                </p>
+                <div class="d-flex flex-column gap-2 fs-8 mb-4">
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge rounded-pill flex-shrink-0 mt-1"
+                              style="background-color: rgba(20, 184, 166, 0.15); color: var(--castor-facilities, #14b8a6); border: 1px solid rgba(20, 184, 166, 0.3);">
+                            <i class="bi bi-building"></i> From IFC
+                        </span>
+                        <span class="text-secondary">
+                            <strong class="text-body">Auto-loaded.</strong> Each <em>IfcBuildingStorey</em>
+                            in the project's IFC model appears as a floor in the switcher. Rooms
+                            (<em>IfcSpace</em> children) are listed for each floor with their GlobalID and
+                            IFC properties — pick one in the right panel to link a point to it.
+                        </span>
+                    </div>
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge rounded-pill flex-shrink-0 mt-1"
+                              style="background-color: rgba(148, 163, 184, 0.15); color: var(--bs-body-color); border: 1px solid var(--bs-border-color);">
+                            <i class="bi bi-upload"></i> Import plans
+                        </span>
+                        <span class="text-secondary">
+                            <strong class="text-body">Upload images / PDFs.</strong> The toolbar's
+                            <em>⤓ Import plans</em> button takes PNG / JPG / WebP / PDF; each PDF page becomes
+                            a floor. Plans uploaded for IFC storeys are persisted server-side and
+                            survive a browser refresh. The <em>⬚ White-out</em> button strips a white background
+                            for clean line drawings (reversible).
+                        </span>
+                    </div>
+                </div>
+
+                <!-- 3. Points & photos -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-geo-alt me-1" style="color: var(--castor-facilities, #14b8a6);"></i>
+                    Points &amp; photos
+                </p>
+                <div class="d-flex flex-column gap-2 fs-8 mb-4">
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge rounded-pill flex-shrink-0 mt-1"
+                              style="background-color: rgba(20, 184, 166, 0.15); color: var(--castor-facilities, #14b8a6); border: 1px solid rgba(20, 184, 166, 0.3);">
+                            <i class="bi bi-plus-lg"></i> + Point
+                        </span>
+                        <span class="text-secondary">
+                            <strong class="text-body">Place pins.</strong> Click <em>+ Point</em> then click anywhere on
+                            the plan to drop a pin. Drag to reposition. Each pin has its own <em>phase</em> (room
+                            state — Construction, Fit-out, Occupied by default; rename / recolour / add your own).
+                            Pin colour follows the phase; the number on the pin follows the placement order
+                            (or the in-phase sequence in "by phase" mode).
+                        </span>
+                    </div>
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge rounded-pill flex-shrink-0 mt-1"
+                              style="background-color: rgba(148, 163, 184, 0.15); color: var(--bs-body-color); border: 1px solid var(--bs-border-color);">
+                            <i class="bi bi-camera"></i> Photos &amp; 360°
+                        </span>
+                        <span class="text-secondary">
+                            Each point has two separate archives — flat <em>Photos</em> and equirectangular
+                            <em>360°</em> panoramas. Upload from disk or capture from the device camera. The
+                            bottom timeline shows the archive's versions in time order; the panel hero is the
+                            newest. Click any timeline item to open the editor (name, code, date / time,
+                            description). Use <em>⇔ Compare</em> to scrub two versions side-by-side with a draggable
+                            divider (works for both flat photos and synchronised 360° spheres).
+                        </span>
+                    </div>
+                </div>
+
+                <!-- 4. IFC + table links -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-link-45deg me-1" style="color: var(--castor-facilities, #14b8a6);"></i>
+                    IFC links &amp; linked tables
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    In the right panel pick a <em>room</em> for the selected point to auto-fill its GlobalID
+                    and IFC type. You can also attach read-only <strong class="text-body">linked tables</strong>
+                    to a room — open Work Orders, Facility Assets and active Permits — filtered by your chosen
+                    match key (GlobalID / room number / department). Clicking a placed pin currently fires a
+                    toast; cross-tool focus into the 3D viewer is on the roadmap.
+                </p>
+
+                <!-- 5. Caveats -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-exclamation-circle me-1" style="color: var(--castor-accent, #8b5cf6);"></i>
+                    Caveats
+                </p>
+                <div class="d-flex flex-column gap-1 fs-8 text-secondary">
+                    <span><i class="bi bi-dot"></i>Explore stores 2D plan positions, not IFC geometry — placing a point never modifies the IFC file.</span>
+                    <span><i class="bi bi-dot"></i>Floor plans uploaded for non-IFC floors (e.g. PDF pages you imported manually) live in your browser only; only IFC-anchored floors persist server-side in V1.</span>
+                    <span><i class="bi bi-dot"></i>360° panoramas should be equirectangular (≈2:1). The viewer warns if an image isn't.</span>
+                    <span><i class="bi bi-dot"></i>PDF import and the 360° viewer load <code>pdf.js</code> and <code>three.js</code> from a CDN — the iframe needs internet for those.</span>
+                    <span><i class="bi bi-dot"></i>Photo storage is unbounded in V1 — large rollouts may want to revisit quotas.</span>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>

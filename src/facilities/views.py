@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from uuid import UUID, uuid4
 
 from django.contrib import messages
@@ -16,11 +17,15 @@ from django.http import (
     HttpResponse,
     HttpResponseBadRequest,
     HttpResponseRedirect,
+    JsonResponse,
 )
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
+from django.utils.decorators import method_decorator
 from django.views import View
+from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.generic import TemplateView
+from django.views.static import serve
 
 from core.http import toast_response, trigger_toast
 from core.mixins import (
@@ -30,10 +35,13 @@ from core.mixins import (
 )
 from environments.models import Project, ProjectRole
 from environments.services import ProjectAccessService
+from ifc_processor.models import IFCSpatialElement
 
 from .models import (
     ActionRequest,
     ClassificationReference,
+    ExploreFloorPlan,
+    ExplorePoint,
     FacilityAsset,
     FMIntentProposal,
     Permit,
@@ -48,6 +56,23 @@ from .services.asset_service import (
     AssetNotFoundError,
     AssetService,
     AssetValidationError,
+)
+from .services.explore_catalog_service import build_table_catalog as build_explore_catalog
+from .services.explore_floor_plan_service import sync_floor_plans
+from .services.explore_phase_service import (
+    list_for_project as list_explore_phases,
+)
+from .services.explore_phase_service import (
+    serialize_phases,
+    sync_phases_for_project,
+)
+from .services.explore_point_service import (
+    bulk_sync_points,
+    serialize_point,
+)
+from .services.explore_spatial_service import (
+    list_floors_for_project,
+    list_rooms_for_floor,
 )
 from .services.export_reconciliation_service import (
     ExportError,
@@ -682,7 +707,6 @@ def _spatial_breadcrumb(asset: FacilityAsset) -> list[dict]:
 
 def _project_spatial_elements(project) -> list:
     """Return the project's spatial elements for location-picker dropdowns."""
-    from ifc_processor.models import IFCSpatialElement
 
     return list(
         IFCSpatialElement.objects.filter(ifc_file__project=project)
@@ -1818,7 +1842,6 @@ class OccupantPortalConfirmView(OccupantPortalAccessMixin, View):
             return toast_response("That draft has expired. Please try again.", "error", status=400)
 
         # Reconstruct candidate list (filtered to the project — defensive).
-        from ifc_processor.models import IFCSpatialElement
 
         candidates = list(
             IFCSpatialElement.objects.filter(
@@ -1920,3 +1943,261 @@ def _intent_edits_payload(post, proposal: FMIntentProposal) -> list[dict]:
             }
         )
     return edits
+
+
+# ── Explore (floor-plan + photo / 360° viewer) ───────────────────────────
+
+
+class ExploreView(ProjectTabMixin, TemplateView):
+    """Explore sub-tab — iframe host for Pavla's floor-plan / photo module.
+
+    The body template loads the static SPA in an ``<iframe>`` and bridges
+    its postMessage protocol to four JSON endpoints (floors / rooms /
+    catalog / state). The iframe is the rendering authority; Castor only
+    feeds it data and persists ``STATE_CHANGED`` snapshots.
+    """
+
+    active_tab = "facilities"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        project = self.get_project()
+        context.update(_role_context(project, self.request.user, self.request.session))
+        context["active_sub_tab"] = "explore"
+        context["facilities_body_template"] = "facilities/tabs/_facilities_explore.html"
+        context["explore_urls"] = {
+            "embed": reverse(
+                "facilities:explore_embed",
+                args=[project.pk, "index.html"],
+            ),
+            "floors": reverse("facilities:explore_floors", args=[project.pk]),
+            "rooms_base": reverse("facilities:explore_rooms", args=[project.pk, uuid4()]).rsplit(
+                "/", 2
+            )[0]
+            + "/",
+            "catalog": reverse("facilities:explore_catalog", args=[project.pk]),
+            "state": reverse("facilities:explore_state", args=[project.pk]),
+        }
+        # Storeys + their plan status drive the upload panel above the iframe.
+        # Each entry: { pk, name, has_plan, upload_url }. The iframe gets the
+        # same data through the floors JSON endpoint; this is the host-page
+        # view used for the upload affordance.
+        storeys = (
+            IFCSpatialElement.objects.filter(
+                ifc_file__project=project,
+                spatial_type=IFCSpatialElement.SpatialType.BUILDING_STOREY,
+            )
+            .select_related("entity", "explore_floor_plan")
+            .order_by("elevation", "entity__name")
+        )
+        context["explore_storeys"] = [
+            {
+                "pk": str(storey.pk),
+                "name": (storey.entity.name if storey.entity_id else str(storey.pk)),
+                "label": storey.long_name or (storey.entity.name if storey.entity_id else ""),
+                "has_plan": bool(getattr(storey, "explore_floor_plan", None)),
+                "upload_url": reverse(
+                    "facilities:explore_floor_plan_upload",
+                    args=[project.pk, storey.pk],
+                ),
+                "delete_url": reverse(
+                    "facilities:explore_floor_plan_delete",
+                    args=[project.pk, storey.pk],
+                ),
+            }
+            for storey in storeys
+        ]
+        return context
+
+
+# Pavla's Explore module lives as a peer directory under facilities/, NOT under
+# static/. The folder is treated as a vendored standalone web app (per her
+# README) and served behind a project-scoped URL so authentication applies.
+# Pointing at this folder is safe: it contains only her vetted JS/CSS/HTML/SVG.
+EXPLORE_MODULE_ROOT = Path(__file__).resolve().parent / "explore"
+
+
+@method_decorator(xframe_options_sameorigin, name="dispatch")
+class ExploreEmbedView(ProjectAccessMixin, View):
+    """Serve Pavla's Explore module assets from facilities/explore/.
+
+    The folder is NOT under collectstatic — it's a vendored peer module.
+    Castor delivers ``index.html`` (and every relative asset Pavla's code
+    references — ``./src/main.js``, ``./assets/...``, ``./src/style/...``)
+    via this single route so the iframe sees a flat URL space that matches
+    her standalone dev server.
+
+    The ``xframe_options_sameorigin`` decorator overrides Django's default
+    ``X-Frame-Options: DENY`` for THIS view only — required so the parent
+    Facilities page can iframe the module. Every other Castor view keeps
+    its clickjacking protection.
+
+    For production, an nginx alias on this URL prefix beats Django's
+    ``serve`` for throughput; this view is the always-works fallback.
+    """
+
+    def get(self, request, pk, resource):
+        self.get_project()  # access check (raises 403 / 404)
+        response = serve(
+            request,
+            resource or "index.html",
+            document_root=str(EXPLORE_MODULE_ROOT),
+        )
+        # Disable browser caching so a stale response from an earlier deploy
+        # (e.g. one that lacked X-Frame-Options: SAMEORIGIN) can never get
+        # served on a 304 round-trip. Performance cost is minor — Pavla's
+        # tree is <2MB total and lives on local disk.
+        response["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response["Pragma"] = "no-cache"
+        response["Expires"] = "0"
+        return response
+
+
+class ExploreFloorPlanUploadView(ProjectModifyAccessMixin, View):
+    """Upload a floor-plan image and attach it to an IFC storey.
+
+    Idempotent on the (storey,) key — re-uploading replaces the image on
+    the existing :class:`ExploreFloorPlan` row. The iframe re-hydrates on
+    page reload (host-side decision so we don't need to wire a postMessage
+    refresh).
+    """
+
+    def post(self, request, pk, storey_pk):
+        project = self.get_project()
+        storey = get_object_or_404(
+            IFCSpatialElement,
+            pk=storey_pk,
+            ifc_file__project=project,
+            spatial_type=IFCSpatialElement.SpatialType.BUILDING_STOREY,
+        )
+        upload = request.FILES.get("image")
+        if upload is None:
+            return toast_response("Choose an image file first.", "error", status=400)
+
+        plan, _created = ExploreFloorPlan.objects.get_or_create(
+            storey=storey,
+            defaults={"uploaded_by": request.user, "knockout": False},
+        )
+        plan.uploaded_by = request.user
+        plan.image.save(upload.name, upload, save=True)
+        logger.info(
+            "Explore floor plan uploaded for storey %s by user %s", storey.pk, request.user.pk
+        )
+        return toast_response(
+            f"Floor plan saved for {storey.entity.name if storey.entity_id else 'storey'}.",
+            "success",
+        )
+
+
+class ExploreFloorPlanDeleteView(ProjectModifyAccessMixin, View):
+    """Remove the uploaded plan image for an IFC storey.
+
+    Points and media previously placed on this floor are **not** deleted —
+    they stay anchored to the storey and reappear if a plan is re-uploaded.
+    """
+
+    def post(self, request, pk, storey_pk):
+        project = self.get_project()
+        plan = get_object_or_404(
+            ExploreFloorPlan,
+            storey__pk=storey_pk,
+            storey__ifc_file__project=project,
+        )
+        plan.delete()
+        logger.info(
+            "Explore floor plan removed for storey %s by user %s", storey_pk, request.user.pk
+        )
+        return toast_response("Floor plan removed.", "success")
+
+
+class _ExploreApiBase(ProjectAccessMixin, View):
+    """Common access guard for Explore JSON endpoints (read-only)."""
+
+
+class ExploreFloorsApiView(_ExploreApiBase):
+    """Return the project's floor descriptors in Pavla's ``SET_FLOORS`` shape."""
+
+    def get(self, request, pk):
+        project = self.get_project()
+        return JsonResponse({"floors": list_floors_for_project(project)})
+
+
+class ExploreRoomsApiView(_ExploreApiBase):
+    """Return one floor's room descriptors in Pavla's ``SET_ROOMS`` shape."""
+
+    def get(self, request, pk, storey_pk):
+        project = self.get_project()
+        storey = get_object_or_404(
+            IFCSpatialElement,
+            pk=storey_pk,
+            ifc_file__project=project,
+            spatial_type=IFCSpatialElement.SpatialType.BUILDING_STOREY,
+        )
+        return JsonResponse({"floorId": str(storey.pk), "rooms": list_rooms_for_floor(storey)})
+
+
+class ExploreCatalogApiView(_ExploreApiBase):
+    """Return the FM table catalog in Pavla's ``SET_TABLE_CATALOG`` shape."""
+
+    def get(self, request, pk):
+        project = self.get_project()
+        return JsonResponse({"tables": build_explore_catalog(project)})
+
+
+class ExploreUserStateApiView(ProjectModifyAccessMixin, View):
+    """GET → saved working set in Pavla's ``SET_USER_STATE`` shape.
+
+    POST → receive a debounced ``STATE_CHANGED`` snapshot, reconcile to
+    the DB, return a ``client_id → real URL`` map for newly persisted
+    media so the iframe can swap its in-memory data URLs.
+    """
+
+    def get(self, request, pk):
+        project = self.get_project()
+        phases = list_explore_phases(project)
+        points = (
+            ExplorePoint.objects.filter(project=project)
+            .select_related("phase", "ifc_entity", "floor")
+            .prefetch_related("media")
+        )
+        return JsonResponse(
+            {
+                "state": {
+                    "phases": [p.name for p in phases],
+                    "phaseColors": {p.name: p.color for p in phases},
+                    "phaseMeta": serialize_phases(phases),
+                    "points": [serialize_point(p) for p in points],
+                },
+            }
+        )
+
+    def post(self, request, pk):
+        import json
+
+        project = self.get_project()
+        try:
+            payload = json.loads(request.body.decode("utf-8") or "{}")
+        except (ValueError, UnicodeDecodeError):
+            return toast_response("Bad explore state payload", "error", status=400)
+
+        snapshot = payload.get("state") if isinstance(payload, dict) else None
+        if not isinstance(snapshot, dict):
+            return toast_response("Missing state in payload", "error", status=400)
+
+        sync_phases_for_project(
+            project,
+            snapshot.get("phases"),
+            snapshot.get("phaseColors"),
+        )
+        sync_floor_plans(project, snapshot.get("floors") or [], request.user)
+        media_url_map = bulk_sync_points(
+            project,
+            snapshot.get("points") or [],
+            request.user,
+        )
+        return JsonResponse(
+            {
+                "status": "ok",
+                "media_url_map": media_url_map,
+            }
+        )

@@ -16,6 +16,8 @@ export const MSG = {
   SET_FLOORS: "SET_FLOORS",
   SET_ROOMS: "SET_ROOMS",
   SET_TABLE_CATALOG: "SET_TABLE_CATALOG",
+  // v0.2 — hydrates the working set from server-persisted data on load.
+  SET_USER_STATE: "SET_USER_STATE",
   GET_STATE: "GET_STATE",
 
   // ── outbound (Explore → Castor) ──

@@ -81,7 +81,14 @@ purely via `postMessage` (below) — no other coupling.
 
 ---
 
-## postMessage protocol (v0.1)
+## postMessage protocol (v0.2)
+
+> v0.2 adds `SET_USER_STATE` (host pushes the saved working set on load). v0.1
+> hosts keep working: the module ignores unknown messages and the new handler is
+> additive. Castor embeds at v0.2 to drive bidirectional persistence — see
+> `src/facilities/templates/facilities/tabs/_facilities_explore.html` for the
+> host-side bridge. The module is served through `ExploreEmbedView` at
+> `/<project>/facilities/explore/embed/…`, not via Django static files.
 
 ### Envelope
 
@@ -106,12 +113,13 @@ Outbound messages always carry `source: "fm-explore"` so the host can filter the
 
 | `type` | payload | effect | reply |
 |---|---|---|---|
-| `VIEWER_INIT` | `{ theme?, floorId?, focus? }` | locks origin; applies initial theme / floor / focus | `ACK {ready, capabilities}` |
+| `VIEWER_INIT` | `{ theme?, floorId?, focus?, embedded? }` | locks origin; applies initial theme / floor / focus. `embedded:true` (v0.2) adds `.castor-embedded` to `<body>` so the standalone-only toolbar controls (import plans / theme toggle / demo reset) are CSS-hidden — host owns those flows when embedded. | `ACK {ready, capabilities}` |
 | `FOCUS_ELEMENT` | `{ id: GlobalID }` | switch to the point's floor, select + highlight it | `ACK {pointId, floorId}` / `ERROR UNKNOWN_GLOBAL_ID` |
 | `SET_THEME` | `{ theme: "dark"\|"light" }` | switch theme | `ACK {theme}` |
 | `SET_FLOORS` | `{ floors: [{id?,name,label,plan,planType?,rooms?}], replace? }` | add/replace floors (IfcOpenShell-derived plans) | `ACK {floorIds}` |
 | `SET_ROOMS` | `{ floorId, rooms: [{globalId,name,ifcType,props?:{number,department,building,…}}] }` | set a floor's IFC room list; `props` are arbitrary IFC properties usable as identification fields + table filter keys | `ACK {floorId, count}` |
 | `SET_TABLE_CATALOG` | `{ tables: { <key>: { group, label, columns:[{field,label}], rows:[{...display fields, globalId, roomNumber, department, _status?}] } } }` | supply the Facility/Schedule table catalog. Rows carry `globalId`/`roomNumber`/`department`; the panel filters them per the user's chosen match key | `ACK {tables}` |
+| `SET_USER_STATE` *(v0.2)* | `{ state: { floors?, points?, phases?, phaseColors?, idProps?, numbering?, archiveType?, timelineView?, sort?, activeFloorId? } }` | hydrate the working set from server-persisted data. Same shape `exportFullState()` produces; omitted fields keep their current value, so the host can also send partial patches on re-sync | `ACK {floors, points, phases}` |
 | `GET_STATE` | — | — | `STATE {...}` |
 
 ### Outbound (Explore → Castor)

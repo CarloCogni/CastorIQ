@@ -1,0 +1,318 @@
+<!-- facilities/tabs/_facilities_explore.html — Explore sub-tab body -->
+<!--
+    Hosts Pavla's floor-plan + photo / 360° module in an iframe. The module
+    lives at src/facilities/explore/ as a vendored peer (NOT under static/)
+    and is delivered through ExploreEmbedView so authentication applies.
+    The iframe is the rendering authority; this template supplies the
+    shell, the help modal, and a postMessage bridge that:
+      1. responds to VIEWER_READY with VIEWER_INIT (theme),
+      2. fetches floors / rooms / catalog / saved state and pushes them in,
+      3. POSTs every STATE_CHANGED snapshot back to ExploreUserStateApiView,
+      4. forwards HOTSPOT_CLICKED + errors to the global castor:toast system.
+    See src/facilities/explore/README.md for protocol v0.2.
+-->
+
+<div class="facilities-scope d-flex flex-column gap-3 h-100" id="facilities-explore-body">
+
+    <!-- Top bar: title + help pill -->
+    <div class="d-flex align-items-center gap-3 flex-wrap flex-shrink-0">
+        <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-map fs-5" style="color: var(--castor-facilities, #14b8a6);"></i>
+            <h5 class="m-0">Explore</h5>
+            <button type="button"
+                    class="help-pill"
+                    data-bs-toggle="modal"
+                    data-bs-target="#exploreHelpModal"
+                    title="How Explore works"
+                    aria-label="How Explore works">
+                <i class="bi bi-question-circle"></i>
+            </button>
+        </div>
+        <div class="ms-auto fs-8 text-secondary">
+            <i class="bi bi-info-circle me-1"></i>
+            Place pins on floor plans, attach photos, link them to IFC spaces. Changes save automatically.
+        </div>
+    </div>
+
+    <!--
+        Floor-plan upload panel — surfaces every IFC building storey for the
+        project and lets editors attach a plan image to each. Editors get a
+        full row with status badge + upload affordance; viewers see a
+        read-only summary. The iframe needs a plan image on a floor to
+        render anything; without it the viewer stays empty.
+    -->
+    {% if explore_storeys %}
+    <div class="border rounded p-3 flex-shrink-0" style="background-color: var(--bs-tertiary-bg);">
+        <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+            <i class="bi bi-layers" style="color: var(--castor-facilities, #14b8a6);"></i>
+            <strong class="fs-7">Floor plans</strong>
+            <span class="fs-8 text-secondary">
+                {{ explore_storeys|length }} storey{{ explore_storeys|length|pluralize:"s" }} detected from IFC
+            </span>
+        </div>
+        <div class="d-flex flex-column gap-1">
+            {% for storey in explore_storeys %}
+            <div class="d-flex align-items-center gap-2 flex-wrap fs-8">
+                <span class="flex-grow-1">
+                    <i class="bi bi-building me-1 text-secondary"></i>
+                    <strong>{{ storey.name }}</strong>
+                    {% if storey.label and storey.label != storey.name %}
+                        <span class="text-secondary">· {{ storey.label }}</span>
+                    {% endif %}
+                </span>
+
+                {% if storey.has_plan %}
+                <span class="badge rounded-pill"
+                      style="background-color: rgba(16,185,129,0.15); color: var(--castor-success, #10b981); border: 1px solid rgba(16,185,129,0.3);">
+                    <i class="bi bi-check2"></i> Plan uploaded
+                </span>
+                {% else %}
+                <span class="badge rounded-pill"
+                      style="background-color: rgba(245,158,11,0.15); color: var(--castor-warning, #f59e0b); border: 1px solid rgba(245,158,11,0.3);">
+                    No plan
+                </span>
+                {% endif %}
+
+                {% if user_permission == "owner" or user_permission == "editor" %}
+                <form method="post"
+                      action="{{ storey.upload_url }}"
+                      enctype="multipart/form-data"
+                      hx-post="{{ storey.upload_url }}"
+                      hx-encoding="multipart/form-data"
+                      hx-swap="none"
+                      hx-on::after-request="if (event.detail.successful) window.location.reload();"
+                      class="m-0">
+                    {% csrf_token %}
+                    <label class="btn btn-sm btn-outline-secondary mb-0 d-inline-flex align-items-center gap-1"
+                           style="cursor: pointer;">
+                        <i class="bi bi-upload"></i>
+                        {% if storey.has_plan %}Replace plan{% else %}Upload plan{% endif %}
+                        <input type="file"
+                               name="image"
+                               accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                               hidden
+                               onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit();">
+                    </label>
+                </form>
+                {% if storey.has_plan %}
+                <form method="post"
+                      action="{{ storey.delete_url }}"
+                      hx-post="{{ storey.delete_url }}"
+                      hx-swap="none"
+                      hx-confirm="Remove the plan image for {{ storey.name }}? Points and photos placed on this floor stay; they reappear when a new plan is uploaded."
+                      hx-on::after-request="if (event.detail.successful) window.location.reload();"
+                      class="m-0">
+                    {% csrf_token %}
+                    <button type="submit"
+                            class="btn btn-sm btn-outline-danger d-inline-flex align-items-center gap-1"
+                            title="Remove the uploaded plan (points + photos kept)">
+                        <i class="bi bi-trash"></i> Remove
+                    </button>
+                </form>
+                {% endif %}
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Iframe host -->
+    <div class="border rounded overflow-hidden flex-grow-1"
+         style="background-color: var(--bs-body-bg); min-height: 600px;">
+        <iframe id="exploreIframe"
+                src="{{ explore_urls.embed }}"
+                title="Explore — floor plans, photos, 360°"
+                allow="camera"
+                referrerpolicy="same-origin"
+                style="border: 0; width: 100%; height: 100%; min-height: 600px;"></iframe>
+    </div>
+
+    {% include "facilities/components/explore_help_modal.html" %}
+</div>
+
+<script>
+(function() {
+    "use strict";
+
+    // ── postMessage bridge between Castor and Pavla's iframe (protocol v0.2).
+    //    The iframe announces itself with VIEWER_READY; we reply with VIEWER_INIT
+    //    (locks the origin on the iframe side), then push floors / rooms /
+    //    catalog / saved state. Outbound STATE_CHANGED snapshots round-trip
+    //    through ExploreUserStateApiView for server-side persistence.
+
+    var iframe = document.getElementById("exploreIframe");
+    if (!iframe) return;
+
+    var URLS = {
+        floors: "{{ explore_urls.floors|escapejs }}",
+        roomsBase: "{{ explore_urls.rooms_base|escapejs }}",
+        catalog: "{{ explore_urls.catalog|escapejs }}",
+        state: "{{ explore_urls.state|escapejs }}",
+    };
+
+    function csrfToken() {
+        var match = document.cookie.match(/(^|; )csrftoken=([^;]+)/);
+        return match ? decodeURIComponent(match[2]) : "";
+    }
+
+    function castorTheme() {
+        return document.documentElement.getAttribute("data-bs-theme") === "light" ? "light" : "dark";
+    }
+
+    function fireToast(message, level) {
+        document.dispatchEvent(new CustomEvent("castor:toast", {
+            detail: { message: message, level: level || "info" },
+        }));
+    }
+
+    function send(type, payload, requestId) {
+        var msg = Object.assign({ type: type }, payload || {});
+        if (requestId) msg.requestId = requestId;
+        try {
+            iframe.contentWindow.postMessage(msg, "*");
+        } catch (err) {
+            console.error("[explore-host] postMessage failed", err);
+        }
+    }
+
+    // ── Pull host-supplied data into the iframe. Calls in parallel.
+    //
+    // Empty responses are deliberately NOT sent: SET_FLOORS {replace:true}
+    // with an empty list would wipe Pavla's bundled demo data, and SET_USER_STATE
+    // with an empty `points` array would erase the demo points. When the project
+    // has no IFC storeys / no saved user state yet, the iframe keeps its demo
+    // so the page is interactive on first open.
+    //
+    // `embedded:true` in VIEWER_INIT tells Pavla's module to hide the
+    // standalone-only toolbar controls (import plans / theme toggle / reset)
+    // whose responsibility moved to Castor.
+    function hydrate() {
+        send("VIEWER_INIT", { theme: castorTheme(), embedded: true });
+
+        fetch(URLS.floors, { credentials: "same-origin" })
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(data) {
+                if (!data || !Array.isArray(data.floors) || !data.floors.length) return;
+                send("SET_FLOORS", { floors: data.floors, replace: true });
+                data.floors.forEach(function(floor) {
+                    if (!floor.id) return;
+                    fetch(URLS.roomsBase + floor.id + "/", { credentials: "same-origin" })
+                        .then(function(r) { return r.ok ? r.json() : null; })
+                        .then(function(roomsData) {
+                            if (roomsData && Array.isArray(roomsData.rooms)) {
+                                send("SET_ROOMS", { floorId: floor.id, rooms: roomsData.rooms });
+                            }
+                        })
+                        .catch(function(err) { console.warn("[explore-host] rooms fetch failed", err); });
+                });
+            })
+            .catch(function(err) { console.warn("[explore-host] floors fetch failed", err); });
+
+        fetch(URLS.catalog, { credentials: "same-origin" })
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(data) {
+                if (data && data.tables) send("SET_TABLE_CATALOG", { tables: data.tables });
+            })
+            .catch(function(err) { console.warn("[explore-host] catalog fetch failed", err); });
+
+        fetch(URLS.state, { credentials: "same-origin" })
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(data) {
+                if (!data || !data.state) return;
+                var hasUserData =
+                    (Array.isArray(data.state.points) && data.state.points.length) ||
+                    (Array.isArray(data.state.floors) && data.state.floors.length);
+                if (hasUserData) send("SET_USER_STATE", { state: data.state });
+            })
+            .catch(function(err) { console.warn("[explore-host] state fetch failed", err); });
+    }
+
+    // ── Debounced persist of STATE_CHANGED snapshots. The iframe already
+    //    debounces by 350ms; we add nothing on top — but we coalesce
+    //    overlapping requests by tracking the in-flight one.
+    var saving = false;
+    var pending = false;
+
+    function persistState() {
+        if (saving) { pending = true; return; }
+        saving = true;
+        // Ask the iframe for a full snapshot (Pavla's GET_STATE { full:true } reply).
+        send("GET_STATE", { full: true }, "host-persist");
+    }
+
+    function handleStateReply(snapshot) {
+        if (!snapshot) { saving = false; return; }
+        fetch(URLS.state, {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": csrfToken(),
+            },
+            body: JSON.stringify({ state: snapshot }),
+        })
+            .then(function(r) {
+                if (!r.ok) throw new Error("save failed: " + r.status);
+                return r.json();
+            })
+            .then(function(data) {
+                if (data && data.media_url_map && Object.keys(data.media_url_map).length) {
+                    // Push the real URLs back so the iframe drops its data URLs.
+                    // Done by re-fetching the canonical state — simpler than
+                    // patching in place and avoids divergence.
+                    fetch(URLS.state, { credentials: "same-origin" })
+                        .then(function(r) { return r.ok ? r.json() : null; })
+                        .then(function(payload) {
+                            if (payload && payload.state) send("SET_USER_STATE", { state: payload.state });
+                        });
+                }
+            })
+            .catch(function(err) {
+                console.error("[explore-host] state save failed", err);
+                fireToast("Explore: couldn't save changes — see console", "error");
+            })
+            .finally(function() {
+                saving = false;
+                if (pending) { pending = false; persistState(); }
+            });
+    }
+
+    // ── Inbound messages from the iframe.
+    window.addEventListener("message", function(event) {
+        var data = event && event.data;
+        if (!data || typeof data !== "object" || data.source !== "fm-explore") return;
+        if (event.source !== iframe.contentWindow) return;
+        switch (data.type) {
+            case "VIEWER_READY":
+                hydrate();
+                break;
+            case "STATE_CHANGED":
+                persistState();
+                break;
+            case "STATE":
+                if (data.requestId === "host-persist") handleStateReply(data);
+                break;
+            case "HOTSPOT_CLICKED":
+                fireToast("Hotspot: " + (data.label || data.globalId || "point"), "info");
+                break;
+            case "ERROR":
+                console.warn("[explore-host] iframe reported error", data);
+                break;
+            default:
+                break;
+        }
+    });
+
+    // ── Push theme changes from Castor into the iframe.
+    var themeObserver = new MutationObserver(function(mutations) {
+        for (var i = 0; i < mutations.length; i++) {
+            if (mutations[i].attributeName === "data-bs-theme") {
+                send("SET_THEME", { theme: castorTheme() });
+                break;
+            }
+        }
+    });
+    themeObserver.observe(document.documentElement, { attributes: true });
+})();
+</script>

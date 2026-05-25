@@ -15,6 +15,10 @@ from .models import (
     AssetInventory,
     Classification,
     ClassificationReference,
+    ExploreFloorPlan,
+    ExploreMedia,
+    ExplorePhase,
+    ExplorePoint,
     ExportJob,
     ExportProfile,
     FacilityAsset,
@@ -465,3 +469,65 @@ class FMIntentProposalAdmin(admin.ModelAdmin):
         "updated_at",
     )
     date_hierarchy = "created_at"
+
+
+# ── Explore module ────────────────────────────────────────────────────
+
+
+@admin.register(ExplorePhase)
+class ExplorePhaseAdmin(admin.ModelAdmin):
+    """Admin for per-project explore phase palettes."""
+
+    list_display = ("name", "color", "position", "project", "created_at")
+    list_filter = ("project",)
+    search_fields = ("name",)
+    ordering = ("project", "position", "name")
+
+
+@admin.register(ExploreFloorPlan)
+class ExploreFloorPlanAdmin(admin.ModelAdmin):
+    """Admin for uploaded floor-plan images attached to IFC storeys."""
+
+    list_display = ("storey", "knockout", "uploaded_by", "created_at")
+    list_filter = ("knockout",)
+    raw_id_fields = ("storey", "uploaded_by")
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(ExplorePoint)
+class ExplorePointAdmin(admin.ModelAdmin):
+    """Admin for placed explore points."""
+
+    list_display = (
+        "label",
+        "client_id",
+        "project",
+        "floor",
+        "phase",
+        "x_percent",
+        "y_percent",
+        "created_at",
+    )
+    list_filter = ("project", "phase")
+    search_fields = ("label", "client_id")
+    raw_id_fields = ("project", "floor", "phase", "ifc_entity", "created_by")
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(ExploreMedia)
+class ExploreMediaAdmin(admin.ModelAdmin):
+    """Admin for photos / 360° panoramas attached to explore points."""
+
+    list_display = (
+        "label",
+        "client_id",
+        "media_type",
+        "point",
+        "taken_on",
+        "uploaded_by",
+        "created_at",
+    )
+    list_filter = ("media_type", "phase")
+    search_fields = ("label", "code", "client_id")
+    raw_id_fields = ("point", "phase", "uploaded_by")
+    readonly_fields = ("created_at", "updated_at")

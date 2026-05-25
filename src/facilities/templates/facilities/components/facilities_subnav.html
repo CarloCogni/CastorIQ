@@ -57,6 +57,13 @@
             <span>Requests</span>
         </a>
 
+        <a href="{% url 'facilities:explore' project.pk %}"
+           class="d-inline-flex align-items-center gap-2 px-3 py-2 fs-8 text-decoration-none flex-shrink-0 {% if active_sub_tab == 'explore' %}fw-semibold{% else %}text-secondary{% endif %}"
+           style="{% if active_sub_tab == 'explore' %}color: var(--castor-facilities, #14b8a6); border-bottom: 2px solid var(--castor-facilities, #14b8a6);{% else %}border-bottom: 2px solid transparent;{% endif %}">
+            <i class="bi bi-map"></i>
+            <span>Explore</span>
+        </a>
+
         <!-- Deferred sub-tabs — surfaced as disabled placeholders so the information architecture is visible. -->
         <span class="d-inline-flex align-items-center gap-2 px-3 py-2 fs-8 text-muted flex-shrink-0" style="border-bottom: 2px solid transparent; opacity: 0.55; cursor: not-allowed;" title="Spaces — coming soon"><i class="bi bi-lock"></i><span>Spaces</span></span>
         <span class="d-inline-flex align-items-center gap-2 px-3 py-2 fs-8 text-muted flex-shrink-0" style="border-bottom: 2px solid transparent; opacity: 0.55; cursor: not-allowed;" title="Maintenance — M5"><i class="bi bi-lock"></i><span>Maintenance</span></span>

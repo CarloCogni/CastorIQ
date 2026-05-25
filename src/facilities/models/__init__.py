@@ -16,6 +16,13 @@ from .assets import (
     ClassificationReference,
     FacilityAsset,
 )
+from .explore import (
+    DEFAULT_PHASES,
+    ExploreFloorPlan,
+    ExploreMedia,
+    ExplorePhase,
+    ExplorePoint,
+)
 from .exports import (
     DEFAULT_ENABLED_OPERATIONS,
     DEFAULT_ENABLED_PSETS,
@@ -39,10 +46,15 @@ from .work import (
 __all__ = [
     "DEFAULT_ENABLED_OPERATIONS",
     "DEFAULT_ENABLED_PSETS",
+    "DEFAULT_PHASES",
     "ActionRequest",
     "AssetInventory",
     "Classification",
     "ClassificationReference",
+    "ExploreFloorPlan",
+    "ExploreMedia",
+    "ExplorePhase",
+    "ExplorePoint",
     "ExportJob",
     "ExportProfile",
     "FMDelta",

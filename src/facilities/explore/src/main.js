@@ -13,7 +13,7 @@ import {
   addPoint, selectPoint, deselect, movePoint, updatePoint, deletePoint, setPlacing,
   setAttachPhase, setSelectedMedia, setMediaMeta, setArchiveType, setTimelineView, setSortKey, toggleSortDir, setNumbering, setNumberingPad, setPointPhase, addMedia, removeMedia, restoreMedia,
   addPhase, renamePhase, deletePhase, setPhaseColor, deleteFloor, moveFloor, phaseColor, effectivePhase, addPointTable, removePointTable, setPointTableFilter,
-  onStateChange, exportFullState, clearSession,
+  onStateChange, exportFullState, importFullState, clearSession,
 } from "./state.js";
 import { filterRows, tableCatalog, setTableCatalog } from "./data/roomdata.js";
 import { renderPins, initFloorplan } from "./floorplan/floorplan.js";
@@ -884,6 +884,10 @@ initBridge({
     if (msg.theme) applyTheme(msg.theme);
     if (msg.floorId) setActiveFloor(msg.floorId);
     if (msg.focus) focusByGlobalId(msg.focus);
+    // v0.2 — host can flag embedded mode. In that case, the standalone-only
+    // toolbar controls (host owns plan upload + theme + persistence reset)
+    // are hidden via the .castor-embedded body class (see components.css).
+    if (msg.embedded) document.body.classList.add("castor-embedded");
     ack(msg.requestId, { ready: true, capabilities: CAPABILITIES });
     toast("Connected to Castor");
   },
@@ -918,6 +922,18 @@ initBridge({
     render();
     ack(msg.requestId, { tables: Object.keys(msg.tables) });
   },
+  // v0.2 — host pushes the saved working set on load (points, media, phases, etc.).
+  // Shape mirrors exportFullState(). Missing fields keep their current value, so
+  // the host can also send partial patches (e.g. only points + media on re-sync).
+  [MSG.SET_USER_STATE]: (msg) => {
+    if (!msg.state || typeof msg.state !== "object") { error(msg.requestId, "SET_USER_STATE requires { state: {...} }", ERR.BAD_PAYLOAD); return; }
+    importFullState(msg.state);
+    ack(msg.requestId, {
+      floors: state.floors.length,
+      points: state.points.length,
+      phases: state.phases.length,
+    });
+  },
 });
 
 // Notify the host whenever the working set changes (debounced in state.js), so it
@@ -927,7 +943,7 @@ onStateChange((snap, savedLocally) => {
 });
 
 // Announce readiness to the host (goes to "*" until VIEWER_INIT locks the origin)
-emit(MSG.VIEWER_READY, { version: "0.1", capabilities: CAPABILITIES });
+emit(MSG.VIEWER_READY, { version: "0.2", capabilities: CAPABILITIES });
 
 // ── White-background knockout (per active floor) ──
 els.btnKnockout.addEventListener("click", async () => {

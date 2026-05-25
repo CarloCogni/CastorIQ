@@ -237,6 +237,29 @@ export function clearSession() {
   try { localStorage.removeItem(STATE_KEY); localStorage.removeItem(PHASES_KEY); } catch (_) { /* ignore */ }
 }
 
+// Hydrate state from a host-supplied snapshot (e.g. SET_USER_STATE from Castor).
+// Same shape exportSession() produces. Missing fields keep their current value,
+// so the host can send partial updates (e.g. only points + media). Empty floors
+// arrays are ignored to avoid clobbering the demo / host SET_FLOORS payload.
+export function importFullState(snap) {
+  if (!snap || typeof snap !== "object") return false;
+  if (Array.isArray(snap.floors) && snap.floors.length) state.floors = snap.floors;
+  if (Array.isArray(snap.points)) state.points = snap.points;
+  if (Array.isArray(snap.phases) && snap.phases.length) state.phases = snap.phases;
+  if (snap.phaseColors && typeof snap.phaseColors === "object") state.phaseColors = snap.phaseColors;
+  if (Array.isArray(snap.idProps)) state.idProps = snap.idProps;
+  if (snap.numbering && typeof snap.numbering === "object") state.numbering = snap.numbering;
+  if (snap.archiveType) state.archiveType = snap.archiveType === "360" ? "360" : "photo";
+  if (snap.timelineView) state.timelineView = snap.timelineView === "details" ? "details" : "thumbs";
+  if (snap.sort && typeof snap.sort === "object") state.sort = snap.sort;
+  if (snap.activeFloorId && state.floors.some((f) => f.id === snap.activeFloorId)) {
+    state.activeFloorId = snap.activeFloorId;
+  }
+  state.selectedId = null; // selection is per-session, never hydrated
+  emit();
+  return true;
+}
+
 // ── Derived getters ──
 export function activeFloor() {
   return state.floors.find((f) => f.id === state.activeFloorId) || state.floors[0] || null;
