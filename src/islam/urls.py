@@ -415,4 +415,9 @@ urlpatterns = [
         scheduling_views.UnlinkElementView.as_view(),
         name="unlink_element",
     ),
+    path(
+        "projects/<uuid:pk>/elements/unlink-all/",
+        scheduling_views.UnlinkAllElementView.as_view(),
+        name="unlink_all_element",
+    ),
 ]
