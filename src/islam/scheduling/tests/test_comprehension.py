@@ -291,4 +291,3 @@ def test_comprehension_view_requires_login(client):
     url = f"/islam/projects/{project.pk}/schedule/comprehension/"
     r = client.get(url)
     assert r.status_code in (302, 403)
-

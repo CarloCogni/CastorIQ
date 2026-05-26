@@ -1140,6 +1140,7 @@
   }
 
   window.addEventListener("message", (e) => {
+    console.log('[msg] received:', e.data?.type);
     if (e.source !== iframe.contentWindow) return;
     const msg = e.data;
     if (!msg) return;
@@ -1163,6 +1164,7 @@
       }
     }
     if (msg.type === "castor:element-action") {
+      console.log('[action]', msg.action, msg.global_id);
       const { action, global_id } = msg;
       if (action === "link" || action === "add-task") {
         _doLinkElement(global_id);

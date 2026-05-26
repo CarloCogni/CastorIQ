@@ -83,7 +83,9 @@ def _send_operator_notification(application: BetaApplication) -> None:
         )
         return
     try:
-        admin_url = f"{settings.SITE_URL.rstrip('/')}/admin/beta/betaapplication/{application.id}/change/"
+        admin_url = (
+            f"{settings.SITE_URL.rstrip('/')}/admin/beta/betaapplication/{application.id}/change/"
+        )
         body = (
             f"New Castor beta application.\n\n"
             f"Name:        {application.name}\n"
@@ -106,7 +108,13 @@ def _send_operator_notification(application: BetaApplication) -> None:
 
 
 @require_POST
-@ratelimit(key=ratelimit_ip_key, rate=settings.BETA_RATE_LIMIT, method="POST", group="beta_apply", block=False)
+@ratelimit(
+    key=ratelimit_ip_key,
+    rate=settings.BETA_RATE_LIMIT,
+    method="POST",
+    group="beta_apply",
+    block=False,
+)
 def apply_view(request):
     """Receive a beta application from the public landing form.
 

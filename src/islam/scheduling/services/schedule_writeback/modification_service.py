@@ -26,7 +26,9 @@ class ModificationProposal:
     task_name: str
     activity_code: str
     changes: dict  # {field_name: {"from": old_val, "to": new_val}}
-    action: str    # UPDATE_DATE | UPDATE_STATUS | UPDATE_DURATION | ADD_DEPENDENCY | REMOVE_DEPENDENCY
+    action: (
+        str  # UPDATE_DATE | UPDATE_STATUS | UPDATE_DURATION | ADD_DEPENDENCY | REMOVE_DEPENDENCY
+    )
     dep_data: dict = field(default_factory=dict)
 
     def describe(self) -> str:
@@ -39,21 +41,21 @@ class ModificationProposal:
 class ScheduleModificationService:
     """Build and apply :class:`ModificationProposal` objects."""
 
-    def build_proposals(
-        self, tasks: list, slots: dict, kind: str
-    ) -> list[ModificationProposal]:
+    def build_proposals(self, tasks: list, slots: dict, kind: str) -> list[ModificationProposal]:
         """Compute what would change for each task and return proposals."""
         proposals: list[ModificationProposal] = []
         for task in tasks:
             changes = self._compute_changes(task, slots, kind)
             if changes:
-                proposals.append(ModificationProposal(
-                    task_id=str(task.pk),
-                    task_name=task.name,
-                    activity_code=task.activity_code or "",
-                    changes=changes,
-                    action=kind,
-                ))
+                proposals.append(
+                    ModificationProposal(
+                        task_id=str(task.pk),
+                        task_name=task.name,
+                        activity_code=task.activity_code or "",
+                        changes=changes,
+                        action=kind,
+                    )
+                )
         return proposals
 
     def apply(self, proposals: list[ModificationProposal]) -> dict:
@@ -75,9 +77,13 @@ class ScheduleModificationService:
 
                 task.save(update_fields=update_fields)
                 updated += 1
-                logger.info("schedule_writeback: updated task %s — fields %s", task.pk, update_fields)
+                logger.info(
+                    "schedule_writeback: updated task %s — fields %s", task.pk, update_fields
+                )
             except Exception as exc:
-                logger.warning("schedule_writeback: failed to apply proposal %s: %s", proposal.task_id, exc)
+                logger.warning(
+                    "schedule_writeback: failed to apply proposal %s: %s", proposal.task_id, exc
+                )
                 errors.append(str(exc))
 
         return {"updated": updated, "errors": errors}
