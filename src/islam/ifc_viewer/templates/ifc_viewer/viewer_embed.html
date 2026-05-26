@@ -469,6 +469,7 @@ window.addEventListener("message", async (e) => {
     if (msg.type === "castor:reset") {
         if (!model) return;
         resetAllColors();
+        disableWireframe();
         legendEl.style.display = "none";
         _selectedGlobalId = null;
         _syncFocusBtn();
