@@ -625,7 +625,11 @@ function _initSelector() {
             if (idx >= 0) _multiSelectedIds.splice(idx, 1);
             else          _multiSelectedIds.push(globalId);
             const idsToColor = [..._multiSelectedIds];
-            resetAllColors();
+            if (!_wireframeActive) {
+                resetAllColors();
+            } else {
+                colorByGlobalIds(_lastHighlightIds, new THREE.Color('#f59e0b'));
+            }
             _multiSelectedIds = idsToColor;
             if (_multiSelectedIds.length) {
                 colorByGlobalIds(_multiSelectedIds, new THREE.Color('#00BCD4'));
@@ -636,7 +640,12 @@ function _initSelector() {
 
         if (!hits.length) {
             if (_selectedGlobalId) {
-                resetAllColors(); _selectedGlobalId = null;
+                if (!_wireframeActive) {
+                    resetAllColors();
+                } else {
+                    colorByGlobalIds(_lastHighlightIds, new THREE.Color('#f59e0b'));
+                }
+                _selectedGlobalId = null;
                 window.parent.postMessage({ type: "castor:element-selected", global_id: null }, "*");
                 _syncFocusBtn();
             }
@@ -645,12 +654,23 @@ function _initSelector() {
         const globalId = _findGlobalIdFromHit(hits[0]);
         if (!globalId) return;
         if (globalId === _selectedGlobalId) {
-            resetAllColors(); _selectedGlobalId = null;
+            if (!_wireframeActive) {
+                resetAllColors();
+            } else {
+                colorByGlobalIds(_lastHighlightIds, new THREE.Color('#f59e0b'));
+            }
+            _selectedGlobalId = null;
             window.parent.postMessage({ type: "castor:element-selected", global_id: null }, "*");
             _syncFocusBtn();
             return;
         }
-        if (_selectedGlobalId) resetAllColors();
+        if (_selectedGlobalId) {
+            if (!_wireframeActive) {
+                resetAllColors();
+            } else {
+                colorByGlobalIds(_lastHighlightIds, new THREE.Color('#f59e0b'));
+            }
+        }
         _selectedGlobalId = globalId;
         colorByGlobalIds([globalId], _SEL_COLOR);
         window.parent.postMessage({ type: "castor:element-selected", global_id: globalId }, "*");
@@ -851,6 +871,8 @@ document.addEventListener("keydown", (e) => {
 
 ["sel-ctx-link", "sel-ctx-unlink", "sel-ctx-addtask"].forEach(id => {
     document.getElementById(id)?.addEventListener("click", () => {
+        console.log('[btn]', id, 'clicked');
+        console.log('[btn] globalId from dataset:', _ctxMenuEl?.dataset?.globalId);
         const action   = document.getElementById(id).dataset.action;
         const globalId = _ctxMenuEl?.dataset.globalId;
         if (_ctxMenuEl) _ctxMenuEl.style.display = "none";
