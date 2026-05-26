@@ -1077,7 +1077,7 @@
         _showToast("Unlinked from all tasks", "success");
         loadGantt();
       } else if (resp.status === 404) {
-        _showToast("No link found", "error");
+        _showToast("Element has no linked tasks", "info");
       } else {
         _showToast(data.error || "Unlink failed", "error");
       }
