@@ -111,10 +111,12 @@ class ScheduleSlotExtractor:
         )
         try:
             llm = get_llm(self._user, purpose="ask", temperature=0.0, format_json=True)
-            response = llm.invoke([
-                SystemMessage(content=prompt),
-                HumanMessage(content=user_prompt),
-            ])
+            response = llm.invoke(
+                [
+                    SystemMessage(content=prompt),
+                    HumanMessage(content=user_prompt),
+                ]
+            )
             raw = getattr(response, "content", "{}") or "{}"
             slots = json.loads(raw)
             if not isinstance(slots, dict):

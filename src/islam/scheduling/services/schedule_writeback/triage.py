@@ -13,15 +13,17 @@ from core.llm import get_llm
 
 logger = logging.getLogger(__name__)
 
-VALID_KINDS = frozenset({
-    "UPDATE_DATE",
-    "UPDATE_STATUS",
-    "UPDATE_DURATION",
-    "ADD_DEPENDENCY",
-    "REMOVE_DEPENDENCY",
-    "OUT_OF_SCOPE",
-    "UNCLEAR",
-})
+VALID_KINDS = frozenset(
+    {
+        "UPDATE_DATE",
+        "UPDATE_STATUS",
+        "UPDATE_DURATION",
+        "ADD_DEPENDENCY",
+        "REMOVE_DEPENDENCY",
+        "OUT_OF_SCOPE",
+        "UNCLEAR",
+    }
+)
 
 SYSTEM_PROMPT = """\
 You are a construction schedule assistant.
@@ -112,17 +114,22 @@ class ScheduleTriageClassifier:
     def classify(self, user_message: str) -> TriageResult:
         """Return a :class:`TriageResult`. Never raises — falls back to UNCLEAR."""
         if not user_message or not user_message.strip():
-            return TriageResult(segments=[
-                TriageSegment(kind="UNCLEAR", target_phrase="", value_phrase="",
-                              missing=["request"])
-            ])
+            return TriageResult(
+                segments=[
+                    TriageSegment(
+                        kind="UNCLEAR", target_phrase="", value_phrase="", missing=["request"]
+                    )
+                ]
+            )
 
         try:
             llm = get_llm(self._user, purpose="ask", temperature=0.0, format_json=True)
-            response = llm.invoke([
-                SystemMessage(content=SYSTEM_PROMPT),
-                HumanMessage(content=user_message),
-            ])
+            response = llm.invoke(
+                [
+                    SystemMessage(content=SYSTEM_PROMPT),
+                    HumanMessage(content=user_message),
+                ]
+            )
             data = json.loads(getattr(response, "content", "{}") or "{}")
             segments = _normalise_segments(data)
             if segments:
@@ -130,10 +137,13 @@ class ScheduleTriageClassifier:
         except Exception as exc:
             logger.warning("ScheduleTriageClassifier: LLM call failed: %s", exc)
 
-        return TriageResult(segments=[
-            TriageSegment(kind="UNCLEAR", target_phrase="", value_phrase="",
-                          missing=["request"])
-        ])
+        return TriageResult(
+            segments=[
+                TriageSegment(
+                    kind="UNCLEAR", target_phrase="", value_phrase="", missing=["request"]
+                )
+            ]
+        )
 
 
 def _normalise_segments(data: object) -> list[TriageSegment]:
@@ -155,11 +165,13 @@ def _normalise_segments(data: object) -> list[TriageSegment]:
         if kind not in VALID_KINDS:
             continue
         missing = item.get("missing")
-        out.append(TriageSegment(
-            kind=kind,
-            target_phrase=(item.get("target_phrase") or "").strip(),
-            value_phrase=(item.get("value_phrase") or "").strip(),
-            reason=(item.get("reason") or "").strip(),
-            missing=list(missing) if isinstance(missing, list) else [],
-        ))
+        out.append(
+            TriageSegment(
+                kind=kind,
+                target_phrase=(item.get("target_phrase") or "").strip(),
+                value_phrase=(item.get("value_phrase") or "").strip(),
+                reason=(item.get("reason") or "").strip(),
+                missing=list(missing) if isinstance(missing, list) else [],
+            )
+        )
     return out

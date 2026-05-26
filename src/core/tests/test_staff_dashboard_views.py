@@ -82,16 +82,12 @@ def test_overview_window_query_param_clamps_to_known_values(client):
 
     # Valid values stick.
     for value in (1, 7, 30):
-        response = client.get(
-            reverse("staff_dashboard_overview"), {"window": str(value)}
-        )
+        response = client.get(reverse("staff_dashboard_overview"), {"window": str(value)})
         assert response.status_code == 200
         assert response.context["window_days"] == value
 
     # Bad values silently fall back to 7.
-    response = client.get(
-        reverse("staff_dashboard_overview"), {"window": "999"}
-    )
+    response = client.get(reverse("staff_dashboard_overview"), {"window": "999"})
     assert response.status_code == 200
     assert response.context["window_days"] == 7
 

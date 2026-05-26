@@ -165,8 +165,7 @@ def send_digest(*, force: bool = False, dry_run: bool = False) -> DigestResult:
         return _record(
             cfg,
             Status.SKIPPED_QUOTA,
-            f"Brevo cap: {sent_today} sent today, "
-            f"{len(recipients)} would push past {cap}.",
+            f"Brevo cap: {sent_today} sent today, {len(recipients)} would push past {cap}.",
         )
 
     context = build_digest_context(week_ending=timezone.now().date())
@@ -253,27 +252,21 @@ def _cost_lines(kpis7: dict, kpis_prev: dict, top_users: list, mix: dict) -> lis
 
 def _reliability_lines(rel: dict, backlog: dict) -> list[str]:
     return [
-        f"Success %: {_fmt_or_dash(rel['success_pct'], '%')} "
-        f"(of {rel['calls']} calls)",
+        f"Success %: {_fmt_or_dash(rel['success_pct'], '%')} (of {rel['calls']} calls)",
         f"p95 latency: Ask {_fmt_or_dash(rel['p95_latency_ask_ms'], ' ms')} · "
         f"Modify {_fmt_or_dash(rel['p95_latency_modify_ms'], ' ms')}",
-        f"Errors this week: {rel['errors']} · "
-        f"Open backlog: {backlog['total']} unresolved",
+        f"Errors this week: {rel['errors']} · Open backlog: {backlog['total']} unresolved",
     ]
 
 
 def _engagement_lines(eng: dict, cohort: dict) -> list[str]:
-    w4_pcts = [
-        row[4] for row in cohort["grid"] if len(row) > 4 and row[4] is not None
-    ]
+    w4_pcts = [row[4] for row in cohort["grid"] if len(row) > 4 and row[4] is not None]
     avg_w4 = round(sum(w4_pcts) / len(w4_pcts), 1) if w4_pcts else None
     return [
         f"DAU / WAU / MAU: {eng['dau']} / {eng['wau']} / {eng['mau']} "
         f"(stickiness {_fmt_or_dash(eng['stickiness_pct'], '%')})",
-        f"Power users (Modify): "
-        f"{_fmt_or_dash(eng['proposal_generators_pct'], '%')} of active",
-        f"W4 retention: {_fmt_or_dash(avg_w4, '%')} "
-        f"across {len(w4_pcts)} mature cohort(s)",
+        f"Power users (Modify): {_fmt_or_dash(eng['proposal_generators_pct'], '%')} of active",
+        f"W4 retention: {_fmt_or_dash(avg_w4, '%')} across {len(w4_pcts)} mature cohort(s)",
     ]
 
 

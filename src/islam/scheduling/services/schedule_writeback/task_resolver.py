@@ -40,8 +40,7 @@ class TaskResolver:
         """Return matching tasks for *target_phrase* within *project*."""
         phrase = (target_phrase or "").strip()
         if not phrase:
-            return TaskResolutionResult(tasks=[], scope="empty",
-                                        diagnostic="Empty target phrase.")
+            return TaskResolutionResult(tasks=[], scope="empty", diagnostic="Empty target phrase.")
 
         base_qs = Task.objects.filter(project=project)
 
@@ -50,8 +49,11 @@ class TaskResolver:
         if exact:
             scope = "specific" if len(exact) == 1 else "specific_multi"
             logger.info("TaskResolver: activity_code exact match — %d task(s)", len(exact))
-            return TaskResolutionResult(tasks=exact, scope=scope,
-                                        diagnostic=f"Matched {len(exact)} task(s) by activity code.")
+            return TaskResolutionResult(
+                tasks=exact,
+                scope=scope,
+                diagnostic=f"Matched {len(exact)} task(s) by activity code.",
+            )
 
         # 2 — all meaningful words in name (AND)
         words = [w for w in phrase.split() if len(w) >= 3]
@@ -86,6 +88,7 @@ class TaskResolver:
 
         logger.info("TaskResolver: no match for %r", phrase)
         return TaskResolutionResult(
-            tasks=[], scope="empty",
+            tasks=[],
+            scope="empty",
             diagnostic=f"No tasks found matching '{phrase}'.",
         )
