@@ -1076,6 +1076,11 @@
       if (resp.ok) {
         _showToast("Unlinked from all tasks", "success");
         loadGantt();
+        _fdTaskSelected = false;
+        _fdFocusGlobalId = null;
+        fd_selectedRowIdx = -1;
+        sendToViewer({ type: "castor:reset" });
+        _applyLinkFilter();
       } else if (resp.status === 404) {
         _showToast("Element has no linked tasks", "info");
       } else {
