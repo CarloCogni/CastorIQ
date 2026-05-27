@@ -6,9 +6,10 @@ from __future__ import annotations
 import csv
 import json
 import logging
+import math
 from datetime import date
 
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.template.loader import render_to_string
@@ -537,6 +538,8 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
                     color=td.get("color", "#3b82f6"),
                     cost=Decimal(cost_str) if cost_str else None,
                     activity_type=td.get("activity_type", ""),
+                    stage=td.get("stage", ""),
+                    sub_stage=td.get("sub_stage", ""),
                     early_start=date.fromisoformat(early_start_raw) if early_start_raw else None,
                     early_finish=date.fromisoformat(early_finish_raw) if early_finish_raw else None,
                     late_start=date.fromisoformat(late_start_raw) if late_start_raw else None,
@@ -648,7 +651,7 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
         all_tasks = list(
             Task.objects.filter(project=project).only("pk", "name", "stage", "sub_stage")
         )
-        autodetect_stages(all_tasks)
+        autodetect_stages([t for t in all_tasks if not t.stage])
 
         # Record this import event so the Data Sources tab can show source chips.
         filename = request.session.pop(f"schedule_filename_{project.pk}", "")
@@ -1047,21 +1050,58 @@ def _compute_progress(task: Task, today: date) -> int:
 
 
 class GanttDataView(ProjectAccessMixin, View):
-    """JSON endpoint — task data for the Gantt chart and Simulate tab."""
+    """JSON endpoint — task data for the Gantt chart and Simulate tab.
+
+    Supports optional pagination via ?page=<n>&page_size=<n> (default page_size 200).
+    Paginated responses include total_count, total_pages, page, and has_more fields.
+    Without ?page the full task list is returned for backward compatibility.
+    """
+
+    _DEFAULT_PAGE_SIZE = 200
+    _MAX_PAGE_SIZE = 1000
 
     def get(self, request, **kwargs: object) -> JsonResponse:
         project = self.get_project()
-        tasks = (
+        qs = (
             Task.objects.filter(project=project, is_non_physical=False)
             .prefetch_related("ifc_entities")
             .order_by("start_date", "activity_code")
         )
-        today = date.today()
+
+        page_str = request.GET.get("page")
+        if page_str is not None:
+            try:
+                page = max(1, int(page_str))
+            except (ValueError, TypeError):
+                page = 1
+            try:
+                page_size = max(
+                    1,
+                    min(
+                        self._MAX_PAGE_SIZE,
+                        int(request.GET.get("page_size", self._DEFAULT_PAGE_SIZE)),
+                    ),
+                )
+            except (ValueError, TypeError):
+                page_size = self._DEFAULT_PAGE_SIZE
+
+            total_count = qs.count()
+            total_pages = max(1, math.ceil(total_count / page_size))
+            offset = (page - 1) * page_size
+            tasks = qs[offset : offset + page_size]
+            pagination = {
+                "total_count": total_count,
+                "total_pages": total_pages,
+                "page": page,
+                "has_more": page < total_pages,
+            }
+        else:
+            tasks = qs
+            pagination = None
 
         data = []
         for task in tasks:
-            entities = list(task.ifc_entities.values("global_id", "name"))
-            gids = [e["global_id"] for e in entities]
+            gids = [e["global_id"] for e in task.ifc_entities.values("global_id")]
             data.append(
                 {
                     "id": str(task.pk),
@@ -1070,25 +1110,21 @@ class GanttDataView(ProjectAccessMixin, View):
                     "end": task.end_date.isoformat(),
                     "actual_start": task.actual_start.isoformat() if task.actual_start else None,
                     "actual_end": task.actual_end.isoformat() if task.actual_end else None,
-                    "progress": _compute_progress(task, today),
                     "stage": task.stage or "",
                     "sub_stage": task.sub_stage or "",
                     "is_critical": task.is_critical,
                     "total_float": task.total_float,
                     "activity_code": task.activity_code or "",
-                    "linked_entities": [
-                        {"name": e["name"] or e["global_id"], "global_id": e["global_id"]}
-                        for e in entities
-                    ],
-                    # kept for simulate.html backward compatibility
                     "status": task.status,
-                    "color": task.color,
                     "link_status": task.link_status,
                     "entity_global_ids": gids,
                 }
             )
 
-        return JsonResponse({"tasks": data})
+        response = {"tasks": data}
+        if pagination is not None:
+            response.update(pagination)
+        return JsonResponse(response)
 
 
 class TaskDetailView(ProjectAccessMixin, View):
@@ -2023,7 +2059,12 @@ class LinkElementView(ProjectModifyAccessMixin, View):
 
 
 class UnlinkAllElementView(ProjectModifyAccessMixin, View):
-    """POST — remove all task bindings for a given IFC element globalId across the project."""
+    """POST — remove all task bindings for a given IFC element globalId across the project.
+
+    Primary store is TaskEntityBinding (covers 100% of links including needs_review rows).
+    ifc_entities M2M is a secondary store covering only the ~15% of auto-accepted links;
+    cleaned up after the binding rows are confirmed deleted.
+    """
 
     def post(self, request, **kwargs: object) -> JsonResponse:
         project = self.get_project()
@@ -2037,18 +2078,32 @@ class UnlinkAllElementView(ProjectModifyAccessMixin, View):
         if not global_id:
             return JsonResponse({"error": "global_id is required"}, status=400)
 
-        deleted, _ = TaskEntityBinding.objects.filter(
+        # Primary: delete by entity_global_id string — covers all binding types.
+        binding_deleted, _ = TaskEntityBinding.objects.filter(
             task__project=project, entity_global_id=global_id
         ).delete()
 
-        if not deleted:
+        if not binding_deleted:
             return JsonResponse({"error": "No bindings found"}, status=404)
 
-        return JsonResponse({"status": "unlinked", "deleted": deleted})
+        # Secondary: remove from ifc_entities M2M for the auto-accepted subset.
+        entities = list(IFCEntity.objects.filter(global_id=global_id))
+        if entities:
+            for task in Task.objects.filter(
+                project=project, ifc_entities__global_id=global_id
+            ).distinct():
+                task.ifc_entities.remove(*entities)
+
+        return JsonResponse({"status": "unlinked", "deleted": binding_deleted})
 
 
 class UnlinkElementView(ProjectModifyAccessMixin, View):
-    """POST — remove the link between a single IFC element globalId and a task."""
+    """POST — remove the link between a single IFC element globalId and a task.
+
+    Primary store is TaskEntityBinding (covers 100% of links including needs_review rows).
+    ifc_entities M2M is a secondary store covering only the ~15% of auto-accepted links;
+    cleaned up after the binding row is confirmed deleted.
+    """
 
     def post(self, request, task_pk: str, **kwargs: object) -> JsonResponse:
         project = self.get_project()
@@ -2063,11 +2118,127 @@ class UnlinkElementView(ProjectModifyAccessMixin, View):
         if not global_id:
             return JsonResponse({"error": "global_id is required"}, status=400)
 
-        deleted, _ = TaskEntityBinding.objects.filter(
+        # Primary: delete by entity_global_id string — covers all binding types.
+        binding_deleted, _ = TaskEntityBinding.objects.filter(
             task=task, entity_global_id=global_id
         ).delete()
 
-        if not deleted:
+        if not binding_deleted:
             return JsonResponse({"error": "Binding not found"}, status=404)
 
+        # Secondary: remove from ifc_entities M2M for the auto-accepted subset.
+        entities = list(IFCEntity.objects.filter(global_id=global_id))
+        if entities:
+            task.ifc_entities.remove(*entities)
+
         return JsonResponse({"status": "unlinked"})
+
+
+class TasksForLinkView(ProjectAccessMixin, View):
+    """GET — search tasks for the Link-to-Task modal.
+
+    Query params:
+      global_id  IFC element globalId — used to flag already-linked tasks.
+      q          Search term (required, min 2 chars). No q → empty list.
+
+    Returns at most 50 results to avoid browser-side rendering lag.
+    """
+
+    _MAX_RESULTS = 50
+
+    def get(self, request, **kwargs: object) -> JsonResponse:
+        project = self.get_project()
+        global_id = request.GET.get("global_id", "").strip()
+        q = request.GET.get("q", "").strip()
+
+        if not q:
+            return JsonResponse({"tasks": []})
+
+        linked_pks: set = set()
+        if global_id:
+            linked_pks = set(
+                TaskEntityBinding.objects.filter(
+                    task__project=project, entity_global_id=global_id
+                ).values_list("task_id", flat=True)
+            )
+
+        tasks = (
+            Task.objects.filter(project=project, is_non_physical=False)
+            .filter(Q(name__icontains=q) | Q(activity_code__icontains=q))
+            .order_by("name")
+            .only("pk", "name", "activity_code", "status", "start_date", "end_date")
+        )[: self._MAX_RESULTS]
+
+        data = [
+            {
+                "pk": str(task.pk),
+                "name": task.name,
+                "activity_code": task.activity_code or "",
+                "status": task.status,
+                "start_date": task.start_date.isoformat(),
+                "end_date": task.end_date.isoformat(),
+                "linked": task.pk in linked_pks,
+            }
+            for task in tasks
+        ]
+        return JsonResponse({"tasks": data})
+
+
+class BulkLinkElementView(ProjectModifyAccessMixin, View):
+    """POST — add task bindings for one IFC element in this project.
+
+    Body: {global_id: str, task_pks: [str, ...]}
+
+    Add-only: creates bindings for any task_pks not yet linked.
+    Existing links for tasks not in the selection are left untouched — the
+    modal uses server-side search so the user can't see the full linked set,
+    making removal via this endpoint unsafe. Use UnlinkAllElementView or
+    UnlinkElementView to remove specific links.
+    """
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        project = self.get_project()
+
+        try:
+            body = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+        global_id = body.get("global_id", "").strip()
+        if not global_id:
+            return JsonResponse({"error": "global_id is required"}, status=400)
+
+        selected_pks = {str(pk) for pk in body.get("task_pks", [])}
+        if not selected_pks:
+            return JsonResponse({"status": "ok", "linked": 0})
+
+        current_pks = {
+            str(pk)
+            for pk in TaskEntityBinding.objects.filter(
+                task__project=project, entity_global_id=global_id
+            ).values_list("task_id", flat=True)
+        }
+
+        to_add = selected_pks - current_pks
+        entities = list(IFCEntity.objects.filter(global_id=global_id))
+
+        if to_add:
+            tasks_to_link = list(Task.objects.filter(project=project, pk__in=to_add))
+            TaskEntityBinding.objects.bulk_create(
+                [
+                    TaskEntityBinding(
+                        task=task,
+                        entity_global_id=global_id,
+                        confidence=1.0,
+                        link_method=TaskEntityBinding.LinkMethod.EXACT,
+                        needs_review=False,
+                    )
+                    for task in tasks_to_link
+                ],
+                ignore_conflicts=True,
+            )
+            if entities:
+                for task in tasks_to_link:
+                    task.ifc_entities.add(*entities)
+
+        return JsonResponse({"status": "ok", "linked": len(to_add)})

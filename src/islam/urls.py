@@ -420,4 +420,14 @@ urlpatterns = [
         scheduling_views.UnlinkAllElementView.as_view(),
         name="unlink_all_element",
     ),
+    path(
+        "projects/<uuid:pk>/elements/tasks-for-link/",
+        scheduling_views.TasksForLinkView.as_view(),
+        name="tasks_for_link",
+    ),
+    path(
+        "projects/<uuid:pk>/elements/bulk-link/",
+        scheduling_views.BulkLinkElementView.as_view(),
+        name="bulk_link_element",
+    ),
 ]
