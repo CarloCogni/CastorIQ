@@ -248,6 +248,11 @@
           <span class="text-secondary">In Progress</span>
         </div>
         <div class="d-flex align-items-center gap-1">
+          <span style="width: 8px; height: 8px; border-radius: 2px; background: #EF4444; display: inline-block;"></span>
+          <span id="fd-stat-delayed" class="fw-semibold">0</span>
+          <span class="text-secondary">Delayed</span>
+        </div>
+        <div class="d-flex align-items-center gap-1">
           <span style="width: 8px; height: 8px; border-radius: 2px; background: #9CA3AF; display: inline-block;"></span>
           <span id="fd-stat-not-started" class="fw-semibold">0</span>
           <span class="text-secondary">Not Started</span>
@@ -1253,14 +1258,15 @@
     if (!tlIntervals.length) return;
     if (_fdLinkFilterActive) return;
     const iv = tlIntervals[Math.min(idx, tlIntervals.length - 1)];
-    const { not_started = [], in_progress = [], complete = [] } = iv.entities || {};
-    sendToViewer({ type: "castor:timeline-colors", not_started, in_progress, complete, no_task: tlNoTask });
+    const { not_started = [], in_progress = [], complete = [], delayed = [] } = iv.entities || {};
+    sendToViewer({ type: "castor:timeline-colors", not_started, in_progress, complete, delayed, no_task: tlNoTask });
     document.getElementById("fd-current-date").textContent = new Date(iv.date + "T00:00:00")
       .toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
     document.getElementById("fd-slider").value = idx;
     const s = iv.stats || {}, tot = s.total || 1;
     document.getElementById("fd-stat-complete").textContent    = (s.complete    || 0).toLocaleString();
     document.getElementById("fd-stat-in-progress").textContent = (s.in_progress || 0).toLocaleString();
+    document.getElementById("fd-stat-delayed").textContent     = (s.delayed     || 0).toLocaleString();
     document.getElementById("fd-stat-not-started").textContent = (s.not_started || 0).toLocaleString();
     document.getElementById("fd-stat-pct").textContent         = Math.round(((s.complete || 0) / tot) * 100) + "%";
   }
