@@ -521,14 +521,19 @@ class TimelineView(ProjectAccessMixin, View):
 
         def _task_state(start_date, end_date, actual_start, actual_end, snapshot):
             """Return the display state of a single task at the given snapshot date."""
-            # Delayed: has actual dates and finished after planned end
-            if actual_start is not None and actual_end is not None and actual_end > end_date:
+            # Delayed: finished late — only visible once simulation reaches actual_start
+            if (
+                actual_start is not None
+                and actual_end is not None
+                and actual_end > end_date
+                and snapshot >= actual_start
+            ):
                 return "delayed"
-            # Delayed: started, still running, and more than 20% past planned duration
+            # Delayed: still running past 120% of planned duration
             if (
                 actual_start is not None
                 and actual_end is None
-                and snapshot > end_date
+                and snapshot >= actual_start
                 and snapshot > actual_start + (end_date - start_date) * 1.2
             ):
                 return "delayed"
