@@ -373,6 +373,33 @@ function hideGlobalIds(globalIds) {
     }
 }
 
+function wireframeNoTaskFragments(noTaskIds, solidIds) {
+    if (!model) return;
+    const solidExpressIds = new Set();
+    for (const gid of solidIds) {
+        const eid = globalIdIndex.get(gid);
+        if (eid !== undefined) solidExpressIds.add(eid);
+    }
+    const noTaskExpressIds = new Set();
+    for (const gid of noTaskIds) {
+        const eid = globalIdIndex.get(gid);
+        if (eid !== undefined) noTaskExpressIds.add(eid);
+    }
+    for (const fragment of model.items) {
+        let hasNoTask = false;
+        let hasSolid  = false;
+        for (const eid of fragment.ids) {
+            if (noTaskExpressIds.has(eid)) hasNoTask = true;
+            if (solidExpressIds.has(eid))  hasSolid  = true;
+            if (hasNoTask && hasSolid) break;
+        }
+        if (!hasNoTask || hasSolid) continue;
+        const mat = fragment.mesh.material;
+        if (Array.isArray(mat)) mat.forEach(m => { m.wireframe = true; m.wireframeLinewidth = 0.5; });
+        else { mat.wireframe = true; mat.wireframeLinewidth = 0.5; }
+    }
+}
+
 function makeColor(hex) {
     return new THREE.Color(hex);
 }
@@ -429,10 +456,10 @@ window.addEventListener("message", async (e) => {
         if (!model) return;
         const { not_started = [], in_progress = [], complete = [], no_task = [] } = msg;
         resetAllColors();
-        colorByGlobalIds(no_task,     C.tl_no_task);      // faint ghost — nearly invisible
         colorByGlobalIds(in_progress, C.tl_in_progress);  // ghost amber (0.3 opacity blend)
         colorByGlobalIds(complete,    C.tl_complete);      // solid green
         hideGlobalIds(not_started);                        // fully hidden — not yet built
+        wireframeNoTaskFragments(no_task, [...in_progress, ...complete, ...not_started]);
         _showTimelineLegend();
         return;
     }
