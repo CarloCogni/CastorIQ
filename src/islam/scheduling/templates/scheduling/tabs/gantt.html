@@ -203,15 +203,36 @@ window.jumpToSimulator = (function () {
     // ── Fetch ─────────────────────────────────────────────────────────────
     async function load() {
         try {
-            const resp = await fetch(GANTT_URL);
+            const resp = await fetch(GANTT_URL + "?page=1&page_size=200");
             const data = await resp.json();
             allTasks = data.tasks || [];
+            render();
+            if (data.has_more) {
+                _loadRemainingPages(data.total_pages);
+            }
         } catch (e) {
             const el = document.getElementById("gantt-loading");
             if (el) el.textContent = "Failed to load Gantt data.";
-            return;
         }
+    }
+
+    async function _loadRemainingPages(totalPages) {
+        const fetches = [];
+        for (let page = 2; page <= totalPages; page++) {
+            fetches.push(
+                fetch(GANTT_URL + "?page=" + page + "&page_size=200")
+                    .then(r => r.json())
+                    .then(d => d.tasks || [])
+                    .catch(() => [])
+            );
+        }
+        const pages = await Promise.all(fetches);
+        allTasks = allTasks.concat(...pages);
+        const scroll = document.getElementById("gantt-scroll");
+        const sx = scroll ? scroll.scrollLeft : 0;
+        const sy = scroll ? scroll.scrollTop  : 0;
         render();
+        if (scroll) { scroll.scrollLeft = sx; scroll.scrollTop = sy; }
     }
 
     function visibleTasks() {

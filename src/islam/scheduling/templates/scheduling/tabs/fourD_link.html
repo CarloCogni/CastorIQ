@@ -173,12 +173,6 @@
                      color:var(--bs-body-color); cursor:pointer;">
         🎯 Focus
       </button>
-      <button id="fd-link-mode-btn" title="Click an IFC element to link it to the selected task"
-              style="display:inline-block; font-size:11px; padding:2px 8px; background:transparent;
-                     border:1px solid var(--bs-border-color); border-radius:4px;
-                     color:var(--bs-body-color); cursor:pointer;">
-        🔗 Link Mode
-      </button>
       <button id="fd-zoom-in-btn" title="Zoom in"
               style="font-size:13px; padding:2px 8px; background:transparent;
                      border:1px solid var(--bs-border-color); border-radius:4px;
@@ -387,6 +381,37 @@
 
 </div><!-- /fourD-root -->
 
+<!-- Link-to-Task modal -->
+<div class="modal fade" id="fdLinkModal" tabindex="-1" aria-labelledby="fdLinkModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title" id="fdLinkModalLabel">
+          <i class="bi bi-link-45deg me-1"></i>Link Element to Task(s)
+        </h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body pb-2">
+        <input type="text" id="fdLinkSearch" class="form-control form-control-sm mb-3"
+               placeholder="Search by task name or activity code (min. 2 chars)…"
+               autocomplete="off">
+        <div id="fdLinkResults" style="max-height: 340px; overflow-y: auto; border: 1px solid var(--bs-border-color); border-radius: 6px;">
+          <div class="text-secondary text-center py-4" style="font-size: 0.82rem;">
+            Start typing to search tasks…
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer py-2">
+        <span id="fdLinkSelectedCount" class="text-secondary me-auto" style="font-size: 0.8rem;"></span>
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-sm btn-primary" id="fdLinkConfirmBtn" disabled>
+          <i class="bi bi-link-45deg me-1"></i>Link Selected
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 (function () {
   "use strict";
@@ -395,14 +420,16 @@
   const FD_INTELLIGENCE_ASK_URL   = "{% url 'islam:intelligence_ask' project.pk %}";
   const FD_INTELLIGENCE_EMBED_URL = "{% url 'islam:intelligence_embed' project.pk %}";
   const FD_WRITEBACK_URL          = "{% url 'islam:schedule_writeback' project.pk %}";
+  const TASKS_FOR_LINK_URL      = "{% url 'islam:tasks_for_link' project.pk %}";
+  const BULK_LINK_URL           = "{% url 'islam:bulk_link_element' project.pk %}";
   const FD_CSRF                 = "{{ csrf_token }}";
 
   /* ── Full Gantt (fd_ prefix) ─────────────────────────────────────── */
 
   const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 
-  function _showToast(message, level) {
-    document.dispatchEvent(new CustomEvent("castor:toast", { bubbles: true, detail: { message, level: level || "info" } }));
+  function _showToast(message, level, delay) {
+    document.dispatchEvent(new CustomEvent("castor:toast", { bubbles: true, detail: { message, level: level || "info", delay } }));
   }
 
   /* Constants */
@@ -445,7 +472,6 @@
   let _fdFocusGlobalId      = null;
   let _fdTaskSelected       = false;
   let _fdLinkFilterActive   = false;
-  let _fdLinkMode           = false;
   let _fdMultiSelectedTasks = [];
   const _fdMultiSelectedSet = new Set();
 
@@ -916,7 +942,6 @@
             sendToViewer({ type: "castor:reset" });
             _fdFocusGlobalId = null;
             _fdTaskSelected  = false;
-            if (_fdLinkMode) _exitLinkMode();
             _updateFocusBtn();
             _applyLinkFilter();
             return;
@@ -1009,33 +1034,8 @@
   }
 
   function _updateFocusBtn() {
-    const btn     = document.getElementById("fd-focus-btn");
-    const linkBtn = document.getElementById("fd-link-mode-btn");
-    if (btn)     btn.style.display = _fdFocusGlobalId ? "inline-block" : "none";
-    if (linkBtn) linkBtn.style.display = "inline-block";
-    if (!_fdFocusGlobalId && _fdLinkMode) _exitLinkMode();
-  }
-
-  function _enterLinkMode() {
-    _fdLinkMode = true;
-    const btn = document.getElementById("fd-link-mode-btn");
-    if (btn) {
-      btn.style.background = "#6366f1";
-      btn.style.color      = "#fff";
-      btn.textContent      = "🔗 Linking… (click element)";
-    }
-    sendToViewer({ type: "castor:link-mode", active: true });
-  }
-
-  function _exitLinkMode() {
-    _fdLinkMode = false;
-    const btn = document.getElementById("fd-link-mode-btn");
-    if (btn) {
-      btn.style.background = "transparent";
-      btn.style.color      = "var(--bs-body-color)";
-      btn.textContent      = "🔗 Link Mode";
-    }
-    sendToViewer({ type: "castor:link-mode", active: false });
+    const btn = document.getElementById("fd-focus-btn");
+    if (btn) btn.style.display = _fdFocusGlobalId ? "inline-block" : "none";
   }
 
   async function _doLinkElement(globalId) {
@@ -1061,7 +1061,22 @@
     } catch (err) {
       _showToast("Link request failed", "error");
     }
-    _exitLinkMode();
+  }
+
+  function _fdPatchUnlinkedInMemory(globalId) {
+    if (!_fdLastData?.tasks) return 0;
+    let patched = 0;
+    for (const t of _fdLastData.tasks) {
+      if (t.isGroup) continue;
+      const ids = t.entity_global_ids;
+      if (!ids) continue;
+      const idx = ids.indexOf(globalId);
+      if (idx === -1) continue;
+      ids.splice(idx, 1);
+      if (ids.length === 0) t.link_status = "unlinked";
+      patched++;
+    }
+    return patched;
   }
 
   async function _doUnlinkElement(globalId) {
@@ -1074,8 +1089,13 @@
       });
       const data = await resp.json();
       if (resp.ok) {
-        _showToast("Unlinked from all tasks", "success");
-        await loadGantt();
+        _showToast("✓ Unlinked successfully", "success", 2000);
+        const patched = _fdPatchUnlinkedInMemory(globalId);
+        if (patched > 0) {
+          _applyLinkFilter();
+        } else {
+          await loadGantt();
+        }
         _fdTaskSelected = false;
         _fdFocusGlobalId = null;
         fd_selectedRowIdx = -1;
@@ -1092,11 +1112,6 @@
 
   document.getElementById("fd-focus-btn")?.addEventListener("click", () => {
     if (_fdFocusGlobalId) sendToViewer({ type: "castor:focus-element", global_id: _fdFocusGlobalId });
-  });
-
-  document.getElementById("fd-link-mode-btn")?.addEventListener("click", () => {
-    if (_fdLinkMode) _exitLinkMode();
-    else             _enterLinkMode();
   });
 
   document.getElementById("fd-zoom-in-btn")?.addEventListener("click", () => {
@@ -1167,12 +1182,11 @@
       console.log('[action]', msg.action, msg.global_id);
       const { action, global_id } = msg;
       if (action === "link" || action === "add-task") {
-        _doLinkElement(global_id);
+        _openLinkModal(global_id);
       } else if (action === "unlink") {
         _doUnlinkElement(global_id);
       } else {
         if (action === "view-tasks") _showToast("View tasks: coming soon", "info");
-        _exitLinkMode();
       }
     }
     if (msg.type === "castor:multi-select") {
@@ -1599,6 +1613,228 @@
     } finally {
       btn.disabled = false;
       spinner.classList.add("d-none");
+    }
+  });
+
+  /* ── Gantt row context menu ─────────────────────────────────────── */
+
+  const _fdCtxMenu = (() => {
+    const el = document.createElement("div");
+    el.id = "fd-gantt-ctx-menu";
+    el.style.cssText = [
+      "position:fixed;z-index:9999;min-width:190px;padding:4px 0;",
+      "background:#1e293b;border:1px solid #334155;border-radius:6px;",
+      "box-shadow:0 8px 24px rgba(0,0,0,.55);font-size:12px;",
+      "display:none;",
+    ].join("");
+
+    function _item(label, icon) {
+      const li = document.createElement("div");
+      li.style.cssText = "padding:7px 14px;cursor:pointer;color:rgba(255,255,255,.82);display:flex;align-items:center;gap:8px;white-space:nowrap;";
+      li.innerHTML = `<span style="opacity:.55;font-size:13px;">${icon}</span>${label}`;
+      li.addEventListener("mouseenter", () => { li.style.background = "#2d3f55"; });
+      li.addEventListener("mouseleave", () => { li.style.background = ""; });
+      return li;
+    }
+
+    const itemName = _item("Copy Task Name",     "⎘");
+    const itemCode = _item("Copy Activity Code", "⎘");
+    const itemRow  = _item("Copy Row",           "⎘");
+    el.append(itemName, itemCode, itemRow);
+    document.body.appendChild(el);
+
+    function _hide() { el.style.display = "none"; }
+
+    function _copy(text) {
+      navigator.clipboard.writeText(text).then(() => {
+        _showToast("Copied!", "success");
+      }).catch(() => {
+        _showToast("Copy failed", "error");
+      });
+      _hide();
+    }
+
+    function show(x, y, task) {
+      itemCode.style.opacity = task.activity_code ? "1" : "0.35";
+      itemCode.style.pointerEvents = task.activity_code ? "auto" : "none";
+
+      itemName.onclick = () => _copy(task.name);
+      itemCode.onclick = () => _copy(task.activity_code || "");
+      itemRow.onclick  = () => _copy(
+        [task.activity_code || "", task.name, task.status, (task.start || "") + " → " + (task.end || "")].join(" | ")
+      );
+
+      el.style.display = "block";
+      const vw = window.innerWidth, vh = window.innerHeight;
+      const mw = el.offsetWidth  || 200;
+      const mh = el.offsetHeight || 120;
+      el.style.left = (x + mw > vw ? vw - mw - 6 : x) + "px";
+      el.style.top  = (y + mh > vh ? vh - mh - 6 : y) + "px";
+    }
+
+    document.addEventListener("click",       _hide);
+    document.addEventListener("contextmenu", (e) => { if (!el.contains(e.target)) _hide(); }, true);
+    document.addEventListener("keydown",     (e) => { if (e.key === "Escape") _hide(); });
+    document.getElementById("fd-gantt-scroll")?.addEventListener("scroll", _hide);
+
+    return { show, hide: _hide };
+  })();
+
+  document.getElementById("fd-gantt-body").addEventListener("contextmenu", (e) => {
+    const rowEl = e.target.closest("[data-row-idx]");
+    if (!rowEl) return;
+    e.preventDefault();
+    const idx  = parseInt(rowEl.dataset.rowIdx, 10);
+    const task = fd_vs.tasks[idx];
+    if (!task || task.isGroup) return;
+    _fdCtxMenu.show(e.clientX, e.clientY, task);
+  });
+
+  /* ── Link-to-Task modal ─────────────────────────────────────────── */
+
+  let _fdLinkModalGlobalId = null;
+  let _fdLinkModalTimer    = null;
+  const _fdLinkModalSel    = new Set();
+
+  function _openLinkModal(globalId) {
+    _fdLinkModalGlobalId = globalId;
+    _fdLinkModalSel.clear();
+    const input      = document.getElementById("fdLinkSearch");
+    const results    = document.getElementById("fdLinkResults");
+    const confirmBtn = document.getElementById("fdLinkConfirmBtn");
+    const countEl    = document.getElementById("fdLinkSelectedCount");
+    if (input)      { input.value = ""; }
+    if (confirmBtn) { confirmBtn.disabled = true; }
+    if (countEl)    { countEl.textContent = ""; }
+    if (results) {
+      results.innerHTML = '<div class="text-secondary text-center py-4" style="font-size:0.82rem;">Start typing to search tasks…</div>';
+    }
+    const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById("fdLinkModal"));
+    modal.show();
+    document.getElementById("fdLinkModal").addEventListener("shown.bs.modal", () => {
+      document.getElementById("fdLinkSearch")?.focus();
+    }, { once: true });
+  }
+
+  function _fdUpdateLinkConfirmBtn() {
+    const confirmBtn = document.getElementById("fdLinkConfirmBtn");
+    const countEl    = document.getElementById("fdLinkSelectedCount");
+    const n = _fdLinkModalSel.size;
+    if (confirmBtn) confirmBtn.disabled = n === 0;
+    if (countEl)    countEl.textContent = n > 0 ? `${n} task${n !== 1 ? "s" : ""} selected` : "";
+  }
+
+  const _FD_LINK_STATUS_BG = {
+    complete: "#166534", active: "#1e40af", in_progress: "#1e40af",
+    delayed: "#991b1b", planned: "#374151",
+  };
+
+  function _fdRenderLinkResults(tasks) {
+    const results = document.getElementById("fdLinkResults");
+    if (!results) return;
+    if (!tasks.length) {
+      results.innerHTML = '<div class="text-secondary text-center py-4" style="font-size:0.82rem;">No tasks found.</div>';
+      return;
+    }
+    const rows = tasks.map(t => {
+      const isChecked = t.linked || _fdLinkModalSel.has(t.pk);
+      if (isChecked) _fdLinkModalSel.add(t.pk);
+      const bgClr  = _FD_LINK_STATUS_BG[t.status] || _FD_LINK_STATUS_BG.planned;
+      const start  = (t.start_date || "").slice(0, 10);
+      const end    = (t.end_date   || "").slice(0, 10);
+      const code   = t.activity_code
+        ? `<code style="font-size:.71rem;background:var(--bs-secondary-bg);padding:1px 5px;border-radius:3px;flex-shrink:0;">${esc(t.activity_code)}</code>`
+        : "";
+      return `
+        <label class="d-flex align-items-start gap-2 px-3 py-2"
+               style="cursor:pointer;border-bottom:1px solid var(--bs-border-color);">
+          <input type="checkbox" class="form-check-input mt-1 fd-link-cb flex-shrink-0"
+                 data-pk="${esc(t.pk)}"${isChecked ? " checked" : ""}>
+          <div style="min-width:0;flex:1;">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+              ${code}
+              <span style="font-size:.82rem;font-weight:500;">${esc(t.name)}</span>
+            </div>
+            <div class="d-flex align-items-center gap-2 mt-1">
+              <span style="font-size:.7rem;background:${bgClr};color:#fff;padding:1px 7px;border-radius:10px;">${esc(t.status)}</span>
+              <span style="font-size:.72rem;color:var(--bs-secondary-color);">${start} → ${end}</span>
+            </div>
+          </div>
+        </label>`;
+    }).join("");
+    results.innerHTML = `<div class="d-flex flex-column">${rows}</div>`;
+    results.querySelectorAll(".fd-link-cb").forEach(cb => {
+      cb.addEventListener("change", () => {
+        if (cb.checked) _fdLinkModalSel.add(cb.dataset.pk);
+        else            _fdLinkModalSel.delete(cb.dataset.pk);
+        _fdUpdateLinkConfirmBtn();
+      });
+    });
+    _fdUpdateLinkConfirmBtn();
+  }
+
+  async function _fdSearchLinkTasks(q) {
+    const results = document.getElementById("fdLinkResults");
+    if (!q || q.length < 2) {
+      if (results) results.innerHTML = '<div class="text-secondary text-center py-4" style="font-size:0.82rem;">Start typing to search tasks…</div>';
+      return;
+    }
+    if (results) results.innerHTML = '<div class="text-secondary text-center py-3" style="font-size:0.82rem;"><div style="width:18px;height:18px;border:2px solid var(--bs-border-color);border-top-color:var(--bs-primary);border-radius:50%;animation:fd-spin .8s linear infinite;margin:0 auto 6px;"></div>Searching…</div>';
+    try {
+      const url  = TASKS_FOR_LINK_URL + "?global_id=" + encodeURIComponent(_fdLinkModalGlobalId || "") + "&q=" + encodeURIComponent(q);
+      const resp = await fetch(url);
+      const data = await resp.json();
+      _fdRenderLinkResults(data.tasks || []);
+    } catch (e) {
+      if (results) results.innerHTML = '<div class="text-danger text-center py-4" style="font-size:0.82rem;">Failed to load tasks.</div>';
+    }
+  }
+
+  document.getElementById("fdLinkSearch")?.addEventListener("input", function () {
+    clearTimeout(_fdLinkModalTimer);
+    _fdLinkModalTimer = setTimeout(() => _fdSearchLinkTasks(this.value.trim()), 300);
+  });
+
+  function _fdPatchLinkedInMemory(globalId, pks) {
+    if (!_fdLastData?.tasks) return;
+    const pkSet = new Set(pks);
+    for (const t of _fdLastData.tasks) {
+      if (t.isGroup) continue;
+      if (!pkSet.has(t.pk || t.id)) continue;
+      t.link_status = "linked";
+      if (!t.entity_global_ids) t.entity_global_ids = [];
+      if (!t.entity_global_ids.includes(globalId)) t.entity_global_ids.push(globalId);
+    }
+  }
+
+  document.getElementById("fdLinkConfirmBtn")?.addEventListener("click", async () => {
+    const task_pks = [..._fdLinkModalSel];
+    if (!task_pks.length || !_fdLinkModalGlobalId) {
+      _showToast("Select at least one task", "info");
+      return;
+    }
+    const btn = document.getElementById("fdLinkConfirmBtn");
+    btn.disabled = true;
+    try {
+      const resp = await fetch(BULK_LINK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": FD_CSRF },
+        body: JSON.stringify({ global_id: _fdLinkModalGlobalId, task_pks }),
+      });
+      const data = await resp.json();
+      if (resp.ok) {
+        const n = data.linked ?? task_pks.length;
+        _fdPatchLinkedInMemory(_fdLinkModalGlobalId, task_pks);
+        _applyLinkFilter();
+        _showToast(`✓ Linked to ${n} task${n !== 1 ? "s" : ""}`, "success", 3000);
+        bootstrap.Modal.getOrCreateInstance(document.getElementById("fdLinkModal")).hide();
+      } else {
+        _showToast(data.error || "Link failed", "error");
+        btn.disabled = false;
+      }
+    } catch (err) {
+      _showToast("Link request failed", "error");
+      btn.disabled = false;
     }
   });
 

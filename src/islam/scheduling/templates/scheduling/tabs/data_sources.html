@@ -7,6 +7,7 @@
      data-detect-url="{% url 'islam:schedule_detect_columns' project.pk %}"
      data-save-lookup-url="{% url 'islam:schedule_save_mapping_lookup' project.pk %}"
      data-review-url="{% url 'islam:schedule' project.pk %}?tab=review"
+     data-gantt-url="{% url 'islam:schedule' project.pk %}?tab=fourD_link"
      data-all-tasks-url="{% url 'islam:all_tasks_preview' project.pk %}"
      data-csrf="{{ csrf_token }}"
      data-task-count="{{ task_count }}">
@@ -66,8 +67,8 @@
              style="font-size:.78rem; font-weight:400; white-space:normal; text-align:left; border:1px solid var(--bs-border-color); border-radius:6px;">
             <i class="bi bi-database me-1"></i>
             <strong>{{ task_count }}</strong> task{{ task_count|pluralize }} already imported.
-            Re-uploading will <strong>add</strong> new tasks (duplicates skipped), or use
-            <em>Replace all</em> to start fresh.
+            Re-importing will <strong>replace</strong> all existing tasks by default.
+            Use <em>Add to existing</em> to append instead.
         </div>
         {% endif %}
     </div>
@@ -287,6 +288,7 @@
     const DETECT_URL      = root.dataset.detectUrl;
     const SAVE_LOOKUP_URL = root.dataset.saveLookupUrl;
     const REVIEW_URL        = root.dataset.reviewUrl;
+    const GANTT_URL      = root.dataset.ganttUrl || '';
     const ALL_TASKS_URL  = root.dataset.allTasksUrl;
     const CSRF           = root.dataset.csrf;
 
@@ -320,7 +322,9 @@
         { key: 'actual_end',       label: 'Actual End',      req: false },
         { key: 'total_float_days', label: 'Total Float (d)',  req: false },
         { key: 'cost',             label: 'Cost',            req: false },
-        { key: 'activity_type', label: 'Stage / Trade',  req: false },
+        { key: 'activity_type', label: 'Activity Type',  req: false },
+        { key: 'stage',         label: 'Stage',          req: false },
+        { key: 'sub_stage',     label: 'Sub-Stage',      req: false },
         { key: 'predecessors',  label: 'Predecessors',   req: false },
         { key: 'status',        label: 'Status',         req: false },
         { key: 'color',         label: 'Colour',         req: false },
@@ -626,11 +630,18 @@
         const n = S.totalRows, w = n === 1 ? 'row' : 'rows';
         statusEl.innerHTML = `<span class="text-success"><i class="bi bi-check-circle me-1"></i>${n.toLocaleString()} ${w} · ${S.format.toUpperCase()}</span>`;
 
-        /* Conditional button labels based on existing tasks */
-        importLbl.textContent = _TASK_COUNT > 0
-            ? `Add ${n.toLocaleString()} tasks →`
-            : `Import ${n.toLocaleString()} tasks →`;
-        if (replaceBtn && _TASK_COUNT > 0) replaceBtn.classList.remove('d-none');
+        /* When tasks already exist: primary = Replace (warning style), secondary = Add */
+        if (_TASK_COUNT > 0) {
+            importLbl.textContent = 'Replace & Import →';
+            importBtn.classList.replace('btn-primary', 'btn-warning');
+            if (replaceBtn) {
+                replaceBtn.innerHTML = '<i class="bi bi-plus-circle me-1"></i>Add to existing →';
+                replaceBtn.classList.replace('btn-outline-danger', 'btn-outline-secondary');
+                replaceBtn.classList.remove('d-none');
+            }
+        } else {
+            importLbl.textContent = `Import ${n.toLocaleString()} tasks →`;
+        }
 
         renderSummary();
         tableSection.style.display = '';
@@ -1060,23 +1071,28 @@
         summaryLeft.innerHTML =
             `<span class="text-success"><i class="bi bi-check-circle me-1"></i>${lbl}.</span>`;
 
-        resultEl.innerHTML =
-            `<div class="alert alert-success alert-dismissible py-2 px-3 mb-2 d-flex align-items-center gap-2 flex-wrap"
-                  role="alert" style="font-size:.82rem;">
-                <i class="bi bi-check-circle-fill"></i>
-                <span>${lbl} — links can now be reviewed.</span>
-                <a href="${REVIEW_URL}" class="btn btn-sm btn-success ms-auto">Go to Review →</a>
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            </div>`;
+        /* Navigate to Gantt so the user immediately sees their schedule. */
+        if (GANTT_URL) {
+            resultEl.innerHTML =
+                `<div class="alert alert-success py-2 px-3 mb-2" style="font-size:.82rem;">
+                    <i class="bi bi-check-circle-fill me-1"></i>${lbl} — opening Gantt…
+                 </div>`;
+            setTimeout(() => { window.location.href = GANTT_URL; }, 1200);
+        } else {
+            resultEl.innerHTML =
+                `<div class="alert alert-success alert-dismissible py-2 px-3 mb-2 d-flex align-items-center gap-2 flex-wrap"
+                      role="alert" style="font-size:.82rem;">
+                    <i class="bi bi-check-circle-fill"></i>
+                    <span>${lbl} — links can now be reviewed.</span>
+                    <a href="${REVIEW_URL}" class="btn btn-sm btn-success ms-auto">Go to Review →</a>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>`;
+        }
     }
 
     importBtn.addEventListener('click', function () {
         if (this.disabled) return;
-        _submitImport(false);
-    });
-
-    if (replaceBtn) {
-        replaceBtn.addEventListener('click', function () {
+        if (_TASK_COUNT > 0) {
             const n = _TASK_COUNT;
             if (!confirm(
                 `⚠ This will DELETE all ${n.toLocaleString()} existing task${n === 1 ? '' : 's'} and their links, ` +
@@ -1084,6 +1100,15 @@
                 `This cannot be undone. Proceed?`
             )) return;
             _submitImport(true);
+        } else {
+            _submitImport(false);
+        }
+    });
+
+    if (replaceBtn) {
+        /* When tasks exist, this button is "Add to existing" (non-destructive). */
+        replaceBtn.addEventListener('click', function () {
+            _submitImport(false);
         });
     }
 
@@ -1092,7 +1117,7 @@
         importBtn.disabled = false;
         if (replaceBtn) replaceBtn.disabled = false;
         importLbl.textContent = _TASK_COUNT > 0
-            ? `Add ${S.totalRows.toLocaleString()} tasks →`
+            ? 'Replace & Import →'
             : `Import ${S.totalRows.toLocaleString()} tasks →`;
     }
 
@@ -1119,6 +1144,7 @@
         predecessors: 'Predecessors', actual_start: 'Actual Start', actual_end: 'Actual End',
         total_float: 'Total Float', wbs_name: 'WBS Name',
         duration: 'Duration', weight: 'Weight', is_critical: 'Critical Path',
+        stage: 'Stage', sub_stage: 'Sub-Stage',
     };
 
     function _aiPanelReset() {

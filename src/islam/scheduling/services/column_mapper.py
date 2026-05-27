@@ -40,6 +40,8 @@ _SYN_ACT_START = frozenset({"actual start", "actualstart", "act start", "a_start
 _SYN_ACT_END = frozenset(
     {"actual end", "actual finish", "actualend", "act end", "act finish", "a_finish"}
 )
+_SYN_STAGE = frozenset({"stage", "construction stage", "phase", "construction phase"})
+_SYN_SUB_STAGE = frozenset({"sub_stage", "sub stage", "substage", "sub-stage", "trade"})
 
 _FIELD_SYNONYMS: dict[str, frozenset[str]] = {
     "name": _SYN_NAME,
@@ -53,6 +55,8 @@ _FIELD_SYNONYMS: dict[str, frozenset[str]] = {
     "predecessors": _SYN_PREDS,
     "actual_start": _SYN_ACT_START,
     "actual_end": _SYN_ACT_END,
+    "stage": _SYN_STAGE,
+    "sub_stage": _SYN_SUB_STAGE,
 }
 
 # Columns shown by default in preview (in order of importance)
@@ -79,6 +83,8 @@ CANONICAL_FIELDS = [
     "predecessors",
     "actual_start",
     "actual_end",
+    "stage",
+    "sub_stage",
 ]
 CANONICAL_LABELS = {
     "name": "Task Name *",
@@ -92,6 +98,8 @@ CANONICAL_LABELS = {
     "predecessors": "Predecessors (optional)",
     "actual_start": "Actual Start (optional)",
     "actual_end": "Actual End (optional)",
+    "stage": "Stage (optional)",
+    "sub_stage": "Sub-Stage (optional)",
 }
 
 _STATUS_MAP = {
@@ -198,6 +206,8 @@ def apply_mapping(
                 "cost": _parse_cost(cell("cost")),
                 "activity_type": cell("activity_type"),
                 "_raw_predecessors": cell("predecessors"),
+                "stage": cell("stage").lower(),
+                "sub_stage": cell("sub_stage").lower(),
             }
         )
 
@@ -207,16 +217,58 @@ def apply_mapping(
 def suggest_mapping(headers: list[str]) -> dict[str, str]:
     """Auto-detect which canonical field each header column likely contains.
 
-    Returns {canonical_field: original_header_string} for each matched field.
-    Unmatched headers are silently omitted.  First match per field wins.
+    Three-tier matching (in order, first hit wins per field):
+      1. Exact normalized match — lowercase, whitespace/underscore/dash collapsed.
+      2. Substring containment — a synonym (len ≥ 4) appears inside the header or vice versa.
+      3. SequenceMatcher fuzzy ratio ≥ 0.72 against all synonyms.
+
+    Returns {canonical_field: original_header_string}. Each header is assigned
+    to at most one field; CANONICAL_FIELDS order determines priority for ties.
     """
-    lower_to_orig: dict[str, str] = {h.strip().lower(): h for h in headers}
+    from difflib import SequenceMatcher
+
+    def _norm(s: str) -> str:
+        return re.sub(r"[\s_\-]+", " ", s.strip().lower())
+
+    norm_to_orig: dict[str, str] = {_norm(h): h for h in headers}
+    normed_syns: dict[str, list[str]] = {
+        field: [_norm(s) for s in syns] for field, syns in _FIELD_SYNONYMS.items()
+    }
+
     mapping: dict[str, str] = {}
-    for field, syns in _FIELD_SYNONYMS.items():
-        for key, orig in lower_to_orig.items():
-            if key in syns:
-                mapping[field] = orig
-                break
+    used_headers: set[str] = set()
+
+    for field in CANONICAL_FIELDS:
+        syns = normed_syns.get(field)
+        if not syns:
+            continue
+
+        best_orig: str | None = None
+        best_score = 0.0
+
+        for norm_h, orig_h in norm_to_orig.items():
+            if orig_h in used_headers:
+                continue
+
+            if norm_h in syns:
+                score = 1.0
+            elif any(s in norm_h for s in syns if len(s) >= 4):
+                longest = max((s for s in syns if s in norm_h and len(s) >= 4), key=len)
+                score = max(len(longest) / max(len(norm_h), len(longest)), 0.72)
+            elif any(norm_h in s for s in syns if len(norm_h) >= 4):
+                longest = max((s for s in syns if norm_h in s and len(norm_h) >= 4), key=len)
+                score = max(len(norm_h) / max(len(norm_h), len(longest)), 0.72)
+            else:
+                score = max((SequenceMatcher(None, norm_h, s).ratio() for s in syns), default=0.0)
+
+            if score > best_score and score >= 0.72:
+                best_score = score
+                best_orig = orig_h
+
+        if best_orig:
+            mapping[field] = best_orig
+            used_headers.add(best_orig)
+
     return mapping
 
 
