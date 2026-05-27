@@ -145,6 +145,7 @@ const C = {
     /* 4D build sequence — colours pre-multiplied against #111 background */
     tl_complete:    new THREE.Color(0.063, 0.722, 0.506),   // #10B981 opacity 1.0
     tl_in_progress: new THREE.Color(0.335, 0.233, 0.060),   // #F59E0B blended @ 0.3
+    tl_delayed:     new THREE.Color(0.937, 0.267, 0.267),   // #EF4444
     tl_no_task:     new THREE.Color(0.104, 0.105, 0.106),   // #D1D5DB blended @ 0.05
     // not_started → hidden via fragment.setVisibility(false)
 };
@@ -454,12 +455,13 @@ window.addEventListener("message", async (e) => {
 
     if (msg.type === "castor:timeline-colors") {
         if (!model) return;
-        const { not_started = [], in_progress = [], complete = [], no_task = [] } = msg;
+        const { not_started = [], in_progress = [], complete = [], no_task = [], delayed = [] } = msg;
         resetAllColors();
         colorByGlobalIds(in_progress, C.tl_in_progress);  // ghost amber (0.3 opacity blend)
         colorByGlobalIds(complete,    C.tl_complete);      // solid green
+        colorByGlobalIds(delayed,     C.tl_delayed);       // red — finished/running late
         hideGlobalIds(not_started);                        // fully hidden — not yet built
-        wireframeNoTaskFragments(no_task, [...in_progress, ...complete, ...not_started]);
+        wireframeNoTaskFragments(no_task, [...in_progress, ...complete, ...delayed, ...not_started]);
         _showTimelineLegend();
         return;
     }
@@ -578,8 +580,9 @@ function _showTimelineLegend() {
     legendEl.innerHTML =
         `<div class="leg-row"><span class="leg-swatch" style="background:#10B981;"></span>Complete</div>` +
         `<div class="leg-row"><span class="leg-swatch" style="background:#F59E0B; opacity:0.3;"></span>In Progress</div>` +
+        `<div class="leg-row"><span class="leg-swatch" style="background:#EF4444;"></span>Delayed</div>` +
         `<div class="leg-row"><span class="leg-swatch" style="background:#333; border:1px solid #444;"></span>Not Started (hidden)</div>` +
-        `<div class="leg-row"><span class="leg-swatch" style="background:#1B1B1B;"></span>No Task</div>`;
+        `<div class="leg-row"><span class="leg-swatch" style="background:#1B1B1B;"></span>No Task (wireframe)</div>`;
     legendEl.style.display = "block";
 }
 

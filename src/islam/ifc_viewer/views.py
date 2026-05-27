@@ -495,11 +495,13 @@ class TimelineView(ProjectAccessMixin, View):
         if not tasks:
             return JsonResponse({"has_tasks": False, "intervals": []})
 
-        # entity GID → [(start_date, end_date), ...] — uses prefetch cache
+        # entity GID → [(start_date, end_date, actual_start, actual_end), ...] — uses prefetch cache
         entity_tasks: dict[str, list] = defaultdict(list)
         for task in tasks:
             for entity in task.ifc_entities.all():
-                entity_tasks[entity.global_id].append((task.start_date, task.end_date))
+                entity_tasks[entity.global_id].append(
+                    (task.start_date, task.end_date, task.actual_start, task.actual_end)
+                )
 
         # All entity GIDs across all completed IFC files for this project
         ifc_files = IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
@@ -524,14 +526,22 @@ class TimelineView(ProjectAccessMixin, View):
             not_started: list[str] = []
             in_progress: list[str] = []
             complete: list[str] = []
+            delayed: list[str] = []
 
             for gid in task_gids:
                 ranges = entity_tasks[gid]
+                # delayed takes priority: finished after planned end, or still running past planned end
+                if any(
+                    (actual_end is not None and actual_end > end_date)
+                    or (actual_start is not None and actual_end is None and current > end_date)
+                    for _, end_date, actual_start, actual_end in ranges
+                ):
+                    delayed.append(gid)
                 # complete: all linked tasks ended at or before T
-                if all(end <= current for _, end in ranges):
+                elif all(end <= current for _, end, *_ in ranges):
                     complete.append(gid)
                 # in_progress: at least one task started but not yet ended
-                elif any(start <= current < end for start, end in ranges):
+                elif any(start <= current < end for start, end, *_ in ranges):
                     in_progress.append(gid)
                 else:
                     not_started.append(gid)
@@ -544,11 +554,13 @@ class TimelineView(ProjectAccessMixin, View):
                         "not_started": not_started,
                         "in_progress": in_progress,
                         "complete": complete,
+                        "delayed": delayed,
                     },
                     "stats": {
                         "total": total,
                         "complete": len(complete),
                         "in_progress": len(in_progress),
+                        "delayed": len(delayed),
                         "not_started": len(not_started) + len(no_task_gids),
                     },
                 }
