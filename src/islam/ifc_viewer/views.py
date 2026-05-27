@@ -519,6 +519,32 @@ class TimelineView(ProjectAccessMixin, View):
         min_date = min(t.start_date for t in tasks)
         max_date = max(t.end_date for t in tasks)
 
+        def _task_state(start_date, end_date, actual_start, actual_end, snapshot):
+            """Return the display state of a single task at the given snapshot date."""
+            # Delayed: has actual dates and finished after planned end
+            if actual_start is not None and actual_end is not None and actual_end > end_date:
+                return "delayed"
+            # Delayed: started, still running, and more than 20% past planned duration
+            if (
+                actual_start is not None
+                and actual_end is None
+                and snapshot > end_date
+                and snapshot > actual_start + (end_date - start_date) * 1.2
+            ):
+                return "delayed"
+            # Complete: has actual_end on or before planned end
+            if actual_end is not None and actual_end <= end_date:
+                return "complete"
+            # In progress: actually started, not yet ended
+            if actual_start is not None and actual_start <= snapshot and actual_end is None:
+                return "in_progress"
+            # No actual data — fall back to planned dates
+            if end_date <= snapshot:
+                return "complete"
+            if start_date <= snapshot < end_date:
+                return "in_progress"
+            return "not_started"
+
         intervals = []
         current = min_date
         week_num = 1
@@ -529,19 +555,14 @@ class TimelineView(ProjectAccessMixin, View):
             delayed: list[str] = []
 
             for gid in task_gids:
-                ranges = entity_tasks[gid]
-                # delayed takes priority: finished after planned end, or still running past planned end
-                if any(
-                    (actual_end is not None and actual_end > end_date)
-                    or (actual_start is not None and actual_end is None and current > end_date)
-                    for _, end_date, actual_start, actual_end in ranges
-                ):
+                states = [
+                    _task_state(s, e, a_s, a_e, current) for s, e, a_s, a_e in entity_tasks[gid]
+                ]
+                if "delayed" in states:
                     delayed.append(gid)
-                # complete: all linked tasks ended at or before T
-                elif all(end <= current for _, end, *_ in ranges):
+                elif all(st == "complete" for st in states):
                     complete.append(gid)
-                # in_progress: at least one task started but not yet ended
-                elif any(start <= current < end for start, end, *_ in ranges):
+                elif "in_progress" in states:
                     in_progress.append(gid)
                 else:
                     not_started.append(gid)
