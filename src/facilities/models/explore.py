@@ -192,6 +192,12 @@ class ExplorePoint(UUIDModel):
         verbose_name="Symbol",
         help_text="Glyph for a custom point (one of the preset symbols)",
     )
+    kind_label = models.CharField(
+        max_length=80,
+        blank=True,
+        verbose_name="Custom Type Name",
+        help_text="User-set type name for a custom point (groups them in the list)",
+    )
     x_percent = models.DecimalField(
         max_digits=6,
         decimal_places=3,

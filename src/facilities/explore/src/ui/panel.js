@@ -17,6 +17,7 @@ export function renderPanel(els, point, handlers = {}, ui = {}) {
   const room = ui.room || null;
   const idProps = ui.idProps || [];
   const propLabel = ui.propLabel || ((k) => k);
+  const customSymbols = ui.customSymbols || [];
 
   if (!point) {
     title.textContent = "No point selected";
@@ -35,7 +36,7 @@ export function renderPanel(els, point, handlers = {}, ui = {}) {
   sub.textContent = `x ${point.x}%  ·  y ${point.y}%`;
 
   body.innerHTML =
-    identificationBlock(point, rooms, phases, room, idProps, propLabel) +
+    identificationBlock(point, rooms, phases, room, idProps, propLabel, customSymbols) +
     archiveSection(point, "photo", "Photos") +
     archiveSection(point, "360", "360°") +
     linkedDataBlock(point, catalog, filterKeys, getRows, roomName);
@@ -58,6 +59,12 @@ export function renderPanel(els, point, handlers = {}, ui = {}) {
       handlers.onSetPointPhase && handlers.onSetPointPhase(point.id, pointPhaseSel.value);
     }
   });
+
+  // Custom point: rename its type (commits on blur) + change its symbol.
+  const customNameInp = body.querySelector("[data-customname]");
+  if (customNameInp) customNameInp.addEventListener("change", () => handlers.onSetPointKindLabel && handlers.onSetPointKindLabel(point.id, customNameInp.value));
+  body.querySelectorAll("[data-customsym]").forEach((b) =>
+    b.addEventListener("click", () => handlers.onSetPointKind && handlers.onSetPointKind(point.id, "custom", b.dataset.customsym)));
 
   // Hero of each archive: click to view, ✕ to remove
   body.querySelectorAll(".dp-hero").forEach((hero) => {
@@ -193,7 +200,7 @@ function linkedDataBlock(point, catalog, filterKeys, getRows, roomName) {
   );
 }
 
-function identificationBlock(point, rooms, phases, room, idProps, propLabel) {
+function identificationBlock(point, rooms, phases, room, idProps, propLabel, customSymbols = []) {
   const linked = !!point.roomId;
   const roomOpts =
     `<option value="">— Custom (manual)</option>` +
@@ -219,6 +226,13 @@ function identificationBlock(point, rooms, phases, room, idProps, propLabel) {
     `<label class="fld"><span>Phase (room state)</span><select class="fld-in" data-pointphase>${phaseOpts}</select></label>` +
     `<label class="fld"><span>GlobalID</span><input class="fld-in" data-f="globalId" value="${escapeAttr(point.globalId)}" ${ro} placeholder="pick a room above" /></label>` +
     `<label class="fld"><span>IFC type</span><input class="fld-in" data-f="ifcType" value="${escapeAttr(point.ifcType)}" ${ro} placeholder="IfcSpace…" /></label>` +
+    // Custom point: editable type name + symbol picker.
+    (point.kind === "custom"
+      ? `<label class="fld"><span>Custom type</span><input class="fld-in" data-customname value="${escapeAttr(point.kindLabel || "")}" placeholder="e.g. Exit, Hydrant" /></label>` +
+        `<div class="dp-syms dp-syms-edit">` +
+        customSymbols.map((s) => `<button class="dp-sym${s === (point.symbol || "") ? " on" : ""}" data-customsym="${escapeAttr(s)}" title="Symbol">${escapeAttr(s)}</button>`).join("") +
+        `</div>`
+      : "") +
     (idFields ? `<div class="info-rows">${idFields}</div>` : "") +
     `</div>`
   );

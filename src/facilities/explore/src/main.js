@@ -14,7 +14,7 @@ import {
   setAttachPhase, setSelectedMedia, setMediaMeta, setArchiveType, setTimelineView, setSortKey, toggleSortDir, setNumbering, setNumberingPad, setPointPhase, addMedia, removeMedia, restoreMedia,
   addPhase, renamePhase, deletePhase, setPhaseColor, deleteFloor, moveFloor, phaseColor, effectivePhase, addPointTable, removePointTable, setPointTableFilter,
   onStateChange, exportFullState, importFullState, clearSession,
-  POINT_KINDS, CUSTOM_SYMBOLS, pointKind, pointGlyph, setPlaceKind, setKindFilter, setPointKind,
+  POINT_KINDS, CUSTOM_SYMBOLS, pointKind, pointGlyph, pointKindLabel, setPlaceKind, setKindFilter, setPointKind, setPlaceCustomName, setPointKindLabel,
 } from "./state.js";
 import { filterRows, tableCatalog, setTableCatalog } from "./data/roomdata.js";
 import { renderPins, initFloorplan } from "./floorplan/floorplan.js";
@@ -171,6 +171,8 @@ function render() {
       onRemoveTable: (id, key) => { removePointTable(id, key); },
       onSetTableFilter: (id, key, filterBy) => { setPointTableFilter(id, key, filterBy); },
       onConfigIdProps: openIdPropsConfig,
+      onSetPointKindLabel: (id, name) => setPointKindLabel(id, name),
+      onSetPointKind: (id, kind, symbol) => setPointKind(id, kind, symbol),
     },
     {
       phases: state.phases,
@@ -178,6 +180,7 @@ function render() {
       room: sel ? roomForPoint(sel) : null,
       idProps: state.idProps,
       propLabel,
+      customSymbols: CUSTOM_SYMBOLS,
       catalog: tableCatalog(),
       filterKeys: filterKeysObj(),
       roomName: sel ? roomNameForPoint(sel) : "",
@@ -592,6 +595,7 @@ function renderPlaceKind() {
       `<option value="${kk}" ${kk === k ? "selected" : ""}>${escHtml(POINT_KINDS[kk].label)}</option>`).join("") +
     `</select>`;
   if (k === "custom") {
+    html += `<input class="phase-sel dp-customname" data-placecustomname placeholder="Type name (e.g. Exit)" value="${escHtml(state.placeCustomName || "")}" title="Name for the custom point type" />`;
     html += `<span class="dp-syms">` +
       CUSTOM_SYMBOLS.map((s) =>
         `<button class="dp-sym${s === state.placeSymbol ? " on" : ""}" data-placesym="${escHtml(s)}" title="Symbol">${escHtml(s)}</button>`).join("") +
@@ -600,6 +604,8 @@ function renderPlaceKind() {
   els.dpKinds.innerHTML = html;
   const sel = els.dpKinds.querySelector("[data-placekind]");
   if (sel) sel.addEventListener("change", () => setPlaceKind(sel.value, state.placeSymbol));
+  const nm = els.dpKinds.querySelector("[data-placecustomname]");
+  if (nm) nm.addEventListener("input", () => setPlaceCustomName(nm.value));
   els.dpKinds.querySelectorAll("[data-placesym]").forEach((b) =>
     b.addEventListener("click", () => setPlaceKind("custom", b.dataset.placesym)));
 }
@@ -799,12 +805,21 @@ function openPointList() {
   const draw = () => {
     const term = (search.value || "").trim().toLowerCase();
     // Grouped by point kind (Photo / Camera / Sensor / Custom).
-    const groups = Object.keys(POINT_KINDS)
-      .map((k) => ({ k, pts: state.points.filter((p) => pointKind(p) === k && matches(p, term)) }))
-      .filter((g) => g.pts.length);
+    const matched = state.points.filter((p) => matches(p, term));
+    const groups = [];
+    ["photo", "camera", "sensor"].forEach((k) => {
+      const pts = matched.filter((p) => pointKind(p) === k);
+      if (pts.length) groups.push({ label: POINT_KINDS[k].label, glyph: k !== "photo" ? POINT_KINDS[k].glyph : "", pts });
+    });
+    // Custom points sub-group by their user-set type name.
+    const customPts = matched.filter((p) => pointKind(p) === "custom");
+    [...new Set(customPts.map((p) => pointKindLabel(p)))].forEach((nm) => {
+      const pts = customPts.filter((p) => pointKindLabel(p) === nm);
+      groups.push({ label: nm, glyph: pts[0].symbol || "◆", pts });
+    });
     if (!groups.length) { listEl.innerHTML = `<div class="dp-empty-sm">No matching points</div>`; return; }
     listEl.innerHTML = groups.map((g) => {
-      const head = POINT_KINDS[g.k].label + (g.k !== "photo" && POINT_KINDS[g.k].glyph ? " " + POINT_KINDS[g.k].glyph : "");
+      const head = g.label + (g.glyph ? " " + g.glyph : "");
       return `<div class="ptl-grp">${escHtml(head)} · ${g.pts.length}</div>` +
       g.pts.map((p) => {
         const ph = effectivePhase(p);
@@ -1167,7 +1182,7 @@ els.btnFloors.addEventListener("click", () => {
 });
 
 // ── Boot ──
-const BUILD = "build 6.36"; // bump on each change so a stale (cached) JS is obvious in the header
+const BUILD = "build 6.37"; // bump on each change so a stale (cached) JS is obvious in the header
 initModal();
 // Restore a previously chosen standalone theme (host SET_THEME still overrides when embedded).
 try { const savedTheme = localStorage.getItem(THEME_KEY); if (savedTheme) applyTheme(savedTheme); } catch (_) { /* ignore */ }

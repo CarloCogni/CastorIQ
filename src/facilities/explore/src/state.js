@@ -93,6 +93,7 @@ export const state = {
   phaseColors: {},        // user colour overrides per phase name (managed in the phase manager)
   placeKind: "photo",     // kind for the next placed point: photo|camera|sensor|custom
   placeSymbol: "◆",       // symbol for the next placed custom point
+  placeCustomName: "",    // type name for the next placed custom point (e.g. "Exit")
   kindFilter: "",         // header filter by point kind ("" = all)
 };
 
@@ -334,6 +335,12 @@ export function pointGlyph(point) {
   if (k === "custom") return point.symbol || CUSTOM_SYMBOLS[0];
   return POINT_KINDS[k].glyph || "•";
 }
+// Display name for a point's kind — custom points use their user-set type name.
+export function pointKindLabel(point) {
+  const k = pointKind(point);
+  if (k === "custom") return ((point.kindLabel || "").trim()) || "Custom";
+  return POINT_KINDS[k].label;
+}
 export function setPlaceKind(kind, symbol) {
   state.placeKind = POINT_KINDS[kind] ? kind : "photo";
   if (symbol) state.placeSymbol = symbol;
@@ -348,6 +355,18 @@ export function setPointKind(pointId, kind, symbol) {
   if (!p) return;
   p.kind = POINT_KINDS[kind] ? kind : "photo";
   if (p.kind === "custom") p.symbol = symbol || p.symbol || CUSTOM_SYMBOLS[0];
+  emit();
+}
+// Type name for the next placed custom point. No emit — avoids stealing focus
+// from the text input while typing; read on the next render.
+export function setPlaceCustomName(name) {
+  state.placeCustomName = name || "";
+}
+// Rename an existing custom point's type (commits on blur in the panel).
+export function setPointKindLabel(pointId, name) {
+  const p = state.points.find((p) => p.id === pointId);
+  if (!p) return;
+  p.kindLabel = name || "";
   emit();
 }
 
@@ -482,6 +501,7 @@ export function addPoint(x, y) {
     // instead of a number; custom carries its chosen symbol.
     kind: POINT_KINDS[state.placeKind] ? state.placeKind : "photo",
     symbol: state.placeKind === "custom" ? (state.placeSymbol || CUSTOM_SYMBOLS[0]) : "",
+    kindLabel: state.placeKind === "custom" ? (state.placeCustomName || "") : "",
     x: round1(x),
     y: round1(y),
     tables: [],
