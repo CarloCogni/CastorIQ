@@ -1555,21 +1555,33 @@ def _get_ifc_files(project):
 
 def _build_review_summary(project) -> dict:
     qs = TaskEntityBinding.objects.filter(task__project=project)
-    total = qs.count()
-    needs_review = qs.filter(needs_review=True).count()
-    needs_review_high = qs.filter(needs_review=True, confidence__gte=0.95).count()
-    auto_accepted = qs.filter(needs_review=False).count()
-    all_pks = set(Task.objects.filter(project=project).values_list("pk", flat=True))
-    linked_pks = set(qs.values_list("task_id", flat=True))
+
+    physical_pks = set(
+        Task.objects.filter(project=project, is_non_physical=False).values_list("pk", flat=True)
+    )
     non_physical_pks = set(
         Task.objects.filter(project=project, is_non_physical=True).values_list("pk", flat=True)
     )
+
+    # Unique task PKs that have at least one accepted binding
+    accepted_task_pks = set(
+        qs.filter(needs_review=False).values_list("task_id", flat=True).distinct()
+    )
+    # Unique task PKs with any binding at all
+    bound_task_pks = set(qs.values_list("task_id", flat=True).distinct())
+
+    # Needs Review: tasks that have bindings but none are accepted yet
+    needs_review_task_pks = bound_task_pks - accepted_task_pks
+
+    # For backwards-compat with the standalone review template
+    needs_review_high = qs.filter(needs_review=True, confidence__gte=0.95).count()
+
     return {
-        "total": total,
-        "needs_review": needs_review,
+        "total": len(physical_pks),
+        "auto_accepted": len(accepted_task_pks & physical_pks),
+        "needs_review": len(needs_review_task_pks & physical_pks),
         "needs_review_high": needs_review_high,
-        "auto_accepted": auto_accepted,
-        "unlinked_tasks": len(all_pks - linked_pks - non_physical_pks),
+        "unlinked_tasks": len(physical_pks - bound_task_pks),
         "non_physical_count": len(non_physical_pks),
     }
 
