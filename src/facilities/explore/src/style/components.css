@@ -133,6 +133,9 @@ body.castor-embedded .mh-build { display: none !important; }
 .dp-tbllabel{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .dp-tblfilter{background:var(--p1);border:1px solid var(--b2);border-radius:3px;color:var(--t2);font-family:var(--font-mono);font-size:8.5px;padding:2px 3px;cursor:pointer;outline:none;text-transform:none;letter-spacing:0;}
 .dp-tblfilter:focus{border-color:var(--acc-b);}
+.dp-tblsearch{width:70px;background:var(--p1);border:1px solid var(--b2);border-radius:3px;color:var(--t1);font-family:var(--font-mono);font-size:8.5px;padding:2px 5px;outline:none;text-transform:none;letter-spacing:0;}
+.dp-tblsearch:focus{border-color:var(--acc-b);width:110px;}
+.dp-tblsearch::placeholder{color:var(--t3);}
 .dp-tblx{background:none;border:none;color:var(--t3);cursor:pointer;font-size:11px;line-height:1;padding:0 2px;flex-shrink:0;}
 .dp-tblx:hover{color:var(--red);}
 .dp-tbl{width:100%;border-collapse:collapse;}

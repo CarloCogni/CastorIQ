@@ -21,6 +21,11 @@ from typing import Any
 from environments.models import Project
 from facilities.models import ActionRequest, FacilityAsset, Permit, WorkOrder
 from facilities.services.workorder_service import KANBAN_STATUSES
+from ifc_processor.models import IFCEntity, IFCSpatialElement
+
+# IFC spatial container types — excluded from the "Elements" table (they are the
+# rooms/storeys, not elements placed in them).
+_SPATIAL_IFC_TYPES = ("IfcProject", "IfcSite", "IfcBuilding", "IfcBuildingStorey", "IfcSpace")
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +41,64 @@ def build_table_catalog(project: Project) -> dict[str, dict[str, Any]]:
         "work": _build_work_table(project),
         "permits": _build_permits_table(project),
         "requests": _build_requests_table(project),
+        "elements": _build_elements_table(project),
+    }
+
+
+def _flatten_params(props) -> str:
+    """Flatten an IFC entity's properties (incl. one level of psets) to a compact
+    "key: value · key: value" string for the dynamic Parameters column."""
+    if not isinstance(props, dict):
+        return ""
+    parts = []
+    for key, value in props.items():
+        if isinstance(value, dict):
+            for sub_key, sub_value in value.items():
+                if sub_value not in (None, "", [], {}):
+                    parts.append(f"{sub_key}: {sub_value}")
+        elif value not in (None, "", [], {}):
+            parts.append(f"{key}: {value}")
+    return "  ·  ".join(parts)
+
+
+def _build_elements_table(project: Project) -> dict[str, Any]:
+    """IFC elements placed in a room (via ``spatial_container``), with their
+    parameters flattened into one column so the panel's text filter can search
+    them. Join key is the containing room's GlobalID / number / department."""
+    rows = []
+    qs = (
+        IFCEntity.objects.filter(
+            ifc_file__project=project,
+            spatial_container__isnull=False,
+        )
+        .exclude(ifc_type__in=_SPATIAL_IFC_TYPES)
+        .select_related("spatial_container", "spatial_container__entity")
+    )
+    for ent in qs:
+        space = ent.spatial_container
+        space_entity = getattr(space, "entity", None)
+        room_global_id = space_entity.global_id if space_entity else ""
+        room_props = _spatial_props(space)
+        rows.append(
+            {
+                "id": str(ent.pk),
+                "name": ent.name or "",
+                "ifc_type": ent.ifc_type or "",
+                "params": _flatten_params(ent.properties),
+                "globalId": room_global_id,
+                "roomNumber": room_props.get("number", ""),
+                "department": room_props.get("department", ""),
+            }
+        )
+    return {
+        "group": "IFC",
+        "label": "Elements in room",
+        "columns": [
+            {"field": "name", "label": "Name"},
+            {"field": "ifc_type", "label": "Type"},
+            {"field": "params", "label": "Parameters"},
+        ],
+        "rows": rows,
     }
 
 

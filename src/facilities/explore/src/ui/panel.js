@@ -83,6 +83,18 @@ export function renderPanel(els, point, handlers = {}, ui = {}) {
   body.querySelectorAll("[data-tblfilter]").forEach((sel) => {
     sel.addEventListener("change", () => handlers.onSetTableFilter && handlers.onSetTableFilter(point.id, sel.dataset.tblfilter, sel.value));
   });
+  // Per-table text filter: hide rows that don't contain the term (matches any
+  // cell incl. the dynamic "Parameters" column). Pure DOM — no re-render.
+  body.querySelectorAll("[data-tblsearch]").forEach((inp) => {
+    inp.addEventListener("input", () => {
+      const term = inp.value.trim().toLowerCase();
+      const tbody = body.querySelector(`tbody[data-tblbody="${inp.dataset.tblsearch}"]`);
+      if (!tbody) return;
+      tbody.querySelectorAll("tr").forEach((tr) => {
+        tr.style.display = (!term || tr.textContent.toLowerCase().includes(term)) ? "" : "none";
+      });
+    });
+  });
 
   actions.hidden = false;
   actions.innerHTML =
@@ -152,10 +164,11 @@ function linkedDataBlock(point, catalog, filterKeys, getRows, roomName) {
       `<select class="dp-tblfilter" data-tblfilter="${key}" title="Match rooms by">` +
       Object.keys(filterKeys).map((fk) => `<option value="${fk}" ${fk === filterBy ? "selected" : ""}>${escapeAttr(filterKeys[fk].label)}</option>`).join("") +
       `</select>`;
+    const search = `<input class="dp-tblsearch" data-tblsearch="${key}" placeholder="filter…" title="Filter rows by any value / parameter" />`;
     return (
       `<div class="dp-tblwrap">` +
-      `<div class="dp-tblhead"><span class="dp-tbllabel">${escapeAttr(def.label)}</span>${filterSel}<button class="dp-tblx" data-rmtable="${key}" title="Remove">✕</button></div>` +
-      `<table class="dp-tbl"><thead>${head}</thead><tbody>${bodyRows}</tbody></table>` +
+      `<div class="dp-tblhead"><span class="dp-tbllabel">${escapeAttr(def.label)}</span>${search}${filterSel}<button class="dp-tblx" data-rmtable="${key}" title="Remove">✕</button></div>` +
+      `<table class="dp-tbl"><thead>${head}</thead><tbody data-tblbody="${key}">${bodyRows}</tbody></table>` +
       `</div>`
     );
   }).join("");
