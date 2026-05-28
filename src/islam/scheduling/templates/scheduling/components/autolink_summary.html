@@ -63,3 +63,9 @@
     </div>
 
 </div>
+
+<!-- Reload the inline review pane now that bindings have changed -->
+<div hx-get="{% url 'islam:review' project.pk %}?filter=all&inline=1"
+     hx-target="#fourD-review-pane"
+     hx-swap="innerHTML"
+     hx-trigger="load"></div>

@@ -450,6 +450,7 @@ class TaskEntityBinding(UUIDModel):
         NORMALIZED = "normalized", "Normalized match"
         HEURISTIC = "heuristic", "Type heuristic"
         EMBEDDING = "embedding", "Embedding similarity"
+        MANUAL = "manual", "Manual selection"
 
     task = models.ForeignKey(
         Task,
