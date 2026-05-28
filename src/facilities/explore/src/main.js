@@ -14,6 +14,7 @@ import {
   setAttachPhase, setSelectedMedia, setMediaMeta, setArchiveType, setTimelineView, setSortKey, toggleSortDir, setNumbering, setNumberingPad, setPointPhase, addMedia, removeMedia, restoreMedia,
   addPhase, renamePhase, deletePhase, setPhaseColor, deleteFloor, moveFloor, phaseColor, effectivePhase, addPointTable, removePointTable, setPointTableFilter,
   onStateChange, exportFullState, importFullState, clearSession,
+  POINT_KINDS, CUSTOM_SYMBOLS, pointKind, pointGlyph, setPlaceKind, setKindFilter, setPointKind,
 } from "./state.js";
 import { filterRows, tableCatalog, setTableCatalog } from "./data/roomdata.js";
 import { renderPins, initFloorplan } from "./floorplan/floorplan.js";
@@ -33,6 +34,8 @@ const els = {
   floorSwitcher: document.getElementById("floorSwitcher"),
   legend: document.getElementById("legend"),
   numbering: document.getElementById("numbering"),
+  kindFilter: document.getElementById("kindFilter"),
+  dpKinds: document.getElementById("dpKinds"),
   btnAddPoint: document.getElementById("btnAddPoint"),
   btnPoints: document.getElementById("btnPoints"),
   btnTheme: document.getElementById("btnTheme"),
@@ -125,7 +128,9 @@ function render() {
 
   renderFloorSwitcher(els.floorSwitcher, state.floors, state.activeFloorId, (id) => setActiveFloor(id), openFloorManager);
 
-  const pts = pointsForActiveFloor();
+  const allPts = pointsForActiveFloor();
+  // Header "kind" filter (photo / camera / sensor / custom) hides non-matching pins.
+  const pts = state.kindFilter ? allPts.filter((p) => pointKind(p) === state.kindFilter) : allPts;
   const nums = computeNumbers(pts);
   renderPins(els.pinLayer, pts, {
     selectedId: state.selectedId,
@@ -133,11 +138,15 @@ function render() {
     onMove: (id, x, y) => movePoint(id, x, y),
     // Pin is colored by its assigned phase in every mode; grey until a phase is set.
     colorFor: (pt) => phaseColor(effectivePhase(pt)),
+    // Non-photo kinds draw a symbol instead of a number.
+    glyphFor: (pt) => pointGlyph(pt),
     numbers: nums,
     pad: numberPad(nums),
   });
   renderLegend();
   renderNumbering();
+  renderKindFilter();
+  renderPlaceKind();
 
   els.app.classList.toggle("placing", state.placing);
   els.btnAddPoint.classList.toggle("on", state.placing);
@@ -490,18 +499,20 @@ function renderLegend() {
 function computeNumbers(points) {
   const map = {};
   const { mode, phase } = state.numbering;
-  if (mode === "phase" && phase) {
-    let n = 0;
-    points.forEach((pt) => { map[pt.id] = effectivePhase(pt) === phase ? ++n : null; });
-  } else {
-    points.forEach((pt, i) => { map[pt.id] = i + 1; });
-  }
+  const byPhase = mode === "phase" && phase;
+  let n = 0;
+  points.forEach((pt) => {
+    const inSet = byPhase ? (effectivePhase(pt) === phase) : true;
+    if (!inSet) { map[pt.id] = null; return; }      // hidden by the phase filter
+    if (pointKind(pt) !== "photo") { map[pt.id] = "•"; return; } // shows a symbol, no number
+    map[pt.id] = ++n;                                // only photo points get numbers
+  });
   return map;
 }
 // Zero-pad width: explicit setting, or auto from the highest number on the floor.
 function numberPad(nums) {
   if (state.numbering.pad !== "auto") return Number(state.numbering.pad) || 1;
-  const max = Math.max(1, ...Object.values(nums).filter((v) => v != null));
+  const max = Math.max(1, ...Object.values(nums).filter((v) => typeof v === "number"));
   return String(max).length;
 }
 
@@ -554,6 +565,45 @@ function renderNumbering() {
   const mp = els.numbering.querySelector("[data-managephases]");
   if (mp) mp.addEventListener("click", openPhaseManager);
 }
+
+// ── Header: filter the plan by point kind (photo / camera / sensor / custom) ──
+function renderKindFilter() {
+  if (!els.kindFilter) return;
+  const cur = state.kindFilter;
+  els.kindFilter.innerHTML =
+    `<span class="num-lbl" title="Filter points by kind">⛬</span>` +
+    `<select class="phase-sel" data-kindfilter title="Show only this point kind">` +
+    `<option value="">All kinds</option>` +
+    Object.keys(POINT_KINDS).map((k) =>
+      `<option value="${k}" ${k === cur ? "selected" : ""}>${escHtml(POINT_KINDS[k].label)}</option>`).join("") +
+    `</select>`;
+  const sel = els.kindFilter.querySelector("[data-kindfilter]");
+  if (sel) sel.addEventListener("change", () => setKindFilter(sel.value));
+}
+
+// ── Panel: choose the kind (+ custom symbol) for the next placed point ──
+function renderPlaceKind() {
+  if (!els.dpKinds) return;
+  const k = state.placeKind;
+  let html =
+    `<span class="dp-kinds-lbl">New point</span>` +
+    `<select class="phase-sel" data-placekind title="Kind of the next placed point">` +
+    Object.keys(POINT_KINDS).map((kk) =>
+      `<option value="${kk}" ${kk === k ? "selected" : ""}>${escHtml(POINT_KINDS[kk].label)}</option>`).join("") +
+    `</select>`;
+  if (k === "custom") {
+    html += `<span class="dp-syms">` +
+      CUSTOM_SYMBOLS.map((s) =>
+        `<button class="dp-sym${s === state.placeSymbol ? " on" : ""}" data-placesym="${escHtml(s)}" title="Symbol">${escHtml(s)}</button>`).join("") +
+      `</span>`;
+  }
+  els.dpKinds.innerHTML = html;
+  const sel = els.dpKinds.querySelector("[data-placekind]");
+  if (sel) sel.addEventListener("change", () => setPlaceKind(sel.value, state.placeSymbol));
+  els.dpKinds.querySelectorAll("[data-placesym]").forEach((b) =>
+    b.addEventListener("click", () => setPlaceKind("custom", b.dataset.placesym)));
+}
+
 function phasesOnActiveFloor() {
   return [...new Set(pointsForActiveFloor().map(effectivePhase).filter(Boolean))];
 }
@@ -745,27 +795,32 @@ function openPointList() {
       (p.globalId || "").toLowerCase().includes(term) ||
       roomNameForPoint(p).toLowerCase().includes(term);
   };
+  const floorName = (fid) => { const f = state.floors.find((x) => x.id === fid); return f ? f.name : ""; };
   const draw = () => {
     const term = (search.value || "").trim().toLowerCase();
-    const groups = state.floors
-      .map((f) => ({ f, pts: state.points.filter((p) => p.floorId === f.id && matches(p, term)) }))
+    // Grouped by point kind (Photo / Camera / Sensor / Custom).
+    const groups = Object.keys(POINT_KINDS)
+      .map((k) => ({ k, pts: state.points.filter((p) => pointKind(p) === k && matches(p, term)) }))
       .filter((g) => g.pts.length);
     if (!groups.length) { listEl.innerHTML = `<div class="dp-empty-sm">No matching points</div>`; return; }
-    listEl.innerHTML = groups.map((g) =>
-      `<div class="ptl-grp">${escHtml(g.f.name)} · ${escHtml(g.f.label)}</div>` +
+    listEl.innerHTML = groups.map((g) => {
+      const head = POINT_KINDS[g.k].label + (g.k !== "photo" && POINT_KINDS[g.k].glyph ? " " + POINT_KINDS[g.k].glyph : "");
+      return `<div class="ptl-grp">${escHtml(head)} · ${g.pts.length}</div>` +
       g.pts.map((p) => {
         const ph = effectivePhase(p);
-        const meta = [p.globalId ? "GID " + p.globalId.slice(0, 8) + "…" : "", ph].filter(Boolean).join("  ·  ");
+        const glyph = pointGlyph(p);
+        const meta = [floorName(p.floorId), p.globalId ? "GID " + p.globalId.slice(0, 8) + "…" : "", ph].filter(Boolean).join("  ·  ");
         return `<div class="ptl-item${p.id === state.selectedId ? " on" : ""}">` +
           `<button class="ptl-jump" data-pid="${p.id}" title="Jump to this point">` +
             `<span class="ptl-dot" style="background:${phaseColor(ph)}"></span>` +
+            (glyph ? `<span class="ptl-sym">${escHtml(glyph)}</span>` : "") +
             `<span class="ptl-name">${escHtml(p.label || "(point)")}</span>` +
             `<span class="ptl-meta">${escHtml(meta)}</span>` +
           `</button>` +
           `<button class="ptl-del" data-del-pid="${p.id}" title="Delete this point (and its photos)">✕</button>` +
           `</div>`;
-      }).join("")
-    ).join("");
+      }).join("");
+    }).join("");
     listEl.querySelectorAll("[data-pid]").forEach((b) => b.addEventListener("click", () => {
       const p = state.points.find((x) => x.id === b.dataset.pid);
       if (p) { setActiveFloor(p.floorId); selectPoint(p.id); closeModal(); }
@@ -1112,7 +1167,7 @@ els.btnFloors.addEventListener("click", () => {
 });
 
 // ── Boot ──
-const BUILD = "build 6.35"; // bump on each change so a stale (cached) JS is obvious in the header
+const BUILD = "build 6.36"; // bump on each change so a stale (cached) JS is obvious in the header
 initModal();
 // Restore a previously chosen standalone theme (host SET_THEME still overrides when embedded).
 try { const savedTheme = localStorage.getItem(THEME_KEY); if (savedTheme) applyTheme(savedTheme); } catch (_) { /* ignore */ }

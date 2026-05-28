@@ -172,6 +172,26 @@ class ExplorePoint(UUIDModel):
         blank=True,
         verbose_name="Label",
     )
+
+    class Kind(models.TextChoices):
+        PHOTO = "photo", "Photo"
+        CAMERA = "camera", "Camera"
+        SENSOR = "sensor", "Sensor"
+        CUSTOM = "custom", "Custom"
+
+    kind = models.CharField(
+        max_length=16,
+        choices=Kind.choices,
+        default=Kind.PHOTO,
+        verbose_name="Kind",
+        help_text="Point kind — photo points are numbered; others show a symbol",
+    )
+    symbol = models.CharField(
+        max_length=8,
+        blank=True,
+        verbose_name="Symbol",
+        help_text="Glyph for a custom point (one of the preset symbols)",
+    )
     x_percent = models.DecimalField(
         max_digits=6,
         decimal_places=3,

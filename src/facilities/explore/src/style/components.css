@@ -254,6 +254,17 @@ body.castor-embedded .mh-build { display: none !important; }
 .ptl-del{flex-shrink:0;background:transparent;border:none;color:var(--t3);cursor:pointer;font-size:11px;line-height:1;padding:5px 8px;border-radius:4px;}
 .ptl-del:hover{color:var(--red);}
 .ptl-del.armed{color:#fff;background:var(--red);font-family:var(--font-mono);font-size:9px;padding:5px 7px;}
+.ptl-sym{font-size:12px;line-height:1;flex-shrink:0;width:15px;text-align:center;}
+
+/* ── Point kinds (photo / camera / sensor / custom) ── */
+.kindfilter{display:flex;align-items:center;gap:6px;}
+.dp-kinds{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 12px;border-bottom:1px solid var(--b1);flex-shrink:0;}
+.dp-kinds-lbl{font-family:var(--font-mono);font-size:9px;text-transform:uppercase;letter-spacing:.05em;color:var(--t3);}
+.dp-syms{display:flex;gap:4px;}
+.dp-sym{width:26px;height:24px;border:1px solid var(--b2);border-radius:4px;background:var(--p2);color:var(--t1);cursor:pointer;font-size:13px;line-height:1;}
+.dp-sym:hover{border-color:var(--acc-b);}
+.dp-sym.on{border-color:var(--acc);color:var(--acc);}
+.pin-num.pin-sym{font-size:11px;}
 
 /* ── Phase manager (numbering ⚙) ── */
 .num-cfg{background:transparent;border:1px solid var(--b2);color:var(--t2);border-radius:4px;width:22px;height:22px;line-height:1;cursor:pointer;flex-shrink:0;}

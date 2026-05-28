@@ -8,19 +8,21 @@
 
 const DRAG_THRESHOLD = 3; // px before a press counts as a drag, not a click
 
-export function renderPins(layer, points, { selectedId = null, onSelect, onMove, colorFor, numbers = null, pad = 1 } = {}) {
+export function renderPins(layer, points, { selectedId = null, onSelect, onMove, colorFor, numbers = null, pad = 1, glyphFor = null } = {}) {
   layer.innerHTML = "";
   points.forEach((pt, i) => {
     const raw = numbers ? numbers[pt.id] : i + 1;
-    if (raw == null) return; // not in the active phase filter → hidden entirely
-    const label = String(raw).padStart(pad, "0");
+    if (raw == null) return; // not in the active filter → hidden entirely
+    // Non-photo kinds (camera / sensor / custom) show a symbol instead of a number.
+    const glyph = glyphFor ? glyphFor(pt) : "";
+    const label = glyph || String(raw).padStart(pad, "0");
     const pin = document.createElement("div");
     pin.className = "pin" + (pt.id === selectedId ? " sel" : "");
     pin.style.left = pt.x + "%";
     pin.style.top = pt.y + "%";
     pin.dataset.id = pt.id;
     pin.title = pt.label || pt.globalId || "Point"; // name only as a native hover tooltip
-    pin.innerHTML = `<div class="pin-dot"><span class="pin-num">${label}</span></div>`;
+    pin.innerHTML = `<div class="pin-dot"><span class="pin-num${glyph ? " pin-sym" : ""}">${label}</span></div>`;
     if (colorFor) {
       const color = colorFor(pt);
       const dot = pin.querySelector(".pin-dot");

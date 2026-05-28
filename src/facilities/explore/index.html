@@ -36,6 +36,7 @@
       <span class="mh-tag">EXPLORE</span>
       <span class="mh-build" id="mhBuild" title="Build marker — if this looks old, you're on a cached JS: run python serve.py + Ctrl+Shift+R"></span>
       <div class="numbering" id="numbering"></div>
+      <div class="kindfilter" id="kindFilter"></div>
       <div class="mh-spacer"></div>
       <button class="btn" id="btnImport">⤓ Import plans</button>
       <input type="file" id="fileInput" accept="image/png,image/jpeg,image/webp,application/pdf" multiple hidden />
@@ -79,6 +80,7 @@
           <button class="btn" id="btnAddPoint">+ Point</button>
           <button class="btn vb vb-cmp" id="btnCmp" disabled title="Select a point with 2+ photo versions">⇔ Compare</button>
         </div>
+        <div class="dp-kinds" id="dpKinds"></div>
         <div class="dp-head">
           <div class="dp-title" id="dpTitle">No point selected</div>
           <div class="dp-sub" id="dpSub">Click the plan to place one</div>
