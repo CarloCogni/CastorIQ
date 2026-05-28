@@ -19,6 +19,7 @@ from .assets import (
 from .explore import (
     DEFAULT_PHASES,
     ExploreFloorPlan,
+    ExploreFloorSettings,
     ExploreMedia,
     ExplorePhase,
     ExplorePoint,
@@ -52,6 +53,7 @@ __all__ = [
     "Classification",
     "ClassificationReference",
     "ExploreFloorPlan",
+    "ExploreFloorSettings",
     "ExploreMedia",
     "ExplorePhase",
     "ExplorePoint",

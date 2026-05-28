@@ -14,7 +14,7 @@
 
 <div class="facilities-scope d-flex flex-column gap-3 h-100" id="facilities-explore-body">
 
-    <!-- Top bar: title + help pill -->
+    <!-- Top bar: title + help pill + "Floor plans" (levels) trigger -->
     <div class="d-flex align-items-center gap-3 flex-wrap flex-shrink-0">
         <div class="d-flex align-items-center gap-2">
             <i class="bi bi-map fs-5" style="color: var(--castor-facilities, #14b8a6);"></i>
@@ -28,6 +28,18 @@
                 <i class="bi bi-question-circle"></i>
             </button>
         </div>
+        {% if explore_storeys %}
+        <!-- Hidden trigger: the Explore iframe's toolbar "Floors" button opens the
+             levels manager by sending OPEN_LEVELS, which clicks this (Bootstrap
+             data API). No visible host button — the trigger lives in the viewer. -->
+        <button type="button"
+                id="exploreLevelsTrigger"
+                class="d-none"
+                data-bs-toggle="modal"
+                data-bs-target="#exploreLevelsModal"
+                aria-hidden="true"
+                tabindex="-1"></button>
+        {% endif %}
         <div class="ms-auto fs-8 text-secondary">
             <i class="bi bi-info-circle me-1"></i>
             Place pins on floor plans, attach photos, link them to IFC spaces. Changes save automatically.
@@ -35,25 +47,46 @@
     </div>
 
     <!--
-        Floor-plan upload panel — surfaces every IFC building storey for the
-        project and lets editors attach a plan image to each. Editors get a
-        full row with status badge + upload affordance; viewers see a
-        read-only summary. The iframe needs a plan image on a floor to
-        render anything; without it the viewer stays empty.
+        Floor-plan / levels manager — opened via the "Floor plans" button in the
+        top bar (Bootstrap modal), so the Explore viewer below stays the main
+        view. Surfaces every IFC building storey and lets editors attach /
+        replace / remove a plan image per floor. The iframe needs a plan on a
+        floor to render anything; without it that floor stays empty.
     -->
     {% if explore_storeys %}
-    <div class="border rounded p-3 flex-shrink-0" style="background-color: var(--bs-tertiary-bg);">
-        <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
-            <i class="bi bi-layers" style="color: var(--castor-facilities, #14b8a6);"></i>
-            <strong class="fs-7">Floor plans</strong>
-            <span class="fs-8 text-secondary">
-                {{ explore_storeys|length }} storey{{ explore_storeys|length|pluralize:"s" }} detected from IFC
-            </span>
-        </div>
-        <div class="d-flex flex-column gap-1">
+    <div class="modal fade" id="exploreLevelsModal" tabindex="-1" aria-labelledby="exploreLevelsModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title d-flex align-items-center gap-2" id="exploreLevelsModalLabel">
+                <i class="bi bi-layers" style="color: var(--castor-facilities, #14b8a6);"></i>
+                Floor plans
+                <span class="fs-8 fw-normal text-secondary">
+                    {{ explore_storeys|length }} storey{{ explore_storeys|length|pluralize:"s" }} detected from IFC
+                </span>
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div class="d-flex flex-column gap-1">
             {% for storey in explore_storeys %}
             <div class="d-flex align-items-center gap-2 flex-wrap fs-8">
-                <span class="flex-grow-1">
+                {% if user_permission == "owner" or user_permission == "editor" %}
+                <form method="post"
+                      action="{{ storey.visibility_url }}"
+                      hx-post="{{ storey.visibility_url }}"
+                      hx-swap="none"
+                      hx-on::after-request="if (event.detail.successful) window.location.reload();"
+                      class="m-0">
+                    {% csrf_token %}
+                    <button type="submit"
+                            class="btn btn-sm btn-link p-0 border-0 text-reset text-decoration-none"
+                            title="{% if storey.hidden %}Hidden in Explore — click to show{% else %}Shown in Explore — click to hide{% endif %}">
+                        <i class="bi {% if storey.hidden %}bi-eye-slash text-secondary{% else %}bi-eye{% endif %}"></i>
+                    </button>
+                </form>
+                {% endif %}
+                <span class="flex-grow-1 {% if storey.hidden %}opacity-50{% endif %}">
                     <i class="bi bi-building me-1 text-secondary"></i>
                     <strong>{{ storey.name }}</strong>
                     {% if storey.label and storey.label != storey.name %}
@@ -109,11 +142,22 @@
                         <i class="bi bi-trash"></i> Remove
                     </button>
                 </form>
+                <div class="form-check form-switch m-0 ms-1 d-inline-flex align-items-center gap-1">
+                    <input class="form-check-input explore-knockout-toggle" type="checkbox" role="switch"
+                           id="knockout-{{ storey.pk }}"
+                           data-floor-id="{{ storey.pk }}"
+                           {% if storey.knockout %}checked{% endif %}>
+                    <label class="form-check-label fs-8" for="knockout-{{ storey.pk }}"
+                           title="Remove the white background of this plan (best-effort)">White-out</label>
+                </div>
                 {% endif %}
                 {% endif %}
             </div>
             {% endfor %}
+            </div>
+          </div>
         </div>
+      </div>
     </div>
     {% endif %}
 
@@ -160,6 +204,21 @@
         return document.documentElement.getAttribute("data-bs-theme") === "light" ? "light" : "dark";
     }
 
+    // Castor's current Bootstrap palette, so the iframe can match the host
+    // background exactly (re-read on theme switch).
+    function castorPalette() {
+        var cs = getComputedStyle(document.body);
+        function v(name) { return (cs.getPropertyValue(name) || "").trim(); }
+        return {
+            body: v("--bs-body-bg"),
+            tertiary: v("--bs-tertiary-bg"),
+            secondary: v("--bs-secondary-bg"),
+            border: v("--bs-border-color"),
+            text: v("--bs-body-color"),
+            muted: v("--bs-secondary-color"),
+        };
+    }
+
     function fireToast(message, level) {
         document.dispatchEvent(new CustomEvent("castor:toast", {
             detail: { message: message, level: level || "info" },
@@ -188,7 +247,7 @@
     // standalone-only toolbar controls (import plans / theme toggle / reset)
     // whose responsibility moved to Castor.
     function hydrate() {
-        send("VIEWER_INIT", { theme: castorTheme(), embedded: true });
+        send("VIEWER_INIT", { theme: castorTheme(), embedded: true, palette: castorPalette() });
 
         fetch(URLS.floors, { credentials: "same-origin" })
             .then(function(r) { return r.ok ? r.json() : null; })
@@ -299,6 +358,11 @@
             case "ERROR":
                 console.warn("[explore-host] iframe reported error", data);
                 break;
+            case "OPEN_LEVELS":
+                // Toolbar "Floors" button in the iframe → open the levels manager.
+                var levelsTrigger = document.getElementById("exploreLevelsTrigger");
+                if (levelsTrigger) levelsTrigger.click();
+                break;
             default:
                 break;
         }
@@ -308,11 +372,19 @@
     var themeObserver = new MutationObserver(function(mutations) {
         for (var i = 0; i < mutations.length; i++) {
             if (mutations[i].attributeName === "data-bs-theme") {
-                send("SET_THEME", { theme: castorTheme() });
+                send("SET_THEME", { theme: castorTheme(), palette: castorPalette() });
                 break;
             }
         }
     });
     themeObserver.observe(document.documentElement, { attributes: true });
+
+    // Floor-plans modal: white-out toggles drive per-floor knockout inside the
+    // iframe (it runs the client-side knockout and persists via STATE_CHANGED).
+    document.querySelectorAll(".explore-knockout-toggle").forEach(function(cb) {
+        cb.addEventListener("change", function() {
+            send("SET_FLOOR_KNOCKOUT", { floorId: cb.dataset.floorId, on: cb.checked });
+        });
+    });
 })();
 </script>

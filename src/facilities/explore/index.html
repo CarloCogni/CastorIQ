@@ -22,9 +22,13 @@
 </head>
 <body>
   <div id="app" class="exp-app">
+    <div class="exp-shell">
 
-    <!-- ── Module header (this module's own toolbar; Castor's top nav lives in the host) ── -->
-    <header class="mh">
+      <!-- ── Center: floor-plan viewer + timeline (module toolbar sits on top) ── -->
+      <main class="exp-center">
+
+      <!-- ── Module toolbar (Castor's top nav lives in the host) ── -->
+      <header class="mh">
       <div class="mh-titles">
         <div class="mh-title" id="mhTitle">Explore</div>
         <div class="mh-sub" id="mhSub">Floor plan</div>
@@ -33,23 +37,13 @@
       <span class="mh-build" id="mhBuild" title="Build marker — if this looks old, you're on a cached JS: run python serve.py + Ctrl+Shift+R"></span>
       <div class="numbering" id="numbering"></div>
       <div class="mh-spacer"></div>
-      <button class="btn" id="btnKnockout" title="Knock out white background of this floor's plan (best-effort)">⬚ White-out</button>
       <button class="btn" id="btnImport">⤓ Import plans</button>
       <input type="file" id="fileInput" accept="image/png,image/jpeg,image/webp,application/pdf" multiple hidden />
       <input type="file" id="photoUpload" accept="image/*" multiple hidden />
       <input type="file" id="photoCamera" accept="image/*" capture="environment" hidden />
-      <button class="btn" id="btnPoints" title="All points — search & jump across floors">≣ Points</button>
-      <button class="btn" id="btnAddPoint">+ Point</button>
-      <div class="vmode" role="group" aria-label="Actions">
-        <button class="btn vb vb-cmp" id="btnCmp" disabled title="Select a point with 2+ photo versions">⇔ Compare</button>
-      </div>
       <button class="btn" id="btnTheme" title="Toggle light / dark theme">◐</button>
-    </header>
+      </header>
 
-    <div class="exp-shell">
-
-      <!-- ── Center: floor-plan viewer + timeline ── -->
-      <main class="exp-center">
         <div class="exp-viewer" id="viewer">
           <div class="plan-stage" id="planStage">
             <img class="plan-img" id="planImg" src="./assets/plans/floor-4.svg" alt="Floor plan" draggable="false" />
@@ -61,7 +55,9 @@
         </div>
 
         <div class="exp-timeline" id="expTimeline">
+          <div class="etl-resize" id="tlResize" title="Drag to resize the photo strip" aria-hidden="true"></div>
           <div class="etl-head">
+            <button class="etl-collapse" id="tlCollapse" title="Hide / show the photo timeline" aria-label="Toggle photo timeline">▾</button>
             <span class="etl-label">Photo timeline</span>
             <span class="etl-room" id="tlRoom">—</span>
             <div class="etl-sort" id="tlSort"></div>
@@ -74,8 +70,14 @@
         </div>
       </main>
 
-      <!-- ── Right: detail panel ── -->
+      <!-- ── Right: detail panel (full window height) — actions live here now ── -->
       <aside class="detail-panel">
+        <div class="dp-toolbar">
+          <button class="btn" id="btnFloors" title="Floor plans &amp; levels — upload, white-out, manage">🗂 Floors</button>
+          <button class="btn" id="btnPoints" title="All points — search &amp; jump across floors">≣ Points</button>
+          <button class="btn" id="btnAddPoint">+ Point</button>
+          <button class="btn vb vb-cmp" id="btnCmp" disabled title="Select a point with 2+ photo versions">⇔ Compare</button>
+        </div>
         <div class="dp-head">
           <div class="dp-title" id="dpTitle">No point selected</div>
           <div class="dp-sub" id="dpSub">Click the plan to place one</div>

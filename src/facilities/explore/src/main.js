@@ -37,7 +37,7 @@ const els = {
   btnPoints: document.getElementById("btnPoints"),
   btnTheme: document.getElementById("btnTheme"),
   btnImport: document.getElementById("btnImport"),
-  btnKnockout: document.getElementById("btnKnockout"),
+  btnFloors: document.getElementById("btnFloors"),
   fileInput: document.getElementById("fileInput"),
   photoUpload: document.getElementById("photoUpload"),
   photoCamera: document.getElementById("photoCamera"),
@@ -50,6 +50,8 @@ const els = {
   tlTypes: document.getElementById("tlTypes"),
   tlView: document.getElementById("tlView"),
   tlSort: document.getElementById("tlSort"),
+  tlCollapse: document.getElementById("tlCollapse"),
+  tlResize: document.getElementById("tlResize"),
   expTimeline: document.getElementById("expTimeline"),
   vLabel: document.getElementById("vLabel"),
   mhSub: document.getElementById("mhSub"),
@@ -186,7 +188,6 @@ function render() {
     onSelect: (pid, mid) => openMediaEditor(pid, mid),
   });
 
-  els.btnKnockout.classList.toggle("on", !!(floor && floor.knockout));
   // Compare works within the active archive (photo↔photo or 360↔360), never mixed.
   const cmpCount = sel ? sel.media.filter((m) => m.type === state.archiveType).length : 0;
   const archWord = state.archiveType === "360" ? "360°" : "photo";
@@ -302,6 +303,73 @@ els.btnTheme.addEventListener("click", () => {
   applyTheme(next);
   try { localStorage.setItem(THEME_KEY, next); } catch (_) { /* ignore */ }
 });
+
+// ── Timeline: chevron collapse + drag-to-resize the top edge ("roleta") — persisted.
+//    Drag the handle to set any height; chevron hides it to header-only. ──
+const TL_COLLAPSE_KEY = "fm-explore.tlCollapsed";
+const TL_HEIGHT_KEY = "fm-explore.tlHeight";
+const TL_MIN_H = 70;
+function tlMaxH() { return Math.round(window.innerHeight * 0.7); }
+function setTimelineHeight(h) {
+  const clamped = Math.max(TL_MIN_H, Math.min(Math.round(h), tlMaxH()));
+  els.expTimeline.classList.remove("collapsed");
+  els.expTimeline.style.height = clamped + "px";
+  try { localStorage.setItem(TL_HEIGHT_KEY, String(clamped)); localStorage.setItem(TL_COLLAPSE_KEY, ""); } catch (_) { /* ignore */ }
+}
+// chevron: collapse to header-only, or restore the last dragged height
+els.tlCollapse.addEventListener("click", () => {
+  const collapse = !els.expTimeline.classList.contains("collapsed");
+  els.expTimeline.classList.toggle("collapsed", collapse);
+  if (collapse) {
+    els.expTimeline.style.height = ""; // let .collapsed{height:auto} show header only
+  } else {
+    const h = parseInt(localStorage.getItem(TL_HEIGHT_KEY) || "", 10);
+    if (h) els.expTimeline.style.height = Math.max(TL_MIN_H, Math.min(h, tlMaxH())) + "px";
+  }
+  try { localStorage.setItem(TL_COLLAPSE_KEY, collapse ? "1" : ""); } catch (_) { /* ignore */ }
+});
+// drag the top edge to resize
+if (els.tlResize) {
+  let tlDragging = false;
+  els.tlResize.addEventListener("pointerdown", (e) => {
+    tlDragging = true;
+    try { els.tlResize.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
+    e.preventDefault();
+  });
+  els.tlResize.addEventListener("pointermove", (e) => {
+    if (!tlDragging) return;
+    const r = els.expTimeline.getBoundingClientRect();
+    setTimelineHeight(r.bottom - e.clientY);
+  });
+  els.tlResize.addEventListener("pointerup", () => { tlDragging = false; });
+}
+// restore persisted state on load
+try {
+  if (localStorage.getItem(TL_COLLAPSE_KEY)) {
+    els.expTimeline.classList.add("collapsed");
+  } else {
+    const h = parseInt(localStorage.getItem(TL_HEIGHT_KEY) || "", 10);
+    if (h) els.expTimeline.style.height = Math.max(TL_MIN_H, Math.min(h, tlMaxH())) + "px";
+  }
+} catch (_) { /* ignore */ }
+
+// ── Host palette → module tokens, so the embedded background matches Castor
+//    exactly (sent by the host in VIEWER_INIT / SET_THEME; works light + dark). ──
+function applyHostPalette(p) {
+  if (!p || typeof p !== "object") return;
+  const root = document.documentElement.style;
+  const set = (k, v) => { if (v) root.setProperty(k, v); };
+  set("--bg", p.body);
+  set("--viewer-bg", p.body);
+  set("--sb", p.tertiary || p.body);
+  set("--p1", p.tertiary || p.body);
+  set("--p2", p.secondary || p.tertiary || p.body);
+  set("--p3", p.secondary || p.tertiary || p.body);
+  set("--b1", p.border);
+  set("--b2", p.border);
+  set("--t1", p.text);
+  set("--t2", p.muted || p.text);
+}
 
 // ── Import floor plans (images + PDF) ──
 els.btnImport.addEventListener("click", () => els.fileInput.click());
@@ -878,6 +946,10 @@ function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", t);
 }
 
+// Embedded mode (set on VIEWER_INIT): when true, the toolbar "Floors" button asks
+// the Castor host to open its Floor-plans manager instead of the module's own.
+let isEmbedded = false;
+
 initBridge({
   // Handshake: origin already locked by the router; apply any initial config.
   [MSG.VIEWER_INIT]: (msg) => {
@@ -887,12 +959,15 @@ initBridge({
     // v0.2 — host can flag embedded mode. In that case, the standalone-only
     // toolbar controls (host owns plan upload + theme + persistence reset)
     // are hidden via the .castor-embedded body class (see components.css).
+    isEmbedded = !!msg.embedded;
     if (msg.embedded) document.body.classList.add("castor-embedded");
+    if (msg.palette) applyHostPalette(msg.palette); // match Castor's background exactly
     ack(msg.requestId, { ready: true, capabilities: CAPABILITIES });
     toast("Connected to Castor");
   },
   [MSG.SET_THEME]: (msg) => {
     applyTheme(msg.theme);
+    if (msg.palette) applyHostPalette(msg.palette); // re-match on host theme switch
     ack(msg.requestId, { theme: msg.theme === "light" ? "light" : "dark" });
   },
   [MSG.FOCUS_ELEMENT]: (msg) => {
@@ -934,6 +1009,13 @@ initBridge({
       phases: state.phases.length,
     });
   },
+  // v0.3 — the host's Floor-plans manager toggles white-out per floor; we run the
+  // (client-side) knockout on that floor and let it persist via STATE_CHANGED.
+  [MSG.SET_FLOOR_KNOCKOUT]: (msg) => {
+    if (!msg.floorId) { error(msg.requestId, "SET_FLOOR_KNOCKOUT requires { floorId }", ERR.BAD_PAYLOAD); return; }
+    applyFloorKnockout(msg.floorId, !!msg.on);
+    ack(msg.requestId, { floorId: msg.floorId, on: !!msg.on });
+  },
 });
 
 // Notify the host whenever the working set changes (debounced in state.js), so it
@@ -945,17 +1027,21 @@ onStateChange((snap, savedLocally) => {
 // Announce readiness to the host (goes to "*" until VIEWER_INIT locks the origin)
 emit(MSG.VIEWER_READY, { version: "0.2", capabilities: CAPABILITIES });
 
-// ── White-background knockout (per active floor) ──
-els.btnKnockout.addEventListener("click", async () => {
-  const floor = activeFloor();
+// ── White-background knockout — applied per floor (by id). The toolbar button is
+//    gone; this is driven by the host's Floor-plans manager (SET_FLOOR_KNOCKOUT)
+//    when embedded, and stays available to the standalone floor manager.
+async function applyFloorKnockout(floorId, on) {
+  const floor = state.floors.find((f) => f.id === floorId);
   if (!floor) return;
-  if (floor.knockout) {
-    // revert
-    setFloorPlan(floor.id, floor.planOriginal || floor.plan);
-    updateFloor(floor.id, { knockout: false });
-    toast("White background restored");
+  if (!on) {
+    if (floor.knockout) {
+      setFloorPlan(floor.id, floor.planOriginal || floor.plan);
+      updateFloor(floor.id, { knockout: false });
+      toast("White background restored");
+    }
     return;
   }
+  if (floor.knockout) return; // already knocked out
   toast("Knocking out white…");
   try {
     const { knockoutWhite } = await import("./floorplan/knockout.js");
@@ -967,10 +1053,17 @@ els.btnKnockout.addEventListener("click", async () => {
     console.error("[explore] knockout failed", err);
     toast("Knock-out failed (cross-origin or load error)");
   }
+}
+
+// Toolbar "Floors" button: embedded → ask Castor to open its Floor-plans manager;
+// standalone → open the module's own floor manager.
+els.btnFloors.addEventListener("click", () => {
+  if (isEmbedded) emit(MSG.OPEN_LEVELS, {});
+  else openFloorManager();
 });
 
 // ── Boot ──
-const BUILD = "build 6.24"; // bump on each change so a stale (cached) JS is obvious in the header
+const BUILD = "build 6.28"; // bump on each change so a stale (cached) JS is obvious in the header
 initModal();
 // Restore a previously chosen standalone theme (host SET_THEME still overrides when embedded).
 try { const savedTheme = localStorage.getItem(THEME_KEY); if (savedTheme) applyTheme(savedTheme); } catch (_) { /* ignore */ }

@@ -13,7 +13,12 @@ body.castor-embedded #btnImport,
 body.castor-embedded #btnTheme,
 body.castor-embedded .fm-reset,
 body.castor-embedded .floor-edit,
-body.castor-embedded .fm-add { display: none !important; }
+body.castor-embedded .fm-add,
+/* The host page already shows the "Explore" title; drop the in-module title,
+   the EXPLORE tag and the dev build marker so the name isn't repeated 3×. */
+body.castor-embedded .mh-titles,
+body.castor-embedded .mh-tag,
+body.castor-embedded .mh-build { display: none !important; }
 
 /* ── Buttons ── */
 .btn{display:inline-flex;align-items:center;gap:4px;padding:5px 11px;border-radius:4px;font-size:11.5px;font-weight:500;cursor:pointer;border:1px solid var(--b2);background:transparent;color:var(--t2);font-family:var(--font-ui);transition:all .12s;}
@@ -189,6 +194,10 @@ body.castor-embedded .fm-add { display: none !important; }
 .etl-view{margin-left:8px;}
 .seg-ct{margin-left:5px;opacity:.55;font-variant-numeric:tabular-nums;font-size:9px;}
 .seg-b.on .seg-ct{opacity:.8;}
+/* Timeline collapse toggle (hide/show the photo strip) */
+.etl-collapse{background:transparent;border:none;color:var(--t3);cursor:pointer;font-size:12px;line-height:1;padding:0 4px;transition:transform .12s, color .12s;}
+.etl-collapse:hover{color:var(--acc);}
+.exp-timeline.collapsed .etl-collapse{transform:rotate(-90deg);}
 .attach-hint{font-family:var(--font-mono);font-size:8.5px;color:var(--t3);align-self:center;}
 
 /* timeline 'details' = vertical, readable list; long texts wrap (no truncation) */

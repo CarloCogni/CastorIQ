@@ -31,6 +31,6 @@ class Server(socketserver.ThreadingTCPServer):
 
 if __name__ == "__main__":
     with Server(("127.0.0.1", PORT), NoCacheHandler) as httpd:
-        print(f"Explore dev server (no-cache) → http://127.0.0.1:{PORT}/")
-        print(f"Host test harness            → http://127.0.0.1:{PORT}/harness.html")
+        print(f"Explore dev server (no-cache) -> http://127.0.0.1:{PORT}/")
+        print(f"Host test harness            -> http://127.0.0.1:{PORT}/harness.html")
         httpd.serve_forever()

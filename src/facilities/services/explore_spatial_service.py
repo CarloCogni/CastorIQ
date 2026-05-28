@@ -54,6 +54,9 @@ def list_floors_for_project(project: Project) -> list[dict[str, Any]]:
             ifc_file__project=project,
             spatial_type=IFCSpatialElement.SpatialType.BUILDING_STOREY,
         )
+        # Storeys an editor hid in Explore are omitted from the switcher (the
+        # Floor-plans manager still lists them so they can be un-hidden).
+        .exclude(explore_settings__hidden=True)
         .select_related("entity", "explore_floor_plan")
         .order_by("elevation", "entity__name")
     )

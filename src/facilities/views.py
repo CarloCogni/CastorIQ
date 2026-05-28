@@ -41,6 +41,7 @@ from .models import (
     ActionRequest,
     ClassificationReference,
     ExploreFloorPlan,
+    ExploreFloorSettings,
     ExplorePoint,
     FacilityAsset,
     FMIntentProposal,
@@ -1987,7 +1988,7 @@ class ExploreView(ProjectTabMixin, TemplateView):
                 ifc_file__project=project,
                 spatial_type=IFCSpatialElement.SpatialType.BUILDING_STOREY,
             )
-            .select_related("entity", "explore_floor_plan")
+            .select_related("entity", "explore_floor_plan", "explore_settings")
             .order_by("elevation", "entity__name")
         )
         context["explore_storeys"] = [
@@ -1996,12 +1997,22 @@ class ExploreView(ProjectTabMixin, TemplateView):
                 "name": (storey.entity.name if storey.entity_id else str(storey.pk)),
                 "label": storey.long_name or (storey.entity.name if storey.entity_id else ""),
                 "has_plan": bool(getattr(storey, "explore_floor_plan", None)),
+                "knockout": getattr(
+                    getattr(storey, "explore_floor_plan", None), "knockout", False
+                ),
+                "hidden": getattr(
+                    getattr(storey, "explore_settings", None), "hidden", False
+                ),
                 "upload_url": reverse(
                     "facilities:explore_floor_plan_upload",
                     args=[project.pk, storey.pk],
                 ),
                 "delete_url": reverse(
                     "facilities:explore_floor_plan_delete",
+                    args=[project.pk, storey.pk],
+                ),
+                "visibility_url": reverse(
+                    "facilities:explore_floor_visibility",
                     args=[project.pk, storey.pk],
                 ),
             }
@@ -2108,6 +2119,33 @@ class ExploreFloorPlanDeleteView(ProjectModifyAccessMixin, View):
             "Explore floor plan removed for storey %s by user %s", storey_pk, request.user.pk
         )
         return toast_response("Floor plan removed.", "success")
+
+
+class ExploreFloorVisibilityView(ProjectModifyAccessMixin, View):
+    """Toggle whether an IFC storey is hidden from the Explore floor switcher.
+
+    Explore-side view preference only — it does NOT modify the IFC model. The
+    iframe re-hydrates on page reload, so a hidden storey drops out of the
+    switcher while still listed in the Floor-plans manager (to un-hide).
+    """
+
+    def post(self, request, pk, storey_pk):
+        project = self.get_project()
+        storey = get_object_or_404(
+            IFCSpatialElement,
+            pk=storey_pk,
+            ifc_file__project=project,
+            spatial_type=IFCSpatialElement.SpatialType.BUILDING_STOREY,
+        )
+        settings_row, _created = ExploreFloorSettings.objects.get_or_create(storey=storey)
+        settings_row.hidden = not settings_row.hidden
+        settings_row.save()
+        name = storey.entity.name if storey.entity_id else "storey"
+        state = "hidden in" if settings_row.hidden else "shown in"
+        logger.info(
+            "Explore storey %s %s Explore by user %s", storey_pk, state, request.user.pk
+        )
+        return toast_response(f"{name} {state} Explore.", "success")
 
 
 class _ExploreApiBase(ProjectAccessMixin, View):

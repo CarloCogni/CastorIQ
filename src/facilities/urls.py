@@ -252,4 +252,9 @@ urlpatterns = [
         views.ExploreFloorPlanDeleteView.as_view(),
         name="explore_floor_plan_delete",
     ),
+    path(
+        "<uuid:pk>/facilities/explore/floor-plans/<uuid:storey_pk>/visibility/",
+        views.ExploreFloorVisibilityView.as_view(),
+        name="explore_floor_visibility",
+    ),
 ]

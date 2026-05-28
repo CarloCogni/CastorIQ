@@ -328,3 +328,32 @@ class ExploreMedia(UUIDModel):
 
     def __str__(self) -> str:
         return self.label or f"{self.get_media_type_display()} {self.client_id}"
+
+
+class ExploreFloorSettings(UUIDModel):
+    """Per-storey Explore view preferences (independent of whether a plan exists).
+
+    ``hidden`` lets an editor drop an IFC storey from the Explore floor switcher
+    when they don't want to work with it there. This is an Explore-side display
+    preference only — it does NOT modify the IFC model.
+    """
+
+    storey = models.OneToOneField(
+        IFCSpatialElement,
+        on_delete=models.CASCADE,
+        related_name="explore_settings",
+        verbose_name="Storey",
+        help_text="The IfcBuildingStorey these Explore settings apply to",
+    )
+    hidden = models.BooleanField(
+        default=False,
+        verbose_name="Hidden in Explore",
+        help_text="When true, this storey is omitted from the Explore floor switcher",
+    )
+
+    class Meta:
+        verbose_name = "Explore Floor Setting"
+        verbose_name_plural = "Explore Floor Settings"
+
+    def __str__(self) -> str:
+        return f"Settings: {self.storey} (hidden={self.hidden})"
