@@ -382,8 +382,13 @@ export function setFloors(list, replace = false) {
     ids.push(id);
   });
   if (replace && state.floors.length) {
-    state.activeFloorId = state.floors[0].id;
-    state.selectedId = null;
+    // Preserve the user's current floor across host re-hydration (e.g. navigating
+    // away from Explore to another module and back) when it's still present;
+    // only fall back to the first floor if the previous one is gone.
+    if (!state.floors.some((f) => f.id === state.activeFloorId)) {
+      state.activeFloorId = state.floors[0].id;
+      state.selectedId = null;
+    }
   }
   emit();
   return ids;
