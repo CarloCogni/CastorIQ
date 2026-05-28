@@ -72,6 +72,9 @@
               {% include "facilities/tabs/_explore_floor_rows.html" %}
             </div>
           </div>
+          <div class="modal-footer py-2">
+            <button type="button" class="btn btn-sm btn-primary" data-bs-dismiss="modal">Done</button>
+          </div>
         </div>
       </div>
     </div>
@@ -162,9 +165,10 @@
     // `embedded:true` in VIEWER_INIT tells Pavla's module to hide the
     // standalone-only toolbar controls (import plans / theme toggle / reset)
     // whose responsibility moved to Castor.
-    function hydrate() {
-        send("VIEWER_INIT", { theme: castorTheme(), embedded: true, palette: castorPalette() });
-
+    // Fetch the project's floors (+ their rooms) and push them to the iframe.
+    // Called on first hydrate and again after the Floor-plans manager changes a
+    // plan / visibility, so the viewer reflects uploads / removes / hides live.
+    function loadFloors() {
         fetch(URLS.floors, { credentials: "same-origin" })
             .then(function(r) { return r.ok ? r.json() : null; })
             .then(function(data) {
@@ -183,6 +187,11 @@
                 });
             })
             .catch(function(err) { console.warn("[explore-host] floors fetch failed", err); });
+    }
+
+    function hydrate() {
+        send("VIEWER_INIT", { theme: castorTheme(), embedded: true, palette: castorPalette() });
+        loadFloors();
 
         fetch(URLS.catalog, { credentials: "same-origin" })
             .then(function(r) { return r.ok ? r.json() : null; })
@@ -301,18 +310,14 @@
         var t = e.target;
         if (t && t.classList && t.classList.contains("explore-knockout-toggle")) {
             send("SET_FLOOR_KNOCKOUT", { floorId: t.dataset.floorId, on: t.checked });
-            window.__exploreFloorsDirty = true;
         }
     });
 
-    // The levels manager refreshes its rows in place (HTMX) so the modal stays
-    // open across multiple edits. When it closes, reload once if anything changed
-    // so the iframe floor switcher reflects hidden floors / new / removed plans.
-    var levelsModalEl = document.getElementById("exploreLevelsModal");
-    if (levelsModalEl) {
-        levelsModalEl.addEventListener("hidden.bs.modal", function() {
-            if (window.__exploreFloorsDirty) { window.location.reload(); }
-        });
-    }
+    // After the Floor-plans manager refreshes its rows (HTMX swaps #exploreFloorRows
+    // on upload / replace / remove / hide), re-push floors to the iframe so the
+    // viewer reflects the change immediately — no page reload, modal stays open.
+    document.body.addEventListener("htmx:afterSwap", function(e) {
+        if (e.target && e.target.id === "exploreFloorRows") loadFloors();
+    });
 })();
 </script>
