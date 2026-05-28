@@ -1592,7 +1592,9 @@ def _make_row(binding: TaskEntityBinding, ifc_files) -> dict:
         }
 
 
-def _render_link_review(request, project, filter_by: str = "all") -> HttpResponse:
+def _render_link_review(
+    request, project, filter_by: str = "all", inline: bool = False
+) -> HttpResponse:
     ifc_files = _get_ifc_files(project)
 
     bindings_qs = (
@@ -1602,9 +1604,9 @@ def _render_link_review(request, project, filter_by: str = "all") -> HttpRespons
     )
     if filter_by == "needs_review":
         bindings_qs = bindings_qs.filter(needs_review=True)
-    elif filter_by == "auto_accepted":
+    elif filter_by in ("auto_accepted", "linked"):
         bindings_qs = bindings_qs.filter(needs_review=False)
-    elif filter_by in ("exact", "normalized", "heuristic", "embedding"):
+    elif filter_by in ("exact", "normalized", "heuristic", "embedding", "manual"):
         bindings_qs = bindings_qs.filter(link_method=filter_by)
 
     binding_list = list(bindings_qs)
@@ -1660,9 +1662,14 @@ def _render_link_review(request, project, filter_by: str = "all") -> HttpRespons
         )
 
     summary = _build_review_summary(project)
+    template = (
+        "scheduling/components/fourD_review_partial.html"
+        if inline
+        else "scheduling/tabs/link_review.html"
+    )
     return render(
         request,
-        "scheduling/tabs/link_review.html",
+        template,
         {
             "project": project,
             "rows": rows,
@@ -1680,7 +1687,8 @@ class LinkReviewView(ProjectAccessMixin, View):
     def get(self, request, **kwargs: object) -> HttpResponse:
         project = self.get_project()
         filter_by = request.GET.get("filter", "all")
-        return _render_link_review(request, project, filter_by)
+        inline = request.GET.get("inline") == "1"
+        return _render_link_review(request, project, filter_by, inline=inline)
 
 
 class BindingAcceptView(ProjectModifyAccessMixin, View):
@@ -2230,7 +2238,7 @@ class BulkLinkElementView(ProjectModifyAccessMixin, View):
                         task=task,
                         entity_global_id=global_id,
                         confidence=1.0,
-                        link_method=TaskEntityBinding.LinkMethod.EXACT,
+                        link_method=TaskEntityBinding.LinkMethod.MANUAL,
                         needs_review=False,
                     )
                     for task in tasks_to_link

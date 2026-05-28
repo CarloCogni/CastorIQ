@@ -381,8 +381,21 @@
     </form>
   </div><!-- /fourD-footer -->
 
-  <!-- Results area: Link Engine / param match response — inside root so parent overflow:hidden doesn't clip it -->
-  <div id="fourD-link-results" style="padding: 8px; overflow-y: auto; flex-shrink: 0; max-height: 40vh;"></div>
+  <!-- Results area: Link Engine / param match feedback (collapses when empty) -->
+  <div id="fourD-link-results" style="flex-shrink:0; overflow-y:auto; max-height:180px;"></div>
+
+  <!-- Review pane: always visible, auto-loads on page render -->
+  <div id="fourD-review-pane"
+       style="flex-shrink:0; overflow-y:auto; max-height:32vh; padding:8px 12px;
+              border-top:1px solid var(--bs-border-color);"
+       hx-get="{% url 'islam:review' project.pk %}?filter=all&inline=1"
+       hx-trigger="load"
+       hx-swap="innerHTML">
+      <div class="d-flex align-items-center justify-content-center py-3 text-secondary"
+           style="font-size:0.82rem;">
+          <span class="spinner-border spinner-border-sm me-2"></span>Loading review…
+      </div>
+  </div>
 
 </div><!-- /fourD-root -->
 
