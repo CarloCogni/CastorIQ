@@ -1063,7 +1063,7 @@ els.btnFloors.addEventListener("click", () => {
 });
 
 // ── Boot ──
-const BUILD = "build 6.30"; // bump on each change so a stale (cached) JS is obvious in the header
+const BUILD = "build 6.31"; // bump on each change so a stale (cached) JS is obvious in the header
 initModal();
 // Restore a previously chosen standalone theme (host SET_THEME still overrides when embedded).
 try { const savedTheme = localStorage.getItem(THEME_KEY); if (savedTheme) applyTheme(savedTheme); } catch (_) { /* ignore */ }

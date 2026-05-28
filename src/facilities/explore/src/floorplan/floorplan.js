@@ -100,6 +100,29 @@ export function initFloorplan({ viewer, pinLayer, state, actions }) {
       actions.deselect();
     }
   });
+
+  // Keep the pin layer locked to the plan IMAGE box. When the viewer height
+  // changes (e.g. dragging the photo timeline) the image can rescale/clip while
+  // the stage decouples from it — without this, pins (positioned in % of the
+  // layer) would drift off the plan. Matching the layer to the image's rendered
+  // box keeps every pin on its spot, and keeps click-to-place coordinates right.
+  const planImg = document.getElementById("planImg");
+  if (planImg) {
+    const syncPinLayer = () => {
+      pinLayer.style.left = planImg.offsetLeft + "px";
+      pinLayer.style.top = planImg.offsetTop + "px";
+      pinLayer.style.width = planImg.offsetWidth + "px";
+      pinLayer.style.height = planImg.offsetHeight + "px";
+    };
+    planImg.addEventListener("load", syncPinLayer);
+    window.addEventListener("resize", syncPinLayer);
+    if (typeof ResizeObserver !== "undefined") {
+      const ro = new ResizeObserver(syncPinLayer);
+      ro.observe(planImg);
+      ro.observe(viewer);
+    }
+    syncPinLayer();
+  }
 }
 
 function pctFromEvent(e, box) {
