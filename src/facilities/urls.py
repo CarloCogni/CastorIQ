@@ -257,4 +257,9 @@ urlpatterns = [
         views.ExploreFloorVisibilityView.as_view(),
         name="explore_floor_visibility",
     ),
+    path(
+        "<uuid:pk>/facilities/explore/floor-plans/<uuid:storey_pk>/rename/",
+        views.ExploreFloorRenameView.as_view(),
+        name="explore_floor_rename",
+    ),
 ]

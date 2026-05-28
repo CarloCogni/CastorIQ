@@ -2015,6 +2015,10 @@ class ExploreView(ProjectTabMixin, TemplateView):
                     "facilities:explore_floor_visibility",
                     args=[project.pk, storey.pk],
                 ),
+                "rename_url": reverse(
+                    "facilities:explore_floor_rename",
+                    args=[project.pk, storey.pk],
+                ),
             }
             for storey in storeys
         ]
@@ -2146,6 +2150,64 @@ class ExploreFloorVisibilityView(ProjectModifyAccessMixin, View):
             "Explore storey %s %s Explore by user %s", storey_pk, state, request.user.pk
         )
         return toast_response(f"{name} {state} Explore.", "success")
+
+
+class ExploreFloorRenameView(ProjectModifyAccessMixin, View):
+    """Propose renaming an IFC storey via Castor's governed writeback pipeline.
+
+    This does NOT write the IFC here. It creates a PENDING ModificationProposal
+    (``ModificationService.propose``); the user reviews and approves it in the
+    Modify / History tab, which rewrites the source IFC and commits to git.
+    Keeping the rename inside the writeback workflow preserves validation,
+    conflict scanning and version history.
+    """
+
+    def post(self, request, pk, storey_pk):
+        project = self.get_project()
+        storey = get_object_or_404(
+            IFCSpatialElement,
+            pk=storey_pk,
+            ifc_file__project=project,
+            spatial_type=IFCSpatialElement.SpatialType.BUILDING_STOREY,
+        )
+        new_name = (request.POST.get("name") or "").strip()
+        old_name = storey.entity.name if storey.entity_id else ""
+        if not new_name:
+            return toast_response("Enter a new floor name.", "error", status=400)
+        if new_name == old_name:
+            return toast_response("Floor name unchanged.", "info")
+
+        # Lazy import — keeps the writeback dependency out of the module top level.
+        from writeback.services.modification_service import (
+            ModificationError,
+            ModificationService,
+        )
+
+        try:
+            svc = ModificationService(project, user=request.user)
+            svc.propose(
+                f"Rename the building storey named '{old_name}' to '{new_name}'.",
+                request.user,
+                ifc_file=storey.ifc_file,
+            )
+        except ModificationError as exc:
+            return toast_response(f"Couldn't propose rename: {exc}", "error", status=400)
+        except Exception:  # noqa: BLE001 — pipeline/LLM unavailable, etc.
+            logger.exception("Explore floor rename proposal failed for storey %s", storey_pk)
+            return toast_response(
+                "Rename proposal failed — check the Modify tab / server logs.",
+                "error",
+                status=400,
+            )
+
+        logger.info(
+            "Explore proposed rename of storey %s ('%s' -> '%s') by user %s",
+            storey_pk, old_name, new_name, request.user.pk,
+        )
+        return toast_response(
+            "Rename proposed — review & approve it in Modify to rewrite the IFC.",
+            "success",
+        )
 
 
 class _ExploreApiBase(ProjectAccessMixin, View):

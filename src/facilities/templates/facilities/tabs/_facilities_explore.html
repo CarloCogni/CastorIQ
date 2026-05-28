@@ -85,6 +85,12 @@
                         <i class="bi {% if storey.hidden %}bi-eye-slash text-secondary{% else %}bi-eye{% endif %}"></i>
                     </button>
                 </form>
+                <button type="button"
+                        class="btn btn-sm btn-link p-0 border-0 text-reset text-decoration-none"
+                        data-bs-toggle="collapse" data-bs-target="#rename-{{ storey.pk }}"
+                        title="Rename floor (proposes a change to the source IFC)">
+                    <i class="bi bi-pencil"></i>
+                </button>
                 {% endif %}
                 <span class="flex-grow-1 {% if storey.hidden %}opacity-50{% endif %}">
                     <i class="bi bi-building me-1 text-secondary"></i>
@@ -151,6 +157,27 @@
                            title="Remove the white background of this plan (best-effort)">White-out</label>
                 </div>
                 {% endif %}
+                {% endif %}
+                {% if user_permission == "owner" or user_permission == "editor" %}
+                <div class="collapse w-100" id="rename-{{ storey.pk }}">
+                    <form method="post"
+                          action="{{ storey.rename_url }}"
+                          hx-post="{{ storey.rename_url }}"
+                          hx-swap="none"
+                          hx-confirm="This proposes renaming this storey in the SOURCE IFC. It does NOT change the IFC yet — approve the proposal in the Modify tab to apply it. Continue?"
+                          hx-on::after-request="if (event.detail.successful) window.location.reload();"
+                          class="d-flex align-items-center gap-2 mt-1 w-100">
+                        {% csrf_token %}
+                        <input type="text" name="name" value="{{ storey.name }}"
+                               class="form-control form-control-sm" placeholder="New floor name" required>
+                        <button type="submit" class="btn btn-sm btn-primary text-nowrap">
+                            <i class="bi bi-pencil-square"></i> Rename → IFC
+                        </button>
+                        <span class="fs-8 text-warning text-nowrap">
+                            <i class="bi bi-exclamation-triangle"></i> rewrites source IFC (approve in Modify)
+                        </span>
+                    </form>
+                </div>
                 {% endif %}
             </div>
             {% endfor %}
