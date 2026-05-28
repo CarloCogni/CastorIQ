@@ -62,6 +62,7 @@ def list_floors_for_project(project: Project) -> list[dict[str, Any]]:
     )
     floors: list[dict[str, Any]] = []
     for storey in storeys:
+        plan_obj = getattr(storey, "explore_floor_plan", None)
         plan_url = _plan_url_for(storey)
         entity = storey.entity
         name = entity.name if entity else str(storey.pk)
@@ -72,6 +73,10 @@ def list_floors_for_project(project: Project) -> list[dict[str, Any]]:
                 "label": storey.long_name or name,
                 "plan": plan_url,
                 "planType": "image",
+                # White-out state, so the iframe can toggle / revert it even after
+                # a reload (planOriginal = the pre-knockout image).
+                "knockout": bool(plan_obj.knockout) if plan_obj else False,
+                "planOriginal": _original_plan_url_for(storey),
                 "rooms": list_rooms_for_floor(storey),
             }
         )
@@ -102,6 +107,17 @@ def list_rooms_for_floor(storey: IFCSpatialElement) -> list[dict[str, Any]]:
             }
         )
     return rooms
+
+
+def _original_plan_url_for(storey: IFCSpatialElement) -> str | None:
+    """Return the pre-knockout (original) plan image URL, if one was kept."""
+    plan = getattr(storey, "explore_floor_plan", None)
+    if plan is None or not plan.original_image:
+        return None
+    try:
+        return plan.original_image.url
+    except (ValueError, AttributeError):
+        return None
 
 
 def _plan_url_for(storey: IFCSpatialElement) -> str | None:

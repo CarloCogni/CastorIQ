@@ -378,6 +378,10 @@ export function setFloors(list, replace = false) {
       plan: f.plan,
       planType: f.planType || "image",
       rooms: Array.isArray(f.rooms) ? f.rooms : [],
+      // White-out state from the host, so the toggle can revert even after a
+      // reload (planOriginal = pre-knockout image).
+      knockout: !!f.knockout,
+      planOriginal: f.planOriginal || null,
     });
     ids.push(id);
   });
