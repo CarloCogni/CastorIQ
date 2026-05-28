@@ -1,0 +1,105 @@
+{% comment %}
+Floor-plans manager rows (HTMX partial). Per-row actions (visibility / upload /
+remove) return THIS partial so the list refreshes in place — the modal stays
+open until the user closes it (then the host reloads once if anything changed,
+so the iframe floor switcher reflects hidden floors / new plans). Rename posts a
+writeback proposal (toast only). Knockout toggles message the iframe via a
+delegated listener in the host page (survives these swaps).
+{% endcomment %}
+{% for storey in explore_storeys %}
+<div class="d-flex align-items-center gap-2 flex-wrap fs-8">
+    {% if user_permission == "owner" or user_permission == "editor" %}
+    <form method="post" action="{{ storey.visibility_url }}"
+          hx-post="{{ storey.visibility_url }}"
+          hx-target="#exploreFloorRows" hx-swap="innerHTML"
+          hx-on::after-request="if (event.detail.successful) window.__exploreFloorsDirty = true;"
+          class="m-0">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-sm btn-link p-0 border-0 text-reset text-decoration-none"
+                title="{% if storey.hidden %}Hidden in Explore — click to show{% else %}Shown in Explore — click to hide{% endif %}">
+            <i class="bi {% if storey.hidden %}bi-eye-slash text-secondary{% else %}bi-eye{% endif %}"></i>
+        </button>
+    </form>
+    <button type="button" class="btn btn-sm btn-link p-0 border-0 text-reset text-decoration-none"
+            data-bs-toggle="collapse" data-bs-target="#rename-{{ storey.pk }}"
+            title="Rename floor (proposes a change to the source IFC)">
+        <i class="bi bi-pencil"></i>
+    </button>
+    {% endif %}
+    <span class="flex-grow-1 {% if storey.hidden %}opacity-50{% endif %}">
+        <i class="bi bi-building me-1 text-secondary"></i>
+        <strong>{{ storey.name }}</strong>
+        {% if storey.label and storey.label != storey.name %}
+            <span class="text-secondary">· {{ storey.label }}</span>
+        {% endif %}
+    </span>
+
+    {% if storey.has_plan %}
+    <span class="badge rounded-pill"
+          style="background-color: rgba(16,185,129,0.15); color: var(--castor-success, #10b981); border: 1px solid rgba(16,185,129,0.3);">
+        <i class="bi bi-check2"></i> Plan uploaded
+    </span>
+    {% else %}
+    <span class="badge rounded-pill"
+          style="background-color: rgba(245,158,11,0.15); color: var(--castor-warning, #f59e0b); border: 1px solid rgba(245,158,11,0.3);">
+        No plan
+    </span>
+    {% endif %}
+
+    {% if user_permission == "owner" or user_permission == "editor" %}
+    <form method="post" action="{{ storey.upload_url }}" enctype="multipart/form-data"
+          hx-post="{{ storey.upload_url }}" hx-encoding="multipart/form-data"
+          hx-target="#exploreFloorRows" hx-swap="innerHTML"
+          hx-on::after-request="if (event.detail.successful) window.__exploreFloorsDirty = true;"
+          class="m-0">
+        {% csrf_token %}
+        <label class="btn btn-sm btn-outline-secondary mb-0 d-inline-flex align-items-center gap-1" style="cursor: pointer;">
+            <i class="bi bi-upload"></i>
+            {% if storey.has_plan %}Replace plan{% else %}Upload plan{% endif %}
+            <input type="file" name="image" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden
+                   onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit();">
+        </label>
+    </form>
+    {% if storey.has_plan %}
+    <form method="post" action="{{ storey.delete_url }}"
+          hx-post="{{ storey.delete_url }}"
+          hx-target="#exploreFloorRows" hx-swap="innerHTML"
+          hx-confirm="Remove the plan image for {{ storey.name }}? Points and photos placed on this floor stay; they reappear when a new plan is uploaded."
+          hx-on::after-request="if (event.detail.successful) window.__exploreFloorsDirty = true;"
+          class="m-0">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-sm btn-outline-danger d-inline-flex align-items-center gap-1"
+                title="Remove the uploaded plan (points + photos kept)">
+            <i class="bi bi-trash"></i> Remove
+        </button>
+    </form>
+    <div class="form-check form-switch m-0 ms-1 d-inline-flex align-items-center gap-1">
+        <input class="form-check-input explore-knockout-toggle" type="checkbox" role="switch"
+               id="knockout-{{ storey.pk }}" data-floor-id="{{ storey.pk }}"
+               {% if storey.knockout %}checked{% endif %}>
+        <label class="form-check-label fs-8" for="knockout-{{ storey.pk }}"
+               title="Remove the white background of this plan (best-effort)">White-out</label>
+    </div>
+    {% endif %}
+    {% endif %}
+
+    {% if user_permission == "owner" or user_permission == "editor" %}
+    <div class="collapse w-100" id="rename-{{ storey.pk }}">
+        <form method="post" action="{{ storey.rename_url }}"
+              hx-post="{{ storey.rename_url }}" hx-swap="none"
+              hx-confirm="This proposes renaming this storey in the SOURCE IFC. It does NOT change the IFC yet — approve the proposal in the Modify tab to apply it. Continue?"
+              class="d-flex align-items-center gap-2 mt-1 w-100">
+            {% csrf_token %}
+            <input type="text" name="name" value="{{ storey.name }}"
+                   class="form-control form-control-sm" placeholder="New floor name" required>
+            <button type="submit" class="btn btn-sm btn-primary text-nowrap">
+                <i class="bi bi-pencil-square"></i> Rename → IFC
+            </button>
+            <span class="fs-8 text-warning text-nowrap">
+                <i class="bi bi-exclamation-triangle"></i> rewrites source IFC (approve in Modify)
+            </span>
+        </form>
+    </div>
+    {% endif %}
+</div>
+{% endfor %}

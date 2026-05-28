@@ -1979,50 +1979,54 @@ class ExploreView(ProjectTabMixin, TemplateView):
             "catalog": reverse("facilities:explore_catalog", args=[project.pk]),
             "state": reverse("facilities:explore_state", args=[project.pk]),
         }
-        # Storeys + their plan status drive the upload panel above the iframe.
-        # Each entry: { pk, name, has_plan, upload_url }. The iframe gets the
-        # same data through the floors JSON endpoint; this is the host-page
-        # view used for the upload affordance.
-        storeys = (
-            IFCSpatialElement.objects.filter(
-                ifc_file__project=project,
-                spatial_type=IFCSpatialElement.SpatialType.BUILDING_STOREY,
-            )
-            .select_related("entity", "explore_floor_plan", "explore_settings")
-            .order_by("elevation", "entity__name")
-        )
-        context["explore_storeys"] = [
-            {
-                "pk": str(storey.pk),
-                "name": (storey.entity.name if storey.entity_id else str(storey.pk)),
-                "label": storey.long_name or (storey.entity.name if storey.entity_id else ""),
-                "has_plan": bool(getattr(storey, "explore_floor_plan", None)),
-                "knockout": getattr(
-                    getattr(storey, "explore_floor_plan", None), "knockout", False
-                ),
-                "hidden": getattr(
-                    getattr(storey, "explore_settings", None), "hidden", False
-                ),
-                "upload_url": reverse(
-                    "facilities:explore_floor_plan_upload",
-                    args=[project.pk, storey.pk],
-                ),
-                "delete_url": reverse(
-                    "facilities:explore_floor_plan_delete",
-                    args=[project.pk, storey.pk],
-                ),
-                "visibility_url": reverse(
-                    "facilities:explore_floor_visibility",
-                    args=[project.pk, storey.pk],
-                ),
-                "rename_url": reverse(
-                    "facilities:explore_floor_rename",
-                    args=[project.pk, storey.pk],
-                ),
-            }
-            for storey in storeys
-        ]
+        # Storeys + their plan / visibility status drive the Floor-plans manager.
+        context["explore_storeys"] = build_explore_storeys(project)
         return context
+
+
+def build_explore_storeys(project):
+    """One descriptor per ``IfcBuildingStorey`` for the Floor-plans manager rows.
+
+    Each entry: { pk, name, label, has_plan, knockout, hidden, *_url }.
+    """
+    storeys = (
+        IFCSpatialElement.objects.filter(
+            ifc_file__project=project,
+            spatial_type=IFCSpatialElement.SpatialType.BUILDING_STOREY,
+        )
+        .select_related("entity", "explore_floor_plan", "explore_settings")
+        .order_by("elevation", "entity__name")
+    )
+    return [
+        {
+            "pk": str(storey.pk),
+            "name": (storey.entity.name if storey.entity_id else str(storey.pk)),
+            "label": storey.long_name or (storey.entity.name if storey.entity_id else ""),
+            "has_plan": bool(getattr(storey, "explore_floor_plan", None)),
+            "knockout": getattr(getattr(storey, "explore_floor_plan", None), "knockout", False),
+            "hidden": getattr(getattr(storey, "explore_settings", None), "hidden", False),
+            "upload_url": reverse("facilities:explore_floor_plan_upload", args=[project.pk, storey.pk]),
+            "delete_url": reverse("facilities:explore_floor_plan_delete", args=[project.pk, storey.pk]),
+            "visibility_url": reverse("facilities:explore_floor_visibility", args=[project.pk, storey.pk]),
+            "rename_url": reverse("facilities:explore_floor_rename", args=[project.pk, storey.pk]),
+        }
+        for storey in storeys
+    ]
+
+
+def _explore_floor_rows_response(request, project):
+    """Render just the Floor-plans manager rows (HTMX partial).
+
+    Per-row actions (visibility / upload / remove) return this so the list
+    refreshes in place — the modal stays open until the user closes it.
+    The caller has already passed ProjectModifyAccessMixin, so the editor
+    controls are shown.
+    """
+    return render(
+        request,
+        "facilities/tabs/_explore_floor_rows.html",
+        {"explore_storeys": build_explore_storeys(project), "user_permission": "editor"},
+    )
 
 
 # Pavla's Explore module lives as a peer directory under facilities/, NOT under
@@ -2098,10 +2102,7 @@ class ExploreFloorPlanUploadView(ProjectModifyAccessMixin, View):
         logger.info(
             "Explore floor plan uploaded for storey %s by user %s", storey.pk, request.user.pk
         )
-        return toast_response(
-            f"Floor plan saved for {storey.entity.name if storey.entity_id else 'storey'}.",
-            "success",
-        )
+        return _explore_floor_rows_response(request, project)
 
 
 class ExploreFloorPlanDeleteView(ProjectModifyAccessMixin, View):
@@ -2122,7 +2123,8 @@ class ExploreFloorPlanDeleteView(ProjectModifyAccessMixin, View):
         logger.info(
             "Explore floor plan removed for storey %s by user %s", storey_pk, request.user.pk
         )
-        return toast_response("Floor plan removed.", "success")
+        project = self.get_project()
+        return _explore_floor_rows_response(request, project)
 
 
 class ExploreFloorVisibilityView(ProjectModifyAccessMixin, View):
@@ -2149,7 +2151,8 @@ class ExploreFloorVisibilityView(ProjectModifyAccessMixin, View):
         logger.info(
             "Explore storey %s %s Explore by user %s", storey_pk, state, request.user.pk
         )
-        return toast_response(f"{name} {state} Explore.", "success")
+        # Return the refreshed rows so the manager updates in place (modal stays open).
+        return _explore_floor_rows_response(request, project)
 
 
 class ExploreFloorRenameView(ProjectModifyAccessMixin, View):
