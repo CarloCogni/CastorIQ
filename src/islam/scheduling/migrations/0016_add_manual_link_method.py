@@ -4,15 +4,25 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('islam_scheduling', '0015_projectcomprehension'),
+        ("islam_scheduling", "0015_projectcomprehension"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='taskentitybinding',
-            name='link_method',
-            field=models.CharField(choices=[('exact', 'Exact match'), ('normalized', 'Normalized match'), ('heuristic', 'Type heuristic'), ('embedding', 'Embedding similarity'), ('manual', 'Manual selection')], default='exact', max_length=20, verbose_name='Link Method'),
+            model_name="taskentitybinding",
+            name="link_method",
+            field=models.CharField(
+                choices=[
+                    ("exact", "Exact match"),
+                    ("normalized", "Normalized match"),
+                    ("heuristic", "Type heuristic"),
+                    ("embedding", "Embedding similarity"),
+                    ("manual", "Manual selection"),
+                ],
+                default="exact",
+                max_length=20,
+                verbose_name="Link Method",
+            ),
         ),
     ]
