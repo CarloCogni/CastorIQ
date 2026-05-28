@@ -55,12 +55,17 @@
 .etl-head{padding:6px 14px 3px;display:flex;align-items:center;gap:10px;}
 .etl-label{font-family:var(--font-mono);font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);}
 .etl-room{font-size:12px;font-weight:600;color:var(--t1);}
-.etl-track{flex:1;padding:2px 14px 8px;display:flex;align-items:center;gap:6px;overflow-x:auto;}
+.etl-track{flex:1;min-height:0;padding:2px 14px 8px;display:flex;align-items:stretch;gap:6px;overflow-x:auto;}
 .etl-empty{font-family:var(--font-mono);font-size:10px;color:var(--t3);}
 .etl-conn{width:18px;height:1px;background:var(--b2);flex-shrink:0;align-self:center;margin-top:-14px;}
 
-/* ── Detail panel (full window height; actions toolbar on top) ── */
-.detail-panel{width:300px;background:var(--sb);border-left:1px solid var(--b1);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden;}
+/* ── Detail panel (full window height; actions toolbar on top; drag-resizable) ── */
+.detail-panel{position:relative;width:300px;background:var(--sb);border-left:1px solid var(--b1);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden;}
+/* Drag the left edge to widen/narrow the panel; the viewer (and its floor
+   switcher, anchored to the viewer's right edge) follows. */
+.dp-resize{position:absolute;left:0;top:0;bottom:0;width:6px;cursor:ew-resize;z-index:6;}
+.dp-resize::before{content:"";position:absolute;left:2px;top:50%;transform:translateY(-50%);width:2px;height:34px;border-radius:2px;background:var(--b3);opacity:.6;transition:background .12s;}
+.dp-resize:hover::before{background:var(--acc);opacity:1;}
 .dp-toolbar{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px 12px;border-bottom:1px solid var(--b1);flex-shrink:0;}
 .dp-toolbar .btn{font-size:11px;padding:6px 8px;justify-content:center;text-align:center;}
 .dp-head{padding:10px 14px;border-bottom:1px solid var(--b1);}

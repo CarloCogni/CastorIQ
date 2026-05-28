@@ -52,6 +52,7 @@ const els = {
   tlSort: document.getElementById("tlSort"),
   tlCollapse: document.getElementById("tlCollapse"),
   tlResize: document.getElementById("tlResize"),
+  dpResize: document.getElementById("dpResize"),
   expTimeline: document.getElementById("expTimeline"),
   vLabel: document.getElementById("vLabel"),
   mhSub: document.getElementById("mhSub"),
@@ -352,6 +353,34 @@ try {
     if (h) els.expTimeline.style.height = Math.max(TL_MIN_H, Math.min(h, tlMaxH())) + "px";
   }
 } catch (_) { /* ignore */ }
+
+// ── Detail panel: drag its left edge to widen/narrow (the viewer + its floor
+//    switcher follow) — persisted. ──
+const PANEL_W_KEY = "fm-explore.panelWidth";
+const PANEL_MIN_W = 240;
+function panelMaxW() { return Math.max(PANEL_MIN_W, Math.round(window.innerWidth * 0.6)); }
+const detailPanel = document.querySelector(".detail-panel");
+function setPanelWidth(w) {
+  if (!detailPanel) return;
+  const clamped = Math.max(PANEL_MIN_W, Math.min(Math.round(w), panelMaxW()));
+  detailPanel.style.width = clamped + "px";
+  try { localStorage.setItem(PANEL_W_KEY, String(clamped)); } catch (_) { /* ignore */ }
+}
+if (els.dpResize && detailPanel) {
+  let dpDragging = false;
+  els.dpResize.addEventListener("pointerdown", (e) => {
+    dpDragging = true;
+    try { els.dpResize.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
+    e.preventDefault();
+  });
+  els.dpResize.addEventListener("pointermove", (e) => {
+    if (!dpDragging) return;
+    const r = detailPanel.getBoundingClientRect();
+    setPanelWidth(r.right - e.clientX);
+  });
+  els.dpResize.addEventListener("pointerup", () => { dpDragging = false; });
+}
+try { const pw = parseInt(localStorage.getItem(PANEL_W_KEY) || "", 10); if (pw) setPanelWidth(pw); } catch (_) { /* ignore */ }
 
 // ── Host palette → module tokens, so the embedded background matches Castor
 //    exactly (sent by the host in VIEWER_INIT / SET_THEME; works light + dark). ──
@@ -1083,7 +1112,7 @@ els.btnFloors.addEventListener("click", () => {
 });
 
 // ── Boot ──
-const BUILD = "build 6.34"; // bump on each change so a stale (cached) JS is obvious in the header
+const BUILD = "build 6.35"; // bump on each change so a stale (cached) JS is obvious in the header
 initModal();
 // Restore a previously chosen standalone theme (host SET_THEME still overrides when embedded).
 try { const savedTheme = localStorage.getItem(THEME_KEY); if (savedTheme) applyTheme(savedTheme); } catch (_) { /* ignore */ }
