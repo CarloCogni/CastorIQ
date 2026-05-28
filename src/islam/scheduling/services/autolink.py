@@ -455,6 +455,8 @@ def run_autolink(project, ifc_param_name: str | None = None) -> dict:
     m2m_adds: dict[str, list[IFCEntity]] = {}  # task_pk (str) → entities
     remaining: list[Task] = []
 
+    t0 = time.perf_counter()
+
     # ------------------------------------------------------------------ #
     # Layers 1 & 2 — property value match                                 #
     # ------------------------------------------------------------------ #
@@ -478,6 +480,15 @@ def run_autolink(project, ifc_param_name: str | None = None) -> dict:
 
         remaining.append(task)
 
+    t1 = time.perf_counter()
+    logger.info(
+        "Layer 1+2 done in %.2fs — exact=%d normalized=%d remaining=%d",
+        t1 - t0,
+        counters["exact"],
+        counters["normalized"],
+        len(remaining),
+    )
+
     # ------------------------------------------------------------------ #
     # Layer 3 — IFC-type keyword heuristic with zone/trade context        #
     # ------------------------------------------------------------------ #
@@ -494,10 +505,16 @@ def run_autolink(project, ifc_param_name: str | None = None) -> dict:
         else:
             embed_remaining.append(task)
 
+    t2 = time.perf_counter()
+    logger.info(
+        "Layer 3 done in %.2fs — heuristic=%d embed_remaining=%d",
+        t2 - t1,
+        counters["heuristic"],
+        len(embed_remaining),
+    )
+
     # ------------------------------------------------------------------ #
     # Layer 4 — embedding cosine similarity (batched)                     #
-    # FIX 1: one embed_documents() call for all tasks instead of N calls  #
-    # FIX 2: one entity fetch + numpy matrix multiply instead of N queries #
     # ------------------------------------------------------------------ #
     if embed_remaining:
         try:
@@ -539,12 +556,19 @@ def run_autolink(project, ifc_param_name: str | None = None) -> dict:
                     if review:
                         needs_review_count += 1
 
+    t3 = time.perf_counter()
+    logger.info(
+        "Layer 4 done in %.2fs — embedding=%d (batch_size=%d tasks)",
+        t3 - t2,
+        counters["embedding"],
+        len(embed_remaining),
+    )
+
     # ------------------------------------------------------------------ #
     # Persist                                                             #
     # ------------------------------------------------------------------ #
-    TaskEntityBinding.objects.bulk_create(new_bindings, ignore_conflicts=True)
+    TaskEntityBinding.objects.bulk_create(new_bindings, ignore_conflicts=True, batch_size=500)
 
-    # FIX 3: one bulk_create instead of N individual M2M .add() calls
     ThroughModel = Task.ifc_entities.through
     through_rows = [
         ThroughModel(task_id=task.pk, ifcentity_id=entity.pk)
@@ -553,7 +577,16 @@ def run_autolink(project, ifc_param_name: str | None = None) -> dict:
         for entity in adds
     ]
     if through_rows:
-        ThroughModel.objects.bulk_create(through_rows, ignore_conflicts=True)
+        ThroughModel.objects.bulk_create(through_rows, ignore_conflicts=True, batch_size=500)
+
+    t4 = time.perf_counter()
+    logger.info(
+        "Persist done in %.2fs — %d bindings, %d M2M rows",
+        t4 - t3,
+        len(new_bindings),
+        len(through_rows),
+    )
+    logger.info("run_autolink total: %.2fs", t4 - t0)
 
     total_linked = sum(counters.values())
     return {
