@@ -727,16 +727,36 @@ function openPointList() {
       g.pts.map((p) => {
         const ph = effectivePhase(p);
         const meta = [p.globalId ? "GID " + p.globalId.slice(0, 8) + "…" : "", ph].filter(Boolean).join("  ·  ");
-        return `<button class="ptl-item${p.id === state.selectedId ? " on" : ""}" data-pid="${p.id}">` +
-          `<span class="ptl-dot" style="background:${phaseColor(ph)}"></span>` +
-          `<span class="ptl-name">${escHtml(p.label || "(point)")}</span>` +
-          `<span class="ptl-meta">${escHtml(meta)}</span>` +
-          `</button>`;
+        return `<div class="ptl-item${p.id === state.selectedId ? " on" : ""}">` +
+          `<button class="ptl-jump" data-pid="${p.id}" title="Jump to this point">` +
+            `<span class="ptl-dot" style="background:${phaseColor(ph)}"></span>` +
+            `<span class="ptl-name">${escHtml(p.label || "(point)")}</span>` +
+            `<span class="ptl-meta">${escHtml(meta)}</span>` +
+          `</button>` +
+          `<button class="ptl-del" data-del-pid="${p.id}" title="Delete this point (and its photos)">✕</button>` +
+          `</div>`;
       }).join("")
     ).join("");
     listEl.querySelectorAll("[data-pid]").forEach((b) => b.addEventListener("click", () => {
       const p = state.points.find((x) => x.id === b.dataset.pid);
       if (p) { setActiveFloor(p.floorId); selectPoint(p.id); closeModal(); }
+    }));
+    // Delete a point straight from the list (handy for points orphaned when a
+    // plan is removed). Two-step confirm so it isn't an accidental click.
+    listEl.querySelectorAll("[data-del-pid]").forEach((b) => b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (b.dataset.armed === "1") {
+        deletePoint(b.dataset.delPid);
+        toast("Point deleted");
+        const t = document.getElementById("modalTitle");
+        if (t) t.textContent = `Points · ${state.points.length}`;
+        draw();
+      } else {
+        b.dataset.armed = "1";
+        b.textContent = "Delete?";
+        b.classList.add("armed");
+        setTimeout(() => { if (b.isConnected) { b.dataset.armed = ""; b.textContent = "✕"; b.classList.remove("armed"); } }, 3000);
+      }
     }));
   };
   search.addEventListener("input", draw);
@@ -1063,7 +1083,7 @@ els.btnFloors.addEventListener("click", () => {
 });
 
 // ── Boot ──
-const BUILD = "build 6.31"; // bump on each change so a stale (cached) JS is obvious in the header
+const BUILD = "build 6.32"; // bump on each change so a stale (cached) JS is obvious in the header
 initModal();
 // Restore a previously chosen standalone theme (host SET_THEME still overrides when embedded).
 try { const savedTheme = localStorage.getItem(THEME_KEY); if (savedTheme) applyTheme(savedTheme); } catch (_) { /* ignore */ }

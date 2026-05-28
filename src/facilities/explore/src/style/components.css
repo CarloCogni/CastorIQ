@@ -242,12 +242,16 @@ body.castor-embedded .mh-build { display: none !important; }
 .ptl-search{width:100%;}
 .ptl-list{max-height:50vh;overflow-y:auto;display:flex;flex-direction:column;gap:2px;}
 .ptl-grp{font-family:var(--font-mono);font-size:9px;letter-spacing:.05em;text-transform:uppercase;color:var(--t3);margin:8px 0 3px;}
-.ptl-item{display:flex;align-items:center;gap:9px;width:100%;text-align:left;background:transparent;border:1px solid transparent;border-radius:5px;padding:6px 8px;cursor:pointer;color:var(--t1);}
+.ptl-item{display:flex;align-items:center;gap:2px;border:1px solid transparent;border-radius:5px;}
 .ptl-item:hover{background:var(--p2);border-color:var(--b1);}
 .ptl-item.on{border-color:var(--acc);}
+.ptl-jump{flex:1;min-width:0;display:flex;align-items:center;gap:9px;text-align:left;background:transparent;border:none;border-radius:5px;padding:6px 8px;cursor:pointer;color:var(--t1);}
 .ptl-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
 .ptl-name{font-size:12.5px;}
 .ptl-meta{margin-left:auto;font-family:var(--font-mono);font-size:9px;color:var(--t3);white-space:nowrap;}
+.ptl-del{flex-shrink:0;background:transparent;border:none;color:var(--t3);cursor:pointer;font-size:11px;line-height:1;padding:5px 8px;border-radius:4px;}
+.ptl-del:hover{color:var(--red);}
+.ptl-del.armed{color:#fff;background:var(--red);font-family:var(--font-mono);font-size:9px;padding:5px 7px;}
 
 /* ── Phase manager (numbering ⚙) ── */
 .num-cfg{background:transparent;border:1px solid var(--b2);color:var(--t2);border-radius:4px;width:22px;height:22px;line-height:1;cursor:pointer;flex-shrink:0;}
