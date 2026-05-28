@@ -19,7 +19,7 @@ import logging
 from typing import Any
 
 from environments.models import Project
-from facilities.models import FacilityAsset, Permit, WorkOrder
+from facilities.models import ActionRequest, FacilityAsset, Permit, WorkOrder
 from facilities.services.workorder_service import KANBAN_STATUSES
 
 logger = logging.getLogger(__name__)
@@ -35,6 +35,7 @@ def build_table_catalog(project: Project) -> dict[str, dict[str, Any]]:
         "assets": _build_assets_table(project),
         "work": _build_work_table(project),
         "permits": _build_permits_table(project),
+        "requests": _build_requests_table(project),
     }
 
 
@@ -59,7 +60,7 @@ def _build_assets_table(project: Project) -> dict[str, Any]:
             }
         )
     return {
-        "group": "Facility",
+        "group": "Assets",
         "label": "Assets",
         "columns": [
             {"field": "tag", "label": "Tag"},
@@ -94,7 +95,7 @@ def _build_work_table(project: Project) -> dict[str, Any]:
             }
         )
     return {
-        "group": "Schedule",
+        "group": "Work",
         "label": "Work Orders",
         "columns": [
             {"field": "wo_number", "label": "WO #"},
@@ -121,12 +122,48 @@ def _build_permits_table(project: Project) -> dict[str, Any]:
             }
         )
     return {
-        "group": "Schedule",
+        "group": "Permits",
         "label": "Permits",
         "columns": [
             {"field": "title", "label": "Title"},
             {"field": "permit_type", "label": "Type"},
             {"field": "valid_until", "label": "Valid Until"},
+        ],
+        "rows": rows,
+    }
+
+
+def _build_requests_table(project: Project) -> dict[str, Any]:
+    rows = []
+    qs = ActionRequest.objects.filter(project=project).select_related(
+        "affected_asset",
+        "affected_asset__ifc_entity",
+        "affected_spatial",
+        "affected_spatial__entity",
+    )
+    for ar in qs:
+        asset = ar.affected_asset
+        global_id = asset.ifc_entity.global_id if asset and asset.ifc_entity else ""
+        room_props = _spatial_props(ar.affected_spatial)
+        rows.append(
+            {
+                "id": str(ar.pk),
+                "title": ar.title,
+                "severity": ar.get_severity_display(),
+                "status": ar.get_status_display(),
+                "globalId": global_id,
+                "roomNumber": room_props.get("number", ""),
+                "department": room_props.get("department", ""),
+                "_status": "open" if ar.status == ActionRequest.Status.OPEN else "",
+            }
+        )
+    return {
+        "group": "Requests",
+        "label": "Action Requests",
+        "columns": [
+            {"field": "title", "label": "Title"},
+            {"field": "severity", "label": "Severity"},
+            {"field": "status", "label": "Status"},
         ],
         "rows": rows,
     }

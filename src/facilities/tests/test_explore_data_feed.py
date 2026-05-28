@@ -128,13 +128,15 @@ class TestListRoomsForFloor:
 
 
 class TestBuildTableCatalog:
-    def test_catalog_has_three_default_tables(self):
+    def test_catalog_has_default_tables(self):
         project = ProjectFactory()
         catalog = build_table_catalog(project)
-        assert set(catalog.keys()) == {"assets", "work", "permits"}
-        assert catalog["assets"]["group"] == "Facility"
-        assert catalog["work"]["group"] == "Schedule"
-        assert catalog["permits"]["group"] == "Schedule"
+        assert set(catalog.keys()) == {"assets", "work", "permits", "requests"}
+        # Grouped by Facilities module name for the "add table" picker.
+        assert catalog["assets"]["group"] == "Assets"
+        assert catalog["work"]["group"] == "Work"
+        assert catalog["permits"]["group"] == "Permits"
+        assert catalog["requests"]["group"] == "Requests"
 
     def test_assets_table_filters_by_project(self):
         project = ProjectFactory()
@@ -179,4 +181,4 @@ class TestExploreApiAccess:
         assert response.status_code == 200
         body = response.json()
         assert "tables" in body
-        assert set(body["tables"].keys()) == {"assets", "work", "permits"}
+        assert set(body["tables"].keys()) == {"assets", "work", "permits", "requests"}
