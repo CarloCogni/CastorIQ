@@ -256,6 +256,9 @@ class SchedulePreviewView(ProjectModifyAccessMixin, View):
                     "expected_finish": str(t["expected_finish"])
                     if t.get("expected_finish")
                     else None,
+                    "constraint_date": str(t["constraint_date"])
+                    if t.get("constraint_date")
+                    else None,
                 }
                 for t in tasks
             ]
@@ -433,6 +436,9 @@ class TaskUploadView(ProjectModifyAccessMixin, View):
                     "expected_finish": str(t["expected_finish"])
                     if t.get("expected_finish")
                     else None,
+                    "constraint_date": str(t["constraint_date"])
+                    if t.get("constraint_date")
+                    else None,
                 }
                 for t in tasks
             ]
@@ -564,6 +570,11 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
                     late_finish=date.fromisoformat(late_finish_raw) if late_finish_raw else None,
                     total_float=int(total_float_val) if total_float_val is not None else None,
                     is_critical=total_float_val is not None and int(total_float_val) == 0,
+                    calendar_object_id=td.get("calendar_object_id", ""),
+                    constraint_type=td.get("constraint_type", ""),
+                    constraint_date=date.fromisoformat(td["constraint_date"])
+                    if td.get("constraint_date")
+                    else None,
                 )
 
                 existing = None
@@ -1434,6 +1445,9 @@ class MappingSubmitView(ProjectModifyAccessMixin, View):
                     "late_finish": str(t["late_finish"]) if t.get("late_finish") else None,
                     "expected_finish": str(t["expected_finish"])
                     if t.get("expected_finish")
+                    else None,
+                    "constraint_date": str(t["constraint_date"])
+                    if t.get("constraint_date")
                     else None,
                 }
                 for t in tasks
