@@ -142,11 +142,10 @@ const meshToFragment      = new Map();   // InstancedMesh → Fragment (raycaste
 const expressIdToGlobalId = new Map();   // expressId → globalId (reverse of globalIdIndex)
 
 const C = {
-    /* 4D build sequence — colours pre-multiplied against #111 background */
-    tl_complete:    new THREE.Color(0.063, 0.722, 0.506),   // #10B981 opacity 1.0
-    tl_in_progress: new THREE.Color(0.335, 0.233, 0.060),   // #F59E0B blended @ 0.3
-    tl_delayed:     new THREE.Color(0.937, 0.267, 0.267),   // #EF4444
-    tl_no_task:     new THREE.Color(0.104, 0.105, 0.106),   // #D1D5DB blended @ 0.05
+    tl_complete:    new THREE.Color('#10B981'),
+    tl_in_progress: new THREE.Color('#F59E0B'),
+    tl_delayed:     new THREE.Color('#EF4444'),
+    tl_no_task:     new THREE.Color('#D1D5DB'),
     // not_started → hidden via fragment.setVisibility(false)
 };
 
@@ -244,12 +243,38 @@ function buildIndex() {
                 fragmentIndex.set(expressId, fragment);
             }
         }
-        for (const [gid, expressId] of model.globalToExpressIDs) {
+        for (const [rawGid, expressId] of model.globalToExpressIDs) {
+            /* thatopen/fragments URL-encodes $ → %24 (and possibly _ → %5F) in the
+               binary fragment format. Decode so keys match the raw IFC compact GUIDs
+               that the server stores and returns. */
+            const gid = decodeURIComponent(rawGid);
             globalIdIndex.set(gid, expressId);
             expressIdToGlobalId.set(expressId, gid);
         }
+        const _sampleGids = [...globalIdIndex.keys()].slice(0, 3);
+        console.log('[GID] IFC model first 3 GIDs (decoded):', JSON.stringify(_sampleGids));
+        console.log('[GID] IFC model total GIDs:', globalIdIndex.size);
+
+        // ── FRAG STRUCTURE DUMP ──────────────────────────────────────────
+        console.log('[FRAG] model.items count:', model.items.length);
+        model.items.slice(0, 8).forEach((f, i) => {
+            const m   = f.mesh;
+            const mat = m?.material;
+            const matArr = Array.isArray(mat) ? mat : (mat ? [mat] : []);
+            const matDesc = matArr.map(ma =>
+                `${ma.constructor.name} transparent=${ma.transparent} opacity=${ma.opacity?.toFixed(2)} wire=${!!ma.wireframe}`
+            ).join(' | ');
+            console.log(
+                `[FRAG][${i}] id=${f.id}` +
+                ` ids=${f.ids?.size ?? 'N/A'}` +
+                ` type=${f.type ?? f.constructor?.name ?? '?'}` +
+                ` mesh=${m?.constructor?.name ?? 'none'}` +
+                ` mat=[${matDesc}]`
+            );
+        });
+        // ─────────────────────────────────────────────────────────────────
     } catch (e) {
-        console.warn("[embed] GlobalId index build failed:", e);
+        console.error("[embed] buildIndex FAILED — GID lookup will be broken:", e);
     }
 }
 
@@ -454,13 +479,121 @@ window.addEventListener("message", async (e) => {
     if (!msg || !msg.type) return;
 
     if (msg.type === "castor:timeline-colors") {
+        console.log('[TL] raw message:', JSON.stringify(e.data).slice(0, 300));
+        const _tlSample = (msg.not_started || []).slice(0, 3);
+        console.log('[GID] server not_started first 3:', JSON.stringify(_tlSample));
         if (!model) return;
         const { not_started = [], in_progress = [], complete = [], no_task = [], delayed = [] } = msg;
+
+        // ── DEBUG: snapshot fragment state before reset ──────────────────
+        const _dbgBefore = [];
+        for (const frag of model.items) {
+            const hasColor = frag.mesh.instanceColor != null;
+            const savedKeys = frag._originalColors ? [...frag._originalColors.keys()] : [];
+            _dbgBefore.push({ id: frag.id, ids: frag.ids.size, hasColor, savedOriginals: savedKeys.length });
+        }
+
         resetAllColors();
-        colorByGlobalIds(in_progress, C.tl_in_progress);  // ghost amber (0.3 opacity blend)
-        colorByGlobalIds(complete,    C.tl_complete);      // solid green
-        colorByGlobalIds(delayed,     C.tl_delayed);       // red — finished/running late
-        hideGlobalIds(not_started);                        // fully hidden — not yet built
+
+        // ── DEBUG: snapshot after reset ───────────────────────────────────
+        const _dbgAfter = [];
+        for (const frag of model.items) {
+            const savedKeys = frag._originalColors ? [...frag._originalColors.keys()] : [];
+            _dbgAfter.push({ id: frag.id, ids: frag.ids.size, savedOriginals: savedKeys.length, hidden: frag.hiddenItems.size });
+        }
+        console.log("[4D-DEBUG] resetAllColors before/after — fragment count:", model.items.length);
+        console.table(_dbgBefore.slice(0, 8));
+        console.table(_dbgAfter.slice(0, 8));
+        // ─────────────────────────────────────────────────────────────────
+
+        // colorByGlobalIds colors per-expressId, leaving other elements in the same fragment
+        // at their original color — causing mixed-color fragments. Instead, resolve the
+        // winning state at fragment level (Delayed > In-Progress > Complete > Not-Started)
+        // and apply it to every element in that fragment.
+        const _tlFrag = new Map();   // fragment → { priority, color }
+        function _tlMark(gids, priority, color) {
+            for (const gid of gids) {
+                const eid  = globalIdIndex.get(gid);
+                if (eid === undefined) continue;
+                const frag = fragmentIndex.get(eid);
+                if (!frag) continue;
+                const cur  = _tlFrag.get(frag);
+                if (!cur || priority > cur.priority) _tlFrag.set(frag, { priority, color });
+            }
+        }
+        _tlMark(not_started, 0, null);             // hidden — no color
+        _tlMark(complete,    1, C.tl_complete);
+        _tlMark(in_progress, 2, C.tl_in_progress);
+        _tlMark(delayed,     3, C.tl_delayed);
+
+        // thatopen creates two fragments per geometry (opaque + transparent material).
+        // Both share the same expressIds but fragmentIndex only maps each expressId to
+        // the last fragment written, so _tlMark only reaches one of the pair. The other
+        // keeps its original IFC color and appears as a white/gray ghost outline.
+        // Fix: build expressId → winning state, then propagate to every fragment in
+        // model.items whose ids overlap a state we already assigned.
+        const _tlExpressState = new Map(); // expressId → { priority, color }
+        for (const [frag, state] of _tlFrag) {
+            for (const eid of frag.ids) {
+                const cur = _tlExpressState.get(eid);
+                if (!cur || state.priority > cur.priority) _tlExpressState.set(eid, state);
+            }
+        }
+        let _companionFound = 0, _companionMissed = 0;
+        for (const frag of model.items) {
+            if (_tlFrag.has(frag)) continue;   // already assigned
+            let best = null;
+            for (const eid of frag.ids) {
+                const st = _tlExpressState.get(eid);
+                if (st && (!best || st.priority > best.priority)) best = st;
+            }
+            if (best !== null) {
+                _tlFrag.set(frag, best);
+                _companionFound++;
+            } else {
+                _companionMissed++;
+                if (_companionMissed <= 3) {
+                    const m   = frag.mesh;
+                    const mat = Array.isArray(m?.material) ? m.material[0] : m?.material;
+                    console.log(
+                        `[FRAG] unmatched companion: id=${frag.id}` +
+                        ` ids=${frag.ids?.size ?? 'N/A'}` +
+                        ` mesh=${m?.constructor?.name}` +
+                        ` mat=${mat?.constructor?.name} transparent=${mat?.transparent} opacity=${mat?.opacity?.toFixed(2)}`
+                    );
+                }
+            }
+        }
+        console.log(`[FRAG] companion propagation: found=${_companionFound} unmatched=${_companionMissed}`);
+
+        for (const [frag, { color }] of _tlFrag) {
+            if (color === null) {
+                frag.setVisibility(false);
+            } else {
+                frag.setColor(color);  // no second arg → colors all instances in fragment
+            }
+        }
+
+        // ── DEBUG: summary + first 5 colored (non-hidden) fragments ─────
+        let _dbgColored = 0, _dbgHidden = 0;
+        for (const { color } of _tlFrag.values()) color === null ? _dbgHidden++ : _dbgColored++;
+        console.log(`[4D-DEBUG] _tlFrag: ${_tlFrag.size} total | colored=${_dbgColored} hidden=${_dbgHidden} | model frags=${model.items.length}`
+            + ` | buckets not_started=${not_started.length} complete=${complete.length} in_progress=${in_progress.length} delayed=${delayed.length}`);
+
+        let _dbgN = 0;
+        for (const [frag, { color, priority }] of _tlFrag) {
+            if (color === null) continue;          // skip not_started (hidden) entries
+            if (_dbgN++ >= 5) break;
+            const STATE = ["not_started","complete","in_progress","delayed"];
+            const meshInfo = frag.mesh
+                ? `count=${frag.mesh.count} instanceColor=${frag.mesh.instanceColor ? "yes" : "NO←BUG"}`
+                : "no mesh";
+            console.log(`[4D-DEBUG] colored frag[${_dbgN}] state=${STATE[priority]}`
+                + ` ids=${frag.ids.size} color=rgb(${color.r.toFixed(3)},${color.g.toFixed(3)},${color.b.toFixed(3)})`
+                + ` | ${meshInfo}`);
+        }
+        // ─────────────────────────────────────────────────────────────────
+
         wireframeNoTaskFragments(no_task, [...in_progress, ...complete, ...delayed, ...not_started]);
         _showTimelineLegend();
         return;
@@ -524,12 +657,40 @@ window.addEventListener("message", async (e) => {
         const { linked = [], unlinked = [], filter = "all" } = msg;
         if (!model) return;
         resetAllColors();
+
+        // Build expressId set from a GID list.
+        function _gidsToEids(gids) {
+            const s = new Set();
+            for (const gid of gids) {
+                const eid = globalIdIndex.get(gid);
+                if (eid !== undefined) s.add(eid);
+            }
+            return s;
+        }
+
+        // Color every fragment whose ids Set overlaps eidSet.
+        // Iterating model.items directly catches companion fragments — edge/transparent
+        // geometry that shares expressIds with the opaque fragment but isn't reached by
+        // fragmentIndex (which maps each expressId to the *last* fragment written for it).
+        // Using setColor() without a second arg colours all instances in the fragment,
+        // which is correct because each fragment maps to a single IFC element.
+        function _colorFrags(eidSet, color) {
+            for (const frag of model.items) {
+                for (const eid of frag.ids) {
+                    if (eidSet.has(eid)) { frag.setColor(color); break; }
+                }
+            }
+        }
+
         if (filter === "all") {
-            colorByGlobalIds(linked, new THREE.Color('#1D9E75'));
+            _colorFrags(_gidsToEids(linked), new THREE.Color('#1D9E75'));
         } else {
-            colorByGlobalIds([...globalIdIndex.keys()], C.tl_no_task);
-            if (filter === "linked")        colorByGlobalIds(linked,   new THREE.Color('#1D9E75'));
-            else if (filter === "unlinked") colorByGlobalIds(unlinked, new THREE.Color('#6B7280'));
+            // Gray everything out first, then highlight the target set.
+            for (const frag of model.items) frag.setColor(C.tl_no_task);
+            if (filter === "linked")
+                _colorFrags(_gidsToEids(linked),   new THREE.Color('#1D9E75'));
+            else if (filter === "unlinked")
+                _colorFrags(_gidsToEids(unlinked), new THREE.Color('#6B7280'));
         }
         return;
     }
@@ -704,6 +865,7 @@ function _initSelector() {
         _selectedGlobalId = globalId;
         colorByGlobalIds([globalId], _SEL_COLOR);
         window.parent.postMessage({ type: "castor:element-selected", global_id: globalId }, "*");
+        _refreshPropsPanelIfOpen(globalId);
         _syncFocusBtn();
     });
 
@@ -723,6 +885,7 @@ function _initSelector() {
             if (_selectedGlobalId) resetAllColors();
             _selectedGlobalId = globalId;
             colorByGlobalIds([globalId], _SEL_COLOR);
+            _refreshPropsPanelIfOpen(globalId);
         }
         if (!_ctxMenuEl) return;
         const cRect = document.getElementById("embed-container").getBoundingClientRect();
@@ -840,6 +1003,11 @@ function _openPropsPanel(globalId) {
         .then(r => r.json())
         .then(data => { _propsBodyEl.innerHTML = _renderProps(data); })
         .catch(() => { _propsBodyEl.innerHTML = '<span style="color:#ef4444;font-size:0.8rem;">Failed to load properties.</span>'; });
+}
+
+function _refreshPropsPanelIfOpen(globalId) {
+    if (!_propsPanelEl || _propsPanelEl.style.display === "none") return;
+    _openPropsPanel(globalId);
 }
 
 document.getElementById("sel-ctx-props")?.addEventListener("click", () => {

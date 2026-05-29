@@ -1,45 +1,55 @@
 <!-- scheduling/components/fourD_review_partial.html — inline binding review for 4D Link tab -->
 
-<!-- Header + filter tabs -->
-<div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">
+<!-- Toggle header (always visible) -->
+<div class="d-flex align-items-center gap-1 py-1"
+     style="cursor:pointer; user-select:none;"
+     onclick="fdToggleReview()">
+    <i id="fd-review-chevron"
+       class="bi bi-chevron-right"
+       style="font-size:0.75rem; transition:transform 0.15s; color:var(--bs-secondary-color); flex-shrink:0;"></i>
     <span class="fw-semibold" style="font-size:0.82rem;">
         <i class="bi bi-layers me-1 text-primary"></i>Link Review
         {% if summary.total %}<span class="badge bg-secondary ms-1">{{ summary.total }}</span>{% endif %}
     </span>
-    <ul class="nav nav-pills" style="font-size:0.74rem; gap:2px;">
-        <li class="nav-item">
-            <a class="nav-link py-0 px-2 {% if filter_by == 'all' %}active{% endif %}"
-               hx-get="{% url 'islam:review' project.pk %}?filter=all&inline=1"
-               hx-target="#fourD-review-pane" hx-swap="innerHTML" style="cursor:pointer;">
-                All
-            </a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link py-0 px-2 {% if filter_by == 'linked' %}active{% endif %}"
-               hx-get="{% url 'islam:review' project.pk %}?filter=linked&inline=1"
-               hx-target="#fourD-review-pane" hx-swap="innerHTML" style="cursor:pointer;">
-                Linked
-                {% if summary.auto_accepted %}<span class="badge bg-success ms-1">{{ summary.auto_accepted }}</span>{% endif %}
-            </a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link py-0 px-2 {% if filter_by == 'needs_review' %}active{% endif %}"
-               hx-get="{% url 'islam:review' project.pk %}?filter=needs_review&inline=1"
-               hx-target="#fourD-review-pane" hx-swap="innerHTML" style="cursor:pointer;">
-                Needs Review
-                {% if summary.needs_review %}<span class="badge bg-warning text-dark ms-1">{{ summary.needs_review }}</span>{% endif %}
-            </a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link py-0 px-2 {% if filter_by == 'unlinked' %}active{% endif %}"
-               hx-get="{% url 'islam:review' project.pk %}?filter=unlinked&inline=1"
-               hx-target="#fourD-review-pane" hx-swap="innerHTML" style="cursor:pointer;">
-                Unlinked
-                {% if summary.unlinked_tasks %}<span class="badge bg-danger ms-1">{{ summary.unlinked_tasks }}</span>{% endif %}
-            </a>
-        </li>
-    </ul>
 </div>
+
+<!-- Collapsible body (default collapsed; JS re-applies state after each HTMX swap) -->
+<div id="fd-review-body" style="display:none;">
+
+<!-- Filter tabs -->
+<ul class="nav nav-pills mt-1 mb-2" style="font-size:0.74rem; gap:2px;">
+    <li class="nav-item">
+        <a class="nav-link py-0 px-2 {% if filter_by == 'all' %}active{% endif %}"
+           hx-get="{% url 'islam:review' project.pk %}?filter=all&inline=1"
+           hx-target="#fourD-review-pane" hx-swap="innerHTML" style="cursor:pointer;">
+            All
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link py-0 px-2 {% if filter_by == 'linked' %}active{% endif %}"
+           hx-get="{% url 'islam:review' project.pk %}?filter=linked&inline=1"
+           hx-target="#fourD-review-pane" hx-swap="innerHTML" style="cursor:pointer;">
+            Linked
+            {% if summary.auto_accepted %}<span class="badge bg-success ms-1">{{ summary.auto_accepted }}</span>{% endif %}
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link py-0 px-2 {% if filter_by == 'needs_review' %}active{% endif %}"
+           hx-get="{% url 'islam:review' project.pk %}?filter=needs_review&inline=1"
+           hx-target="#fourD-review-pane" hx-swap="innerHTML" style="cursor:pointer;">
+            Needs Review
+            {% if summary.needs_review %}<span class="badge bg-warning text-dark ms-1">{{ summary.needs_review }}</span>{% endif %}
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link py-0 px-2 {% if filter_by == 'unlinked' %}active{% endif %}"
+           hx-get="{% url 'islam:review' project.pk %}?filter=unlinked&inline=1"
+           hx-target="#fourD-review-pane" hx-swap="innerHTML" style="cursor:pointer;">
+            Unlinked
+            {% if summary.unlinked_tasks %}<span class="badge bg-danger ms-1">{{ summary.unlinked_tasks }}</span>{% endif %}
+        </a>
+    </li>
+</ul>
 
 {% if summary.total == 0 and not unlinked_tasks %}
 
@@ -140,3 +150,5 @@
 {% endif %}
 
 {% endif %}
+
+</div><!-- /fd-review-body -->
