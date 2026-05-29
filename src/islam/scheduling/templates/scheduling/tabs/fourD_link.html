@@ -1179,7 +1179,6 @@
       viewerReady = true;
       iframeOvl.style.display = "none";
       if (pendingMsg) { iframe.contentWindow.postMessage(pendingMsg, "*"); pendingMsg = null; }
-      if (currentMode === "timeline" && tlIntervals.length) _applyInterval(0);
     }
     if (msg.type === "castor:viewer-error") {
       iframeOvl.innerHTML = `<span style="color:#ef4444;">&#9888; ${msg.message || "Viewer error"}</span>`;
