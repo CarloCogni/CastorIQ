@@ -153,14 +153,8 @@
     <div class="d-flex align-items-center gap-2 px-2 py-1 border-bottom flex-shrink-0" style="font-size: 0.8rem;">
       <span class="text-secondary fw-medium" style="font-size: 11px;">Color by:</span>
       <div class="btn-group btn-group-sm" id="fd-colorby-group">
-        <button class="btn btn-primary btn-sm" data-mode="timeline" style="font-size: 11px; padding: 2px 8px;">
-          <i class="bi bi-calendar-week me-1"></i>4D
-        </button>
-        <button class="btn btn-outline-secondary btn-sm" data-mode="level" style="font-size: 11px; padding: 2px 8px;">
-          <i class="bi bi-layers me-1"></i>Level
-        </button>
-        <button class="btn btn-outline-secondary btn-sm" data-mode="element_type" style="font-size: 11px; padding: 2px 8px;">
-          <i class="bi bi-bounding-box me-1"></i>Type
+        <button class="btn btn-outline-secondary btn-sm" data-mode="site-status" style="font-size: 11px; padding: 2px 8px;">
+          <i class="bi bi-calendar-week me-1"></i>Site Status
         </button>
       </div>
       <button class="btn btn-sm btn-outline-secondary ms-auto" id="fd-reset-view-btn"
@@ -194,7 +188,7 @@
     <div style="flex: 1; position: relative; min-height: 0;">
       <iframe
         id="fd-iframe"
-        src="{% url 'islam:viewer_embed' project.pk %}"
+        src="{% url 'islam:viewer_embed' project.pk %}?v={% now "U" %}"
         style="width: 100%; height: 100%; border: none;"
         allow="fullscreen">
       </iframe>
@@ -1182,7 +1176,6 @@
       iframeOvl.style.display = "none";
       if (pendingMsg) { iframe.contentWindow.postMessage(pendingMsg, "*"); pendingMsg = null; }
       if (currentMode === "timeline" && tlIntervals.length) _applyInterval(0);
-      _applyLinkFilter();   /* send link-colors last so it wins the iframe message queue */
     }
     if (msg.type === "castor:viewer-error") {
       iframeOvl.innerHTML = `<span style="color:#ef4444;">&#9888; ${msg.message || "Viewer error"}</span>`;
@@ -1223,29 +1216,21 @@
     }
   });
 
-  colorBtns.forEach(btn => {
-    btn.addEventListener("click", () => {
-      colorBtns.forEach(b => { b.classList.remove("active", "btn-primary"); b.classList.add("btn-outline-secondary"); });
-      btn.classList.remove("btn-outline-secondary");
-      btn.classList.add("active", "btn-primary");
-      currentMode = btn.dataset.mode;
-      /* Reset link filter so timeline coloring isn't suppressed */
-      _fdLinkFilter = "all";
-      _fdLinkFilterActive = false;
-      document.querySelectorAll(".fd-lf-btn").forEach(b => {
-        b.classList.toggle("active", b.dataset.filter === "all");
-      });
-      _pauseTimeline();
-      const tlSection = document.getElementById("fd-timeline-section");
-      if (currentMode === "timeline") {
-        tlSection.style.display = "";
-        if (tlIntervals.length) _applyInterval(parseInt(document.getElementById("fd-slider").value));
+  const _siteStatusBtn = document.querySelector("#fd-colorby-group button[data-mode='site-status']");
+  if (_siteStatusBtn) {
+    _siteStatusBtn.addEventListener("click", () => {
+      const isActive = _siteStatusBtn.classList.contains("btn-primary");
+      if (isActive) {
+        _siteStatusBtn.classList.remove("btn-primary", "active");
+        _siteStatusBtn.classList.add("btn-outline-secondary");
+        sendToViewer({ type: "castor:reset" });
       } else {
-        tlSection.style.display = "none";
-        sendToViewer({ type: "castor:colorby", by: currentMode });
+        _siteStatusBtn.classList.remove("btn-outline-secondary");
+        _siteStatusBtn.classList.add("btn-primary", "active");
+        _applyLinkFilter();
       }
     });
-  });
+  }
 
   document.getElementById("fd-reset-view-btn").addEventListener("click", () => sendToViewer({ type: "castor:reset" }));
 
@@ -1855,6 +1840,28 @@
       _showToast("Link request failed", "error");
       btn.disabled = false;
     }
+  });
+
+  /* ── Link Review collapsible ────────────────────────────────────── */
+
+  window.fdToggleReview = function () {
+    const pane    = document.getElementById("fourD-review-pane");
+    const body    = document.getElementById("fd-review-body");
+    const chevron = document.getElementById("fd-review-chevron");
+    if (!body) return;
+    const expand = body.style.display === "none";
+    body.style.display = expand ? "" : "none";
+    if (chevron) chevron.style.transform = expand ? "rotate(90deg)" : "";
+    if (pane) pane.dataset.reviewExpanded = expand ? "true" : "false";
+  };
+
+  document.getElementById("fourD-review-pane")?.addEventListener("htmx:afterSwap", function () {
+    const body    = document.getElementById("fd-review-body");
+    const chevron = document.getElementById("fd-review-chevron");
+    if (!body) return;
+    const isExpanded = this.dataset.reviewExpanded === "true";
+    body.style.display = isExpanded ? "" : "none";
+    if (chevron) chevron.style.transform = isExpanded ? "rotate(90deg)" : "";
   });
 
   /* ── Init ────────────────────────────────────────────────────────── */
