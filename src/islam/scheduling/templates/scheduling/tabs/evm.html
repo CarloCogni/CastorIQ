@@ -125,6 +125,63 @@
         </div>
     </div>
 
+    <!-- Project Controls Chat -->
+    <div id="evm-chat-section"
+         style="border:1px solid var(--bs-border-color); border-radius:8px; background:var(--bs-body-bg); overflow:hidden;">
+
+        <!-- Header / toggle -->
+        <button id="evm-chat-toggle"
+                style="width:100%; display:flex; align-items:center; justify-content:space-between;
+                       padding:10px 16px; background:none; border:none; cursor:pointer;
+                       color:var(--bs-body-color); font-size:0.82rem;">
+            <span style="display:flex; align-items:center; gap:8px;">
+                <i class="bi bi-chat-dots" style="color:#6366f1; font-size:1rem;"></i>
+                <span style="font-weight:600; text-transform:uppercase; letter-spacing:.05em;
+                             font-size:0.78rem; color:var(--bs-secondary-color);">Project Controls Chat</span>
+                <span style="font-size:0.7rem; color:var(--bs-secondary-color); font-weight:400;">
+                    — ask about SPI, delays, forecast, WBS risk
+                </span>
+            </span>
+            <i id="evm-chat-chevron" class="bi bi-chevron-down" style="font-size:0.8rem; color:var(--bs-secondary-color); transition:transform .2s;"></i>
+        </button>
+
+        <!-- Collapsible body -->
+        <div id="evm-chat-body" style="display:none; border-top:1px solid var(--bs-border-color);">
+
+            <!-- Message history -->
+            <div id="evm-chat-messages"
+                 style="max-height:420px; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:10px;">
+                <div style="background:rgba(99,102,241,.08); border:1px solid rgba(99,102,241,.18);
+                            border-radius:8px; padding:10px 14px; font-size:0.82rem; align-self:flex-start; max-width:90%;">
+                    <div style="font-size:0.72rem; font-weight:700; color:#6366f1; margin-bottom:4px; text-transform:uppercase; letter-spacing:.06em;">
+                        Schedule Analyst
+                    </div>
+                    <div style="color:var(--bs-body-color); line-height:1.55;">
+                        I have real-time access to your EVM metrics, critical path, and WBS risk scores.
+                        Ask me anything — delays, forecast completion, which packages are at risk, what-if analysis.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Input row -->
+            <div style="display:flex; gap:8px; padding:10px 14px; border-top:1px solid var(--bs-border-color); background:var(--bs-body-bg);">
+                <input id="evm-chat-input" type="text"
+                       placeholder="e.g. What's causing the schedule delay? When will we finish?"
+                       autocomplete="off"
+                       style="flex:1; padding:8px 12px; font-size:0.82rem; border-radius:6px;
+                              border:1px solid var(--bs-border-color); background:var(--bs-body-bg);
+                              color:var(--bs-body-color); outline:none;">
+                <button id="evm-chat-send"
+                        style="padding:8px 18px; background:#6366f1; color:#fff; border:none;
+                               border-radius:6px; font-size:0.82rem; font-weight:600; cursor:pointer;
+                               white-space:nowrap; transition:opacity .15s;">
+                    Send
+                </button>
+            </div>
+
+        </div>
+    </div>
+
 </div>
 
 <script>
@@ -728,6 +785,103 @@
     loadEvm();
     loadWbsHeatmap();
     loadDelayDistribution();
+
+    /* ── Project Controls Chat ─────────────────────────────────────────── */
+    (function () {
+        const CHAT_URL  = "{% url 'islam:schedule_chat' project.pk %}";
+        const CSRF      = "{{ csrf_token }}";
+        const toggleBtn = document.getElementById("evm-chat-toggle");
+        const chatBody  = document.getElementById("evm-chat-body");
+        const chevron   = document.getElementById("evm-chat-chevron");
+        const messages  = document.getElementById("evm-chat-messages");
+        const input     = document.getElementById("evm-chat-input");
+        const sendBtn   = document.getElementById("evm-chat-send");
+
+        /* Toggle open/closed */
+        toggleBtn.addEventListener("click", () => {
+            const open = chatBody.style.display !== "none";
+            chatBody.style.display = open ? "none" : "flex";
+            chatBody.style.flexDirection = "column";
+            chevron.style.transform = open ? "" : "rotate(180deg)";
+            if (!open) input.focus();
+        });
+
+        /* Minimal Markdown → HTML (bold, headers, bullets, code, line breaks) */
+        function _md(text) {
+            return text
+                .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+                .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+                .replace(/`([^`]+)`/g, "<code style='background:rgba(99,102,241,.12);padding:1px 4px;border-radius:3px;font-size:.9em;'>$1</code>")
+                .replace(/^#{1,3} (.+)$/gm, "<div style='font-weight:700;margin:6px 0 2px;'>$1</div>")
+                .replace(/^\s*[-*] (.+)$/gm, "<div style='padding-left:10px;'>• $1</div>")
+                .replace(/\n{2,}/g, "</p><p style='margin:6px 0;'>")
+                .replace(/\n/g, "<br>");
+        }
+
+        function _addMsg(role, html) {
+            const isUser = role === "user";
+            const div = document.createElement("div");
+            div.style.cssText =
+                `background:${isUser ? "rgba(59,130,246,.10)" : "rgba(99,102,241,.08)"};`
+                + `border:1px solid ${isUser ? "rgba(59,130,246,.2)" : "rgba(99,102,241,.18)"};`
+                + "border-radius:8px; padding:10px 14px; font-size:0.82rem;"
+                + `align-self:${isUser ? "flex-end" : "flex-start"}; max-width:90%;`;
+            const label = isUser ? "You" : "Schedule Analyst";
+            const labelColor = isUser ? "#3b82f6" : "#6366f1";
+            div.innerHTML =
+                `<div style="font-size:.72rem;font-weight:700;color:${labelColor};`
+                + `margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em;">${label}</div>`
+                + `<div style="color:var(--bs-body-color);line-height:1.55;">${html}</div>`;
+            messages.appendChild(div);
+            messages.scrollTop = messages.scrollHeight;
+            return div;
+        }
+
+        function _addThinking() {
+            const div = _addMsg("ai",
+                `<span style="color:var(--bs-secondary-color);font-style:italic;">`
+                + `Analyzing schedule…`
+                + `<span class="spinner-border spinner-border-sm ms-2" style="width:.7rem;height:.7rem;border-width:1.5px;"></span>`
+                + `</span>`);
+            return div;
+        }
+
+        async function _send() {
+            const q = input.value.trim();
+            if (!q) return;
+            input.value = "";
+            sendBtn.disabled = true;
+            sendBtn.style.opacity = "0.6";
+
+            _addMsg("user", _md(q));
+            const thinking = _addThinking();
+
+            try {
+                const resp = await fetch(CHAT_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "X-CSRFToken": CSRF },
+                    body: JSON.stringify({ message: q }),
+                });
+                const data = await resp.json();
+                thinking.remove();
+                if (data.error && !data.response) {
+                    _addMsg("ai", `<span style="color:#ef4444;">Error: ${data.error}</span>`);
+                } else {
+                    _addMsg("ai", `<p style="margin:0;">${_md(data.response || "No response.")}</p>`);
+                }
+            } catch (e) {
+                thinking.remove();
+                _addMsg("ai", `<span style="color:#ef4444;">Request failed — check your connection.</span>`);
+            } finally {
+                sendBtn.disabled = false;
+                sendBtn.style.opacity = "1";
+                input.focus();
+            }
+        }
+
+        sendBtn.addEventListener("click", _send);
+        input.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); _send(); } });
+    }());
 }());
 </script>
 

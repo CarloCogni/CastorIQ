@@ -1228,6 +1228,34 @@ class ScheduleIntelligenceView(ProjectAccessMixin, View):
         return JsonResponse(data)
 
 
+class ScheduleChatView(ProjectAccessMixin, View):
+    """JSON — Project Controls chat: POST {message} → {response}.
+
+    Embeds live EVM + schedule intelligence in the system prompt and calls
+    the configured LLM (claude-sonnet-4-6 when ASK_PROVIDER=anthropic).
+    """
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        from .services.controls_chat import ProjectControlsChatService
+
+        project = self.get_project()
+        try:
+            body = json.loads(request.body or b"{}")
+            message = str(body.get("message", "")).strip()
+        except (json.JSONDecodeError, ValueError):
+            return JsonResponse({"error": "Invalid JSON body."}, status=400)
+
+        if not message:
+            return JsonResponse({"error": "message is required."}, status=400)
+
+        svc = ProjectControlsChatService(project, request.user)
+        result = svc.ask(message)
+
+        if result.get("error") and not result.get("response"):
+            return JsonResponse(result, status=500)
+        return JsonResponse(result)
+
+
 class WBSHeatmapView(ProjectAccessMixin, View):
     """JSON — per-stage performance metrics for the WBS heatmap."""
 
