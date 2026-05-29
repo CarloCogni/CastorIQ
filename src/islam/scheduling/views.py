@@ -187,11 +187,9 @@ class SchedulePreviewView(ProjectModifyAccessMixin, View):
                     _tasks, _deps, _aux = parse_p6xml(io.BytesIO(file_bytes))
                     save_p6_pending_data(project, _aux)
                     return self._preview_parsed(
-                        request, project, None, lambda _f: (_tasks, _deps)
+                        request, project, uploaded, lambda _f: (_tasks, _deps)
                     )
-                return self._preview_parsed(
-                    request, project, io.BytesIO(file_bytes), parse_msp
-                )
+                return self._preview_parsed(request, project, io.BytesIO(file_bytes), parse_msp)
             else:
                 return JsonResponse(
                     {"error": ("Unsupported file type. Upload .xlsx, .xls, .csv, .xer, or .xml.")},
