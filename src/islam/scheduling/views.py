@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import csv
+import io
 import json
 import logging
 import math
@@ -22,11 +23,14 @@ from ifc_processor.models import IFCEntity, IFCFile
 
 from .models import (
     MappingProfile,
+    P6ResourceAssignment,
+    P6WBSNode,
     ScheduleSource,
     Task,
     TaskDependency,
     TaskEntityBinding,
 )
+from .parsers.p6xml_parser import parse_p6xml
 from .services.autolink import autodetect_stages, run_autolink
 from .services.column_mapper import (
     CANONICAL_FIELDS,
@@ -40,6 +44,7 @@ from .services.critical_path import compute_critical_path
 from .services.evm import compute_evm
 from .services.linker import apply_matches, param_match_tasks
 from .services.msp_parser import parse_msp
+from .services.p6_save import finalise_p6_data, save_p6_pending_data
 from .services.validator import validate_schedule
 from .services.xer_parser import parse_xer
 
@@ -177,7 +182,16 @@ class SchedulePreviewView(ProjectModifyAccessMixin, View):
             elif filename.endswith(".xer"):
                 return self._preview_parsed(request, project, uploaded, parse_xer)
             elif filename.endswith(".xml"):
-                return self._preview_parsed(request, project, uploaded, parse_msp)
+                file_bytes = uploaded.read()
+                if b"APIBusinessObjects" in file_bytes[:2048]:
+                    _tasks, _deps, _aux = parse_p6xml(io.BytesIO(file_bytes))
+                    save_p6_pending_data(project, _aux)
+                    return self._preview_parsed(
+                        request, project, None, lambda _f: (_tasks, _deps)
+                    )
+                return self._preview_parsed(
+                    request, project, io.BytesIO(file_bytes), parse_msp
+                )
             else:
                 return JsonResponse(
                     {"error": ("Unsupported file type. Upload .xlsx, .xls, .csv, .xer, or .xml.")},
@@ -384,8 +398,14 @@ class TaskUploadView(ProjectModifyAccessMixin, View):
                 tasks, raw_deps = parse_xer(uploaded)
                 source = "xer"
             elif filename.endswith(".xml"):
-                tasks, raw_deps = parse_msp(uploaded)
-                source = "msp"
+                file_bytes = uploaded.read()
+                if b"APIBusinessObjects" in file_bytes[:2048]:
+                    tasks, raw_deps, aux_data = parse_p6xml(io.BytesIO(file_bytes))
+                    save_p6_pending_data(project, aux_data)
+                    source = "p6xml"
+                else:
+                    tasks, raw_deps = parse_msp(io.BytesIO(file_bytes))
+                    source = "msp"
             else:
                 return toast_response(
                     "Unsupported file type. Upload .xlsx, .xls, .csv, .xer, or .xml.",
@@ -664,6 +684,8 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
         )
         if touched_pks:
             Task.objects.filter(pk__in=touched_pks).update(schedule_source=current_source)
+        if source_format == "p6xml" and p6_obj_id_map:
+            finalise_p6_data(project, current_source, p6_obj_id_map)
 
         tasks = Task.objects.filter(project=project).prefetch_related("ifc_entities")
         response = render(
@@ -696,6 +718,9 @@ class ScheduleClearView(ProjectModifyAccessMixin, View):
         TaskDependency.objects.filter(predecessor__project=project).delete()
         deleted, _ = Task.objects.filter(project=project).delete()
         ScheduleSource.objects.filter(project=project).delete()
+        # Cascade handles confirmed P6 records; explicitly remove orphaned pending ones.
+        P6WBSNode.objects.filter(project=project, is_pending=True).delete()
+        P6ResourceAssignment.objects.filter(project=project, is_pending=True).delete()
         logger.info("Cleared %d tasks for project %s", deleted, project.pk)
         return JsonResponse({"deleted": deleted, "status": "ok"})
 

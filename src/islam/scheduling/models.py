@@ -77,6 +77,7 @@ class Task(UUIDModel):
         CSV = "csv", "CSV (.csv)"
         XER = "xer", "Primavera P6 (.xer)"
         MSP = "msp", "MS Project (.xml)"
+        P6XML = "p6xml", "Primavera P6 XML (.xml)"
         MANUAL = "manual", "Manual entry"
 
     project = models.ForeignKey(
@@ -665,6 +666,153 @@ class IslamTaskEmbedding(UUIDModel):
     class Meta:
         verbose_name = "Task Embedding"
         verbose_name_plural = "Task Embeddings"
+
+
+class P6WBSNode(UUIDModel):
+    """WBS hierarchy node from a Primavera P6 XML import.
+
+    Persisted by p6_save.save_p6_pending_data() at upload time and confirmed
+    (linked to a ScheduleSource) by p6_save.finalise_p6_data() on import commit.
+    """
+
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name="p6_wbs_nodes",
+        verbose_name="Project",
+    )
+    schedule_source = models.ForeignKey(
+        ScheduleSource,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="p6_wbs_nodes",
+        verbose_name="Schedule Source",
+    )
+    p6_object_id = models.CharField(
+        max_length=50,
+        db_index=True,
+        verbose_name="P6 ObjectId",
+    )
+    p6_parent_object_id = models.CharField(
+        max_length=50,
+        blank=True,
+        verbose_name="P6 Parent ObjectId",
+    )
+    code = models.CharField(max_length=100, blank=True, verbose_name="WBS Code")
+    name = models.CharField(max_length=500, verbose_name="WBS Name")
+    original_budget = models.DecimalField(
+        max_digits=16,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="Original Budget",
+    )
+    sequence_number = models.IntegerField(null=True, blank=True, verbose_name="Sequence Number")
+    is_pending = models.BooleanField(
+        default=True,
+        db_index=True,
+        verbose_name="Pending",
+        help_text="True until the user confirms the import; False once linked to a ScheduleSource.",
+    )
+
+    class Meta:
+        verbose_name = "P6 WBS Node"
+        verbose_name_plural = "P6 WBS Nodes"
+        ordering = ["sequence_number", "code"]
+        indexes = [
+            models.Index(fields=["project", "is_pending"]),
+            models.Index(fields=["project", "p6_object_id"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.code} — {self.name}"
+
+
+class P6ResourceAssignment(UUIDModel):
+    """Resource assignment (cost record) from a Primavera P6 XML import.
+
+    Each row corresponds to one <ResourceAssignment> element in the P6 XML.
+    Planned/actual costs here are the authoritative EVM cost data — Task.cost
+    stores the per-activity sum, while these rows let the EVM screen aggregate
+    by WBS, resource type, or date range.
+    """
+
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name="p6_resource_assignments",
+        verbose_name="Project",
+    )
+    schedule_source = models.ForeignKey(
+        ScheduleSource,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="p6_resource_assignments",
+        verbose_name="Schedule Source",
+    )
+    task = models.ForeignKey(
+        Task,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="p6_resource_assignments",
+        verbose_name="Task",
+        help_text="Resolved after import by matching p6_activity_object_id → Task._p6_obj_id.",
+    )
+    p6_activity_object_id = models.CharField(
+        max_length=50,
+        db_index=True,
+        verbose_name="P6 Activity ObjectId",
+    )
+    p6_resource_object_id = models.CharField(
+        max_length=50,
+        blank=True,
+        verbose_name="P6 Resource ObjectId",
+    )
+    resource_type = models.CharField(
+        max_length=50,
+        blank=True,
+        verbose_name="Resource Type",
+        help_text="Material, Labor, or Equipment.",
+    )
+    planned_cost = models.DecimalField(
+        max_digits=16, decimal_places=2, default=0, verbose_name="Planned Cost"
+    )
+    actual_cost = models.DecimalField(
+        max_digits=16, decimal_places=2, default=0, verbose_name="Actual Cost"
+    )
+    remaining_cost = models.DecimalField(
+        max_digits=16, decimal_places=2, default=0, verbose_name="Remaining Cost"
+    )
+    at_completion_cost = models.DecimalField(
+        max_digits=16, decimal_places=2, default=0, verbose_name="At Completion Cost"
+    )
+    planned_units = models.DecimalField(
+        max_digits=16, decimal_places=4, default=0, verbose_name="Planned Units"
+    )
+    actual_units = models.DecimalField(
+        max_digits=16, decimal_places=4, default=0, verbose_name="Actual Units"
+    )
+    is_pending = models.BooleanField(
+        default=True,
+        db_index=True,
+        verbose_name="Pending",
+        help_text="True until the user confirms the import; False once linked to a ScheduleSource.",
+    )
+
+    class Meta:
+        verbose_name = "P6 Resource Assignment"
+        verbose_name_plural = "P6 Resource Assignments"
+        indexes = [
+            models.Index(fields=["project", "is_pending"]),
+            models.Index(fields=["task"]),
+            models.Index(fields=["p6_activity_object_id"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.p6_activity_object_id} → {self.resource_type} (planned={self.planned_cost})"
 
     def __str__(self) -> str:
         return f"Embedding({self.task.name[:40]})"
