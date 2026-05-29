@@ -55,7 +55,7 @@
                 <span><span style="display:inline-block;width:22px;height:2px;background:#f59e0b;margin-bottom:3px;border-top:2px solid #f59e0b;"></span> Actual Cost</span>
             </div>
         </div>
-        <div id="evm-chart-wrap" style="position:relative; height:260px;">
+        <div id="evm-chart-wrap" style="position:relative; height:350px;">
             <canvas id="evm-canvas" style="width:100%; height:100%;"></canvas>
             <div id="evm-chart-loading"
                  class="d-flex align-items-center justify-content-center"
@@ -297,11 +297,11 @@
             /* Y-axis labels */
             ctx.fillStyle = getComputedStyle(document.documentElement)
                 .getPropertyValue("--bs-secondary-color") || "#6c757d";
-            ctx.font = "10px system-ui";
+            ctx.font = "11px system-ui";
             ctx.textAlign = "right";
             for (let g = 0; g <= 4; g++) {
                 const y = PAD.top + (g / 4) * cH;
-                ctx.fillText((100 - g * 25) + "%", PAD.left - 4, y + 4);
+                ctx.fillText((100 - g * 25) + "%", PAD.left - 6, y + 4);
             }
 
             /* X-axis labels */
@@ -312,13 +312,13 @@
                 ctx.fillText(_fmtDateShort(p.date), xOf(p.date), PAD.top + cH + 16);
             });
 
-            /* Series lines */
-            function drawLine(pts, color, dashed) {
+            /* Series lines — PV: blue dashed, EV: green solid, AC: amber dotted */
+            function drawLine(pts, color, dashArr) {
                 if (!pts.length) return;
                 ctx.save();
                 ctx.strokeStyle = color;
-                ctx.lineWidth = 2;
-                if (dashed) ctx.setLineDash([5, 4]);
+                ctx.lineWidth = 2.5;
+                if (dashArr) ctx.setLineDash(dashArr);
                 ctx.beginPath();
                 pts.forEach((p, i) => {
                     const x = xOf(p.date), y = yOf(p.pct);
@@ -327,9 +327,9 @@
                 ctx.stroke();
                 ctx.restore();
             }
-            drawLine(pvPts, "#3b82f6", true);
-            drawLine(evPts, "#16a34a", false);
-            drawLine(acPts, "#f59e0b", false);
+            drawLine(pvPts, "#3b82f6", [6, 4]);
+            drawLine(evPts, "#16a34a", null);
+            drawLine(acPts, "#f59e0b", [3, 3]);
 
             /* Today marker */
             const todayStr = new Date().toISOString().slice(0, 10);
