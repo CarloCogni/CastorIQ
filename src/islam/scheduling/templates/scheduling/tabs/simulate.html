@@ -38,7 +38,7 @@
     <!-- Viewer iframe + loading overlay -->
     <div style="position:relative; height:60vh; border:1px solid var(--bs-border-color); border-radius:6px; overflow:hidden; background:#111;">
         <iframe id="sim-viewer-iframe"
-                src="{% url 'islam:viewer_embed' project.pk %}"
+                src="{% url 'islam:viewer_embed' project.pk %}?v={% now "U" %}"
                 style="width:100%; height:100%; border:0;"
                 title="3D IFC Viewer">
         </iframe>

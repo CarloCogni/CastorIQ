@@ -481,13 +481,12 @@ class TimelineView(ProjectAccessMixin, View):
         from collections import defaultdict
 
         from ifc_processor.models import IFCEntity as IFCEntityModel
-        from islam.scheduling.models import Task
+        from islam.scheduling.models import Task, TaskEntityBinding
 
         project = self.get_project()
 
         tasks = list(
             Task.objects.filter(project=project, is_non_physical=False)
-            .prefetch_related("ifc_entities")
             .exclude(start_date=None)
             .exclude(end_date=None)
         )
@@ -495,11 +494,21 @@ class TimelineView(ProjectAccessMixin, View):
         if not tasks:
             return JsonResponse({"has_tasks": False, "intervals": []})
 
-        # entity GID → [(start_date, end_date, actual_start, actual_end), ...] — uses prefetch cache
+        # Load all bindings for these tasks in one query, group by task_id in Python.
+        # TaskEntityBinding is the authoritative source — M2M ifc_entities may lag behind.
+        task_map = {t.pk: t for t in tasks}
+        binding_gids: dict[object, list[str]] = defaultdict(list)
+        for row in TaskEntityBinding.objects.filter(task_id__in=task_map).values(
+            "task_id", "entity_global_id"
+        ):
+            binding_gids[row["task_id"]].append(row["entity_global_id"])
+
+        # entity GID → [(start_date, end_date, actual_start, actual_end), ...]
         entity_tasks: dict[str, list] = defaultdict(list)
-        for task in tasks:
-            for entity in task.ifc_entities.all():
-                entity_tasks[entity.global_id].append(
+        for task_id, gids in binding_gids.items():
+            task = task_map[task_id]
+            for gid in gids:
+                entity_tasks[gid].append(
                     (task.start_date, task.end_date, task.actual_start, task.actual_end)
                 )
 
