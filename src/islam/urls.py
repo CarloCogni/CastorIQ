@@ -177,6 +177,11 @@ urlpatterns = [
         name="evm_data",
     ),
     path(
+        "projects/<uuid:pk>/schedule/intelligence/",
+        scheduling_views.ScheduleIntelligenceView.as_view(),
+        name="schedule_intelligence",
+    ),
+    path(
         "projects/<uuid:pk>/schedule/lookahead/",
         scheduling_views.LookaheadDataView.as_view(),
         name="lookahead_data",
