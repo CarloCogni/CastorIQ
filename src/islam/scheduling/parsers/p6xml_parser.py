@@ -62,8 +62,13 @@ _P6_DEP_TYPE: dict[str, str] = {
     "PR_SF": "SF",
 }
 
+# xsi:nil attribute (expanded namespace) — used for holiday/WorkTime nil checks.
+_XSI_NIL_ATTR = "{http://www.w3.org/2001/XMLSchema-instance}nil"
+
 # Local element names that we care about — all others are skipped immediately.
-_WANTED = frozenset({"Activity", "WBS", "Relationship", "ResourceAssignment", "Resource"})
+_WANTED = frozenset(
+    {"Activity", "WBS", "Relationship", "ResourceAssignment", "Resource", "Calendar"}
+)
 
 
 # ── Public entry point ────────────────────────────────────────────────────────
@@ -98,6 +103,7 @@ def parse_p6xml(file_obj, preview_only: bool = False) -> tuple[list[dict], list[
     relationships: list[dict] = []
     resource_assignments: list[dict] = []
     resources: list[dict] = []
+    calendars: list[dict] = []
 
     max_tasks = 200 if preview_only else None
 
@@ -112,6 +118,7 @@ def parse_p6xml(file_obj, preview_only: bool = False) -> tuple[list[dict], list[
         relationships,
         resource_assignments,
         resources,
+        calendars,
     )
 
     if not activities:
@@ -135,12 +142,13 @@ def parse_p6xml(file_obj, preview_only: bool = False) -> tuple[list[dict], list[
         tasks.append(act)
 
     logger.info(
-        "p6xml_parser: %d tasks, %d wbs, %d assignments, %d deps, %d resources",
+        "p6xml_parser: %d tasks, %d wbs, %d assignments, %d deps, %d resources, %d calendars",
         len(tasks),
         len(wbs_nodes),
         len(resource_assignments),
         len(relationships),
         len(resources),
+        len(calendars),
     )
 
     aux_data: dict = {
@@ -148,6 +156,7 @@ def parse_p6xml(file_obj, preview_only: bool = False) -> tuple[list[dict], list[
         "wbs_nodes": wbs_nodes,
         "resource_assignments": resource_assignments,
         "resources": resources,
+        "calendars": calendars,
     }
     return tasks, relationships, aux_data
 
@@ -166,6 +175,7 @@ def _stream_parse(
     relationships: list,
     resource_assignments: list,
     resources: list,
+    calendars: list,
 ) -> None:
     """Populate the supplied containers by streaming through the XML once."""
     source = io.BytesIO(raw)
@@ -246,6 +256,13 @@ def _stream_parse(
                         }
                     )
 
+            elif local == "Calendar":
+                # Calendar elements appear at top level (not inside Project) so
+                # they are always captured regardless of preview_only.
+                obj_id = _t(elem, nsp, "ObjectId")
+                if obj_id:
+                    calendars.append(_parse_calendar(elem, nsp, obj_id))
+
             elem.clear()
     finally:
         del context
@@ -293,6 +310,13 @@ def _parse_activity(elem, nsp: str, obj_id: str) -> dict | None:
     late_finish = _to_actual_date(t("LateFinishDate") or t("RemainingLateFinishDate"))
     expected_finish = _to_actual_date(t("ExpectedFinishDate"))
 
+    # Calendar assignment
+    calendar_object_id = t("CalendarObjectId")
+
+    # Scheduling constraints (primary takes precedence over secondary)
+    constraint_type = t("PrimaryConstraintType") or t("SecondaryConstraintType") or ""
+    constraint_date = _to_actual_date(t("PrimaryConstraintDate") or t("SecondaryConstraintDate"))
+
     try:
         phys_pct = float(t("PhysicalPercentComplete") or "0")
     except (ValueError, TypeError):
@@ -323,6 +347,10 @@ def _parse_activity(elem, nsp: str, obj_id: str) -> dict | None:
         "late_start": late_start,
         "late_finish": late_finish,
         "expected_finish": expected_finish,
+        # Scheduling metadata — saved to Task model fields
+        "calendar_object_id": calendar_object_id,
+        "constraint_type": constraint_type,
+        "constraint_date": constraint_date,  # date | None — serialised in views
         # Private — used for EVM but not saved to Task fields:
         "_p6_phys_pct": phys_pct,
         "_p6_dur_pct": dur_pct,
@@ -344,6 +372,44 @@ def _parse_wbs(elem, nsp: str, obj_id: str) -> dict:
         "name": t("Name"),
         "original_budget": _to_decimal(t("OriginalBudget")),
         "sequence_number": _to_int(t("SequenceNumber")),
+    }
+
+
+def _parse_calendar(elem, nsp: str, obj_id: str) -> dict:
+    """Map a P6 XML Calendar element to a calendar dict.
+
+    working_days — list of day names that have a WorkTime with a Start value.
+    holidays     — ISO date strings where WorkTime is xsi:nil='true'
+                   (non-working exception days).
+    """
+    working_days: list[str] = []
+    for swh in elem.findall(f"{nsp}StandardWorkWeek/{nsp}StandardWorkHours"):
+        day = _t(swh, nsp, "DayOfWeek")
+        if not day:
+            continue
+        wt = swh.find(f"{nsp}WorkTime")
+        if wt is None:
+            continue
+        start_el = wt.find(f"{nsp}Start")
+        if start_el is not None and start_el.text and start_el.text.strip():
+            working_days.append(day)
+
+    holidays: list[str] = []
+    for hoe in elem.findall(f"{nsp}HolidayOrExceptions/{nsp}HolidayOrException"):
+        dt_raw = _t(hoe, nsp, "Date")
+        if not dt_raw:
+            continue
+        wt = hoe.find(f"{nsp}WorkTime")
+        # xsi:nil="true" means non-working (no substitute work hours)
+        if wt is not None and wt.get(_XSI_NIL_ATTR) == "true":
+            holidays.append(dt_raw[:10])
+
+    return {
+        "p6_calendar_id": obj_id,
+        "name": _t(elem, nsp, "Name"),
+        "hours_per_day": float(_t(elem, nsp, "HoursPerDay") or "8"),
+        "working_days": working_days,
+        "holidays": holidays,
     }
 
 

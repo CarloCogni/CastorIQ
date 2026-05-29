@@ -29,11 +29,12 @@ def save_p6_pending_data(project, aux_data: dict) -> None:
         aux_data: Dict returned by parse_p6xml — must contain 'wbs_nodes' and
                   'resource_assignments' lists.
     """
-    from islam.scheduling.models import P6ResourceAssignment, P6WBSNode
+    from islam.scheduling.models import P6Calendar, P6ResourceAssignment, P6WBSNode
 
     # Clear any unconfirmed records from a previous upload session.
     P6WBSNode.objects.filter(project=project, is_pending=True).delete()
     P6ResourceAssignment.objects.filter(project=project, is_pending=True).delete()
+    P6Calendar.objects.filter(project=project, is_pending=True).delete()
 
     wbs_nodes = aux_data.get("wbs_nodes", [])
     wbs_objs = [
@@ -74,10 +75,28 @@ def save_p6_pending_data(project, aux_data: dict) -> None:
     if ra_objs:
         P6ResourceAssignment.objects.bulk_create(ra_objs, batch_size=500)
 
+    calendars = aux_data.get("calendars", [])
+    cal_objs = [
+        P6Calendar(
+            project=project,
+            p6_calendar_id=cal["p6_calendar_id"],
+            name=cal.get("name") or "",
+            hours_per_day=cal.get("hours_per_day") or 8.0,
+            working_days=cal.get("working_days") or [],
+            holidays=cal.get("holidays") or [],
+            is_pending=True,
+        )
+        for cal in calendars
+        if cal.get("p6_calendar_id")
+    ]
+    if cal_objs:
+        P6Calendar.objects.bulk_create(cal_objs, batch_size=50)
+
     logger.info(
-        "p6_save: staged %d WBS nodes and %d resource assignments for project %s",
+        "p6_save: staged %d WBS nodes, %d resource assignments, %d calendars for project %s",
         len(wbs_objs),
         len(ra_objs),
+        len(cal_objs),
         project.pk,
     )
 
@@ -95,24 +114,32 @@ def finalise_p6_data(
         p6_obj_id_map:  {p6_activity_object_id: str(task.pk)} — built by
                         TaskSaveView during the task upsert loop.
     """
-    from islam.scheduling.models import P6ResourceAssignment, P6WBSNode
+    from islam.scheduling.models import P6Calendar, P6ResourceAssignment, P6WBSNode
 
-    # Delete old confirmed records before promoting the new pending ones
-    # so we don't accumulate stale cost rows across re-imports.
+    # Delete old confirmed records before promoting the new pending ones.
     old_wbs = P6WBSNode.objects.filter(project=project, is_pending=False).count()
     old_ra = P6ResourceAssignment.objects.filter(project=project, is_pending=False).count()
-    if old_wbs or old_ra:
+    old_cal = P6Calendar.objects.filter(project=project, is_pending=False).count()
+    if old_wbs or old_ra or old_cal:
         P6WBSNode.objects.filter(project=project, is_pending=False).delete()
         P6ResourceAssignment.objects.filter(project=project, is_pending=False).delete()
+        P6Calendar.objects.filter(project=project, is_pending=False).delete()
         logger.info(
-            "p6_save: cleared %d old WBS nodes and %d old assignments for project %s",
+            "p6_save: cleared %d old WBS, %d old assignments, %d old calendars for project %s",
             old_wbs,
             old_ra,
+            old_cal,
             project.pk,
         )
 
     # Promote WBS nodes.
     P6WBSNode.objects.filter(project=project, is_pending=True).update(
+        schedule_source=schedule_source,
+        is_pending=False,
+    )
+
+    # Promote calendars.
+    P6Calendar.objects.filter(project=project, is_pending=True).update(
         schedule_source=schedule_source,
         is_pending=False,
     )

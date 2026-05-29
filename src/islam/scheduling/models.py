@@ -217,6 +217,27 @@ class Task(UUIDModel):
         help_text="True when total float == 0 (on the critical path).",
     )
 
+    # ------------------------------------------------------------------
+    # P6 scheduling metadata — populated from P6 XML import
+    # ------------------------------------------------------------------
+    calendar_object_id = models.CharField(
+        max_length=50,
+        blank=True,
+        verbose_name="P6 Calendar ObjectId",
+        help_text="P6 calendar assigned to this activity; used for working-day CPM.",
+    )
+    constraint_type = models.CharField(
+        max_length=50,
+        blank=True,
+        verbose_name="Constraint Type",
+        help_text="P6 scheduling constraint: 'Start On or After', 'Mandatory Finish', etc.",
+    )
+    constraint_date = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="Constraint Date",
+    )
+
     class Meta:
         verbose_name = "Schedule Task"
         verbose_name_plural = "Schedule Tasks"
@@ -814,5 +835,58 @@ class P6ResourceAssignment(UUIDModel):
     def __str__(self) -> str:
         return f"{self.p6_activity_object_id} → {self.resource_type} (planned={self.planned_cost})"
 
+
+class P6Calendar(UUIDModel):
+    """P6 calendar definition — working day schedule + holiday exceptions.
+
+    Used by the CPM engine for working-day duration and date arithmetic.
+    Persisted alongside WBS/ResourceAssignment via the same pending→confirmed flow.
+    """
+
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name="p6_calendars",
+        verbose_name="Project",
+    )
+    schedule_source = models.ForeignKey(
+        ScheduleSource,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="p6_calendars",
+        verbose_name="Schedule Source",
+    )
+    p6_calendar_id = models.CharField(
+        max_length=50,
+        db_index=True,
+        verbose_name="P6 Calendar ObjectId",
+    )
+    name = models.CharField(max_length=200, verbose_name="Name")
+    hours_per_day = models.FloatField(default=8.0, verbose_name="Hours per Day")
+    working_days = models.JSONField(
+        default=list,
+        verbose_name="Working Day Names",
+        help_text='List of working day names, e.g. ["Sunday", "Monday", ...]',
+    )
+    holidays = models.JSONField(
+        default=list,
+        verbose_name="Holiday Exceptions",
+        help_text="ISO-date strings of non-working exception days.",
+    )
+    is_pending = models.BooleanField(
+        default=True,
+        db_index=True,
+        verbose_name="Pending",
+    )
+
+    class Meta:
+        verbose_name = "P6 Calendar"
+        verbose_name_plural = "P6 Calendars"
+        indexes = [
+            models.Index(fields=["project", "is_pending"]),
+            models.Index(fields=["project", "p6_calendar_id"]),
+        ]
+
     def __str__(self) -> str:
-        return f"Embedding({self.task.name[:40]})"
+        return f"{self.name} (id={self.p6_calendar_id})"

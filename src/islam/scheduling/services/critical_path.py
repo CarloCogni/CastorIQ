@@ -1,5 +1,25 @@
 # islam/scheduling/services/critical_path.py
-"""Critical Path Method (CPM) — forward/backward pass over TaskDependency graph."""
+"""Critical Path Method (CPM) — calendar-aware forward/backward pass.
+
+Enhancements over the original implementation:
+
+* Working-day arithmetic — durations are counted in working days using the
+  calendar assigned to each activity (P6Calendar).  The default calendar
+  treats every day as a working day so behaviour is unchanged when no P6
+  calendar data is available.
+
+* SNET constraints (Start On or After) — the earliest start date from the
+  network logic is clamped to the constraint date (advanced to the next
+  working day on the activity's calendar if needed).
+
+* MFO / Mandatory Finish constraints — the latest finish from the backward
+  pass is capped at the constraint date.  This may produce negative float
+  for activities whose planned finish already exceeds the deadline.
+
+* Total float is now stored as a signed integer: negative values indicate
+  a mandatory-finish overrun and are more useful to the planner than a
+  clamped zero.
+"""
 
 from __future__ import annotations
 
@@ -15,10 +35,119 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# ── Calendar arithmetic helpers ───────────────────────────────────────────────
 
-def _duration(task) -> int:
-    """Calendar days inclusive."""
-    return max((task.end_date - task.start_date).days + 1, 1)
+# A default calendar that treats every day as a working day with no holidays.
+# Used when no P6Calendar is found for a task.
+_DEFAULT_CAL: dict = {
+    "working_day_names": {
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+    },
+    "holiday_dates": frozenset(),
+}
+
+
+def _is_working_day(d: date, cal: dict) -> bool:
+    return d.strftime("%A") in cal["working_day_names"] and d not in cal["holiday_dates"]
+
+
+def _next_working_day(d: date, cal: dict) -> date:
+    """Return d if it is a working day, otherwise advance to the next working day."""
+    while not _is_working_day(d, cal):
+        d += timedelta(days=1)
+    return d
+
+
+def _prev_working_day(d: date, cal: dict) -> date:
+    """Return d if it is a working day, otherwise step back to the prior working day."""
+    while not _is_working_day(d, cal):
+        d -= timedelta(days=1)
+    return d
+
+
+def _add_working_days(start: date, n: int, cal: dict) -> date:
+    """Advance *n* working days from *start* (0 means same day if working)."""
+    if n == 0:
+        return _next_working_day(start, cal)
+    d = start
+    remaining = n
+    while remaining > 0:
+        d += timedelta(days=1)
+        if _is_working_day(d, cal):
+            remaining -= 1
+    return d
+
+
+def _subtract_working_days(start: date, n: int, cal: dict) -> date:
+    """Step back *n* working days from *start*."""
+    if n == 0:
+        return _prev_working_day(start, cal)
+    d = start
+    remaining = n
+    while remaining > 0:
+        d -= timedelta(days=1)
+        if _is_working_day(d, cal):
+            remaining -= 1
+    return d
+
+
+def _count_working_days(start: date, end: date, cal: dict) -> int:
+    """Count working days in the inclusive range [start, end]."""
+    if end < start:
+        return 1
+    # Fast path: 7-day no-holiday calendar degenerates to calendar days.
+    if len(cal["working_day_names"]) == 7 and not cal["holiday_dates"]:
+        return (end - start).days + 1
+    count = 0
+    d = start
+    while d <= end:
+        if _is_working_day(d, cal):
+            count += 1
+        d += timedelta(days=1)
+    return max(count, 1)
+
+
+# ── Calendar loader ───────────────────────────────────────────────────────────
+
+
+def _load_project_calendars(project_id: str) -> dict[str, dict]:
+    """Return a {p6_calendar_id: runtime_cal_dict} map for the project.
+
+    Returns an empty dict when no P6Calendar records exist (pre-P6-import
+    projects); callers fall back to _DEFAULT_CAL in that case.
+    """
+    try:
+        from islam.scheduling.models import P6Calendar
+
+        cals: dict[str, dict] = {}
+        for cal in P6Calendar.objects.filter(project_id=project_id, is_pending=False):
+            cals[cal.p6_calendar_id] = {
+                "working_day_names": set(cal.working_days or []),
+                "holiday_dates": frozenset(
+                    date.fromisoformat(d) for d in (cal.holidays or []) if len(d) == 10
+                ),
+            }
+        return cals
+    except Exception as exc:
+        logger.debug("Calendar load skipped: %s", exc)
+        return {}
+
+
+# ── Duration helper ───────────────────────────────────────────────────────────
+
+
+def _duration(task, cal: dict) -> int:
+    """Duration in working days on *cal* between task.start_date and task.end_date."""
+    return _count_working_days(task.start_date, task.end_date, cal)
+
+
+# ── Public entry point ────────────────────────────────────────────────────────
 
 
 def compute_critical_path(project_id: str) -> dict:
@@ -43,6 +172,13 @@ def compute_critical_path(project_id: str) -> dict:
     if not tasks:
         return {"critical_task_ids": [], "project_duration": 0, "task_data": {}}
 
+    # ── Build calendar lookup ────────────────────────────────────────────
+    cal_defs = _load_project_calendars(project_id)
+    task_cal: dict[str, dict] = {}
+    for t in tasks:
+        cal_id = getattr(t, "calendar_object_id", "") or ""
+        task_cal[str(t.pk)] = cal_defs.get(cal_id, _DEFAULT_CAL)
+
     task_map: dict[str, Task] = {str(t.pk): t for t in tasks}
     task_ids = set(task_map)
 
@@ -53,7 +189,7 @@ def compute_critical_path(project_id: str) -> dict:
         ).values("predecessor_id", "successor_id", "dep_type", "lag_days")
     )
 
-    # Build adjacency for topological sort (successor_id → [predecessor_id])
+    # Adjacency lists for topological sort
     pred_of: dict[str, list[dict]] = defaultdict(list)
     succ_of: dict[str, list[dict]] = defaultdict(list)
     for d in deps:
@@ -63,10 +199,7 @@ def compute_critical_path(project_id: str) -> dict:
             succ_of[pid].append(d)
 
     # Kahn's algorithm topological sort
-    in_degree: dict[str, int] = {tid: 0 for tid in task_ids}
-    for tid in task_ids:
-        in_degree[tid] = len(pred_of[tid])
-
+    in_degree: dict[str, int] = {tid: len(pred_of[tid]) for tid in task_ids}
     queue: deque[str] = deque(t for t, d in in_degree.items() if d == 0)
     topo: list[str] = []
     while queue:
@@ -78,14 +211,13 @@ def compute_critical_path(project_id: str) -> dict:
             if in_degree[sid] == 0:
                 queue.append(sid)
 
-    # If there's a cycle (in_degree > 0 remaining), fall back to date-ordered list
-    remaining = [tid for tid, d in in_degree.items() if d > 0]
-    if remaining:
+    if len(topo) < len(task_ids):
+        remaining = [tid for tid, d in in_degree.items() if d > 0]
         logger.warning("CPM: cycle detected for project %s; falling back to date order", project_id)
         topo.extend(sorted(remaining, key=lambda tid: task_map[tid].start_date))
 
     # ------------------------------------------------------------------
-    # Forward pass — compute early_start / early_finish
+    # Forward pass — early_start / early_finish (working-day arithmetic)
     # ------------------------------------------------------------------
     project_start = min(t.start_date for t in tasks)
 
@@ -94,44 +226,63 @@ def compute_critical_path(project_id: str) -> dict:
 
     for tid in topo:
         task = task_map[tid]
-        dur = _duration(task)
+        cal = task_cal[tid]
+        dur = _duration(task, cal)
 
         if not pred_of[tid]:
-            es = task.start_date
+            es = _next_working_day(task.start_date, cal)
         else:
             es = project_start
             for d in pred_of[tid]:
                 pid = str(d["predecessor_id"])
-                lag = d["lag_days"]
+                lag = d["lag_days"] or 0
                 dt = d["dep_type"]
                 pef = early_finish.get(pid, task_map[pid].end_date)
                 pes = early_start.get(pid, task_map[pid].start_date)
+                succ_cal = cal  # successor's calendar governs next-working-day
+
                 if dt == "FS":
-                    candidate = pef + timedelta(days=1 + lag)
+                    candidate = _next_working_day(pef + timedelta(days=1 + lag), succ_cal)
                 elif dt == "SS":
-                    candidate = pes + timedelta(days=lag)
+                    candidate = _next_working_day(pes + timedelta(days=lag), succ_cal)
                 elif dt == "FF":
-                    candidate = pef + timedelta(days=lag) - timedelta(days=dur - 1)
+                    ef_raw = pef + timedelta(days=lag)
+                    candidate = _subtract_working_days(ef_raw, dur - 1, succ_cal)
                 else:  # SF
-                    candidate = pes + timedelta(days=lag) - timedelta(days=dur - 1)
+                    ef_raw = pes + timedelta(days=lag)
+                    candidate = _subtract_working_days(ef_raw, dur - 1, succ_cal)
+
                 if candidate > es:
                     es = candidate
 
+        # Apply SNET constraint: activity cannot start before constraint_date.
+        constraint_type = getattr(task, "constraint_type", "") or ""
+        constraint_date = getattr(task, "constraint_date", None)
+        if constraint_date and constraint_type in (
+            "Start On or After",
+            "Mandatory Start",
+            "Start On",
+        ):
+            snet = _next_working_day(constraint_date, cal)
+            if snet > es:
+                es = snet
+
         early_start[tid] = es
-        early_finish[tid] = es + timedelta(days=dur - 1)
+        early_finish[tid] = _add_working_days(es, dur - 1, cal)
 
     project_end = max(early_finish.values())
     project_duration = (project_end - project_start).days + 1
 
     # ------------------------------------------------------------------
-    # Backward pass — compute late_finish / late_start
+    # Backward pass — late_finish / late_start (working-day arithmetic)
     # ------------------------------------------------------------------
     late_finish: dict[str, date] = {}
     late_start: dict[str, date] = {}
 
     for tid in reversed(topo):
         task = task_map[tid]
-        dur = _duration(task)
+        cal = task_cal[tid]
+        dur = _duration(task, cal)
 
         if not succ_of[tid]:
             lf = project_end
@@ -139,33 +290,50 @@ def compute_critical_path(project_id: str) -> dict:
             lf = project_end
             for d in succ_of[tid]:
                 sid = str(d["successor_id"])
-                lag = d["lag_days"]
+                lag = d["lag_days"] or 0
                 dt = d["dep_type"]
                 sls = late_start.get(sid, task_map[sid].start_date)
                 slf = late_finish.get(sid, task_map[sid].end_date)
+                pred_cal = cal  # predecessor's calendar governs prev-working-day
+
                 if dt == "FS":
-                    candidate = sls - timedelta(days=1 + lag)
+                    candidate = _prev_working_day(sls - timedelta(days=1 + lag), pred_cal)
                 elif dt == "SS":
-                    candidate = sls - timedelta(days=lag) + timedelta(days=dur - 1)
+                    candidate = _add_working_days(
+                        _prev_working_day(sls - timedelta(days=lag), pred_cal), dur - 1, pred_cal
+                    )
                 elif dt == "FF":
                     candidate = slf - timedelta(days=lag)
                 else:  # SF
-                    candidate = slf - timedelta(days=lag) + timedelta(days=dur - 1)
+                    candidate = _add_working_days(sls - timedelta(days=lag), dur - 1, pred_cal)
+
                 if candidate < lf:
                     lf = candidate
 
+        # Apply MFO constraint: hard deadline — cap late_finish regardless of network.
+        constraint_type = getattr(task, "constraint_type", "") or ""
+        constraint_date = getattr(task, "constraint_date", None)
+        if constraint_date and constraint_type in (
+            "Mandatory Finish",
+            "Finish On",
+            "Finish On or Before",
+        ):
+            mfo = _prev_working_day(constraint_date, cal)
+            if mfo < lf:
+                lf = mfo
+
         late_finish[tid] = lf
-        late_start[tid] = lf - timedelta(days=dur - 1)
+        late_start[tid] = _subtract_working_days(lf, dur - 1, cal)
 
     # ------------------------------------------------------------------
-    # Float + is_critical
+    # Float + is_critical  (signed — negative = overrun vs MFO deadline)
     # ------------------------------------------------------------------
     total_float: dict[str, int] = {}
     is_critical: dict[str, bool] = {}
     for tid in task_ids:
         tf = (late_start[tid] - early_start[tid]).days
-        total_float[tid] = max(tf, 0)
-        is_critical[tid] = total_float[tid] == 0
+        total_float[tid] = tf  # signed: negative means MFO overrun
+        is_critical[tid] = tf <= 0
 
     # ------------------------------------------------------------------
     # Persist to DB
@@ -196,11 +364,18 @@ def compute_critical_path(project_id: str) -> dict:
     }
 
     logger.info(
-        "CPM complete — project %s: %d tasks, %d critical, %d days",
+        "CPM complete — project %s: %d tasks, %d critical, %d calendar days, "
+        "%d calendars loaded, %d constrained",
         project_id,
         len(tasks),
         len(critical_ids),
         project_duration,
+        len(cal_defs),
+        sum(
+            1
+            for t in tasks
+            if getattr(t, "constraint_type", "") and getattr(t, "constraint_date", None)
+        ),
     )
 
     return {
