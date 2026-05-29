@@ -153,8 +153,11 @@
     <div class="d-flex align-items-center gap-2 px-2 py-1 border-bottom flex-shrink-0" style="font-size: 0.8rem;">
       <span class="text-secondary fw-medium" style="font-size: 11px;">Color by:</span>
       <div class="btn-group btn-group-sm" id="fd-colorby-group">
+        <button class="btn btn-outline-secondary btn-sm" data-mode="link-check" style="font-size: 11px; padding: 2px 8px;">
+          <i class="bi bi-link-45deg me-1"></i>Link Check
+        </button>
         <button class="btn btn-outline-secondary btn-sm" data-mode="site-status" style="font-size: 11px; padding: 2px 8px;">
-          <i class="bi bi-calendar-week me-1"></i>Site Status
+          <i class="bi bi-building me-1"></i>Site Status
         </button>
       </div>
       <button class="btn btn-sm btn-outline-secondary ms-auto" id="fd-reset-view-btn"
@@ -1216,18 +1219,58 @@
     }
   });
 
+  const _linkCheckBtn  = document.querySelector("#fd-colorby-group button[data-mode='link-check']");
   const _siteStatusBtn = document.querySelector("#fd-colorby-group button[data-mode='site-status']");
+
+  function _setColorBtn(btn, active) {
+    if (active) {
+      btn.classList.remove("btn-outline-secondary");
+      btn.classList.add("btn-primary", "active");
+    } else {
+      btn.classList.remove("btn-primary", "active");
+      btn.classList.add("btn-outline-secondary");
+    }
+  }
+
+  function _deactivateBothColorBtns() {
+    if (_linkCheckBtn)  _setColorBtn(_linkCheckBtn,  false);
+    if (_siteStatusBtn) _setColorBtn(_siteStatusBtn, false);
+  }
+
+  if (_linkCheckBtn) {
+    _linkCheckBtn.addEventListener("click", () => {
+      const wasActive = _linkCheckBtn.classList.contains("btn-primary");
+      _deactivateBothColorBtns();
+      if (!wasActive) {
+        _setColorBtn(_linkCheckBtn, true);
+        _applyLinkFilter();
+      } else {
+        sendToViewer({ type: "castor:reset" });
+      }
+    });
+  }
+
   if (_siteStatusBtn) {
     _siteStatusBtn.addEventListener("click", () => {
-      const isActive = _siteStatusBtn.classList.contains("btn-primary");
-      if (isActive) {
-        _siteStatusBtn.classList.remove("btn-primary", "active");
-        _siteStatusBtn.classList.add("btn-outline-secondary");
-        sendToViewer({ type: "castor:reset" });
+      const wasActive = _siteStatusBtn.classList.contains("btn-primary");
+      _deactivateBothColorBtns();
+      if (!wasActive) {
+        if (!tlIntervals.length) {
+          _showToast("Timeline data not yet loaded — try again shortly", "info");
+          return;
+        }
+        /* Find the last weekly interval whose date is on or before today */
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        let iv = tlIntervals[0];
+        for (const t of tlIntervals) {
+          if (new Date(t.date + "T00:00:00") <= today) iv = t;
+          else break;
+        }
+        const { not_started = [], in_progress = [], complete = [], delayed = [] } = iv.entities || {};
+        sendToViewer({ type: "castor:timeline-colors", not_started, in_progress, complete, delayed, no_task: tlNoTask });
+        _setColorBtn(_siteStatusBtn, true);
       } else {
-        _siteStatusBtn.classList.remove("btn-outline-secondary");
-        _siteStatusBtn.classList.add("btn-primary", "active");
-        _applyLinkFilter();
+        sendToViewer({ type: "castor:reset" });
       }
     });
   }
