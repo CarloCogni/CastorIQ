@@ -182,6 +182,11 @@ urlpatterns = [
         name="schedule_intelligence",
     ),
     path(
+        "projects/<uuid:pk>/schedule/chat/",
+        scheduling_views.ScheduleChatView.as_view(),
+        name="schedule_chat",
+    ),
+    path(
         "projects/<uuid:pk>/schedule/lookahead/",
         scheduling_views.LookaheadDataView.as_view(),
         name="lookahead_data",
