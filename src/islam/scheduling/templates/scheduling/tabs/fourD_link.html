@@ -1036,6 +1036,7 @@
       fd_renderGantt(filtered);
     }
 
+    if (!_linkCheckBtn?.classList.contains("btn-primary")) return;
     if (_fdTaskSelected) return;
 
     const linked = [], unlinked = [];
@@ -1291,7 +1292,6 @@
       const slider = document.getElementById("fd-slider");
       slider.max   = tlIntervals.length - 1;
       slider.value = 0;
-      if (viewerReady && currentMode === "timeline") _applyInterval(0);
     } catch (e) { /* no timeline — slider stays disabled */ }
   }
 
