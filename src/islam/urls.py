@@ -172,6 +172,11 @@ urlpatterns = [
         name="anomaly_detection",
     ),
     path(
+        "projects/<uuid:pk>/schedule/floor-health/",
+        scheduling_views.FloorHealthView.as_view(),
+        name="floor_health",
+    ),
+    path(
         "projects/<uuid:pk>/schedule/link/smart/",
         scheduling_views.AutoLinkView.as_view(),
         name="schedule_link_smart",
