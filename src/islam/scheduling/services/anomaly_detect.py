@@ -45,10 +45,12 @@ _CSI_NAMES: dict[str, str] = {
 }
 
 _MIN_PEER_N: int = 5  # minimum peer group size for cross-sectional stats
-_OUTLIER_Z: float = 3.0  # robust z-score threshold (>3 MAD from peer median)
-_START_WINDOW_DAYS: int = (
-    7  # tasks starting within this many days of project start are legitimate starts
-)
+_OUTLIER_Z: float = 5.0  # robust z-score threshold — raised to 5σ to cut noise on delayed projects
+_STALL_MIN_RATIO: float = 2.0  # flag stalled only when elapsed >= 2× planned duration
+_MIN_PEER_DURATION_DAYS: int = 3  # exclude sub-3-day stub tasks from cross-sectional peer groups
+_MAX_PEER_DURATION_DAYS: int = 365  # exclude multi-year hammock/summary tasks from peer groups
+_FS_MIN_VIOLATION_DAYS: int = 90  # ignore FS violations smaller than 90 calendar days
+_START_WINDOW_DAYS: int = 7  # tasks starting within 7 days of project start are legitimate starts
 
 
 def _csi(activity_code: str) -> str:
@@ -93,7 +95,7 @@ def _detect_stalled(tasks: list, data_date: date) -> list[dict]:
             continue
         planned_duration = max((t.end_date - t.start_date).days, 1)
         elapsed = (data_date - t.actual_start).days
-        if elapsed <= planned_duration:
+        if elapsed / planned_duration < _STALL_MIN_RATIO:
             continue
         overrun_ratio = round(elapsed / planned_duration, 2)
         csi = _csi(t.activity_code or "")
@@ -139,7 +141,9 @@ def _detect_cross_sectional(tasks: list) -> list[dict]:
     by_csi: dict[str, list] = defaultdict(list)
     for t in tasks:
         if t.start_date and t.end_date:
-            by_csi[_csi(t.activity_code or "")].append(t)
+            dur = (t.end_date - t.start_date).days
+            if _MIN_PEER_DURATION_DAYS <= dur <= _MAX_PEER_DURATION_DAYS:
+                by_csi[_csi(t.activity_code or "")].append(t)
 
     results = []
 
@@ -345,7 +349,7 @@ def _detect_logic_anomalies(tasks: list, deps: list) -> list[dict]:
             continue
         expected_start = pred.end_date + timedelta(days=d.lag_days)  # type: ignore[union-attr]
         violation_days = (expected_start - succ.start_date).days  # type: ignore[union-attr]
-        if violation_days <= 0:
+        if violation_days < _FS_MIN_VIOLATION_DAYS:
             continue
         csi = _csi(succ.activity_code or "")  # type: ignore[union-attr]
         lag_str = (
