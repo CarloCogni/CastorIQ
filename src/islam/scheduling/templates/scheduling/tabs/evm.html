@@ -395,6 +395,65 @@
         </div>
     </div>
 
+    <!-- Time-Location (Flowline) Chart -->
+    <div id="evm-tl-section"
+         style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
+
+        <!-- Header row: title + trade filter -->
+        <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+            <i class="bi bi-bar-chart-steps" style="color:#3b82f6; font-size:1rem;"></i>
+            <span style="font-size:0.8rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:0.05em;">Time-Location (Flowline)</span>
+            <button type="button"
+                    class="help-pill"
+                    data-bs-toggle="modal"
+                    data-bs-target="#evmHelpModal"
+                    title="How the Time-Location chart works"
+                    aria-label="How the Time-Location chart works">
+                <i class="bi bi-question-circle"></i>
+            </button>
+            <div class="ms-auto d-flex align-items-center gap-2">
+                <label for="tl-trade-select" style="font-size:0.72rem; color:var(--bs-secondary-color); white-space:nowrap;">Trade filter</label>
+                <select id="tl-trade-select" class="form-select form-select-sm" style="width:auto; font-size:0.76rem; min-width:160px;">
+                    <option value="">Top 5 trades</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Loading -->
+        <div id="tl-loading" class="d-flex align-items-center gap-2" style="font-size:0.78rem; color:var(--bs-secondary-color); padding:4px 0;">
+            <span class="spinner-border spinner-border-sm"></span> Loading flowlines…
+        </div>
+        <!-- No data -->
+        <div id="tl-nodata" class="d-none" style="font-size:0.78rem; color:var(--bs-secondary-color); padding:4px 0;">
+            No floor-located tasks found.
+        </div>
+
+        <!-- Chart + results -->
+        <div id="tl-results" class="d-none">
+
+            <!-- Legend strip -->
+            <div id="tl-legend" class="d-flex flex-wrap gap-3 mb-2" style="font-size:0.72rem; color:var(--bs-secondary-color);">
+                <span><span style="display:inline-block;width:22px;height:2px;background:#6b7280;opacity:.4;margin-bottom:3px;border-top:2px solid #6b7280;margin-right:4px;vertical-align:middle;"></span>Planned</span>
+                <span><span style="display:inline-block;width:22px;height:4px;background:#6b7280;margin-bottom:2px;margin-right:4px;vertical-align:middle;"></span>Actual</span>
+                <span><span style="display:inline-block;width:22px;height:2px;margin-bottom:3px;border-top:2px dashed #6b7280;margin-right:4px;vertical-align:middle;"></span>Forecast</span>
+            </div>
+
+            <!-- Canvas -->
+            <div id="tl-chart-wrap" style="position:relative; overflow-x:auto;">
+                <canvas id="tl-canvas" style="display:block;"></canvas>
+                <div id="tl-tooltip"
+                     style="position:absolute; pointer-events:none; display:none;
+                            background:var(--bs-body-bg); border:1px solid var(--bs-border-color);
+                            border-radius:6px; padding:6px 10px; font-size:0.72rem;
+                            color:var(--bs-body-color); max-width:260px; z-index:10; line-height:1.45;"></div>
+            </div>
+
+            <!-- Caption (scope + resolution notes) -->
+            <div id="tl-caption" style="font-size:0.67rem; color:var(--bs-secondary-color); margin-top:8px; line-height:1.6;"></div>
+
+        </div>
+    </div>
+
     <!-- Schedule Health (DCMA 14-Point) -->
     <div id="evm-dcma-section"
          style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
@@ -1793,6 +1852,291 @@
         }
 
         loadCashflow();
+    }());
+
+    /* ── Time-Location (Flowline) Chart ───────────────────────────────── */
+    (function () {
+        const BASE_URL = "{% url 'islam:timelocation' project.pk %}";
+        let _data = null;
+        let _segments = null;  // active segments after trade filter
+
+        const N_FLOORS = 18;
+        const PAD = { top: 24, right: 16, bottom: 46, left: 92 };
+        const ROW_H = 26;
+        const CHART_H = PAD.top + N_FLOORS * ROW_H + PAD.bottom;
+
+        function _esc(s) {
+            return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+        }
+
+        // ── Trade dropdown ────────────────────────────────────────────────
+        function _populateDropdown(trades) {
+            const sel = document.getElementById("tl-trade-select");
+            if (!sel) return;
+            // keep the default "Top 5 trades" option
+            trades.forEach(t => {
+                const opt = document.createElement("option");
+                opt.value = t.key;
+                opt.textContent = `${t.name} (${t.count.toLocaleString()})`;
+                sel.appendChild(opt);
+            });
+            sel.addEventListener("change", function () {
+                _loadSegments(this.value || null);
+            });
+        }
+
+        // ── Fetch + render ────────────────────────────────────────────────
+        async function _loadSegments(tradeKey) {
+            const canvas = document.getElementById("tl-canvas");
+            if (!canvas) return;
+            const url = tradeKey ? BASE_URL + "?trade=" + encodeURIComponent(tradeKey) : BASE_URL;
+            const resp = await fetch(url);
+            const d = await resp.json();
+            if (!d.has_data) return;
+            _segments = d.segments;
+            _renderChart(d);
+            _updateCaption(d);
+        }
+
+        // ── Chart rendering ───────────────────────────────────────────────
+        function _dateToMs(iso) { return iso ? new Date(iso).getTime() : null; }
+
+        function _renderChart(d) {
+            const wrap   = document.getElementById("tl-chart-wrap");
+            const canvas = document.getElementById("tl-canvas");
+            const legend = document.getElementById("tl-legend");
+            if (!canvas || !wrap) return;
+
+            const dpr  = window.devicePixelRatio || 1;
+            const W    = Math.max(wrap.clientWidth, 600);
+            canvas.width  = W * dpr;
+            canvas.height = CHART_H * dpr;
+            canvas.style.width  = W + "px";
+            canvas.style.height = CHART_H + "px";
+            const ctx = canvas.getContext("2d");
+            ctx.scale(dpr, dpr);
+
+            const cw = W - PAD.left - PAD.right;
+            const ch = N_FLOORS * ROW_H;
+
+            const t0 = new Date(d.stats.project_start).getTime();
+            const t1 = new Date(d.stats.project_end).getTime();
+            const tSpan = Math.max(t1 - t0, 1);
+            const today_ms = new Date(d.stats.today).getTime();
+
+            function xOf(iso) {
+                if (!iso) return null;
+                return PAD.left + (new Date(iso).getTime() - t0) / tSpan * cw;
+            }
+            function yOf(ordinal) {
+                // R02 (ordinal=17) at top, B03 (ordinal=0) at bottom
+                return PAD.top + (N_FLOORS - 1 - ordinal) * ROW_H + ROW_H / 2;
+            }
+
+            // Background bands + floor labels
+            d.floors.forEach(fl => {
+                const y0 = PAD.top + (N_FLOORS - 1 - fl.ordinal) * ROW_H;
+                ctx.fillStyle = fl.ordinal % 2 === 0
+                    ? "rgba(107,114,128,.04)" : "rgba(107,114,128,.02)";
+                ctx.fillRect(PAD.left, y0, cw, ROW_H);
+
+                ctx.fillStyle = "rgba(107,114,128,.65)";
+                ctx.font = "10px system-ui";
+                ctx.textAlign = "right";
+                ctx.textBaseline = "middle";
+                ctx.fillText(fl.label, PAD.left - 5, y0 + ROW_H / 2);
+            });
+
+            // Today line
+            const todayX = xOf(d.stats.today);
+            if (todayX >= PAD.left && todayX <= PAD.left + cw) {
+                ctx.strokeStyle = "rgba(239,68,68,.5)";
+                ctx.lineWidth = 1;
+                ctx.setLineDash([3, 3]);
+                ctx.beginPath();
+                ctx.moveTo(todayX, PAD.top);
+                ctx.lineTo(todayX, PAD.top + ch);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.fillStyle = "rgba(239,68,68,.7)";
+                ctx.font = "9px system-ui";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "top";
+                ctx.fillText("Today", todayX, PAD.top + ch + 2);
+            }
+
+            // Build color map from trade data
+            const colorMap = {};
+            (d.trades || []).forEach(t => { colorMap[t.key] = t.color; });
+
+            // Draw segments — planned first (behind), then actual/forecast
+            const segs = d.segments;
+
+            // Pass 1: planned (thin, low alpha)
+            segs.forEach(s => {
+                const x0 = xOf(s.ps), x1 = xOf(s.pe);
+                if (x0 === null || x1 === null) return;
+                const y = yOf(s.f);
+                const color = colorMap[s.k] || "#6b7280";
+                ctx.strokeStyle = color;
+                ctx.globalAlpha = 0.25;
+                ctx.lineWidth = 2;
+                ctx.setLineDash([]);
+                ctx.beginPath();
+                ctx.moveTo(Math.max(x0, PAD.left), y);
+                ctx.lineTo(Math.min(x1, PAD.left + cw), y);
+                ctx.stroke();
+            });
+
+            // Pass 2: actual (thick, solid)
+            segs.forEach(s => {
+                if (!s.as_ || !s.ae) return;
+                const x0 = xOf(s.as_), x1 = xOf(s.ae);
+                if (x0 === null || x1 === null) return;
+                const y = yOf(s.f);
+                const color = colorMap[s.k] || "#6b7280";
+                ctx.strokeStyle = color;
+                ctx.globalAlpha = 0.85;
+                ctx.lineWidth = 4;
+                ctx.setLineDash([]);
+                ctx.beginPath();
+                ctx.moveTo(Math.max(x0, PAD.left), y);
+                ctx.lineTo(Math.min(x1, PAD.left + cw), y);
+                ctx.stroke();
+            });
+
+            // Pass 3: forecast (dashed, medium alpha)
+            segs.forEach(s => {
+                if (s.st === "complete" || !s.fe) return;
+                const x0 = xOf(d.stats.today), x1 = xOf(s.fe);
+                if (x0 === null || x1 === null || x1 <= x0) return;
+                const y = yOf(s.f);
+                const color = colorMap[s.k] || "#6b7280";
+                ctx.strokeStyle = color;
+                ctx.globalAlpha = 0.6;
+                ctx.lineWidth = 2;
+                ctx.setLineDash([4, 3]);
+                ctx.beginPath();
+                ctx.moveTo(Math.max(x0, PAD.left), y);
+                ctx.lineTo(Math.min(x1, PAD.left + cw), y);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            });
+
+            ctx.globalAlpha = 1.0;
+
+            // Time axis labels
+            ctx.fillStyle = "rgba(107,114,128,.7)";
+            ctx.font = "9px system-ui";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "top";
+            // Quarterly ticks
+            const start = new Date(d.stats.project_start);
+            let cur = new Date(start.getFullYear(), Math.floor(start.getMonth() / 3) * 3, 1);
+            const end = new Date(d.stats.project_end);
+            while (cur <= end) {
+                const x = xOf(cur.toISOString().slice(0, 10));
+                if (x && x >= PAD.left && x <= PAD.left + cw) {
+                    ctx.fillStyle = "rgba(107,114,128,.15)";
+                    ctx.fillRect(x, PAD.top, 0.5, ch);
+                    ctx.fillStyle = "rgba(107,114,128,.7)";
+                    const lbl = `${cur.toLocaleString("default",{month:"short"})} '${String(cur.getFullYear()).slice(2)}`;
+                    ctx.fillText(lbl, x, PAD.top + ch + 5);
+                }
+                cur = new Date(cur.getFullYear(), cur.getMonth() + 3, 1);
+            }
+
+            // Update legend with trade colours
+            if (legend) {
+                const activeTrades = [...new Set(segs.map(s => s.k))];
+                const shown = (d.trades || []).filter(t => activeTrades.includes(t.key));
+                legend.innerHTML = [
+                    `<span><span style="display:inline-block;width:22px;height:2px;background:#6b7280;opacity:.4;margin-bottom:3px;border-top:2px solid #6b7280;margin-right:4px;vertical-align:middle;"></span>Planned</span>`,
+                    `<span><span style="display:inline-block;width:22px;height:4px;background:#6b7280;margin-bottom:2px;margin-right:4px;vertical-align:middle;"></span>Actual</span>`,
+                    `<span><span style="display:inline-block;width:22px;height:2px;margin-bottom:3px;border-top:2px dashed #6b7280;margin-right:4px;vertical-align:middle;"></span>Forecast</span>`,
+                    `<span style="margin-left:8px;color:var(--bs-border-color)">|</span>`,
+                    ...shown.map(t => `<span><span style="display:inline-block;width:14px;height:4px;background:${_esc(t.color)};border-radius:2px;margin-right:4px;vertical-align:middle;"></span>${_esc(t.name)}</span>`)
+                ].join("");
+            }
+
+            // Hover tooltip
+            const tooltip = document.getElementById("tl-tooltip");
+            canvas.onmousemove = function(e) {
+                if (!tooltip) return;
+                const rect = canvas.getBoundingClientRect();
+                const mx = (e.clientX - rect.left) / (rect.width / W);
+                const my = (e.clientY - rect.top) / (rect.height / CHART_H);
+                // Find segment under cursor
+                let found = null;
+                for (const s of segs) {
+                    const y = yOf(s.f);
+                    if (Math.abs(my - y) > ROW_H / 2) continue;
+                    const x0 = xOf(s.ps), x1 = xOf(s.fe || s.pe);
+                    if (x0 !== null && x1 !== null && mx >= x0 - 2 && mx <= x1 + 2) {
+                        found = s; break;
+                    }
+                }
+                if (found) {
+                    const trade = (d.trades||[]).find(t => t.key === found.k);
+                    tooltip.style.display = "block";
+                    tooltip.style.left = (e.clientX - rect.left + 12) + "px";
+                    tooltip.style.top  = (e.clientY - rect.top  - 10) + "px";
+                    tooltip.innerHTML =
+                        `<strong>${_esc(found.nm)}</strong><br>`
+                        + `Floor: ${_esc(d.floors.find(f=>f.ordinal===found.f)?.label||found.tok)}<br>`
+                        + `Trade: ${_esc(trade?.name||found.k)}<br>`
+                        + `Planned: ${found.ps} → ${found.pe}<br>`
+                        + (found.as_ ? `Actual: ${found.as_} → ${found.ae||"in progress"}<br>` : "")
+                        + (found.fe ? `Forecast end: ${found.fe}` : "");
+                } else {
+                    tooltip.style.display = "none";
+                }
+            };
+            canvas.onmouseleave = () => { if (tooltip) tooltip.style.display = "none"; };
+        }
+
+        // ── Caption ───────────────────────────────────────────────────────
+        function _updateCaption(d) {
+            const el = document.getElementById("tl-caption");
+            if (!el) return;
+            const sc = d.scope, st = d.stats;
+            const filterNote = sc.filtered_trade
+                ? `Showing: ${_esc(sc.filtered_trade_name)} (${sc.shown.toLocaleString()} tasks).`
+                : `Showing top 5 trades by task count (${sc.shown.toLocaleString()} of ${sc.floor_located.toLocaleString()} floor-located tasks).`;
+            el.innerHTML =
+                `<strong>Scope:</strong> floor-located tasks only. `
+                + `<span style="color:#f59e0b;">${sc.admin_excluded.toLocaleString()} admin/doc + ${sc.unlocated_excluded.toLocaleString()} unlocated excluded — no physical location.</span> `
+                + filterNote + ` `
+                + `Busiest floor: <strong>${_esc(st.busiest_floor_label)}</strong> (${st.busiest_floor_count} tasks). `
+                + `Widest trade: <strong>${_esc(st.widest_trade_name)}</strong> (${st.widest_trade_floors} floors). `
+                + `<em>Spatial resolution = floor level; within-floor zones not distinguished.</em>`;
+        }
+
+        // ── Init ──────────────────────────────────────────────────────────
+        async function loadTimelocation() {
+            const loading = document.getElementById("tl-loading");
+            const nodata  = document.getElementById("tl-nodata");
+            const results = document.getElementById("tl-results");
+            try {
+                const resp = await fetch(BASE_URL);
+                const d = await resp.json();
+                if (loading) loading.classList.add("d-none");
+                if (!d.has_data) {
+                    if (nodata) nodata.classList.remove("d-none");
+                    return;
+                }
+                _data = d;
+                if (results) results.classList.remove("d-none");
+                _populateDropdown(d.trades || []);
+                _renderChart(d);
+                _updateCaption(d);
+            } catch (_e) {
+                if (loading) loading.classList.add("d-none");
+                if (nodata) nodata.classList.remove("d-none");
+            }
+        }
+
+        loadTimelocation();
     }());
 
     /* ── DCMA 14-Point Assessment ──────────────────────────────────────── */

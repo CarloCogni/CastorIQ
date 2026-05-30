@@ -1327,6 +1327,22 @@ class TrendAnalysisView(ProjectAccessMixin, View):
         return JsonResponse(result)
 
 
+class TimeLocationView(ProjectAccessMixin, View):
+    """JSON — Time-Location (flowline) chart data: floor-located tasks only."""
+
+    def get(self, request, **kwargs: object) -> JsonResponse:
+        from .services.timelocation import compute_timelocation
+
+        project = self.get_project()
+        trade = request.GET.get("trade") or None
+        try:
+            result = compute_timelocation(str(project.pk), trade_filter=trade)
+        except Exception as exc:
+            logger.exception("Timelocation failed for project %s", project.pk)
+            return JsonResponse({"error": str(exc)}, status=500)
+        return JsonResponse(result)
+
+
 class DelayRootCauseView(ProjectAccessMixin, View):
     """JSON — delay root-cause clustering via CPM driving-relationship propagation."""
 
