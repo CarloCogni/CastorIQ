@@ -217,6 +217,10 @@ def run_delay_rootcause(project_id: str, delay_threshold_days: int = 0) -> dict:
     driving_pred_of: dict[str, str | None] = {}  # pk → driving delayed pred pk (propagated only)
     # driving graph for forward walk: delayed_pred → set of driven delayed succs
     drives: dict[str, set[str]] = defaultdict(set)
+    # confidence for root_cause nodes only:
+    #   "firm"  — has a binding FS/SS predecessor that is not delayed (origin is network-clear)
+    #   "lower" — no FS/SS binding found (FF/SF-only preds or 7–14 day gap); origin inferred
+    rc_confidence: dict[str, str] = {}
 
     for pk in delayed:
         task = task_map[pk]
@@ -266,14 +270,16 @@ def run_delay_rootcause(project_id: str, delay_threshold_days: int = 0) -> dict:
             else:
                 classification[pk] = "root_cause"
                 driving_pred_of[pk] = None
+                rc_confidence[pk] = "firm"  # binding pred exists and is on-time
         elif min_gap is not None and min_gap > CONSTRAINT_GAP:
             # All predecessors finish well before ES — a date constraint is driving
             classification[pk] = "constraint"
             driving_pred_of[pk] = None
         else:
-            # Predecessors exist but none are FS/SS or none have CPM dates
+            # No FS/SS binding found (FF/SF-only preds, no CPM dates, or 7-14d gap)
             classification[pk] = "root_cause"
             driving_pred_of[pk] = None
+            rc_confidence[pk] = "lower"  # origin inferred, not network-confirmed
 
     # ── Forward-walk each root cause / constraint node to measure impact ──
     root_cause_pks = [
@@ -345,6 +351,10 @@ def run_delay_rootcause(project_id: str, delay_threshold_days: int = 0) -> dict:
                 "stage_label": _STAGE_LABELS.get(t.stage or "", t.stage or ""),
                 "activity_type": _activity_type(t.name),
                 "classification": classification[pk],
+                # "firm": binding FS/SS non-delayed predecessor confirmed.
+                # "lower": no FS/SS binding (FF/SF-only preds or 7-14d gap);
+                #          origin is inferred, not network-confirmed.
+                "confidence": rc_confidence.get(pk, "lower"),
                 "finish_variance_days": delayed[pk],
                 "downstream_count": downstream_counts.get(pk, 0),
                 # Labelled "chain_delay_days" to distinguish from causal attribution
@@ -392,6 +402,8 @@ def run_delay_rootcause(project_id: str, delay_threshold_days: int = 0) -> dict:
 
     # ── Summary ───────────────────────────────────────────────────────────
     n_root = sum(1 for c in classification.values() if c == "root_cause")
+    n_root_firm = sum(1 for pk, v in rc_confidence.items() if v == "firm")
+    n_root_lower = sum(1 for pk, v in rc_confidence.items() if v == "lower")
     n_constraint = sum(1 for c in classification.values() if c == "constraint")
     n_propagated = sum(1 for c in classification.values() if c == "propagated")
     n_orphan = sum(1 for c in classification.values() if c == "orphan")
@@ -425,8 +437,9 @@ def run_delay_rootcause(project_id: str, delay_threshold_days: int = 0) -> dict:
             "excluded_no_baseline": excluded_no_baseline,
             "total_delayed": n_total_delayed,
             "root_causes": n_root,
-            # root causes where no FS/SS predecessor binding could be computed;
-            # classified root_cause via else-branch — origin is less certain
+            "root_causes_firm": n_root_firm,
+            "root_causes_lower_confidence": n_root_lower,
+            # kept for API compatibility — subset of root_causes_lower_confidence
             "root_causes_no_fs_ss_binding": n_no_fs_ss_binding,
             "constraint_driven": n_constraint,
             "propagated": n_propagated,

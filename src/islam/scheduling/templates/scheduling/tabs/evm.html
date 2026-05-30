@@ -328,6 +328,10 @@
                         By Trade (CSI) — downstream tasks
                     </div>
                     <div id="drc-trade-bars"></div>
+
+                    <div style="font-size:0.67rem; color:var(--bs-secondary-color); font-style:italic; margin-top:10px; line-height:1.4;">
+                        Each delayed task is attributed to a single origin; convergent delays count once, so per-cause counts are a lower bound.
+                    </div>
                 </div>
 
             </div>
@@ -1506,20 +1510,24 @@
         function _renderHeadline(s) {
             const el = document.getElementById("drc-headline");
             if (!el) return;
-            const pct = s.traceable_pct;
+            const firm  = s.root_causes_firm  || 0;
+            const lower = s.root_causes_lower_confidence || (s.root_causes - firm);
+            const rcStr = lower > 0
+                ? `<strong>${firm.toLocaleString()} firm</strong> + <strong>${lower.toLocaleString()} lower-confidence</strong> root causes`
+                : `<strong>${s.root_causes.toLocaleString()} root causes</strong>`;
             const top = s.top_cluster_label
-                ? `Largest cluster: <strong>${_esc(s.top_cluster_label)}</strong> — ${s.top_cluster_tasks.toLocaleString()} tasks affected.`
+                ? ` Largest cluster: <strong>${_esc(s.top_cluster_label)}</strong> — ${s.top_cluster_tasks.toLocaleString()} tasks affected.`
                 : "";
             const orphan = s.orphan > 0
                 ? `<span style="color:#f59e0b;"> · ${s.orphan} orphan delay${s.orphan > 1 ? "s" : ""} (no logic links — untraceable).</span>`
                 : "";
             const constraint = s.constraint_driven > 0
-                ? ` · ${s.constraint_driven} constraint-driven root causes (date constraints, not network).`
+                ? ` · ${s.constraint_driven} constraint-driven.`
                 : "";
             el.innerHTML =
-                `<strong>${s.root_causes.toLocaleString()} root causes</strong> explain `
-                + `<strong>${pct}%</strong> of <strong>${s.total_delayed.toLocaleString()}</strong> delayed tasks `
-                + `(${s.propagated.toLocaleString()} propagated downstream).${constraint} `
+                rcStr + ` explain <strong>${s.traceable_pct}%</strong>`
+                + ` of <strong>${s.total_delayed.toLocaleString()}</strong> delayed tasks`
+                + ` (${s.propagated.toLocaleString()} propagated downstream).${constraint}`
                 + top + orphan;
         }
 
@@ -1530,8 +1538,11 @@
             rcs.slice(0, 10).forEach((rc, i) => {
                 const tc = _typeColor(rc.activity_type);
                 const isConstr = rc.classification === "constraint";
+                const isLower = rc.confidence === "lower";
                 const badge = isConstr
                     ? `<span style="font-size:.6rem;color:#d97706;background:rgba(217,119,6,.1);border:1px solid rgba(217,119,6,.3);border-radius:8px;padding:1px 5px;">CONSTRAINT</span> `
+                    : isLower
+                    ? `<span style="font-size:.6rem;color:#6b7280;background:rgba(107,114,128,.08);border:1px solid rgba(107,114,128,.25);border-radius:8px;padding:1px 5px;">origin inferred — no FS/SS binding</span> `
                     : "";
                 const tip = rc.example_downstream.length
                     ? `title="${rc.example_downstream.map(e => _esc(e)).join(' · ')}"` : "";
