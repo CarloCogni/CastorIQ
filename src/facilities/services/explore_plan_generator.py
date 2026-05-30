@@ -176,14 +176,19 @@ def generate_plan_png(
             "No matching elements found in this storey — try other element kinds."
         )
 
-    # ifcopenshell.geom configuration: world coords means the triangulation
-    # is already placed correctly relative to project origin.
+    # ifcopenshell.geom configuration. In 0.8.x both world coords and the
+    # length unit are settable as strings; the string API is forward-compatible
+    # with the 0.7.x enum constants too, so we use strings everywhere.
     settings = ifcopenshell.geom.settings()
-    try:
-        settings.set(settings.USE_WORLD_COORDS, True)
-    except Exception:
-        # Newer ifcopenshell APIs renamed the constant; ignore if absent.
-        pass
+    _safe_set(settings, "use-world-coords", True)
+    # In ifcopenshell 0.8.x the geometry pipeline ALREADY normalises vertices
+    # to metres internally (regardless of the IFC's stated mm / inch / foot
+    # length unit). Forcing length-unit=METRE is a no-op on 0.8.x but acts as
+    # an explicit declaration of intent so a 0.7.x fallback wouldn't surprise
+    # us. We intentionally do NOT post-multiply by ``unit_scale_to_m`` on the
+    # vertices — doing so was the bug behind the "span 0.01 m" symptom (mm
+    # files getting double-scaled, leaving 3 m walls at 3 mm).
+    _safe_set(settings, "length-unit", "METRE")
 
     # Pass 1: triangulate everything once, keep verts/faces, learn the actual
     # Z extent of the geometry. We cannot trust ``IfcBuildingStorey.Elevation``
@@ -211,10 +216,9 @@ def generate_plan_png(
         faces_flat = list(geom.faces)
         if not verts_flat or not faces_flat:
             continue
+        # Trust ifcopenshell — verts are already in metres.
         verts = [
-            (verts_flat[i] * unit_scale_to_m,
-             verts_flat[i + 1] * unit_scale_to_m,
-             verts_flat[i + 2] * unit_scale_to_m)
+            (verts_flat[i], verts_flat[i + 1], verts_flat[i + 2])
             for i in range(0, len(verts_flat), 3)
         ]
         element_geometry.append((verts, faces_flat))
@@ -228,10 +232,53 @@ def generate_plan_png(
             "No usable geometry found in this storey's elements."
         )
 
+    # Auto-detect the actual unit scale of the returned vertices. ifcopenshell
+    # 0.8.x normally returns metres, but older versions / some patched builds
+    # return raw IFC units (mm, inches, feet). Instead of trusting any one
+    # contract, we look at the geometry's diagonal: any real building floor
+    # diagonal sits between ~2 m and ~500 m. If we land outside that, the
+    # verts are in some other unit and we rescale.
+    xs_all = [v[0] for verts, _ in element_geometry for v in verts]
+    ys_all = [v[1] for verts, _ in element_geometry for v in verts]
+    raw_span_x = max(xs_all) - min(xs_all) if xs_all else 0.0
+    raw_span_y = max(ys_all) - min(ys_all) if ys_all else 0.0
+    raw_span_z = max(z_values) - min(z_values)
+    raw_diagonal = (raw_span_x ** 2 + raw_span_y ** 2 + raw_span_z ** 2) ** 0.5
+    scale_factor = _infer_to_metres_scale(raw_diagonal, unit_scale_to_m)
+    if scale_factor != 1.0:
+        logger.warning(
+            "Triangulated geometry diagonal %.3f looks non-metric — rescaling by %.6f "
+            "(IFC unit factor reported as %.6f).",
+            raw_diagonal,
+            scale_factor,
+            unit_scale_to_m,
+        )
+        element_geometry = [
+            (
+                [(x * scale_factor, y * scale_factor, z * scale_factor)
+                 for (x, y, z) in verts],
+                faces,
+            )
+            for verts, faces in element_geometry
+        ]
+        z_values = [z * scale_factor for z in z_values]
+
     # Use the geometry's own Z range — this is the physical base of the floor.
+    # The user-input cut height is *relative to this base* (0 m = the storey's
+    # own ground), so every storey works the same regardless of where its
+    # placement chain put it in world coordinates.
     geom_z_min = min(z_values)
     geom_z_max = max(z_values)
     storey_height_m = geom_z_max - geom_z_min
+    logger.info(
+        "Storey %s geometry after units: Z=[%.3f, %.3f] m (height %.2f m); "
+        "cut at %.3f m above the storey's own zero.",
+        storey_gid,
+        geom_z_min,
+        geom_z_max,
+        storey_height_m,
+        cut_height_m,
+    )
     cut_plane_z_m = geom_z_min + cut_height_m
     logger.info(
         "Storey geometry Z range %.3f – %.3f m (height %.2f m) → cut plane Z=%.3f m",
@@ -309,6 +356,72 @@ def generate_plan_png(
 
 
 # ── Internals ────────────────────────────────────────────────────────────
+
+
+def _infer_to_metres_scale(raw_diagonal: float, unit_scale_to_m: float) -> float:
+    """Infer the factor that turns the returned vertices into metres.
+
+    We look at the diagonal of the storey's geometry bounding box. A real
+    building floor diagonal sits roughly between 2 m and 500 m. If the
+    diagonal lands in that range the vertices are already metres and we
+    return ``1.0``. Otherwise we try a small set of plausible factors —
+    the file's own IFC length unit first, then mm and feet as fall-backs —
+    and pick whichever one lands the diagonal in the building-scale band.
+
+    This is intentionally robust to ifcopenshell version differences (0.7.x
+    returns IFC-unit verts, 0.8.x returns metres unless told otherwise) and
+    to weirdly-authored files where the declared length unit and the actual
+    coordinate values disagree.
+    """
+    if raw_diagonal <= 0:
+        return 1.0
+    if 1.5 <= raw_diagonal <= 500.0:
+        return 1.0
+    candidates: list[float] = []
+    if unit_scale_to_m and unit_scale_to_m != 1.0:
+        candidates.append(unit_scale_to_m)
+    # Common offenders: mm (0.001), cm (0.01), inches (0.0254), feet (0.3048).
+    candidates.extend([0.001, 0.01, 0.0254, 0.3048])
+    # Sub-1 m case (geometry suspiciously tiny) — try multiplying up too.
+    candidates.extend([1000.0, 100.0, 39.37, 3.281])
+    best = 1.0
+    best_score = float("inf")
+    for factor in candidates:
+        scaled = raw_diagonal * factor
+        if scaled <= 0:
+            continue
+        # Score by distance to the centre of the building-scale band (in log space
+        # so 100× and 0.01× count the same).
+        from math import log
+
+        score = abs(log(scaled) - log(20.0))
+        if 1.5 <= scaled <= 500.0 and score < best_score:
+            best_score = score
+            best = factor
+    return best
+
+
+def _safe_set(settings, key: str, value) -> None:
+    """Set an ifcopenshell.geom setting in a way that survives version drift.
+
+    Settings names changed between 0.7.x and 0.8.x (enum constants → strings,
+    snake_case → kebab-case). We try the new string-based key first, fall
+    back to the old enum-style attribute if the runtime ifcopenshell hasn't
+    learned the new name, and swallow the error if neither works — the
+    setting is non-critical for slicing (just nudges defaults).
+    """
+    try:
+        settings.set(key, value)
+        return
+    except Exception:
+        pass
+    attr_name = key.replace("-", "_").upper()
+    constant = getattr(settings, attr_name, None)
+    if constant is not None:
+        try:
+            settings.set(constant, value)
+        except Exception:
+            logger.debug("Could not set ifcopenshell.geom setting %s", key)
 
 
 def _resolve_ifc_path(storey: IFCSpatialElement) -> str:
