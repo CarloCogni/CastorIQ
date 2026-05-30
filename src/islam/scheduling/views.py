@@ -1419,6 +1419,58 @@ class AnomalyDetectionView(ProjectAccessMixin, View):
         return JsonResponse(result)
 
 
+class ScheduleReportView(ProjectAccessMixin, View):
+    """GET — download a PDF or DOCX schedule report.
+
+    Query params:
+        format   pdf | docx   (default: pdf)
+        sections comma-separated section keys (default: all)
+        type     executive    (default: executive; reserved for future weekly/daily)
+    """
+
+    def get(self, request, **kwargs: object):
+        from django.http import HttpResponse
+
+        from .services.report_generator import ALL_SECTIONS, generate_report
+
+        project     = self.get_project()
+        fmt         = request.GET.get("format", "pdf").lower()
+        report_type = request.GET.get("type", "executive")
+
+        raw_sections = request.GET.get("sections", "")
+        if raw_sections:
+            sections_list: list[str] | None = [
+                s.strip() for s in raw_sections.split(",") if s.strip() in ALL_SECTIONS
+            ]
+            if not sections_list:
+                sections_list = None
+        else:
+            sections_list = None
+
+        if fmt not in ("pdf", "docx"):
+            return HttpResponse("Invalid format. Use pdf or docx.", status=400)
+
+        try:
+            content, filename = generate_report(
+                str(project.pk),
+                fmt=fmt,
+                report_type=report_type,
+                sections=sections_list,
+            )
+        except Exception as exc:
+            logger.exception("Report generation failed for project %s", project.pk)
+            return HttpResponse(f"Report generation failed: {exc}", status=500)
+
+        content_type = (
+            "application/pdf"
+            if fmt == "pdf"
+            else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+        response = HttpResponse(content, content_type=content_type)
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
+
+
 class DecisionSummaryView(ProjectAccessMixin, View):
     """JSON — executive plain-language decision summary (three blocks)."""
 
