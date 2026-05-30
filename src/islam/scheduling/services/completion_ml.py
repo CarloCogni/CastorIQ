@@ -455,6 +455,7 @@ def run_completion_ml(project_id: str) -> dict:
                 {
                     "task_pk": str(t.pk),
                     "name": t.name,
+                    "activity_code": t.activity_code or "",
                     "trade": _CSI_NAMES.get(
                         _csi(t.activity_code or ""), f"Div {_csi(t.activity_code or '')}"
                     ),

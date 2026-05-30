@@ -84,9 +84,9 @@ def _build_block1(evm: dict, drc: dict, mc: dict) -> dict:
 
     spi = float(evm["spi"])
     cpi = float(evm["cpi"])
-    start    = date.fromisoformat(evm["project_start"])
+    start = date.fromisoformat(evm["project_start"])
     baseline = date.fromisoformat(evm["project_end"])
-    as_of    = date.fromisoformat(evm["as_of"])
+    as_of = date.fromisoformat(evm["as_of"])
 
     forecast = _forecast_finish(spi, start, baseline, as_of)
     months_late = round(_months_diff(forecast, baseline), 1)
@@ -126,7 +126,7 @@ def _build_block1(evm: dict, drc: dict, mc: dict) -> dict:
             name = top["name"]
             name_short = name[:55] + "…" if len(name) > 55 else name
             driver_str = (
-                f" Largest delay driver: \"{name_short}\""
+                f' Largest delay driver: "{name_short}"'
                 f" affecting {top['downstream_count']} downstream activities."
             )
 
@@ -206,7 +206,9 @@ def _build_block2(dcma: dict, anomaly: dict) -> dict:
     if fs_violations:
         error_parts.append(f"{fs_violations} FS violation{'s' if fs_violations != 1 else ''}")
     if unrealistic_baselines:
-        error_parts.append(f"{unrealistic_baselines} unrealistic baseline{'s' if unrealistic_baselines != 1 else ''}")
+        error_parts.append(
+            f"{unrealistic_baselines} unrealistic baseline{'s' if unrealistic_baselines != 1 else ''}"
+        )
     errors_str = ", ".join(error_parts) if error_parts else "none flagged"
 
     if logic_total == 0:
@@ -219,7 +221,7 @@ def _build_block2(dcma: dict, anomaly: dict) -> dict:
     worst_str = ""
     if worst_task:
         name_short = worst_task[:55] + "…" if len(worst_task) > 55 else worst_task
-        worst_str = f" Worst: \"{name_short}\"."
+        worst_str = f' Worst: "{name_short}".'
 
     sentence = f"Schedule quality {score}/100 ({q_label}). {errors_detail}{worst_str}"
 
@@ -234,19 +236,34 @@ def _build_block2(dcma: dict, anomaly: dict) -> dict:
     }
 
 
+def _display_name(name: str, activity_code: str) -> str:
+    """'Task name (ACTIVITY-CODE)' — code is the unique disambiguator."""
+    code = (activity_code or "").strip()
+    return f"{name} ({code})" if code else name
+
+
 def _build_block3(drc: dict, ml: dict) -> dict:
     """Priority block: top-5 items needing attention today.
 
     Sources: run_delay_rootcause() root_causes, run_completion_ml() watchlist.
-    Ranking: delay items by downstream_count (scaled), ML items by (1 - P(on-time)).
-    Deduplication: a task appearing in both lists is shown once (delay entry kept).
+
+    Slot reservation — guarantees both kinds surface:
+      Slots 1-3: top delay root-causes by downstream_count (already sorted desc).
+      Slots 4-5: top ML forward-risk items (near-critical first, lowest P first).
+    Dedup by task_pk: if a delay task also appears in ML watchlist it occupies
+    its delay slot only; the next-best ML item fills the gap.
+
+    Activity code is appended to every name so identical task names are
+    disambiguated by their unique identifier.
     """
-    items: list[dict] = []
     seen_pks: set[str] = set()
 
-    # ── Delay root causes ─────────────────────────────────────────────────
+    # ── Slots 1-3: delay root-causes ─────────────────────────────────────
+    delay_slots: list[dict] = []
     if drc.get("has_data"):
         for rc in drc.get("root_causes", []):
+            if len(delay_slots) >= 3:
+                break
             pk = rc["task_pk"]
             if pk in seen_pks:
                 continue
@@ -256,19 +273,23 @@ def _build_block3(drc: dict, ml: dict) -> dict:
             reason = f"drives {dc} downstream activit{'y' if dc == 1 else 'ies'}"
             if fv:
                 reason += f" ({fv}d own delay)"
-            items.append({
-                "task_pk": pk,
-                "name": rc["name"],
-                "reason": reason,
-                "metric": f"{dc} downstream",
-                "source": "delay",
-                "section_anchor": "evm-drc-section",
-                "_impact": min(dc * 2, 100),
-            })
+            delay_slots.append(
+                {
+                    "task_pk": pk,
+                    "name": _display_name(rc["name"], rc.get("activity_code", "")),
+                    "reason": reason,
+                    "metric": f"{dc} downstream",
+                    "source": "delay",
+                    "section_anchor": "evm-drc-section",
+                }
+            )
 
-    # ── ML watchlist ──────────────────────────────────────────────────────
+    # ── Slots 4-5: ML forward-risk (watchlist already: near-crit → prob asc) ─
+    ml_slots: list[dict] = []
     if ml.get("has_data"):
         for w in ml.get("watchlist", []):
+            if len(ml_slots) >= 2:
+                break
             pk = w["task_pk"]
             if pk in seen_pks:
                 continue
@@ -278,24 +299,18 @@ def _build_block3(drc: dict, ml: dict) -> dict:
             pct = round(prob * 100)
             float_str = f", float {tf}d" if tf < 9000 else ""
             reason = f"P(on-time) = {pct}%{float_str}"
-            items.append({
-                "task_pk": pk,
-                "name": w["name"],
-                "reason": reason,
-                "metric": f"P = {pct}%",
-                "source": "ml",
-                "section_anchor": "evm-ml-section",
-                "_impact": round((1 - prob) * 100),
-            })
+            ml_slots.append(
+                {
+                    "task_pk": pk,
+                    "name": _display_name(w["name"], w.get("activity_code", "")),
+                    "reason": reason,
+                    "metric": f"P = {pct}%",
+                    "source": "ml",
+                    "section_anchor": "evm-ml-section",
+                }
+            )
 
-    # Sort by impact descending, take top 5, strip internal field
-    items.sort(key=lambda x: -x["_impact"])
-    ranked = []
-    for i, item in enumerate(items[:5], start=1):
-        entry = {k: v for k, v in item.items() if k != "_impact"}
-        entry["rank"] = i
-        ranked.append(entry)
-
+    ranked = [{**item, "rank": i} for i, item in enumerate(delay_slots + ml_slots, start=1)]
     return {"items": ranked}
 
 
@@ -329,12 +344,12 @@ def compute_decision_summary(project_id: str) -> dict:
             logger.exception("Decision layer: %s failed for project %s", fn.__name__, project_id)
             return {"has_data": False}
 
-    evm     = _safe(compute_evm, project_id)
-    drc     = _safe(run_delay_rootcause, project_id)
-    mc      = _safe(compute_monte_carlo, project_id)
-    dcma    = _safe(run_dcma_check, project_id)
+    evm = _safe(compute_evm, project_id)
+    drc = _safe(run_delay_rootcause, project_id)
+    mc = _safe(compute_monte_carlo, project_id)
+    dcma = _safe(run_dcma_check, project_id)
     anomaly = _safe(detect_anomalies, project_id)
-    ml      = _safe(run_completion_ml, project_id)
+    ml = _safe(run_completion_ml, project_id)
 
     if not evm.get("has_data") and not dcma.get("has_data") and not ml.get("has_data"):
         return {"has_data": False}
