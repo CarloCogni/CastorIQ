@@ -344,10 +344,13 @@ def _build_context(
     drc = _load_delay_rootcause_summary(project_id) if project_id else None
     if drc:
         s = drc["summary"]
+        firm = s.get("root_causes_firm", s["root_causes"])
+        lower = s.get("root_causes_lower_confidence", 0)
+        rc_str = f"{firm} firm + {lower} lower-confidence" if lower else str(s["root_causes"])
         lines += [
             "",
             f"Delay Root-Cause Analysis  ({s['total_delayed']} delayed tasks, {s['traceable_pct']}% traceable)",
-            f"  Root causes:      {s['root_causes']} originating nodes",
+            f"  Root causes:      {rc_str} originating nodes",
             f"  Constraint-driven:{s['constraint_driven']} (hard date constraints, not network logic)",
             f"  Propagated:       {s['propagated']} downstream tasks",
             f"  Orphans:          {s['orphan']} (no logic links — untraceable)",
@@ -355,19 +358,28 @@ def _build_context(
         if s.get("top_cluster_label"):
             lines.append(
                 f"  Largest cluster:  {s['top_cluster_label']} — "
-                f"{s['top_cluster_tasks']} downstream tasks, {s['top_cluster_days']} delay-days"
+                f"{s['top_cluster_tasks']} downstream tasks affected"
             )
-        # Top 5 root causes
+        # Top 5 root causes — ranked by downstream_count (tasks affected), not chain-days
         top_rcs = drc.get("root_causes", [])[:5]
         if top_rcs:
-            lines.append("  Top root causes (by downstream impact):")
+            lines.append(
+                "  Top root causes (ranked by tasks affected;"
+                " chain-days = delay sitting downstream, not caused by this origin alone):"
+            )
             for rc in top_rcs:
-                cls = "CONSTRAINT" if rc["classification"] == "constraint" else "ROOT"
+                if rc["classification"] == "constraint":
+                    cls_tag = "CONSTRAINT"
+                elif rc.get("confidence") == "lower":
+                    cls_tag = "INFERRED"
+                else:
+                    cls_tag = "FIRM"
                 lines.append(
-                    f"    [{cls}] {rc['name'][:55]}"
+                    f"    [{cls_tag}] {rc['name'][:55]}"
                     f"  trade={rc['trade']}"
                     f"  type={rc['activity_type']}"
-                    f"  → {rc['downstream_count']} tasks / {rc['chain_delay_days']} chain-days"
+                    f"  → {rc['downstream_count']} tasks affected"
+                    f" / {rc['chain_delay_days']} chain-days downstream"
                 )
         # Top clusters by activity type
         type_clusters = drc.get("clusters", {}).get("by_activity_type", [])[:4]
