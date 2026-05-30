@@ -522,6 +522,66 @@
         </div>
     </div>
 
+    <!-- Completion Probability (ML) -->
+    <div id="evm-ml-section"
+         style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
+
+        <div class="d-flex align-items-center gap-2 mb-3">
+            <i class="bi bi-cpu" style="color:#3b82f6; font-size:1rem;"></i>
+            <span style="font-size:0.8rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:0.05em;">Completion Probability (ML)</span>
+            <button type="button" class="help-pill" data-bs-toggle="modal"
+                    data-bs-target="#evmHelpModal" title="How completion probability works"
+                    aria-label="How completion probability works">
+                <i class="bi bi-question-circle"></i>
+            </button>
+        </div>
+
+        <div id="ml-loading" class="d-flex align-items-center gap-2" style="font-size:0.78rem; color:var(--bs-secondary-color); padding:4px 0;">
+            <span class="spinner-border spinner-border-sm"></span> Training model…
+        </div>
+        <div id="ml-nodata" class="d-none" style="font-size:0.78rem; color:var(--bs-secondary-color); padding:4px 0;"></div>
+
+        <div id="ml-results" class="d-none">
+
+            <!-- Model quality banner (shown first so user sees trustworthiness) -->
+            <div id="ml-quality-banner" class="rounded-3 p-3 mb-3" style="background:var(--bs-secondary-bg); font-size:0.78rem;"></div>
+
+            <!-- Two-column: watchlist + feature importance -->
+            <div class="row g-3">
+
+                <!-- Watchlist -->
+                <div class="col-12 col-lg-7">
+                    <div style="font-size:0.67rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px;">
+                        At-Risk Watchlist — riskiest near-critical incomplete tasks
+                    </div>
+                    <table class="table table-sm mb-0" style="font-size:0.75rem;">
+                        <thead>
+                            <tr style="font-size:0.65rem; text-transform:uppercase; letter-spacing:.04em; color:var(--bs-secondary-color);">
+                                <th style="font-weight:600;">Task</th>
+                                <th style="font-weight:600; text-align:center; white-space:nowrap;">Float (wd)</th>
+                                <th style="font-weight:600; text-align:right; white-space:nowrap;">P(on-time)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ml-watchlist-rows"></tbody>
+                    </table>
+                </div>
+
+                <!-- Feature importance bars -->
+                <div class="col-12 col-lg-5">
+                    <div style="font-size:0.67rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px;">
+                        Feature Importance
+                    </div>
+                    <div id="ml-feat-bars"></div>
+                </div>
+
+            </div>
+
+            <!-- Footer -->
+            <div id="ml-footer" style="font-size:0.67rem; color:var(--bs-secondary-color); margin-top:10px; line-height:1.5;"></div>
+
+        </div>
+    </div>
+
     <!-- Project Controls Chat -->
     <div id="evm-chat-section"
          style="border:1px solid var(--bs-border-color); border-radius:8px; background:var(--bs-body-bg); overflow:hidden;">
@@ -2279,6 +2339,135 @@
     loadWbsHeatmap();
     loadDelayDistribution();
     loadTrendAnalysis();
+
+    /* ── Completion Probability (ML) ──────────────────────────────────── */
+    (function () {
+        const ML_URL = "{% url 'islam:completion_ml' project.pk %}";
+
+        function _esc(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+        function _probColor(p) {
+            if (p >= 0.70) return "#16a34a";
+            if (p >= 0.50) return "#d97706";
+            return "#dc2626";
+        }
+
+        function _renderBanner(mq) {
+            const el = document.getElementById("ml-quality-banner");
+            if (!el) return;
+            const lc = mq.auc_label === "good" ? "#16a34a" : mq.auc_label === "fair" ? "#d97706" : "#dc2626";
+            const warn = mq.auc < 0.65
+                ? `<div style="margin-top:6px;color:#dc2626;font-weight:600;">⚠ Model has limited predictive power on this schedule (AUC ${mq.auc}) — use probabilities directionally only.</div>`
+                : "";
+            const bal = mq.class_balance;
+            el.innerHTML =
+                `<div class="d-flex flex-wrap gap-4 align-items-center">
+                    <div>
+                        <div style="font-size:.67rem;color:var(--bs-secondary-color);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px;">Model AUC</div>
+                        <div style="font-size:1.4rem;font-weight:700;color:${lc};line-height:1;">${mq.auc}</div>
+                        <div style="font-size:.67rem;color:${lc};font-weight:600;">${mq.auc_label.toUpperCase()}</div>
+                    </div>
+                    <div>
+                        <div style="font-size:.67rem;color:var(--bs-secondary-color);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px;">Brier Score</div>
+                        <div style="font-size:1.1rem;font-weight:600;color:var(--bs-body-color);">${mq.brier}</div>
+                        <div style="font-size:.67rem;color:var(--bs-secondary-color);">(0 = perfect)</div>
+                    </div>
+                    <div>
+                        <div style="font-size:.67rem;color:var(--bs-secondary-color);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px;">Training</div>
+                        <div style="font-size:0.82rem;font-weight:600;">${mq.n_train.toLocaleString()} train / ${mq.n_test.toLocaleString()} test</div>
+                        <div style="font-size:.67rem;color:var(--bs-secondary-color);">${bal.on_time_pct}% on-time in history</div>
+                    </div>
+                    <div style="flex:1;min-width:160px;">
+                        <div style="font-size:.67rem;color:var(--bs-secondary-color);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Calibration (held-out set)</div>
+                        ${(mq.calibration||[]).map(c =>
+                            `<div style="display:flex;gap:6px;font-size:.67rem;margin-bottom:1px;">
+                                <span style="width:60px;color:var(--bs-secondary-color);">${_esc(c.range)}</span>
+                                <span style="width:30px;text-align:right;">${c.n}</span>
+                                <span>pred ${c.mean_pred.toFixed(2)} → actual <strong>${c.actual_rate.toFixed(2)}</strong></span>
+                            </div>`
+                        ).join("")}
+                    </div>
+                </div>${warn}
+                <div style="margin-top:8px;font-size:.67rem;color:var(--bs-secondary-color);">
+                    Trained on completed tasks only. Features: planned duration, CPM float, network depth, planned cost, floor location, historical trade on-time rate, stage, activity type.
+                    AUC and Brier are held-out test-set metrics — not training accuracy.
+                </div>`;
+        }
+
+        function _renderWatchlist(watchlist) {
+            const tbody = document.getElementById("ml-watchlist-rows");
+            if (!tbody) return;
+            tbody.innerHTML = "";
+            watchlist.forEach(w => {
+                const pc  = _probColor(w.probability_on_time);
+                const pct = Math.round(w.probability_on_time * 100);
+                const negFloat = w.total_float < 0;
+                const rowBg = negFloat ? "background:rgba(220,38,38,.04);" : "";
+                tbody.insertAdjacentHTML("beforeend", `
+                    <tr style="${rowBg}">
+                        <td>
+                            <div style="font-weight:500;">${_esc(w.name.length > 58 ? w.name.slice(0,58)+"…" : w.name)}</div>
+                            <div style="font-size:.65rem;color:var(--bs-secondary-color);">${_esc(w.trade)} · ${_esc(w.stage)} · due ${_esc(w.baseline_finish)}</div>
+                        </td>
+                        <td style="text-align:center;vertical-align:top;padding-top:7px;font-variant-numeric:tabular-nums;">
+                            <span style="font-size:.72rem;font-weight:600;color:${w.total_float < 0 ? "#dc2626" : w.total_float <= 14 ? "#d97706" : "var(--bs-secondary-color)"};">${w.total_float > 9000 ? "—" : w.total_float}</span>
+                        </td>
+                        <td style="text-align:right;vertical-align:top;padding-top:6px;">
+                            <span style="font-size:.78rem;font-weight:700;color:${pc};background:${pc}18;border:1px solid ${pc}40;border-radius:10px;padding:2px 8px;white-space:nowrap;">${pct}%</span>
+                        </td>
+                    </tr>`);
+            });
+        }
+
+        function _renderFeatBars(feats) {
+            const el = document.getElementById("ml-feat-bars");
+            if (!el) return;
+            const max = feats[0]?.importance || 1;
+            el.innerHTML = feats.slice(0, 10).map(f => {
+                const pct = Math.max(f.importance / max * 100, 0.5).toFixed(1);
+                const name = f.feature.replace(/^(csi_|stage_|type_)/, "");
+                return `<div class="d-flex align-items-center gap-2 mb-1" style="font-size:.71rem;">
+                    <div style="width:120px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--bs-body-color);">${_esc(name)}</div>
+                    <div style="flex:1;background:var(--bs-secondary-bg);border-radius:4px;height:11px;overflow:hidden;">
+                        <div style="width:${pct}%;height:100%;background:#6366f1;border-radius:4px;"></div>
+                    </div>
+                    <div style="width:38px;text-align:right;flex-shrink:0;color:var(--bs-secondary-color);">${f.importance.toFixed(3)}</div>
+                </div>`;
+            }).join("");
+        }
+
+        async function loadML() {
+            const loading = document.getElementById("ml-loading");
+            const nodata  = document.getElementById("ml-nodata");
+            const results = document.getElementById("ml-results");
+            try {
+                const resp = await fetch(ML_URL);
+                const data = await resp.json();
+                if (loading) loading.classList.add("d-none");
+                if (!data.has_data) {
+                    if (nodata) { nodata.classList.remove("d-none"); nodata.textContent = data.reason || "Insufficient data."; }
+                    return;
+                }
+                if (results) results.classList.remove("d-none");
+                _renderBanner(data.model_quality);
+                _renderWatchlist(data.watchlist || []);
+                _renderFeatBars(data.feature_importance || []);
+                const footer = document.getElementById("ml-footer");
+                if (footer) {
+                    const mq = data.model_quality;
+                    footer.innerHTML =
+                        `Predictions cover ${mq.n_incomplete.toLocaleString()} incomplete tasks. `
+                        + `Watchlist = lowest P(on-time) among near-critical tasks (float ≤ 44 wd). `
+                        + `<em>Probabilities quoted alongside AUC=${mq.auc} — interpret with that confidence level.</em>`;
+                }
+            } catch (_e) {
+                if (loading) loading.classList.add("d-none");
+                if (nodata) { nodata.classList.remove("d-none"); nodata.textContent = "Failed to load ML model."; }
+            }
+        }
+
+        loadML();
+    }());
 
     /* ── Project Controls Chat ─────────────────────────────────────────── */
     (function () {

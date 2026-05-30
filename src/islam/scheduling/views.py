@@ -1327,6 +1327,21 @@ class TrendAnalysisView(ProjectAccessMixin, View):
         return JsonResponse(result)
 
 
+class CompletionMLView(ProjectAccessMixin, View):
+    """JSON — Completion Probability (ML): logistic regression on completed tasks."""
+
+    def get(self, request, **kwargs: object) -> JsonResponse:
+        from .services.completion_ml import run_completion_ml
+
+        project = self.get_project()
+        try:
+            result = run_completion_ml(str(project.pk))
+        except Exception as exc:
+            logger.exception("Completion ML failed for project %s", project.pk)
+            return JsonResponse({"error": str(exc)}, status=500)
+        return JsonResponse(result)
+
+
 class TimeLocationView(ProjectAccessMixin, View):
     """JSON — Time-Location (flowline) chart data: floor-located tasks only."""
 
