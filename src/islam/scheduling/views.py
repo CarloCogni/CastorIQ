@@ -1404,6 +1404,21 @@ class DCMACheckView(ProjectAccessMixin, View):
         return JsonResponse(result)
 
 
+class AnomalyDetectionView(ProjectAccessMixin, View):
+    """JSON — single-snapshot anomaly detection: stall, cross-sectional outliers, logic errors."""
+
+    def get(self, request, **kwargs: object) -> JsonResponse:
+        from .services.anomaly_detect import detect_anomalies
+
+        project = self.get_project()
+        try:
+            result = detect_anomalies(str(project.pk))
+        except Exception as exc:
+            logger.exception("Anomaly detection failed for project %s", project.pk)
+            return JsonResponse({"error": str(exc)}, status=500)
+        return JsonResponse(result)
+
+
 class LookaheadDataView(ProjectAccessMixin, View):
     """JSON — per-week task buckets (starting/in_progress/finishing) for the Look-ahead tab."""
 
