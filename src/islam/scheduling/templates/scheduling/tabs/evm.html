@@ -444,8 +444,9 @@
                 <div id="tl-tooltip"
                      style="position:absolute; pointer-events:none; display:none;
                             background:var(--bs-body-bg); border:1px solid var(--bs-border-color);
-                            border-radius:6px; padding:6px 10px; font-size:0.72rem;
-                            color:var(--bs-body-color); max-width:260px; z-index:10; line-height:1.45;"></div>
+                            border-radius:6px; padding:8px 11px; font-size:0.74rem;
+                            color:var(--bs-body-color); max-width:280px; z-index:10; line-height:1.5;
+                            box-shadow:0 2px 10px rgba(0,0,0,.16);"></div>
             </div>
 
             <!-- Caption (scope + resolution notes) -->
@@ -996,60 +997,64 @@
             wrap.appendChild(tooltip);
         }
 
-        canvas.addEventListener("mousemove", function (e) {
-            const rect = canvas.getBoundingClientRect();
-            const mx = e.clientX - rect.left;
+        if (!canvas._interactAttached) {
+            canvas._interactAttached = true;
 
-            /* Find nearest PV point by x distance */
-            let bestIdx = 0, bestDist = Infinity;
-            pvPts.forEach((p, i) => {
-                const dist = Math.abs(xOf(p.date) - mx);
-                if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+            canvas.addEventListener("mousemove", function (e) {
+                const rect = canvas.getBoundingClientRect();
+                const mx = e.clientX - rect.left;
+
+                /* Find nearest PV point by x distance */
+                let bestIdx = 0, bestDist = Infinity;
+                pvPts.forEach((p, i) => {
+                    const dist = Math.abs(xOf(p.date) - mx);
+                    if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+                });
+
+                if (mx < PAD.left || mx > PAD.left + cW) {
+                    tooltip.style.display = "none";
+                    drawChart(null);
+                    return;
+                }
+
+                drawChart(bestIdx);
+
+                const hp   = pvPts[bestIdx];
+                const evP  = evByDate[hp.date];
+                const acP  = acByDate[hp.date];
+                const dot  = c => `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${c};margin-right:4px;flex-shrink:0;"></span>`;
+                const row  = (color, label, val) =>
+                    `<div style="display:flex;align-items:center;gap:2px;margin-bottom:2px;">${dot(color)}<span>${label}</span><span style="margin-left:auto;font-weight:600;padding-left:8px;">${val}</span></div>`;
+
+                let html = `<div style="font-weight:600;margin-bottom:5px;font-size:0.76rem;">${_fmtDateShort(hp.date)}</div>`;
+                html += row("#3b82f6", "PV", hp.pct.toFixed(1) + "%");
+                if (evP != null) html += row("#16a34a", "EV", evP.toFixed(1) + "%");
+                if (acP != null) html += row("#f59e0b", "AC", acP.toFixed(1) + "%");
+
+                if (d.use_cost && evP != null) {
+                    const sv = (evP - hp.pct) / 100 * d.bac;
+                    const svSign = sv >= 0 ? "+" : "";
+                    const svCol  = sv >= 0 ? "#16a34a" : "#dc2626";
+                    html += `<div style="border-top:1px solid var(--bs-border-color);margin-top:5px;padding-top:4px;font-size:0.7rem;">SV <span style="color:${svCol};font-weight:600;">${svSign}${_fmt(sv, true)}</span></div>`;
+                }
+
+                tooltip.innerHTML = html;
+                tooltip.style.display = "block";
+
+                /* Position: right of crosshair; flip left if near right edge */
+                const hx = xOf(hp.date);
+                const tw = tooltip.offsetWidth || 140;
+                let left = hx + 12;
+                if (left + tw > W - 4) left = hx - tw - 12;
+                tooltip.style.left = Math.max(PAD.left, left) + "px";
+                tooltip.style.top  = (PAD.top + 2) + "px";
             });
 
-            if (mx < PAD.left || mx > PAD.left + cW) {
+            canvas.addEventListener("mouseleave", function () {
                 tooltip.style.display = "none";
                 drawChart(null);
-                return;
-            }
-
-            drawChart(bestIdx);
-
-            const hp   = pvPts[bestIdx];
-            const evP  = evByDate[hp.date];
-            const acP  = acByDate[hp.date];
-            const dot  = c => `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${c};margin-right:4px;flex-shrink:0;"></span>`;
-            const row  = (color, label, val) =>
-                `<div style="display:flex;align-items:center;gap:2px;margin-bottom:2px;">${dot(color)}<span>${label}</span><span style="margin-left:auto;font-weight:600;padding-left:8px;">${val}</span></div>`;
-
-            let html = `<div style="font-weight:600;margin-bottom:5px;font-size:0.76rem;">${_fmtDateShort(hp.date)}</div>`;
-            html += row("#3b82f6", "PV", hp.pct.toFixed(1) + "%");
-            if (evP != null) html += row("#16a34a", "EV", evP.toFixed(1) + "%");
-            if (acP != null) html += row("#f59e0b", "AC", acP.toFixed(1) + "%");
-
-            if (d.use_cost && evP != null) {
-                const sv = (evP - hp.pct) / 100 * d.bac;
-                const svSign = sv >= 0 ? "+" : "";
-                const svCol  = sv >= 0 ? "#16a34a" : "#dc2626";
-                html += `<div style="border-top:1px solid var(--bs-border-color);margin-top:5px;padding-top:4px;font-size:0.7rem;">SV <span style="color:${svCol};font-weight:600;">${svSign}${_fmt(sv, true)}</span></div>`;
-            }
-
-            tooltip.innerHTML = html;
-            tooltip.style.display = "block";
-
-            /* Position: right of crosshair; flip left if near right edge */
-            const hx = xOf(hp.date);
-            const tw = tooltip.offsetWidth || 140;
-            let left = hx + 12;
-            if (left + tw > W - 4) left = hx - tw - 12;
-            tooltip.style.left = Math.max(PAD.left, left) + "px";
-            tooltip.style.top  = (PAD.top + 2) + "px";
-        });
-
-        canvas.addEventListener("mouseleave", function () {
-            tooltip.style.display = "none";
-            drawChart(null);
-        });
+            });
+        }
 
         /* Basis note */
         const _basisLabels = {
@@ -1237,7 +1242,8 @@
 
             return `<div class="col-6 col-sm-4 col-lg-2">
                 <div class="rounded-3 p-3 h-100"
-                     style="background:${s.color}18; border:1px solid ${s.color}40; transition:box-shadow .15s;"
+                     style="background:${s.color}18; border:1px solid ${s.color}40; transition:box-shadow .15s; cursor:default;"
+                     title="${s.label} — SPI: ${spiLabel} · Planned: ${s.planned_pct}% · Earned: ${s.earned_pct}% · ${s.completed}/${s.task_count} complete"
                      onmouseenter="this.style.boxShadow='0 0 0 2px ${s.color}60'"
                      onmouseleave="this.style.boxShadow=''">
                     <div style="font-size:0.68rem; font-weight:700; text-transform:uppercase;
@@ -1299,14 +1305,15 @@
 
         barsEl.innerHTML = data.buckets.map(b => {
             const barW  = Math.round(b.count / maxCount * 100);
-            const tip   = b.sample_tasks.length
+            const samples = b.sample_tasks.length
                 ? b.sample_tasks.join(", ") + (b.count > 3 ? ` +${b.count - 3} more` : "")
                 : "";
+            const tip = `${b.label}: ${b.count} task${b.count !== 1 ? "s" : ""} (${b.count > 0 ? b.pct + "%" : "0%"})${samples ? " — " + samples : ""}`;
             const labelColor = b.count > 0 ? b.color : "var(--bs-secondary-color)";
             const countColor = b.count > 0 ? b.color : "var(--bs-secondary-color)";
 
             return `<div class="d-flex align-items-center gap-2 mb-2"
-                        ${tip ? `title="${tip.replace(/"/g, "&quot;")}"` : ""}>
+                        title="${tip.replace(/"/g, "&quot;")}">
                 <div style="width:72px; flex-shrink:0; font-size:0.72rem;
                             text-align:right; color:${labelColor}; font-weight:${b.count > 0 ? 600 : 400};">
                     ${b.label}
@@ -1429,16 +1436,11 @@
             const barGap  = cW / n;
             const barW    = Math.max(barGap - 3, 2);
 
-            /* Bars */
-            histogram.forEach((b, i) => {
-                const bh = (b.pct / maxPct) * cH;
-                const x  = PAD.left + i * barGap + (barGap - barW) / 2;
-                const y  = PAD.top  + cH - bh;
-                ctx.fillStyle = "#3b82f6";
-                ctx.globalAlpha = 0.75;
-                ctx.fillRect(x, y, barW, bh);
-                ctx.globalAlpha = 1;
-            });
+            /* Pre-compute cumulative percentiles */
+            const cumPct = histogram.reduce((acc, b, i) => {
+                acc.push((i === 0 ? 0 : acc[i - 1]) + b.pct);
+                return acc;
+            }, []);
 
             /* Convert ISO date to fractional bar position */
             function isoToX(isoDate) {
@@ -1465,27 +1467,109 @@
                 ctx.fillText(label, x, PAD.top - 5);
                 ctx.restore();
             }
-            pLine(p50,      "#16a34a", "P50");
-            pLine(p80,      "#d97706", "P80");
-            pLine(p95,      "#dc2626", "P95");
-            pLine(baseline, "#6b7280", "BL");
 
-            /* X-axis labels */
-            const secColor = getComputedStyle(document.documentElement).getPropertyValue("--bs-secondary-color") || "#6c757d";
-            ctx.fillStyle = secColor;
-            ctx.font = "10px system-ui";
-            ctx.textAlign = "center";
-            const step = Math.max(1, Math.floor(n / 5));
-            histogram.forEach((b, i) => {
-                if (i % step === 0 || i === n - 1) {
-                    ctx.fillText(b.label, PAD.left + i * barGap + barGap / 2, PAD.top + cH + 14);
-                }
-            });
+            /* ── Core draw ── */
+            function _draw(hoverIdx) {
+                ctx.clearRect(0, 0, W, H);
 
-            /* Y-axis: 0% and max% labels */
-            ctx.textAlign = "right";
-            ctx.fillText("0%", PAD.left - 4, PAD.top + cH);
-            ctx.fillText(Math.round(maxPct) + "%", PAD.left - 4, PAD.top + 8);
+                /* Bars */
+                histogram.forEach((b, i) => {
+                    const bh = (b.pct / maxPct) * cH;
+                    const x  = PAD.left + i * barGap + (barGap - barW) / 2;
+                    const y  = PAD.top  + cH - bh;
+                    ctx.fillStyle = i === hoverIdx ? "#60a5fa" : "#3b82f6";
+                    ctx.globalAlpha = i === hoverIdx ? 1 : 0.75;
+                    ctx.fillRect(x, y, barW, bh);
+                    ctx.globalAlpha = 1;
+                });
+
+                pLine(p50,      "#16a34a", "P50");
+                pLine(p80,      "#d97706", "P80");
+                pLine(p95,      "#dc2626", "P95");
+                pLine(baseline, "#6b7280", "BL");
+
+                /* X-axis labels */
+                const secColor = getComputedStyle(document.documentElement).getPropertyValue("--bs-secondary-color") || "#6c757d";
+                ctx.fillStyle = secColor;
+                ctx.font = "10px system-ui";
+                ctx.textAlign = "center";
+                const step = Math.max(1, Math.floor(n / 5));
+                histogram.forEach((b, i) => {
+                    if (i % step === 0 || i === n - 1) {
+                        ctx.fillText(b.label, PAD.left + i * barGap + barGap / 2, PAD.top + cH + 14);
+                    }
+                });
+
+                /* Y-axis: 0% and max% labels */
+                ctx.textAlign = "right";
+                ctx.fillStyle = secColor;
+                ctx.font = "10px system-ui";
+                ctx.fillText("0%", PAD.left - 4, PAD.top + cH);
+                ctx.fillText(Math.round(maxPct) + "%", PAD.left - 4, PAD.top + 8);
+            }
+
+            _draw(null);
+
+            /* ── Tooltip overlay ── */
+            let mcTip = document.getElementById("mc-crosshair-tooltip");
+            if (!mcTip) {
+                mcTip = document.createElement("div");
+                mcTip.id = "mc-crosshair-tooltip";
+                mcTip.style.cssText =
+                    "position:absolute;pointer-events:none;display:none;" +
+                    "background:var(--bs-body-bg);border:1px solid var(--bs-border-color);" +
+                    "border-radius:6px;padding:8px 11px;font-size:0.74rem;" +
+                    "box-shadow:0 2px 10px rgba(0,0,0,.16);z-index:10;min-width:150px;" +
+                    "color:var(--bs-body-color);";
+                wrap.appendChild(mcTip);
+            }
+
+            if (!canvas._interactAttached) {
+                canvas._interactAttached = true;
+
+                canvas.addEventListener("mousemove", function(e) {
+                    const rect = canvas.getBoundingClientRect();
+                    const mx = e.clientX - rect.left;
+                    if (mx < PAD.left || mx > PAD.left + cW) {
+                        mcTip.style.display = "none";
+                        _draw(null);
+                        return;
+                    }
+                    /* Find nearest bar by center x */
+                    let bestIdx = 0, bestDist = Infinity;
+                    histogram.forEach((_, i) => {
+                        const bx = PAD.left + i * barGap + barGap / 2;
+                        const dist = Math.abs(bx - mx);
+                        if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+                    });
+                    _draw(bestIdx);
+                    const b   = histogram[bestIdx];
+                    const cum = cumPct[bestIdx];
+                    const dot = c => `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${c};margin-right:4px;flex-shrink:0;"></span>`;
+                    const row = (c, lbl, val) =>
+                        `<div style="display:flex;align-items:center;gap:2px;margin-bottom:2px;">${dot(c)}<span>${lbl}</span><span style="margin-left:auto;font-weight:600;padding-left:8px;">${val}</span></div>`;
+                    const nextDate = histogram[bestIdx + 1] ? histogram[bestIdx + 1].label : "—";
+                    let html = `<div style="font-weight:600;margin-bottom:5px;font-size:0.76rem;">${b.label}${histogram[bestIdx + 1] ? " – " + nextDate : ""}</div>`;
+                    html += row("#3b82f6", "Probability", b.pct.toFixed(1) + "%");
+                    if (b.count != null) html += row("#6366f1", "Simulations", b.count.toLocaleString());
+                    html += `<div style="border-top:1px solid var(--bs-border-color);margin-top:5px;padding-top:4px;font-size:0.7rem;">`;
+                    html += row("#16a34a", "Cumulative", cum.toFixed(1) + "%");
+                    html += `</div>`;
+                    mcTip.innerHTML = html;
+                    mcTip.style.display = "block";
+                    const bx = PAD.left + bestIdx * barGap + barGap / 2;
+                    const tw = mcTip.offsetWidth || 160;
+                    let left = bx + 12;
+                    if (left + tw > W - 4) left = bx - tw - 12;
+                    mcTip.style.left = Math.max(PAD.left, left) + "px";
+                    mcTip.style.top  = (PAD.top + 2) + "px";
+                });
+
+                canvas.addEventListener("mouseleave", function() {
+                    mcTip.style.display = "none";
+                    _draw(null);
+                });
+            }
         }
     }());
 
@@ -1609,6 +1693,60 @@
         ctx.arc(xOf(values.length - 1), yOf(lastV), 4, 0, Math.PI * 2);
         ctx.fill(); ctx.stroke();
         ctx.restore();
+
+        /* ── Hover tooltip (guarded — _drawSparkline can be called multiple times) ── */
+        if (!canvas._interactAttached) {
+            canvas._interactAttached = true;
+
+            let spkTip = canvas.parentElement.querySelector(".spk-tooltip");
+            if (!spkTip) {
+                spkTip = document.createElement("div");
+                spkTip.className = "spk-tooltip";
+                spkTip.style.cssText =
+                    "position:absolute;pointer-events:none;display:none;" +
+                    "background:var(--bs-body-bg);border:1px solid var(--bs-border-color);" +
+                    "border-radius:6px;padding:8px 11px;font-size:0.74rem;" +
+                    "box-shadow:0 2px 10px rgba(0,0,0,.16);z-index:10;min-width:120px;" +
+                    "color:var(--bs-body-color);white-space:nowrap;";
+                canvas.parentElement.appendChild(spkTip);
+            }
+
+            canvas.addEventListener("mousemove", function(e) {
+                const rect = canvas.getBoundingClientRect();
+                const mx = e.clientX - rect.left;
+                if (mx < PAD.left || mx > PAD.left + cW) {
+                    spkTip.style.display = "none";
+                    return;
+                }
+                let bestIdx = 0, bestDist = Infinity;
+                values.forEach((_, i) => {
+                    const dist = Math.abs(xOf(i) - mx);
+                    if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+                });
+                const val  = values[bestIdx];
+                const pt   = series[bestIdx];
+                const dateStr = pt.date || pt.week_end || ("Week " + (bestIdx + 1));
+                const valColor = val >= 1.0 ? "#16a34a" : "#dc2626";
+                const label = valueKey.toUpperCase();
+                spkTip.innerHTML =
+                    `<div style="font-weight:600;margin-bottom:4px;font-size:0.76rem;">${dateStr}</div>` +
+                    `<div style="display:flex;align-items:center;gap:2px;">` +
+                    `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${valColor};margin-right:4px;flex-shrink:0;"></span>` +
+                    `<span>${label}</span>` +
+                    `<span style="margin-left:auto;font-weight:600;padding-left:8px;color:${valColor};">${val.toFixed(3)}</span>` +
+                    `</div>`;
+                spkTip.style.display = "block";
+                const tw = spkTip.offsetWidth || 120;
+                let left = xOf(bestIdx) + 8;
+                if (left + tw > W - 4) left = xOf(bestIdx) - tw - 8;
+                spkTip.style.left = Math.max(0, left) + "px";
+                spkTip.style.top  = "2px";
+            });
+
+            canvas.addEventListener("mouseleave", function() {
+                spkTip.style.display = "none";
+            });
+        }
     }
 
     function _renderTrendBadge(elId, trend) {
@@ -1777,7 +1915,8 @@
             const max = maxVal || Math.max(...groups.map(g => g.downstream_tasks), 1);
             el.innerHTML = groups.slice(0, 8).map(g => {
                 const pct = Math.max(g.downstream_tasks / max * 100, 0.5);
-                const tip = g.examples.slice(0,2).map(e => _esc(e)).join(" · ");
+                const examples = g.examples.slice(0,2).map(e => _esc(e)).join(" \xb7 ");
+                const tip = _esc(g.label) + ": " + g.downstream_tasks.toLocaleString() + " downstream tasks" + (examples ? " — " + examples : "");
                 return `<div class="d-flex align-items-center gap-2 mb-1" style="font-size:.72rem;" title="${tip}">
                     <div style="width:130px;flex-shrink:0;color:var(--bs-body-color);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_esc(g.label)}</div>
                     <div style="flex:1;background:var(--bs-secondary-bg);border-radius:4px;height:12px;overflow:hidden;">
@@ -1899,33 +2038,6 @@
 
             const peakMo = metrics.peak_month;
 
-            // Draw bars
-            visible.forEach((m, i) => {
-                const x = barX(i);
-                const isPeak = m.month === peakMo;
-
-                const pairs = [
-                    { v: m.planned,  color: isPeak ? "rgba(59,130,246,.85)" : "rgba(59,130,246,.55)" },
-                    { v: m.actual,   color: "rgba(245,158,11,.75)" },
-                    { v: m.forecast, color: "rgba(20,184,166,.65)" },
-                ];
-                const segW = Math.max(Math.floor(barW / 3), 1);
-
-                pairs.forEach(({ v, color }, si) => {
-                    if (v <= 0) return;
-                    const bh = Math.max(v * barScale, 1);
-                    ctx.fillStyle = color;
-                    ctx.fillRect(x + si * segW, barY(v), segW, bh);
-                });
-
-                // Peak marker
-                if (isPeak) {
-                    ctx.fillStyle = "rgba(139,92,246,.18)";
-                    ctx.fillRect(x, PAD.top, barW, ch);
-                }
-            });
-
-            // Draw cumulative lines
             function _drawLine(key, color, dashed) {
                 ctx.beginPath();
                 ctx.strokeStyle = color;
@@ -1941,34 +2053,155 @@
                 ctx.stroke();
                 ctx.setLineDash([]);
             }
-            _drawLine("cumulative_planned", "#3b82f6", true);
-            _drawLine("cumulative_progress", "#16a34a", false);
 
-            // X-axis labels — show every N months
-            const labelEvery = Math.ceil(n / 12);
-            ctx.fillStyle = "rgba(107,114,128,.7)";
-            ctx.font = `${Math.max(9, Math.min(11, Math.floor(cw / n * 1.2)))}px system-ui`;
-            ctx.textAlign = "center";
-            visible.forEach((m, i) => {
-                if (i % labelEvery !== 0 && i !== n - 1) return;
-                const parts = m.month.split("-");
-                const lbl = parts[1] + "/" + parts[0].slice(2);
-                ctx.fillText(lbl, barX(i) + barW / 2, PAD.top + ch + 14);
-            });
+            /* ── Core draw — called on initial render + every hover update ── */
+            function _draw(hoverIdx) {
+                ctx.clearRect(0, 0, W, H);
 
-            // Y-axis labels (left = bar scale)
-            ctx.textAlign = "right";
-            ctx.font = "9px system-ui";
-            for (let t = 0; t <= 4; t++) {
-                const v = (maxBar / 4) * t;
-                const y = barY(v);
-                ctx.fillText(_fmtCost(v), PAD.left - 4, y + 3);
-                ctx.strokeStyle = "rgba(107,114,128,.1)";
-                ctx.lineWidth = 0.5;
-                ctx.beginPath();
-                ctx.moveTo(PAD.left, y);
-                ctx.lineTo(PAD.left + cw, y);
-                ctx.stroke();
+                // Draw bars
+                visible.forEach((m, i) => {
+                    const x = barX(i);
+                    const isPeak = m.month === peakMo;
+                    const isHover = i === hoverIdx;
+
+                    const pairs = [
+                        { v: m.planned,  color: isPeak || isHover ? "rgba(59,130,246,.90)" : "rgba(59,130,246,.55)" },
+                        { v: m.actual,   color: isHover ? "rgba(245,158,11,.95)" : "rgba(245,158,11,.75)" },
+                        { v: m.forecast, color: isHover ? "rgba(20,184,166,.90)" : "rgba(20,184,166,.65)" },
+                    ];
+                    const segW = Math.max(Math.floor(barW / 3), 1);
+
+                    pairs.forEach(({ v, color }, si) => {
+                        if (v <= 0) return;
+                        const bh = Math.max(v * barScale, 1);
+                        ctx.fillStyle = color;
+                        ctx.fillRect(x + si * segW, barY(v), segW, bh);
+                    });
+
+                    // Peak marker
+                    if (isPeak) {
+                        ctx.fillStyle = "rgba(139,92,246,.18)";
+                        ctx.fillRect(x, PAD.top, barW, ch);
+                    }
+                });
+
+                _drawLine("cumulative_planned", "#3b82f6", true);
+                _drawLine("cumulative_progress", "#16a34a", false);
+
+                // X-axis labels
+                const labelEvery = Math.ceil(n / 12);
+                ctx.fillStyle = "rgba(107,114,128,.7)";
+                ctx.font = `${Math.max(9, Math.min(11, Math.floor(cw / n * 1.2)))}px system-ui`;
+                ctx.textAlign = "center";
+                visible.forEach((m, i) => {
+                    if (i % labelEvery !== 0 && i !== n - 1) return;
+                    const parts = m.month.split("-");
+                    ctx.fillText(parts[1] + "/" + parts[0].slice(2), barX(i) + barW / 2, PAD.top + ch + 14);
+                });
+
+                // Y-axis labels + grid
+                ctx.textAlign = "right";
+                ctx.font = "9px system-ui";
+                for (let t = 0; t <= 4; t++) {
+                    const v = (maxBar / 4) * t;
+                    const y = barY(v);
+                    ctx.fillStyle = "rgba(107,114,128,.7)";
+                    ctx.fillText(_fmtCost(v), PAD.left - 4, y + 3);
+                    ctx.strokeStyle = "rgba(107,114,128,.1)";
+                    ctx.lineWidth = 0.5;
+                    ctx.beginPath();
+                    ctx.moveTo(PAD.left, y);
+                    ctx.lineTo(PAD.left + cw, y);
+                    ctx.stroke();
+                }
+
+                // Crosshair + cumulative-line dots at hover position
+                if (hoverIdx != null) {
+                    const hx = barX(hoverIdx) + barW / 2;
+                    ctx.save();
+                    ctx.strokeStyle = "rgba(120,120,120,0.55)";
+                    ctx.lineWidth = 1;
+                    ctx.setLineDash([4, 3]);
+                    ctx.beginPath(); ctx.moveTo(hx, PAD.top); ctx.lineTo(hx, PAD.top + ch); ctx.stroke();
+                    ctx.restore();
+                    const m = visible[hoverIdx];
+                    [
+                        { key: "cumulative_planned",  color: "#3b82f6" },
+                        { key: "cumulative_progress", color: "#16a34a" },
+                    ].forEach(({ key, color }) => {
+                        const y = cumY(m[key]);
+                        ctx.save();
+                        ctx.fillStyle = color;
+                        ctx.strokeStyle = "var(--bs-body-bg)";
+                        ctx.lineWidth = 1.5;
+                        ctx.beginPath();
+                        ctx.arc(hx, y, 4, 0, Math.PI * 2);
+                        ctx.fill(); ctx.stroke();
+                        ctx.restore();
+                    });
+                }
+            }
+
+            _draw(null);
+
+            /* ── Tooltip overlay ── */
+            let cfTip = document.getElementById("cf-crosshair-tooltip");
+            if (!cfTip) {
+                cfTip = document.createElement("div");
+                cfTip.id = "cf-crosshair-tooltip";
+                cfTip.style.cssText =
+                    "position:absolute;pointer-events:none;display:none;" +
+                    "background:var(--bs-body-bg);border:1px solid var(--bs-border-color);" +
+                    "border-radius:6px;padding:8px 11px;font-size:0.74rem;" +
+                    "box-shadow:0 2px 10px rgba(0,0,0,.16);z-index:10;min-width:160px;" +
+                    "color:var(--bs-body-color);";
+                canvas.parentElement.appendChild(cfTip);
+            }
+
+            if (!canvas._interactAttached) {
+                canvas._interactAttached = true;
+
+                canvas.addEventListener("mousemove", function(e) {
+                    const rect = canvas.getBoundingClientRect();
+                    const mx = e.clientX - rect.left;
+                    if (mx < PAD.left || mx > PAD.left + cw) {
+                        cfTip.style.display = "none";
+                        _draw(null);
+                        return;
+                    }
+                    let bestIdx = 0, bestDist = Infinity;
+                    visible.forEach((_, i) => {
+                        const dist = Math.abs(barX(i) + barW / 2 - mx);
+                        if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+                    });
+                    _draw(bestIdx);
+                    const m = visible[bestIdx];
+                    const dot = c => `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${c};margin-right:4px;flex-shrink:0;"></span>`;
+                    const row = (c, lbl, val) =>
+                        `<div style="display:flex;align-items:center;gap:2px;margin-bottom:2px;">${dot(c)}<span>${lbl}</span><span style="margin-left:auto;font-weight:600;padding-left:8px;">${val}</span></div>`;
+                    const parts = m.month.split("-");
+                    let html = `<div style="font-weight:600;margin-bottom:5px;font-size:0.76rem;">${parts[1]}/${parts[0].slice(2)}</div>`;
+                    if (m.planned  > 0) html += row("rgba(59,130,246,.8)",  "Planned",  _fmtCost(m.planned));
+                    if (m.actual   > 0) html += row("rgba(245,158,11,.8)",  "Actual",   _fmtCost(m.actual));
+                    if (m.forecast > 0) html += row("rgba(20,184,166,.8)",  "Forecast", _fmtCost(m.forecast));
+                    html += `<div style="border-top:1px solid var(--bs-border-color);margin-top:5px;padding-top:4px;font-size:0.7rem;">`;
+                    html += row("#3b82f6", "Cum. Planned",  _fmtCost(m.cumulative_planned));
+                    html += row("#16a34a", "Cum. Progress", _fmtCost(m.cumulative_progress));
+                    html += `</div>`;
+                    cfTip.innerHTML = html;
+                    cfTip.style.display = "block";
+                    const hx = barX(bestIdx) + barW / 2;
+                    const tw = cfTip.offsetWidth || 170;
+                    let left = hx + 12;
+                    if (left + tw > W - 4) left = hx - tw - 12;
+                    cfTip.style.left = Math.max(PAD.left, left) + "px";
+                    cfTip.style.top  = (PAD.top + 2) + "px";
+                });
+
+                canvas.addEventListener("mouseleave", function() {
+                    cfTip.style.display = "none";
+                    _draw(null);
+                });
             }
         }
 
@@ -2228,16 +2461,24 @@
                 }
                 if (found) {
                     const trade = (d.trades||[]).find(t => t.key === found.k);
-                    tooltip.style.display = "block";
-                    tooltip.style.left = (e.clientX - rect.left + 12) + "px";
-                    tooltip.style.top  = (e.clientY - rect.top  - 10) + "px";
+                    const floorLabel = _esc(d.floors.find(f=>f.ordinal===found.f)?.label||found.tok);
+                    const dot = c => `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${c};margin-right:4px;flex-shrink:0;vertical-align:middle;"></span>`;
+                    const tradeColor = (d.trades||[]).find(t=>t.key===found.k)?.color || "#6b7280";
                     tooltip.innerHTML =
-                        `<strong>${_esc(found.nm)}</strong><br>`
-                        + `Floor: ${_esc(d.floors.find(f=>f.ordinal===found.f)?.label||found.tok)}<br>`
-                        + `Trade: ${_esc(trade?.name||found.k)}<br>`
-                        + `Planned: ${found.ps} → ${found.pe}<br>`
-                        + (found.as_ ? `Actual: ${found.as_} → ${found.ae||"in progress"}<br>` : "")
-                        + (found.fe ? `Forecast end: ${found.fe}` : "");
+                        `<div style="font-weight:600;margin-bottom:4px;font-size:0.76rem;">${_esc(found.nm)}</div>`
+                        + `<div style="font-size:0.7rem;color:var(--bs-secondary-color);margin-bottom:5px;">${dot(tradeColor)}${_esc(trade?.name||found.k)} · ${floorLabel}</div>`
+                        + `<div style="font-size:0.72rem;margin-bottom:2px;"><span style="opacity:.7;">Planned:</span> ${found.ps} → ${found.pe}</div>`
+                        + (found.as_ ? `<div style="font-size:0.72rem;margin-bottom:2px;"><span style="opacity:.7;">Actual:</span> ${found.as_} → ${found.ae||"in progress"}</div>` : "")
+                        + (found.fe  ? `<div style="font-size:0.72rem;"><span style="opacity:.7;">Forecast end:</span> ${found.fe}</div>` : "");
+                    tooltip.style.display = "block";
+                    /* Edge-aware: flip left/up when near edges of the wrap */
+                    const wrapRect = wrap.getBoundingClientRect();
+                    const tw = tooltip.offsetWidth  || 220;
+                    const th = tooltip.offsetHeight || 100;
+                    const rawLeft = e.clientX - wrapRect.left + 14;
+                    const rawTop  = e.clientY - wrapRect.top  - 10;
+                    tooltip.style.left = (rawLeft + tw > wrap.clientWidth  - 4 ? rawLeft - tw - 24 : rawLeft) + "px";
+                    tooltip.style.top  = (rawTop  + th > CHART_H - 4        ? rawTop  - th - 4  : rawTop)  + "px";
                 } else {
                     tooltip.style.display = "none";
                 }
@@ -2340,6 +2581,48 @@
                 labelEl.innerHTML = `Schedule Quality: <span style="color:${color};">${label}</span>`;
             }
             _renderGauge(canvas, data.score, color);
+
+            /* Gauge hover tooltip (position:fixed so it can escape the 88×88 container) */
+            if (canvas && !canvas._interactAttached) {
+                canvas._interactAttached = true;
+                let dcmaTip = document.getElementById("dcma-gauge-tip");
+                if (!dcmaTip) {
+                    dcmaTip = document.createElement("div");
+                    dcmaTip.id = "dcma-gauge-tip";
+                    dcmaTip.style.cssText =
+                        "position:fixed;pointer-events:none;display:none;" +
+                        "background:var(--bs-body-bg);border:1px solid var(--bs-border-color);" +
+                        "border-radius:6px;padding:8px 11px;font-size:0.74rem;" +
+                        "box-shadow:0 2px 10px rgba(0,0,0,.16);z-index:9999;" +
+                        "color:var(--bs-body-color);white-space:nowrap;min-width:130px;";
+                    document.body.appendChild(dcmaTip);
+                }
+                canvas.addEventListener("mousemove", function(e) {
+                    const s = data.summary;
+                    const dot = c => `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${c};margin-right:4px;flex-shrink:0;"></span>`;
+                    const row = (c, lbl, val) =>
+                        `<div style="display:flex;align-items:center;gap:2px;margin-bottom:2px;">${dot(c)}<span>${lbl}</span><span style="margin-left:auto;font-weight:600;padding-left:8px;">${val}</span></div>`;
+                    let html = `<div style="font-weight:600;margin-bottom:5px;font-size:0.76rem;">DCMA 14-Point</div>`;
+                    html += row(color, "Score", data.score + " / 100");
+                    html += row("#16a34a", "Passed", s.pass);
+                    if (s.warning) html += row("#d97706", "Warning", s.warning);
+                    if (s.fail)    html += row("#dc2626", "Failed",  s.fail);
+                    dcmaTip.innerHTML = html;
+                    dcmaTip.style.display = "block";
+                    const tw = dcmaTip.offsetWidth  || 140;
+                    const th = dcmaTip.offsetHeight || 90;
+                    let left = e.clientX + 14;
+                    let top  = e.clientY - 10;
+                    if (left + tw > window.innerWidth  - 8) left = e.clientX - tw - 14;
+                    if (top  + th > window.innerHeight - 8) top  = e.clientY - th - 10;
+                    dcmaTip.style.left = left + "px";
+                    dcmaTip.style.top  = top  + "px";
+                });
+                canvas.addEventListener("mouseleave", function() {
+                    const dcmaTip = document.getElementById("dcma-gauge-tip");
+                    if (dcmaTip) dcmaTip.style.display = "none";
+                });
+            }
 
             if (pillsEl) {
                 const s = data.summary;
