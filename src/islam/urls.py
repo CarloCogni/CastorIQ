@@ -182,6 +182,11 @@ urlpatterns = [
         name="decision_summary",
     ),
     path(
+        "projects/<uuid:pk>/schedule/report/",
+        scheduling_views.ScheduleReportView.as_view(),
+        name="schedule_report",
+    ),
+    path(
         "projects/<uuid:pk>/schedule/link/smart/",
         scheduling_views.AutoLinkView.as_view(),
         name="schedule_link_smart",
