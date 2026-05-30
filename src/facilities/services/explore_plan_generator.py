@@ -190,16 +190,18 @@ def generate_plan_png(
     # files getting double-scaled, leaving 3 m walls at 3 mm).
     _safe_set(settings, "length-unit", "METRE")
 
-    # Pass 1: triangulate everything once, keep verts/faces, learn the actual
-    # Z extent of the geometry. We cannot trust ``IfcBuildingStorey.Elevation``
-    # alone — many models leave it at 0 or at a value that does NOT match where
-    # the placement chain actually puts the walls. Slicing relative to the
-    # geometry's own bottom gives a stable "ground = 0" reference no matter how
-    # the file is authored.
+    # Pass 1a: triangulate the current storey's selected elements (used for
+    # the actual slice). We cannot trust ``IfcBuildingStorey.Elevation``
+    # alone — many models leave it at 0 or at a value that does NOT match
+    # where the placement chain actually puts the walls. Slicing relative to
+    # the geometry's own bottom gives a stable "ground = 0" reference no
+    # matter how the file is authored.
     element_geometry: list[tuple[list[tuple[float, float, float]], list[int]]] = []
     z_values: list[float] = []
     failed_shapes = 0
+    current_storey_ids: set[int] = set()
     for element in contained:
+        current_storey_ids.add(element.id())
         try:
             shape = ifcopenshell.geom.create_shape(settings, element)
         except Exception as exc:  # noqa: BLE001
@@ -232,16 +234,48 @@ def generate_plan_png(
             "No usable geometry found in this storey's elements."
         )
 
+    # Pass 1b: triangulate walls + slabs of EVERY storey to get the project's
+    # XY bounding box. Using the same bounds for every storey's PNG means a
+    # pin at "50 %, 50 %" of the image points to the same physical (X, Y) on
+    # every floor — switching floors keeps points in place. We skip elements
+    # already triangulated above to avoid doing the same shape twice.
+    project_xs: list[float] = []
+    project_ys: list[float] = []
+    for ifc_type in ("IfcWall", "IfcWallStandardCase", "IfcSlab", "IfcSlabStandardCase"):
+        try:
+            type_elements = ifc.by_type(ifc_type)
+        except RuntimeError:
+            continue
+        for element in type_elements:
+            # Current-storey shapes already feed project_xs/ys further down.
+            if element.id() in current_storey_ids:
+                continue
+            try:
+                shape = ifcopenshell.geom.create_shape(settings, element)
+            except Exception:  # noqa: BLE001
+                continue
+            geom = getattr(shape, "geometry", shape)
+            verts_flat = list(geom.verts)
+            if not verts_flat:
+                continue
+            for i in range(0, len(verts_flat), 3):
+                project_xs.append(verts_flat[i])
+                project_ys.append(verts_flat[i + 1])
+    # Mix in the current storey's verts so the project bounds cover everything
+    # we actually need to render.
+    for verts, _ in element_geometry:
+        for v in verts:
+            project_xs.append(v[0])
+            project_ys.append(v[1])
+
     # Auto-detect the actual unit scale of the returned vertices. ifcopenshell
     # 0.8.x normally returns metres, but older versions / some patched builds
-    # return raw IFC units (mm, inches, feet). Instead of trusting any one
-    # contract, we look at the geometry's diagonal: any real building floor
+    # return raw IFC units (mm, inches, feet). We measure the diagonal of the
+    # WHOLE project (walls + slabs across every storey) — any real building
     # diagonal sits between ~2 m and ~500 m. If we land outside that, the
     # verts are in some other unit and we rescale.
-    xs_all = [v[0] for verts, _ in element_geometry for v in verts]
-    ys_all = [v[1] for verts, _ in element_geometry for v in verts]
-    raw_span_x = max(xs_all) - min(xs_all) if xs_all else 0.0
-    raw_span_y = max(ys_all) - min(ys_all) if ys_all else 0.0
+    raw_span_x = max(project_xs) - min(project_xs) if project_xs else 0.0
+    raw_span_y = max(project_ys) - min(project_ys) if project_ys else 0.0
     raw_span_z = max(z_values) - min(z_values)
     raw_diagonal = (raw_span_x ** 2 + raw_span_y ** 2 + raw_span_z ** 2) ** 0.5
     scale_factor = _infer_to_metres_scale(raw_diagonal, unit_scale_to_m)
@@ -262,6 +296,8 @@ def generate_plan_png(
             for verts, faces in element_geometry
         ]
         z_values = [z * scale_factor for z in z_values]
+        project_xs = [x * scale_factor for x in project_xs]
+        project_ys = [y * scale_factor for y in project_ys]
 
     # Use the geometry's own Z range — this is the physical base of the floor.
     # The user-input cut height is *relative to this base* (0 m = the storey's
@@ -315,22 +351,48 @@ def generate_plan_png(
             "Try a different cut height or include more element kinds."
         )
 
-    # Bounding box in metres
-    xs = [p[0] for seg in segments_m for p in seg]
-    ys = [p[1] for seg in segments_m for p in seg]
-    xmin, xmax = min(xs), max(xs)
-    ymin, ymax = min(ys), max(ys)
+    # Project-wide XY bounding box in metres. Every storey's PNG uses these
+    # same numbers so that a pixel at (px, py) maps to the same physical
+    # (X, Y) on every floor — switching floors keeps points anchored to
+    # their real-world position.
+    if project_xs and project_ys:
+        xmin, xmax = min(project_xs), max(project_xs)
+        ymin, ymax = min(project_ys), max(project_ys)
+    else:
+        # Fallback: use just the current storey's bounds (shouldn't happen
+        # because walls + slabs almost always exist, but defensive).
+        xs = [p[0] for seg in segments_m for p in seg]
+        ys = [p[1] for seg in segments_m for p in seg]
+        xmin, xmax = min(xs), max(xs)
+        ymin, ymax = min(ys), max(ys)
     span_x = max(xmax - xmin, MIN_BBOX_M)
     span_y = max(ymax - ymin, MIN_BBOX_M)
 
-    # Fit to canvas; preserve aspect ratio.
+    # Fit project bounds to the canvas, preserving aspect ratio. Whichever
+    # axis is longer gets fitted to the usable width / height; the canvas
+    # ends up with the project's true aspect ratio so wide-and-shallow
+    # buildings don't look square.
     usable_w = CANVAS_WIDTH_PX - 2 * CANVAS_MARGIN_PX
-    scale = usable_w / span_x
+    # Cap the canvas height at the same usable extent so very tall but
+    # narrow plans don't grow into 10k-pixel-tall PNGs.
+    usable_h = usable_w
+    scale = min(usable_w / span_x, usable_h / span_y)
     canvas_w = int(round(span_x * scale + 2 * CANVAS_MARGIN_PX))
     canvas_h = int(round(span_y * scale + 2 * CANVAS_MARGIN_PX))
-    # Sanity floor on height (e.g. long thin corridors) so the image isn't
-    # one pixel tall.
     canvas_h = max(canvas_h, 200)
+
+    logger.info(
+        "Rendering storey %s onto project canvas %dx%d px (project bounds "
+        "X=[%.2f, %.2f] m, Y=[%.2f, %.2f] m, scale=%.3f px/m)",
+        storey_gid,
+        canvas_w,
+        canvas_h,
+        xmin,
+        xmax,
+        ymin,
+        ymax,
+        scale,
+    )
 
     img = Image.new("RGB", (canvas_w, canvas_h), BG_COLOR)
     draw = ImageDraw.Draw(img)
