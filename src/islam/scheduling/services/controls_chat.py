@@ -47,6 +47,9 @@ _SYSTEM_TEMPLATE = dedent("""\
 
 # ── Context assembly ──────────────────────────────────────────────────────────
 
+_MFO_TYPES = frozenset({"Mandatory Finish", "Finish On", "Finish On or Before"})
+_SNET_TYPES = frozenset({"Start On or After", "Mandatory Start", "Start On"})
+
 
 def _fmt(value: float, use_cost: bool) -> str:
     """Format a cost or duration value for the prompt."""
@@ -55,9 +58,91 @@ def _fmt(value: float, use_cost: bool) -> str:
     return f"{value:,.0f} units"
 
 
-def _build_context(project_name: str, evm_data: dict, intelligence: dict) -> str:
+def _load_constraint_data(project_id: str) -> dict:
+    """Query Task model for constraint and negative-float data.
+
+    Returns:
+        mfo_tasks   — MFO/hard-deadline tasks with float, sorted at-risk first
+        snet_count  — number of SNET-constrained activities
+        neg_float   — non-MFO tasks whose CPM float is negative (network overrun)
+    """
+    from islam.scheduling.models import Task
+
+    tasks = list(
+        Task.objects.filter(project_id=project_id, is_non_physical=False)
+        .exclude(start_date=None)
+        .only(
+            "name",
+            "activity_code",
+            "status",
+            "start_date",
+            "end_date",
+            "actual_end",
+            "constraint_type",
+            "constraint_date",
+            "total_float",
+            "is_critical",
+            "stage",
+        )
+    )
+
+    mfo_tasks = []
+    snet_count = 0
+    neg_float = []
+
+    for t in tasks:
+        ct = t.constraint_type or ""
+        cd = t.constraint_date
+        tf = t.total_float  # working days (signed); None if CPM not yet run
+
+        if ct in _MFO_TYPES and cd:
+            at_risk = tf is not None and tf < 0
+            mfo_tasks.append(
+                {
+                    "name": t.name,
+                    "activity_code": t.activity_code,
+                    "status": t.status,
+                    "deadline": cd.isoformat(),
+                    "end_date": t.end_date.isoformat(),
+                    "float_days": tf,
+                    "at_risk": at_risk,
+                    "stage": t.stage or "unassigned",
+                }
+            )
+        elif ct in _SNET_TYPES and cd:
+            snet_count += 1
+        elif tf is not None and tf < 0:
+            # Network-only negative float — no explicit constraint but driven behind
+            neg_float.append(
+                {
+                    "name": t.name,
+                    "activity_code": t.activity_code,
+                    "status": t.status,
+                    "float_days": tf,
+                    "stage": t.stage or "unassigned",
+                }
+            )
+
+    # Sort: at-risk (negative float) first, then by float ascending
+    mfo_tasks.sort(
+        key=lambda x: (not x["at_risk"], x["float_days"] if x["float_days"] is not None else 9999)
+    )
+    neg_float.sort(key=lambda x: x["float_days"])
+
+    return {
+        "mfo_tasks": mfo_tasks,
+        "snet_count": snet_count,
+        "neg_float": neg_float[:10],  # cap at 10 for prompt size
+    }
+
+
+def _build_context(
+    project_name: str, evm_data: dict, intelligence: dict, project_id: str = ""
+) -> str:
     """Assemble a concise project status block for the LLM system prompt."""
     lines: list[str] = []
+
+    constraint_data = _load_constraint_data(project_id) if project_id else {}
 
     # ── Identity ──────────────────────────────────────────────────────────
     lines += [
@@ -152,6 +237,40 @@ def _build_context(project_name: str, evm_data: dict, intelligence: dict) -> str
             if w["drivers"] and "No significant" not in w["drivers"][0]:
                 lines.append(f"           Drivers: {'; '.join(w['drivers'])}")
 
+    # ── Hard Deadline Constraints (MFO) ───────────────────────────────────
+    mfo_tasks = constraint_data.get("mfo_tasks", [])
+    snet_count = constraint_data.get("snet_count", 0)
+    if mfo_tasks:
+        lines += [
+            "",
+            f"Hard Deadline Constraints — MFO  ({snet_count} SNET constraints also active)",
+        ]
+        lines.append(
+            f"  {'Activity':<40s}  {'Code':<12s}  {'Deadline':<12s}  {'Sched Finish':<12s}  {'Float(wd)':<10s}  Status"
+        )
+        for t in mfo_tasks:
+            tf = t["float_days"]
+            float_str = f"{tf:+d} wd" if tf is not None else "n/a"
+            risk_flag = "  ⚠ DEADLINE AT RISK" if t["at_risk"] else ""
+            lines.append(
+                f"  {t['name']:<40s}  {t['activity_code']:<12s}  {t['deadline']:<12s}"
+                f"  {t['end_date']:<12s}  {float_str:<10s}  {t['status'].upper()}{risk_flag}"
+            )
+
+    # ── Network Float Violations (non-MFO negative float) ─────────────────
+    neg_float = constraint_data.get("neg_float", [])
+    if neg_float:
+        lines += [
+            "",
+            "Network Float Violations  (activities breaching CPM with no explicit deadline)",
+        ]
+        for t in neg_float:
+            tf = t["float_days"]
+            lines.append(
+                f"  {t['name']:<40s}  {t['activity_code']:<12s}"
+                f"  float={tf:+d} wd  stage={t['stage']}  [{t['status'].upper()}]"
+            )
+
     return "\n".join(lines)
 
 
@@ -196,7 +315,7 @@ class ProjectControlsChatService:
                 "error": None,
             }
 
-        context = _build_context(self.project.name, evm_data, intelligence)
+        context = _build_context(self.project.name, evm_data, intelligence, str(self.project.pk))
         system_prompt = _SYSTEM_TEMPLATE.format(context=context)
 
         try:
