@@ -28,9 +28,10 @@
 .v-label{position:absolute;top:10px;left:10px;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.12);border-radius:4px;padding:4px 10px;font-family:var(--font-mono);font-size:9px;color:rgba(255,255,255,.85);display:flex;align-items:center;gap:6px;}
 .v-ld{width:5px;height:5px;border-radius:50%;background:var(--acc);animation:blink 2s infinite;}
 
-/* Floor switcher (vertical, right edge of the viewer) */
-.floor-switcher{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:4px;z-index:5;max-height:84%;overflow-y:auto;padding:2px;}
-.floor-btn{width:38px;height:30px;border-radius:5px;background:rgba(28,29,40,.85);border:1px solid var(--b1);color:var(--t3);font-family:var(--font-mono);font-size:10.5px;cursor:pointer;display:grid;place-items:center;transition:all .12s;flex-shrink:0;}
+/* Floor switcher (vertical, right edge of the viewer). No scrollbar — names wrap
+   word-per-line and the column auto-widens to fit the widest word. */
+.floor-switcher{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:4px;z-index:5;padding:2px;width:fit-content;max-width:140px;}
+.floor-btn{min-width:38px;max-width:140px;min-height:28px;height:auto;padding:3px 7px;border-radius:5px;background:rgba(28,29,40,.85);border:1px solid var(--b1);color:var(--t3);font-family:var(--font-mono);font-size:10.5px;cursor:pointer;display:grid;place-items:center;transition:all .12s;flex-shrink:0;white-space:normal;word-break:keep-all;overflow-wrap:break-word;text-align:center;line-height:1.18;}
 .floor-btn:hover{background:var(--p1);color:var(--t2);}
 .floor-btn.on{background:var(--acc-d);border-color:var(--acc-b);color:var(--acc);}
 
