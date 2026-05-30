@@ -367,7 +367,7 @@ def _build_context(
                     f"    [{cls}] {rc['name'][:55]}"
                     f"  trade={rc['trade']}"
                     f"  type={rc['activity_type']}"
-                    f"  → {rc['downstream_count']} tasks / {rc['downstream_days']} days"
+                    f"  → {rc['downstream_count']} tasks / {rc['chain_delay_days']} chain-days"
                 )
         # Top clusters by activity type
         type_clusters = drc.get("clusters", {}).get("by_activity_type", [])[:4]

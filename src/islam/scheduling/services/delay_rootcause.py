@@ -294,12 +294,21 @@ def run_delay_rootcause(project_id: str, delay_threshold_days: int = 0) -> dict:
             visited.add(node)
             queue.extend(drives.get(node, []))
         downstream_counts[rc_pk] = len(visited)
+        # chain_delay_days = Σ(each downstream task's own finish_variance).
+        # This is NOT "delay caused by this root cause" — each downstream task
+        # accumulated its own delay on top of the propagated push.  Use it as a
+        # rough scale indicator of how schedule-critical this chain is, not as a
+        # causal attribution.
         downstream_days[rc_pk] = sum(delayed.get(n, 0) for n in visited)
         # Pick 3 most-delayed downstream tasks as examples
         sorted_ds = sorted(visited, key=lambda n: -delayed.get(n, 0))[:3]
         downstream_examples[rc_pk] = [task_map[n].name for n in sorted_ds if n in task_map]
 
-    # ── Build root_causes list (top 25 by downstream impact) ─────────────
+    # ── Build root_causes list — ranked by downstream COUNT (primary) ─────
+    # Ranking by downstream_days would mis-rank: a root cause with 2 downstream
+    # tasks each 400 days late beats one with 300 downstream tasks 10 days late.
+    # Count is the honest primary ranking; chain_delay_days is a secondary scale
+    # indicator shown with an explicit label.
     root_causes_sorted = sorted(
         root_cause_pks,
         key=lambda pk: (
@@ -308,6 +317,20 @@ def run_delay_rootcause(project_id: str, delay_threshold_days: int = 0) -> dict:
             -delayed.get(pk, 0),
         ),
     )[:25]
+
+    # Count root causes whose binding could not be resolved via FS/SS
+    # (all their predecessors are FF/SF or lack CPM dates).  These are
+    # classified root_cause by the else-branch; the delay origin is less certain.
+    n_no_fs_ss_binding = sum(
+        1
+        for pk in root_cause_pks
+        if classification[pk] == "root_cause"
+        and all(
+            _binding_date(task_map[pred_pk], dt, lag) is None
+            for pred_pk, dt, lag in preds_of.get(pk, [])
+            if task_map.get(pred_pk) is not None
+        )
+    )
 
     root_causes_out = []
     for pk in root_causes_sorted:
@@ -324,7 +347,8 @@ def run_delay_rootcause(project_id: str, delay_threshold_days: int = 0) -> dict:
                 "classification": classification[pk],
                 "finish_variance_days": delayed[pk],
                 "downstream_count": downstream_counts.get(pk, 0),
-                "downstream_days": downstream_days.get(pk, 0),
+                # Labelled "chain_delay_days" to distinguish from causal attribution
+                "chain_delay_days": downstream_days.get(pk, 0),
                 "example_downstream": downstream_examples.get(pk, []),
             }
         )
@@ -342,13 +366,13 @@ def run_delay_rootcause(project_id: str, delay_threshold_days: int = 0) -> dict:
                     "label": label,
                     "root_cause_count": 0,
                     "downstream_tasks": 0,
-                    "downstream_days": 0,
+                    "chain_delay_days": 0,
                     "examples": [],
                 }
             g = groups[key]
             g["root_cause_count"] += 1
             g["downstream_tasks"] += downstream_counts.get(pk, 0)
-            g["downstream_days"] += downstream_days.get(pk, 0)
+            g["chain_delay_days"] += downstream_days.get(pk, 0)
             if len(g["examples"]) < 3:
                 g["examples"].append(t.name)
         return sorted(groups.values(), key=lambda g: -g["downstream_tasks"])
@@ -383,11 +407,12 @@ def run_delay_rootcause(project_id: str, delay_threshold_days: int = 0) -> dict:
     orphan_names = [task_map[pk].name for pk in delayed if classification.get(pk) == "orphan"][:10]
 
     logger.info(
-        "Delay root-cause — project %s: %d delayed, %d root causes, %d propagated, "
-        "%d constraint, %d orphan",
+        "Delay root-cause — project %s: %d delayed, %d root causes (%d no-FS/SS binding), "
+        "%d propagated, %d constraint, %d orphan",
         project_id,
         n_total_delayed,
         n_root,
+        n_no_fs_ss_binding,
         n_propagated,
         n_constraint,
         n_orphan,
@@ -400,6 +425,9 @@ def run_delay_rootcause(project_id: str, delay_threshold_days: int = 0) -> dict:
             "excluded_no_baseline": excluded_no_baseline,
             "total_delayed": n_total_delayed,
             "root_causes": n_root,
+            # root causes where no FS/SS predecessor binding could be computed;
+            # classified root_cause via else-branch — origin is less certain
+            "root_causes_no_fs_ss_binding": n_no_fs_ss_binding,
             "constraint_driven": n_constraint,
             "propagated": n_propagated,
             "orphan": n_orphan,
@@ -407,7 +435,7 @@ def run_delay_rootcause(project_id: str, delay_threshold_days: int = 0) -> dict:
             "orphan_pct": orphan_pct,
             "top_cluster_label": top_cluster["label"] if top_cluster else None,
             "top_cluster_tasks": top_cluster["downstream_tasks"] if top_cluster else 0,
-            "top_cluster_days": top_cluster["downstream_days"] if top_cluster else 0,
+            "top_cluster_chain_days": top_cluster["chain_delay_days"] if top_cluster else 0,
         },
         "root_causes": root_causes_out,
         "clusters": {

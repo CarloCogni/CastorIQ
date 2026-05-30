@@ -309,8 +309,8 @@
                                 <th style="font-weight:600;">#</th>
                                 <th style="font-weight:600;">Task</th>
                                 <th style="font-weight:600; text-align:center;">Type</th>
-                                <th style="font-weight:600; text-align:right; white-space:nowrap;">Downstream</th>
-                                <th style="font-weight:600; text-align:right; white-space:nowrap;">Delay-days</th>
+                                <th style="font-weight:600; text-align:right; white-space:nowrap;">Tasks affected</th>
+                                <th style="font-weight:600; text-align:right; white-space:nowrap;" title="Sum of each downstream task's own finish variance — not delay caused by this root cause alone">Chain delay-days ⓘ</th>
                             </tr>
                         </thead>
                         <tbody id="drc-rc-rows"></tbody>
@@ -1508,7 +1508,7 @@
             if (!el) return;
             const pct = s.traceable_pct;
             const top = s.top_cluster_label
-                ? `Largest cluster: <strong>${_esc(s.top_cluster_label)}</strong> — ${s.top_cluster_tasks.toLocaleString()} tasks, ${s.top_cluster_days.toLocaleString()} delay-days.`
+                ? `Largest cluster: <strong>${_esc(s.top_cluster_label)}</strong> — ${s.top_cluster_tasks.toLocaleString()} tasks affected.`
                 : "";
             const orphan = s.orphan > 0
                 ? `<span style="color:#f59e0b;"> · ${s.orphan} orphan delay${s.orphan > 1 ? "s" : ""} (no logic links — untraceable).</span>`
@@ -1546,7 +1546,7 @@
                             <span style="font-size:.65rem;font-weight:600;color:${tc};background:${tc}18;border:1px solid ${tc}40;border-radius:8px;padding:1px 6px;white-space:nowrap;">${_esc(rc.activity_type)}</span>
                         </td>
                         <td style="text-align:right;font-weight:600;vertical-align:top;padding-top:6px;font-variant-numeric:tabular-nums;" ${tip}>${rc.downstream_count.toLocaleString()}</td>
-                        <td style="text-align:right;color:var(--bs-secondary-color);vertical-align:top;padding-top:6px;font-variant-numeric:tabular-nums;">${rc.downstream_days.toLocaleString()}</td>
+                        <td style="text-align:right;color:var(--bs-secondary-color);vertical-align:top;padding-top:6px;font-variant-numeric:tabular-nums;">${rc.chain_delay_days.toLocaleString()}</td>
                     </tr>`);
             });
         }
