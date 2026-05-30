@@ -69,14 +69,21 @@ KIND_TO_IFC_TYPES = {
 # plan has no visible structure.
 DEFAULT_KINDS = ("walls",)
 
-# Render config: white sheet, black lines, generous canvas so a single
-# wall doesn't end up 2 px thick after downscaling in the viewer.
-CANVAS_WIDTH_PX = 1600
-CANVAS_MARGIN_PX = 60
+# Render config: white sheet, black lines. The canvas envelope is capped
+# at ~1200 px on the longer axis so the PNG comfortably fits common viewer
+# sizes without the iframe scaler clipping it. Big enough to keep wall
+# strokes visible after pixel-aligned downscaling on hi-DPI screens.
+CANVAS_WIDTH_PX = 1200
+CANVAS_MARGIN_PX = 48
 STROKE_WIDTH_PX = 2
 BG_COLOR = (255, 255, 255)
 FG_COLOR = (12, 12, 12)
+FALLBACK_FG_COLOR = (90, 90, 90)  # softer tone for the top-down fallback
 MIN_BBOX_M = 0.5  # guard against zero-sized slices (cut plane misses everything)
+# Minimum vertical clearance between the cut plane and the storey's top /
+# bottom geometry. If the user asks for more we clamp so the slice still
+# returns something on very thin storeys (slab-only roofs, mezzanines, etc.).
+MIN_CUT_CLEARANCE_M = 0.05
 
 
 @dataclass(frozen=True)
@@ -315,7 +322,32 @@ def generate_plan_png(
         storey_height_m,
         cut_height_m,
     )
-    cut_plane_z_m = geom_z_min + cut_height_m
+    # Auto-clamp cut height into the storey's geometry range. Roofs and
+    # mezzanines often only carry a slab a few cm thick, so the standard
+    # 1.2 m default sits well above everything — slicing would miss. We
+    # clamp here so the user always gets a usable plan, then log what was
+    # actually used so they can adjust if they wanted something specific.
+    requested_cut_height_m = cut_height_m
+    if storey_height_m < 2 * MIN_CUT_CLEARANCE_M:
+        # Storey too thin to slice — skip straight to the top-down fallback.
+        used_cut_height_m: float | None = None
+        cut_plane_z_m = geom_z_min + storey_height_m / 2.0
+    else:
+        max_cut_height_m = storey_height_m - MIN_CUT_CLEARANCE_M
+        min_cut_height_m = MIN_CUT_CLEARANCE_M
+        if cut_height_m > max_cut_height_m:
+            used_cut_height_m = max(min_cut_height_m, storey_height_m / 2.0)
+            logger.info(
+                "Cut height %.2f m exceeds storey height %.2f m — clamping to %.2f m.",
+                cut_height_m,
+                storey_height_m,
+                used_cut_height_m,
+            )
+        elif cut_height_m < min_cut_height_m:
+            used_cut_height_m = min_cut_height_m
+        else:
+            used_cut_height_m = cut_height_m
+        cut_plane_z_m = geom_z_min + used_cut_height_m
     logger.info(
         "Storey geometry Z range %.3f – %.3f m (height %.2f m) → cut plane Z=%.3f m",
         geom_z_min,
@@ -324,31 +356,37 @@ def generate_plan_png(
         cut_plane_z_m,
     )
 
-    if cut_plane_z_m >= geom_z_max or cut_plane_z_m <= geom_z_min:
-        # User asked for a cut above the tallest element (or right at the floor).
-        # We could clamp but a clear error helps them pick a sensible value.
-        raise PlanGenerationError(
-            f"Cut height {cut_height_m:.2f} m is outside the storey's geometry "
-            f"(elements span {storey_height_m:.2f} m). Try a value between "
-            f"0.1 m and {storey_height_m - 0.1:.2f} m."
-        )
-
     # Pass 2: slice every triangle by the cut plane.
     segments_m: list[tuple[tuple[float, float], tuple[float, float]]] = []
     triangle_count = 0
-    for verts, faces_flat in element_geometry:
-        for i in range(0, len(faces_flat), 3):
-            a, b, c = verts[faces_flat[i]], verts[faces_flat[i + 1]], verts[faces_flat[i + 2]]
-            triangle_count += 1
-            seg = _intersect_triangle_with_plane(a, b, c, cut_plane_z_m)
-            if seg is not None:
-                segments_m.append(seg)
+    if used_cut_height_m is not None:
+        for verts, faces_flat in element_geometry:
+            for i in range(0, len(faces_flat), 3):
+                a, b, c = verts[faces_flat[i]], verts[faces_flat[i + 1]], verts[faces_flat[i + 2]]
+                triangle_count += 1
+                seg = _intersect_triangle_with_plane(a, b, c, cut_plane_z_m)
+                if seg is not None:
+                    segments_m.append(seg)
+
+    # When the cut produced nothing (very thin storey, or roof with no walls
+    # above the slab), fall back to a top-down projection of all upward-facing
+    # faces. The user still gets a usable plan of what's *visible from above*
+    # at that storey — typically the slab outline, any parapets, chimneys, etc.
+    used_fallback = False
+    if not segments_m:
+        used_fallback = True
+        segments_m = _top_down_projection(element_geometry)
+        logger.info(
+            "Storey %s — no slice intersections; rendering top-down fallback "
+            "with %d projected segments.",
+            storey_gid,
+            len(segments_m),
+        )
 
     if not segments_m:
         raise PlanGenerationError(
-            f"Cut plane at {cut_height_m:.2f} m did not intersect any element "
-            f"(storey geometry spans {storey_height_m:.2f} m). "
-            "Try a different cut height or include more element kinds."
+            "Could not produce a plan for this storey — no element geometry "
+            "was usable at any height. Try including more element kinds."
         )
 
     # Project-wide XY bounding box in metres. Every storey's PNG uses these
@@ -396,20 +434,26 @@ def generate_plan_png(
 
     img = Image.new("RGB", (canvas_w, canvas_h), BG_COLOR)
     draw = ImageDraw.Draw(img)
+    stroke_color = FALLBACK_FG_COLOR if used_fallback else FG_COLOR
+    stroke_width = 1 if used_fallback else STROKE_WIDTH_PX
     for (x0, y0), (x1, y1) in segments_m:
         px0 = CANVAS_MARGIN_PX + (x0 - xmin) * scale
         py0 = canvas_h - CANVAS_MARGIN_PX - (y0 - ymin) * scale
         px1 = CANVAS_MARGIN_PX + (x1 - xmin) * scale
         py1 = canvas_h - CANVAS_MARGIN_PX - (y1 - ymin) * scale
-        draw.line([(px0, py0), (px1, py1)], fill=FG_COLOR, width=STROKE_WIDTH_PX)
+        draw.line([(px0, py0), (px1, py1)], fill=stroke_color, width=stroke_width)
 
     bio = io.BytesIO()
     img.save(bio, format="PNG", optimize=True)
     bio.seek(0)
     filename = f"plan_{storey.pk}.png"
+    # Record the height we actually used (post-clamp). If we fell through to
+    # the top-down fallback, persist the user's request as-is so they see what
+    # they asked for and the UI can flag the fallback to them next time.
+    effective_height_m = used_cut_height_m if used_cut_height_m is not None else requested_cut_height_m
     return PlanGenerationResult(
         content=ContentFile(bio.read(), name=filename),
-        cut_height_mm=int(round(cut_height_m * 1000)),
+        cut_height_mm=int(round(effective_height_m * 1000)),
         included_kinds=list(kinds),
         segment_count=len(segments_m),
         bounds_m=(xmin, ymin, xmax, ymax),
@@ -559,6 +603,30 @@ def _collect_contained_elements(ifc_storey, ifc_types: frozenset[str]) -> list:
                         _consider(filler)
 
     return found
+
+
+def _top_down_projection(
+    element_geometry: list[tuple[list[tuple[float, float, float]], list[int]]],
+) -> list[tuple[tuple[float, float], tuple[float, float]]]:
+    """Project every triangle's edges straight down to the XY plane.
+
+    Used as a fallback when a horizontal slice misses all geometry. Common
+    on roof storeys whose only elements are a thin slab — by the time we
+    detect "nothing cut" we're already auto-clamping to mid-slab, but for
+    pathologically thin storeys (≤ 10 cm) even that may not help. The
+    projection gives a top-down silhouette of everything in the storey
+    (slab outlines, parapets seen from above, chimneys' footprint), so the
+    user gets a usable plan instead of a blank canvas / error toast.
+    """
+    segments: list[tuple[tuple[float, float], tuple[float, float]]] = []
+    for verts, faces_flat in element_geometry:
+        for i in range(0, len(faces_flat), 3):
+            a = verts[faces_flat[i]]
+            b = verts[faces_flat[i + 1]]
+            c = verts[faces_flat[i + 2]]
+            for p, q in ((a, b), (b, c), (c, a)):
+                segments.append(((p[0], p[1]), (q[0], q[1])))
+    return segments
 
 
 def _intersect_triangle_with_plane(

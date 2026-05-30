@@ -19,7 +19,11 @@
 .exp-center{flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden;}
 
 /* ── Viewer (floor-plan stage) ── */
-.exp-viewer{flex:1;position:relative;overflow:hidden;background:var(--viewer-bg);display:flex;align-items:center;justify-content:center;}
+/* min-height:0 on the viewer is what makes the flex chain pass a *definite*
+   height down to .plan-stage — without it, max-height:100% on the stage
+   resolves to "100 % of an indefinite size" and tall plans overflow the
+   viewer instead of shrinking to fit. */
+.exp-viewer{flex:1;min-height:0;position:relative;overflow:hidden;background:var(--viewer-bg);display:flex;align-items:center;justify-content:center;}
 .plan-stage{position:relative;line-height:0;max-width:100%;max-height:100%;}
 .plan-img{display:block;max-width:100%;max-height:100%;width:auto;height:auto;user-select:none;-webkit-user-drag:none;}
 /* Pin layer overlays the image box exactly; pins are positioned in % of this box. */
