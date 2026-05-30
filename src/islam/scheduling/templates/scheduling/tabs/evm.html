@@ -58,6 +58,79 @@
         {% endfor %}
     </div>
 
+    <!-- Project Health Matrix -->
+    <div id="evm-health-section"
+         style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
+
+        <div class="d-flex align-items-center gap-2 mb-2">
+            <span style="font-size:0.8rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:0.05em;">Project Health Matrix</span>
+            <button type="button"
+                    class="help-pill"
+                    data-bs-toggle="modal"
+                    data-bs-target="#evmHelpModal"
+                    title="How the Project Health Matrix works"
+                    aria-label="How the Project Health Matrix works">
+                <i class="bi bi-question-circle"></i>
+            </button>
+        </div>
+
+        <div style="font-size:0.7rem; color:var(--bs-secondary-color); margin-bottom:10px; line-height:1.55;">
+            <strong style="color:var(--bs-body-color);">Build Quality</strong> = is the schedule constructed correctly (logic gaps, anomalies, missing trade coverage).
+            <strong style="color:var(--bs-body-color);">Project Status</strong> = where the work is actually headed (delay rate, ML forward risk).
+            A floor can be well-built but behind, or poorly-built but currently on time.
+        </div>
+
+        <!-- Loading -->
+        <div id="evm-health-loading" class="d-flex align-items-center gap-2"
+             style="font-size:0.78rem; color:var(--bs-secondary-color); padding:4px 0;">
+            <span class="spinner-border spinner-border-sm"></span> Computing floor health…
+        </div>
+
+        <!-- No data -->
+        <div id="evm-health-nodata" class="d-none"
+             style="font-size:0.78rem; color:var(--bs-secondary-color); padding:4px 0;">
+            No floor-located tasks found — import a schedule with floor activity codes.
+        </div>
+
+        <!-- Results -->
+        <div id="evm-health-results" class="d-none" style="position:relative;">
+
+            <!-- Column headers -->
+            <div style="display:grid; grid-template-columns:72px 1fr 1fr; gap:4px; margin-bottom:4px;">
+                <div></div>
+                <div style="text-align:center; font-size:0.67rem; font-weight:700; text-transform:uppercase;
+                            letter-spacing:.07em; color:var(--bs-secondary-color); padding:3px 0;">
+                    Build Quality
+                    <div style="font-size:0.6rem; font-weight:400; text-transform:none; letter-spacing:0; margin-top:1px; opacity:.75;">
+                        Schedule construction
+                    </div>
+                </div>
+                <div style="text-align:center; font-size:0.67rem; font-weight:700; text-transform:uppercase;
+                            letter-spacing:.07em; color:var(--bs-secondary-color); padding:3px 0;">
+                    Project Status
+                    <div style="font-size:0.6rem; font-weight:400; text-transform:none; letter-spacing:0; margin-top:1px; opacity:.75;">
+                        Work performance
+                    </div>
+                </div>
+            </div>
+
+            <!-- Matrix rows (filled by JS) -->
+            <div id="evm-health-grid"
+                 style="display:grid; grid-template-columns:72px 1fr 1fr; gap:3px;">
+            </div>
+
+            <!-- Breakdown panel (shown on hover/click) -->
+            <div id="evm-health-breakdown"
+                 style="position:absolute; display:none; z-index:20;
+                        background:var(--bs-body-bg); border:1px solid var(--bs-border-color);
+                        border-radius:8px; padding:10px 13px; font-size:0.74rem; line-height:1.5;
+                        box-shadow:0 4px 18px rgba(0,0,0,.22); width:270px;
+                        color:var(--bs-body-color); pointer-events:none;">
+            </div>
+
+        </div>
+    </div>
+
     <!-- S-curve chart -->
     <div style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
         <div class="d-flex align-items-center justify-content-between mb-3">
@@ -2949,6 +3022,152 @@
         }
 
         loadAnomalies();
+    }());
+
+    /* ── Project Health Matrix ────────────────────────────────────────────── */
+    (function () {
+        const HEALTH_URL = "{% url 'islam:floor_health' project.pk %}";
+
+        function _scoreColor(s) {
+            if (s >= 70) return "#16a34a";
+            if (s >= 40) return "#d97706";
+            return "#dc2626";
+        }
+        function _scoreBg(s) {
+            if (s >= 70) return "rgba(22,163,74,.12)";
+            if (s >= 40) return "rgba(217,119,6,.12)";
+            return "rgba(220,38,38,.12)";
+        }
+        function _dot(c) {
+            return `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${c};margin-right:5px;flex-shrink:0;vertical-align:middle;"></span>`;
+        }
+
+        function _renderCell(score, token, axis) {
+            const color = _scoreColor(score);
+            const bg    = _scoreBg(score);
+            return `<div class="evm-hm-cell"
+                         data-tok="${token}" data-axis="${axis}"
+                         style="background:${bg}; border-radius:5px; padding:3px 8px;
+                                border:1px solid ${color}28; cursor:default; user-select:none;
+                                display:flex; align-items:center; justify-content:space-between;
+                                height:32px; gap:6px;">
+                        <span style="font-size:1.05rem; font-weight:700; color:${color}; min-width:26px; line-height:1;">${score}</span>
+                        <div style="flex:1; height:4px; background:rgba(128,128,128,.12); border-radius:2px; overflow:hidden;">
+                            <div style="height:100%; width:${score}%; background:${color}; border-radius:2px; opacity:.75;"></div>
+                        </div>
+                    </div>`;
+        }
+
+        function _breakdownHtml(floor, axis) {
+            const data  = axis === "bq" ? floor.build_quality : floor.project_status;
+            const color = _scoreColor(data.score);
+            const title = axis === "bq" ? "Build Quality" : "Project Status";
+            let html = `<div style="font-weight:600;font-size:0.76rem;margin-bottom:4px;color:${color};">${floor.label} — ${title}: ${data.score}</div>`;
+            html += `<div style="font-size:0.68rem;color:var(--bs-secondary-color);margin-bottom:6px;">${floor.task_count} tasks on this floor</div>`;
+
+            if (axis === "bq") {
+                const bq = floor.build_quality;
+                html += `<div style="font-size:0.72rem;margin-bottom:2px;">${_dot(bq.logic_issues > 0 ? "#dc2626" : "#16a34a")}Logic gaps: <strong>${bq.logic_issues}</strong></div>`;
+                html += `<div style="font-size:0.72rem;margin-bottom:2px;">${_dot(bq.anomaly_flags > 0 ? "#d97706" : "#16a34a")}Anomaly flags: <strong>${bq.anomaly_flags}</strong></div>`;
+                if (bq.gap_count > 0) {
+                    html += `<div style="font-size:0.72rem;margin-bottom:2px;">${_dot("#d97706")}Missing vs peer floors (${bq.gap_count}): <span style="font-size:0.67rem;">${bq.gaps.slice(0, 3).join("; ")}</span></div>`;
+                } else {
+                    html += `<div style="font-size:0.72rem;margin-bottom:2px;">${_dot("#16a34a")}No missing trade signatures vs peers</div>`;
+                }
+            } else {
+                const ps = floor.project_status;
+                const dc = ps.delay_pct > 30 ? "#dc2626" : ps.delay_pct > 10 ? "#d97706" : "#16a34a";
+                html += `<div style="font-size:0.72rem;margin-bottom:2px;">${_dot(dc)}Delayed: <strong>${ps.delayed_count}</strong> of ${ps.completed_count} completed (${ps.delay_pct}%)</div>`;
+                if (ps.avg_finish_variance_days > 0) {
+                    html += `<div style="font-size:0.72rem;margin-bottom:2px;">${_dot("#d97706")}Avg days late: <strong>${ps.avg_finish_variance_days}</strong></div>`;
+                }
+                if (ps.avg_prob_on_time !== null) {
+                    const pct = Math.round(ps.avg_prob_on_time * 100);
+                    const pc  = pct >= 70 ? "#16a34a" : pct >= 50 ? "#d97706" : "#dc2626";
+                    html += `<div style="font-size:0.72rem;margin-bottom:2px;">${_dot(pc)}ML P(on-time): <strong>${pct}%</strong> avg (${ps.incomplete_count} incomplete)</div>`;
+                } else if (ps.incomplete_count > 0) {
+                    html += `<div style="font-size:0.72rem;margin-bottom:2px;color:var(--bs-secondary-color);">ML: insufficient history for prediction</div>`;
+                }
+            }
+
+            const worst = data.worst_tasks;
+            if (worst && worst.length) {
+                html += `<div style="border-top:1px solid var(--bs-border-color);margin-top:5px;padding-top:4px;font-size:0.67rem;color:var(--bs-secondary-color);">Driving tasks:</div>`;
+                worst.slice(0, 4).forEach(t => {
+                    const name = t.name.length > 42 ? t.name.slice(0, 42) + "…" : t.name;
+                    html += `<div style="font-size:0.67rem;margin-top:2px;line-height:1.35;">· <strong>${name}</strong> <span style="opacity:.65;">— ${t.issue}</span></div>`;
+                });
+            }
+            return html;
+        }
+
+        async function loadFloorHealth() {
+            const loading  = document.getElementById("evm-health-loading");
+            const nodata   = document.getElementById("evm-health-nodata");
+            const resultsEl = document.getElementById("evm-health-results");
+            const grid     = document.getElementById("evm-health-grid");
+            const panel    = document.getElementById("evm-health-breakdown");
+            if (!grid) return;
+
+            let data;
+            try {
+                const resp = await fetch(HEALTH_URL);
+                data = await resp.json();
+            } catch (_) {
+                if (loading) loading.classList.add("d-none");
+                if (nodata) nodata.classList.remove("d-none");
+                return;
+            }
+
+            if (loading) loading.classList.add("d-none");
+            if (!data.has_data) {
+                if (nodata) nodata.classList.remove("d-none");
+                return;
+            }
+            if (resultsEl) resultsEl.classList.remove("d-none");
+
+            /* Render one row per floor */
+            grid.innerHTML = data.floors.map(floor =>
+                `<div style="font-size:0.7rem;font-weight:600;color:var(--bs-secondary-color);
+                             padding:2px 6px;display:flex;align-items:center;height:32px;
+                             white-space:nowrap;"
+                      title="${floor.label} (${floor.task_count} tasks)">${floor.token}</div>
+                 ${_renderCell(floor.build_quality.score,  floor.token, "bq")}
+                 ${_renderCell(floor.project_status.score, floor.token, "ps")}`
+            ).join("");
+
+            /* Breakdown panel — show on mouseover, hide on mouseout */
+            grid.addEventListener("mouseover", function(e) {
+                const cell = e.target.closest(".evm-hm-cell");
+                if (!cell || !panel) return;
+                const tok  = cell.dataset.tok;
+                const axis = cell.dataset.axis;
+                const floor = data.floors.find(f => f.token === tok);
+                if (!floor) return;
+
+                panel.innerHTML = _breakdownHtml(floor, axis);
+                panel.style.display = "block";
+
+                /* Edge-aware positioning relative to resultsEl */
+                const rRect = resultsEl.getBoundingClientRect();
+                const cRect = cell.getBoundingClientRect();
+                const panelW = 270;
+                let left = cRect.right - rRect.left + 8;
+                if (left + panelW > resultsEl.offsetWidth - 4) {
+                    left = cRect.left - rRect.left - panelW - 8;
+                }
+                panel.style.left = Math.max(0, left) + "px";
+                panel.style.top  = Math.max(0, cRect.top - rRect.top) + "px";
+            });
+
+            grid.addEventListener("mouseout", function(e) {
+                if (!e.relatedTarget || !e.relatedTarget.closest(".evm-hm-cell")) {
+                    if (panel) panel.style.display = "none";
+                }
+            });
+        }
+
+        loadFloorHealth();
     }());
 
     /* ── Project Controls Chat ─────────────────────────────────────────── */

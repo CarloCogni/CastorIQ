@@ -525,3 +525,151 @@ def run_completion_ml(project_id: str) -> dict:
         "watchlist": watchlist,
         "as_of": today.isoformat(),
     }
+
+
+def predict_all_incomplete(project_id: str) -> list[dict]:
+    """Return P(on-time) for every incomplete task, with activity_code for floor mapping.
+
+    Re-runs the same logistic regression pipeline as run_completion_ml() but
+    trains on the full completed set (no evaluation split) and returns the
+    complete prediction set — not just the top-20 watchlist.
+
+    Returns [] when fewer than 50 completed tasks exist (model too thin).
+
+    Each item: {"task_pk": str, "activity_code": str, "probability_on_time": float}
+    """
+    from django.db.models import Count, Sum
+
+    from islam.scheduling.models import P6ResourceAssignment, Task, TaskDependency
+
+    completed = list(
+        Task.objects.filter(project_id=project_id, is_non_physical=False, status="complete")
+        .exclude(actual_end=None)
+        .exclude(end_date=None)
+        .exclude(start_date=None)
+        .only(
+            "pk",
+            "activity_code",
+            "name",
+            "start_date",
+            "end_date",
+            "actual_start",
+            "actual_end",
+            "stage",
+            "status",
+            "total_float",
+        )
+    )
+    if len(completed) < 50:
+        return []
+
+    incomplete = list(
+        Task.objects.filter(project_id=project_id, is_non_physical=False)
+        .exclude(status="complete")
+        .exclude(start_date=None)
+        .exclude(end_date=None)
+        .only(
+            "pk",
+            "activity_code",
+            "name",
+            "start_date",
+            "end_date",
+            "actual_start",
+            "actual_end",
+            "stage",
+            "status",
+            "total_float",
+        )
+    )
+    if not incomplete:
+        return []
+
+    labels = np.array([1 if t.actual_end <= t.end_date else 0 for t in completed], dtype=float)
+    n_on_time = int(labels.sum())
+    global_rate = n_on_time / len(labels)
+
+    all_pks = [str(t.pk) for t in completed + incomplete]
+    pred_count_map = dict(
+        TaskDependency.objects.filter(successor_id__in=all_pks)
+        .values("successor_id")
+        .annotate(n=Count("id"))
+        .values_list("successor_id", "n")
+    )
+    succ_count_map = dict(
+        TaskDependency.objects.filter(predecessor_id__in=all_pks)
+        .values("predecessor_id")
+        .annotate(n=Count("id"))
+        .values_list("predecessor_id", "n")
+    )
+    ra_cost = {
+        str(row["task_id"]): float(row["total"] or 0)
+        for row in P6ResourceAssignment.objects.filter(project_id=project_id, is_pending=False)
+        .values("task_id")
+        .annotate(total=Sum("planned_cost"))
+    }
+
+    trade_agg: dict[str, list] = {}
+    for t, lbl in zip(completed, labels):
+        c = _csi(t.activity_code or "")
+        a = trade_agg.setdefault(c, [0, 0])
+        a[0] += 1
+        a[1] += int(lbl)
+
+    def _rate_loo(csi: str, own_lbl: int) -> float:
+        a = trade_agg.get(csi, [0, 0])
+        n_ex = a[0] - 1
+        k_ex = a[1] - own_lbl
+        return k_ex / n_ex if n_ex > 0 else global_rate
+
+    def _rate_global(csi: str) -> float:
+        a = trade_agg.get(csi)
+        return (a[1] / a[0]) if (a and a[0] > 0) else global_rate
+
+    top_csi = sorted(trade_agg, key=lambda c: -trade_agg[c][0])[:_TOP_CSI_N]
+    feat_names = _build_feature_names(top_csi)
+
+    x_train = np.array(
+        [
+            _task_row(
+                t,
+                pred_count_map.get(str(t.pk), 0),
+                succ_count_map.get(str(t.pk), 0),
+                ra_cost.get(str(t.pk), 0.0),
+                _rate_loo(_csi(t.activity_code or ""), int(lbl)),
+                top_csi,
+                feat_names,
+            )
+            for t, lbl in zip(completed, labels)
+        ],
+        dtype=float,
+    )
+    mu = x_train.mean(axis=0)
+    sigma = x_train.std(axis=0)
+    sigma[sigma == 0] = 1.0
+    w, b = _train_logreg((x_train - mu) / sigma, labels, l2=0.05, lr=0.1, n_iter=2000)
+
+    x_inc = np.array(
+        [
+            _task_row(
+                t,
+                pred_count_map.get(str(t.pk), 0),
+                succ_count_map.get(str(t.pk), 0),
+                ra_cost.get(str(t.pk), 0.0),
+                _rate_global(_csi(t.activity_code or "")),
+                top_csi,
+                feat_names,
+            )
+            for t in incomplete
+        ],
+        dtype=float,
+    )
+    probs = _predict_proba((x_inc - mu) / sigma, w, b)
+
+    return [
+        {
+            "task_pk": str(t.pk),
+            "activity_code": t.activity_code or "",
+            "probability_on_time": round(float(p), 3),
+        }
+        for t, p in zip(incomplete, probs)
+    ]

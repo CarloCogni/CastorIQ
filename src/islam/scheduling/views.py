@@ -1419,6 +1419,21 @@ class AnomalyDetectionView(ProjectAccessMixin, View):
         return JsonResponse(result)
 
 
+class FloorHealthView(ProjectAccessMixin, View):
+    """JSON — per-floor Project Health Matrix: Build Quality + Project Status."""
+
+    def get(self, request, **kwargs: object) -> JsonResponse:
+        from .services.floor_health import compute_floor_health
+
+        project = self.get_project()
+        try:
+            result = compute_floor_health(str(project.pk))
+        except Exception as exc:
+            logger.exception("Floor health failed for project %s", project.pk)
+            return JsonResponse({"error": str(exc)}, status=500)
+        return JsonResponse(result)
+
+
 class LookaheadDataView(ProjectAccessMixin, View):
     """JSON — per-week task buckets (starting/in_progress/finishing) for the Look-ahead tab."""
 
