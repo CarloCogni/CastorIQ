@@ -623,15 +623,15 @@
                 <div class="accordion-item">
                     <h2 class="accordion-header">
                         <button class="accordion-button" type="button"
-                                data-bs-toggle="collapse" data-bs-target="#anomaly-stalled-body"
+                                data-bs-toggle="collapse" data-bs-target="#anomaly-running-long-body"
                                 style="font-size:0.78rem; padding:10px 14px;">
                             <i class="bi bi-hourglass-split me-2" style="color:#d97706;"></i>
-                            <span id="anomaly-stalled-label">Stalled Tasks</span>
+                            <span id="anomaly-running-long-label">Running Long</span>
                         </button>
                     </h2>
-                    <div id="anomaly-stalled-body" class="accordion-collapse collapse show">
+                    <div id="anomaly-running-long-body" class="accordion-collapse collapse show">
                         <div class="accordion-body p-2">
-                            <div id="anomaly-stalled-content"></div>
+                            <div id="anomaly-running-long-content"></div>
                         </div>
                     </div>
                 </div>
@@ -658,7 +658,7 @@
                                 data-bs-toggle="collapse" data-bs-target="#anomaly-logic-body"
                                 style="font-size:0.78rem; padding:10px 14px;">
                             <i class="bi bi-diagram-3 me-2" style="color:#dc2626;"></i>
-                            <span id="anomaly-logic-label">Logic Anomalies</span>
+                            <span id="anomaly-logic-label">Logic / Data Quality</span>
                         </button>
                     </h2>
                     <div id="anomaly-logic-body" class="accordion-collapse collapse">
@@ -2568,8 +2568,9 @@
         }
 
         function _typeColor(type) {
-            if (type === "stalled") return "#d97706";
+            if (type === "running_long") return "#d97706";
             if (type === "statistical_outlier") return "#6366f1";
+            if (type === "unrealistic_baseline") return "#ea580c";
             return "#dc2626";
         }
 
@@ -2619,9 +2620,10 @@
                     <div style="font-size:0.67rem;color:var(--bs-secondary-color);">${s.flagged_pct}% of ${s.total_tasks.toLocaleString()}</div>
                 </div>
                 <div style="width:1px;background:var(--bs-border-color);align-self:stretch;"></div>
-                ${_pillCount("Stalled", s.by_type.stalled, "#d97706")}
-                ${_pillCount("Stat. Outliers", s.by_type.statistical_outlier, "#6366f1")}
-                ${_pillCount("Logic Errors", s.by_type.logic_anomaly, "#dc2626")}`;
+                ${_pillCount("Running long", s.by_type.running_long, "#d97706")}
+                ${_pillCount("Unrealistic baseline", s.by_type.unrealistic_baseline, "#ea580c")}
+                ${_pillCount("Stat. outliers", s.by_type.statistical_outlier, "#6366f1")}
+                ${_pillCount("Logic / FS errors", s.by_type.logic_anomaly, "#dc2626")}`;
 
             const note = document.getElementById("anomaly-method-note");
             if (note) {
@@ -2644,17 +2646,18 @@
                 }
                 if (results) results.classList.remove("d-none");
                 _renderSummary(data);
-                _renderGroup(data.stalled || [], "anomaly-stalled-content");
+                _renderGroup(data.running_long || [], "anomaly-running-long-content");
                 _renderGroup(data.statistical_outliers || [], "anomaly-outliers-content");
                 _renderGroup(data.logic_anomalies || [], "anomaly-logic-content");
 
                 const by = data.summary.by_type;
-                const sl = document.getElementById("anomaly-stalled-label");
+                const rl = document.getElementById("anomaly-running-long-label");
                 const ol = document.getElementById("anomaly-outliers-label");
                 const ll = document.getElementById("anomaly-logic-label");
-                if (sl) sl.textContent = `Stalled Tasks (${by.stalled})`;
+                const logicTotal = (by.logic_anomaly || 0) + (by.unrealistic_baseline || 0);
+                if (rl) rl.textContent = `Running Long ≥ 2× Plan (${by.running_long})`;
                 if (ol) ol.textContent = `Statistical Outliers (${by.statistical_outlier})`;
-                if (ll) ll.textContent = `Logic Anomalies (${by.logic_anomaly})`;
+                if (ll) ll.textContent = `Logic / Data Quality (${logicTotal})`;
 
             } catch (_e) {
                 if (loading) loading.classList.add("d-none");

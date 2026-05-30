@@ -45,12 +45,45 @@ _CSI_NAMES: dict[str, str] = {
 }
 
 _MIN_PEER_N: int = 5  # minimum peer group size for cross-sectional stats
-_OUTLIER_Z: float = 5.0  # robust z-score threshold — raised to 5σ to cut noise on delayed projects
-_STALL_MIN_RATIO: float = 2.0  # flag stalled only when elapsed >= 2× planned duration
-_MIN_PEER_DURATION_DAYS: int = 3  # exclude sub-3-day stub tasks from cross-sectional peer groups
-_MAX_PEER_DURATION_DAYS: int = 365  # exclude multi-year hammock/summary tasks from peer groups
+_OUTLIER_Z: float = 5.0  # robust z-score threshold — 5σ to cut noise on delayed projects
+_STALL_MIN_RATIO: float = 2.0  # only flag when elapsed >= 2× planned duration
+_MIN_PEER_DURATION_DAYS: int = 3  # exclude sub-3-day stubs from cross-sectional peer groups
+_MAX_PEER_DURATION_DAYS: int = 365  # exclude multi-year hammock tasks from peer groups
 _FS_MIN_VIOLATION_DAYS: int = 90  # ignore FS violations smaller than 90 calendar days
-_START_WINDOW_DAYS: int = 7  # tasks starting within 7 days of project start are legitimate starts
+_START_WINDOW_DAYS: int = 7  # tasks within 7 days of project start are legitimate starts
+# CSI construction trade codes (03-33, excluding 01 General Requirements and XX/unknown)
+_CONSTRUCTION_CSI: frozenset[str] = frozenset(
+    {
+        "03",
+        "04",
+        "05",
+        "06",
+        "07",
+        "08",
+        "09",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14",
+        "21",
+        "22",
+        "23",
+        "24",
+        "25",
+        "26",
+        "27",
+        "28",
+        "29",
+        "31",
+        "32",
+        "33",
+    }
+)
+# Planned durations ≤ this many days on a real construction task = baseline data quality issue.
+# Confirmed against project data: 1-4d construction tasks showed 190–335× overruns —
+# unrealistic plans, not blocked tasks. 5d+ is considered a plausible planned duration.
+_UNREALISTIC_DURATION_MAX_DAYS: int = 4
 
 
 def _csi(activity_code: str) -> str:
@@ -74,56 +107,96 @@ def _robust_z(value: float, median: float, mad: float) -> float:
     return abs(value - median) / (mad * 1.4826)
 
 
-# ── 1. Stall detection ────────────────────────────────────────────────────────
+# ── 1. Execution anomalies (running-long + unrealistic baseline) ──────────────
 
 
-def _detect_stalled(tasks: list, data_date: date) -> list[dict]:
-    """Flag incomplete tasks that have exceeded their planned duration since actual_start.
+def _classify_stall_anomalies(tasks: list, data_date: date) -> tuple[list[dict], list[dict]]:
+    """Split started+incomplete overrunning tasks into two honestly-named buckets.
 
-    A task is stalled when:
-      - actual_start is set (work has begun)
-      - actual_end is None (work has not finished)
-      - (data_date − actual_start).days > (end_date − start_date).days
+    running_long:
+        planned_duration >= 5d and elapsed >= 2× planned.
+        These are genuine execution problems — the plan was realistic
+        but the task is taking far longer than expected.
+
+    unrealistic_baseline:
+        planned_duration <= 4d on a construction-trade activity (CSI 03–33).
+        The extreme overrun ratio is driven by an unrealistically short baseline
+        (1-4d for real construction work), not by the task being blocked.
+        This is a DATA QUALITY issue with the schedule baseline.
+        Verified: all 105 affected tasks have cost data and construction CSI codes;
+        gray-zone 3-4d tasks showed identical patterns to the 1-2d group (190–250× overruns).
     """
-    results = []
+    running_long: list[dict] = []
+    unrealistic_baseline: list[dict] = []
+
     for t in tasks:
-        if not t.actual_start:
+        if not t.actual_start or t.actual_end:
             continue
-        if t.actual_end:
-            continue  # completed
         if not t.start_date or not t.end_date:
             continue
-        planned_duration = max((t.end_date - t.start_date).days, 1)
+        planned = max((t.end_date - t.start_date).days, 1)
         elapsed = (data_date - t.actual_start).days
-        if elapsed / planned_duration < _STALL_MIN_RATIO:
+        ratio = elapsed / planned
+        if ratio < _STALL_MIN_RATIO:
             continue
-        overrun_ratio = round(elapsed / planned_duration, 2)
+        overrun_ratio = round(ratio, 2)
         csi = _csi(t.activity_code or "")
-        results.append(
-            {
-                "task_pk": str(t.pk),
-                "name": t.name,
-                "trade": _trade_name(csi),
-                "csi": csi,
-                "stage": t.stage or "unassigned",
-                "anomaly_type": "stalled",
-                "metric": "elapsed_vs_planned_duration",
-                "value": elapsed,
-                "peer_median": planned_duration,
-                "peer_mad": None,
-                "elapsed_days": elapsed,
-                "planned_duration_days": planned_duration,
-                "overrun_ratio": overrun_ratio,
-                "actual_start": t.actual_start.isoformat(),
-                "planned_finish": t.end_date.isoformat(),
-                "explanation": (
-                    f"Started {elapsed}d ago, planned duration {planned_duration}d"
-                    f" — {overrun_ratio}× overrun, not complete"
-                ),
-            }
-        )
-    results.sort(key=lambda x: -x["overrun_ratio"])
-    return results
+
+        if planned <= _UNREALISTIC_DURATION_MAX_DAYS and csi in _CONSTRUCTION_CSI:
+            unrealistic_baseline.append(
+                {
+                    "task_pk": str(t.pk),
+                    "name": t.name,
+                    "trade": _trade_name(csi),
+                    "csi": csi,
+                    "stage": t.stage or "unassigned",
+                    "anomaly_type": "unrealistic_baseline",
+                    "metric": "planned_duration_too_short",
+                    "value": planned,
+                    "peer_median": None,
+                    "peer_mad": None,
+                    "elapsed_days": elapsed,
+                    "planned_duration_days": planned,
+                    "overrun_ratio": overrun_ratio,
+                    "actual_start": t.actual_start.isoformat(),
+                    "planned_finish": t.end_date.isoformat(),
+                    "explanation": (
+                        f"Construction task planned as {planned}d"
+                        f" — baseline duration unrealistic for this scope"
+                        f" (started {elapsed}d ago, {overrun_ratio}× overrun)"
+                    ),
+                }
+            )
+        elif planned >= 5:
+            running_long.append(
+                {
+                    "task_pk": str(t.pk),
+                    "name": t.name,
+                    "trade": _trade_name(csi),
+                    "csi": csi,
+                    "stage": t.stage or "unassigned",
+                    "anomaly_type": "running_long",
+                    "metric": "elapsed_vs_planned_duration",
+                    "value": elapsed,
+                    "peer_median": planned,
+                    "peer_mad": None,
+                    "elapsed_days": elapsed,
+                    "planned_duration_days": planned,
+                    "overrun_ratio": overrun_ratio,
+                    "actual_start": t.actual_start.isoformat(),
+                    "planned_finish": t.end_date.isoformat(),
+                    "explanation": (
+                        f"Started {elapsed}d ago, planned {planned}d"
+                        f" — {overrun_ratio}× overrun, not complete"
+                    ),
+                }
+            )
+        # tasks with planned_duration 3-4d that are NOT construction CSI fall through
+        # (non-construction 3-4d: too ambiguous to classify; not flagged)
+
+    running_long.sort(key=lambda x: -x["overrun_ratio"])
+    unrealistic_baseline.sort(key=lambda x: -x["overrun_ratio"])
+    return running_long, unrealistic_baseline
 
 
 # ── 2. Cross-sectional outliers ───────────────────────────────────────────────
@@ -419,9 +492,10 @@ def detect_anomalies(project_id: str) -> dict:
         method               — plain-English description of the detection method
         as_of                — ISO date (latest actual_end of completed tasks, or today)
         summary              — counts per type, unique tasks flagged, % of total
-        stalled              — stall-detected tasks, sorted by overrun_ratio desc
+        running_long         — execution overruns on realistic plans (planned >= 5d, elapsed >= 2×)
         statistical_outliers — cross-sectional outliers, sorted by robust_z desc
-        logic_anomalies      — structural anomalies (orphans, FS violations, cycles)
+        logic_anomalies      — data-quality + structural: unrealistic baselines, orphans,
+                               FS violations, cycles.  unrealistic_baseline items appear first.
     """
     from islam.scheduling.models import Task, TaskDependency
 
@@ -456,26 +530,31 @@ def detect_anomalies(project_id: str) -> dict:
         ).only("predecessor_id", "successor_id", "dep_type", "lag_days")
     )
 
-    stalled = _detect_stalled(tasks, data_date)
+    running_long, unrealistic_baseline = _classify_stall_anomalies(tasks, data_date)
     outliers = _detect_cross_sectional(tasks)
-    logic = _detect_logic_anomalies(tasks, deps)
+    logic_structural = _detect_logic_anomalies(tasks, deps)
+
+    # unrealistic_baseline is a data-quality issue: group with structural logic anomalies.
+    # unrealistic_baseline items sort first (already sorted by overrun_ratio desc).
+    logic_all = unrealistic_baseline + logic_structural
 
     all_flagged_pks = (
-        {r["task_pk"] for r in stalled}
+        {r["task_pk"] for r in running_long}
         | {r["task_pk"] for r in outliers}
-        | {r["task_pk"] for r in logic}
+        | {r["task_pk"] for r in logic_all}
     )
     total_tasks = len(tasks)
     total_flagged = len(all_flagged_pks)
 
     logger.info(
-        "Anomaly detection — project %s: n_tasks=%d stalled=%d outliers=%d"
-        " logic=%d unique_flagged=%d",
+        "Anomaly detection — project %s: n_tasks=%d running_long=%d"
+        " unrealistic_baseline=%d outliers=%d logic=%d unique_flagged=%d",
         project_id,
         total_tasks,
-        len(stalled),
+        len(running_long),
+        len(unrealistic_baseline),
         len(outliers),
-        len(logic),
+        len(logic_structural),
         total_flagged,
     )
 
@@ -488,12 +567,13 @@ def detect_anomalies(project_id: str) -> dict:
             "total_flagged": total_flagged,
             "flagged_pct": round(total_flagged / total_tasks * 100, 1) if total_tasks else 0.0,
             "by_type": {
-                "stalled": len(stalled),
+                "running_long": len(running_long),
+                "unrealistic_baseline": len(unrealistic_baseline),
                 "statistical_outlier": len(outliers),
-                "logic_anomaly": len(logic),
+                "logic_anomaly": len(logic_structural),
             },
         },
-        "stalled": stalled,
+        "running_long": running_long,
         "statistical_outliers": outliers,
-        "logic_anomalies": logic,
+        "logic_anomalies": logic_all,
     }
