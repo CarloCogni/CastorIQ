@@ -132,6 +132,16 @@ urlpatterns = [
         name="delay_distribution",
     ),
     path(
+        "projects/<uuid:pk>/schedule/trend-analysis/",
+        scheduling_views.TrendAnalysisView.as_view(),
+        name="trend_analysis",
+    ),
+    path(
+        "projects/<uuid:pk>/schedule/monte-carlo/",
+        scheduling_views.MonteCarloView.as_view(),
+        name="monte_carlo",
+    ),
+    path(
         "projects/<uuid:pk>/schedule/link/smart/",
         scheduling_views.AutoLinkView.as_view(),
         name="schedule_link_smart",

@@ -1297,6 +1297,36 @@ class DelayDistributionView(ProjectAccessMixin, View):
         return JsonResponse(result)
 
 
+class MonteCarloView(ProjectAccessMixin, View):
+    """JSON — Monte Carlo schedule simulation: P50/P80/P95 completion dates."""
+
+    def get(self, request, **kwargs: object) -> JsonResponse:
+        project = self.get_project()
+        try:
+            from .services.monte_carlo import compute_monte_carlo
+
+            result = compute_monte_carlo(str(project.pk))
+        except Exception as exc:
+            logger.exception("Monte Carlo failed for project %s", project.pk)
+            return JsonResponse({"error": str(exc)}, status=500)
+        return JsonResponse(result)
+
+
+class TrendAnalysisView(ProjectAccessMixin, View):
+    """JSON — SPI/CPI historical trends, TCPI, and Schedule Recovery Index."""
+
+    def get(self, request, **kwargs: object) -> JsonResponse:
+        project = self.get_project()
+        try:
+            from .services.trend_engine import compute_trend_analysis
+
+            result = compute_trend_analysis(str(project.pk))
+        except Exception as exc:
+            logger.exception("Trend analysis failed for project %s", project.pk)
+            return JsonResponse({"error": str(exc)}, status=500)
+        return JsonResponse(result)
+
+
 class LookaheadDataView(ProjectAccessMixin, View):
     """JSON — per-week task buckets (starting/in_progress/finishing) for the Look-ahead tab."""
 
