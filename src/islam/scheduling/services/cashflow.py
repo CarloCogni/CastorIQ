@@ -159,6 +159,9 @@ def compute_cashflow(project_id: str) -> dict:
         if costs["actual"] > 0:
             if task.actual_start:
                 actual_end = task.actual_end if task.actual_end else today
+                # Guard inverted dates from P6 data quality issues
+                if actual_end < task.actual_start:
+                    actual_end = task.actual_start
                 _distribute_monthly(actual_m, costs["actual"], task.actual_start, actual_end)
             else:
                 # No actual dates — allocate to planned date range up to today
