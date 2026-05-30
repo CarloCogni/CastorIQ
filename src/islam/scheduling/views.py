@@ -1419,6 +1419,21 @@ class AnomalyDetectionView(ProjectAccessMixin, View):
         return JsonResponse(result)
 
 
+class DecisionSummaryView(ProjectAccessMixin, View):
+    """JSON — executive plain-language decision summary (three blocks)."""
+
+    def get(self, request, **kwargs: object) -> JsonResponse:
+        from .services.decision_layer import compute_decision_summary
+
+        project = self.get_project()
+        try:
+            result = compute_decision_summary(str(project.pk))
+        except Exception as exc:
+            logger.exception("Decision summary failed for project %s", project.pk)
+            return JsonResponse({"error": str(exc)}, status=500)
+        return JsonResponse(result)
+
+
 class FloorHealthView(ProjectAccessMixin, View):
     """JSON — per-floor Project Health Matrix: Build Quality + Project Status."""
 

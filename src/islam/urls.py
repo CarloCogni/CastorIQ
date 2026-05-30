@@ -177,6 +177,11 @@ urlpatterns = [
         name="floor_health",
     ),
     path(
+        "projects/<uuid:pk>/schedule/decision-summary/",
+        scheduling_views.DecisionSummaryView.as_view(),
+        name="decision_summary",
+    ),
+    path(
         "projects/<uuid:pk>/schedule/link/smart/",
         scheduling_views.AutoLinkView.as_view(),
         name="schedule_link_smart",
