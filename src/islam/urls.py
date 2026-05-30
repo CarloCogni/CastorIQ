@@ -167,6 +167,11 @@ urlpatterns = [
         name="dcma_check",
     ),
     path(
+        "projects/<uuid:pk>/schedule/anomalies/",
+        scheduling_views.AnomalyDetectionView.as_view(),
+        name="anomaly_detection",
+    ),
+    path(
         "projects/<uuid:pk>/schedule/link/smart/",
         scheduling_views.AutoLinkView.as_view(),
         name="schedule_link_smart",

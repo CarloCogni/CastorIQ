@@ -582,6 +582,96 @@
         </div>
     </div>
 
+    <!-- Anomaly Detection -->
+    <div id="evm-anomaly-section"
+         style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
+
+        <div class="d-flex align-items-center gap-2 mb-3">
+            <i class="bi bi-exclamation-triangle" style="color:#d97706; font-size:1rem;"></i>
+            <span style="font-size:0.8rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:0.05em;">Anomaly Detection</span>
+            <span style="font-size:0.7rem; color:var(--bs-secondary-color);">Cross-sectional + stall detection (single snapshot — not temporal)</span>
+            <button type="button"
+                    class="help-pill"
+                    data-bs-toggle="modal"
+                    data-bs-target="#evmHelpModal"
+                    title="How anomaly detection works"
+                    aria-label="How anomaly detection works">
+                <i class="bi bi-question-circle"></i>
+            </button>
+        </div>
+
+        <div id="anomaly-loading" class="d-flex align-items-center gap-2" style="font-size:0.78rem; color:var(--bs-secondary-color); padding:4px 0;">
+            <span class="spinner-border spinner-border-sm"></span> Scanning schedule…
+        </div>
+
+        <div id="anomaly-nodata" class="d-none" style="font-size:0.78rem; color:var(--bs-secondary-color); padding:4px 0;"></div>
+
+        <div id="anomaly-results" class="d-none">
+
+            <!-- Summary strip -->
+            <div id="anomaly-summary-strip"
+                 class="d-flex flex-wrap align-items-center gap-4 p-3 rounded-3 mb-3"
+                 style="background:var(--bs-secondary-bg); font-size:0.78rem;"></div>
+
+            <!-- Method label -->
+            <div id="anomaly-method-note"
+                 style="font-size:0.67rem; color:var(--bs-secondary-color); margin-bottom:12px;"></div>
+
+            <!-- Three accordion groups -->
+            <div class="accordion" id="anomaly-accordion">
+
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button" type="button"
+                                data-bs-toggle="collapse" data-bs-target="#anomaly-stalled-body"
+                                style="font-size:0.78rem; padding:10px 14px;">
+                            <i class="bi bi-hourglass-split me-2" style="color:#d97706;"></i>
+                            <span id="anomaly-stalled-label">Stalled Tasks</span>
+                        </button>
+                    </h2>
+                    <div id="anomaly-stalled-body" class="accordion-collapse collapse show">
+                        <div class="accordion-body p-2">
+                            <div id="anomaly-stalled-content"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button"
+                                data-bs-toggle="collapse" data-bs-target="#anomaly-outliers-body"
+                                style="font-size:0.78rem; padding:10px 14px;">
+                            <i class="bi bi-graph-up-arrow me-2" style="color:#6366f1;"></i>
+                            <span id="anomaly-outliers-label">Statistical Outliers</span>
+                        </button>
+                    </h2>
+                    <div id="anomaly-outliers-body" class="accordion-collapse collapse">
+                        <div class="accordion-body p-2">
+                            <div id="anomaly-outliers-content"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button"
+                                data-bs-toggle="collapse" data-bs-target="#anomaly-logic-body"
+                                style="font-size:0.78rem; padding:10px 14px;">
+                            <i class="bi bi-diagram-3 me-2" style="color:#dc2626;"></i>
+                            <span id="anomaly-logic-label">Logic Anomalies</span>
+                        </button>
+                    </h2>
+                    <div id="anomaly-logic-body" class="accordion-collapse collapse">
+                        <div class="accordion-body p-2">
+                            <div id="anomaly-logic-content"></div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
     <!-- Project Controls Chat -->
     <div id="evm-chat-section"
          style="border:1px solid var(--bs-border-color); border-radius:8px; background:var(--bs-body-bg); overflow:hidden;">
@@ -2467,6 +2557,112 @@
         }
 
         loadML();
+    }());
+
+    /* ── Anomaly Detection ─────────────────────────────────────────────── */
+    (function () {
+        const ANOMALY_URL = "{% url 'islam:anomaly_detection' project.pk %}";
+
+        function _esc(s) {
+            return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        }
+
+        function _typeColor(type) {
+            if (type === "stalled") return "#d97706";
+            if (type === "statistical_outlier") return "#6366f1";
+            return "#dc2626";
+        }
+
+        function _renderGroup(items, containerId) {
+            const el = document.getElementById(containerId);
+            if (!el) return;
+            if (!items || !items.length) {
+                el.innerHTML = '<div style="font-size:0.75rem;color:var(--bs-secondary-color);padding:6px 4px;">No flagged tasks in this category.</div>';
+                return;
+            }
+            const MAX = 25;
+            let html = items.slice(0, MAX).map(item => {
+                const color = _typeColor(item.anomaly_type);
+                const metricBadge = item.peer_median !== null && item.peer_median !== undefined
+                    ? `<span style="font-size:0.63rem;background:var(--bs-secondary-bg);border-radius:3px;padding:1px 5px;margin-left:4px;color:var(--bs-secondary-color);">peer median: ${item.peer_median}</span>`
+                    : "";
+                return `<div class="d-flex align-items-start gap-2 py-2" style="border-bottom:1px solid var(--bs-border-color);font-size:0.75rem;">
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${_esc(item.name)}">${_esc(item.name.length > 70 ? item.name.slice(0, 70) + "…" : item.name)}</div>
+                        <div style="font-size:0.67rem;color:var(--bs-secondary-color);">${_esc(item.trade)} · ${_esc(item.stage)}</div>
+                        <div style="font-size:0.67rem;color:${color};margin-top:2px;">${_esc(item.explanation)}${metricBadge}</div>
+                    </div>
+                </div>`;
+            }).join("");
+            if (items.length > MAX) {
+                html += `<div style="font-size:0.67rem;color:var(--bs-secondary-color);padding:6px 4px;text-align:center;">… and ${items.length - MAX} more</div>`;
+            }
+            el.innerHTML = html;
+        }
+
+        function _pillCount(label, count, color) {
+            return `<div style="text-align:center;">
+                <div style="font-size:1.1rem;font-weight:700;color:${color};line-height:1;">${(count || 0).toLocaleString()}</div>
+                <div style="font-size:0.67rem;color:var(--bs-secondary-color);">${_esc(label)}</div>
+            </div>`;
+        }
+
+        function _renderSummary(data) {
+            const strip = document.getElementById("anomaly-summary-strip");
+            if (!strip) return;
+            const s = data.summary;
+            const totalColor = s.total_flagged > 0 ? "#d97706" : "#16a34a";
+            strip.innerHTML =
+                `<div style="text-align:center;">
+                    <div style="font-size:1.55rem;font-weight:700;color:${totalColor};line-height:1;">${s.total_flagged.toLocaleString()}</div>
+                    <div style="font-size:0.67rem;color:var(--bs-secondary-color);">flagged tasks</div>
+                    <div style="font-size:0.67rem;color:var(--bs-secondary-color);">${s.flagged_pct}% of ${s.total_tasks.toLocaleString()}</div>
+                </div>
+                <div style="width:1px;background:var(--bs-border-color);align-self:stretch;"></div>
+                ${_pillCount("Stalled", s.by_type.stalled, "#d97706")}
+                ${_pillCount("Stat. Outliers", s.by_type.statistical_outlier, "#6366f1")}
+                ${_pillCount("Logic Errors", s.by_type.logic_anomaly, "#dc2626")}`;
+
+            const note = document.getElementById("anomaly-method-note");
+            if (note) {
+                note.innerHTML =
+                    `<i class="bi bi-info-circle me-1"></i>Method: <strong>${_esc(data.method)}</strong>. As of ${_esc(data.as_of)}.`;
+            }
+        }
+
+        async function loadAnomalies() {
+            const loading = document.getElementById("anomaly-loading");
+            const nodata  = document.getElementById("anomaly-nodata");
+            const results = document.getElementById("anomaly-results");
+            try {
+                const resp = await fetch(ANOMALY_URL);
+                const data = await resp.json();
+                if (loading) loading.classList.add("d-none");
+                if (!data.has_data) {
+                    if (nodata) { nodata.classList.remove("d-none"); nodata.textContent = data.reason || "No task data available."; }
+                    return;
+                }
+                if (results) results.classList.remove("d-none");
+                _renderSummary(data);
+                _renderGroup(data.stalled || [], "anomaly-stalled-content");
+                _renderGroup(data.statistical_outliers || [], "anomaly-outliers-content");
+                _renderGroup(data.logic_anomalies || [], "anomaly-logic-content");
+
+                const by = data.summary.by_type;
+                const sl = document.getElementById("anomaly-stalled-label");
+                const ol = document.getElementById("anomaly-outliers-label");
+                const ll = document.getElementById("anomaly-logic-label");
+                if (sl) sl.textContent = `Stalled Tasks (${by.stalled})`;
+                if (ol) ol.textContent = `Statistical Outliers (${by.statistical_outlier})`;
+                if (ll) ll.textContent = `Logic Anomalies (${by.logic_anomaly})`;
+
+            } catch (_e) {
+                if (loading) loading.classList.add("d-none");
+                if (nodata) { nodata.classList.remove("d-none"); nodata.textContent = "Failed to load anomaly data."; }
+            }
+        }
+
+        loadAnomalies();
     }());
 
     /* ── Project Controls Chat ─────────────────────────────────────────── */

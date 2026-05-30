@@ -163,6 +163,49 @@ def _load_dcma_summary(project_id: str) -> dict | None:
         return None
 
 
+def _load_anomaly_summary(project_id: str) -> str | None:
+    """Run anomaly detection and return a compact text block for the LLM prompt.
+
+    Honest about method: single-snapshot rule + robust-statistics, not temporal learning.
+    Returns None on failure or when no tasks are found.
+    """
+    try:
+        from .anomaly_detect import detect_anomalies
+
+        result = detect_anomalies(project_id)
+        if not result.get("has_data"):
+            return None
+        s = result["summary"]
+        bt = s["by_type"]
+        lines = [
+            f"Anomaly Detection  ({result['method']})  as of {result['as_of']}",
+            f"  Total unique flagged: {s['total_flagged']} tasks ({s['flagged_pct']}% of {s['total_tasks']})",
+            f"  Stalled (overrun planned duration without completing): {bt['stalled']}",
+            f"  Statistical outliers (>3σ from CSI trade peer median): {bt['statistical_outlier']}",
+            f"  Logic anomalies (orphans / FS violations / cycles): {bt['logic_anomaly']}",
+        ]
+        for t in result.get("stalled", [])[:3]:
+            lines.append(
+                f"  Stalled: {t['name'][:55]}"
+                f"  {t['overrun_ratio']}× overrun"
+                f"  ({t['elapsed_days']}d elapsed / {t['planned_duration_days']}d planned)"
+            )
+        for t in result.get("statistical_outliers", [])[:3]:
+            lines.append(
+                f"  Outlier: {t['name'][:55]}"
+                f"  axis={t['axis']} value={t['value']}"
+                f"  peer_median={t['peer_median']}  z={t['robust_z']}"
+            )
+        for t in result.get("logic_anomalies", [])[:3]:
+            lines.append(
+                f"  Logic [{t['anomaly_type']}]: {t['name'][:55]}  — {t['explanation'][:70]}"
+            )
+        return "\n".join(lines)
+    except Exception:
+        logger.exception("Anomaly summary failed for project %s", project_id)
+        return None
+
+
 def _load_constraint_data(project_id: str) -> dict:
     """Query Task model for constraint and negative-float data.
 
@@ -505,6 +548,11 @@ def _build_context(
             for c in warning:
                 val = f"{c['value']}{c['unit']}" if c["unit"] in ("%", "") else c["value"]
                 lines.append(f"    ⚠ {c['name']:<22s} {val}  (target {c['target']})")
+
+    # ── Anomaly Detection ─────────────────────────────────────────────────
+    anomaly_summary = _load_anomaly_summary(project_id) if project_id else None
+    if anomaly_summary:
+        lines += ["", anomaly_summary]
 
     return "\n".join(lines)
 
