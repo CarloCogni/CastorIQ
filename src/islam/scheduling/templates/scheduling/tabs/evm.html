@@ -3196,12 +3196,15 @@
 
             if (axis === "bq") {
                 const bq = floor.build_quality;
-                html += `<div style="font-size:0.72rem;margin-bottom:2px;">${_dot(bq.logic_issues > 0 ? "#dc2626" : "#16a34a")}Logic gaps: <strong>${bq.logic_issues}</strong></div>`;
-                html += `<div style="font-size:0.72rem;margin-bottom:2px;">${_dot(bq.anomaly_flags > 0 ? "#d97706" : "#16a34a")}Anomaly flags: <strong>${bq.anomaly_flags}</strong></div>`;
+                /* Defect rate drives the score — show it first */
+                const rateColor = bq.defect_rate_pct >= 10 ? "#dc2626" : bq.defect_rate_pct >= 5 ? "#d97706" : "#16a34a";
+                html += `<div style="font-size:0.72rem;margin-bottom:5px;font-weight:600;color:${rateColor};">Defect rate: ${bq.defect_rate_pct}% (${bq.defect_count} of ${floor.task_count} tasks)</div>`;
+                html += `<div style="font-size:0.7rem;margin-bottom:2px;">${_dot(bq.logic_issues > 0 ? "#dc2626" : "#16a34a")}Logic gaps (missing pred/succ, hard constraints): <strong>${bq.logic_issues}</strong></div>`;
+                html += `<div style="font-size:0.7rem;margin-bottom:2px;">${_dot(bq.anomaly_flags > 0 ? "#d97706" : "#16a34a")}Structural errors (FS violations, bad baselines): <strong>${bq.anomaly_flags}</strong></div>`;
                 if (bq.gap_count > 0) {
-                    html += `<div style="font-size:0.72rem;margin-bottom:2px;">${_dot("#d97706")}Missing vs peer floors (${bq.gap_count}): <span style="font-size:0.67rem;">${bq.gaps.slice(0, 3).join("; ")}</span></div>`;
+                    html += `<div style="font-size:0.7rem;margin-bottom:2px;">${_dot("#d97706")}Missing vs band peers (${bq.gap_count}): <span style="font-size:0.67rem;">${bq.gaps.slice(0, 3).join("; ")}</span></div>`;
                 } else {
-                    html += `<div style="font-size:0.72rem;margin-bottom:2px;">${_dot("#16a34a")}No missing trade signatures vs peers</div>`;
+                    html += `<div style="font-size:0.7rem;margin-bottom:2px;">${_dot("#16a34a")}No missing trade signatures vs structural band peers</div>`;
                 }
             } else {
                 const ps = floor.project_status;
