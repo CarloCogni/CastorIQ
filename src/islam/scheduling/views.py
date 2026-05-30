@@ -1327,6 +1327,22 @@ class TrendAnalysisView(ProjectAccessMixin, View):
         return JsonResponse(result)
 
 
+class DelayRootCauseView(ProjectAccessMixin, View):
+    """JSON — delay root-cause clustering via CPM driving-relationship propagation."""
+
+    def get(self, request, **kwargs: object) -> JsonResponse:
+        from .services.delay_rootcause import run_delay_rootcause
+
+        project = self.get_project()
+        threshold = int(request.GET.get("threshold", 0))
+        try:
+            result = run_delay_rootcause(str(project.pk), delay_threshold_days=threshold)
+        except Exception as exc:
+            logger.exception("Delay root-cause failed for project %s", project.pk)
+            return JsonResponse({"error": str(exc)}, status=500)
+        return JsonResponse(result)
+
+
 class CashFlowView(ProjectAccessMixin, View):
     """JSON — monthly cash flow forecast: planned / actual / remaining."""
 
