@@ -137,7 +137,12 @@ def _load_constraint_data(project_id: str) -> dict:
 
 
 def _build_context(
-    project_name: str, evm_data: dict, intelligence: dict, project_id: str = ""
+    project_name: str,
+    evm_data: dict,
+    intelligence: dict,
+    project_id: str = "",
+    trend_data: dict | None = None,
+    mc_data: dict | None = None,
 ) -> str:
     """Assemble a concise project status block for the LLM system prompt."""
     lines: list[str] = []
@@ -237,6 +242,25 @@ def _build_context(
             if w["drivers"] and "No significant" not in w["drivers"][0]:
                 lines.append(f"           Drivers: {'; '.join(w['drivers'])}")
 
+    # ── Probabilistic Forecast (Monte Carlo) ──────────────────────────────
+    if mc_data and mc_data.get("has_data"):
+        md = mc_data
+        lines += [
+            "",
+            f"Probabilistic Forecast  ({md['n_simulations']} Monte Carlo simulations, {md['tasks_simulated']} critical tasks)",
+            f"  Baseline end: {md['baseline_end']}",
+            f"  P50 (50% confidence): {md['p50']}  ({md['p50_delta']:+d}d vs baseline)",
+            f"  P80 (80% confidence): {md['p80']}  ({md['p80_delta']:+d}d vs baseline)",
+            f"  P95 (95% confidence): {md['p95']}  ({md['p95_delta']:+d}d vs baseline)",
+        ]
+
+    # ── Performance Trend ─────────────────────────────────────────────────
+    if trend_data and trend_data.get("has_data"):
+        td = trend_data
+        lines += ["", f"Performance Trend  ({td['weeks_of_data']} weeks of history)"]
+        for line in td.get("summary_lines", []):
+            lines.append(f"  {line}")
+
     # ── Hard Deadline Constraints (MFO) ───────────────────────────────────
     mfo_tasks = constraint_data.get("mfo_tasks", [])
     snet_count = constraint_data.get("snet_count", 0)
@@ -315,7 +339,25 @@ class ProjectControlsChatService:
                 "error": None,
             }
 
-        context = _build_context(self.project.name, evm_data, intelligence, str(self.project.pk))
+        try:
+            from .trend_engine import compute_trend_analysis
+
+            trend_data = compute_trend_analysis(str(self.project.pk), evm_data=evm_data)
+        except Exception:
+            logger.exception("Trend analysis failed for project %s", self.project.pk)
+            trend_data = None
+
+        try:
+            from .monte_carlo import compute_monte_carlo
+
+            mc_data = compute_monte_carlo(str(self.project.pk), n_simulations=250)
+        except Exception:
+            logger.exception("Monte Carlo failed for project %s", self.project.pk)
+            mc_data = None
+
+        context = _build_context(
+            self.project.name, evm_data, intelligence, str(self.project.pk), trend_data, mc_data
+        )
         system_prompt = _SYSTEM_TEMPLATE.format(context=context)
 
         try:

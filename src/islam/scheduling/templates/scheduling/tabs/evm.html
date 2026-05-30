@@ -7,6 +7,19 @@
 </div>
 {% else %}
 
+<div class="d-flex align-items-center gap-2 mb-1">
+    <i class="bi bi-graph-up-arrow fs-5" style="color:#3b82f6;"></i>
+    <h5 class="m-0">EVM Dashboard</h5>
+    <button type="button"
+            class="help-pill"
+            data-bs-toggle="modal"
+            data-bs-target="#evmHelpModal"
+            title="How the EVM Dashboard works"
+            aria-label="How the EVM Dashboard works">
+        <i class="bi bi-question-circle"></i>
+    </button>
+</div>
+
 <div id="evm-root" style="display:flex; flex-direction:column; gap:16px;">
 
     <!-- Cost guidance banner — shown when no schedule costs or QTO data available -->
@@ -86,6 +99,64 @@
         </div>
     </div>
 
+    <!-- Trend Analysis -->
+    <div id="evm-trend-section" class="d-none">
+
+        <div class="d-flex align-items-center gap-2 mb-3">
+            <span style="font-size:0.8rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:0.05em;">Trend Analysis</span>
+            <button type="button"
+                    class="help-pill"
+                    data-bs-toggle="modal"
+                    data-bs-target="#evmHelpModal"
+                    title="How Trend Analysis works"
+                    aria-label="How Trend Analysis works">
+                <i class="bi bi-question-circle"></i>
+            </button>
+            <span id="evm-trend-weeks" style="font-size:0.7rem; color:var(--bs-secondary-color);"></span>
+        </div>
+
+        <!-- Sparklines row -->
+        <div class="row g-3 mb-3">
+            <div class="col-12 col-md-6">
+                <div style="border:1px solid var(--bs-border-color); border-radius:8px; padding:14px; background:var(--bs-body-bg);">
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <span style="font-size:0.72rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:.05em;">SPI — 12 Weeks</span>
+                        <span id="trend-spi-badge"></span>
+                    </div>
+                    <div style="position:relative; height:80px;">
+                        <canvas id="trend-spi-canvas" style="display:block; width:100%; height:80px;"></canvas>
+                    </div>
+                    <div id="trend-spi-meta" style="font-size:0.7rem; color:var(--bs-secondary-color); margin-top:6px;"></div>
+                </div>
+            </div>
+            <div class="col-12 col-md-6">
+                <div style="border:1px solid var(--bs-border-color); border-radius:8px; padding:14px; background:var(--bs-body-bg);">
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <span style="font-size:0.72rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:.05em;">CPI — 12 Weeks</span>
+                        <span id="trend-cpi-badge"></span>
+                    </div>
+                    <div style="position:relative; height:80px;">
+                        <canvas id="trend-cpi-canvas" style="display:block; width:100%; height:80px;"></canvas>
+                    </div>
+                    <div id="trend-cpi-meta" style="font-size:0.7rem; color:var(--bs-secondary-color); margin-top:6px;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TCPI + Recovery row -->
+        <div class="row g-3">
+            <div class="col-12 col-md-5 col-lg-4">
+                <div id="trend-tcpi-card"
+                     style="border:1px solid var(--bs-border-color); border-radius:8px; padding:14px; background:var(--bs-body-bg); height:100%;"></div>
+            </div>
+            <div class="col-12 col-md-7 col-lg-8">
+                <div id="trend-recovery-card"
+                     style="border:1px solid var(--bs-border-color); border-radius:8px; padding:14px; background:var(--bs-body-bg); height:100%;"></div>
+            </div>
+        </div>
+
+    </div>
+
     <!-- Delay Distribution Chart -->
     <div id="evm-delay-section"
          style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
@@ -108,6 +179,75 @@
     <!-- Forecast Completion Timeline -->
     <div id="evm-forecast-section" class="d-none"
          style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
+    </div>
+
+    <!-- Probabilistic Forecast (Monte Carlo) -->
+    <div id="evm-mc-section"
+         style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
+
+        <div class="d-flex align-items-center justify-content-between mb-3">
+            <div class="d-flex align-items-center gap-2">
+                <span style="font-size:0.8rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:0.05em;">Probabilistic Forecast</span>
+                <button type="button"
+                        class="help-pill"
+                        data-bs-toggle="modal"
+                        data-bs-target="#evmHelpModal"
+                        title="How Monte Carlo simulation works"
+                        aria-label="How Monte Carlo simulation works">
+                    <i class="bi bi-question-circle"></i>
+                </button>
+            </div>
+            <button id="evm-mc-run-btn"
+                    style="padding:5px 14px; background:#3b82f6; color:#fff; border:none;
+                           border-radius:6px; font-size:0.76rem; font-weight:600; cursor:pointer;
+                           transition:opacity .15s; white-space:nowrap;">
+                <i class="bi bi-dice-3 me-1"></i>Run Simulation
+            </button>
+        </div>
+
+        <!-- Idle: description before first run -->
+        <div id="evm-mc-idle" style="font-size:0.78rem; color:var(--bs-secondary-color); padding:8px 0;">
+            Runs 1,000 forward-pass schedule scenarios sampling each incomplete task's remaining duration
+            from a PERT distribution (optimistic 0.8×, most-likely 1×, pessimistic 1.5×).
+            Returns P50 / P80 / P95 completion dates.
+        </div>
+
+        <!-- Loading state -->
+        <div id="evm-mc-loading" class="d-none"
+             style="display:flex; align-items:center; gap:8px; font-size:0.78rem; color:var(--bs-secondary-color); padding:8px 0;">
+            <span class="spinner-border spinner-border-sm"></span>
+            Running 1,000 simulations on critical path…
+        </div>
+
+        <!-- Results (hidden until run) -->
+        <div id="evm-mc-results" class="d-none">
+
+            <!-- Percentile cards -->
+            <div class="row g-2 mb-3">
+                <div class="col-4">
+                    <div id="evm-mc-p50-card"
+                         style="background:var(--bs-secondary-bg); border-radius:8px; padding:10px 12px; height:100%;"></div>
+                </div>
+                <div class="col-4">
+                    <div id="evm-mc-p80-card"
+                         style="background:var(--bs-secondary-bg); border-radius:8px; padding:10px 12px; height:100%;"></div>
+                </div>
+                <div class="col-4">
+                    <div id="evm-mc-p95-card"
+                         style="background:var(--bs-secondary-bg); border-radius:8px; padding:10px 12px; height:100%;"></div>
+                </div>
+            </div>
+
+            <!-- Histogram chart -->
+            <div style="position:relative; height:190px;">
+                <canvas id="evm-mc-canvas" style="display:block; width:100%; height:190px;"></canvas>
+            </div>
+
+            <!-- Footer: simulation metadata -->
+            <div id="evm-mc-footer"
+                 style="font-size:0.68rem; color:var(--bs-secondary-color); margin-top:6px; text-align:center;"></div>
+
+        </div>
     </div>
 
     <!-- Secondary metrics row -->
@@ -782,9 +922,380 @@
         }).join("");
     }
 
+    /* ── Monte Carlo / Probabilistic Forecast ─────────────────────────── */
+    (function () {
+        const MC_URL   = "{% url 'islam:monte_carlo' project.pk %}";
+        const runBtn   = document.getElementById("evm-mc-run-btn");
+        const idleEl   = document.getElementById("evm-mc-idle");
+        const loadEl   = document.getElementById("evm-mc-loading");
+        const resEl    = document.getElementById("evm-mc-results");
+
+        runBtn.addEventListener("click", async function () {
+            runBtn.disabled = true;
+            runBtn.style.opacity = "0.6";
+            idleEl.classList.add("d-none");
+            loadEl.classList.remove("d-none");
+            loadEl.style.display = "flex";
+            resEl.classList.add("d-none");
+
+            let data;
+            try {
+                const resp = await fetch(MC_URL);
+                data = await resp.json();
+            } catch (_) {
+                loadEl.classList.add("d-none");
+                idleEl.textContent = "Simulation failed — check server logs.";
+                idleEl.classList.remove("d-none");
+                runBtn.disabled = false;
+                runBtn.style.opacity = "1";
+                return;
+            }
+
+            loadEl.classList.add("d-none");
+            runBtn.disabled = false;
+            runBtn.style.opacity = "1";
+
+            if (!data.has_data) {
+                idleEl.textContent = "Not enough schedule data to run simulation.";
+                idleEl.classList.remove("d-none");
+                return;
+            }
+
+            _renderMcResults(data);
+            resEl.classList.remove("d-none");
+        });
+
+        function _renderMcResults(d) {
+            const baseline = d.baseline_end;
+
+            function _pCard(elId, label, isoDate, delta, color) {
+                const el = document.getElementById(elId);
+                if (!el) return;
+                const dateStr = new Date(isoDate + "T00:00:00").toLocaleDateString(undefined, {day: "numeric", month: "short", year: "2-digit"});
+                const sign = delta >= 0 ? "+" : "";
+                const deltaLabel = delta === 0 ? "on baseline"
+                    : delta > 0 ? `${delta}d late` : `${Math.abs(delta)}d early`;
+                el.innerHTML =
+                    `<div style="font-size:0.64rem; font-weight:700; color:${color}; text-transform:uppercase; letter-spacing:.07em; margin-bottom:4px;">${label}</div>
+                    <div style="font-size:1.05rem; font-weight:700; color:var(--bs-body-color); line-height:1.1;">${dateStr}</div>
+                    <div style="font-size:0.65rem; color:${color}; margin-top:3px; font-weight:600;">${deltaLabel}</div>`;
+            }
+
+            const p50c = d.p50_delta > 30 ? "#dc2626" : d.p50_delta > 0 ? "#d97706" : "#16a34a";
+            const p80c = d.p80_delta > 30 ? "#dc2626" : d.p80_delta > 0 ? "#d97706" : "#16a34a";
+            const p95c = "#dc2626";
+            _pCard("evm-mc-p50-card", "P50 — 50%", d.p50, d.p50_delta, p50c);
+            _pCard("evm-mc-p80-card", "P80 — 80%", d.p80, d.p80_delta, p80c);
+            _pCard("evm-mc-p95-card", "P95 — worst case", d.p95, d.p95_delta, p95c);
+
+            _drawMcHistogram("evm-mc-canvas", d.histogram, d.p50, d.p80, d.p95, baseline);
+
+            const footer = document.getElementById("evm-mc-footer");
+            if (footer) {
+                footer.textContent =
+                    `${d.n_simulations.toLocaleString()} simulations · ` +
+                    `${d.tasks_simulated} critical/near-critical tasks · ` +
+                    `PERT distribution (opt 0.8× · ml 1× · pess 1.5×)`;
+            }
+        }
+
+        function _drawMcHistogram(canvasId, histogram, p50, p80, p95, baseline) {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas || !histogram.length) return;
+            const wrap = canvas.parentElement;
+            const dpr  = window.devicePixelRatio || 1;
+            const W    = wrap.clientWidth;
+            const H    = 190;
+            canvas.width  = W * dpr;
+            canvas.height = H * dpr;
+            canvas.style.width  = W + "px";
+            canvas.style.height = H + "px";
+
+            const ctx = canvas.getContext("2d");
+            ctx.scale(dpr, dpr);
+
+            const PAD = { top: 22, right: 12, bottom: 38, left: 36 };
+            const cW = W - PAD.left - PAD.right;
+            const cH = H - PAD.top  - PAD.bottom;
+            const n  = histogram.length;
+            const maxPct = Math.max(...histogram.map(b => b.pct), 1);
+            const barGap  = cW / n;
+            const barW    = Math.max(barGap - 3, 2);
+
+            /* Bars */
+            histogram.forEach((b, i) => {
+                const bh = (b.pct / maxPct) * cH;
+                const x  = PAD.left + i * barGap + (barGap - barW) / 2;
+                const y  = PAD.top  + cH - bh;
+                ctx.fillStyle = "#3b82f6";
+                ctx.globalAlpha = 0.75;
+                ctx.fillRect(x, y, barW, bh);
+                ctx.globalAlpha = 1;
+            });
+
+            /* Convert ISO date to fractional bar position */
+            function isoToX(isoDate) {
+                const target = new Date(isoDate + "T00:00:00").getTime();
+                const t0     = new Date(histogram[0].date + "T00:00:00").getTime();
+                const t1     = new Date(histogram[n - 1].date + "T00:00:00").getTime();
+                if (t1 === t0) return PAD.left + cW / 2;
+                return PAD.left + ((target - t0) / (t1 - t0)) * cW;
+            }
+
+            /* P-line markers */
+            function pLine(isoDate, color, label) {
+                const x = isoToX(isoDate);
+                if (x < PAD.left - 4 || x > PAD.left + cW + 4) return;
+                ctx.save();
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2;
+                ctx.setLineDash([3, 3]);
+                ctx.beginPath(); ctx.moveTo(x, PAD.top - 2); ctx.lineTo(x, PAD.top + cH); ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.fillStyle = color;
+                ctx.font = "bold 10px system-ui";
+                ctx.textAlign = "center";
+                ctx.fillText(label, x, PAD.top - 5);
+                ctx.restore();
+            }
+            pLine(p50,      "#16a34a", "P50");
+            pLine(p80,      "#d97706", "P80");
+            pLine(p95,      "#dc2626", "P95");
+            pLine(baseline, "#6b7280", "BL");
+
+            /* X-axis labels */
+            const secColor = getComputedStyle(document.documentElement).getPropertyValue("--bs-secondary-color") || "#6c757d";
+            ctx.fillStyle = secColor;
+            ctx.font = "10px system-ui";
+            ctx.textAlign = "center";
+            const step = Math.max(1, Math.floor(n / 5));
+            histogram.forEach((b, i) => {
+                if (i % step === 0 || i === n - 1) {
+                    ctx.fillText(b.label, PAD.left + i * barGap + barGap / 2, PAD.top + cH + 14);
+                }
+            });
+
+            /* Y-axis: 0% and max% labels */
+            ctx.textAlign = "right";
+            ctx.fillText("0%", PAD.left - 4, PAD.top + cH);
+            ctx.fillText(Math.round(maxPct) + "%", PAD.left - 4, PAD.top + 8);
+        }
+    }());
+
+    /* ── Trend Analysis ───────────────────────────────────────────────── */
+    async function loadTrendAnalysis() {
+        let data;
+        try {
+            const resp = await fetch("{% url 'islam:trend_analysis' project.pk %}");
+            data = await resp.json();
+        } catch (_) { return; }
+        if (!data.has_data) return;
+
+        document.getElementById("evm-trend-section").classList.remove("d-none");
+        const weeksEl = document.getElementById("evm-trend-weeks");
+        if (weeksEl) weeksEl.textContent = `based on ${data.weeks_of_data} weeks`;
+
+        _drawSparkline("trend-spi-canvas", data.spi_series, "spi", data.spi_trend);
+        _renderTrendBadge("trend-spi-badge", data.spi_trend);
+        _renderTrendMeta("trend-spi-meta", data.spi_trend, false);
+
+        _drawSparkline("trend-cpi-canvas", data.cpi_series, "cpi", data.cpi_trend);
+        _renderTrendBadge("trend-cpi-badge", data.cpi_trend);
+        _renderTrendMeta("trend-cpi-meta", data.cpi_trend, data.is_synthetic_cost);
+
+        _renderTcpiCard("trend-tcpi-card", data.tcpi);
+        _renderRecoveryCard("trend-recovery-card", data.recovery);
+    }
+
+    function _drawSparkline(canvasId, series, valueKey, trend) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas || !series || !series.length) return;
+        const wrap  = canvas.parentElement;
+        const dpr   = window.devicePixelRatio || 1;
+        const W     = wrap.clientWidth;
+        const H     = 80;
+        canvas.width  = W * dpr;
+        canvas.height = H * dpr;
+        canvas.style.width  = W + "px";
+        canvas.style.height = H + "px";
+
+        const ctx = canvas.getContext("2d");
+        ctx.scale(dpr, dpr);
+
+        const values = series.map(p => p[valueKey]);
+        const PAD = { top: 8, right: 8, bottom: 8, left: 8 };
+        const cW = W - PAD.left - PAD.right;
+        const cH = H - PAD.top  - PAD.bottom;
+
+        const dataMin = Math.min(...values);
+        const dataMax = Math.max(...values);
+        const pad = Math.max((dataMax - dataMin) * 0.15, 0.05);
+        const yMin = Math.min(dataMin - pad, 0.95);
+        const yMax = Math.max(dataMax + pad, 1.05);
+        const yRange = yMax - yMin;
+
+        function xOf(i)  { return PAD.left + (i / Math.max(values.length - 1, 1)) * cW; }
+        function yOf(v)  { return PAD.top + cH - ((v - yMin) / yRange) * cH; }
+
+        /* 1.0 reference line */
+        const y1 = yOf(1.0);
+        ctx.save();
+        ctx.strokeStyle = "rgba(107,114,128,0.30)";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath(); ctx.moveTo(PAD.left, y1); ctx.lineTo(PAD.left + cW, y1); ctx.stroke();
+        ctx.restore();
+
+        /* Shaded fill between data line and 1.0 */
+        ctx.save();
+        ctx.beginPath();
+        values.forEach((v, i) => {
+            i === 0 ? ctx.moveTo(xOf(i), yOf(v)) : ctx.lineTo(xOf(i), yOf(v));
+        });
+        ctx.lineTo(xOf(values.length - 1), y1);
+        ctx.lineTo(PAD.left, y1);
+        ctx.closePath();
+        const lastV = values[values.length - 1];
+        ctx.fillStyle = lastV >= 1.0 ? "rgba(22,163,74,0.10)" : "rgba(220,38,38,0.08)";
+        ctx.fill();
+        ctx.restore();
+
+        /* Data line */
+        ctx.save();
+        ctx.strokeStyle = "#3b82f6";
+        ctx.lineWidth = 2;
+        ctx.lineJoin = "round";
+        ctx.beginPath();
+        values.forEach((v, i) => {
+            i === 0 ? ctx.moveTo(xOf(i), yOf(v)) : ctx.lineTo(xOf(i), yOf(v));
+        });
+        ctx.stroke();
+        ctx.restore();
+
+        /* Trend line + 4-week forecast */
+        if (trend && trend.has_trend && trend.direction !== "stable") {
+            const n = values.length;
+            const slope = trend.slope;
+            /* intercept back-calc from current value */
+            const intercept = lastV - slope * (n - 1);
+            const fwX = xOf(n - 1 + 4);
+            const fwY = yOf(Math.max(0, Math.min(3, intercept + slope * (n - 1 + 4))));
+            const tColor = trend.direction === "improving" ? "#16a34a" : "#dc2626";
+            ctx.save();
+            ctx.strokeStyle = tColor;
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([4, 3]);
+            ctx.beginPath();
+            ctx.moveTo(xOf(n - 1), yOf(lastV));
+            ctx.lineTo(fwX > PAD.left + cW ? PAD.left + cW : fwX, fwY);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        /* End dot */
+        const dotColor = lastV >= 1.0 ? "#16a34a" : "#dc2626";
+        ctx.save();
+        ctx.fillStyle = dotColor;
+        ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue("--bs-body-bg") || "#fff";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(xOf(values.length - 1), yOf(lastV), 4, 0, Math.PI * 2);
+        ctx.fill(); ctx.stroke();
+        ctx.restore();
+    }
+
+    function _renderTrendBadge(elId, trend) {
+        const el = document.getElementById(elId);
+        if (!el || !trend || !trend.has_trend) return;
+        const dir = trend.direction;
+        const arrow = dir === "improving" ? "▲" : dir === "declining" ? "▼" : "→";
+        const color = dir === "improving" ? "#16a34a" : dir === "declining" ? "#dc2626" : "var(--bs-secondary-color)";
+        const bg    = dir === "improving" ? "rgba(22,163,74,.10)" : dir === "declining" ? "rgba(220,38,38,.10)" : "rgba(107,114,128,.10)";
+        el.innerHTML = `<span style="font-size:0.72rem; font-weight:700; color:${color};
+            background:${bg}; border:1px solid ${color}30; border-radius:12px; padding:2px 8px;">
+            ${arrow} ${dir.charAt(0).toUpperCase() + dir.slice(1)}
+        </span>`;
+    }
+
+    function _renderTrendMeta(elId, trend, isSynthetic) {
+        const el = document.getElementById(elId);
+        if (!el) return;
+        if (isSynthetic) {
+            el.innerHTML = '<span style="color:#f59e0b;">⚠ AC is simulated — CPI trend not meaningful</span>';
+            return;
+        }
+        if (!trend || !trend.has_trend) {
+            el.textContent = "Insufficient history for trend (need 3+ weeks)";
+            return;
+        }
+        const dir   = trend.direction;
+        const slope = trend.slope > 0 ? `+${trend.slope.toFixed(4)}` : trend.slope.toFixed(4);
+        const f4    = trend.forecast_4w.toFixed(3);
+        const f8    = trend.forecast_8w.toFixed(3);
+        const parts = [`Slope ${slope}/wk`];
+        if (dir !== "stable") parts.push(`4w: ${f4}`, `8w: ${f8}`);
+        if (trend.consecutive_decline >= 3) parts.push(`${trend.consecutive_decline} weeks consecutive decline`);
+        else if (trend.consecutive_improve >= 2) parts.push(`${trend.consecutive_improve} weeks consecutive improvement`);
+        el.textContent = parts.join("  ·  ");
+    }
+
+    const _RAG = { green: "#16a34a", amber: "#d97706", red: "#dc2626", unknown: "var(--bs-secondary-color)" };
+
+    function _renderTcpiCard(elId, tcpi) {
+        const el = document.getElementById(elId);
+        if (!el || !tcpi) return;
+        const c = _RAG[tcpi.status] || _RAG.unknown;
+        const val = tcpi.value != null ? tcpi.value.toFixed(2) : "N/A";
+        el.innerHTML =
+            `<div style="font-size:0.72rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:.05em; margin-bottom:8px;">
+                TCPI <span style="font-size:0.65rem; font-weight:400; text-transform:none; letter-spacing:0;">(To-Complete Perf. Index)</span>
+            </div>
+            <div style="display:flex; align-items:baseline; gap:8px; margin-bottom:8px;">
+                <span style="font-size:1.9rem; font-weight:700; color:${c}; line-height:1;">${val}</span>
+                <span style="font-size:0.72rem; font-weight:600; color:${c};
+                    background:${c}18; border:1px solid ${c}40; border-radius:12px; padding:2px 8px;">
+                    ${tcpi.status.toUpperCase()}
+                </span>
+            </div>
+            <div style="font-size:0.74rem; color:var(--bs-secondary-color); line-height:1.45;">${tcpi.verdict}</div>`;
+    }
+
+    function _renderRecoveryCard(elId, rec) {
+        const el = document.getElementById(elId);
+        if (!el || !rec) return;
+        const c = rec.achievable ? "#16a34a" : "#dc2626";
+        const label = rec.achievable ? "On Track" : "At Risk";
+        const tspiStr = rec.tspi != null ? rec.tspi.toFixed(2) : "N/A";
+        const wks = rec.weeks_remaining != null ? `${rec.weeks_remaining}w remaining` : "";
+        const impStr = rec.weekly_improvement_needed != null
+            ? `+${rec.weekly_improvement_needed.toFixed(3)}/wk needed`
+            : "";
+
+        el.innerHTML =
+            `<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+                <span style="font-size:0.72rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:.05em;">
+                    Schedule Recovery <span style="font-size:0.65rem; font-weight:400; text-transform:none; letter-spacing:0;">(TSPI)</span>
+                </span>
+                <span style="font-size:0.72rem; font-weight:700; color:${c};
+                    background:${c}18; border:1px solid ${c}40; border-radius:12px; padding:2px 8px;">
+                    ${label}
+                </span>
+            </div>
+            <div style="display:flex; gap:16px; margin-bottom:8px; flex-wrap:wrap;">
+                <div>
+                    <div style="font-size:0.64rem; color:var(--bs-secondary-color); text-transform:uppercase; font-weight:600; letter-spacing:.06em; margin-bottom:1px;">TSPI Required</div>
+                    <div style="font-size:1.3rem; font-weight:700; color:${c};">${tspiStr}</div>
+                </div>
+                ${wks ? `<div style="align-self:flex-end; font-size:0.72rem; color:var(--bs-secondary-color);">${wks}</div>` : ""}
+                ${impStr ? `<div style="align-self:flex-end; font-size:0.72rem; color:var(--bs-secondary-color);">${impStr}</div>` : ""}
+            </div>
+            <div style="font-size:0.74rem; color:var(--bs-secondary-color); line-height:1.45;">${rec.verdict}</div>`;
+    }
+
     loadEvm();
     loadWbsHeatmap();
     loadDelayDistribution();
+    loadTrendAnalysis();
 
     /* ── Project Controls Chat ─────────────────────────────────────────── */
     (function () {
@@ -884,5 +1395,7 @@
     }());
 }());
 </script>
+
+{% include "scheduling/components/evm_help_modal.html" %}
 
 {% endif %}
