@@ -1,5 +1,11 @@
 <!-- facilities/tabs/_facilities_assets.html — Asset Register sub-tab body -->
 
+<!-- QR engine: qrcode-generator (~10kB, no deps). Loaded once for the Asset
+     Register page; powers the mini QR on each card, the per-asset modal, and
+     the bulk-print sheet. We render SVG inline (crisp on print, no canvas
+     allocation per card) and fall back to a canvas/PNG only for download. -->
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+
 <div class="d-flex flex-column gap-3" id="facilities-assets-body">
 
     <!-- Top bar: title + primary actions -->
@@ -49,13 +55,42 @@
         {% endif %}
     </div>
 
-    <!-- Filter bar -->
-    {% include "facilities/components/asset_filter_bar.html" %}
+    <!-- Sub-tabs: Asset list vs QR Management. Plain links (not Bootstrap
+         data-bs-toggle) so each tab is a clean URL — refreshable, shareable,
+         and reusing the existing list/filter pipeline for both. -->
+    <ul class="nav nav-tabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <a class="nav-link {% if assets_subtab != 'qr' %}active{% endif %} d-inline-flex align-items-center gap-2"
+               href="{% url 'facilities:assets_list' project.pk %}"
+               role="tab">
+                <i class="bi bi-grid-3x3-gap"></i> Assets
+            </a>
+        </li>
+        <li class="nav-item" role="presentation">
+            <a class="nav-link {% if assets_subtab == 'qr' %}active{% endif %} d-inline-flex align-items-center gap-2"
+               href="{% url 'facilities:assets_qr_labels' project.pk %}"
+               role="tab">
+                <i class="bi bi-qr-code"></i> QR Management
+            </a>
+        </li>
+    </ul>
 
-    <!-- Grid (HTMX-swappable) -->
-    <div id="asset-grid-mount">
-        {% include "facilities/components/asset_grid.html" %}
-    </div>
+    {% if assets_subtab == 'qr' %}
+        <!-- QR Labels body — same filter bar so users keep the asset scope
+             they had on the list view, then a printable QR grid. -->
+        {% include "facilities/components/asset_filter_bar.html" %}
+        <div id="asset-grid-mount">
+            {% include "facilities/components/asset_qr_labels_grid.html" %}
+        </div>
+    {% else %}
+        <!-- Filter bar -->
+        {% include "facilities/components/asset_filter_bar.html" %}
+
+        <!-- Grid (HTMX-swappable) -->
+        <div id="asset-grid-mount">
+            {% include "facilities/components/asset_grid.html" %}
+        </div>
+    {% endif %}
 
     <!-- Status banner (simple flash from ?message=) -->
     {% if request.GET.message %}
@@ -75,6 +110,9 @@
 
     <!-- Help modal — "How the Asset Register Works" -->
     {% include "facilities/components/asset_register_help_modal.html" %}
+
+    <!-- QR viewer / printer — one modal serves every asset card on the page -->
+    {% include "facilities/components/asset_qr_modal.html" %}
 </div>
 
 <style>
@@ -97,6 +135,145 @@
 </style>
 
 <script>
+// ── QR helper (used by asset cards, single-QR modal, bulk-print sheet) ──
+// Exposed on `window.castorAssetQR` so HTMX-swapped fragments can call it
+// without re-loading the lib. SVG is the primary render path (crisp on
+// print, cheap per-card); canvas is only built on demand for PNG download.
+window.castorAssetQR = (function () {
+    function build(url) {
+        // typeNumber 0 = auto, ECC level 'M' = ~15% recovery (good balance
+        // between density and tolerance for crumpled label samolepky).
+        const qr = qrcode(0, 'M');
+        qr.addData(url);
+        qr.make();
+        return qr;
+    }
+
+    function svg(url, sizePx, margin) {
+        const qr = build(url);
+        const modules = qr.getModuleCount() + (margin || 0) * 2;
+        const cellSize = Math.max(1, Math.floor((sizePx || 128) / modules));
+        return qr.createSvgTag({ cellSize: cellSize, margin: margin || 1, scalable: true });
+    }
+
+    function renderInto(el) {
+        // Container has data-qr-url + data-qr-size. Re-rendering is cheap
+        // and idempotent; we mark rendered ones with a flag to skip work
+        // when the same fragment is swapped back in.
+        if (!el || el.dataset.qrRendered === '1') return;
+        const url = el.dataset.qrUrl || '';
+        const size = parseInt(el.dataset.qrSize || '96', 10);
+        if (!url) return;
+        try {
+            el.innerHTML = svg(url, size, 1);
+            el.dataset.qrRendered = '1';
+        } catch (err) {
+            console.warn('[castorAssetQR] render failed for', url, err);
+        }
+    }
+
+    function renderAll(root) {
+        const scope = root || document;
+        scope.querySelectorAll('[data-qr-url]:not([data-qr-rendered="1"])').forEach(renderInto);
+    }
+
+    function toPngDataURL(url, sizePx) {
+        // Off-screen canvas → PNG data URL. Used by the modal download
+        // button and by the bulk-print sheet when the user wants a file.
+        const qr = build(url);
+        const modules = qr.getModuleCount();
+        const margin = 2;
+        const totalModules = modules + margin * 2;
+        const cellSize = Math.max(2, Math.floor((sizePx || 512) / totalModules));
+        const canvas = document.createElement('canvas');
+        const px = cellSize * totalModules;
+        canvas.width = px;
+        canvas.height = px;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, px, px);
+        ctx.fillStyle = '#000000';
+        for (let r = 0; r < modules; r++) {
+            for (let c = 0; c < modules; c++) {
+                if (qr.isDark(r, c)) {
+                    ctx.fillRect((c + margin) * cellSize, (r + margin) * cellSize, cellSize, cellSize);
+                }
+            }
+        }
+        return canvas.toDataURL('image/png');
+    }
+
+    function download(url, filename, sizePx) {
+        const dataUrl = toPngDataURL(url, sizePx || 512);
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = filename || 'asset-qr.png';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+    }
+
+    // Initial render + re-render after any HTMX swap (asset grid pagination,
+    // filter changes, QR-management tab swap) brings new cards into the DOM.
+    document.addEventListener('DOMContentLoaded', function () { renderAll(); });
+    document.body.addEventListener('htmx:afterSwap', function (event) {
+        renderAll(event.target);
+    });
+    // Some swaps land on a container we already scanned; run once more so
+    // newly-inserted descendants pick up their QRs.
+    setTimeout(renderAll, 50);
+
+    return { svg: svg, renderAll: renderAll, renderInto: renderInto, download: download, toPngDataURL: toPngDataURL };
+})();
+
+// ── Bulk print sheet — A4 grid of QR labels in a new window ──
+// Called by the QR-Management tab when user clicks "Print labels". Each
+// `labels` item is { url, tag, name }. The new window paints a 3×8 grid
+// per A4 (24 labels/sheet), gives each label a printable border, and auto-
+// triggers window.print() once SVG painting is done.
+window.castorAssetQRPrintSheet = function (labels) {
+    if (!labels || !labels.length) return;
+    const win = window.open('', '_blank', 'width=900,height=1100');
+    if (!win) return;
+
+    function esc(s) {
+        return String(s || '').replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+
+    const cellHtml = labels.map(function (l) {
+        const svgMarkup = window.castorAssetQR.svg(l.url, 140, 1);
+        const tagHtml = l.tag ? '<div class="qr-tag">' + esc(l.tag) + '</div>' : '';
+        const nameHtml = (l.name && l.name !== l.tag)
+            ? '<div class="qr-name">' + esc(l.name) + '</div>' : '';
+        return '<div class="qr-cell">' + svgMarkup + tagHtml + nameHtml + '</div>';
+    }).join('');
+
+    win.document.write([
+        '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Asset QR labels (',
+        labels.length,
+        ')</title><style>',
+        '* { box-sizing: border-box; }',
+        'body { margin: 0; padding: 10mm; font-family: Arial, sans-serif; color: #000; }',
+        '.sheet { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4mm; }',
+        '.qr-cell { border: 1px dashed #aaa; padding: 4mm 2mm; text-align: center; ',
+        '           page-break-inside: avoid; break-inside: avoid; }',
+        '.qr-cell svg { width: 30mm; height: 30mm; display: block; margin: 0 auto; }',
+        '.qr-tag { font-weight: 700; font-size: 9pt; margin-top: 2mm; word-break: break-word; }',
+        '.qr-name { font-size: 7pt; color: #444; margin-top: 1mm; word-break: break-word; }',
+        '@media print { @page { size: A4; margin: 8mm; } body { padding: 0; }',
+        '               .qr-cell { border-color: #ccc; } }',
+        '</style></head><body>',
+        '<div class="sheet">', cellHtml, '</div>',
+        '<script>window.addEventListener("load", function () { ',
+        '   setTimeout(function () { window.print(); }, 200); ',
+        '});<\/script>',
+        '</body></html>'
+    ].join(''));
+    win.document.close();
+};
+
 (function () {
     // Bulk-bar wiring — surfaces the sticky bar when any card checkbox is ticked.
     const grid = document.getElementById('asset-grid-mount');

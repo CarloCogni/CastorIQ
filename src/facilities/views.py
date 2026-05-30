@@ -223,6 +223,7 @@ class AssetListView(ProjectTabMixin, TemplateView):
         project = self.get_project()
         context.update(_role_context(project, self.request.user, self.request.session))
         context["active_sub_tab"] = "assets"
+        context["assets_subtab"] = "list"
         context["facilities_body_template"] = "facilities/tabs/_facilities_assets.html"
         context.update(self._asset_grid_context(project, self.request))
         return context
@@ -280,6 +281,44 @@ class AssetListView(ProjectTabMixin, TemplateView):
             "active_classification_ref_ids": list(classification_ref_ids),
             "classification_references": classifications,
         }
+
+
+class AssetQRLabelsView(ProjectTabMixin, TemplateView):
+    """QR Labels — large-format QR grid for printing asset stickers.
+
+    Shares :class:`AssetListView`'s data fetch + filter pipeline so the QR
+    sheet honours the same search/filter the user has on the regular list.
+    Renders the Asset Register chrome with the QR sub-tab active; the body
+    template (`_facilities_qr_labels.html`) shows big QRs with checkbox
+    selection and a 'Print sheet' button that opens an A4 print window.
+    """
+
+    active_tab = "facilities"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        project = self.get_project()
+        context.update(_role_context(project, self.request.user, self.request.session))
+        context["active_sub_tab"] = "assets"
+        context["assets_subtab"] = "qr"
+        context["facilities_body_template"] = "facilities/tabs/_facilities_assets.html"
+        # Reuse the list view's filter/query/pagination pipeline so the QR
+        # tab shows the SAME set the user just refined — switching tabs
+        # shouldn't reset what they were looking at.
+        context.update(AssetListView._asset_grid_context(project, self.request))
+        return context
+
+    def get(self, request, *args, **kwargs):
+        if request.headers.get("HX-Request") == "true":
+            project = self.get_project()
+            context = AssetListView._asset_grid_context(project, request)
+            context["project"] = project
+            return render(
+                request,
+                "facilities/components/asset_qr_labels_grid.html",
+                context,
+            )
+        return super().get(request, *args, **kwargs)
 
 
 class AssetDetailView(ProjectTabMixin, TemplateView):

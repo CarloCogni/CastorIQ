@@ -42,6 +42,11 @@ urlpatterns = [
         name="assets_import",
     ),
     path(
+        "<uuid:pk>/facilities/assets/qr/",
+        views.AssetQRLabelsView.as_view(),
+        name="assets_qr_labels",
+    ),
+    path(
         "<uuid:pk>/facilities/assets/<uuid:asset_pk>/",
         views.AssetDetailView.as_view(),
         name="assets_detail",
