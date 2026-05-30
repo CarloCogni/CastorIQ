@@ -142,6 +142,11 @@ urlpatterns = [
         name="monte_carlo",
     ),
     path(
+        "projects/<uuid:pk>/schedule/timelocation/",
+        scheduling_views.TimeLocationView.as_view(),
+        name="timelocation",
+    ),
+    path(
         "projects/<uuid:pk>/schedule/delay-rootcause/",
         scheduling_views.DelayRootCauseView.as_view(),
         name="delay_rootcause",

@@ -58,6 +58,29 @@ def _fmt(value: float, use_cost: bool) -> str:
     return f"{value:,.0f} units"
 
 
+def _load_timelocation_summary(project_id: str) -> str | None:
+    """Return a one-line time-location summary for the prompt, or None on failure."""
+    try:
+        from .timelocation import compute_timelocation
+
+        r = compute_timelocation(project_id)
+        if not r.get("has_data"):
+            return None
+        sc, st = r["scope"], r["stats"]
+        return (
+            f"Time-Location: {sc['floor_located']} floor-located tasks across 18 floors "
+            f"({sc['admin_excluded']} admin + {sc['unlocated_excluded']} unlocated excluded). "
+            f"Busiest floor: {st['busiest_floor_label']} ({st['busiest_floor_count']} tasks). "
+            f"Widest trade (most floors): {st['widest_trade_name']} ({st['widest_trade_floors']} floors). "
+            f"Top 5 trades: "
+            + ", ".join(f"{t['name']} ({t['count']})" for t in r["trades"][:5])
+            + "."
+        )
+    except Exception:
+        logger.exception("Timelocation summary failed for project %s", project_id)
+        return None
+
+
 def _load_delay_rootcause_summary(project_id: str) -> dict | None:
     """Return compact delay root-cause summary for the prompt, or None on failure."""
     try:
@@ -339,6 +362,11 @@ def _build_context(
                 f"  {t['name']:<40s}  {t['activity_code']:<12s}"
                 f"  float={tf:+d} wd  stage={t['stage']}  [{t['status'].upper()}]"
             )
+
+    # ── Time-Location summary ─────────────────────────────────────────────
+    tl_summary = _load_timelocation_summary(project_id) if project_id else None
+    if tl_summary:
+        lines += ["", tl_summary]
 
     # ── Delay Root-Cause Analysis ─────────────────────────────────────────
     drc = _load_delay_rootcause_summary(project_id) if project_id else None
