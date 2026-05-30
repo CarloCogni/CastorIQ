@@ -2036,21 +2036,33 @@ def build_explore_storeys(project):
         .select_related("entity", "explore_floor_plan", "explore_settings")
         .order_by("elevation", "entity__name")
     )
-    return [
-        {
-            "pk": str(storey.pk),
-            "name": (storey.entity.name if storey.entity_id else str(storey.pk)),
-            "label": storey.long_name or (storey.entity.name if storey.entity_id else ""),
-            "has_plan": bool(getattr(storey, "explore_floor_plan", None)),
-            "knockout": getattr(getattr(storey, "explore_floor_plan", None), "knockout", False),
-            "hidden": getattr(getattr(storey, "explore_settings", None), "hidden", False),
-            "upload_url": reverse("facilities:explore_floor_plan_upload", args=[project.pk, storey.pk]),
-            "delete_url": reverse("facilities:explore_floor_plan_delete", args=[project.pk, storey.pk]),
-            "visibility_url": reverse("facilities:explore_floor_visibility", args=[project.pk, storey.pk]),
-            "rename_url": reverse("facilities:explore_floor_rename", args=[project.pk, storey.pk]),
-        }
-        for storey in storeys
-    ]
+    descriptors = []
+    for storey in storeys:
+        plan = getattr(storey, "explore_floor_plan", None)
+        descriptors.append(
+            {
+                "pk": str(storey.pk),
+                "name": (storey.entity.name if storey.entity_id else str(storey.pk)),
+                "label": storey.long_name or (storey.entity.name if storey.entity_id else ""),
+                "has_plan": plan is not None and (
+                    bool(getattr(plan, "image", None)) or bool(getattr(plan, "generated_image", None))
+                ),
+                "has_uploaded": bool(plan and plan.image),
+                "has_generated": bool(plan and plan.generated_image),
+                "image_source": (plan.image_source if plan else "uploaded"),
+                "cut_height_mm": (plan.cut_height_mm if plan else None),
+                "included_kinds": list(plan.included_kinds) if (plan and plan.included_kinds) else [],
+                "knockout": getattr(plan, "knockout", False),
+                "hidden": getattr(getattr(storey, "explore_settings", None), "hidden", False),
+                "upload_url": reverse("facilities:explore_floor_plan_upload", args=[project.pk, storey.pk]),
+                "delete_url": reverse("facilities:explore_floor_plan_delete", args=[project.pk, storey.pk]),
+                "visibility_url": reverse("facilities:explore_floor_visibility", args=[project.pk, storey.pk]),
+                "rename_url": reverse("facilities:explore_floor_rename", args=[project.pk, storey.pk]),
+                "generate_url": reverse("facilities:explore_floor_plan_generate", args=[project.pk, storey.pk]),
+                "source_url": reverse("facilities:explore_floor_plan_source", args=[project.pk, storey.pk]),
+            }
+        )
+    return descriptors
 
 
 def _explore_floor_rows_response(request, project):
@@ -2191,6 +2203,99 @@ class ExploreFloorVisibilityView(ProjectModifyAccessMixin, View):
             "Explore storey %s %s Explore by user %s", storey_pk, state, request.user.pk
         )
         # Return the refreshed rows so the manager updates in place (modal stays open).
+        return _explore_floor_rows_response(request, project)
+
+
+class ExploreFloorPlanGenerateView(ProjectModifyAccessMixin, View):
+    """Generate a 2D floor plan from the IFC model by horizontal slicing.
+
+    Reads ``cut_height_m`` (default 1.2) and one or more ``kinds`` checkboxes
+    from the form, runs the slice via :mod:`explore_plan_generator`, and stores
+    the PNG into ``plan.generated_image``. ``image_source`` flips to
+    ``'generated'`` so the viewer shows the new plan immediately. The user
+    can switch back to the uploaded plan from the source pills (see
+    :class:`ExploreFloorPlanSourceView`).
+    """
+
+    def post(self, request, pk, storey_pk):
+        project = self.get_project()
+        storey = get_object_or_404(
+            IFCSpatialElement,
+            pk=storey_pk,
+            ifc_file__project=project,
+            spatial_type=IFCSpatialElement.SpatialType.BUILDING_STOREY,
+        )
+
+        try:
+            cut_height_m = float(request.POST.get("cut_height_m", "1.2"))
+        except (TypeError, ValueError):
+            return toast_response("Cut height must be a number (m).", "error", status=400)
+
+        kinds = request.POST.getlist("kinds") or []
+
+        # Lazy import — keeps ifcopenshell off the import path for views that
+        # never touch plan generation.
+        from .services.explore_plan_generator import (  # noqa: PLC0415
+            PlanGenerationError,
+            apply_generated_plan,
+            generate_plan_png,
+        )
+
+        try:
+            result = generate_plan_png(storey, cut_height_m, kinds)
+        except PlanGenerationError as exc:
+            logger.info("Plan generation failed for storey %s: %s", storey_pk, exc)
+            return toast_response(str(exc), "error", status=400)
+        except Exception:  # pragma: no cover — unexpected geometry failure
+            logger.exception("Unexpected error generating plan for storey %s", storey_pk)
+            return toast_response(
+                "Plan generation failed unexpectedly. Check the logs.",
+                "error",
+                status=500,
+            )
+
+        plan, _created = ExploreFloorPlan.objects.get_or_create(
+            storey=storey,
+            defaults={"uploaded_by": request.user, "knockout": False},
+        )
+        apply_generated_plan(plan, result, request.user)
+        logger.info(
+            "Generated plan for storey %s at %.3f m — %d segments / %d triangles",
+            storey_pk,
+            cut_height_m,
+            result.segment_count,
+            result.triangle_count,
+        )
+        return _explore_floor_rows_response(request, project)
+
+
+class ExploreFloorPlanSourceView(ProjectModifyAccessMixin, View):
+    """Switch the active plan source between 'uploaded' and 'generated'.
+
+    Both images are kept on the same :class:`ExploreFloorPlan` row; this
+    view only flips ``image_source`` so the viewer picks the other one on
+    its next refresh. 400 if the requested source has no image yet.
+    """
+
+    def post(self, request, pk, storey_pk):
+        project = self.get_project()
+        plan = get_object_or_404(
+            ExploreFloorPlan,
+            storey__pk=storey_pk,
+            storey__ifc_file__project=project,
+        )
+        source = (request.POST.get("source") or "").strip()
+        if source == ExploreFloorPlan.ImageSource.UPLOADED:
+            if not plan.image:
+                return toast_response("No uploaded plan to switch to.", "error", status=400)
+            plan.image_source = ExploreFloorPlan.ImageSource.UPLOADED
+        elif source == ExploreFloorPlan.ImageSource.GENERATED:
+            if not plan.generated_image:
+                return toast_response("No generated plan to switch to.", "error", status=400)
+            plan.image_source = ExploreFloorPlan.ImageSource.GENERATED
+        else:
+            return toast_response("Unknown plan source.", "error", status=400)
+        plan.save(update_fields=["image_source", "updated_at"])
         return _explore_floor_rows_response(request, project)
 
 

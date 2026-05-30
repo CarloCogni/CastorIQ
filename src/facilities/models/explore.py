@@ -91,12 +91,19 @@ class ExplorePhase(UUIDModel):
 
 
 class ExploreFloorPlan(UUIDModel):
-    """An uploaded floor-plan image attached to an IFC building storey.
+    """A floor-plan image attached to an IFC building storey.
 
-    OneToOne with the storey so each floor has at most one plan. ``knockout``
-    persists Pavla's white-background removal toggle; ``original_image``
-    keeps the pre-knockout image so the user can revert.
+    OneToOne with the storey so each floor has at most one plan record.
+    A single row can carry TWO images — one uploaded by the user
+    (``image`` + ``original_image`` for the knock-out revert) and one
+    generated from the IFC model (``generated_image``). ``image_source``
+    decides which one the viewer shows; the user toggles between them
+    via the source pills in the Floors manager.
     """
+
+    class ImageSource(models.TextChoices):
+        UPLOADED = "uploaded", "Uploaded"
+        GENERATED = "generated", "Generated from IFC"
 
     storey = models.OneToOneField(
         IFCSpatialElement,
@@ -107,7 +114,9 @@ class ExploreFloorPlan(UUIDModel):
     )
     image = models.ImageField(
         upload_to="facilities/explore/plans/%Y/%m/",
-        verbose_name="Plan Image",
+        blank=True,
+        verbose_name="Uploaded Plan Image",
+        help_text="The plan the user uploaded (may be empty when only the generated plan is in use)",
     )
     original_image = models.ImageField(
         upload_to="facilities/explore/plans/%Y/%m/",
@@ -119,7 +128,42 @@ class ExploreFloorPlan(UUIDModel):
     knockout = models.BooleanField(
         default=False,
         verbose_name="White Knock-out Applied",
-        help_text="True when the user has stripped the white background",
+        help_text="True when the user has stripped the white background of the uploaded plan",
+    )
+    generated_image = models.ImageField(
+        upload_to="facilities/explore/plans/generated/%Y/%m/",
+        null=True,
+        blank=True,
+        verbose_name="Generated Plan Image",
+        help_text="Plan rendered from the IFC model by slicing at the configured cut height",
+    )
+    image_source = models.CharField(
+        max_length=16,
+        choices=ImageSource.choices,
+        default=ImageSource.UPLOADED,
+        verbose_name="Active Source",
+        help_text="Which image the viewer shows (uploaded vs generated). User-togglable.",
+    )
+    cut_height_mm = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Cut Height (mm)",
+        help_text="Cut height above the storey elevation used for the last generation (mm)",
+    )
+    included_kinds = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name="Included Element Kinds",
+        help_text=(
+            "List of kind tokens included in the last generation "
+            "(subset of: 'walls', 'columns_beams', 'doors_windows', 'stairs_railings')"
+        ),
+    )
+    generated_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Last Generated At",
+        help_text="When generated_image was last produced",
     )
     uploaded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -137,6 +181,24 @@ class ExploreFloorPlan(UUIDModel):
 
     def __str__(self) -> str:
         return f"Floor plan: {self.storey}"
+
+    @property
+    def active_image(self):
+        """Return the ImageField currently selected by ``image_source`` (or None)."""
+        if self.image_source == self.ImageSource.GENERATED and self.generated_image:
+            return self.generated_image
+        if self.image:
+            return self.image
+        # Fallback: whichever is present so the viewer never blanks unexpectedly.
+        return self.generated_image or None
+
+    @property
+    def has_uploaded(self) -> bool:
+        return bool(self.image)
+
+    @property
+    def has_generated(self) -> bool:
+        return bool(self.generated_image)
 
 
 class ExplorePoint(UUIDModel):

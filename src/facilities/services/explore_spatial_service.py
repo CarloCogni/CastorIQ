@@ -121,12 +121,22 @@ def _original_plan_url_for(storey: IFCSpatialElement) -> str | None:
 
 
 def _plan_url_for(storey: IFCSpatialElement) -> str | None:
-    """Return the uploaded plan image URL for ``storey`` if one exists."""
+    """Return the active plan image URL for ``storey`` if one exists.
+
+    Honours ``ExploreFloorPlan.image_source`` so that the iframe shows the
+    user-selected source — either the uploaded plan or the IFC-generated
+    one. Falls back to whichever image is present when the marked source
+    has no file yet (defensive — should not happen after a successful
+    upload or generation).
+    """
     plan = getattr(storey, "explore_floor_plan", None)
-    if not plan or not plan.image:
+    if not plan:
+        return None
+    image_field = plan.active_image
+    if not image_field:
         return None
     try:
-        return plan.image.url
+        return image_field.url
     except (ValueError, AttributeError):
         return None
 

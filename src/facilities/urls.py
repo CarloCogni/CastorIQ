@@ -267,4 +267,14 @@ urlpatterns = [
         views.ExploreFloorRenameView.as_view(),
         name="explore_floor_rename",
     ),
+    path(
+        "<uuid:pk>/facilities/explore/floor-plans/<uuid:storey_pk>/generate/",
+        views.ExploreFloorPlanGenerateView.as_view(),
+        name="explore_floor_plan_generate",
+    ),
+    path(
+        "<uuid:pk>/facilities/explore/floor-plans/<uuid:storey_pk>/source/",
+        views.ExploreFloorPlanSourceView.as_view(),
+        name="explore_floor_plan_source",
+    ),
 ]
