@@ -180,13 +180,14 @@ def _load_anomaly_summary(project_id: str) -> str | None:
         lines = [
             f"Anomaly Detection  ({result['method']})  as of {result['as_of']}",
             f"  Total unique flagged: {s['total_flagged']} tasks ({s['flagged_pct']}% of {s['total_tasks']})",
-            f"  Stalled (overrun planned duration without completing): {bt['stalled']}",
-            f"  Statistical outliers (>3σ from CSI trade peer median): {bt['statistical_outlier']}",
-            f"  Logic anomalies (orphans / FS violations / cycles): {bt['logic_anomaly']}",
+            f"  Running long (>=5d plan, elapsed >=2×): {bt['running_long']}",
+            f"  Unrealistic baseline (1-4d construction tasks, data quality): {bt['unrealistic_baseline']}",
+            f"  Statistical outliers (>5σ from CSI trade peer median): {bt['statistical_outlier']}",
+            f"  Logic / FS errors (orphans / FS violations >=90d / cycles): {bt['logic_anomaly']}",
         ]
-        for t in result.get("stalled", [])[:3]:
+        for t in result.get("running_long", [])[:3]:
             lines.append(
-                f"  Stalled: {t['name'][:55]}"
+                f"  Running long: {t['name'][:55]}"
                 f"  {t['overrun_ratio']}× overrun"
                 f"  ({t['elapsed_days']}d elapsed / {t['planned_duration_days']}d planned)"
             )
@@ -196,10 +197,11 @@ def _load_anomaly_summary(project_id: str) -> str | None:
                 f"  axis={t['axis']} value={t['value']}"
                 f"  peer_median={t['peer_median']}  z={t['robust_z']}"
             )
-        for t in result.get("logic_anomalies", [])[:3]:
-            lines.append(
-                f"  Logic [{t['anomaly_type']}]: {t['name'][:55]}  — {t['explanation'][:70]}"
-            )
+        fs_flags = [
+            t for t in result.get("logic_anomalies", []) if t["anomaly_type"] == "fs_violation"
+        ]
+        for t in fs_flags[:3]:
+            lines.append(f"  FS violation: {t['name'][:55]}  — {t['explanation'][:70]}")
         return "\n".join(lines)
     except Exception:
         logger.exception("Anomaly summary failed for project %s", project_id)
