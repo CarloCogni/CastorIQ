@@ -222,13 +222,15 @@ def run_dcma_check(project_id: str) -> dict:
         )
     )
 
-    # ── 6. High Float — TF > 44 working days ─────────────────────────────
+    # ── 6. High Float — TF > 44 working days (incomplete tasks only) ────────
+    # DCMA applies to the open schedule — completed tasks retain historical float
+    # values that are no longer meaningful for schedule quality assessment.
     if not cpm_run:
         checks.append(
             _Check(
                 id="high_float",
                 name="High Float",
-                description="Tasks with total float > 44 working days",
+                description="Incomplete tasks with total float > 44 working days",
                 value="N/A",
                 target="< 5%",
                 unit="%",
@@ -238,14 +240,16 @@ def run_dcma_check(project_id: str) -> dict:
             )
         )
     else:
-        high_float = [t for t in float_tasks if t.total_float > 44]
-        hf_pct = round(len(high_float) / len(float_tasks) * 100, 1)
+        open_float_tasks = [t for t in float_tasks if t.status != "complete"]
+        high_float = [t for t in open_float_tasks if t.total_float > 44]
+        hf_denom = len(open_float_tasks) or 1
+        hf_pct = round(len(high_float) / hf_denom * 100, 1)
         status, score = _check_pct(hf_pct, 5.0, 15.0)
         checks.append(
             _Check(
                 id="high_float",
                 name="High Float",
-                description="Tasks with total float > 44 working days",
+                description="Incomplete tasks with total float > 44 working days",
                 value=hf_pct,
                 target="< 5%",
                 unit="%",
@@ -475,20 +479,25 @@ def run_dcma_check(project_id: str) -> dict:
     )
 
     # ── 13. CPLI — Critical Path Length Index ─────────────────────────────
-    # CPLI = (CPL + min_TF_on_critical_path) / CPL
-    # CPL = remaining working days today → project planned end
-    # min_TF captures schedule compression (negative TF = overrun pressure)
+    # CPLI = (CPL + TF_finish) / CPL
+    # CPL        = remaining working days today → project planned end
+    # TF_finish  = total float of the latest-finishing critical task
+    #              (the project-completion node). This is the only float
+    #              that represents the overall schedule buffer against the
+    #              project end date. Using min(TF) is wrong — it picks up
+    #              intermediate MFO deadlines and produces negative CPLI,
+    #              which is mathematically valid but meaningless as an index.
     if not cpm_run or not critical_tasks:
         cpli_value: float | str = "N/A"
         cpli_status, cpli_score = "warning", 0.5
     else:
+        crit_with_float = [t for t in critical_tasks if t.total_float is not None]
+        # Latest-finishing critical task = project completion node
+        finish_node = max(crit_with_float, key=lambda t: t.end_date)
         project_end = max(t.end_date for t in tasks)
         cpl = max(_working_days(today, project_end), 1)
-        min_tf = min(
-            (t.total_float for t in critical_tasks if t.total_float is not None),
-            default=0,
-        )
-        cpli_raw = (cpl + min_tf) / cpl
+        tf_finish = finish_node.total_float  # TF of project end node
+        cpli_raw = (cpl + tf_finish) / cpl
         cpli_value = round(cpli_raw, 3)
         cpli_status, cpli_score = _check_ratio(cpli_raw, 0.95, 0.80)
 
