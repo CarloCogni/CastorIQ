@@ -265,6 +265,59 @@
         </div>
     </div>
 
+    <!-- Cash Flow Forecast -->
+    <div id="evm-cf-section"
+         style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
+
+        <div class="d-flex align-items-center gap-2 mb-3">
+            <i class="bi bi-cash-stack" style="color:#3b82f6; font-size:1rem;"></i>
+            <span style="font-size:0.8rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:0.05em;">Cash Flow Forecast</span>
+            <button type="button"
+                    class="help-pill"
+                    data-bs-toggle="modal"
+                    data-bs-target="#evmHelpModal"
+                    title="How Cash Flow Forecast works"
+                    aria-label="How Cash Flow Forecast works">
+                <i class="bi bi-question-circle"></i>
+            </button>
+        </div>
+
+        <!-- Loading -->
+        <div id="cf-loading" class="d-flex align-items-center gap-2" style="font-size:0.78rem; color:var(--bs-secondary-color); padding:4px 0;">
+            <span class="spinner-border spinner-border-sm"></span> Loading cash flow…
+        </div>
+
+        <!-- No data -->
+        <div id="cf-nodata" class="d-none" style="font-size:0.78rem; color:var(--bs-secondary-color); padding:4px 0;">
+            No cost data — assign resources or costs to tasks first.
+        </div>
+
+        <!-- Results -->
+        <div id="cf-results" class="d-none">
+
+            <!-- Metrics row -->
+            <div id="cf-metrics-row" class="row g-2 mb-3"></div>
+
+            <!-- Chart -->
+            <div style="position:relative; height:280px;">
+                <canvas id="cf-canvas" style="display:block; width:100%; height:280px;"></canvas>
+            </div>
+
+            <!-- Legend -->
+            <div class="d-flex flex-wrap gap-3 mt-2" style="font-size:0.72rem; color:var(--bs-secondary-color); justify-content:center;">
+                <span><span style="display:inline-block;width:12px;height:12px;background:rgba(59,130,246,.65);border-radius:2px;margin-right:4px;vertical-align:middle;"></span>Planned</span>
+                <span><span style="display:inline-block;width:12px;height:12px;background:rgba(245,158,11,.75);border-radius:2px;margin-right:4px;vertical-align:middle;"></span>Actual</span>
+                <span><span style="display:inline-block;width:12px;height:12px;background:rgba(20,184,166,.65);border-radius:2px;margin-right:4px;vertical-align:middle;"></span>Forecast</span>
+                <span><span style="display:inline-block;width:22px;height:2px;background:#3b82f6;margin-bottom:3px;border-top:2px dashed #3b82f6;margin-right:4px;vertical-align:middle;"></span>Cumul. Planned</span>
+                <span><span style="display:inline-block;width:22px;height:2px;background:#16a34a;margin-bottom:3px;border-top:2px solid #16a34a;margin-right:4px;vertical-align:middle;"></span>Cumul. Progress</span>
+            </div>
+
+            <!-- Footer -->
+            <div id="cf-footer" style="font-size:0.67rem; color:var(--bs-secondary-color); text-align:center; margin-top:6px;"></div>
+
+        </div>
+    </div>
+
     <!-- Schedule Health (DCMA 14-Point) -->
     <div id="evm-dcma-section"
          style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
@@ -1359,6 +1412,182 @@
             </div>
             <div style="font-size:0.74rem; color:var(--bs-secondary-color); line-height:1.45;">${rec.verdict}</div>`;
     }
+
+    /* ── Cash Flow Forecast ───────────────────────────────────────────── */
+    (function () {
+        const CF_URL = "{% url 'islam:cashflow' project.pk %}";
+        const CURRENCY = () => document.getElementById("evm-currency-select")?.value || "USD";
+
+        const _SYMBOLS = { USD:"$", AED:"AED ", KWD:"KD ", EGP:"EGP " };
+        function _fmtCost(v) {
+            const sym = _SYMBOLS[CURRENCY()] || "$";
+            if (v >= 1e6)  return sym + (v/1e6).toFixed(2) + "M";
+            if (v >= 1e3)  return sym + (v/1e3).toFixed(1) + "k";
+            return sym + v.toFixed(0);
+        }
+
+        function _renderMetrics(m) {
+            const row = document.getElementById("cf-metrics-row");
+            if (!row) return;
+            const cards = [
+                { label:"BAC",           value: m.bac,            sub: "Budget at Completion",  color:"#3b82f6" },
+                { label:"Spent",         value: m.ac,             sub: m.spent_pct+"% of BAC",  color:"#f59e0b" },
+                { label:"Remaining",     value: m.remaining,      sub: "Forecast to complete",  color:"#14b8a6" },
+                { label:"Peak Month",    value: m.peak_value,     sub: m.peak_month || "—",     color:"#8b5cf6" },
+            ];
+            row.innerHTML = cards.map(c => `
+                <div class="col-6 col-md-3">
+                    <div class="rounded-3 p-3 h-100" style="background:var(--bs-secondary-bg);">
+                        <div style="font-size:.67rem;font-weight:600;color:var(--bs-secondary-color);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">${c.label}</div>
+                        <div style="font-size:1.25rem;font-weight:700;color:${c.color};line-height:1.1;">${_fmtCost(c.value)}</div>
+                        <div style="font-size:.67rem;color:var(--bs-secondary-color);margin-top:3px;">${c.sub}</div>
+                    </div>
+                </div>`).join("");
+        }
+
+        function _renderChart(months, metrics) {
+            const canvas = document.getElementById("cf-canvas");
+            if (!canvas) return;
+            const dpr = window.devicePixelRatio || 1;
+            const W = canvas.parentElement.clientWidth;
+            const H = 280;
+            canvas.width  = W * dpr;
+            canvas.height = H * dpr;
+            canvas.style.width  = W + "px";
+            canvas.style.height = H + "px";
+            const ctx = canvas.getContext("2d");
+            ctx.scale(dpr, dpr);
+
+            const PAD = { top: 16, right: 16, bottom: 52, left: 62 };
+            const cw = W - PAD.left - PAD.right;
+            const ch = H - PAD.top - PAD.bottom;
+
+            // Decide which months to show — cap at 48 for readability
+            const MAX_BARS = 48;
+            const step = months.length > MAX_BARS ? Math.ceil(months.length / MAX_BARS) : 1;
+            const visible = months.filter((_, i) => i % step === 0);
+            const n = visible.length;
+            if (n === 0) return;
+
+            const barW = Math.max(Math.floor(cw / n) - 2, 2);
+            const barGap = Math.max(Math.floor(cw / n) - barW, 1);
+
+            // Scales
+            const maxBar = Math.max(...visible.map(m => Math.max(m.planned, m.actual, m.forecast)));
+            const maxCum = Math.max(...visible.map(m => Math.max(m.cumulative_planned, m.cumulative_progress)));
+            const barScale = ch / (maxBar || 1);
+            const cumScale = ch / (maxCum || 1);
+
+            const barX = (i) => PAD.left + i * (barW + barGap);
+            const barY = (v) => PAD.top + ch - v * barScale;
+            const cumY = (v) => PAD.top + ch - v * cumScale;
+
+            const peakMo = metrics.peak_month;
+
+            // Draw bars
+            visible.forEach((m, i) => {
+                const x = barX(i);
+                const isPeak = m.month === peakMo;
+
+                const pairs = [
+                    { v: m.planned,  color: isPeak ? "rgba(59,130,246,.85)" : "rgba(59,130,246,.55)" },
+                    { v: m.actual,   color: "rgba(245,158,11,.75)" },
+                    { v: m.forecast, color: "rgba(20,184,166,.65)" },
+                ];
+                const segW = Math.max(Math.floor(barW / 3), 1);
+
+                pairs.forEach(({ v, color }, si) => {
+                    if (v <= 0) return;
+                    const bh = Math.max(v * barScale, 1);
+                    ctx.fillStyle = color;
+                    ctx.fillRect(x + si * segW, barY(v), segW, bh);
+                });
+
+                // Peak marker
+                if (isPeak) {
+                    ctx.fillStyle = "rgba(139,92,246,.18)";
+                    ctx.fillRect(x, PAD.top, barW, ch);
+                }
+            });
+
+            // Draw cumulative lines
+            function _drawLine(key, color, dashed) {
+                ctx.beginPath();
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 1.5;
+                ctx.lineCap = "round";
+                if (dashed) ctx.setLineDash([4, 3]);
+                else ctx.setLineDash([]);
+                visible.forEach((m, i) => {
+                    const x = barX(i) + barW / 2;
+                    const y = cumY(m[key]);
+                    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+                });
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+            _drawLine("cumulative_planned", "#3b82f6", true);
+            _drawLine("cumulative_progress", "#16a34a", false);
+
+            // X-axis labels — show every N months
+            const labelEvery = Math.ceil(n / 12);
+            ctx.fillStyle = "rgba(107,114,128,.7)";
+            ctx.font = `${Math.max(9, Math.min(11, Math.floor(cw / n * 1.2)))}px system-ui`;
+            ctx.textAlign = "center";
+            visible.forEach((m, i) => {
+                if (i % labelEvery !== 0 && i !== n - 1) return;
+                const parts = m.month.split("-");
+                const lbl = parts[1] + "/" + parts[0].slice(2);
+                ctx.fillText(lbl, barX(i) + barW / 2, PAD.top + ch + 14);
+            });
+
+            // Y-axis labels (left = bar scale)
+            ctx.textAlign = "right";
+            ctx.font = "9px system-ui";
+            for (let t = 0; t <= 4; t++) {
+                const v = (maxBar / 4) * t;
+                const y = barY(v);
+                ctx.fillText(_fmtCost(v), PAD.left - 4, y + 3);
+                ctx.strokeStyle = "rgba(107,114,128,.1)";
+                ctx.lineWidth = 0.5;
+                ctx.beginPath();
+                ctx.moveTo(PAD.left, y);
+                ctx.lineTo(PAD.left + cw, y);
+                ctx.stroke();
+            }
+        }
+
+        async function loadCashflow() {
+            const loading = document.getElementById("cf-loading");
+            const nodata  = document.getElementById("cf-nodata");
+            const results = document.getElementById("cf-results");
+            try {
+                const resp = await fetch(CF_URL);
+                const data = await resp.json();
+                if (loading) loading.classList.add("d-none");
+                if (!data.has_data) {
+                    if (nodata) nodata.classList.remove("d-none");
+                    return;
+                }
+                if (results) results.classList.remove("d-none");
+                _renderMetrics(data.metrics);
+                _renderChart(data.months, data.metrics);
+                const footer = document.getElementById("cf-footer");
+                if (footer) {
+                    const src = data.source === "p6_assignments" ? "P6 resource assignments" : "task costs";
+                    const burn = data.metrics.burn_rate_actual
+                        ? `  ·  burn rate ${_fmtCost(data.metrics.burn_rate_actual)}/mo (actual)`
+                        : "";
+                    footer.textContent = `${data.months.length} months  ·  source: ${src}  ·  as of ${data.as_of}${burn}`;
+                }
+            } catch (_e) {
+                if (loading) loading.classList.add("d-none");
+                if (nodata) nodata.classList.remove("d-none");
+            }
+        }
+
+        loadCashflow();
+    }());
 
     /* ── DCMA 14-Point Assessment ──────────────────────────────────────── */
     (function () {

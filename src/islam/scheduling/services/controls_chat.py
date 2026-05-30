@@ -58,6 +58,18 @@ def _fmt(value: float, use_cost: bool) -> str:
     return f"{value:,.0f} units"
 
 
+def _load_cashflow_summary(project_id: str) -> dict | None:
+    """Return compact cashflow metrics for the prompt, or None on failure."""
+    try:
+        from .cashflow import compute_cashflow
+
+        result = compute_cashflow(project_id)
+        return result if result.get("has_data") else None
+    except Exception:
+        logger.exception("Cashflow summary failed for project %s", project_id)
+        return None
+
+
 def _load_dcma_summary(project_id: str) -> dict | None:
     """Run DCMA check and return a compact summary dict for the prompt.
 
@@ -311,6 +323,29 @@ def _build_context(
                 f"  {t['name']:<40s}  {t['activity_code']:<12s}"
                 f"  float={tf:+d} wd  stage={t['stage']}  [{t['status'].upper()}]"
             )
+
+    # ── Cash Flow Forecast ────────────────────────────────────────────────
+    cf = _load_cashflow_summary(project_id) if project_id else None
+    if cf:
+        cm = cf["metrics"]
+        uc = evm_data.get("use_cost", False)
+        lines += [
+            "",
+            f"Cash Flow Forecast  (source: {cf['source'].replace('_', ' ')})",
+            f"  BAC              {_fmt(cm['bac'], uc)}",
+            f"  Spent to date    {_fmt(cm['ac'], uc)}  ({cm['spent_pct']}% of BAC)",
+            f"  Remaining        {_fmt(cm['remaining'], uc)}",
+            f"  Peak spend month {cm['peak_month']}  ({_fmt(cm['peak_value'], uc)}/month)",
+            f"  Burn rate        planned {_fmt(cm['burn_rate_planned'], uc)}/mo"
+            f"  ·  actual {_fmt(cm['burn_rate_actual'], uc)}/mo  (3-month avg)",
+        ]
+        # Flag if actual burn rate is far below planned (execution issue)
+        if cm["burn_rate_planned"] > 0 and cm["burn_rate_actual"] > 0:
+            ratio = cm["burn_rate_actual"] / cm["burn_rate_planned"]
+            if ratio < 0.5:
+                lines.append(
+                    f"  ⚠ Actual burn ({ratio:.0%} of planned) — severe under-spend vs plan"
+                )
 
     # ── DCMA 14-Point Schedule Health ─────────────────────────────────────
     dcma = _load_dcma_summary(project_id) if project_id else None

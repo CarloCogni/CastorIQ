@@ -1327,6 +1327,21 @@ class TrendAnalysisView(ProjectAccessMixin, View):
         return JsonResponse(result)
 
 
+class CashFlowView(ProjectAccessMixin, View):
+    """JSON — monthly cash flow forecast: planned / actual / remaining."""
+
+    def get(self, request, **kwargs: object) -> JsonResponse:
+        from .services.cashflow import compute_cashflow
+
+        project = self.get_project()
+        try:
+            result = compute_cashflow(str(project.pk))
+        except Exception as exc:
+            logger.exception("Cashflow failed for project %s", project.pk)
+            return JsonResponse({"error": str(exc)}, status=500)
+        return JsonResponse(result)
+
+
 class DCMACheckView(ProjectAccessMixin, View):
     """JSON — DCMA 14-point schedule quality assessment."""
 
