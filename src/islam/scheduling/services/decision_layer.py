@@ -284,12 +284,16 @@ def _build_block3(drc: dict, ml: dict) -> dict:
                 }
             )
 
-    # ── Slots 4-5: ML forward-risk (watchlist already: near-crit → prob asc) ─
+    # ── Slots 4-5: ML forward-risk — near-critical only (float ≤ 10 wd) ─────
+    # Tasks with comfortably positive float must not appear under "AT-RISK".
+    # near_critical flag is set by completion_ml.py at the same threshold (10 wd).
     ml_slots: list[dict] = []
     if ml.get("has_data"):
         for w in ml.get("watchlist", []):
             if len(ml_slots) >= 2:
                 break
+            if not w.get("near_critical", False):
+                continue  # skip tasks with float > 10 wd
             pk = w["task_pk"]
             if pk in seen_pks:
                 continue
