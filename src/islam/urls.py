@@ -142,6 +142,11 @@ urlpatterns = [
         name="monte_carlo",
     ),
     path(
+        "projects/<uuid:pk>/schedule/delay-rootcause/",
+        scheduling_views.DelayRootCauseView.as_view(),
+        name="delay_rootcause",
+    ),
+    path(
         "projects/<uuid:pk>/schedule/cashflow/",
         scheduling_views.CashFlowView.as_view(),
         name="cashflow",

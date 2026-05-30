@@ -58,6 +58,22 @@ def _fmt(value: float, use_cost: bool) -> str:
     return f"{value:,.0f} units"
 
 
+def _load_delay_rootcause_summary(project_id: str) -> dict | None:
+    """Return compact delay root-cause summary for the prompt, or None on failure."""
+    try:
+        from .delay_rootcause import run_delay_rootcause
+
+        result = run_delay_rootcause(project_id)
+        return (
+            result
+            if result.get("has_data") and result.get("summary", {}).get("total_delayed")
+            else None
+        )
+    except Exception:
+        logger.exception("Delay root-cause summary failed for project %s", project_id)
+        return None
+
+
 def _load_cashflow_summary(project_id: str) -> dict | None:
     """Return compact cashflow metrics for the prompt, or None on failure."""
     try:
@@ -323,6 +339,45 @@ def _build_context(
                 f"  {t['name']:<40s}  {t['activity_code']:<12s}"
                 f"  float={tf:+d} wd  stage={t['stage']}  [{t['status'].upper()}]"
             )
+
+    # ── Delay Root-Cause Analysis ─────────────────────────────────────────
+    drc = _load_delay_rootcause_summary(project_id) if project_id else None
+    if drc:
+        s = drc["summary"]
+        lines += [
+            "",
+            f"Delay Root-Cause Analysis  ({s['total_delayed']} delayed tasks, {s['traceable_pct']}% traceable)",
+            f"  Root causes:      {s['root_causes']} originating nodes",
+            f"  Constraint-driven:{s['constraint_driven']} (hard date constraints, not network logic)",
+            f"  Propagated:       {s['propagated']} downstream tasks",
+            f"  Orphans:          {s['orphan']} (no logic links — untraceable)",
+        ]
+        if s.get("top_cluster_label"):
+            lines.append(
+                f"  Largest cluster:  {s['top_cluster_label']} — "
+                f"{s['top_cluster_tasks']} downstream tasks, {s['top_cluster_days']} delay-days"
+            )
+        # Top 5 root causes
+        top_rcs = drc.get("root_causes", [])[:5]
+        if top_rcs:
+            lines.append("  Top root causes (by downstream impact):")
+            for rc in top_rcs:
+                cls = "CONSTRAINT" if rc["classification"] == "constraint" else "ROOT"
+                lines.append(
+                    f"    [{cls}] {rc['name'][:55]}"
+                    f"  trade={rc['trade']}"
+                    f"  type={rc['activity_type']}"
+                    f"  → {rc['downstream_count']} tasks / {rc['downstream_days']} days"
+                )
+        # Top clusters by activity type
+        type_clusters = drc.get("clusters", {}).get("by_activity_type", [])[:4]
+        if type_clusters:
+            lines.append("  By activity type:")
+            for g in type_clusters:
+                lines.append(
+                    f"    {g['label']:<25} {g['root_cause_count']} root causes"
+                    f" → {g['downstream_tasks']} downstream tasks"
+                )
 
     # ── Cash Flow Forecast ────────────────────────────────────────────────
     cf = _load_cashflow_summary(project_id) if project_id else None

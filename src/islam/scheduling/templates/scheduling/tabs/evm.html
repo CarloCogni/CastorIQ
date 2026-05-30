@@ -265,6 +265,79 @@
         </div>
     </div>
 
+    <!-- Delay Root-Cause Analysis -->
+    <div id="evm-drc-section"
+         style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
+
+        <div class="d-flex align-items-center gap-2 mb-3">
+            <i class="bi bi-diagram-3" style="color:#3b82f6; font-size:1rem;"></i>
+            <span style="font-size:0.8rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:0.05em;">Delay Root-Cause Analysis</span>
+            <button type="button"
+                    class="help-pill"
+                    data-bs-toggle="modal"
+                    data-bs-target="#evmHelpModal"
+                    title="How delay root-cause analysis works"
+                    aria-label="How delay root-cause analysis works">
+                <i class="bi bi-question-circle"></i>
+            </button>
+        </div>
+
+        <div id="drc-loading" class="d-flex align-items-center gap-2" style="font-size:0.78rem; color:var(--bs-secondary-color); padding:4px 0;">
+            <span class="spinner-border spinner-border-sm"></span> Tracing delay propagation…
+        </div>
+        <div id="drc-nodata" class="d-none" style="font-size:0.78rem; color:var(--bs-secondary-color); padding:4px 0;">
+            No delayed tasks found.
+        </div>
+
+        <div id="drc-results" class="d-none">
+
+            <!-- Headline -->
+            <div id="drc-headline" class="mb-3 p-3 rounded-3"
+                 style="background:var(--bs-secondary-bg); font-size:0.82rem; line-height:1.55;"></div>
+
+            <!-- Two-column layout: root causes table + cluster bars -->
+            <div class="row g-3">
+
+                <!-- Root causes table -->
+                <div class="col-12 col-lg-7">
+                    <div style="font-size:0.67rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px;">
+                        Top Root Causes — ranked by downstream impact
+                    </div>
+                    <table class="table table-sm mb-0" style="font-size:0.75rem;">
+                        <thead>
+                            <tr style="font-size:0.65rem; text-transform:uppercase; letter-spacing:.04em; color:var(--bs-secondary-color);">
+                                <th style="font-weight:600;">#</th>
+                                <th style="font-weight:600;">Task</th>
+                                <th style="font-weight:600; text-align:center;">Type</th>
+                                <th style="font-weight:600; text-align:right; white-space:nowrap;">Downstream</th>
+                                <th style="font-weight:600; text-align:right; white-space:nowrap;">Delay-days</th>
+                            </tr>
+                        </thead>
+                        <tbody id="drc-rc-rows"></tbody>
+                    </table>
+                </div>
+
+                <!-- Cluster bars -->
+                <div class="col-12 col-lg-5">
+                    <div style="font-size:0.67rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px;">
+                        By Activity Type — downstream tasks
+                    </div>
+                    <div id="drc-type-bars" class="mb-3"></div>
+
+                    <div style="font-size:0.67rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px;">
+                        By Trade (CSI) — downstream tasks
+                    </div>
+                    <div id="drc-trade-bars"></div>
+                </div>
+
+            </div>
+
+            <!-- Orphan + metadata footer -->
+            <div id="drc-footer" class="mt-3" style="font-size:0.67rem; color:var(--bs-secondary-color);"></div>
+
+        </div>
+    </div>
+
     <!-- Cash Flow Forecast -->
     <div id="evm-cf-section"
          style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
@@ -1412,6 +1485,128 @@
             </div>
             <div style="font-size:0.74rem; color:var(--bs-secondary-color); line-height:1.45;">${rec.verdict}</div>`;
     }
+
+    /* ── Delay Root-Cause Analysis ────────────────────────────────────── */
+    (function () {
+        const DRC_URL = "{% url 'islam:delay_rootcause' project.pk %}";
+
+        function _esc(s) {
+            return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+        }
+
+        function _typeColor(type) {
+            const map = {
+                "Construction":"#3b82f6", "Submittal":"#8b5cf6",
+                "Approval":"#d97706", "Procurement":"#14b8a6",
+                "Testing / Inspection":"#16a34a", "LOE":"#6b7280",
+            };
+            return map[type] || "#6b7280";
+        }
+
+        function _renderHeadline(s) {
+            const el = document.getElementById("drc-headline");
+            if (!el) return;
+            const pct = s.traceable_pct;
+            const top = s.top_cluster_label
+                ? `Largest cluster: <strong>${_esc(s.top_cluster_label)}</strong> — ${s.top_cluster_tasks.toLocaleString()} tasks, ${s.top_cluster_days.toLocaleString()} delay-days.`
+                : "";
+            const orphan = s.orphan > 0
+                ? `<span style="color:#f59e0b;"> · ${s.orphan} orphan delay${s.orphan > 1 ? "s" : ""} (no logic links — untraceable).</span>`
+                : "";
+            const constraint = s.constraint_driven > 0
+                ? ` · ${s.constraint_driven} constraint-driven root causes (date constraints, not network).`
+                : "";
+            el.innerHTML =
+                `<strong>${s.root_causes.toLocaleString()} root causes</strong> explain `
+                + `<strong>${pct}%</strong> of <strong>${s.total_delayed.toLocaleString()}</strong> delayed tasks `
+                + `(${s.propagated.toLocaleString()} propagated downstream).${constraint} `
+                + top + orphan;
+        }
+
+        function _renderRcRows(rcs) {
+            const tbody = document.getElementById("drc-rc-rows");
+            if (!tbody) return;
+            tbody.innerHTML = "";
+            rcs.slice(0, 10).forEach((rc, i) => {
+                const tc = _typeColor(rc.activity_type);
+                const isConstr = rc.classification === "constraint";
+                const badge = isConstr
+                    ? `<span style="font-size:.6rem;color:#d97706;background:rgba(217,119,6,.1);border:1px solid rgba(217,119,6,.3);border-radius:8px;padding:1px 5px;">CONSTRAINT</span> `
+                    : "";
+                const tip = rc.example_downstream.length
+                    ? `title="${rc.example_downstream.map(e => _esc(e)).join(' · ')}"` : "";
+                tbody.insertAdjacentHTML("beforeend", `
+                    <tr>
+                        <td style="color:var(--bs-secondary-color);vertical-align:top;padding-top:6px;">${i+1}</td>
+                        <td>
+                            ${badge}<span style="font-weight:500;">${_esc(rc.name.length > 55 ? rc.name.slice(0,55)+"…" : rc.name)}</span>
+                            <div style="font-size:.65rem;color:var(--bs-secondary-color);">${_esc(rc.trade)} · ${_esc(rc.stage_label)}</div>
+                        </td>
+                        <td style="text-align:center;vertical-align:top;padding-top:6px;">
+                            <span style="font-size:.65rem;font-weight:600;color:${tc};background:${tc}18;border:1px solid ${tc}40;border-radius:8px;padding:1px 6px;white-space:nowrap;">${_esc(rc.activity_type)}</span>
+                        </td>
+                        <td style="text-align:right;font-weight:600;vertical-align:top;padding-top:6px;font-variant-numeric:tabular-nums;" ${tip}>${rc.downstream_count.toLocaleString()}</td>
+                        <td style="text-align:right;color:var(--bs-secondary-color);vertical-align:top;padding-top:6px;font-variant-numeric:tabular-nums;">${rc.downstream_days.toLocaleString()}</td>
+                    </tr>`);
+            });
+        }
+
+        function _renderBars(containerId, groups, maxVal) {
+            const el = document.getElementById(containerId);
+            if (!el) return;
+            const max = maxVal || Math.max(...groups.map(g => g.downstream_tasks), 1);
+            el.innerHTML = groups.slice(0, 8).map(g => {
+                const pct = Math.max(g.downstream_tasks / max * 100, 0.5);
+                const tip = g.examples.slice(0,2).map(e => _esc(e)).join(" · ");
+                return `<div class="d-flex align-items-center gap-2 mb-1" style="font-size:.72rem;" title="${tip}">
+                    <div style="width:130px;flex-shrink:0;color:var(--bs-body-color);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_esc(g.label)}</div>
+                    <div style="flex:1;background:var(--bs-secondary-bg);border-radius:4px;height:12px;overflow:hidden;">
+                        <div style="width:${pct.toFixed(1)}%;height:100%;background:#3b82f6;border-radius:4px;"></div>
+                    </div>
+                    <div style="width:36px;text-align:right;flex-shrink:0;color:var(--bs-secondary-color);">${g.downstream_tasks.toLocaleString()}</div>
+                </div>`;
+            }).join("");
+        }
+
+        async function loadDelayRootCause() {
+            const loading = document.getElementById("drc-loading");
+            const nodata  = document.getElementById("drc-nodata");
+            const results = document.getElementById("drc-results");
+            try {
+                const resp = await fetch(DRC_URL);
+                const data = await resp.json();
+                if (loading) loading.classList.add("d-none");
+                if (!data.has_data || !data.summary.total_delayed) {
+                    if (nodata) nodata.classList.remove("d-none");
+                    return;
+                }
+                if (results) results.classList.remove("d-none");
+                _renderHeadline(data.summary);
+                _renderRcRows(data.root_causes);
+                const maxType  = Math.max(...(data.clusters.by_activity_type||[]).map(g => g.downstream_tasks), 1);
+                const maxTrade = Math.max(...(data.clusters.by_trade||[]).map(g => g.downstream_tasks), 1);
+                _renderBars("drc-type-bars",  data.clusters.by_activity_type || [], maxType);
+                _renderBars("drc-trade-bars", data.clusters.by_trade || [],         maxTrade);
+
+                const footer = document.getElementById("drc-footer");
+                if (footer) {
+                    const s = data.summary;
+                    const orphanStr = s.orphan > 0
+                        ? ` · <span style="color:#f59e0b;">${s.orphan} orphan (no links): ${(data.orphans.tasks||[]).slice(0,2).map(_esc).join(", ")}</span>`
+                        : " · 0 orphan delays";
+                    footer.innerHTML =
+                        `${s.total_tasks.toLocaleString()} tasks assessed · `
+                        + `${s.excluded_no_baseline} excluded (no baseline) · `
+                        + `${s.traceable_pct}% traceable${orphanStr} · as of ${data.as_of}`;
+                }
+            } catch (_e) {
+                if (loading) loading.classList.add("d-none");
+                if (nodata) nodata.classList.remove("d-none");
+            }
+        }
+
+        loadDelayRootCause();
+    }());
 
     /* ── Cash Flow Forecast ───────────────────────────────────────────── */
     (function () {
