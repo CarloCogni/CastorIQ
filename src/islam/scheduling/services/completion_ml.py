@@ -446,11 +446,13 @@ def run_completion_ml(project_id: str) -> dict:
         prob_inc = _predict_proba(x_inc_s, w_full, b_full)
 
         # ── Watchlist: riskiest near-critical tasks ───────────────────────
-        float_near_critical = 44  # working days (~2 months)
+        # Near-critical threshold: ≤ 10 working days of total float (~2 weeks).
+        # Tasks with float > 10 have a comfortable schedule buffer and must not
+        # be labeled "near-critical" even if the ML model predicts low P(on-time).
+        float_near_critical = 10
         risk_items = []
         for t, p in zip(incomplete, prob_inc):
             tf = t.total_float if t.total_float is not None else 9999
-            # Primary: ≤ 44 wd; secondary: expand to ≤ 88 if watchlist too short
             risk_items.append(
                 {
                     "task_pk": str(t.pk),

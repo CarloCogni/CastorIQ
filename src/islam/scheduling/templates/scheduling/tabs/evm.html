@@ -1353,7 +1353,7 @@
             return `<div class="col-6 col-sm-4 col-lg-2">
                 <div class="rounded-3 p-3 h-100"
                      style="background:${s.color}18; border:1px solid ${s.color}40; transition:box-shadow .15s; cursor:default;"
-                     title="${s.label} — SPI: ${spiLabel} · Planned: ${s.planned_pct}% · Earned: ${s.earned_pct}% · ${s.completed}/${s.task_count} complete"
+                     data-tt="${s.label} — SPI: ${spiLabel} · Planned: ${s.planned_pct}% · Earned: ${s.earned_pct}% · ${s.completed}/${s.task_count} complete"
                      onmouseenter="this.style.boxShadow='0 0 0 2px ${s.color}60'"
                      onmouseleave="this.style.boxShadow=''">
                     <div style="font-size:0.68rem; font-weight:700; text-transform:uppercase;
@@ -1423,7 +1423,7 @@
             const countColor = b.count > 0 ? b.color : "var(--bs-secondary-color)";
 
             return `<div class="d-flex align-items-center gap-2 mb-2"
-                        title="${tip.replace(/"/g, "&quot;")}">
+                        data-tt="${tip.replace(/"/g, "'")}" style="cursor:default;">
                 <div style="width:72px; flex-shrink:0; font-size:0.72rem;
                             text-align:right; color:${labelColor}; font-weight:${b.count > 0 ? 600 : 400};">
                     ${b.label}
@@ -1634,52 +1634,52 @@
                 wrap.appendChild(mcTip);
             }
 
-            if (!canvas._interactAttached) {
-                canvas._interactAttached = true;
-
-                canvas.addEventListener("mousemove", function(e) {
-                    const rect = canvas.getBoundingClientRect();
-                    const mx = e.clientX - rect.left;
-                    if (mx < PAD.left || mx > PAD.left + cW) {
-                        mcTip.style.display = "none";
-                        _draw(null);
-                        return;
-                    }
-                    /* Find nearest bar by center x */
-                    let bestIdx = 0, bestDist = Infinity;
-                    histogram.forEach((_, i) => {
-                        const bx = PAD.left + i * barGap + barGap / 2;
-                        const dist = Math.abs(bx - mx);
-                        if (dist < bestDist) { bestDist = dist; bestIdx = i; }
-                    });
-                    _draw(bestIdx);
-                    const b   = histogram[bestIdx];
-                    const cum = cumPct[bestIdx];
-                    const dot = c => `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${c};margin-right:4px;flex-shrink:0;"></span>`;
-                    const row = (c, lbl, val) =>
-                        `<div style="display:flex;align-items:center;gap:2px;margin-bottom:2px;">${dot(c)}<span>${lbl}</span><span style="margin-left:auto;font-weight:600;padding-left:8px;">${val}</span></div>`;
-                    const nextDate = histogram[bestIdx + 1] ? histogram[bestIdx + 1].label : "—";
-                    let html = `<div style="font-weight:600;margin-bottom:5px;font-size:0.76rem;">${b.label}${histogram[bestIdx + 1] ? " – " + nextDate : ""}</div>`;
-                    html += row("#3b82f6", "Probability", b.pct.toFixed(1) + "%");
-                    if (b.count != null) html += row("#6366f1", "Simulations", b.count.toLocaleString());
-                    html += `<div style="border-top:1px solid var(--bs-border-color);margin-top:5px;padding-top:4px;font-size:0.7rem;">`;
-                    html += row("#16a34a", "Cumulative", cum.toFixed(1) + "%");
-                    html += `</div>`;
-                    mcTip.innerHTML = html;
-                    mcTip.style.display = "block";
-                    const bx = PAD.left + bestIdx * barGap + barGap / 2;
-                    const tw = mcTip.offsetWidth || 160;
-                    let left = bx + 12;
-                    if (left + tw > W - 4) left = bx - tw - 12;
-                    mcTip.style.left = Math.max(PAD.left, left) + "px";
-                    mcTip.style.top  = (PAD.top + 2) + "px";
-                });
-
-                canvas.addEventListener("mouseleave", function() {
+            /* Use property assignment (not addEventListener) so each new simulation
+               run replaces the handler with a fresh closure capturing the NEW
+               histogram, cumPct, and _draw.  addEventListener + _interactAttached
+               would keep the OLD closure alive, rendering stale data on re-runs. */
+            canvas.onmousemove = function(e) {
+                const rect = canvas.getBoundingClientRect();
+                const mx = e.clientX - rect.left;
+                if (mx < PAD.left || mx > PAD.left + cW) {
                     mcTip.style.display = "none";
                     _draw(null);
+                    return;
+                }
+                /* Find nearest bar by center x */
+                let bestIdx = 0, bestDist = Infinity;
+                histogram.forEach((_, i) => {
+                    const bx = PAD.left + i * barGap + barGap / 2;
+                    const dist = Math.abs(bx - mx);
+                    if (dist < bestDist) { bestDist = dist; bestIdx = i; }
                 });
-            }
+                _draw(bestIdx);
+                const b   = histogram[bestIdx];
+                const cum = cumPct[bestIdx];
+                const dot = c => `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${c};margin-right:4px;flex-shrink:0;"></span>`;
+                const row = (c, lbl, val) =>
+                    `<div style="display:flex;align-items:center;gap:2px;margin-bottom:2px;">${dot(c)}<span>${lbl}</span><span style="margin-left:auto;font-weight:600;padding-left:8px;">${val}</span></div>`;
+                const nextDate = histogram[bestIdx + 1] ? histogram[bestIdx + 1].label : "—";
+                let html = `<div style="font-weight:600;margin-bottom:5px;font-size:0.76rem;">${b.label}${histogram[bestIdx + 1] ? " – " + nextDate : ""}</div>`;
+                html += row("#3b82f6", "Probability", b.pct.toFixed(1) + "%");
+                if (b.count != null) html += row("#6366f1", "Simulations", b.count.toLocaleString());
+                html += `<div style="border-top:1px solid var(--bs-border-color);margin-top:5px;padding-top:4px;font-size:0.7rem;">`;
+                html += row("#16a34a", "Cumulative", cum.toFixed(1) + "%");
+                html += `</div>`;
+                mcTip.innerHTML = html;
+                mcTip.style.display = "block";
+                const bx = PAD.left + bestIdx * barGap + barGap / 2;
+                const tw = mcTip.offsetWidth || 160;
+                let left = bx + 12;
+                if (left + tw > W - 4) left = bx - tw - 12;
+                mcTip.style.left = Math.max(PAD.left, left) + "px";
+                mcTip.style.top  = (PAD.top + 2) + "px";
+            };
+
+            canvas.onmouseleave = function() {
+                mcTip.style.display = "none";
+                _draw(null);
+            };
         }
     }());
 
@@ -2027,7 +2027,7 @@
                 const pct = Math.max(g.downstream_tasks / max * 100, 0.5);
                 const examples = g.examples.slice(0,2).map(e => _esc(e)).join(" \xb7 ");
                 const tip = _esc(g.label) + ": " + g.downstream_tasks.toLocaleString() + " downstream tasks" + (examples ? " — " + examples : "");
-                return `<div class="d-flex align-items-center gap-2 mb-1" style="font-size:.72rem;" title="${tip}">
+                return `<div class="d-flex align-items-center gap-2 mb-1" style="font-size:.72rem; cursor:default;" data-tt="${tip}">
                     <div style="width:130px;flex-shrink:0;color:var(--bs-body-color);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_esc(g.label)}</div>
                     <div style="flex:1;background:var(--bs-secondary-bg);border-radius:4px;height:12px;overflow:hidden;">
                         <div style="width:${pct.toFixed(1)}%;height:100%;background:#3b82f6;border-radius:4px;"></div>
@@ -3397,6 +3397,50 @@
 
         sendBtn.addEventListener("click", _send);
         input.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); _send(); } });
+    }());
+
+    /* ── Shared styled tooltip for div-rendered charts ────────────────────── */
+    /* Replaces the browser `title` attribute on WBS heatmap, delay-distribution
+       bars, and DRC bars.  Elements set data-tt="..." instead of title="...";
+       this IIFE attaches a single delegated listener on evm-root. */
+    (function () {
+        const root = document.getElementById("evm-root");
+        if (!root) return;
+
+        const tip = document.createElement("div");
+        tip.id = "evm-div-tooltip";
+        tip.style.cssText =
+            "position:fixed;pointer-events:none;display:none;z-index:9999;" +
+            "background:var(--bs-body-bg);border:1px solid var(--bs-border-color);" +
+            "border-radius:6px;padding:8px 11px;font-size:0.74rem;" +
+            "box-shadow:0 2px 10px rgba(0,0,0,.16);" +
+            "color:var(--bs-body-color);max-width:320px;line-height:1.45;word-break:break-word;";
+        document.body.appendChild(tip);
+
+        function _show(e) {
+            const target = e.target.closest("[data-tt]");
+            if (!target) { tip.style.display = "none"; return; }
+            const text = target.dataset.tt;
+            if (!text) { tip.style.display = "none"; return; }
+            tip.textContent = text;
+            tip.style.display = "block";
+            const tw = tip.offsetWidth || 220;
+            const th = tip.offsetHeight || 60;
+            let left = e.clientX + 14;
+            let top  = e.clientY - 10;
+            if (left + tw > window.innerWidth  - 8) left = e.clientX - tw - 14;
+            if (top  + th > window.innerHeight - 8) top  = e.clientY - th - 10;
+            tip.style.left = left + "px";
+            tip.style.top  = top  + "px";
+        }
+        function _hide(e) {
+            if (!e.relatedTarget || !e.relatedTarget.closest("[data-tt]")) {
+                tip.style.display = "none";
+            }
+        }
+
+        root.addEventListener("mousemove", _show);
+        root.addEventListener("mouseout",  _hide);
     }());
 }());
 </script>
