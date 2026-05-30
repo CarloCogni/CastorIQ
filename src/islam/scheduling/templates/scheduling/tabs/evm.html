@@ -22,6 +22,43 @@
 
 <div id="evm-root" style="display:flex; flex-direction:column; gap:16px;">
 
+    <!-- Decision Summary — executive plain-language read of the project -->
+    <div id="evm-decision-section"
+         style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
+
+        <!-- Loading -->
+        <div id="evm-decision-loading" class="d-flex align-items-center gap-2"
+             style="font-size:0.78rem; color:var(--bs-secondary-color);">
+            <span class="spinner-border spinner-border-sm"></span> Analysing project…
+        </div>
+
+        <!-- Results -->
+        <div id="evm-decision-results" class="d-none">
+
+            <!-- Block 1 + Block 2: headline sentences -->
+            <div class="row g-3 mb-3">
+                <div class="col-12 col-md-6">
+                    <div id="evm-decision-b1"
+                         style="border-radius:7px; padding:12px 14px; background:var(--bs-secondary-bg); height:100%;"></div>
+                </div>
+                <div class="col-12 col-md-6">
+                    <div id="evm-decision-b2"
+                         style="border-radius:7px; padding:12px 14px; background:var(--bs-secondary-bg); height:100%;"></div>
+                </div>
+            </div>
+
+            <!-- Block 3: top-5 action list -->
+            <div>
+                <div style="font-size:0.67rem; font-weight:700; text-transform:uppercase; letter-spacing:.07em;
+                            color:var(--bs-secondary-color); margin-bottom:6px;">
+                    Top 5 — Needs Attention
+                </div>
+                <div id="evm-decision-b3"></div>
+            </div>
+
+        </div>
+    </div>
+
     <!-- Cost guidance banner — shown when no schedule costs or QTO data available -->
     <div id="evm-cost-banner" class="d-none alert alert-warning alert-dismissible py-2 px-3 mb-0" role="alert" style="font-size:0.82rem;">
         <i class="bi bi-exclamation-triangle-fill me-2"></i>
@@ -3022,6 +3059,98 @@
         }
 
         loadAnomalies();
+    }());
+
+    /* ── Decision Summary ────────────────────────────────────────────────── */
+    (function () {
+        const DS_URL = "{% url 'islam:decision_summary' project.pk %}";
+
+        const _SEV_COLOR = { green: "#16a34a", amber: "#d97706", red: "#dc2626" };
+        const _SEV_BG    = { green: "rgba(22,163,74,.10)", amber: "rgba(217,119,6,.10)", red: "rgba(220,38,38,.08)" };
+        const _SEV_ICON  = { green: "bi-check-circle-fill", amber: "bi-exclamation-triangle-fill", red: "bi-exclamation-circle-fill" };
+
+        function _block(elId, severity, sentence) {
+            const el = document.getElementById(elId);
+            if (!el) return;
+            const c  = _SEV_COLOR[severity] || _SEV_COLOR.amber;
+            const bg = _SEV_BG[severity]    || _SEV_BG.amber;
+            const ic = _SEV_ICON[severity]  || _SEV_ICON.amber;
+            el.style.background = bg;
+            el.innerHTML =
+                `<div style="display:flex;align-items:flex-start;gap:8px;">
+                    <i class="bi ${ic}" style="color:${c};font-size:1rem;flex-shrink:0;margin-top:2px;"></i>
+                    <span style="font-size:0.82rem;line-height:1.55;color:var(--bs-body-color);">${sentence}</span>
+                </div>`;
+        }
+
+        function _sourceTag(source) {
+            if (source === "delay") {
+                return `<span style="font-size:.62rem;font-weight:700;color:#3b82f6;background:rgba(59,130,246,.10);
+                               border:1px solid rgba(59,130,246,.25);border-radius:8px;padding:1px 6px;
+                               white-space:nowrap;">DELAY</span>`;
+            }
+            return `<span style="font-size:.62rem;font-weight:700;color:#6366f1;background:rgba(99,102,241,.10);
+                           border:1px solid rgba(99,102,241,.25);border-radius:8px;padding:1px 6px;
+                           white-space:nowrap;">ML RISK</span>`;
+        }
+
+        async function loadDecisionSummary() {
+            const loading   = document.getElementById("evm-decision-loading");
+            const resultsEl = document.getElementById("evm-decision-results");
+            const b3El      = document.getElementById("evm-decision-b3");
+            if (!resultsEl) return;
+
+            let data;
+            try {
+                const resp = await fetch(DS_URL);
+                data = await resp.json();
+            } catch (_) {
+                if (loading) loading.innerHTML =
+                    `<span style="color:var(--bs-secondary-color);font-size:.78rem;">Decision summary unavailable.</span>`;
+                return;
+            }
+
+            if (loading) loading.classList.add("d-none");
+            if (!data.has_data) {
+                if (loading) {
+                    loading.classList.remove("d-none");
+                    loading.innerHTML =
+                        `<span style="font-size:.78rem;color:var(--bs-secondary-color);">No schedule data — import a schedule to see the decision summary.</span>`;
+                }
+                return;
+            }
+
+            resultsEl.classList.remove("d-none");
+
+            _block("evm-decision-b1", data.block1.severity, data.block1.sentence);
+            _block("evm-decision-b2", data.block2.severity, data.block2.sentence);
+
+            /* Block 3: ranked action list */
+            if (!b3El) return;
+            const items = data.block3.items;
+            if (!items || !items.length) {
+                b3El.innerHTML = `<div style="font-size:.78rem;color:var(--bs-secondary-color);">No priority items identified.</div>`;
+                return;
+            }
+
+            b3El.innerHTML = items.map(item => {
+                const name = item.name.length > 58 ? item.name.slice(0, 58) + "…" : item.name;
+                return `<div class="d-flex align-items-center gap-2 py-1"
+                             style="border-bottom:1px solid var(--bs-border-color); font-size:0.75rem; cursor:pointer;"
+                             onclick="document.getElementById('${item.section_anchor}')?.scrollIntoView({behavior:'smooth',block:'start'})">
+                            <span style="font-size:0.72rem;font-weight:700;color:var(--bs-secondary-color);
+                                         width:18px;flex-shrink:0;text-align:right;">${item.rank}</span>
+                            ${_sourceTag(item.source)}
+                            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+                                         font-weight:500;">${name}</span>
+                            <span style="font-size:0.7rem;color:var(--bs-secondary-color);white-space:nowrap;
+                                         flex-shrink:0;">${item.reason}</span>
+                            <i class="bi bi-arrow-right-short" style="color:var(--bs-secondary-color);flex-shrink:0;"></i>
+                        </div>`;
+            }).join("");
+        }
+
+        loadDecisionSummary();
     }());
 
     /* ── Project Health Matrix ────────────────────────────────────────────── */
