@@ -1327,6 +1327,21 @@ class TrendAnalysisView(ProjectAccessMixin, View):
         return JsonResponse(result)
 
 
+class DCMACheckView(ProjectAccessMixin, View):
+    """JSON — DCMA 14-point schedule quality assessment."""
+
+    def get(self, request, **kwargs: object) -> JsonResponse:
+        from .services.dcma_check import run_dcma_check
+
+        project = self.get_project()
+        try:
+            result = run_dcma_check(str(project.pk))
+        except Exception as exc:
+            logger.exception("DCMA check failed for project %s", project.pk)
+            return JsonResponse({"error": str(exc)}, status=500)
+        return JsonResponse(result)
+
+
 class LookaheadDataView(ProjectAccessMixin, View):
     """JSON — per-week task buckets (starting/in_progress/finishing) for the Look-ahead tab."""
 

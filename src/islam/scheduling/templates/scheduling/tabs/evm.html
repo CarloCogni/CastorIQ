@@ -265,6 +265,74 @@
         </div>
     </div>
 
+    <!-- Schedule Health (DCMA 14-Point) -->
+    <div id="evm-dcma-section"
+         style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
+
+        <div class="d-flex align-items-center gap-2 mb-3">
+            <i class="bi bi-clipboard2-check" style="color:#3b82f6; font-size:1rem;"></i>
+            <span style="font-size:0.8rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:0.05em;">Schedule Health</span>
+            <span style="font-size:0.7rem; color:var(--bs-secondary-color);">DCMA 14-Point Assessment</span>
+            <button type="button"
+                    class="help-pill"
+                    data-bs-toggle="modal"
+                    data-bs-target="#evmHelpModal"
+                    title="How DCMA 14-point assessment works"
+                    aria-label="How DCMA 14-point assessment works">
+                <i class="bi bi-question-circle"></i>
+            </button>
+        </div>
+
+        <!-- Loading skeleton -->
+        <div id="dcma-loading" class="d-flex align-items-center gap-2" style="font-size:0.78rem; color:var(--bs-secondary-color); padding:4px 0;">
+            <span class="spinner-border spinner-border-sm"></span> Running assessment…
+        </div>
+
+        <!-- No data -->
+        <div id="dcma-nodata" class="d-none" style="font-size:0.78rem; color:var(--bs-secondary-color); padding:4px 0;">
+            No schedule data available — import a schedule first.
+        </div>
+
+        <!-- Results -->
+        <div id="dcma-results" class="d-none">
+
+            <!-- Score row -->
+            <div class="d-flex align-items-center gap-4 p-3 rounded-3 mb-4" style="background:var(--bs-secondary-bg);">
+                <!-- Gauge circle -->
+                <div style="position:relative; width:88px; height:88px; flex-shrink:0;">
+                    <canvas id="dcma-gauge-canvas" width="88" height="88"></canvas>
+                    <div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px;">
+                        <div id="dcma-score-val" style="font-size:1.55rem; font-weight:700; line-height:1;"></div>
+                        <div style="font-size:0.62rem; color:var(--bs-secondary-color); font-weight:600; text-transform:uppercase; letter-spacing:.04em;">/ 100</div>
+                    </div>
+                </div>
+                <!-- Label + pills -->
+                <div style="flex:1; min-width:0;">
+                    <div id="dcma-score-label" style="font-size:0.88rem; font-weight:600; margin-bottom:8px;"></div>
+                    <div id="dcma-summary-pills" class="d-flex flex-wrap gap-2"></div>
+                </div>
+            </div>
+
+            <!-- 14-check table -->
+            <table class="table table-sm mb-1" style="font-size:0.78rem;">
+                <thead>
+                    <tr style="font-size:0.67rem; text-transform:uppercase; letter-spacing:.04em; color:var(--bs-secondary-color);">
+                        <th style="font-weight:600; width:32px;">#</th>
+                        <th style="font-weight:600;">Check</th>
+                        <th style="font-weight:600; text-align:right; white-space:nowrap;">Value</th>
+                        <th style="font-weight:600; text-align:center; white-space:nowrap;">Target</th>
+                        <th style="font-weight:600; text-align:center; width:70px;">Result</th>
+                    </tr>
+                </thead>
+                <tbody id="dcma-check-rows"></tbody>
+            </table>
+
+            <!-- Footer metadata -->
+            <div id="dcma-footer" style="font-size:0.67rem; color:var(--bs-secondary-color); text-align:center; margin-top:4px;"></div>
+
+        </div>
+    </div>
+
     <!-- Project Controls Chat -->
     <div id="evm-chat-section"
          style="border:1px solid var(--bs-border-color); border-radius:8px; background:var(--bs-body-bg); overflow:hidden;">
@@ -1291,6 +1359,142 @@
             </div>
             <div style="font-size:0.74rem; color:var(--bs-secondary-color); line-height:1.45;">${rec.verdict}</div>`;
     }
+
+    /* ── DCMA 14-Point Assessment ──────────────────────────────────────── */
+    (function () {
+        const DCMA_URL = "{% url 'islam:dcma_check' project.pk %}";
+
+        function _esc(s) {
+            return String(s)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;");
+        }
+
+        function _renderGauge(canvas, score, color) {
+            if (!canvas) return;
+            const ctx = canvas.getContext("2d");
+            const cx = 44, cy = 44, r = 36;
+            const startAngle = Math.PI * 0.75;
+            const endAngle   = Math.PI * 2.25;
+            const fillAngle  = startAngle + (endAngle - startAngle) * (score / 100);
+            ctx.clearRect(0, 0, 88, 88);
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, startAngle, endAngle);
+            ctx.strokeStyle = "rgba(107,114,128,0.18)";
+            ctx.lineWidth = 9;
+            ctx.lineCap = "round";
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, startAngle, fillAngle);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 9;
+            ctx.lineCap = "round";
+            ctx.stroke();
+        }
+
+        function _renderScore(data) {
+            const scoreEl   = document.getElementById("dcma-score-val");
+            const labelEl   = document.getElementById("dcma-score-label");
+            const pillsEl   = document.getElementById("dcma-summary-pills");
+            const canvas    = document.getElementById("dcma-gauge-canvas");
+
+            const color = data.score_color === "green" ? "#16a34a"
+                        : data.score_color === "amber" ? "#d97706"
+                        : "#dc2626";
+            const label = data.score_color === "green" ? "Healthy"
+                        : data.score_color === "amber" ? "Needs Attention"
+                        : "At Risk";
+
+            if (scoreEl) { scoreEl.textContent = data.score; scoreEl.style.color = color; }
+            if (labelEl) {
+                labelEl.innerHTML = `Schedule Quality: <span style="color:${color};">${label}</span>`;
+            }
+            _renderGauge(canvas, data.score, color);
+
+            if (pillsEl) {
+                const s = data.summary;
+                const pills = [];
+                pills.push(`<span style="font-size:.72rem;font-weight:600;color:#16a34a;background:rgba(22,163,74,.10);border:1px solid rgba(22,163,74,.3);border-radius:12px;padding:2px 9px;">✓ ${s.pass} Pass</span>`);
+                if (s.warning) pills.push(`<span style="font-size:.72rem;font-weight:600;color:#d97706;background:rgba(217,119,6,.10);border:1px solid rgba(217,119,6,.3);border-radius:12px;padding:2px 9px;">⚠ ${s.warning} Warning</span>`);
+                if (s.fail)    pills.push(`<span style="font-size:.72rem;font-weight:600;color:#dc2626;background:rgba(220,38,38,.10);border:1px solid rgba(220,38,38,.3);border-radius:12px;padding:2px 9px;">✗ ${s.fail} Fail</span>`);
+                pillsEl.innerHTML = pills.join("");
+            }
+        }
+
+        function _renderChecks(checks) {
+            const tbody = document.getElementById("dcma-check-rows");
+            if (!tbody) return;
+            tbody.innerHTML = "";
+            checks.forEach((c, idx) => {
+                const isPass = c.status === "pass";
+                const isWarn = c.status === "warning";
+                const sc  = isPass ? "#16a34a" : isWarn ? "#d97706" : "#dc2626";
+                const sbg = isPass ? "rgba(22,163,74,.10)" : isWarn ? "rgba(217,119,6,.10)" : "rgba(220,38,38,.08)";
+                const sbo = isPass ? "rgba(22,163,74,.3)"  : isWarn ? "rgba(217,119,6,.3)"  : "rgba(220,38,38,.3)";
+                const sic = isPass ? "✓" : isWarn ? "⚠" : "✗";
+                const sla = isPass ? "PASS" : isWarn ? "WARN" : "FAIL";
+                const rowBg = c.status === "fail" ? "background:rgba(220,38,38,.03);" : "";
+
+                let valStr;
+                if (c.unit === "%")     valStr = `${c.value}%`;
+                else if (c.unit === "index" && typeof c.value === "number") valStr = c.value.toFixed(3);
+                else valStr = _esc(String(c.value));
+
+                const flagHtml = (c.flagged_items && c.flagged_items.length)
+                    ? `<div style="font-size:.67rem;color:var(--bs-secondary-color);margin-top:2px;font-style:italic;">`
+                      + c.flagged_items.slice(0, 3).map(f => `· ${_esc(f)}`).join("  ")
+                      + (c.flagged_items.length > 3 ? `  +${c.flagged_items.length - 3} more` : "")
+                      + `</div>`
+                    : "";
+
+                tbody.insertAdjacentHTML("beforeend", `
+                    <tr style="${rowBg}">
+                        <td style="color:var(--bs-secondary-color);vertical-align:top;padding-top:7px;">${idx + 1}</td>
+                        <td>
+                            <div style="font-weight:500;">${_esc(c.name)}</div>
+                            <div style="font-size:.67rem;color:var(--bs-secondary-color);">${_esc(c.description)}</div>
+                            ${flagHtml}
+                        </td>
+                        <td style="text-align:right;font-weight:600;vertical-align:top;padding-top:7px;font-variant-numeric:tabular-nums;white-space:nowrap;">${valStr}</td>
+                        <td style="text-align:center;color:var(--bs-secondary-color);vertical-align:top;padding-top:7px;white-space:nowrap;">${_esc(c.target)}</td>
+                        <td style="text-align:center;vertical-align:top;padding-top:6px;">
+                            <span style="font-size:.67rem;font-weight:700;color:${sc};background:${sbg};border:1px solid ${sbo};border-radius:10px;padding:2px 7px;white-space:nowrap;">
+                                ${sic} ${sla}
+                            </span>
+                        </td>
+                    </tr>`);
+            });
+        }
+
+        async function loadDcmaCheck() {
+            const loading = document.getElementById("dcma-loading");
+            const nodata  = document.getElementById("dcma-nodata");
+            const results = document.getElementById("dcma-results");
+            try {
+                const resp = await fetch(DCMA_URL);
+                const data = await resp.json();
+                if (loading) loading.classList.add("d-none");
+                if (!data.has_data) {
+                    if (nodata) nodata.classList.remove("d-none");
+                    return;
+                }
+                if (results) results.classList.remove("d-none");
+                _renderScore(data);
+                _renderChecks(data.checks);
+                const footer = document.getElementById("dcma-footer");
+                if (footer) {
+                    footer.textContent =
+                        `${data.task_count} tasks · ${data.dep_count} relationships · as of ${data.as_of}`;
+                }
+            } catch (_e) {
+                if (loading) loading.classList.add("d-none");
+                if (nodata) nodata.classList.remove("d-none");
+            }
+        }
+
+        loadDcmaCheck();
+    }());
 
     loadEvm();
     loadWbsHeatmap();
