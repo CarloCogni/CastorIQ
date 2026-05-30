@@ -58,6 +58,23 @@ def _fmt(value: float, use_cost: bool) -> str:
     return f"{value:,.0f} units"
 
 
+def _load_dcma_summary(project_id: str) -> dict | None:
+    """Run DCMA check and return a compact summary dict for the prompt.
+
+    Returns None on any failure so the caller can skip the section gracefully.
+    """
+    try:
+        from .dcma_check import run_dcma_check
+
+        result = run_dcma_check(project_id)
+        if not result.get("has_data"):
+            return None
+        return result
+    except Exception:
+        logger.exception("DCMA summary failed for project %s", project_id)
+        return None
+
+
 def _load_constraint_data(project_id: str) -> dict:
     """Query Task model for constraint and negative-float data.
 
@@ -294,6 +311,28 @@ def _build_context(
                 f"  {t['name']:<40s}  {t['activity_code']:<12s}"
                 f"  float={tf:+d} wd  stage={t['stage']}  [{t['status'].upper()}]"
             )
+
+    # ── DCMA 14-Point Schedule Health ─────────────────────────────────────
+    dcma = _load_dcma_summary(project_id) if project_id else None
+    if dcma:
+        s = dcma["summary"]
+        lines += [
+            "",
+            f"DCMA 14-Point Schedule Health  (score {dcma['score']}/100 — {dcma['score_color'].upper()})",
+            f"  {s['pass']} Pass · {s['warning']} Warning · {s['fail']} Fail",
+        ]
+        failing = [c for c in dcma["checks"] if c["status"] == "fail"]
+        warning = [c for c in dcma["checks"] if c["status"] == "warning"]
+        if failing:
+            lines.append("  FAILED checks:")
+            for c in failing:
+                val = f"{c['value']}{c['unit']}" if c["unit"] in ("%", "") else c["value"]
+                lines.append(f"    ✗ {c['name']:<22s} {val}  (target {c['target']})")
+        if warning:
+            lines.append("  WARNING checks:")
+            for c in warning:
+                val = f"{c['value']}{c['unit']}" if c["unit"] in ("%", "") else c["value"]
+                lines.append(f"    ⚠ {c['name']:<22s} {val}  (target {c['target']})")
 
     return "\n".join(lines)
 

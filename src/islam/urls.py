@@ -142,6 +142,11 @@ urlpatterns = [
         name="monte_carlo",
     ),
     path(
+        "projects/<uuid:pk>/schedule/dcma-check/",
+        scheduling_views.DCMACheckView.as_view(),
+        name="dcma_check",
+    ),
+    path(
         "projects/<uuid:pk>/schedule/link/smart/",
         scheduling_views.AutoLinkView.as_view(),
         name="schedule_link_smart",
