@@ -142,6 +142,11 @@ urlpatterns = [
         name="monte_carlo",
     ),
     path(
+        "projects/<uuid:pk>/schedule/completion-ml/",
+        scheduling_views.CompletionMLView.as_view(),
+        name="completion_ml",
+    ),
+    path(
         "projects/<uuid:pk>/schedule/timelocation/",
         scheduling_views.TimeLocationView.as_view(),
         name="timelocation",

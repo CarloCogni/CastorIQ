@@ -58,6 +58,43 @@ def _fmt(value: float, use_cost: bool) -> str:
     return f"{value:,.0f} units"
 
 
+def _load_completion_ml_summary(project_id: str) -> str | None:
+    """Return a compact ML completion summary for the prompt, or None on failure.
+
+    Always pairs probabilities with the model AUC so the LLM cannot quote
+    a probability as more certain than the model actually is.
+    """
+    try:
+        from .completion_ml import run_completion_ml
+
+        r = run_completion_ml(project_id)
+        if not r.get("has_data"):
+            return None
+        mq = r["model_quality"]
+        auc = mq["auc"]
+        auc_label = mq["auc_label"]
+        watchlist = r.get("watchlist", [])[:5]
+        lines = [
+            f"Completion Probability ML (AUC={auc} [{auc_label}], Brier={mq['brier']}, "
+            f"trained on {mq['n_train']} completed tasks, tested on {mq['n_test']}):",
+            f"  Class balance: {mq['class_balance']['on_time_pct']}% of completed tasks finished on time.",
+            f"  Interpret all probabilities below with AUC={auc} in mind — not a hard forecast.",
+        ]
+        if watchlist:
+            lines.append("  Top at-risk near-critical incomplete tasks (lowest P(on-time)):")
+            for w in watchlist:
+                lines.append(
+                    f"    {w['name'][:55]}"
+                    f"  P(on-time)={w['probability_on_time']:.0%}"
+                    f"  float={w['total_float']}wd"
+                    f"  trade={w['trade']}"
+                )
+        return "\n".join(lines)
+    except Exception:
+        logger.exception("Completion ML summary failed for project %s", project_id)
+        return None
+
+
 def _load_timelocation_summary(project_id: str) -> str | None:
     """Return a one-line time-location summary for the prompt, or None on failure."""
     try:
@@ -362,6 +399,11 @@ def _build_context(
                 f"  {t['name']:<40s}  {t['activity_code']:<12s}"
                 f"  float={tf:+d} wd  stage={t['stage']}  [{t['status'].upper()}]"
             )
+
+    # ── Completion Probability ML ─────────────────────────────────────────
+    ml_summary = _load_completion_ml_summary(project_id) if project_id else None
+    if ml_summary:
+        lines += ["", ml_summary]
 
     # ── Time-Location summary ─────────────────────────────────────────────
     tl_summary = _load_timelocation_summary(project_id) if project_id else None
