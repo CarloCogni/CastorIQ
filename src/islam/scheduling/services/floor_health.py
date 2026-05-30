@@ -143,18 +143,33 @@ def _csi(activity_code: str) -> str:
     return m.group(1) if m else "XX"
 
 
+def _floor_band(tok: str) -> str:
+    """Structural band for peer CSI comparison: 'B' basement, 'L' typical, 'R' roof."""
+    if tok.startswith("B"):
+        return "B"
+    if tok.startswith("R"):
+        return "R"
+    return "L"
+
+
 def _score_build_quality(n_tasks: int, n_logic: int, n_anomaly: int, n_gaps: int) -> int:
     """0-100 Build Quality score.  Higher = better.
 
-    Deductions (from 100):
-      Logic issues (missing pred/succ + hard constraints): rate × 100, capped at 45 pts.
-      Anomaly flags (stall/outlier/FS-violation):          rate × 100, capped at 30 pts.
-      Missing CSI signature vs peer floors:                10 pts each, capped at 25 pts.
+    Defect density = (logic_issues + logic_anomalies + band_gaps × 2) / tasks.
+    Score = 100 − defect_rate × 300  (each 1 % of tasks defective = 3 pts off).
+
+    No soft caps: the formula maps directly so a clean floor reads 100 and a floor
+    with ≥17 % defect density reads 0.  Each 1 % of tasks with a structural defect
+    = 6 points off.  This gives genuine red/amber/green contrast across typical
+    construction project defect-rate ranges (0–15 %).
+
+    Counts only DCMA-style logic gaps and structural anomalies (FS violations,
+    unrealistic baselines, orphans, cycles) — not execution metrics like stall
+    or statistical outliers, which belong to Project Status.
     """
-    logic_penalty = min(n_logic / max(n_tasks, 1) * 100, 45)
-    anomaly_penalty = min(n_anomaly / max(n_tasks, 1) * 100, 30)
-    gap_penalty = min(n_gaps * 10, 25)
-    return max(0, round(100 - logic_penalty - anomaly_penalty - gap_penalty))
+    total = n_logic + n_anomaly + n_gaps * 2
+    rate = total / max(n_tasks, 1)
+    return max(0, round(100 - rate * 600))
 
 
 def _score_project_status(
@@ -253,16 +268,14 @@ def compute_floor_health(project_id: str) -> dict:
         .distinct()
     }
 
-    # ── 3. Anomaly data — call existing service, map items by task_pk ─────────
+    # ── 3. Anomaly data — logic anomalies only for Build Quality ─────────────
+    # running_long and statistical_outliers measure execution risk → Project Status.
+    # Build Quality only counts structural/data-quality errors: FS violations,
+    # unrealistic baselines, mid-network orphans, circular dependencies.
     anomaly_result = detect_anomalies(project_id)
     anomaly_by_pk: dict[str, list[dict]] = defaultdict(list)
     if anomaly_result.get("has_data"):
-        all_anomaly_items = (
-            anomaly_result.get("running_long", [])
-            + anomaly_result.get("statistical_outliers", [])
-            + anomaly_result.get("logic_anomalies", [])
-        )
-        for item in all_anomaly_items:
+        for item in anomaly_result.get("logic_anomalies", []):
             pk = item.get("task_pk", "")
             if pk in pk_to_floor:
                 anomaly_by_pk[pk].append(item)
@@ -274,28 +287,38 @@ def compute_floor_health(project_id: str) -> dict:
         if pk in pk_to_floor:
             ml_by_pk[pk] = pred["probability_on_time"]
 
-    # ── 5. Cross-floor CSI peer-comparison ────────────────────────────────────
-    # Build: for each data floor, which CSI codes are present?
+    # ── 5. Cross-floor CSI peer-comparison — within structural band ───────────
+    # Floors are grouped into three structural bands: B (basement), L (typical), R (roof).
+    # A trade is "expected" on a floor only when >=60 % of that floor's OWN BAND have it.
+    # This prevents naturally-absent trades (e.g. no Masonry on a roof floor) from
+    # triggering false Build Quality penalties.
+    # Bands with < 3 data floors are excluded from peer comparison entirely.
     data_floors = [tok for tok, tasks in floor_tasks.items() if len(tasks) >= _MIN_FLOOR_TASKS]
-    n_data_floors = len(data_floors)
 
     floor_csi_sets: dict[str, set[str]] = {}
-    csi_floor_count: dict[str, int] = defaultdict(int)
+    # band → {csi → count of floors in band that have it}
+    band_csi_count: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    band_floor_count: dict[str, int] = defaultdict(int)
+
     for tok in data_floors:
         csi_set = {_csi(t.activity_code or "") for t in floor_tasks[tok]} - {"XX"}
         floor_csi_sets[tok] = csi_set
+        band = _floor_band(tok)
+        band_floor_count[band] += 1
         for csi in csi_set:
-            csi_floor_count[csi] += 1
+            band_csi_count[band][csi] += 1
 
-    # CSI codes expected on any "normal" floor = present on >= 60 % of data floors
-    if n_data_floors >= _MIN_FLOORS_FOR_PEERS:
-        expected_csi: set[str] = {
-            csi
-            for csi, n in csi_floor_count.items()
-            if n >= _PEER_PRESENCE_THRESHOLD * n_data_floors
-        }
-    else:
-        expected_csi = set()
+    # For each band with >=3 floors, build the set of "expected" CSI codes
+    band_expected_csi: dict[str, set[str]] = {}
+    for band, n_band in band_floor_count.items():
+        if n_band >= _MIN_FLOORS_FOR_PEERS:
+            band_expected_csi[band] = {
+                csi
+                for csi, n in band_csi_count[band].items()
+                if n >= _PEER_PRESENCE_THRESHOLD * n_band
+            }
+        else:
+            band_expected_csi[band] = set()  # too few floors for meaningful comparison
 
     # ── 6. Compute per-floor scores ───────────────────────────────────────────
     results: list[dict] = []
@@ -320,9 +343,12 @@ def compute_floor_health(project_id: str) -> dict:
         n_anomaly = len(floor_anomaly_pks)
 
         floor_csi = floor_csi_sets.get(tok, set())
-        missing_csi = expected_csi - floor_csi
+        band = _floor_band(tok)
+        missing_csi = band_expected_csi.get(band, set()) - floor_csi
         gaps = [f"{_CSI_NAMES.get(csi, 'Div ' + csi)} (CSI {csi})" for csi in sorted(missing_csi)]
 
+        n_defects = n_logic + n_anomaly + len(gaps) * 2
+        defect_rate_pct = round(n_defects / max(n_tasks, 1) * 100, 1)
         bq_score = _score_build_quality(n_tasks, n_logic, n_anomaly, len(gaps))
 
         # Worst BQ tasks: logic issues first, then anomalies (up to 5 unique)
@@ -423,6 +449,8 @@ def compute_floor_health(project_id: str) -> dict:
                     "anomaly_flags": n_anomaly,
                     "gap_count": len(gaps),
                     "gaps": gaps,
+                    "defect_count": n_defects,
+                    "defect_rate_pct": defect_rate_pct,
                     "worst_tasks": bq_worst[:5],
                 },
                 "project_status": {
