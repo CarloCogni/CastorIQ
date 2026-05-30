@@ -160,16 +160,13 @@ def generate_plan_png(
             f"Storey {storey_gid} is not an IfcBuildingStorey in the IFC file."
         )
 
-    # Storey elevation in IFC units → metres
     raw_elev = getattr(ifc_storey, "Elevation", None) or 0.0
-    storey_elev_m = float(raw_elev) * unit_scale_to_m
-    cut_plane_z_m = storey_elev_m + cut_height_m
+    declared_elev_m = float(raw_elev) * unit_scale_to_m
     logger.info(
-        "Generating plan for storey %s — elevation %.3f m, cut %.3f m → plane Z=%.3f m",
+        "Generating plan for storey %s — declared Elevation %.3f m, cut height %.3f m",
         storey_gid,
-        storey_elev_m,
+        declared_elev_m,
         cut_height_m,
-        cut_plane_z_m,
     )
 
     # Gather elements contained in this storey (IfcRelContainedInSpatialStructure)
@@ -180,8 +177,7 @@ def generate_plan_png(
         )
 
     # ifcopenshell.geom configuration: world coords means the triangulation
-    # is already placed correctly relative to project origin, which is what
-    # the cut plane expects.
+    # is already placed correctly relative to project origin.
     settings = ifcopenshell.geom.settings()
     try:
         settings.set(settings.USE_WORLD_COORDS, True)
@@ -189,10 +185,15 @@ def generate_plan_png(
         # Newer ifcopenshell APIs renamed the constant; ignore if absent.
         pass
 
-    segments_m: list[tuple[tuple[float, float], tuple[float, float]]] = []
-    triangle_count = 0
+    # Pass 1: triangulate everything once, keep verts/faces, learn the actual
+    # Z extent of the geometry. We cannot trust ``IfcBuildingStorey.Elevation``
+    # alone — many models leave it at 0 or at a value that does NOT match where
+    # the placement chain actually puts the walls. Slicing relative to the
+    # geometry's own bottom gives a stable "ground = 0" reference no matter how
+    # the file is authored.
+    element_geometry: list[tuple[list[tuple[float, float, float]], list[int]]] = []
+    z_values: list[float] = []
     failed_shapes = 0
-
     for element in contained:
         try:
             shape = ifcopenshell.geom.create_shape(settings, element)
@@ -210,13 +211,49 @@ def generate_plan_png(
         faces_flat = list(geom.faces)
         if not verts_flat or not faces_flat:
             continue
-        # Pack flat lists to triples once — avoid per-triangle indexing churn.
         verts = [
             (verts_flat[i] * unit_scale_to_m,
              verts_flat[i + 1] * unit_scale_to_m,
              verts_flat[i + 2] * unit_scale_to_m)
             for i in range(0, len(verts_flat), 3)
         ]
+        element_geometry.append((verts, faces_flat))
+        for v in verts:
+            z_values.append(v[2])
+
+    if failed_shapes:
+        logger.info("Skipped %d shapes that failed to triangulate", failed_shapes)
+    if not z_values:
+        raise PlanGenerationError(
+            "No usable geometry found in this storey's elements."
+        )
+
+    # Use the geometry's own Z range — this is the physical base of the floor.
+    geom_z_min = min(z_values)
+    geom_z_max = max(z_values)
+    storey_height_m = geom_z_max - geom_z_min
+    cut_plane_z_m = geom_z_min + cut_height_m
+    logger.info(
+        "Storey geometry Z range %.3f – %.3f m (height %.2f m) → cut plane Z=%.3f m",
+        geom_z_min,
+        geom_z_max,
+        storey_height_m,
+        cut_plane_z_m,
+    )
+
+    if cut_plane_z_m >= geom_z_max or cut_plane_z_m <= geom_z_min:
+        # User asked for a cut above the tallest element (or right at the floor).
+        # We could clamp but a clear error helps them pick a sensible value.
+        raise PlanGenerationError(
+            f"Cut height {cut_height_m:.2f} m is outside the storey's geometry "
+            f"(elements span {storey_height_m:.2f} m). Try a value between "
+            f"0.1 m and {storey_height_m - 0.1:.2f} m."
+        )
+
+    # Pass 2: slice every triangle by the cut plane.
+    segments_m: list[tuple[tuple[float, float], tuple[float, float]]] = []
+    triangle_count = 0
+    for verts, faces_flat in element_geometry:
         for i in range(0, len(faces_flat), 3):
             a, b, c = verts[faces_flat[i]], verts[faces_flat[i + 1]], verts[faces_flat[i + 2]]
             triangle_count += 1
@@ -224,12 +261,11 @@ def generate_plan_png(
             if seg is not None:
                 segments_m.append(seg)
 
-    if failed_shapes:
-        logger.info("Skipped %d shapes that failed to triangulate", failed_shapes)
     if not segments_m:
         raise PlanGenerationError(
-            "Cut plane did not intersect any element. "
-            "Try a different cut height (e.g. 1.0 m) or include more element kinds."
+            f"Cut plane at {cut_height_m:.2f} m did not intersect any element "
+            f"(storey geometry spans {storey_height_m:.2f} m). "
+            "Try a different cut height or include more element kinds."
         )
 
     # Bounding box in metres
