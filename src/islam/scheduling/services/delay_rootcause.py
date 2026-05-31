@@ -478,4 +478,6 @@ def run_delay_rootcause(
             "tasks": orphan_names,
         },
         "as_of": today.isoformat(),
+        "using_audit_overrides": bool(override_map),
+        "n_overridden": len(override_map) if override_map else 0,
     }

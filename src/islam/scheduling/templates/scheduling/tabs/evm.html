@@ -183,6 +183,9 @@
                  style="display:grid; grid-template-columns:72px 1fr 1fr; gap:3px;">
             </div>
 
+            <!-- Audit-suggested mode banner -->
+            <div id="health-audit-note" class="d-none mt-2" style="font-size:0.7rem;"></div>
+
             <!-- Breakdown panel (shown on hover/click) -->
             <div id="evm-health-breakdown"
                  style="position:absolute; display:none; z-index:20;
@@ -476,6 +479,9 @@
             <!-- Orphan + metadata footer -->
             <div id="drc-footer" class="mt-3" style="font-size:0.67rem; color:var(--bs-secondary-color);"></div>
 
+            <!-- Audit-suggested mode banner -->
+            <div id="drc-audit-note" class="d-none mt-2" style="font-size:0.7rem;"></div>
+
         </div>
     </div>
 
@@ -753,7 +759,10 @@
 
             <!-- Method label -->
             <div id="anomaly-method-note"
-                 style="font-size:0.67rem; color:var(--bs-secondary-color); margin-bottom:12px;"></div>
+                 style="font-size:0.67rem; color:var(--bs-secondary-color); margin-bottom:4px;"></div>
+
+            <!-- Audit-suggested mode banner -->
+            <div id="anomaly-audit-note" class="d-none mb-3" style="font-size:0.7rem;"></div>
 
             <!-- Three accordion groups -->
             <div class="accordion" id="anomaly-accordion">
@@ -2216,6 +2225,9 @@
     (function () {
         const DRC_URL = "{% url 'islam:delay_rootcause' project.pk %}";
 
+        // Stores the coded-mode trade clusters so corrected mode can show deltas.
+        let _drcCodedTrade = null;
+
         function _esc(s) {
             return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
         }
@@ -2284,7 +2296,10 @@
             });
         }
 
-        function _renderBars(containerId, groups, maxVal) {
+        function _renderBars(containerId, groups, maxVal, codedMap) {
+            // codedMap: optional {label → downstream_tasks} from the coded-mode response.
+            // When provided, bars whose count changed vs coded mode get an amber left
+            // border and a compact "+N / -N via audit" delta annotation.
             const el = document.getElementById(containerId);
             if (!el) return;
             const max = maxVal || Math.max(...groups.map(g => g.downstream_tasks), 1);
@@ -2292,12 +2307,19 @@
                 const pct = Math.max(g.downstream_tasks / max * 100, 0.5);
                 const examples = g.examples.slice(0,2).map(e => _esc(e)).join(" \xb7 ");
                 const tip = _esc(g.label) + ": " + g.downstream_tasks.toLocaleString() + " downstream tasks" + (examples ? " — " + examples : "");
-                return `<div class="d-flex align-items-center gap-2 mb-1" style="font-size:.72rem; cursor:default;" data-tt="${tip}">
+                const codedVal = codedMap ? codedMap[g.label] : undefined;
+                const delta    = (codedVal !== undefined) ? g.downstream_tasks - codedVal : 0;
+                const changed  = delta !== 0;
+                const outerBorder = changed ? "border-left:2px solid #f59e0b; padding-left:4px;" : "";
+                const deltaHtml   = changed
+                    ? `<div style="font-size:0.6rem;color:#f59e0b;white-space:nowrap;line-height:1.2;">${delta > 0 ? "+" : ""}${delta} audit</div>`
+                    : "";
+                return `<div class="d-flex align-items-center gap-2 mb-1" style="font-size:.72rem; cursor:default; ${outerBorder}" data-tt="${tip}">
                     <div style="width:130px;flex-shrink:0;color:var(--bs-body-color);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_esc(g.label)}</div>
                     <div style="flex:1;background:var(--bs-secondary-bg);border-radius:4px;height:12px;overflow:hidden;">
                         <div style="width:${pct.toFixed(1)}%;height:100%;background:#3b82f6;border-radius:4px;"></div>
                     </div>
-                    <div style="width:36px;text-align:right;flex-shrink:0;color:var(--bs-secondary-color);">${g.downstream_tasks.toLocaleString()}</div>
+                    <div style="width:40px;text-align:right;flex-shrink:0;color:var(--bs-secondary-color);">${g.downstream_tasks.toLocaleString()}${deltaHtml}</div>
                 </div>`;
             }).join("");
         }
@@ -2324,8 +2346,17 @@
                 _renderRcRows(data.root_causes);
                 const maxType  = Math.max(...(data.clusters.by_activity_type||[]).map(g => g.downstream_tasks), 1);
                 const maxTrade = Math.max(...(data.clusters.by_trade||[]).map(g => g.downstream_tasks), 1);
+
+                // Cache coded-mode clusters on first (non-audit) load so the
+                // corrected render can compute per-trade deltas.
+                if (!auditMode) _drcCodedTrade = Object.fromEntries(
+                    (data.clusters.by_trade||[]).map(g => [g.label, g.downstream_tasks])
+                );
+                // Pass the coded map only in corrected mode so trade bars show deltas.
+                const tradeCodedMap = (data.using_audit_overrides && _drcCodedTrade) ? _drcCodedTrade : null;
+
                 _renderBars("drc-type-bars",  data.clusters.by_activity_type || [], maxType);
-                _renderBars("drc-trade-bars", data.clusters.by_trade || [],         maxTrade);
+                _renderBars("drc-trade-bars", data.clusters.by_trade || [], maxTrade, tradeCodedMap);
 
                 const footer = document.getElementById("drc-footer");
                 if (footer) {
@@ -2337,6 +2368,19 @@
                         `${s.total_tasks.toLocaleString()} tasks assessed · `
                         + `${s.excluded_no_baseline} excluded (no baseline) · `
                         + `${s.traceable_pct}% traceable${orphanStr} · as of ${data.as_of}`;
+                }
+
+                // Audit-mode banner
+                const drcNote = document.getElementById("drc-audit-note");
+                if (drcNote) {
+                    if (data.using_audit_overrides && data.n_overridden > 0) {
+                        drcNote.innerHTML = `<span style="color:#f59e0b;"><i class="bi bi-circle-fill" style="font-size:0.55rem;vertical-align:middle;"></i>`
+                            + ` <strong>Audit-suggested view</strong> — ${data.n_overridden} confirmed reclassification${data.n_overridden !== 1 ? "s" : ""} applied.`
+                            + ` Trades with a shifted downstream count show an amber left border and ±N delta. Original P6 coding unchanged.</span>`;
+                        drcNote.classList.remove("d-none");
+                    } else {
+                        drcNote.classList.add("d-none");
+                    }
                 }
             } catch (_e) {
                 if (loading) loading.classList.add("d-none");
@@ -3428,6 +3472,20 @@
                 if (ol) ol.textContent = `Statistical Outliers (${by.statistical_outlier})`;
                 if (ll) ll.textContent = `Logic / Data Quality (${logicTotal})`;
 
+                // Audit-mode banner
+                const anNote = document.getElementById("anomaly-audit-note");
+                if (anNote) {
+                    if (data.using_audit_overrides && data.n_overridden > 0) {
+                        anNote.innerHTML = `<span style="color:#f59e0b;"><i class="bi bi-circle-fill" style="font-size:0.55rem;vertical-align:middle;"></i>`
+                            + ` <strong>Audit-suggested view</strong> — ${data.n_overridden} confirmed reclassification${data.n_overridden !== 1 ? "s" : ""} applied.`
+                            + ` Statistical outlier counts may shift as tasks move between trade peer groups.`
+                            + ` Original P6 coding unchanged.</span>`;
+                        anNote.classList.remove("d-none");
+                    } else {
+                        anNote.classList.add("d-none");
+                    }
+                }
+
             } catch (_e) {
                 if (loading) loading.classList.add("d-none");
                 if (results) results.style.opacity = "";
@@ -3852,6 +3910,19 @@
                     if (panel) panel.style.display = "none";
                 }
             });
+
+            // Audit-mode banner
+            const healthNote = document.getElementById("health-audit-note");
+            if (healthNote) {
+                if (data.using_audit_overrides && data.n_overridden > 0) {
+                    healthNote.innerHTML = `<span style="color:#f59e0b;"><i class="bi bi-circle-fill" style="font-size:0.55rem;vertical-align:middle;"></i>`
+                        + ` <strong>Audit-suggested view</strong> — ${data.n_overridden} confirmed reclassification${data.n_overridden !== 1 ? "s" : ""} applied.`
+                        + ` Floor Health scores are unaffected (Build Quality and Project Status depend on schedule logic, not trade codes) — no change is expected.</span>`;
+                    healthNote.classList.remove("d-none");
+                } else {
+                    healthNote.classList.add("d-none");
+                }
+            }
         }
 
         loadFloorHealth();
