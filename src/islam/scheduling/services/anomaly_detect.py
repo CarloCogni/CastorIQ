@@ -202,7 +202,7 @@ def _classify_stall_anomalies(tasks: list, data_date: date) -> tuple[list[dict],
 # ── 2. Cross-sectional outliers ───────────────────────────────────────────────
 
 
-def _detect_cross_sectional(tasks: list) -> list[dict]:
+def _detect_cross_sectional(tasks: list, override_map: dict | None = None) -> list[dict]:
     """Flag tasks that are robust z-score outliers within their CSI trade peer group.
 
     Three axes, each producing separate flags when the threshold is exceeded:
@@ -216,7 +216,12 @@ def _detect_cross_sectional(tasks: list) -> list[dict]:
         if t.start_date and t.end_date:
             dur = (t.end_date - t.start_date).days
             if _MIN_PEER_DURATION_DAYS <= dur <= _MAX_PEER_DURATION_DAYS:
-                by_csi[_csi(t.activity_code or "")].append(t)
+                effective_csi = (
+                    override_map.get(str(t.pk)) or _csi(t.activity_code or "")
+                    if override_map
+                    else _csi(t.activity_code or "")
+                )
+                by_csi[effective_csi].append(t)
 
     results = []
 
@@ -484,7 +489,7 @@ def _detect_logic_anomalies(tasks: list, deps: list) -> list[dict]:
 # ── Main entry point ──────────────────────────────────────────────────────────
 
 
-def detect_anomalies(project_id: str) -> dict:
+def detect_anomalies(project_id: str, override_map: dict | None = None) -> dict:
     """Run all anomaly detectors on the current schedule snapshot.
 
     Returns:
@@ -531,7 +536,7 @@ def detect_anomalies(project_id: str) -> dict:
     )
 
     running_long, unrealistic_baseline = _classify_stall_anomalies(tasks, data_date)
-    outliers = _detect_cross_sectional(tasks)
+    outliers = _detect_cross_sectional(tasks, override_map=override_map)
     logic_structural = _detect_logic_anomalies(tasks, deps)
 
     # unrealistic_baseline is a data-quality issue: group with structural logic anomalies.

@@ -22,6 +22,33 @@
 
 <div id="evm-root" style="display:flex; flex-direction:column; gap:16px;">
 
+    <!-- ── Schedule view toggle: As-coded | Audit-suggested ─────────────── -->
+    <div id="evm-audit-view-bar"
+         style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:8px 14px;
+                border:1px solid var(--bs-border-color); border-radius:8px;
+                background:var(--bs-body-bg); font-size:0.77rem;">
+        <span style="font-weight:600; color:var(--bs-secondary-color);">Schedule view:</span>
+        <div class="btn-group btn-group-sm" role="group" aria-label="Schedule view mode">
+            <button id="btn-view-coded" type="button"
+                    class="btn btn-sm btn-outline-secondary active"
+                    style="font-size:0.74rem; padding:3px 11px;">As-coded</button>
+            <button id="btn-view-audit" type="button"
+                    class="btn btn-sm btn-outline-warning"
+                    style="font-size:0.74rem; padding:3px 11px;"
+                    title="Run the Schedule Audit first to unlock"
+                    disabled>Audit-suggested</button>
+        </div>
+        <span id="evm-audit-active-note" class="d-none"
+              style="font-size:0.7rem; color:#f59e0b; font-weight:500;">
+            ⚠ Audit-suggested view active — AI reclassification of confirmed mismatches layered on top.
+            Original P6 coding untouched.
+        </span>
+        <span id="evm-audit-coded-note"
+              style="font-size:0.7rem; color:var(--bs-secondary-color);">
+            Run the Schedule Audit to enable Audit-suggested view.
+        </span>
+    </div>
+
     <!-- Decision Summary — executive plain-language read of the project -->
     <div id="evm-decision-section"
          style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
@@ -2135,6 +2162,51 @@
             <div style="font-size:0.74rem; color:var(--bs-secondary-color); line-height:1.45;">${rec.verdict}</div>`;
     }
 
+    /* ── Audit view toggle controller ───────────────────────────────────── */
+    window._evmAudit = (function () {
+        let _mode = "coded";             // "coded" | "corrected"
+        const _reloaders = {};           // name -> fn(mode)
+
+        function _setMode(m) {
+            if (m === _mode) return;
+            _mode = m;
+            const btnCoded = document.getElementById("btn-view-coded");
+            const btnAudit = document.getElementById("btn-view-audit");
+            const note     = document.getElementById("evm-audit-active-note");
+            const codedNote= document.getElementById("evm-audit-coded-note");
+            if (btnCoded) btnCoded.classList.toggle("active", m === "coded");
+            if (btnAudit) btnAudit.classList.toggle("active", m === "corrected");
+            if (note)      note.classList.toggle("d-none", m !== "corrected");
+            if (codedNote) codedNote.style.display = m === "corrected" ? "none" : "";
+            Object.values(_reloaders).forEach(fn => fn(m));
+        }
+
+        const bc = document.getElementById("btn-view-coded");
+        const ba = document.getElementById("btn-view-audit");
+        if (bc) bc.addEventListener("click", () => _setMode("coded"));
+        if (ba) ba.addEventListener("click", () => { if (!ba.disabled) _setMode("corrected"); });
+
+        return {
+            mode: () => _mode,
+            register: (name, fn) => { _reloaders[name] = fn; },
+            /* Called by the audit IIFE after a successful run with overrides */
+            enableAuditView: function (nOverrides) {
+                const btn   = document.getElementById("btn-view-audit");
+                const note  = document.getElementById("evm-audit-coded-note");
+                if (!btn) return;
+                if (nOverrides > 0) {
+                    btn.disabled = false;
+                    btn.title = `Apply ${nOverrides} confirmed audit reclassification${nOverrides !== 1 ? "s" : ""}`;
+                    if (note) note.textContent = `${nOverrides} confirmed override${nOverrides !== 1 ? "s" : ""} available.`;
+                } else {
+                    btn.disabled = true;
+                    btn.title = "No confirmed mismatches found — Audit-suggested view unavailable";
+                    if (note) note.textContent = "No confirmed mismatches — view unavailable.";
+                }
+            },
+        };
+    }());
+
     /* ── Delay Root-Cause Analysis ────────────────────────────────────── */
     (function () {
         const DRC_URL = "{% url 'islam:delay_rootcause' project.pk %}";
@@ -2225,12 +2297,14 @@
             }).join("");
         }
 
-        async function loadDelayRootCause() {
+        async function loadDelayRootCause(auditMode) {
             const loading = document.getElementById("drc-loading");
             const nodata  = document.getElementById("drc-nodata");
             const results = document.getElementById("drc-results");
+            const mode = auditMode || (window._evmAudit ? window._evmAudit.mode() : "coded");
+            const url  = mode === "corrected" ? DRC_URL + "?audit_view=corrected" : DRC_URL;
             try {
-                const resp = await fetch(DRC_URL);
+                const resp = await fetch(url);
                 const data = await resp.json();
                 if (loading) loading.classList.add("d-none");
                 if (!data.has_data || !data.summary.total_delayed) {
@@ -2263,6 +2337,7 @@
         }
 
         loadDelayRootCause();
+        if (window._evmAudit) window._evmAudit.register("delay_rootcause", loadDelayRootCause);
     }());
 
     /* ── Cash Flow Forecast ───────────────────────────────────────────── */
@@ -2691,6 +2766,23 @@
 
             ctx.globalAlpha = 1.0;
 
+            // Pass 4: amber dot at midpoint of each audit-overridden segment
+            if (d.scope && d.scope.n_overridden > 0) {
+                segs.forEach(s => {
+                    if (!s.ov) return;
+                    const x0 = xOf(s.ps), x1 = xOf(s.fe || s.pe);
+                    if (x0 === null || x1 === null) return;
+                    const xMid = Math.min(Math.max((x0 + x1) / 2, PAD.left), PAD.left + cw);
+                    const y = yOf(s.f);
+                    ctx.fillStyle = "#f59e0b";
+                    ctx.globalAlpha = lit(s.k) ? 0.92 : 0.4;
+                    ctx.beginPath();
+                    ctx.arc(xMid, y, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+                ctx.globalAlpha = 1.0;
+            }
+
             // Time axis — quarterly ticks
             ctx.fillStyle = "rgba(107,114,128,.7)";
             ctx.font = "9px system-ui";
@@ -2787,13 +2879,16 @@
                 if (found) {
                     const trade      = (d.trades||[]).find(t => t.key === found.k);
                     const floorLabel = _esc(d.floors.find(f => f.ordinal === found.f)?.label || found.tok);
-                    const dot        = c => `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${c};margin-right:4px;flex-shrink:0;vertical-align:middle;"></span>`;
+                    const mkDot      = c => `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${c};margin-right:4px;flex-shrink:0;vertical-align:middle;"></span>`;
                     const tradeColor = trade?.color || "#6b7280";
                     const dimNote    = (anyHighlight && !lit(found.k))
                         ? `<div style="font-size:0.67rem;color:#f59e0b;margin-top:3px;">dimmed — not hidden</div>` : "";
+                    const tradeLine  = found.ov
+                        ? `${mkDot("#f59e0b")}coded: <span style="text-decoration:line-through;opacity:.65;">${_esc(found.ok_name||found.ok||"")}</span> · audit suggests: <strong>${_esc(trade?.name||found.k)}</strong> · ${floorLabel}`
+                        : `${mkDot(tradeColor)}${_esc(trade?.name||found.k)} · ${floorLabel}`;
                     tooltip.innerHTML =
                         `<div style="font-weight:600;margin-bottom:4px;font-size:0.76rem;">${_esc(found.nm)}</div>`
-                        + `<div style="font-size:0.7rem;color:var(--bs-secondary-color);margin-bottom:5px;">${dot(tradeColor)}${_esc(trade?.name||found.k)} · ${floorLabel}</div>`
+                        + `<div style="font-size:0.7rem;color:var(--bs-secondary-color);margin-bottom:5px;">${tradeLine}</div>`
                         + `<div style="font-size:0.72rem;margin-bottom:2px;"><span style="opacity:.7;">Planned:</span> ${found.ps} → ${found.pe}</div>`
                         + (found.as_ ? `<div style="font-size:0.72rem;margin-bottom:2px;"><span style="opacity:.7;">Actual:</span> ${found.as_} → ${found.ae||"in progress"}</div>` : "")
                         + (found.fe  ? `<div style="font-size:0.72rem;"><span style="opacity:.7;">Forecast end:</span> ${found.fe}</div>` : "")
@@ -2836,6 +2931,12 @@
                     + ` — others dimmed, not hidden.</span>`;
             }
 
+            if (sc.using_audit_overrides && sc.n_overridden > 0) {
+                html += ` <span style="color:#f59e0b;"><i class="bi bi-circle-fill" style="font-size:0.55rem;vertical-align:middle;"></i>`
+                    + ` <strong>Audit-suggested view</strong> — ${sc.n_overridden} confirmed-mismatch`
+                    + ` activit${sc.n_overridden !== 1 ? "ies" : "y"} reclassified on the chart. Original P6 coding unchanged.</span>`;
+            }
+
             html += ` Busiest floor: <strong>${_esc(st.busiest_floor_label)}</strong> (${st.busiest_floor_count} tasks).`
                 + ` Widest trade: <strong>${_esc(st.widest_trade_name)}</strong> (${st.widest_trade_floors} floors).`
                 + ` <em>Spatial resolution = floor level; within-floor zones not distinguished.</em>`;
@@ -2843,13 +2944,15 @@
             el.innerHTML = html;
         }
 
-        // ── Init ──────────────────────────────────────────────────────────
-        async function loadTimelocation() {
+        // ── Init / reload ─────────────────────────────────────────────────
+        async function loadTimelocation(auditMode) {
             const loading = document.getElementById("tl-loading");
             const nodata  = document.getElementById("tl-nodata");
             const results = document.getElementById("tl-results");
+            const mode = auditMode || (window._evmAudit ? window._evmAudit.mode() : "coded");
+            const url  = mode === "corrected" ? BASE_URL + "?audit_view=corrected" : BASE_URL;
             try {
-                const resp = await fetch(BASE_URL);
+                const resp = await fetch(url);
                 const d = await resp.json();
                 if (loading) loading.classList.add("d-none");
                 if (!d.has_data) {
@@ -2858,7 +2961,8 @@
                 }
                 _data = d;
                 if (results) results.classList.remove("d-none");
-                _populateDropdown(d.trades || []);
+                // Only populate dropdown once (first load)
+                if (!auditMode) _populateDropdown(d.trades || []);
                 _renderChart(d);
                 _updateCaption(d);
             } catch (_e) {
@@ -2868,6 +2972,7 @@
         }
 
         loadTimelocation();
+        if (window._evmAudit) window._evmAudit.register("timelocation", loadTimelocation);
     }());
 
     /* ── DCMA 14-Point Assessment ──────────────────────────────────────── */
@@ -3255,12 +3360,14 @@
             }
         }
 
-        async function loadAnomalies() {
+        async function loadAnomalies(auditMode) {
             const loading = document.getElementById("anomaly-loading");
             const nodata  = document.getElementById("anomaly-nodata");
             const results = document.getElementById("anomaly-results");
+            const mode = auditMode || (window._evmAudit ? window._evmAudit.mode() : "coded");
+            const url  = mode === "corrected" ? ANOMALY_URL + "?audit_view=corrected" : ANOMALY_URL;
             try {
-                const resp = await fetch(ANOMALY_URL);
+                const resp = await fetch(url);
                 const data = await resp.json();
                 if (loading) loading.classList.add("d-none");
                 if (!data.has_data) {
@@ -3289,6 +3396,7 @@
         }
 
         loadAnomalies();
+        if (window._evmAudit) window._evmAudit.register("anomalies", loadAnomalies);
     }());
 
     /* ── Schedule Audit — Section Mismatches ────────────────────────────── */
@@ -3418,6 +3526,8 @@
                 if (results) results.classList.remove("d-none");
 
                 const nr = d.needs_review_count ?? 0;
+                // Notify the toggle controller so it can enable Audit-suggested view
+                if (window._evmAudit) window._evmAudit.enableAuditView(d.confirmed_count || 0);
                 _renderSummary(d);
                 _setLabel("audit-sm-confirmed-label",    "Confirmed Mismatches",        d.confirmed_count,  "#dc2626");
                 _setLabel("audit-sm-needs-review-label", "Needs Review (medium conf)",  nr,                 "#f59e0b");
@@ -3631,7 +3741,7 @@
             return html;
         }
 
-        async function loadFloorHealth() {
+        async function loadFloorHealth(auditMode) {
             const loading  = document.getElementById("evm-health-loading");
             const nodata   = document.getElementById("evm-health-nodata");
             const resultsEl = document.getElementById("evm-health-results");
@@ -3639,9 +3749,12 @@
             const panel    = document.getElementById("evm-health-breakdown");
             if (!grid) return;
 
+            const mode = auditMode || (window._evmAudit ? window._evmAudit.mode() : "coded");
+            const url  = mode === "corrected" ? HEALTH_URL + "?audit_view=corrected" : HEALTH_URL;
+
             let data;
             try {
-                const resp = await fetch(HEALTH_URL);
+                const resp = await fetch(url);
                 data = await resp.json();
             } catch (_) {
                 if (loading) loading.classList.add("d-none");
@@ -3698,6 +3811,7 @@
         }
 
         loadFloorHealth();
+        if (window._evmAudit) window._evmAudit.register("floor_health", loadFloorHealth);
     }());
 
     /* ── Report Generator ────────────────────────────────────────────────── */
