@@ -316,12 +316,36 @@ export function effectivePhase(point) {
 
 // ── Point kinds (photo / camera / sensor / custom). Photo points are numbered;
 //    the others show a symbol instead of a number. Custom points pick one of
-//    CUSTOM_SYMBOLS. ──
+//    CUSTOM_SYMBOLS.
+//
+//    Camera + sensor use inline SVG pictograms (sized to fit a 20 px pin and
+//    inheriting currentColor so they pick up the theme). The text ``glyph``
+//    is kept as a fallback for places that render plain text (the points
+//    list, kind menus, etc.). ──
+const CAMERA_SVG =
+  '<svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
+    // wall mount post
+    '<rect x="2" y="8" width="2.4" height="11" rx="0.4"/>' +
+    // arm joining post to camera body
+    '<rect x="3.6" y="11" width="3" height="2"/>' +
+    // camera body — parallelogram pointing down-right (CCTV silhouette)
+    '<path d="M6.2 8.2 L20 4.2 L22 7.4 L19.5 14 L8 14 Z"/>' +
+  '</svg>';
+const SENSOR_SVG =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
+    // emitter post
+    '<rect x="3" y="6" width="2" height="12" rx="0.4" fill="currentColor" stroke="none"/>' +
+    // three broadcast arcs (innermost → outermost)
+    '<path d="M8 9 Q11 12 8 15"/>' +
+    '<path d="M12 7 Q17 12 12 17"/>' +
+    '<path d="M16 5 Q23 12 16 19"/>' +
+  '</svg>';
+
 export const POINT_KINDS = {
-  photo: { label: "Photo", glyph: "" },   // numbered, no glyph
-  camera: { label: "Camera", glyph: "📷" },
-  sensor: { label: "Sensor", glyph: "📡" },
-  custom: { label: "Custom", glyph: "◆" }, // glyph overridden by point.symbol
+  photo:  { label: "Photo",  glyph: "" },   // numbered, no glyph
+  camera: { label: "Camera", glyph: "📷", svg: CAMERA_SVG },
+  sensor: { label: "Sensor", glyph: "📡", svg: SENSOR_SVG },
+  custom: { label: "Custom", glyph: "◆" },  // glyph overridden by point.symbol
 };
 export const CUSTOM_SYMBOLS = ["◆", "▲", "★", "⬡", "⚑"];
 export function pointKind(point) {
@@ -329,11 +353,28 @@ export function pointKind(point) {
   return POINT_KINDS[k] ? k : "photo";
 }
 // The glyph to draw in the pin ("" → use the number). Custom → its chosen symbol.
+// Returns plain TEXT (for lists, menus, anywhere that escapes HTML).
 export function pointGlyph(point) {
   const k = pointKind(point);
   if (k === "photo") return "";
   if (k === "custom") return point.symbol || CUSTOM_SYMBOLS[0];
   return POINT_KINDS[k].glyph || "•";
+}
+// HTML-safe glyph for rendering inside the pin (or anywhere that accepts
+// innerHTML). Returns inline SVG for kinds that ship one (camera, sensor);
+// falls back to the plain text glyph (HTML-escaped) for the rest.
+export function pointGlyphHtml(point) {
+  const k = pointKind(point);
+  if (k === "photo") return "";
+  if (k === "custom") return _escHtmlInline(point.symbol || CUSTOM_SYMBOLS[0]);
+  const kind = POINT_KINDS[k];
+  if (kind && kind.svg) return kind.svg;
+  return _escHtmlInline(kind && kind.glyph ? kind.glyph : "•");
+}
+function _escHtmlInline(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
 }
 // Display name for a point's kind — custom points use their user-set type name.
 export function pointKindLabel(point) {

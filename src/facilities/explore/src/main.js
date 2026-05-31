@@ -14,7 +14,7 @@ import {
   setAttachPhase, setSelectedMedia, setMediaMeta, setArchiveType, setTimelineView, setSortKey, toggleSortDir, setNumbering, setNumberingPad, setPointPhase, addMedia, removeMedia, restoreMedia,
   addPhase, renamePhase, deletePhase, setPhaseColor, deleteFloor, moveFloor, phaseColor, effectivePhase, addPointTable, removePointTable, setPointTableFilter,
   onStateChange, exportFullState, importFullState, clearSession,
-  POINT_KINDS, CUSTOM_SYMBOLS, pointKind, pointGlyph, pointKindLabel, setPlaceKind, setKindFilter, setPointKind, setPlaceCustomName, setPointKindLabel,
+  POINT_KINDS, CUSTOM_SYMBOLS, pointKind, pointGlyph, pointGlyphHtml, pointKindLabel, setPlaceKind, setKindFilter, setPointKind, setPlaceCustomName, setPointKindLabel,
 } from "./state.js";
 import { filterRows, tableCatalog, setTableCatalog } from "./data/roomdata.js";
 import { renderPins, initFloorplan } from "./floorplan/floorplan.js";
@@ -154,8 +154,11 @@ function render() {
     onMove: (id, x, y) => movePoint(id, x, y),
     // Pin is colored by its assigned phase in every mode; grey until a phase is set.
     colorFor: (pt) => phaseColor(effectivePhase(pt)),
-    // Non-photo kinds draw a symbol instead of a number.
+    // Non-photo kinds draw a symbol instead of a number. glyphHtmlFor wins
+    // for camera / sensor (returns inline SVG pictograms); glyphFor stays
+    // around as the text fallback for kinds without an SVG.
     glyphFor: (pt) => pointGlyph(pt),
+    glyphHtmlFor: (pt) => pointGlyphHtml(pt),
     numbers: nums,
     pad: numberPad(nums),
   });
@@ -839,12 +842,15 @@ function openPointList() {
       return `<div class="ptl-grp">${escHtml(head)} · ${g.pts.length}</div>` +
       g.pts.map((p) => {
         const ph = effectivePhase(p);
-        const glyph = pointGlyph(p);
+        // glyphHtml may contain a raw SVG pictogram (camera / sensor) — it
+        // must NOT go through escHtml or the markup turns into visible text.
+        // pointGlyphHtml already HTML-escapes its plain-text branch.
+        const glyphHtml = pointGlyphHtml(p);
         const meta = [floorName(p.floorId), p.globalId ? "GID " + p.globalId.slice(0, 8) + "…" : "", ph].filter(Boolean).join("  ·  ");
         return `<div class="ptl-item${p.id === state.selectedId ? " on" : ""}">` +
           `<button class="ptl-jump" data-pid="${p.id}" title="Jump to this point">` +
             `<span class="ptl-dot" style="background:${phaseColor(ph)}"></span>` +
-            (glyph ? `<span class="ptl-sym">${escHtml(glyph)}</span>` : "") +
+            (glyphHtml ? `<span class="ptl-sym">${glyphHtml}</span>` : "") +
             `<span class="ptl-name">${escHtml(p.label || "(point)")}</span>` +
             `<span class="ptl-meta">${escHtml(meta)}</span>` +
           `</button>` +
@@ -1230,7 +1236,7 @@ if (btnAnnotate) {
 }
 
 // ── Boot ──
-const BUILD = "build 6.46"; // bump on each change so a stale (cached) JS is obvious in the header
+const BUILD = "build 6.47"; // bump on each change so a stale (cached) JS is obvious in the header
 initModal();
 // Restore a previously chosen standalone theme (host SET_THEME still overrides when embedded).
 try { const savedTheme = localStorage.getItem(THEME_KEY); if (savedTheme) applyTheme(savedTheme); } catch (_) { /* ignore */ }
