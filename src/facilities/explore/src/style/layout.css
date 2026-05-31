@@ -25,9 +25,17 @@
    viewer instead of shrinking to fit. The stage itself uses CSS-variable-
    driven transform so the zoom controls can scale + pan the whole picture
    (image + annotations + pins) as a single unit. */
-.exp-viewer{flex:1;min-height:0;position:relative;overflow:hidden;background:var(--viewer-bg);display:flex;align-items:center;justify-content:center;}
+.exp-viewer{flex:1;min-height:0;position:relative;overflow:hidden;background:var(--viewer-bg);display:flex;}
+/* The stage fills the viewer and acts as a flex centre for the image. The
+   image inside uses ``object-fit: contain`` so the WHOLE plan is always
+   visible regardless of its native dimensions — letterboxed by the stage's
+   centring rather than clipped. A ResizeObserver in floorplan.js keeps the
+   pin layer aligned to the IMG's rendered box, so pins still anchor to the
+   plan correctly even though the stage itself is larger. */
 .plan-stage{
-  position:relative;line-height:0;max-width:100%;max-height:100%;
+  position:relative;line-height:0;
+  width:100%;height:100%;
+  display:flex;align-items:center;justify-content:center;
   --zoom:1;--pan-x:0px;--pan-y:0px;
   transform:translate(var(--pan-x),var(--pan-y)) scale(var(--zoom));
   transform-origin:center center;
@@ -35,10 +43,19 @@
   will-change:transform;
 }
 .exp-viewer.panning .plan-stage{transition:none;cursor:grabbing;}
-.exp-viewer.zoomed .plan-stage{cursor:grab;}
-.plan-img{display:block;max-width:100%;max-height:100%;width:auto;height:auto;user-select:none;-webkit-user-drag:none;}
-/* Pin layer overlays the image box exactly; pins are positioned in % of this box. */
-.pin-layer{position:absolute;inset:0;pointer-events:none;}
+.exp-viewer.panning,
+.exp-viewer.zoomed .plan-stage,
+.exp-viewer.has-overflow .plan-stage{cursor:grab;}
+.plan-img{
+  display:block;
+  max-width:100%;max-height:100%;
+  width:auto;height:auto;
+  object-fit:contain;
+  user-select:none;-webkit-user-drag:none;
+}
+/* Pin layer is positioned in % of the IMG's rendered box — floorplan.js syncs
+   its style.left/top/width/height to planImg.offset* via ResizeObserver. */
+.pin-layer{position:absolute;pointer-events:none;}
 
 /* Zoom controls — bottom-left overlay (mirrors the bottom-left phase legend
    position; tucked above it via flex order on small heights via the .zoom-ctrl

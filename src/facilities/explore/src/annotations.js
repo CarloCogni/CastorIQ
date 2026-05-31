@@ -356,6 +356,15 @@ function deleteLayer(id) {
 function syncCanvasToImage(planImg, canvas) {
   const w = planImg.offsetWidth || planImg.clientWidth || 1;
   const h = planImg.offsetHeight || planImg.clientHeight || 1;
+  // Position Fabric's wrapper to match the IMG's offset inside the stage —
+  // otherwise the wrapper sits at (0, 0) of the stage and the user's strokes
+  // misalign with the image whenever it's letterboxed (object-fit: contain
+  // around a non-square plan).
+  if (canvas.wrapperEl) {
+    canvas.wrapperEl.style.position = "absolute";
+    canvas.wrapperEl.style.left = planImg.offsetLeft + "px";
+    canvas.wrapperEl.style.top = planImg.offsetTop + "px";
+  }
   if (canvas.getWidth() === w && canvas.getHeight() === h) return;
   canvas.setWidth(w);
   canvas.setHeight(h);

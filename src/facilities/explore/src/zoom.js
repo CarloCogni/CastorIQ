@@ -54,16 +54,16 @@ export function initZoom() {
     zoomAt(e.clientX, e.clientY, S.zoom * factor);
   }, { passive: false });
 
-  // Drag to pan — bound on the viewer (outermost element) so any pointerdown
-  // inside the plan area triggers it regardless of which child (img, canvas,
-  // pin-layer) was hit. setPointerCapture keeps the rest of the gesture flow
-  // attached to the viewer even if the mouse leaves the original target.
-  // Falls through (returns early) at zoom ≤ 1 so existing pin click / drag
-  // still work at fit-to-view.
+  // Drag to pan — pointerdown on the viewer (outermost element) so any
+  // pointer hit inside the plan area triggers it regardless of which child
+  // (img, canvas, pin-layer) was clicked. pointermove / pointerup live on
+  // the *document* so a fast drag that briefly leaves the viewer doesn't
+  // drop the gesture — and setPointerCapture pins all subsequent events
+  // for that pointer to the viewer for good measure.
   S.viewer.addEventListener("pointerdown", onPointerDown);
-  S.viewer.addEventListener("pointermove", onPointerMove);
-  S.viewer.addEventListener("pointerup", onPointerUp);
-  S.viewer.addEventListener("pointercancel", onPointerUp);
+  document.addEventListener("pointermove", onPointerMove);
+  document.addEventListener("pointerup", onPointerUp);
+  document.addEventListener("pointercancel", onPointerUp);
 
   applyTransform();
 }
@@ -129,23 +129,41 @@ function applyTransform() {
   S.stage.style.setProperty("--pan-x", S.panX.toFixed(2) + "px");
   S.stage.style.setProperty("--pan-y", S.panY.toFixed(2) + "px");
   S.viewer.classList.toggle("zoomed", S.zoom > 1.001);
+  // ``has-overflow`` mirrors the actual situation rather than the zoom level:
+  // even at 1× the plan can be larger than the viewer (rare but possible if
+  // the IMG's intrinsic constraints don't quite resolve to a fit). When that
+  // happens the cursor turns to grab and the pan handler accepts drags too.
+  S.viewer.classList.toggle("has-overflow", hasOverflow());
   if (S.slider) S.slider.value = Math.round(S.zoom * 100);
   if (S.pctLabel) S.pctLabel.textContent = Math.round(S.zoom * 100) + " %";
 }
 
+function hasOverflow() {
+  if (!S.stage || !S.viewer) return false;
+  const s = S.stage.getBoundingClientRect();
+  const v = S.viewer.getBoundingClientRect();
+  return s.width > v.width + 1 || s.height > v.height + 1;
+}
+
 function onPointerDown(e) {
-  if (S.zoom <= 1.001) return; // pan disabled at fit
-  // Don't pan when the user is interacting with a pin or the annotation
-  // canvas — those need their own pointer events.
+  // Pan is allowed whenever the stage extends beyond the viewer — at any
+  // zoom level. That covers both "user zoomed in" and "image happens to be
+  // larger than the viewer" (e.g. a tall plan that doesn't quite fit).
+  if (S.zoom <= 1.001 && !hasOverflow()) return;
+  // Don't hijack pointer events from UI elements that need them. The pin
+  // layer carries pin elements with .pin class; the annotation canvas needs
+  // events in Draw mode; the zoom controls speak for themselves.
   if (e.target && (
       e.target.closest(".pin") ||
-      e.target.tagName === "CANVAS" ||
       e.target.closest(".v-label") ||
-      e.target.closest(".zoom-ctrl")
+      e.target.closest(".zoom-ctrl") ||
+      e.target.closest(".annot-bar")
   )) return;
+  if (S.viewer.classList.contains("draw-mode")) return;
   S.dragging = true;
   S.dragStart = { mx: e.clientX, my: e.clientY, panX: S.panX, panY: S.panY };
   S.viewer.classList.add("panning");
+  try { S.viewer.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
   e.preventDefault();
 }
 
@@ -158,10 +176,13 @@ function onPointerMove(e) {
   applyTransform();
 }
 
-function onPointerUp() {
+function onPointerUp(e) {
   if (!S.dragging) return;
   S.dragging = false;
   S.viewer.classList.remove("panning");
+  if (e && e.pointerId !== undefined) {
+    try { S.viewer.releasePointerCapture(e.pointerId); } catch (_) { /* ignore */ }
+  }
 }
 
 function isOverPlan(e) {
