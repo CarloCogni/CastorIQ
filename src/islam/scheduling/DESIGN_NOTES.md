@@ -275,9 +275,188 @@ makes the mapping auditable and correctable.
 
 ---
 
+## Schedule Audit Engine
+
+A separate advisory pipeline that runs **alongside** the analytics features above and
+flags potential data-quality issues in the schedule for human review. It never modifies
+any task, trade classification, or analytics result. The original P6 CSI code is always
+the source of record; the audit only surfaces candidates for the planner to inspect and
+correct in P6 if warranted.
+
+### Layer 1 — Section-Mismatch Detection (BUILT)
+
+**Service:** `schedule_audit.py · run_section_mismatch_audit(project_id, user=None)`
+**Endpoint:** `GET /islam/projects/<pk>/schedule/audit/section-mismatches/`
+**UI:** "Schedule Audit" card in the EVM tab, between Anomaly Detection and Report Generator.
+
+Compares each floor-located activity **name** against its planner-coded **CSI division**
+and flags likely mis-codes as a review queue. Three stages:
+
+**Stage 1 — keyword pre-filter (no AI, < 100 ms):**
+Scans each task name for strong trade keywords. If the keyword implies a different CSI
+division than the one in the code, the task becomes a candidate. On the IBS project
+(8,766 tasks): 499 candidates, 77 unique names → ~4 LLM batch calls.
+
+**Stage 2 — LLM batch review (unique names only, cached by name):**
+Sends batches of 20 unique candidate names to the LLM and asks for a CSI division,
+confidence, and a one-line reason. The stable system prompt is marked for Anthropic
+ephemeral prompt caching so only the first batch pays full input-token cost. On LLM
+unavailability (`LLMConfigurationError`, `LLMMasterKillError`), all candidates receive
+`verdict=unavailable` and `ai_ran=False` — no exception is raised.
+
+**Stage 3 — verdict assignment:**
+
+| AI output | Verdict | Meaning |
+|-----------|---------|---------|
+| `division` ≠ coded, `confidence=high` | `confirmed` | Clear coding error; a reviewer would agree |
+| `division` ≠ coded, `confidence=medium` | `needs_review` | Possible mismatch; planner's choice may be defensible |
+| `confidence=low` or `division=uncertain` | `uncertain` | Genuinely ambiguous; don't assert |
+| `division` == coded (any confidence) | `likely_ok` | Keyword false-positive; excluded from output |
+| LLM batch failed | `unavailable` | Shown in a collapsed accordion |
+
+Live results on IBS project after calibration: **75 confirmed, 28 needs_review, 8 uncertain,
+388 likely_ok** out of 499 stage-1 candidates.
+
+---
+
+### Tunables introduced — where to adjust them
+
+#### Stage 1 keyword rule groups
+
+**File:** `schedule_audit.py:88–266` (constant `_KEYWORD_RULES`)
+**Current value:** 10 rule groups covering Finishes (09), Concrete (03), HVAC (23),
+Electrical (26), Plumbing (22), Masonry (04), Thermal & Moisture (07), Fire Suppression
+(21), Metals (05), Earthwork (31).
+
+Each rule is a `(keyword_list, csi_division, trade_label)` tuple. Keyword lists are
+deliberately narrow: prefer false-negatives (missed mismatches) over false-positives
+(spurious flags). The LLM clears borderline keyword hits at Stage 2.
+
+**When to adjust:** if a new project uses trade-specific terminology not in the lists
+(e.g. "screed" missing the "cement" qualifier, or regional naming conventions), add
+keywords to the relevant group. Removing keywords broadens recall; adding tighter
+multi-word phrases improves precision.
+
+#### Confidence gating thresholds
+
+**File:** `schedule_audit.py:499–524` (verdict assignment block in `_run_stage2`)
+**Current logic:**
+- `confidence=high` + disagreement → `confirmed`
+- `confidence=medium` + disagreement → `needs_review`
+- `confidence=low` or `division=uncertain` → `uncertain`
+
+**When to adjust:** if the `confirmed` tier still contains false positives, raise the
+bar to require `high` confidence AND a minimum word overlap between reason and known
+division keywords. If `needs_review` is too noisy, demote it to `uncertain`.
+
+#### LLM gray-area disambiguation rules
+
+**File:** `schedule_audit.py:274–355` (constant `_SYSTEM_PROMPT`)
+**Current explicit rules encoded in the prompt:**
+
+1. **Scope rule (most important):** A conduit, cable, tray, or fitting that *serves a
+   named building system* belongs to that system's division — not the generic trade
+   division. Fire-alarm conduits → 28, not 26. Security/access-control wiring → 28, not
+   26. IT/comms conduit → 27, not 26. Fire-suppression pipework → 21, not 22. This rule
+   was added after the initial run produced 96 false-positive "confirmed" flags on
+   fire-alarm conduits.
+2. **EIFS = div 07.** Exterior Insulation and Finish System is CSI 07 24 (Thermal &
+   Moisture Protection). Despite "finish" in the name it is never div 09. Added after the
+   initial run incorrectly classified EIFS items as div 09 Finishes.
+3. **Roofing screed/tiles → 07.** Cement screed or tiles laid as part of a roofing
+   assembly are protection layers over the waterproofing membrane, not floor finishes.
+4. **Traffic coatings / painted pavement markings → 07** (CSI 07 18).
+5. **Wire mesh + plaster → 09.** This combination is a plaster finish system.
+6. **Return `uncertain` when in doubt.** Admin/procurement tasks (Submit, Approve,
+   Procure) always return `uncertain`.
+
+**When to adjust:** add new rules when a pattern of false positives or false negatives
+is identified across a project's confirmed output. Each rule should cite the specific CSI
+section number to anchor it.
+
+---
+
+### AI-in-the-loop caveats
+
+**The LLM is advisory; all output requires human review before acting.**
+The audit surfaces a *review queue*, not a correction list. A planner receiving the
+output should open P6, inspect each flagged task, and apply their own judgment before
+changing anything. The audit is correct to say "this looks like a mismatch"; it is not
+authoritative that it is one.
+
+**Initial calibration failure — over-confidence.**
+The first prompt produced **0 uncertain** items across 499 candidates — the model
+classified everything at high or medium confidence. This was a calibration failure:
+genuinely ambiguous cases (fire-alarm conduits, EIFS, scope-boundary items) were being
+asserted rather than flagged as uncertain. The fix required explicit prompt instructions:
+
+- *"Returning `uncertain` is the CORRECT and PREFERRED answer when the planner's coding
+  is reasonable."*
+- Explicit scope rule preventing system-specific conduits from being reclassified.
+- Confidence semantics defined: `high` = CSI MasterFormat is unambiguous; `medium` =
+  likely but planner's choice has a reasonable basis; `low` = unclear.
+
+After calibration: 8 uncertain, 75 confirmed (down from 138), 28 needs_review.
+
+**Future audit layers must embed the same discipline from the start.** Write the system
+prompt to treat `uncertain` as a first-class, correct output, not a fallback. A model
+that never refuses is miscalibrated regardless of how good its confirmations look.
+
+**The confirmed tier is intentionally high-precision.**
+A few real mismatches may sit in `needs_review` rather than `confirmed`. That is
+acceptable: a review queue where 95% of confirmed items are genuine errors is more
+useful than one where planners must second-guess every flag. Precision over recall.
+
+---
+
+### Future audit layers (ROADMAP — not built)
+
+All future layers follow the same principle as Layer 1: **detect and flag for human
+review, never auto-correct.** The planner's data is authoritative; the audit is advisory.
+
+#### Layer 2 — Sequencing audit
+
+Detect unusual or suspicious activity orderings within a floor/zone/trade cell.
+
+**Key design constraint:** do **not** assume a fixed construction sequence. The correct
+sequence varies by structural system (flat-slab vs post-tensioned vs precast), procurement
+strategy, and site conditions. A rule like "concrete before finishes" holds in general but
+breaks for precast systems where finishes are factory-applied. The right approach:
+
+- Learn the project's own patterns from completed activities (similar to how
+  `completion_ml.py` learns trade on-time rates from the project's own history).
+- Flag activities whose ordering deviates significantly from the project's own majority
+  pattern, not from an externally assumed sequence.
+- Output: "On this project, 94% of Level 5 Finishes tasks follow Concrete tasks on the
+  same floor. This task precedes all Concrete tasks on Level 5 — flag for review."
+
+This ties into the existing CPM driving-relationship graph in `delay_rootcause.py`.
+
+#### Layer 3 — Baseline realism audit
+
+Flag tasks where the planned duration is statistically improbable given the project's own
+completed tasks of the same trade and floor.
+
+Ties into the existing unrealistic-baseline anomaly detection in `anomaly_detect.py`
+(which already flags construction-trade tasks with planned_duration ≤ 4 days as
+"unrealistic baseline"). Layer 3 would extend this to the full distribution using the
+Monte Carlo duration data already computed by `monte_carlo.py`.
+
+#### Layer 4 — Logic and constraint audit
+
+Flag missing predecessors (tasks with no predecessors that are not legitimate project
+starts), redundant constraints (constrained date that is already enforced by logic), and
+open ends (tasks with no successors that are not legitimate project finishes).
+
+Ties into the existing DCMA 14-point checks in `dcma_check.py` (which already measures
+missing-predecessor and open-end rates). Layer 4 would surface individual task-level
+examples rather than aggregate percentages.
+
+---
+
 ## Status
 
-All 7 analytics features built and verified for the IBS/Castor project:
+All 7 analytics features + Schedule Audit Layer 1 built and verified for the IBS/Castor project:
 
 | Feature | Service | Verified |
 |---------|---------|---------|
@@ -288,6 +467,7 @@ All 7 analytics features built and verified for the IBS/Castor project:
 | Completion probability (ML) | `completion_ml.py` | ✓ leak-free (ΔAUC 0.005 float ablation) |
 | DCMA 14-point health | `dcma_check.py` | ✓ |
 | Anomaly detection | `anomaly_detect.py` | ✓ counts verified on real data |
+| Schedule Audit — Layer 1 (section mismatch) | `schedule_audit.py` | ✓ 75 confirmed / 28 needs_review / 8 uncertain on IBS; zero false positives in confirmed tier after calibration |
 
 The gap between "works for this project" and "configurable product for any project" is
 the 9 hardcoded thresholds in Bucket 1 and the two coding-scheme parsers in Bucket 3.
