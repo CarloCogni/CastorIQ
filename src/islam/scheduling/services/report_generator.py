@@ -741,6 +741,15 @@ def render_docx(data: dict, sections: tuple[str, ...]) -> bytes:
 
     doc = Document()
 
+    # Remove the bare <w:zoom> from the default template's settings.xml.
+    # python-docx emits <w:zoom w:val="bestFit"/> without w:percent, which
+    # fails strict OOXML schema validation (Word tolerates it, validators don't).
+    from docx.oxml.ns import qn as _qn
+
+    _settings_elem = doc.settings.element
+    for _z in _settings_elem.findall(_qn("w:zoom")):
+        _settings_elem.remove(_z)
+
     # Page margins
     for section in doc.sections:
         section.top_margin = Inches(0.9)
