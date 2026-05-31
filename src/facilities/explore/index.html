@@ -42,6 +42,9 @@
       <input type="file" id="fileInput" accept="image/png,image/jpeg,image/webp,application/pdf" multiple hidden />
       <input type="file" id="photoUpload" accept="image/*" multiple hidden />
       <input type="file" id="photoCamera" accept="image/*" capture="environment" hidden />
+      <!-- Plans Manager (file-browser-style view of uploaded vs generated plans, per storey).
+           Embedded mode delegates to the host via OPEN_PLANS_MANAGER; standalone hides it. -->
+      <button class="btn" id="btnPlansManager" title="Plans Manager — uploaded &amp; generated floor plans per storey">⚙ Plans</button>
       <button class="btn" id="btnTheme" title="Toggle light / dark theme">◐</button>
       </header>
 

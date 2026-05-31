@@ -2017,6 +2017,7 @@ class ExploreView(ProjectTabMixin, TemplateView):
             + "/",
             "catalog": reverse("facilities:explore_catalog", args=[project.pk]),
             "state": reverse("facilities:explore_state", args=[project.pk]),
+            "plans_manager": reverse("facilities:explore_plans_manager", args=[project.pk]),
         }
         # Storeys + their plan / visibility status drive the Floor-plans manager.
         context["explore_storeys"] = build_explore_storeys(project)
@@ -2039,23 +2040,39 @@ def build_explore_storeys(project):
     descriptors = []
     for storey in storeys:
         plan = getattr(storey, "explore_floor_plan", None)
+        uploaded_url = None
+        generated_url = None
+        if plan and plan.image:
+            try:
+                uploaded_url = plan.image.url
+            except (ValueError, AttributeError):
+                uploaded_url = None
+        if plan and plan.generated_image:
+            try:
+                generated_url = plan.generated_image.url
+            except (ValueError, AttributeError):
+                generated_url = None
         descriptors.append(
             {
                 "pk": str(storey.pk),
                 "name": (storey.entity.name if storey.entity_id else str(storey.pk)),
                 "label": storey.long_name or (storey.entity.name if storey.entity_id else ""),
-                "has_plan": plan is not None and (
-                    bool(getattr(plan, "image", None)) or bool(getattr(plan, "generated_image", None))
-                ),
-                "has_uploaded": bool(plan and plan.image),
-                "has_generated": bool(plan and plan.generated_image),
+                "has_plan": plan is not None and (uploaded_url or generated_url),
+                "has_uploaded": bool(uploaded_url),
+                "has_generated": bool(generated_url),
+                "uploaded_url": uploaded_url,
+                "generated_url": generated_url,
                 "image_source": (plan.image_source if plan else "uploaded"),
                 "cut_height_mm": (plan.cut_height_mm if plan else None),
                 "included_kinds": list(plan.included_kinds) if (plan and plan.included_kinds) else [],
+                "generated_at": (plan.generated_at if plan else None),
                 "knockout": getattr(plan, "knockout", False),
                 "hidden": getattr(getattr(storey, "explore_settings", None), "hidden", False),
                 "upload_url": reverse("facilities:explore_floor_plan_upload", args=[project.pk, storey.pk]),
                 "delete_url": reverse("facilities:explore_floor_plan_delete", args=[project.pk, storey.pk]),
+                "delete_generated_url": reverse(
+                    "facilities:explore_floor_plan_generated_delete", args=[project.pk, storey.pk]
+                ),
                 "visibility_url": reverse("facilities:explore_floor_visibility", args=[project.pk, storey.pk]),
                 "rename_url": reverse("facilities:explore_floor_rename", args=[project.pk, storey.pk]),
                 "generate_url": reverse("facilities:explore_floor_plan_generate", args=[project.pk, storey.pk]),
@@ -2066,16 +2083,34 @@ def build_explore_storeys(project):
 
 
 def _explore_floor_rows_response(request, project):
-    """Render just the Floor-plans manager rows (HTMX partial).
+    """Render the Floors modal rows OR the Plans Manager rows, depending on caller.
 
-    Per-row actions (visibility / upload / remove) return this so the list
-    refreshes in place — the modal stays open until the user closes it.
-    The caller has already passed ProjectModifyAccessMixin, so the editor
-    controls are shown.
+    Both modals operate on the same set of storeys; we dispatch by the
+    HX-Target header so each modal's hx-post finds its own piece of DOM
+    refreshed. The two partials share data (``build_explore_storeys``) but
+    different layout — the Floors modal is a compact action row per storey,
+    the Plans Manager is a file-browser-style card grid with thumbnails.
+    """
+    target = (request.headers.get("HX-Target") or "").strip()
+    template = (
+        "facilities/tabs/_explore_plans_manager_rows.html"
+        if target == "explorePlansManagerRows"
+        else "facilities/tabs/_explore_floor_rows.html"
+    )
+    return render(
+        request,
+        template,
+        {"explore_storeys": build_explore_storeys(project), "user_permission": "editor"},
+    )
+
+
+def _plans_manager_response(request, project):
+    """Alias kept for clarity — endpoints that *only* refresh the Plans Manager
+    use this so the intent is obvious at the call site.
     """
     return render(
         request,
-        "facilities/tabs/_explore_floor_rows.html",
+        "facilities/tabs/_explore_plans_manager_rows.html",
         {"explore_storeys": build_explore_storeys(project), "user_permission": "editor"},
     )
 
@@ -2157,10 +2192,14 @@ class ExploreFloorPlanUploadView(ProjectModifyAccessMixin, View):
 
 
 class ExploreFloorPlanDeleteView(ProjectModifyAccessMixin, View):
-    """Remove the uploaded plan image for an IFC storey.
+    """Remove the *uploaded* plan image for an IFC storey.
 
-    Points and media previously placed on this floor are **not** deleted —
-    they stay anchored to the storey and reappear if a plan is re-uploaded.
+    Mirrors :class:`ExploreFloorPlanGeneratedDeleteView` for the upload side.
+    The generated image (if any) is preserved; ``image_source`` auto-flips to
+    ``'generated'`` when the uploaded plan was active so the viewer keeps
+    showing a plan. If neither image remains the whole row is deleted so the
+    storey returns to its "No plan" state. Points and media stay anchored
+    to the storey throughout — they reappear when any plan is re-attached.
     """
 
     def post(self, request, pk, storey_pk):
@@ -2170,11 +2209,23 @@ class ExploreFloorPlanDeleteView(ProjectModifyAccessMixin, View):
             storey__pk=storey_pk,
             storey__ifc_file__project=project,
         )
-        plan.delete()
+        if plan.image:
+            plan.image.delete(save=False)
+            plan.image = None
+        if plan.original_image:
+            plan.original_image.delete(save=False)
+            plan.original_image = None
+        plan.knockout = False
+        if not plan.generated_image:
+            plan.delete()
+        else:
+            # Generated plan survives — make it the active source so the
+            # viewer doesn't blank out.
+            plan.image_source = ExploreFloorPlan.ImageSource.GENERATED
+            plan.save()
         logger.info(
-            "Explore floor plan removed for storey %s by user %s", storey_pk, request.user.pk
+            "Removed uploaded plan for storey %s by user %s", storey_pk, request.user.pk
         )
-        project = self.get_project()
         return _explore_floor_rows_response(request, project)
 
 
@@ -2203,6 +2254,59 @@ class ExploreFloorVisibilityView(ProjectModifyAccessMixin, View):
             "Explore storey %s %s Explore by user %s", storey_pk, state, request.user.pk
         )
         # Return the refreshed rows so the manager updates in place (modal stays open).
+        return _explore_floor_rows_response(request, project)
+
+
+class ExplorePlansManagerView(ProjectModifyAccessMixin, View):
+    """Render the Plans Manager modal body (file-browser-style card grid).
+
+    Opened by the iframe's gear button (OPEN_PLANS_MANAGER postMessage). The
+    host page loads this partial via HTMX into a modal mount once and then
+    every per-action POST refreshes only the inner rows partial.
+    """
+
+    def get(self, request, pk):
+        project = self.get_project()
+        return render(
+            request,
+            "facilities/tabs/_explore_plans_manager.html",
+            {
+                "project": project,
+                "explore_storeys": build_explore_storeys(project),
+                "user_permission": "editor",
+            },
+        )
+
+
+class ExploreFloorPlanGeneratedDeleteView(ProjectModifyAccessMixin, View):
+    """Delete just the IFC-generated image for a storey, keeping the uploaded one.
+
+    Used from the Plans Manager when the user wants to discard a bad
+    auto-generated plan without losing the manually-uploaded one. When the
+    generated image was active, ``image_source`` auto-flips back to
+    ``'uploaded'`` so the viewer keeps showing something usable.
+    """
+
+    def post(self, request, pk, storey_pk):
+        project = self.get_project()
+        plan = get_object_or_404(
+            ExploreFloorPlan,
+            storey__pk=storey_pk,
+            storey__ifc_file__project=project,
+        )
+        if not plan.generated_image:
+            return toast_response("Nothing to delete — no generated plan.", "info")
+        plan.generated_image.delete(save=False)
+        plan.generated_image = None
+        plan.cut_height_mm = None
+        plan.included_kinds = []
+        plan.generated_at = None
+        if plan.image_source == ExploreFloorPlan.ImageSource.GENERATED:
+            plan.image_source = ExploreFloorPlan.ImageSource.UPLOADED
+        plan.save()
+        logger.info(
+            "Removed generated plan for storey %s by user %s", storey_pk, request.user.pk
+        )
         return _explore_floor_rows_response(request, project)
 
 

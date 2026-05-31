@@ -1,0 +1,35 @@
+{% comment %}
+Plans Manager — file-browser-style modal body served by ExplorePlansManagerView.
+
+Opened by the iframe's gear button via OPEN_PLANS_MANAGER. The host page
+loads this template once into #explorePlansManagerMount and shows the modal;
+every per-action HTMX POST refreshes only the inner #explorePlansManagerRows
+partial so the modal itself stays mounted.
+{% endcomment %}
+
+<div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h5 class="modal-title d-flex align-items-center gap-2">
+                <i class="bi bi-folder2-open" style="color: var(--castor-facilities, #14b8a6);"></i>
+                Plans Manager
+                <span class="fs-8 text-secondary fw-normal ms-1">— uploaded &amp; generated floor plans per storey</span>
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+            <div class="fs-8 text-secondary mb-3">
+                Each storey can carry an <strong>uploaded</strong> plan (PNG / JPG / PDF) and an
+                <strong>IFC-generated</strong> plan. The active source (radio) is what the viewer
+                shows. Delete buttons drop one image without touching the other; points and
+                photos stay anchored to the storey either way.
+            </div>
+            <div id="explorePlansManagerRows">
+                {% include "facilities/tabs/_explore_plans_manager_rows.html" %}
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Done</button>
+        </div>
+    </div>
+</div>

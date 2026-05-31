@@ -1181,8 +1181,23 @@ els.btnFloors.addEventListener("click", () => {
   else openFloorManager();
 });
 
+// Header "Plans" gear: ask Castor to open a file-browser-style modal listing
+// every uploaded / generated plan per storey (with per-image delete + "show
+// this" toggle). Standalone mode has no such manager, so a click there only
+// emits a no-op postMessage (no listener picks it up) and toasts a hint.
+const btnPlansManager = document.getElementById("btnPlansManager");
+if (btnPlansManager) {
+  btnPlansManager.addEventListener("click", () => {
+    if (isEmbedded) {
+      emit(MSG.OPEN_PLANS_MANAGER, {});
+    } else {
+      toast("Plans Manager is available only inside Castor.");
+    }
+  });
+}
+
 // ── Boot ──
-const BUILD = "build 6.39"; // bump on each change so a stale (cached) JS is obvious in the header
+const BUILD = "build 6.40"; // bump on each change so a stale (cached) JS is obvious in the header
 initModal();
 // Restore a previously chosen standalone theme (host SET_THEME still overrides when embedded).
 try { const savedTheme = localStorage.getItem(THEME_KEY); if (savedTheme) applyTheme(savedTheme); } catch (_) { /* ignore */ }

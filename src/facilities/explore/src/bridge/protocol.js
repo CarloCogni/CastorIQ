@@ -32,6 +32,9 @@ export const MSG = {
   STATE_CHANGED: "STATE_CHANGED", // debounced notice that the working set changed (so the host can persist)
   // v0.3 — ask the host to open its Floor-plans / Levels manager (the toolbar "Floors" button).
   OPEN_LEVELS: "OPEN_LEVELS",
+  // v0.4 — ask the host to open the Plans Manager modal (gear button) — a file-browser-style
+  // view of uploaded / generated plans per storey, with per-image delete + "show this" toggles.
+  OPEN_PLANS_MANAGER: "OPEN_PLANS_MANAGER",
 };
 
 export const ERR = {

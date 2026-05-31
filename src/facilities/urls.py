@@ -277,4 +277,14 @@ urlpatterns = [
         views.ExploreFloorPlanSourceView.as_view(),
         name="explore_floor_plan_source",
     ),
+    path(
+        "<uuid:pk>/facilities/explore/floor-plans/<uuid:storey_pk>/generated/delete/",
+        views.ExploreFloorPlanGeneratedDeleteView.as_view(),
+        name="explore_floor_plan_generated_delete",
+    ),
+    path(
+        "<uuid:pk>/facilities/explore/plans-manager/",
+        views.ExplorePlansManagerView.as_view(),
+        name="explore_plans_manager",
+    ),
 ]
