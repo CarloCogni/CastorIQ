@@ -165,6 +165,15 @@ class ExploreFloorPlan(UUIDModel):
         verbose_name="Last Generated At",
         help_text="When generated_image was last produced",
     )
+    annotations_json = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Annotations",
+        help_text=(
+            "User-drawn annotation layer (Fabric.js JSON snapshot). Applied over "
+            "whichever plan source is active. Per-storey, not per-source."
+        ),
+    )
     uploaded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

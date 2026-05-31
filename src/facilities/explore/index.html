@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="./src/style/tokens.css" />
   <link rel="stylesheet" href="./src/style/layout.css" />
   <link rel="stylesheet" href="./src/style/components.css" />
+  <link rel="stylesheet" href="./src/style/annotations.css" />
   <!-- Bare-specifier imports for the no-build setup. Swap for npm/Vite later by removing this map. -->
   <script type="importmap">
   {
@@ -19,6 +20,10 @@
     }
   }
   </script>
+  <!-- Fabric.js for the annotation overlay. UMD build exposes window.fabric;
+       loaded with `defer` so the module bundle can read it on boot without
+       blocking the page paint. -->
+  <script src="https://cdn.jsdelivr.net/npm/fabric@5.3.0/dist/fabric.min.js" defer></script>
 </head>
 <body>
   <div id="app" class="exp-app">
@@ -45,12 +50,74 @@
       <!-- Plans Manager (file-browser-style view of uploaded vs generated plans, per storey).
            Embedded mode delegates to the host via OPEN_PLANS_MANAGER; standalone hides it. -->
       <button class="btn" id="btnPlansManager" title="Plans Manager — uploaded &amp; generated floor plans per storey">⚙ Plans</button>
+      <button class="btn annot-toggle" id="btnAnnotate" title="Draw on the floor plan (Paint-style annotation overlay)">✏ Draw</button>
       <button class="btn" id="btnTheme" title="Toggle light / dark theme">◐</button>
       </header>
+
+      <!-- Drawing toolbar (Paint-style). Hidden by default — expanded by the
+           "✏ Draw" header button. Section structure: Nástroje / Štětce /
+           Tvary / Barvy. Anchored just below the module header so the
+           viewer stays in view. -->
+      <div class="annot-bar" id="annotBar" hidden>
+        <div class="annot-sect">
+          <div class="annot-sect-row">
+            <button class="annot-btn on" data-tool="select" title="Select / move (V)">⬚</button>
+            <button class="annot-btn" data-tool="pencil" title="Pencil (free hand)">✎</button>
+            <button class="annot-btn" data-tool="eraser" title="Eraser (click an annotation to delete)">⌫</button>
+            <button class="annot-btn" data-tool="text" title="Text label">A</button>
+          </div>
+          <span class="annot-sect-lbl">Nástroje</span>
+        </div>
+        <div class="annot-sect">
+          <div class="annot-sect-row">
+            <button class="annot-btn annot-brush size-s" data-brush="2" title="Thin"><span class="annot-brush-dot"></span></button>
+            <button class="annot-btn annot-brush size-m on" data-brush="4" title="Medium"><span class="annot-brush-dot"></span></button>
+            <button class="annot-btn annot-brush size-l" data-brush="8" title="Thick"><span class="annot-brush-dot"></span></button>
+          </div>
+          <span class="annot-sect-lbl">Štětce</span>
+        </div>
+        <div class="annot-sect">
+          <div class="annot-sect-row">
+            <button class="annot-btn" data-shape="line" title="Straight line">╱</button>
+            <button class="annot-btn" data-shape="rect" title="Rectangle">▭</button>
+            <button class="annot-btn" data-shape="rect-fill" title="Filled rectangle">▬</button>
+            <button class="annot-btn" data-shape="ellipse" title="Ellipse / circle">◯</button>
+            <button class="annot-btn" data-shape="ellipse-fill" title="Filled ellipse">●</button>
+            <button class="annot-btn" data-shape="triangle" title="Triangle">△</button>
+            <button class="annot-btn" data-shape="arrow" title="Arrow">→</button>
+            <button class="annot-btn" data-shape="star" title="Star">★</button>
+          </div>
+          <span class="annot-sect-lbl">Tvary</span>
+        </div>
+        <div class="annot-sect">
+          <div class="annot-sect-row">
+            <div class="annot-colors" id="annotColors">
+              <!-- swatches injected by annotations.js -->
+            </div>
+            <label class="annot-color-custom" title="Custom colour">
+              <input type="color" id="annotColorCustom" value="#1f6feb">
+            </label>
+          </div>
+          <span class="annot-sect-lbl">Barvy</span>
+        </div>
+        <div class="annot-sect">
+          <div class="annot-sect-row">
+            <button class="annot-btn" id="annotUndo" title="Undo (Ctrl+Z)">↶</button>
+            <button class="annot-btn" id="annotRedo" title="Redo (Ctrl+Shift+Z)">↷</button>
+            <button class="annot-btn" id="annotClear" title="Clear all annotations on this floor">🗑</button>
+          </div>
+          <span class="annot-sect-lbl">Akce</span>
+        </div>
+      </div>
 
         <div class="exp-viewer" id="viewer">
           <div class="plan-stage" id="planStage">
             <img class="plan-img" id="planImg" src="./assets/plans/floor-4.svg" alt="Floor plan" draggable="false" />
+            <!-- Annotation canvas: transparent overlay sized to match the
+                 plan image box. Drawing tools draw here; pins (next sibling)
+                 stay on top so they remain clickable. pointer-events flips
+                 between "auto" (Draw mode) and "none" (View mode) via JS. -->
+            <canvas class="annot-canvas" id="annotCanvas" style="position:absolute;inset:0;pointer-events:none;"></canvas>
             <div class="pin-layer" id="pinLayer"></div>
           </div>
           <div class="v-label"><span class="v-ld"></span><span id="vLabel">Floor plan</span></div>

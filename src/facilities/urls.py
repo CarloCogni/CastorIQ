@@ -287,4 +287,9 @@ urlpatterns = [
         views.ExplorePlansManagerView.as_view(),
         name="explore_plans_manager",
     ),
+    path(
+        "<uuid:pk>/facilities/explore/floor-plans/<uuid:storey_pk>/annotations/",
+        views.ExploreFloorPlanAnnotationsView.as_view(),
+        name="explore_floor_plan_annotations",
+    ),
 ]

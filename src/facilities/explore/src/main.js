@@ -24,6 +24,7 @@ import { renderTimeline } from "./ui/timeline.js";
 import { initModal, openModal, closeModal } from "./ui/modal.js";
 import { MSG, ERR } from "./bridge/protocol.js";
 import { initBridge, emit, ack, error } from "./bridge/bridge.js";
+import { initAnnotations, setDrawMode, loadAnnotations, attachStorey } from "./annotations.js";
 
 // ── Element refs ──
 const els = {
@@ -124,6 +125,16 @@ function render() {
   // Swap plan image only when it changes (avoids reload flicker)
   if (floor && els.planImg.getAttribute("src") !== floor.plan) {
     els.planImg.setAttribute("src", floor.plan);
+  }
+
+  // Annotation overlay follows the active floor — every storey carries its
+  // own Fabric.js JSON blob shipped on the floor descriptor. We push the
+  // current floor's save URL into the annotations module so its debounced
+  // POSTs land on the right endpoint.
+  if (floor && floor.id !== currentAnnotationFloorId) {
+    attachStorey(floor.id, floor.annotationsUrl || null);
+    loadAnnotations(floor.annotations || {});
+    currentAnnotationFloorId = floor.id;
   }
 
   renderFloorSwitcher(els.floorSwitcher, state.floors, state.activeFloorId, (id) => setActiveFloor(id), openFloorManager);
@@ -1065,6 +1076,10 @@ function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", t);
 }
 
+// Track the storey the annotation canvas is currently bound to so we only
+// hydrate / re-attach on actual floor switches (not on every render tick).
+let currentAnnotationFloorId = null;
+
 // Embedded mode (set on VIEWER_INIT): when true, the toolbar "Floors" button asks
 // the Castor host to open its Floor-plans manager instead of the module's own.
 let isEmbedded = false;
@@ -1196,13 +1211,29 @@ if (btnPlansManager) {
   });
 }
 
+// Header "Draw" toggle: expand / collapse the Paint-style annotation toolbar
+// and flip the viewer into draw-mode (annotation canvas accepts pointer
+// events; pin layer is passive). The annotations module owns the visual
+// state of the toggle button (.on class).
+const btnAnnotate = document.getElementById("btnAnnotate");
+if (btnAnnotate) {
+  btnAnnotate.addEventListener("click", () => {
+    const bar = document.getElementById("annotBar");
+    const on = bar ? bar.hidden : false;
+    setDrawMode(on);
+  });
+}
+
 // ── Boot ──
-const BUILD = "build 6.40"; // bump on each change so a stale (cached) JS is obvious in the header
+const BUILD = "build 6.41"; // bump on each change so a stale (cached) JS is obvious in the header
 initModal();
 // Restore a previously chosen standalone theme (host SET_THEME still overrides when embedded).
 try { const savedTheme = localStorage.getItem(THEME_KEY); if (savedTheme) applyTheme(savedTheme); } catch (_) { /* ignore */ }
 const buildEl = document.getElementById("mhBuild");
 if (buildEl) buildEl.textContent = BUILD;
+// Annotation canvas is set up on boot — it'll attach to the active floor once
+// SET_FLOORS (or restoreSession) populates state.floors and render() runs.
+initAnnotations();
 render();
 toast("Explore ready · " + BUILD);
 // eslint-disable-next-line no-console

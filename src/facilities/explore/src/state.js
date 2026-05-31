@@ -442,6 +442,10 @@ export function setFloors(list, replace = false) {
       // reload (planOriginal = pre-knockout image).
       knockout: !!f.knockout,
       planOriginal: f.planOriginal || null,
+      // User-drawn annotation overlay (Fabric.js JSON) + the save endpoint
+      // — kept on the floor so it survives floor-switches and host re-hydration.
+      annotations: f.annotations && typeof f.annotations === "object" ? f.annotations : {},
+      annotationsUrl: f.annotationsUrl || null,
     });
     ids.push(id);
   });

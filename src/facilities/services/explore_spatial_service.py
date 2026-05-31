@@ -20,6 +20,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from django.urls import reverse
+
 from environments.models import Project
 from ifc_processor.models import IFCSpatialElement
 
@@ -77,6 +79,15 @@ def list_floors_for_project(project: Project) -> list[dict[str, Any]]:
                 # a reload (planOriginal = the pre-knockout image).
                 "knockout": bool(plan_obj.knockout) if plan_obj else False,
                 "planOriginal": _original_plan_url_for(storey),
+                # User-drawn annotation layer (Fabric.js JSON). Shipped with
+                # the floor descriptor so the iframe can hydrate it the first
+                # time the floor is shown without an extra round trip. The
+                # ``annotationsUrl`` is where the iframe POSTs back changes.
+                "annotations": (plan_obj.annotations_json if plan_obj else {}) or {},
+                "annotationsUrl": reverse(
+                    "facilities:explore_floor_plan_annotations",
+                    args=[project.pk, storey.pk],
+                ),
                 "rooms": list_rooms_for_floor(storey),
             }
         )

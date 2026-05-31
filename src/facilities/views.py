@@ -2257,6 +2257,41 @@ class ExploreFloorVisibilityView(ProjectModifyAccessMixin, View):
         return _explore_floor_rows_response(request, project)
 
 
+class ExploreFloorPlanAnnotationsView(ProjectModifyAccessMixin, View):
+    """Save the user's drawn annotations for a storey.
+
+    Body: a JSON object — Fabric.js's ``canvas.toJSON()`` output. We store it
+    verbatim into ``ExploreFloorPlan.annotations_json``; no schema validation
+    beyond "is JSON". The annotation layer is per-storey (one set, shown
+    over whichever plan source is active). Returns 204 on success.
+    """
+
+    def post(self, request, pk, storey_pk):
+        import json  # noqa: PLC0415
+
+        project = self.get_project()
+        storey = get_object_or_404(
+            IFCSpatialElement,
+            pk=storey_pk,
+            ifc_file__project=project,
+            spatial_type=IFCSpatialElement.SpatialType.BUILDING_STOREY,
+        )
+        try:
+            payload = json.loads(request.body or b"{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "invalid JSON"}, status=400)
+        if not isinstance(payload, dict):
+            return JsonResponse({"error": "annotations must be a JSON object"}, status=400)
+
+        plan, _created = ExploreFloorPlan.objects.get_or_create(
+            storey=storey,
+            defaults={"uploaded_by": request.user, "knockout": False},
+        )
+        plan.annotations_json = payload
+        plan.save(update_fields=["annotations_json", "updated_at"])
+        return JsonResponse({"ok": True})
+
+
 class ExplorePlansManagerView(ProjectModifyAccessMixin, View):
     """Render the Plans Manager modal body (file-browser-style card grid).
 
