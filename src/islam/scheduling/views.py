@@ -119,12 +119,13 @@ class ScheduleView(ProjectTabMixin, TemplateView):
                 p6_calendar_id__in=list(task_cal_counts.keys()),
                 is_pending=False,
             ).order_by("-p6_calendar_id"):
-                wd = cal.working_days or []
-                # Compact weekday abbreviations in order Sun-Sat
+                wd = set(cal.working_days or [])
+                # Compact weekday abbreviations in canonical Sun–Sat order,
+                # space-separated so "Su Mo Tu We Th Sa" is legible.
                 _day_abbr = {"Sunday":"Su","Monday":"Mo","Tuesday":"Tu","Wednesday":"We",
                              "Thursday":"Th","Friday":"Fr","Saturday":"Sa"}
                 _all_days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]
-                week_str = "".join(
+                week_str = " ".join(
                     _day_abbr[d] for d in _all_days if d in wd
                 )
                 holidays = sorted(cal.holidays or [])
