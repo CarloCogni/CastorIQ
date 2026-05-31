@@ -22,12 +22,54 @@
 /* min-height:0 on the viewer is what makes the flex chain pass a *definite*
    height down to .plan-stage — without it, max-height:100% on the stage
    resolves to "100 % of an indefinite size" and tall plans overflow the
-   viewer instead of shrinking to fit. */
+   viewer instead of shrinking to fit. The stage itself uses CSS-variable-
+   driven transform so the zoom controls can scale + pan the whole picture
+   (image + annotations + pins) as a single unit. */
 .exp-viewer{flex:1;min-height:0;position:relative;overflow:hidden;background:var(--viewer-bg);display:flex;align-items:center;justify-content:center;}
-.plan-stage{position:relative;line-height:0;max-width:100%;max-height:100%;}
+.plan-stage{
+  position:relative;line-height:0;max-width:100%;max-height:100%;
+  --zoom:1;--pan-x:0px;--pan-y:0px;
+  transform:translate(var(--pan-x),var(--pan-y)) scale(var(--zoom));
+  transform-origin:center center;
+  transition:transform .04s linear;
+  will-change:transform;
+}
+.exp-viewer.panning .plan-stage{transition:none;cursor:grabbing;}
+.exp-viewer.zoomed .plan-stage{cursor:grab;}
 .plan-img{display:block;max-width:100%;max-height:100%;width:auto;height:auto;user-select:none;-webkit-user-drag:none;}
 /* Pin layer overlays the image box exactly; pins are positioned in % of this box. */
 .pin-layer{position:absolute;inset:0;pointer-events:none;}
+
+/* Zoom controls — bottom-left overlay (mirrors the bottom-left phase legend
+   position; tucked above it via flex order on small heights via the .zoom-ctrl
+   element living before the legend in the DOM). */
+.zoom-ctrl{
+  position:absolute;left:10px;bottom:10px;z-index:6;
+  display:flex;align-items:center;gap:6px;
+  padding:4px 6px;border-radius:6px;
+  background:rgba(10,11,18,.82);border:1px solid var(--b1);
+  font-family:var(--font-mono);font-size:10px;color:var(--t2);
+}
+.zoom-btn{
+  width:24px;height:24px;
+  display:inline-flex;align-items:center;justify-content:center;
+  background:transparent;border:1px solid var(--b1);border-radius:4px;
+  color:var(--t2);cursor:pointer;font-size:14px;line-height:1;padding:0;
+  transition:background .12s,color .12s;
+}
+.zoom-btn:hover{background:var(--p2);color:var(--t1);}
+.zoom-btn:active{transform:scale(.95);}
+.zoom-slider{
+  appearance:none;-webkit-appearance:none;
+  width:120px;height:4px;background:var(--b1);border-radius:2px;outline:none;cursor:pointer;
+}
+.zoom-slider::-webkit-slider-thumb{
+  appearance:none;-webkit-appearance:none;
+  width:12px;height:12px;border-radius:50%;background:var(--acc);border:0;cursor:pointer;
+}
+.zoom-slider::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:var(--acc);border:0;cursor:pointer;}
+.zoom-pct{min-width:42px;text-align:right;letter-spacing:.04em;}
+.zoom-fit{margin-left:4px;}
 
 .v-label{position:absolute;top:10px;left:10px;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.12);border-radius:4px;padding:4px 10px;font-family:var(--font-mono);font-size:9px;color:rgba(255,255,255,.85);display:flex;align-items:center;gap:6px;}
 .v-ld{width:5px;height:5px;border-radius:50%;background:var(--acc);animation:blink 2s infinite;}

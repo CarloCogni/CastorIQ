@@ -123,6 +123,19 @@
           <div class="v-label"><span class="v-ld"></span><span id="vLabel">Floor plan</span></div>
           <div class="floor-switcher" id="floorSwitcher"></div>
           <div class="exp-legend" id="legend" hidden></div>
+
+          <!-- Zoom controls: lupa (+/−), slider, and "Fit" reset. Anchored
+               bottom-left of the viewer so they don't clash with the right-
+               edge floor switcher or the bottom-left phase legend. -->
+          <div class="zoom-ctrl" id="zoomCtrl">
+            <button type="button" class="zoom-btn" id="zoomOut" title="Zoom out">−</button>
+            <input type="range" class="zoom-slider" id="zoomSlider"
+                   min="10" max="400" step="5" value="100"
+                   title="Zoom level (10–400 %)">
+            <button type="button" class="zoom-btn" id="zoomIn" title="Zoom in">+</button>
+            <span class="zoom-pct" id="zoomPct">100&nbsp;%</span>
+            <button type="button" class="zoom-btn zoom-fit" id="zoomFit" title="Reset zoom + pan (fit plan)">⤢</button>
+          </div>
         </div>
 
         <div class="exp-timeline" id="expTimeline">

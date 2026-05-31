@@ -25,6 +25,7 @@ import { initModal, openModal, closeModal } from "./ui/modal.js";
 import { MSG, ERR } from "./bridge/protocol.js";
 import { initBridge, emit, ack, error } from "./bridge/bridge.js";
 import { initAnnotations, setDrawMode, loadAnnotations, attachStorey } from "./annotations.js";
+import { initZoom, reset as resetZoom } from "./zoom.js";
 
 // ── Element refs ──
 const els = {
@@ -130,10 +131,14 @@ function render() {
   // Annotation overlay follows the active floor — every storey carries its
   // own Fabric.js JSON blob shipped on the floor descriptor. We push the
   // current floor's save URL into the annotations module so its debounced
-  // POSTs land on the right endpoint.
+  // POSTs land on the right endpoint. Resetting zoom on a floor switch
+  // keeps the user from landing in a panned / zoomed-in spot on the new
+  // floor (which would be confusing because the plan content is at a
+  // different X/Y on a different storey).
   if (floor && floor.id !== currentAnnotationFloorId) {
     attachStorey(floor.id, floor.annotationsUrl || null);
     loadAnnotations(floor.annotations || {});
+    resetZoom();
     currentAnnotationFloorId = floor.id;
   }
 
@@ -1225,7 +1230,7 @@ if (btnAnnotate) {
 }
 
 // ── Boot ──
-const BUILD = "build 6.41"; // bump on each change so a stale (cached) JS is obvious in the header
+const BUILD = "build 6.42"; // bump on each change so a stale (cached) JS is obvious in the header
 initModal();
 // Restore a previously chosen standalone theme (host SET_THEME still overrides when embedded).
 try { const savedTheme = localStorage.getItem(THEME_KEY); if (savedTheme) applyTheme(savedTheme); } catch (_) { /* ignore */ }
@@ -1234,6 +1239,9 @@ if (buildEl) buildEl.textContent = BUILD;
 // Annotation canvas is set up on boot — it'll attach to the active floor once
 // SET_FLOORS (or restoreSession) populates state.floors and render() runs.
 initAnnotations();
+// Pan + zoom controls (left-bottom overlay). Drives a CSS-variable transform
+// on .plan-stage so image, annotations and pins all scale together.
+initZoom();
 render();
 toast("Explore ready · " + BUILD);
 // eslint-disable-next-line no-console
