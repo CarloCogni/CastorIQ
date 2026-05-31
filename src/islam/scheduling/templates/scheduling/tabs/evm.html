@@ -2941,30 +2941,26 @@
                     candidates.push({ s, dy, dx });
                 }
 
-                // Sort: (1) vertical proximity to floor row centre-line
-                //       (2) lit (highlighted) before dimmed when a filter is active
-                //       (3) temporal proximity (cursor → segment midpoint)
+                // When a filter is active, dimmed segments are ineligible for hover —
+                // the user filtered for a reason; hovering a dimmed segment must show
+                // nothing, not a downgraded tooltip.  Without a filter every segment
+                // is eligible as before.
+                const eligible = anyHighlight
+                    ? candidates.filter(c => lit(c.s.k))
+                    : candidates;
+
                 let found = null;
-                if (candidates.length === 1) {
-                    found = candidates[0].s;
-                } else if (candidates.length > 1) {
-                    candidates.sort((a, b) => {
-                        if (a.dy !== b.dy) return a.dy - b.dy;
-                        if (anyHighlight) {
-                            const aLit = lit(a.s.k), bLit = lit(b.s.k);
-                            if (aLit !== bLit) return aLit ? -1 : 1;
-                        }
-                        return a.dx - b.dx;
-                    });
-                    found = candidates[0].s;
+                if (eligible.length === 1) {
+                    found = eligible[0].s;
+                } else if (eligible.length > 1) {
+                    eligible.sort((a, b) => a.dy !== b.dy ? a.dy - b.dy : a.dx - b.dx);
+                    found = eligible[0].s;
                 }
                 if (found) {
                     const trade      = (d.trades||[]).find(t => t.key === found.k);
                     const floorLabel = _esc(d.floors.find(f => f.ordinal === found.f)?.label || found.tok);
                     const mkDot      = c => `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${c};margin-right:4px;flex-shrink:0;vertical-align:middle;"></span>`;
                     const tradeColor = trade?.color || "#6b7280";
-                    const dimNote    = (anyHighlight && !lit(found.k))
-                        ? `<div style="font-size:0.67rem;color:#f59e0b;margin-top:3px;">dimmed — not hidden</div>` : "";
                     const tradeLine  = found.ov
                         ? `${mkDot("#f59e0b")}coded: <span style="text-decoration:line-through;opacity:.65;">${_esc(found.ok_name||found.ok||"")}</span> · audit suggests: <strong>${_esc(trade?.name||found.k)}</strong> · ${floorLabel}`
                         : `${mkDot(tradeColor)}${_esc(trade?.name||found.k)} · ${floorLabel}`;
@@ -2973,8 +2969,7 @@
                         + `<div style="font-size:0.7rem;color:var(--bs-secondary-color);margin-bottom:5px;">${tradeLine}</div>`
                         + `<div style="font-size:0.72rem;margin-bottom:2px;"><span style="opacity:.7;">Planned:</span> ${found.ps} → ${found.pe}</div>`
                         + (found.as_ ? `<div style="font-size:0.72rem;margin-bottom:2px;"><span style="opacity:.7;">Actual:</span> ${found.as_} → ${found.ae||"in progress"}</div>` : "")
-                        + (found.fe  ? `<div style="font-size:0.72rem;"><span style="opacity:.7;">Forecast end:</span> ${found.fe}</div>` : "")
-                        + dimNote;
+                        + (found.fe  ? `<div style="font-size:0.72rem;"><span style="opacity:.7;">Forecast end:</span> ${found.fe}</div>` : "");
                     tooltip.style.display = "block";
                     /* Edge-aware positioning */
                     const wrapRect = wrap.getBoundingClientRect();
