@@ -117,7 +117,9 @@ _TRADE_NAMES: dict[str, str] = {
 _CSI_RE = re.compile(r"-[A-Z]*(\d{2})\d{4}")
 
 _DEFAULT_COLOR = "#6b7280"
-_TOP_N_DEFAULT = 5  # trades shown when no filter is applied
+# Top N trades receive distinct palette colors; all others render as "Other" (gray).
+# Filtering is never applied — all segments are always returned.
+_TOP_N_COLORS = 8
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -182,18 +184,17 @@ def _is_admin(activity_code: str) -> bool:
     return (activity_code or "")[:4].upper() in _ADMIN_PREFIXES
 
 
-def compute_timelocation(
-    project_id: str,
-    trade_filter: str | None = None,
-) -> dict:
+def compute_timelocation(project_id: str) -> dict:
     """Build flowline chart data for *project_id*.
 
-    Args:
-        trade_filter: 2-digit CSI division (e.g. "03") to filter to one trade.
-            When None, returns the top _TOP_N_DEFAULT trades by task count.
+    Returns ALL floor-located segments (never filtered).  The top _TOP_N_COLORS
+    trades by task count receive distinct palette colours; the remaining trades
+    carry is_other=True and render in the neutral default colour.  Highlight /
+    dim logic is handled entirely on the client side.
 
     Returns:
-        has_data, floors, trades, segments (compact dicts), scope, stats, as_of.
+        has_data, floors, trades (with is_other flag), segments (all),
+        scope, stats, as_of.
     """
     from islam.scheduling.models import Task
 
@@ -274,25 +275,21 @@ def compute_timelocation(
 
     # ── Trade list (sorted by count) ──────────────────────────────────────
     all_trades = sorted(csi_counts.items(), key=lambda x: -x[1])
-    top_keys = {k for k, _ in all_trades[:_TOP_N_DEFAULT]}
+    top_keys = {k for k, _ in all_trades[:_TOP_N_COLORS]}
 
     trade_list = [
         {
             "key": k,
             "name": _TRADE_NAMES.get(k, f"Div {k}"),
             "count": n,
-            "color": _TRADE_COLORS.get(k, _DEFAULT_COLOR),
+            "color": _TRADE_COLORS.get(k, _DEFAULT_COLOR) if k in top_keys else _DEFAULT_COLOR,
+            "is_other": k not in top_keys,
         }
         for k, n in all_trades
     ]
 
-    # ── Filter segments ───────────────────────────────────────────────────
-    if trade_filter:
-        active_keys = {trade_filter}
-    else:
-        active_keys = top_keys
-
-    segments = [r for r in floor_rows if r["k"] in active_keys]
+    # ALL segments — no server-side filtering.  Client handles highlight/dim.
+    segments = floor_rows
 
     # ── Project date range (for X-axis) ──────────────────────────────────
     all_dates = [t.start_date for t in tasks if t.start_date] + [
@@ -314,15 +311,12 @@ def compute_timelocation(
     widest_trade_floors = len(floors_per_trade[widest_trade_key])
 
     logger.info(
-        "Timelocation — project %s: %d floor-located, %d admin, %d unlocated, "
-        "%d outside-known, trade_filter=%s, shown=%d",
+        "Timelocation — project %s: %d floor-located, %d admin, %d unlocated, %d outside-known",
         project_id,
         n_floor_located,
         n_admin,
         n_unlocated,
         n_outside_known,
-        trade_filter,
-        len(segments),
     )
 
     return {
@@ -340,11 +334,7 @@ def compute_timelocation(
             "admin_excluded": n_admin,
             "unlocated_excluded": n_unlocated,
             "outside_known": n_outside_known,
-            "filtered_trade": trade_filter,
-            "filtered_trade_name": _TRADE_NAMES.get(trade_filter, f"Div {trade_filter}")
-            if trade_filter
-            else None,
-            "shown": len(segments),
+            "n_distinct_floors": len(floor_counts),
         },
         "stats": {
             "busiest_floor": busiest_tok,

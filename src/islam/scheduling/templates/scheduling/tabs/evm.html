@@ -522,9 +522,9 @@
                 <i class="bi bi-question-circle"></i>
             </button>
             <div class="ms-auto d-flex align-items-center gap-2">
-                <label for="tl-trade-select" style="font-size:0.72rem; color:var(--bs-secondary-color); white-space:nowrap;">Trade filter</label>
+                <label for="tl-trade-select" style="font-size:0.72rem; color:var(--bs-secondary-color); white-space:nowrap;">Highlight trade</label>
                 <select id="tl-trade-select" class="form-select form-select-sm" style="width:auto; font-size:0.76rem; min-width:160px;">
-                    <option value="">Top 5 trades</option>
+                    <option value="">Show all</option>
                 </select>
             </div>
         </div>
@@ -2404,7 +2404,7 @@
     (function () {
         const BASE_URL = "{% url 'islam:timelocation' project.pk %}";
         let _data = null;
-        let _segments = null;  // active segments after trade filter
+        let _highlightKeys = new Set();  // empty = show all; non-empty = dim others
 
         const N_FLOORS = 18;
         const PAD = { top: 24, right: 16, bottom: 46, left: 92 };
@@ -2415,11 +2415,10 @@
             return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
         }
 
-        // ── Trade dropdown ────────────────────────────────────────────────
+        // ── Trade dropdown (single-select shortcut; legend chips handle multi) ──
         function _populateDropdown(trades) {
             const sel = document.getElementById("tl-trade-select");
             if (!sel) return;
-            // keep the default "Top 5 trades" option
             trades.forEach(t => {
                 const opt = document.createElement("option");
                 opt.value = t.key;
@@ -2427,26 +2426,13 @@
                 sel.appendChild(opt);
             });
             sel.addEventListener("change", function () {
-                _loadSegments(this.value || null);
+                const val = this.value;
+                _highlightKeys = val ? new Set([val]) : new Set();
+                if (_data) { _renderChart(_data); _updateCaption(_data); }
             });
         }
 
-        // ── Fetch + render ────────────────────────────────────────────────
-        async function _loadSegments(tradeKey) {
-            const canvas = document.getElementById("tl-canvas");
-            if (!canvas) return;
-            const url = tradeKey ? BASE_URL + "?trade=" + encodeURIComponent(tradeKey) : BASE_URL;
-            const resp = await fetch(url);
-            const d = await resp.json();
-            if (!d.has_data) return;
-            _segments = d.segments;
-            _renderChart(d);
-            _updateCaption(d);
-        }
-
         // ── Chart rendering ───────────────────────────────────────────────
-        function _dateToMs(iso) { return iso ? new Date(iso).getTime() : null; }
-
         function _renderChart(d) {
             const wrap   = document.getElementById("tl-chart-wrap");
             const canvas = document.getElementById("tl-canvas");
@@ -2468,7 +2454,6 @@
             const t0 = new Date(d.stats.project_start).getTime();
             const t1 = new Date(d.stats.project_end).getTime();
             const tSpan = Math.max(t1 - t0, 1);
-            const today_ms = new Date(d.stats.today).getTime();
 
             function xOf(iso) {
                 if (!iso) return null;
@@ -2478,6 +2463,10 @@
                 // R02 (ordinal=17) at top, B03 (ordinal=0) at bottom
                 return PAD.top + (N_FLOORS - 1 - ordinal) * ROW_H + ROW_H / 2;
             }
+
+            // When a highlight is active, non-highlighted segments are dimmed.
+            const anyHighlight = _highlightKeys.size > 0;
+            function lit(key) { return !anyHighlight || _highlightKeys.has(key); }
 
             // Background bands + floor labels
             d.floors.forEach(fl => {
@@ -2511,21 +2500,19 @@
                 ctx.fillText("Today", todayX, PAD.top + ch + 2);
             }
 
-            // Build color map from trade data
+            // Color map from trade data
             const colorMap = {};
             (d.trades || []).forEach(t => { colorMap[t.key] = t.color; });
 
-            // Draw segments — planned first (behind), then actual/forecast
-            const segs = d.segments;
+            const segs = d.segments;  // always the full set
 
-            // Pass 1: planned (thin, low alpha)
+            // Pass 1: planned (thin line)
             segs.forEach(s => {
                 const x0 = xOf(s.ps), x1 = xOf(s.pe);
                 if (x0 === null || x1 === null) return;
                 const y = yOf(s.f);
-                const color = colorMap[s.k] || "#6b7280";
-                ctx.strokeStyle = color;
-                ctx.globalAlpha = 0.25;
+                ctx.strokeStyle = colorMap[s.k] || "#6b7280";
+                ctx.globalAlpha = lit(s.k) ? 0.25 : 0.04;
                 ctx.lineWidth = 2;
                 ctx.setLineDash([]);
                 ctx.beginPath();
@@ -2534,15 +2521,14 @@
                 ctx.stroke();
             });
 
-            // Pass 2: actual (thick, solid)
+            // Pass 2: actual (thick solid)
             segs.forEach(s => {
                 if (!s.as_ || !s.ae) return;
                 const x0 = xOf(s.as_), x1 = xOf(s.ae);
                 if (x0 === null || x1 === null) return;
                 const y = yOf(s.f);
-                const color = colorMap[s.k] || "#6b7280";
-                ctx.strokeStyle = color;
-                ctx.globalAlpha = 0.85;
+                ctx.strokeStyle = colorMap[s.k] || "#6b7280";
+                ctx.globalAlpha = lit(s.k) ? 0.85 : 0.07;
                 ctx.lineWidth = 4;
                 ctx.setLineDash([]);
                 ctx.beginPath();
@@ -2551,15 +2537,14 @@
                 ctx.stroke();
             });
 
-            // Pass 3: forecast (dashed, medium alpha)
+            // Pass 3: forecast (dashed)
             segs.forEach(s => {
                 if (s.st === "complete" || !s.fe) return;
                 const x0 = xOf(d.stats.today), x1 = xOf(s.fe);
                 if (x0 === null || x1 === null || x1 <= x0) return;
                 const y = yOf(s.f);
-                const color = colorMap[s.k] || "#6b7280";
-                ctx.strokeStyle = color;
-                ctx.globalAlpha = 0.6;
+                ctx.strokeStyle = colorMap[s.k] || "#6b7280";
+                ctx.globalAlpha = lit(s.k) ? 0.6 : 0.05;
                 ctx.lineWidth = 2;
                 ctx.setLineDash([4, 3]);
                 ctx.beginPath();
@@ -2571,12 +2556,11 @@
 
             ctx.globalAlpha = 1.0;
 
-            // Time axis labels
+            // Time axis — quarterly ticks
             ctx.fillStyle = "rgba(107,114,128,.7)";
             ctx.font = "9px system-ui";
             ctx.textAlign = "center";
             ctx.textBaseline = "top";
-            // Quarterly ticks
             const start = new Date(d.stats.project_start);
             let cur = new Date(start.getFullYear(), Math.floor(start.getMonth() / 3) * 3, 1);
             const end = new Date(d.stats.project_end);
@@ -2592,27 +2576,70 @@
                 cur = new Date(cur.getFullYear(), cur.getMonth() + 3, 1);
             }
 
-            // Update legend with trade colours
+            // Legend: line-type indicators + clickable trade chips
             if (legend) {
-                const activeTrades = [...new Set(segs.map(s => s.k))];
-                const shown = (d.trades || []).filter(t => activeTrades.includes(t.key));
-                legend.innerHTML = [
+                const majorTrades = (d.trades || []).filter(t => !t.is_other);
+                const hasOther    = (d.trades || []).some(t => t.is_other);
+                const otherCount  = (d.trades || []).filter(t => t.is_other)
+                                                    .reduce((a, t) => a + t.count, 0);
+
+                const typeItems = [
                     `<span><span style="display:inline-block;width:22px;height:2px;background:#6b7280;opacity:.4;margin-bottom:3px;border-top:2px solid #6b7280;margin-right:4px;vertical-align:middle;"></span>Planned</span>`,
                     `<span><span style="display:inline-block;width:22px;height:4px;background:#6b7280;margin-bottom:2px;margin-right:4px;vertical-align:middle;"></span>Actual</span>`,
                     `<span><span style="display:inline-block;width:22px;height:2px;margin-bottom:3px;border-top:2px dashed #6b7280;margin-right:4px;vertical-align:middle;"></span>Forecast</span>`,
                     `<span style="margin-left:8px;color:var(--bs-border-color)">|</span>`,
-                    ...shown.map(t => `<span><span style="display:inline-block;width:14px;height:4px;background:${_esc(t.color)};border-radius:2px;margin-right:4px;vertical-align:middle;"></span>${_esc(t.name)}</span>`)
-                ].join("");
+                ];
+
+                const chipItems = majorTrades.map(t => {
+                    const active = _highlightKeys.has(t.key);
+                    const bg = active ? _esc(t.color) : "transparent";
+                    const fg = active ? "#fff" : "var(--bs-body-color)";
+                    return `<span class="tl-chip" data-key="${_esc(t.key)}" style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;padding:1px 7px;border-radius:10px;border:1px solid ${_esc(t.color)};background:${bg};color:${fg};user-select:none;" title="Click to highlight · Ctrl+click for multi">`
+                        + `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${_esc(t.color)};flex-shrink:0;"></span>`
+                        + `${_esc(t.name)}</span>`;
+                });
+
+                if (hasOther) {
+                    chipItems.push(
+                        `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:10px;border:1px solid #6b7280;color:var(--bs-secondary-color);" title="Smaller trades grouped — select via dropdown to highlight">`
+                        + `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#6b7280;flex-shrink:0;"></span>`
+                        + `Other (${otherCount.toLocaleString()})</span>`
+                    );
+                }
+
+                legend.innerHTML = [...typeItems, ...chipItems].join("");
+
+                // Attach toggle handlers to trade chips
+                legend.querySelectorAll(".tl-chip").forEach(chip => {
+                    chip.onclick = function (e) {
+                        const key = this.dataset.key;
+                        if (e.ctrlKey || e.metaKey) {
+                            // Ctrl/Cmd+click: toggle this trade without clearing others
+                            if (_highlightKeys.has(key)) { _highlightKeys.delete(key); }
+                            else { _highlightKeys.add(key); }
+                        } else if (_highlightKeys.size === 1 && _highlightKeys.has(key)) {
+                            // Clicking the only active chip clears the highlight
+                            _highlightKeys = new Set();
+                        } else {
+                            // Plain click: replace selection with just this trade
+                            _highlightKeys = new Set([key]);
+                        }
+                        // Sync dropdown
+                        const sel = document.getElementById("tl-trade-select");
+                        if (sel) sel.value = _highlightKeys.size === 1 ? [..._highlightKeys][0] : "";
+                        _renderChart(_data);
+                        _updateCaption(_data);
+                    };
+                });
             }
 
-            // Hover tooltip
+            // Hover tooltip (uses the full segment set — dimmed segments are still hoverable)
             const tooltip = document.getElementById("tl-tooltip");
-            canvas.onmousemove = function(e) {
+            canvas.onmousemove = function (e) {
                 if (!tooltip) return;
                 const rect = canvas.getBoundingClientRect();
                 const mx = (e.clientX - rect.left) / (rect.width / W);
                 const my = (e.clientY - rect.top) / (rect.height / CHART_H);
-                // Find segment under cursor
                 let found = null;
                 for (const s of segs) {
                     const y = yOf(s.f);
@@ -2623,18 +2650,21 @@
                     }
                 }
                 if (found) {
-                    const trade = (d.trades||[]).find(t => t.key === found.k);
-                    const floorLabel = _esc(d.floors.find(f=>f.ordinal===found.f)?.label||found.tok);
-                    const dot = c => `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${c};margin-right:4px;flex-shrink:0;vertical-align:middle;"></span>`;
-                    const tradeColor = (d.trades||[]).find(t=>t.key===found.k)?.color || "#6b7280";
+                    const trade      = (d.trades||[]).find(t => t.key === found.k);
+                    const floorLabel = _esc(d.floors.find(f => f.ordinal === found.f)?.label || found.tok);
+                    const dot        = c => `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${c};margin-right:4px;flex-shrink:0;vertical-align:middle;"></span>`;
+                    const tradeColor = trade?.color || "#6b7280";
+                    const dimNote    = (anyHighlight && !lit(found.k))
+                        ? `<div style="font-size:0.67rem;color:#f59e0b;margin-top:3px;">dimmed — not hidden</div>` : "";
                     tooltip.innerHTML =
                         `<div style="font-weight:600;margin-bottom:4px;font-size:0.76rem;">${_esc(found.nm)}</div>`
                         + `<div style="font-size:0.7rem;color:var(--bs-secondary-color);margin-bottom:5px;">${dot(tradeColor)}${_esc(trade?.name||found.k)} · ${floorLabel}</div>`
                         + `<div style="font-size:0.72rem;margin-bottom:2px;"><span style="opacity:.7;">Planned:</span> ${found.ps} → ${found.pe}</div>`
                         + (found.as_ ? `<div style="font-size:0.72rem;margin-bottom:2px;"><span style="opacity:.7;">Actual:</span> ${found.as_} → ${found.ae||"in progress"}</div>` : "")
-                        + (found.fe  ? `<div style="font-size:0.72rem;"><span style="opacity:.7;">Forecast end:</span> ${found.fe}</div>` : "");
+                        + (found.fe  ? `<div style="font-size:0.72rem;"><span style="opacity:.7;">Forecast end:</span> ${found.fe}</div>` : "")
+                        + dimNote;
                     tooltip.style.display = "block";
-                    /* Edge-aware: flip left/up when near edges of the wrap */
+                    /* Edge-aware positioning */
                     const wrapRect = wrap.getBoundingClientRect();
                     const tw = tooltip.offsetWidth  || 220;
                     const th = tooltip.offsetHeight || 100;
@@ -2649,21 +2679,33 @@
             canvas.onmouseleave = () => { if (tooltip) tooltip.style.display = "none"; };
         }
 
-        // ── Caption ───────────────────────────────────────────────────────
+        // ── Caption — always announces completeness honestly ──────────────
         function _updateCaption(d) {
             const el = document.getElementById("tl-caption");
             if (!el) return;
             const sc = d.scope, st = d.stats;
-            const filterNote = sc.filtered_trade
-                ? `Showing: ${_esc(sc.filtered_trade_name)} (${sc.shown.toLocaleString()} tasks).`
-                : `Showing top 5 trades by task count (${sc.shown.toLocaleString()} of ${sc.floor_located.toLocaleString()} floor-located tasks).`;
-            el.innerHTML =
-                `<strong>Scope:</strong> floor-located tasks only. `
-                + `<span style="color:#f59e0b;">${sc.admin_excluded.toLocaleString()} admin/doc + ${sc.unlocated_excluded.toLocaleString()} unlocated excluded — no physical location.</span> `
-                + filterNote + ` `
-                + `Busiest floor: <strong>${_esc(st.busiest_floor_label)}</strong> (${st.busiest_floor_count} tasks). `
-                + `Widest trade: <strong>${_esc(st.widest_trade_name)}</strong> (${st.widest_trade_floors} floors). `
-                + `<em>Spatial resolution = floor level; within-floor zones not distinguished.</em>`;
+
+            let html = `Showing <strong>all ${sc.floor_located.toLocaleString()} floor-located activities</strong>`
+                + ` across ${sc.n_distinct_floors} floors. `
+                + `<span style="color:#f59e0b;">`
+                + `${sc.admin_excluded.toLocaleString()} admin/doc`
+                + ` + ${sc.unlocated_excluded.toLocaleString()} unlocated excluded (no physical location).`
+                + `</span>`;
+
+            if (_highlightKeys.size > 0) {
+                const names = [..._highlightKeys].map(k => {
+                    const t = (d.trades||[]).find(t => t.key === k);
+                    return _esc(t ? t.name : k);
+                });
+                html += ` <span style="color:#3b82f6;"><strong>Highlighting ${names.join(", ")}</strong>`
+                    + ` — others dimmed, not hidden.</span>`;
+            }
+
+            html += ` Busiest floor: <strong>${_esc(st.busiest_floor_label)}</strong> (${st.busiest_floor_count} tasks).`
+                + ` Widest trade: <strong>${_esc(st.widest_trade_name)}</strong> (${st.widest_trade_floors} floors).`
+                + ` <em>Spatial resolution = floor level; within-floor zones not distinguished.</em>`;
+
+            el.innerHTML = html;
         }
 
         // ── Init ──────────────────────────────────────────────────────────

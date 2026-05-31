@@ -1349,9 +1349,8 @@ class TimeLocationView(ProjectAccessMixin, View):
         from .services.timelocation import compute_timelocation
 
         project = self.get_project()
-        trade = request.GET.get("trade") or None
         try:
-            result = compute_timelocation(str(project.pk), trade_filter=trade)
+            result = compute_timelocation(str(project.pk))
         except Exception as exc:
             logger.exception("Timelocation failed for project %s", project.pk)
             return JsonResponse({"error": str(exc)}, status=500)
@@ -1433,8 +1432,8 @@ class ScheduleReportView(ProjectAccessMixin, View):
 
         from .services.report_generator import ALL_SECTIONS, generate_report
 
-        project     = self.get_project()
-        fmt         = request.GET.get("format", "pdf").lower()
+        project = self.get_project()
+        fmt = request.GET.get("format", "pdf").lower()
         report_type = request.GET.get("type", "executive")
 
         raw_sections = request.GET.get("sections", "")
