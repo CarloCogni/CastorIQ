@@ -23,8 +23,15 @@ _MSO_TYPES = frozenset({"Mandatory Start", "Start On"})
 _HARD_CONSTRAINT_TYPES = _MFO_TYPES | _MSO_TYPES
 
 
-def _working_days(start: date, end: date) -> int:
-    """Count Mon–Fri working days from *start* to *end* inclusive."""
+def _working_days(start: date, end: date, cal: dict | None = None) -> int:
+    """Count working days from *start* to *end* inclusive using *cal*.
+
+    Falls back to Mon–Fri-only arithmetic when cal is None (non-P6 imports).
+    """
+    if cal is not None:
+        from .calendar_utils import count_working_days
+        return count_working_days(start, end, cal)
+    # Legacy Mon–Fri fallback (used only when no calendar data is available)
     if end < start:
         return 0
     delta = (end - start).days + 1
@@ -84,6 +91,8 @@ def run_dcma_check(project_id: str) -> dict:
     """
     from islam.scheduling.models import P6ResourceAssignment, Task, TaskDependency
 
+    from .calendar_utils import calendar_basis_note, load_project_calendars, task_cal
+
     today = date.today()
 
     tasks = list(
@@ -93,6 +102,8 @@ def run_dcma_check(project_id: str) -> dict:
     )
     if not tasks:
         return {"has_data": False}
+
+    cal_map = load_project_calendars(project_id)
 
     task_count = len(tasks)
     task_pks = {str(t.pk) for t in tasks}
@@ -305,13 +316,14 @@ def run_dcma_check(project_id: str) -> dict:
         )
 
     # ── 8. High Duration — > 44 working days ─────────────────────────────
-    high_dur = [t for t in tasks if _working_days(t.start_date, t.end_date) > 44]
+    def _task_dur_wd(t):
+        return _working_days(t.start_date, t.end_date, task_cal(t, cal_map) if cal_map else None)
+
+    high_dur = [t for t in tasks if _task_dur_wd(t) > 44]
     hd_pct = round(len(high_dur) / task_count * 100, 1)
     status, score = _check_pct(hd_pct, 5.0, 15.0)
 
-    dur_samples = sorted(
-        high_dur, key=lambda t: _working_days(t.start_date, t.end_date), reverse=True
-    )
+    dur_samples = sorted(high_dur, key=_task_dur_wd, reverse=True)
     checks.append(
         _Check(
             id="high_duration",
@@ -324,7 +336,7 @@ def run_dcma_check(project_id: str) -> dict:
             severity="medium",
             score=score,
             flagged_items=[
-                f"{t.name} ({_working_days(t.start_date, t.end_date)}wd)" for t in dur_samples[:4]
+                f"{t.name} ({_task_dur_wd(t)}wd)" for t in dur_samples[:4]
             ],
         )
     )
@@ -495,8 +507,10 @@ def run_dcma_check(project_id: str) -> dict:
         # Latest-finishing critical task = project completion node
         finish_node = max(crit_with_float, key=lambda t: t.end_date)
         project_end = max(t.end_date for t in tasks)
-        cpl = max(_working_days(today, project_end), 1)
-        tf_finish = finish_node.total_float  # TF of project end node
+        # Use the finish node's own calendar so cpl and tf_finish share one basis.
+        finish_cal = task_cal(finish_node, cal_map) if cal_map else None
+        cpl = max(_working_days(today, project_end, finish_cal), 1)
+        tf_finish = finish_node.total_float  # TF of project end node (already wd from CPM)
         cpli_raw = (cpl + tf_finish) / cpl
         cpli_value = round(cpli_raw, 3)
         cpli_status, cpli_score = _check_ratio(cpli_raw, 0.95, 0.80)
@@ -595,4 +609,5 @@ def run_dcma_check(project_id: str) -> dict:
         "task_count": task_count,
         "dep_count": dep_count,
         "as_of": today.isoformat(),
+        "calendar_basis": calendar_basis_note(cal_map),
     }

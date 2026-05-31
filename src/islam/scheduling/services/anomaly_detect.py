@@ -110,7 +110,7 @@ def _robust_z(value: float, median: float, mad: float) -> float:
 # ── 1. Execution anomalies (running-long + unrealistic baseline) ──────────────
 
 
-def _classify_stall_anomalies(tasks: list, data_date: date) -> tuple[list[dict], list[dict]]:
+def _classify_stall_anomalies(tasks: list, data_date: date, cal_map: dict | None = None) -> tuple[list[dict], list[dict]]:
     """Split started+incomplete overrunning tasks into two honestly-named buckets.
 
     running_long:
@@ -129,13 +129,20 @@ def _classify_stall_anomalies(tasks: list, data_date: date) -> tuple[list[dict],
     running_long: list[dict] = []
     unrealistic_baseline: list[dict] = []
 
+    from .calendar_utils import task_cal, working_day_diff
+
     for t in tasks:
         if not t.actual_start or t.actual_end:
             continue
         if not t.start_date or not t.end_date:
             continue
-        planned = max((t.end_date - t.start_date).days, 1)
-        elapsed = (data_date - t.actual_start).days
+        cal = task_cal(t, cal_map) if cal_map else None
+        if cal is not None:
+            planned = max(working_day_diff(t.start_date, t.end_date, cal), 1)
+            elapsed = working_day_diff(t.actual_start, data_date, cal)
+        else:
+            planned = max((t.end_date - t.start_date).days, 1)
+            elapsed = (data_date - t.actual_start).days
         ratio = elapsed / planned
         if ratio < _STALL_MIN_RATIO:
             continue
@@ -202,19 +209,22 @@ def _classify_stall_anomalies(tasks: list, data_date: date) -> tuple[list[dict],
 # ── 2. Cross-sectional outliers ───────────────────────────────────────────────
 
 
-def _detect_cross_sectional(tasks: list, override_map: dict | None = None) -> list[dict]:
+def _detect_cross_sectional(tasks: list, override_map: dict | None = None, cal_map: dict | None = None) -> list[dict]:
     """Flag tasks that are robust z-score outliers within their CSI trade peer group.
 
     Three axes, each producing separate flags when the threshold is exceeded:
       planned_duration  — all tasks with valid start/end dates
       total_float       — tasks where total_float is set
-      finish_variance   — completed tasks: (actual_end − end_date).days
+      finish_variance   — completed tasks, in working days
                           (positive = late, negative = early)
     """
+    from .calendar_utils import task_cal, working_day_diff
+
     by_csi: dict[str, list] = defaultdict(list)
     for t in tasks:
         if t.start_date and t.end_date:
-            dur = (t.end_date - t.start_date).days
+            cal = task_cal(t, cal_map) if cal_map else None
+            dur = working_day_diff(t.start_date, t.end_date, cal) if cal is not None else (t.end_date - t.start_date).days
             if _MIN_PEER_DURATION_DAYS <= dur <= _MAX_PEER_DURATION_DAYS:
                 effective_csi = (
                     override_map.get(str(t.pk)) or _csi(t.activity_code or "")
@@ -231,8 +241,12 @@ def _detect_cross_sectional(tasks: list, override_map: dict | None = None) -> li
         n_group = len(group)
         trade = _trade_name(csi)
 
-        # Axis: planned_duration
-        durations = np.array([(t.end_date - t.start_date).days for t in group], dtype=float)
+        # Axis: planned_duration (working days)
+        def _dur(t):
+            cal = task_cal(t, cal_map) if cal_map else None
+            return working_day_diff(t.start_date, t.end_date, cal) if cal is not None else (t.end_date - t.start_date).days
+
+        durations = np.array([_dur(t) for t in group], dtype=float)
         dur_med = float(np.median(durations))
         dur_mad = float(np.median(np.abs(durations - dur_med)))
         for t, dur in zip(group, durations):
@@ -291,8 +305,12 @@ def _detect_cross_sectional(tasks: list, override_map: dict | None = None) -> li
                         }
                     )
 
-        # Axis: finish_variance (completed tasks only)
-        done_pairs = [(t, (t.actual_end - t.end_date).days) for t in group if t.actual_end]
+        # Axis: finish_variance (completed tasks, working days)
+        def _fv(t):
+            cal = task_cal(t, cal_map) if cal_map else None
+            return working_day_diff(t.end_date, t.actual_end, cal) if cal is not None else (t.actual_end - t.end_date).days
+
+        done_pairs = [(t, _fv(t)) for t in group if t.actual_end]
         if len(done_pairs) >= _MIN_PEER_N:
             fv_vals = np.array([v for _, v in done_pairs], dtype=float)
             fv_med = float(np.median(fv_vals))
@@ -504,6 +522,8 @@ def detect_anomalies(project_id: str, override_map: dict | None = None) -> dict:
     """
     from islam.scheduling.models import Task, TaskDependency
 
+    from .calendar_utils import calendar_basis_note, load_project_calendars
+
     tasks = list(
         Task.objects.filter(project_id=project_id, is_non_physical=False)
         .exclude(start_date=None)
@@ -512,6 +532,7 @@ def detect_anomalies(project_id: str, override_map: dict | None = None) -> dict:
             "pk",
             "name",
             "activity_code",
+            "calendar_object_id",
             "stage",
             "status",
             "start_date",
@@ -524,6 +545,8 @@ def detect_anomalies(project_id: str, override_map: dict | None = None) -> dict:
     if not tasks:
         return {"has_data": False, "reason": "No tasks found."}
 
+    cal_map = load_project_calendars(project_id)
+
     completed_ends = [t.actual_end for t in tasks if t.actual_end]
     data_date = max(completed_ends) if completed_ends else date.today()
 
@@ -535,8 +558,8 @@ def detect_anomalies(project_id: str, override_map: dict | None = None) -> dict:
         ).only("predecessor_id", "successor_id", "dep_type", "lag_days")
     )
 
-    running_long, unrealistic_baseline = _classify_stall_anomalies(tasks, data_date)
-    outliers = _detect_cross_sectional(tasks, override_map=override_map)
+    running_long, unrealistic_baseline = _classify_stall_anomalies(tasks, data_date, cal_map=cal_map)
+    outliers = _detect_cross_sectional(tasks, override_map=override_map, cal_map=cal_map)
     logic_structural = _detect_logic_anomalies(tasks, deps)
 
     # unrealistic_baseline is a data-quality issue: group with structural logic anomalies.
@@ -583,4 +606,5 @@ def detect_anomalies(project_id: str, override_map: dict | None = None) -> dict:
         "logic_anomalies": logic_all,
         "using_audit_overrides": bool(override_map),
         "n_overridden": len(override_map) if override_map else 0,
+        "calendar_basis": calendar_basis_note(cal_map),
     }

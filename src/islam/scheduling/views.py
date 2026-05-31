@@ -97,6 +97,46 @@ class ScheduleView(ProjectTabMixin, TemplateView):
             "Which tasks are at risk of missing their deadline?",
             "What work is planned to start next week?",
         ]
+
+        # ── Project calendars (for Data Sources tab card) ─────────────────
+        if ctx["schedule_tab"] == "data_sources":
+            from django.db.models import Count as _Count
+
+            from .models import P6Calendar
+
+            # Calendars with at least one task assigned
+            task_cal_counts = dict(
+                Task.objects.filter(project=project)
+                .exclude(calendar_object_id="")
+                .exclude(calendar_object_id=None)
+                .values("calendar_object_id")
+                .annotate(n=_Count("pk"))
+                .values_list("calendar_object_id", "n")
+            )
+            used_cals = []
+            for cal in P6Calendar.objects.filter(
+                project=project,
+                p6_calendar_id__in=list(task_cal_counts.keys()),
+                is_pending=False,
+            ).order_by("-p6_calendar_id"):
+                wd = cal.working_days or []
+                # Compact weekday abbreviations in order Sun-Sat
+                _day_abbr = {"Sunday":"Su","Monday":"Mo","Tuesday":"Tu","Wednesday":"We",
+                             "Thursday":"Th","Friday":"Fr","Saturday":"Sa"}
+                _all_days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]
+                week_str = "".join(
+                    _day_abbr[d] for d in _all_days if d in wd
+                )
+                holidays = sorted(cal.holidays or [])
+                used_cals.append({
+                    "cal_id": cal.p6_calendar_id,
+                    "task_count": task_cal_counts.get(cal.p6_calendar_id, 0),
+                    "week_str": week_str,
+                    "n_holidays": len(holidays),
+                    "holiday_sample": holidays[:5],
+                })
+            ctx["project_calendars"] = sorted(used_cals, key=lambda c: -c["task_count"])
+
         return ctx
 
 
