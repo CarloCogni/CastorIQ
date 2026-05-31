@@ -581,4 +581,6 @@ def detect_anomalies(project_id: str, override_map: dict | None = None) -> dict:
         "running_long": running_long,
         "statistical_outliers": outliers,
         "logic_anomalies": logic_all,
+        "using_audit_overrides": bool(override_map),
+        "n_overridden": len(override_map) if override_map else 0,
     }
