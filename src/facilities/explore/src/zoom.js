@@ -54,11 +54,16 @@ export function initZoom() {
     zoomAt(e.clientX, e.clientY, S.zoom * factor);
   }, { passive: false });
 
-  // Drag to pan — only when zoomed in (zoom > 1). Falls through to native
-  // event handling otherwise so existing pin click / drag still work at 1×.
-  S.stage.addEventListener("pointerdown", onPointerDown);
-  document.addEventListener("pointermove", onPointerMove);
-  document.addEventListener("pointerup", onPointerUp);
+  // Drag to pan — bound on the viewer (outermost element) so any pointerdown
+  // inside the plan area triggers it regardless of which child (img, canvas,
+  // pin-layer) was hit. setPointerCapture keeps the rest of the gesture flow
+  // attached to the viewer even if the mouse leaves the original target.
+  // Falls through (returns early) at zoom ≤ 1 so existing pin click / drag
+  // still work at fit-to-view.
+  S.viewer.addEventListener("pointerdown", onPointerDown);
+  S.viewer.addEventListener("pointermove", onPointerMove);
+  S.viewer.addEventListener("pointerup", onPointerUp);
+  S.viewer.addEventListener("pointercancel", onPointerUp);
 
   applyTransform();
 }
@@ -100,17 +105,20 @@ function zoomAt(clientX, clientY, nextZoom) {
 }
 
 function clampPan() {
-  // When zoomed in (zoom > 1) we allow the user to pan up to half the
-  // overflow on each axis — enough to bring any corner to the centre but
-  // not so far the image flies off entirely.
-  if (S.zoom <= 1) {
+  // At fit-to-view there's nothing to pan; force back to centre.
+  if (S.zoom <= 1.001) {
     S.panX = 0;
     S.panY = 0;
     return;
   }
-  const rect = S.stage.getBoundingClientRect();
-  const overflowX = Math.max(0, (rect.width * S.zoom - rect.width) / 2);
-  const overflowY = Math.max(0, (rect.height * S.zoom - rect.height) / 2);
+  // Real overflow per side = (stage_rendered_size − viewer_size) / 2.
+  // ``getBoundingClientRect`` already accounts for the CSS scale, so
+  // stageRect.width is the visual width after the transform — no extra
+  // multiplication by S.zoom needed (that was the earlier double-zoom bug).
+  const stageRect = S.stage.getBoundingClientRect();
+  const viewerRect = S.viewer.getBoundingClientRect();
+  const overflowX = Math.max(0, (stageRect.width - viewerRect.width) / 2);
+  const overflowY = Math.max(0, (stageRect.height - viewerRect.height) / 2);
   S.panX = Math.min(overflowX, Math.max(-overflowX, S.panX));
   S.panY = Math.min(overflowY, Math.max(-overflowY, S.panY));
 }

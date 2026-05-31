@@ -73,7 +73,19 @@
 .annot-toggle.on{background:var(--acc-d)!important;border-color:var(--acc-b)!important;color:var(--acc)!important;}
 
 /* When Draw mode is on we lift the annotation canvas above the pin layer so
-   tool pointer events hit it. View mode reverses the order so pins win. */
+   tool pointer events hit it. View mode reverses the order so pins win and
+   the pan handler underneath sees the events.
+   IMPORTANT: Fabric.js wraps our <canvas> in a <div class="canvas-container">
+   on init — pointer-events must apply to the WRAPPER as well, otherwise the
+   wrapper (which gets pointer-events:auto by default) silently swallows
+   pointerdown events even while the inner canvas is set to none. That was
+   the "pan only works on uploaded plans, not generated" symptom: the
+   wrapper had had time to mount over the generated PNG by the time the
+   user tried to drag. */
 .exp-viewer.draw-mode .pin-layer{pointer-events:none;}
-.exp-viewer.draw-mode .annot-canvas{pointer-events:auto!important;cursor:crosshair;}
-.exp-viewer:not(.draw-mode) .annot-canvas{pointer-events:none!important;}
+.exp-viewer.draw-mode .annot-canvas,
+.exp-viewer.draw-mode .canvas-container,
+.exp-viewer.draw-mode .canvas-container > canvas{pointer-events:auto!important;cursor:crosshair;}
+.exp-viewer:not(.draw-mode) .annot-canvas,
+.exp-viewer:not(.draw-mode) .canvas-container,
+.exp-viewer:not(.draw-mode) .canvas-container > canvas{pointer-events:none!important;}
