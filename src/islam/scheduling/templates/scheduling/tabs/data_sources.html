@@ -49,6 +49,39 @@
     </div>
     {% endif %}
 
+    <!-- ── Project calendar card ─────────────────────────────────────── -->
+    {% if project_calendars %}
+    <div class="d-flex align-items-start gap-2 flex-wrap mb-2 px-1 py-1"
+         style="background:var(--bs-secondary-bg); border:1px solid var(--bs-border-color);
+                border-radius:8px; font-size:0.72rem;">
+        <span style="font-weight:600; color:var(--bs-secondary-color); white-space:nowrap; padding:2px 4px;">
+            <i class="bi bi-calendar-week me-1"></i>Project calendar{{ project_calendars|length|pluralize }}:
+        </span>
+        {% for cal in project_calendars %}
+        <span style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px;
+                     background:var(--bs-body-bg); border:1px solid var(--bs-border-color);
+                     border-radius:12px; white-space:nowrap;"
+              title="Calendar ID {{ cal.cal_id }} · {{ cal.n_holidays }} holiday{{ cal.n_holidays|pluralize }}{% if cal.holiday_sample %}: {{ cal.holiday_sample|join:', ' }}{% endif %}">
+            <i class="bi bi-calendar3" style="opacity:.55; font-size:.65rem;"></i>
+            <strong>{{ cal.week_str }}</strong>
+            <span style="color:var(--bs-secondary-color);">{{ cal.task_count }} tasks</span>
+            {% if cal.n_holidays %}
+            <span style="color:#d97706;">{{ cal.n_holidays }} holiday{{ cal.n_holidays|pluralize }}</span>
+            {% endif %}
+        </span>
+        {% endfor %}
+        <span style="color:var(--bs-secondary-color); padding:2px 4px; font-style:italic;">
+            Delays computed in working days.
+        </span>
+    </div>
+    {% elif task_count %}
+    <div class="mb-2 px-2 py-1" style="font-size:0.72rem; color:var(--bs-secondary-color);
+         background:var(--bs-secondary-bg); border:1px solid var(--bs-border-color); border-radius:8px;">
+        <i class="bi bi-exclamation-triangle me-1" style="color:#d97706;"></i>
+        No P6 calendar found — delays computed in calendar days (import a P6 XML/XER to enable working-day arithmetic).
+    </div>
+    {% endif %}
+
     <!-- ── Upload bar ──────────────────────────────────────────────── -->
     <div class="d-flex align-items-center gap-3 flex-wrap mb-2" id="ds-upload-bar">
         <div>

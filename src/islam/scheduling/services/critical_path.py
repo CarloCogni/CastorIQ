@@ -35,109 +35,18 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# ── Calendar arithmetic helpers ───────────────────────────────────────────────
-
-# A default calendar that treats every day as a working day with no holidays.
-# Used when no P6Calendar is found for a task.
-_DEFAULT_CAL: dict = {
-    "working_day_names": {
-        "Monday",
-        "Tuesday",
-        "Wednesday",
-        "Thursday",
-        "Friday",
-        "Saturday",
-        "Sunday",
-    },
-    "holiday_dates": frozenset(),
-}
-
-
-def _is_working_day(d: date, cal: dict) -> bool:
-    return d.strftime("%A") in cal["working_day_names"] and d not in cal["holiday_dates"]
-
-
-def _next_working_day(d: date, cal: dict) -> date:
-    """Return d if it is a working day, otherwise advance to the next working day."""
-    while not _is_working_day(d, cal):
-        d += timedelta(days=1)
-    return d
-
-
-def _prev_working_day(d: date, cal: dict) -> date:
-    """Return d if it is a working day, otherwise step back to the prior working day."""
-    while not _is_working_day(d, cal):
-        d -= timedelta(days=1)
-    return d
-
-
-def _add_working_days(start: date, n: int, cal: dict) -> date:
-    """Advance *n* working days from *start* (0 means same day if working)."""
-    if n == 0:
-        return _next_working_day(start, cal)
-    d = start
-    remaining = n
-    while remaining > 0:
-        d += timedelta(days=1)
-        if _is_working_day(d, cal):
-            remaining -= 1
-    return d
-
-
-def _subtract_working_days(start: date, n: int, cal: dict) -> date:
-    """Step back *n* working days from *start*."""
-    if n == 0:
-        return _prev_working_day(start, cal)
-    d = start
-    remaining = n
-    while remaining > 0:
-        d -= timedelta(days=1)
-        if _is_working_day(d, cal):
-            remaining -= 1
-    return d
-
-
-def _count_working_days(start: date, end: date, cal: dict) -> int:
-    """Count working days in the inclusive range [start, end]."""
-    if end < start:
-        return 1
-    # Fast path: 7-day no-holiday calendar degenerates to calendar days.
-    if len(cal["working_day_names"]) == 7 and not cal["holiday_dates"]:
-        return (end - start).days + 1
-    count = 0
-    d = start
-    while d <= end:
-        if _is_working_day(d, cal):
-            count += 1
-        d += timedelta(days=1)
-    return max(count, 1)
-
-
-# ── Calendar loader ───────────────────────────────────────────────────────────
-
-
-def _load_project_calendars(project_id: str) -> dict[str, dict]:
-    """Return a {p6_calendar_id: runtime_cal_dict} map for the project.
-
-    Returns an empty dict when no P6Calendar records exist (pre-P6-import
-    projects); callers fall back to _DEFAULT_CAL in that case.
-    """
-    try:
-        from islam.scheduling.models import P6Calendar
-
-        cals: dict[str, dict] = {}
-        for cal in P6Calendar.objects.filter(project_id=project_id, is_pending=False):
-            cals[cal.p6_calendar_id] = {
-                "working_day_names": set(cal.working_days or []),
-                "holiday_dates": frozenset(
-                    date.fromisoformat(d) for d in (cal.holidays or []) if len(d) == 10
-                ),
-            }
-        return cals
-    except Exception as exc:
-        logger.debug("Calendar load skipped: %s", exc)
-        return {}
-
+# ── Calendar arithmetic — imported from shared utilities ──────────────────────
+# All calendar helpers live in calendar_utils.py so delay_rootcause, anomaly_detect,
+# and dcma_check can share them without importing critical_path.
+from .calendar_utils import (  # noqa: E402
+    _DEFAULT_CAL,
+    _add_working_days,
+    _count_working_days,
+    _load_project_calendars,
+    _next_working_day,
+    _prev_working_day,
+    _subtract_working_days,
+)
 
 # ── Duration helper ───────────────────────────────────────────────────────────
 

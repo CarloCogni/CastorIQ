@@ -125,14 +125,28 @@ def _activity_type(name: str) -> str:
     return "Construction"
 
 
-def _finish_variance(task, today: date) -> int | None:
-    """Days of finish variance; None = not assessable (no baseline or no actual)."""
+def _finish_variance(task, today: date, cal: dict | None = None) -> int | None:
+    """Working-day finish variance; None = not assessable (no baseline or no actual).
+
+    Positive = late, negative = early.  Uses the task's P6 calendar when
+    provided so weekends/holidays are excluded from the count.
+    Falls back to calendar-day arithmetic when cal is None.
+    """
+    from .calendar_utils import working_day_diff
+
     if not task.end_date:
         return None
+    if cal is None:
+        # Legacy fallback: calendar days (used when no P6 calendar is available)
+        if task.status == "complete":
+            return (task.actual_end - task.end_date).days if task.actual_end else None
+        if task.early_finish:
+            return (task.early_finish - task.end_date).days
+        return None
     if task.status == "complete":
-        return (task.actual_end - task.end_date).days if task.actual_end else None
+        return working_day_diff(task.end_date, task.actual_end, cal) if task.actual_end else None
     if task.early_finish:
-        return (task.early_finish - task.end_date).days
+        return working_day_diff(task.end_date, task.early_finish, cal)
     return None
 
 
@@ -170,6 +184,8 @@ def run_delay_rootcause(
     """
     from islam.scheduling.models import Task, TaskDependency
 
+    from .calendar_utils import load_project_calendars, task_cal
+
     today = date.today()
 
     tasks = list(
@@ -180,14 +196,20 @@ def run_delay_rootcause(
     if not tasks:
         return {"has_data": False}
 
+    # Load P6 calendars for working-day arithmetic.
+    # Falls back to _DEFAULT_CAL (all days = working) when no calendar data exists.
+    cal_map = load_project_calendars(project_id)
+    has_calendar_data = bool(cal_map)
+
     task_map: dict[str, object] = {str(t.pk): t for t in tasks}
 
     # ── Compute finish variance ───────────────────────────────────────────
-    variances: dict[str, int] = {}  # pk → finish_variance_days
+    variances: dict[str, int] = {}  # pk → finish_variance_days (working days)
     excluded_no_baseline = 0
 
     for t in tasks:
-        fv = _finish_variance(t, today)
+        cal = task_cal(t, cal_map) if has_calendar_data else None
+        fv = _finish_variance(t, today, cal)
         if fv is None:
             excluded_no_baseline += 1
         else:
@@ -480,4 +502,5 @@ def run_delay_rootcause(
         "as_of": today.isoformat(),
         "using_audit_overrides": bool(override_map),
         "n_overridden": len(override_map) if override_map else 0,
+        "calendar_basis": "working days per project calendar" if has_calendar_data else "calendar days (no P6 calendar imported)",
     }
