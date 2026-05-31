@@ -81,6 +81,18 @@ class Project(UUIDModel):
         ),
     )
 
+    audit_name_cache = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Audit Name Cache",
+        help_text=(
+            "Per-name LLM verdict cache from the Schedule Audit. "
+            "{md5_key: llm_result_dict}. Persisted to DB so verdicts are stable "
+            "across server restarts and Django-cache expiry — prevents LLM "
+            "non-determinism from changing the confirmed set between runs."
+        ),
+    )
+
     class Meta:
         ordering = ["-created_at"]
         verbose_name = "Project"

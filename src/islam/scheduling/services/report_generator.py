@@ -268,6 +268,8 @@ def _html_header(data: dict) -> str:
   <b>Baseline finish:</b> {bl} &nbsp;&nbsp;
   <b>Forecast finish:</b> {ff} &nbsp;&nbsp;
   <span class="{spi_cls}">{spi_str}</span>
+  <br/><span class="muted" style="font-size:7.5pt;">All values reflect original P6 coding.
+  Audit-suggested reclassifications are not applied to reports.</span>
 </div>
 """
 
@@ -780,6 +782,13 @@ def render_docx(data: dict, sections: tuple[str, ...]) -> bytes:
         meta.add_run(f"  |  SPI: {spi:.2f}")
     meta.runs[0].font.size = Pt(9)
     meta.runs[0].font.color.rgb = RGBColor(0x6B, 0x72, 0x80)
+
+    note = doc.add_paragraph(
+        "All values reflect original P6 coding. "
+        "Audit-suggested reclassifications are not applied to reports."
+    )
+    note.runs[0].font.size = Pt(7.5)
+    note.runs[0].font.color.rgb = RGBColor(0x9C, 0xA3, 0xAF)
     doc.add_paragraph()
 
     sec_num = 1
