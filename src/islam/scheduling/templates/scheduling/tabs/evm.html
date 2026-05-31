@@ -2941,12 +2941,13 @@
                     candidates.push({ s, dy, dx });
                 }
 
-                // When a filter is active, dimmed segments are ineligible for hover —
-                // the user filtered for a reason; hovering a dimmed segment must show
-                // nothing, not a downgraded tooltip.  Without a filter every segment
-                // is eligible as before.
-                const eligible = anyHighlight
-                    ? candidates.filter(c => lit(c.s.k))
+                // When a filter is active, dimmed segments are ineligible for hover.
+                // Read _highlightKeys LIVE here (not the render-time snapshot in
+                // anyHighlight/lit) so the gate is always current regardless of when
+                // _renderChart last ran.
+                const _liveFilter = _highlightKeys.size > 0;
+                const eligible = _liveFilter
+                    ? candidates.filter(c => _highlightKeys.has(c.s.k))
                     : candidates;
 
                 let found = null;
