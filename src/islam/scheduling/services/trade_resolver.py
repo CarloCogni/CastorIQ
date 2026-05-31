@@ -136,6 +136,11 @@ def save_override_map(project_pk: str, audit_result: dict) -> OverrideMap:
     Persists to Project.audit_override_map (DB) so the map survives server
     restarts and Django auto-reload.  Also writes a warm locmem cache entry
     so repeated reads within the same server process are fast.
+
+    A non-empty map is only written if it improves on the existing DB value.
+    An empty map (0 confirmed) does NOT overwrite a previously stored map —
+    the toggle button is already disabled when confirmed_count=0, so stale DB
+    entries are inaccessible and preserving them costs nothing.
     """
     from django.core.cache import cache
 
@@ -143,33 +148,42 @@ def save_override_map(project_pk: str, audit_result: dict) -> OverrideMap:
 
     om = build_override_map(audit_result)
 
-    # DB write — survives restarts
-    Project.objects.filter(pk=project_pk).update(audit_override_map=om)
+    if om:
+        # Non-empty: always persist (this is the authoritative fresh audit result)
+        Project.objects.filter(pk=project_pk).update(audit_override_map=om)
+        cache.set(f"{_CACHE_PREFIX}{project_pk}", om, timeout=_CACHE_TTL)
+        logger.info(
+            "Trade override map persisted — project %s: %d confirmed overrides",
+            project_pk,
+            len(om),
+        )
+    else:
+        # Empty: audit returned 0 confirmed — toggle button will be disabled, so
+        # do NOT overwrite a previously stored map.  Just evict the cache so the
+        # next load_override_map() falls back to DB and returns the prior entries.
+        cache.delete(f"{_CACHE_PREFIX}{project_pk}")
+        logger.info(
+            "Trade override map: 0 confirmed for project %s — keeping previous DB value",
+            project_pk,
+        )
 
-    # Warm locmem cache for fast reads in the same process lifetime
-    cache.set(f"{_CACHE_PREFIX}{project_pk}", om, timeout=_CACHE_TTL)
-
-    logger.info(
-        "Trade override map persisted — project %s: %d confirmed overrides",
-        project_pk,
-        len(om),
-    )
     return om
 
 
 def load_override_map(project_pk: str) -> OverrideMap:
     """Return the override map for a project.
 
-    Tries locmem cache first (fast path), falls back to DB (survives restarts).
-    Returns {} if no audit has ever been run for this project.
+    Tries locmem cache first (fast path).  An empty cache hit is treated as a
+    miss — falls through to DB — so a stale empty-cache from a bad LLM run
+    never shadows real DB entries.  Returns {} only when DB is also empty.
     """
     from django.core.cache import cache
 
     cached = cache.get(f"{_CACHE_PREFIX}{project_pk}")
-    if cached is not None:
+    if cached:  # non-empty cache hit → fast return
         return cached
 
-    # Cache miss — load from DB and re-warm the cache
+    # Cache miss or empty cache → always check DB
     from environments.models import Project
 
     try:
