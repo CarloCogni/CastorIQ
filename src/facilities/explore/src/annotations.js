@@ -143,8 +143,18 @@ export function loadAnnotations(annotations) {
   }
 }
 
-/** Tell the module which storey is active + which URL to POST saves to. */
+/** Tell the module which storey is active + which URL to POST saves to.
+ *  Critical: we flush any pending save against the OLD saveUrl first.
+ *  Without that, the 600 ms debounce timer for the previous storey's edits
+ *  would fire after we've swapped the URL, sending the (now reloaded) new
+ *  storey's data to the new URL and silently dropping the previous storey's
+ *  unsaved drawings on the floor. */
 export function attachStorey(storeyId, saveUrl) {
+  if (STATE.saveTimer && STATE.saveUrl) {
+    clearTimeout(STATE.saveTimer);
+    STATE.saveTimer = null;
+    saveNow();  // saves using the CURRENT (old) saveUrl
+  }
   STATE.storeyId = storeyId;
   STATE.saveUrl = saveUrl || null;
 }
@@ -256,25 +266,21 @@ function renderLayerList() {
     radio.title = "Make this the active layer (new strokes land here)";
     radio.addEventListener("change", () => setActiveLayer(layer.id));
 
-    // Editable name
+    // Editable name — always live, no double-click gate. Click anywhere in
+    // the field to drop the cursor; type, then click out / press Enter to
+    // commit. Escape reverts.
     const name = document.createElement("input");
     name.type = "text";
     name.className = "annot-layer-name";
     name.value = layer.name;
-    name.title = "Layer name (double-click to edit)";
-    name.readOnly = true;
-    name.addEventListener("dblclick", () => {
-      name.readOnly = false;
-      name.focus();
-      name.select();
-    });
+    name.title = "Click to rename this layer";
+    name.spellcheck = false;
     name.addEventListener("blur", () => {
       const val = (name.value || "").trim() || layer.name;
       renameLayer(layer.id, val);
-      name.readOnly = true;
     });
     name.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") name.blur();
+      if (e.key === "Enter") { e.preventDefault(); name.blur(); }
       if (e.key === "Escape") { name.value = layer.name; name.blur(); }
     });
 
@@ -359,7 +365,10 @@ function syncCanvasToImage(planImg, canvas) {
   // Position Fabric's wrapper to match the IMG's offset inside the stage —
   // otherwise the wrapper sits at (0, 0) of the stage and the user's strokes
   // misalign with the image whenever it's letterboxed (object-fit: contain
-  // around a non-square plan).
+  // around a non-square plan). Re-apply every sync, not just on dim change:
+  // the IMG's offsetLeft/Top can shift while w×h stays the same (e.g. when
+  // a sibling element resizes around it), and the stale top/left would leave
+  // big swaths of the plan undrawable.
   if (canvas.wrapperEl) {
     canvas.wrapperEl.style.position = "absolute";
     canvas.wrapperEl.style.left = planImg.offsetLeft + "px";

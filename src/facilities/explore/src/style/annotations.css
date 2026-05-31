@@ -104,17 +104,15 @@
 .annot-layer-radio{accent-color:var(--acc);margin:0 2px;}
 
 /* Fabric.js wraps our <canvas> in a <div class="canvas-container"> on init
-   AND sets position:relative on it. That kicks the wrapper into normal flow
-   (it sits next to / below the IMG instead of overlaying it) so every stroke
-   the user draws lands off the visible image — looks like "drawing doesn't
-   work". Forcing absolute + inset:0 brings the wrapper back over the image
-   so pencil / shape input renders where you'd expect. */
+   AND sets position:relative on it — which kicks the wrapper into normal
+   flow next to the IMG and drops the user's strokes off the visible image.
+   Forcing absolute lifts it back into a layer above the plan; the actual
+   ``top`` / ``left`` come from annotations.js's syncCanvasToImage so the
+   wrapper tracks the IMG's letterboxed position rather than sitting at
+   the stage's top-left corner (which would only overlap a slice of the
+   image, leaving most of the plan undrawable). */
 .plan-stage .canvas-container{
   position:absolute!important;
-  top:0!important;
-  left:0!important;
-  /* Fabric also sets explicit width/height in px (matched to canvas dims
-     via syncCanvasToImage), so we don't need to override those here. */
 }
 
 /* When Draw mode is on we lift the annotation canvas above the pin layer so
