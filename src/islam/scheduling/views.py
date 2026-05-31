@@ -1347,10 +1347,16 @@ class TimeLocationView(ProjectAccessMixin, View):
 
     def get(self, request, **kwargs: object) -> JsonResponse:
         from .services.timelocation import compute_timelocation
+        from .services.trade_resolver import load_override_map
 
         project = self.get_project()
+        override_map = (
+            load_override_map(str(project.pk))
+            if request.GET.get("audit_view") == "corrected"
+            else None
+        )
         try:
-            result = compute_timelocation(str(project.pk))
+            result = compute_timelocation(str(project.pk), override_map=override_map)
         except Exception as exc:
             logger.exception("Timelocation failed for project %s", project.pk)
             return JsonResponse({"error": str(exc)}, status=500)
@@ -1362,10 +1368,14 @@ class ScheduleAuditSectionMismatchView(ProjectAccessMixin, View):
 
     def get(self, request, **kwargs: object) -> JsonResponse:
         from .services.schedule_audit import run_section_mismatch_audit
+        from .services.trade_resolver import save_override_map
 
         project = self.get_project()
         try:
             result = run_section_mismatch_audit(str(project.pk), user=request.user)
+            # Cache the confirmed override map so consumers can use ?audit_view=corrected
+            if result.get("has_data"):
+                save_override_map(str(project.pk), result)
         except Exception as exc:
             logger.exception("Section mismatch audit failed for project %s", project.pk)
             return JsonResponse({"error": str(exc)}, status=500)
@@ -1377,11 +1387,21 @@ class DelayRootCauseView(ProjectAccessMixin, View):
 
     def get(self, request, **kwargs: object) -> JsonResponse:
         from .services.delay_rootcause import run_delay_rootcause
+        from .services.trade_resolver import load_override_map
 
         project = self.get_project()
         threshold = int(request.GET.get("threshold", 0))
+        override_map = (
+            load_override_map(str(project.pk))
+            if request.GET.get("audit_view") == "corrected"
+            else None
+        )
         try:
-            result = run_delay_rootcause(str(project.pk), delay_threshold_days=threshold)
+            result = run_delay_rootcause(
+                str(project.pk),
+                delay_threshold_days=threshold,
+                override_map=override_map,
+            )
         except Exception as exc:
             logger.exception("Delay root-cause failed for project %s", project.pk)
             return JsonResponse({"error": str(exc)}, status=500)
@@ -1423,10 +1443,16 @@ class AnomalyDetectionView(ProjectAccessMixin, View):
 
     def get(self, request, **kwargs: object) -> JsonResponse:
         from .services.anomaly_detect import detect_anomalies
+        from .services.trade_resolver import load_override_map
 
         project = self.get_project()
+        override_map = (
+            load_override_map(str(project.pk))
+            if request.GET.get("audit_view") == "corrected"
+            else None
+        )
         try:
-            result = detect_anomalies(str(project.pk))
+            result = detect_anomalies(str(project.pk), override_map=override_map)
         except Exception as exc:
             logger.exception("Anomaly detection failed for project %s", project.pk)
             return JsonResponse({"error": str(exc)}, status=500)
@@ -1505,10 +1531,16 @@ class FloorHealthView(ProjectAccessMixin, View):
 
     def get(self, request, **kwargs: object) -> JsonResponse:
         from .services.floor_health import compute_floor_health
+        from .services.trade_resolver import load_override_map
 
         project = self.get_project()
+        override_map = (
+            load_override_map(str(project.pk))
+            if request.GET.get("audit_view") == "corrected"
+            else None
+        )
         try:
-            result = compute_floor_health(str(project.pk))
+            result = compute_floor_health(str(project.pk), override_map=override_map)
         except Exception as exc:
             logger.exception("Floor health failed for project %s", project.pk)
             return JsonResponse({"error": str(exc)}, status=500)

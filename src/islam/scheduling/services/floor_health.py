@@ -201,7 +201,7 @@ def _score_project_status(
     return round(backward)
 
 
-def compute_floor_health(project_id: str) -> dict:
+def compute_floor_health(project_id: str, override_map: dict | None = None) -> dict:
     """Compute per-floor Build Quality and Project Status scores.
 
     Returns:
@@ -272,7 +272,7 @@ def compute_floor_health(project_id: str) -> dict:
     # running_long and statistical_outliers measure execution risk → Project Status.
     # Build Quality only counts structural/data-quality errors: FS violations,
     # unrealistic baselines, mid-network orphans, circular dependencies.
-    anomaly_result = detect_anomalies(project_id)
+    anomaly_result = detect_anomalies(project_id, override_map=override_map)
     anomaly_by_pk: dict[str, list[dict]] = defaultdict(list)
     if anomaly_result.get("has_data"):
         for item in anomaly_result.get("logic_anomalies", []):
@@ -301,7 +301,12 @@ def compute_floor_health(project_id: str) -> dict:
     band_floor_count: dict[str, int] = defaultdict(int)
 
     for tok in data_floors:
-        csi_set = {_csi(t.activity_code or "") for t in floor_tasks[tok]} - {"XX"}
+        csi_set = {
+            override_map.get(str(t.pk)) or _csi(t.activity_code or "")
+            if override_map
+            else _csi(t.activity_code or "")
+            for t in floor_tasks[tok]
+        } - {"XX"}
         floor_csi_sets[tok] = csi_set
         band = _floor_band(tok)
         band_floor_count[band] += 1

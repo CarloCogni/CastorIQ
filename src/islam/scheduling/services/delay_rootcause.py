@@ -100,6 +100,16 @@ def _csi_trade(activity_code: str) -> str:
     return "Unknown"
 
 
+def _csi_trade_resolved(task, override_map: dict | None) -> str:
+    """Trade name after applying any confirmed audit override for this task."""
+    if override_map:
+        task_pk = str(task.pk)
+        if task_pk in override_map:
+            csi = override_map[task_pk]
+            return _CSI_TRADE.get(csi, f"Div {csi}")
+    return _csi_trade(task.activity_code or "")
+
+
 def _activity_type(name: str) -> str:
     n = name.lower()
     if "submit" in n:
@@ -142,12 +152,19 @@ def _binding_date(pred, dep_type: str, lag_days: int) -> date | None:
 # ── Main service ──────────────────────────────────────────────────────────────
 
 
-def run_delay_rootcause(project_id: str, delay_threshold_days: int = 0) -> dict:
+def run_delay_rootcause(
+    project_id: str,
+    delay_threshold_days: int = 0,
+    override_map: dict | None = None,
+) -> dict:
     """Run delay root-cause analysis for *project_id*.
 
     Args:
         delay_threshold_days: only tasks with finish_variance > this value are
             considered delayed.  Default 0 (any slippage counts).
+        override_map: optional {task_pk: ai_csi} from trade_resolver; when
+            provided the resolved trade is used for clustering instead of the
+            raw coded value.
 
     Returns a dict with keys: has_data, summary, root_causes, clusters, orphans.
     """
@@ -346,7 +363,7 @@ def run_delay_rootcause(project_id: str, delay_threshold_days: int = 0) -> dict:
                 "task_pk": pk,
                 "activity_code": t.activity_code or "",
                 "name": t.name,
-                "trade": _csi_trade(t.activity_code or ""),
+                "trade": _csi_trade_resolved(t, override_map),
                 "stage": t.stage or "",
                 "stage_label": _STAGE_LABELS.get(t.stage or "", t.stage or ""),
                 "activity_type": _activity_type(t.name),
@@ -388,7 +405,7 @@ def run_delay_rootcause(project_id: str, delay_threshold_days: int = 0) -> dict:
         return sorted(groups.values(), key=lambda g: -g["downstream_tasks"])
 
     clusters_by_trade = _build_cluster(
-        key_fn=lambda t: _csi_trade(t.activity_code or ""),
+        key_fn=lambda t: _csi_trade_resolved(t, override_map),
         label_fn=lambda k: k,
     )
     clusters_by_stage = _build_cluster(

@@ -627,6 +627,7 @@ def run_section_mismatch_audit(project_id: str, user=None) -> dict:
         "unavailable_count": len(unavailable),
         "items": [
             {
+                "task_id": c.task_id,  # needed by trade_resolver.build_override_map
                 "name": c.name,
                 "activity_code": c.activity_code,
                 "coded_csi": c.coded_csi,

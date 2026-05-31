@@ -23,6 +23,9 @@ import logging
 import re
 from datetime import date
 
+from .trade_resolver import is_overridden as _is_overridden
+from .trade_resolver import resolve_csi as _resolve_csi
+
 logger = logging.getLogger(__name__)
 
 # ── Floor mapping ─────────────────────────────────────────────────────────────
@@ -184,7 +187,10 @@ def _is_admin(activity_code: str) -> bool:
     return (activity_code or "")[:4].upper() in _ADMIN_PREFIXES
 
 
-def compute_timelocation(project_id: str) -> dict:
+def compute_timelocation(
+    project_id: str,
+    override_map: dict | None = None,
+) -> dict:
     """Build flowline chart data for *project_id*.
 
     Returns ALL floor-located segments (never filtered).  The top _TOP_N_COLORS
@@ -192,9 +198,15 @@ def compute_timelocation(project_id: str) -> dict:
     carry is_other=True and render in the neutral default colour.  Highlight /
     dim logic is handled entirely on the client side.
 
+    Args:
+        override_map: Optional {task_pk: ai_csi} from trade_resolver.  When
+            provided, the resolved CSI is used for trade grouping and colouring
+            instead of the raw coded value.  Segments whose trade was overridden
+            carry ov=True and ok=<original_csi> for tooltip display.
+
     Returns:
         has_data, floors, trades (with is_other flag), segments (all),
-        scope, stats, as_of.
+        scope (with n_overridden, using_audit_overrides), stats, as_of.
     """
     from islam.scheduling.models import Task
 
@@ -245,7 +257,10 @@ def compute_timelocation(project_id: str) -> dict:
             continue
 
         token, ordinal = parsed
-        csi = _parse_csi(code)
+        task_pk = str(t.pk)
+        coded_csi = _parse_csi(code)
+
+        csi = _resolve_csi(code, task_pk, override_map)
         csi_counts[csi] = csi_counts.get(csi, 0) + 1
         floor_counts[token] = floor_counts.get(token, 0) + 1
 
@@ -254,20 +269,24 @@ def compute_timelocation(project_id: str) -> dict:
         if t.status != "complete" and t.early_finish:
             forecast_end = t.early_finish.isoformat()
 
-        floor_rows.append(
-            {
-                "f": ordinal,
-                "tok": token,
-                "k": csi,
-                "ps": t.start_date.isoformat(),
-                "pe": t.end_date.isoformat(),
-                "as_": t.actual_start.isoformat() if t.actual_start else None,
-                "ae": t.actual_end.isoformat() if t.actual_end else None,
-                "fe": forecast_end,
-                "st": t.status,
-                "nm": t.name[:60],
-            }
-        )
+        overridden = _is_overridden(task_pk, override_map)
+        row: dict = {
+            "f": ordinal,
+            "tok": token,
+            "k": csi,
+            "ps": t.start_date.isoformat(),
+            "pe": t.end_date.isoformat(),
+            "as_": t.actual_start.isoformat() if t.actual_start else None,
+            "ae": t.actual_end.isoformat() if t.actual_end else None,
+            "fe": forecast_end,
+            "st": t.status,
+            "nm": t.name[:60],
+        }
+        if overridden:
+            row["ov"] = True  # client draws marker dot
+            row["ok"] = coded_csi  # original CSI key
+            row["ok_name"] = _TRADE_NAMES.get(coded_csi, f"Div {coded_csi}")
+        floor_rows.append(row)
 
     n_floor_located = len(floor_rows)
     if n_floor_located == 0:
@@ -335,6 +354,8 @@ def compute_timelocation(project_id: str) -> dict:
             "unlocated_excluded": n_unlocated,
             "outside_known": n_outside_known,
             "n_distinct_floors": len(floor_counts),
+            "n_overridden": sum(1 for r in floor_rows if r.get("ov")),
+            "using_audit_overrides": bool(override_map),
         },
         "stats": {
             "busiest_floor": busiest_tok,
