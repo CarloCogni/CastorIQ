@@ -2178,7 +2178,12 @@
             if (btnAudit) btnAudit.classList.toggle("active", m === "corrected");
             if (note)      note.classList.toggle("d-none", m !== "corrected");
             if (codedNote) codedNote.style.display = m === "corrected" ? "none" : "";
-            Object.values(_reloaders).forEach(fn => fn(m));
+            const names = Object.keys(_reloaders);
+            console.log("[audit toggle] mode →", m, "| reloaders:", names);
+            names.forEach(name => {
+                try { _reloaders[name](m); }
+                catch (e) { console.error("[audit toggle] reloader", name, "threw:", e); }
+            });
         }
 
         const bc = document.getElementById("btn-view-coded");
@@ -2303,10 +2308,13 @@
             const results = document.getElementById("drc-results");
             const mode = auditMode || (window._evmAudit ? window._evmAudit.mode() : "coded");
             const url  = mode === "corrected" ? DRC_URL + "?audit_view=corrected" : DRC_URL;
+            console.log("[drc reload] mode=", mode, "url=", url);
+            if (auditMode && results) results.style.opacity = "0.45";
             try {
                 const resp = await fetch(url);
                 const data = await resp.json();
                 if (loading) loading.classList.add("d-none");
+                if (results) results.style.opacity = "";
                 if (!data.has_data || !data.summary.total_delayed) {
                     if (nodata) nodata.classList.remove("d-none");
                     return;
@@ -2332,6 +2340,7 @@
                 }
             } catch (_e) {
                 if (loading) loading.classList.add("d-none");
+                if (results) results.style.opacity = "";
                 if (nodata) nodata.classList.remove("d-none");
             }
         }
@@ -2951,10 +2960,13 @@
             const results = document.getElementById("tl-results");
             const mode = auditMode || (window._evmAudit ? window._evmAudit.mode() : "coded");
             const url  = mode === "corrected" ? BASE_URL + "?audit_view=corrected" : BASE_URL;
+            console.log("[tl reload] mode=", mode, "url=", url);
+            if (auditMode && results) results.style.opacity = "0.45";
             try {
                 const resp = await fetch(url);
                 const d = await resp.json();
                 if (loading) loading.classList.add("d-none");
+                if (results) results.style.opacity = "";
                 if (!d.has_data) {
                     if (nodata) nodata.classList.remove("d-none");
                     return;
@@ -2967,6 +2979,7 @@
                 _updateCaption(d);
             } catch (_e) {
                 if (loading) loading.classList.add("d-none");
+                if (results) results.style.opacity = "";
                 if (nodata) nodata.classList.remove("d-none");
             }
         }
@@ -3366,10 +3379,13 @@
             const results = document.getElementById("anomaly-results");
             const mode = auditMode || (window._evmAudit ? window._evmAudit.mode() : "coded");
             const url  = mode === "corrected" ? ANOMALY_URL + "?audit_view=corrected" : ANOMALY_URL;
+            console.log("[anomaly reload] mode=", mode, "url=", url);
+            if (auditMode && results) results.style.opacity = "0.45";
             try {
                 const resp = await fetch(url);
                 const data = await resp.json();
                 if (loading) loading.classList.add("d-none");
+                if (results) results.style.opacity = "";
                 if (!data.has_data) {
                     if (nodata) { nodata.classList.remove("d-none"); nodata.textContent = data.reason || "No task data available."; }
                     return;
@@ -3391,6 +3407,7 @@
 
             } catch (_e) {
                 if (loading) loading.classList.add("d-none");
+                if (results) results.style.opacity = "";
                 if (nodata) { nodata.classList.remove("d-none"); nodata.textContent = "Failed to load anomaly data."; }
             }
         }
@@ -3751,6 +3768,8 @@
 
             const mode = auditMode || (window._evmAudit ? window._evmAudit.mode() : "coded");
             const url  = mode === "corrected" ? HEALTH_URL + "?audit_view=corrected" : HEALTH_URL;
+            console.log("[health reload] mode=", mode, "url=", url);
+            if (auditMode && resultsEl) resultsEl.style.opacity = "0.45";
 
             let data;
             try {
@@ -3758,11 +3777,13 @@
                 data = await resp.json();
             } catch (_) {
                 if (loading) loading.classList.add("d-none");
+                if (resultsEl) resultsEl.style.opacity = "";
                 if (nodata) nodata.classList.remove("d-none");
                 return;
             }
 
             if (loading) loading.classList.add("d-none");
+            if (resultsEl) resultsEl.style.opacity = "";
             if (!data.has_data) {
                 if (nodata) nodata.classList.remove("d-none");
                 return;
