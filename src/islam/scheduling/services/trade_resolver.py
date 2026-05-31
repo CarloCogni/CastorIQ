@@ -131,13 +131,26 @@ def build_override_map(audit_result: dict) -> OverrideMap:
 
 
 def save_override_map(project_pk: str, audit_result: dict) -> OverrideMap:
-    """Build, cache (2 h), and return the override map from a fresh audit result."""
+    """Build, persist to DB + warm cache, and return the override map.
+
+    Persists to Project.audit_override_map (DB) so the map survives server
+    restarts and Django auto-reload.  Also writes a warm locmem cache entry
+    so repeated reads within the same server process are fast.
+    """
     from django.core.cache import cache
 
+    from environments.models import Project
+
     om = build_override_map(audit_result)
+
+    # DB write — survives restarts
+    Project.objects.filter(pk=project_pk).update(audit_override_map=om)
+
+    # Warm locmem cache for fast reads in the same process lifetime
     cache.set(f"{_CACHE_PREFIX}{project_pk}", om, timeout=_CACHE_TTL)
+
     logger.info(
-        "Trade override map cached — project %s: %d confirmed overrides",
+        "Trade override map persisted — project %s: %d confirmed overrides",
         project_pk,
         len(om),
     )
@@ -145,7 +158,25 @@ def save_override_map(project_pk: str, audit_result: dict) -> OverrideMap:
 
 
 def load_override_map(project_pk: str) -> OverrideMap:
-    """Retrieve the cached override map; returns {} if no audit has been run."""
+    """Return the override map for a project.
+
+    Tries locmem cache first (fast path), falls back to DB (survives restarts).
+    Returns {} if no audit has ever been run for this project.
+    """
     from django.core.cache import cache
 
-    return cache.get(f"{_CACHE_PREFIX}{project_pk}", {})
+    cached = cache.get(f"{_CACHE_PREFIX}{project_pk}")
+    if cached is not None:
+        return cached
+
+    # Cache miss — load from DB and re-warm the cache
+    from environments.models import Project
+
+    try:
+        om = Project.objects.values_list("audit_override_map", flat=True).get(pk=project_pk)
+        om = om or {}
+        if om:
+            cache.set(f"{_CACHE_PREFIX}{project_pk}", om, timeout=_CACHE_TTL)
+        return om
+    except Project.DoesNotExist:
+        return {}

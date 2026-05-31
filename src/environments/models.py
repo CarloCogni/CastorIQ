@@ -71,6 +71,16 @@ class Project(UUIDModel):
         help_text="Archived projects are hidden from the main list",
     )
 
+    audit_override_map = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Audit Override Map",
+        help_text=(
+            "Confirmed section-mismatch overrides from the last Schedule Audit run. "
+            "{task_pk: ai_csi}. Persisted to DB so it survives server restarts."
+        ),
+    )
+
     class Meta:
         ordering = ["-created_at"]
         verbose_name = "Project"
