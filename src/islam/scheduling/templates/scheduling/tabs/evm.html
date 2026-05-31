@@ -2869,21 +2869,44 @@
                 });
             }
 
-            // Hover tooltip (uses the full segment set — dimmed segments are still hoverable)
+            // Hover tooltip — highlighted segments preferred over dimmed when under cursor
             const tooltip = document.getElementById("tl-tooltip");
             canvas.onmousemove = function (e) {
                 if (!tooltip) return;
                 const rect = canvas.getBoundingClientRect();
                 const mx = (e.clientX - rect.left) / (rect.width / W);
                 const my = (e.clientY - rect.top) / (rect.height / CHART_H);
-                let found = null;
+
+                // Collect every segment whose bounding box contains the cursor.
+                const candidates = [];
                 for (const s of segs) {
                     const y = yOf(s.f);
-                    if (Math.abs(my - y) > ROW_H / 2) continue;
+                    const dy = Math.abs(my - y);
+                    if (dy > ROW_H / 2) continue;
                     const x0 = xOf(s.ps), x1 = xOf(s.fe || s.pe);
-                    if (x0 !== null && x1 !== null && mx >= x0 - 2 && mx <= x1 + 2) {
-                        found = s; break;
-                    }
+                    if (x0 === null || x1 === null) continue;
+                    if (mx < x0 - 2 || mx > x1 + 2) continue;
+                    // Temporal distance: cursor to segment midpoint (x-axis)
+                    const dx = Math.abs(mx - (x0 + x1) / 2);
+                    candidates.push({ s, dy, dx });
+                }
+
+                // Sort: (1) vertical proximity to floor row centre-line
+                //       (2) lit (highlighted) before dimmed when a filter is active
+                //       (3) temporal proximity (cursor → segment midpoint)
+                let found = null;
+                if (candidates.length === 1) {
+                    found = candidates[0].s;
+                } else if (candidates.length > 1) {
+                    candidates.sort((a, b) => {
+                        if (a.dy !== b.dy) return a.dy - b.dy;
+                        if (anyHighlight) {
+                            const aLit = lit(a.s.k), bLit = lit(b.s.k);
+                            if (aLit !== bLit) return aLit ? -1 : 1;
+                        }
+                        return a.dx - b.dx;
+                    });
+                    found = candidates[0].s;
                 }
                 if (found) {
                     const trade      = (d.trades||[]).find(t => t.key === found.k);
