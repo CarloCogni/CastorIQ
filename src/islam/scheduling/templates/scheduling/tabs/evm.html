@@ -2234,6 +2234,7 @@
 
         // Stores the coded-mode trade clusters so corrected mode can show deltas.
         let _drcCodedTrade = null;
+        let _drcGen = 0;  // generation counter — discards superseded async responses
 
         function _esc(s) {
             return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
@@ -2332,6 +2333,7 @@
         }
 
         async function loadDelayRootCause(auditMode) {
+            const gen = ++_drcGen;
             const loading = document.getElementById("drc-loading");
             const nodata  = document.getElementById("drc-nodata");
             const results = document.getElementById("drc-results");
@@ -2341,6 +2343,7 @@
             try {
                 const resp = await fetch(url);
                 const data = await resp.json();
+                if (gen !== _drcGen) { if (results) results.style.opacity = ""; return; }
                 if (loading) loading.classList.add("d-none");
                 if (results) results.style.opacity = "";
                 if (!data.has_data || !data.summary.total_delayed) {
@@ -2389,6 +2392,7 @@
                     }
                 }
             } catch (_e) {
+                if (gen !== _drcGen) return;
                 if (loading) loading.classList.add("d-none");
                 if (results) results.style.opacity = "";
                 if (nodata) nodata.classList.remove("d-none");
@@ -3371,6 +3375,7 @@
     /* ── Anomaly Detection ─────────────────────────────────────────────── */
     (function () {
         const ANOMALY_URL = "{% url 'islam:anomaly_detection' project.pk %}";
+        let _anomalyGen = 0;  // generation counter — discards superseded async responses
 
         function _esc(s) {
             return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -3442,6 +3447,7 @@
         }
 
         async function loadAnomalies(auditMode) {
+            const gen = ++_anomalyGen;
             const loading = document.getElementById("anomaly-loading");
             const nodata  = document.getElementById("anomaly-nodata");
             const results = document.getElementById("anomaly-results");
@@ -3451,6 +3457,7 @@
             try {
                 const resp = await fetch(url);
                 const data = await resp.json();
+                if (gen !== _anomalyGen) { if (results) results.style.opacity = ""; return; }
                 if (loading) loading.classList.add("d-none");
                 if (results) results.style.opacity = "";
                 if (!data.has_data) {
@@ -3487,6 +3494,7 @@
                 }
 
             } catch (_e) {
+                if (gen !== _anomalyGen) return;
                 if (loading) loading.classList.add("d-none");
                 if (results) results.style.opacity = "";
                 if (nodata) { nodata.classList.remove("d-none"); nodata.textContent = "Failed to load anomaly data."; }
@@ -3762,6 +3770,7 @@
     /* ── Project Health Matrix ────────────────────────────────────────────── */
     (function () {
         const HEALTH_URL = "{% url 'islam:floor_health' project.pk %}";
+        let _healthGen = 0;  // generation counter — discards superseded async responses
 
         function _scoreColor(s) {
             if (s >= 70) return "#16a34a";
@@ -3840,6 +3849,7 @@
         }
 
         async function loadFloorHealth(auditMode) {
+            const gen = ++_healthGen;
             const loading  = document.getElementById("evm-health-loading");
             const nodata   = document.getElementById("evm-health-nodata");
             const resultsEl = document.getElementById("evm-health-results");
@@ -3856,11 +3866,13 @@
                 const resp = await fetch(url);
                 data = await resp.json();
             } catch (_) {
+                if (gen !== _healthGen) return;
                 if (loading) loading.classList.add("d-none");
                 if (resultsEl) resultsEl.style.opacity = "";
                 if (nodata) nodata.classList.remove("d-none");
                 return;
             }
+            if (gen !== _healthGen) { if (resultsEl) resultsEl.style.opacity = ""; return; }
 
             if (loading) loading.classList.add("d-none");
             if (resultsEl) resultsEl.style.opacity = "";
@@ -3880,8 +3892,10 @@
                  ${_renderCell(floor.project_status.score, floor.token, "ps")}`
             ).join("");
 
-            /* Breakdown panel — show on mouseover, hide on mouseout */
-            grid.addEventListener("mouseover", function(e) {
+            /* Breakdown panel — show on mouseover, hide on mouseout.
+               Use property assignment (not addEventListener) so each reload
+               replaces the previous handler instead of accumulating them. */
+            grid.onmouseover = function(e) {
                 const cell = e.target.closest(".evm-hm-cell");
                 if (!cell || !panel) return;
                 const tok  = cell.dataset.tok;
@@ -3902,13 +3916,13 @@
                 }
                 panel.style.left = Math.max(0, left) + "px";
                 panel.style.top  = Math.max(0, cRect.top - rRect.top) + "px";
-            });
+            };
 
-            grid.addEventListener("mouseout", function(e) {
+            grid.onmouseout = function(e) {
                 if (!e.relatedTarget || !e.relatedTarget.closest(".evm-hm-cell")) {
                     if (panel) panel.style.display = "none";
                 }
-            });
+            };
 
             // Audit-mode banner
             const healthNote = document.getElementById("health-audit-note");
