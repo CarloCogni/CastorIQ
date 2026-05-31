@@ -143,6 +143,15 @@ export function loadAnnotations(annotations) {
   }
 }
 
+/** Return the current canvas + layer state as a v2 JSON object. Callers
+ *  use this to stash the outgoing floor's annotations into state.floors
+ *  right before switching, so a return trip doesn't lose drawings that the
+ *  debounced save hadn't flushed yet (and aren't reflected in the host's
+ *  SET_FLOORS payload either). */
+export function snapshotAnnotations() {
+  return serializeLayers();
+}
+
 /** Tell the module which storey is active + which URL to POST saves to.
  *  Critical: we flush any pending save against the OLD saveUrl first.
  *  Without that, the 600 ms debounce timer for the previous storey's edits

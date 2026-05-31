@@ -24,7 +24,7 @@ import { renderTimeline } from "./ui/timeline.js";
 import { initModal, openModal, closeModal } from "./ui/modal.js";
 import { MSG, ERR } from "./bridge/protocol.js";
 import { initBridge, emit, ack, error } from "./bridge/bridge.js";
-import { initAnnotations, setDrawMode, loadAnnotations, attachStorey } from "./annotations.js";
+import { initAnnotations, setDrawMode, loadAnnotations, attachStorey, snapshotAnnotations } from "./annotations.js";
 import { initZoom, reset as resetZoom } from "./zoom.js";
 
 // ── Element refs ──
@@ -135,7 +135,21 @@ function render() {
   // keeps the user from landing in a panned / zoomed-in spot on the new
   // floor (which would be confusing because the plan content is at a
   // different X/Y on a different storey).
+  //
+  // Critical: snapshot the OUTGOING floor's current annotation state back
+  // into ``state.floors`` before switching. ``attachStorey`` already
+  // flushes any pending save to the backend, but the in-memory
+  // ``floor.annotations`` (loaded once via SET_FLOORS) would otherwise stay
+  // stale — returning to the same floor would then reload the pre-edit
+  // snapshot and the newest layers / strokes would silently disappear.
   if (floor && floor.id !== currentAnnotationFloorId) {
+    if (currentAnnotationFloorId) {
+      const prevFloor = state.floors.find((f) => f.id === currentAnnotationFloorId);
+      if (prevFloor) {
+        try { prevFloor.annotations = snapshotAnnotations(); }
+        catch (e) { console.warn("[explore] snapshot before switch failed", e); }
+      }
+    }
     attachStorey(floor.id, floor.annotationsUrl || null);
     loadAnnotations(floor.annotations || {});
     resetZoom();
@@ -1236,7 +1250,7 @@ if (btnAnnotate) {
 }
 
 // ── Boot ──
-const BUILD = "build 6.47"; // bump on each change so a stale (cached) JS is obvious in the header
+const BUILD = "build 6.48"; // bump on each change so a stale (cached) JS is obvious in the header
 initModal();
 // Restore a previously chosen standalone theme (host SET_THEME still overrides when embedded).
 try { const savedTheme = localStorage.getItem(THEME_KEY); if (savedTheme) applyTheme(savedTheme); } catch (_) { /* ignore */ }
