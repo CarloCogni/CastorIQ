@@ -44,6 +44,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -266,10 +267,20 @@ _KEYWORD_RULES: list[tuple[list[str], str, str]] = [
     ),
 ]
 
-# LLM batch size — 20 names per call is a good balance between latency and
-# token efficiency.  Anthropic prompt caching fires on the stable system prompt
-# starting from the second batch call.
+# LLM batch size — 20 names per call keeps individual Ollama responses fast.
+# Anthropic prompt caching fires on the stable system prompt from the second batch onward.
 _BATCH_SIZE = 20
+
+# Batches run sequentially so Ollama never queues multiple requests at once.
+# A hung Ollama call is bounded by the httpx read timeout (OLLAMA_REQUEST_TIMEOUT,
+# default 120 s) configured in core.llm._build_ollama — no extra wrapping needed.
+
+# Per-name LLM result cache — key by hash(name|coded_csi).
+# temperature=0 makes verdicts deterministic, so a 24 h TTL is safe.
+# First audit run primes the cache; every subsequent run for the same project
+# skips the LLM entirely for already-classified names.
+_NAME_CACHE_PREFIX = "audit_nm_"
+_NAME_CACHE_TTL = 86400  # 24 hours
 
 # Stable system prompt — qualifies for Anthropic ephemeral prompt caching.
 #
@@ -371,6 +382,14 @@ class _Candidate:
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+
+def _name_cache_key(name: str, coded_csi: str) -> str:
+    """Stable Django cache key for one (name, coded_csi) pair."""
+    import hashlib
+
+    digest = hashlib.md5(f"{name}|{coded_csi}".encode()).hexdigest()[:16]
+    return f"{_NAME_CACHE_PREFIX}{digest}"
 
 
 def _parse_csi(code: str) -> str:
@@ -484,8 +503,6 @@ def _llm_classify_batch(names: list[str], user) -> list[dict]:
 
 def _run_stage2(candidates: list[_Candidate], user) -> bool:
     """Classify all candidates via LLM.  Returns True if AI ran, False if skipped."""
-    from core.llm import LLMConfigurationError, LLMMasterKillError
-
     # Deduplicate by name — many tasks share the same name on different floors.
     seen: dict[str, int] = {}  # name → index in unique_names
     unique_names: list[str] = []
@@ -494,39 +511,90 @@ def _run_stage2(candidates: list[_Candidate], user) -> bool:
             seen[c.name] = len(unique_names)
             unique_names.append(c.name)
 
+    # ── Check Django cache for already-classified names ───────────────────────
+    from django.core.cache import cache
+
+    # Each unique_name is keyed by (name, coded_csi) — we need the coded_csi per
+    # candidate.  Build a name→coded_csi map (first match wins; all tasks sharing
+    # a name within a project also share their coded CSI).
+    name_to_coded_csi: dict[str, str] = {}
+    for c in candidates:
+        if c.name not in name_to_coded_csi:
+            name_to_coded_csi[c.name] = c.coded_csi
+
+    cache_keys = {n: _name_cache_key(n, name_to_coded_csi[n]) for n in unique_names}
+    cached_many = cache.get_many(list(cache_keys.values()))
+
+    # name_result_cache: name → result dict (pre-filled from Django cache)
+    name_result_cache: dict[str, dict] = {}
+    uncached_names: list[str] = []
+    for n in unique_names:
+        hit = cached_many.get(cache_keys[n])
+        if hit is not None:
+            name_result_cache[n] = hit
+        else:
+            uncached_names.append(n)
+
+    n_cached = len(unique_names) - len(uncached_names)
+    batches = [
+        uncached_names[i : i + _BATCH_SIZE] for i in range(0, len(uncached_names), _BATCH_SIZE)
+    ]
+    n_batches = len(batches)
+
     logger.info(
-        "Schedule audit Stage 2 — %d candidates, %d unique names",
+        "Schedule audit Stage 2 — %d candidates, %d unique names, "
+        "%d cached (skipped), %d need LLM → %d batch(es)",
         len(candidates),
         len(unique_names),
+        n_cached,
+        len(uncached_names),
+        n_batches,
     )
 
-    # Cache: name → LLM result dict (may stay {} on failed batches)
-    name_cache: dict[str, dict] = {n: {} for n in unique_names}
-    ai_ran = False
+    # name_cache: name → LLM result dict (stays {} when batch fails or times out).
+    # Starts pre-filled with cached hits; remaining slots filled by LLM batches.
+    # Each batch writes a disjoint key-set so concurrent writes are safe.
+    name_cache: dict[str, dict] = {**name_result_cache, **{n: {} for n in uncached_names}}
+    ai_ran = bool(n_cached)  # counts as "AI ran" if any cached result exists
+    t0 = time.perf_counter()
 
-    for batch_start in range(0, len(unique_names), _BATCH_SIZE):
-        batch = unique_names[batch_start : batch_start + _BATCH_SIZE]
-        try:
-            items = _llm_classify_batch(batch, user)
-            ai_ran = True
-            for item in items:
-                idx = int(item.get("id", 0)) - 1
-                if 0 <= idx < len(batch):
-                    name_cache[batch[idx]] = item
-        except (LLMConfigurationError, LLMMasterKillError) as exc:
-            logger.info(
-                "Schedule audit Stage 2: LLM unavailable (%s) — skipping all remaining batches",
-                exc,
-            )
-            break  # no point trying further batches
-        except Exception as exc:
-            logger.warning(
-                "Schedule audit Stage 2: batch %d–%d failed (%s) — names in batch → unavailable",
-                batch_start + 1,
-                batch_start + len(batch),
-                exc,
-            )
-            # Continue — remaining batches may succeed
+    if batches:
+        from core.llm import LLMConfigurationError, LLMMasterKillError
+
+        for batch_idx, batch in enumerate(batches):
+            try:
+                items = _llm_classify_batch(batch, user)
+                ai_ran = True
+                new_cache_entries: dict[str, dict] = {}
+                for item in items:
+                    idx = int(item.get("id", 0)) - 1
+                    if 0 <= idx < len(batch):
+                        name = batch[idx]
+                        name_cache[name] = item
+                        new_cache_entries[cache_keys[name]] = item
+                if new_cache_entries:
+                    cache.set_many(new_cache_entries, timeout=_NAME_CACHE_TTL)
+            except (LLMConfigurationError, LLMMasterKillError) as exc:
+                logger.info(
+                    "Schedule audit Stage 2: LLM unavailable (%s) — skipping remaining batches",
+                    exc,
+                )
+                break
+            except Exception as exc:
+                logger.warning(
+                    "Schedule audit Stage 2: batch %d/%d failed (%s) — names → unavailable",
+                    batch_idx + 1,
+                    n_batches,
+                    exc,
+                )
+
+    logger.info(
+        "Schedule audit Stage 2 done — %.1fs wall-clock, ai_ran=%s, cache_hits=%d/%d",
+        time.perf_counter() - t0,
+        ai_ran,
+        n_cached,
+        len(unique_names),
+    )
 
     if not ai_ran:
         for c in candidates:
