@@ -104,9 +104,19 @@
           <div class="annot-sect-row">
             <button class="annot-btn" id="annotUndo" title="Undo (Ctrl+Z)">↶</button>
             <button class="annot-btn" id="annotRedo" title="Redo (Ctrl+Shift+Z)">↷</button>
-            <button class="annot-btn" id="annotClear" title="Clear all annotations on this floor">🗑</button>
+            <button class="annot-btn" id="annotClear" title="Clear the active layer on this floor">🗑</button>
           </div>
           <span class="annot-sect-lbl">Akce</span>
+        </div>
+        <!-- Layers panel: every storey can carry several named overlay layers.
+             New strokes go to the active one (radio selection in the list);
+             toggle the eye on a layer to hide / show it independently. -->
+        <div class="annot-sect annot-layers-sect">
+          <div class="annot-layers" id="annotLayers" aria-label="Vrstvy"></div>
+          <div class="annot-sect-row">
+            <button class="annot-btn" id="annotLayerAdd" title="New layer">＋</button>
+          </div>
+          <span class="annot-sect-lbl">Vrstvy</span>
         </div>
       </div>
 

@@ -72,16 +72,57 @@
 /* Header toggle: lives in the module header alongside the other action buttons. */
 .annot-toggle.on{background:var(--acc-d)!important;border-color:var(--acc-b)!important;color:var(--acc)!important;}
 
+/* Layers panel — narrow column of rows. Each row carries an eye toggle, a
+   name (editable on double-click), the active-layer radio, and a trash
+   button. Drawing inputs always land on the row whose radio is on. */
+.annot-layers-sect{align-items:stretch;max-width:240px;}
+.annot-layers{
+  display:flex;flex-direction:column;gap:2px;
+  max-height:96px;overflow-y:auto;
+  padding:2px;border-radius:4px;
+  background:var(--p2);border:1px solid var(--b1);
+  min-width:200px;
+}
+.annot-layer{
+  display:flex;align-items:center;gap:4px;
+  padding:2px 4px;border-radius:3px;
+  font-family:var(--font-sans, Inter, sans-serif);font-size:11px;color:var(--t2);
+  cursor:default;
+}
+.annot-layer.on{background:var(--acc-d);color:var(--acc);}
+.annot-layer.hidden{opacity:.5;}
+.annot-layer-eye, .annot-layer-del{
+  width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;
+  background:transparent;border:0;color:inherit;cursor:pointer;font-size:12px;line-height:1;padding:0;border-radius:3px;
+}
+.annot-layer-eye:hover, .annot-layer-del:hover{background:var(--p1);}
+.annot-layer-name{
+  flex:1;background:transparent;border:0;color:inherit;font:inherit;
+  outline:none;padding:1px 2px;min-width:0;
+}
+.annot-layer-name:focus{background:var(--p1);border-radius:2px;}
+.annot-layer-radio{accent-color:var(--acc);margin:0 2px;}
+
+/* Fabric.js wraps our <canvas> in a <div class="canvas-container"> on init
+   AND sets position:relative on it. That kicks the wrapper into normal flow
+   (it sits next to / below the IMG instead of overlaying it) so every stroke
+   the user draws lands off the visible image — looks like "drawing doesn't
+   work". Forcing absolute + inset:0 brings the wrapper back over the image
+   so pencil / shape input renders where you'd expect. */
+.plan-stage .canvas-container{
+  position:absolute!important;
+  top:0!important;
+  left:0!important;
+  /* Fabric also sets explicit width/height in px (matched to canvas dims
+     via syncCanvasToImage), so we don't need to override those here. */
+}
+
 /* When Draw mode is on we lift the annotation canvas above the pin layer so
    tool pointer events hit it. View mode reverses the order so pins win and
    the pan handler underneath sees the events.
-   IMPORTANT: Fabric.js wraps our <canvas> in a <div class="canvas-container">
-   on init — pointer-events must apply to the WRAPPER as well, otherwise the
-   wrapper (which gets pointer-events:auto by default) silently swallows
-   pointerdown events even while the inner canvas is set to none. That was
-   the "pan only works on uploaded plans, not generated" symptom: the
-   wrapper had had time to mount over the generated PNG by the time the
-   user tried to drag. */
+   pointer-events must apply to the wrapper too (not just the inner canvas)
+   — otherwise the wrapper's default auto swallows pointerdown before pan or
+   pin events ever get a chance. */
 .exp-viewer.draw-mode .pin-layer{pointer-events:none;}
 .exp-viewer.draw-mode .annot-canvas,
 .exp-viewer.draw-mode .canvas-container,
