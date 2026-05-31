@@ -501,7 +501,7 @@ def _llm_classify_batch(names: list[str], user) -> list[dict]:
     return data
 
 
-def _run_stage2(candidates: list[_Candidate], user) -> bool:
+def _run_stage2(candidates: list[_Candidate], user, project_id: str) -> bool:
     """Classify all candidates via LLM.  Returns True if AI ran, False if skipped."""
     # Deduplicate by name — many tasks share the same name on different floors.
     seen: dict[str, int] = {}  # name → index in unique_names
@@ -535,6 +535,35 @@ def _run_stage2(candidates: list[_Candidate], user) -> bool:
         else:
             uncached_names.append(n)
 
+    # ── DB fallback: check project-level persistent cache for names not in
+    #    Django locmem cache (survives server restarts and 24-hour TTL expiry).
+    #    This prevents Ollama non-determinism from changing the confirmed set
+    #    between runs — once a name is classified it stays classified.
+    _db_name_cache: dict[str, dict] = {}
+    if uncached_names:
+        from environments.models import Project
+
+        try:
+            _db_name_cache = (
+                Project.objects.values_list("audit_name_cache", flat=True).get(pk=project_id) or {}
+            )
+        except Project.DoesNotExist:
+            pass
+
+        _db_warm: dict[str, dict] = {}
+        _still_uncached: list[str] = []
+        for n in uncached_names:
+            k = cache_keys[n]
+            if k in _db_name_cache:
+                name_result_cache[n] = _db_name_cache[k]
+                _db_warm[k] = _db_name_cache[k]
+            else:
+                _still_uncached.append(n)
+
+        if _db_warm:
+            cache.set_many(_db_warm, timeout=_NAME_CACHE_TTL)
+        uncached_names = _still_uncached
+
     n_cached = len(unique_names) - len(uncached_names)
     batches = [
         uncached_names[i : i + _BATCH_SIZE] for i in range(0, len(uncached_names), _BATCH_SIZE)
@@ -557,6 +586,9 @@ def _run_stage2(candidates: list[_Candidate], user) -> bool:
     name_cache: dict[str, dict] = {**name_result_cache, **{n: {} for n in uncached_names}}
     ai_ran = bool(n_cached)  # counts as "AI ran" if any cached result exists
     t0 = time.perf_counter()
+    _all_new_db_entries: dict[
+        str, dict
+    ] = {}  # accumulate newly LLM-computed verdicts for DB persist
 
     if batches:
         from core.llm import LLMConfigurationError, LLMMasterKillError
@@ -574,6 +606,7 @@ def _run_stage2(candidates: list[_Candidate], user) -> bool:
                         new_cache_entries[cache_keys[name]] = item
                 if new_cache_entries:
                     cache.set_many(new_cache_entries, timeout=_NAME_CACHE_TTL)
+                    _all_new_db_entries.update(new_cache_entries)
             except (LLMConfigurationError, LLMMasterKillError) as exc:
                 logger.info(
                     "Schedule audit Stage 2: LLM unavailable (%s) — skipping remaining batches",
@@ -587,6 +620,21 @@ def _run_stage2(candidates: list[_Candidate], user) -> bool:
                     n_batches,
                     exc,
                 )
+
+    # Persist any newly LLM-computed verdicts to the project DB name cache so
+    # subsequent re-runs don't need to call the LLM again (stable across restarts).
+    if _all_new_db_entries:
+        from environments.models import Project
+
+        try:
+            merged = {**_db_name_cache, **_all_new_db_entries}
+            Project.objects.filter(pk=project_id).update(audit_name_cache=merged)
+            logger.info(
+                "Schedule audit Stage 2 — persisted %d new name verdicts to DB",
+                len(_all_new_db_entries),
+            )
+        except Exception as exc:
+            logger.warning("Schedule audit Stage 2 — DB name cache persist failed: %s", exc)
 
     logger.info(
         "Schedule audit Stage 2 done — %.1fs wall-clock, ai_ran=%s, cache_hits=%d/%d",
@@ -660,7 +708,7 @@ def run_section_mismatch_audit(project_id: str, user=None) -> dict:
     if not candidates:
         return {"has_data": False, "stage1_candidates": 0}
 
-    ai_ran = _run_stage2(candidates, user)
+    ai_ran = _run_stage2(candidates, user, project_id)
 
     confirmed = [c for c in candidates if c.verdict == "confirmed"]
     needs_review = [c for c in candidates if c.verdict == "needs_review"]

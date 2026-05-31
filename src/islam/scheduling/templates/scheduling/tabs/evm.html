@@ -84,6 +84,12 @@
             </div>
 
         </div>
+
+        <!-- Shown only when screen is in Audit-suggested mode to clarify DS uses AS-CODED -->
+        <div id="evm-decision-coded-note" class="d-none"
+             style="font-size:0.7rem; color:var(--bs-secondary-color); margin-top:6px;">
+            <i class="bi bi-info-circle"></i> Based on original P6 coding — the executive summary uses trade-agnostic metrics (SPI, CPI, DCMA) and is unaffected by the audit toggle.
+        </div>
     </div>
 
     <!-- Cost guidance banner — shown when no schedule costs or QTO data available -->
@@ -2179,16 +2185,17 @@
         function _setMode(m) {
             if (m === _mode) return;
             _mode = m;
-            const btnCoded = document.getElementById("btn-view-coded");
-            const btnAudit = document.getElementById("btn-view-audit");
-            const note     = document.getElementById("evm-audit-active-note");
-            const codedNote= document.getElementById("evm-audit-coded-note");
-            if (btnCoded) btnCoded.classList.toggle("active", m === "coded");
-            if (btnAudit) btnAudit.classList.toggle("active", m === "corrected");
+            const btnCoded   = document.getElementById("btn-view-coded");
+            const btnAudit   = document.getElementById("btn-view-audit");
+            const note       = document.getElementById("evm-audit-active-note");
+            const codedNote  = document.getElementById("evm-audit-coded-note");
+            const dsNote     = document.getElementById("evm-decision-coded-note");
+            if (btnCoded)  btnCoded.classList.toggle("active", m === "coded");
+            if (btnAudit)  btnAudit.classList.toggle("active", m === "corrected");
             if (note)      note.classList.toggle("d-none", m !== "corrected");
             if (codedNote) codedNote.style.display = m === "corrected" ? "none" : "";
+            if (dsNote)    dsNote.classList.toggle("d-none", m !== "corrected");
             const names = Object.keys(_reloaders);
-            console.log("[audit toggle] mode →", m, "| reloaders:", names);
             names.forEach(name => {
                 try { _reloaders[name](m); }
                 catch (e) { console.error("[audit toggle] reloader", name, "threw:", e); }
@@ -2330,7 +2337,6 @@
             const results = document.getElementById("drc-results");
             const mode = auditMode || (window._evmAudit ? window._evmAudit.mode() : "coded");
             const url  = mode === "corrected" ? DRC_URL + "?audit_view=corrected" : DRC_URL;
-            console.log("[drc reload] mode=", mode, "url=", url);
             if (auditMode && results) results.style.opacity = "0.45";
             try {
                 const resp = await fetch(url);
@@ -3027,7 +3033,6 @@
             const results = document.getElementById("tl-results");
             const mode = auditMode || (window._evmAudit ? window._evmAudit.mode() : "coded");
             const url  = mode === "corrected" ? BASE_URL + "?audit_view=corrected" : BASE_URL;
-            console.log("[tl reload] mode=", mode, "url=", url);
             if (auditMode && results) results.style.opacity = "0.45";
             try {
                 const resp = await fetch(url);
@@ -3446,7 +3451,6 @@
             const results = document.getElementById("anomaly-results");
             const mode = auditMode || (window._evmAudit ? window._evmAudit.mode() : "coded");
             const url  = mode === "corrected" ? ANOMALY_URL + "?audit_view=corrected" : ANOMALY_URL;
-            console.log("[anomaly reload] mode=", mode, "url=", url);
             if (auditMode && results) results.style.opacity = "0.45";
             try {
                 const resp = await fetch(url);
@@ -3849,7 +3853,6 @@
 
             const mode = auditMode || (window._evmAudit ? window._evmAudit.mode() : "coded");
             const url  = mode === "corrected" ? HEALTH_URL + "?audit_view=corrected" : HEALTH_URL;
-            console.log("[health reload] mode=", mode, "url=", url);
             if (auditMode && resultsEl) resultsEl.style.opacity = "0.45";
 
             let data;
