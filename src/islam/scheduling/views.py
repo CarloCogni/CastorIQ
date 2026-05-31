@@ -1357,6 +1357,21 @@ class TimeLocationView(ProjectAccessMixin, View):
         return JsonResponse(result)
 
 
+class ScheduleAuditSectionMismatchView(ProjectAccessMixin, View):
+    """JSON — Schedule Audit Layer 1: activity-name vs CSI-code section mismatches."""
+
+    def get(self, request, **kwargs: object) -> JsonResponse:
+        from .services.schedule_audit import run_section_mismatch_audit
+
+        project = self.get_project()
+        try:
+            result = run_section_mismatch_audit(str(project.pk), user=request.user)
+        except Exception as exc:
+            logger.exception("Section mismatch audit failed for project %s", project.pk)
+            return JsonResponse({"error": str(exc)}, status=500)
+        return JsonResponse(result)
+
+
 class DelayRootCauseView(ProjectAccessMixin, View):
     """JSON — delay root-cause clustering via CPM driving-relationship propagation."""
 
