@@ -104,6 +104,19 @@
                             trend analysis, critical path, WBS risk scores, and constraint data.
                         </p>
                     </div>
+                    <div>
+                        <span class="badge" style="background:rgba(245,158,11,.12); color:#d97706; border:1px solid rgba(245,158,11,.3);">Schedule Audit — Section Mismatches</span>
+                        <p class="text-secondary mb-0">
+                            Quality gate that compares each activity <strong>name</strong> against its
+                            planner-coded <strong>CSI MasterFormat division</strong> and flags likely
+                            mis-codes for human review. Two stages: (1) fast keyword pre-filter narrows
+                            ~10 k tasks to candidates in milliseconds; (2) LLM classifies each unique
+                            candidate name and assigns a verdict — <em>Confirmed mismatch</em>,
+                            <em>Uncertain</em>, or <em>Likely OK</em> (keyword false-positive). The
+                            planner's original CSI code is never changed; all flags are advisory.
+                            Correct mis-coded activities in P6 and re-import to resolve.
+                        </p>
+                    </div>
                 </div>
 
                 <!-- 4. Cost basis -->

@@ -152,6 +152,11 @@ urlpatterns = [
         name="timelocation",
     ),
     path(
+        "projects/<uuid:pk>/schedule/audit/section-mismatches/",
+        scheduling_views.ScheduleAuditSectionMismatchView.as_view(),
+        name="audit_section_mismatches",
+    ),
+    path(
         "projects/<uuid:pk>/schedule/delay-rootcause/",
         scheduling_views.DelayRootCauseView.as_view(),
         name="delay_rootcause",

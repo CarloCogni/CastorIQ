@@ -783,6 +783,108 @@
         </div>
     </div>
 
+    <!-- Schedule Audit — Section Mismatches -->
+    <div id="evm-audit-sm-section"
+         style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
+
+        <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+            <i class="bi bi-shield-check" style="color:#f59e0b; font-size:1rem;"></i>
+            <span style="font-size:0.8rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:0.05em;">Schedule Audit</span>
+            <span class="badge rounded-pill"
+                  style="font-size:0.65rem; background:rgba(245,158,11,.12); color:#f59e0b; border:1px solid rgba(245,158,11,.3); padding:2px 7px;">Quality Gate</span>
+            <span style="font-size:0.7rem; color:var(--bs-secondary-color);">Activity name vs CSI code — flagged for review, not auto-corrected</span>
+            <button type="button"
+                    class="help-pill ms-auto"
+                    data-bs-toggle="modal"
+                    data-bs-target="#evmHelpModal"
+                    title="How Schedule Audit works"
+                    aria-label="How Schedule Audit works">
+                <i class="bi bi-question-circle"></i>
+            </button>
+        </div>
+
+        <!-- Loading -->
+        <div id="audit-sm-loading" class="d-flex align-items-center gap-2"
+             style="font-size:0.78rem; color:var(--bs-secondary-color); padding:4px 0;">
+            <span class="spinner-border spinner-border-sm"></span> Running AI review of section mismatches…
+        </div>
+
+        <!-- No data -->
+        <div id="audit-sm-nodata" class="d-none"
+             style="font-size:0.78rem; color:var(--bs-secondary-color); padding:4px 0;"></div>
+
+        <!-- Results -->
+        <div id="audit-sm-results" class="d-none">
+
+            <!-- Summary strip -->
+            <div id="audit-sm-summary"
+                 class="d-flex flex-wrap align-items-center gap-4 p-3 rounded-3 mb-3"
+                 style="background:var(--bs-secondary-bg); font-size:0.78rem;"></div>
+
+            <!-- Accordion: Confirmed | Uncertain | Unavailable -->
+            <div class="accordion" id="audit-sm-accordion">
+
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button" type="button"
+                                data-bs-toggle="collapse" data-bs-target="#audit-sm-confirmed-body"
+                                style="font-size:0.78rem; padding:10px 14px;">
+                            <i class="bi bi-exclamation-circle-fill me-2" style="color:#dc2626;"></i>
+                            <span id="audit-sm-confirmed-label">Confirmed Mismatches</span>
+                        </button>
+                    </h2>
+                    <div id="audit-sm-confirmed-body" class="accordion-collapse collapse show">
+                        <div class="accordion-body p-2">
+                            <div id="audit-sm-confirmed-content"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button"
+                                data-bs-toggle="collapse" data-bs-target="#audit-sm-uncertain-body"
+                                style="font-size:0.78rem; padding:10px 14px;">
+                            <i class="bi bi-question-circle-fill me-2" style="color:#d97706;"></i>
+                            <span id="audit-sm-uncertain-label">Uncertain — Human Review Needed</span>
+                        </button>
+                    </h2>
+                    <div id="audit-sm-uncertain-body" class="accordion-collapse collapse">
+                        <div class="accordion-body p-2">
+                            <div id="audit-sm-uncertain-content"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="accordion-item" id="audit-sm-unavailable-item" style="display:none;">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button"
+                                data-bs-toggle="collapse" data-bs-target="#audit-sm-unavailable-body"
+                                style="font-size:0.78rem; padding:10px 14px;">
+                            <i class="bi bi-info-circle me-2" style="color:#6b7280;"></i>
+                            <span id="audit-sm-unavailable-label">AI Review Unavailable</span>
+                        </button>
+                    </h2>
+                    <div id="audit-sm-unavailable-body" class="accordion-collapse collapse">
+                        <div class="accordion-body p-2">
+                            <div id="audit-sm-unavailable-content"></div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Caption -->
+            <div id="audit-sm-caption"
+                 style="font-size:0.67rem; color:var(--bs-secondary-color); margin-top:10px; line-height:1.6; border-top:1px solid var(--bs-border-color); padding-top:8px;">
+                <strong>Advisory only.</strong> The planner's CSI coding remains authoritative; review and
+                correct in P6 if needed. AI suggestions follow CSI MasterFormat 2016 divisions.
+                LIKELY_OK items (keyword false-positives confirmed by AI) are not shown.
+            </div>
+
+        </div>
+    </div>
+
     <!-- Report Generator -->
     <div id="evm-report-section"
          style="border:1px solid var(--bs-border-color); border-radius:8px; padding:14px 16px; background:var(--bs-body-bg);">
@@ -3154,6 +3256,152 @@
         }
 
         loadAnomalies();
+    }());
+
+    /* ── Schedule Audit — Section Mismatches ────────────────────────────── */
+    (function () {
+        const AUDIT_URL = "{% url 'islam:audit_section_mismatches' project.pk %}";
+
+        function _esc(s) {
+            return String(s)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;");
+        }
+
+        /* Confidence badge */
+        function _confBadge(conf) {
+            if (!conf) return "";
+            const styles = {
+                high:    "background:rgba(22,163,74,.12);color:#16a34a;border:1px solid rgba(22,163,74,.3);",
+                medium:  "background:rgba(245,158,11,.12);color:#d97706;border:1px solid rgba(245,158,11,.3);",
+                low:     "background:rgba(107,114,128,.12);color:#6b7280;border:1px solid rgba(107,114,128,.3);",
+                uncertain: "background:rgba(107,114,128,.12);color:#6b7280;border:1px solid rgba(107,114,128,.3);",
+            };
+            const style = styles[conf] || styles.low;
+            return `<span style="font-size:0.65rem;border-radius:4px;padding:1px 6px;${style}">${_esc(conf)}</span>`;
+        }
+
+        /* Verdict badge */
+        function _verdictBadge(verdict) {
+            if (verdict === "confirmed")
+                return `<span style="font-size:0.65rem;border-radius:4px;padding:1px 6px;background:rgba(220,38,38,.12);color:#dc2626;border:1px solid rgba(220,38,38,.3);">confirmed</span>`;
+            if (verdict === "uncertain")
+                return `<span style="font-size:0.65rem;border-radius:4px;padding:1px 6px;background:rgba(217,119,6,.12);color:#d97706;border:1px solid rgba(217,119,6,.3);">uncertain</span>`;
+            return `<span style="font-size:0.65rem;border-radius:4px;padding:1px 6px;background:rgba(107,114,128,.12);color:#6b7280;border:1px solid rgba(107,114,128,.3);">${_esc(verdict)}</span>`;
+        }
+
+        /* Render a table into a container div */
+        function _renderTable(containerId, items) {
+            const el = document.getElementById(containerId);
+            if (!el) return;
+            if (!items.length) {
+                el.innerHTML = `<p style="font-size:0.78rem;color:var(--bs-secondary-color);padding:8px 4px;margin:0;">None.</p>`;
+                return;
+            }
+            let html = `<div style="overflow-x:auto;">
+                <table class="table table-sm table-hover mb-0" style="font-size:0.73rem;">
+                <thead style="position:sticky;top:0;background:var(--bs-secondary-bg);">
+                    <tr>
+                        <th style="width:28%;min-width:160px;">Activity name</th>
+                        <th style="width:14%;min-width:110px;">Code</th>
+                        <th style="width:13%;">Coded trade</th>
+                        <th style="width:13%;">Suggested trade</th>
+                        <th style="width:7%;">Conf.</th>
+                        <th>AI reason</th>
+                    </tr>
+                </thead>
+                <tbody>`;
+            items.forEach(it => {
+                const suggested = it.ai_trade
+                    ? _esc(it.ai_trade)
+                    : `<span style="color:var(--bs-secondary-color);">—</span>`;
+                const reason = it.ai_reason
+                    ? _esc(it.ai_reason)
+                    : `<span style="color:var(--bs-secondary-color);font-style:italic;">AI review unavailable</span>`;
+                html += `<tr>
+                    <td style="max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${_esc(it.name)}">${_esc(it.name)}</td>
+                    <td style="font-family:monospace;font-size:0.68rem;">${_esc(it.activity_code)}</td>
+                    <td>${_esc(it.coded_trade)}</td>
+                    <td>${suggested}</td>
+                    <td>${_confBadge(it.ai_confidence)}</td>
+                    <td style="max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${it.ai_reason ? _esc(it.ai_reason) : ''}">${reason}</td>
+                </tr>`;
+            });
+            html += `</tbody></table></div>`;
+            el.innerHTML = html;
+        }
+
+        /* Summary strip */
+        function _renderSummary(d) {
+            const el = document.getElementById("audit-sm-summary");
+            if (!el) return;
+
+            const aiLabel = d.ai_ran
+                ? `<span style="color:#16a34a;font-size:0.72rem;">✓ AI review ran</span>`
+                : `<span style="color:#6b7280;font-size:0.72rem;">⚠ AI review unavailable — keyword candidates only</span>`;
+
+            el.innerHTML = [
+                `<div><span style="font-size:1.1rem;font-weight:700;color:#dc2626;">${d.confirmed_count}</span><br><span style="font-size:0.68rem;color:var(--bs-secondary-color);">Confirmed mismatches</span></div>`,
+                `<div><span style="font-size:1.1rem;font-weight:700;color:#d97706;">${d.uncertain_count}</span><br><span style="font-size:0.68rem;color:var(--bs-secondary-color);">Uncertain</span></div>`,
+                `<div><span style="font-size:1.1rem;font-weight:700;color:#16a34a;">${d.likely_ok_count}</span><br><span style="font-size:0.68rem;color:var(--bs-secondary-color);">Likely OK (kw false-pos)</span></div>`,
+                `<div style="border-left:1px solid var(--bs-border-color);padding-left:16px;">`,
+                `<span style="font-size:0.72rem;color:var(--bs-secondary-color);">${d.stage1_candidates} keyword candidates from floor-located tasks.</span><br>`,
+                aiLabel,
+                `</div>`,
+            ].join("");
+        }
+
+        /* Update accordion labels with counts */
+        function _setLabel(id, base, count, countColor) {
+            const el = document.getElementById(id);
+            if (el) el.innerHTML = `${base} <span style="color:${countColor};font-weight:600;">(${count})</span>`;
+        }
+
+        async function loadAudit() {
+            const loading   = document.getElementById("audit-sm-loading");
+            const nodata    = document.getElementById("audit-sm-nodata");
+            const results   = document.getElementById("audit-sm-results");
+            const unavailEl = document.getElementById("audit-sm-unavailable-item");
+            try {
+                const resp = await fetch(AUDIT_URL);
+                const d = await resp.json();
+                if (loading) loading.classList.add("d-none");
+                if (!d.has_data) {
+                    if (nodata) {
+                        nodata.classList.remove("d-none");
+                        nodata.textContent = "No floor-located tasks found — import a schedule first.";
+                    }
+                    return;
+                }
+                if (results) results.classList.remove("d-none");
+
+                _renderSummary(d);
+                _setLabel("audit-sm-confirmed-label",  "Confirmed Mismatches",       d.confirmed_count,  "#dc2626");
+                _setLabel("audit-sm-uncertain-label",  "Uncertain — Review Needed",  d.uncertain_count,  "#d97706");
+                _setLabel("audit-sm-unavailable-label","AI Review Unavailable",       d.unavailable_count,"#6b7280");
+
+                const confirmed  = d.items.filter(i => i.verdict === "confirmed");
+                const uncertain  = d.items.filter(i => i.verdict === "uncertain");
+                const unavailable= d.items.filter(i => i.verdict === "unavailable");
+
+                _renderTable("audit-sm-confirmed-content",  confirmed);
+                _renderTable("audit-sm-uncertain-content",  uncertain);
+
+                if (unavailable.length && unavailEl) {
+                    unavailEl.style.display = "";
+                    _renderTable("audit-sm-unavailable-content", unavailable);
+                }
+            } catch (_e) {
+                if (loading) loading.classList.add("d-none");
+                if (nodata) {
+                    nodata.classList.remove("d-none");
+                    nodata.textContent = "Audit unavailable — check server logs.";
+                }
+            }
+        }
+
+        loadAudit();
     }());
 
     /* ── Decision Summary ────────────────────────────────────────────────── */
