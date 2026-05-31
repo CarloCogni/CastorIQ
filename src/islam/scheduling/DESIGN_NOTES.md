@@ -304,6 +304,8 @@ ephemeral prompt caching so only the first batch pays full input-token cost. On 
 unavailability (`LLMConfigurationError`, `LLMMasterKillError`), all candidates receive
 `verdict=unavailable` and `ai_ran=False` — no exception is raised.
 
+**Provider note:** LLM provider for the audit is Ollama (local) by design — keeps the audit zero-cost. The name-level Django cache (24h TTL, temperature=0) makes repeat runs instant. Do NOT switch to a paid cloud provider; the ~140s cold first-run is acceptable and the cache handles the rest.
+
 **Stage 3 — verdict assignment:**
 
 | AI output | Verdict | Meaning |
@@ -406,6 +408,125 @@ that never refuses is miscalibrated regardless of how good its confirmations loo
 A few real mismatches may sit in `needs_review` rather than `confirmed`. That is
 acceptable: a review queue where 95% of confirmed items are genuine errors is more
 useful than one where planners must second-guess every flag. Precision over recall.
+
+---
+
+### Audit-suggested view (toggle)
+
+The toggle lets a user see what the analytics would look like if every **confirmed**
+mismatch were corrected — without touching the underlying schedule data.
+
+#### Two-layer design
+
+| Layer | What it is | Source of record |
+|-------|-----------|-----------------|
+| **As-coded** (default) | Original P6 CSI codes, exactly as the planner entered them | Always |
+| **Audit-suggested** | Confirmed overrides layered on top at query time | Advisory only |
+
+The toggle is opt-in; the default is always As-coded. The original P6 CSI code on each
+task is **never modified** — `task.activity_code` is read-only from the audit's
+perspective. The override is a lookup table applied at analytics-query time: every
+trade-based service (`timelocation.py`, `delay_rootcause.py`, `anomaly_detect.py`,
+`floor_health.py`) accepts an optional `override_map` dict; `None` = As-coded, a populated
+dict = Audit-suggested. Switching modes is a fetch, not a write.
+
+#### Override map — confirmed-only, DB-persisted
+
+`trade_resolver.py · build_override_map(audit_result)` extracts `{task_pk: ai_csi}` from
+**confirmed-verdict items only** — `needs_review` and `uncertain` items are excluded. The
+map is persisted in `Project.audit_override_map` (a `JSONField`), not in the Django cache,
+so it survives server restarts. On the next page load the toggle button is immediately
+enabled without re-running the audit.
+
+The cache (`audit_overrides_` prefix, 2-hour TTL) is a warm-path optimisation on top of
+the DB value; `load_override_map()` always falls back to the DB on a cache miss, and an
+empty cache hit is treated as a miss so a stale empty entry can never shadow a real map.
+
+#### Determinism — per-name LLM verdicts in the DB
+
+**The problem:** Ollama at `temperature=0` is still non-deterministic across cold LLM
+calls due to GPU floating-point parallelism. Without stabilisation, re-running the audit
+after a server restart (which clears the Django locmem cache) could shift the confirmed
+count by 10–20 items, silently changing the override map and every downstream analytic.
+
+**The fix:** `Project.audit_name_cache` (`JSONField`) stores `{md5_key: llm_result_dict}`
+for every name the LLM has classified. `_run_stage2()` checks this DB field as a cold
+fallback after the Django locmem cache miss — before calling the LLM. After each batch of
+new LLM calls, the new entries are merged back into the DB field in a single `UPDATE`.
+The effective lookup order is:
+
+```
+1. Django locmem cache   (fast path, 24h TTL)
+2. Project.audit_name_cache  (DB, no TTL — survives restarts)
+3. LLM call              (only for truly new names; result written to 1 + 2)
+```
+
+Once a `(name, coded_csi)` pair has been classified, it stays classified permanently.
+Re-running the audit produces the **same confirmed set** regardless of server restarts or
+cache expiry. The count can only shift if the DB field is explicitly cleared, or if new
+tasks with previously-unseen names are added to the schedule.
+
+**Caveat:** on the very first run after clearing `audit_name_cache`, the LLM IS called for
+all candidate names. That run may produce a different count than a prior pre-fix run (which
+is expected: the old result was non-deterministic). From the second run onward the count
+is stable.
+
+#### Toggle-linked analytics — live-state, generation-guarded
+
+Four analytics respond to the toggle: Time-Location, Delay Root-Cause, Anomaly Detection,
+Floor Health. Each follows the same pattern:
+
+**Mode is read live at fetch time, not captured at render time.**
+The load function receives the mode string as a parameter from the toggle controller
+(`_setMode(m)` → `loadX(m)`). Inside the function, `const mode = auditMode || _evmAudit.mode()`
+is evaluated fresh on every call — no closure captures. This was the class of bug that
+caused the Time-Location hover to show stale data (fixed: hover now reads `_highlightKeys`
+directly from IIFE scope, not from a render-time `const anyHighlight` snapshot).
+
+**Generation counters discard superseded async responses.**
+Each chart holds an IIFE-scoped counter (`_drcGen`, `_anomalyGen`, `_healthGen`).
+Every load call increments its counter and saves the value as `const gen`. After
+`await resp.json()`, the guard `if (gen !== _XxxGen) return` discards responses from
+toggling-while-inflight — preventing a slow "corrected" response from overwriting a newer
+"coded" render. The opacity fade is also reverted only by the winning response.
+
+**Handler replace semantics (no accumulation).**
+Floor Health sets `grid.onmouseover = ...` and `grid.onmouseout = ...` (property
+assignment) so each reload replaces the previous handler. The prior `addEventListener`
+pattern accumulated a new listener pair on every toggle, eventually firing multiple stale
+closures on each hover. All other toggle charts use HTML rendering with no persistent
+handlers, so accumulation was not an issue there.
+
+**Audit-suggested banner.**
+When a chart renders in corrected mode it checks `data.using_audit_overrides &&
+data.n_overridden > 0` and shows an amber inline banner describing how many confirmed
+reclassifications were applied. The banner is hidden when the chart returns to As-coded
+mode. The Decision Summary section shows a separate static note ("Based on original P6
+coding") whenever the screen is in corrected mode, since its blocks are trade-agnostic
+(SPI/CPI, DCMA score, CPM root-cause tasks) and do not change with the toggle.
+
+#### Report generator and Decision Summary — always As-coded
+
+`report_generator.py · gather_report_data()` calls all services without an `override_map`.
+Both the PDF and DOCX headers carry a gray note: *"All values reflect original P6 coding.
+Audit-suggested reclassifications are not applied to reports."* This is intentional: a
+PDF report is a formal record and should reflect the signed-off schedule, not an advisory
+reclassification that the planner has not yet acted on.
+
+`decision_layer.py · compute_decision_summary()` follows the same rule: all blocks use
+As-coded data. Block 1 (SPI/CPI/forecast) and Block 3 (top CPM delay tasks) are not
+affected by trade codes at all; Block 2 (DCMA/anomaly) does use trade peer groups for
+statistical outlier detection, but those outlier counts are advisory and the executive
+summary is not the right place to surface an unconfirmed reclassification.
+
+#### Operational caveat
+
+The override map is advisory. It reflects whatever the audit produced on the run whose
+results are stored in `Project.audit_override_map`. The correct long-term action is for
+the planner to inspect the confirmed mismatches, decide which ones are genuine errors, and
+correct the CSI codes in P6. After a P6 re-import and re-audit, the new override map will
+reflect the corrected baseline. **The tool never writes back to P6 and never auto-applies
+corrections.** The toggle is a what-if lens, not a patch.
 
 ---
 
