@@ -803,8 +803,18 @@
             </button>
         </div>
 
+        <!-- Idle prompt (shown until user clicks Run) -->
+        <div id="audit-sm-idle" class="d-flex align-items-center gap-3"
+             style="font-size:0.78rem; color:var(--bs-secondary-color); padding:4px 0;">
+            <button id="audit-sm-run-btn" type="button" class="btn btn-sm btn-outline-warning"
+                    style="font-size:0.74rem; padding:3px 12px;">
+                <i class="bi bi-play-fill me-1"></i>Run Audit
+            </button>
+            <span>Quality gate — run manually before approving the schedule. Takes ~30 s (AI review).</span>
+        </div>
+
         <!-- Loading -->
-        <div id="audit-sm-loading" class="d-flex align-items-center gap-2"
+        <div id="audit-sm-loading" class="d-none d-flex align-items-center gap-2"
              style="font-size:0.78rem; color:var(--bs-secondary-color); padding:4px 0;">
             <span class="spinner-border spinner-border-sm"></span> Running AI review of section mismatches…
         </div>
@@ -3384,11 +3394,16 @@
         }
 
         async function loadAudit() {
+            const idle         = document.getElementById("audit-sm-idle");
             const loading      = document.getElementById("audit-sm-loading");
             const nodata       = document.getElementById("audit-sm-nodata");
             const results      = document.getElementById("audit-sm-results");
             const nrItem       = document.getElementById("audit-sm-needs-review-item");
             const unavailEl    = document.getElementById("audit-sm-unavailable-item");
+
+            if (idle)    idle.classList.add("d-none");
+            if (loading) loading.classList.remove("d-none");
+
             try {
                 const resp = await fetch(AUDIT_URL);
                 const d = await resp.json();
@@ -3427,6 +3442,7 @@
                 }
             } catch (_e) {
                 if (loading) loading.classList.add("d-none");
+                if (idle)    idle.classList.remove("d-none");
                 if (nodata) {
                     nodata.classList.remove("d-none");
                     nodata.textContent = "Audit unavailable — check server logs.";
@@ -3434,7 +3450,13 @@
             }
         }
 
-        loadAudit();
+        const _runBtn = document.getElementById("audit-sm-run-btn");
+        if (_runBtn) {
+            _runBtn.addEventListener("click", function () {
+                this.disabled = true;
+                loadAudit();
+            });
+        }
     }());
 
     /* ── Decision Summary ────────────────────────────────────────────────── */
