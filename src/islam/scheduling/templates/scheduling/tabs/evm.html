@@ -840,13 +840,34 @@
                     </div>
                 </div>
 
+                <!-- Needs Review — hidden until data loads, shown when needs_review_count > 0 -->
+                <div class="accordion-item" id="audit-sm-needs-review-item" style="display:none;">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button"
+                                data-bs-toggle="collapse" data-bs-target="#audit-sm-needs-review-body"
+                                style="font-size:0.78rem; padding:10px 14px;">
+                            <i class="bi bi-exclamation-triangle-fill me-2" style="color:#f59e0b;"></i>
+                            <span id="audit-sm-needs-review-label">Needs Review (medium confidence)</span>
+                        </button>
+                    </h2>
+                    <div id="audit-sm-needs-review-body" class="accordion-collapse collapse">
+                        <div class="accordion-body p-2">
+                            <p style="font-size:0.7rem; color:var(--bs-secondary-color); margin-bottom:8px;">
+                                AI suggested a different division at medium confidence — the planner's coding
+                                may be defensible (scope-based or gray-area), but worth a manual check.
+                            </p>
+                            <div id="audit-sm-needs-review-content"></div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="accordion-item">
                     <h2 class="accordion-header">
                         <button class="accordion-button collapsed" type="button"
                                 data-bs-toggle="collapse" data-bs-target="#audit-sm-uncertain-body"
                                 style="font-size:0.78rem; padding:10px 14px;">
                             <i class="bi bi-question-circle-fill me-2" style="color:#d97706;"></i>
-                            <span id="audit-sm-uncertain-label">Uncertain — Human Review Needed</span>
+                            <span id="audit-sm-uncertain-label">Uncertain</span>
                         </button>
                     </h2>
                     <div id="audit-sm-uncertain-body" class="accordion-collapse collapse">
@@ -879,7 +900,9 @@
                  style="font-size:0.67rem; color:var(--bs-secondary-color); margin-top:10px; line-height:1.6; border-top:1px solid var(--bs-border-color); padding-top:8px;">
                 <strong>Advisory only.</strong> The planner's CSI coding remains authoritative; review and
                 correct in P6 if needed. AI suggestions follow CSI MasterFormat 2016 divisions.
-                LIKELY_OK items (keyword false-positives confirmed by AI) are not shown.
+                <strong>Confirmed</strong> = high-confidence clear error.
+                <strong>Needs review</strong> = medium-confidence, planner's choice may be defensible.
+                <strong>Likely OK</strong> items (keyword false-positives cleared by AI) are not shown.
             </div>
 
         </div>
@@ -3337,14 +3360,16 @@
             const el = document.getElementById("audit-sm-summary");
             if (!el) return;
 
+            const nr = d.needs_review_count ?? 0;
             const aiLabel = d.ai_ran
                 ? `<span style="color:#16a34a;font-size:0.72rem;">✓ AI review ran</span>`
                 : `<span style="color:#6b7280;font-size:0.72rem;">⚠ AI review unavailable — keyword candidates only</span>`;
 
             el.innerHTML = [
-                `<div><span style="font-size:1.1rem;font-weight:700;color:#dc2626;">${d.confirmed_count}</span><br><span style="font-size:0.68rem;color:var(--bs-secondary-color);">Confirmed mismatches</span></div>`,
+                `<div><span style="font-size:1.1rem;font-weight:700;color:#dc2626;">${d.confirmed_count}</span><br><span style="font-size:0.68rem;color:var(--bs-secondary-color);">Confirmed (high conf)</span></div>`,
+                `<div><span style="font-size:1.1rem;font-weight:700;color:#f59e0b;">${nr}</span><br><span style="font-size:0.68rem;color:var(--bs-secondary-color);">Needs review (med conf)</span></div>`,
                 `<div><span style="font-size:1.1rem;font-weight:700;color:#d97706;">${d.uncertain_count}</span><br><span style="font-size:0.68rem;color:var(--bs-secondary-color);">Uncertain</span></div>`,
-                `<div><span style="font-size:1.1rem;font-weight:700;color:#16a34a;">${d.likely_ok_count}</span><br><span style="font-size:0.68rem;color:var(--bs-secondary-color);">Likely OK (kw false-pos)</span></div>`,
+                `<div><span style="font-size:1.1rem;font-weight:700;color:#16a34a;">${d.likely_ok_count}</span><br><span style="font-size:0.68rem;color:var(--bs-secondary-color);">Likely OK (cleared)</span></div>`,
                 `<div style="border-left:1px solid var(--bs-border-color);padding-left:16px;">`,
                 `<span style="font-size:0.72rem;color:var(--bs-secondary-color);">${d.stage1_candidates} keyword candidates from floor-located tasks.</span><br>`,
                 aiLabel,
@@ -3359,10 +3384,11 @@
         }
 
         async function loadAudit() {
-            const loading   = document.getElementById("audit-sm-loading");
-            const nodata    = document.getElementById("audit-sm-nodata");
-            const results   = document.getElementById("audit-sm-results");
-            const unavailEl = document.getElementById("audit-sm-unavailable-item");
+            const loading      = document.getElementById("audit-sm-loading");
+            const nodata       = document.getElementById("audit-sm-nodata");
+            const results      = document.getElementById("audit-sm-results");
+            const nrItem       = document.getElementById("audit-sm-needs-review-item");
+            const unavailEl    = document.getElementById("audit-sm-unavailable-item");
             try {
                 const resp = await fetch(AUDIT_URL);
                 const d = await resp.json();
@@ -3376,18 +3402,25 @@
                 }
                 if (results) results.classList.remove("d-none");
 
+                const nr = d.needs_review_count ?? 0;
                 _renderSummary(d);
-                _setLabel("audit-sm-confirmed-label",  "Confirmed Mismatches",       d.confirmed_count,  "#dc2626");
-                _setLabel("audit-sm-uncertain-label",  "Uncertain — Review Needed",  d.uncertain_count,  "#d97706");
-                _setLabel("audit-sm-unavailable-label","AI Review Unavailable",       d.unavailable_count,"#6b7280");
+                _setLabel("audit-sm-confirmed-label",    "Confirmed Mismatches",        d.confirmed_count,  "#dc2626");
+                _setLabel("audit-sm-needs-review-label", "Needs Review (medium conf)",  nr,                 "#f59e0b");
+                _setLabel("audit-sm-uncertain-label",    "Uncertain",                   d.uncertain_count,  "#d97706");
+                _setLabel("audit-sm-unavailable-label",  "AI Review Unavailable",       d.unavailable_count,"#6b7280");
 
-                const confirmed  = d.items.filter(i => i.verdict === "confirmed");
-                const uncertain  = d.items.filter(i => i.verdict === "uncertain");
-                const unavailable= d.items.filter(i => i.verdict === "unavailable");
+                const confirmed   = d.items.filter(i => i.verdict === "confirmed");
+                const needsReview = d.items.filter(i => i.verdict === "needs_review");
+                const uncertain   = d.items.filter(i => i.verdict === "uncertain");
+                const unavailable = d.items.filter(i => i.verdict === "unavailable");
 
-                _renderTable("audit-sm-confirmed-content",  confirmed);
-                _renderTable("audit-sm-uncertain-content",  uncertain);
+                _renderTable("audit-sm-confirmed-content",    confirmed);
+                _renderTable("audit-sm-uncertain-content",    uncertain);
 
+                if (needsReview.length && nrItem) {
+                    nrItem.style.display = "";
+                    _renderTable("audit-sm-needs-review-content", needsReview);
+                }
                 if (unavailable.length && unavailEl) {
                     unavailEl.style.display = "";
                     _renderTable("audit-sm-unavailable-content", unavailable);

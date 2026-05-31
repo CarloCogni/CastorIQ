@@ -22,10 +22,11 @@ Output shape
   has_data: bool,
   stage1_candidates: int,
   ai_ran: bool,
-  confirmed_count: int,
-  uncertain_count: int,
-  likely_ok_count: int,
-  unavailable_count: int,
+  confirmed_count: int,      -- high-confidence, unambiguous coding errors
+  needs_review_count: int,   -- medium-confidence, planner choice is defensible
+  uncertain_count: int,      -- low-confidence or AI returned "uncertain"
+  likely_ok_count: int,      -- keyword false-positives cleared by AI
+  unavailable_count: int,    -- LLM skipped or batch failed
   items: [
     { name, activity_code, coded_csi, coded_trade,
       keyword_csi, keyword_trade,
@@ -34,8 +35,8 @@ Output shape
     ...
   ]
 }
-Items contain only CONFIRMED, UNCERTAIN, and UNAVAILABLE verdicts.
-LIKELY_OK items (keyword false-positives confirmed by AI) are excluded.
+Items contain CONFIRMED, NEEDS_REVIEW, UNCERTAIN, and UNAVAILABLE verdicts.
+LIKELY_OK items are excluded — they are cleared keyword false-positives.
 """
 
 from __future__ import annotations
@@ -271,39 +272,82 @@ _KEYWORD_RULES: list[tuple[list[str], str, str]] = [
 _BATCH_SIZE = 20
 
 # Stable system prompt — qualifies for Anthropic ephemeral prompt caching.
+#
+# Design principles encoded here:
+#   1. High bar for flagging — only flag CLEAR coding errors, not defensible
+#      planner choices or scope/gray-area decisions.
+#   2. Scope rule — a conduit/cable/pipe serving a specific building system
+#      (fire alarm, IT, security) belongs to THAT system's division, not the
+#      generic trade division.  This was the source of 96 false positives.
+#   3. EIFS = div 07 explicitly — prevents the "finish" word from misfiring.
+#   4. Calibrated refusal — "uncertain" is the correct answer for ambiguity;
+#      over-flagging erodes reviewer trust more than under-flagging.
+#   5. confidence=high means unambiguous by CSI MasterFormat;
+#      confidence=medium means likely mismatch but planner's choice is
+#      still defensible; both differ from "low" / "uncertain" which means
+#      genuinely unclear.
 _SYSTEM_PROMPT = """\
-You are a CSI MasterFormat classification assistant for construction schedule auditing.
+You are auditing construction schedule activity codes against CSI MasterFormat divisions.
+Your job is to identify CLEAR coding errors — activities whose names unmistakably belong \
+to a different CSI division than the one coded by the planner.
 
-For each numbered construction activity name, determine which 2-digit CSI MasterFormat \
-division it most likely belongs to.  Base your answer ONLY on the activity name text.
+HIGH BAR: Only suggest a different division when the activity name CLEARLY AND UNAMBIGUOUSLY \
+belongs elsewhere per CSI MasterFormat.  If the planner's coding is reasonable given the \
+scope of the work, return uncertain.  A defensible planner choice is NOT a coding error.
 
-Return a JSON object with a single key "items" containing an array.  Each element:
+Return a JSON object with key "items" containing an array.  Each element:
   { "id": <integer>, "division": "<2-digit string or 'uncertain'>",
-    "confidence": "<high|medium|low>", "reason": "<one line, max 70 chars>" }
+    "confidence": "<high|medium|low>",
+    "reason": "<one line, max 70 chars — cite the specific CSI rule>" }
+
+Confidence meaning:
+  high   — CSI MasterFormat is unambiguous; any competent reviewer would agree.
+  medium — Likely a different division, but planner's choice has a reasonable basis.
+  low    — Unclear; the name doesn't give enough information.
+  uncertain (division field) — Genuine gray area; do not override the planner.
 
 Division reference:
-  03 Concrete         — structural concrete, rebar, formwork, slabs, columns
-  04 Masonry          — blockwork, brickwork, stone
-  05 Metals           — structural steel, metal decking, fabrication
-  07 Thermal/Moisture — waterproofing membranes, dampproofing, roofing systems
-  08 Openings         — doors, windows, curtain wall, glazing
-  09 Finishes         — plaster, render, paint, tile, flooring, ceilings, partitions
-  21 Fire Suppression — sprinklers, FM200, standpipes
-  22 Plumbing         — piping, sanitary, drainage, water supply
-  23 HVAC             — ductwork, AHU, chillers, FCU, ventilation
-  26 Electrical       — cables, conduit, switchgear, lighting, earthing
-  27 Communications   — data cabling, IT infrastructure, CCTV
-  31 Earthwork        — excavation, backfill, compaction
+  03 Concrete         — structural concrete, rebar, formwork, slabs, beams, columns
+  04 Masonry          — blockwork, brickwork, stone masonry
+  05 Metals           — structural steel, metal decking, steel fabrication
+  07 Thermal/Moisture — waterproofing, dampproofing, roofing assemblies, insulation, EIFS
+  08 Openings         — doors, windows, curtain wall, glazing, frames
+  09 Finishes         — plaster, render, paint, tile, flooring, ceilings, dry partitions
+  21 Fire Suppression — sprinklers, FM200, standpipes, fire-suppression pipework
+  22 Plumbing         — sanitary, water supply, drainage, soil pipes, plumbing fixtures
+  23 HVAC             — ductwork, AHU, chillers, FCU, ventilation, air conditioning
+  26 Electrical       — general electrical distribution, power outlets, lighting fixtures,
+                        main switchgear, earthing (NOT system-specific conduit/wiring)
+  27 Communications   — IT/data cabling, telecom, CCTV (when NOT serving a coded system)
+  28 Electronic Safety— fire alarm, security systems, access control, PA systems
+  31 Earthwork        — excavation, backfill, compaction, bulk earthworks
 
-Disambiguation rules:
-  - Screed on a ROOF or described as "protection screed" over waterproofing → 07
-  - "Wire mesh & plaster" → 09 (it is a plaster finish system, not waterproofing)
-  - "Paint non-toxic waterproofing" on cisterns/fuel tanks → 07 (it IS waterproofing)
-  - Painted pavement markings / traffic coatings → 07
-  - Admin/procurement tasks (Submit, Approve, Procure, Sample, Shop drawing) → uncertain
-  - If genuinely ambiguous, use division=uncertain with reason explaining the ambiguity
-  - Do NOT guess; low confidence is better than a wrong confident answer
-  - All output must be valid JSON only — no text outside the object\
+SCOPE RULE — most important rule:
+  A conduit, cable, tray, or fitting that SERVES a specific named building system \
+belongs to THAT system's division, not the generic trade division:
+    Conduit/wiring/junction box for FIRE ALARM → 28 (Electronic Safety) — NOT 26
+    Conduit/wiring/junction box for SECURITY / ACCESS CONTROL → 28 — NOT 26
+    Conduit/wiring/junction box for DATA / IT / COMMS → 27 (Communications) — NOT 26
+    Pipe/valve/fitting for FIRE SUPPRESSION sprinklers → 21 — NOT 22
+    Pipe/valve/fitting for HVAC chiller circuit → 23 — NOT 22
+  Only return 26 for general electrical distribution with no named system.
+
+SPECIFIC KNOWN CASES:
+  - EIFS (Exterior Insulation and Finish System) → 07. Despite "finish" in the name,
+    EIFS is a thermal insulation and cladding system (CSI 07 24). Never suggest 09.
+  - Wire mesh + plaster → 09 (Finishes). This is a plaster application, not waterproofing.
+  - Cement screed / tiles on a ROOF → 07 (roofing assembly protection layer).
+  - Painted pavement markings / traffic coatings → 07 (CSI 07 18 Traffic Coatings).
+  - "Paint non-toxic waterproofing" on tanks, fuel pits → 07 (it is waterproofing).
+
+RETURN uncertain WHEN:
+  - The activity could reasonably belong to the coded division given its system context.
+  - The name contains a material that spans multiple trades (e.g. "screed" without location).
+  - This is a scope or procurement decision, not a naming error.
+  - Admin / procurement tasks (Submit, Approve, Procure, Sample, Shop drawing) → uncertain.
+  Returning uncertain is the CORRECT answer; over-flagging is worse than under-flagging.
+
+All output must be valid JSON only — no text outside the object.\
 """
 
 
@@ -323,7 +367,7 @@ class _Candidate:
     ai_trade: str | None = None
     ai_confidence: str | None = None
     ai_reason: str | None = None
-    verdict: str = "pending"  # confirmed | likely_ok | uncertain | unavailable
+    verdict: str = "pending"  # confirmed | needs_review | likely_ok | uncertain | unavailable
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -506,16 +550,30 @@ def _run_stage2(candidates: list[_Candidate], user) -> bool:
 
         c.ai_reason = reason
 
-        if raw_div == "uncertain" or conf == "low":
+        if raw_div == "uncertain" or conf in ("low", "uncertain"):
+            # Genuinely unclear — don't assert a mismatch
             c.ai_csi = None if raw_div == "uncertain" else raw_div
             c.ai_trade = _TRADE_NAMES.get(raw_div) if raw_div != "uncertain" else None
             c.ai_confidence = conf
             c.verdict = "uncertain"
-        else:
+        elif raw_div == c.coded_csi:
+            # AI agrees with the planner — keyword was a false positive
             c.ai_csi = raw_div
             c.ai_trade = _TRADE_NAMES.get(raw_div, f"Div {raw_div}")
             c.ai_confidence = conf
-            c.verdict = "likely_ok" if raw_div == c.coded_csi else "confirmed"
+            c.verdict = "likely_ok"
+        elif conf == "high":
+            # High confidence + clear disagreement → confirmed coding error
+            c.ai_csi = raw_div
+            c.ai_trade = _TRADE_NAMES.get(raw_div, f"Div {raw_div}")
+            c.ai_confidence = conf
+            c.verdict = "confirmed"
+        else:
+            # Medium confidence + disagreement → worth a look but not asserted
+            c.ai_csi = raw_div
+            c.ai_trade = _TRADE_NAMES.get(raw_div, f"Div {raw_div}")
+            c.ai_confidence = conf
+            c.verdict = "needs_review"
 
     return True
 
@@ -537,20 +595,22 @@ def run_section_mismatch_audit(project_id: str, user=None) -> dict:
     ai_ran = _run_stage2(candidates, user)
 
     confirmed = [c for c in candidates if c.verdict == "confirmed"]
+    needs_review = [c for c in candidates if c.verdict == "needs_review"]
     uncertain = [c for c in candidates if c.verdict == "uncertain"]
     likely_ok = [c for c in candidates if c.verdict == "likely_ok"]
     unavailable = [c for c in candidates if c.verdict == "unavailable"]
 
-    # Surface confirmed first, then uncertain, then unavailable.
-    # LIKELY_OK items are excluded — they are keyword false-positives.
-    output_items = confirmed + uncertain + unavailable
+    # Output order: confirmed (high-precision) → needs_review → uncertain → unavailable.
+    # LIKELY_OK items are excluded — they are cleared keyword false-positives.
+    output_items = confirmed + needs_review + uncertain + unavailable
 
     logger.info(
         "Schedule audit complete — project %s: %d stage-1, %d confirmed, "
-        "%d uncertain, %d likely_ok, %d unavailable",
+        "%d needs_review, %d uncertain, %d likely_ok, %d unavailable",
         project_id,
         len(candidates),
         len(confirmed),
+        len(needs_review),
         len(uncertain),
         len(likely_ok),
         len(unavailable),
@@ -561,6 +621,7 @@ def run_section_mismatch_audit(project_id: str, user=None) -> dict:
         "stage1_candidates": len(candidates),
         "ai_ran": ai_ran,
         "confirmed_count": len(confirmed),
+        "needs_review_count": len(needs_review),
         "uncertain_count": len(uncertain),
         "likely_ok_count": len(likely_ok),
         "unavailable_count": len(unavailable),
