@@ -1077,8 +1077,9 @@
     const EVM_URL = "{% url 'islam:evm_data' project.pk %}";
     const LS_KEY  = "castor_evm_currency";
 
-    let _evmData  = null;
-    let _currency = localStorage.getItem(LS_KEY) || "USD";
+    let _evmData   = null;
+    let _trendData = null;  // stored for sparkline resize re-render
+    let _currency  = localStorage.getItem(LS_KEY) || "USD";
 
     /* Restore selector to saved value */
     const _currSel = document.getElementById("evm-currency-select");
@@ -1921,6 +1922,7 @@
             data = await resp.json();
         } catch (_) { return; }
         if (!data.has_data) return;
+        _trendData = data;  // stored for resize re-render
 
         document.getElementById("evm-trend-section").classList.remove("d-none");
         const weeksEl = document.getElementById("evm-trend-weeks");
@@ -2407,6 +2409,7 @@
     (function () {
         const CF_URL = "{% url 'islam:cashflow' project.pk %}";
         const CURRENCY = () => document.getElementById("evm-currency-select")?.value || "USD";
+        let _cfData = null;  // stored for resize re-render
 
         const _SYMBOLS = { USD:"$", AED:"AED ", KWD:"KD ", EGP:"EGP " };
         function _fmtCost(v) {
@@ -2655,6 +2658,7 @@
                 }
                 if (results) results.classList.remove("d-none");
                 _renderMetrics(data.metrics);
+                _cfData = { months: data.months, metrics: data.metrics };
                 _renderChart(data.months, data.metrics);
                 const footer = document.getElementById("cf-footer");
                 if (footer) {
@@ -2671,6 +2675,13 @@
         }
 
         loadCashflow();
+        if (typeof ResizeObserver !== 'undefined') {
+            const _cfWrap = document.getElementById("cf-canvas")?.parentElement;
+            if (_cfWrap) {
+                let _cfRzT;
+                new ResizeObserver(() => { clearTimeout(_cfRzT); _cfRzT = setTimeout(() => { if (_cfData) _renderChart(_cfData.months, _cfData.metrics); }, 60); }).observe(_cfWrap);
+            }
+        }
     }());
 
     /* ── Time-Location (Flowline) Chart ───────────────────────────────── */
@@ -3058,6 +3069,13 @@
 
         loadTimelocation();
         if (window._evmAudit) window._evmAudit.register("timelocation", loadTimelocation);
+        if (typeof ResizeObserver !== 'undefined') {
+            const _tlWrap = document.getElementById("tl-chart-wrap");
+            if (_tlWrap) {
+                let _tlRzT;
+                new ResizeObserver(() => { clearTimeout(_tlRzT); _tlRzT = setTimeout(() => { if (_data) _renderChart(_data); }, 60); }).observe(_tlWrap);
+            }
+        }
     }());
 
     /* ── DCMA 14-Point Assessment ──────────────────────────────────────── */
@@ -3242,6 +3260,24 @@
     loadWbsHeatmap();
     loadDelayDistribution();
     loadTrendAnalysis();
+
+    /* ── Canvas resize: re-draw S-curve + sparklines on container resize ── *
+     * ResizeObserver fires on ANY size change (sidebar open/close, window
+     * resize, panel toggle) — window.addEventListener("resize") misses the
+     * sidebar case.  DCMA gauge (88×88 fixed) and Monte Carlo (user-triggered)
+     * are intentionally excluded.                                             */
+    if (typeof ResizeObserver !== 'undefined') {
+        function _rzDebounce(fn) {
+            let t;
+            return function() { clearTimeout(t); t = setTimeout(fn, 60); };
+        }
+        const _evmWrap = document.getElementById("evm-chart-wrap");
+        if (_evmWrap) new ResizeObserver(_rzDebounce(() => { if (_evmData) _renderChart(_evmData); })).observe(_evmWrap);
+        const _spiWrap = document.getElementById("trend-spi-canvas")?.parentElement;
+        const _cpiWrap = document.getElementById("trend-cpi-canvas")?.parentElement;
+        if (_spiWrap) new ResizeObserver(_rzDebounce(() => { if (_trendData) _drawSparkline("trend-spi-canvas", _trendData.spi_series, "spi",  _trendData.spi_trend); })).observe(_spiWrap);
+        if (_cpiWrap) new ResizeObserver(_rzDebounce(() => { if (_trendData) _drawSparkline("trend-cpi-canvas", _trendData.cpi_series, "cpi",  _trendData.cpi_trend); })).observe(_cpiWrap);
+    }
 
     /* ── Completion Probability (ML) ──────────────────────────────────── */
     (function () {
