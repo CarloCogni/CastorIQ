@@ -59,7 +59,8 @@
                     <div>
                         <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 mb-1">S-Curve</span>
                         <p class="text-secondary mb-0">
-                            Weekly cumulative PV (planned, blue dashed), EV (earned, green), and AC (actual cost, amber).
+                            Weekly cumulative PV (planned, blue dashed), EV (earned, green), and — when actual cost
+                            is imported — AC (actual cost, amber).
                             The gap between EV and PV is the schedule variance; between EV and AC is cost variance.
                             Hover for exact values at any week.
                         </p>
@@ -124,12 +125,17 @@
                     <i class="bi bi-currency-dollar me-1" style="color: #3b82f6;"></i>
                     Cost Basis
                 </p>
+                <p class="text-secondary fs-7 mb-1">
+                    Planned cost comes from P6 resource assignments; uncosted tasks are supplemented by QTO
+                    quantity estimates when available, then by task <em>durations</em> as a last-resort proxy
+                    (a banner warns you when a proxy is active — these are not monetary EVM numbers).
+                </p>
                 <p class="text-secondary fs-7 mb-4">
-                    EVM values use schedule task costs when available, supplemented by QTO quantity estimates
-                    for uncosted tasks. If neither is available, task <em>durations</em> are used as a proxy
-                    weight — a yellow banner will warn you. Actual Cost (AC) is currently simulated as
-                    EV × 1.05 until resource-assignment cost data is integrated; CPI trend analysis is
-                    therefore not meaningful in this release.
+                    <strong>Actual Cost (AC) is read directly from <code>P6ResourceAssignment.actual_cost</code></strong>
+                    — real imported data only. When actual cost has not been imported, AC is absent and
+                    <strong>CPI, CV, EAC, and VAC are disabled</strong> with a clear notice on each KPI card;
+                    they are never estimated from a formula. Import resource assignments that include actual
+                    cost to activate these metrics.
                 </p>
 
                 <!-- 5. Caveats -->
@@ -139,7 +145,7 @@
                 </p>
                 <div class="d-flex flex-column gap-1 fs-8 text-secondary">
                     <span><i class="bi bi-dot"></i>SPI trend convergence: point SPI tends toward 1.0 near project end regardless of performance — treat trend forecasts cautiously beyond 75% completion.</span>
-                    <span><i class="bi bi-dot"></i>CPI trend is only meaningful when actual cost data (not simulated) is available.</span>
+                    <span><i class="bi bi-dot"></i>CPI, CV, EAC, and VAC are disabled entirely — not estimated — when P6 actual cost has not been imported. The KPI cards show a notice rather than a placeholder value.</span>
                     <span><i class="bi bi-dot"></i>TCPI requires at least some AC &lt; BAC; if AC has exceeded BAC the denominator is zero and TCPI is undefined.</span>
                     <span><i class="bi bi-dot"></i>Constraint / deadline data (TCPI, MFO flags) requires a P6 XML re-import after the constraint fields were added — older imports have no constraint data.</span>
                     <span><i class="bi bi-dot"></i>Trend regression uses a 12-week window. Fewer than 3 weeks of history will show "insufficient data" — this resolves automatically as the project progresses.</span>
