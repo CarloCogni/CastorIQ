@@ -8,8 +8,10 @@ cumulative S-curves and key financing metrics.
 Cost sources (in priority order):
   1. P6ResourceAssignment.planned_cost / actual_cost / remaining_cost — imported
      from Primavera P6 XML; authoritative for projects with resource data.
-  2. Task.cost fallback — used when no resource assignments exist; treated as
-     planned cost only (actual and remaining are approximated from EVM progress).
+  2. Task.cost fallback — used when no resource assignments exist.
+     Planned cost only.  Actual cost is NOT synthesised for in-progress tasks —
+     it is left as zero to avoid fabricating spend figures the data does not support.
+     Completed tasks get actual = planned (task is closed; full cost assumed spent).
 """
 
 from __future__ import annotations
@@ -128,15 +130,10 @@ def compute_cashflow(project_id: str) -> dict:
             pc = float(t.cost or 0)
             if pc == 0:
                 continue
-            # Approximate actual/remaining from task status + EVM progress
+            # Actual cost: real value for complete tasks; zero for all others —
+            # never synthesised from planned × elapsed (A10 integrity rule).
             if t.status == "complete":
                 ac, rc = pc, 0.0
-            elif t.status in ("active",) and t.actual_start:
-                dur = max((t.end_date - t.start_date).days + 1, 1)
-                elapsed = max((today - t.actual_start).days + 1, 0)
-                pct_done = min(elapsed / dur, 1.0)
-                ac = round(pc * pct_done, 2)
-                rc = pc - ac
             else:
                 ac, rc = 0.0, pc
             task_costs[str(t.pk)] = {"planned": pc, "actual": ac, "remaining": rc}
