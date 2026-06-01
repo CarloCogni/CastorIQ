@@ -1131,6 +1131,11 @@
 
     /* ── KPI cards ─────────────────────────────────────────────────────── */
     function _renderKpis(d) {
+        /* Cost-performance metrics require real actual cost from P6
+           ResourceAssignments.  When absent (ac_available=false) they are
+           disabled — never fabricated.                                     */
+        const acOk = d.ac_available;
+
         const kpis = [
             {
                 label: "SPI",
@@ -1138,37 +1143,43 @@
                 sub: "Schedule Performance",
                 good: d.spi >= 1,
                 neutral: Math.abs(d.spi - 1) < 0.02,
+                disabled: false,
             },
             {
                 label: "CPI",
-                value: d.cpi.toFixed(2),
-                sub: "Cost Performance",
-                good: d.cpi >= 1,
-                neutral: Math.abs(d.cpi - 1) < 0.02,
+                value: acOk ? d.cpi.toFixed(2) : "N/A",
+                sub: acOk ? "Cost Performance" : "Actual cost not imported",
+                good: acOk ? d.cpi >= 1 : false,
+                neutral: acOk ? Math.abs(d.cpi - 1) < 0.02 : false,
+                disabled: !acOk,
             },
             {
                 label: "EAC",
-                value: _fmt(d.eac, d.use_cost),
-                sub: "Estimate at Completion",
-                good: d.eac <= d.bac,
+                value: acOk ? _fmt(d.eac, d.use_cost) : "N/A",
+                sub: acOk ? "Estimate at Completion" : "Actual cost not imported",
+                good: acOk ? d.eac <= d.bac : false,
                 neutral: false,
+                disabled: !acOk,
             },
             {
                 label: "VAC",
-                value: _fmt(d.vac, d.use_cost),
-                sub: "Variance at Completion",
-                good: d.vac >= 0,
-                neutral: Math.abs(d.vac) < d.bac * 0.02,
+                value: acOk ? _fmt(d.vac, d.use_cost) : "N/A",
+                sub: acOk ? "Variance at Completion" : "Actual cost not imported",
+                good: acOk ? d.vac >= 0 : false,
+                neutral: acOk ? Math.abs(d.vac) < d.bac * 0.02 : false,
+                disabled: !acOk,
             },
         ];
 
         const row = document.getElementById("evm-kpi-row");
         row.innerHTML = kpis.map(k => {
-            const color = k.neutral ? "var(--bs-secondary-color)"
-                        : k.good   ? "#16a34a"
-                                   : "#dc2626";
+            const color = k.disabled  ? "var(--bs-secondary-color)"
+                        : k.neutral  ? "var(--bs-secondary-color)"
+                        : k.good     ? "#16a34a"
+                                     : "#dc2626";
+            const opacity = k.disabled ? "opacity:.45;" : "";
             return `<div class="col-6 col-md-3">
-                <div class="card border-0 rounded-3 h-100" style="background:var(--bs-secondary-bg);">
+                <div class="card border-0 rounded-3 h-100" style="background:var(--bs-secondary-bg);${opacity}">
                     <div class="card-body p-3">
                         <div style="font-size:0.72rem; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:0.05em; font-weight:600;">${k.label}</div>
                         <div style="font-size:1.55rem; font-weight:700; color:${color}; line-height:1.15;">${k.value}</div>
@@ -1206,7 +1217,7 @@
 
         const pvPts  = d.series.pv;
         const evPts  = d.series.ev;
-        const acPts  = d.series.ac;
+        const acPts  = d.series.ac || [];  // absent when actual cost not imported
         if (!pvPts.length) { _showError("No series data."); return; }
 
         const allDates = pvPts.map(p => p.date);
@@ -1420,8 +1431,15 @@
 
         document.getElementById("evm-sv").textContent = `${sign(d.sv)}${fmt(d.sv)}`;
         document.getElementById("evm-sv").style.color = col(d.sv);
-        document.getElementById("evm-cv").textContent = `${sign(d.cv)}${fmt(d.cv)}`;
-        document.getElementById("evm-cv").style.color = col(d.cv);
+        const cvEl = document.getElementById("evm-cv");
+        if (d.cv !== null && d.cv !== undefined) {
+            cvEl.textContent = `${sign(d.cv)}${fmt(d.cv)}`;
+            cvEl.style.color = col(d.cv);
+        } else {
+            cvEl.textContent = "N/A";
+            cvEl.style.color = "var(--bs-secondary-color)";
+            cvEl.style.opacity = "0.45";
+        }
         document.getElementById("evm-as-of").textContent = `As of ${_fmtDateShort(d.as_of)}`;
     }
 

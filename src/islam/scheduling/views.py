@@ -122,21 +122,66 @@ class ScheduleView(ProjectTabMixin, TemplateView):
                 wd = set(cal.working_days or [])
                 # Compact weekday abbreviations in canonical Sun–Sat order,
                 # space-separated so "Su Mo Tu We Th Sa" is legible.
-                _day_abbr = {"Sunday":"Su","Monday":"Mo","Tuesday":"Tu","Wednesday":"We",
-                             "Thursday":"Th","Friday":"Fr","Saturday":"Sa"}
-                _all_days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]
-                week_str = " ".join(
-                    _day_abbr[d] for d in _all_days if d in wd
-                )
+                _day_abbr = {
+                    "Sunday": "Su",
+                    "Monday": "Mo",
+                    "Tuesday": "Tu",
+                    "Wednesday": "We",
+                    "Thursday": "Th",
+                    "Friday": "Fr",
+                    "Saturday": "Sa",
+                }
+                _all_days = [
+                    "Sunday",
+                    "Monday",
+                    "Tuesday",
+                    "Wednesday",
+                    "Thursday",
+                    "Friday",
+                    "Saturday",
+                ]
+                week_str = " ".join(_day_abbr[d] for d in _all_days if d in wd)
                 holidays = sorted(cal.holidays or [])
-                used_cals.append({
-                    "cal_id": cal.p6_calendar_id,
-                    "task_count": task_cal_counts.get(cal.p6_calendar_id, 0),
-                    "week_str": week_str,
-                    "n_holidays": len(holidays),
-                    "holiday_sample": holidays[:5],
-                })
+                used_cals.append(
+                    {
+                        "cal_id": cal.p6_calendar_id,
+                        "task_count": task_cal_counts.get(cal.p6_calendar_id, 0),
+                        "week_str": week_str,
+                        "n_holidays": len(holidays),
+                        "holiday_sample": holidays[:5],
+                    }
+                )
             ctx["project_calendars"] = sorted(used_cals, key=lambda c: -c["task_count"])
+
+            # ── Data Readiness panel ──────────────────────────────────────
+            from .models import P6ResourceAssignment
+
+            phys_tasks = Task.objects.filter(
+                project=project, is_non_physical=False
+            ).exclude(start_date=None).exclude(end_date=None)
+            n_total = phys_tasks.count()
+
+            if n_total > 0:
+                n_with_actual_start = phys_tasks.filter(actual_start__isnull=False).count()
+                n_with_cost = phys_tasks.filter(cost__isnull=False, cost__gt=0).count()
+                ra_planned = P6ResourceAssignment.objects.filter(
+                    task__project=project, planned_cost__gt=0
+                ).count()
+                ra_actual = P6ResourceAssignment.objects.filter(
+                    task__project=project, actual_cost__gt=0
+                ).count()
+                ctx["data_readiness"] = {
+                    "total_tasks": n_total,
+                    "baseline_pct": 100,  # already filtered on start/end not null
+                    "actuals_pct": round(n_with_actual_start * 100 / n_total, 1),
+                    "planned_cost_pct": round(n_with_cost * 100 / n_total, 1),
+                    "planned_cost_from_ra": ra_planned > 0,
+                    "actual_cost_available": ra_actual > 0,
+                    "ra_actual_count": ra_actual,
+                    "has_calendar": bool(used_cals),
+                }
+            else:
+                ctx["data_readiness"] = None
 
         return ctx
 

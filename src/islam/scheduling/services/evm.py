@@ -1,5 +1,35 @@
 # islam/scheduling/services/evm.py
-"""Earned Value Management (EVM) — PV, EV, AC, SPI, CPI, S-curve series."""
+"""Earned Value Management (EVM) — PV, EV, AC, SPI, CPI, S-curve series.
+
+Input-integrity principle
+-------------------------
+Every metric declares its required inputs.  If inputs are absent or
+incomplete, the metric is disabled with a plain explanation — never
+fabricated and never silently derived from a proxy.
+
+Metric requirements
+-------------------
+  BAC / PV / EV / SPI / SV
+      Require planned cost on activities (task.cost from resource
+      assignments or QTO estimates).  If cost covers only a subset of
+      tasks, the values are reported WITH a coverage notice.
+
+  AC / CPI / CV / EAC / VAC
+      Require REAL actual cost from P6ResourceAssignment.actual_cost.
+      If none is imported, these metrics are DISABLED — never estimated
+      from a formula such as EV × k.
+
+  SPI / PV / EV
+      Also require actual progress data (actual_start / actual_end /
+      status).  If 0% actuals exist, EV = 0 and SPI is reported as-is
+      (not fabricated).
+
+Duration fallback
+-----------------
+  When no cost exists at all, a duration-weighted proxy is computed and
+  returned with cost_basis="task durations" and use_cost=False.  Callers
+  and the UI must surface this clearly — these are NOT monetary EVM numbers.
+"""
 
 from __future__ import annotations
 
@@ -7,6 +37,33 @@ import logging
 from datetime import date, timedelta
 
 logger = logging.getLogger(__name__)
+
+
+# ── Actual-cost loader ────────────────────────────────────────────────────────
+
+
+def _load_actual_costs(task_pks: list[str]) -> dict[str, float]:
+    """Return {str(task_pk): total_actual_cost} from P6ResourceAssignment.
+
+    Sums all resource types (labor, material, equipment, expense) per task.
+    Returns {} if no ResourceAssignment rows exist or none have actual_cost > 0.
+    Never raises.
+    """
+    from islam.scheduling.models import P6ResourceAssignment
+
+    result: dict[str, float] = {}
+    try:
+        for ra in P6ResourceAssignment.objects.filter(
+            task_id__in=task_pks, actual_cost__gt=0
+        ).values("task_id", "actual_cost"):
+            pk = str(ra["task_id"])
+            result[pk] = result.get(pk, 0.0) + float(ra["actual_cost"] or 0)
+    except Exception as exc:
+        logger.debug("_load_actual_costs: %s", exc)
+    return result
+
+
+# ── Progress helpers ──────────────────────────────────────────────────────────
 
 
 def _qto_task_costs(project_id: str, tasks: list) -> dict[str, float]:
@@ -26,7 +83,6 @@ def _qto_task_costs(project_id: str, tasks: list) -> dict[str, float]:
     if not cache:
         return {}
 
-    # Build entity → cost lookup (quantity × unit_cost) from the per-entity cache
     entity_costs: dict[str, float] = {}
     for item in cache.items_json:
         gid = item.get("global_id")
@@ -81,7 +137,6 @@ def _earned_pct_at(task, d: date) -> float:
         dur = max((task.end_date - task.actual_start).days, 1)
         return max(0.0, min(1.0, (d - task.actual_start).days / dur))
 
-    # No actual_start recorded
     if task.status == "complete":
         return 1.0 if d >= task.end_date else 0.0
     return 0.0
@@ -99,7 +154,7 @@ _DELAY_BUCKETS = [
 def _task_delay_days(task, today: date) -> int | None:
     """Days a task is delayed as of *today*.  None = not yet due (skip)."""
     if task.start_date > today:
-        return None  # future task
+        return None
     if task.status == "complete":
         return max(0, (task.actual_end - task.end_date).days) if task.actual_end else 0
     if today > task.end_date:
@@ -109,15 +164,11 @@ def _task_delay_days(task, today: date) -> int | None:
     return 0
 
 
-def compute_delay_distribution(project_id: str) -> dict:
-    """Distribution of tasks across delay buckets for the Delay Chart.
+# ── Delay distribution ────────────────────────────────────────────────────────
 
-    Returns:
-        has_data      — bool
-        buckets       — list[{label, color, count, pct, sample_tasks}]
-        total         — int (tasks in scope, excludes not-yet-due)
-        not_yet_due   — int
-    """
+
+def compute_delay_distribution(project_id: str) -> dict:
+    """Distribution of tasks across delay buckets for the Delay Chart."""
     from islam.scheduling.models import Task
 
     today = date.today()
@@ -172,6 +223,8 @@ def compute_delay_distribution(project_id: str) -> dict:
     }
 
 
+# ── WBS heatmap ───────────────────────────────────────────────────────────────
+
 _STAGE_ORDER = ["substructure", "structure", "envelope", "mep", "finishes", "external", ""]
 _STAGE_LABELS = {
     "substructure": "Substructure",
@@ -187,8 +240,7 @@ _STAGE_LABELS = {
 def compute_wbs_heatmap(project_id: str) -> list[dict]:
     """Per-stage performance metrics for the WBS heatmap.
 
-    Each entry: stage, label, task_count, completed, planned_pct, earned_pct,
-    spi, color.  Uses equal-weight (task count) SPI so no cost data is needed.
+    Uses equal-weight (task count) SPI — no cost data required.
     """
     from islam.scheduling.models import Task
 
@@ -242,21 +294,36 @@ def compute_wbs_heatmap(project_id: str) -> list[dict]:
     return result
 
 
+# ── Main EVM computation ──────────────────────────────────────────────────────
+
+
 def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
     """Compute EVM metrics and weekly S-curve series for *project_id*.
 
+    Integrity contract
+    ------------------
+    AC, CPI, CV, EAC, VAC require real actual cost from P6ResourceAssignment.
+    If no actual cost is imported these metrics are set to None in the response
+    and ac_available=False.  The caller/UI must surface a clear notice.
+
+    The synthetic AC formula (EV × 1.05) has been removed entirely.
+
     Returns a dict with:
-        has_data       — bool
-        bac            — float (Budget at Completion)
-        pv / ev / ac   — float (as-of values)
-        spi / cpi      — float
-        eac / vac      — float
-        sv / cv        — float
-        use_cost       — bool (True = cost-based, False = duration-based)
-        as_of          — ISO date string
-        project_start / project_end — ISO date strings
-        series         — {pv: [{date, pct}], ev: [...], ac: [...]}
-                         pct is 0-100 as fraction of BAC for chart rendering
+        has_data           — bool
+        bac                — float
+        pv / ev            — float (None when no actuals recorded)
+        ac                 — float | None  (None when actual cost absent)
+        spi                — float (1.0 when no PV, so not fabricated)
+        cpi / cv / eac / vac  — float | None  (None when ac absent)
+        sv                 — float
+        use_cost           — bool (False = duration proxy, not monetary EVM)
+        cost_basis         — str
+        cost_coverage_pct  — float (% tasks with planned cost)
+        ac_available       — bool
+        ac_coverage_pct    — float | None (% cost-bearing tasks with actual cost)
+        ac_disabled_reason — str | None
+        as_of / project_start / project_end — ISO date strings
+        series             — {pv, ev, ac}  (ac absent when not available)
     """
     from islam.scheduling.models import Task
 
@@ -269,10 +336,9 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
         return {"has_data": False}
 
     today = as_of_date or date.today()
+    total_tasks = len(tasks)
 
-    # ------------------------------------------------------------------
-    # Value basis: schedule costs → QTO estimates → duration weighting
-    # ------------------------------------------------------------------
+    # ── Planned-value basis: schedule costs → QTO → duration proxy ────────
     sched_costs = {str(t.pk): float(t.cost or 0) for t in tasks}
     total_sched = sum(sched_costs.values())
 
@@ -293,6 +359,8 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
 
     total_value = sum(values.values())
     use_cost = total_value > 0
+    tasks_with_cost = sum(1 for v in values.values() if v > 0)
+    cost_coverage_pct = round(tasks_with_cost / total_tasks * 100, 1) if total_tasks else 0.0
 
     if use_cost:
         bac = total_value
@@ -303,17 +371,33 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
         else:
             cost_basis = "QTO estimates"
     else:
-        # Pure duration-weighted fallback
+        # Duration proxy — not monetary EVM; caller must surface this clearly
         values = {str(t.pk): float(max((t.end_date - t.start_date).days + 1, 1)) for t in tasks}
         bac = sum(values.values())
         cost_basis = "task durations"
 
+    # ── Real actual costs from P6ResourceAssignment ───────────────────────
+    task_pks = [str(t.pk) for t in tasks]
+    actual_costs = _load_actual_costs(task_pks)
+    ac_total = sum(actual_costs.values())
+    ac_available = ac_total > 0
+
+    if ac_available:
+        tasks_with_actual = len(actual_costs)
+        tasks_with_cost_n = max(tasks_with_cost, 1)
+        ac_coverage_pct: float | None = round(tasks_with_actual / tasks_with_cost_n * 100, 1)
+        ac_disabled_reason: str | None = None
+    else:
+        ac_coverage_pct = None
+        ac_disabled_reason = (
+            "Actual cost not imported — CPI, CV, EAC, VAC disabled. "
+            "Import resource assignments with actual cost to enable cost-performance metrics."
+        )
+
     project_start = min(t.start_date for t in tasks)
     project_end = max(t.end_date for t in tasks)
 
-    # ------------------------------------------------------------------
-    # Weekly date spine from project_start to max(project_end, today)
-    # ------------------------------------------------------------------
+    # ── Date spine ────────────────────────────────────────────────────────
     spine_end = max(project_end, today)
     dates: list[date] = []
     cur = project_start
@@ -324,12 +408,31 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
         dates.append(spine_end)
     dates.sort()
 
-    # ------------------------------------------------------------------
-    # Build series
-    # ------------------------------------------------------------------
+    # ── AC time series (real, cumulative by task completion date) ─────────
+    # Each task's actual_cost is attributed to:
+    #   - actual_end date (completed tasks)
+    #   - today (active tasks that have started but not finished)
+    # This gives a monotonically-increasing cumulative series matching real
+    # expenditure timing as closely as the available data allows.
+    ac_attribution: list[tuple[date, float]] = []
+    if ac_available:
+        for t in tasks:
+            ta = actual_costs.get(str(t.pk), 0.0)
+            if ta <= 0.0:
+                continue
+            if t.status == "complete" and t.actual_end:
+                ac_attribution.append((t.actual_end, ta))
+            elif t.actual_start:
+                ac_attribution.append((today, ta))
+        ac_attribution.sort()
+
+    # ── Build series ──────────────────────────────────────────────────────
     pv_series: list[dict] = []
     ev_series: list[dict] = []
     ac_series: list[dict] = []
+
+    ac_idx = 0
+    cum_ac = 0.0
 
     for d in dates:
         pv_abs = sum(_planned_pct_at(t, d) * values[str(t.pk)] for t in tasks)
@@ -337,43 +440,59 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
 
         if d <= today:
             ev_abs = sum(_earned_pct_at(t, d) * values[str(t.pk)] for t in tasks)
-            ac_abs = ev_abs * 1.05
             ev_series.append(
                 {"date": d.isoformat(), "pct": round(ev_abs / bac * 100, 2) if bac else 0}
             )
-            ac_series.append(
-                {"date": d.isoformat(), "pct": round(ac_abs / bac * 100, 2) if bac else 0}
-            )
 
-    # ------------------------------------------------------------------
-    # As-of KPI metrics
-    # ------------------------------------------------------------------
+            if ac_available:
+                while ac_idx < len(ac_attribution) and ac_attribution[ac_idx][0] <= d:
+                    cum_ac += ac_attribution[ac_idx][1]
+                    ac_idx += 1
+                ac_series.append(
+                    {"date": d.isoformat(), "pct": round(cum_ac / bac * 100, 2) if bac else 0}
+                )
+
+    # ── As-of KPI scalars ─────────────────────────────────────────────────
     pv_today = sum(_planned_pct_at(t, today) * values[str(t.pk)] for t in tasks)
     ev_today = sum(_earned_pct_at(t, today) * values[str(t.pk)] for t in tasks)
-    ac_today = ev_today * 1.05
 
     spi = round(ev_today / pv_today, 3) if pv_today > 0 else 1.0
-    cpi = round(ev_today / ac_today, 3) if ac_today > 0 else 1.0
-    eac = round(bac / cpi, 2) if cpi > 0 else bac
-    vac = round(bac - eac, 2)
     sv = round(ev_today - pv_today, 2)
-    cv = round(ev_today - ac_today, 2)
+
+    if ac_available:
+        ac_today: float | None = ac_total
+        cpi: float | None = round(ev_today / ac_today, 3) if ac_today > 0 else 1.0
+        cv: float | None = round(ev_today - ac_today, 2)
+        eac: float | None = round(bac / cpi, 2) if (cpi and cpi > 0) else bac
+        vac: float | None = round(bac - eac, 2) if eac is not None else None
+    else:
+        ac_today = None
+        cpi = None
+        cv = None
+        eac = None
+        vac = None
 
     logger.info(
-        "EVM — project %s: BAC=%.0f SPI=%.2f CPI=%.2f EAC=%.0f",
+        "EVM — project %s: BAC=%.0f SPI=%.2f CPI=%s EAC=%s ac_available=%s cost_coverage=%.0f%%",
         project_id,
         bac,
         spi,
-        cpi,
-        eac,
+        f"{cpi:.2f}" if cpi is not None else "N/A",
+        f"{eac:.0f}" if eac is not None else "N/A",
+        ac_available,
+        cost_coverage_pct,
     )
+
+    series: dict = {"pv": pv_series, "ev": ev_series}
+    if ac_available:
+        series["ac"] = ac_series
 
     return {
         "has_data": True,
         "bac": round(bac, 2),
         "pv": round(pv_today, 2),
         "ev": round(ev_today, 2),
-        "ac": round(ac_today, 2),
+        "ac": round(ac_today, 2) if ac_today is not None else None,
         "spi": spi,
         "cpi": cpi,
         "eac": eac,
@@ -382,12 +501,12 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
         "cv": cv,
         "use_cost": use_cost,
         "cost_basis": cost_basis,
+        "cost_coverage_pct": cost_coverage_pct,
+        "ac_available": ac_available,
+        "ac_coverage_pct": ac_coverage_pct,
+        "ac_disabled_reason": ac_disabled_reason,
         "as_of": today.isoformat(),
         "project_start": project_start.isoformat(),
         "project_end": project_end.isoformat(),
-        "series": {
-            "pv": pv_series,
-            "ev": ev_series,
-            "ac": ac_series,
-        },
+        "series": series,
     }

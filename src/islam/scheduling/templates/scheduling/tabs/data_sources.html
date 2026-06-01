@@ -82,6 +82,82 @@
     </div>
     {% endif %}
 
+    <!-- ── Data Readiness panel ─────────────────────────────────────── -->
+    {% if data_readiness %}
+    {% with dr=data_readiness %}
+    <div class="mb-2" style="border:1px solid var(--bs-border-color); border-radius:8px;
+         background:var(--bs-body-bg); padding:8px 12px; font-size:0.72rem;">
+        <div style="font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase;
+                    letter-spacing:.05em; font-size:0.67rem; margin-bottom:6px;">
+            <i class="bi bi-clipboard2-check me-1"></i>Data Readiness
+        </div>
+        <div class="d-flex flex-wrap gap-3">
+
+            <!-- Baseline dates -->
+            <div style="display:flex; align-items:center; gap:5px;">
+                <span style="color:#16a34a; font-size:.8rem;">✓</span>
+                <span>Baseline dates — 100% of tasks</span>
+                <span style="color:var(--bs-secondary-color); font-size:.67rem;">(enables PV, SPI, SV)</span>
+            </div>
+
+            <!-- Actual progress -->
+            <div style="display:flex; align-items:center; gap:5px;">
+                {% if dr.actuals_pct >= 1 %}
+                <span style="color:#16a34a; font-size:.8rem;">✓</span>
+                {% else %}
+                <span style="color:#dc2626; font-size:.8rem;">✗</span>
+                {% endif %}
+                <span>Actual progress — {{ dr.actuals_pct }}% of tasks have actual start</span>
+                <span style="color:var(--bs-secondary-color); font-size:.67rem;">(enables EV, SPI)</span>
+            </div>
+
+            <!-- Planned cost -->
+            <div style="display:flex; align-items:center; gap:5px;">
+                {% if dr.planned_cost_pct >= 1 %}
+                <span style="color:{% if dr.planned_cost_pct >= 100 %}#16a34a{% else %}#d97706{% endif %}; font-size:.8rem;">
+                    {% if dr.planned_cost_pct >= 100 %}✓{% else %}⚠{% endif %}
+                </span>
+                {% else %}
+                <span style="color:#dc2626; font-size:.8rem;">✗</span>
+                {% endif %}
+                <span>Planned cost —
+                    {% if dr.planned_cost_from_ra %}from resource assignments{% else %}from task cost field{% endif %},
+                    {{ dr.planned_cost_pct }}% of tasks carry cost
+                </span>
+                <span style="color:var(--bs-secondary-color); font-size:.67rem;">(enables BAC, PV, EV, SPI on cost-bearing tasks)</span>
+            </div>
+
+            <!-- Actual cost -->
+            <div style="display:flex; align-items:center; gap:5px;">
+                {% if dr.actual_cost_available %}
+                <span style="color:#16a34a; font-size:.8rem;">✓</span>
+                <span>Actual cost — {{ dr.ra_actual_count }} resource assignment{{ dr.ra_actual_count|pluralize }} with actual cost</span>
+                <span style="color:var(--bs-secondary-color); font-size:.67rem;">(enables CPI, CV, EAC, VAC)</span>
+                {% else %}
+                <span style="color:#dc2626; font-size:.8rem;">✗</span>
+                <span>Actual cost — not imported</span>
+                <span style="color:#dc2626; font-size:.67rem; font-weight:600;">(CPI, CV, EAC, VAC disabled)</span>
+                {% endif %}
+            </div>
+
+            <!-- Calendar -->
+            <div style="display:flex; align-items:center; gap:5px;">
+                {% if dr.has_calendar %}
+                <span style="color:#16a34a; font-size:.8rem;">✓</span>
+                <span>Project calendar — P6 calendar imported</span>
+                <span style="color:var(--bs-secondary-color); font-size:.67rem;">(delays in working days)</span>
+                {% else %}
+                <span style="color:#d97706; font-size:.8rem;">⚠</span>
+                <span>Project calendar — not imported, fallback used</span>
+                <span style="color:#d97706; font-size:.67rem;">(delays in calendar days)</span>
+                {% endif %}
+            </div>
+
+        </div>
+    </div>
+    {% endwith %}
+    {% endif %}
+
     <!-- ── Upload bar ──────────────────────────────────────────────── -->
     <div class="d-flex align-items-center gap-3 flex-wrap mb-2" id="ds-upload-bar">
         <div>
