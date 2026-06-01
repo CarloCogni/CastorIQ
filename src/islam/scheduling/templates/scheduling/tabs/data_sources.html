@@ -154,6 +154,50 @@
             </div>
 
         </div>
+
+        <!-- ── Honesty notices — metric limitations that survive good data ── -->
+        <div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--bs-border-color);
+                    display:flex; flex-direction:column; gap:4px; font-size:0.69rem;
+                    color:var(--bs-secondary-color);">
+
+            <div style="font-weight:600; font-size:0.65rem; text-transform:uppercase;
+                        letter-spacing:.05em; margin-bottom:2px;">Gaps &amp; Limitations</div>
+
+            <!-- A3 / A17: SPI = 1.0 when PV = 0 -->
+            <div style="display:flex; align-items:flex-start; gap:5px;">
+                <span style="color:#d97706; flex-shrink:0; margin-top:1px;">ℹ</span>
+                <span>
+                    <strong>SPI defaults to 1.0 when planned value is zero</strong> —
+                    a defined fallback, not a measured result; occurs before any tasks are scheduled to begin
+                </span>
+            </div>
+
+            <!-- A5 / A15: zero-cost tasks excluded from cost-weighted metrics -->
+            {% if dr.planned_cost_pct < 100 %}
+            <div style="display:flex; align-items:flex-start; gap:5px;">
+                <span style="color:#d97706; flex-shrink:0; margin-top:1px;">ℹ</span>
+                <span>
+                    <strong>{{ dr.planned_cost_pct }}% cost coverage</strong> —
+                    BAC, PV, EV, and SPI are computed on cost-bearing tasks only;
+                    tasks with no cost carry no weight in these metrics
+                </span>
+            </div>
+            {% endif %}
+
+            <!-- A10: synthetic AC removed — task-cost fallback shows zero for active tasks -->
+            {% if not dr.planned_cost_from_ra %}
+            <div style="display:flex; align-items:flex-start; gap:5px;">
+                <span style="color:#d97706; flex-shrink:0; margin-top:1px;">ℹ</span>
+                <span>
+                    <strong>Cash Flow actual = 0 for in-progress tasks</strong> —
+                    using task.cost fallback (no P6 resource assignments imported);
+                    actual spend for active tasks is zero, not estimated from elapsed time
+                </span>
+            </div>
+            {% endif %}
+
+        </div>
+
     </div>
     {% endwith %}
     {% endif %}
