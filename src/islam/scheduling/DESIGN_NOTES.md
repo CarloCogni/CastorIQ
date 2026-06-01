@@ -563,7 +563,48 @@ Ties into the existing unrealistic-baseline anomaly detection in `anomaly_detect
 "unrealistic baseline"). Layer 3 would extend this to the full distribution using the
 Monte Carlo duration data already computed by `monte_carlo.py`.
 
-#### Layer 4 — Logic and constraint audit
+#### Layer 4 — Cost-allocation audit (FUTURE — not built)
+
+Detect activities whose cost assignment is inconsistent with the activity's nature.
+
+**Problem statement:**  A planner assigning P6 resource costs may accidentally attach
+material cost to a submittal/approval task, or leave labour cost on a procurement-only
+activity, or carry a disproportionately large budget on a low-scope milestone.  These
+errors are invisible to schedule logic checks but can distort EVM (BAC skewed by a
+single mis-coded task), cashflow forecasts (cost attributed to the wrong period), and
+CPI (a high-cost wrong task inflates the denominator).
+
+**Detection approach (LLM-based, advisory only — same pattern as Layer 1):**
+
+1. **Stage 1 — rule pre-filter (no AI):** Flag tasks where cost assignment pattern
+   contradicts the activity name:
+   - Submittal/Approval/Procurement tasks (keyword match) carrying > N% of their
+     trade's total cost — these are typically administrative with minimal direct cost.
+   - Execution tasks (Install/Cast/Fix) with *only* material cost and zero labour —
+     unusual unless intentional (prefabricated elements, supply-only contracts).
+   - Summary/hammock tasks carrying direct cost — typically cost should be on
+     detail activities, not their parent.
+
+2. **Stage 2 — LLM review:** Send candidate (activity name, CSI trade, cost breakdown
+   by type, neighbouring task sample) to the LLM.  Ask: "Is this cost assignment
+   consistent with the activity's nature?  Expected cost types for this scope?"
+
+3. **Stage 3 — Verdict assignment:** Same tiers as Layer 1 — confirmed / needs_review /
+   uncertain / likely_ok.  Advisory only; original cost data untouched.
+
+**Key design constraint:** the tool has **no knowledge of contract structure**.  A
+"Submit Shop Drawings" task carrying $500k may be correct if the contract charges for
+document preparation.  The rule pre-filter must be permissive enough to pass genuinely
+unusual-but-valid cases to the LLM, rather than hard-coding cost-type expectations per
+activity type.
+
+**Integration point:** Surface results as a new card in the Schedule Audit section of
+the EVM tab, alongside the section-mismatch results.  Feed confirmed mis-allocations
+as a data-quality warning in the Data Readiness panel.
+
+---
+
+#### Layer 5 — Logic and constraint audit
 
 Flag missing predecessors (tasks with no predecessors that are not legitimate project
 starts), redundant constraints (constrained date that is already enforced by logic), and
