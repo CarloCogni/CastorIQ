@@ -45,6 +45,7 @@ ALL_SECTIONS: tuple[str, ...] = (
     "delay_analysis",
     "risk_forecast",
     "anomalies",
+    "schedule_audit",
     "floor_health",
     "cash_flow",
 )
@@ -56,6 +57,7 @@ SECTION_TITLES: dict[str, str] = {
     "delay_analysis": "Delay Root-Cause Analysis",
     "risk_forecast": "Risk Forecast (ML)",
     "anomalies": "Schedule Anomalies",
+    "schedule_audit": "Schedule Audit — Section Mismatches",
     "floor_health": "Floor Health Matrix",
     "cash_flow": "Cash Flow Forecast",
 }
@@ -178,6 +180,13 @@ def gather_report_data(project_id: str, sections: tuple[str, ...]) -> dict:
 
     if "anomalies" in sections:
         data["anomaly"] = _safe(detect_anomalies, project_id)
+
+    if "schedule_audit" in sections:
+        from .schedule_audit import run_section_mismatch_audit
+
+        # user=None → no LLM call; uses DB name cache from prior audit runs.
+        # Degrades gracefully to {"has_data": False} when audit has never been run.
+        data["audit"] = _safe(run_section_mismatch_audit, project_id, user=None)
 
     if "floor_health" in sections:
         data["floor"] = _safe(compute_floor_health, project_id)
@@ -620,6 +629,87 @@ def _html_cash_flow(data: dict) -> str:
     return html
 
 
+def _html_schedule_audit(data: dict) -> str:
+    audit = data.get("audit", {})
+
+    advisory = (
+        "<p class='muted' style='border-left:3pt solid #9ca3af;padding-left:6pt;margin-bottom:6pt;'>"
+        "<b>Advisory only.</b> Flagged items are for human review — the original P6 CSI coding "
+        "is the source of record and has <b>not</b> been changed by this tool. "
+        "Confirmed items are high-confidence disagreements between the activity name and its "
+        "coded CSI division. Needs-review items have medium confidence and may reflect a "
+        "legitimate planner decision.</p>\n"
+    )
+
+    if not audit.get("has_data"):
+        return (
+            advisory
+            + "<p class='na'>Schedule audit data not available. Run the Schedule Audit in the "
+            "EVM tab to generate findings; results are cached in the database for subsequent "
+            "report runs.</p>\n"
+        )
+
+    items: list[dict] = audit.get("items", [])
+    confirmed = [it for it in items if it.get("verdict") == "confirmed"]
+    needs_review = [it for it in items if it.get("verdict") == "needs_review"]
+    ai_ran = audit.get("ai_ran", False)
+
+    html = advisory
+
+    n_conf = audit.get("confirmed_count", len(confirmed))
+    n_rev = audit.get("needs_review_count", len(needs_review))
+    html += (
+        f"<p><b>{n_conf} confirmed</b> coding mismatch{'' if n_conf == 1 else 'es'} · "
+        f"<b>{n_rev} for review</b> · "
+        f"{'AI classification active' if ai_ran else 'Classification from cached results'}</p>\n"
+    )
+
+    def _verdict_cls(v: str) -> str:
+        return {"confirmed": "bad", "needs_review": "warn"}.get(v, "muted")
+
+    def _conf_cls(c: str) -> str:
+        return {"high": "good", "medium": "warn", "low": "muted"}.get(c or "", "muted")
+
+    def _audit_table(rows: list[dict], label: str) -> str:
+        if not rows:
+            return ""
+        t = f"<p><b>{_esc(label)}</b></p>\n"
+        t += (
+            "<table><tr>"
+            "<th>Activity name</th>"
+            "<th>Code</th>"
+            "<th>Coded div.</th>"
+            "<th>Suggested div.</th>"
+            "<th>Conf.</th>"
+            "<th>Reason</th>"
+            "</tr>\n"
+        )
+        for i, it in enumerate(rows):
+            alt = ' class="alt"' if i % 2 else ""
+            vc = _verdict_cls(it.get("verdict", ""))
+            cc = _conf_cls(it.get("ai_confidence", ""))
+            t += (
+                f"<tr{alt}>"
+                f"<td>{_esc(it.get('name', '')[:55])}</td>"
+                f"<td class='muted' style='font-size:7.5pt;'>{_esc(it.get('activity_code', ''))}</td>"
+                f"<td class='{vc}'>{_esc(it.get('coded_trade', ''))}</td>"
+                f"<td><b>{_esc(it.get('ai_trade', '') or '—')}</b></td>"
+                f"<td class='{cc}'>{_esc(it.get('ai_confidence', '') or '—')}</td>"
+                f"<td class='muted' style='font-size:7.5pt;'>{_esc(it.get('ai_reason', '') or '')}</td>"
+                f"</tr>\n"
+            )
+        t += "</table>\n"
+        return t
+
+    html += _audit_table(confirmed, f"Confirmed mismatches ({len(confirmed)})")
+    html += _audit_table(needs_review, f"Needs review ({len(needs_review)})")
+
+    if not confirmed and not needs_review:
+        html += "<p class='na'>No confirmed or needs-review items in the stored audit result.</p>\n"
+
+    return html
+
+
 _SECTION_HTML_BUILDERS: dict[str, Any] = {
     "executive_summary": _html_executive_summary,
     "evm_performance": _html_evm,
@@ -627,6 +717,7 @@ _SECTION_HTML_BUILDERS: dict[str, Any] = {
     "delay_analysis": _html_delay_analysis,
     "risk_forecast": _html_risk_forecast,
     "anomalies": _html_anomalies,
+    "schedule_audit": _html_schedule_audit,
     "floor_health": _html_floor_health,
     "cash_flow": _html_cash_flow,
 }
@@ -980,6 +1071,58 @@ def render_docx(data: dict, sections: tuple[str, ...]) -> bytes:
                                 for it in items
                             ],
                         )
+
+        elif key == "schedule_audit":
+            au = data.get("audit", {})
+            advisory_text = (
+                "Advisory only. Flagged items are for human review — original P6 CSI coding "
+                "is the source of record and has not been changed."
+            )
+            p = doc.add_paragraph(advisory_text)
+            p.runs[0].italic = True
+            p.runs[0].font.size = Pt(8.5)
+            if not au.get("has_data"):
+                doc.add_paragraph(
+                    "Schedule audit data not available. Run the Schedule Audit in the EVM tab "
+                    "to generate findings."
+                )
+            else:
+                items: list[dict] = au.get("items", [])
+                confirmed_items = [it for it in items if it.get("verdict") == "confirmed"]
+                review_items = [it for it in items if it.get("verdict") == "needs_review"]
+                doc.add_paragraph(
+                    f"{au.get('confirmed_count', len(confirmed_items))} confirmed  |  "
+                    f"{au.get('needs_review_count', len(review_items))} needs review"
+                )
+                for label, group in [
+                    ("Confirmed Mismatches", confirmed_items),
+                    ("Needs Review", review_items),
+                ]:
+                    if not group:
+                        continue
+                    doc.add_paragraph(label).runs[0].bold = True
+                    _docx_table(
+                        doc,
+                        [
+                            "Activity Name",
+                            "Code",
+                            "Coded Div.",
+                            "Suggested Div.",
+                            "Conf.",
+                            "Reason",
+                        ],
+                        [
+                            [
+                                it.get("name", "")[:55],
+                                it.get("activity_code", ""),
+                                it.get("coded_trade", ""),
+                                it.get("ai_trade", "") or "—",
+                                it.get("ai_confidence", "") or "—",
+                                (it.get("ai_reason", "") or "")[:80],
+                            ]
+                            for it in group
+                        ],
+                    )
 
         elif key == "floor_health":
             fh = data.get("floor", {})
