@@ -108,14 +108,14 @@
 
             <!-- A1: EV calculation -->
             <div style="background:var(--bs-body-bg); padding:6px 10px; font-weight:600;">
-                EV: linear elapsed from actual_start
+                EV: P6 %-complete when present, linear elapsed fallback
                 <div style="font-weight:400; font-size:0.67rem; color:var(--bs-secondary-color); margin-top:1px;">
-                    <code style="font-size:0.7rem;">(today − actual_start) ÷ (planned_end − actual_start)</code>
+                    Priority: <code style="font-size:0.7rem;">PhysicalPercentComplete → DurationPercentComplete → (d − actual_start) ÷ (planned_end − actual_start)</code>
                 </div>
             </div>
             <div style="background:var(--bs-body-bg); padding:6px 10px; color:var(--bs-secondary-color);">
-                Progress is proportional to elapsed calendar time; <code>physical_percent_complete</code> is not used
-                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">evm.py:123 _earned_pct_at</span>
+                P6 %-complete used for in-progress tasks when imported from P6 XML; CSV imports and tasks with no P6 pct data fall back to linear elapsed (snapshot semantics — see Data Readiness for coverage)
+                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">evm.py _earned_pct_at</span>
             </div>
 
             <!-- A2: complete/no actual_end -->

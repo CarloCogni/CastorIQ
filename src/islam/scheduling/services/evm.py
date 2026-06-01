@@ -123,17 +123,37 @@ def _planned_pct_at(task, d: date) -> float:
 def _earned_pct_at(task, d: date) -> float:
     """Actual earned progress 0-1 for task at date *d*.
 
-    When actual_start is recorded it gates all EV (nothing earned before work
-    begins).  When only status="complete" is set (no actual dates), we treat
-    planned end_date as the completion reference so EV stays at 0 before that
-    date — preventing complete tasks from inflating the EV curve at project
-    start.
+    Priority for in-progress tasks (actual_start recorded, not yet complete):
+      1. task.physical_percent_complete — planner-entered physical progress (0..1).
+         Used when 0 < value ≤ 1.
+      2. task.duration_percent_complete — P6 duration-based progress (0..1).
+         Used when 0 < value ≤ 1.
+      3. Linear elapsed: (d − actual_start) / (planned_end − actual_start),
+         capped 0..1.  Fallback for CSV imports and tasks with no P6 pct data.
+
+    Snapshot semantics: percent-complete values are today's snapshot from the
+    last P6 export and are used for all d ≥ actual_start, producing a
+    step-function in historical series.  The KPI scalar at d=today is accurate.
+
+    When actual_start is missing and status="complete", EV is gated at planned
+    end_date so EV stays 0 before that date.
     """
     if task.actual_start:
         if task.actual_start > d:
             return 0.0
         if task.status == "complete" or (task.actual_end and task.actual_end <= d):
             return 1.0
+
+        # In-progress: prefer real P6 % complete over linear elapsed
+        phys = task.physical_percent_complete
+        if phys is not None and phys > 0:
+            return float(min(phys, 1.0))
+
+        dur_pct = task.duration_percent_complete
+        if dur_pct is not None and dur_pct > 0:
+            return float(min(dur_pct, 1.0))
+
+        # Linear elapsed fallback (used for CSV imports and tasks with no P6 pct data)
         dur = max((task.end_date - task.actual_start).days, 1)
         return max(0.0, min(1.0, (d - task.actual_start).days / dur))
 
