@@ -83,7 +83,8 @@ def _build_block1(evm: dict, drc: dict, mc: dict) -> dict:
         }
 
     spi = float(evm["spi"])
-    cpi = float(evm["cpi"])
+    cpi_raw = evm.get("cpi")
+    cpi = float(cpi_raw) if cpi_raw is not None else None
     start = date.fromisoformat(evm["project_start"])
     baseline = date.fromisoformat(evm["project_end"])
     as_of = date.fromisoformat(evm["as_of"])
@@ -140,7 +141,11 @@ def _build_block1(evm: dict, drc: dict, mc: dict) -> dict:
         p80_date = date.fromisoformat(mc_p80)
         mc_str = f" P80 scenario: {_fmt_month(p80_date)}."
 
-    sentence = f"{perf_label} (SPI {spi:.2f}, CPI {cpi:.2f}). {var_str}{driver_str}{mc_str}"
+    if cpi is not None:
+        perf_detail = f"SPI {spi:.2f}, CPI {cpi:.2f}"
+    else:
+        perf_detail = f"SPI {spi:.2f} — cost data not imported"
+    sentence = f"{perf_label} ({perf_detail}). {var_str}{driver_str}{mc_str}"
 
     return {
         "severity": _severity(spi),

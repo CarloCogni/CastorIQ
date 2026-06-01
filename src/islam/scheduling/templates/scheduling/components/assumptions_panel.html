@@ -49,7 +49,7 @@
             </div>
             <div style="background:var(--bs-body-bg); padding:6px 10px; color:var(--bs-secondary-color);">
                 All remaining work will be delivered at the same cost efficiency as to date
-                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">evm.py:466</span>
+                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">evm.py:544</span>
             </div>
 
             <!-- A12a: PERT optimistic -->
@@ -60,7 +60,7 @@
             </div>
             <div style="background:var(--bs-body-bg); padding:6px 10px; color:var(--bs-secondary-color);">
                 Best-case: a task can finish 20 % faster than its baseline duration
-                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">monte_carlo.py:37 _PERT_OPT</span>
+                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">monte_carlo.py:39 _PERT_OPT</span>
             </div>
 
             <!-- A12b: PERT pessimistic -->
@@ -72,7 +72,7 @@
             </div>
             <div style="background:var(--bs-body-bg); padding:6px 10px; color:var(--bs-secondary-color);">
                 Worst-case: a task may run 50 % over its baseline; inflated further if it started late
-                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">monte_carlo.py:36 _PERT_PESS</span>
+                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">monte_carlo.py:40 _PERT_PESS</span>
             </div>
 
             <!-- A13: MC task cap -->
@@ -84,7 +84,7 @@
             </div>
             <div style="background:var(--bs-body-bg); padding:6px 10px; color:var(--bs-secondary-color);">
                 The most overdue and latest-finishing tasks capture schedule risk; remaining tasks fixed at CPM
-                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">monte_carlo.py:35 MAX_SIM_TASKS</span>
+                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">monte_carlo.py:38 MAX_SIM_TASKS</span>
             </div>
 
         </div><!-- /value grid -->
@@ -108,14 +108,14 @@
 
             <!-- A1: EV calculation -->
             <div style="background:var(--bs-body-bg); padding:6px 10px; font-weight:600;">
-                EV: P6 %-complete when present, linear elapsed fallback
+                EV: real %-complete when present, linear elapsed fallback
                 <div style="font-weight:400; font-size:0.67rem; color:var(--bs-secondary-color); margin-top:1px;">
                     Priority: <code style="font-size:0.7rem;">PhysicalPercentComplete → DurationPercentComplete → (d − actual_start) ÷ (planned_end − actual_start)</code>
                 </div>
             </div>
             <div style="background:var(--bs-body-bg); padding:6px 10px; color:var(--bs-secondary-color);">
-                P6 %-complete used for in-progress tasks when imported from P6 XML; CSV imports and tasks with no P6 pct data fall back to linear elapsed (snapshot semantics — see Data Readiness for coverage)
-                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">evm.py _earned_pct_at</span>
+                P6 XML populates physical/duration %-complete directly. CSV imports can supply a <strong>% Complete</strong> column (0–100 or 0–1 accepted); it is stored as physical %-complete and used by the same priority chain. Tasks with no %-complete data fall back to linear elapsed — overdue tasks are capped at 100% EV, which overstates SPI (see warning banner above KPIs).
+                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">evm.py _earned_pct_at · column_mapper.py _parse_pct</span>
             </div>
 
             <!-- A2: complete/no actual_end -->
@@ -138,7 +138,7 @@
             </div>
             <div style="background:var(--bs-body-bg); padding:6px 10px; color:var(--bs-secondary-color);">
                 Planned budget is spent uniformly across the task's planned date range (no S-curve shaping per task)
-                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">evm.py:113 _planned_pct_at</span>
+                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">evm.py:116 _planned_pct_at</span>
             </div>
 
             <!-- A6: duration basis -->
@@ -147,7 +147,7 @@
             </div>
             <div style="background:var(--bs-body-bg); padding:6px 10px; color:var(--bs-secondary-color);">
                 EV, PV, and PERT samples use calendar-day spans; weekends and holidays count as work time unless a P6 calendar is imported
-                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">evm.py:119, monte_carlo.py:192</span>
+                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">evm.py:131, monte_carlo.py:201</span>
             </div>
 
             <!-- A8/A9: AC time-series -->
@@ -156,7 +156,7 @@
             </div>
             <div style="background:var(--bs-body-bg); padding:6px 10px; color:var(--bs-secondary-color);">
                 All of a task's actual cost is attributed to one point — <code>actual_end</code> for completed tasks, today for in-progress tasks — not spread over the work period
-                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">evm.py:416</span>
+                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">evm.py:486</span>
             </div>
 
             <!-- A11: Cash Flow distribution -->
@@ -168,7 +168,7 @@
             </div>
             <div style="background:var(--bs-body-bg); padding:6px 10px; color:var(--bs-secondary-color);">
                 Spend is allocated uniformly within each task's date range; no resource-loading profile applied
-                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">cashflow.py:37 _distribute_monthly</span>
+                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">cashflow.py:41 _distribute_monthly</span>
             </div>
 
             <!-- A14: SS/SF approximation -->
@@ -177,7 +177,7 @@
             </div>
             <div style="background:var(--bs-body-bg); padding:6px 10px; color:var(--bs-secondary-color);">
                 SS and SF predecessors constrain only the successor's earliest start (via CPM early_start), not its finish; no FS serialisation applied — covers ≈ 95 % of real-schedule semantics
-                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">monte_carlo.py:219</span>
+                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">monte_carlo.py:227</span>
             </div>
 
             <!-- A16: Decision Layer biggest driver -->
