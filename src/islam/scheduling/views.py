@@ -156,9 +156,11 @@ class ScheduleView(ProjectTabMixin, TemplateView):
             # ── Data Readiness panel ──────────────────────────────────────
             from .models import P6ResourceAssignment
 
-            phys_tasks = Task.objects.filter(
-                project=project, is_non_physical=False
-            ).exclude(start_date=None).exclude(end_date=None)
+            phys_tasks = (
+                Task.objects.filter(project=project, is_non_physical=False)
+                .exclude(start_date=None)
+                .exclude(end_date=None)
+            )
             n_total = phys_tasks.count()
 
             if n_total > 0:
@@ -170,6 +172,17 @@ class ScheduleView(ProjectTabMixin, TemplateView):
                 ra_actual = P6ResourceAssignment.objects.filter(
                     task__project=project, actual_cost__gt=0
                 ).count()
+
+                # EV % complete coverage: active tasks with real P6 pct data
+                active_qs = phys_tasks.filter(
+                    actual_start__isnull=False,
+                ).exclude(status="complete")
+                n_active = active_qs.count()
+                n_ev_real = active_qs.filter(
+                    Q(physical_percent_complete__gt=0)
+                    | Q(duration_percent_complete__gt=0)
+                ).count() if n_active else 0
+
                 ctx["data_readiness"] = {
                     "total_tasks": n_total,
                     "baseline_pct": 100,  # already filtered on start/end not null
@@ -179,6 +192,9 @@ class ScheduleView(ProjectTabMixin, TemplateView):
                     "actual_cost_available": ra_actual > 0,
                     "ra_actual_count": ra_actual,
                     "has_calendar": bool(used_cals),
+                    "n_active": n_active,
+                    "n_ev_real_pct": n_ev_real,
+                    "ev_real_pct_coverage": round(n_ev_real * 100 / n_active, 1) if n_active else 0,
                 }
             else:
                 ctx["data_readiness"] = None
@@ -661,6 +677,8 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
                     constraint_date=date.fromisoformat(td["constraint_date"])
                     if td.get("constraint_date")
                     else None,
+                    physical_percent_complete=td.get("_p6_phys_pct") or None,
+                    duration_percent_complete=td.get("_p6_dur_pct") or None,
                 )
 
                 existing = None

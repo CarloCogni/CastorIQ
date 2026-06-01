@@ -111,6 +111,28 @@
                 <span style="color:var(--bs-secondary-color); font-size:.67rem;">(enables EV, SPI)</span>
             </div>
 
+            <!-- EV % complete source -->
+            {% if dr.n_active %}
+            <div style="display:flex; align-items:center; gap:5px;">
+                {% if dr.ev_real_pct_coverage >= 80 %}
+                <span style="color:#16a34a; font-size:.8rem;">✓</span>
+                {% elif dr.ev_real_pct_coverage >= 1 %}
+                <span style="color:#d97706; font-size:.8rem;">⚠</span>
+                {% else %}
+                <span style="color:#dc2626; font-size:.8rem;">✗</span>
+                {% endif %}
+                <span>EV source —
+                    {% if dr.ev_real_pct_coverage >= 1 %}
+                        {{ dr.n_ev_real_pct }} of {{ dr.n_active }} in-progress tasks
+                        ({{ dr.ev_real_pct_coverage }}%) use P6 %-complete;
+                        remainder estimated linearly
+                    {% else %}
+                        no P6 %-complete data — all in-progress EV estimated linearly
+                    {% endif %}
+                </span>
+            </div>
+            {% endif %}
+
             <!-- Planned cost -->
             <div style="display:flex; align-items:center; gap:5px;">
                 {% if dr.planned_cost_pct >= 1 %}

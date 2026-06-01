@@ -238,6 +238,22 @@ class Task(UUIDModel):
         verbose_name="Constraint Date",
     )
 
+    # ------------------------------------------------------------------
+    # P6 progress tracking — populated from P6 XML import; used for EV
+    # ------------------------------------------------------------------
+    physical_percent_complete = models.FloatField(
+        null=True,
+        blank=True,
+        verbose_name="Physical % Complete",
+        help_text="Planner-entered physical progress (0–1). From P6 PhysicalPercentComplete.",
+    )
+    duration_percent_complete = models.FloatField(
+        null=True,
+        blank=True,
+        verbose_name="Duration % Complete",
+        help_text="Duration-based progress (0–1). Computed by P6 from actual/remaining duration.",
+    )
+
     class Meta:
         verbose_name = "Schedule Task"
         verbose_name_plural = "Schedule Tasks"
