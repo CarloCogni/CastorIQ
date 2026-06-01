@@ -123,8 +123,10 @@
                 "Complete" with no <code>actual_end</code>
             </div>
             <div style="background:var(--bs-body-bg); padding:6px 10px; color:var(--bs-secondary-color);">
-                Earns 100 % at the task's planned <code>end_date</code>; EV is zero before that date even if status="complete"
-                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">evm.py:140</span>
+                Earns 100 % from the task's planned <code>start_date</code> onward.
+                <code>end_date</code> is not used — it can exceed the as-of date (e.g. CSV imports with pre-marked-complete tasks),
+                which would silently return 0 EV for a finished task. No actual completion date is synthesised.
+                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">evm.py _earned_pct_at</span>
             </div>
 
             <!-- A4: PV phasing -->
