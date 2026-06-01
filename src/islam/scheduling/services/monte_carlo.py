@@ -30,6 +30,8 @@ import random
 from collections import Counter, defaultdict, deque
 from datetime import date
 
+from .utils import get_project_data_date
+
 logger = logging.getLogger(__name__)
 
 MAX_SIM_TASKS = 500
@@ -491,7 +493,7 @@ def compute_monte_carlo(project_id: str, n_simulations: int = 1000) -> dict:
         histogram         — list[{label, date, count, pct, cumulative_pct}]
         summary_line      — str (for chat context)
     """
-    today = date.today()
+    today, _ = get_project_data_date(project_id)
     today_ord = today.toordinal()
 
     task_rows, dep_rows = _load_data(project_id)

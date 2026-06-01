@@ -23,9 +23,10 @@ from __future__ import annotations
 import logging
 import math
 import re
-from datetime import date
 
 import numpy as np
+
+from .utils import get_project_data_date
 
 logger = logging.getLogger(__name__)
 
@@ -279,7 +280,7 @@ def run_completion_ml(project_id: str) -> dict:
 
     from islam.scheduling.models import P6ResourceAssignment, Task, TaskDependency
 
-    today = date.today()
+    today, _ = get_project_data_date(project_id)
 
     # ── Load tasks ─────────────────────────────────────────────────────────
     completed = list(

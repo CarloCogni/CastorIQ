@@ -183,6 +183,19 @@ class ScheduleView(ProjectTabMixin, TemplateView):
                     | Q(duration_percent_complete__gt=0)
                 ).count() if n_active else 0
 
+                # P6 data date — from most recent P6 XML source for this project
+                p6_source = (
+                    ScheduleSource.objects.filter(
+                        project=project, data_date__isnull=False
+                    )
+                    .order_by("-imported_at")
+                    .first()
+                )
+                p6_data_date = p6_source.data_date if p6_source else None
+                data_freshness_days = (
+                    (date.today() - p6_data_date).days if p6_data_date else None
+                )
+
                 ctx["data_readiness"] = {
                     "total_tasks": n_total,
                     "baseline_pct": 100,  # already filtered on start/end not null
@@ -195,6 +208,9 @@ class ScheduleView(ProjectTabMixin, TemplateView):
                     "n_active": n_active,
                     "n_ev_real_pct": n_ev_real,
                     "ev_real_pct_coverage": round(n_ev_real * 100 / n_active, 1) if n_active else 0,
+                    "p6_data_date": p6_data_date,
+                    "data_freshness_days": data_freshness_days,
+                    "data_freshness_months": round(data_freshness_days / 30.4, 1) if data_freshness_days else None,
                 }
             else:
                 ctx["data_readiness"] = None
@@ -288,6 +304,9 @@ class SchedulePreviewView(ProjectModifyAccessMixin, View):
                 if b"APIBusinessObjects" in file_bytes[:2048]:
                     _tasks, _deps, _aux = parse_p6xml(io.BytesIO(file_bytes))
                     save_p6_pending_data(project, _aux)
+                    _dd = (_aux.get("project_meta") or {}).get("data_date")
+                    if _dd:
+                        request.session[f"p6_data_date_{project.pk}"] = _dd.isoformat()
                     return self._preview_parsed(
                         request, project, uploaded, lambda _f: (_tasks, _deps)
                     )
@@ -506,6 +525,9 @@ class TaskUploadView(ProjectModifyAccessMixin, View):
                     tasks, raw_deps, aux_data = parse_p6xml(io.BytesIO(file_bytes))
                     save_p6_pending_data(project, aux_data)
                     source = "p6xml"
+                    _dd = (aux_data.get("project_meta") or {}).get("data_date")
+                    if _dd:
+                        request.session[f"p6_data_date_{project.pk}"] = _dd.isoformat()
                 else:
                     tasks, raw_deps = parse_msp(io.BytesIO(file_bytes))
                     source = "msp"
@@ -789,11 +811,14 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
         # Record this import event so the Data Sources tab can show source chips.
         filename = request.session.pop(f"schedule_filename_{project.pk}", "")
         source_format = tasks_data[0].get("source", "excel") if tasks_data else "excel"
+        _p6_dd_str = request.session.pop(f"p6_data_date_{project.pk}", None)
+        _p6_data_date = date.fromisoformat(_p6_dd_str) if _p6_dd_str else None
         current_source = ScheduleSource.objects.create(
             project=project,
             filename=filename,
             source_format=source_format,
             task_count=created + updated + unchanged,
+            data_date=_p6_data_date,
         )
         if touched_pks:
             Task.objects.filter(pk__in=touched_pks).update(schedule_source=current_source)
@@ -1319,9 +1344,13 @@ class EVMDataView(ProjectAccessMixin, View):
     """JSON — EVM metrics and S-curve series for the EVM Dashboard tab."""
 
     def get(self, request, **kwargs: object) -> JsonResponse:
+        from .services.utils import get_project_data_date
+
         project = self.get_project()
         try:
             result = compute_evm(str(project.pk))
+            _, is_real = get_project_data_date(str(project.pk))
+            result["data_date_is_real"] = is_real
         except Exception as exc:
             logger.exception("EVM failed for project %s", project.pk)
             return JsonResponse({"error": str(exc)}, status=500)

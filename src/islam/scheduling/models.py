@@ -419,6 +419,13 @@ class ScheduleSource(UUIDModel):
     )
     task_count = models.IntegerField(default=0, verbose_name="Tasks in file")
     imported_at = models.DateTimeField(auto_now_add=True)
+    data_date = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="P6 Data Date",
+        help_text="DataDate from P6 XML — the date through which progress was recorded. "
+        "Absent for CSV/Excel imports. All EVM metrics are computed as-of this date.",
+    )
 
     class Meta:
         verbose_name = "Schedule Source"
