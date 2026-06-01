@@ -85,6 +85,29 @@
     <!-- ── Data Readiness panel ─────────────────────────────────────── -->
     {% if data_readiness %}
     {% with dr=data_readiness %}
+
+    <!-- Data-freshness notice — prominent, shown when P6 data date is known and stale -->
+    {% if dr.p6_data_date and dr.data_freshness_days and dr.data_freshness_days > 7 %}
+    <div class="mb-2"
+         style="border-left:4px solid #d97706; background:rgba(217,119,6,.09);
+                border-radius:0 6px 6px 0; padding:10px 14px; font-size:0.78rem;">
+        <div style="display:flex; align-items:flex-start; gap:8px;">
+            <i class="bi bi-clock-history" style="color:#d97706; font-size:1rem; flex-shrink:0; margin-top:1px;"></i>
+            <div>
+                <strong style="color:#d97706;">
+                    Data as of {{ dr.p6_data_date|date:"j M Y" }}
+                    — {{ dr.data_freshness_months }} months old.
+                </strong>
+                <span style="color:var(--bs-secondary-color);">
+                    All EVM metrics (PV, EV, SPI, forecast) reflect the last P6 update,
+                    <strong>not today's status</strong>.
+                    For a current decision, re-import an updated XML.
+                </span>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <div class="mb-2" style="border:1px solid var(--bs-border-color); border-radius:8px;
          background:var(--bs-body-bg); padding:8px 12px; font-size:0.72rem;">
         <div style="font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase;

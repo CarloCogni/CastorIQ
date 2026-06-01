@@ -21,6 +21,8 @@ from datetime import date, timedelta
 
 import numpy as np
 
+from .utils import get_project_data_date
+
 logger = logging.getLogger(__name__)
 
 _CSI_RE = re.compile(r"-[A-Z]*(\d{2})\d{4}")
@@ -110,7 +112,9 @@ def _robust_z(value: float, median: float, mad: float) -> float:
 # ── 1. Execution anomalies (running-long + unrealistic baseline) ──────────────
 
 
-def _classify_stall_anomalies(tasks: list, data_date: date, cal_map: dict | None = None) -> tuple[list[dict], list[dict]]:
+def _classify_stall_anomalies(
+    tasks: list, data_date: date, cal_map: dict | None = None
+) -> tuple[list[dict], list[dict]]:
     """Split started+incomplete overrunning tasks into two honestly-named buckets.
 
     running_long:
@@ -209,7 +213,9 @@ def _classify_stall_anomalies(tasks: list, data_date: date, cal_map: dict | None
 # ── 2. Cross-sectional outliers ───────────────────────────────────────────────
 
 
-def _detect_cross_sectional(tasks: list, override_map: dict | None = None, cal_map: dict | None = None) -> list[dict]:
+def _detect_cross_sectional(
+    tasks: list, override_map: dict | None = None, cal_map: dict | None = None
+) -> list[dict]:
     """Flag tasks that are robust z-score outliers within their CSI trade peer group.
 
     Three axes, each producing separate flags when the threshold is exceeded:
@@ -224,7 +230,11 @@ def _detect_cross_sectional(tasks: list, override_map: dict | None = None, cal_m
     for t in tasks:
         if t.start_date and t.end_date:
             cal = task_cal(t, cal_map) if cal_map else None
-            dur = working_day_diff(t.start_date, t.end_date, cal) if cal is not None else (t.end_date - t.start_date).days
+            dur = (
+                working_day_diff(t.start_date, t.end_date, cal)
+                if cal is not None
+                else (t.end_date - t.start_date).days
+            )
             if _MIN_PEER_DURATION_DAYS <= dur <= _MAX_PEER_DURATION_DAYS:
                 effective_csi = (
                     override_map.get(str(t.pk)) or _csi(t.activity_code or "")
@@ -244,7 +254,11 @@ def _detect_cross_sectional(tasks: list, override_map: dict | None = None, cal_m
         # Axis: planned_duration (working days)
         def _dur(t):
             cal = task_cal(t, cal_map) if cal_map else None
-            return working_day_diff(t.start_date, t.end_date, cal) if cal is not None else (t.end_date - t.start_date).days
+            return (
+                working_day_diff(t.start_date, t.end_date, cal)
+                if cal is not None
+                else (t.end_date - t.start_date).days
+            )
 
         durations = np.array([_dur(t) for t in group], dtype=float)
         dur_med = float(np.median(durations))
@@ -308,7 +322,11 @@ def _detect_cross_sectional(tasks: list, override_map: dict | None = None, cal_m
         # Axis: finish_variance (completed tasks, working days)
         def _fv(t):
             cal = task_cal(t, cal_map) if cal_map else None
-            return working_day_diff(t.end_date, t.actual_end, cal) if cal is not None else (t.actual_end - t.end_date).days
+            return (
+                working_day_diff(t.end_date, t.actual_end, cal)
+                if cal is not None
+                else (t.actual_end - t.end_date).days
+            )
 
         done_pairs = [(t, _fv(t)) for t in group if t.actual_end]
         if len(done_pairs) >= _MIN_PEER_N:
@@ -547,8 +565,7 @@ def detect_anomalies(project_id: str, override_map: dict | None = None) -> dict:
 
     cal_map = load_project_calendars(project_id)
 
-    completed_ends = [t.actual_end for t in tasks if t.actual_end]
-    data_date = max(completed_ends) if completed_ends else date.today()
+    data_date, _ = get_project_data_date(project_id)
 
     task_pks = [str(t.pk) for t in tasks]
     deps = list(
@@ -558,7 +575,9 @@ def detect_anomalies(project_id: str, override_map: dict | None = None) -> dict:
         ).only("predecessor_id", "successor_id", "dep_type", "lag_days")
     )
 
-    running_long, unrealistic_baseline = _classify_stall_anomalies(tasks, data_date, cal_map=cal_map)
+    running_long, unrealistic_baseline = _classify_stall_anomalies(
+        tasks, data_date, cal_map=cal_map
+    )
     outliers = _detect_cross_sectional(tasks, override_map=override_map, cal_map=cal_map)
     logic_structural = _detect_logic_anomalies(tasks, deps)
 

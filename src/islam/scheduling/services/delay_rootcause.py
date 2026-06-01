@@ -35,6 +35,8 @@ import re
 from collections import defaultdict, deque
 from datetime import date, timedelta
 
+from .utils import get_project_data_date
+
 logger = logging.getLogger(__name__)
 
 # ── Constants ─────────────────────────────────────────────────────────────────
@@ -186,7 +188,7 @@ def run_delay_rootcause(
 
     from .calendar_utils import load_project_calendars, task_cal
 
-    today = date.today()
+    today, _ = get_project_data_date(project_id)
 
     tasks = list(
         Task.objects.filter(project_id=project_id, is_non_physical=False)
@@ -502,5 +504,7 @@ def run_delay_rootcause(
         "as_of": today.isoformat(),
         "using_audit_overrides": bool(override_map),
         "n_overridden": len(override_map) if override_map else 0,
-        "calendar_basis": "working days per project calendar" if has_calendar_data else "calendar days (no P6 calendar imported)",
+        "calendar_basis": "working days per project calendar"
+        if has_calendar_data
+        else "calendar days (no P6 calendar imported)",
     }

@@ -113,6 +113,23 @@
         </select>
     </div>
 
+    <!-- Data-freshness notice (populated by JS once EVM data loads) -->
+    <div id="evm-freshness-banner" class="d-none"
+         style="border-left:4px solid #d97706; background:rgba(217,119,6,.08);
+                border-radius:0 6px 6px 0; padding:10px 14px; font-size:0.78rem;">
+        <div style="display:flex; align-items:flex-start; gap:8px;">
+            <i class="bi bi-clock-history" style="color:#d97706; font-size:1rem; flex-shrink:0; margin-top:1px;"></i>
+            <div>
+                <span id="evm-freshness-headline" style="font-weight:700; color:#d97706;"></span>
+                <span id="evm-freshness-body" style="color:var(--bs-secondary-color); margin-left:6px;"></span>
+                <div style="margin-top:3px; color:var(--bs-secondary-color); font-size:0.72rem;">
+                    All metrics reflect the last P6 update, <strong>not today's status</strong>.
+                    For a current decision, re-import an updated XML.
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- KPI cards row -->
     <div id="evm-kpi-row" class="row g-3">
         <!-- Skeleton while loading -->
@@ -1291,8 +1308,8 @@
             drawLine(evPts, "#16a34a", null);
             drawLine(acPts, "#f59e0b", [3, 3]);
 
-            /* Today marker */
-            const todayStr = new Date().toISOString().slice(0, 10);
+            /* Data-date marker (server as_of, not browser clock) */
+            const todayStr = d.as_of;
             if (todayStr >= allDates[0] && todayStr <= allDates[allDates.length - 1]) {
                 const tx = xOf(todayStr);
                 ctx.save();
@@ -1443,7 +1460,27 @@
             cvEl.style.color = "var(--bs-secondary-color)";
             cvEl.style.opacity = "0.45";
         }
-        document.getElementById("evm-as-of").textContent = `As of ${_fmtDateShort(d.as_of)}`;
+        document.getElementById("evm-as-of").textContent = `As of ${_fmtDateFull(d.as_of)}`;
+
+        /* Data-freshness banner — shown when data date is available and stale */
+        const freshnessEl = document.getElementById("evm-freshness-banner");
+        if (d.as_of) {
+            const asOf      = new Date(d.as_of + "T00:00:00");
+            const nowLocal  = new Date();
+            const nowDate   = new Date(nowLocal.getFullYear(), nowLocal.getMonth(), nowLocal.getDate());
+            const diffDays  = Math.round((nowDate - asOf) / 86400000);
+            if (diffDays > 7) {
+                const months  = (diffDays / 30.4).toFixed(1);
+                const label   = diffDays >= 60 ? `${months} months` : `${diffDays} days`;
+                document.getElementById("evm-freshness-headline").textContent =
+                    `Data as of ${_fmtDateFull(d.as_of)} — ${label} old.`;
+                document.getElementById("evm-freshness-body").textContent =
+                    d.data_date_is_real
+                        ? "Metrics are computed at the P6 data date, not today."
+                        : "No P6 data date found — metrics computed at today’s date.";
+                freshnessEl.classList.remove("d-none");
+            }
+        }
     }
 
     /* ── Utilities ─────────────────────────────────────────────────────── */
@@ -1462,6 +1499,12 @@
     function _fmtDateShort(iso) {
         const d = new Date(iso + "T00:00:00");
         return d.toLocaleDateString(undefined, { month: "short", year: "2-digit" });
+    }
+    /* Unambiguous full date: "30 Nov 2025". Used wherever a data date label is shown. */
+    const _MONTH_ABBR = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    function _fmtDateFull(iso) {
+        const d = new Date(iso + "T00:00:00");
+        return `${d.getDate()} ${_MONTH_ABBR[d.getMonth()]} ${d.getFullYear()}`;
     }
 
     function _showError(msg) {

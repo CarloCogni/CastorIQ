@@ -264,7 +264,8 @@ def _compute_wbs_risk(project_id: str, evm_data: dict) -> list[dict]:
 
     from .evm import _earned_pct_at, _planned_pct_at
 
-    today = date.today()
+    # Use the same as-of date that evm_data was computed with — never date.today().
+    today = date.fromisoformat(evm_data["as_of"])
 
     tasks = list(
         Task.objects.filter(project_id=project_id, is_non_physical=False)

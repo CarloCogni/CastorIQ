@@ -36,6 +36,8 @@ from __future__ import annotations
 import logging
 from datetime import date, timedelta
 
+from .utils import get_project_data_date
+
 logger = logging.getLogger(__name__)
 
 
@@ -191,7 +193,7 @@ def compute_delay_distribution(project_id: str) -> dict:
     """Distribution of tasks across delay buckets for the Delay Chart."""
     from islam.scheduling.models import Task
 
-    today = date.today()
+    today, _ = get_project_data_date(project_id)
     tasks = list(
         Task.objects.filter(project_id=project_id, is_non_physical=False)
         .exclude(start_date=None)
@@ -264,7 +266,7 @@ def compute_wbs_heatmap(project_id: str) -> list[dict]:
     """
     from islam.scheduling.models import Task
 
-    today = date.today()
+    today, _ = get_project_data_date(project_id)
     tasks = list(
         Task.objects.filter(project_id=project_id, is_non_physical=False)
         .exclude(start_date=None)
@@ -355,7 +357,7 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
     if not tasks:
         return {"has_data": False}
 
-    today = as_of_date or date.today()
+    today = as_of_date or get_project_data_date(project_id)[0]
     total_tasks = len(tasks)
 
     # ── Planned-value basis: schedule costs → QTO → duration proxy ────────

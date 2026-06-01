@@ -19,6 +19,8 @@ from __future__ import annotations
 import logging
 from datetime import date, timedelta
 
+from .utils import get_project_data_date
+
 logger = logging.getLogger(__name__)
 
 
@@ -87,7 +89,7 @@ def compute_cashflow(project_id: str) -> dict:
 
     from islam.scheduling.models import P6ResourceAssignment, Task
 
-    today = date.today()
+    today, _ = get_project_data_date(project_id)
 
     tasks = list(
         Task.objects.filter(project_id=project_id, is_non_physical=False)
