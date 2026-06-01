@@ -36,6 +36,7 @@ from __future__ import annotations
 import logging
 from datetime import date, timedelta
 
+from .calendar_utils import load_project_calendars, task_cal, working_day_diff
 from .utils import get_project_data_date
 
 logger = logging.getLogger(__name__)
@@ -112,17 +113,26 @@ def _qto_task_costs(project_id: str, tasks: list) -> dict[str, float]:
     return result
 
 
-def _planned_pct_at(task, d: date) -> float:
-    """Linear schedule progress 0-1 for task planned dates at date *d*."""
+def _planned_pct_at(task, d: date, cal=None) -> float:
+    """Linear schedule progress 0-1 for task planned dates at date *d*.
+
+    *cal* is the task's runtime calendar dict from calendar_utils.  When
+    provided, spans are measured in working days using ``working_day_diff``
+    (half-open (start, end] — same semantics as ``.days``).  Falls back to
+    calendar-day arithmetic when *cal* is None.
+    """
     if d >= task.end_date:
         return 1.0
     if d < task.start_date:
         return 0.0
+    if cal is not None:
+        dur = max(working_day_diff(task.start_date, task.end_date, cal), 1)
+        return max(0.0, min(1.0, working_day_diff(task.start_date, d, cal) / dur))
     dur = max((task.end_date - task.start_date).days, 1)
     return (d - task.start_date).days / dur
 
 
-def _earned_pct_at(task, d: date) -> float:
+def _earned_pct_at(task, d: date, cal=None) -> float:
     """Actual earned progress 0-1 for task at date *d*.
 
     Priority for in-progress tasks (actual_start recorded, not yet complete):
@@ -130,8 +140,8 @@ def _earned_pct_at(task, d: date) -> float:
          Used when 0 < value ≤ 1.
       2. task.duration_percent_complete — P6 duration-based progress (0..1).
          Used when 0 < value ≤ 1.
-      3. Linear elapsed: (d − actual_start) / (planned_end − actual_start),
-         capped 0..1.  Fallback for CSV imports and tasks with no P6 pct data.
+      3. Linear elapsed fallback — uses working days when *cal* is provided,
+         calendar days otherwise.  Affects only the 9 IBS tasks with no P6 pct.
 
     Snapshot semantics: percent-complete values are today's snapshot from the
     last P6 export and are used for all d ≥ actual_start, producing a
@@ -155,12 +165,18 @@ def _earned_pct_at(task, d: date) -> float:
         if dur_pct is not None and dur_pct > 0:
             return float(min(dur_pct, 1.0))
 
-        # Linear elapsed fallback (used for CSV imports and tasks with no P6 pct data)
+        # Linear elapsed fallback (CSV imports and tasks with no P6 pct data)
+        if cal is not None:
+            dur = max(working_day_diff(task.actual_start, task.end_date, cal), 1)
+            return max(0.0, min(1.0, working_day_diff(task.actual_start, d, cal) / dur))
         dur = max((task.end_date - task.actual_start).days, 1)
         return max(0.0, min(1.0, (d - task.actual_start).days / dur))
 
     if task.status == "complete":
-        return 1.0 if d >= task.end_date else 0.0
+        # No actual dates: use start_date as the earliest defensible anchor.
+        # end_date would return 0 when end_date > as_of (e.g. CSV imports with
+        # pre-marked-complete tasks whose planned end is still in the future).
+        return 1.0 if d >= task.start_date else 0.0
     return 0.0
 
 
@@ -173,15 +189,28 @@ _DELAY_BUCKETS = [
 ]
 
 
-def _task_delay_days(task, today: date) -> int | None:
-    """Days a task is delayed as of *today*.  None = not yet due (skip)."""
+def _task_delay_days(task, today: date, cal=None) -> int | None:
+    """Working-day delay for *task* as of *today*.  None = not yet due (skip).
+
+    Uses ``working_day_diff`` (half-open (d1, d2]) when *cal* is provided —
+    the same function delay_rootcause uses — so both panels report identical
+    figures.  Falls back to calendar-day ``.days`` when *cal* is None.
+    """
     if task.start_date > today:
         return None
     if task.status == "complete":
-        return max(0, (task.actual_end - task.end_date).days) if task.actual_end else 0
+        if task.actual_end:
+            if cal:
+                return max(0, working_day_diff(task.end_date, task.actual_end, cal))
+            return max(0, (task.actual_end - task.end_date).days)
+        return 0
     if today > task.end_date:
+        if cal:
+            return working_day_diff(task.end_date, today, cal)
         return (today - task.end_date).days
     if today > task.start_date and not task.actual_start:
+        if cal:
+            return working_day_diff(task.start_date, today, cal)
         return (today - task.start_date).days
     return 0
 
@@ -194,6 +223,7 @@ def compute_delay_distribution(project_id: str) -> dict:
     from islam.scheduling.models import Task
 
     today, _ = get_project_data_date(project_id)
+    cal_map = load_project_calendars(project_id)
     tasks = list(
         Task.objects.filter(project_id=project_id, is_non_physical=False)
         .exclude(start_date=None)
@@ -207,7 +237,7 @@ def compute_delay_distribution(project_id: str) -> dict:
     not_yet_due = 0
 
     for t in tasks:
-        delay = _task_delay_days(t, today)
+        delay = _task_delay_days(t, today, task_cal(t, cal_map) if cal_map else None)
         if delay is None:
             not_yet_due += 1
             continue
@@ -267,6 +297,7 @@ def compute_wbs_heatmap(project_id: str) -> list[dict]:
     from islam.scheduling.models import Task
 
     today, _ = get_project_data_date(project_id)
+    cal_map = load_project_calendars(project_id)
     tasks = list(
         Task.objects.filter(project_id=project_id, is_non_physical=False)
         .exclude(start_date=None)
@@ -274,6 +305,8 @@ def compute_wbs_heatmap(project_id: str) -> list[dict]:
     )
     if not tasks:
         return []
+
+    task_cals = {str(t.pk): task_cal(t, cal_map) for t in tasks} if cal_map else {}
 
     groups: dict[str, list] = {}
     for t in tasks:
@@ -283,8 +316,8 @@ def compute_wbs_heatmap(project_id: str) -> list[dict]:
     for stage, stage_tasks in groups.items():
         n = len(stage_tasks)
         completed = sum(1 for t in stage_tasks if t.status == "complete")
-        planned_sum = sum(_planned_pct_at(t, today) for t in stage_tasks)
-        earned_sum = sum(_earned_pct_at(t, today) for t in stage_tasks)
+        planned_sum = sum(_planned_pct_at(t, today, task_cals.get(str(t.pk))) for t in stage_tasks)
+        earned_sum = sum(_earned_pct_at(t, today, task_cals.get(str(t.pk))) for t in stage_tasks)
 
         planned_pct = round(planned_sum / n * 100, 1)
         earned_pct = round(earned_sum / n * 100, 1)
@@ -359,6 +392,12 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
 
     today = as_of_date or get_project_data_date(project_id)[0]
     total_tasks = len(tasks)
+
+    # Per-task calendar for working-day span calculations (PV, EV fallback)
+    cal_map = load_project_calendars(project_id)
+    task_cals: dict[str, object] = (
+        {str(t.pk): task_cal(t, cal_map) for t in tasks} if cal_map else {}
+    )
 
     # ── Planned-value basis: schedule costs → QTO → duration proxy ────────
     sched_costs = {str(t.pk): float(t.cost or 0) for t in tasks}
@@ -457,11 +496,11 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
     cum_ac = 0.0
 
     for d in dates:
-        pv_abs = sum(_planned_pct_at(t, d) * values[str(t.pk)] for t in tasks)
+        pv_abs = sum(_planned_pct_at(t, d, task_cals.get(str(t.pk))) * values[str(t.pk)] for t in tasks)
         pv_series.append({"date": d.isoformat(), "pct": round(pv_abs / bac * 100, 2) if bac else 0})
 
         if d <= today:
-            ev_abs = sum(_earned_pct_at(t, d) * values[str(t.pk)] for t in tasks)
+            ev_abs = sum(_earned_pct_at(t, d, task_cals.get(str(t.pk))) * values[str(t.pk)] for t in tasks)
             ev_series.append(
                 {"date": d.isoformat(), "pct": round(ev_abs / bac * 100, 2) if bac else 0}
             )
@@ -475,8 +514,8 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
                 )
 
     # ── As-of KPI scalars ─────────────────────────────────────────────────
-    pv_today = sum(_planned_pct_at(t, today) * values[str(t.pk)] for t in tasks)
-    ev_today = sum(_earned_pct_at(t, today) * values[str(t.pk)] for t in tasks)
+    pv_today = sum(_planned_pct_at(t, today, task_cals.get(str(t.pk))) * values[str(t.pk)] for t in tasks)
+    ev_today = sum(_earned_pct_at(t, today, task_cals.get(str(t.pk))) * values[str(t.pk)] for t in tasks)
 
     spi = round(ev_today / pv_today, 3) if pv_today > 0 else 1.0
     sv = round(ev_today - pv_today, 2)
