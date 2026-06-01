@@ -527,6 +527,7 @@ def run_completion_ml(project_id: str) -> dict:
         ],
         "feature_importance": feature_importance,
         "watchlist": watchlist,
+        "float_near_critical_wd": float_near_critical,
         "as_of": today.isoformat(),
     }
 
