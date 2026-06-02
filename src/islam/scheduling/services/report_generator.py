@@ -86,6 +86,11 @@ def _fmt_pct(v: float | None, decimals: int = 1) -> str:
     return "n/a" if v is None else f"{v:.{decimals}f}%"
 
 
+def _fmt_ratio(v: float | None) -> str:
+    """Format SPI/CPI/TCPI-style ratios; returns 'N/A' when cost data is absent."""
+    return "N/A" if v is None else f"{v:.3f}"
+
+
 def _fmt_date(iso: str | None) -> str:
     if not iso:
         return "n/a"
@@ -347,15 +352,20 @@ def _html_evm(data: dict) -> str:
             return _fmt_pct(val * 100 if abs(val) < 10 else val)
         return _fmt_num(val)
 
-    spi = evm.get("spi", 1.0)
-    cpi = evm.get("cpi", 1.0)
+    spi = evm.get("spi") or 1.0  # spi is always numeric; guard against edge-case None
+    cpi = evm.get("cpi")  # None when ac_available=False
     rows = [
         ("BAC", f"{sym}{_fmt_num(bac)}", "Budget at Completion", "muted"),
         ("PV", f"{sym}{v('pv')}", "Planned Value (as-of)", "muted"),
         ("EV", f"{sym}{v('ev')}", "Earned Value", "muted"),
         ("AC", f"{sym}{v('ac')}", "Actual Cost", "muted"),
-        ("SPI", f"{spi:.3f}", "Schedule Performance Index", _sev_cls(spi)),
-        ("CPI", f"{cpi:.3f}", "Cost Performance Index", _sev_cls(cpi)),
+        ("SPI", _fmt_ratio(spi), "Schedule Performance Index", _sev_cls(spi)),
+        (
+            "CPI",
+            _fmt_ratio(cpi),
+            "Cost Performance Index",
+            _sev_cls(cpi) if cpi is not None else "muted",
+        ),
         (
             "SV",
             f"{sym}{v('sv')}",
@@ -377,8 +387,8 @@ def _html_evm(data: dict) -> str:
         html += f"<tr{alt}><td><b>{_esc(metric)}</b></td><td class='num {cls}'>{_esc(val)}</td><td class='muted'>{_esc(desc)}</td></tr>\n"
     html += "</table>\n"
 
-    # Interpretation sentence
-    if spi >= 0.95 and cpi >= 0.95:
+    # Interpretation sentence — only compare when both scalars are available
+    if cpi is not None and spi >= 0.95 and cpi >= 0.95:
         interp = "Project is performing <b>on plan</b> — no corrective action indicated."
     elif spi < 0.80:
         months = 0.0
@@ -947,8 +957,8 @@ def render_docx(data: dict, sections: tuple[str, ...]) -> bytes:
                         ["PV", f"{sym}{_fmt_num(e.get('pv', 0))}", "Planned Value"],
                         ["EV", f"{sym}{_fmt_num(e.get('ev', 0))}", "Earned Value"],
                         ["AC", f"{sym}{_fmt_num(e.get('ac', 0))}", "Actual Cost"],
-                        ["SPI", f"{e.get('spi', 0):.3f}", "Schedule Performance Index"],
-                        ["CPI", f"{e.get('cpi', 0):.3f}", "Cost Performance Index"],
+                        ["SPI", _fmt_ratio(e.get("spi")), "Schedule Performance Index"],
+                        ["CPI", _fmt_ratio(e.get("cpi")), "Cost Performance Index"],
                         ["SV", f"{sym}{_fmt_num(e.get('sv', 0))}", "Schedule Variance"],
                         ["CV", f"{sym}{_fmt_num(e.get('cv', 0))}", "Cost Variance"],
                         ["EAC", f"{sym}{_fmt_num(e.get('eac', 0))}", "Estimate at Completion"],
