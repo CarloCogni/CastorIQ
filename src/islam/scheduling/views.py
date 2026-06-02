@@ -178,23 +178,22 @@ class ScheduleView(ProjectTabMixin, TemplateView):
                     actual_start__isnull=False,
                 ).exclude(status="complete")
                 n_active = active_qs.count()
-                n_ev_real = active_qs.filter(
-                    Q(physical_percent_complete__gt=0)
-                    | Q(duration_percent_complete__gt=0)
-                ).count() if n_active else 0
+                n_ev_real = (
+                    active_qs.filter(
+                        Q(physical_percent_complete__gt=0) | Q(duration_percent_complete__gt=0)
+                    ).count()
+                    if n_active
+                    else 0
+                )
 
                 # P6 data date — from most recent P6 XML source for this project
                 p6_source = (
-                    ScheduleSource.objects.filter(
-                        project=project, data_date__isnull=False
-                    )
+                    ScheduleSource.objects.filter(project=project, data_date__isnull=False)
                     .order_by("-imported_at")
                     .first()
                 )
                 p6_data_date = p6_source.data_date if p6_source else None
-                data_freshness_days = (
-                    (date.today() - p6_data_date).days if p6_data_date else None
-                )
+                data_freshness_days = (date.today() - p6_data_date).days if p6_data_date else None
 
                 ctx["data_readiness"] = {
                     "total_tasks": n_total,
@@ -210,7 +209,9 @@ class ScheduleView(ProjectTabMixin, TemplateView):
                     "ev_real_pct_coverage": round(n_ev_real * 100 / n_active, 1) if n_active else 0,
                     "p6_data_date": p6_data_date,
                     "data_freshness_days": data_freshness_days,
-                    "data_freshness_months": round(data_freshness_days / 30.4, 1) if data_freshness_days else None,
+                    "data_freshness_months": round(data_freshness_days / 30.4, 1)
+                    if data_freshness_days
+                    else None,
                 }
             else:
                 ctx["data_readiness"] = None

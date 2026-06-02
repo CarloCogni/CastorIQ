@@ -4,15 +4,19 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('environments', '0006_add_audit_override_map_to_project'),
+        ("environments", "0006_add_audit_override_map_to_project"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='project',
-            name='audit_name_cache',
-            field=models.JSONField(blank=True, default=dict, help_text='Per-name LLM verdict cache from the Schedule Audit. {md5_key: llm_result_dict}. Persisted to DB so verdicts are stable across server restarts and Django-cache expiry — prevents LLM non-determinism from changing the confirmed set between runs.', verbose_name='Audit Name Cache'),
+            model_name="project",
+            name="audit_name_cache",
+            field=models.JSONField(
+                blank=True,
+                default=dict,
+                help_text="Per-name LLM verdict cache from the Schedule Audit. {md5_key: llm_result_dict}. Persisted to DB so verdicts are stable across server restarts and Django-cache expiry — prevents LLM non-determinism from changing the confirmed set between runs.",
+                verbose_name="Audit Name Cache",
+            ),
         ),
     ]

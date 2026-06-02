@@ -4,15 +4,19 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('environments', '0005_projectrole_assigned_space'),
+        ("environments", "0005_projectrole_assigned_space"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='project',
-            name='audit_override_map',
-            field=models.JSONField(blank=True, default=dict, help_text='Confirmed section-mismatch overrides from the last Schedule Audit run. {task_pk: ai_csi}. Persisted to DB so it survives server restarts.', verbose_name='Audit Override Map'),
+            model_name="project",
+            name="audit_override_map",
+            field=models.JSONField(
+                blank=True,
+                default=dict,
+                help_text="Confirmed section-mismatch overrides from the last Schedule Audit run. {task_pk: ai_csi}. Persisted to DB so it survives server restarts.",
+                verbose_name="Audit Override Map",
+            ),
         ),
     ]
