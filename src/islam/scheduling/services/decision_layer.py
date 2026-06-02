@@ -28,8 +28,13 @@ def _months_diff(later: date, earlier: date) -> float:
 
 
 def _forecast_finish(spi: float, start: date, baseline: date, as_of: date) -> date:
-    """SPI-adjusted forecast completion date (mirrors the JS formula in evm.html)."""
-    spi = max(float(spi), 0.05)
+    """SPI-adjusted forecast completion date (mirrors the JS formula in evm.html).
+
+    Caller is responsible for ensuring spi > 0 before calling this function.
+    The old 0.05 floor clamp has been removed — it masked the blowup instead of
+    preventing it, producing absurd multi-decade forecasts for near-zero SPI.
+    Use _build_block1's ev/sane-horizon guards instead.
+    """
     elapsed = (as_of - start).days
     if as_of < baseline:
         remaining = max((baseline - as_of).days, 0)
@@ -83,14 +88,15 @@ def _build_block1(evm: dict, drc: dict, mc: dict) -> dict:
         }
 
     spi = float(evm["spi"])
+    ev = float(evm.get("ev") or 0)
     cpi_raw = evm.get("cpi")
     cpi = float(cpi_raw) if cpi_raw is not None else None
     start = date.fromisoformat(evm["project_start"])
     baseline = date.fromisoformat(evm["project_end"])
     as_of = date.fromisoformat(evm["as_of"])
 
-    forecast = _forecast_finish(spi, start, baseline, as_of)
-    months_late = round(_months_diff(forecast, baseline), 1)
+    # Sane horizon: forecast beyond this is a formula artefact, not a prediction.
+    sane_horizon = baseline + timedelta(days=(baseline - start).days * 3)
 
     # ── Performance label ─────────────────────────────────────────────────
     if spi >= 1.02:
@@ -102,13 +108,28 @@ def _build_block1(evm: dict, drc: dict, mc: dict) -> dict:
     else:
         perf_label = "Significantly behind schedule"
 
-    # ── Schedule-variance sentence ────────────────────────────────────────
-    if months_late > 0.5:
-        var_str = f"Forecast finish {_fmt_month(forecast)} — {math.ceil(months_late)} months past baseline."
-    elif months_late < -0.5:
-        var_str = f"Forecast finish {_fmt_month(forecast)} — {math.floor(abs(months_late))} months ahead of baseline."
+    # ── Forecast date — guarded against EV=0 and low-SPI blowup ─────────
+    # EV=0  → SPI=0, the formula produces elapsed × (1/ε) → nonsense decades.
+    # EV>0 but forecast exceeds sane_horizon → SPI signal too weak to extrapolate.
+    # In both cases we emit an honest disclosure and suppress the numeric date.
+    forecast: date | None = None
+    months_late: float | None = None
+
+    if ev == 0:
+        var_str = "Insufficient progress to forecast a finish date — no earned value recorded."
     else:
-        var_str = f"Forecast finish {_fmt_month(forecast)} — on or near baseline ({_fmt_month(baseline)})."
+        candidate = _forecast_finish(spi, start, baseline, as_of)
+        if candidate > sane_horizon:
+            var_str = f"Progress too low to forecast a reliable finish date (SPI {spi:.2f})."
+        else:
+            forecast = candidate
+            months_late = round(_months_diff(forecast, baseline), 1)
+            if months_late > 0.5:
+                var_str = f"Forecast finish {_fmt_month(forecast)} — {math.ceil(months_late)} months past baseline."
+            elif months_late < -0.5:
+                var_str = f"Forecast finish {_fmt_month(forecast)} — {math.floor(abs(months_late))} months ahead of baseline."
+            else:
+                var_str = f"Forecast finish {_fmt_month(forecast)} — on or near baseline ({_fmt_month(baseline)})."
 
     # ── Biggest delay driver ──────────────────────────────────────────────
     biggest_driver = None
@@ -153,7 +174,7 @@ def _build_block1(evm: dict, drc: dict, mc: dict) -> dict:
         "spi": spi,
         "cpi": cpi,
         "baseline_finish": baseline.isoformat(),
-        "forecast_finish": forecast.isoformat(),
+        "forecast_finish": forecast.isoformat() if forecast else None,
         "months_late": months_late,
         "biggest_driver": biggest_driver,
         "mc_p80": mc_p80,

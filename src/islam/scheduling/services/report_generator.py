@@ -97,11 +97,18 @@ def _fmt_date(iso: str | None) -> str:
 
 
 def _forecast_finish(spi: float, project_start: str, project_end: str, as_of: str) -> date | None:
-    """SPI-adjusted forecast finish (mirrors JS formula in evm.html)."""
+    """SPI-adjusted forecast finish (mirrors JS formula in evm.html).
+
+    Returns None when spi <= 0 or the result exceeds 3× planned duration past
+    baseline (formula artefact, not a real prediction).  The old 0.05 clamp
+    is removed — it masked the blowup instead of preventing it.
+    """
     try:
         from datetime import timedelta
 
-        spi = max(float(spi), 0.05)
+        spi = float(spi)
+        if spi <= 0:
+            return None
         start = date.fromisoformat(project_start)
         baseline = date.fromisoformat(project_end)
         today = date.fromisoformat(as_of)
@@ -111,7 +118,9 @@ def _forecast_finish(spi: float, project_start: str, project_end: str, as_of: st
             fd = elapsed + remaining / spi
         else:
             fd = elapsed / spi
-        return start + timedelta(days=max(0, round(fd)))
+        candidate = start + timedelta(days=max(0, round(fd)))
+        sane_horizon = baseline + timedelta(days=(baseline - start).days * 3)
+        return candidate if candidate <= sane_horizon else None
     except Exception:
         return None
 
@@ -162,7 +171,7 @@ def gather_report_data(project_id: str, sections: tuple[str, ...]) -> dict:
     data["_baseline_finish"] = evm.get("project_end")
     data["_as_of"] = evm.get("as_of")
     data["_forecast_finish"] = None
-    if evm.get("has_data"):
+    if evm.get("has_data") and float(evm.get("ev") or 0) > 0:
         ff = _forecast_finish(evm["spi"], evm["project_start"], evm["project_end"], evm["as_of"])
         data["_forecast_finish"] = ff.isoformat() if ff else None
 
