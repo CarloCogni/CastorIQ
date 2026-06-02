@@ -177,6 +177,27 @@
         {% endfor %}
     </div>
 
+    <!-- Earned Schedule row — SPI(t), SV(t), IEAC(t) — populated by schedule/intelligence/ -->
+    <div id="evm-es-section" class="d-none">
+        <div class="d-flex align-items-center gap-2 mb-2">
+            <span style="font-size:0.67rem; font-weight:700; text-transform:uppercase;
+                         letter-spacing:.07em; color:var(--bs-secondary-color);">
+                Earned Schedule
+            </span>
+            <button type="button"
+                    class="help-pill"
+                    data-bs-toggle="modal"
+                    data-bs-target="#evmHelpModal"
+                    title="How Earned Schedule metrics work"
+                    aria-label="How Earned Schedule metrics work">
+                <i class="bi bi-question-circle"></i>
+            </button>
+        </div>
+        <div id="evm-es-cards" class="row g-3"></div>
+        <div id="evm-es-note"
+             style="font-size:0.68rem; color:var(--bs-secondary-color); margin-top:4px;"></div>
+    </div>
+
     <!-- Methodology Assumptions — read-only transparency panel -->
     {% include "scheduling/components/assumptions_panel.html" %}
 
@@ -1133,6 +1154,11 @@
     let _trendData = null;  // stored for sparkline resize re-render
     let _currency  = localStorage.getItem(LS_KEY) || "USD";
 
+    // Shared by the intelligence sub-IIFE and WBS render functions
+    let _intelRiskMap   = null;  // label → wbs_risk entry
+    let _wbsStagesCache = null;  // last rendered stages for risk re-render
+    let _critPathInfo   = null;  // CPM summary for DCMA footer injection
+
     /* Restore selector to saved value */
     const _currSel = document.getElementById("evm-currency-select");
     if (_currSel) {
@@ -1676,18 +1702,32 @@
             document.getElementById("evm-wbs-section").style.display = "none";
             return;
         }
+        _wbsStagesCache = data.stages;  // kept so intelligence re-render can add risk badges
         _renderWbsHeatmap(data.stages);
     }
 
     function _renderWbsHeatmap(stages) {
         const grid = document.getElementById("evm-wbs-grid");
+        const _RISK_C = { green: "#16a34a", amber: "#d97706", red: "#dc2626" };
 
         grid.innerHTML = stages.map(s => {
             const notStarted = s.planned_pct === 0 && s.earned_pct === 0;
             const spiLabel   = notStarted ? "—" : s.spi.toFixed(2);
             const pBar = notStarted ? 0 : Math.min(100, s.planned_pct);
             const eBar = notStarted ? 0 : Math.min(100, s.earned_pct);
-            const ahead = s.earned_pct >= s.planned_pct;
+
+            // Risk badge — injected when intelligence data has loaded
+            const risk = _intelRiskMap && _intelRiskMap[s.label];
+            const riskHtml = risk
+                ? `<div style="font-size:.6rem;font-weight:700;text-transform:uppercase;
+                               letter-spacing:.04em;color:${_RISK_C[risk.risk_band]};
+                               background:${_RISK_C[risk.risk_band]}1a;
+                               border:1px solid ${_RISK_C[risk.risk_band]}50;
+                               border-radius:8px;padding:1px 7px;margin-bottom:5px;
+                               display:inline-block;"
+                   title="Risk ${risk.risk_score}/100 · ${risk.drivers.join(' · ')}"
+                   >Risk ${risk.risk_score} &nbsp;${risk.risk_band.toUpperCase()}</div><br>`
+                : "";
 
             return `<div class="col-6 col-sm-4 col-lg-2">
                 <div class="rounded-3 p-3 h-100"
@@ -1695,7 +1735,7 @@
                      data-tt="${s.label} — SPI: ${spiLabel} · Planned: ${s.planned_pct}% · Earned: ${s.earned_pct}% · ${s.completed}/${s.task_count} complete"
                      onmouseenter="this.style.boxShadow='0 0 0 2px ${s.color}60'"
                      onmouseleave="this.style.boxShadow=''">
-                    <div style="font-size:0.68rem; font-weight:700; text-transform:uppercase;
+                    ${riskHtml}<div style="font-size:0.68rem; font-weight:700; text-transform:uppercase;
                                 letter-spacing:.07em; color:${s.color}; margin-bottom:5px;
                                 white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"
                          title="${s.label}">${s.label}</div>
@@ -3352,8 +3392,14 @@
                 _renderChecks(data.checks);
                 const footer = document.getElementById("dcma-footer");
                 if (footer) {
-                    footer.textContent =
-                        `${data.task_count} tasks · ${data.dep_count} relationships · as of ${data.as_of}`;
+                    let ftxt = `${data.task_count} tasks · ${data.dep_count} relationships · as of ${data.as_of}`;
+                    if (_critPathInfo?.computed && _critPathInfo.total_task_count > 0) {
+                        const critPct = Math.round(
+                            _critPathInfo.critical_task_count / _critPathInfo.total_task_count * 100
+                        );
+                        ftxt += ` · ${_critPathInfo.critical_task_count.toLocaleString()} of ${_critPathInfo.total_task_count.toLocaleString()} tasks on critical path (${critPct}%)`;
+                    }
+                    footer.textContent = ftxt;
                 }
             } catch (_e) {
                 if (loading) loading.classList.add("d-none");
@@ -4303,6 +4349,140 @@
         root.addEventListener("mousemove", _show);
         root.addEventListener("mouseout",  _hide);
     }());
+
+    /* ── Schedule Intelligence — ES row, WBS risk badges, CPM count ──────── */
+    (function () {
+        const INTEL_URL = "{% url 'islam:schedule_intelligence' project.pk %}";
+
+        /* ── Helpers ───────────────────────────────────────────────────────── */
+        function _fmtMonth(iso) {
+            return new Date(iso).toLocaleString("en-GB", { month: "short", year: "numeric" });
+        }
+
+        /* ── ES row renderer ───────────────────────────────────────────────── */
+        function _renderEsRow(es) {
+            const section = document.getElementById("evm-es-section");
+            const cardsEl = document.getElementById("evm-es-cards");
+            const noteEl  = document.getElementById("evm-es-note");
+            if (!section || !cardsEl) return;
+
+            section.classList.remove("d-none");
+
+            // EV=0 or no data — show honest disclosure
+            if (!es || !es.has_data) {
+                const msg = (es && es.note) || "Earned Schedule data not available.";
+                cardsEl.innerHTML =
+                    `<div class="col-12" style="font-size:0.78rem; color:var(--bs-secondary-color); padding:4px 0;">
+                        <i class="bi bi-info-circle me-1"></i>${msg}
+                    </div>`;
+                return;
+            }
+
+            const spiColor  = es.spi_t >= 1 ? "#16a34a" : es.spi_t >= 0.95 ? "var(--bs-secondary-color)" : "#dc2626";
+            const svSign    = es.sv_t_days >= 0 ? "+" : "";
+            const svColor   = es.sv_t_days >= 0 ? "#16a34a" : "#dc2626";
+
+            // IEAC card — suppressed when SPI(t) too low
+            let ieacValue, ieacSub, ieacOpacity;
+            if (es.ieac_date) {
+                ieacValue   = _fmtMonth(es.ieac_date);
+                ieacSub     = "Time-based forecast finish";
+                ieacOpacity = "1";
+            } else {
+                ieacValue   = "—";
+                ieacSub     = es.ieac_suppressed_reason || "Insufficient progress to forecast.";
+                ieacOpacity = "0.5";
+            }
+
+            const cards = [
+                {
+                    label: "SPI(t)",
+                    value: es.spi_t.toFixed(3),
+                    sub:   "Time-based schedule efficiency",
+                    color: spiColor,
+                    opacity: "1",
+                },
+                {
+                    label: "SV(t)",
+                    value: `${svSign}${es.sv_t_days} calendar days`,
+                    sub:   "Schedule variance — calendar days",
+                    color: svColor,
+                    opacity: "1",
+                },
+                {
+                    label:   "IEAC(t)",
+                    value:   ieacValue,
+                    sub:     ieacSub,
+                    color:   "var(--bs-body-color)",
+                    opacity: ieacOpacity,
+                },
+            ];
+
+            cardsEl.innerHTML = cards.map(k =>
+                `<div class="col-6 col-md-4">
+                    <div class="card border-0 rounded-3 h-100"
+                         style="background:var(--bs-secondary-bg); opacity:${k.opacity};">
+                        <div class="card-body p-3">
+                            <div style="font-size:0.72rem; color:var(--bs-secondary-color);
+                                        text-transform:uppercase; letter-spacing:0.05em;
+                                        font-weight:600;">${k.label}</div>
+                            <div style="font-size:1.3rem; font-weight:700; color:${k.color};
+                                        line-height:1.2; margin:3px 0;">${k.value}</div>
+                            <div style="font-size:0.68rem; color:var(--bs-secondary-color);">${k.sub}</div>
+                        </div>
+                    </div>
+                </div>`
+            ).join("");
+
+            if (noteEl) {
+                noteEl.textContent =
+                    `ES as of ${es.as_of} · AT ${es.at_days} calendar days · EV ${es.current_ev_pct}%`;
+            }
+        }
+
+        /* ── WBS risk badge overlay — re-renders the heatmap with risk badges ── */
+        function _overlayWbsRisk(riskScores) {
+            if (!riskScores || !riskScores.length) return;
+            _intelRiskMap = {};
+            riskScores.forEach(r => { _intelRiskMap[r.label] = r; });
+            if (_wbsStagesCache) _renderWbsHeatmap(_wbsStagesCache);
+        }
+
+        /* ── Critical path count → DCMA footer ────────────────────────────── */
+        function _setCritPath(cpm) {
+            if (!cpm || !cpm.computed) return;
+            _critPathInfo = cpm;
+            // Inject immediately if DCMA footer is already rendered
+            const footer = document.getElementById("dcma-footer");
+            if (footer && footer.textContent && !footer.textContent.includes("critical path")) {
+                const critPct = Math.round(cpm.critical_task_count / cpm.total_task_count * 100);
+                footer.textContent +=
+                    ` · ${cpm.critical_task_count.toLocaleString()} of ${cpm.total_task_count.toLocaleString()} tasks on critical path (${critPct}%)`;
+            }
+        }
+
+        /* ── Loader ────────────────────────────────────────────────────────── */
+        async function loadIntelligence() {
+            let data;
+            try {
+                const resp = await fetch(INTEL_URL);
+                data = await resp.json();
+            } catch (_) { return; }
+
+            if (!data || !data.has_data) {
+                // Still show ES section with honest message if EV=0
+                _renderEsRow(data && data.earned_schedule);
+                return;
+            }
+
+            _renderEsRow(data.earned_schedule);
+            _overlayWbsRisk(data.wbs_risk_scores);
+            _setCritPath(data.critical_path);
+        }
+
+        loadIntelligence();
+    }());
+
 }());
 </script>
 
