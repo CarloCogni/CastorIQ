@@ -30,6 +30,7 @@ import random
 from collections import Counter, defaultdict, deque
 from datetime import date
 
+from .calendar_utils import _DEFAULT_CAL, load_project_calendars, working_day_diff
 from .utils import get_project_data_date
 
 logger = logging.getLogger(__name__)
@@ -78,6 +79,7 @@ def _load_data(project_id: str) -> tuple[list[dict], list[dict]]:
             "total_float",
             "early_start",  # CPM earliest start; sets the optimistic floor for sim tasks
             "early_finish",  # CPM earliest finish; used as anchor for non-sim tasks
+            "calendar_object_id",  # for working-day duration calculation
         )
     )
 
@@ -98,6 +100,7 @@ def _build_sim_inputs(
     task_rows: list[dict],
     dep_rows: list[dict],
     today_ord: int,
+    cal_map: dict | None = None,
 ) -> tuple[dict[str, dict], list[str]]:
     """Pre-compute per-task simulation parameters and topological order.
 
@@ -186,17 +189,21 @@ def _build_sim_inputs(
 
         # ── Duration parameters ────────────────────────────────────────
         # PERT is applied to the task's OWN planned execution time (planned_dur),
-        # NOT to time-remaining from today.  The CPM early_start floor handles
-        # start-date positioning; planned_dur represents only the task's inherent
-        # work content.  Using (end_date - today) would double-count delays for
-        # tasks whose actual_start was recorded early but whose network start is
-        # still far in the future (common in behind-schedule P6 schedules).
-        planned_dur = max((r["end_date"] - r["start_date"]).days, 1)
+        # NOT to time-remaining from today.  Spans are measured in working days
+        # via the task's P6 calendar (falls back to _DEFAULT_CAL when cal_map is
+        # absent).  working_day_diff uses the same half-open (d1, d2] semantics as
+        # .days, so no off-by-one is introduced.
+        r_cal = (
+            cal_map.get(r.get("calendar_object_id") or "", _DEFAULT_CAL)
+            if cal_map
+            else _DEFAULT_CAL
+        )
+        planned_dur = max(working_day_diff(r["start_date"], r["end_date"], r_cal), 1)
 
         # Pessimistic multiplier: inflate if the task started late (already behind
         # its own baseline), capped at 2.5× planned duration.
         if r["actual_start"] and r["actual_start"] > r["start_date"]:
-            late_days = (r["actual_start"] - r["start_date"]).days
+            late_days = working_day_diff(r["start_date"], r["actual_start"], r_cal)
             late_factor = min(late_days / planned_dur, 1.0)
             pess_mult = _PERT_PESS + late_factor
         else:
@@ -506,7 +513,8 @@ def compute_monte_carlo(project_id: str, n_simulations: int = 1000) -> dict:
     if incomplete_count == 0:
         return {"has_data": False, "reason": "all_tasks_complete"}
 
-    sim_info, topo_order = _build_sim_inputs(task_rows, dep_rows, today_ord)
+    cal_map = load_project_calendars(project_id)
+    sim_info, topo_order = _build_sim_inputs(task_rows, dep_rows, today_ord, cal_map)
 
     if not topo_order:
         return {"has_data": False, "reason": "no_critical_path_tasks"}
