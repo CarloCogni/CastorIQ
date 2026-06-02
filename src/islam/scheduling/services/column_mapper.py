@@ -42,6 +42,22 @@ _SYN_ACT_END = frozenset(
 )
 _SYN_STAGE = frozenset({"stage", "construction stage", "phase", "construction phase"})
 _SYN_SUB_STAGE = frozenset({"sub_stage", "sub stage", "substage", "sub-stage", "trade"})
+_SYN_PCT_COMPLETE = frozenset(
+    {
+        "% complete",
+        "percent complete",
+        "pct complete",
+        "percent done",
+        "% done",
+        "done %",
+        "completion %",
+        "progress",
+        "physical % complete",
+        "physical percent complete",
+        "duration % complete",
+        "duration percent complete",
+    }
+)
 
 _FIELD_SYNONYMS: dict[str, frozenset[str]] = {
     "name": _SYN_NAME,
@@ -57,6 +73,7 @@ _FIELD_SYNONYMS: dict[str, frozenset[str]] = {
     "actual_end": _SYN_ACT_END,
     "stage": _SYN_STAGE,
     "sub_stage": _SYN_SUB_STAGE,
+    "percent_complete": _SYN_PCT_COMPLETE,
 }
 
 # Columns shown by default in preview (in order of importance)
@@ -85,6 +102,7 @@ CANONICAL_FIELDS = [
     "actual_end",
     "stage",
     "sub_stage",
+    "percent_complete",
 ]
 CANONICAL_LABELS = {
     "name": "Task Name *",
@@ -100,6 +118,7 @@ CANONICAL_LABELS = {
     "actual_end": "Actual End (optional)",
     "stage": "Stage (optional)",
     "sub_stage": "Sub-Stage (optional)",
+    "percent_complete": "% Complete (optional)",
 }
 
 _STATUS_MAP = {
@@ -208,6 +227,7 @@ def apply_mapping(
                 "_raw_predecessors": cell("predecessors"),
                 "stage": cell("stage").lower(),
                 "sub_stage": cell("sub_stage").lower(),
+                "_csv_pct_complete": _parse_pct(cell("percent_complete")),
             }
         )
 
@@ -370,6 +390,33 @@ def parse_predecessor_string(raw: str) -> list[dict]:
             lag_days = 0
         result.append({"activity_code": code, "dep_type": dep_type, "lag_days": lag_days})
     return result
+
+
+def _parse_pct(value: str) -> float | None:
+    """Parse a %-complete cell and normalise to the 0–1 range used by the Task model.
+
+    Accepts:
+      - 0–100 scale (e.g. "75", "75%", "75.5")  → divided by 100 → 0.75
+      - 0–1 scale  (e.g. "0.75")                 → kept as-is
+    Anything outside [0, 100] or non-numeric returns None.
+    """
+    if not value:
+        return None
+    cleaned = value.strip().rstrip("%").strip()
+    try:
+        v = float(cleaned)
+    except ValueError:
+        return None
+    if v < 0 or v > 100:
+        return None
+    # Values > 1 are unambiguously on the 0–100 scale; values in [0,1] are
+    # already normalised.  A value of exactly 1 is treated as 1% (0–100 scale)
+    # only when the column header implies percentage — we cannot know here, so
+    # values ≤ 1 are kept as-is (0–1 range).  This is the conservative choice:
+    # misinterpreting 1% as 100% is far worse than misinterpreting 100% as 1%.
+    if v > 1.0:
+        v = v / 100.0
+    return round(max(0.0, min(1.0, v)), 4)
 
 
 def _parse_cost(value: str) -> str | None:
