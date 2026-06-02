@@ -116,12 +116,15 @@ print(f"\n  Delay root-causes        : {rc_total}  (firm={rc_firm}, lower={rc_lo
 print(
     f"  Largest trade cluster    : {largest_trade.get('label', '?')}  {largest_trade.get('root_cause_count', '?')} root-causes  {largest_trade.get('downstream_tasks', '?')} downstream"
 )
-ok_drc_total = rc_total == 584
-ok_drc_firm = rc_firm == 502
+# Baseline updated from 584/502 → 580/498 after 9ecd98b switched delay_rootcause
+# from date.today() to get_project_data_date (data_date=2025-11-30).  4 tasks
+# whose actual_start post-dates the P6 DataDate are no longer active as-of.
+ok_drc_total = rc_total == 580
+ok_drc_firm = rc_firm == 498
 ok_drc_lower = rc_lower == 82
 print(
-    f"  total=584 {PASS if ok_drc_total else f'{FAIL} got {rc_total}'}  "
-    f"firm=502 {PASS if ok_drc_firm else f'{FAIL} got {rc_firm}'}  "
+    f"  total=580 {PASS if ok_drc_total else f'{FAIL} got {rc_total}'}  "
+    f"firm=498 {PASS if ok_drc_firm else f'{FAIL} got {rc_firm}'}  "
     f"lower=82 {PASS if ok_drc_lower else f'{FAIL} got {rc_lower}'}"
 )
 ok_cluster = largest_trade.get("label", "") == "Masonry"
@@ -143,19 +146,26 @@ an_logic = an_by_type.get("logic_anomaly", 0)
 print(
     f"\n  Anomaly total flagged    : {an_total}  (rl={an_running} unr={an_unreal} out={an_outlier} logic={an_logic})"
 )
-ok_an_total = an_total == 1597
-ok_an_running = an_running == 699
-ok_an_unreal = an_unreal == 105
-ok_an_outlier = an_outlier == 549
+# Baselines updated after 9ecd98b switched anomaly_detect from date.today() to
+# get_project_data_date (data_date=2025-11-30).  With the earlier reference date:
+#   - running_long: 699→509  (shorter elapsed → fewer tasks exceed 2× ratio threshold)
+#   - unrealistic_baseline: 105→168  (reclassified bucket: more tasks cross the
+#     ≤4 working-day planned-duration threshold once calendar-based calc is used)
+#   - outlier: 549→587  (peer-group statistics shift with the different active set)
+#   - logic_anomaly: 745 unchanged  (structural logic, not time-based)
+ok_an_total = an_total == 1583
+ok_an_running = an_running == 509
+ok_an_unreal = an_unreal == 168
+ok_an_outlier = an_outlier == 587
 ok_an_logic = an_logic == 745
 ok_an = ok_an_total and ok_an_running and ok_an_unreal and ok_an_outlier and ok_an_logic
 print(
-    f"  total=1597 {PASS if ok_an_total else f'{FAIL} got {an_total}'}  "
-    f"running=699 {PASS if ok_an_running else f'{FAIL} got {an_running}'}  "
-    f"unreal=105 {PASS if ok_an_unreal else f'{FAIL} got {an_unreal}'}"
+    f"  total=1583 {PASS if ok_an_total else f'{FAIL} got {an_total}'}  "
+    f"running=509 {PASS if ok_an_running else f'{FAIL} got {an_running}'}  "
+    f"unreal=168 {PASS if ok_an_unreal else f'{FAIL} got {an_unreal}'}"
 )
 print(
-    f"  outliers=549 {PASS if ok_an_outlier else f'{FAIL} got {an_outlier}'}  "
+    f"  outliers=587 {PASS if ok_an_outlier else f'{FAIL} got {an_outlier}'}  "
     f"logic=745 {PASS if ok_an_logic else f'{FAIL} got {an_logic}'}"
 )
 
@@ -164,13 +174,17 @@ fh_coded = compute_floor_health(pk, override_map=None)
 fh_floors = {f["token"]: f for f in fh_coded.get("floors", [])}
 b03_bq = fh_floors.get("B03", {}).get("build_quality", {}).get("score", None)
 l04_bq = fh_floors.get("L04", {}).get("build_quality", {}).get("score", None)
-print(f"\n  Floor Health B03 BQ      : {b03_bq}  (ref=31)")
-print(f"  Floor Health L04 BQ      : {l04_bq}  (ref=32)")
-ok_b03 = b03_bq == 31
-ok_l04 = l04_bq == 32
+# Floor-health baselines updated from B03=31/L04=32 → 25/29 after 68a7a62
+# switched floor_health from date.today() to get_project_data_date.  Build-quality
+# scores are computed as-of 2025-11-30 instead of today; tasks completed between
+# 2025-11-30 and today no longer count as "done on time" for those floors.
+print(f"\n  Floor Health B03 BQ      : {b03_bq}  (ref=25)")
+print(f"  Floor Health L04 BQ      : {l04_bq}  (ref=29)")
+ok_b03 = b03_bq == 25
+ok_l04 = l04_bq == 29
 print(
-    f"  B03=31 {PASS if ok_b03 else f'{FAIL} got {b03_bq}'}  "
-    f"L04=32 {PASS if ok_l04 else f'{FAIL} got {l04_bq}'}"
+    f"  B03=25 {PASS if ok_b03 else f'{FAIL} got {b03_bq}'}  "
+    f"L04=29 {PASS if ok_l04 else f'{FAIL} got {l04_bq}'}"
 )
 
 # ── CORRECTED mode ────────────────────────────────────────────────────────────
