@@ -30,6 +30,7 @@ def _working_days(start: date, end: date, cal: dict | None = None) -> int:
     """
     if cal is not None:
         from .calendar_utils import count_working_days
+
         return count_working_days(start, end, cal)
     # Legacy Mon–Fri fallback (used only when no calendar data is available)
     if end < start:
@@ -92,8 +93,9 @@ def run_dcma_check(project_id: str) -> dict:
     from islam.scheduling.models import P6ResourceAssignment, Task, TaskDependency
 
     from .calendar_utils import calendar_basis_note, load_project_calendars, task_cal
+    from .utils import get_project_data_date
 
-    today = date.today()
+    today, _ = get_project_data_date(project_id)
 
     tasks = list(
         Task.objects.filter(project_id=project_id, is_non_physical=False)
@@ -335,9 +337,7 @@ def run_dcma_check(project_id: str) -> dict:
             status=status,
             severity="medium",
             score=score,
-            flagged_items=[
-                f"{t.name} ({_task_dur_wd(t)}wd)" for t in dur_samples[:4]
-            ],
+            flagged_items=[f"{t.name} ({_task_dur_wd(t)}wd)" for t in dur_samples[:4]],
         )
     )
 
