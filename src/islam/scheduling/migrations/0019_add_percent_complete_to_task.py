@@ -4,20 +4,29 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('islam_scheduling', '0018_calendar_and_constraints'),
+        ("islam_scheduling", "0018_calendar_and_constraints"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='task',
-            name='duration_percent_complete',
-            field=models.FloatField(blank=True, help_text='Duration-based progress (0–1). Computed by P6 from actual/remaining duration.', null=True, verbose_name='Duration % Complete'),
+            model_name="task",
+            name="duration_percent_complete",
+            field=models.FloatField(
+                blank=True,
+                help_text="Duration-based progress (0–1). Computed by P6 from actual/remaining duration.",
+                null=True,
+                verbose_name="Duration % Complete",
+            ),
         ),
         migrations.AddField(
-            model_name='task',
-            name='physical_percent_complete',
-            field=models.FloatField(blank=True, help_text='Planner-entered physical progress (0–1). From P6 PhysicalPercentComplete.', null=True, verbose_name='Physical % Complete'),
+            model_name="task",
+            name="physical_percent_complete",
+            field=models.FloatField(
+                blank=True,
+                help_text="Planner-entered physical progress (0–1). From P6 PhysicalPercentComplete.",
+                null=True,
+                verbose_name="Physical % Complete",
+            ),
         ),
     ]
