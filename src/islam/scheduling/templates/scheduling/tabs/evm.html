@@ -1154,6 +1154,11 @@
 </div>
 
 <script>
+/* Module-level HTML-escape helper — used by multiple IIFEs (MC, DRC, …). */
+function _esc(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 (function () {
     const EVM_URL = "{% url 'islam:evm_data' project.pk %}";
     const LS_KEY  = "castor_evm_currency";
@@ -2414,10 +2419,6 @@
         // Stores the coded-mode trade clusters so corrected mode can show deltas.
         let _drcCodedTrade = null;
         let _drcGen = 0;  // generation counter — discards superseded async responses
-
-        function _esc(s) {
-            return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-        }
 
         function _typeColor(type) {
             const map = {
