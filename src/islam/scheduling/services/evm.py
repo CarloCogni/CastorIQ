@@ -472,9 +472,11 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
     # ── AC time series (real, cumulative by task completion date) ─────────
     # Each task's actual_cost is attributed to:
     #   - actual_end date (completed tasks)
-    #   - today (active tasks that have started but not finished)
-    # This gives a monotonically-increasing cumulative series matching real
-    # expenditure timing as closely as the available data allows.
+    #   - today (active tasks that have started on or before as-of)
+    # Tasks with actual_start > today are excluded — mirrors the EV gate in
+    # _earned_pct_at (which returns 0 when actual_start > d).  A task whose
+    # start date was recorded beyond the P6 DataDate cannot have real costs
+    # as-of that date.
     ac_attribution: list[tuple[date, float]] = []
     if ac_available:
         for t in tasks:
@@ -483,7 +485,7 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
                 continue
             if t.status == "complete" and t.actual_end:
                 ac_attribution.append((t.actual_end, ta))
-            elif t.actual_start:
+            elif t.actual_start and t.actual_start <= today:
                 ac_attribution.append((today, ta))
         ac_attribution.sort()
 
@@ -496,11 +498,15 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
     cum_ac = 0.0
 
     for d in dates:
-        pv_abs = sum(_planned_pct_at(t, d, task_cals.get(str(t.pk))) * values[str(t.pk)] for t in tasks)
+        pv_abs = sum(
+            _planned_pct_at(t, d, task_cals.get(str(t.pk))) * values[str(t.pk)] for t in tasks
+        )
         pv_series.append({"date": d.isoformat(), "pct": round(pv_abs / bac * 100, 2) if bac else 0})
 
         if d <= today:
-            ev_abs = sum(_earned_pct_at(t, d, task_cals.get(str(t.pk))) * values[str(t.pk)] for t in tasks)
+            ev_abs = sum(
+                _earned_pct_at(t, d, task_cals.get(str(t.pk))) * values[str(t.pk)] for t in tasks
+            )
             ev_series.append(
                 {"date": d.isoformat(), "pct": round(ev_abs / bac * 100, 2) if bac else 0}
             )
@@ -514,14 +520,25 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
                 )
 
     # ── As-of KPI scalars ─────────────────────────────────────────────────
-    pv_today = sum(_planned_pct_at(t, today, task_cals.get(str(t.pk))) * values[str(t.pk)] for t in tasks)
-    ev_today = sum(_earned_pct_at(t, today, task_cals.get(str(t.pk))) * values[str(t.pk)] for t in tasks)
+    pv_today = sum(
+        _planned_pct_at(t, today, task_cals.get(str(t.pk))) * values[str(t.pk)] for t in tasks
+    )
+    ev_today = sum(
+        _earned_pct_at(t, today, task_cals.get(str(t.pk))) * values[str(t.pk)] for t in tasks
+    )
 
     spi = round(ev_today / pv_today, 3) if pv_today > 0 else 1.0
     sv = round(ev_today - pv_today, 2)
 
     if ac_available:
-        ac_today: float | None = ac_total
+        # Gate on actual_start <= today — same rule as _earned_pct_at.
+        # ac_available stays on the raw sum (intent: "is any AC imported?").
+        ac_today: float | None = sum(
+            ta
+            for t in tasks
+            if (ta := actual_costs.get(str(t.pk), 0.0)) > 0
+            and not (t.actual_start and t.actual_start > today)
+        )
         cpi: float | None = round(ev_today / ac_today, 3) if ac_today > 0 else 1.0
         cv: float | None = round(ev_today - ac_today, 2)
         eac: float | None = round(bac / cpi, 2) if (cpi and cpi > 0) else bac
@@ -548,6 +565,21 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
     if ac_available:
         series["ac"] = ac_series
 
+    # Count active tasks past their planned end that have no real % data and are
+    # therefore credited 100% EV by the linear clamp.  The UI surfaces a warning
+    # when this count is > 0 because SPI will be overstated.
+    overdue_linear_capped = sum(
+        1
+        for t in tasks
+        if t.actual_start
+        and t.actual_start <= today
+        and t.end_date < today
+        and t.status != "complete"
+        and not (t.actual_end and t.actual_end <= today)
+        and t.physical_percent_complete is None
+        and t.duration_percent_complete is None
+    )
+
     return {
         "has_data": True,
         "bac": round(bac, 2),
@@ -566,6 +598,7 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
         "ac_available": ac_available,
         "ac_coverage_pct": ac_coverage_pct,
         "ac_disabled_reason": ac_disabled_reason,
+        "overdue_linear_capped": overdue_linear_capped,
         "as_of": today.isoformat(),
         "project_start": project_start.isoformat(),
         "project_end": project_end.isoformat(),
