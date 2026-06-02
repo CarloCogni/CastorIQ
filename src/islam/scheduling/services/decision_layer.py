@@ -401,5 +401,5 @@ def compute_decision_summary(project_id: str) -> dict:
         "block1": block1,
         "block2": block2,
         "block3": block3,
-        "as_of": evm.get("as_of") or date.today().isoformat(),
+        "as_of": evm.get("as_of"),
     }
