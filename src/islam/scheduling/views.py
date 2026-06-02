@@ -699,7 +699,9 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
                     constraint_date=date.fromisoformat(td["constraint_date"])
                     if td.get("constraint_date")
                     else None,
-                    physical_percent_complete=td.get("_p6_phys_pct") or None,
+                    physical_percent_complete=td.get("_p6_phys_pct")
+                    or td.get("_csv_pct_complete")
+                    or None,
                     duration_percent_complete=td.get("_p6_dur_pct") or None,
                 )
 
