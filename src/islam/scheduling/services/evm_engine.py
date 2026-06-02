@@ -160,11 +160,20 @@ def _compute_earned_schedule(evm_data: dict) -> dict:
     if bac <= 0 or not pv_series:
         return {"has_data": False, "reason": "no BAC or PV series"}
 
+    # EV=0: SPI(t), SV(t), and IEAC are all degenerate — disclose rather than
+    # display zeros or a capped placeholder.
+    if ev_abs == 0:
+        return {
+            "has_data": False,
+            "reason": "no earned value recorded",
+            "note": "Earned Schedule requires a recorded progress update.",
+        }
+
     project_start = date.fromisoformat(evm_data["project_start"])
     project_end = date.fromisoformat(evm_data["project_end"])
     as_of = date.fromisoformat(evm_data["as_of"])
 
-    # AT: elapsed days from project start to data date
+    # AT: elapsed calendar days from project start to data date (PMI ES standard)
     at_days = max((as_of - project_start).days, 0)
     project_duration_days = max((project_end - project_start).days, 1)
 
@@ -178,27 +187,42 @@ def _compute_earned_schedule(evm_data: dict) -> dict:
     # SPI(t): guard AT = 0 (project has not started yet)
     spi_t = round(es_days / at_days, 3) if at_days > 0 else 1.0
 
-    # SV(t) in calendar days (negative = behind)
+    # SV(t) in calendar days — explicitly calendar, not working days
     sv_t_days = es_days - at_days
 
-    # IEAC(t) = planned duration / SPI(t), capped at 3× to avoid outliers
-    if spi_t > 0.01:
-        ieac_days = min(round(project_duration_days / spi_t), project_duration_days * 3)
-    else:
-        ieac_days = project_duration_days * 3
+    # IEAC(t) — sane-horizon guard replaces the bare 3× cap.
+    # Forecasts beyond baseline + 3×planned_duration are formula artefacts
+    # (same logic as the _forecast_finish fix in decision_layer.py).
+    sane_horizon = project_end + timedelta(days=project_duration_days * 3)
+    ieac_days: int | None = None
+    ieac_date: str | None = None
+    ieac_suppressed_reason: str | None = None
 
-    ieac_date = (project_start + timedelta(days=ieac_days)).isoformat()
+    if spi_t <= 0:
+        ieac_suppressed_reason = (
+            f"Progress too low to forecast a reliable finish date (SPI(t) {spi_t:.3f})."
+        )
+    else:
+        raw_ieac = round(project_duration_days / spi_t)
+        candidate = project_start + timedelta(days=raw_ieac)
+        if candidate > sane_horizon:
+            ieac_suppressed_reason = (
+                f"Progress too low to forecast a reliable finish date (SPI(t) {spi_t:.3f})."
+            )
+        else:
+            ieac_days = raw_ieac
+            ieac_date = candidate.isoformat()
 
     if at_days == 0:
         interpretation = "Project has not started."
     elif spi_t >= 1.05:
-        interpretation = f"Ahead of schedule by ~{abs(sv_t_days)} days."
+        interpretation = f"Ahead of schedule by ~{abs(sv_t_days)} calendar days."
     elif spi_t >= 0.95:
         interpretation = "On schedule."
     elif spi_t >= 0.80:
-        interpretation = f"Slightly behind — ~{abs(sv_t_days)}-day delay projected."
+        interpretation = f"Slightly behind — ~{abs(sv_t_days)}-calendar-day delay projected."
     else:
-        interpretation = f"Significantly behind — ~{abs(sv_t_days)}-day delay projected."
+        interpretation = f"Significantly behind — ~{abs(sv_t_days)}-calendar-day delay projected."
 
     return {
         "has_data": True,
@@ -210,6 +234,7 @@ def _compute_earned_schedule(evm_data: dict) -> dict:
         "project_duration_days": project_duration_days,
         "ieac_days": ieac_days,
         "ieac_date": ieac_date,
+        "ieac_suppressed_reason": ieac_suppressed_reason,
         "current_ev_pct": round(current_ev_pct, 1),
         "as_of": evm_data["as_of"],
         "project_start": evm_data["project_start"],
@@ -262,6 +287,7 @@ def _compute_wbs_risk(project_id: str, evm_data: dict) -> list[dict]:
     """
     from islam.scheduling.models import Task
 
+    from .calendar_utils import load_project_calendars, task_cal
     from .evm import _earned_pct_at, _planned_pct_at
 
     # Use the same as-of date that evm_data was computed with — never date.today().
@@ -274,6 +300,9 @@ def _compute_wbs_risk(project_id: str, evm_data: dict) -> list[dict]:
     )
     if not tasks:
         return []
+
+    cal_map = load_project_calendars(project_id)
+    task_cals = {str(t.pk): task_cal(t, cal_map) for t in tasks} if cal_map else {}
 
     # Group by construction stage; unmapped tasks go to "_unassigned"
     groups: dict[str, list] = {}
@@ -300,8 +329,8 @@ def _compute_wbs_risk(project_id: str, evm_data: dict) -> list[dict]:
             avg_float_days = None
 
         # ── Progress gap ─────────────────────────────────────────────────
-        planned_sum = sum(_planned_pct_at(t, today) for t in group)
-        earned_sum = sum(_earned_pct_at(t, today) for t in group)
+        planned_sum = sum(_planned_pct_at(t, today, task_cals.get(str(t.pk))) for t in group)
+        earned_sum = sum(_earned_pct_at(t, today, task_cals.get(str(t.pk))) for t in group)
         planned_pct_avg = round(planned_sum / n * 100, 1)
         earned_pct_avg = round(earned_sum / n * 100, 1)
         gap_pct = max(0.0, planned_pct_avg - earned_pct_avg)
