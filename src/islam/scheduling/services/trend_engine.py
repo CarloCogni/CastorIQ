@@ -86,7 +86,7 @@ def _build_performance_series(evm_data: dict) -> tuple[list[dict], list[dict]]:
         cpi_series  — [{date, cpi, ev_pct, ac_pct}]
     """
     pv_by_date = {p["date"]: p["pct"] for p in evm_data["series"]["pv"]}
-    ac_by_date = {p["date"]: p["pct"] for p in evm_data["series"]["ac"]}
+    ac_by_date = {p["date"]: p["pct"] for p in evm_data.get("series", {}).get("ac", [])}
 
     spi_series: list[dict] = []
     cpi_series: list[dict] = []
@@ -169,8 +169,15 @@ def _compute_tcpi(evm_data: dict) -> dict:
     """
     bac = evm_data["bac"]
     ev = evm_data["ev"]
-    ac = evm_data["ac"]
-    cpi = evm_data["cpi"]
+    ac = evm_data.get("ac")
+    cpi = evm_data.get("cpi")
+
+    if ac is None or cpi is None:
+        return {
+            "value": None,
+            "status": "muted",
+            "verdict": "TCPI unavailable — actual cost not imported.",
+        }
 
     budget_remaining = bac - ac
     if budget_remaining <= 0:
