@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import date
 
 from .trade_resolver import is_overridden as _is_overridden
 from .trade_resolver import resolve_csi as _resolve_csi
@@ -210,7 +209,9 @@ def compute_timelocation(
     """
     from islam.scheduling.models import Task
 
-    today = date.today()
+    from .utils import get_project_data_date
+
+    today, _ = get_project_data_date(project_id)
 
     tasks = list(
         Task.objects.filter(project_id=project_id, is_non_physical=False)

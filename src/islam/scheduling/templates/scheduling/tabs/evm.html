@@ -207,6 +207,7 @@
 
         <div class="d-flex align-items-center gap-2 mb-2">
             <span style="font-size:0.8rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:0.05em;">Project Health Matrix</span>
+            <span id="evm-health-nfloors" style="font-size:0.72rem; color:var(--bs-secondary-color); font-weight:400; text-transform:none; letter-spacing:0;"></span>
             <button type="button"
                     class="help-pill"
                     data-bs-toggle="modal"
@@ -480,6 +481,8 @@
                 <span class="text-secondary">CV:</span>
                 <span id="evm-cv" class="fw-semibold ms-1">—</span>
             </div>
+            <div id="evm-cost-cov" class="col-auto d-none text-secondary" style="font-size:0.72rem;" title="% of tasks with scheduled cost data"></div>
+            <div id="evm-ac-cov"   class="col-auto d-none text-secondary" style="font-size:0.72rem;" title="% of cost-bearing tasks with actual cost"></div>
             <div class="col-auto ms-auto text-secondary" id="evm-as-of" style="font-size:0.72rem;"></div>
         </div>
     </div>
@@ -546,7 +549,12 @@
                     <div style="font-size:0.67rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px;">
                         By Trade (CSI) — downstream tasks
                     </div>
-                    <div id="drc-trade-bars"></div>
+                    <div id="drc-trade-bars" class="mb-3"></div>
+
+                    <div style="font-size:0.67rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px;">
+                        By Stage — downstream tasks
+                    </div>
+                    <div id="drc-stage-bars"></div>
 
                     <div style="font-size:0.67rem; color:var(--bs-secondary-color); font-style:italic; margin-top:10px; line-height:1.4;">
                         Each delayed task is attributed to a single origin; convergent delays count once, so per-cause counts are a lower bound.
@@ -1520,6 +1528,18 @@
         }
         document.getElementById("evm-as-of").textContent = `As of ${_fmtDateFull(d.as_of)}`;
 
+        // Cost / AC coverage — show only when informative (< 100% or AC available)
+        const costCovEl = document.getElementById("evm-cost-cov");
+        if (costCovEl && d.cost_coverage_pct != null && d.cost_coverage_pct < 100) {
+            costCovEl.textContent = `Cost coverage ${d.cost_coverage_pct}%`;
+            costCovEl.classList.remove("d-none");
+        }
+        const acCovEl = document.getElementById("evm-ac-cov");
+        if (acCovEl && d.ac_available && d.ac_coverage_pct != null) {
+            acCovEl.textContent = `AC coverage ${d.ac_coverage_pct}%`;
+            acCovEl.classList.remove("d-none");
+        }
+
         /* Data-freshness banner — shown when data date is available and stale */
         const freshnessEl = document.getElementById("evm-freshness-banner");
         if (d.as_of) {
@@ -1895,10 +1915,12 @@
 
             const footer = document.getElementById("evm-mc-footer");
             if (footer) {
-                footer.textContent =
-                    `${d.n_simulations.toLocaleString()} simulations · ` +
-                    `${d.tasks_simulated} critical/near-critical tasks · ` +
-                    `PERT distribution (opt 0.8× · ml 1× · pess 1.5×)`;
+                const meta = `${d.n_simulations.toLocaleString()} simulations · `
+                    + `${d.tasks_simulated} critical/near-critical tasks · `
+                    + `PERT distribution (opt 0.8× · ml 1× · pess 1.5×)`;
+                footer.innerHTML = d.summary_line
+                    ? `<div style="margin-bottom:3px;">${_esc(d.summary_line)}</div><div>${meta}</div>`
+                    : meta;
             }
         }
 
@@ -2078,11 +2100,22 @@
 
         _drawSparkline("trend-spi-canvas", data.spi_series, "spi", data.spi_trend);
         _renderTrendBadge("trend-spi-badge", data.spi_trend);
-        _renderTrendMeta("trend-spi-meta", data.spi_trend, false);
+        _renderTrendMeta("trend-spi-meta", data.spi_trend);
 
-        _drawSparkline("trend-cpi-canvas", data.cpi_series, "cpi", data.cpi_trend);
-        _renderTrendBadge("trend-cpi-badge", data.cpi_trend);
-        _renderTrendMeta("trend-cpi-meta", data.cpi_trend, data.is_synthetic_cost);
+        // CPI sparkline — hide entirely when no actual cost imported
+        const cpiCard = document.getElementById("trend-cpi-canvas")?.closest(".col-12");
+        if (_evmData && !_evmData.ac_available) {
+            if (cpiCard) {
+                cpiCard.innerHTML =
+                    `<div style="border:1px solid var(--bs-border-color);border-radius:8px;padding:14px;background:var(--bs-body-bg);height:100%;display:flex;align-items:center;justify-content:center;opacity:.55;font-size:0.76rem;color:var(--bs-secondary-color);">
+                        <i class="bi bi-info-circle me-2"></i>CPI trend requires actual cost data
+                    </div>`;
+            }
+        } else {
+            _drawSparkline("trend-cpi-canvas", data.cpi_series, "cpi", data.cpi_trend);
+            _renderTrendBadge("trend-cpi-badge", data.cpi_trend);
+            _renderTrendMeta("trend-cpi-meta", data.cpi_trend);
+        }
 
         _renderTcpiCard("trend-tcpi-card", data.tcpi);
         _renderRecoveryCard("trend-recovery-card", data.recovery);
@@ -2252,13 +2285,9 @@
         </span>`;
     }
 
-    function _renderTrendMeta(elId, trend, isSynthetic) {
+    function _renderTrendMeta(elId, trend) {
         const el = document.getElementById(elId);
         if (!el) return;
-        if (isSynthetic) {
-            el.innerHTML = '<span style="color:#f59e0b;">⚠ AC is simulated — CPI trend not meaningful</span>';
-            return;
-        }
         if (!trend || !trend.has_trend) {
             el.textContent = "Insufficient history for trend (need 3+ weeks)";
             return;
@@ -2514,8 +2543,10 @@
                 // Pass the coded map only in corrected mode so trade bars show deltas.
                 const tradeCodedMap = (data.using_audit_overrides && _drcCodedTrade) ? _drcCodedTrade : null;
 
+                const maxStage = Math.max(...(data.clusters.by_stage||[]).map(g => g.downstream_tasks), 1);
                 _renderBars("drc-type-bars",  data.clusters.by_activity_type || [], maxType);
                 _renderBars("drc-trade-bars", data.clusters.by_trade || [], maxTrade, tradeCodedMap);
+                _renderBars("drc-stage-bars", data.clusters.by_stage || [], maxStage);
 
                 const footer = document.getElementById("drc-footer");
                 if (footer) {
@@ -2526,7 +2557,8 @@
                     footer.innerHTML =
                         `${s.total_tasks.toLocaleString()} tasks assessed · `
                         + `${s.excluded_no_baseline} excluded (no baseline) · `
-                        + `${s.traceable_pct}% traceable${orphanStr} · as of ${data.as_of}`;
+                        + `${s.traceable_pct}% traceable${orphanStr} · as of ${data.as_of}`
+                        + (data.calendar_basis ? ` · delays in ${data.calendar_basis}` : "");
                 }
 
                 // Audit-mode banner
@@ -3399,6 +3431,7 @@
                         );
                         ftxt += ` · ${_critPathInfo.critical_task_count.toLocaleString()} of ${_critPathInfo.total_task_count.toLocaleString()} tasks on critical path (${critPct}%)`;
                     }
+                    if (data.calendar_basis) ftxt += ` · checks in ${data.calendar_basis}`;
                     footer.textContent = ftxt;
                 }
             } catch (_e) {
@@ -3499,8 +3532,8 @@
                 tbody.insertAdjacentHTML("beforeend", `
                     <tr style="${rowBg}">
                         <td>
-                            <div style="font-weight:500;">${_esc(w.name.length > 58 ? w.name.slice(0,58)+"…" : w.name)}</div>
-                            <div style="font-size:.65rem;color:var(--bs-secondary-color);">${_esc(w.trade)} · ${_esc(w.stage)} · due ${_esc(w.baseline_finish)}</div>
+                            <div style="font-weight:500;" title="${_esc(w.activity_code || "")}">${_esc(w.name.length > 58 ? w.name.slice(0,58)+"…" : w.name)}</div>
+                            <div style="font-size:.65rem;color:var(--bs-secondary-color);">${w.activity_code ? _esc(w.activity_code)+" · " : ""}${_esc(w.trade)} · ${_esc(w.stage)} · due ${_esc(w.baseline_finish)}</div>
                         </td>
                         <td style="text-align:center;vertical-align:top;padding-top:7px;font-variant-numeric:tabular-nums;">
                             <span style="font-size:.72rem;font-weight:600;color:${w.total_float < 0 ? "#dc2626" : w.total_float <= 14 ? "#d97706" : "var(--bs-secondary-color)"};">${w.total_float > 9000 ? "—" : w.total_float}</span>
@@ -3632,7 +3665,8 @@
             const note = document.getElementById("anomaly-method-note");
             if (note) {
                 note.innerHTML =
-                    `<i class="bi bi-info-circle me-1"></i>Method: <strong>${_esc(data.method)}</strong>. As of ${_esc(data.as_of)}.`;
+                    `<i class="bi bi-info-circle me-1"></i>Method: <strong>${_esc(data.method)}</strong>. As of ${_esc(data.as_of)}.`
+                    + (data.calendar_basis ? ` Spans in ${data.calendar_basis}.` : "");
             }
         }
 
@@ -4071,6 +4105,12 @@
                 return;
             }
             if (resultsEl) resultsEl.classList.remove("d-none");
+
+            const nfEl = document.getElementById("evm-health-nfloors");
+            if (nfEl && data.n_floors) {
+                const asStr = data.as_of ? ` · as of ${data.as_of}` : "";
+                nfEl.textContent = `· ${data.n_floors} floors${asStr}`;
+            }
 
             /* Render one row per floor */
             grid.innerHTML = data.floors.map(floor =>

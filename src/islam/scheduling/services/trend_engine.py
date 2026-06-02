@@ -254,7 +254,8 @@ def _compute_recovery(evm_data: dict, spi_trend: dict) -> dict:
 
     tspi = round(remaining_to_earn / remaining_planned, 3)
     project_end = date.fromisoformat(evm_data["project_end"])
-    weeks_remaining = max((project_end - date.today()).days / 7.0, 0.0)
+    as_of = date.fromisoformat(evm_data["as_of"])
+    weeks_remaining = max((project_end - as_of).days / 7.0, 0.0)
 
     gap = round(tspi - current_spi, 3)
     weekly_improvement = round(gap / weeks_remaining, 4) if weeks_remaining > 0.5 else None
@@ -330,7 +331,6 @@ def _build_summary_lines(
     cpi_trend: dict,
     tcpi: dict,
     recovery: dict,
-    is_synthetic_cost: bool,
 ) -> list[str]:
     """Concise bullet lines for the Project Controls Chat system prompt."""
     lines: list[str] = []
@@ -361,9 +361,7 @@ def _build_summary_lines(
         else:
             lines.append(f"SPI stable at ~{t['current']:.3f} (slope ≈ 0)")
 
-    if is_synthetic_cost:
-        lines.append("CPI trend not available — actual cost data is simulated (AC = EV × 1.05)")
-    elif cpi_trend.get("has_trend"):
+    if cpi_trend.get("has_trend"):
         t = cpi_trend
         if t["current"] < _CPI_TROUBLE_THRESHOLD:
             lines.append(
@@ -400,7 +398,6 @@ def compute_trend_analysis(project_id: str, evm_data: dict | None = None) -> dic
         tcpi              — {value, status, verdict}
         recovery          — {tspi, gap, weeks_remaining, achievable, verdict, …}
         summary_lines     — [str]  concise bullets for chat context
-        is_synthetic_cost — bool  True when AC is EV×1.05 (no real cost data)
     """
     if evm_data is None:
         from .evm import compute_evm
@@ -418,13 +415,9 @@ def compute_trend_analysis(project_id: str, evm_data: dict | None = None) -> dic
     spi_trend = _analyse_series(spi_series, "spi")
     cpi_trend = _analyse_series(cpi_series, "cpi")
 
-    # Detect synthetic cost: all CPI values within 0.01 of each other
-    cpi_values = [p["cpi"] for p in cpi_series]
-    is_synthetic_cost = bool(len(cpi_values) >= 3 and (max(cpi_values) - min(cpi_values)) < 0.01)
-
     tcpi = _compute_tcpi(evm_data)
     recovery = _compute_recovery(evm_data, spi_trend)
-    summary_lines = _build_summary_lines(spi_trend, cpi_trend, tcpi, recovery, is_synthetic_cost)
+    summary_lines = _build_summary_lines(spi_trend, cpi_trend, tcpi, recovery)
 
     logger.info(
         "Trend analysis — project %s: SPI %s slope=%.4f TCPI=%s recoverable=%s",
@@ -445,5 +438,4 @@ def compute_trend_analysis(project_id: str, evm_data: dict | None = None) -> dic
         "tcpi": tcpi,
         "recovery": recovery,
         "summary_lines": summary_lines,
-        "is_synthetic_cost": is_synthetic_cost,
     }
