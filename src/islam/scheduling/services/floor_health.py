@@ -22,7 +22,6 @@ from __future__ import annotations
 import logging
 import re
 from collections import defaultdict
-from datetime import date
 
 logger = logging.getLogger(__name__)
 
@@ -214,8 +213,9 @@ def compute_floor_health(project_id: str, override_map: dict | None = None) -> d
 
     from .anomaly_detect import detect_anomalies
     from .completion_ml import predict_all_incomplete
+    from .utils import get_project_data_date
 
-    today = date.today()
+    today, _ = get_project_data_date(project_id)
 
     # ── 1. Load all physical tasks with date data ─────────────────────────────
     all_tasks = list(
