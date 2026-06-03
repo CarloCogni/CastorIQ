@@ -155,21 +155,45 @@ def _build_block1(evm: dict, drc: dict, mc: dict) -> dict:
     # ── Monte Carlo P80 ───────────────────────────────────────────────────
     mc_p80 = None
     mc_p80_delta = None
-    mc_str = ""
     if mc.get("has_data"):
         mc_p80 = mc["p80"]
         mc_p80_delta = mc["p80_delta"]
-        p80_date = date.fromisoformat(mc_p80)
-        mc_str = f" P80 scenario: {_fmt_month(p80_date)}."
+
+    # ── Divergence detection ──────────────────────────────────────────────
+    # When the network-based MC projects meaningfully late (>60d) while SPI
+    # suggests ahead, the MC is the more reliable basis for planning.  Leading
+    # with "Ahead of schedule" in that case actively misleads reviewers.
+    # Trigger: MC has data, P80 > +60d past baseline, SPI ≥ 1.02 (ahead).
+    mc_says_late = mc_p80_delta is not None and mc_p80_delta > 60
+    spi_says_ahead = spi >= 1.02
+    divergence_active = mc_says_late and spi_says_ahead
 
     if cpi is not None:
-        perf_detail = f"SPI {spi:.2f}, CPI {cpi:.2f}"
+        spi_detail = f"SPI {spi:.2f}, CPI {cpi:.2f}"
     else:
-        perf_detail = f"SPI {spi:.2f} — cost data not imported"
-    sentence = f"{perf_label} ({perf_detail}). {var_str}{driver_str}{mc_str}"
+        spi_detail = f"SPI {spi:.2f} — cost data not imported"
+
+    if divergence_active:
+        # MC leads — SPI is demoted to context explaining the divergence.
+        # "~" and "projection" language avoids overclaiming certainty.
+        p80_date = date.fromisoformat(mc_p80)
+        mc_months = math.ceil(_months_diff(p80_date, baseline))
+        sentence = (
+            f"Network simulation projects ~{_fmt_month(p80_date)} "
+            f"(P80) — ~{mc_months} months past baseline; "
+            f"preliminary projection, pending expert review. "
+            f"{spi_detail}: aggregate progress appears ahead of plan, "
+            f"but this reflects completed work; the remaining critical path "
+            f"is behind.{driver_str}"
+        )
+        block_severity = "amber"
+    else:
+        mc_str = f" P80 scenario: {_fmt_month(date.fromisoformat(mc_p80))}." if mc_p80 else ""
+        sentence = f"{perf_label} ({spi_detail}). {var_str}{driver_str}{mc_str}"
+        block_severity = _severity(spi)
 
     return {
-        "severity": _severity(spi),
+        "severity": block_severity,
         "sentence": sentence,
         "spi": spi,
         "cpi": cpi,

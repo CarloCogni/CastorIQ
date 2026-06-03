@@ -82,3 +82,9 @@ settings.local.json
 # Test Coverage
 htmlcov/ifc-lite/
 agent_orchestrator.py
+
+# Verification / audit throwaway files
+verify_*.png
+visual_*.png
+audit_evm_datasources.py
+oracle-Documentation/

@@ -404,6 +404,23 @@ def _build_context(
             f"  P95 (95% confidence): {md['p95']}  ({md['p95_delta']:+d}d vs baseline)",
         ]
 
+        # Divergence note — injected when MC projects late but SPI says ahead.
+        # Tells the LLM which signal to trust so it does not echo "ahead of schedule"
+        # back to a reviewer who is looking at a CPM-based late projection.
+        evm_spi = evm_data.get("spi", 0) if evm_data and evm_data.get("has_data") else 0
+        if md.get("p80_delta", 0) > 60 and evm_spi >= 1.02:
+            lines += [
+                "",
+                "FORECAST DIVERGENCE — use MC as the primary planning basis:",
+                f"  SPI {evm_spi:.2f} appears ahead of schedule, but this was earned on completed",
+                "  work and does not reflect the remaining critical path.",
+                f"  MC P80 {md['p80']} (+{md['p80_delta']}d) walks the actual dependency chain",
+                "  and is the more reliable forward projection — both are preliminary",
+                "  pending expert review.",
+                "  When asked about project completion, lead with the MC projection.",
+                "  Do NOT state the project is on track or ahead of schedule for its baseline.",
+            ]
+
     # ── Performance Trend ─────────────────────────────────────────────────
     if trend_data and trend_data.get("has_data"):
         td = trend_data
