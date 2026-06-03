@@ -1,0 +1,1915 @@
+<!-- scheduling/tabs/fourD_link.html — unified 4D Link workspace (link + simulate + review) -->
+
+<style>
+  .fd-zoom-btn {
+    padding: 2px 8px;
+    font-size: 11px;
+    background: transparent;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 4px;
+    color: var(--bs-body-color);
+    cursor: pointer;
+  }
+  .fd-zoom-btn.active {
+    background: var(--bs-primary);
+    color: #fff;
+    border-color: var(--bs-primary);
+  }
+  @keyframes fd-spin { to { transform: rotate(360deg); } }
+  .fd-splitter {
+    width: 8px;
+    flex-shrink: 0;
+    cursor: col-resize;
+    position: relative;
+    z-index: 10;
+    background: var(--bs-border-color);
+    transition: background 0.15s;
+  }
+  .fd-splitter:hover,
+  .fd-splitter.fd-dragging {
+    background: var(--bs-primary);
+  }
+  .fd-splitter::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 4px;
+    height: 40px;
+    background: var(--bs-secondary-bg);
+    border-radius: 2px;
+    opacity: 0.7;
+    transition: height 0.15s, opacity 0.15s;
+  }
+  .fd-splitter:hover::after,
+  .fd-splitter.fd-dragging::after {
+    height: 64px;
+    opacity: 1;
+  }
+  .fd-lf-btn {
+    padding: 2px 8px;
+    font-size: 11px;
+    background: transparent;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 4px;
+    color: var(--bs-body-color);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .fd-lf-btn.active {
+    background: var(--bs-primary);
+    color: #fff;
+    border-color: var(--bs-primary);
+  }
+</style>
+
+<div id="fourD-root" style="
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 8px;
+">
+
+  <!-- Main row: Gantt + Viewer + Chat -->
+  <div id="fourD-main" style="flex: 1; display: flex; min-height: 0; gap: 0;">
+
+  <!-- LEFT: Gantt Panel -->
+  <div id="fourD-gantt" style="
+    width: 280px;
+    min-width: 220px;
+    flex-shrink: 0;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+  ">
+    <!-- Toolbar -->
+    <div style="padding: 5px 8px; border-bottom: 1px solid var(--bs-border-color);
+                display: flex; align-items: center; justify-content: space-between;
+                flex-shrink: 0; background: var(--bs-body-bg);">
+      <span style="font-size: 12px; font-weight: 600;">Schedule</span>
+      <div class="btn-group btn-group-sm">
+        <button class="fd-zoom-btn" data-zoom="day" style="font-size: 10px; padding: 2px 7px;">Day</button>
+        <button class="fd-zoom-btn" data-zoom="week" style="font-size: 10px; padding: 2px 7px;">Week</button>
+        <button class="fd-zoom-btn active" data-zoom="month" style="font-size: 10px; padding: 2px 7px;">Month</button>
+      </div>
+    </div>
+    <!-- Link Filter Bar -->
+    <div id="fd-link-filter" style="display: flex; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--bs-border-color); flex-shrink: 0; flex-wrap: wrap;">
+      <button class="fd-lf-btn active" data-filter="all">All</button>
+      <button class="fd-lf-btn" data-filter="linked"><span style="color:#1D9E75;">●</span> Linked</button>
+      <button class="fd-lf-btn" data-filter="unlinked"><span style="color:#4B5563;">●</span> Unlinked</button>
+    </div>
+    <!-- Dark Gantt scroll area — single scroll container; name col is position:sticky left:0 -->
+    <div id="fd-gantt-scroll" style="overflow: auto; flex: 1; min-height: 0; background: #0f172a;">
+      <div id="fd-gantt-inner">
+        <div id="fd-gantt-hdr" style="
+          display: flex; position: sticky; top: 0; z-index: 10;
+          background: #1e293b; height: 46px; border-bottom: 1px solid #334155;">
+          <div style="
+            min-width: 160px; max-width: 160px; padding: 0 8px;
+            display: flex; align-items: center;
+            font-size: .72rem; font-weight: 600; color: rgba(255,255,255,.45);
+            position: sticky; left: 0; background: #1e293b; z-index: 11;
+            border-right: 1px solid #334155;">Code · Task</div>
+          <div id="fd-gantt-timeline-hdr" style="display: flex; flex-shrink: 0; height: 100%;"></div>
+        </div>
+        <div id="fd-gantt-body">
+          <div style="padding: 20px; text-align: center; color: rgba(255,255,255,.35);">
+            <div style="width:20px;height:20px;border:2px solid #1e293b;border-top-color:#3b82f6;
+                        border-radius:50%;animation:fd-spin .8s linear infinite;margin:0 auto 8px;"></div>
+            <div style="font-size: 12px;">Loading tasks…</div>
+          </div>
+        </div>
+        <div id="fd-gantt-empty" style="display: none; padding: 1.5rem; text-align: center;
+             color: rgba(255,255,255,.35); font-size: .82rem;"></div>
+      </div>
+    </div>
+    <!-- Legend -->
+    <div id="fd-gantt-legend" style="
+      display: flex; gap: 6px; flex-wrap: wrap; padding: 4px 6px;
+      font-size: .7rem; flex-shrink: 0; min-height: 24px;
+      background: var(--bs-body-bg); border-top: 1px solid var(--bs-border-color);">
+    </div>
+  </div>
+
+  <!-- Splitter: Gantt ↔ Viewer -->
+  <div class="fd-splitter" id="fd-split-1" data-left="fourD-gantt" data-right="fourD-viewer"></div>
+
+  <!-- MIDDLE: 3D Viewer + Timeline -->
+  <div id="fourD-viewer" style="
+    flex: 1;
+    min-width: 400px;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  ">
+    <!-- Color scheme toolbar -->
+    <div class="d-flex align-items-center gap-2 px-2 py-1 border-bottom flex-shrink-0" style="font-size: 0.8rem;">
+      <span class="text-secondary fw-medium" style="font-size: 11px;">Color by:</span>
+      <div class="btn-group btn-group-sm" id="fd-colorby-group">
+        <button class="btn btn-outline-secondary btn-sm" data-mode="link-check" style="font-size: 11px; padding: 2px 8px;">
+          <i class="bi bi-link-45deg me-1"></i>Link Check
+        </button>
+        <button class="btn btn-outline-secondary btn-sm" data-mode="site-status" style="font-size: 11px; padding: 2px 8px;">
+          <i class="bi bi-building me-1"></i>Site Status
+        </button>
+      </div>
+      <button class="btn btn-sm btn-outline-secondary ms-auto" id="fd-reset-view-btn"
+              title="Reset colours" style="font-size: 11px; padding: 2px 6px;">
+        <i class="bi bi-arrow-counterclockwise"></i>
+      </button>
+      <button id="fd-focus-btn" title="Focus on selected element"
+              style="display:none; font-size:11px; padding:2px 8px; background:transparent;
+                     border:1px solid var(--bs-border-color); border-radius:4px;
+                     color:var(--bs-body-color); cursor:pointer;">
+        🎯 Focus
+      </button>
+      <button id="fd-zoom-in-btn" title="Zoom in"
+              style="font-size:13px; padding:2px 8px; background:transparent;
+                     border:1px solid var(--bs-border-color); border-radius:4px;
+                     color:var(--bs-body-color); cursor:pointer;">+</button>
+      <button id="fd-zoom-out-btn" title="Zoom out"
+              style="font-size:13px; padding:2px 8px; background:transparent;
+                     border:1px solid var(--bs-border-color); border-radius:4px;
+                     color:var(--bs-body-color); cursor:pointer;">−</button>
+      <button id="fd-chat-toggle" title="AI Assistant"
+              style="padding: 4px 10px; background: rgba(99,102,241,.2);
+                     color: #818cf8; border: 1px solid rgba(99,102,241,.3);
+                     border-radius: 6px; cursor: pointer; font-size: 12px; flex-shrink: 0;
+                     pointer-events: all; position: relative; z-index: 100;">
+        🧠
+      </button>
+    </div>
+
+    <!-- 3D Viewer iframe -->
+    <div style="flex: 1; position: relative; min-height: 0;">
+      <iframe
+        id="fd-iframe"
+        src="{% url 'castor:viewer_embed' project.pk %}?v={% now "U" %}"
+        style="width: 100%; height: 100%; border: none;"
+        allow="fullscreen">
+      </iframe>
+      <div id="fd-iframe-loading"
+           style="position: absolute; inset: 0; background: #111; display: flex; flex-direction: column;
+                  align-items: center; justify-content: center; color: #94a3b8;
+                  font-family: system-ui, sans-serif; z-index: 10; pointer-events: none;">
+        <div style="width: 34px; height: 34px; border: 3px solid #1e293b; border-top-color: #3b82f6;
+                    border-radius: 50%; animation: fd-spin 0.8s linear infinite; margin-bottom: 12px;"></div>
+        <span style="font-size: 0.85rem;">Loading 3D viewer…</span>
+      </div>
+    </div>
+
+    <!-- 4D Timeline controls -->
+    <div id="fd-timeline-section" class="flex-shrink-0 border-top px-3 py-2"
+         style="font-size: 0.82rem; background: var(--bs-body-bg);">
+      <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+        <button id="fd-to-start-btn" class="btn btn-sm btn-outline-secondary" title="Jump to start"
+                style="padding: 2px 6px;"><i class="bi bi-skip-start-fill"></i></button>
+        <button id="fd-prev-btn" class="btn btn-sm btn-outline-secondary" title="Previous week"
+                style="padding: 2px 6px;"><i class="bi bi-skip-backward-fill"></i></button>
+        <button id="fd-play-btn" class="btn btn-sm btn-primary" title="Play"
+                style="padding: 2px 6px;"><i class="bi bi-play-fill"></i></button>
+        <button id="fd-pause-btn" class="btn btn-sm btn-outline-secondary d-none" title="Pause"
+                style="padding: 2px 6px;"><i class="bi bi-pause-fill"></i></button>
+        <button id="fd-next-btn" class="btn btn-sm btn-outline-secondary" title="Next week"
+                style="padding: 2px 6px;"><i class="bi bi-skip-forward-fill"></i></button>
+        <select id="fd-speed-select" class="form-select form-select-sm"
+                style="width: auto; font-size: 0.78rem; padding: 2px 20px 2px 6px;">
+          <option value="0.5">0.5×</option>
+          <option value="1" selected>1×</option>
+          <option value="2">2×</option>
+          <option value="4">4×</option>
+        </select>
+        <span id="fd-current-date" class="fw-bold ms-1" style="min-width: 110px; font-size: 0.85rem;"></span>
+      </div>
+      <div class="d-flex align-items-center gap-2 mb-1">
+        <span id="fd-min-date" class="text-secondary" style="font-size: 0.72rem; white-space: nowrap;"></span>
+        <input id="fd-slider" type="range" class="form-range flex-grow-1" min="0" value="0" style="min-width: 60px;">
+        <span id="fd-max-date" class="text-secondary" style="font-size: 0.72rem; white-space: nowrap;"></span>
+      </div>
+      <div class="d-flex align-items-center gap-3 flex-wrap" style="font-size: 0.72rem;">
+        <div class="d-flex align-items-center gap-1">
+          <span style="width: 8px; height: 8px; border-radius: 2px; background: #10B981; display: inline-block;"></span>
+          <span id="fd-stat-complete" class="fw-semibold">0</span>
+          <span class="text-secondary">Complete</span>
+        </div>
+        <div class="d-flex align-items-center gap-1">
+          <span style="width: 8px; height: 8px; border-radius: 2px; background: #F59E0B; display: inline-block;"></span>
+          <span id="fd-stat-in-progress" class="fw-semibold">0</span>
+          <span class="text-secondary">In Progress</span>
+        </div>
+        <div class="d-flex align-items-center gap-1">
+          <span style="width: 8px; height: 8px; border-radius: 2px; background: #EF4444; display: inline-block;"></span>
+          <span id="fd-stat-delayed" class="fw-semibold">0</span>
+          <span class="text-secondary">Delayed</span>
+        </div>
+        <div class="d-flex align-items-center gap-1">
+          <span style="width: 8px; height: 8px; border-radius: 2px; background: #9CA3AF; display: inline-block;"></span>
+          <span id="fd-stat-not-started" class="fw-semibold">0</span>
+          <span class="text-secondary">Not Started</span>
+        </div>
+        <div class="d-flex align-items-center gap-1 ms-2">
+          <span id="fd-stat-pct" class="fw-bold text-success">0%</span>
+          <span class="text-secondary">complete</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Splitter: Viewer ↔ Chat -->
+  <div class="fd-splitter" id="fd-split-2" data-left="fourD-viewer" data-right="fourD-chat"></div>
+
+  <!-- RIGHT: AI Chat Panel -->
+  <div id="fourD-chat" style="
+    width: 0px;
+    min-width: 0;
+    flex-shrink: 0;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: 8px;
+    overflow: hidden;
+    transition: width 0.2s ease;
+    display: flex;
+    flex-direction: column;
+  ">
+    <div style="padding: 8px 12px; border-bottom: 1px solid var(--bs-border-color);">
+      <span style="font-size: 12px; font-weight: 600;"><i class="bi bi-robot me-1"></i>AI Assistant</span>
+    </div>
+    <div id="fourD-messages" style="
+      flex: 1; overflow-y: auto; padding: 12px;
+      display: flex; flex-direction: column; gap: 8px;
+    ">
+      <div style="background: rgba(99,102,241,.1); border-radius: 8px; padding: 10px 12px; font-size: 12px;">
+        <strong style="color: #818cf8;">Castor AI</strong>
+        <p style="margin: 4px 0 0; color: var(--bs-body-color);">
+          Hello! Use <strong>Castor Link Engine</strong> in the toolbar below to auto-link tasks to IFC elements,
+          or switch to the <strong>Intelligence</strong> tab for full AI Q&amp;A over your schedule.
+        </p>
+      </div>
+    </div>
+    <div style="padding: 8px; border-top: 1px solid var(--bs-border-color);">
+      <div style="display: flex; gap: 6px;">
+        <input id="fourD-chat-input" type="text"
+               placeholder="Ask about your schedule…"
+               style="flex: 1; padding: 6px 10px; font-size: 12px;
+                      background: var(--bs-body-bg);
+                      border: 1px solid var(--bs-border-color);
+                      border-radius: 6px; color: var(--bs-body-color);">
+        <button id="fourD-chat-send"
+                style="padding: 6px 12px; background: #6366f1; color: white;
+                       border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">Send</button>
+      </div>
+    </div>
+  </div>
+
+  </div>
+  <!-- /fourD-main -->
+
+  <!-- BOTTOM FOOTER: Controls bar -->
+  <div id="fourD-footer" style="
+    flex-shrink: 0;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: 8px;
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  ">
+    <!-- Castor Link Engine -->
+    <form hx-post="{% url 'castor:schedule_link_smart' project.pk %}"
+          hx-target="#fourD-link-results"
+          hx-swap="innerHTML"
+          hx-indicator="#fd-link-spinner"
+          style="display: contents;">
+      {% csrf_token %}
+      <button type="submit"
+              style="padding: 6px 16px; background: #6366f1; color: white;
+                     border: none; border-radius: 6px; cursor: pointer;
+                     font-size: 12px; font-weight: 600;
+                     display: inline-flex; align-items: center; gap: 6px;">
+        <span id="fd-link-spinner" class="htmx-indicator spinner-border spinner-border-sm"></span>
+        <i class="bi bi-lightning-charge-fill"></i> Castor Link Engine
+      </button>
+    </form>
+
+    <!-- Embed Tasks for AI chat -->
+    <div style="display: inline-flex; align-items: center; gap: 8px;">
+      <button id="fd-embed-btn"
+              style="padding: 5px 12px; background: #7c3aed; color: white;
+                     border: none; border-radius: 6px; cursor: pointer; font-size: 12px;
+                     display: inline-flex; align-items: center; gap: 6px;">
+        <span id="fd-embed-spinner" class="spinner-border spinner-border-sm d-none"></span>
+        🧠 Embed Tasks
+      </button>
+      <span id="fd-embed-status" style="font-size: 11px; color: var(--bs-secondary-color);"></span>
+    </div>
+
+    <!-- Separator -->
+    <div style="height: 24px; width: 1px; background: var(--bs-border-color);"></div>
+
+    <!-- Parameter Match -->
+    <form hx-post="{% url 'castor:schedule_link_param' project.pk %}"
+          hx-target="#fourD-link-results"
+          hx-swap="innerHTML"
+          hx-indicator="#fd-param-spinner"
+          style="display: contents;">
+      {% csrf_token %}
+      <input type="text" name="param_name" id="fourD-param-input"
+             placeholder="e.g. ActivityCode"
+             value="{{ ifc_param_name|default:'' }}"
+             style="padding: 5px 10px; font-size: 12px; width: 160px;
+                    background: var(--bs-body-bg);
+                    border: 1px solid var(--bs-border-color);
+                    border-radius: 6px; color: var(--bs-body-color);">
+      <button type="submit"
+              style="padding: 5px 12px; background: #0ea5e9; color: white;
+                     border: none; border-radius: 6px; cursor: pointer; font-size: 12px;
+                     display: inline-flex; align-items: center; gap: 4px;">
+        <span id="fd-param-spinner" class="htmx-indicator spinner-border spinner-border-sm"></span>
+        Match
+      </button>
+    </form>
+  </div><!-- /fourD-footer -->
+
+  <!-- Results area: Link Engine / param match feedback (collapses when empty) -->
+  <div id="fourD-link-results" style="flex-shrink:0; overflow-y:auto; max-height:180px;"></div>
+
+  <!-- Review pane: always visible, auto-loads on page render -->
+  <div id="fourD-review-pane"
+       style="flex-shrink:0; overflow-y:auto; max-height:32vh; padding:8px 12px;
+              border-top:1px solid var(--bs-border-color);"
+       hx-get="{% url 'castor:review' project.pk %}?filter=all&inline=1"
+       hx-trigger="load"
+       hx-swap="innerHTML">
+      <div class="d-flex align-items-center justify-content-center py-3 text-secondary"
+           style="font-size:0.82rem;">
+          <span class="spinner-border spinner-border-sm me-2"></span>Loading review…
+      </div>
+  </div>
+
+</div><!-- /fourD-root -->
+
+<!-- Link-to-Task modal -->
+<div class="modal fade" id="fdLinkModal" tabindex="-1" aria-labelledby="fdLinkModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title" id="fdLinkModalLabel">
+          <i class="bi bi-link-45deg me-1"></i>Link Element to Task(s)
+        </h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body pb-2">
+        <input type="text" id="fdLinkSearch" class="form-control form-control-sm mb-3"
+               placeholder="Search by task name or activity code (min. 2 chars)…"
+               autocomplete="off">
+        <div id="fdLinkResults" style="max-height: 340px; overflow-y: auto; border: 1px solid var(--bs-border-color); border-radius: 6px;">
+          <div class="text-secondary text-center py-4" style="font-size: 0.82rem;">
+            Start typing to search tasks…
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer py-2">
+        <span id="fdLinkSelectedCount" class="text-secondary me-auto" style="font-size: 0.8rem;"></span>
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-sm btn-primary" id="fdLinkConfirmBtn" disabled>
+          <i class="bi bi-link-45deg me-1"></i>Link Selected
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  const GANTT_URL               = "{% url 'castor:gantt_data' project.pk %}";
+  const TIMELINE_URL            = "{% url 'castor:viewer_timeline' project.pk %}";
+  const FD_INTELLIGENCE_ASK_URL   = "{% url 'castor:intelligence_ask' project.pk %}";
+  const FD_INTELLIGENCE_EMBED_URL = "{% url 'castor:intelligence_embed' project.pk %}";
+  const FD_WRITEBACK_URL          = "{% url 'castor:schedule_writeback' project.pk %}";
+  const TASKS_FOR_LINK_URL      = "{% url 'castor:tasks_for_link' project.pk %}";
+  const BULK_LINK_URL           = "{% url 'castor:bulk_link_element' project.pk %}";
+  const FD_CSRF                 = "{{ csrf_token }}";
+
+  /* ── Full Gantt (fd_ prefix) ─────────────────────────────────────── */
+
+  const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+
+  function _showToast(message, level, delay) {
+    document.dispatchEvent(new CustomEvent("castor:toast", { bubbles: true, detail: { message, level: level || "info", delay } }));
+  }
+
+  /* Constants */
+  const FD_ROW_H       = 36;
+  const FD_BAR_H       = 8;
+  const FD_BAR_T       = 10;
+  const FD_ACT_H       = 4;
+  const FD_ACT_T       = 22;
+  const FD_HDR_H       = 46;
+  const FD_VS_OVERSCAN = 8;
+  const FD_NAME_W      = 160;
+
+  const FD_PX_PER_DAY = { day: 20, week: 10, month: 2 };
+
+  const FD_STATUS_CLR = {
+    complete: "#166534", active: "#1e40af", in_progress: "#1e40af",
+    delayed:  "#c2410c", planned: "#1e3a5f",
+  };
+  const FD_STAGE_CLR = {
+    structure: "#4f46e5", substructure: "#7c3aed",
+    mep: "#d97706", mechanical: "#d97706", electrical: "#9333ea",
+    plumbing: "#0891b2", finishes: "#059669", cladding: "#059669",
+    external: "#dc2626", civil: "#0f766e", demolition: "#6b7280",
+  };
+  const FD_MON_ABBR = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const FD_STAGE_ORDER  = ["substructure","structure","envelope","mep","finishes","external",""];
+  const FD_STAGE_LABELS = {
+    substructure: "Substructure", structure: "Structure", envelope: "Envelope",
+    mep: "MEP", finishes: "Finishes", external: "External", "": "General",
+  };
+
+  /* Mutable state */
+  let fd_zoom = (() => { try { return localStorage.getItem("fd-gantt-zoom") || "month"; } catch { return "month"; } })();
+  let fd_selectedRowIdx = -1;
+  let fd_hasCpm         = false;
+  let fd_rawData        = null;
+  let fd_listenersAttached = false;
+  let _fdLinkFilter         = "all";
+  let _fdLastData           = null;
+  let _fdFocusGlobalId      = null;
+  let _fdTaskSelected       = false;
+  let _fdLinkFilterActive   = false;
+  let _fdMultiSelectedTasks = [];
+  const _fdMultiSelectedSet = new Set();
+
+  const fd_vs = {
+    tasks: [], projStart: null, ppd: 0, totalW: 0,
+    todayX: 0, showToday: false,
+    startIdx: 0, endIdx: 0, raf: null, dirty: false,
+  };
+
+  /* ── Date helpers ───────────────────────────────────────────────── */
+  function fd_parseDate(s) {
+    if (!s) return null;
+    let m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+    if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+    m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(s);
+    if (m) return new Date(+m[3], +m[2] - 1, +m[1]);
+    return null;
+  }
+  function fd_dateDiff(a, b) { return Math.round((b - a) / 86400000); }
+  function fd_addDays(d, n)  { const r = new Date(d); r.setDate(r.getDate() + n); return r; }
+  function fd_fmtDate(d)     { return d ? d.getDate() + " " + FD_MON_ABBR[d.getMonth()] + " " + d.getFullYear() : ""; }
+  function fd_startOfWeek(d) {
+    const r = new Date(d);
+    r.setDate(r.getDate() + (r.getDay() === 0 ? -6 : 1 - r.getDay()));
+    return r;
+  }
+
+  function fd_getIntervals(projStart, totalDays, zoom) {
+    const ivs = [];
+    if (zoom === "day") {
+      for (let i = 0; i < totalDays; i++) {
+        const d = fd_addDays(projStart, i);
+        ivs.push({ label: String(d.getDate()), superLabel: FD_MON_ABBR[d.getMonth()] + " " + d.getFullYear(), days: 1 });
+      }
+    } else if (zoom === "week") {
+      let day = 0;
+      while (day < totalDays) {
+        const d   = fd_addDays(projStart, day);
+        const mon = fd_startOfWeek(d);
+        const days = Math.min(7, totalDays - day);
+        ivs.push({ label: mon.getDate() + " " + FD_MON_ABBR[mon.getMonth()], superLabel: FD_MON_ABBR[mon.getMonth()] + " " + mon.getFullYear(), days });
+        day += days;
+      }
+    } else { /* month */
+      let d = new Date(projStart);
+      while (fd_dateDiff(projStart, d) < totalDays) {
+        const nextM  = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+        const mEnd   = fd_addDays(nextM, -1);
+        const projEnd = fd_addDays(projStart, totalDays - 1);
+        const eff    = mEnd < projEnd ? mEnd : projEnd;
+        const days   = fd_dateDiff(d, eff) + 1;
+        ivs.push({ label: FD_MON_ABBR[d.getMonth()], superLabel: String(d.getFullYear()), days });
+        d = nextM;
+      }
+    }
+    return ivs;
+  }
+
+  function fd_isDelayed(t) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const plannedEnd   = t.end          ? new Date(t.end)          : null;
+    const plannedStart = t.start        ? new Date(t.start)        : null;
+    const actualEnd    = t.actual_end   ? new Date(t.actual_end)   : null;
+    const actualStart  = t.actual_start ? new Date(t.actual_start) : null;
+    // Completed but finished late
+    if (actualEnd && plannedEnd && actualEnd > plannedEnd) return true;
+    // In-progress but past planned end
+    if (actualStart && !actualEnd && plannedEnd && today > plannedEnd) return true;
+    // Not started but past planned start
+    if (!actualStart && plannedStart && today > plannedStart) return true;
+    // Negative float
+    if (t.total_float !== null && t.total_float !== "" && parseFloat(t.total_float) < 0) return true;
+    return false;
+  }
+
+  function fd_getTaskColor(t) {
+    if (fd_isDelayed(t)) return FD_STATUS_CLR.delayed;
+    const stageRaw = (t.stage || "").toLowerCase();
+    if (stageRaw) {
+      for (const [key, clr] of Object.entries(FD_STAGE_CLR)) {
+        if (stageRaw.includes(key)) return clr;
+      }
+    }
+    return FD_STATUS_CLR[(t.status || "").toLowerCase()] || FD_STATUS_CLR.planned;
+  }
+
+  function fd_buildFlatRows(tasks) {
+    const groupMap = new Map();
+    for (const t of tasks) {
+      const key = (t.stage || "").toLowerCase();
+      if (!groupMap.has(key)) groupMap.set(key, []);
+      groupMap.get(key).push(t);
+    }
+    const groups = [...groupMap.entries()].sort(([a], [b]) => {
+      const ai = FD_STAGE_ORDER.indexOf(a), bi = FD_STAGE_ORDER.indexOf(b);
+      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+    });
+    const flat = [];
+    for (const [key, gTasks] of groups) {
+      const label = FD_STAGE_LABELS[key] || (key ? key[0].toUpperCase() + key.slice(1) : "General");
+      flat.push({ isGroup: true, stageLabel: label, count: gTasks.length });
+      for (const t of gTasks) flat.push(t);
+    }
+    return flat;
+  }
+
+  function fd_renderGanttHeader(hdrEl, projStart, ivs, ppd, today, todayX, showToday) {
+    hdrEl.innerHTML = "";
+    hdrEl.style.position = "relative";
+    let offsetDays = 0, prevSuper = null;
+    for (const iv of ivs) {
+      const w       = iv.days * ppd;
+      const ivStart = fd_addDays(projStart, offsetDays);
+      const ivEnd   = fd_addDays(projStart, offsetDays + iv.days - 1);
+      const hi      = today >= ivStart && today <= ivEnd;
+      const div = document.createElement("div");
+      div.style.cssText = `width:${w}px;min-width:${w}px;height:100%;display:flex;flex-direction:column;`
+        + `align-items:center;justify-content:space-evenly;font-size:.65rem;font-weight:600;padding:2px;`
+        + `border-right:1px solid #334155;box-sizing:border-box;overflow:hidden;`
+        + `color:${hi ? "#f87171" : "rgba(255,255,255,.45)"};${hi ? "border-bottom:2px solid #ef4444;" : ""}`;
+      const superEl = document.createElement("span");
+      superEl.style.cssText = "font-size:.58rem;font-weight:500;opacity:.55;white-space:nowrap;overflow:hidden;max-width:100%;text-align:center;";
+      if (iv.superLabel !== prevSuper && w >= 30) superEl.textContent = iv.superLabel;
+      prevSuper = iv.superLabel;
+      const mainEl = document.createElement("span");
+      mainEl.style.cssText = "white-space:nowrap;overflow:hidden;max-width:100%;text-align:center;";
+      if (w >= 22) mainEl.textContent = iv.label;
+      else if (w >= 8) mainEl.textContent = iv.label.substring(0, 3);
+      div.appendChild(superEl);
+      div.appendChild(mainEl);
+      hdrEl.appendChild(div);
+      offsetDays += iv.days;
+    }
+    if (showToday && todayX >= 0) {
+      const pin = document.createElement("div");
+      pin.style.cssText = `position:absolute;left:${todayX}px;top:0;bottom:0;width:2px;background:#ef4444;pointer-events:none;z-index:1;`;
+      const lbl = document.createElement("span");
+      lbl.textContent = "TODAY";
+      lbl.style.cssText = "position:absolute;top:2px;left:50%;transform:translateX(-50%);background:#ef4444;color:#fff;font-size:9px;font-weight:700;padding:1px 3px;border-radius:2px;white-space:nowrap;";
+      pin.appendChild(lbl);
+      hdrEl.appendChild(pin);
+    }
+  }
+
+  function fd_renderRows(containerEl, tasks, fromIdx, toIdx, taskIdxStart, rowMinW, projStart, ppd, totalW, todayX, showToday) {
+    let taskIdx = taskIdxStart;
+    for (let i = fromIdx; i < toIdx; i++) {
+      const t = tasks[i];
+
+      /* Stage group header */
+      if (t.isGroup) {
+        const groupEl = document.createElement("div");
+        groupEl.style.cssText = `display:flex;height:${FD_ROW_H}px;background:#1e293b;border-top:1px solid #334155;border-bottom:1px solid #243344;min-width:${rowMinW}px;align-items:center;`;
+        const nameDiv = document.createElement("div");
+        nameDiv.style.cssText = `min-width:${FD_NAME_W}px;max-width:${FD_NAME_W}px;padding:0 8px;display:flex;align-items:center;gap:5px;`
+          + `font-size:.68rem;font-weight:700;color:rgba(255,255,255,.65);`
+          + `position:sticky;left:0;z-index:5;background:#1e293b;border-right:1px solid #334155;`
+          + `overflow:hidden;white-space:nowrap;letter-spacing:.04em;height:100%;`;
+        nameDiv.innerHTML = `<span style="opacity:.45;font-size:.8em;">&#9656;</span>${esc(t.stageLabel)}`
+          + ` <span style="font-weight:400;opacity:.45;font-size:.85em;">(${t.count})</span>`;
+        nameDiv.title = t.stageLabel;
+        const barArea = document.createElement("div");
+        barArea.style.cssText = `width:${totalW}px;min-width:${totalW}px;height:${FD_ROW_H}px;background:#1e293b;flex-shrink:0;`;
+        groupEl.appendChild(nameDiv);
+        groupEl.appendChild(barArea);
+        containerEl.appendChild(groupEl);
+        continue;
+      }
+
+      /* Task row */
+      const startDate = fd_parseDate(t.start);
+      const endDate   = fd_parseDate(t.end);
+      if (!startDate || !endDate) { taskIdx++; continue; }
+
+      const actStartDate = fd_parseDate(t.actual_start);
+      const actEndDate   = fd_parseDate(t.actual_end);
+      const isMilestone  = fd_dateDiff(startDate, endDate) === 0 || (t.stage || "").toLowerCase().includes("milestone");
+
+      const barLeft  = Math.max(0, fd_dateDiff(projStart, startDate)) * ppd;
+      const barDays  = Math.max(1, fd_dateDiff(startDate, endDate) + 1);
+      const barW     = Math.max(3, barDays * ppd);
+      const clr      = fd_getTaskColor(t);
+      const bg       = taskIdx % 2 === 0 ? "#0f172a" : "#111827";
+      taskIdx++;
+
+      const isCrit     = fd_hasCpm && t.is_critical;
+      const opacity    = fd_hasCpm && !t.is_critical ? 0.42 : 0.88;
+      const shadow     = isCrit ? "box-shadow:0 0 0 1.5px #ef4444;" : "";
+      const totalFloat = t.total_float != null ? Math.round(t.total_float) : null;
+      const floatHint  = fd_hasCpm && totalFloat !== null
+        ? "\nFloat: " + totalFloat + " day" + (totalFloat === 1 ? "" : "s") + (isCrit ? " ⚠ Critical" : "")
+        : "";
+      const isSelected      = i === fd_selectedRowIdx;
+      const isMultiSelected = _fdMultiSelectedSet.has(t.pk || t.id);
+      const outlineStyle    = isSelected      ? "outline:2px solid #3b82f6;outline-offset:-2px;"
+                            : isMultiSelected ? "outline:2px solid #00BCD4;outline-offset:-2px;"
+                            : "";
+
+      const rowEl = document.createElement("div");
+      rowEl.dataset.rowIdx = i;
+      rowEl.style.cssText = `display:flex;height:${FD_ROW_H}px;background:${bg};min-width:${rowMinW}px;cursor:pointer;${outlineStyle}`;
+
+      const nameDiv = document.createElement("div");
+      nameDiv.style.cssText = `min-width:${FD_NAME_W}px;max-width:${FD_NAME_W}px;padding:0 8px;`
+        + `display:flex;flex-direction:column;justify-content:center;`
+        + `position:sticky;left:0;z-index:5;background:${bg};`
+        + `border-right:1px solid #1e293b;overflow:hidden;height:100%;`;
+      if (t.activity_code) {
+        const codeEl = document.createElement("div");
+        codeEl.style.cssText = "font-size:12px;font-weight:600;color:var(--bs-body-color);font-family:monospace;margin-bottom:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+        codeEl.textContent = t.activity_code;
+        nameDiv.appendChild(codeEl);
+      }
+      const nameEl = document.createElement("div");
+      nameEl.style.cssText = "font-size:10px;color:var(--bs-secondary-color);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px;";
+      const _lnkClr = { linked: "#1D9E75", unlinked: "#4B5563" };
+      const dotClr = !t.is_non_physical && t.link_status ? _lnkClr[t.link_status] : null;
+      if (dotClr) {
+        const dot = document.createElement("span");
+        dot.style.cssText = `flex-shrink:0;width:6px;height:6px;border-radius:50%;background:${dotClr};`;
+        dot.title = t.link_status;
+        nameEl.appendChild(dot);
+      }
+      const nameText = document.createElement("span");
+      nameText.style.cssText = "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;";
+      nameText.textContent = t.name;
+      nameEl.appendChild(nameText);
+      nameDiv.appendChild(nameEl);
+      nameDiv.title = (t.activity_code ? t.activity_code + " · " : "") + t.name + (t.link_status ? " [" + t.link_status + "]" : "");
+
+      const barArea = document.createElement("div");
+      barArea.style.cssText = `width:${totalW}px;min-width:${totalW}px;height:${FD_ROW_H}px;position:relative;flex-shrink:0;`;
+
+      if (isMilestone) {
+        const s = 8, cx = barLeft + ppd / 2;
+        const diamond = document.createElement("div");
+        diamond.style.cssText = `position:absolute;left:${cx - s}px;top:${FD_ROW_H / 2 - s}px;width:${s * 2}px;height:${s * 2}px;`
+          + `background:${clr};opacity:${opacity};${shadow}transform:rotate(45deg);border-radius:1px;`;
+        diamond.title = "◆ " + t.name + "\n" + fd_fmtDate(startDate) + floatHint;
+        barArea.appendChild(diamond);
+      } else {
+        /* Planned bar */
+        const bar = document.createElement("div");
+        bar.style.cssText = `position:absolute;left:${barLeft}px;top:${FD_BAR_T}px;width:${barW}px;height:${FD_BAR_H}px;`
+          + `background:${clr};border-radius:3px;opacity:${opacity};${shadow}`;
+        bar.title = t.name + "\nPlanned: " + fd_fmtDate(startDate) + " → " + fd_fmtDate(endDate) + floatHint;
+        barArea.appendChild(bar);
+
+        /* Float extension dashed bar */
+        if (fd_hasCpm && totalFloat !== null && totalFloat > 0) {
+          const floatW = Math.min(totalFloat * ppd, totalW - barLeft - barW);
+          if (floatW >= 2) {
+            const fb = document.createElement("div");
+            fb.style.cssText = `position:absolute;left:${barLeft + barW}px;top:${FD_BAR_T + 1}px;width:${floatW}px;height:${FD_BAR_H - 2}px;`
+              + `border:1px dashed rgba(255,255,255,.22);border-left:none;border-radius:0 3px 3px 0;pointer-events:none;`;
+            fb.title = "Float: " + totalFloat + " days";
+            barArea.appendChild(fb);
+          }
+        }
+
+        /* Actual bar */
+        if (actStartDate) {
+          const actLeft = Math.max(0, fd_dateDiff(projStart, actStartDate)) * ppd;
+          const actEnd  = actEndDate || new Date();
+          const actDays = Math.max(1, fd_dateDiff(actStartDate, actEnd) + 1);
+          const actW    = Math.max(3, actDays * ppd);
+          const actBar  = document.createElement("div");
+          actBar.style.cssText = `position:absolute;left:${actLeft}px;top:${FD_ACT_T}px;width:${actW}px;height:${FD_ACT_H}px;`
+            + `background:rgba(34,197,94,.75);border-radius:2px;`;
+          actBar.title = t.name + "\nActual: " + fd_fmtDate(actStartDate) + " → " + (actEndDate ? fd_fmtDate(actEndDate) : "ongoing");
+          barArea.appendChild(actBar);
+        }
+      }
+
+      /* Today line */
+      if (showToday) {
+        const line = document.createElement("div");
+        line.style.cssText = `position:absolute;left:${todayX}px;top:0;width:2px;height:100%;background:#ef4444;pointer-events:none;`;
+        barArea.appendChild(line);
+      }
+
+      rowEl.appendChild(nameDiv);
+      rowEl.appendChild(barArea);
+      containerEl.appendChild(rowEl);
+    }
+  }
+
+  function fd_renderGanttRows(bodyEl, tasks, projStart, ppd, totalW, todayX, showToday) {
+    fd_vs.tasks = tasks; fd_vs.projStart = projStart; fd_vs.ppd = ppd;
+    fd_vs.totalW = totalW; fd_vs.todayX = todayX; fd_vs.showToday = showToday;
+
+    bodyEl.innerHTML = "";
+    const rowMinW   = FD_NAME_W + totalW;
+    const scrollEl  = document.getElementById("fd-gantt-scroll");
+    const scrollTop = scrollEl ? scrollEl.scrollTop : 0;
+    const viewH     = scrollEl ? (scrollEl.clientHeight || 400) : 400;
+
+    const startIdx = Math.max(0, Math.floor(scrollTop / FD_ROW_H) - FD_VS_OVERSCAN);
+    const endIdx   = Math.min(tasks.length, Math.ceil((scrollTop + viewH) / FD_ROW_H) + FD_VS_OVERSCAN);
+    fd_vs.startIdx = startIdx; fd_vs.endIdx = endIdx; fd_vs.dirty = false;
+
+    /* Spacers carry min-width so horizontal scroll range never collapses */
+    const padTop = document.createElement("div");
+    padTop.id = "fd-vs-pad-top";
+    padTop.style.cssText = `height:${startIdx * FD_ROW_H}px; min-width:${rowMinW}px;`;
+    bodyEl.appendChild(padTop);
+
+    let taskIdxStart = 0;
+    for (let i = 0; i < startIdx; i++) { if (!tasks[i].isGroup) taskIdxStart++; }
+    fd_renderRows(bodyEl, tasks, startIdx, endIdx, taskIdxStart, rowMinW, projStart, ppd, totalW, todayX, showToday);
+
+    const padBot = document.createElement("div");
+    padBot.id = "fd-vs-pad-bot";
+    padBot.style.cssText = `height:${(tasks.length - endIdx) * FD_ROW_H}px; min-width:${rowMinW}px;`;
+    bodyEl.appendChild(padBot);
+  }
+
+  function fd_vsRefresh(force) {
+    const bodyEl  = document.getElementById("fd-gantt-body");
+    const scrollEl = document.getElementById("fd-gantt-scroll");
+    if (!bodyEl || !scrollEl || !fd_vs.tasks.length) return;
+
+    const scrollTop = scrollEl.scrollTop;
+    const viewH     = scrollEl.clientHeight || 400;
+    const tasks     = fd_vs.tasks;
+
+    const startIdx = Math.max(0, Math.floor(scrollTop / FD_ROW_H) - FD_VS_OVERSCAN);
+    const endIdx   = Math.min(tasks.length, Math.ceil((scrollTop + viewH) / FD_ROW_H) + FD_VS_OVERSCAN);
+    if (!force && !fd_vs.dirty && startIdx === fd_vs.startIdx && endIdx === fd_vs.endIdx) return;
+    fd_vs.startIdx = startIdx; fd_vs.endIdx = endIdx; fd_vs.dirty = false;
+
+    const padTop = document.getElementById("fd-vs-pad-top");
+    const padBot = document.getElementById("fd-vs-pad-bot");
+    if (!padTop || !padBot) return;
+    const rowMinW = FD_NAME_W + fd_vs.totalW;
+    padTop.style.height = (startIdx * FD_ROW_H) + "px";
+    padTop.style.minWidth = rowMinW + "px";
+    padBot.style.height = ((tasks.length - endIdx) * FD_ROW_H) + "px";
+    padBot.style.minWidth = rowMinW + "px";
+
+    Array.from(bodyEl.children).forEach(child => {
+      if (child.id !== "fd-vs-pad-top" && child.id !== "fd-vs-pad-bot") child.remove();
+    });
+
+    let taskIdxStart = 0;
+    for (let i = 0; i < startIdx; i++) { if (!tasks[i].isGroup) taskIdxStart++; }
+
+    const frag = document.createDocumentFragment();
+    fd_renderRows(frag, tasks, startIdx, endIdx, taskIdxStart, rowMinW,
+                  fd_vs.projStart, fd_vs.ppd, fd_vs.totalW, fd_vs.todayX, fd_vs.showToday);
+    padTop.after(frag);
+  }
+
+  function fd_renderLegend(showToday) {
+    const leg = document.getElementById("fd-gantt-legend");
+    if (!leg) return;
+    const items = [
+      { clr: FD_STATUS_CLR.planned,  label: "Planned"  },
+      { clr: FD_STATUS_CLR.active,   label: "Active"   },
+      { clr: FD_STATUS_CLR.delayed,  label: "Delayed"  },
+      { clr: FD_STATUS_CLR.complete, label: "Complete" },
+    ];
+    leg.innerHTML = items.map(it =>
+      `<span style="display:inline-flex;align-items:center;gap:3px;color:rgba(255,255,255,.55);">`
+      + `<span style="display:inline-block;width:10px;height:8px;border-radius:2px;background:${it.clr};"></span>${it.label}</span>`
+    ).join("") +
+    `<span style="display:inline-flex;align-items:center;gap:3px;color:rgba(255,255,255,.55);">`
+    + `<span style="display:inline-block;width:10px;height:5px;border-radius:1px;background:rgba(34,197,94,.75);"></span>Actual</span>`
+    + `<span style="display:inline-flex;align-items:center;gap:3px;color:rgba(255,255,255,.55);">`
+    + `<span style="display:inline-block;width:8px;height:8px;border-radius:1px;background:#3b82f6;transform:rotate(45deg);margin:0 1px;"></span>Milestone</span>`;
+    if (showToday) {
+      leg.innerHTML +=
+        `<span style="display:inline-flex;align-items:center;gap:3px;color:rgba(255,255,255,.55);">`
+        + `<span style="display:inline-block;width:2px;height:12px;background:#ef4444;"></span>Today</span>`;
+    }
+    if (fd_hasCpm) {
+      leg.innerHTML +=
+        `<span style="display:inline-flex;align-items:center;gap:3px;color:rgba(255,255,255,.55);">`
+        + `<span style="display:inline-block;width:10px;height:8px;border-radius:2px;background:#1e40af;box-shadow:0 0 0 1.5px #ef4444;"></span>Critical</span>`
+        + `<span style="display:inline-flex;align-items:center;gap:3px;color:rgba(255,255,255,.4);">`
+        + `<span style="display:inline-block;width:12px;height:7px;border:1px dashed rgba(255,255,255,.35);border-radius:0 2px 2px 0;border-left:none;"></span>Float</span>`;
+    }
+  }
+
+  function fd_renderGantt(data) {
+    fd_rawData = data;
+    const emptyEl = document.getElementById("fd-gantt-empty");
+    const bodyEl  = document.getElementById("fd-gantt-body");
+    const hdrEl   = document.getElementById("fd-gantt-timeline-hdr");
+    const rawTasks = data.tasks || [];
+
+    if (!rawTasks.length) {
+      if (bodyEl) bodyEl.innerHTML = "";
+      if (emptyEl) { emptyEl.textContent = "No tasks — import a schedule in Data Sources."; emptyEl.style.display = ""; }
+      return;
+    }
+    if (emptyEl) emptyEl.style.display = "none";
+
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    fd_hasCpm   = rawTasks.some(t => t.total_float != null);
+    fd_selectedRowIdx = -1;
+
+    /* Filter to tasks with parseable dates */
+    const parsedTasks = rawTasks.filter(t => fd_parseDate(t.start) && fd_parseDate(t.end));
+    if (!parsedTasks.length) {
+      if (emptyEl) { emptyEl.textContent = "No parseable task dates."; emptyEl.style.display = ""; }
+      return;
+    }
+
+    const projStart = new Date(Math.min(...parsedTasks.map(t => fd_parseDate(t.start).getTime())));
+    const projEnd   = new Date(Math.max(...parsedTasks.map(t => fd_parseDate(t.end).getTime())));
+    projStart.setHours(0, 0, 0, 0); projEnd.setHours(0, 0, 0, 0);
+
+    const ppd       = FD_PX_PER_DAY[fd_zoom] || 2;
+    const totalDays = fd_dateDiff(projStart, projEnd) + 1;
+    const ivs       = fd_getIntervals(projStart, totalDays, fd_zoom);
+    const totalW    = ivs.reduce((s, iv) => s + iv.days * ppd, 0);
+    const todayX    = fd_dateDiff(projStart, today) * ppd;
+    const showToday = todayX >= 0 && todayX <= totalW;
+
+    const flatRows = fd_buildFlatRows(parsedTasks);
+
+    fd_renderGanttHeader(hdrEl, projStart, ivs, ppd, today, todayX, showToday);
+    fd_renderGanttRows(bodyEl, flatRows, projStart, ppd, totalW, todayX, showToday);
+    fd_renderLegend(showToday);
+
+    /* Attach scroll + click listeners once */
+    if (!fd_listenersAttached) {
+      fd_listenersAttached = true;
+
+      const scrollEl = document.getElementById("fd-gantt-scroll");
+      if (scrollEl) {
+        scrollEl.addEventListener("scroll", function () {
+          if (!fd_vs.tasks.length || fd_vs.raf) return;
+          fd_vs.raf = requestAnimationFrame(function () { fd_vs.raf = null; fd_vsRefresh(); });
+        }, { passive: true });
+      }
+
+      if (bodyEl) {
+        bodyEl.addEventListener("click", function (e) {
+          const rowEl = e.target.closest("[data-row-idx]");
+          if (!rowEl) return;
+          const rowIdx = parseInt(rowEl.dataset.rowIdx);
+          const t = fd_vs.tasks[rowIdx];
+          if (!t || t.isGroup) return;
+
+          if (e.shiftKey) {
+            const taskKey = t.pk || t.id;
+            if (_fdMultiSelectedSet.has(taskKey)) {
+              _fdMultiSelectedSet.delete(taskKey);
+              _fdMultiSelectedTasks = _fdMultiSelectedTasks.filter(x => (x.pk || x.id) !== taskKey);
+            } else {
+              _fdMultiSelectedSet.add(taskKey);
+              _fdMultiSelectedTasks.push(t);
+            }
+            fd_vs.dirty = true;
+            fd_vsRefresh(true);
+            const allIds = _fdMultiSelectedTasks.flatMap(x => x.entity_global_ids || []);
+            if (allIds.length) sendToViewer({ type: "castor:highlight", global_ids: allIds });
+            return;
+          }
+
+          if (fd_selectedRowIdx === rowIdx) {
+            fd_selectedRowIdx = -1;
+            fd_vs.dirty = true;
+            fd_vsRefresh(true);
+            sendToViewer({ type: "castor:reset" });
+            _fdFocusGlobalId = null;
+            _fdTaskSelected  = false;
+            _updateFocusBtn();
+            _applyLinkFilter();
+            return;
+          }
+          fd_selectedRowIdx = rowIdx;
+          fd_vs.dirty = true;
+          fd_vsRefresh(true);
+          const ids = t.entity_global_ids || [];
+          if (ids.length) sendToViewer({ type: "castor:highlight", global_ids: ids });
+          _fdFocusGlobalId = ids.length ? ids[0] : null;
+          _fdTaskSelected  = ids.length > 0;
+          _updateFocusBtn();
+        });
+      }
+    }
+  }
+
+  /* Viewer → Gantt: find task by IFC global_id and scroll to it */
+  function selectTaskByGlobalId(gid) {
+    const tasks = fd_vs.tasks;
+    for (let i = 0; i < tasks.length; i++) {
+      if (tasks[i].isGroup) continue;
+      if ((tasks[i].entity_global_ids || []).includes(gid)) {
+        fd_selectedRowIdx = i;
+        fd_vs.dirty = true;
+        fd_vsRefresh(true);
+        const scrollEl = document.getElementById("fd-gantt-scroll");
+        if (scrollEl) {
+          scrollEl.scrollTop = Math.max(0, i * FD_ROW_H + FD_HDR_H - scrollEl.clientHeight / 3);
+        }
+        return;
+      }
+    }
+  }
+
+  async function loadGantt() {
+    try {
+      const resp = await fetch(GANTT_URL);
+      if (!resp.ok) throw new Error(resp.status);
+      const data = await resp.json();
+      _fdLastData = data;
+      _applyLinkFilter();
+    } catch (e) {
+      console.error("[4D] loadGantt error:", e);
+      const emptyEl = document.getElementById("fd-gantt-empty");
+      const bodyEl  = document.getElementById("fd-gantt-body");
+      if (bodyEl) bodyEl.innerHTML = "";
+      if (emptyEl) { emptyEl.textContent = "Could not load tasks."; emptyEl.style.display = ""; }
+    }
+  }
+
+  /* Zoom buttons: sync HTML active state to fd_zoom, re-render on click */
+  document.querySelectorAll(".fd-zoom-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.zoom === fd_zoom);
+    btn.addEventListener("click", () => {
+      fd_zoom = btn.dataset.zoom;
+      try { localStorage.setItem("fd-gantt-zoom", fd_zoom); } catch {}
+      document.querySelectorAll(".fd-zoom-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      if (_fdLastData) _applyLinkFilter();
+    });
+  });
+
+  /* Link filter buttons */
+  function _applyLinkFilter() {
+    if (!_fdLastData) return;
+
+    _fdLinkFilterActive = _fdLinkFilter !== "all";
+
+    if (_fdLinkFilter === "all") {
+      fd_renderGantt(_fdLastData);
+    } else {
+      const filtered = {
+        ..._fdLastData,
+        tasks: (_fdLastData.tasks || []).filter(t => t.link_status === _fdLinkFilter),
+      };
+      fd_renderGantt(filtered);
+    }
+
+    if (!_linkCheckBtn?.classList.contains("btn-primary")) return;
+    if (_fdTaskSelected) return;
+
+    const linked = [], unlinked = [];
+    for (const t of (_fdLastData.tasks || [])) {
+      const ids = t.entity_global_ids || [];
+      if (!ids.length) continue;
+      if (t.link_status === "linked")        linked.push(...ids);
+      else if (t.link_status === "unlinked") unlinked.push(...ids);
+    }
+    sendToViewer({ type: "castor:link-colors", linked, unlinked, filter: _fdLinkFilter });
+  }
+
+  function _updateFocusBtn() {
+    const btn = document.getElementById("fd-focus-btn");
+    if (btn) btn.style.display = _fdFocusGlobalId ? "inline-block" : "none";
+  }
+
+  async function _doLinkElement(globalId) {
+    const tasks  = fd_vs.tasks;
+    const task   = fd_selectedRowIdx >= 0 ? tasks[fd_selectedRowIdx] : null;
+    if (!task || task.isGroup) { _showToast("No task selected — click a task first", "error"); return; }
+    const taskId = task.pk || task.id;
+    if (!taskId) { _showToast("Task has no ID", "error"); return; }
+    const url = `/castor/projects/{{ project.pk }}/tasks/${taskId}/link-element/`;
+    try {
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": FD_CSRF },
+        body: JSON.stringify({ global_id: globalId }),
+      });
+      const data = await resp.json();
+      if (resp.ok) {
+        _showToast(`Linked ${globalId} to "${task.name}"`, "success");
+        loadGantt();
+      } else {
+        _showToast(data.error || "Link failed", "error");
+      }
+    } catch (err) {
+      _showToast("Link request failed", "error");
+    }
+  }
+
+  function _fdPatchUnlinkedInMemory(globalId) {
+    if (!_fdLastData?.tasks) return 0;
+    let patched = 0;
+    for (const t of _fdLastData.tasks) {
+      if (t.isGroup) continue;
+      const ids = t.entity_global_ids;
+      if (!ids) continue;
+      const idx = ids.indexOf(globalId);
+      if (idx === -1) continue;
+      ids.splice(idx, 1);
+      if (ids.length === 0) t.link_status = "unlinked";
+      patched++;
+    }
+    return patched;
+  }
+
+  async function _doUnlinkElement(globalId) {
+    const url = `/castor/projects/{{ project.pk }}/elements/unlink-all/`;
+    try {
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": FD_CSRF },
+        body: JSON.stringify({ global_id: globalId }),
+      });
+      const data = await resp.json();
+      if (resp.ok) {
+        _showToast("✓ Unlinked successfully", "success", 2000);
+        const patched = _fdPatchUnlinkedInMemory(globalId);
+        if (patched > 0) {
+          _applyLinkFilter();
+        } else {
+          await loadGantt();
+        }
+        _fdTaskSelected = false;
+        _fdFocusGlobalId = null;
+        fd_selectedRowIdx = -1;
+        sendToViewer({ type: "castor:reset" });
+      } else if (resp.status === 404) {
+        _showToast("Element has no linked tasks", "info");
+      } else {
+        _showToast(data.error || "Unlink failed", "error");
+      }
+    } catch (err) {
+      _showToast("Unlink request failed", "error");
+    }
+  }
+
+  document.getElementById("fd-focus-btn")?.addEventListener("click", () => {
+    if (_fdFocusGlobalId) sendToViewer({ type: "castor:focus-element", global_id: _fdFocusGlobalId });
+  });
+
+  document.getElementById("fd-zoom-in-btn")?.addEventListener("click", () => {
+    sendToViewer({ type: "castor:zoom", direction: "in" });
+  });
+  document.getElementById("fd-zoom-out-btn")?.addEventListener("click", () => {
+    sendToViewer({ type: "castor:zoom", direction: "out" });
+  });
+
+  document.querySelectorAll(".fd-lf-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.filter === _fdLinkFilter);
+    btn.addEventListener("click", () => {
+      _fdLinkFilter = btn.dataset.filter;
+      document.querySelectorAll(".fd-lf-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      /* Explicit filter click clears task selection so link colors always reach the viewer */
+      if (_fdTaskSelected) {
+        _fdTaskSelected  = false;
+        _fdFocusGlobalId = null;
+        fd_selectedRowIdx = -1;
+        fd_vs.dirty = true;
+        fd_vsRefresh(true);
+        _updateFocusBtn();
+      }
+      _applyLinkFilter();
+    });
+  });
+
+  /* ── Viewer + Timeline ───────────────────────────────────────────── */
+
+  const iframe    = document.getElementById("fd-iframe");
+  const iframeOvl = document.getElementById("fd-iframe-loading");
+  const colorBtns = document.querySelectorAll("#fd-colorby-group button");
+
+  let viewerReady = false, pendingMsg = null, currentMode = "timeline";
+  let tlIntervals = [], tlNoTask = [], tlTimer = null, tlSpeed = 1;
+
+  function sendToViewer(msg) {
+    if (!viewerReady) { pendingMsg = msg; return; }
+    iframe.contentWindow.postMessage(msg, "*");
+  }
+
+  window.addEventListener("message", (e) => {
+    console.log('[msg] received:', e.data?.type);
+    if (e.source !== iframe.contentWindow) return;
+    const msg = e.data;
+    if (!msg) return;
+    if (msg.type === "castor:viewer-ready") {
+      viewerReady = true;
+      iframeOvl.style.display = "none";
+      if (pendingMsg) { iframe.contentWindow.postMessage(pendingMsg, "*"); pendingMsg = null; }
+    }
+    if (msg.type === "castor:viewer-error") {
+      iframeOvl.innerHTML = `<span style="color:#ef4444;">&#9888; ${msg.message || "Viewer error"}</span>`;
+    }
+    if (msg.type === "castor:element-selected") {
+      if (msg.global_id) {
+        selectTaskByGlobalId(msg.global_id);
+      } else {
+        fd_selectedRowIdx = -1;
+        fd_vs.dirty = true;
+        fd_vsRefresh(true);
+      }
+    }
+    if (msg.type === "castor:element-action") {
+      console.log('[action]', msg.action, msg.global_id);
+      const { action, global_id } = msg;
+      if (action === "link" || action === "add-task") {
+        _openLinkModal(global_id);
+      } else if (action === "unlink") {
+        _doUnlinkElement(global_id);
+      } else {
+        if (action === "view-tasks") _showToast("View tasks: coming soon", "info");
+      }
+    }
+    if (msg.type === "castor:multi-select") {
+      const ids = msg.global_ids || [];
+      _fdMultiSelectedTasks = [];
+      _fdMultiSelectedSet.clear();
+      for (const t of fd_vs.tasks) {
+        if (t.isGroup) continue;
+        if ((t.entity_global_ids || []).some(id => ids.includes(id))) {
+          _fdMultiSelectedTasks.push(t);
+          _fdMultiSelectedSet.add(t.pk || t.id);
+        }
+      }
+      fd_vs.dirty = true;
+      fd_vsRefresh(true);
+    }
+  });
+
+  const _linkCheckBtn  = document.querySelector("#fd-colorby-group button[data-mode='link-check']");
+  const _siteStatusBtn = document.querySelector("#fd-colorby-group button[data-mode='site-status']");
+
+  function _setColorBtn(btn, active) {
+    if (active) {
+      btn.classList.remove("btn-outline-secondary");
+      btn.classList.add("btn-primary", "active");
+    } else {
+      btn.classList.remove("btn-primary", "active");
+      btn.classList.add("btn-outline-secondary");
+    }
+  }
+
+  function _deactivateBothColorBtns() {
+    if (_linkCheckBtn)  _setColorBtn(_linkCheckBtn,  false);
+    if (_siteStatusBtn) _setColorBtn(_siteStatusBtn, false);
+  }
+
+  if (_linkCheckBtn) {
+    _linkCheckBtn.addEventListener("click", () => {
+      const wasActive = _linkCheckBtn.classList.contains("btn-primary");
+      _deactivateBothColorBtns();
+      if (!wasActive) {
+        _setColorBtn(_linkCheckBtn, true);
+        _applyLinkFilter();
+      } else {
+        sendToViewer({ type: "castor:reset" });
+      }
+    });
+  }
+
+  if (_siteStatusBtn) {
+    _siteStatusBtn.addEventListener("click", () => {
+      const wasActive = _siteStatusBtn.classList.contains("btn-primary");
+      _deactivateBothColorBtns();
+      if (!wasActive) {
+        if (!tlIntervals.length) {
+          _showToast("Timeline data not yet loaded — try again shortly", "info");
+          return;
+        }
+        /* Find the last weekly interval whose date is on or before today */
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        let iv = tlIntervals[0];
+        for (const t of tlIntervals) {
+          if (new Date(t.date + "T00:00:00") <= today) iv = t;
+          else break;
+        }
+        const { not_started = [], in_progress = [], complete = [], delayed = [] } = iv.entities || {};
+        sendToViewer({ type: "castor:timeline-colors", not_started, in_progress, complete, delayed, no_task: tlNoTask });
+        _setColorBtn(_siteStatusBtn, true);
+      } else {
+        sendToViewer({ type: "castor:reset" });
+      }
+    });
+  }
+
+  document.getElementById("fd-reset-view-btn").addEventListener("click", () => sendToViewer({ type: "castor:reset" }));
+
+  async function loadTimeline() {
+    try {
+      const resp = await fetch(TIMELINE_URL);
+      if (!resp.ok) return;
+      const data = await resp.json();
+      if (!data.has_tasks) { document.getElementById("fd-slider").disabled = true; return; }
+      tlIntervals = data.intervals || [];
+      tlNoTask    = data.no_task   || [];
+      if (!tlIntervals.length) return;
+      document.getElementById("fd-min-date").textContent = data.project_start || "";
+      document.getElementById("fd-max-date").textContent = data.project_end   || "";
+      const slider = document.getElementById("fd-slider");
+      slider.max   = tlIntervals.length - 1;
+      slider.value = 0;
+    } catch (e) { /* no timeline — slider stays disabled */ }
+  }
+
+  function _applyInterval(idx) {
+    if (!tlIntervals.length) return;
+    if (_fdLinkFilterActive) return;
+    const iv = tlIntervals[Math.min(idx, tlIntervals.length - 1)];
+    const { not_started = [], in_progress = [], complete = [], delayed = [] } = iv.entities || {};
+    sendToViewer({ type: "castor:timeline-colors", not_started, in_progress, complete, delayed, no_task: tlNoTask });
+    document.getElementById("fd-current-date").textContent = new Date(iv.date + "T00:00:00")
+      .toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+    document.getElementById("fd-slider").value = idx;
+    const s = iv.stats || {}, tot = s.total || 1;
+    document.getElementById("fd-stat-complete").textContent    = (s.complete    || 0).toLocaleString();
+    document.getElementById("fd-stat-in-progress").textContent = (s.in_progress || 0).toLocaleString();
+    document.getElementById("fd-stat-delayed").textContent     = (s.delayed     || 0).toLocaleString();
+    document.getElementById("fd-stat-not-started").textContent = (s.not_started || 0).toLocaleString();
+    document.getElementById("fd-stat-pct").textContent         = Math.round(((s.complete || 0) / tot) * 100) + "%";
+  }
+
+  function _pauseTimeline() {
+    clearInterval(tlTimer); tlTimer = null;
+    document.getElementById("fd-pause-btn").classList.add("d-none");
+    document.getElementById("fd-play-btn").classList.remove("d-none");
+  }
+
+  function _playTimeline() {
+    const slider = document.getElementById("fd-slider");
+    tlTimer = setInterval(() => {
+      const next = parseInt(slider.value) + 1;
+      if (next > parseInt(slider.max)) { _pauseTimeline(); return; }
+      _applyInterval(next);
+    }, 1500 / tlSpeed);
+  }
+
+  document.getElementById("fd-play-btn").addEventListener("click", () => {
+    document.getElementById("fd-play-btn").classList.add("d-none");
+    document.getElementById("fd-pause-btn").classList.remove("d-none");
+    _playTimeline();
+  });
+  document.getElementById("fd-pause-btn").addEventListener("click", _pauseTimeline);
+  document.getElementById("fd-prev-btn").addEventListener("click", () => {
+    const s = document.getElementById("fd-slider");
+    _applyInterval(Math.max(0, parseInt(s.value) - 1));
+  });
+  document.getElementById("fd-next-btn").addEventListener("click", () => {
+    const s = document.getElementById("fd-slider");
+    _applyInterval(Math.min(parseInt(s.max), parseInt(s.value) + 1));
+  });
+  document.getElementById("fd-to-start-btn").addEventListener("click", () => { _pauseTimeline(); _applyInterval(0); });
+  document.getElementById("fd-speed-select").addEventListener("change", (e) => {
+    tlSpeed = parseFloat(e.target.value);
+    if (tlTimer) { _pauseTimeline(); _playTimeline(); }
+  });
+  document.getElementById("fd-slider").addEventListener("input", (e) => _applyInterval(parseInt(e.target.value)));
+
+  /* ── AI Chat ────────────────────────────────────────────────────── */
+
+  function addFdMessage(role, html) {
+    const msgs = document.getElementById("fourD-messages");
+    const isAI = role === "ai";
+    const div  = document.createElement("div");
+    div.className = "fd-msg";
+    div.style.cssText = `background:${isAI ? "rgba(99,102,241,.1)" : "rgba(59,130,246,.08)"};`
+                      + `border-radius:8px;padding:10px 12px;font-size:12px;`
+                      + `align-self:${isAI ? "flex-start" : "flex-end"};max-width:90%;`;
+    div.innerHTML = `<strong style="color:${isAI ? "#818cf8" : "#3b82f6"};">${isAI ? "Castor AI" : "You"}</strong>`
+                  + `<p class="fd-msg-text" style="margin:4px 0 0;color:var(--bs-body-color);">${html}</p>`;
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+
+  /* Writeback action words — if the user message contains any of these, route
+     to the schedule writeback pipeline instead of the Q&A intelligence endpoint. */
+  const FD_ACTION_WORDS = /\b(delay|push\s+back|move|reschedule|update|change|set|mark|complete|finish|start|activate|extend|shorten|add\s+dependency|remove\s+dependency|link)\b/i;
+
+  function _fdReplaceLoading(loadingId, html) {
+    const el = document.getElementById(loadingId);
+    if (el) el.closest(".fd-msg").querySelector(".fd-msg-text").innerHTML = html;
+  }
+
+  async function _fdAskIntelligence(msg, loadingId) {
+    const resp = await fetch(FD_INTELLIGENCE_ASK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRFToken": FD_CSRF },
+      body: JSON.stringify({ question: msg }),
+    });
+    const data = await resp.json();
+    _fdReplaceLoading(loadingId, data.answer || data.error || "No response.");
+  }
+
+  async function _fdWriteback(msg, loadingId) {
+    const resp = await fetch(FD_WRITEBACK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRFToken": FD_CSRF },
+      body: JSON.stringify({ message: msg }),
+    });
+    const data = await resp.json();
+
+    if (data.type === "unclear" || data.type === "out_of_scope" || data.type === "no_matches") {
+      _fdReplaceLoading(loadingId, esc(data.message || "Could not process request."));
+      return;
+    }
+
+    if (data.type === "proposals") {
+      const proposals = data.proposals || [];
+      const warnings  = data.warnings  || [];
+
+      let html = `<strong style="color:#818cf8;">Proposed changes:</strong>`;
+      html += `<div style="margin:8px 0;display:flex;flex-direction:column;gap:6px;">`;
+      for (const p of proposals) {
+        html += `<div style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:8px 10px;font-size:11px;">`;
+        html += `<div style="font-weight:600;color:#e2e8f0;margin-bottom:4px;">${esc(p.task_name)}</div>`;
+        if (p.activity_code) html += `<div style="color:rgba(255,255,255,.4);font-size:10px;margin-bottom:4px;">${esc(p.activity_code)}</div>`;
+        for (const [fname, chg] of Object.entries(p.changes || {})) {
+          html += `<div style="color:#94a3b8;">• ${esc(fname)}: <span style="color:#f87171;">${esc(String(chg.from))}</span> → <span style="color:#86efac;">${esc(String(chg.to))}</span></div>`;
+        }
+        html += `</div>`;
+      }
+      html += `</div>`;
+      if (warnings.length) {
+        html += `<div style="color:#fbbf24;font-size:10px;margin-bottom:6px;">⚠ ${warnings.map(esc).join(" · ")}</div>`;
+      }
+      // Store proposals on the button for the confirm handler
+      const confirmId = "fd-confirm-" + Date.now();
+      html += `<div style="display:flex;gap:8px;margin-top:4px;">`;
+      html += `<button id="${confirmId}" data-proposals='${JSON.stringify(proposals).replace(/'/g, "&#39;")}'`
+            + ` style="padding:4px 12px;background:#166534;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:11px;">✅ Confirm</button>`;
+      html += `<button onclick="this.closest('.fd-msg').remove()" style="padding:4px 12px;background:#7f1d1d;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:11px;">❌ Cancel</button>`;
+      html += `</div>`;
+
+      _fdReplaceLoading(loadingId, html);
+
+      // Attach confirm handler after the DOM is updated
+      requestAnimationFrame(() => {
+        const btn = document.getElementById(confirmId);
+        if (!btn) return;
+        btn.addEventListener("click", async () => {
+          btn.disabled = true;
+          btn.textContent = "Applying…";
+          try {
+            const cResp = await fetch(FD_WRITEBACK_URL, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "X-CSRFToken": FD_CSRF },
+              body: JSON.stringify({ confirm: true, proposals }),
+            });
+            const cData = await cResp.json();
+            const n = cData.updated || 0;
+            const msgEl = btn.closest(".fd-msg").querySelector(".fd-msg-text");
+            if (msgEl) msgEl.innerHTML = `✅ Updated ${n} task${n !== 1 ? "s" : ""}. Refreshing Gantt…`;
+            // Refresh Gantt
+            loadGantt();
+          } catch (err) {
+            btn.textContent = "Error — retry?";
+            btn.disabled = false;
+          }
+        });
+      });
+    }
+  }
+
+  document.getElementById("fourD-chat-send").addEventListener("click", async () => {
+    const input = document.getElementById("fourD-chat-input");
+    const msg   = input.value.trim();
+    if (!msg) return;
+    input.value = "";
+    addFdMessage("user", esc(msg));
+    const loadingId = "fd-loading-" + Date.now();
+    addFdMessage("ai", `<span id="${loadingId}">Thinking…</span>`);
+    try {
+      if (FD_ACTION_WORDS.test(msg)) {
+        await _fdWriteback(msg, loadingId);
+      } else {
+        await _fdAskIntelligence(msg, loadingId);
+      }
+    } catch (e) {
+      _fdReplaceLoading(loadingId, "Error connecting to AI.");
+    }
+  });
+
+  document.getElementById("fourD-chat-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("fourD-chat-send").click();
+  });
+
+  /* ── Resizable panels ───────────────────────────────────────────── */
+
+  function initSplitters() {
+    const STORAGE_KEY  = "fourD-layout";
+    const SPLITTER_PX  = 16; // 2 splitters × 8px each
+    const MIN_W = { "fourD-gantt": 220, "fourD-viewer": 400, "fourD-chat": 200 };
+    const DEFAULT_W = { "fourD-gantt": 280, "fourD-chat": 280 };
+
+    /* Restore saved widths — clamp to valid range for current viewport */
+    try {
+      const saved   = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+      const panelsW = document.getElementById("fourD-main").offsetWidth || 1200;
+      /* Each side panel can take at most 45% of the row (leaves room for the viewer) */
+      const cap = Math.floor(panelsW * 0.45);
+
+      const ganttW = saved.gantt
+        ? Math.max(MIN_W["fourD-gantt"], Math.min(cap, saved.gantt))
+        : DEFAULT_W["fourD-gantt"];
+
+      document.getElementById("fourD-gantt").style.width = ganttW + "px";
+      /* chat width/visibility is owned by initChatPanel() — not restored here */
+    } catch (e) { /* ignore corrupt storage */ }
+
+    function saveLayout() {
+      try {
+        const chatW = document.getElementById("fourD-chat").offsetWidth;
+        const data  = { gantt: document.getElementById("fourD-gantt").offsetWidth };
+        if (chatW > 0) {
+          data.chat = chatW;
+          try { localStorage.setItem("fd-chat-width", String(chatW)); } catch(e2) {}
+        }
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      } catch (e) { /* ignore */ }
+    }
+
+    /* Pointer-capture drag — no ghost drag, no "released outside window" leaks.
+       Pointer capture routes all pointermove/pointerup to the splitter element
+       even when the cursor leaves the window, so no document-level cleanup needed. */
+    let _drag       = null;
+    let _rafPending = false;
+
+    document.querySelectorAll(".fd-splitter").forEach(splitter => {
+
+      splitter.addEventListener("pointerdown", (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        splitter.setPointerCapture(e.pointerId);
+
+        /* Freeze iframe so it can't swallow pointer events mid-drag */
+        const iframeEl = document.getElementById("fd-iframe");
+        if (iframeEl) iframeEl.style.pointerEvents = "none";
+        /* Suppress chat CSS transition — otherwise splitter 2 drag feels laggy */
+        const chatEl = document.getElementById("fourD-chat");
+        if (chatEl) chatEl.style.transition = "none";
+
+        const leftId  = splitter.dataset.left;
+        const fixedId = leftId !== "fourD-viewer" ? leftId : splitter.dataset.right;
+        const fixedEl = document.getElementById(fixedId);
+        _drag = {
+          splitter,
+          fixedId,
+          fixedEl,
+          startX: e.clientX,
+          startW: fixedEl.offsetWidth,
+          minW:   MIN_W[fixedId] || 200,
+          /* +1: drag right grows the panel (Gantt, left of splitter).
+             -1: drag right shrinks the panel (Chat, right of splitter). */
+          sign: leftId !== "fourD-viewer" ? 1 : -1,
+        };
+        splitter.classList.add("fd-dragging");
+        document.body.style.cursor     = "col-resize";
+        document.body.style.userSelect = "none";
+      });
+
+      splitter.addEventListener("pointermove", (e) => {
+        if (!_drag || _drag.splitter !== splitter) return;
+        if (_rafPending) return;
+        _rafPending = true;
+        const clientX = e.clientX;           // capture before rAF fires
+        requestAnimationFrame(() => {
+          _rafPending = false;
+          if (!_drag) return;                // drag may have ended during the frame wait
+          const { fixedId, fixedEl, startX, startW, minW, sign } = _drag;
+          const delta   = (clientX - startX) * sign;
+          const container = document.getElementById("fourD-main");
+          const otherId = fixedId === "fourD-gantt" ? "fourD-chat" : "fourD-gantt";
+          const otherW  = document.getElementById(otherId).offsetWidth;
+          const maxW    = container.offsetWidth - otherW - SPLITTER_PX - MIN_W["fourD-viewer"];
+          fixedEl.style.width = Math.max(minW, Math.min(maxW, startW + delta)) + "px";
+        });
+      });
+
+      splitter.addEventListener("pointerup", (e) => {
+        if (!_drag || _drag.splitter !== splitter) return;
+        splitter.releasePointerCapture(e.pointerId);
+        splitter.classList.remove("fd-dragging");
+        document.body.style.cursor     = "";
+        document.body.style.userSelect = "";
+        const iframeEl = document.getElementById("fd-iframe");
+        if (iframeEl) iframeEl.style.pointerEvents = "";
+        const chatEl = document.getElementById("fourD-chat");
+        if (chatEl) chatEl.style.transition = "";
+        saveLayout();
+        _drag = null;
+      });
+
+      splitter.addEventListener("pointercancel", (e) => {
+        if (!_drag || _drag.splitter !== splitter) return;
+        splitter.releasePointerCapture(e.pointerId);
+        splitter.classList.remove("fd-dragging");
+        document.body.style.cursor     = "";
+        document.body.style.userSelect = "";
+        const iframeEl = document.getElementById("fd-iframe");
+        if (iframeEl) iframeEl.style.pointerEvents = "";
+        const chatEl = document.getElementById("fourD-chat");
+        if (chatEl) chatEl.style.transition = "";
+        _drag = null;
+      });
+    });
+  }
+
+  /* ── Chat panel toggle ──────────────────────────────────────────── */
+
+  let _chatOpen = false;
+
+  function initChatPanel() {
+    const chat = document.getElementById("fourD-chat");
+    try { _chatOpen = localStorage.getItem("fd-chat-open") === "1"; } catch(e) {}
+    if (_chatOpen) {
+      let w = 280;
+      try { w = parseInt(localStorage.getItem("fd-chat-width") || "280") || 280; } catch(e) {}
+      chat.style.width    = w + "px";
+      chat.style.minWidth = "200px";
+      chat.style.overflow = "";
+    } else {
+      chat.style.width    = "0px";
+      chat.style.minWidth = "0";
+      chat.style.overflow = "hidden";
+    }
+  }
+
+  document.getElementById("fd-chat-toggle").addEventListener("click", () => {
+    const chat = document.getElementById("fourD-chat");
+    _chatOpen = !_chatOpen;
+    if (_chatOpen) {
+      let w = 280;
+      try { w = parseInt(localStorage.getItem("fd-chat-width") || "280") || 280; } catch(e) {}
+      chat.style.width    = w + "px";
+      chat.style.minWidth = "200px";
+      chat.style.overflow = "";
+    } else {
+      try { localStorage.setItem("fd-chat-width", String(chat.offsetWidth)); } catch(e) {}
+      chat.style.width    = "0px";
+      chat.style.minWidth = "0";
+      chat.style.overflow = "hidden";
+    }
+    try { localStorage.setItem("fd-chat-open", _chatOpen ? "1" : "0"); } catch(e) {}
+  });
+
+  /* ── Embed Tasks ────────────────────────────────────────────────── */
+  document.getElementById("fd-embed-btn").addEventListener("click", async () => {
+    const btn     = document.getElementById("fd-embed-btn");
+    const spinner = document.getElementById("fd-embed-spinner");
+    const status  = document.getElementById("fd-embed-status");
+    btn.disabled = true;
+    spinner.classList.remove("d-none");
+    status.textContent = "Embedding tasks…";
+    try {
+      const resp = await fetch(FD_INTELLIGENCE_EMBED_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": FD_CSRF },
+        body: JSON.stringify({ force: false }),
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        status.textContent = `✅ Embedded ${data.embedded} tasks`;
+      } else {
+        status.textContent = `❌ ${data.error || "Embedding failed"}`;
+      }
+    } catch (err) {
+      status.textContent = `❌ ${err}`;
+    } finally {
+      btn.disabled = false;
+      spinner.classList.add("d-none");
+    }
+  });
+
+  /* ── Gantt row context menu ─────────────────────────────────────── */
+
+  const _fdCtxMenu = (() => {
+    const el = document.createElement("div");
+    el.id = "fd-gantt-ctx-menu";
+    el.style.cssText = [
+      "position:fixed;z-index:9999;min-width:190px;padding:4px 0;",
+      "background:#1e293b;border:1px solid #334155;border-radius:6px;",
+      "box-shadow:0 8px 24px rgba(0,0,0,.55);font-size:12px;",
+      "display:none;",
+    ].join("");
+
+    function _item(label, icon) {
+      const li = document.createElement("div");
+      li.style.cssText = "padding:7px 14px;cursor:pointer;color:rgba(255,255,255,.82);display:flex;align-items:center;gap:8px;white-space:nowrap;";
+      li.innerHTML = `<span style="opacity:.55;font-size:13px;">${icon}</span>${label}`;
+      li.addEventListener("mouseenter", () => { li.style.background = "#2d3f55"; });
+      li.addEventListener("mouseleave", () => { li.style.background = ""; });
+      return li;
+    }
+
+    const itemName = _item("Copy Task Name",     "⎘");
+    const itemCode = _item("Copy Activity Code", "⎘");
+    const itemRow  = _item("Copy Row",           "⎘");
+    el.append(itemName, itemCode, itemRow);
+    document.body.appendChild(el);
+
+    function _hide() { el.style.display = "none"; }
+
+    function _copy(text) {
+      navigator.clipboard.writeText(text).then(() => {
+        _showToast("Copied!", "success");
+      }).catch(() => {
+        _showToast("Copy failed", "error");
+      });
+      _hide();
+    }
+
+    function show(x, y, task) {
+      itemCode.style.opacity = task.activity_code ? "1" : "0.35";
+      itemCode.style.pointerEvents = task.activity_code ? "auto" : "none";
+
+      itemName.onclick = () => _copy(task.name);
+      itemCode.onclick = () => _copy(task.activity_code || "");
+      itemRow.onclick  = () => _copy(
+        [task.activity_code || "", task.name, task.status, (task.start || "") + " → " + (task.end || "")].join(" | ")
+      );
+
+      el.style.display = "block";
+      const vw = window.innerWidth, vh = window.innerHeight;
+      const mw = el.offsetWidth  || 200;
+      const mh = el.offsetHeight || 120;
+      el.style.left = (x + mw > vw ? vw - mw - 6 : x) + "px";
+      el.style.top  = (y + mh > vh ? vh - mh - 6 : y) + "px";
+    }
+
+    document.addEventListener("click",       _hide);
+    document.addEventListener("contextmenu", (e) => { if (!el.contains(e.target)) _hide(); }, true);
+    document.addEventListener("keydown",     (e) => { if (e.key === "Escape") _hide(); });
+    document.getElementById("fd-gantt-scroll")?.addEventListener("scroll", _hide);
+
+    return { show, hide: _hide };
+  })();
+
+  document.getElementById("fd-gantt-body").addEventListener("contextmenu", (e) => {
+    const rowEl = e.target.closest("[data-row-idx]");
+    if (!rowEl) return;
+    e.preventDefault();
+    const idx  = parseInt(rowEl.dataset.rowIdx, 10);
+    const task = fd_vs.tasks[idx];
+    if (!task || task.isGroup) return;
+    _fdCtxMenu.show(e.clientX, e.clientY, task);
+  });
+
+  /* ── Link-to-Task modal ─────────────────────────────────────────── */
+
+  let _fdLinkModalGlobalId = null;
+  let _fdLinkModalTimer    = null;
+  const _fdLinkModalSel    = new Set();
+
+  function _openLinkModal(globalId) {
+    _fdLinkModalGlobalId = globalId;
+    _fdLinkModalSel.clear();
+    const input      = document.getElementById("fdLinkSearch");
+    const results    = document.getElementById("fdLinkResults");
+    const confirmBtn = document.getElementById("fdLinkConfirmBtn");
+    const countEl    = document.getElementById("fdLinkSelectedCount");
+    if (input)      { input.value = ""; }
+    if (confirmBtn) { confirmBtn.disabled = true; }
+    if (countEl)    { countEl.textContent = ""; }
+    if (results) {
+      results.innerHTML = '<div class="text-secondary text-center py-4" style="font-size:0.82rem;">Start typing to search tasks…</div>';
+    }
+    const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById("fdLinkModal"));
+    modal.show();
+    document.getElementById("fdLinkModal").addEventListener("shown.bs.modal", () => {
+      document.getElementById("fdLinkSearch")?.focus();
+    }, { once: true });
+  }
+
+  function _fdUpdateLinkConfirmBtn() {
+    const confirmBtn = document.getElementById("fdLinkConfirmBtn");
+    const countEl    = document.getElementById("fdLinkSelectedCount");
+    const n = _fdLinkModalSel.size;
+    if (confirmBtn) confirmBtn.disabled = n === 0;
+    if (countEl)    countEl.textContent = n > 0 ? `${n} task${n !== 1 ? "s" : ""} selected` : "";
+  }
+
+  const _FD_LINK_STATUS_BG = {
+    complete: "#166534", active: "#1e40af", in_progress: "#1e40af",
+    delayed: "#991b1b", planned: "#374151",
+  };
+
+  function _fdRenderLinkResults(tasks) {
+    const results = document.getElementById("fdLinkResults");
+    if (!results) return;
+    if (!tasks.length) {
+      results.innerHTML = '<div class="text-secondary text-center py-4" style="font-size:0.82rem;">No tasks found.</div>';
+      return;
+    }
+    const rows = tasks.map(t => {
+      const isChecked = t.linked || _fdLinkModalSel.has(t.pk);
+      if (isChecked) _fdLinkModalSel.add(t.pk);
+      const bgClr  = _FD_LINK_STATUS_BG[t.status] || _FD_LINK_STATUS_BG.planned;
+      const start  = (t.start_date || "").slice(0, 10);
+      const end    = (t.end_date   || "").slice(0, 10);
+      const code   = t.activity_code
+        ? `<code style="font-size:.71rem;background:var(--bs-secondary-bg);padding:1px 5px;border-radius:3px;flex-shrink:0;">${esc(t.activity_code)}</code>`
+        : "";
+      return `
+        <label class="d-flex align-items-start gap-2 px-3 py-2"
+               style="cursor:pointer;border-bottom:1px solid var(--bs-border-color);">
+          <input type="checkbox" class="form-check-input mt-1 fd-link-cb flex-shrink-0"
+                 data-pk="${esc(t.pk)}"${isChecked ? " checked" : ""}>
+          <div style="min-width:0;flex:1;">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+              ${code}
+              <span style="font-size:.82rem;font-weight:500;">${esc(t.name)}</span>
+            </div>
+            <div class="d-flex align-items-center gap-2 mt-1">
+              <span style="font-size:.7rem;background:${bgClr};color:#fff;padding:1px 7px;border-radius:10px;">${esc(t.status)}</span>
+              <span style="font-size:.72rem;color:var(--bs-secondary-color);">${start} → ${end}</span>
+            </div>
+          </div>
+        </label>`;
+    }).join("");
+    results.innerHTML = `<div class="d-flex flex-column">${rows}</div>`;
+    results.querySelectorAll(".fd-link-cb").forEach(cb => {
+      cb.addEventListener("change", () => {
+        if (cb.checked) _fdLinkModalSel.add(cb.dataset.pk);
+        else            _fdLinkModalSel.delete(cb.dataset.pk);
+        _fdUpdateLinkConfirmBtn();
+      });
+    });
+    _fdUpdateLinkConfirmBtn();
+  }
+
+  async function _fdSearchLinkTasks(q) {
+    const results = document.getElementById("fdLinkResults");
+    if (!q || q.length < 2) {
+      if (results) results.innerHTML = '<div class="text-secondary text-center py-4" style="font-size:0.82rem;">Start typing to search tasks…</div>';
+      return;
+    }
+    if (results) results.innerHTML = '<div class="text-secondary text-center py-3" style="font-size:0.82rem;"><div style="width:18px;height:18px;border:2px solid var(--bs-border-color);border-top-color:var(--bs-primary);border-radius:50%;animation:fd-spin .8s linear infinite;margin:0 auto 6px;"></div>Searching…</div>';
+    try {
+      const url  = TASKS_FOR_LINK_URL + "?global_id=" + encodeURIComponent(_fdLinkModalGlobalId || "") + "&q=" + encodeURIComponent(q);
+      const resp = await fetch(url);
+      const data = await resp.json();
+      _fdRenderLinkResults(data.tasks || []);
+    } catch (e) {
+      if (results) results.innerHTML = '<div class="text-danger text-center py-4" style="font-size:0.82rem;">Failed to load tasks.</div>';
+    }
+  }
+
+  document.getElementById("fdLinkSearch")?.addEventListener("input", function () {
+    clearTimeout(_fdLinkModalTimer);
+    _fdLinkModalTimer = setTimeout(() => _fdSearchLinkTasks(this.value.trim()), 300);
+  });
+
+  function _fdPatchLinkedInMemory(globalId, pks) {
+    if (!_fdLastData?.tasks) return;
+    const pkSet = new Set(pks);
+    for (const t of _fdLastData.tasks) {
+      if (t.isGroup) continue;
+      if (!pkSet.has(t.pk || t.id)) continue;
+      t.link_status = "linked";
+      if (!t.entity_global_ids) t.entity_global_ids = [];
+      if (!t.entity_global_ids.includes(globalId)) t.entity_global_ids.push(globalId);
+    }
+  }
+
+  document.getElementById("fdLinkConfirmBtn")?.addEventListener("click", async () => {
+    const task_pks = [..._fdLinkModalSel];
+    if (!task_pks.length || !_fdLinkModalGlobalId) {
+      _showToast("Select at least one task", "info");
+      return;
+    }
+    const btn = document.getElementById("fdLinkConfirmBtn");
+    btn.disabled = true;
+    try {
+      const resp = await fetch(BULK_LINK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": FD_CSRF },
+        body: JSON.stringify({ global_id: _fdLinkModalGlobalId, task_pks }),
+      });
+      const data = await resp.json();
+      if (resp.ok) {
+        const n = data.linked ?? task_pks.length;
+        _fdPatchLinkedInMemory(_fdLinkModalGlobalId, task_pks);
+        _applyLinkFilter();
+        _showToast(`✓ Linked to ${n} task${n !== 1 ? "s" : ""}`, "success", 3000);
+        bootstrap.Modal.getOrCreateInstance(document.getElementById("fdLinkModal")).hide();
+      } else {
+        _showToast(data.error || "Link failed", "error");
+        btn.disabled = false;
+      }
+    } catch (err) {
+      _showToast("Link request failed", "error");
+      btn.disabled = false;
+    }
+  });
+
+  /* ── Link Review collapsible ────────────────────────────────────── */
+
+  window.fdToggleReview = function () {
+    const pane    = document.getElementById("fourD-review-pane");
+    const body    = document.getElementById("fd-review-body");
+    const chevron = document.getElementById("fd-review-chevron");
+    if (!body) return;
+    const expand = body.style.display === "none";
+    body.style.display = expand ? "" : "none";
+    if (chevron) chevron.style.transform = expand ? "rotate(90deg)" : "";
+    if (pane) pane.dataset.reviewExpanded = expand ? "true" : "false";
+  };
+
+  document.getElementById("fourD-review-pane")?.addEventListener("htmx:afterSwap", function () {
+    const body    = document.getElementById("fd-review-body");
+    const chevron = document.getElementById("fd-review-chevron");
+    if (!body) return;
+    const isExpanded = this.dataset.reviewExpanded === "true";
+    body.style.display = isExpanded ? "" : "none";
+    if (chevron) chevron.style.transform = isExpanded ? "rotate(90deg)" : "";
+  });
+
+  /* ── Init ────────────────────────────────────────────────────────── */
+  initSplitters();
+  initChatPanel();
+  loadGantt();
+  loadTimeline();
+}());
+</script>

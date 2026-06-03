@@ -1,0 +1,80 @@
+<!-- ifc_insights/components/issues_table.html -->
+{% if not check_results.issues %}
+<div class="alert alert-success d-flex align-items-center gap-2 mt-3">
+    <i class="bi bi-check-circle-fill"></i>
+    No issues found — your IFC model passed all checks.
+</div>
+{% else %}
+
+<!-- Filter row -->
+<div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+    <span class="text-secondary small">Filter:</span>
+    <button class="btn btn-sm btn-outline-danger issue-filter-btn active" data-severity="critical">
+        Critical <span class="badge bg-danger ms-1">{{ check_results.severity_counts.critical }}</span>
+    </button>
+    <button class="btn btn-sm btn-outline-warning issue-filter-btn active" data-severity="warning">
+        Warning <span class="badge bg-warning text-dark ms-1">{{ check_results.severity_counts.warning }}</span>
+    </button>
+    <button class="btn btn-sm btn-outline-secondary issue-filter-btn active" data-severity="info">
+        Info <span class="badge bg-secondary ms-1">{{ check_results.severity_counts.info }}</span>
+    </button>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-hover table-sm align-middle" id="issues-table">
+        <thead class="table-dark">
+            <tr>
+                <th style="width:120px;">Severity</th>
+                <th style="width:160px;">Global ID</th>
+                <th style="width:160px;">Type</th>
+                <th>Issue</th>
+                <th>Suggested Fix</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for issue in check_results.issues %}
+            <tr class="issue-row" data-severity="{{ issue.severity }}">
+                <td>
+                    {% if issue.severity == 'critical' %}
+                        <span class="badge bg-danger">Critical</span>
+                    {% elif issue.severity == 'warning' %}
+                        <span class="badge bg-warning text-dark">Warning</span>
+                    {% else %}
+                        <span class="badge bg-secondary">Info</span>
+                    {% endif %}
+                </td>
+                <td class="text-monospace" style="font-size:0.78rem; word-break:break-all;">{{ issue.global_id }}</td>
+                <td style="font-size:0.82rem;">{{ issue.element_type }}</td>
+                <td style="font-size:0.85rem;">{{ issue.issue }}</td>
+                <td class="text-secondary" style="font-size:0.82rem;">{{ issue.suggested_fix }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<script>
+(function () {
+    const btns = document.querySelectorAll(".issue-filter-btn");
+    const rows = document.querySelectorAll(".issue-row");
+    const active = new Set(["critical", "warning", "info"]);
+
+    btns.forEach(btn => {
+        btn.addEventListener("click", function () {
+            const sev = this.dataset.severity;
+            if (active.has(sev)) {
+                active.delete(sev);
+                this.classList.remove("active");
+            } else {
+                active.add(sev);
+                this.classList.add("active");
+            }
+            rows.forEach(row => {
+                row.style.display = active.has(row.dataset.severity) ? "" : "none";
+            });
+        });
+    });
+}());
+</script>
+
+{% endif %}

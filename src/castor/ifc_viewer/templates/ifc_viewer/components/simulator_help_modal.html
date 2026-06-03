@@ -1,0 +1,98 @@
+<!-- ifc_viewer/components/simulator_help_modal.html — "How Castor Simulator Works" -->
+
+<div class="modal fade" id="simulatorHelpModal" tabindex="-1" aria-labelledby="simulatorHelpLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+
+            <div class="modal-header border-bottom px-4 py-3"
+                 style="border-color: var(--bs-border-color) !important;">
+                <h5 class="modal-title fw-semibold fs-6 mb-0" id="simulatorHelpLabel">
+                    <i class="bi bi-play-circle me-2" style="color: var(--castor-primary, #3b82f6);"></i>
+                    How Castor Simulator Works
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body px-4 py-4">
+
+                <!-- What is it? -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-box-seam me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    What is Castor Simulator?
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    Castor Simulator is the 4D/5D control layer on top of the 3D viewer. It lets you colour-code
+                    elements by any dimension (material, level, type, schedule status), analyse schedule linkage
+                    gaps, animate the build sequence floor by floor, and scrub through a weekly construction timeline.
+                </p>
+
+                <!-- Color By -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-palette me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    Color By Filters
+                </p>
+                <div class="d-flex flex-column gap-1 fs-7 text-secondary mb-4">
+                    <span><strong>None</strong> — restore default ifc-lite colours.</span>
+                    <span><strong>Material / Level / Element Type</strong> — each unique group gets a distinct colour from a 12-colour palette. The legend appears in the viewer overlay.</span>
+                    <span><strong>Schedule Status</strong> — green = entity has an Activity ID property linked to a schedule task; grey = not linked. Instant visual gap map.</span>
+                </div>
+
+                <!-- Gap Analysis -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-bar-chart-line me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    Gap Analysis Panel
+                </p>
+                <p class="text-secondary fs-7 mb-2">
+                    Opens a side panel grouped by Level, Element Type, or Material. Each row shows how many
+                    elements are linked to a schedule task versus total. Click any row to highlight the
+                    <em>unlinked</em> elements in the 3D view. Export the full table as CSV.
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    "Linked" means the entity has an <code>Activity ID</code> property — the same field the
+                    TimeLiner uses when auto-linking tasks. Import a schedule and run auto-link first for
+                    meaningful coverage numbers.
+                </p>
+
+                <!-- Build Sequence -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-play-circle me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    Build Sequence
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    Animates elements level by level in Z order (lowest floor first). Each floor fades in
+                    over 800 ms, pauses 1.2 s, then the next floor appears. Floors are ordered by their
+                    Z elevation from the Level Registry — add levels there for accurate ordering.
+                    When the animation ends all elements are shown in blue (complete).
+                </p>
+
+                <!-- Timeline -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-sliders me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    Timeline Slider
+                </p>
+                <p class="text-secondary fs-7 mb-2">
+                    Requires a linked schedule (import one in the TimeLiner tab first).
+                    The slider moves through weekly buckets. At each week: active tasks colour
+                    their linked elements <span style="color:#22c55e;">green</span>; completed tasks colour elements
+                    <span style="color:#3b82f6;">blue</span>; unstarted elements are left at default.
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    Play auto-advances every 1.5 s (adjustable with the speed selector: 0.5× / 1× / 2×).
+                </p>
+
+                <!-- Caveats -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-exclamation-circle me-1" style="color: var(--castor-accent, #8b5cf6);"></i>
+                    Caveats
+                </p>
+                <div class="d-flex flex-column gap-1 fs-7 text-secondary">
+                    <span><i class="bi bi-dot"></i>Color By and Timeline both apply colours to the same model — the last action wins. Click Reset to restore defaults.</span>
+                    <span><i class="bi bi-dot"></i>Build Sequence uses the Level Registry Z values. If no levels are saved, floors sort alphabetically.</span>
+                    <span><i class="bi bi-dot"></i>Gap Analysis counts Activity ID coverage only — other schedule linkage methods are not reflected.</span>
+                    <span><i class="bi bi-dot"></i>Timeline performance depends on the number of tasks × linked entities per week bucket. Very large schedules may be slow to fetch.</span>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>

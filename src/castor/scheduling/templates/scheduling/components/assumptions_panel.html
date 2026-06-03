@@ -1,0 +1,195 @@
+<!-- scheduling/components/assumptions_panel.html
+     Methodology Assumptions & Settings — read-only transparency panel.
+     Values are pulled directly from service constants; this panel does NOT
+     expose any editable controls. -->
+
+<details id="evm-assumptions-panel"
+         style="border:1px solid var(--bs-border-color); border-radius:8px;
+                background:var(--bs-body-bg); overflow:hidden;">
+
+    <summary style="cursor:pointer; display:flex; align-items:center; gap:7px;
+                    padding:8px 14px; list-style:none; user-select:none;
+                    background:var(--bs-secondary-bg); font-size:0.72rem;
+                    font-weight:600; color:var(--bs-secondary-color);
+                    text-transform:uppercase; letter-spacing:.05em;">
+        <i class="bi bi-gear" style="font-size:0.82rem; opacity:.7;"></i>
+        Methodology Assumptions
+        <span style="margin-left:auto; font-size:0.65rem; font-weight:400;
+                     text-transform:none; letter-spacing:0; opacity:.6;">
+            read-only · how metrics are computed
+        </span>
+    </summary>
+
+    <div style="padding:12px 14px 14px; font-size:0.72rem;">
+
+        <!-- ── TYPE 1: Value assumptions ────────────────────────────────── -->
+        <div style="font-weight:700; font-size:0.67rem; text-transform:uppercase;
+                    letter-spacing:.06em; color:var(--bs-secondary-color);
+                    margin-bottom:6px;">
+            Value Assumptions
+        </div>
+
+        <div style="display:grid; grid-template-columns:minmax(140px,1.2fr) minmax(120px,1fr) 3fr;
+                    gap:1px; background:var(--bs-border-color); border:1px solid var(--bs-border-color);
+                    border-radius:6px; overflow:hidden; margin-bottom:14px;">
+
+            <!-- Header row -->
+            <div style="background:var(--bs-secondary-bg); padding:4px 10px;
+                        font-weight:600; color:var(--bs-secondary-color); font-size:0.67rem; text-transform:uppercase; letter-spacing:.04em;">Setting</div>
+            <div style="background:var(--bs-secondary-bg); padding:4px 10px;
+                        font-weight:600; color:var(--bs-secondary-color); font-size:0.67rem; text-transform:uppercase; letter-spacing:.04em;">Current value</div>
+            <div style="background:var(--bs-secondary-bg); padding:4px 10px;
+                        font-weight:600; color:var(--bs-secondary-color); font-size:0.67rem; text-transform:uppercase; letter-spacing:.04em;">What it assumes</div>
+
+            <!-- A7: EAC formula -->
+            <div style="background:var(--bs-body-bg); padding:6px 10px; font-weight:600;">EAC formula</div>
+            <div style="background:var(--bs-body-bg); padding:6px 10px;">
+                <code style="font-size:0.78rem; background:var(--bs-secondary-bg);
+                             padding:1px 5px; border-radius:3px; color:#3b82f6;">BAC / CPI</code>
+            </div>
+            <div style="background:var(--bs-body-bg); padding:6px 10px; color:var(--bs-secondary-color);">
+                All remaining work will be delivered at the same cost efficiency as to date
+                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">evm.py:544</span>
+            </div>
+
+            <!-- A12a: PERT optimistic -->
+            <div style="background:var(--bs-body-bg); padding:6px 10px; font-weight:600;">PERT optimistic</div>
+            <div style="background:var(--bs-body-bg); padding:6px 10px;">
+                <code style="font-size:0.78rem; background:var(--bs-secondary-bg);
+                             padding:1px 5px; border-radius:3px; color:#16a34a;">0.8 × planned duration</code>
+            </div>
+            <div style="background:var(--bs-body-bg); padding:6px 10px; color:var(--bs-secondary-color);">
+                Best-case: a task can finish 20 % faster than its baseline duration
+                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">monte_carlo.py:39 _PERT_OPT</span>
+            </div>
+
+            <!-- A12b: PERT pessimistic -->
+            <div style="background:var(--bs-body-bg); padding:6px 10px; font-weight:600;">PERT pessimistic</div>
+            <div style="background:var(--bs-body-bg); padding:6px 10px;">
+                <code style="font-size:0.78rem; background:var(--bs-secondary-bg);
+                             padding:1px 5px; border-radius:3px; color:#dc2626;">1.5 × planned duration</code>
+                <span style="font-size:0.67rem; color:var(--bs-secondary-color); margin-left:4px;">(up to 2.5× if already late)</span>
+            </div>
+            <div style="background:var(--bs-body-bg); padding:6px 10px; color:var(--bs-secondary-color);">
+                Worst-case: a task may run 50 % over its baseline; inflated further if it started late
+                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">monte_carlo.py:40 _PERT_PESS</span>
+            </div>
+
+            <!-- A13: MC task cap -->
+            <div style="background:var(--bs-body-bg); padding:6px 10px; font-weight:600;">MC task cap</div>
+            <div style="background:var(--bs-body-bg); padding:6px 10px;">
+                <code style="font-size:0.78rem; background:var(--bs-secondary-bg);
+                             padding:1px 5px; border-radius:3px; color:#3b82f6;">500 tasks</code>
+                <span style="font-size:0.67rem; color:var(--bs-secondary-color); margin-left:4px;">(250 by float + 250 by CPM finish)</span>
+            </div>
+            <div style="background:var(--bs-body-bg); padding:6px 10px; color:var(--bs-secondary-color);">
+                The most overdue and latest-finishing tasks capture schedule risk; remaining tasks fixed at CPM
+                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">monte_carlo.py:38 MAX_SIM_TASKS</span>
+            </div>
+
+        </div><!-- /value grid -->
+
+        <!-- ── TYPE 2: Method assumptions ───────────────────────────────── -->
+        <div style="font-weight:700; font-size:0.67rem; text-transform:uppercase;
+                    letter-spacing:.06em; color:var(--bs-secondary-color);
+                    margin-bottom:6px;">
+            Method Assumptions
+        </div>
+
+        <div style="display:grid; grid-template-columns:minmax(170px,1.5fr) 3fr;
+                    gap:1px; background:var(--bs-border-color); border:1px solid var(--bs-border-color);
+                    border-radius:6px; overflow:hidden;">
+
+            <!-- Header row -->
+            <div style="background:var(--bs-secondary-bg); padding:4px 10px;
+                        font-weight:600; color:var(--bs-secondary-color); font-size:0.67rem; text-transform:uppercase; letter-spacing:.04em;">Method</div>
+            <div style="background:var(--bs-secondary-bg); padding:4px 10px;
+                        font-weight:600; color:var(--bs-secondary-color); font-size:0.67rem; text-transform:uppercase; letter-spacing:.04em;">What it assumes</div>
+
+            <!-- A1: EV calculation -->
+            <div style="background:var(--bs-body-bg); padding:6px 10px; font-weight:600;">
+                EV: real %-complete when present, linear elapsed fallback
+                <div style="font-weight:400; font-size:0.67rem; color:var(--bs-secondary-color); margin-top:1px;">
+                    Priority: <code style="font-size:0.7rem;">PhysicalPercentComplete → DurationPercentComplete → (d − actual_start) ÷ (planned_end − actual_start)</code>
+                </div>
+            </div>
+            <div style="background:var(--bs-body-bg); padding:6px 10px; color:var(--bs-secondary-color);">
+                P6 XML populates physical/duration %-complete directly. CSV imports can supply a <strong>% Complete</strong> column (0–100 or 0–1 accepted); it is stored as physical %-complete and used by the same priority chain. Tasks with no %-complete data fall back to linear elapsed — overdue tasks are capped at 100% EV, which overstates SPI (see warning banner above KPIs).
+                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">evm.py _earned_pct_at · column_mapper.py _parse_pct</span>
+            </div>
+
+            <!-- A2: complete/no actual_end -->
+            <div style="background:var(--bs-body-bg); padding:6px 10px; font-weight:600;">
+                "Complete" with no <code>actual_end</code>
+            </div>
+            <div style="background:var(--bs-body-bg); padding:6px 10px; color:var(--bs-secondary-color);">
+                Earns 100 % from the task's planned <code>start_date</code> onward.
+                <code>end_date</code> is not used — it can exceed the as-of date (e.g. CSV imports with pre-marked-complete tasks),
+                which would silently return 0 EV for a finished task. No actual completion date is synthesised.
+                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">evm.py _earned_pct_at</span>
+            </div>
+
+            <!-- A4: PV phasing -->
+            <div style="background:var(--bs-body-bg); padding:6px 10px; font-weight:600;">
+                PV phasing: linear
+                <div style="font-weight:400; font-size:0.67rem; color:var(--bs-secondary-color); margin-top:1px;">
+                    <code style="font-size:0.7rem;">(date − start) ÷ (end − start)</code>
+                </div>
+            </div>
+            <div style="background:var(--bs-body-bg); padding:6px 10px; color:var(--bs-secondary-color);">
+                Planned budget is spent uniformly across the task's planned date range (no S-curve shaping per task)
+                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">evm.py:116 _planned_pct_at</span>
+            </div>
+
+            <!-- A6: duration basis -->
+            <div style="background:var(--bs-body-bg); padding:6px 10px; font-weight:600;">
+                Duration basis: calendar days
+            </div>
+            <div style="background:var(--bs-body-bg); padding:6px 10px; color:var(--bs-secondary-color);">
+                EV, PV, and PERT samples use calendar-day spans; weekends and holidays count as work time unless a P6 calendar is imported
+                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">evm.py:131, monte_carlo.py:201</span>
+            </div>
+
+            <!-- A8/A9: AC time-series -->
+            <div style="background:var(--bs-body-bg); padding:6px 10px; font-weight:600;">
+                AC time-series: lump-sum attribution
+            </div>
+            <div style="background:var(--bs-body-bg); padding:6px 10px; color:var(--bs-secondary-color);">
+                All of a task's actual cost is attributed to one point — <code>actual_end</code> for completed tasks, today for in-progress tasks — not spread over the work period
+                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">evm.py:486</span>
+            </div>
+
+            <!-- A11: Cash Flow distribution -->
+            <div style="background:var(--bs-body-bg); padding:6px 10px; font-weight:600;">
+                Cash Flow: time-uniform distribution
+                <div style="font-weight:400; font-size:0.67rem; color:var(--bs-secondary-color); margin-top:1px;">
+                    <code style="font-size:0.7rem;">cost × overlap_days ÷ task_days</code>
+                </div>
+            </div>
+            <div style="background:var(--bs-body-bg); padding:6px 10px; color:var(--bs-secondary-color);">
+                Spend is allocated uniformly within each task's date range; no resource-loading profile applied
+                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">cashflow.py:41 _distribute_monthly</span>
+            </div>
+
+            <!-- A14: SS/SF approximation -->
+            <div style="background:var(--bs-body-bg); padding:6px 10px; font-weight:600;">
+                SS/SF links in Monte Carlo: baked into min_start
+            </div>
+            <div style="background:var(--bs-body-bg); padding:6px 10px; color:var(--bs-secondary-color);">
+                SS and SF predecessors constrain only the successor's earliest start (via CPM early_start), not its finish; no FS serialisation applied — covers ≈ 95 % of real-schedule semantics
+                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">monte_carlo.py:227</span>
+            </div>
+
+            <!-- A16: Decision Layer biggest driver -->
+            <div style="background:var(--bs-body-bg); padding:6px 10px; font-weight:600;">
+                Decision Layer "biggest driver"
+            </div>
+            <div style="background:var(--bs-body-bg); padding:6px 10px; color:var(--bs-secondary-color);">
+                Taken from the first root cause ranked by downstream delayed task count, using as-coded activity data (not audit-suggested reclassification)
+                <span style="font-size:0.65rem; opacity:.55; margin-left:4px;">decision_layer.py:116</span>
+            </div>
+
+        </div><!-- /method grid -->
+
+    </div>
+</details>

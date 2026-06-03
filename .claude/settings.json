@@ -6,6 +6,8 @@
         "hooks": [
           {
             "type": "command",
+            "command": "uvx ruff check src/ --fix --quiet 2>&1 | head -20; uvx ruff format src/ --quiet || true",
+            "shell": "bash"
             "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/ruff_on_edit.py\""
           }
         ]

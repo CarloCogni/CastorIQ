@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{ project.name }} — Project Report {{ export_date }}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0f172a;color:#e2e8f0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.5}
+  a{color:#60a5fa}
+  h1{font-size:22px;font-weight:700;color:#f8fafc}
+  h2{font-size:15px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid #1e293b}
+  .page{max-width:1200px;margin:0 auto;padding:32px 24px}
+  /* Header */
+  .report-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:32px;padding-bottom:20px;border-bottom:2px solid #1e40af}
+  .report-header .meta{color:#64748b;font-size:11px;margin-top:4px}
+  .report-header .logo{font-size:11px;color:#3b82f6;font-weight:700;letter-spacing:.1em}
+  /* KPI cards */
+  .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:32px}
+  .kpi{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:16px 14px}
+  .kpi .val{font-size:26px;font-weight:700;color:#f8fafc;line-height:1}
+  .kpi .lbl{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-top:6px}
+  .kpi.green .val{color:#22c55e}
+  .kpi.red   .val{color:#ef4444}
+  .kpi.amber .val{color:#f59e0b}
+  .kpi.blue  .val{color:#3b82f6}
+  /* Sections */
+  .section{margin-bottom:36px}
+  /* SVG panels */
+  .svg-panel{background:#1e293b;border:1px solid #334155;border-radius:8px;overflow:hidden;padding:12px}
+  .svg-panel svg{display:block;max-width:100%;height:auto}
+  /* WBS heatmap */
+  .wbs-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+  .wbs-card{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:14px}
+  .wbs-card .stage-name{font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px}
+  .wbs-bar-wrap{height:6px;background:#0f172a;border-radius:3px;margin-bottom:4px;overflow:hidden}
+  .wbs-bar{height:100%;border-radius:3px;transition:width .3s}
+  .wbs-nums{display:flex;justify-content:space-between;font-size:10px;color:#64748b}
+  .wbs-spi{font-size:11px;font-weight:600;margin-top:6px}
+  /* Risk table */
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{background:#1e293b;color:#94a3b8;font-weight:600;text-align:left;padding:8px 10px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid #334155}
+  td{padding:7px 10px;border-bottom:1px solid #1e293b;vertical-align:middle}
+  tr:last-child td{border-bottom:none}
+  tr:nth-child(even) td{background:rgba(30,41,59,.4)}
+  .badge{display:inline-block;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:600;text-transform:capitalize}
+  .badge-active{background:#1e3a8a;color:#93c5fd}
+  .badge-delayed{background:#78350f;color:#fde68a}
+  .badge-complete{background:#14532d;color:#86efac}
+  .badge-in_progress{background:#1e3a8a;color:#93c5fd}
+  .crit-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#ef4444;margin-right:4px;vertical-align:middle}
+  /* Metrics table */
+  .metrics-table{background:#1e293b;border:1px solid #334155;border-radius:8px;overflow:hidden}
+  .metrics-table table{font-size:12px}
+  .metrics-table th{background:#0f172a;font-size:10px}
+  /* Footer */
+  .report-footer{margin-top:48px;padding-top:16px;border-top:1px solid #1e293b;color:#334155;font-size:10px;display:flex;justify-content:space-between}
+  @media print{
+    body{background:#fff;color:#000}
+    .page{padding:16px}
+    .kpi,.svg-panel,.wbs-card,.metrics-table{border:1px solid #ccc;background:#f9f9f9}
+    .kpi .val,.kpi.green .val,.kpi.red .val,.kpi.amber .val,.kpi.blue .val{color:#000}
+    h2{color:#444;border-bottom-color:#ccc}
+    td,th{color:#000}
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ── Header ─────────────────────────────────────────────────────────── -->
+  <div class="report-header">
+    <div>
+      <div class="logo">CASTOR · 4D INSIGHTS</div>
+      <h1>{{ project.name }}</h1>
+      <div class="meta">Stakeholder Report · Generated {{ export_date }}</div>
+    </div>
+    <div style="text-align:right;color:#475569;font-size:11px;">
+      <div style="font-weight:600;color:#94a3b8;">{{ pct_complete }}% Complete</div>
+      <div>{{ total_tasks }} Tasks Tracked</div>
+    </div>
+  </div>
+
+  <!-- ── Section 1: KPI Summary ─────────────────────────────────────────── -->
+  <div class="section">
+    <h2>Project Summary</h2>
+    <div class="kpi-grid">
+      <div class="kpi {% if pct_complete >= 75 %}green{% elif pct_complete >= 40 %}blue{% else %}amber{% endif %}">
+        <div class="val">{{ pct_complete }}%</div>
+        <div class="lbl">Overall Progress</div>
+      </div>
+      <div class="kpi">
+        <div class="val">{{ total_tasks }}</div>
+        <div class="lbl">Total Tasks</div>
+      </div>
+      {% if evm.has_data %}
+      <div class="kpi {% if evm.spi >= 1 %}green{% else %}red{% endif %}">
+        <div class="val">{{ evm.spi|floatformat:2 }}</div>
+        <div class="lbl">Schedule Performance Index</div>
+      </div>
+      <div class="kpi {% if evm.cpi >= 1 %}green{% else %}red{% endif %}">
+        <div class="val">{{ evm.cpi|floatformat:2 }}</div>
+        <div class="lbl">Cost Performance Index</div>
+      </div>
+      <div class="kpi blue">
+        <div class="val">{{ evm.bac|floatformat:0 }}</div>
+        <div class="lbl">Budget at Completion</div>
+      </div>
+      <div class="kpi {% if evm.vac >= 0 %}green{% else %}red{% endif %}">
+        <div class="val">{{ evm.vac|floatformat:0 }}</div>
+        <div class="lbl">Variance at Completion</div>
+      </div>
+      {% else %}
+      <div class="kpi" style="grid-column:span 4">
+        <div class="val" style="font-size:14px;color:#64748b;">EVM data not available — add task cost &amp; actual dates to enable earned value metrics.</div>
+        <div class="lbl">EVM</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- ── Section 2: S-Curve ─────────────────────────────────────────────── -->
+  {% if evm.has_data %}
+  <div class="section">
+    <h2>S-Curve — Earned Value</h2>
+    <div class="svg-panel">{{ scurve_svg|safe }}</div>
+  </div>
+  {% endif %}
+
+  <!-- ── Section 3: Gantt Chart ─────────────────────────────────────────── -->
+  <div class="section">
+    <h2>Project Schedule — Gantt Chart</h2>
+    <div class="svg-panel" style="overflow-x:auto;">{{ gantt_svg|safe }}</div>
+  </div>
+
+  <!-- ── Section 4: WBS Heatmap ─────────────────────────────────────────── -->
+  {% if wbs_stages %}
+  <div class="section">
+    <h2>WBS Stage Breakdown</h2>
+    <div class="wbs-grid">
+      {% for s in wbs_stages %}
+      <div class="wbs-card">
+        <div class="stage-name">{{ s.label }}</div>
+        <!-- Planned -->
+        <div style="font-size:10px;color:#64748b;margin-bottom:2px;">Planned</div>
+        <div class="wbs-bar-wrap">
+          <div class="wbs-bar" style="width:{{ s.planned_pct|floatformat:1 }}%;background:#3b82f6;"></div>
+        </div>
+        <!-- Earned -->
+        <div style="font-size:10px;color:#64748b;margin-bottom:2px;">Earned</div>
+        <div class="wbs-bar-wrap">
+          <div class="wbs-bar" style="width:{{ s.earned_pct|floatformat:1 }}%;background:#22c55e;"></div>
+        </div>
+        <div class="wbs-nums">
+          <span>{{ s.completed }}/{{ s.task_count }} tasks</span>
+          <span>{{ s.earned_pct|floatformat:1 }}%</span>
+        </div>
+        {% if s.spi is not None %}
+        <div class="wbs-spi" style="color:{% if s.spi >= 1 %}#22c55e{% else %}#ef4444{% endif %}">
+          SPI {{ s.spi|floatformat:2 }}
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ── Section 5: Top Risk Tasks ─────────────────────────────────────── -->
+  {% if risk_tasks %}
+  <div class="section">
+    <h2>Top 10 At-Risk Tasks (by Total Float)</h2>
+    <div style="border:1px solid #334155;border-radius:8px;overflow:hidden;">
+      <table>
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Task Name</th>
+            <th>Stage</th>
+            <th>Start</th>
+            <th>End</th>
+            <th>Float (days)</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in risk_tasks %}
+          <tr>
+            <td style="color:#94a3b8;font-family:monospace;">{{ t.activity_code|default:"—" }}</td>
+            <td>
+              {% if t.is_critical %}<span class="crit-dot" title="Critical Path"></span>{% endif %}
+              {{ t.name|truncatechars:60 }}
+            </td>
+            <td style="color:#64748b;text-transform:capitalize;">{{ t.stage|default:"—" }}</td>
+            <td style="white-space:nowrap;">{{ t.start_date|default:"—" }}</td>
+            <td style="white-space:nowrap;">{{ t.end_date|default:"—" }}</td>
+            <td style="{% if t.total_float is not None and t.total_float <= 0 %}color:#ef4444;font-weight:600{% elif t.total_float is not None and t.total_float <= 5 %}color:#f59e0b{% else %}color:#22c55e{% endif %}">
+              {{ t.total_float|default:"—" }}
+            </td>
+            <td>
+              <span class="badge badge-{{ t.status|default:'active' }}">{{ t.status|default:"active" }}</span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ── Section 6: EVM Metrics Table ──────────────────────────────────── -->
+  {% if evm.has_data %}
+  <div class="section">
+    <h2>Earned Value Metrics</h2>
+    <div class="metrics-table">
+      <table>
+        <thead>
+          <tr><th>Metric</th><th>Value</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>PV — Planned Value</td><td>{{ evm.pv|floatformat:0 }}</td><td style="color:#64748b">Budgeted cost of work scheduled</td></tr>
+          <tr><td>EV — Earned Value</td><td>{{ evm.ev|floatformat:0 }}</td><td style="color:#64748b">Budgeted cost of work performed</td></tr>
+          <tr><td>AC — Actual Cost</td><td>{{ evm.ac|floatformat:0 }}</td><td style="color:#64748b">Actual cost of work performed</td></tr>
+          <tr><td>BAC — Budget at Completion</td><td>{{ evm.bac|floatformat:0 }}</td><td style="color:#64748b">Total authorised budget</td></tr>
+          <tr><td style="{% if evm.sv >= 0 %}color:#22c55e{% else %}color:#ef4444{% endif %}">SV — Schedule Variance</td><td style="{% if evm.sv >= 0 %}color:#22c55e{% else %}color:#ef4444{% endif %}">{{ evm.sv|floatformat:0 }}</td><td style="color:#64748b">EV − PV (positive = ahead)</td></tr>
+          <tr><td style="{% if evm.cv >= 0 %}color:#22c55e{% else %}color:#ef4444{% endif %}">CV — Cost Variance</td><td style="{% if evm.cv >= 0 %}color:#22c55e{% else %}color:#ef4444{% endif %}">{{ evm.cv|floatformat:0 }}</td><td style="color:#64748b">EV − AC (positive = under budget)</td></tr>
+          <tr><td style="{% if evm.spi >= 1 %}color:#22c55e{% else %}color:#ef4444{% endif %}">SPI — Schedule Perf. Index</td><td style="{% if evm.spi >= 1 %}color:#22c55e{% else %}color:#ef4444{% endif %}">{{ evm.spi|floatformat:2 }}</td><td style="color:#64748b">EV / PV (≥1.0 = on or ahead of schedule)</td></tr>
+          <tr><td style="{% if evm.cpi >= 1 %}color:#22c55e{% else %}color:#ef4444{% endif %}">CPI — Cost Perf. Index</td><td style="{% if evm.cpi >= 1 %}color:#22c55e{% else %}color:#ef4444{% endif %}">{{ evm.cpi|floatformat:2 }}</td><td style="color:#64748b">EV / AC (≥1.0 = under or on budget)</td></tr>
+          <tr><td>EAC — Estimate at Completion</td><td>{{ evm.eac|floatformat:0 }}</td><td style="color:#64748b">Forecast total project cost</td></tr>
+          <tr><td style="{% if evm.vac >= 0 %}color:#22c55e{% else %}color:#ef4444{% endif %}">VAC — Variance at Completion</td><td style="{% if evm.vac >= 0 %}color:#22c55e{% else %}color:#ef4444{% endif %}">{{ evm.vac|floatformat:0 }}</td><td style="color:#64748b">BAC − EAC (positive = under budget)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ── Footer ─────────────────────────────────────────────────────────── -->
+  <div class="report-footer">
+    <span>Generated by Castor 4D Insights · {{ export_date }}</span>
+    <span>{{ project.name }}</span>
+  </div>
+
+</div><!-- /page -->
+</body>
+</html>

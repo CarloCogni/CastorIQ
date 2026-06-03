@@ -80,4 +80,17 @@ settings.local.json
 .castor/
 
 # Test Coverage
-htmlcov/
+htmlcov/ifc-lite/
+agent_orchestrator.py
+
+# Project data files — never commit raw client schedules or DB dumps
+*.xml
+*.dump
+*.dmp
+
+# Verification / audit throwaway files
+verify_*.png
+visual_*.png
+audit_evm_datasources.py
+oracle-Documentation/
+backup_pre_rename*.dump
