@@ -433,11 +433,11 @@ class SchedulePreviewView(ProjectModifyAccessMixin, View):
 
         cols = _PREVIEW_PARSED_COLS
         # total_float_days=0 means critical — must not collapse to "" like falsy `or ""` would
-        _NUMERIC_COLS = {"total_float_days"}
+        numeric_cols = {"total_float_days"}
         all_rows = [
             [
                 (str(t.get(c)) if t.get(c) is not None else "")
-                if c in _NUMERIC_COLS
+                if c in numeric_cols
                 else str(t.get(c) or "")
                 for c in cols
             ]
@@ -1415,7 +1415,7 @@ class WBSHeatmapView(ProjectAccessMixin, View):
         except Exception as exc:
             logger.exception("WBS heatmap failed for project %s", project.pk)
             return JsonResponse({"error": str(exc)}, status=500)
-        return JsonResponse({"stages": stages})
+        return JsonResponse({"has_data": bool(stages), "stages": stages or []})
 
 
 class DelayDistributionView(ProjectAccessMixin, View):

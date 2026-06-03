@@ -361,8 +361,6 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
     If no actual cost is imported these metrics are set to None in the response
     and ac_available=False.  The caller/UI must surface a clear notice.
 
-    The synthetic AC formula (EV × 1.05) has been removed entirely.
-
     Returns a dict with:
         has_data           — bool
         bac                — float

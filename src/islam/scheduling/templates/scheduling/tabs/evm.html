@@ -1247,7 +1247,7 @@ function _esc(s) {
                 label: "CPI",
                 value: acOk ? d.cpi.toFixed(2) : "N/A",
                 sub: acOk ? "Cost Performance" : (d.ac_disabled_reason || "Actual cost not imported"),
-                good: acOk ? d.cpi >= 1 : false,
+                good: acOk && d.cpi !== null && d.cpi >= 1,
                 neutral: acOk ? Math.abs(d.cpi - 1) < 0.02 : false,
                 disabled: !acOk,
             },
@@ -1255,7 +1255,7 @@ function _esc(s) {
                 label: "EAC",
                 value: acOk ? _fmt(d.eac, d.use_cost) : "N/A",
                 sub: acOk ? "Estimate at Completion" : (d.ac_disabled_reason || "Actual cost not imported"),
-                good: acOk ? d.eac <= d.bac : false,
+                good: acOk && d.eac !== null && d.eac <= d.bac,
                 neutral: false,
                 disabled: !acOk,
             },
@@ -1263,7 +1263,7 @@ function _esc(s) {
                 label: "VAC",
                 value: acOk ? _fmt(d.vac, d.use_cost) : "N/A",
                 sub: acOk ? "Variance at Completion" : (d.ac_disabled_reason || "Actual cost not imported"),
-                good: acOk ? d.vac >= 0 : false,
+                good: acOk && d.vac !== null && d.vac >= 0,
                 neutral: acOk ? Math.abs(d.vac) < d.bac * 0.02 : false,
                 disabled: !acOk,
             },
@@ -2913,10 +2913,6 @@ function _esc(s) {
         const ROW_H = 26;
         const CHART_H = PAD.top + N_FLOORS * ROW_H + PAD.bottom;
 
-        function _esc(s) {
-            return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-        }
-
         // ── Trade dropdown (single-select shortcut; legend chips handle multi) ──
         function _populateDropdown(trades) {
             const sel = document.getElementById("tl-trade-select");
@@ -3300,13 +3296,6 @@ function _esc(s) {
     (function () {
         const DCMA_URL = "{% url 'islam:dcma_check' project.pk %}";
 
-        function _esc(s) {
-            return String(s)
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;");
-        }
-
         function _renderGauge(canvas, score, color) {
             if (!canvas) return;
             const ctx = canvas.getContext("2d");
@@ -3508,8 +3497,6 @@ function _esc(s) {
     (function () {
         const ML_URL = "{% url 'islam:completion_ml' project.pk %}";
 
-        function _esc(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
-
         function _probColor(p) {
             if (p >= 0.70) return "#16a34a";
             if (p >= 0.50) return "#d97706";
@@ -3637,10 +3624,6 @@ function _esc(s) {
     (function () {
         const ANOMALY_URL = "{% url 'islam:anomaly_detection' project.pk %}";
         let _anomalyGen = 0;  // generation counter — discards superseded async responses
-
-        function _esc(s) {
-            return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        }
 
         function _typeColor(type) {
             if (type === "running_long") return "#d97706";
@@ -3770,13 +3753,6 @@ function _esc(s) {
     /* ── Schedule Audit — Section Mismatches ────────────────────────────── */
     (function () {
         const AUDIT_URL = "{% url 'islam:audit_section_mismatches' project.pk %}";
-
-        function _esc(s) {
-            return String(s)
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;");
-        }
 
         /* Confidence badge */
         function _confBadge(conf) {

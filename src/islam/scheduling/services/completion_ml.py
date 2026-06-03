@@ -12,10 +12,6 @@ LEAKAGE POLICY (strict):
     computed from OTHER completed tasks (leave-one-out target encoding).
   Features FORBIDDEN: actual_finish, actual_duration, actual_cost,
     percent_complete, or anything derived from actual progress.
-  CAVEAT: total_float is the CPM float from the LAST schedule calculation.
-    For completed tasks this reflects the current CPM state, which may
-    incorporate post-completion progress.  Treat float importance
-    with appropriate caution.
 """
 
 from __future__ import annotations
@@ -204,7 +200,6 @@ def _build_feature_names(top_csi: list[str]) -> list[str]:
     names = [
         "planned_duration",
         "log_duration",
-        "total_float",
         "pred_count",
         "succ_count",
         "has_planned_cost",
@@ -233,7 +228,6 @@ def _task_row(
     feat_names: list[str],
 ) -> list[float]:
     dur = max((task.end_date - task.start_date).days, 0)
-    tf = float(task.total_float) if task.total_float is not None else 0.0
     ford = _floor_ordinal(task.activity_code or "")
     csi = _csi(task.activity_code or "")
     stage = task.stage or ""
@@ -242,7 +236,6 @@ def _task_row(
     row: dict[str, float] = {
         "planned_duration": float(dur),
         "log_duration": math.log1p(dur),
-        "total_float": tf,
         "pred_count": float(pred_count),
         "succ_count": float(succ_count),
         "has_planned_cost": 1.0 if cost > 0 else 0.0,
@@ -514,17 +507,7 @@ def run_completion_ml(project_id: str) -> dict:
             "class_balance": class_balance,
             "calibration": calib,
         },
-        "feature_list": [
-            {
-                "name": n,
-                "note": (
-                    "CPM float — last-calc state, may reflect post-completion progress"
-                    if n == "total_float"
-                    else ""
-                ),
-            }
-            for n in feat_names
-        ],
+        "feature_list": [{"name": n} for n in feat_names],
         "feature_importance": feature_importance,
         "watchlist": watchlist,
         "float_near_critical_wd": float_near_critical,
