@@ -72,7 +72,9 @@ class Migration(migrations.Migration):
                 "verbose_name": "Level",
                 "verbose_name_plural": "Levels",
                 "ordering": ["z_elevation"],
-                "indexes": [models.Index(fields=["project"], name="mq_level_project_idx")],
+                "indexes": [
+                    models.Index(fields=["project"], name="castor_ifc__project_0640eb_idx")
+                ],
             },
         ),
     ]

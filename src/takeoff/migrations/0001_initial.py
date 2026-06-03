@@ -123,7 +123,9 @@ class Migration(migrations.Migration):
                 "verbose_name": "QTO Cache",
                 "verbose_name_plural": "QTO Caches",
                 "ordering": ["-computed_at"],
-                "indexes": [models.Index(fields=["project"], name="to_qto_project_idx")],
+                "indexes": [
+                    models.Index(fields=["project"], name="castor_ifc__project_13138e_idx")
+                ],
             },
         ),
     ]

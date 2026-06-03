@@ -47,6 +47,13 @@ INSTALLED_APPS = [
     "eastereggs",
     "facilities",
     "beta",
+    # 4D/5D BIM integration — atomic apps split from the former castor/ module.
+    # Order matters: takeoff and model_quality have no scheduling dep, and
+    # scheduling reads QTOCache from takeoff so takeoff goes first.
+    "takeoff",
+    "model_quality",
+    "scheduling",
+    "ifc_viewer",
     # Login lockout for /admin/ and /accounts/login. Must come after
     # django.contrib.auth so its signals are loaded first.
     "axes",
@@ -197,7 +204,7 @@ STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [
     BASE_DIR / "static",
-    BASE_DIR / "castor" / "frontend",
+    BASE_DIR / "ifc_viewer" / "frontend",
 ]
 
 # Media files
