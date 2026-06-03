@@ -25,7 +25,7 @@ def _load_actual_costs(task_pks: list[str]) -> dict[str, float]:
     Returns {} if no ResourceAssignment rows exist or none have actual_cost > 0.
     Never raises.
     """
-    from castor.scheduling.models import P6ResourceAssignment
+    from scheduling.models import P6ResourceAssignment
 
     result: dict[str, float] = {}
     try:
@@ -47,8 +47,8 @@ def _qto_task_costs(project_id: str, tasks: list) -> dict[str, float]:
     Returns an empty dict if any prerequisite is missing.
     """
     try:
-        from castor.ifc_insights.models import QTOCache
-        from castor.scheduling.models import TaskEntityBinding
+        from takeoff.models import QTOCache
+        from scheduling.models import TaskEntityBinding
     except ImportError:
         return {}
 
@@ -187,7 +187,7 @@ def _task_delay_days(task, today: date, cal=None) -> int | None:
 
 def compute_delay_distribution(project_id: str) -> dict:
     """Distribution of tasks across delay buckets for the Delay Chart."""
-    from castor.scheduling.models import Task
+    from scheduling.models import Task
 
     today, _ = get_project_data_date(project_id)
     cal_map = load_project_calendars(project_id)
@@ -259,7 +259,7 @@ def compute_wbs_heatmap(project_id: str) -> list[dict]:
 
     Uses equal-weight (task count) SPI — no cost data required.
     """
-    from castor.scheduling.models import Task
+    from scheduling.models import Task
 
     today, _ = get_project_data_date(project_id)
     cal_map = load_project_calendars(project_id)
@@ -337,7 +337,7 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
         as_of / project_start / project_end — ISO date strings
         series             — {pv, ev, ac}  (ac absent when not available)
     """
-    from castor.scheduling.models import Task
+    from scheduling.models import Task
 
     tasks = list(
         Task.objects.filter(project_id=project_id, is_non_physical=False)

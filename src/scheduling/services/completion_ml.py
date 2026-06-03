@@ -251,7 +251,7 @@ def run_completion_ml(project_id: str) -> dict:
     """
     from django.db.models import Count, Sum
 
-    from castor.scheduling.models import P6ResourceAssignment, Task, TaskDependency
+    from scheduling.models import P6ResourceAssignment, Task, TaskDependency
 
     today, _ = get_project_data_date(project_id)
 
@@ -492,7 +492,7 @@ def predict_all_incomplete(project_id: str) -> list[dict]:
     """
     from django.db.models import Count, Sum
 
-    from castor.scheduling.models import P6ResourceAssignment, Task, TaskDependency
+    from scheduling.models import P6ResourceAssignment, Task, TaskDependency
 
     completed = list(
         Task.objects.filter(project_id=project_id, is_non_physical=False, status="complete")

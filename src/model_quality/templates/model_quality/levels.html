@@ -120,7 +120,7 @@
                     </tr>
                 </thead>
                 <tbody id="storey-registry-body">
-                    {% include "ifc_insights/components/storey_registry_body.html" with storeys=all_storeys %}
+                    {% include "model_quality/components/storey_registry_body.html" with storeys=all_storeys %}
                 </tbody>
             </table>
             {% else %}
@@ -179,7 +179,7 @@
                 </thead>
                 <tbody id="manual-levels-tbody">
                     {% for level in manual_levels %}
-                        {% include "ifc_insights/components/level_row.html" with level=level project=project %}
+                        {% include "model_quality/components/level_row.html" with level=level project=project %}
                     {% empty %}
                     <tr id="manual-empty-row">
                         <td colspan="3" class="text-center text-secondary py-3 fs-7">
@@ -249,7 +249,7 @@
 </div>
 
 <!-- Help modal -->
-{% include "ifc_insights/components/levels_help_modal.html" %}
+{% include "model_quality/components/levels_help_modal.html" %}
 
 <script>
 /* Manual-level inline edit (Section 4) — targets individual row via outerHTML swap */

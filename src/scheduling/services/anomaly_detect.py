@@ -516,7 +516,7 @@ def detect_anomalies(project_id: str, override_map: dict | None = None) -> dict:
         logic_anomalies      — data-quality + structural: unrealistic baselines, orphans,
                                FS violations, cycles.  unrealistic_baseline items appear first.
     """
-    from castor.scheduling.models import Task, TaskDependency
+    from scheduling.models import Task, TaskDependency
 
     from .calendar_utils import calendar_basis_note, load_project_calendars
 

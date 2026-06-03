@@ -18,7 +18,7 @@ def get_project_data_date(project_id: str) -> tuple[date, bool]:
     have never had a P6 XML import — ``is_real_data_date`` is ``False``
     in that case, meaning metrics are as-of the current system date.
     """
-    from castor.scheduling.models import ScheduleSource
+    from scheduling.models import ScheduleSource
 
     source = (
         ScheduleSource.objects.filter(

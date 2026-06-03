@@ -21,7 +21,7 @@ from .fixtures import excel_bytes, mspxml_bytes, p6xml_bytes, xer_bytes
 
 class XerParserTests(TestCase):
     def _parse(self, **kw):
-        from castor.scheduling.services.xer_parser import parse_xer
+        from scheduling.services.xer_parser import parse_xer
 
         return parse_xer(io.BytesIO(xer_bytes(**kw)))
 
@@ -61,7 +61,7 @@ class XerParserTests(TestCase):
                 },
             ]
         )
-        from castor.scheduling.services.xer_parser import parse_xer
+        from scheduling.services.xer_parser import parse_xer
 
         tasks, deps = parse_xer(io.BytesIO(raw))
         self.assertEqual(len(tasks), 3)
@@ -105,7 +105,7 @@ class XerParserTests(TestCase):
                 }
             ],
         )
-        from castor.scheduling.services.xer_parser import parse_xer
+        from scheduling.services.xer_parser import parse_xer
 
         tasks, deps = parse_xer(io.BytesIO(raw))
         self.assertEqual(len(deps), 1)
@@ -131,7 +131,7 @@ class XerParserTests(TestCase):
             for i in range(1, 251)
         ]
         many_deps = [{"task_id": "2", "pred_task_id": "1", "pred_type": "PR_FS", "lag_hr_cnt": "0"}]
-        from castor.scheduling.services.xer_parser import parse_xer
+        from scheduling.services.xer_parser import parse_xer
 
         tasks, deps = parse_xer(io.BytesIO(xer_bytes(many_tasks, many_deps)), preview_only=True)
         self.assertLessEqual(len(tasks), 200)
@@ -148,7 +148,7 @@ class XerParserTests(TestCase):
                 )
             ]
         )
-        from castor.scheduling.services.xer_parser import parse_xer
+        from scheduling.services.xer_parser import parse_xer
 
         # Should not raise; the extra table rows should be ignored
         tasks, deps = parse_xer(io.BytesIO(raw))
@@ -170,7 +170,7 @@ class XerParserTests(TestCase):
                 }
             ]
         )
-        from castor.scheduling.services.xer_parser import parse_xer
+        from scheduling.services.xer_parser import parse_xer
 
         tasks, _ = parse_xer(io.BytesIO(raw))
         self.assertEqual(tasks[0]["actual_start"], date(2025, 1, 2))
@@ -192,7 +192,7 @@ class XerParserTests(TestCase):
                 }
             ]
         )
-        from castor.scheduling.services.xer_parser import parse_xer
+        from scheduling.services.xer_parser import parse_xer
 
         tasks, _ = parse_xer(io.BytesIO(raw))
         self.assertIsNone(tasks[0]["actual_start"])
@@ -201,7 +201,7 @@ class XerParserTests(TestCase):
     def test_xer_no_tasks_raises(self):
         """File with no TASK table → ValueError."""
         raw = b"%T\tPROJECT\n%F\tproj_id\n%R\t100\n%E\n"
-        from castor.scheduling.services.xer_parser import parse_xer
+        from scheduling.services.xer_parser import parse_xer
 
         with self.assertRaises(ValueError):
             parse_xer(io.BytesIO(raw))
@@ -214,7 +214,7 @@ class XerParserTests(TestCase):
 
 class P6XmlParserTests(TestCase):
     def _parse(self, **kw):
-        from castor.scheduling.services.msp_parser import parse_msp
+        from scheduling.services.msp_parser import parse_msp
 
         return parse_msp(io.BytesIO(p6xml_bytes(**kw)))
 
@@ -290,7 +290,7 @@ class P6XmlParserTests(TestCase):
             for i in range(1, 251)
         ]
         rels = [{"pred": "1", "succ": "2", "type": "Finish to Start", "lag": "0"}]
-        from castor.scheduling.services.msp_parser import parse_msp
+        from scheduling.services.msp_parser import parse_msp
 
         tasks, deps = parse_msp(
             io.BytesIO(p6xml_bytes(activities=acts, relationships=rels)), preview_only=True
@@ -401,7 +401,7 @@ class P6XmlParserTests(TestCase):
 
 class MspXmlParserTests(TestCase):
     def _parse(self, **kw):
-        from castor.scheduling.services.msp_parser import parse_msp
+        from scheduling.services.msp_parser import parse_msp
 
         return parse_msp(io.BytesIO(mspxml_bytes(**kw)))
 
@@ -475,7 +475,7 @@ class MspXmlParserTests(TestCase):
             }
             for i in range(1, 251)
         ]
-        from castor.scheduling.services.msp_parser import parse_msp
+        from scheduling.services.msp_parser import parse_msp
 
         tasks, deps = parse_msp(io.BytesIO(mspxml_bytes(tasks=task_list)), preview_only=True)
         self.assertLessEqual(len(tasks), 200)
@@ -656,7 +656,7 @@ class ExcelParserTests(TestCase):
                 ["Structural Frame", date(2025, 1, 11), date(2025, 1, 20), "active", "A002"],
             ],
         )
-        from castor.scheduling.services.excel_parser import parse_excel
+        from scheduling.services.excel_parser import parse_excel
 
         tasks = parse_excel(io.BytesIO(raw))
         self.assertEqual(len(tasks), 2)
@@ -675,7 +675,7 @@ class ExcelParserTests(TestCase):
             headers=["Task Name", "Start Date", "End Date", "Status", "Activity Code"],
             rows=rows,
         )
-        from castor.scheduling.services.excel_parser import parse_excel
+        from scheduling.services.excel_parser import parse_excel
 
         tasks = parse_excel(io.BytesIO(raw), preview_only=True)
         self.assertLessEqual(len(tasks), 200)
@@ -690,7 +690,7 @@ class ExcelParserTests(TestCase):
             headers=["Task Name", "Start Date", "End Date", "Status", "Activity Code"],
             rows=rows,
         )
-        from castor.scheduling.services.excel_parser import parse_excel
+        from scheduling.services.excel_parser import parse_excel
 
         tasks = parse_excel(io.BytesIO(raw), preview_only=False)
         self.assertEqual(len(tasks), 50)
@@ -701,7 +701,7 @@ class ExcelParserTests(TestCase):
             headers=["Col A", "Col B", "Col C"],
             rows=[["data1", "data2", "data3"]],
         )
-        from castor.scheduling.services.excel_parser import parse_excel
+        from scheduling.services.excel_parser import parse_excel
 
         with self.assertRaises(ValueError):
             parse_excel(io.BytesIO(raw))
@@ -715,7 +715,7 @@ class ExcelParserTests(TestCase):
 class ColumnMapperTests(TestCase):
     def test_parse_predecessor_string_multi(self):
         """'A1010FS+2d,A1020SS' → two dep dicts with correct fields."""
-        from castor.scheduling.services.column_mapper import parse_predecessor_string
+        from scheduling.services.column_mapper import parse_predecessor_string
 
         result = parse_predecessor_string("A1010FS+2d,A1020SS")
         self.assertEqual(len(result), 2)
@@ -728,7 +728,7 @@ class ColumnMapperTests(TestCase):
 
     def test_parse_predecessor_string_default_fs(self):
         """Activity code with no dep_type suffix → defaults to FS, lag=0."""
-        from castor.scheduling.services.column_mapper import parse_predecessor_string
+        from scheduling.services.column_mapper import parse_predecessor_string
 
         result = parse_predecessor_string("A1010")
         self.assertEqual(len(result), 1)
@@ -737,31 +737,31 @@ class ColumnMapperTests(TestCase):
 
     def test_parse_predecessor_string_empty(self):
         """Empty string → empty list, no crash."""
-        from castor.scheduling.services.column_mapper import parse_predecessor_string
+        from scheduling.services.column_mapper import parse_predecessor_string
 
         result = parse_predecessor_string("")
         self.assertEqual(result, [])
 
     def test_cost_parsing_currency(self):
         """'$1,200.50' → cleaned decimal string '1200.50'."""
-        from castor.scheduling.services.column_mapper import _parse_cost
+        from scheduling.services.column_mapper import _parse_cost
 
         self.assertEqual(_parse_cost("$1,200.50"), "1200.50")
 
     def test_cost_parsing_plain(self):
         """'50000' → '50000'."""
-        from castor.scheduling.services.column_mapper import _parse_cost
+        from scheduling.services.column_mapper import _parse_cost
 
         self.assertEqual(_parse_cost("50000"), "50000")
 
     def test_cost_parsing_empty(self):
         """Empty string → None."""
-        from castor.scheduling.services.column_mapper import _parse_cost
+        from scheduling.services.column_mapper import _parse_cost
 
         self.assertIsNone(_parse_cost(""))
 
     def test_cost_parsing_non_numeric(self):
         """Non-numeric string → None."""
-        from castor.scheduling.services.column_mapper import _parse_cost
+        from scheduling.services.column_mapper import _parse_cost
 
         self.assertIsNone(_parse_cost("TBD"))

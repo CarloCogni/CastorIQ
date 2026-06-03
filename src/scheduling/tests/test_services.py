@@ -20,7 +20,7 @@ class CriticalPathTests(TestCase):
     def setUp(self):
         from datetime import date
 
-        from castor.scheduling.models import ScheduleSource
+        from scheduling.models import ScheduleSource
 
         self.project = make_project()
         # Pin the project data_date to before all test task dates (2025-xx-xx).
@@ -35,7 +35,7 @@ class CriticalPathTests(TestCase):
         )
 
     def _cpm(self):
-        from castor.scheduling.services.critical_path import compute_critical_path
+        from scheduling.services.critical_path import compute_critical_path
 
         return compute_critical_path(str(self.project.pk))
 
@@ -146,7 +146,7 @@ class EVMServiceTests(TestCase):
         self.project = make_project()
 
     def _evm(self, as_of=None):
-        from castor.scheduling.services.evm import compute_evm
+        from scheduling.services.evm import compute_evm
 
         return compute_evm(str(self.project.pk), as_of_date=as_of)
 
@@ -267,62 +267,62 @@ class StageDetectionTests(TestCase):
     """detect_task_stage / detect_task_sub_stage — keyword string matching."""
 
     def test_structure_stage_from_column(self):
-        from castor.scheduling.services.autolink import detect_task_stage
+        from scheduling.services.autolink import detect_task_stage
 
         self.assertEqual(detect_task_stage("Concrete Pour Column B5"), "structure")
 
     def test_structure_stage_from_slab(self):
-        from castor.scheduling.services.autolink import detect_task_stage
+        from scheduling.services.autolink import detect_task_stage
 
         self.assertEqual(detect_task_stage("Ground Floor Slab"), "structure")
 
     def test_mep_stage_from_hvac_keyword(self):
-        from castor.scheduling.services.autolink import detect_task_stage
+        from scheduling.services.autolink import detect_task_stage
 
         self.assertEqual(detect_task_stage("Install HVAC System Level 3"), "mep")
 
     def test_finishes_stage_from_plaster(self):
-        from castor.scheduling.services.autolink import detect_task_stage
+        from scheduling.services.autolink import detect_task_stage
 
         self.assertEqual(detect_task_stage("Internal Plaster Work"), "finishes")
 
     def test_external_stage_from_paving(self):
-        from castor.scheduling.services.autolink import detect_task_stage
+        from scheduling.services.autolink import detect_task_stage
 
         self.assertEqual(detect_task_stage("Car Park Paving"), "external")
 
     def test_no_match_returns_empty_string(self):
-        from castor.scheduling.services.autolink import detect_task_stage
+        from scheduling.services.autolink import detect_task_stage
 
         self.assertEqual(detect_task_stage("XYZ Unrecognised Activity 9999"), "")
 
     def test_stage_detection_is_case_insensitive(self):
-        from castor.scheduling.services.autolink import detect_task_stage
+        from scheduling.services.autolink import detect_task_stage
 
         self.assertEqual(detect_task_stage("CONCRETE POUR LEVEL 1"), "structure")
 
     def test_sub_stage_concrete(self):
-        from castor.scheduling.services.autolink import detect_task_sub_stage
+        from scheduling.services.autolink import detect_task_sub_stage
 
         self.assertEqual(detect_task_sub_stage("Concrete Pour Level 3"), "concrete")
 
     def test_sub_stage_rebar(self):
-        from castor.scheduling.services.autolink import detect_task_sub_stage
+        from scheduling.services.autolink import detect_task_sub_stage
 
         self.assertEqual(detect_task_sub_stage("Rebar Fixing Block B"), "rebar")
 
     def test_sub_stage_electrical(self):
-        from castor.scheduling.services.autolink import detect_task_sub_stage
+        from scheduling.services.autolink import detect_task_sub_stage
 
         self.assertEqual(detect_task_sub_stage("Electrical Wiring 2nd Floor"), "electrical")
 
     def test_sub_stage_excavation(self):
-        from castor.scheduling.services.autolink import detect_task_sub_stage
+        from scheduling.services.autolink import detect_task_sub_stage
 
         self.assertEqual(detect_task_sub_stage("Bulk Excavation Zone A"), "excavation")
 
     def test_sub_stage_no_match_returns_empty_string(self):
-        from castor.scheduling.services.autolink import detect_task_sub_stage
+        from scheduling.services.autolink import detect_task_sub_stage
 
         self.assertEqual(detect_task_sub_stage("Admin Meeting"), "")
 
@@ -339,8 +339,8 @@ class AutodetectStagesTests(TestCase):
         self.project = make_project()
 
     def test_sets_stage_from_task_name(self):
-        from castor.scheduling.models import Task
-        from castor.scheduling.services.autolink import autodetect_stages
+        from scheduling.models import Task
+        from scheduling.services.autolink import autodetect_stages
 
         task = make_task(self.project, name="Electrical Conduit Installation")
         updated = autodetect_stages(list(Task.objects.filter(project=self.project)))
@@ -349,8 +349,8 @@ class AutodetectStagesTests(TestCase):
         self.assertEqual(updated, 1)
 
     def test_sub_stage_sets_parent_stage(self):
-        from castor.scheduling.models import Task
-        from castor.scheduling.services.autolink import autodetect_stages
+        from scheduling.models import Task
+        from scheduling.services.autolink import autodetect_stages
 
         task = make_task(self.project, name="Rebar Fixing Level 4")
         autodetect_stages(list(Task.objects.filter(project=self.project)))
@@ -359,8 +359,8 @@ class AutodetectStagesTests(TestCase):
         self.assertEqual(task.stage, "structure")
 
     def test_preserves_manually_set_stage(self):
-        from castor.scheduling.models import Task
-        from castor.scheduling.services.autolink import autodetect_stages
+        from scheduling.models import Task
+        from scheduling.services.autolink import autodetect_stages
 
         task = make_task(self.project, name="Electrical Work", stage="envelope")
         updated = autodetect_stages(list(Task.objects.filter(project=self.project)))
@@ -369,8 +369,8 @@ class AutodetectStagesTests(TestCase):
         self.assertEqual(updated, 0)
 
     def test_unknown_name_not_updated(self):
-        from castor.scheduling.models import Task
-        from castor.scheduling.services.autolink import autodetect_stages
+        from scheduling.models import Task
+        from scheduling.services.autolink import autodetect_stages
 
         task = make_task(self.project, name="ZZZ Unknown Activity 9999")
         autodetect_stages(list(Task.objects.filter(project=self.project)))
@@ -390,32 +390,32 @@ class LayerZeroTests(TestCase):
         self.project = make_project()
 
     def test_non_physical_keyword_in_name(self):
-        from castor.scheduling.services.autolink import _is_non_physical_auto
+        from scheduling.services.autolink import _is_non_physical_auto
 
         task = make_task(self.project, name="Submittal Review Package A")
         self.assertTrue(_is_non_physical_auto(task))
 
     def test_physical_task_not_flagged(self):
-        from castor.scheduling.services.autolink import _is_non_physical_auto
+        from scheduling.services.autolink import _is_non_physical_auto
 
         task = make_task(self.project, name="Concrete Pour Column B5")
         self.assertFalse(_is_non_physical_auto(task))
 
     def test_milestone_activity_type_flagged(self):
-        from castor.scheduling.services.autolink import _is_non_physical_auto
+        from scheduling.services.autolink import _is_non_physical_auto
 
         task = make_task(self.project, name="Roof Completion", activity_type="Milestone")
         self.assertTrue(_is_non_physical_auto(task))
 
     def test_wbs_summary_type_flagged(self):
-        from castor.scheduling.services.autolink import _is_non_physical_auto
+        from scheduling.services.autolink import _is_non_physical_auto
 
         task = make_task(self.project, name="Phase 1 Summary", activity_type="WBS Summary")
         self.assertTrue(_is_non_physical_auto(task))
 
     def test_locked_physical_not_reclassified(self):
         """Task locked as physical must stay physical even if name has a keyword."""
-        from castor.scheduling.services.autolink import _run_layer0
+        from scheduling.services.autolink import _run_layer0
 
         task = make_task(
             self.project,
@@ -430,7 +430,7 @@ class LayerZeroTests(TestCase):
 
     def test_locked_non_physical_not_reclassified(self):
         """Task locked as non-physical must stay non-physical even if name is physical."""
-        from castor.scheduling.services.autolink import _run_layer0
+        from scheduling.services.autolink import _run_layer0
 
         task = make_task(
             self.project,
@@ -445,7 +445,7 @@ class LayerZeroTests(TestCase):
 
     def test_run_layer0_updates_db(self):
         """_run_layer0 must set is_non_physical=True on matching unlocked tasks."""
-        from castor.scheduling.services.autolink import _run_layer0
+        from scheduling.services.autolink import _run_layer0
 
         task = make_task(self.project, name="Procurement Meeting", is_non_physical=False)
         _run_layer0([task])

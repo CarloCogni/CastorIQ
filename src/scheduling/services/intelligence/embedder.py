@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 
 from embeddings.services.embedding_service import EmbeddingService
-from castor.scheduling.models import TaskEmbedding, Task
+from scheduling.models import TaskEmbedding, Task
 
 logger = logging.getLogger(__name__)
 

@@ -108,7 +108,7 @@ def get_storeys_from_db(ifc_file) -> list[dict]:
 def match_storeys_to_tasks(storey_names: list[str], project) -> dict[str, bool]:
     """Return {storey_name_lower: True} for names found in any task name or activity_code."""
     try:
-        from castor.scheduling.models import Task  # local — avoids circular
+        from scheduling.models import Task  # local — avoids circular
     except ImportError:
         return {}
 
@@ -138,7 +138,7 @@ def get_missing_level_hints(storey_names_lower: set[str], project) -> list[dict]
     Returns list of {"hint": str, "task_names": list[str]} capped at 5 tasks per hint.
     """
     try:
-        from castor.scheduling.models import Task  # local — avoids circular
+        from scheduling.models import Task  # local — avoids circular
     except ImportError:
         return []
 

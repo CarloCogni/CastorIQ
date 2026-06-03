@@ -90,7 +90,7 @@ def run_dcma_check(project_id: str) -> dict:
         dep_count   — int
         as_of       — ISO date string
     """
-    from castor.scheduling.models import P6ResourceAssignment, Task, TaskDependency
+    from scheduling.models import P6ResourceAssignment, Task, TaskDependency
 
     from .calendar_utils import calendar_basis_note, load_project_calendars, task_cal
     from .utils import get_project_data_date

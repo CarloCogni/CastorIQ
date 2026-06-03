@@ -43,7 +43,7 @@ def make_project(owner=None, name: str = "Test Project"):
 
 
 def make_task(project, **kwargs):
-    from castor.scheduling.models import Task
+    from scheduling.models import Task
 
     defaults = {
         "name": "Test Task",
@@ -81,7 +81,7 @@ def make_entity(ifc_file, **kwargs):
 
 
 def make_dependency(pred, succ, dep_type: str = "FS", lag: int = 0):
-    from castor.scheduling.models import TaskDependency
+    from scheduling.models import TaskDependency
 
     return TaskDependency.objects.create(
         predecessor=pred,

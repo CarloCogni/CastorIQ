@@ -8,8 +8,8 @@ import json
 import pytest
 
 from environments.tests.factories import ProjectFactory, UserFactory
-from castor.scheduling.models import TaskEntityBinding
-from castor.scheduling.tests.factories import TaskFactory
+from scheduling.models import TaskEntityBinding
+from scheduling.tests.factories import TaskFactory
 
 
 @pytest.mark.django_db

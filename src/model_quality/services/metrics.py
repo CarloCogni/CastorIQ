@@ -33,7 +33,7 @@ def _build_schedule_cost_map(ifc_file) -> dict[str, float]:
     Returns an empty dict if the scheduling app is unavailable or no tasks have cost.
     """
     try:
-        from castor.scheduling.models import Task as ScheduleTask
+        from scheduling.models import Task as ScheduleTask
 
         cost_map: dict[str, float] = {}
         for task in (
@@ -154,7 +154,7 @@ def non_physical_metrics(project) -> dict:
     np_by_type (top activity types), np_by_stage (stage distribution).
     """
     try:
-        from castor.scheduling.models import Task
+        from scheduling.models import Task
 
         qs = Task.objects.filter(project=project, is_non_physical=True)
         total = qs.count()
@@ -214,7 +214,7 @@ def schedule_progress_metrics(project, stage: str = "", sub_stage: str = "") -> 
     progress_complete, progress_total.
     """
     try:
-        from castor.scheduling.models import ProgressMode, Task
+        from scheduling.models import ProgressMode, Task
 
         mode_obj = ProgressMode.objects.filter(project=project).first()
         mode: str = mode_obj.mode if mode_obj else ProgressMode.Mode.BY_COUNT

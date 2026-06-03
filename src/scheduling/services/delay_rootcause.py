@@ -161,7 +161,7 @@ def run_delay_rootcause(
 
     Returns a dict with keys: has_data, summary, root_causes, clusters, orphans.
     """
-    from castor.scheduling.models import Task, TaskDependency
+    from scheduling.models import Task, TaskDependency
 
     from .calendar_utils import load_project_calendars, task_cal
 
@@ -270,7 +270,7 @@ def run_delay_rootcause(
             if min_gap is None or delta < min_gap:
                 min_gap = delta
             if delta <= BINDING_TOLERANCE:
-                    if best_delta is None or delta < best_delta:
+                if best_delta is None or delta < best_delta:
                     best_pred_pk = pred_pk
                     best_delta = delta
 

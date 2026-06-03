@@ -3,7 +3,7 @@
 <!-- Context: storeys (list of dicts with linked_level and in_schedule), project -->
 
 {% for storey in storeys %}
-    {% include "ifc_insights/components/storey_row.html" with storey=storey project=project %}
+    {% include "model_quality/components/storey_row.html" with storey=storey project=project %}
 {% empty %}
 <tr>
     <td colspan="5" class="text-center text-secondary py-4 fs-7">

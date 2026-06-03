@@ -134,7 +134,7 @@ def load_project_calendars(project_id: str) -> dict[str, dict]:
     ``_DEFAULT_CAL`` via ``task_cal()``.
     """
     try:
-        from castor.scheduling.models import P6Calendar
+        from scheduling.models import P6Calendar
 
         cals: dict[str, dict] = {}
         for cal in P6Calendar.objects.filter(project_id=project_id, is_pending=False):

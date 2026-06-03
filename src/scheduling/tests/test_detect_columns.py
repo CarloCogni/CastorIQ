@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from environments.tests.factories import ProjectFactory, UserFactory
-from castor.scheduling.services.column_detector import (
+from scheduling.services.column_detector import (
     detect_columns,
     filename_to_pattern,
     fingerprint_headers,
@@ -42,7 +42,7 @@ def test_detect_columns_happy_path_returns_validated_mapping():
         ["Steel frame", "2025-02-16", "2025-04-01", "A1020", "planned"],
     ]
 
-    with patch("castor.scheduling.services.column_detector.get_llm") as mock_get_llm:
+    with patch("scheduling.services.column_detector.get_llm") as mock_get_llm:
         mock_get_llm.return_value.invoke.return_value = mock_response
         result = detect_columns(headers, sample_rows, "schedule.xlsx", user=None)
 
@@ -74,7 +74,7 @@ def test_detect_columns_strips_invalid_canonical_keys():
 
     headers = ["Task", "Start", "Finish", "Random Col"]
 
-    with patch("castor.scheduling.services.column_detector.get_llm") as mock_get_llm:
+    with patch("scheduling.services.column_detector.get_llm") as mock_get_llm:
         mock_get_llm.return_value.invoke.return_value = mock_response
         result = detect_columns(headers, [], "data.csv", user=None)
 
@@ -99,7 +99,7 @@ def test_detect_columns_strips_headers_not_in_file():
 
     headers = ["Task Name", "End Date", "Status"]  # "Begin" is absent
 
-    with patch("castor.scheduling.services.column_detector.get_llm") as mock_get_llm:
+    with patch("scheduling.services.column_detector.get_llm") as mock_get_llm:
         mock_get_llm.return_value.invoke.return_value = mock_response
         result = detect_columns(headers, [], "file.xlsx", user=None)
 
@@ -111,7 +111,7 @@ def test_detect_columns_llm_unavailable_falls_back_to_synonyms():
     """When LLM raises, service falls back to synonym-based matching."""
     headers = ["Task Name", "Start Date", "End Date", "Activity Code"]
 
-    with patch("castor.scheduling.services.column_detector.get_llm") as mock_get_llm:
+    with patch("scheduling.services.column_detector.get_llm") as mock_get_llm:
         mock_get_llm.side_effect = RuntimeError("Ollama unreachable")
         result = detect_columns(headers, [], "plan.csv", user=None)
 
@@ -129,7 +129,7 @@ def test_detect_columns_llm_returns_empty_mapping_falls_back():
 
     headers = ["name", "start", "end"]
 
-    with patch("castor.scheduling.services.column_detector.get_llm") as mock_get_llm:
+    with patch("scheduling.services.column_detector.get_llm") as mock_get_llm:
         mock_get_llm.return_value.invoke.return_value = mock_response
         result = detect_columns(headers, [], "empty.xlsx", user=None)
 
@@ -149,7 +149,7 @@ def test_detect_columns_confidence_clamped_to_valid_range():
 
     headers = ["Task", "Start", "End"]
 
-    with patch("castor.scheduling.services.column_detector.get_llm") as mock_get_llm:
+    with patch("scheduling.services.column_detector.get_llm") as mock_get_llm:
         mock_get_llm.return_value.invoke.return_value = mock_response
         result = detect_columns(headers, [], "x.csv", user=None)
 
@@ -163,7 +163,7 @@ def test_detect_columns_malformed_json_falls_back():
 
     headers = ["Name", "Start", "Finish"]
 
-    with patch("castor.scheduling.services.column_detector.get_llm") as mock_get_llm:
+    with patch("scheduling.services.column_detector.get_llm") as mock_get_llm:
         mock_get_llm.return_value.invoke.return_value = mock_response
         result = detect_columns(headers, [], "f.xlsx", user=None)
 
@@ -208,7 +208,7 @@ def test_detect_columns_view_returns_mapping(client):
     )
 
     url = f"/castor/projects/{project.pk}/schedule/detect-columns/"
-    with patch("castor.scheduling.services.column_detector.get_llm") as mock_get_llm:
+    with patch("scheduling.services.column_detector.get_llm") as mock_get_llm:
         mock_get_llm.return_value.invoke.return_value = mock_response
         r = client.post(
             url,
@@ -301,8 +301,8 @@ def test_filename_to_pattern_caps_at_255():
 @pytest.mark.django_db
 def test_detect_columns_view_returns_from_lookup_on_second_upload(client):
     """Second upload with same headers hits the lookup, skips the LLM."""
-    from castor.scheduling.models import ColumnMappingLookup
-    from castor.scheduling.services.column_detector import fingerprint_headers
+    from scheduling.models import ColumnMappingLookup
+    from scheduling.services.column_detector import fingerprint_headers
 
     user = UserFactory()
     project = ProjectFactory(owner=user)
@@ -320,7 +320,7 @@ def test_detect_columns_view_returns_from_lookup_on_second_upload(client):
     )
 
     url = f"/castor/projects/{project.pk}/schedule/detect-columns/"
-    with patch("castor.scheduling.services.column_detector.get_llm") as mock_llm:
+    with patch("scheduling.services.column_detector.get_llm") as mock_llm:
         r = client.post(
             url,
             data=json.dumps({"headers": headers, "sample_rows": [], "filename": "plan.xlsx"}),
@@ -338,8 +338,8 @@ def test_detect_columns_view_returns_from_lookup_on_second_upload(client):
 @pytest.mark.django_db
 def test_detect_columns_view_increments_hit_count_on_lookup_hit(client):
     """Each lookup hit increments hit_count by 1."""
-    from castor.scheduling.models import ColumnMappingLookup
-    from castor.scheduling.services.column_detector import fingerprint_headers
+    from scheduling.models import ColumnMappingLookup
+    from scheduling.services.column_detector import fingerprint_headers
 
     user = UserFactory()
     project = ProjectFactory(owner=user)
@@ -369,7 +369,7 @@ def test_detect_columns_view_increments_hit_count_on_lookup_hit(client):
 @pytest.mark.django_db
 def test_save_mapping_lookup_creates_record(client):
     """POST to save-lookup endpoint creates a ColumnMappingLookup row."""
-    from castor.scheduling.models import ColumnMappingLookup
+    from scheduling.models import ColumnMappingLookup
 
     user = UserFactory()
     project = ProjectFactory(owner=user)
@@ -393,7 +393,7 @@ def test_save_mapping_lookup_creates_record(client):
 @pytest.mark.django_db
 def test_save_mapping_lookup_updates_existing_record(client):
     """Saving a mapping for an existing fingerprint updates rather than duplicates."""
-    from castor.scheduling.models import ColumnMappingLookup
+    from scheduling.models import ColumnMappingLookup
 
     user = UserFactory()
     project = ProjectFactory(owner=user)

@@ -1,5 +1,5 @@
-# castor/ifc_insights/views.py
-"""IFC Insights tab views — QA/QC checks dashboard + entity metrics + Level Panel."""
+# model_quality/views.py
+"""Model Quality tab views — IFC checks dashboard + entity metrics + Level Panel + Issues."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from core.http import toast_response, trigger_toast
 from core.mixins import ProjectAccessMixin, ProjectTabMixin
 from ifc_processor.models import IFCEntity, IFCFile
 
-from .models import Level, QTOCache
+from .models import Level
 from .services.checks import run_all_checks
 from .services.levels import (
     apply_levels_to_ifc,
@@ -46,7 +46,7 @@ _BLANK_CHECKS = {
 def _available_stages(project) -> list[tuple[str, str]]:
     """Return [(key, label)] for stages that have at least one physical task in this project."""
     try:
-        from castor.scheduling.models import Task
+        from scheduling.models import Task
 
         present = set(
             Task.objects.filter(project=project, is_non_physical=False)
@@ -65,7 +65,7 @@ def _available_sub_stages(project, stage: str = "") -> list[tuple[str, str]]:
     If stage is given, restricts to sub_stages whose parent is that stage.
     """
     try:
-        from castor.scheduling.models import Task
+        from scheduling.models import Task
 
         qs = Task.objects.filter(project=project, is_non_physical=False).exclude(sub_stage="")
         if stage:
@@ -96,6 +96,11 @@ def _build_ctx(project, ifc_file) -> dict:
         except Exception as exc:
             logger.error("IFC checks failed for project %s: %s", project.pk, exc)
             ctx["check_results"] = {"error": str(exc), **_BLANK_CHECKS}
+
+    # QTOCache lives in the `takeoff` app; localised import avoids a hard
+    # cross-app dependency at module-load time and keeps the migration order
+    # (takeoff → model_quality) flexible.
+    from takeoff.models import QTOCache
 
     ctx["qto_cache"] = QTOCache.objects.filter(project=project).first()
     return ctx
@@ -159,7 +164,7 @@ class InsightsRerunView(ProjectAccessMixin, View):
         project = self.get_project()
         ifc_file = _get_active_ifc_file(project)
         ctx = _build_ctx(project, ifc_file)
-        return render(request, "ifc_insights/panel.html", ctx)
+        return render(request, "model_quality/panel.html", ctx)
 
 
 class InsightsBreakdownView(ProjectAccessMixin, View):
@@ -176,13 +181,13 @@ class InsightsBreakdownView(ProjectAccessMixin, View):
         if not ifc_file:
             return render(
                 request,
-                "ifc_insights/components/breakdown_card.html",
+                "model_quality/components/breakdown_card.html",
                 {"title": breakdown_type, "rows": []},
             )
 
         data = breakdown_data(ifc_file, breakdown_type)
         data["project"] = project
-        return render(request, "ifc_insights/components/breakdown_card.html", data)
+        return render(request, "model_quality/components/breakdown_card.html", data)
 
 
 class InsightsExportView(ProjectAccessMixin, View):
@@ -225,7 +230,7 @@ class ProgressModeView(ProjectAccessMixin, View):
     _VALID_MODES = {"count", "cost", "duration", "weight"}
 
     def post(self, request, **kwargs: object) -> HttpResponse:
-        from castor.scheduling.models import ProgressMode
+        from scheduling.models import ProgressMode
 
         project = self.get_project()
         mode = request.POST.get("mode", "count")
@@ -244,7 +249,7 @@ class ProgressModeView(ProjectAccessMixin, View):
         metrics["available_sub_stages"] = _available_sub_stages(project, stage=stage)
         return render(
             request,
-            "ifc_insights/components/progress_ring.html",
+            "model_quality/components/progress_ring.html",
             {"project": project, **metrics},
         )
 
@@ -261,7 +266,7 @@ class ProgressRingView(ProjectAccessMixin, View):
         metrics["available_sub_stages"] = _available_sub_stages(project, stage=stage)
         return render(
             request,
-            "ifc_insights/components/progress_ring.html",
+            "model_quality/components/progress_ring.html",
             {"project": project, **metrics},
         )
 
@@ -335,7 +340,7 @@ class LevelSuggestView(ProjectAccessMixin, View):
     def get(self, request, **kwargs: object) -> HttpResponse:
         project = self.get_project()
         ctx = _storey_registry_ctx(project)
-        return render(request, "ifc_insights/components/storey_registry_body.html", ctx)
+        return render(request, "model_quality/components/storey_registry_body.html", ctx)
 
 
 class LevelAddView(ProjectAccessMixin, View):
@@ -373,7 +378,7 @@ class LevelAddView(ProjectAccessMixin, View):
                 level.save(update_fields=["name", "z_elevation"])
 
             ctx = _storey_registry_ctx(project)
-            response = render(request, "ifc_insights/components/storey_registry_body.html", ctx)
+            response = render(request, "model_quality/components/storey_registry_body.html", ctx)
             verb = "imported" if created else "updated"
             return trigger_toast(response, f"'{level.name}' {verb} in Level Registry.")
 
@@ -385,7 +390,7 @@ class LevelAddView(ProjectAccessMixin, View):
             source=Level.Source.MANUAL,
         )
         response = render(
-            request, "ifc_insights/components/level_row.html", {"level": level, "project": project}
+            request, "model_quality/components/level_row.html", {"level": level, "project": project}
         )
         return trigger_toast(response, f"Level '{level.name}' added.")
 
@@ -419,11 +424,11 @@ class LevelEditView(ProjectAccessMixin, View):
 
         if refresh_registry:
             ctx = _storey_registry_ctx(project)
-            response = render(request, "ifc_insights/components/storey_registry_body.html", ctx)
+            response = render(request, "model_quality/components/storey_registry_body.html", ctx)
         else:
             response = render(
                 request,
-                "ifc_insights/components/level_row.html",
+                "model_quality/components/level_row.html",
                 {"level": level, "project": project},
             )
         return trigger_toast(response, "Level updated.")
@@ -447,7 +452,7 @@ class LevelDeleteView(ProjectAccessMixin, View):
 
         if storey_gid and refresh_registry:
             ctx = _storey_registry_ctx(project)
-            response = render(request, "ifc_insights/components/storey_registry_body.html", ctx)
+            response = render(request, "model_quality/components/storey_registry_body.html", ctx)
             return trigger_toast(response, f"'{name}' unlinked from Level Registry.")
 
         response = HttpResponse("")
@@ -579,7 +584,7 @@ def _activity_audit_rows(ifc_file, project) -> list[dict]:
         entry["global_ids"].add(entity.global_id)
 
     try:
-        from castor.scheduling.models import TaskEntityBinding  # local — avoids circular
+        from scheduling.models import TaskEntityBinding  # local — avoids circular
 
         bound = set(
             TaskEntityBinding.objects.filter(task__project=project).values_list(
@@ -652,7 +657,7 @@ class IssuesMissingActivityView(ProjectAccessMixin, View):
         viewer_url = reverse("castor:viewer", kwargs={"pk": project.pk})
         return render(
             request,
-            "ifc_insights/components/issues_missing_activity.html",
+            "model_quality/components/issues_missing_activity.html",
             {
                 "rows": rows[:500],
                 "total_count": len(rows),
@@ -672,7 +677,7 @@ class IssuesMissingCostView(ProjectAccessMixin, View):
         viewer_url = reverse("castor:viewer", kwargs={"pk": project.pk})
         return render(
             request,
-            "ifc_insights/components/issues_missing_cost.html",
+            "model_quality/components/issues_missing_cost.html",
             {
                 "rows": rows[:500],
                 "total_count": len(rows),
@@ -691,7 +696,7 @@ class IssuesActivityAuditView(ProjectAccessMixin, View):
         audit_rows = _activity_audit_rows(ifc_file, project) if ifc_file else []
         return render(
             request,
-            "ifc_insights/components/issues_activity_audit.html",
+            "model_quality/components/issues_activity_audit.html",
             {"audit_rows": audit_rows, "project": project},
         )
 
@@ -721,181 +726,9 @@ class IssuesLevelsHealthView(ProjectAccessMixin, View):
         levels_url = reverse("castor:levels", kwargs={"pk": project.pk})
         return render(
             request,
-            "ifc_insights/components/issues_levels_health.html",
+            "model_quality/components/issues_levels_health.html",
             {"storey_rows": storey_rows, "project": project, "levels_url": levels_url},
         )
-
-
-# ---------------------------------------------------------------------------
-# QTO views
-# ---------------------------------------------------------------------------
-
-
-class QTOView(ProjectTabMixin, TemplateView):
-    """QTO tab — Quantity Take-Off dashboard."""
-
-    active_tab = "castor"
-
-    def get_context_data(self, **kwargs: object) -> dict:
-        ctx = super().get_context_data(**kwargs)
-        ctx["castor_subtab"] = "qto"
-        project = ctx["project"]
-        ctx["qto_cache"] = QTOCache.objects.filter(project=project).first()
-        return ctx
-
-
-class QTODataView(ProjectAccessMixin, View):
-    """JSON endpoint — QTO cache payload (excludes items_json)."""
-
-    def get(self, request, **kwargs: object) -> JsonResponse:
-        project = self.get_project()
-        cache = QTOCache.objects.filter(project=project).first()
-        if not cache:
-            return JsonResponse({"has_data": False})
-        return JsonResponse(
-            {
-                "has_data": True,
-                "total_entities": cache.total_entities,
-                "entities_with_qty": cache.entities_with_qty,
-                "coverage_pct": cache.coverage_pct,
-                "total_cost_estimate": cache.total_cost_estimate,
-                "summary": cache.summary_json,
-                "by_level": cache.by_level_json,
-                "by_material": cache.by_material_json,
-            }
-        )
-
-
-class QTORecomputeView(ProjectAccessMixin, View):
-    """HTMX POST — trigger QTO recomputation and return a toast."""
-
-    def post(self, request, **kwargs: object) -> HttpResponse:
-        project = self.get_project()
-        try:
-            from .services.quantities import compute_qto
-
-            result = compute_qto(project)
-        except Exception as exc:
-            logger.error("QTO recompute failed for project %s: %s", project.pk, exc)
-            return toast_response(f"Recompute failed: {exc}", "error", status=500)
-
-        if not result.get("has_data"):
-            return toast_response("No processed IFC file found.", "error", status=404)
-
-        return toast_response(
-            f"QTO recomputed — {result['total_entities']} elements, "
-            f"{result['coverage_pct']:.0f}% coverage.",
-            "success",
-        )
-
-
-class QTOUnitCostUpdateView(ProjectAccessMixin, View):
-    """HTMX POST — set unit cost for one IFC type; persist to QTOCache."""
-
-    def post(self, request, **kwargs: object) -> HttpResponse:
-        project = self.get_project()
-        ifc_type = request.POST.get("ifc_type", "").strip()
-        cost_raw = request.POST.get("unit_cost", "").strip()
-
-        if not ifc_type:
-            return toast_response("IFC type is required.", "error", status=400)
-
-        cache = QTOCache.objects.filter(project=project).first()
-        if not cache:
-            return toast_response("No QTO data found — recompute first.", "error", status=404)
-
-        costs = dict(cache.unit_costs_json)
-        if cost_raw:
-            try:
-                costs[ifc_type] = float(cost_raw)
-            except ValueError:
-                return toast_response("Unit cost must be a number.", "error", status=400)
-        else:
-            costs.pop(ifc_type, None)
-
-        cache.unit_costs_json = costs
-        cache.save(update_fields=["unit_costs_json"])
-        return toast_response(f"Unit cost for {ifc_type} updated.", "success")
-
-
-class QTOExportView(ProjectAccessMixin, View):
-    """GET — export QTO data to Excel (3 sheets: Summary / By Level / Detail)."""
-
-    def get(self, request, **kwargs: object) -> HttpResponse:
-        from openpyxl import Workbook
-
-        project = self.get_project()
-        cache = QTOCache.objects.filter(project=project).first()
-        if not cache:
-            return HttpResponse("No QTO data found — run Recompute first.", status=404)
-
-        wb = Workbook()
-
-        ws1 = wb.active
-        ws1.title = "Summary"
-        ws1.append(
-            ["IFC Type", "Count", "Total Qty", "Unit", "Coverage %", "Unit Cost", "Total Cost"]
-        )
-        for row in cache.summary_json:
-            ws1.append(
-                [
-                    row.get("type"),
-                    row.get("count"),
-                    row.get("total_qty"),
-                    row.get("unit"),
-                    row.get("coverage_pct"),
-                    row.get("unit_cost"),
-                    row.get("total_cost"),
-                ]
-            )
-
-        ws2 = wb.create_sheet("By Level")
-        ws2.append(["Level", "Entity Count", "Estimated Cost"])
-        for row in cache.by_level_json:
-            ws2.append([row.get("level"), row.get("entity_count"), row.get("cost")])
-
-        ws3 = wb.create_sheet("Detail")
-        ws3.append(
-            [
-                "Global ID",
-                "Name",
-                "IFC Type",
-                "Level",
-                "Material",
-                "Quantity",
-                "Unit",
-                "Source",
-                "Unit Cost",
-                "Total Cost",
-            ]
-        )
-        for item in cache.items_json:
-            ws3.append(
-                [
-                    item.get("global_id"),
-                    item.get("name"),
-                    item.get("type"),
-                    item.get("level"),
-                    item.get("material"),
-                    item.get("quantity"),
-                    item.get("unit"),
-                    item.get("source"),
-                    item.get("unit_cost"),
-                    item.get("total_cost"),
-                ]
-            )
-
-        buf = io.BytesIO()
-        wb.save(buf)
-        buf.seek(0)
-
-        safe_name = "".join(c if c.isalnum() or c in "-_ " else "_" for c in project.name)
-        response = HttpResponse(
-            buf.getvalue(),
-            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
-        response["Content-Disposition"] = f'attachment; filename="qto_{safe_name}.xlsx"'
-        return response
 
 
 class IssuesExportView(ProjectAccessMixin, View):

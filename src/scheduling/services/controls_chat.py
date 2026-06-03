@@ -213,7 +213,7 @@ def _load_constraint_data(project_id: str) -> dict:
         snet_count  — number of SNET-constrained activities
         neg_float   — non-MFO tasks whose CPM float is negative (network overrun)
     """
-    from castor.scheduling.models import Task
+    from scheduling.models import Task
 
     tasks = list(
         Task.objects.filter(project_id=project_id, is_non_physical=False)

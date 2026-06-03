@@ -12,8 +12,8 @@ django.setup()
 import numpy as np
 from django.db.models import Count, Sum
 
-from castor.scheduling.models import P6ResourceAssignment, Task, TaskDependency
-from castor.scheduling.services.completion_ml import (
+from scheduling.models import P6ResourceAssignment, Task, TaskDependency
+from scheduling.services.completion_ml import (
     _brier,
     _build_feature_names,
     _csi,
@@ -185,7 +185,7 @@ inc_tasks = list(
 )
 target = next((t for t in inc_tasks if str(t.pk) == watchlist_task_pk), None)
 if target:
-    from castor.scheduling.services.completion_ml import _CSI_NAMES
+    from scheduling.services.completion_ml import _CSI_NAMES
 
     # Get its feature vector using global rate (inference mode)
     def trade_rate_global(csi):

@@ -190,7 +190,7 @@ def compute_timelocation(
         has_data, floors, trades (with is_other flag), segments (all),
         scope (with n_overridden, using_audit_overrides), stats, as_of.
     """
-    from castor.scheduling.models import Task
+    from scheduling.models import Task
 
     from .utils import get_project_data_date
 

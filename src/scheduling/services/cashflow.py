@@ -74,7 +74,7 @@ def compute_cashflow(project_id: str) -> dict:
     """
     from django.db.models import Sum
 
-    from castor.scheduling.models import P6ResourceAssignment, Task
+    from scheduling.models import P6ResourceAssignment, Task
 
     today, _ = get_project_data_date(project_id)
 

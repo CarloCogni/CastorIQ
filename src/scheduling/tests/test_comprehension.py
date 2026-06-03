@@ -10,13 +10,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from environments.tests.factories import ProjectFactory, UserFactory
-from castor.scheduling.services.comprehension import (
+from scheduling.services.comprehension import (
     _analyze_activity_codes,
     _build_stratified_sample,
     _empty_comprehension,
     build_comprehension,
 )
-from castor.scheduling.tests.factories import TaskFactory
+from scheduling.tests.factories import TaskFactory
 
 # ---------------------------------------------------------------------------
 # _empty_comprehension — no DB
@@ -119,7 +119,7 @@ def test_build_comprehension_with_tasks_returns_valid_structure():
         }
     )
 
-    with patch("castor.scheduling.services.comprehension.get_llm") as mock_llm:
+    with patch("scheduling.services.comprehension.get_llm") as mock_llm:
         mock_llm.return_value.invoke.return_value = mock_response
         result = build_comprehension(project)
 
@@ -137,12 +137,12 @@ def test_build_comprehension_with_tasks_returns_valid_structure():
 @pytest.mark.django_db
 def test_build_comprehension_saves_to_db():
     """build_comprehension persists a ProjectComprehension row."""
-    from castor.scheduling.models import ProjectComprehension
+    from scheduling.models import ProjectComprehension
 
     project = ProjectFactory()
     TaskFactory.create_batch(3, project=project)
 
-    with patch("castor.scheduling.services.comprehension.get_llm") as mock_llm:
+    with patch("scheduling.services.comprehension.get_llm") as mock_llm:
         mock_llm.return_value.invoke.return_value = MagicMock(content="{}")
         build_comprehension(project)
 
@@ -155,7 +155,7 @@ def test_build_comprehension_llm_failure_falls_back():
     project = ProjectFactory()
     TaskFactory.create_batch(4, project=project, stage="structure")
 
-    with patch("castor.scheduling.services.comprehension.get_llm") as mock_llm:
+    with patch("scheduling.services.comprehension.get_llm") as mock_llm:
         mock_llm.side_effect = RuntimeError("Ollama unreachable")
         result = build_comprehension(project)
 
@@ -172,7 +172,7 @@ def test_build_comprehension_llm_failure_falls_back():
 @pytest.mark.django_db
 def test_build_stratified_sample_returns_at_most_100():
     """Sample is always capped at 100 tasks regardless of project size."""
-    from castor.scheduling.models import Task
+    from scheduling.models import Task
 
     project = ProjectFactory()
     TaskFactory.create_batch(150, project=project)
@@ -187,7 +187,7 @@ def test_build_stratified_sample_returns_at_most_100():
 @pytest.mark.django_db
 def test_build_stratified_sample_includes_critical_tasks():
     """Critical-path tasks are prioritised in the sample."""
-    from castor.scheduling.models import Task
+    from scheduling.models import Task
 
     project = ProjectFactory()
     TaskFactory.create_batch(10, project=project, is_critical=False, activity_code="")
@@ -222,7 +222,7 @@ def test_comprehension_view_get_returns_exists_false_if_no_comprehension(client)
 @pytest.mark.django_db
 def test_comprehension_view_get_returns_existing_data(client):
     """GET returns saved comprehension when one exists."""
-    from castor.scheduling.models import ProjectComprehension
+    from scheduling.models import ProjectComprehension
 
     user = UserFactory()
     project = ProjectFactory(owner=user)
@@ -273,7 +273,7 @@ def test_comprehension_view_post_returns_valid_result(client):
     )
 
     url = f"/castor/projects/{project.pk}/schedule/comprehension/"
-    with patch("castor.scheduling.services.comprehension.get_llm") as mock_llm:
+    with patch("scheduling.services.comprehension.get_llm") as mock_llm:
         mock_llm.return_value.invoke.return_value = mock_response
         r = client.post(url, content_type="application/json")
 

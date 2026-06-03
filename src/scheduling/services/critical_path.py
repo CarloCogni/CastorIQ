@@ -50,7 +50,7 @@ def compute_critical_path(project_id: str) -> dict:
         task_data          — {str(task_id): {early_start, early_finish,
                               late_start, late_finish, total_float, is_critical}}
     """
-    from castor.scheduling.models import Task, TaskDependency
+    from scheduling.models import Task, TaskDependency
 
     from .utils import get_project_data_date
 

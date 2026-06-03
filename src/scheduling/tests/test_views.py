@@ -149,7 +149,7 @@ class ScheduleSaveTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_saves_tasks_to_db(self):
-        from castor.scheduling.models import Task
+        from scheduling.models import Task
 
         self._seed_session(
             [
@@ -189,7 +189,7 @@ class ScheduleSaveTests(TestCase):
         self.assertNotIn(session_key, self.client.session)
 
     def test_saves_multiple_tasks(self):
-        from castor.scheduling.models import Task
+        from scheduling.models import Task
 
         self._seed_session(
             [
@@ -210,7 +210,7 @@ class ScheduleSaveTests(TestCase):
         self.assertEqual(Task.objects.filter(project=self.project).count(), 5)
 
     def test_saves_xer_dependencies(self):
-        from castor.scheduling.models import TaskDependency
+        from scheduling.models import TaskDependency
 
         self._seed_session(
             tasks_data=[

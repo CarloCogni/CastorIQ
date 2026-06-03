@@ -52,7 +52,7 @@ def compute_schedule_intelligence(project_id: str) -> dict:
 
 def _build_cpm_summary(project_id: str) -> dict:
     """Return CPM summary from Task CPM fields, triggering a recompute if absent."""
-    from castor.scheduling.models import Task
+    from scheduling.models import Task
 
     tasks = list(
         Task.objects.filter(project_id=project_id, is_non_physical=False)
@@ -246,7 +246,7 @@ def _compute_wbs_risk(project_id: str, evm_data: dict) -> list[dict]:
 
     All component sub-scores are clamped to [0, 100] before weighting.
     """
-    from castor.scheduling.models import Task
+    from scheduling.models import Task
 
     from .calendar_utils import load_project_calendars, task_cal
     from .evm import _earned_pct_at, _planned_pct_at

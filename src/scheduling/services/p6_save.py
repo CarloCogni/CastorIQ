@@ -29,7 +29,7 @@ def save_p6_pending_data(project, aux_data: dict) -> None:
         aux_data: Dict returned by parse_p6xml — must contain 'wbs_nodes' and
                   'resource_assignments' lists.
     """
-    from castor.scheduling.models import P6Calendar, P6ResourceAssignment, P6WBSNode
+    from scheduling.models import P6Calendar, P6ResourceAssignment, P6WBSNode
 
     # Clear any unconfirmed records from a previous upload session.
     P6WBSNode.objects.filter(project=project, is_pending=True).delete()
@@ -114,7 +114,7 @@ def finalise_p6_data(
         p6_obj_id_map:  {p6_activity_object_id: str(task.pk)} — built by
                         TaskSaveView during the task upsert loop.
     """
-    from castor.scheduling.models import P6Calendar, P6ResourceAssignment, P6WBSNode
+    from scheduling.models import P6Calendar, P6ResourceAssignment, P6WBSNode
 
     # Delete old confirmed records before promoting the new pending ones.
     old_wbs = P6WBSNode.objects.filter(project=project, is_pending=False).count()

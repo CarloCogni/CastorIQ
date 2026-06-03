@@ -351,7 +351,7 @@ class BuildSequenceView(ProjectAccessMixin, View):
             return JsonResponse({"levels": []})
 
         from ifc_processor.models import IFCEntity
-        from castor.ifc_insights.models import Level
+        from model_quality.models import Level
 
         level_z: dict[str, float] = {
             lvl.name: lvl.z_elevation for lvl in Level.objects.filter(project=project)
@@ -431,7 +431,7 @@ class ElementPropertiesView(ProjectAccessMixin, View):
         if entity.spatial_container_id and entity.spatial_container.entity_id:
             location = entity.spatial_container.entity.name or None
 
-        from castor.scheduling.models import TaskEntityBinding
+        from scheduling.models import TaskEntityBinding
 
         bindings = (
             TaskEntityBinding.objects.filter(
@@ -481,7 +481,7 @@ class TimelineView(ProjectAccessMixin, View):
         from collections import defaultdict
 
         from ifc_processor.models import IFCEntity as IFCEntityModel
-        from castor.scheduling.models import Task, TaskEntityBinding
+        from scheduling.models import Task, TaskEntityBinding
 
         project = self.get_project()
 
@@ -912,8 +912,8 @@ class ExportReportView(ProjectAccessMixin, View):
     """GET -- generate and download a standalone HTML stakeholder report."""
 
     def get(self, request, **kwargs: object) -> HttpResponse:
-        from castor.scheduling.models import Task, TaskDependency
-        from castor.scheduling.services.evm import compute_evm, compute_wbs_heatmap
+        from scheduling.models import Task, TaskDependency
+        from scheduling.services.evm import compute_evm, compute_wbs_heatmap
 
         project = self.get_project()
         tasks = list(

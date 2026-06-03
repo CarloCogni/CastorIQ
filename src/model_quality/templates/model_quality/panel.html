@@ -25,7 +25,7 @@
                     <i class="bi bi-lightning me-1"></i>Legacy Engine
                 </button>
             </div>
-            {% include "ifc_insights/components/export_btn.html" %}
+            {% include "model_quality/components/export_btn.html" %}
             <button class="btn btn-sm btn-outline-secondary"
                     hx-get="{% url 'castor:insights_rerun' project.pk %}"
                     hx-target="#ifc-insights-panel"
@@ -108,7 +108,7 @@
             </div>
         </div>
         <div class="col-md-4">
-            {% include "ifc_insights/components/progress_ring.html" %}
+            {% include "model_quality/components/progress_ring.html" %}
         </div>
     </div>
 
@@ -151,7 +151,7 @@
 
     <!-- ── Non-Physical Tasks panel ──────────────────────────────────────── -->
     {% if np_total %}
-    {% include "ifc_insights/components/non_physical_panel.html" %}
+    {% include "model_quality/components/non_physical_panel.html" %}
     {% endif %}
 
 </div>

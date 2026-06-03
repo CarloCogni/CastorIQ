@@ -16,9 +16,9 @@ import datetime
 import pytest
 
 from environments.tests.factories import ProjectFactory
-from castor.scheduling.services.column_mapper import _parse_pct, apply_mapping
-from castor.scheduling.services.evm import _earned_pct_at, compute_evm
-from castor.scheduling.tests.factories import TaskFactory
+from scheduling.services.column_mapper import _parse_pct, apply_mapping
+from scheduling.services.evm import _earned_pct_at, compute_evm
+from scheduling.tests.factories import TaskFactory
 
 # ---------------------------------------------------------------------------
 # _parse_pct — no DB

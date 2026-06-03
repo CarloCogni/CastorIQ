@@ -41,7 +41,7 @@ def _pert_int(a: float, m: float, b: float, _bv=random.betavariate) -> int:
 
 def _load_data(project_id: str) -> tuple[list[dict], list[dict]]:
     """Return (task_rows, dep_rows) for *project_id*."""
-    from castor.scheduling.models import Task, TaskDependency
+    from scheduling.models import Task, TaskDependency
 
     task_rows = list(
         Task.objects.filter(project_id=project_id, is_non_physical=False)

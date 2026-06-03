@@ -372,7 +372,7 @@ def _keyword_match(name: str) -> tuple[str, str] | None:
 
 
 def _run_stage1(project_id: str) -> list[_Candidate]:
-    from castor.scheduling.models import Task
+    from scheduling.models import Task
 
     tasks = list(
         Task.objects.filter(project_id=project_id, is_non_physical=False)

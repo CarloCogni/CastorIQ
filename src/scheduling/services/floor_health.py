@@ -197,7 +197,7 @@ def compute_floor_health(project_id: str, override_map: dict | None = None) -> d
         floors      — list[dict], sorted top floor first (R02 → B03)
         as_of       — ISO date string
     """
-    from castor.scheduling.models import Task, TaskDependency
+    from scheduling.models import Task, TaskDependency
 
     from .anomaly_detect import detect_anomalies
     from .completion_ml import predict_all_incomplete

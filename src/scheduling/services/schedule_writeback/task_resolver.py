@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 
 from django.db.models import Q
 
-from castor.scheduling.models import Task
+from scheduling.models import Task
 
 logger = logging.getLogger(__name__)
 

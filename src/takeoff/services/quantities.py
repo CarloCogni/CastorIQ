@@ -124,7 +124,7 @@ def compute_qto(project) -> dict:
     Idempotent: preserves existing unit_costs_json across re-computations.
     """
     from ifc_processor.models import IFCEntity, IFCFile, IFCSpatialElement
-    from castor.ifc_insights.models import QTOCache
+    from takeoff.models import QTOCache
 
     ifc_file = (
         IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
