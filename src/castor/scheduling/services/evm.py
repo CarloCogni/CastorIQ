@@ -1,34 +1,10 @@
 # castor/scheduling/services/evm.py
 """Earned Value Management (EVM) — PV, EV, AC, SPI, CPI, S-curve series.
 
-Input-integrity principle
--------------------------
-Every metric declares its required inputs.  If inputs are absent or
-incomplete, the metric is disabled with a plain explanation — never
-fabricated and never silently derived from a proxy.
-
-Metric requirements
--------------------
-  BAC / PV / EV / SPI / SV
-      Require planned cost on activities (task.cost from resource
-      assignments or QTO estimates).  If cost covers only a subset of
-      tasks, the values are reported WITH a coverage notice.
-
-  AC / CPI / CV / EAC / VAC
-      Require REAL actual cost from P6ResourceAssignment.actual_cost.
-      If none is imported, these metrics are DISABLED — never estimated
-      from a formula such as EV × k.
-
-  SPI / PV / EV
-      Also require actual progress data (actual_start / actual_end /
-      status).  If 0% actuals exist, EV = 0 and SPI is reported as-is
-      (not fabricated).
-
-Duration fallback
------------------
-  When no cost exists at all, a duration-weighted proxy is computed and
-  returned with cost_basis="task durations" and use_cost=False.  Callers
-  and the UI must surface this clearly — these are NOT monetary EVM numbers.
+Every metric declares required inputs; missing inputs produce explicit N/A rather
+than fabricated values. AC/CPI/EAC require real P6ResourceAssignment actual costs
+and are disabled when absent. When no cost data exists, a duration-weighted proxy
+is returned with cost_basis="task durations" and use_cost=False.
 """
 
 from __future__ import annotations
@@ -40,9 +16,6 @@ from .calendar_utils import load_project_calendars, task_cal, working_day_diff
 from .utils import get_project_data_date
 
 logger = logging.getLogger(__name__)
-
-
-# ── Actual-cost loader ────────────────────────────────────────────────────────
 
 
 def _load_actual_costs(task_pks: list[str]) -> dict[str, float]:
@@ -64,9 +37,6 @@ def _load_actual_costs(task_pks: list[str]) -> dict[str, float]:
     except Exception as exc:
         logger.debug("_load_actual_costs: %s", exc)
     return result
-
-
-# ── Progress helpers ──────────────────────────────────────────────────────────
 
 
 def _qto_task_costs(project_id: str, tasks: list) -> dict[str, float]:
@@ -215,9 +185,6 @@ def _task_delay_days(task, today: date, cal=None) -> int | None:
     return 0
 
 
-# ── Delay distribution ────────────────────────────────────────────────────────
-
-
 def compute_delay_distribution(project_id: str) -> dict:
     """Distribution of tasks across delay buckets for the Delay Chart."""
     from castor.scheduling.models import Task
@@ -274,8 +241,6 @@ def compute_delay_distribution(project_id: str) -> dict:
         "not_yet_due": not_yet_due,
     }
 
-
-# ── WBS heatmap ───────────────────────────────────────────────────────────────
 
 _STAGE_ORDER = ["substructure", "structure", "envelope", "mep", "finishes", "external", ""]
 _STAGE_LABELS = {
@@ -349,17 +314,11 @@ def compute_wbs_heatmap(project_id: str) -> list[dict]:
     return result
 
 
-# ── Main EVM computation ──────────────────────────────────────────────────────
-
-
 def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
     """Compute EVM metrics and weekly S-curve series for *project_id*.
 
-    Integrity contract
-    ------------------
     AC, CPI, CV, EAC, VAC require real actual cost from P6ResourceAssignment.
-    If no actual cost is imported these metrics are set to None in the response
-    and ac_available=False.  The caller/UI must surface a clear notice.
+    If absent: those metrics are None and ac_available=False.
 
     Returns a dict with:
         has_data           — bool
@@ -397,7 +356,6 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
         {str(t.pk): task_cal(t, cal_map) for t in tasks} if cal_map else {}
     )
 
-    # ── Planned-value basis: schedule costs → QTO → duration proxy ────────
     sched_costs = {str(t.pk): float(t.cost or 0) for t in tasks}
     total_sched = sum(sched_costs.values())
 
@@ -435,7 +393,6 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
         bac = sum(values.values())
         cost_basis = "task durations"
 
-    # ── Real actual costs from P6ResourceAssignment ───────────────────────
     task_pks = [str(t.pk) for t in tasks]
     actual_costs = _load_actual_costs(task_pks)
     ac_total = sum(actual_costs.values())
@@ -456,7 +413,6 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
     project_start = min(t.start_date for t in tasks)
     project_end = max(t.end_date for t in tasks)
 
-    # ── Date spine ────────────────────────────────────────────────────────
     spine_end = max(project_end, today)
     dates: list[date] = []
     cur = project_start
@@ -467,7 +423,6 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
         dates.append(spine_end)
     dates.sort()
 
-    # ── AC time series (real, cumulative by task completion date) ─────────
     # Each task's actual_cost is attributed to:
     #   - actual_end date (completed tasks)
     #   - today (active tasks that have started on or before as-of)
@@ -487,7 +442,6 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
                 ac_attribution.append((today, ta))
         ac_attribution.sort()
 
-    # ── Build series ──────────────────────────────────────────────────────
     pv_series: list[dict] = []
     ev_series: list[dict] = []
     ac_series: list[dict] = []
@@ -517,7 +471,6 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
                     {"date": d.isoformat(), "pct": round(cum_ac / bac * 100, 2) if bac else 0}
                 )
 
-    # ── As-of KPI scalars ─────────────────────────────────────────────────
     pv_today = sum(
         _planned_pct_at(t, today, task_cals.get(str(t.pk))) * values[str(t.pk)] for t in tasks
     )

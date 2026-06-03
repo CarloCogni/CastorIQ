@@ -2,16 +2,9 @@
 """Monthly Cash Flow Forecast.
 
 Distributes P6ResourceAssignment costs (planned / actual / remaining) into
-calendar-month buckets using linear time-proportional allocation, then builds
-cumulative S-curves and key financing metrics.
-
-Cost sources (in priority order):
-  1. P6ResourceAssignment.planned_cost / actual_cost / remaining_cost — imported
-     from Primavera P6 XML; authoritative for projects with resource data.
-  2. Task.cost fallback — used when no resource assignments exist.
-     Planned cost only.  Actual cost is NOT synthesised for in-progress tasks —
-     it is left as zero to avoid fabricating spend figures the data does not support.
-     Completed tasks get actual = planned (task is closed; full cost assumed spent).
+calendar-month buckets via linear time-proportional allocation, then builds
+cumulative S-curves and key financing metrics. Falls back to task.cost when no
+resource assignments exist; actual cost is never synthesised for in-progress tasks.
 """
 
 from __future__ import annotations
@@ -22,9 +15,6 @@ from datetime import date, timedelta
 from .utils import get_project_data_date
 
 logger = logging.getLogger(__name__)
-
-
-# ── Internal helpers ──────────────────────────────────────────────────────────
 
 
 def _next_month(d: date) -> date:
@@ -72,9 +62,6 @@ def _build_spine(
     return sorted(all_keys)
 
 
-# ── Public API ────────────────────────────────────────────────────────────────
-
-
 def compute_cashflow(project_id: str) -> dict:
     """Compute monthly cash flow for *project_id*.
 
@@ -101,7 +88,6 @@ def compute_cashflow(project_id: str) -> dict:
 
     task_map = {str(t.pk): t for t in tasks}
 
-    # ── Cost source: P6 assignments ───────────────────────────────────────
     ra_qs = (
         P6ResourceAssignment.objects.filter(project_id=project_id, is_pending=False)
         .values("task_id")
@@ -125,7 +111,6 @@ def compute_cashflow(project_id: str) -> dict:
 
     source = "p6_assignments"
 
-    # ── Fallback: Task.cost ───────────────────────────────────────────────
     if not task_costs:
         source = "task_cost"
         for t in tasks:
@@ -143,7 +128,6 @@ def compute_cashflow(project_id: str) -> dict:
     if not task_costs:
         return {"has_data": False}
 
-    # ── Build monthly buckets ─────────────────────────────────────────────
     planned_m: dict[str, float] = {}
     actual_m: dict[str, float] = {}
     forecast_m: dict[str, float] = {}
@@ -151,10 +135,8 @@ def compute_cashflow(project_id: str) -> dict:
     for pk, costs in task_costs.items():
         task = task_map[pk]
 
-        # 1. Planned — distribute over planned start → end
         _distribute_monthly(planned_m, costs["planned"], task.start_date, task.end_date)
 
-        # 2. Actual — distribute over actual date range
         if costs["actual"] > 0:
             if task.actual_start:
                 actual_end = task.actual_end if task.actual_end else today
@@ -168,7 +150,6 @@ def compute_cashflow(project_id: str) -> dict:
                 if task.start_date <= end_cap:
                     _distribute_monthly(actual_m, costs["actual"], task.start_date, end_cap)
 
-        # 3. Forecast — remaining cost from today forward via CPM dates
         if costs["remaining"] > 0 and task.status != "complete":
             fc_start = task.early_start or task.start_date
             fc_end = task.early_finish or task.end_date
@@ -177,7 +158,6 @@ def compute_cashflow(project_id: str) -> dict:
             if fc_start <= fc_end:
                 _distribute_monthly(forecast_m, costs["remaining"], fc_start, fc_end)
 
-    # ── Build spine and month series ──────────────────────────────────────
     spine = _build_spine(planned_m, actual_m, forecast_m)
     if not spine:
         return {"has_data": False}
@@ -213,7 +193,6 @@ def compute_cashflow(project_id: str) -> dict:
             }
         )
 
-    # ── Key metrics ───────────────────────────────────────────────────────
     bac = sum(c["planned"] for c in task_costs.values())
     ac_total = sum(c["actual"] for c in task_costs.values())
     remaining_total = sum(c["remaining"] for c in task_costs.values())

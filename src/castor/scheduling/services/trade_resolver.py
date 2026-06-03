@@ -1,26 +1,9 @@
 # castor/scheduling/services/trade_resolver.py
 """Single trade-resolution point — audit override layer on top of coded CSI.
 
-Every trade-based analytic calls resolve_csi() / resolve_csi_trade() instead
-of applying _CSI_RE directly.  With override_map=None (the default, used in
-As-coded mode) these functions are identical to the raw regex path — zero
-behavioural change.
-
-In Audit-suggested mode (?audit_view=corrected), the override_map contains
-{task_pk: ai_csi} entries built exclusively from CONFIRMED audit items.
-The map is applied on top of the original activity_code; task.activity_code
-is never modified.
-
-Public API
-----------
-  raw_csi(activity_code)                          — raw coded CSI, no override
-  resolve_csi(code, task_pk, override_map)        — coded CSI + optional override
-  resolve_csi_trade(code, task_pk, override_map)  — human-readable trade name
-  is_overridden(task_pk, override_map)            — True when override applied
-
-  build_override_map(audit_result)                — {task_pk: ai_csi} from confirmed items
-  save_override_map(project_pk, audit_result)     — build + persist in Django cache
-  load_override_map(project_pk)                   — retrieve from cache (or {})
+resolve_csi() / resolve_csi_trade() apply a {task_pk: ai_csi} override map built
+from confirmed audit items. With override_map=None (as-coded mode), behaviour is
+identical to the raw regex path. task.activity_code is never modified.
 """
 
 from __future__ import annotations
@@ -30,11 +13,9 @@ import re
 
 logger = logging.getLogger(__name__)
 
-# ── CSI regex (same pattern used across all consumer services) ─────────────────
 
 _CSI_RE = re.compile(r"-[A-Z]*(\d{2})\d{4}")
 
-# ── Trade name lookup — superset of all consumer tables ───────────────────────
 
 _TRADE_NAMES: dict[str, str] = {
     "00": "General",
@@ -64,16 +45,12 @@ _TRADE_NAMES: dict[str, str] = {
     "33": "Utilities",
 }
 
-# ── Cache config ───────────────────────────────────────────────────────────────
 
 _CACHE_PREFIX = "audit_overrides_"
 _CACHE_TTL = 7200  # 2 hours
 
 # Type alias
 OverrideMap = dict[str, str]  # {str(task.pk): "09"}
-
-
-# ── Core resolution ───────────────────────────────────────────────────────────
 
 
 def raw_csi(activity_code: str) -> str:
@@ -114,9 +91,6 @@ def is_overridden(task_pk: str, override_map: OverrideMap | None) -> bool:
 def trade_name(csi: str) -> str:
     """Trade name from a 2-digit CSI string."""
     return _TRADE_NAMES.get(csi, f"Div {csi}") if csi != "XX" else "Unknown"
-
-
-# ── Override map lifecycle ─────────────────────────────────────────────────────
 
 
 def build_override_map(audit_result: dict) -> OverrideMap:

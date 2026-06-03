@@ -6,8 +6,6 @@ Assembles three blocks:
   Block 2  Is the schedule built correctly?  (DCMA + anomaly detection)
   Block 3  What needs attention today?    (delay root-causes + ML watchlist, ranked)
 
-STRICT: every figure traces to a real query from an existing service.
-        No invented numbers. Missing sources produce "n/a", never a guess.
 """
 
 from __future__ import annotations
@@ -17,9 +15,6 @@ import math
 from datetime import date, timedelta
 
 logger = logging.getLogger(__name__)
-
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
 
 
 def _months_diff(later: date, earlier: date) -> float:
@@ -65,9 +60,6 @@ def _dcma_severity(score: int) -> str:
     return "red"
 
 
-# ── Block builders ────────────────────────────────────────────────────────────
-
-
 def _build_block1(evm: dict, drc: dict, mc: dict) -> dict:
     """Performance block: where is the project headed?
 
@@ -98,7 +90,6 @@ def _build_block1(evm: dict, drc: dict, mc: dict) -> dict:
     # Sane horizon: forecast beyond this is a formula artefact, not a prediction.
     sane_horizon = baseline + timedelta(days=(baseline - start).days * 3)
 
-    # ── Performance label ─────────────────────────────────────────────────
     if spi >= 1.02:
         perf_label = "Ahead of schedule"
     elif spi >= 0.95:
@@ -108,7 +99,6 @@ def _build_block1(evm: dict, drc: dict, mc: dict) -> dict:
     else:
         perf_label = "Significantly behind schedule"
 
-    # ── Forecast date — guarded against EV=0 and low-SPI blowup ─────────
     # EV=0  → SPI=0, the formula produces elapsed × (1/ε) → nonsense decades.
     # EV>0 but forecast exceeds sane_horizon → SPI signal too weak to extrapolate.
     # In both cases we emit an honest disclosure and suppress the numeric date.
@@ -131,7 +121,6 @@ def _build_block1(evm: dict, drc: dict, mc: dict) -> dict:
             else:
                 var_str = f"Forecast finish {_fmt_month(forecast)} — on or near baseline ({_fmt_month(baseline)})."
 
-    # ── Biggest delay driver ──────────────────────────────────────────────
     biggest_driver = None
     driver_str = ""
     if drc.get("has_data"):
@@ -152,14 +141,12 @@ def _build_block1(evm: dict, drc: dict, mc: dict) -> dict:
                 f" affecting {top['downstream_count']} downstream activities."
             )
 
-    # ── Monte Carlo P80 ───────────────────────────────────────────────────
     mc_p80 = None
     mc_p80_delta = None
     if mc.get("has_data"):
         mc_p80 = mc["p80"]
         mc_p80_delta = mc["p80_delta"]
 
-    # ── Divergence detection ──────────────────────────────────────────────
     # When the network-based MC projects meaningfully late (>60d) while SPI
     # suggests ahead, the MC is the more reliable basis for planning.  Leading
     # with "Ahead of schedule" in that case actively misleads reviewers.
@@ -243,7 +230,6 @@ def _build_block2(dcma: dict, anomaly: dict) -> dict:
 
     logic_total = fs_violations + unrealistic_baselines
 
-    # ── Quality label ─────────────────────────────────────────────────────
     if score >= 80:
         q_label = "Good"
     elif score >= 60:
@@ -251,7 +237,6 @@ def _build_block2(dcma: dict, anomaly: dict) -> dict:
     else:
         q_label = "At Risk"
 
-    # ── Error breakdown ───────────────────────────────────────────────────
     error_parts: list[str] = []
     if fs_violations:
         error_parts.append(f"{fs_violations} FS violation{'s' if fs_violations != 1 else ''}")
@@ -308,7 +293,6 @@ def _build_block3(drc: dict, ml: dict) -> dict:
     """
     seen_pks: set[str] = set()
 
-    # ── Slots 1-3: delay root-causes ─────────────────────────────────────
     delay_slots: list[dict] = []
     if drc.get("has_data"):
         for rc in drc.get("root_causes", []):
@@ -334,7 +318,6 @@ def _build_block3(drc: dict, ml: dict) -> dict:
                 }
             )
 
-    # ── Slots 4-5: ML forward-risk — near-critical only (float ≤ 10 wd) ─────
     # Tasks with comfortably positive float must not appear under "AT-RISK".
     # near_critical flag is set by completion_ml.py at the same threshold (10 wd).
     ml_slots: list[dict] = []
@@ -366,9 +349,6 @@ def _build_block3(drc: dict, ml: dict) -> dict:
 
     ranked = [{**item, "rank": i} for i, item in enumerate(delay_slots + ml_slots, start=1)]
     return {"items": ranked}
-
-
-# ── Public entry point ────────────────────────────────────────────────────────
 
 
 def compute_decision_summary(project_id: str) -> dict:

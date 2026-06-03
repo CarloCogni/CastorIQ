@@ -1,15 +1,9 @@
 # castor/scheduling/services/anomaly_detect.py
-"""Anomaly detection — single-snapshot, three methods.
+"""Anomaly detection — single-snapshot rule + robust-statistics outliers.
 
-Detection method: rule + robust-statistics outlier detection on a single schedule snapshot.
-NOT temporal pattern learning. No time-series. No trained model that "learned normal".
-
-Modules:
-  1. Stall detection      — started tasks exceeding planned duration without completing.
-  2. Cross-sectional      — robust z-score (MAD) outliers within CSI trade peer groups
-                           on three axes: planned_duration, total_float, finish_variance.
-  3. Logic anomalies      — structural schedule errors:
-                             mid-network orphans, FS-link violations, circular dependencies.
+Detects stalls (elapsed ≥ 2× planned), cross-sectional MAD outliers within CSI trade
+peer groups (planned_duration / total_float / finish_variance axes), and structural
+logic errors (mid-network orphans, FS violations, circular dependencies).
 """
 
 from __future__ import annotations
@@ -83,7 +77,6 @@ _CONSTRUCTION_CSI: frozenset[str] = frozenset(
     }
 )
 # Planned durations ≤ this many days on a real construction task = baseline data quality issue.
-# Confirmed against project data: 1-4d construction tasks showed 190–335× overruns —
 # unrealistic plans, not blocked tasks. 5d+ is considered a plausible planned duration.
 _UNREALISTIC_DURATION_MAX_DAYS: int = 4
 
@@ -107,9 +100,6 @@ def _robust_z(value: float, median: float, mad: float) -> float:
     if mad == 0.0:
         return 0.0
     return abs(value - median) / (mad * 1.4826)
-
-
-# ── 1. Execution anomalies (running-long + unrealistic baseline) ──────────────
 
 
 def _classify_stall_anomalies(
@@ -208,9 +198,6 @@ def _classify_stall_anomalies(
     running_long.sort(key=lambda x: -x["overrun_ratio"])
     unrealistic_baseline.sort(key=lambda x: -x["overrun_ratio"])
     return running_long, unrealistic_baseline
-
-
-# ── 2. Cross-sectional outliers ───────────────────────────────────────────────
 
 
 def _detect_cross_sectional(
@@ -362,9 +349,6 @@ def _detect_cross_sectional(
     return results
 
 
-# ── 3. Logic anomalies ────────────────────────────────────────────────────────
-
-
 def _find_cycles_kahn(adj: dict[str, list[str]]) -> set[str]:
     """Return task PKs involved in cycles via Kahn's topological sort.
 
@@ -418,7 +402,6 @@ def _detect_logic_anomalies(tasks: list, deps: list) -> list[dict]:
         if d.dep_type == "FS":
             fs_deps.append(d)
 
-    # ── 3a. Mid-network orphans ───────────────────────────────────────
     min_start = min((t.start_date for t in tasks if t.start_date), default=date.min)
     cutoff = min_start + timedelta(days=_START_WINDOW_DAYS)
     for t in tasks:
@@ -450,7 +433,6 @@ def _detect_logic_anomalies(tasks: list, deps: list) -> list[dict]:
             }
         )
 
-    # ── 3b. FS violations ─────────────────────────────────────────────
     fs_violations: list[dict] = []
     for d in fs_deps:
         pred_pk = str(d.predecessor_id)
@@ -495,7 +477,6 @@ def _detect_logic_anomalies(tasks: list, deps: list) -> list[dict]:
     fs_violations.sort(key=lambda x: -x["value"])
     results.extend(fs_violations)
 
-    # ── 3c. Circular dependencies ─────────────────────────────────────
     for pk in _find_cycles_kahn(adj):
         t = task_map.get(pk)
         if not t:
@@ -520,9 +501,6 @@ def _detect_logic_anomalies(tasks: list, deps: list) -> list[dict]:
         )
 
     return results
-
-
-# ── Main entry point ──────────────────────────────────────────────────────────
 
 
 def detect_anomalies(project_id: str, override_map: dict | None = None) -> dict:

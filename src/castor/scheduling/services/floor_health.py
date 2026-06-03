@@ -1,20 +1,9 @@
 # castor/scheduling/services/floor_health.py
-"""Per-floor Project Health Matrix — two independent diagnostic axes per floor.
+"""Per-floor Project Health Matrix — Build Quality and Project Status per floor.
 
-Cell 1  Build Quality   — is the schedule CONSTRUCTED correctly on this floor?
-        Sources: DCMA-style logic gaps (missing pred/succ, hard constraints),
-                 anomaly flags (stall / stat-outlier / FS-violation / etc.),
-                 peer-comparison gaps (CSI codes present on >=60% of floors but absent here).
-
-Cell 2  Project Status  — where is this floor HEADED?
-        Sources: finish variance on completed tasks (delay breadth + severity),
-                 ML P(on-time) averaged across incomplete floor tasks.
-
-The two cells are intentionally independent: a floor can be well-built but behind
-schedule, or poorly-built but currently on time.
-
-Reuses: detect_anomalies(), predict_all_incomplete()
-        Direct Task/TaskDependency queries for DCMA-style logic checks and delay stats.
+Build Quality scores DCMA-style logic gaps, structural anomalies, and peer-band
+CSI gaps. Project Status scores delay breadth on completed tasks and ML P(on-time)
+for incomplete ones. Both axes are independent by design.
 """
 
 from __future__ import annotations
@@ -25,7 +14,6 @@ from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
-# ── Floor extraction (mirrors timelocation.py and completion_ml.py) ───────────
 
 _FLOOR_RE = re.compile(r"^(B0?[1-3]|L\d{1,2}|R0?[1-2])", re.IGNORECASE)
 _FLOOR_ORDINALS: dict[str, int] = {
@@ -217,7 +205,6 @@ def compute_floor_health(project_id: str, override_map: dict | None = None) -> d
 
     today, _ = get_project_data_date(project_id)
 
-    # ── 1. Load all physical tasks with date data ─────────────────────────────
     all_tasks = list(
         Task.objects.filter(project_id=project_id, is_non_physical=False)
         .exclude(start_date=None)
@@ -253,7 +240,6 @@ def compute_floor_health(project_id: str, override_map: dict | None = None) -> d
     if not floor_tasks:
         return {"has_data": False}
 
-    # ── 2. Dependency sets for logic-gap checks ───────────────────────────────
     all_pks = list(pk_to_floor.keys())
     tasks_with_predecessors: set[str] = {
         str(pk)
@@ -268,7 +254,6 @@ def compute_floor_health(project_id: str, override_map: dict | None = None) -> d
         .distinct()
     }
 
-    # ── 3. Anomaly data — logic anomalies only for Build Quality ─────────────
     # running_long and statistical_outliers measure execution risk → Project Status.
     # Build Quality only counts structural/data-quality errors: FS violations,
     # unrealistic baselines, mid-network orphans, circular dependencies.
@@ -280,14 +265,12 @@ def compute_floor_health(project_id: str, override_map: dict | None = None) -> d
             if pk in pk_to_floor:
                 anomaly_by_pk[pk].append(item)
 
-    # ── 4. ML predictions — all incomplete tasks ──────────────────────────────
     ml_by_pk: dict[str, float] = {}
     for pred in predict_all_incomplete(project_id):
         pk = pred["task_pk"]
         if pk in pk_to_floor:
             ml_by_pk[pk] = pred["probability_on_time"]
 
-    # ── 5. Cross-floor CSI peer-comparison — within structural band ───────────
     # Floors are grouped into three structural bands: B (basement), L (typical), R (roof).
     # A trade is "expected" on a floor only when >=60 % of that floor's OWN BAND have it.
     # This prevents naturally-absent trades (e.g. no Masonry on a roof floor) from
@@ -325,7 +308,6 @@ def compute_floor_health(project_id: str, override_map: dict | None = None) -> d
         else:
             band_expected_csi[band] = set()  # too few floors for meaningful comparison
 
-    # ── 6. Compute per-floor scores ───────────────────────────────────────────
     results: list[dict] = []
 
     for tok in data_floors:
@@ -333,7 +315,6 @@ def compute_floor_health(project_id: str, override_map: dict | None = None) -> d
         n_tasks = len(tasks)
         task_pks = {str(t.pk) for t in tasks}
 
-        # ── Cell 1: Build Quality ─────────────────────────────────────────────
         no_pred = [t for t in tasks if str(t.pk) not in tasks_with_predecessors]
         no_succ = [t for t in tasks if str(t.pk) not in tasks_with_successors]
         hard_constrained = [t for t in tasks if (t.constraint_type or "") in _HARD_CONSTRAINT_TYPES]
@@ -388,7 +369,6 @@ def compute_floor_health(project_id: str, override_map: dict | None = None) -> d
                     bq_worst.append({"pk": pk, "name": task.name[:60], "issue": types})
                     seen_bq.add(pk)
 
-        # ── Cell 2: Project Status ────────────────────────────────────────────
         completed_tasks = [t for t in tasks if t.actual_end is not None]
         n_completed = len(completed_tasks)
 

@@ -124,7 +124,6 @@ def run_dcma_check(project_id: str) -> dict:
 
     checks: list[_Check] = []
 
-    # ── 1. Logic — open-end activities ───────────────────────────────────
     tasks_with_predecessors = {str(d["successor_id"]) for d in all_deps}
     tasks_with_successors = {str(d["predecessor_id"]) for d in all_deps}
 
@@ -152,7 +151,6 @@ def run_dcma_check(project_id: str) -> dict:
         )
     )
 
-    # ── 2. Leads — negative-lag relationships ────────────────────────────
     leads = [d for d in all_deps if d["lag_days"] < 0]
     lead_count = len(leads)
 
@@ -177,7 +175,6 @@ def run_dcma_check(project_id: str) -> dict:
         )
     )
 
-    # ── 3. Lags — positive-lag relationships ─────────────────────────────
     lags = [d for d in all_deps if d["lag_days"] > 0]
     lag_pct = round(len(lags) / dep_count * 100, 1) if dep_count else 0.0
     status, score = _check_pct(lag_pct, 5.0, 15.0)
@@ -196,7 +193,6 @@ def run_dcma_check(project_id: str) -> dict:
         )
     )
 
-    # ── 4. Relationship Types — non-Finish-to-Start ───────────────────────
     non_fs = [d for d in all_deps if d["dep_type"] != "FS"]
     non_fs_pct = round(len(non_fs) / dep_count * 100, 1) if dep_count else 0.0
     status, score = _check_pct(non_fs_pct, 10.0, 30.0)
@@ -215,7 +211,6 @@ def run_dcma_check(project_id: str) -> dict:
         )
     )
 
-    # ── 5. Hard Constraints — MFO / MSO ──────────────────────────────────
     hard_constrained = [t for t in tasks if (t.constraint_type or "") in _HARD_CONSTRAINT_TYPES]
     hc_pct = round(len(hard_constrained) / task_count * 100, 1)
     status, score = _check_pct(hc_pct, 5.0, 15.0)
@@ -235,7 +230,6 @@ def run_dcma_check(project_id: str) -> dict:
         )
     )
 
-    # ── 6. High Float — TF > 44 working days (incomplete tasks only) ────────
     # DCMA applies to the open schedule — completed tasks retain historical float
     # values that are no longer meaningful for schedule quality assessment.
     if not cpm_run:
@@ -272,7 +266,6 @@ def run_dcma_check(project_id: str) -> dict:
             )
         )
 
-    # ── 7. Negative Float — TF < 0 ───────────────────────────────────────
     if not cpm_run:
         checks.append(
             _Check(
@@ -317,7 +310,6 @@ def run_dcma_check(project_id: str) -> dict:
             )
         )
 
-    # ── 8. High Duration — > 44 working days ─────────────────────────────
     def _task_dur_wd(t):
         return _working_days(t.start_date, t.end_date, task_cal(t, cal_map) if cal_map else None)
 
@@ -341,7 +333,6 @@ def run_dcma_check(project_id: str) -> dict:
         )
     )
 
-    # ── 9. Invalid Dates ──────────────────────────────────────────────────
     invalid = []
     for t in tasks:
         if t.end_date < t.start_date:
@@ -376,7 +367,6 @@ def run_dcma_check(project_id: str) -> dict:
         )
     )
 
-    # ── 10. Resources — no cost or resource assignment ────────────────────
     resource_task_pks = set(
         str(pk)
         for pk in P6ResourceAssignment.objects.filter(task_id__in=task_pks)
@@ -403,7 +393,6 @@ def run_dcma_check(project_id: str) -> dict:
         )
     )
 
-    # ── 11. Missed Tasks — past planned finish, not complete ──────────────
     due_tasks = [t for t in tasks if t.end_date <= today]
     missed = [t for t in due_tasks if t.status != "complete"]
 
@@ -431,7 +420,6 @@ def run_dcma_check(project_id: str) -> dict:
         )
     )
 
-    # ── 12. Critical Path Test — connected critical chain ─────────────────
     critical_tasks = [t for t in tasks if t.is_critical]
     crit_pks = {str(t.pk) for t in critical_tasks}
 
@@ -490,7 +478,6 @@ def run_dcma_check(project_id: str) -> dict:
         )
     )
 
-    # ── 13. CPLI — Critical Path Length Index ─────────────────────────────
     # CPLI = (CPL + TF_finish) / CPL
     # CPL        = remaining working days today → project planned end
     # TF_finish  = total float of the latest-finishing critical task
@@ -533,7 +520,6 @@ def run_dcma_check(project_id: str) -> dict:
         )
     )
 
-    # ── 14. BEI — Baseline Execution Index ───────────────────────────────
     # BEI = activities completed on time / activities planned to complete by data date
     planned_done = [t for t in tasks if t.end_date <= today]
     actual_done = [t for t in planned_done if t.status == "complete"]
@@ -564,7 +550,6 @@ def run_dcma_check(project_id: str) -> dict:
         )
     )
 
-    # ── Overall Health Score ───────────────────────────────────────────────
     health_score = round(sum(c.score for c in checks) / len(checks) * 100)
     pass_count = sum(1 for c in checks if c.status == "pass")
     warn_count = sum(1 for c in checks if c.status == "warning")

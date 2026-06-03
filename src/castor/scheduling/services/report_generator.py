@@ -1,30 +1,9 @@
 # castor/scheduling/services/report_generator.py
-"""Executive / Monthly Report Generator.
+"""Executive Report Generator — PDF (pymupdf Story) and DOCX (python-docx) output.
 
-Generates professional PDF and DOCX reports from existing analytics services.
-Every figure traces to a real service call — nothing is fabricated.
-
-Supported formats
------------------
-  pdf   — HTML → PDF via pymupdf (fitz) Story renderer. No extra install needed.
-  docx  — python-docx. Clean tables and styled headings.
-
-Available sections (canonical order)
---------------------------------------
-  executive_summary   Decision-layer prose (3 blocks)
-  evm_performance     EVM KPI table + interpretation
-  schedule_quality    DCMA 14-point check table
-  delay_analysis      Top-10 delay root-causes
-  risk_forecast       ML watchlist (near-critical, low P(on-time))
-  anomalies           Counts + worst examples per category
-  floor_health        Per-floor Build Quality vs Project Status
-  cash_flow           Metrics + monthly disbursement table
-
-Usage
------
-  data = gather_report_data(project_id, sections)
-  pdf_bytes  = render_pdf(data, sections)
-  docx_bytes = render_docx(data, sections)
+Assembles sections from existing analytics services; every figure traces to a real
+service call. Sections: executive_summary, evm_performance, schedule_quality,
+delay_analysis, risk_forecast, anomalies, schedule_audit, floor_health, cash_flow.
 """
 
 from __future__ import annotations
@@ -36,7 +15,6 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# ── Section registry ──────────────────────────────────────────────────────────
 
 ALL_SECTIONS: tuple[str, ...] = (
     "executive_summary",
@@ -67,9 +45,6 @@ REPORT_TYPES: dict[str, tuple[str, ...]] = {
     # "weekly":  ("executive_summary", "evm_performance"),   # phase 2
     # "daily":   ("executive_summary",),                     # phase 2
 }
-
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
 
 
 def _fmt_num(v: float | None, decimals: int = 0) -> str:
@@ -137,9 +112,6 @@ def _safe(fn: Any, *args: Any, **kwargs: Any) -> dict:
     except Exception:
         logger.exception("report_generator: %s failed", getattr(fn, "__name__", fn))
         return {"has_data": False}
-
-
-# ── Data gathering ────────────────────────────────────────────────────────────
 
 
 def gather_report_data(project_id: str, sections: tuple[str, ...]) -> dict:
@@ -214,8 +186,6 @@ def gather_report_data(project_id: str, sections: tuple[str, ...]) -> dict:
 
     return data
 
-
-# ── PDF renderer (pymupdf Story) ──────────────────────────────────────────────
 
 _PDF_CSS = """
 body {
@@ -313,12 +283,9 @@ def _html_executive_summary(data: dict) -> str:
         return f'<span class="{sev_cls.get(sev, "muted")}">{labels.get(sev, "")}</span>'
 
     html = ""
-    # Block 1
     html += f"<p><b>{sev_label(b1.get('severity', ''))} {_esc(b1.get('sentence', ''))}</b></p>\n"
-    # Block 2
     html += f"<p><b>{sev_label(b2.get('severity', ''))} {_esc(b2.get('sentence', ''))}</b></p>\n"
 
-    # Block 3 — top-5 table
     items = b3.get("items", [])
     if items:
         html += "<p><b>Top 5 — Needs Attention</b></p>\n"
@@ -788,9 +755,6 @@ def render_pdf(data: dict, sections: tuple[str, ...]) -> bytes:
     return buf.getvalue()
 
 
-# ── DOCX renderer (python-docx) ───────────────────────────────────────────────
-
-
 def _docx_heading(doc: Any, text: str, level: int = 1) -> None:
     """Add a heading paragraph to the document."""
     from docx.shared import Pt, RGBColor
@@ -811,7 +775,6 @@ def _docx_table(doc: Any, headers: list[str], rows: list[list[str]]) -> None:
     tbl = doc.add_table(rows=1, cols=len(headers))
     tbl.style = "Table Grid"
 
-    # Header row
     hdr_row = tbl.rows[0]
     for j, h in enumerate(headers):
         cell = hdr_row.cells[j]
@@ -828,7 +791,6 @@ def _docx_table(doc: Any, headers: list[str], rows: list[list[str]]) -> None:
         shd.set(qn("w:fill"), "1E3A5F")
         tc_pr.append(shd)
 
-    # Data rows
     for i, row in enumerate(rows):
         tr = tbl.add_row()
         for j, cell_text in enumerate(row):
@@ -869,7 +831,6 @@ def render_docx(data: dict, sections: tuple[str, ...]) -> bytes:
         section.left_margin = Inches(1.0)
         section.right_margin = Inches(1.0)
 
-    # ── Header ────────────────────────────────────────────────────────────────
     pn = data["_project_name"]
     rd = _fmt_date(data["_report_date"])
     aof = _fmt_date(data["_as_of"])
@@ -915,7 +876,6 @@ def render_docx(data: dict, sections: tuple[str, ...]) -> bytes:
 
         _docx_heading(doc, title_text, level=1)
 
-        # ── Section content ────────────────────────────────────────────────
         if key == "executive_summary":
             d = data.get("decision", {})
             if not d.get("has_data"):
@@ -1224,9 +1184,6 @@ def render_docx(data: dict, sections: tuple[str, ...]) -> bytes:
     return buf.getvalue()
 
 
-# ── Public API ────────────────────────────────────────────────────────────────
-
-
 def generate_report(
     project_id: str,
     fmt: str = "pdf",
@@ -1235,12 +1192,8 @@ def generate_report(
 ) -> tuple[bytes, str]:
     """Generate a report and return (bytes, filename).
 
-    Parameters
-    ----------
-    project_id  : project UUID string
-    fmt         : 'pdf' or 'docx'
-    report_type : key in REPORT_TYPES (currently 'executive' only)
-    sections    : list of section keys to include; None = all for this report type
+    fmt: 'pdf' or 'docx'. report_type: key in REPORT_TYPES ('executive').
+    sections: list of section keys to include; None = all for this report type.
     """
     from environments.models import Project
 

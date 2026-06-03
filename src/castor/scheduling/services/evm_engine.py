@@ -1,37 +1,10 @@
 # castor/scheduling/services/evm_engine.py
-"""EVM Intelligence Layer — Sprint 1.
+"""EVM Intelligence Layer — Critical Path summary, Earned Schedule, and WBS risk scores.
 
-Three analytics modules, each independently callable or as one composite call:
-
-    compute_schedule_intelligence(project_id) -> dict
-
-Exposed via GET /castor/projects/<pk>/schedule/intelligence/.
-
-Module 1 — Critical Path summary
-    Reads CPM fields already persisted on Task by compute_critical_path().
-    Triggers a fresh CPM run if the fields are absent.  Returns the list
-    of critical activities with float, dates, and status.
-
-Module 2 — Earned Schedule (ES)
-    Time-based schedule efficiency derived from the S-curve produced by
-    compute_evm().  Formulae follow the PMI Earned Schedule Practice
-    Standard:
-
-        AT   = Actual Time elapsed (project_start → data_date)
-        ES   = interpolated point on the PV curve where PV% = today's EV%
-        SPI(t) = ES / AT           (>1 = ahead, <1 = behind)
-        SV(t)  = ES − AT           (days ahead or behind schedule)
-        IEAC(t) = planned_duration / SPI(t)
-
-Module 3 — Schedule Risk Score per WBS Package
-    Groups tasks by construction stage (the available WBS proxy) and
-    scores each group 0-100 from three weighted components:
-
-        Float utilisation (35%) — critical + near-critical fraction
-        Progress gap     (35%) — earned% below planned%
-        Overrun rate     (30%) — tasks past planned end, still incomplete
-
-    Bands:  Green ≤ 30 · Amber 31-60 · Red ≥ 61
+Exposed via GET /castor/projects/<pk>/schedule/intelligence/. Earned Schedule follows
+the PMI ES Practice Standard (ES interpolated from PV curve, SPI(t) = ES/AT,
+IEAC(t) = planned_duration/SPI(t)). WBS risk weights: float utilisation 35%,
+progress gap 35%, overrun rate 30%.
 """
 
 from __future__ import annotations
@@ -50,9 +23,6 @@ _STAGE_LABELS: dict[str, str] = {
     "external": "External Works",
     "_unassigned": "Unassigned",
 }
-
-
-# ── Public entry point ────────────────────────────────────────────────────────
 
 
 def compute_schedule_intelligence(project_id: str) -> dict:
@@ -78,9 +48,6 @@ def compute_schedule_intelligence(project_id: str) -> dict:
         "earned_schedule": es,
         "wbs_risk_scores": wbs,
     }
-
-
-# ── Module 1: Critical Path ───────────────────────────────────────────────────
 
 
 def _build_cpm_summary(project_id: str) -> dict:
@@ -139,9 +106,6 @@ def _build_cpm_summary(project_id: str) -> dict:
             for t in critical_tasks
         ],
     }
-
-
-# ── Module 2: Earned Schedule ─────────────────────────────────────────────────
 
 
 def _compute_earned_schedule(evm_data: dict) -> dict:
@@ -272,9 +236,6 @@ def _find_es_date(
     return project_end
 
 
-# ── Module 3: Schedule Risk per WBS ──────────────────────────────────────────
-
-
 def _compute_wbs_risk(project_id: str, evm_data: dict) -> list[dict]:
     """Return a risk card for each construction stage (WBS proxy).
 
@@ -313,7 +274,6 @@ def _compute_wbs_risk(project_id: str, evm_data: dict) -> list[dict]:
     for stage, group in groups.items():
         n = len(group)
 
-        # ── Float risk ────────────────────────────────────────────────────
         with_float = [t for t in group if t.total_float is not None]
         if with_float:
             critical_pct = sum(1 for t in with_float if t.is_critical) / n
@@ -328,7 +288,6 @@ def _compute_wbs_risk(project_id: str, evm_data: dict) -> list[dict]:
             critical_pct = near_critical_pct = float_risk = 0.0
             avg_float_days = None
 
-        # ── Progress gap ─────────────────────────────────────────────────
         planned_sum = sum(_planned_pct_at(t, today, task_cals.get(str(t.pk))) for t in group)
         earned_sum = sum(_earned_pct_at(t, today, task_cals.get(str(t.pk))) for t in group)
         planned_pct_avg = round(planned_sum / n * 100, 1)
@@ -336,16 +295,13 @@ def _compute_wbs_risk(project_id: str, evm_data: dict) -> list[dict]:
         gap_pct = max(0.0, planned_pct_avg - earned_pct_avg)
         progress_risk = min(100.0, gap_pct * 4)
 
-        # ── Overrun risk ─────────────────────────────────────────────────
         overrun_tasks = [t for t in group if t.status != "complete" and today > t.end_date]
         overrun_frac = len(overrun_tasks) / n
         overrun_risk = min(100.0, overrun_frac * 150)
 
-        # ── Composite score ───────────────────────────────────────────────
         score = round(float_risk * 0.35 + progress_risk * 0.35 + overrun_risk * 0.30)
         band = "green" if score <= 30 else "amber" if score <= 60 else "red"
 
-        # ── Narrative drivers ────────────────────────────────────────────
         drivers: list[str] = []
         if critical_pct >= 0.3:
             drivers.append(f"{round(critical_pct * 100)}% of tasks on critical path")

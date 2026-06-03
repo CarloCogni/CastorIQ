@@ -1,20 +1,10 @@
 # castor/scheduling/services/timelocation.py
 """Time-Location (flowline) chart data service.
 
-Scope: only tasks whose activity-code prefix contains a parseable floor token
-(B01-B03, L00-L12, R01-R02).  Admin/doc tasks and unlocated tasks are excluded
-from the chart and counted separately so the UI can display an honest caption.
-
-Floor ordinal axis (Y):  B03=0 … B01=2 … L00=3 … L12=15 … R02=17
-                         — physical building order, below-grade at bottom.
-Spatial resolution: whole floor only.  Zones (Z1/Z2/S1-S3) appear on only
-~18% of tasks and are not used as a second axis; they are noted in the caption.
-
-Each task produces one segment record:
-  planned  — start_date → end_date          (baseline, always present)
-  actual   — actual_start → actual_end       (present when status=complete)
-  forecast — today → early_finish            (present when status≠complete)
-No diagonal continuity is interpolated — each task is its own real segment.
+Only floor-located tasks (B01–B03, L00–L12, R01–R02 prefix) are included; admin
+and unlocated tasks are counted separately for the UI caption. Each task produces
+planned / actual / forecast segment records. Floor ordinal: B03=0 → R02=17
+(physical building order, below-grade at bottom).
 """
 
 from __future__ import annotations
@@ -27,7 +17,6 @@ from .trade_resolver import resolve_csi as _resolve_csi
 
 logger = logging.getLogger(__name__)
 
-# ── Floor mapping ─────────────────────────────────────────────────────────────
 
 _FLOOR_RE = re.compile(r"^(B0?[1-3]|L\d{1,2}|R0?[1-2])", re.IGNORECASE)
 
@@ -73,7 +62,6 @@ _FLOOR_LABELS: dict[str, str] = {
     "R02": "Roof 2",
 }
 
-# ── Trade colours (CSI 2-digit division) ─────────────────────────────────────
 
 _TRADE_COLORS: dict[str, str] = {
     "03": "#3b82f6",  # Concrete
@@ -124,9 +112,6 @@ _DEFAULT_COLOR = "#6b7280"
 _TOP_N_COLORS = 8
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-
 def _parse_floor(activity_code: str) -> tuple[str, int] | None:
     """Return (canonical_token, ordinal) or None if not a floor-located code."""
     if not activity_code:
@@ -150,8 +135,6 @@ def _parse_csi(activity_code: str) -> str:
     m = _CSI_RE.search(activity_code or "")
     return m.group(1) if m else "XX"
 
-
-# ── Public API ────────────────────────────────────────────────────────────────
 
 # Prefixes that identify project-wide admin/doc tasks (no physical location)
 _ADMIN_PREFIXES = frozenset(
@@ -232,7 +215,6 @@ def compute_timelocation(
     if not tasks:
         return {"has_data": False}
 
-    # ── Classify every task ───────────────────────────────────────────────
     floor_rows: list[dict] = []
     n_admin = 0
     n_unlocated = 0
@@ -293,7 +275,6 @@ def compute_timelocation(
     if n_floor_located == 0:
         return {"has_data": False}
 
-    # ── Trade list (sorted by count) ──────────────────────────────────────
     all_trades = sorted(csi_counts.items(), key=lambda x: -x[1])
     top_keys = {k for k, _ in all_trades[:_TOP_N_COLORS]}
 
@@ -311,7 +292,6 @@ def compute_timelocation(
     # ALL segments — no server-side filtering.  Client handles highlight/dim.
     segments = floor_rows
 
-    # ── Project date range (for X-axis) ──────────────────────────────────
     all_dates = [t.start_date for t in tasks if t.start_date] + [
         t.end_date for t in tasks if t.end_date
     ]

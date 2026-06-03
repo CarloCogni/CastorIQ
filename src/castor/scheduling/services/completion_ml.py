@@ -1,17 +1,10 @@
 # castor/scheduling/services/completion_ml.py
-"""Completion Probability ML — logistic regression in pure numpy.
+"""Completion Probability ML — logistic regression in pure NumPy.
 
-No external ML library required.  sklearn/xgboost are not installed; we
-implement logistic regression, stratified split, AUC, Brier score, and
-calibration from first principles using only numpy.
-
-LEAKAGE POLICY (strict):
-  Features USED: everything knowable at task START — planned dates,
-    baseline float, network topology (pred/succ counts), planned cost,
-    floor location, and the historical on-time rate of the same CSI trade
-    computed from OTHER completed tasks (leave-one-out target encoding).
-  Features FORBIDDEN: actual_finish, actual_duration, actual_cost,
-    percent_complete, or anything derived from actual progress.
+Trains on completed tasks using only features knowable at task start: planned dates,
+baseline float, network topology, planned cost, floor location, and leave-one-out
+CSI trade on-time rate. Forbidden (leakage): actual_finish, actual_duration,
+actual_cost, percent_complete — never use actual-progress data as features.
 """
 
 from __future__ import annotations
@@ -26,7 +19,6 @@ from .utils import get_project_data_date
 
 logger = logging.getLogger(__name__)
 
-# ── Feature extractors (re-used from sibling services) ────────────────────────
 
 _FLOOR_RE = re.compile(r"^(B0?[1-3]|L\d{1,2}|R0?[1-2])", re.IGNORECASE)
 _CSI_RE = re.compile(r"-[A-Z]*(\d{2})\d{4}")
@@ -106,9 +98,6 @@ def _activity_type(name: str) -> str:
     return "Construction"
 
 
-# ── Logistic regression (gradient descent, L2 regularisation) ─────────────────
-
-
 def _sigmoid(z: np.ndarray) -> np.ndarray:
     return 1.0 / (1.0 + np.exp(-np.clip(z, -500, 500)))
 
@@ -134,9 +123,6 @@ def _train_logreg(
 
 def _predict_proba(x_mat: np.ndarray, w: np.ndarray, b: float) -> np.ndarray:
     return _sigmoid(x_mat @ w + b)
-
-
-# ── Metrics ────────────────────────────────────────────────────────────────────
 
 
 def _roc_auc(y_true: np.ndarray, y_score: np.ndarray) -> float:
@@ -191,9 +177,6 @@ def _stratified_split(
     test_idx = np.concatenate([pos[:n_pos_test], neg[:n_neg_test]])
     train_idx = np.concatenate([pos[n_pos_test:], neg[n_neg_test:]])
     return train_idx, test_idx
-
-
-# ── Feature matrix construction ───────────────────────────────────────────────
 
 
 def _build_feature_names(top_csi: list[str]) -> list[str]:
@@ -255,9 +238,6 @@ def _task_row(
     return [row.get(n, 0.0) for n in feat_names]
 
 
-# ── Main entry point ──────────────────────────────────────────────────────────
-
-
 def run_completion_ml(project_id: str) -> dict:
     """Train logistic regression on completed tasks; predict incomplete ones.
 
@@ -275,7 +255,6 @@ def run_completion_ml(project_id: str) -> dict:
 
     today, _ = get_project_data_date(project_id)
 
-    # ── Load tasks ─────────────────────────────────────────────────────────
     completed = list(
         Task.objects.filter(
             project_id=project_id,
@@ -299,7 +278,6 @@ def run_completion_ml(project_id: str) -> dict:
             "reason": f"Too few completed tasks ({len(completed)}); need ≥ 50.",
         }
 
-    # ── Labels ────────────────────────────────────────────────────────────
     labels_all = np.array([1 if t.actual_end <= t.end_date else 0 for t in completed], dtype=float)
     n_on_time = int(labels_all.sum())
     n_late = len(labels_all) - n_on_time
@@ -309,7 +287,6 @@ def run_completion_ml(project_id: str) -> dict:
         "on_time_pct": round(n_on_time / len(labels_all) * 100, 1),
     }
 
-    # ── Network topology ──────────────────────────────────────────────────
     all_pks = [str(t.pk) for t in completed + incomplete]
     pred_count_map = dict(
         TaskDependency.objects.filter(successor_id__in=all_pks)
@@ -324,7 +301,6 @@ def run_completion_ml(project_id: str) -> dict:
         .values_list("predecessor_id", "n")
     )
 
-    # ── Planned cost (from P6 assignments) ────────────────────────────────
     ra_cost = {
         str(row["task_id"]): float(row["total"] or 0)
         for row in P6ResourceAssignment.objects.filter(project_id=project_id, is_pending=False)
@@ -332,7 +308,6 @@ def run_completion_ml(project_id: str) -> dict:
         .annotate(total=Sum("planned_cost"))
     }
 
-    # ── Trade on-time rates (LOO for training, global for test/inference) ─
     # Compute global aggregates across ALL completed tasks
     trade_agg: dict[str, list[int]] = {}  # csi -> [n, k_on_time]
     for t, lbl in zip(completed, labels_all):
@@ -358,11 +333,9 @@ def run_completion_ml(project_id: str) -> dict:
             return global_rate
         return k_ex / n_ex
 
-    # ── Top CSI trades by training frequency ─────────────────────────────
     top_csi = sorted(trade_agg, key=lambda c: -trade_agg[c][0])[:_TOP_CSI_N]
     feat_names = _build_feature_names(top_csi)
 
-    # ── Build training matrix ─────────────────────────────────────────────
     x_all = np.array(
         [
             _task_row(
@@ -379,12 +352,10 @@ def run_completion_ml(project_id: str) -> dict:
         dtype=float,
     )
 
-    # ── Stratified split ──────────────────────────────────────────────────
     train_idx, test_idx = _stratified_split(len(completed), labels_all)
     x_tr_raw, y_tr = x_all[train_idx], labels_all[train_idx]
     x_te_raw, y_te = x_all[test_idx], labels_all[test_idx]
 
-    # ── Standardise (fit on train) ────────────────────────────────────────
     mu = x_tr_raw.mean(axis=0)
     sigma = x_tr_raw.std(axis=0)
     sigma[sigma == 0] = 1.0  # constant features → no scaling needed
@@ -392,20 +363,16 @@ def run_completion_ml(project_id: str) -> dict:
     x_tr_s = (x_tr_raw - mu) / sigma
     x_te_s = (x_te_raw - mu) / sigma
 
-    # ── Train ─────────────────────────────────────────────────────────────
     w, b = _train_logreg(x_tr_s, y_tr, l2=0.05, lr=0.1, n_iter=2000)
 
-    # ── Evaluate on held-out test set ─────────────────────────────────────
     prob_te = _predict_proba(x_te_s, w, b)
     auc = _roc_auc(y_te, prob_te)
     brier = _brier(y_te, prob_te)
     calib = _calibration(y_te, prob_te)
 
-    # ── Retrain on full dataset for inference ─────────────────────────────
     x_full_s = (x_all - mu) / sigma
     w_full, b_full = _train_logreg(x_full_s, labels_all, l2=0.05, lr=0.1, n_iter=2000)
 
-    # ── Feature importance (|w| after standardisation = log-odds per σ) ───
     importance = np.abs(w_full)
     top_feat_idx = np.argsort(-importance)[:15]
     feature_importance = [
@@ -416,7 +383,6 @@ def run_completion_ml(project_id: str) -> dict:
         for i in top_feat_idx
     ]
 
-    # ── Predict incomplete tasks ──────────────────────────────────────────
     if not incomplete:
         watchlist = []
     else:
@@ -439,7 +405,6 @@ def run_completion_ml(project_id: str) -> dict:
         x_inc_s = (x_inc - mu) / sigma
         prob_inc = _predict_proba(x_inc_s, w_full, b_full)
 
-        # ── Watchlist: riskiest near-critical tasks ───────────────────────
         # Near-critical threshold: ≤ 10 working days of total float (~2 weeks).
         # Tasks with float > 10 have a comfortable schedule buffer and must not
         # be labeled "near-critical" even if the ML model predicts low P(on-time).
@@ -475,7 +440,6 @@ def run_completion_ml(project_id: str) -> dict:
         )
         watchlist = (near_crit + others)[:20]
 
-    # ── AUC quality label ─────────────────────────────────────────────────
     if auc >= 0.75:
         auc_label = "good"
     elif auc >= 0.65:

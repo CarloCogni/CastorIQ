@@ -1,26 +1,10 @@
 # castor/scheduling/services/monte_carlo.py
 """Monte Carlo Schedule Simulation.
 
-Runs N forward-pass simulations through the task dependency network,
-sampling each incomplete task's remaining duration from a PERT distribution
-(Beta-scaled by optimistic 0.8×, most-likely 1×, pessimistic 1.5× of
-remaining calendar days).
-
-Performance model
------------------
-* Only the MAX_SIM_TASKS most critical incomplete tasks are simulated
-  (sorted by total_float ASC).  Tasks outside this set are treated as fixed
-  anchors finishing on their planned end_date.
-* Complete tasks are fixed at their actual_end (or end_date).
-* External predecessor contributions are pre-baked into each task's
-  min_start floor so the hot simulation loop only touches in-simulation edges.
-* Working with integer ordinals throughout — no date arithmetic inside the loop.
-* Only FS dependencies carry the +1 day gap.  SS/FF/SF are approximated as FS
-  without the gap; this covers ~95 % of real-schedule dependency semantics.
-
-Public entry point
-------------------
-    compute_monte_carlo(project_id, n_simulations=1000) -> dict
+Runs N PERT-sampled forward-pass simulations (optimistic 0.8×, most-likely 1×,
+pessimistic 1.5× of remaining duration). Only the MAX_SIM_TASKS most critical
+incomplete tasks are simulated; the rest are fixed anchors. Integer ordinal
+arithmetic throughout — no date objects inside the hot loop.
 """
 
 from __future__ import annotations
@@ -40,9 +24,6 @@ _PERT_OPT = 0.8
 _PERT_PESS = 1.5
 
 
-# ── PERT sampler ──────────────────────────────────────────────────────────────
-
-
 def _pert_int(a: float, m: float, b: float, _bv=random.betavariate) -> int:
     """Sample a PERT-distributed duration (integer days).
 
@@ -56,9 +37,6 @@ def _pert_int(a: float, m: float, b: float, _bv=random.betavariate) -> int:
     beta_ = max(6 * (b - mean) / (b - a), 0.5)
     raw = a + _bv(alpha, beta_) * (b - a)
     return max(int(raw + 0.5), 1)
-
-
-# ── Data loading ──────────────────────────────────────────────────────────────
 
 
 def _load_data(project_id: str) -> tuple[list[dict], list[dict]]:
@@ -95,9 +73,6 @@ def _load_data(project_id: str) -> tuple[list[dict], list[dict]]:
     return task_rows, dep_rows
 
 
-# ── Simulation set + per-task precomputation ──────────────────────────────────
-
-
 def _build_sim_inputs(
     task_rows: list[dict],
     dep_rows: list[dict],
@@ -112,7 +87,6 @@ def _build_sim_inputs(
     """
     all_tasks: dict[str, dict] = {str(r["id"]): r for r in task_rows}
 
-    # ── Task selection ─────────────────────────────────────────────────────
     # Split the budget evenly:
     #   Half — most overdue (lowest / most-negative total_float): captures tasks
     #          already exceeding their baseline and driving current schedule delay.
@@ -140,7 +114,6 @@ def _build_sim_inputs(
     merged.update({str(r["id"]): r for r in by_ef})
     sim_set: set[str] = set(merged.keys())
 
-    # ── Predecessor lookup ────────────────────────────────────────────────
     pred_map: dict[str, list[dict]] = defaultdict(list)
     for dep in dep_rows:
         succ_id = str(dep["successor_id"])
@@ -174,7 +147,6 @@ def _build_sim_inputs(
             return max(ef.toordinal(), today_ord)
         return t["end_date"].toordinal()
 
-    # ── Build sim_info ────────────────────────────────────────────────────
     sim_info: dict[str, dict] = {}
 
     for r in task_rows:
@@ -189,7 +161,6 @@ def _build_sim_inputs(
             sim_info[tid] = {"fixed_finish": anchor_ord(tid)}
             continue
 
-        # ── Duration parameters ────────────────────────────────────────
         # planned_dur = full baseline span (start_date → end_date), working days.
         # sim_dur     = remaining working days to simulate.  For not-yet-started
         #               tasks sim_dur == planned_dur.  For in-progress tasks it is
@@ -235,7 +206,6 @@ def _build_sim_inputs(
         ml = float(sim_dur)
         pess = sim_dur * pess_mult
 
-        # ── min_start: incorporate external predecessor anchors ────────
         # CPM early_start is the network-aware optimistic floor.  Using it
         # means PERT uncertainty is applied AROUND the CPM estimate, not from
         # today.  Predecessor propagation can still push the start later in
@@ -293,7 +263,6 @@ def _build_sim_inputs(
             "sim_preds_ff": sim_preds_ff,
         }
 
-    # ── Topological sort (Kahn's) over sim_set ────────────────────────────
     in_degree: dict[str, int] = {tid: 0 for tid in sim_set}
     succ_of: dict[str, list[str]] = defaultdict(list)
 
@@ -322,9 +291,6 @@ def _build_sim_inputs(
             topo_order.append(tid)
 
     return sim_info, topo_order
-
-
-# ── Hot simulation loop ───────────────────────────────────────────────────────
 
 
 def _run_simulations(
@@ -409,9 +375,6 @@ def _run_simulations(
 
     results.sort()
     return results
-
-
-# ── Histogram + percentile helpers ───────────────────────────────────────────
 
 
 def _percentile(sorted_results: list[int], pct: float) -> date:
@@ -500,9 +463,6 @@ def _build_histogram(sorted_results: list[int]) -> list[dict]:
             }
         )
     return result
-
-
-# ── Public entry point ────────────────────────────────────────────────────────
 
 
 def compute_monte_carlo(project_id: str, n_simulations: int = 1000) -> dict:
