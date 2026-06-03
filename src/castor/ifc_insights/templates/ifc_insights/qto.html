@@ -1,0 +1,540 @@
+<!-- ifc_insights/qto.html — Quantity Take-Off dashboard -->
+<div class="d-flex flex-column h-100 overflow-hidden" id="qto-root">
+
+    <!-- Header bar -->
+    <div class="d-flex align-items-center px-3 py-2 border-bottom bg-body flex-shrink-0" style="gap:0.5rem;">
+        <h5 class="mb-0 me-1">
+            <i class="bi bi-calculator me-2 text-primary"></i>Quantities
+        </h5>
+        <button type="button"
+                class="help-pill"
+                data-bs-toggle="modal"
+                data-bs-target="#qtoHelpModal"
+                title="How Quantities works"
+                aria-label="How Quantities works">
+            <i class="bi bi-question-circle"></i>
+        </button>
+        <div class="ms-auto d-flex gap-2">
+            <a href="{% url 'castor:qto_export' project.pk %}"
+               class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-file-earmark-excel me-1"></i>Export Excel
+            </a>
+            <button type="button"
+                    class="btn btn-sm btn-outline-primary"
+                    hx-post="{% url 'castor:qto_recompute' project.pk %}"
+                    hx-swap="none">
+                <i class="bi bi-arrow-clockwise me-1"></i>Recompute
+            </button>
+        </div>
+    </div>
+
+    <!-- Scrollable body -->
+    <div class="flex-grow-1 overflow-auto p-3">
+
+        <!-- Section 1: KPI row (skeleton placeholders while JS loads) -->
+        <div id="qto-kpi-row" class="row g-3 mb-3">
+            {% for _ in "123" %}
+            <div class="col-4">
+                <div class="card border-0 rounded-3 h-100" style="background:var(--bs-secondary-bg);">
+                    <div class="card-body p-3">
+                        <div class="placeholder-glow"><span class="placeholder col-6"></span></div>
+                        <div class="placeholder-glow mt-1"><span class="placeholder col-4" style="height:1.6rem;"></span></div>
+                        <div class="placeholder-glow mt-1"><span class="placeholder col-7" style="height:0.7rem;"></span></div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Section 5: Data quality warning (shown when coverage < 80%) -->
+        <div id="qto-coverage-warn" class="d-none alert alert-warning py-2 mb-3" style="font-size:0.83rem;">
+            <i class="bi bi-exclamation-triangle-fill me-1"></i>
+            <span id="qto-warn-text"></span>
+        </div>
+
+        <!-- Section 2: Summary table by element type -->
+        <div class="card border-0 mb-3" style="background:var(--bs-secondary-bg);">
+            <div class="card-header bg-transparent border-bottom py-2 px-3 d-flex align-items-center justify-content-between">
+                <span style="font-size:0.8rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:var(--bs-secondary-color);">
+                    Summary by Element Type
+                </span>
+                <span style="font-size:0.72rem; color:var(--bs-secondary-color);">
+                    <i class="bi bi-sort-alpha-down me-1"></i>Click header to sort
+                    &nbsp;·&nbsp;
+                    <i class="bi bi-chevron-expand me-1"></i>Click row to expand
+                    &nbsp;·&nbsp;
+                    Enter unit cost inline to enable cost estimation
+                </span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0" style="font-size:0.82rem;" id="qto-type-table">
+                    <thead style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.04em; color:var(--bs-secondary-color);">
+                        <tr>
+                            <th class="qto-sort-col ps-3" data-col="type" style="cursor:pointer; min-width:160px; user-select:none;">
+                                Type <i class="bi bi-chevron-expand ms-1 qto-sort-icon" style="font-size:0.65rem;"></i>
+                            </th>
+                            <th class="qto-sort-col text-end" data-col="count" style="cursor:pointer; user-select:none;">
+                                Count <i class="bi bi-chevron-expand ms-1 qto-sort-icon" style="font-size:0.65rem;"></i>
+                            </th>
+                            <th class="qto-sort-col text-end" data-col="total_qty" style="cursor:pointer; user-select:none;">
+                                Total Qty <i class="bi bi-chevron-expand ms-1 qto-sort-icon" style="font-size:0.65rem;"></i>
+                            </th>
+                            <th>Unit</th>
+                            <th class="qto-sort-col text-end" data-col="coverage_pct" style="cursor:pointer; user-select:none;">
+                                Coverage <i class="bi bi-chevron-expand ms-1 qto-sort-icon" style="font-size:0.65rem;"></i>
+                            </th>
+                            <th style="min-width:110px;">Unit Cost</th>
+                            <th class="qto-sort-col text-end pe-3" data-col="total_cost" style="cursor:pointer; user-select:none;">
+                                Total Cost <i class="bi bi-chevron-expand ms-1 qto-sort-icon" style="font-size:0.65rem;"></i>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody id="qto-type-tbody">
+                        <tr>
+                            <td colspan="7" class="text-secondary text-center py-4">
+                                <span class="spinner-border spinner-border-sm me-1"></span>Loading…
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Sections 3 + 4: Charts row -->
+        <div class="row g-3">
+            <!-- By Level -->
+            <div class="col-md-6">
+                <div class="card border-0 h-100" style="background:var(--bs-secondary-bg);">
+                    <div class="card-header bg-transparent border-bottom py-2 px-3">
+                        <span style="font-size:0.8rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:var(--bs-secondary-color);">
+                            <i class="bi bi-layers me-1"></i>Cost by Level
+                        </span>
+                    </div>
+                    <div class="card-body p-3" id="qto-level-wrap" style="position:relative; min-height:180px; overflow:auto;">
+                        <canvas id="qto-level-canvas" style="display:block;"></canvas>
+                        <div id="qto-level-loading"
+                             class="d-flex align-items-center justify-content-center"
+                             style="position:absolute; inset:0; font-size:0.82rem; color:var(--bs-secondary-color);">
+                            <span class="spinner-border spinner-border-sm me-1"></span>Loading…
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- By Material -->
+            <div class="col-md-6">
+                <div class="card border-0 h-100" style="background:var(--bs-secondary-bg);">
+                    <div class="card-header bg-transparent border-bottom py-2 px-3">
+                        <span style="font-size:0.8rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:var(--bs-secondary-color);">
+                            <i class="bi bi-palette me-1"></i>Elements by Material
+                        </span>
+                    </div>
+                    <div class="card-body p-3" id="qto-material-wrap" style="position:relative; min-height:180px; overflow:auto;">
+                        <canvas id="qto-material-canvas" style="display:block;"></canvas>
+                        <div id="qto-material-loading"
+                             class="d-flex align-items-center justify-content-center"
+                             style="position:absolute; inset:0; font-size:0.82rem; color:var(--bs-secondary-color);">
+                            <span class="spinner-border spinner-border-sm me-1"></span>Loading…
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- Help modal -->
+<div class="modal fade" id="qtoHelpModal" tabindex="-1" aria-labelledby="qtoHelpLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+            <div class="modal-header border-bottom px-4 py-3" style="border-color: var(--bs-border-color) !important;">
+                <h5 class="modal-title fw-semibold fs-6 mb-0" id="qtoHelpLabel">
+                    <i class="bi bi-calculator me-2 text-primary"></i>How Quantities works
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body px-4 py-4">
+
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-box-seam me-1 text-primary"></i>What is it?
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    The Quantities tab performs a Quantity Take-Off (QTO) against your IFC model — extracting areas, volumes, and lengths from standard <code>Qto_*BaseQuantities</code> property sets. It aggregates quantities by element type, level, and material, and supports optional unit costs for 5D cost estimation.
+                </p>
+
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-arrow-repeat me-1 text-primary"></i>Workflow
+                </p>
+                <ol class="text-secondary fs-7 mb-4">
+                    <li><strong>Recompute</strong> — scans the latest processed IFC file and populates the QTO cache. Run this after uploading a new IFC or when quantities look stale.</li>
+                    <li><strong>Review Coverage</strong> — elements with <code>Qto_*BaseQuantities</code> pset data are marked <em>ifc</em> (reliable). Elements without any Qto pset are counted only (<em>estimated</em>). The coverage % shows what fraction has real IFC quantities.</li>
+                    <li><strong>Set Unit Costs</strong> — type a cost per unit in the Unit Cost column (e.g. currency per m² or m³). After saving, click Recompute to apply the costs and unlock the Total Cost column and EVM integration.</li>
+                    <li><strong>Export</strong> — download full QTO data to Excel: Summary by Type, By Level, and per-entity Detail sheets.</li>
+                </ol>
+
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-table me-1 text-primary"></i>Reading the table
+                </p>
+                <ul class="text-secondary fs-7 mb-4">
+                    <li><strong>Amber rows</strong> — element types where fewer than 50% of elements have IFC quantity data. Totals for these types are incomplete.</li>
+                    <li><strong>Click a row</strong> — expands to show the top 5 individual elements for that type.</li>
+                    <li><strong>Click a column header</strong> — sorts the table by that column. Click again to reverse order.</li>
+                    <li><strong>Unit Cost input</strong> — type a value and press Enter (or click away) to save. Cost totals are applied on the next Recompute.</li>
+                </ul>
+
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-exclamation-circle me-1" style="color:var(--castor-accent, #8b5cf6);"></i>Caveats
+                </p>
+                <div class="d-flex flex-column gap-1 text-secondary" style="font-size:0.75rem;">
+                    <span><i class="bi bi-dot"></i>QTO extraction relies on exporters writing standard <code>Qto_*BaseQuantities</code> psets. Models exported without these psets will show low coverage.</span>
+                    <span><i class="bi bi-dot"></i>Unit costs are stored per IFC type (e.g. IfcWall, IfcSlab) and applied uniformly — not per-element.</span>
+                    <span><i class="bi bi-dot"></i>After editing unit costs, click Recompute to refresh cost totals and propagate changes to the EVM tab.</span>
+                    <span><i class="bi bi-dot"></i>The EVM tab uses QTO-derived costs to fill in task costs when the schedule has no cost data attached.</span>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    "use strict";
+    const QTO_DATA_URL = "{% url 'castor:qto_data' project.pk %}";
+    const QTO_UC_URL   = "{% url 'castor:qto_unit_cost' project.pk %}";
+
+    let _sortCol = "count";
+    let _sortDir = -1;   /* -1 = descending, +1 = ascending */
+    let _tableData = [];
+
+    /* ── Boot ───────────────────────────────────────────────────────────── */
+    async function loadQto() {
+        let data;
+        try {
+            const resp = await fetch(QTO_DATA_URL);
+            if (!resp.ok) throw new Error(resp.status);
+            data = await resp.json();
+        } catch (_) {
+            _showTableMsg("Failed to load QTO data — try refreshing the page.");
+            _clearChartLoading("qto-level-loading", "Load failed.");
+            _clearChartLoading("qto-material-loading", "Load failed.");
+            return;
+        }
+
+        if (!data.has_data) {
+            document.getElementById("qto-kpi-row").innerHTML = "";
+            _showTableMsg("No QTO data — click Recompute to scan the IFC file.");
+            _clearChartLoading("qto-level-loading", "No data — run Recompute first.");
+            _clearChartLoading("qto-material-loading", "No data — run Recompute first.");
+            return;
+        }
+
+        _renderKpis(data);
+        _renderWarning(data);
+        _tableData = data.summary || [];
+        _renderTypeTable();
+        _renderHBar("qto-level-canvas", "qto-level-loading", "qto-level-wrap",
+                    data.by_level || [], "level", "cost", "#16a34a");
+        _renderHBar("qto-material-canvas", "qto-material-loading", "qto-material-wrap",
+                    data.by_material || [], "material", "entity_count", "#3b82f6");
+    }
+
+    /* ── Section 1: KPI cards ───────────────────────────────────────────── */
+    function _renderKpis(d) {
+        const hasCost = d.total_cost_estimate !== null && d.total_cost_estimate !== undefined;
+        const kpis = [
+            {
+                label: "Total Elements",
+                value: _fmtInt(d.total_entities),
+                sub: _fmtInt(d.entities_with_qty) + " with IFC quantities",
+                color: "var(--bs-emphasis-color)",
+            },
+            {
+                label: "QTO Coverage",
+                value: d.coverage_pct.toFixed(1) + "%",
+                sub: d.coverage_pct >= 80
+                    ? "<i class='bi bi-check-circle me-1' style='color:#16a34a;'></i>Good coverage"
+                    : "<i class='bi bi-exclamation-triangle me-1' style='color:#f59e0b;'></i>Low — check IFC export",
+                color: d.coverage_pct >= 80 ? "#16a34a" : "#f59e0b",
+            },
+            {
+                label: "Total Est. Cost",
+                value: hasCost ? _fmtCost(d.total_cost_estimate) : "—",
+                sub: hasCost ? "Based on set unit costs" : "Set unit costs per type to enable",
+                color: hasCost ? "var(--bs-emphasis-color)" : "var(--bs-secondary-color)",
+            },
+        ];
+
+        document.getElementById("qto-kpi-row").innerHTML = kpis.map(k => `
+            <div class="col-4">
+                <div class="card border-0 rounded-3 h-100" style="background:var(--bs-secondary-bg);">
+                    <div class="card-body p-3">
+                        <div style="font-size:0.72rem; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:0.05em; font-weight:600;">${k.label}</div>
+                        <div style="font-size:1.55rem; font-weight:700; color:${k.color}; line-height:1.15;">${k.value}</div>
+                        <div style="font-size:0.7rem; color:var(--bs-secondary-color);">${k.sub}</div>
+                    </div>
+                </div>
+            </div>`).join("");
+    }
+
+    /* ── Section 5: Coverage warning ───────────────────────────────────── */
+    function _renderWarning(d) {
+        if (d.coverage_pct < 80) {
+            document.getElementById("qto-warn-text").textContent =
+                "QTO coverage is " + d.coverage_pct.toFixed(1) + "% — fewer than 80% of elements have " +
+                "IFC quantity data. Re-export your IFC with Qto_*BaseQuantities psets for better accuracy.";
+            document.getElementById("qto-coverage-warn").classList.remove("d-none");
+        }
+    }
+
+    /* ── Section 2: Sortable type table ────────────────────────────────── */
+    function _renderTypeTable() {
+        const sorted = [..._tableData].sort((a, b) => {
+            let av = a[_sortCol], bv = b[_sortCol];
+            if (av === null || av === undefined) av = _sortDir === -1 ? -Infinity : Infinity;
+            if (bv === null || bv === undefined) bv = _sortDir === -1 ? -Infinity : Infinity;
+            if (typeof av === "string") return _sortDir * av.localeCompare(bv);
+            return _sortDir * (av - bv);
+        });
+
+        /* Refresh sort icons */
+        document.querySelectorAll(".qto-sort-col").forEach(th => {
+            const icon = th.querySelector(".qto-sort-icon");
+            if (!icon) return;
+            if (th.dataset.col === _sortCol) {
+                icon.className = "bi " + (_sortDir === -1 ? "bi-chevron-down" : "bi-chevron-up") + " ms-1 qto-sort-icon";
+                icon.style.color = "var(--bs-primary)";
+                icon.style.fontSize = "0.65rem";
+            } else {
+                icon.className = "bi bi-chevron-expand ms-1 qto-sort-icon";
+                icon.style.color = "";
+                icon.style.fontSize = "0.65rem";
+            }
+        });
+
+        const tbody = document.getElementById("qto-type-tbody");
+        tbody.innerHTML = sorted.map(row => {
+            const lowCov  = row.coverage_pct < 50;
+            const rowBg   = lowCov ? "rgba(251,191,36,0.07)" : "";
+            const covHtml = lowCov
+                ? `<span class="badge" style="background:rgba(251,191,36,0.2); color:#b45309; font-size:0.65rem;">${row.coverage_pct.toFixed(0)}%</span>`
+                : `<span>${row.coverage_pct.toFixed(0)}%</span>`;
+            const ucVal  = (row.unit_cost !== null && row.unit_cost !== undefined) ? row.unit_cost : "";
+            const tcHtml = (row.total_cost !== null && row.total_cost !== undefined)
+                ? _fmtCost(row.total_cost)
+                : "<span class='text-secondary'>—</span>";
+
+            return `<tr class="qto-type-row" data-type="${_esc(row.type)}" style="cursor:pointer; background:${rowBg};">
+                <td class="ps-3 fw-medium" style="white-space:nowrap;">${_esc(row.type)}</td>
+                <td class="text-end">${_fmtInt(row.count)}</td>
+                <td class="text-end">${row.total_qty != null ? row.total_qty.toFixed(2) : "—"}</td>
+                <td class="text-secondary">${_esc(row.unit)}</td>
+                <td class="text-end">${covHtml}</td>
+                <td>
+                    <input type="number" min="0" step="0.01"
+                           class="form-control form-control-sm qto-uc-input"
+                           style="max-width:90px; font-size:0.78rem; padding:0.1rem 0.35rem;"
+                           data-type="${_esc(row.type)}"
+                           value="${_esc(String(ucVal))}"
+                           placeholder="—">
+                </td>
+                <td class="text-end pe-3">${tcHtml}</td>
+            </tr>
+            <tr class="qto-detail-row d-none" data-parent="${_esc(row.type)}">
+                <td colspan="7" class="p-0">
+                    <div class="px-4 py-2" style="background:var(--bs-tertiary-bg); border-top:1px solid var(--bs-border-color); font-size:0.78rem;">
+                        ${_topEntitiesHtml(row.top_entities, row.unit)}
+                    </div>
+                </td>
+            </tr>`;
+        }).join("");
+
+        /* Row expand toggle */
+        tbody.querySelectorAll(".qto-type-row").forEach(tr => {
+            tr.addEventListener("click", e => {
+                if (e.target.closest(".qto-uc-input")) return;
+                const detail = tbody.querySelector(`.qto-detail-row[data-parent="${CSS.escape(tr.dataset.type)}"]`);
+                if (detail) detail.classList.toggle("d-none");
+            });
+        });
+
+        /* Unit cost: save on Enter or blur */
+        tbody.querySelectorAll(".qto-uc-input").forEach(inp => {
+            function _save() {
+                const fd = new FormData();
+                fd.append("ifc_type", inp.dataset.type);
+                fd.append("unit_cost", inp.value.trim());
+                fd.append("csrfmiddlewaretoken", _csrf());
+                fetch(QTO_UC_URL, { method: "POST", body: fd })
+                    .then(r => {
+                        _toast(
+                            r.ok
+                                ? "Unit cost saved. Click Recompute to refresh cost totals."
+                                : "Failed to save unit cost.",
+                            r.ok ? "success" : "error"
+                        );
+                    })
+                    .catch(() => _toast("Failed to save unit cost.", "error"));
+            }
+            inp.addEventListener("change", _save);
+            inp.addEventListener("keydown", e => {
+                if (e.key === "Enter") { e.preventDefault(); _save(); inp.blur(); }
+            });
+        });
+    }
+
+    function _topEntitiesHtml(entities, unit) {
+        if (!entities || !entities.length) {
+            return "<em class='text-secondary'>No entity detail available.</em>";
+        }
+        return `<table class="table table-sm mb-0" style="font-size:0.78rem; width:auto;">
+            <thead><tr>
+                <th class="ps-0 text-secondary fw-normal">Name</th>
+                <th class="text-end text-secondary fw-normal">Qty</th>
+                <th class="text-secondary fw-normal">${_esc(unit)}</th>
+            </tr></thead>
+            <tbody>${entities.map(e =>
+                `<tr>
+                    <td class="ps-0">${_esc(e.name)}</td>
+                    <td class="text-end">${e.qty != null ? e.qty.toFixed(3) : "—"}</td>
+                    <td></td>
+                </tr>`
+            ).join("")}</tbody>
+        </table>`;
+    }
+
+    /* Header sort click wiring (delegated to header row) */
+    document.querySelectorAll(".qto-sort-col").forEach(th => {
+        th.addEventListener("click", () => {
+            const col = th.dataset.col;
+            if (_sortCol === col) {
+                _sortDir = -_sortDir;
+            } else {
+                _sortCol = col;
+                _sortDir = (col === "type") ? 1 : -1;
+            }
+            _renderTypeTable();
+        });
+    });
+
+    /* ── Sections 3 + 4: Horizontal bar chart ───────────────────────────── */
+    function _renderHBar(canvasId, loadingId, wrapId, rows, labelKey, valueKey, color) {
+        const loading = document.getElementById(loadingId);
+        const canvas  = document.getElementById(canvasId);
+        const wrap    = document.getElementById(wrapId);
+
+        if (!rows || !rows.length) {
+            _clearChartLoading(loadingId, "No data available.");
+            return;
+        }
+        if (loading) loading.remove();
+
+        const BAR_H  = 22;
+        const GAP    = 6;
+        const PAD    = { top: 4, right: 24, bottom: 4, left: 130 };
+        const dpr    = window.devicePixelRatio || 1;
+        const W      = Math.max(wrap.clientWidth || 300, 200);
+        const H      = PAD.top + rows.length * (BAR_H + GAP) - GAP + PAD.bottom;
+
+        canvas.width  = W * dpr;
+        canvas.height = H * dpr;
+        canvas.style.width  = W + "px";
+        canvas.style.height = H + "px";
+
+        const ctx    = canvas.getContext("2d");
+        ctx.scale(dpr, dpr);
+
+        const maxVal = Math.max(...rows.map(r => r[valueKey] || 0), 1);
+        const chartW = W - PAD.left - PAD.right;
+
+        const secClr = getComputedStyle(document.documentElement)
+                           .getPropertyValue("--bs-secondary-color").trim() || "#6c757d";
+        const bgClr  = getComputedStyle(document.documentElement)
+                           .getPropertyValue("--bs-border-color").trim() || "#dee2e6";
+
+        ctx.font = `${11}px system-ui, -apple-system, sans-serif`;
+
+        rows.forEach((row, i) => {
+            const y     = PAD.top + i * (BAR_H + GAP);
+            const val   = row[valueKey] || 0;
+            const barW  = Math.max((val / maxVal) * chartW, 0);
+            const label = String(row[labelKey] || "—");
+            const trunc = label.length > 17 ? label.slice(0, 15) + "…" : label;
+
+            /* Y-axis label */
+            ctx.fillStyle = secClr;
+            ctx.textAlign = "right";
+            ctx.textBaseline = "middle";
+            ctx.fillText(trunc, PAD.left - 6, y + BAR_H / 2);
+
+            /* Bar track */
+            ctx.fillStyle = bgClr;
+            ctx.fillRect(PAD.left, y, chartW, BAR_H);
+
+            /* Bar fill */
+            ctx.fillStyle = color;
+            ctx.globalAlpha = 0.8;
+            if (barW > 0) ctx.fillRect(PAD.left, y, barW, BAR_H);
+            ctx.globalAlpha = 1.0;
+
+            /* Value label */
+            const valTxt = _fmtShort(val);
+            ctx.textAlign = "left";
+            if (barW > 36) {
+                ctx.fillStyle = "#ffffff";
+                ctx.fillText(valTxt, PAD.left + 5, y + BAR_H / 2);
+            } else {
+                ctx.fillStyle = secClr;
+                ctx.fillText(valTxt, PAD.left + barW + 4, y + BAR_H / 2);
+            }
+        });
+    }
+
+    /* ── Utilities ─────────────────────────────────────────────────────── */
+    function _esc(s) {
+        return String(s ?? "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+    }
+    function _fmtInt(n)  { return Number(n ?? 0).toLocaleString(); }
+    function _fmtCost(n) {
+        if (n === null || n === undefined) return "—";
+        return new Intl.NumberFormat(undefined, {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0,
+            notation: Math.abs(n) >= 1e6 ? "compact" : "standard",
+        }).format(n);
+    }
+    function _fmtShort(n) {
+        if (n >= 1e6)  return (n / 1e6).toFixed(1) + "M";
+        if (n >= 1e3)  return (n / 1e3).toFixed(1) + "K";
+        if (n % 1 === 0) return String(n);
+        return n.toFixed(1);
+    }
+    function _csrf() {
+        const el = document.querySelector("[name=csrfmiddlewaretoken]");
+        if (el) return el.value;
+        const m = document.cookie.match(/csrftoken=([^;]+)/);
+        return m ? m[1] : "";
+    }
+    function _toast(msg, level) {
+        document.dispatchEvent(new CustomEvent("castor:toast", {
+            detail: { message: msg, level: level || "info" },
+        }));
+    }
+    function _showTableMsg(msg) {
+        document.getElementById("qto-type-tbody").innerHTML =
+            `<tr><td colspan="7" class="text-secondary text-center py-4">${_esc(msg)}</td></tr>`;
+    }
+    function _clearChartLoading(loadingId, msg) {
+        const el = document.getElementById(loadingId);
+        if (el) {
+            el.innerHTML = `<span style="font-size:0.82rem; color:var(--bs-secondary-color);">${_esc(msg)}</span>`;
+        }
+    }
+
+    loadQto();
+}());
+</script>

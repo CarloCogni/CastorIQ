@@ -1,0 +1,28 @@
+<!-- ifc_insights/components/level_suggest_results.html -->
+<!-- NOTE: Superseded by storey_registry_body.html + storey_row.html in the redesigned Levels Panel. -->
+<!-- LevelSuggestView now returns storey_registry_body.html. This template is kept as a fallback. -->
+
+{% if suggestions %}
+<div class="d-flex flex-column gap-2">
+    {% for s in suggestions %}
+    <div class="d-flex align-items-center justify-content-between px-3 py-2 rounded border bg-body-secondary">
+        <div>
+            <span class="fw-medium me-2">{{ s.name }}</span>
+            <small class="text-secondary">Z = {{ s.z_elevation|floatformat:0 }} mm</small>
+        </div>
+        <button class="btn btn-sm btn-outline-primary"
+                hx-post="{% url 'castor:level_add' project.pk %}"
+                hx-vals='{"name": "{{ s.name|escapejs }}", "z_elevation": "{{ s.z_elevation }}", "ifc_storey_global_id": "{{ s.global_id|default:""|escapejs }}"}'
+                hx-target="#storey-registry-body"
+                hx-swap="innerHTML">
+            <i class="bi bi-download me-1"></i>Import
+        </button>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="text-secondary fs-7 mb-0">
+    <i class="bi bi-info-circle me-1"></i>
+    No storeys found. Add levels manually.
+</p>
+{% endif %}

@@ -10,13 +10,13 @@ import django
 
 django.setup()
 
-from islam.scheduling.models import Project
-from islam.scheduling.services.anomaly_detect import detect_anomalies
-from islam.scheduling.services.delay_rootcause import run_delay_rootcause
-from islam.scheduling.services.floor_health import compute_floor_health
-from islam.scheduling.services.schedule_audit import run_section_mismatch_audit
-from islam.scheduling.services.timelocation import compute_timelocation
-from islam.scheduling.services.trade_resolver import (
+from castor.scheduling.models import Project
+from castor.scheduling.services.anomaly_detect import detect_anomalies
+from castor.scheduling.services.delay_rootcause import run_delay_rootcause
+from castor.scheduling.services.floor_health import compute_floor_health
+from castor.scheduling.services.schedule_audit import run_section_mismatch_audit
+from castor.scheduling.services.timelocation import compute_timelocation
+from castor.scheduling.services.trade_resolver import (
     build_override_map,
     save_override_map,
 )

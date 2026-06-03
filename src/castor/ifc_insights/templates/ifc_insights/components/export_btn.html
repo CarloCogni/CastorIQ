@@ -1,0 +1,8 @@
+<!-- ifc_insights/components/export_btn.html -->
+{% if check_results and check_results.total_issues > 0 %}
+<a href="{% url 'castor:insights_export' project.pk %}"
+   class="btn btn-sm btn-outline-primary"
+   title="Download issues as CSV">
+    <i class="bi bi-download me-1"></i>Export CSV
+</a>
+{% endif %}

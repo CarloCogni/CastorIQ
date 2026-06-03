@@ -1,0 +1,54 @@
+<!-- ifc_insights/components/non_physical_panel.html — Non-physical task summary card -->
+<div class="card mb-4">
+    <div class="card-header d-flex align-items-center justify-content-between py-2 px-3">
+        <span class="fw-semibold small">
+            <i class="bi bi-exclude me-1 text-secondary"></i>Non-Physical Tasks
+            <span class="badge bg-secondary ms-1">{{ np_total }}</span>
+        </span>
+        <div class="d-flex gap-2">
+            <span class="badge bg-success-subtle text-success border border-success-subtle small">
+                <i class="bi bi-magic me-1"></i>{{ np_auto }} auto
+            </span>
+            <span class="badge bg-warning-subtle text-warning border border-warning-subtle small">
+                <i class="bi bi-lock me-1"></i>{{ np_locked }} locked
+            </span>
+        </div>
+    </div>
+    <div class="card-body py-2 px-3">
+        <div class="row g-3">
+            {% if np_by_type %}
+            <div class="col-md-6">
+                <p class="small text-secondary mb-2 fw-medium">Top Activity Types</p>
+                {% for item in np_by_type %}
+                <div class="d-flex align-items-center gap-2 mb-1">
+                    <span class="small text-truncate flex-grow-1" title="{{ item.activity_type }}">{{ item.activity_type }}</span>
+                    <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">{{ item.count }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% if np_by_stage %}
+            <div class="col-md-6">
+                <p class="small text-secondary mb-2 fw-medium">By Stage</p>
+                {% for item in np_by_stage %}
+                <div class="d-flex align-items-center gap-2 mb-1">
+                    <span class="small text-capitalize flex-grow-1">{{ item.stage }}</span>
+                    <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">{{ item.count }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% if not np_by_type and not np_by_stage %}
+            <div class="col-12">
+                <p class="small text-secondary mb-0">
+                    {{ np_total }} non-physical task{% if np_total != 1 %}s{% endif %} detected — no activity type or stage data.
+                </p>
+            </div>
+            {% endif %}
+        </div>
+        <p class="small text-secondary mt-2 mb-0">
+            Non-physical tasks (procurement, admin, milestones) are excluded from schedule progress and 4D/5D readiness calculations.
+            <a href="{% url 'castor:schedule' project.pk %}" class="text-decoration-none ms-1">Review in schedule &rarr;</a>
+        </p>
+    </div>
+</div>
