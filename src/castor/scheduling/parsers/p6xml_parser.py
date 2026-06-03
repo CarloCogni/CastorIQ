@@ -1,21 +1,10 @@
 # castor/scheduling/parsers/p6xml_parser.py
 """Parse Oracle Primavera P6 XML files (APIBusinessObjects V21+ format).
 
-Distinct from msp_parser.py which only extracts Activity-level fields.
-This parser also extracts:
-  - WBS hierarchy (ObjectId, ParentObjectId, Code, Name, OriginalBudget)
-  - ResourceAssignment rows (planned/actual/remaining cost, units)
-  - Resource definitions (Id, Name, Type)
-  - Project metadata (DataDate, PlannedStartDate, FinishDate)
-
-Returns the standard (tasks, raw_deps) 2-tuple PLUS an aux_data dict that
-the p6_save service persists to P6WBSNode / P6ResourceAssignment DB models.
-
-Public API
-----------
-parse_p6xml(file_obj, preview_only=False)
-    -> tuple[list[dict], list[dict], dict]
-    (tasks, raw_deps, aux_data)
+Extracts Activity tasks, Relationship dependencies, WBS hierarchy, ResourceAssignment
+cost rows, Resource definitions, Calendar definitions, and project metadata (DataDate,
+PlannedStartDate, FinishDate). Returns (tasks, raw_deps, aux_data) where aux_data is
+passed to p6_save to persist P6WBSNode / P6ResourceAssignment DB records.
 """
 
 from __future__ import annotations
@@ -71,9 +60,6 @@ _WANTED = frozenset(
 )
 
 
-# ── Public entry point ────────────────────────────────────────────────────────
-
-
 def parse_p6xml(file_obj, preview_only: bool = False) -> tuple[list[dict], list[dict], dict]:
     """Parse a Primavera P6 XML (APIBusinessObjects) file.
 
@@ -124,7 +110,6 @@ def parse_p6xml(file_obj, preview_only: bool = False) -> tuple[list[dict], list[
     if not activities:
         raise ValueError("No parseable Activity elements found in P6 XML.")
 
-    # ── Aggregate ResourceAssignment costs per activity ───────────────────
     planned_by_act: dict[str, float] = {}
     actual_by_act: dict[str, float] = {}
     for ra in resource_assignments:
@@ -132,7 +117,6 @@ def parse_p6xml(file_obj, preview_only: bool = False) -> tuple[list[dict], list[
         planned_by_act[aid] = planned_by_act.get(aid, 0.0) + float(ra["planned_cost"] or 0)
         actual_by_act[aid] = actual_by_act.get(aid, 0.0) + float(ra["actual_cost"] or 0)
 
-    # ── Build final task list ────────────────────────────────────────────
     tasks: list[dict] = []
     for obj_id, act in activities.items():
         planned_total = planned_by_act.get(obj_id, 0.0)
@@ -159,9 +143,6 @@ def parse_p6xml(file_obj, preview_only: bool = False) -> tuple[list[dict], list[
         "calendars": calendars,
     }
     return tasks, relationships, aux_data
-
-
-# ── Streaming parser ──────────────────────────────────────────────────────────
 
 
 def _stream_parse(
@@ -266,9 +247,6 @@ def _stream_parse(
             elem.clear()
     finally:
         del context
-
-
-# ── Element mappers ───────────────────────────────────────────────────────────
 
 
 def _parse_activity(elem, nsp: str, obj_id: str) -> dict | None:
@@ -411,9 +389,6 @@ def _parse_calendar(elem, nsp: str, obj_id: str) -> dict:
         "working_days": working_days,
         "holidays": holidays,
     }
-
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
 
 
 def _detect_namespace(raw: bytes) -> str:

@@ -21,11 +21,6 @@ from core.llm import get_llm
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Public entry point
-# ---------------------------------------------------------------------------
-
-
 def build_comprehension(project, user=None) -> dict:
     """Run all comprehension phases and persist the result.
 
@@ -59,11 +54,6 @@ def build_comprehension(project, user=None) -> dict:
 
     _save_comprehension(project, result)
     return result
-
-
-# ---------------------------------------------------------------------------
-# Phase 1: Statistical profile
-# ---------------------------------------------------------------------------
 
 
 def _build_statistical_profile(tasks, total: int) -> dict:
@@ -103,11 +93,6 @@ def _build_statistical_profile(tasks, total: int) -> dict:
         "stage_distribution": stage_dist,
         "status_distribution": status_dist,
     }
-
-
-# ---------------------------------------------------------------------------
-# Phase 2: Stage / hierarchy structure (proxy for WBS — no wbs_name on Task)
-# ---------------------------------------------------------------------------
 
 
 def _analyze_stage_structure(tasks) -> dict:
@@ -157,11 +142,6 @@ def _analyze_stage_structure(tasks) -> dict:
     }
 
 
-# ---------------------------------------------------------------------------
-# Phase 3: Activity code pattern analysis
-# ---------------------------------------------------------------------------
-
-
 def _analyze_activity_codes(tasks) -> dict:
     """Detect code pattern and top prefixes via regex — no LLM."""
     codes = list(tasks.exclude(activity_code="").values_list("activity_code", flat=True)[:200])
@@ -201,11 +181,6 @@ def _analyze_activity_codes(tasks) -> dict:
         "code_segments": {k: dict(v.most_common(5)) for k, v in segments.items()},
         "naming_conventions": dict(prefix_counter.most_common(20)),
     }
-
-
-# ---------------------------------------------------------------------------
-# Phase 4: Stratified sample
-# ---------------------------------------------------------------------------
 
 
 def _build_stratified_sample(tasks, wbs: dict, total: int) -> list:
@@ -253,10 +228,6 @@ def _build_stratified_sample(tasks, wbs: dict, total: int) -> list:
 
     return sample[:100]
 
-
-# ---------------------------------------------------------------------------
-# Phase 5: LLM semantic analysis
-# ---------------------------------------------------------------------------
 
 _SYSTEM_PROMPT = """\
 You are a senior construction planner with 15 years experience.
@@ -350,11 +321,6 @@ def _llm_semantic_analysis(
         }
 
 
-# ---------------------------------------------------------------------------
-# Phase 6: Persist to DB
-# ---------------------------------------------------------------------------
-
-
 def _save_comprehension(project, result: dict) -> None:
     from ..models import ProjectComprehension
 
@@ -383,11 +349,6 @@ def _save_comprehension(project, result: dict) -> None:
             "confidence_score": result.get("confidence_score", 0.0),
         },
     )
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 
 def _compute_confidence(stats: dict, wbs: dict, code_analysis: dict, ai_result: dict) -> float:
