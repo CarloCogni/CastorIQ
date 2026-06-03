@@ -8,19 +8,28 @@
 
 const DRAG_THRESHOLD = 3; // px before a press counts as a drag, not a click
 
-export function renderPins(layer, points, { selectedId = null, onSelect, onMove, colorFor, numbers = null, pad = 1 } = {}) {
+export function renderPins(layer, points, { selectedId = null, onSelect, onMove, colorFor, numbers = null, pad = 1, glyphFor = null, glyphHtmlFor = null } = {}) {
   layer.innerHTML = "";
   points.forEach((pt, i) => {
     const raw = numbers ? numbers[pt.id] : i + 1;
-    if (raw == null) return; // not in the active phase filter → hidden entirely
-    const label = String(raw).padStart(pad, "0");
+    if (raw == null) return; // not in the active filter → hidden entirely
+    // Non-photo kinds (camera / sensor / custom) show a symbol instead of a
+    // number. glyphHtmlFor returns ready-to-inject markup (SVG for camera /
+    // sensor, escaped text otherwise); glyphFor stays for back-compat with
+    // callers that only want plain text.
+    const glyphHtml = glyphHtmlFor ? glyphHtmlFor(pt) : "";
+    const glyphText = glyphFor ? glyphFor(pt) : "";
+    const hasGlyph = !!(glyphHtml || glyphText);
+    const label = glyphHtml || (glyphText
+      ? glyphText.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]))
+      : String(raw).padStart(pad, "0"));
     const pin = document.createElement("div");
     pin.className = "pin" + (pt.id === selectedId ? " sel" : "");
     pin.style.left = pt.x + "%";
     pin.style.top = pt.y + "%";
     pin.dataset.id = pt.id;
     pin.title = pt.label || pt.globalId || "Point"; // name only as a native hover tooltip
-    pin.innerHTML = `<div class="pin-dot"><span class="pin-num">${label}</span></div>`;
+    pin.innerHTML = `<div class="pin-dot"><span class="pin-num${hasGlyph ? " pin-sym" : ""}">${label}</span></div>`;
     if (colorFor) {
       const color = colorFor(pt);
       const dot = pin.querySelector(".pin-dot");
@@ -100,6 +109,29 @@ export function initFloorplan({ viewer, pinLayer, state, actions }) {
       actions.deselect();
     }
   });
+
+  // Keep the pin layer locked to the plan IMAGE box. When the viewer height
+  // changes (e.g. dragging the photo timeline) the image can rescale/clip while
+  // the stage decouples from it — without this, pins (positioned in % of the
+  // layer) would drift off the plan. Matching the layer to the image's rendered
+  // box keeps every pin on its spot, and keeps click-to-place coordinates right.
+  const planImg = document.getElementById("planImg");
+  if (planImg) {
+    const syncPinLayer = () => {
+      pinLayer.style.left = planImg.offsetLeft + "px";
+      pinLayer.style.top = planImg.offsetTop + "px";
+      pinLayer.style.width = planImg.offsetWidth + "px";
+      pinLayer.style.height = planImg.offsetHeight + "px";
+    };
+    planImg.addEventListener("load", syncPinLayer);
+    window.addEventListener("resize", syncPinLayer);
+    if (typeof ResizeObserver !== "undefined") {
+      const ro = new ResizeObserver(syncPinLayer);
+      ro.observe(planImg);
+      ro.observe(viewer);
+    }
+    syncPinLayer();
+  }
 }
 
 function pctFromEvent(e, box) {

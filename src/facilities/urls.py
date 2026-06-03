@@ -42,6 +42,11 @@ urlpatterns = [
         name="assets_import",
     ),
     path(
+        "<uuid:pk>/facilities/assets/qr/",
+        views.AssetQRLabelsView.as_view(),
+        name="assets_qr_labels",
+    ),
+    path(
         "<uuid:pk>/facilities/assets/<uuid:asset_pk>/",
         views.AssetDetailView.as_view(),
         name="assets_detail",
@@ -251,5 +256,40 @@ urlpatterns = [
         "<uuid:pk>/facilities/explore/floor-plans/<uuid:storey_pk>/delete/",
         views.ExploreFloorPlanDeleteView.as_view(),
         name="explore_floor_plan_delete",
+    ),
+    path(
+        "<uuid:pk>/facilities/explore/floor-plans/<uuid:storey_pk>/visibility/",
+        views.ExploreFloorVisibilityView.as_view(),
+        name="explore_floor_visibility",
+    ),
+    path(
+        "<uuid:pk>/facilities/explore/floor-plans/<uuid:storey_pk>/rename/",
+        views.ExploreFloorRenameView.as_view(),
+        name="explore_floor_rename",
+    ),
+    path(
+        "<uuid:pk>/facilities/explore/floor-plans/<uuid:storey_pk>/generate/",
+        views.ExploreFloorPlanGenerateView.as_view(),
+        name="explore_floor_plan_generate",
+    ),
+    path(
+        "<uuid:pk>/facilities/explore/floor-plans/<uuid:storey_pk>/source/",
+        views.ExploreFloorPlanSourceView.as_view(),
+        name="explore_floor_plan_source",
+    ),
+    path(
+        "<uuid:pk>/facilities/explore/floor-plans/<uuid:storey_pk>/generated/delete/",
+        views.ExploreFloorPlanGeneratedDeleteView.as_view(),
+        name="explore_floor_plan_generated_delete",
+    ),
+    path(
+        "<uuid:pk>/facilities/explore/plans-manager/",
+        views.ExplorePlansManagerView.as_view(),
+        name="explore_plans_manager",
+    ),
+    path(
+        "<uuid:pk>/facilities/explore/floor-plans/<uuid:storey_pk>/annotations/",
+        views.ExploreFloorPlanAnnotationsView.as_view(),
+        name="explore_floor_plan_annotations",
     ),
 ]

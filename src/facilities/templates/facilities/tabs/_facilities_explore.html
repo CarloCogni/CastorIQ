@@ -14,11 +14,11 @@
 
 <div class="facilities-scope d-flex flex-column gap-3 h-100" id="facilities-explore-body">
 
-    <!-- Top bar: title + help pill -->
+    <!-- Top bar: title + help pill + "Floor plans" (levels) trigger -->
     <div class="d-flex align-items-center gap-3 flex-wrap flex-shrink-0">
         <div class="d-flex align-items-center gap-2">
             <i class="bi bi-map fs-5" style="color: var(--castor-facilities, #14b8a6);"></i>
-            <h5 class="m-0">Explore</h5>
+            <h5 class="m-0">Spaces</h5>
             <button type="button"
                     class="help-pill"
                     data-bs-toggle="modal"
@@ -28,6 +28,18 @@
                 <i class="bi bi-question-circle"></i>
             </button>
         </div>
+        {% if explore_storeys %}
+        <!-- Hidden trigger: the Explore iframe's toolbar "Floors" button opens the
+             levels manager by sending OPEN_LEVELS, which clicks this (Bootstrap
+             data API). No visible host button — the trigger lives in the viewer. -->
+        <button type="button"
+                id="exploreLevelsTrigger"
+                class="d-none"
+                data-bs-toggle="modal"
+                data-bs-target="#exploreLevelsModal"
+                aria-hidden="true"
+                tabindex="-1"></button>
+        {% endif %}
         <div class="ms-auto fs-8 text-secondary">
             <i class="bi bi-info-circle me-1"></i>
             Place pins on floor plans, attach photos, link them to IFC spaces. Changes save automatically.
@@ -35,87 +47,47 @@
     </div>
 
     <!--
-        Floor-plan upload panel — surfaces every IFC building storey for the
-        project and lets editors attach a plan image to each. Editors get a
-        full row with status badge + upload affordance; viewers see a
-        read-only summary. The iframe needs a plan image on a floor to
-        render anything; without it the viewer stays empty.
+        Floor-plan / levels manager — opened via the "Floor plans" button in the
+        top bar (Bootstrap modal), so the Explore viewer below stays the main
+        view. Surfaces every IFC building storey and lets editors attach /
+        replace / remove a plan image per floor. The iframe needs a plan on a
+        floor to render anything; without it that floor stays empty.
     -->
     {% if explore_storeys %}
-    <div class="border rounded p-3 flex-shrink-0" style="background-color: var(--bs-tertiary-bg);">
-        <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
-            <i class="bi bi-layers" style="color: var(--castor-facilities, #14b8a6);"></i>
-            <strong class="fs-7">Floor plans</strong>
-            <span class="fs-8 text-secondary">
-                {{ explore_storeys|length }} storey{{ explore_storeys|length|pluralize:"s" }} detected from IFC
-            </span>
-        </div>
-        <div class="d-flex flex-column gap-1">
-            {% for storey in explore_storeys %}
-            <div class="d-flex align-items-center gap-2 flex-wrap fs-8">
-                <span class="flex-grow-1">
-                    <i class="bi bi-building me-1 text-secondary"></i>
-                    <strong>{{ storey.name }}</strong>
-                    {% if storey.label and storey.label != storey.name %}
-                        <span class="text-secondary">· {{ storey.label }}</span>
-                    {% endif %}
+    <div class="modal fade" id="exploreLevelsModal" tabindex="-1" aria-labelledby="exploreLevelsModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title d-flex align-items-center gap-2" id="exploreLevelsModalLabel">
+                <i class="bi bi-layers" style="color: var(--castor-facilities, #14b8a6);"></i>
+                Floor plans
+                <span class="fs-8 fw-normal text-secondary">
+                    {{ explore_storeys|length }} storey{{ explore_storeys|length|pluralize:"s" }} detected from IFC
                 </span>
-
-                {% if storey.has_plan %}
-                <span class="badge rounded-pill"
-                      style="background-color: rgba(16,185,129,0.15); color: var(--castor-success, #10b981); border: 1px solid rgba(16,185,129,0.3);">
-                    <i class="bi bi-check2"></i> Plan uploaded
-                </span>
-                {% else %}
-                <span class="badge rounded-pill"
-                      style="background-color: rgba(245,158,11,0.15); color: var(--castor-warning, #f59e0b); border: 1px solid rgba(245,158,11,0.3);">
-                    No plan
-                </span>
-                {% endif %}
-
-                {% if user_permission == "owner" or user_permission == "editor" %}
-                <form method="post"
-                      action="{{ storey.upload_url }}"
-                      enctype="multipart/form-data"
-                      hx-post="{{ storey.upload_url }}"
-                      hx-encoding="multipart/form-data"
-                      hx-swap="none"
-                      hx-on::after-request="if (event.detail.successful) window.location.reload();"
-                      class="m-0">
-                    {% csrf_token %}
-                    <label class="btn btn-sm btn-outline-secondary mb-0 d-inline-flex align-items-center gap-1"
-                           style="cursor: pointer;">
-                        <i class="bi bi-upload"></i>
-                        {% if storey.has_plan %}Replace plan{% else %}Upload plan{% endif %}
-                        <input type="file"
-                               name="image"
-                               accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                               hidden
-                               onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit();">
-                    </label>
-                </form>
-                {% if storey.has_plan %}
-                <form method="post"
-                      action="{{ storey.delete_url }}"
-                      hx-post="{{ storey.delete_url }}"
-                      hx-swap="none"
-                      hx-confirm="Remove the plan image for {{ storey.name }}? Points and photos placed on this floor stay; they reappear when a new plan is uploaded."
-                      hx-on::after-request="if (event.detail.successful) window.location.reload();"
-                      class="m-0">
-                    {% csrf_token %}
-                    <button type="submit"
-                            class="btn btn-sm btn-outline-danger d-inline-flex align-items-center gap-1"
-                            title="Remove the uploaded plan (points + photos kept)">
-                        <i class="bi bi-trash"></i> Remove
-                    </button>
-                </form>
-                {% endif %}
-                {% endif %}
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div class="d-flex flex-column gap-1" id="exploreFloorRows">
+              {% include "facilities/tabs/_explore_floor_rows.html" %}
             </div>
-            {% endfor %}
+          </div>
+          <div class="modal-footer py-2">
+            <button type="button" class="btn btn-sm btn-primary" data-bs-dismiss="modal">Done</button>
+          </div>
         </div>
+      </div>
     </div>
     {% endif %}
+
+    <!-- Plans Manager modal — opened by the iframe's gear button via
+         OPEN_PLANS_MANAGER. We render an empty shell here; the body is
+         HTMX-loaded into #explorePlansManagerMount on every open so it
+         reflects the latest state without a page reload. -->
+    <div class="modal fade" id="explorePlansManagerModal" tabindex="-1"
+         aria-labelledby="explorePlansManagerModalLabel" aria-hidden="true">
+        <div id="explorePlansManagerMount"></div>
+    </div>
 
     <!-- Iframe host -->
     <div class="border rounded overflow-hidden flex-grow-1"
@@ -149,6 +121,7 @@
         roomsBase: "{{ explore_urls.rooms_base|escapejs }}",
         catalog: "{{ explore_urls.catalog|escapejs }}",
         state: "{{ explore_urls.state|escapejs }}",
+        plansManager: "{{ explore_urls.plans_manager|escapejs }}",
     };
 
     function csrfToken() {
@@ -158,6 +131,21 @@
 
     function castorTheme() {
         return document.documentElement.getAttribute("data-bs-theme") === "light" ? "light" : "dark";
+    }
+
+    // Castor's current Bootstrap palette, so the iframe can match the host
+    // background exactly (re-read on theme switch).
+    function castorPalette() {
+        var cs = getComputedStyle(document.body);
+        function v(name) { return (cs.getPropertyValue(name) || "").trim(); }
+        return {
+            body: v("--bs-body-bg"),
+            tertiary: v("--bs-tertiary-bg"),
+            secondary: v("--bs-secondary-bg"),
+            border: v("--bs-border-color"),
+            text: v("--bs-body-color"),
+            muted: v("--bs-secondary-color"),
+        };
     }
 
     function fireToast(message, level) {
@@ -187,9 +175,10 @@
     // `embedded:true` in VIEWER_INIT tells Pavla's module to hide the
     // standalone-only toolbar controls (import plans / theme toggle / reset)
     // whose responsibility moved to Castor.
-    function hydrate() {
-        send("VIEWER_INIT", { theme: castorTheme(), embedded: true });
-
+    // Fetch the project's floors (+ their rooms) and push them to the iframe.
+    // Called on first hydrate and again after the Floor-plans manager changes a
+    // plan / visibility, so the viewer reflects uploads / removes / hides live.
+    function loadFloors() {
         fetch(URLS.floors, { credentials: "same-origin" })
             .then(function(r) { return r.ok ? r.json() : null; })
             .then(function(data) {
@@ -208,6 +197,11 @@
                 });
             })
             .catch(function(err) { console.warn("[explore-host] floors fetch failed", err); });
+    }
+
+    function hydrate() {
+        send("VIEWER_INIT", { theme: castorTheme(), embedded: true, palette: castorPalette() });
+        loadFloors();
 
         fetch(URLS.catalog, { credentials: "same-origin" })
             .then(function(r) { return r.ok ? r.json() : null; })
@@ -299,6 +293,19 @@
             case "ERROR":
                 console.warn("[explore-host] iframe reported error", data);
                 break;
+            case "OPEN_LEVELS":
+                // Toolbar "Floors" button in the iframe → open the levels manager.
+                var levelsTrigger = document.getElementById("exploreLevelsTrigger");
+                if (levelsTrigger) levelsTrigger.click();
+                break;
+            case "OPEN_PLANS_MANAGER":
+                // Header gear button in the iframe → load the Plans Manager
+                // modal body (file-browser-style view of uploaded vs generated
+                // plans per storey) and show the modal. We HTMX-load every
+                // open so the rows reflect any changes made via the Floors
+                // modal in between.
+                openPlansManager();
+                break;
             default:
                 break;
         }
@@ -308,11 +315,61 @@
     var themeObserver = new MutationObserver(function(mutations) {
         for (var i = 0; i < mutations.length; i++) {
             if (mutations[i].attributeName === "data-bs-theme") {
-                send("SET_THEME", { theme: castorTheme() });
+                send("SET_THEME", { theme: castorTheme(), palette: castorPalette() });
                 break;
             }
         }
     });
     themeObserver.observe(document.documentElement, { attributes: true });
+
+    // Floor-plans modal: white-out toggles drive per-floor knockout inside the
+    // iframe. Delegated so it survives the HTMX row-refresh swaps.
+    document.addEventListener("change", function(e) {
+        var t = e.target;
+        if (t && t.classList && t.classList.contains("explore-knockout-toggle")) {
+            send("SET_FLOOR_KNOCKOUT", { floorId: t.dataset.floorId, on: t.checked });
+        }
+    });
+
+    // After the Floor-plans manager refreshes its rows (HTMX swaps #exploreFloorRows
+    // on upload / replace / remove / hide), re-push floors to the iframe so the
+    // viewer reflects the change immediately — no page reload, modal stays open.
+    // Same for the Plans Manager: after a delete / source-switch / etc., re-push
+    // floors so the viewer's active image and floor switcher stay in sync.
+    document.body.addEventListener("htmx:afterSwap", function(e) {
+        if (!e.target) return;
+        if (e.target.id === "exploreFloorRows") loadFloors();
+        if (e.target.id === "explorePlansManagerRows") loadFloors();
+        // First open of the Plans Manager modal also triggers afterSwap on the
+        // mount itself — show the modal once the body is in.
+        if (e.target.id === "explorePlansManagerMount") {
+            var modalEl = document.getElementById("explorePlansManagerModal");
+            if (modalEl && window.bootstrap) {
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            }
+        }
+    });
+
+    // Plans Manager opener — HTMX-loads the modal body into its mount on every
+    // open so the data is fresh, then Bootstrap shows the modal (triggered
+    // from the htmx:afterSwap handler above so we don't race the swap).
+    function openPlansManager() {
+        var mount = document.getElementById("explorePlansManagerMount");
+        if (!mount) return;
+        if (window.htmx) {
+            htmx.ajax("GET", URLS.plansManager, { target: "#explorePlansManagerMount", swap: "innerHTML" });
+        } else {
+            // Fallback: vanilla fetch when HTMX isn't loaded yet (shouldn't happen).
+            fetch(URLS.plansManager, { credentials: "same-origin" })
+                .then(function (r) { return r.text(); })
+                .then(function (html) {
+                    mount.innerHTML = html;
+                    var modalEl = document.getElementById("explorePlansManagerModal");
+                    if (modalEl && window.bootstrap) {
+                        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                    }
+                });
+        }
+    }
 })();
 </script>

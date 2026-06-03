@@ -152,8 +152,16 @@ def _create_point(
         phase=phase_by_name.get(item.get("phase", "")),
         ifc_entity=_resolve_entity(item.get("globalId", ""), project, entity_cache),
         table_links=_coerce_tables(item.get("tables")),
+        kind=_point_kind(item.get("kind")),
+        symbol=(item.get("symbol") or "")[:8] if _point_kind(item.get("kind")) == "custom" else "",
+        kind_label=(item.get("kindLabel") or "")[:80] if _point_kind(item.get("kind")) == "custom" else "",
         created_by=user if (user and getattr(user, "is_authenticated", False)) else None,
     )
+
+
+def _point_kind(value):
+    """Coerce an incoming kind to a valid choice (default 'photo')."""
+    return value if value in ExplorePoint.Kind.values else "photo"
 
 
 def _update_point(
@@ -190,6 +198,18 @@ def _update_point(
     tables = _coerce_tables(item.get("tables"))
     if point.table_links != tables:
         point.table_links = tables
+        dirty = True
+    kind = _point_kind(item.get("kind"))
+    if point.kind != kind:
+        point.kind = kind
+        dirty = True
+    symbol = (item.get("symbol") or "")[:8] if kind == "custom" else ""
+    if point.symbol != symbol:
+        point.symbol = symbol
+        dirty = True
+    kind_label = (item.get("kindLabel") or "")[:80] if kind == "custom" else ""
+    if point.kind_label != kind_label:
+        point.kind_label = kind_label
         dirty = True
     if dirty:
         point.save()
@@ -240,6 +260,9 @@ def serialize_point(point: ExplorePoint) -> dict[str, Any]:
         "x": float(point.x_percent),
         "y": float(point.y_percent),
         "phase": point.phase.name if point.phase_id else "",
+        "kind": point.kind,
+        "symbol": point.symbol,
+        "kindLabel": point.kind_label,
         "tables": point.table_links or [],
         "media": [serialize_media(m) for m in point.media.all()],
     }

@@ -91,6 +91,10 @@ export const state = {
   timelineView: "thumbs", // timeline layout: 'thumbs' | 'details'
   sort: { key: "date", dir: "desc" }, // timeline sort: key date|time|name|description, dir asc|desc (default: newest first)
   phaseColors: {},        // user colour overrides per phase name (managed in the phase manager)
+  placeKind: "photo",     // kind for the next placed point: photo|camera|sensor|custom
+  placeSymbol: "◆",       // symbol for the next placed custom point
+  placeCustomName: "",    // type name for the next placed custom point (e.g. "Exit")
+  kindFilter: "",         // header filter by point kind ("" = all)
 };
 
 // Restore a previously-saved working set (points / media / floors / settings) over
@@ -310,6 +314,103 @@ export function effectivePhase(point) {
   return point.phase || "";
 }
 
+// ── Point kinds (photo / camera / sensor / custom). Photo points are numbered;
+//    the others show a symbol instead of a number. Custom points pick one of
+//    CUSTOM_SYMBOLS.
+//
+//    Camera + sensor use inline SVG pictograms (sized to fit a 20 px pin and
+//    inheriting currentColor so they pick up the theme). The text ``glyph``
+//    is kept as a fallback for places that render plain text (the points
+//    list, kind menus, etc.). ──
+const CAMERA_SVG =
+  '<svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
+    // wall mount post
+    '<rect x="2" y="8" width="2.4" height="11" rx="0.4"/>' +
+    // arm joining post to camera body
+    '<rect x="3.6" y="11" width="3" height="2"/>' +
+    // camera body — parallelogram pointing down-right (CCTV silhouette)
+    '<path d="M6.2 8.2 L20 4.2 L22 7.4 L19.5 14 L8 14 Z"/>' +
+  '</svg>';
+const SENSOR_SVG =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
+    // emitter post
+    '<rect x="3" y="6" width="2" height="12" rx="0.4" fill="currentColor" stroke="none"/>' +
+    // three broadcast arcs (innermost → outermost)
+    '<path d="M8 9 Q11 12 8 15"/>' +
+    '<path d="M12 7 Q17 12 12 17"/>' +
+    '<path d="M16 5 Q23 12 16 19"/>' +
+  '</svg>';
+
+export const POINT_KINDS = {
+  photo:  { label: "Photo",  glyph: "" },   // numbered, no glyph
+  camera: { label: "Camera", glyph: "📷", svg: CAMERA_SVG },
+  sensor: { label: "Sensor", glyph: "📡", svg: SENSOR_SVG },
+  custom: { label: "Custom", glyph: "◆" },  // glyph overridden by point.symbol
+};
+export const CUSTOM_SYMBOLS = ["◆", "▲", "★", "⬡", "⚑"];
+export function pointKind(point) {
+  const k = point && point.kind;
+  return POINT_KINDS[k] ? k : "photo";
+}
+// The glyph to draw in the pin ("" → use the number). Custom → its chosen symbol.
+// Returns plain TEXT (for lists, menus, anywhere that escapes HTML).
+export function pointGlyph(point) {
+  const k = pointKind(point);
+  if (k === "photo") return "";
+  if (k === "custom") return point.symbol || CUSTOM_SYMBOLS[0];
+  return POINT_KINDS[k].glyph || "•";
+}
+// HTML-safe glyph for rendering inside the pin (or anywhere that accepts
+// innerHTML). Returns inline SVG for kinds that ship one (camera, sensor);
+// falls back to the plain text glyph (HTML-escaped) for the rest.
+export function pointGlyphHtml(point) {
+  const k = pointKind(point);
+  if (k === "photo") return "";
+  if (k === "custom") return _escHtmlInline(point.symbol || CUSTOM_SYMBOLS[0]);
+  const kind = POINT_KINDS[k];
+  if (kind && kind.svg) return kind.svg;
+  return _escHtmlInline(kind && kind.glyph ? kind.glyph : "•");
+}
+function _escHtmlInline(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+// Display name for a point's kind — custom points use their user-set type name.
+export function pointKindLabel(point) {
+  const k = pointKind(point);
+  if (k === "custom") return ((point.kindLabel || "").trim()) || "Custom";
+  return POINT_KINDS[k].label;
+}
+export function setPlaceKind(kind, symbol) {
+  state.placeKind = POINT_KINDS[kind] ? kind : "photo";
+  if (symbol) state.placeSymbol = symbol;
+  emit();
+}
+export function setKindFilter(kind) {
+  state.kindFilter = POINT_KINDS[kind] ? kind : "";
+  emit();
+}
+export function setPointKind(pointId, kind, symbol) {
+  const p = state.points.find((p) => p.id === pointId);
+  if (!p) return;
+  p.kind = POINT_KINDS[kind] ? kind : "photo";
+  if (p.kind === "custom") p.symbol = symbol || p.symbol || CUSTOM_SYMBOLS[0];
+  emit();
+}
+// Type name for the next placed custom point. No emit — avoids stealing focus
+// from the text input while typing; read on the next render.
+export function setPlaceCustomName(name) {
+  state.placeCustomName = name || "";
+}
+// Rename an existing custom point's type (commits on blur in the panel).
+export function setPointKindLabel(pointId, name) {
+  const p = state.points.find((p) => p.id === pointId);
+  if (!p) return;
+  p.kindLabel = name || "";
+  emit();
+}
+
 // ── Floor mutations ──
 export function setActiveFloor(id) {
   if (state.activeFloorId === id) return;
@@ -378,12 +479,25 @@ export function setFloors(list, replace = false) {
       plan: f.plan,
       planType: f.planType || "image",
       rooms: Array.isArray(f.rooms) ? f.rooms : [],
+      // White-out state from the host, so the toggle can revert even after a
+      // reload (planOriginal = pre-knockout image).
+      knockout: !!f.knockout,
+      planOriginal: f.planOriginal || null,
+      // User-drawn annotation overlay (Fabric.js JSON) + the save endpoint
+      // — kept on the floor so it survives floor-switches and host re-hydration.
+      annotations: f.annotations && typeof f.annotations === "object" ? f.annotations : {},
+      annotationsUrl: f.annotationsUrl || null,
     });
     ids.push(id);
   });
   if (replace && state.floors.length) {
-    state.activeFloorId = state.floors[0].id;
-    state.selectedId = null;
+    // Preserve the user's current floor across host re-hydration (e.g. navigating
+    // away from Explore to another module and back) when it's still present;
+    // only fall back to the first floor if the previous one is gone.
+    if (!state.floors.some((f) => f.id === state.activeFloorId)) {
+      state.activeFloorId = state.floors[0].id;
+      state.selectedId = null;
+    }
   }
   emit();
   return ids;
@@ -428,6 +542,11 @@ export function addPoint(x, y) {
     // away — otherwise it would be created with no phase and instantly drop out of
     // the active filter (vanish). In placement mode it stays unset (grey).
     phase: (state.numbering.mode === "phase" && state.numbering.phase) ? state.numbering.phase : "",
+    // Kind chosen for placement (photo by default). Non-photo kinds show a symbol
+    // instead of a number; custom carries its chosen symbol.
+    kind: POINT_KINDS[state.placeKind] ? state.placeKind : "photo",
+    symbol: state.placeKind === "custom" ? (state.placeSymbol || CUSTOM_SYMBOLS[0]) : "",
+    kindLabel: state.placeKind === "custom" ? (state.placeCustomName || "") : "",
     x: round1(x),
     y: round1(y),
     tables: [],

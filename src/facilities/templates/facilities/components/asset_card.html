@@ -1,6 +1,7 @@
 <!-- facilities/components/asset_card.html — one tile in the asset grid -->
 
 {% with score=asset.condition_score container=asset.display_spatial_container %}
+{% url 'facilities:assets_detail' project.pk asset.pk as asset_detail_path %}
 <div class="col-12 col-md-6 col-xl-4">
     <div class="p-3 rounded border d-flex flex-column gap-2 h-100 position-relative"
          style="background-color: var(--bs-body-bg); border-color: var(--bs-border-color) !important; transition: border-color 0.15s ease;">
@@ -14,8 +15,29 @@
                    aria-label="Select asset {{ asset|stringformat:'s' }}">
         </div>
 
-        <!-- Identifier block -->
-        <div class="d-flex align-items-start gap-2 pe-4">
+        <!-- QR code (top-right, below checkbox). Click → modal with big QR + print.
+             SVG is injected on DOMContentLoaded / htmx:afterSwap by castorAssetQR.
+             The button carries `data-asset-url/-tag/-name` for the modal to read;
+             the inner span carries `data-qr-url` so only it is treated as a
+             render target (otherwise the renderer would clobber the button). -->
+        <button type="button"
+                class="position-absolute asset-qr-mini border-0 p-1 rounded"
+                style="top: 38px; right: 10px; background: #ffffff; cursor: pointer; line-height: 0;"
+                title="Show / print QR code"
+                aria-label="Show QR code"
+                data-bs-toggle="modal"
+                data-bs-target="#assetQRModal"
+                data-asset-url="{{ request.scheme }}://{{ request.get_host }}{{ asset_detail_path }}"
+                data-asset-tag="{{ asset.asset_tag|default:'' }}"
+                data-asset-name="{{ asset.display_name|default:asset.asset_tag|default:'Asset' }}">
+            <span class="d-block"
+                  style="width: 56px; height: 56px;"
+                  data-qr-url="{{ request.scheme }}://{{ request.get_host }}{{ asset_detail_path }}"
+                  data-qr-size="56"></span>
+        </button>
+
+        <!-- Identifier block (pe-5 leaves room for the QR thumb on the right) -->
+        <div class="d-flex align-items-start gap-2" style="padding-right: 78px;">
             <i class="bi bi-box-seam fs-4" style="color: var(--castor-facilities, #14b8a6);"></i>
             <div class="flex-grow-1 min-width-0">
                 <div class="fw-semibold text-truncate">

@@ -14,6 +14,7 @@ import {
   setAttachPhase, setSelectedMedia, setMediaMeta, setArchiveType, setTimelineView, setSortKey, toggleSortDir, setNumbering, setNumberingPad, setPointPhase, addMedia, removeMedia, restoreMedia,
   addPhase, renamePhase, deletePhase, setPhaseColor, deleteFloor, moveFloor, phaseColor, effectivePhase, addPointTable, removePointTable, setPointTableFilter,
   onStateChange, exportFullState, importFullState, clearSession,
+  POINT_KINDS, CUSTOM_SYMBOLS, pointKind, pointGlyph, pointGlyphHtml, pointKindLabel, setPlaceKind, setKindFilter, setPointKind, setPlaceCustomName, setPointKindLabel,
 } from "./state.js";
 import { filterRows, tableCatalog, setTableCatalog } from "./data/roomdata.js";
 import { renderPins, initFloorplan } from "./floorplan/floorplan.js";
@@ -23,6 +24,8 @@ import { renderTimeline } from "./ui/timeline.js";
 import { initModal, openModal, closeModal } from "./ui/modal.js";
 import { MSG, ERR } from "./bridge/protocol.js";
 import { initBridge, emit, ack, error } from "./bridge/bridge.js";
+import { initAnnotations, setDrawMode, loadAnnotations, attachStorey, snapshotAnnotations } from "./annotations.js";
+import { initZoom, reset as resetZoom } from "./zoom.js";
 
 // ── Element refs ──
 const els = {
@@ -33,11 +36,13 @@ const els = {
   floorSwitcher: document.getElementById("floorSwitcher"),
   legend: document.getElementById("legend"),
   numbering: document.getElementById("numbering"),
+  kindFilter: document.getElementById("kindFilter"),
+  dpKinds: document.getElementById("dpKinds"),
   btnAddPoint: document.getElementById("btnAddPoint"),
   btnPoints: document.getElementById("btnPoints"),
   btnTheme: document.getElementById("btnTheme"),
   btnImport: document.getElementById("btnImport"),
-  btnKnockout: document.getElementById("btnKnockout"),
+  btnFloors: document.getElementById("btnFloors"),
   fileInput: document.getElementById("fileInput"),
   photoUpload: document.getElementById("photoUpload"),
   photoCamera: document.getElementById("photoCamera"),
@@ -50,6 +55,9 @@ const els = {
   tlTypes: document.getElementById("tlTypes"),
   tlView: document.getElementById("tlView"),
   tlSort: document.getElementById("tlSort"),
+  tlCollapse: document.getElementById("tlCollapse"),
+  tlResize: document.getElementById("tlResize"),
+  dpResize: document.getElementById("dpResize"),
   expTimeline: document.getElementById("expTimeline"),
   vLabel: document.getElementById("vLabel"),
   mhSub: document.getElementById("mhSub"),
@@ -120,9 +128,39 @@ function render() {
     els.planImg.setAttribute("src", floor.plan);
   }
 
+  // Annotation overlay follows the active floor — every storey carries its
+  // own Fabric.js JSON blob shipped on the floor descriptor. We push the
+  // current floor's save URL into the annotations module so its debounced
+  // POSTs land on the right endpoint. Resetting zoom on a floor switch
+  // keeps the user from landing in a panned / zoomed-in spot on the new
+  // floor (which would be confusing because the plan content is at a
+  // different X/Y on a different storey).
+  //
+  // Critical: snapshot the OUTGOING floor's current annotation state back
+  // into ``state.floors`` before switching. ``attachStorey`` already
+  // flushes any pending save to the backend, but the in-memory
+  // ``floor.annotations`` (loaded once via SET_FLOORS) would otherwise stay
+  // stale — returning to the same floor would then reload the pre-edit
+  // snapshot and the newest layers / strokes would silently disappear.
+  if (floor && floor.id !== currentAnnotationFloorId) {
+    if (currentAnnotationFloorId) {
+      const prevFloor = state.floors.find((f) => f.id === currentAnnotationFloorId);
+      if (prevFloor) {
+        try { prevFloor.annotations = snapshotAnnotations(); }
+        catch (e) { console.warn("[explore] snapshot before switch failed", e); }
+      }
+    }
+    attachStorey(floor.id, floor.annotationsUrl || null);
+    loadAnnotations(floor.annotations || {});
+    resetZoom();
+    currentAnnotationFloorId = floor.id;
+  }
+
   renderFloorSwitcher(els.floorSwitcher, state.floors, state.activeFloorId, (id) => setActiveFloor(id), openFloorManager);
 
-  const pts = pointsForActiveFloor();
+  const allPts = pointsForActiveFloor();
+  // Header "kind" filter (photo / camera / sensor / custom) hides non-matching pins.
+  const pts = state.kindFilter ? allPts.filter((p) => pointKind(p) === state.kindFilter) : allPts;
   const nums = computeNumbers(pts);
   renderPins(els.pinLayer, pts, {
     selectedId: state.selectedId,
@@ -130,11 +168,18 @@ function render() {
     onMove: (id, x, y) => movePoint(id, x, y),
     // Pin is colored by its assigned phase in every mode; grey until a phase is set.
     colorFor: (pt) => phaseColor(effectivePhase(pt)),
+    // Non-photo kinds draw a symbol instead of a number. glyphHtmlFor wins
+    // for camera / sensor (returns inline SVG pictograms); glyphFor stays
+    // around as the text fallback for kinds without an SVG.
+    glyphFor: (pt) => pointGlyph(pt),
+    glyphHtmlFor: (pt) => pointGlyphHtml(pt),
     numbers: nums,
     pad: numberPad(nums),
   });
   renderLegend();
   renderNumbering();
+  renderKindFilter();
+  renderPlaceKind();
 
   els.app.classList.toggle("placing", state.placing);
   els.btnAddPoint.classList.toggle("on", state.placing);
@@ -159,6 +204,8 @@ function render() {
       onRemoveTable: (id, key) => { removePointTable(id, key); },
       onSetTableFilter: (id, key, filterBy) => { setPointTableFilter(id, key, filterBy); },
       onConfigIdProps: openIdPropsConfig,
+      onSetPointKindLabel: (id, name) => setPointKindLabel(id, name),
+      onSetPointKind: (id, kind, symbol) => setPointKind(id, kind, symbol),
     },
     {
       phases: state.phases,
@@ -166,6 +213,7 @@ function render() {
       room: sel ? roomForPoint(sel) : null,
       idProps: state.idProps,
       propLabel,
+      customSymbols: CUSTOM_SYMBOLS,
       catalog: tableCatalog(),
       filterKeys: filterKeysObj(),
       roomName: sel ? roomNameForPoint(sel) : "",
@@ -186,7 +234,6 @@ function render() {
     onSelect: (pid, mid) => openMediaEditor(pid, mid),
   });
 
-  els.btnKnockout.classList.toggle("on", !!(floor && floor.knockout));
   // Compare works within the active archive (photo↔photo or 360↔360), never mixed.
   const cmpCount = sel ? sel.media.filter((m) => m.type === state.archiveType).length : 0;
   const archWord = state.archiveType === "360" ? "360°" : "photo";
@@ -303,6 +350,101 @@ els.btnTheme.addEventListener("click", () => {
   try { localStorage.setItem(THEME_KEY, next); } catch (_) { /* ignore */ }
 });
 
+// ── Timeline: chevron collapse + drag-to-resize the top edge ("roleta") — persisted.
+//    Drag the handle to set any height; chevron hides it to header-only. ──
+const TL_COLLAPSE_KEY = "fm-explore.tlCollapsed";
+const TL_HEIGHT_KEY = "fm-explore.tlHeight";
+const TL_MIN_H = 70;
+function tlMaxH() { return Math.round(window.innerHeight * 0.7); }
+function setTimelineHeight(h) {
+  const clamped = Math.max(TL_MIN_H, Math.min(Math.round(h), tlMaxH()));
+  els.expTimeline.classList.remove("collapsed");
+  els.expTimeline.style.height = clamped + "px";
+  try { localStorage.setItem(TL_HEIGHT_KEY, String(clamped)); localStorage.setItem(TL_COLLAPSE_KEY, ""); } catch (_) { /* ignore */ }
+}
+// chevron: collapse to header-only, or restore the last dragged height
+els.tlCollapse.addEventListener("click", () => {
+  const collapse = !els.expTimeline.classList.contains("collapsed");
+  els.expTimeline.classList.toggle("collapsed", collapse);
+  if (collapse) {
+    els.expTimeline.style.height = ""; // let .collapsed{height:auto} show header only
+  } else {
+    const h = parseInt(localStorage.getItem(TL_HEIGHT_KEY) || "", 10);
+    if (h) els.expTimeline.style.height = Math.max(TL_MIN_H, Math.min(h, tlMaxH())) + "px";
+  }
+  try { localStorage.setItem(TL_COLLAPSE_KEY, collapse ? "1" : ""); } catch (_) { /* ignore */ }
+});
+// drag the top edge to resize
+if (els.tlResize) {
+  let tlDragging = false;
+  els.tlResize.addEventListener("pointerdown", (e) => {
+    tlDragging = true;
+    try { els.tlResize.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
+    e.preventDefault();
+  });
+  els.tlResize.addEventListener("pointermove", (e) => {
+    if (!tlDragging) return;
+    const r = els.expTimeline.getBoundingClientRect();
+    setTimelineHeight(r.bottom - e.clientY);
+  });
+  els.tlResize.addEventListener("pointerup", () => { tlDragging = false; });
+}
+// restore persisted state on load
+try {
+  if (localStorage.getItem(TL_COLLAPSE_KEY)) {
+    els.expTimeline.classList.add("collapsed");
+  } else {
+    const h = parseInt(localStorage.getItem(TL_HEIGHT_KEY) || "", 10);
+    if (h) els.expTimeline.style.height = Math.max(TL_MIN_H, Math.min(h, tlMaxH())) + "px";
+  }
+} catch (_) { /* ignore */ }
+
+// ── Detail panel: drag its left edge to widen/narrow (the viewer + its floor
+//    switcher follow) — persisted. ──
+const PANEL_W_KEY = "fm-explore.panelWidth";
+const PANEL_MIN_W = 240;
+function panelMaxW() { return Math.max(PANEL_MIN_W, Math.round(window.innerWidth * 0.6)); }
+const detailPanel = document.querySelector(".detail-panel");
+function setPanelWidth(w) {
+  if (!detailPanel) return;
+  const clamped = Math.max(PANEL_MIN_W, Math.min(Math.round(w), panelMaxW()));
+  detailPanel.style.width = clamped + "px";
+  try { localStorage.setItem(PANEL_W_KEY, String(clamped)); } catch (_) { /* ignore */ }
+}
+if (els.dpResize && detailPanel) {
+  let dpDragging = false;
+  els.dpResize.addEventListener("pointerdown", (e) => {
+    dpDragging = true;
+    try { els.dpResize.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
+    e.preventDefault();
+  });
+  els.dpResize.addEventListener("pointermove", (e) => {
+    if (!dpDragging) return;
+    const r = detailPanel.getBoundingClientRect();
+    setPanelWidth(r.right - e.clientX);
+  });
+  els.dpResize.addEventListener("pointerup", () => { dpDragging = false; });
+}
+try { const pw = parseInt(localStorage.getItem(PANEL_W_KEY) || "", 10); if (pw) setPanelWidth(pw); } catch (_) { /* ignore */ }
+
+// ── Host palette → module tokens, so the embedded background matches Castor
+//    exactly (sent by the host in VIEWER_INIT / SET_THEME; works light + dark). ──
+function applyHostPalette(p) {
+  if (!p || typeof p !== "object") return;
+  const root = document.documentElement.style;
+  const set = (k, v) => { if (v) root.setProperty(k, v); };
+  set("--bg", p.body);
+  set("--viewer-bg", p.body);
+  set("--sb", p.tertiary || p.body);
+  set("--p1", p.tertiary || p.body);
+  set("--p2", p.secondary || p.tertiary || p.body);
+  set("--p3", p.secondary || p.tertiary || p.body);
+  set("--b1", p.border);
+  set("--b2", p.border);
+  set("--t1", p.text);
+  set("--t2", p.muted || p.text);
+}
+
 // ── Import floor plans (images + PDF) ──
 els.btnImport.addEventListener("click", () => els.fileInput.click());
 els.fileInput.addEventListener("change", async (e) => {
@@ -393,18 +535,20 @@ function renderLegend() {
 function computeNumbers(points) {
   const map = {};
   const { mode, phase } = state.numbering;
-  if (mode === "phase" && phase) {
-    let n = 0;
-    points.forEach((pt) => { map[pt.id] = effectivePhase(pt) === phase ? ++n : null; });
-  } else {
-    points.forEach((pt, i) => { map[pt.id] = i + 1; });
-  }
+  const byPhase = mode === "phase" && phase;
+  let n = 0;
+  points.forEach((pt) => {
+    const inSet = byPhase ? (effectivePhase(pt) === phase) : true;
+    if (!inSet) { map[pt.id] = null; return; }      // hidden by the phase filter
+    if (pointKind(pt) !== "photo") { map[pt.id] = "•"; return; } // shows a symbol, no number
+    map[pt.id] = ++n;                                // only photo points get numbers
+  });
   return map;
 }
 // Zero-pad width: explicit setting, or auto from the highest number on the floor.
 function numberPad(nums) {
   if (state.numbering.pad !== "auto") return Number(state.numbering.pad) || 1;
-  const max = Math.max(1, ...Object.values(nums).filter((v) => v != null));
+  const max = Math.max(1, ...Object.values(nums).filter((v) => typeof v === "number"));
   return String(max).length;
 }
 
@@ -457,6 +601,48 @@ function renderNumbering() {
   const mp = els.numbering.querySelector("[data-managephases]");
   if (mp) mp.addEventListener("click", openPhaseManager);
 }
+
+// ── Header: filter the plan by point kind (photo / camera / sensor / custom) ──
+function renderKindFilter() {
+  if (!els.kindFilter) return;
+  const cur = state.kindFilter;
+  els.kindFilter.innerHTML =
+    `<span class="num-lbl" title="Filter points by kind">⛬</span>` +
+    `<select class="phase-sel" data-kindfilter title="Show only this point kind">` +
+    `<option value="">All kinds</option>` +
+    Object.keys(POINT_KINDS).map((k) =>
+      `<option value="${k}" ${k === cur ? "selected" : ""}>${escHtml(POINT_KINDS[k].label)}</option>`).join("") +
+    `</select>`;
+  const sel = els.kindFilter.querySelector("[data-kindfilter]");
+  if (sel) sel.addEventListener("change", () => setKindFilter(sel.value));
+}
+
+// ── Panel: choose the kind (+ custom symbol) for the next placed point ──
+function renderPlaceKind() {
+  if (!els.dpKinds) return;
+  const k = state.placeKind;
+  let html =
+    `<span class="dp-kinds-lbl">New point</span>` +
+    `<select class="phase-sel" data-placekind title="Kind of the next placed point">` +
+    Object.keys(POINT_KINDS).map((kk) =>
+      `<option value="${kk}" ${kk === k ? "selected" : ""}>${escHtml(POINT_KINDS[kk].label)}</option>`).join("") +
+    `</select>`;
+  if (k === "custom") {
+    html += `<input class="phase-sel dp-customname" data-placecustomname placeholder="Type name (e.g. Exit)" value="${escHtml(state.placeCustomName || "")}" title="Name for the custom point type" />`;
+    html += `<span class="dp-syms">` +
+      CUSTOM_SYMBOLS.map((s) =>
+        `<button class="dp-sym${s === state.placeSymbol ? " on" : ""}" data-placesym="${escHtml(s)}" title="Symbol">${escHtml(s)}</button>`).join("") +
+      `</span>`;
+  }
+  els.dpKinds.innerHTML = html;
+  const sel = els.dpKinds.querySelector("[data-placekind]");
+  if (sel) sel.addEventListener("change", () => setPlaceKind(sel.value, state.placeSymbol));
+  const nm = els.dpKinds.querySelector("[data-placecustomname]");
+  if (nm) nm.addEventListener("input", () => setPlaceCustomName(nm.value));
+  els.dpKinds.querySelectorAll("[data-placesym]").forEach((b) =>
+    b.addEventListener("click", () => setPlaceKind("custom", b.dataset.placesym)));
+}
+
 function phasesOnActiveFloor() {
   return [...new Set(pointsForActiveFloor().map(effectivePhase).filter(Boolean))];
 }
@@ -648,27 +834,64 @@ function openPointList() {
       (p.globalId || "").toLowerCase().includes(term) ||
       roomNameForPoint(p).toLowerCase().includes(term);
   };
+  const floorName = (fid) => { const f = state.floors.find((x) => x.id === fid); return f ? f.name : ""; };
   const draw = () => {
     const term = (search.value || "").trim().toLowerCase();
-    const groups = state.floors
-      .map((f) => ({ f, pts: state.points.filter((p) => p.floorId === f.id && matches(p, term)) }))
-      .filter((g) => g.pts.length);
+    // Grouped by point kind (Photo / Camera / Sensor / Custom).
+    const matched = state.points.filter((p) => matches(p, term));
+    const groups = [];
+    ["photo", "camera", "sensor"].forEach((k) => {
+      const pts = matched.filter((p) => pointKind(p) === k);
+      if (pts.length) groups.push({ label: POINT_KINDS[k].label, glyph: k !== "photo" ? POINT_KINDS[k].glyph : "", pts });
+    });
+    // Custom points sub-group by their user-set type name.
+    const customPts = matched.filter((p) => pointKind(p) === "custom");
+    [...new Set(customPts.map((p) => pointKindLabel(p)))].forEach((nm) => {
+      const pts = customPts.filter((p) => pointKindLabel(p) === nm);
+      groups.push({ label: nm, glyph: pts[0].symbol || "◆", pts });
+    });
     if (!groups.length) { listEl.innerHTML = `<div class="dp-empty-sm">No matching points</div>`; return; }
-    listEl.innerHTML = groups.map((g) =>
-      `<div class="ptl-grp">${escHtml(g.f.name)} · ${escHtml(g.f.label)}</div>` +
+    listEl.innerHTML = groups.map((g) => {
+      const head = g.label + (g.glyph ? " " + g.glyph : "");
+      return `<div class="ptl-grp">${escHtml(head)} · ${g.pts.length}</div>` +
       g.pts.map((p) => {
         const ph = effectivePhase(p);
-        const meta = [p.globalId ? "GID " + p.globalId.slice(0, 8) + "…" : "", ph].filter(Boolean).join("  ·  ");
-        return `<button class="ptl-item${p.id === state.selectedId ? " on" : ""}" data-pid="${p.id}">` +
-          `<span class="ptl-dot" style="background:${phaseColor(ph)}"></span>` +
-          `<span class="ptl-name">${escHtml(p.label || "(point)")}</span>` +
-          `<span class="ptl-meta">${escHtml(meta)}</span>` +
-          `</button>`;
-      }).join("")
-    ).join("");
+        // glyphHtml may contain a raw SVG pictogram (camera / sensor) — it
+        // must NOT go through escHtml or the markup turns into visible text.
+        // pointGlyphHtml already HTML-escapes its plain-text branch.
+        const glyphHtml = pointGlyphHtml(p);
+        const meta = [floorName(p.floorId), p.globalId ? "GID " + p.globalId.slice(0, 8) + "…" : "", ph].filter(Boolean).join("  ·  ");
+        return `<div class="ptl-item${p.id === state.selectedId ? " on" : ""}">` +
+          `<button class="ptl-jump" data-pid="${p.id}" title="Jump to this point">` +
+            `<span class="ptl-dot" style="background:${phaseColor(ph)}"></span>` +
+            (glyphHtml ? `<span class="ptl-sym">${glyphHtml}</span>` : "") +
+            `<span class="ptl-name">${escHtml(p.label || "(point)")}</span>` +
+            `<span class="ptl-meta">${escHtml(meta)}</span>` +
+          `</button>` +
+          `<button class="ptl-del" data-del-pid="${p.id}" title="Delete this point (and its photos)">✕</button>` +
+          `</div>`;
+      }).join("");
+    }).join("");
     listEl.querySelectorAll("[data-pid]").forEach((b) => b.addEventListener("click", () => {
       const p = state.points.find((x) => x.id === b.dataset.pid);
       if (p) { setActiveFloor(p.floorId); selectPoint(p.id); closeModal(); }
+    }));
+    // Delete a point straight from the list (handy for points orphaned when a
+    // plan is removed). Two-step confirm so it isn't an accidental click.
+    listEl.querySelectorAll("[data-del-pid]").forEach((b) => b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (b.dataset.armed === "1") {
+        deletePoint(b.dataset.delPid);
+        toast("Point deleted");
+        const t = document.getElementById("modalTitle");
+        if (t) t.textContent = `Points · ${state.points.length}`;
+        draw();
+      } else {
+        b.dataset.armed = "1";
+        b.textContent = "Delete?";
+        b.classList.add("armed");
+        setTimeout(() => { if (b.isConnected) { b.dataset.armed = ""; b.textContent = "✕"; b.classList.remove("armed"); } }, 3000);
+      }
     }));
   };
   search.addEventListener("input", draw);
@@ -878,6 +1101,14 @@ function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", t);
 }
 
+// Track the storey the annotation canvas is currently bound to so we only
+// hydrate / re-attach on actual floor switches (not on every render tick).
+let currentAnnotationFloorId = null;
+
+// Embedded mode (set on VIEWER_INIT): when true, the toolbar "Floors" button asks
+// the Castor host to open its Floor-plans manager instead of the module's own.
+let isEmbedded = false;
+
 initBridge({
   // Handshake: origin already locked by the router; apply any initial config.
   [MSG.VIEWER_INIT]: (msg) => {
@@ -887,12 +1118,15 @@ initBridge({
     // v0.2 — host can flag embedded mode. In that case, the standalone-only
     // toolbar controls (host owns plan upload + theme + persistence reset)
     // are hidden via the .castor-embedded body class (see components.css).
+    isEmbedded = !!msg.embedded;
     if (msg.embedded) document.body.classList.add("castor-embedded");
+    if (msg.palette) applyHostPalette(msg.palette); // match Castor's background exactly
     ack(msg.requestId, { ready: true, capabilities: CAPABILITIES });
     toast("Connected to Castor");
   },
   [MSG.SET_THEME]: (msg) => {
     applyTheme(msg.theme);
+    if (msg.palette) applyHostPalette(msg.palette); // re-match on host theme switch
     ack(msg.requestId, { theme: msg.theme === "light" ? "light" : "dark" });
   },
   [MSG.FOCUS_ELEMENT]: (msg) => {
@@ -934,6 +1168,13 @@ initBridge({
       phases: state.phases.length,
     });
   },
+  // v0.3 — the host's Floor-plans manager toggles white-out per floor; we run the
+  // (client-side) knockout on that floor and let it persist via STATE_CHANGED.
+  [MSG.SET_FLOOR_KNOCKOUT]: (msg) => {
+    if (!msg.floorId) { error(msg.requestId, "SET_FLOOR_KNOCKOUT requires { floorId }", ERR.BAD_PAYLOAD); return; }
+    applyFloorKnockout(msg.floorId, !!msg.on);
+    ack(msg.requestId, { floorId: msg.floorId, on: !!msg.on });
+  },
 });
 
 // Notify the host whenever the working set changes (debounced in state.js), so it
@@ -945,17 +1186,21 @@ onStateChange((snap, savedLocally) => {
 // Announce readiness to the host (goes to "*" until VIEWER_INIT locks the origin)
 emit(MSG.VIEWER_READY, { version: "0.2", capabilities: CAPABILITIES });
 
-// ── White-background knockout (per active floor) ──
-els.btnKnockout.addEventListener("click", async () => {
-  const floor = activeFloor();
+// ── White-background knockout — applied per floor (by id). The toolbar button is
+//    gone; this is driven by the host's Floor-plans manager (SET_FLOOR_KNOCKOUT)
+//    when embedded, and stays available to the standalone floor manager.
+async function applyFloorKnockout(floorId, on) {
+  const floor = state.floors.find((f) => f.id === floorId);
   if (!floor) return;
-  if (floor.knockout) {
-    // revert
-    setFloorPlan(floor.id, floor.planOriginal || floor.plan);
-    updateFloor(floor.id, { knockout: false });
-    toast("White background restored");
+  if (!on) {
+    if (floor.knockout) {
+      setFloorPlan(floor.id, floor.planOriginal || floor.plan);
+      updateFloor(floor.id, { knockout: false });
+      toast("White background restored");
+    }
     return;
   }
+  if (floor.knockout) return; // already knocked out
   toast("Knocking out white…");
   try {
     const { knockoutWhite } = await import("./floorplan/knockout.js");
@@ -967,15 +1212,56 @@ els.btnKnockout.addEventListener("click", async () => {
     console.error("[explore] knockout failed", err);
     toast("Knock-out failed (cross-origin or load error)");
   }
+}
+
+// Toolbar "Floors" button: embedded → ask Castor to open its Floor-plans manager;
+// standalone → open the module's own floor manager.
+els.btnFloors.addEventListener("click", () => {
+  if (isEmbedded) emit(MSG.OPEN_LEVELS, {});
+  else openFloorManager();
 });
 
+// Header "Plans" gear: ask Castor to open a file-browser-style modal listing
+// every uploaded / generated plan per storey (with per-image delete + "show
+// this" toggle). Standalone mode has no such manager, so a click there only
+// emits a no-op postMessage (no listener picks it up) and toasts a hint.
+const btnPlansManager = document.getElementById("btnPlansManager");
+if (btnPlansManager) {
+  btnPlansManager.addEventListener("click", () => {
+    if (isEmbedded) {
+      emit(MSG.OPEN_PLANS_MANAGER, {});
+    } else {
+      toast("Plans Manager is available only inside Castor.");
+    }
+  });
+}
+
+// Header "Draw" toggle: expand / collapse the Paint-style annotation toolbar
+// and flip the viewer into draw-mode (annotation canvas accepts pointer
+// events; pin layer is passive). The annotations module owns the visual
+// state of the toggle button (.on class).
+const btnAnnotate = document.getElementById("btnAnnotate");
+if (btnAnnotate) {
+  btnAnnotate.addEventListener("click", () => {
+    const bar = document.getElementById("annotBar");
+    const on = bar ? bar.hidden : false;
+    setDrawMode(on);
+  });
+}
+
 // ── Boot ──
-const BUILD = "build 6.24"; // bump on each change so a stale (cached) JS is obvious in the header
+const BUILD = "build 6.48"; // bump on each change so a stale (cached) JS is obvious in the header
 initModal();
 // Restore a previously chosen standalone theme (host SET_THEME still overrides when embedded).
 try { const savedTheme = localStorage.getItem(THEME_KEY); if (savedTheme) applyTheme(savedTheme); } catch (_) { /* ignore */ }
 const buildEl = document.getElementById("mhBuild");
 if (buildEl) buildEl.textContent = BUILD;
+// Annotation canvas is set up on boot — it'll attach to the active floor once
+// SET_FLOORS (or restoreSession) populates state.floors and render() runs.
+initAnnotations();
+// Pan + zoom controls (left-bottom overlay). Drives a CSS-variable transform
+// on .plan-stage so image, annotations and pins all scale together.
+initZoom();
 render();
 toast("Explore ready · " + BUILD);
 // eslint-disable-next-line no-console

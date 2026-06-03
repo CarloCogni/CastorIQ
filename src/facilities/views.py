@@ -41,6 +41,7 @@ from .models import (
     ActionRequest,
     ClassificationReference,
     ExploreFloorPlan,
+    ExploreFloorSettings,
     ExplorePoint,
     FacilityAsset,
     FMIntentProposal,
@@ -222,6 +223,7 @@ class AssetListView(ProjectTabMixin, TemplateView):
         project = self.get_project()
         context.update(_role_context(project, self.request.user, self.request.session))
         context["active_sub_tab"] = "assets"
+        context["assets_subtab"] = "list"
         context["facilities_body_template"] = "facilities/tabs/_facilities_assets.html"
         context.update(self._asset_grid_context(project, self.request))
         return context
@@ -279,6 +281,44 @@ class AssetListView(ProjectTabMixin, TemplateView):
             "active_classification_ref_ids": list(classification_ref_ids),
             "classification_references": classifications,
         }
+
+
+class AssetQRLabelsView(ProjectTabMixin, TemplateView):
+    """QR Labels — large-format QR grid for printing asset stickers.
+
+    Shares :class:`AssetListView`'s data fetch + filter pipeline so the QR
+    sheet honours the same search/filter the user has on the regular list.
+    Renders the Asset Register chrome with the QR sub-tab active; the body
+    template (`_facilities_qr_labels.html`) shows big QRs with checkbox
+    selection and a 'Print sheet' button that opens an A4 print window.
+    """
+
+    active_tab = "facilities"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        project = self.get_project()
+        context.update(_role_context(project, self.request.user, self.request.session))
+        context["active_sub_tab"] = "assets"
+        context["assets_subtab"] = "qr"
+        context["facilities_body_template"] = "facilities/tabs/_facilities_assets.html"
+        # Reuse the list view's filter/query/pagination pipeline so the QR
+        # tab shows the SAME set the user just refined — switching tabs
+        # shouldn't reset what they were looking at.
+        context.update(AssetListView._asset_grid_context(project, self.request))
+        return context
+
+    def get(self, request, *args, **kwargs):
+        if request.headers.get("HX-Request") == "true":
+            project = self.get_project()
+            context = AssetListView._asset_grid_context(project, request)
+            context["project"] = project
+            return render(
+                request,
+                "facilities/components/asset_qr_labels_grid.html",
+                context,
+            )
+        return super().get(request, *args, **kwargs)
 
 
 class AssetDetailView(ProjectTabMixin, TemplateView):
@@ -1977,37 +2017,102 @@ class ExploreView(ProjectTabMixin, TemplateView):
             + "/",
             "catalog": reverse("facilities:explore_catalog", args=[project.pk]),
             "state": reverse("facilities:explore_state", args=[project.pk]),
+            "plans_manager": reverse("facilities:explore_plans_manager", args=[project.pk]),
         }
-        # Storeys + their plan status drive the upload panel above the iframe.
-        # Each entry: { pk, name, has_plan, upload_url }. The iframe gets the
-        # same data through the floors JSON endpoint; this is the host-page
-        # view used for the upload affordance.
-        storeys = (
-            IFCSpatialElement.objects.filter(
-                ifc_file__project=project,
-                spatial_type=IFCSpatialElement.SpatialType.BUILDING_STOREY,
-            )
-            .select_related("entity", "explore_floor_plan")
-            .order_by("elevation", "entity__name")
+        # Storeys + their plan / visibility status drive the Floor-plans manager.
+        context["explore_storeys"] = build_explore_storeys(project)
+        return context
+
+
+def build_explore_storeys(project):
+    """One descriptor per ``IfcBuildingStorey`` for the Floor-plans manager rows.
+
+    Each entry: { pk, name, label, has_plan, knockout, hidden, *_url }.
+    """
+    storeys = (
+        IFCSpatialElement.objects.filter(
+            ifc_file__project=project,
+            spatial_type=IFCSpatialElement.SpatialType.BUILDING_STOREY,
         )
-        context["explore_storeys"] = [
+        .select_related("entity", "explore_floor_plan", "explore_settings")
+        .order_by("elevation", "entity__name")
+    )
+    descriptors = []
+    for storey in storeys:
+        plan = getattr(storey, "explore_floor_plan", None)
+        uploaded_url = None
+        generated_url = None
+        if plan and plan.image:
+            try:
+                uploaded_url = plan.image.url
+            except (ValueError, AttributeError):
+                uploaded_url = None
+        if plan and plan.generated_image:
+            try:
+                generated_url = plan.generated_image.url
+            except (ValueError, AttributeError):
+                generated_url = None
+        descriptors.append(
             {
                 "pk": str(storey.pk),
                 "name": (storey.entity.name if storey.entity_id else str(storey.pk)),
                 "label": storey.long_name or (storey.entity.name if storey.entity_id else ""),
-                "has_plan": bool(getattr(storey, "explore_floor_plan", None)),
-                "upload_url": reverse(
-                    "facilities:explore_floor_plan_upload",
-                    args=[project.pk, storey.pk],
+                "has_plan": plan is not None and (uploaded_url or generated_url),
+                "has_uploaded": bool(uploaded_url),
+                "has_generated": bool(generated_url),
+                "uploaded_url": uploaded_url,
+                "generated_url": generated_url,
+                "image_source": (plan.image_source if plan else "uploaded"),
+                "cut_height_mm": (plan.cut_height_mm if plan else None),
+                "included_kinds": list(plan.included_kinds) if (plan and plan.included_kinds) else [],
+                "generated_at": (plan.generated_at if plan else None),
+                "knockout": getattr(plan, "knockout", False),
+                "hidden": getattr(getattr(storey, "explore_settings", None), "hidden", False),
+                "upload_url": reverse("facilities:explore_floor_plan_upload", args=[project.pk, storey.pk]),
+                "delete_url": reverse("facilities:explore_floor_plan_delete", args=[project.pk, storey.pk]),
+                "delete_generated_url": reverse(
+                    "facilities:explore_floor_plan_generated_delete", args=[project.pk, storey.pk]
                 ),
-                "delete_url": reverse(
-                    "facilities:explore_floor_plan_delete",
-                    args=[project.pk, storey.pk],
-                ),
+                "visibility_url": reverse("facilities:explore_floor_visibility", args=[project.pk, storey.pk]),
+                "rename_url": reverse("facilities:explore_floor_rename", args=[project.pk, storey.pk]),
+                "generate_url": reverse("facilities:explore_floor_plan_generate", args=[project.pk, storey.pk]),
+                "source_url": reverse("facilities:explore_floor_plan_source", args=[project.pk, storey.pk]),
             }
-            for storey in storeys
-        ]
-        return context
+        )
+    return descriptors
+
+
+def _explore_floor_rows_response(request, project):
+    """Render the Floors modal rows OR the Plans Manager rows, depending on caller.
+
+    Both modals operate on the same set of storeys; we dispatch by the
+    HX-Target header so each modal's hx-post finds its own piece of DOM
+    refreshed. The two partials share data (``build_explore_storeys``) but
+    different layout — the Floors modal is a compact action row per storey,
+    the Plans Manager is a file-browser-style card grid with thumbnails.
+    """
+    target = (request.headers.get("HX-Target") or "").strip()
+    template = (
+        "facilities/tabs/_explore_plans_manager_rows.html"
+        if target == "explorePlansManagerRows"
+        else "facilities/tabs/_explore_floor_rows.html"
+    )
+    return render(
+        request,
+        template,
+        {"explore_storeys": build_explore_storeys(project), "user_permission": "editor"},
+    )
+
+
+def _plans_manager_response(request, project):
+    """Alias kept for clarity — endpoints that *only* refresh the Plans Manager
+    use this so the intent is obvious at the call site.
+    """
+    return render(
+        request,
+        "facilities/tabs/_explore_plans_manager_rows.html",
+        {"explore_storeys": build_explore_storeys(project), "user_permission": "editor"},
+    )
 
 
 # Pavla's Explore module lives as a peer directory under facilities/, NOT under
@@ -2083,17 +2188,18 @@ class ExploreFloorPlanUploadView(ProjectModifyAccessMixin, View):
         logger.info(
             "Explore floor plan uploaded for storey %s by user %s", storey.pk, request.user.pk
         )
-        return toast_response(
-            f"Floor plan saved for {storey.entity.name if storey.entity_id else 'storey'}.",
-            "success",
-        )
+        return _explore_floor_rows_response(request, project)
 
 
 class ExploreFloorPlanDeleteView(ProjectModifyAccessMixin, View):
-    """Remove the uploaded plan image for an IFC storey.
+    """Remove the *uploaded* plan image for an IFC storey.
 
-    Points and media previously placed on this floor are **not** deleted —
-    they stay anchored to the storey and reappear if a plan is re-uploaded.
+    Mirrors :class:`ExploreFloorPlanGeneratedDeleteView` for the upload side.
+    The generated image (if any) is preserved; ``image_source`` auto-flips to
+    ``'generated'`` when the uploaded plan was active so the viewer keeps
+    showing a plan. If neither image remains the whole row is deleted so the
+    storey returns to its "No plan" state. Points and media stay anchored
+    to the storey throughout — they reappear when any plan is re-attached.
     """
 
     def post(self, request, pk, storey_pk):
@@ -2103,11 +2209,291 @@ class ExploreFloorPlanDeleteView(ProjectModifyAccessMixin, View):
             storey__pk=storey_pk,
             storey__ifc_file__project=project,
         )
-        plan.delete()
+        if plan.image:
+            plan.image.delete(save=False)
+            plan.image = None
+        if plan.original_image:
+            plan.original_image.delete(save=False)
+            plan.original_image = None
+        plan.knockout = False
+        if not plan.generated_image:
+            plan.delete()
+        else:
+            # Generated plan survives — make it the active source so the
+            # viewer doesn't blank out.
+            plan.image_source = ExploreFloorPlan.ImageSource.GENERATED
+            plan.save()
         logger.info(
-            "Explore floor plan removed for storey %s by user %s", storey_pk, request.user.pk
+            "Removed uploaded plan for storey %s by user %s", storey_pk, request.user.pk
         )
-        return toast_response("Floor plan removed.", "success")
+        return _explore_floor_rows_response(request, project)
+
+
+class ExploreFloorVisibilityView(ProjectModifyAccessMixin, View):
+    """Toggle whether an IFC storey is hidden from the Explore floor switcher.
+
+    Explore-side view preference only — it does NOT modify the IFC model. The
+    iframe re-hydrates on page reload, so a hidden storey drops out of the
+    switcher while still listed in the Floor-plans manager (to un-hide).
+    """
+
+    def post(self, request, pk, storey_pk):
+        project = self.get_project()
+        storey = get_object_or_404(
+            IFCSpatialElement,
+            pk=storey_pk,
+            ifc_file__project=project,
+            spatial_type=IFCSpatialElement.SpatialType.BUILDING_STOREY,
+        )
+        settings_row, _created = ExploreFloorSettings.objects.get_or_create(storey=storey)
+        settings_row.hidden = not settings_row.hidden
+        settings_row.save()
+        name = storey.entity.name if storey.entity_id else "storey"
+        state = "hidden in" if settings_row.hidden else "shown in"
+        logger.info(
+            "Explore storey %s %s Explore by user %s", storey_pk, state, request.user.pk
+        )
+        # Return the refreshed rows so the manager updates in place (modal stays open).
+        return _explore_floor_rows_response(request, project)
+
+
+class ExploreFloorPlanAnnotationsView(ProjectModifyAccessMixin, View):
+    """Save the user's drawn annotations for a storey.
+
+    Body: a JSON object — Fabric.js's ``canvas.toJSON()`` output. We store it
+    verbatim into ``ExploreFloorPlan.annotations_json``; no schema validation
+    beyond "is JSON". The annotation layer is per-storey (one set, shown
+    over whichever plan source is active). Returns 204 on success.
+    """
+
+    def post(self, request, pk, storey_pk):
+        import json  # noqa: PLC0415
+
+        project = self.get_project()
+        storey = get_object_or_404(
+            IFCSpatialElement,
+            pk=storey_pk,
+            ifc_file__project=project,
+            spatial_type=IFCSpatialElement.SpatialType.BUILDING_STOREY,
+        )
+        try:
+            payload = json.loads(request.body or b"{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "invalid JSON"}, status=400)
+        if not isinstance(payload, dict):
+            return JsonResponse({"error": "annotations must be a JSON object"}, status=400)
+
+        plan, _created = ExploreFloorPlan.objects.get_or_create(
+            storey=storey,
+            defaults={"uploaded_by": request.user, "knockout": False},
+        )
+        plan.annotations_json = payload
+        plan.save(update_fields=["annotations_json", "updated_at"])
+        return JsonResponse({"ok": True})
+
+
+class ExplorePlansManagerView(ProjectModifyAccessMixin, View):
+    """Render the Plans Manager modal body (file-browser-style card grid).
+
+    Opened by the iframe's gear button (OPEN_PLANS_MANAGER postMessage). The
+    host page loads this partial via HTMX into a modal mount once and then
+    every per-action POST refreshes only the inner rows partial.
+    """
+
+    def get(self, request, pk):
+        project = self.get_project()
+        return render(
+            request,
+            "facilities/tabs/_explore_plans_manager.html",
+            {
+                "project": project,
+                "explore_storeys": build_explore_storeys(project),
+                "user_permission": "editor",
+            },
+        )
+
+
+class ExploreFloorPlanGeneratedDeleteView(ProjectModifyAccessMixin, View):
+    """Delete just the IFC-generated image for a storey, keeping the uploaded one.
+
+    Used from the Plans Manager when the user wants to discard a bad
+    auto-generated plan without losing the manually-uploaded one. When the
+    generated image was active, ``image_source`` auto-flips back to
+    ``'uploaded'`` so the viewer keeps showing something usable.
+    """
+
+    def post(self, request, pk, storey_pk):
+        project = self.get_project()
+        plan = get_object_or_404(
+            ExploreFloorPlan,
+            storey__pk=storey_pk,
+            storey__ifc_file__project=project,
+        )
+        if not plan.generated_image:
+            return toast_response("Nothing to delete — no generated plan.", "info")
+        plan.generated_image.delete(save=False)
+        plan.generated_image = None
+        plan.cut_height_mm = None
+        plan.included_kinds = []
+        plan.generated_at = None
+        if plan.image_source == ExploreFloorPlan.ImageSource.GENERATED:
+            plan.image_source = ExploreFloorPlan.ImageSource.UPLOADED
+        plan.save()
+        logger.info(
+            "Removed generated plan for storey %s by user %s", storey_pk, request.user.pk
+        )
+        return _explore_floor_rows_response(request, project)
+
+
+class ExploreFloorPlanGenerateView(ProjectModifyAccessMixin, View):
+    """Generate a 2D floor plan from the IFC model by horizontal slicing.
+
+    Reads ``cut_height_m`` (default 1.2) and one or more ``kinds`` checkboxes
+    from the form, runs the slice via :mod:`explore_plan_generator`, and stores
+    the PNG into ``plan.generated_image``. ``image_source`` flips to
+    ``'generated'`` so the viewer shows the new plan immediately. The user
+    can switch back to the uploaded plan from the source pills (see
+    :class:`ExploreFloorPlanSourceView`).
+    """
+
+    def post(self, request, pk, storey_pk):
+        project = self.get_project()
+        storey = get_object_or_404(
+            IFCSpatialElement,
+            pk=storey_pk,
+            ifc_file__project=project,
+            spatial_type=IFCSpatialElement.SpatialType.BUILDING_STOREY,
+        )
+
+        try:
+            cut_height_m = float(request.POST.get("cut_height_m", "1.2"))
+        except (TypeError, ValueError):
+            return toast_response("Cut height must be a number (m).", "error", status=400)
+
+        kinds = request.POST.getlist("kinds") or []
+
+        # Lazy import — keeps ifcopenshell off the import path for views that
+        # never touch plan generation.
+        from .services.explore_plan_generator import (  # noqa: PLC0415
+            PlanGenerationError,
+            apply_generated_plan,
+            generate_plan_png,
+        )
+
+        try:
+            result = generate_plan_png(storey, cut_height_m, kinds)
+        except PlanGenerationError as exc:
+            logger.info("Plan generation failed for storey %s: %s", storey_pk, exc)
+            return toast_response(str(exc), "error", status=400)
+        except Exception:  # pragma: no cover — unexpected geometry failure
+            logger.exception("Unexpected error generating plan for storey %s", storey_pk)
+            return toast_response(
+                "Plan generation failed unexpectedly. Check the logs.",
+                "error",
+                status=500,
+            )
+
+        plan, _created = ExploreFloorPlan.objects.get_or_create(
+            storey=storey,
+            defaults={"uploaded_by": request.user, "knockout": False},
+        )
+        apply_generated_plan(plan, result, request.user)
+        logger.info(
+            "Generated plan for storey %s at %.3f m — %d segments / %d triangles",
+            storey_pk,
+            cut_height_m,
+            result.segment_count,
+            result.triangle_count,
+        )
+        return _explore_floor_rows_response(request, project)
+
+
+class ExploreFloorPlanSourceView(ProjectModifyAccessMixin, View):
+    """Switch the active plan source between 'uploaded' and 'generated'.
+
+    Both images are kept on the same :class:`ExploreFloorPlan` row; this
+    view only flips ``image_source`` so the viewer picks the other one on
+    its next refresh. 400 if the requested source has no image yet.
+    """
+
+    def post(self, request, pk, storey_pk):
+        project = self.get_project()
+        plan = get_object_or_404(
+            ExploreFloorPlan,
+            storey__pk=storey_pk,
+            storey__ifc_file__project=project,
+        )
+        source = (request.POST.get("source") or "").strip()
+        if source == ExploreFloorPlan.ImageSource.UPLOADED:
+            if not plan.image:
+                return toast_response("No uploaded plan to switch to.", "error", status=400)
+            plan.image_source = ExploreFloorPlan.ImageSource.UPLOADED
+        elif source == ExploreFloorPlan.ImageSource.GENERATED:
+            if not plan.generated_image:
+                return toast_response("No generated plan to switch to.", "error", status=400)
+            plan.image_source = ExploreFloorPlan.ImageSource.GENERATED
+        else:
+            return toast_response("Unknown plan source.", "error", status=400)
+        plan.save(update_fields=["image_source", "updated_at"])
+        return _explore_floor_rows_response(request, project)
+
+
+class ExploreFloorRenameView(ProjectModifyAccessMixin, View):
+    """Propose renaming an IFC storey via Castor's governed writeback pipeline.
+
+    This does NOT write the IFC here. It creates a PENDING ModificationProposal
+    (``ModificationService.propose``); the user reviews and approves it in the
+    Modify / History tab, which rewrites the source IFC and commits to git.
+    Keeping the rename inside the writeback workflow preserves validation,
+    conflict scanning and version history.
+    """
+
+    def post(self, request, pk, storey_pk):
+        project = self.get_project()
+        storey = get_object_or_404(
+            IFCSpatialElement,
+            pk=storey_pk,
+            ifc_file__project=project,
+            spatial_type=IFCSpatialElement.SpatialType.BUILDING_STOREY,
+        )
+        new_name = (request.POST.get("name") or "").strip()
+        old_name = storey.entity.name if storey.entity_id else ""
+        if not new_name:
+            return toast_response("Enter a new floor name.", "error", status=400)
+        if new_name == old_name:
+            return toast_response("Floor name unchanged.", "info")
+
+        # Lazy import — keeps the writeback dependency out of the module top level.
+        from writeback.services.modification_service import (
+            ModificationError,
+            ModificationService,
+        )
+
+        try:
+            svc = ModificationService(project, user=request.user)
+            svc.propose(
+                f"Rename the building storey named '{old_name}' to '{new_name}'.",
+                request.user,
+                ifc_file=storey.ifc_file,
+            )
+        except ModificationError as exc:
+            return toast_response(f"Couldn't propose rename: {exc}", "error", status=400)
+        except Exception:  # noqa: BLE001 — pipeline/LLM unavailable, etc.
+            logger.exception("Explore floor rename proposal failed for storey %s", storey_pk)
+            return toast_response(
+                "Rename proposal failed — check the Modify tab / server logs.",
+                "error",
+                status=400,
+            )
+
+        logger.info(
+            "Explore proposed rename of storey %s ('%s' -> '%s') by user %s",
+            storey_pk, old_name, new_name, request.user.pk,
+        )
+        return toast_response(
+            "Rename proposed — review & approve it in Modify to rewrite the IFC.",
+            "success",
+        )
 
 
 class _ExploreApiBase(ProjectAccessMixin, View):

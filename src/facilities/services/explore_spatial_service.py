@@ -20,6 +20,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from django.urls import reverse
+
 from environments.models import Project
 from ifc_processor.models import IFCSpatialElement
 
@@ -54,11 +56,15 @@ def list_floors_for_project(project: Project) -> list[dict[str, Any]]:
             ifc_file__project=project,
             spatial_type=IFCSpatialElement.SpatialType.BUILDING_STOREY,
         )
+        # Storeys an editor hid in Explore are omitted from the switcher (the
+        # Floor-plans manager still lists them so they can be un-hidden).
+        .exclude(explore_settings__hidden=True)
         .select_related("entity", "explore_floor_plan")
         .order_by("elevation", "entity__name")
     )
     floors: list[dict[str, Any]] = []
     for storey in storeys:
+        plan_obj = getattr(storey, "explore_floor_plan", None)
         plan_url = _plan_url_for(storey)
         entity = storey.entity
         name = entity.name if entity else str(storey.pk)
@@ -69,6 +75,19 @@ def list_floors_for_project(project: Project) -> list[dict[str, Any]]:
                 "label": storey.long_name or name,
                 "plan": plan_url,
                 "planType": "image",
+                # White-out state, so the iframe can toggle / revert it even after
+                # a reload (planOriginal = the pre-knockout image).
+                "knockout": bool(plan_obj.knockout) if plan_obj else False,
+                "planOriginal": _original_plan_url_for(storey),
+                # User-drawn annotation layer (Fabric.js JSON). Shipped with
+                # the floor descriptor so the iframe can hydrate it the first
+                # time the floor is shown without an extra round trip. The
+                # ``annotationsUrl`` is where the iframe POSTs back changes.
+                "annotations": (plan_obj.annotations_json if plan_obj else {}) or {},
+                "annotationsUrl": reverse(
+                    "facilities:explore_floor_plan_annotations",
+                    args=[project.pk, storey.pk],
+                ),
                 "rooms": list_rooms_for_floor(storey),
             }
         )
@@ -101,13 +120,34 @@ def list_rooms_for_floor(storey: IFCSpatialElement) -> list[dict[str, Any]]:
     return rooms
 
 
-def _plan_url_for(storey: IFCSpatialElement) -> str | None:
-    """Return the uploaded plan image URL for ``storey`` if one exists."""
+def _original_plan_url_for(storey: IFCSpatialElement) -> str | None:
+    """Return the pre-knockout (original) plan image URL, if one was kept."""
     plan = getattr(storey, "explore_floor_plan", None)
-    if not plan or not plan.image:
+    if plan is None or not plan.original_image:
         return None
     try:
-        return plan.image.url
+        return plan.original_image.url
+    except (ValueError, AttributeError):
+        return None
+
+
+def _plan_url_for(storey: IFCSpatialElement) -> str | None:
+    """Return the active plan image URL for ``storey`` if one exists.
+
+    Honours ``ExploreFloorPlan.image_source`` so that the iframe shows the
+    user-selected source — either the uploaded plan or the IFC-generated
+    one. Falls back to whichever image is present when the marked source
+    has no file yet (defensive — should not happen after a successful
+    upload or generation).
+    """
+    plan = getattr(storey, "explore_floor_plan", None)
+    if not plan:
+        return None
+    image_field = plan.active_image
+    if not image_field:
+        return None
+    try:
+        return image_field.url
     except (ValueError, AttributeError):
         return None
 
