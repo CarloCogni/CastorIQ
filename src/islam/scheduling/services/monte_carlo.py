@@ -80,6 +80,8 @@ def _load_data(project_id: str) -> tuple[list[dict], list[dict]]:
             "early_start",  # CPM earliest start; sets the optimistic floor for sim tasks
             "early_finish",  # CPM earliest finish; used as anchor for non-sim tasks
             "calendar_object_id",  # for working-day duration calculation
+            "physical_percent_complete",
+            "duration_percent_complete",
         )
     )
 
@@ -188,11 +190,14 @@ def _build_sim_inputs(
             continue
 
         # ── Duration parameters ────────────────────────────────────────
-        # PERT is applied to the task's OWN planned execution time (planned_dur),
-        # NOT to time-remaining from today.  Spans are measured in working days
-        # via the task's P6 calendar (falls back to _DEFAULT_CAL when cal_map is
-        # absent).  working_day_diff uses the same half-open (d1, d2] semantics as
-        # .days, so no off-by-one is introduced.
+        # planned_dur = full baseline span (start_date → end_date), working days.
+        # sim_dur     = remaining working days to simulate.  For not-yet-started
+        #               tasks sim_dur == planned_dur.  For in-progress tasks it is
+        #               reduced by the fraction already earned, using the same
+        #               priority as _earned_pct_at: physical_pct → duration_pct →
+        #               linear-elapsed fallback.  This eliminates the "phantom
+        #               duration" bug where a 70%-done task was simulated as needing
+        #               its full baseline span from the data date.
         r_cal = (
             cal_map.get(r.get("calendar_object_id") or "", _DEFAULT_CAL)
             if cal_map
@@ -200,8 +205,25 @@ def _build_sim_inputs(
         )
         planned_dur = max(working_day_diff(r["start_date"], r["end_date"], r_cal), 1)
 
+        today_date = date.fromordinal(today_ord)
+        act_start = r.get("actual_start")
+        if act_start and act_start <= today_date:
+            # Task is in progress — derive pct_done then remaining duration.
+            phys = r.get("physical_percent_complete")
+            dur_pct = r.get("duration_percent_complete")
+            if phys is not None and float(phys) > 0:
+                pct_done = min(float(phys), 1.0)
+            elif dur_pct is not None and float(dur_pct) > 0:
+                pct_done = min(float(dur_pct), 1.0)
+            else:
+                elapsed = working_day_diff(act_start, today_date, r_cal)
+                pct_done = min(elapsed / planned_dur, 1.0)
+            sim_dur = max(planned_dur * (1.0 - pct_done), 1.0)
+        else:
+            sim_dur = float(planned_dur)
+
         # Pessimistic multiplier: inflate if the task started late (already behind
-        # its own baseline), capped at 2.5× planned duration.
+        # its own baseline), normalised against full planned_dur, capped at 2.5×.
         if r["actual_start"] and r["actual_start"] > r["start_date"]:
             late_days = working_day_diff(r["start_date"], r["actual_start"], r_cal)
             late_factor = min(late_days / planned_dur, 1.0)
@@ -209,9 +231,9 @@ def _build_sim_inputs(
         else:
             pess_mult = _PERT_PESS
 
-        opt = max(planned_dur * _PERT_OPT, 1.0)
-        ml = float(planned_dur)
-        pess = planned_dur * pess_mult
+        opt = max(sim_dur * _PERT_OPT, 1.0)
+        ml = float(sim_dur)
+        pess = sim_dur * pess_mult
 
         # ── min_start: incorporate external predecessor anchors ────────
         # CPM early_start is the network-aware optimistic floor.  Using it
