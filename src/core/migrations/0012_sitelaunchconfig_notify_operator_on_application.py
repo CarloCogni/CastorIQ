@@ -4,18 +4,19 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
+
     dependencies = [
-        ("core", "0011_sitelaunchconfig"),
+        ('core', '0011_sitelaunchconfig'),
     ]
 
     operations = [
         migrations.AddField(
-            model_name="sitelaunchconfig",
-            name="notify_operator_on_application",
-            field=models.BooleanField(
-                default=True,
-                help_text="When on, OPERATOR_NOTIFICATION_EMAIL receives a one-line ping for every submission with a deep link to the admin row. Turn off to silence the operator copy without redeploying — applicants always receive their confirmation regardless of this setting.",
-                verbose_name="Email me on each new beta application",
-            ),
+            model_name='sitelaunchconfig',
+            name='notify_operator_on_application',
+            field=models.BooleanField(default=True, help_text='When on, OPERATOR_NOTIFICATION_EMAIL receives a one-line ping for every submission with a deep link to the admin row. Turn off to silence the operator copy without redeploying — applicants always receive their confirmation regardless of this setting.', verbose_name='Email me on each new beta application'),
         ),
     ]
+
+
+
+

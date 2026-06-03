@@ -115,7 +115,9 @@ def test_kpis_errors_combines_failed_calls_and_errorlog():
     user = UserFactory()
     _make_call(user, age_hours=1, succeeded=True)
     _make_call(user, age_hours=2, succeeded=False, error_type="TimeoutError")
-    ErrorLog.objects.create(severity="error", exception_type="ValueError", message="boom")
+    ErrorLog.objects.create(
+        severity="error", exception_type="ValueError", message="boom"
+    )
 
     result = usage_analytics.kpis(window_days=7)
 
@@ -217,8 +219,12 @@ def test_top_users_by_cost_excludes_anonymous():
 def test_system_pulse_counts_unresolved_errors_and_blocks():
     a = UserFactory()
     UserTokenBudget.objects.create(user=a, hard_blocked=True)
-    ErrorLog.objects.create(severity="error", exception_type="X", message="m", is_resolved=False)
-    ErrorLog.objects.create(severity="error", exception_type="Y", message="m", is_resolved=True)
+    ErrorLog.objects.create(
+        severity="error", exception_type="X", message="m", is_resolved=False
+    )
+    ErrorLog.objects.create(
+        severity="error", exception_type="Y", message="m", is_resolved=True
+    )
 
     pulse = usage_analytics.system_pulse()
 
@@ -306,8 +312,12 @@ def test_cost_per_active_user_per_day_divides_by_dau():
 def test_user_budget_strip_lists_recently_active_users():
     a = UserFactory(username="alice")
     b = UserFactory(username="bob")
-    UserTokenBudget.objects.create(user=a, daily_cap=1000, used_today=900, hard_blocked=False)
-    UserTokenBudget.objects.create(user=b, daily_cap=1000, used_today=0, hard_blocked=False)
+    UserTokenBudget.objects.create(
+        user=a, daily_cap=1000, used_today=900, hard_blocked=False
+    )
+    UserTokenBudget.objects.create(
+        user=b, daily_cap=1000, used_today=0, hard_blocked=False
+    )
     _make_call(a, age_hours=1)  # alice is recently active
     # Bob has no activity → excluded.
 
@@ -356,8 +366,12 @@ def test_user_budget_strip_percent_capped_at_200():
 def test_user_budget_strip_orders_blocked_first():
     a = UserFactory(username="alice")
     b = UserFactory(username="bob")
-    UserTokenBudget.objects.create(user=a, daily_cap=1000, used_today=999, hard_blocked=False)
-    UserTokenBudget.objects.create(user=b, daily_cap=1000, used_today=10, hard_blocked=True)
+    UserTokenBudget.objects.create(
+        user=a, daily_cap=1000, used_today=999, hard_blocked=False
+    )
+    UserTokenBudget.objects.create(
+        user=b, daily_cap=1000, used_today=10, hard_blocked=True
+    )
     _make_call(a, age_hours=1)
     _make_call(b, age_hours=1)
 
@@ -501,7 +515,9 @@ def test_error_type_breakdown_unions_llm_and_errorlog():
     """Same label on both sides collapses to one bucket."""
     user = UserFactory()
     _make_call(user, succeeded=False, error_type="TimeoutError", age_hours=1)
-    ErrorLog.objects.create(severity="error", exception_type="TimeoutError", message="m")
+    ErrorLog.objects.create(
+        severity="error", exception_type="TimeoutError", message="m"
+    )
 
     result = usage_analytics.error_type_breakdown(window_days=7)
 
@@ -532,7 +548,9 @@ def test_error_type_breakdown_excludes_succeeded_llm_calls():
 def test_error_type_breakdown_collapses_into_other_past_limit():
     """Anything past `limit` rolls into the `other` bucket."""
     for i in range(15):
-        ErrorLog.objects.create(severity="error", exception_type=f"ExcType{i}", message="m")
+        ErrorLog.objects.create(
+            severity="error", exception_type=f"ExcType{i}", message="m"
+        )
 
     result = usage_analytics.error_type_breakdown(window_days=7, limit=10)
 
@@ -601,8 +619,9 @@ def test_failure_record_taxonomy_empty_returns_zero_total():
 
 
 def test_failure_record_taxonomy_buckets_by_phase_and_category_and_tier():
-    from environments.tests.factories import ProjectFactory
     from metacastor.models import FailureRecord
+
+    from environments.tests.factories import ProjectFactory
 
     project = ProjectFactory()
 
@@ -1070,8 +1089,8 @@ def test_ifc_ingestion_scatter_empty_returns_no_points():
 
 def test_ifc_ingestion_scatter_only_includes_completed_with_processed_at():
     """Failed / in-flight files must be excluded so the scatter is honest."""
-    from environments.tests.factories import ProjectFactory
     from ifc_processor.models import IFCFile
+    from environments.tests.factories import ProjectFactory
 
     project = ProjectFactory()
     now = timezone.now()
@@ -1160,8 +1179,8 @@ def test_investor_kpis_empty_dataset_returns_safe_defaults():
 
 
 def test_investor_kpis_sums_entities_for_completed_only():
-    from environments.tests.factories import ProjectFactory
     from ifc_processor.models import IFCFile
+    from environments.tests.factories import ProjectFactory
 
     project = ProjectFactory()
     IFCFile.objects.create(

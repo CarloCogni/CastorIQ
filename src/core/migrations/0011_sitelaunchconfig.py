@@ -4,39 +4,22 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
+
     dependencies = [
-        ("core", "0010_usertokenbudget_llmcalllog"),
+        ('core', '0010_usertokenbudget_llmcalllog'),
     ]
 
     operations = [
         migrations.CreateModel(
-            name="SiteLaunchConfig",
+            name='SiteLaunchConfig',
             fields=[
-                (
-                    "id",
-                    models.BigAutoField(
-                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
-                    ),
-                ),
-                (
-                    "state",
-                    models.CharField(
-                        choices=[
-                            ("coming_soon", "Coming soon (pre-launch splash)"),
-                            ("live", "Live (full landing page)"),
-                            ("maintenance", "Under maintenance"),
-                        ],
-                        default="coming_soon",
-                        help_text="Controls what unauthenticated visitors see at /. 'live' shows the real landing page and accepts beta applications; 'coming_soon' and 'maintenance' both show a Matrix-rain splash and block the application form.",
-                        max_length=20,
-                        verbose_name="Public-face state",
-                    ),
-                ),
-                ("updated_at", models.DateTimeField(auto_now=True)),
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('state', models.CharField(choices=[('coming_soon', 'Coming soon (pre-launch splash)'), ('live', 'Live (full landing page)'), ('maintenance', 'Under maintenance')], default='coming_soon', help_text="Controls what unauthenticated visitors see at /. 'live' shows the real landing page and accepts beta applications; 'coming_soon' and 'maintenance' both show a Matrix-rain splash and block the application form.", max_length=20, verbose_name='Public-face state')),
+                ('updated_at', models.DateTimeField(auto_now=True)),
             ],
             options={
-                "verbose_name": "Site Launch Configuration",
-                "verbose_name_plural": "Site Launch Configuration",
+                'verbose_name': 'Site Launch Configuration',
+                'verbose_name_plural': 'Site Launch Configuration',
             },
         ),
     ]

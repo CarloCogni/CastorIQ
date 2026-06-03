@@ -47,11 +47,6 @@ INSTALLED_APPS = [
     "eastereggs",
     "facilities",
     "beta",
-    # 4D Insights module
-    "castor",
-    "castor.ifc_insights",
-    "castor.scheduling",
-    "castor.ifc_viewer",
     # Login lockout for /admin/ and /accounts/login. Must come after
     # django.contrib.auth so its signals are loaded first.
     "axes",
@@ -231,7 +226,7 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
 OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "mxbai-embed-large")
 # Batch size for Ollama embedding requests. Sending hundreds of chunks in a
 # single HTTP call overflows Ollama's request limits and returns 400.
-OLLAMA_EMBED_BATCH_SIZE = int(os.getenv("OLLAMA_EMBED_BATCH_SIZE", "64"))
+OLLAMA_EMBED_BATCH_SIZE = int(os.getenv("OLLAMA_EMBED_BATCH_SIZE", "16"))
 # Per-request timeout (seconds) applied to every ChatOllama call. A hung Ollama
 # request otherwise wedges the ASGI thread pool and blocks cancellation.
 OLLAMA_REQUEST_TIMEOUT = float(os.getenv("OLLAMA_REQUEST_TIMEOUT", "120"))

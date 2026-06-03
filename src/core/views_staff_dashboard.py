@@ -102,7 +102,9 @@ class OverviewView(StaffDashboardBaseView):
         # KPI window — short-window stacks are too sparse to be useful.
         ctx["tokens_per_day"] = usage_analytics.tokens_per_day(window_days=30)
         ctx["cost_per_day"] = usage_analytics.cost_per_day(window_days=30)
-        ctx["top_users"] = usage_analytics.top_users_by_cost(window_days=window, limit=10)
+        ctx["top_users"] = usage_analytics.top_users_by_cost(
+            window_days=window, limit=10
+        )
         ctx["pulse"] = usage_analytics.system_pulse()
         # Soft daily budget threshold drawn as a red horizontal line on the
         # cost chart. Not enforced — purely visual. Adjust here if needed.
@@ -127,10 +129,18 @@ class CostView(StaffDashboardBaseView):
         # render 30 days regardless — short windows are too sparse to read.
         window = ctx["window_days"]
         ctx["kpis"] = usage_analytics.kpis(window_days=window)
-        ctx["cost_by_purpose"] = usage_analytics.cost_per_day_by_purpose(window_days=30)
-        ctx["tokens_local_vs_paid"] = usage_analytics.tokens_per_day_local_vs_paid(window_days=30)
-        ctx["cost_per_user_per_day"] = usage_analytics.cost_per_active_user_per_day(window_days=30)
-        ctx["budget_strip"] = usage_analytics.user_budget_strip(activity_window_days=7)
+        ctx["cost_by_purpose"] = usage_analytics.cost_per_day_by_purpose(
+            window_days=30
+        )
+        ctx["tokens_local_vs_paid"] = usage_analytics.tokens_per_day_local_vs_paid(
+            window_days=30
+        )
+        ctx["cost_per_user_per_day"] = usage_analytics.cost_per_active_user_per_day(
+            window_days=30
+        )
+        ctx["budget_strip"] = usage_analytics.user_budget_strip(
+            activity_window_days=7
+        )
         return ctx
 
 
@@ -151,11 +161,19 @@ class ReliabilityView(StaffDashboardBaseView):
         ctx = super().get_context_data(**kwargs)
         w = ctx["window_days"]
         ctx["kpis"] = usage_analytics.kpis_for_reliability(window_days=w)
-        ctx["provider_success"] = usage_analytics.provider_success_rate(window_days=w)
-        ctx["p95_latency"] = usage_analytics.p95_latency_per_purpose_per_day(window_days=30)
-        ctx["error_breakdown"] = usage_analytics.error_type_breakdown(window_days=w)
+        ctx["provider_success"] = usage_analytics.provider_success_rate(
+            window_days=w
+        )
+        ctx["p95_latency"] = usage_analytics.p95_latency_per_purpose_per_day(
+            window_days=30
+        )
+        ctx["error_breakdown"] = usage_analytics.error_type_breakdown(
+            window_days=w
+        )
         ctx["error_backlog"] = usage_analytics.unresolved_error_backlog()
-        ctx["failure_taxonomy"] = usage_analytics.failure_record_taxonomy(window_days=w)
+        ctx["failure_taxonomy"] = usage_analytics.failure_record_taxonomy(
+            window_days=w
+        )
         ctx["ingestion"] = usage_analytics.ingestion_status(window_days=w)
         ctx["success_threshold_pct"] = 95
         return ctx
@@ -211,9 +229,13 @@ class InvestorView(StaffDashboardBaseView):
         ctx = super().get_context_data(**kwargs)
         ctx["kpis"] = usage_analytics.investor_kpis()
         ctx["cohort_grid"] = usage_analytics.cohort_retention_grid(weeks=8)
-        ctx["acceptance"] = usage_analytics.proposal_acceptance_rate_by_tier(window_days=30)
+        ctx["acceptance"] = usage_analytics.proposal_acceptance_rate_by_tier(
+            window_days=30
+        )
         ctx["provider_mix"] = usage_analytics.provider_mix_summary(window_days=30)
         ctx["ingestion_scatter"] = usage_analytics.ifc_ingestion_scatter()
-        ctx["design_partners"] = usage_analytics.design_partner_engagement(window_days=30)
+        ctx["design_partners"] = usage_analytics.design_partner_engagement(
+            window_days=30
+        )
         ctx["needs_plotly"] = True
         return ctx

@@ -1,0 +1,165 @@
+/* layout.css — app shell: header / center (viewer + timeline) / right detail panel. */
+
+.exp-app{display:flex;flex-direction:column;height:100vh;overflow:hidden;}
+
+/* ── Module header ── */
+.mh{display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--p1);border-bottom:1px solid var(--b1);flex-shrink:0;}
+.mh-titles{display:flex;flex-direction:column;}
+.mh-title{font-size:13.5px;font-weight:600;color:var(--t1);}
+.mh-sub{font-family:var(--font-mono);font-size:9.5px;color:var(--t3);}
+.mh-tag{font-family:var(--font-mono);font-size:9px;padding:2px 7px;border-radius:3px;background:var(--acc-d);color:var(--acc);border:1px solid var(--acc-b);}
+.mh-build{font-family:var(--font-mono);font-size:8.5px;color:var(--t4);cursor:help;}
+.mh-spacer{flex:1;}
+.vmode{display:flex;gap:4px;}
+.numbering{display:flex;align-items:center;gap:6px;}
+.num-lbl{font-family:var(--font-mono);font-size:12px;color:var(--t3);}
+
+/* ── Shell ── */
+.exp-shell{display:flex;flex:1;min-height:0;overflow:hidden;}
+.exp-center{flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden;}
+
+/* ── Viewer (floor-plan stage) ── */
+/* min-height:0 on the viewer is what makes the flex chain pass a *definite*
+   height down to .plan-stage — without it, max-height:100% on the stage
+   resolves to "100 % of an indefinite size" and tall plans overflow the
+   viewer instead of shrinking to fit. The stage itself uses CSS-variable-
+   driven transform so the zoom controls can scale + pan the whole picture
+   (image + annotations + pins) as a single unit. */
+.exp-viewer{flex:1;min-height:0;position:relative;overflow:hidden;background:var(--viewer-bg);display:flex;}
+/* The stage fills the viewer and acts as a flex centre for the image. The
+   image inside uses ``object-fit: contain`` so the WHOLE plan is always
+   visible regardless of its native dimensions — letterboxed by the stage's
+   centring rather than clipped. A ResizeObserver in floorplan.js keeps the
+   pin layer aligned to the IMG's rendered box, so pins still anchor to the
+   plan correctly even though the stage itself is larger. */
+.plan-stage{
+  position:relative;line-height:0;
+  width:100%;height:100%;
+  display:flex;align-items:center;justify-content:center;
+  --zoom:1;--pan-x:0px;--pan-y:0px;
+  transform:translate(var(--pan-x),var(--pan-y)) scale(var(--zoom));
+  transform-origin:center center;
+  transition:transform .04s linear;
+  will-change:transform;
+}
+.exp-viewer.panning .plan-stage{transition:none;cursor:grabbing;}
+.exp-viewer.panning,
+.exp-viewer.zoomed .plan-stage,
+.exp-viewer.has-overflow .plan-stage{cursor:grab;}
+.plan-img{
+  display:block;
+  max-width:100%;max-height:100%;
+  width:auto;height:auto;
+  object-fit:contain;
+  user-select:none;-webkit-user-drag:none;
+}
+/* Pin layer is positioned in % of the IMG's rendered box — floorplan.js syncs
+   its style.left/top/width/height to planImg.offset* via ResizeObserver. */
+.pin-layer{position:absolute;pointer-events:none;}
+
+/* Zoom controls — bottom-left overlay (mirrors the bottom-left phase legend
+   position; tucked above it via flex order on small heights via the .zoom-ctrl
+   element living before the legend in the DOM). */
+.zoom-ctrl{
+  position:absolute;left:10px;bottom:10px;z-index:6;
+  display:flex;align-items:center;gap:6px;
+  padding:4px 6px;border-radius:6px;
+  background:rgba(10,11,18,.82);border:1px solid var(--b1);
+  font-family:var(--font-mono);font-size:10px;color:var(--t2);
+}
+.zoom-btn{
+  width:24px;height:24px;
+  display:inline-flex;align-items:center;justify-content:center;
+  background:transparent;border:1px solid var(--b1);border-radius:4px;
+  color:var(--t2);cursor:pointer;font-size:14px;line-height:1;padding:0;
+  transition:background .12s,color .12s;
+}
+.zoom-btn:hover{background:var(--p2);color:var(--t1);}
+.zoom-btn:active{transform:scale(.95);}
+.zoom-slider{
+  appearance:none;-webkit-appearance:none;
+  width:120px;height:4px;background:var(--b1);border-radius:2px;outline:none;cursor:pointer;
+}
+.zoom-slider::-webkit-slider-thumb{
+  appearance:none;-webkit-appearance:none;
+  width:12px;height:12px;border-radius:50%;background:var(--acc);border:0;cursor:pointer;
+}
+.zoom-slider::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:var(--acc);border:0;cursor:pointer;}
+.zoom-pct{min-width:42px;text-align:right;letter-spacing:.04em;}
+.zoom-fit{margin-left:4px;}
+
+.v-label{position:absolute;top:10px;left:10px;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.12);border-radius:4px;padding:4px 10px;font-family:var(--font-mono);font-size:9px;color:rgba(255,255,255,.85);display:flex;align-items:center;gap:6px;}
+.v-ld{width:5px;height:5px;border-radius:50%;background:var(--acc);animation:blink 2s infinite;}
+
+/* Floor switcher (vertical, right edge of the viewer). No scrollbar — names wrap
+   word-per-line and the column auto-widens to fit the widest word. */
+.floor-switcher{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:4px;z-index:5;padding:2px;width:fit-content;max-width:140px;}
+.floor-btn{min-width:38px;max-width:140px;min-height:28px;height:auto;padding:3px 7px;border-radius:5px;background:rgba(28,29,40,.85);border:1px solid var(--b1);color:var(--t3);font-family:var(--font-mono);font-size:10.5px;cursor:pointer;display:grid;place-items:center;transition:all .12s;flex-shrink:0;white-space:normal;word-break:keep-all;overflow-wrap:break-word;text-align:center;line-height:1.18;}
+.floor-btn:hover{background:var(--p1);color:var(--t2);}
+.floor-btn.on{background:var(--acc-d);border-color:var(--acc-b);color:var(--acc);}
+
+/* Phase legend (bottom-left of the plan) */
+.exp-legend{position:absolute;bottom:10px;left:10px;z-index:5;background:rgba(10,11,18,.82);border:1px solid var(--b1);border-radius:5px;padding:6px 10px;display:flex;gap:12px;flex-wrap:wrap;max-width:70%;}
+.exp-legend[hidden]{display:none;}
+.leg-i{display:flex;align-items:center;gap:5px;font-family:var(--font-mono);font-size:9px;color:var(--t2);}
+.leg-d{width:9px;height:9px;border-radius:2px;flex-shrink:0;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+
+/* ── Timeline (collapsible: header-only when collapsed, so the viewer/panel get the height) ── */
+.exp-timeline{height:96px;background:var(--p1);border-top:1px solid var(--b1);flex-shrink:0;display:flex;flex-direction:column;}
+.exp-timeline.details{height:150px;}
+.exp-timeline.collapsed{height:auto;}
+.exp-timeline.collapsed .etl-track{display:none;}
+.exp-timeline.collapsed .etl-head{padding-bottom:6px;}
+.exp-timeline.collapsed .etl-resize{display:none;}
+/* Drag handle to pull the photo strip up/down */
+.etl-resize{height:8px;flex-shrink:0;cursor:ns-resize;position:relative;touch-action:none;}
+.etl-resize::before{content:"";position:absolute;left:50%;top:3px;width:38px;height:2px;transform:translateX(-50%);background:var(--b3);border-radius:2px;opacity:.65;transition:background .12s;}
+.etl-resize:hover::before{background:var(--acc);opacity:1;}
+.etl-head{padding:6px 14px 3px;display:flex;align-items:center;gap:10px;}
+.etl-label{font-family:var(--font-mono);font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);}
+.etl-room{font-size:12px;font-weight:600;color:var(--t1);}
+.etl-track{flex:1;min-height:0;padding:2px 14px 8px;display:flex;align-items:stretch;gap:6px;overflow-x:auto;}
+.etl-empty{font-family:var(--font-mono);font-size:10px;color:var(--t3);}
+.etl-conn{width:18px;height:1px;background:var(--b2);flex-shrink:0;align-self:center;margin-top:-14px;}
+
+/* ── Detail panel (full window height; actions toolbar on top; drag-resizable) ── */
+.detail-panel{position:relative;width:300px;background:var(--sb);border-left:1px solid var(--b1);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden;}
+/* Drag the left edge to widen/narrow the panel; the viewer (and its floor
+   switcher, anchored to the viewer's right edge) follows. */
+.dp-resize{position:absolute;left:0;top:0;bottom:0;width:6px;cursor:ew-resize;z-index:6;}
+.dp-resize::before{content:"";position:absolute;left:2px;top:50%;transform:translateY(-50%);width:2px;height:34px;border-radius:2px;background:var(--b3);opacity:.6;transition:background .12s;}
+.dp-resize:hover::before{background:var(--acc);opacity:1;}
+.dp-toolbar{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px 12px;border-bottom:1px solid var(--b1);flex-shrink:0;}
+.dp-toolbar .btn{font-size:11px;padding:6px 8px;justify-content:center;text-align:center;}
+.dp-head{padding:10px 14px;border-bottom:1px solid var(--b1);}
+.dp-title{font-size:12.5px;font-weight:600;color:var(--t1);}
+.dp-sub{font-family:var(--font-mono);font-size:9px;color:var(--t3);margin-top:1px;}
+.dp-body{flex:1;overflow-y:auto;padding:12px 14px;}
+.dp-empty{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;color:var(--t3);padding:30px 10px;}
+.dp-empty-icon{font-size:30px;opacity:.45;color:var(--acc);}
+.dp-empty-text{font-size:11.5px;line-height:1.5;max-width:210px;}
+.dp-actions{padding:10px 14px;border-top:1px solid var(--b1);display:flex;gap:5px;flex-wrap:wrap;}
+
+/* Detail-panel sections + fields */
+.dp-sec{margin-bottom:16px;}
+.dp-sec-lbl{display:flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin-bottom:8px;}
+.dp-cfg{margin-left:auto;background:none;border:none;color:var(--t3);cursor:pointer;font-size:11px;line-height:1;padding:0 2px;}
+.dp-cfg:hover{color:var(--acc);}
+.info-rows{margin-top:8px;border-top:1px solid var(--b1);padding-top:4px;}
+.info-row{display:flex;justify-content:space-between;gap:8px;padding:3px 0;}
+.info-k{font-size:11px;color:var(--t2);}
+.info-v{font-family:var(--font-mono);font-size:10.5px;color:var(--t1);text-align:right;}
+.fld{display:flex;flex-direction:column;gap:3px;margin-bottom:9px;}
+.fld span{font-size:10.5px;color:var(--t2);}
+.fld-in{background:var(--p2);border:1px solid var(--b1);border-radius:4px;padding:6px 9px;font-size:11.5px;color:var(--t1);font-family:var(--font-mono);outline:none;transition:border-color .12s;width:100%;}
+.fld-in:focus{border-color:var(--acc-b);}
+.fld-in::placeholder{color:var(--t3);}
+.fld-in[readonly]{opacity:.6;cursor:not-allowed;background:var(--p1);}
+select.fld-in{cursor:pointer;}
+.dp-photos-empty{font-family:var(--font-mono);font-size:10.5px;color:var(--t3);margin-bottom:9px;}
+
+/* ── Scrollbars ── */
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-thumb{background:var(--b2);border-radius:4px;}
+::-webkit-scrollbar-track{background:transparent;}

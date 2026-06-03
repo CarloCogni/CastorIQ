@@ -1,0 +1,137 @@
+<!-- facilities/components/asset_qr_modal.html — single-asset QR viewer with
+     print + PNG download. One modal serves every asset card on the page; on
+     `show.bs.modal` we read `data-asset-url`/`data-asset-tag`/`data-asset-name`
+     off the button that opened it and re-render the QR into the modal body. -->
+
+<div class="modal fade" id="assetQRModal" tabindex="-1" aria-labelledby="assetQRModalTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title d-flex align-items-center gap-2" id="assetQRModalTitle">
+                    <i class="bi bi-qr-code" style="color: var(--castor-facilities, #14b8a6);"></i>
+                    Asset QR code
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-center">
+                <!-- Big QR — re-rendered every time the modal opens with the
+                     clicked card's URL. White padding keeps scanners happy
+                     even when phones overshoot the frame. -->
+                <div id="assetQRModalCanvas"
+                     class="d-inline-block rounded"
+                     style="background: #ffffff; padding: 16px; line-height: 0;"></div>
+
+                <div class="mt-3">
+                    <div class="fw-semibold" id="assetQRModalTag" style="font-size: 1rem;"></div>
+                    <div class="text-secondary" id="assetQRModalName" style="font-size: 0.875rem;"></div>
+                    <div class="text-secondary text-truncate mt-1" id="assetQRModalUrl"
+                         style="font-size: 0.75rem; font-family: var(--bs-font-monospace);"
+                         title=""></div>
+                </div>
+            </div>
+            <div class="modal-footer d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="assetQRModalRegenerate"
+                        title="Re-render the QR (useful after window resize / DPI change)">
+                    <i class="bi bi-arrow-clockwise"></i> Regenerate
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="assetQRModalDownload">
+                    <i class="bi bi-download"></i> Download PNG
+                </button>
+                <button type="button" class="btn btn-sm"
+                        style="background-color: var(--castor-facilities, #14b8a6); color: white; border: none;"
+                        id="assetQRModalPrint">
+                    <i class="bi bi-printer"></i> Print label
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    // Wire-up runs once; the modal is rendered into the page on the Assets tab.
+    // We rely on `castorAssetQR` (defined in _facilities_assets.html) for the
+    // SVG render + PNG download — no duplicate QR engine in here.
+    const modalEl = document.getElementById('assetQRModal');
+    if (!modalEl || modalEl.dataset.castorWired === '1') return;
+    modalEl.dataset.castorWired = '1';
+
+    const canvasMount = document.getElementById('assetQRModalCanvas');
+    const tagEl = document.getElementById('assetQRModalTag');
+    const nameEl = document.getElementById('assetQRModalName');
+    const urlEl = document.getElementById('assetQRModalUrl');
+    const btnRegen = document.getElementById('assetQRModalRegenerate');
+    const btnDownload = document.getElementById('assetQRModalDownload');
+    const btnPrint = document.getElementById('assetQRModalPrint');
+
+    // Track the currently-shown asset so the action buttons keep working
+    // after the user clicks Regenerate (we don't want to re-read the trigger).
+    let currentUrl = '';
+    let currentTag = '';
+    let currentName = '';
+
+    function renderInto(size) {
+        if (!currentUrl) return;
+        canvasMount.innerHTML = window.castorAssetQR.svg(currentUrl, size || 280, 1);
+    }
+
+    function safeFilename() {
+        const base = (currentTag || currentName || 'asset').replace(/[^A-Za-z0-9._-]+/g, '_');
+        return 'qr-' + base + '.png';
+    }
+
+    modalEl.addEventListener('show.bs.modal', function (event) {
+        const trigger = event.relatedTarget;
+        if (!trigger) return;
+        currentUrl = trigger.getAttribute('data-asset-url') || '';
+        currentTag = trigger.getAttribute('data-asset-tag') || '';
+        currentName = trigger.getAttribute('data-asset-name') || '';
+        tagEl.textContent = currentTag;
+        nameEl.textContent = currentName && currentName !== currentTag ? currentName : '';
+        urlEl.textContent = currentUrl;
+        urlEl.title = currentUrl;
+        renderInto(280);
+    });
+
+    btnRegen.addEventListener('click', function () { renderInto(280); });
+
+    btnDownload.addEventListener('click', function () {
+        if (!currentUrl) return;
+        window.castorAssetQR.download(currentUrl, safeFilename(), 512);
+    });
+
+    btnPrint.addEventListener('click', function () {
+        if (!currentUrl) return;
+        // Print sheet opens in a new window so the parent page's chrome,
+        // sidebar, and navbar stay out of the label output. Inline SVG keeps
+        // the QR crisp at any size the printer driver chooses.
+        const svgMarkup = window.castorAssetQR.svg(currentUrl, 320, 1);
+        const win = window.open('', '_blank', 'width=420,height=540');
+        if (!win) return;
+        const tagHtml = currentTag ? '<div class="qr-tag">' + escapeHtml(currentTag) + '</div>' : '';
+        const nameHtml = currentName && currentName !== currentTag
+            ? '<div class="qr-name">' + escapeHtml(currentName) + '</div>' : '';
+        win.document.write([
+            '<!DOCTYPE html><html><head><meta charset="utf-8"><title>',
+            escapeHtml(currentTag || currentName || 'Asset QR'),
+            '</title><style>',
+            'body{margin:0;padding:24px;font-family:Arial,sans-serif;text-align:center;}',
+            '.qr-label{display:inline-block;border:1px solid #000;padding:12px;border-radius:6px;}',
+            '.qr-tag{font-weight:700;font-size:14pt;margin-top:8px;}',
+            '.qr-name{font-size:10pt;color:#555;margin-top:2px;}',
+            '@media print { @page { margin: 8mm; } body{padding:0;} }',
+            '</style></head><body>',
+            '<div class="qr-label">', svgMarkup, tagHtml, nameHtml, '</div>',
+            '<script>window.addEventListener("load",function(){setTimeout(function(){window.print();},120);});<\/script>',
+            '</body></html>'
+        ].join(''));
+        win.document.close();
+    });
+
+    function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+})();
+</script>

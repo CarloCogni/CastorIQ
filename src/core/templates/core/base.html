@@ -1001,7 +1001,7 @@
         el.querySelector('.toast-body').textContent = msg;
         var container = document.getElementById('castor-toast-container');
         container.appendChild(el);
-        var t = new bootstrap.Toast(el, { delay: d.delay || (level === 'error' ? 5000 : 2500) });
+        var t = new bootstrap.Toast(el, { delay: level === 'error' ? 5000 : 2500 });
         t.show();
         el.addEventListener('hidden.bs.toast', function () { el.remove(); });
     });

@@ -42,6 +42,11 @@ urlpatterns = [
         name="assets_import",
     ),
     path(
+        "<uuid:pk>/facilities/assets/qr/",
+        views.AssetQRLabelsView.as_view(),
+        name="assets_qr_labels",
+    ),
+    path(
         "<uuid:pk>/facilities/assets/<uuid:asset_pk>/",
         views.AssetDetailView.as_view(),
         name="assets_detail",
@@ -206,5 +211,85 @@ urlpatterns = [
         "<uuid:pk>/facilities/work/intent/<uuid:proposal_pk>/reject/",
         views.WorkOrderIntentRejectView.as_view(),
         name="work_intent_reject",
+    ),
+    # Explore — floor-plan + photo / 360° viewer (iframe-embedded).
+    path(
+        "<uuid:pk>/facilities/explore/",
+        views.ExploreView.as_view(),
+        name="explore",
+    ),
+    # Serves Pavla's vendored module assets from facilities/explore/ (NOT
+    # under collectstatic — peer module, not Django static). The iframe loads
+    # `embed/index.html`; every relative asset Pavla's code references is
+    # delivered through the same `<path:resource>` capture.
+    path(
+        "<uuid:pk>/facilities/explore/embed/<path:resource>",
+        views.ExploreEmbedView.as_view(),
+        name="explore_embed",
+    ),
+    path(
+        "<uuid:pk>/facilities/explore/floors/",
+        views.ExploreFloorsApiView.as_view(),
+        name="explore_floors",
+    ),
+    path(
+        "<uuid:pk>/facilities/explore/rooms/<uuid:storey_pk>/",
+        views.ExploreRoomsApiView.as_view(),
+        name="explore_rooms",
+    ),
+    path(
+        "<uuid:pk>/facilities/explore/catalog/",
+        views.ExploreCatalogApiView.as_view(),
+        name="explore_catalog",
+    ),
+    path(
+        "<uuid:pk>/facilities/explore/state/",
+        views.ExploreUserStateApiView.as_view(),
+        name="explore_state",
+    ),
+    path(
+        "<uuid:pk>/facilities/explore/floor-plans/<uuid:storey_pk>/upload/",
+        views.ExploreFloorPlanUploadView.as_view(),
+        name="explore_floor_plan_upload",
+    ),
+    path(
+        "<uuid:pk>/facilities/explore/floor-plans/<uuid:storey_pk>/delete/",
+        views.ExploreFloorPlanDeleteView.as_view(),
+        name="explore_floor_plan_delete",
+    ),
+    path(
+        "<uuid:pk>/facilities/explore/floor-plans/<uuid:storey_pk>/visibility/",
+        views.ExploreFloorVisibilityView.as_view(),
+        name="explore_floor_visibility",
+    ),
+    path(
+        "<uuid:pk>/facilities/explore/floor-plans/<uuid:storey_pk>/rename/",
+        views.ExploreFloorRenameView.as_view(),
+        name="explore_floor_rename",
+    ),
+    path(
+        "<uuid:pk>/facilities/explore/floor-plans/<uuid:storey_pk>/generate/",
+        views.ExploreFloorPlanGenerateView.as_view(),
+        name="explore_floor_plan_generate",
+    ),
+    path(
+        "<uuid:pk>/facilities/explore/floor-plans/<uuid:storey_pk>/source/",
+        views.ExploreFloorPlanSourceView.as_view(),
+        name="explore_floor_plan_source",
+    ),
+    path(
+        "<uuid:pk>/facilities/explore/floor-plans/<uuid:storey_pk>/generated/delete/",
+        views.ExploreFloorPlanGeneratedDeleteView.as_view(),
+        name="explore_floor_plan_generated_delete",
+    ),
+    path(
+        "<uuid:pk>/facilities/explore/plans-manager/",
+        views.ExplorePlansManagerView.as_view(),
+        name="explore_plans_manager",
+    ),
+    path(
+        "<uuid:pk>/facilities/explore/floor-plans/<uuid:storey_pk>/annotations/",
+        views.ExploreFloorPlanAnnotationsView.as_view(),
+        name="explore_floor_plan_annotations",
     ),
 ]

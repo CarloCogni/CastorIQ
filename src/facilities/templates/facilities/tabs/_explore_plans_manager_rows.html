@@ -1,0 +1,169 @@
+{% comment %}
+Plans Manager — per-storey card grid (HTMX partial).
+
+For each IfcBuildingStorey we render up to two image cards (Uploaded /
+Generated). Each card has a thumbnail, meta, an "Active" radio that flips
+the viewer's source, and a Delete button that drops only that image.
+
+Every per-row action POSTs back to its endpoint with hx-target pointing
+here, so the modal stays open and only the rows refresh.
+{% endcomment %}
+{% for storey in explore_storeys %}
+<div class="mb-4">
+    <div class="d-flex align-items-center gap-2 mb-2">
+        <i class="bi bi-building" style="color: var(--castor-facilities, #14b8a6);"></i>
+        <strong>{{ storey.name }}</strong>
+        {% if storey.label and storey.label != storey.name %}
+        <span class="text-secondary fs-8">· {{ storey.label }}</span>
+        {% endif %}
+        {% if storey.hidden %}
+        <span class="badge rounded-pill text-secondary"
+              style="background-color: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color);">
+            <i class="bi bi-eye-slash"></i> hidden in Explore
+        </span>
+        {% endif %}
+        {% if not storey.has_plan %}
+        <span class="badge rounded-pill ms-auto"
+              style="background-color: rgba(245,158,11,0.15); color: var(--castor-warning, #f59e0b); border: 1px solid rgba(245,158,11,0.3);">
+            No plans
+        </span>
+        {% endif %}
+    </div>
+
+    {% if storey.has_plan %}
+    <div class="row g-3">
+        <!-- Uploaded card -->
+        {% if storey.has_uploaded %}
+        <div class="col-12 col-md-6">
+            <div class="rounded border p-2 d-flex gap-2 h-100"
+                 style="background-color: var(--bs-body-bg); border-color: var(--bs-border-color) !important;">
+                <a href="{{ storey.uploaded_url }}" target="_blank" rel="noopener"
+                   class="d-block flex-shrink-0"
+                   style="width: 120px; height: 90px; background: #ffffff; border: 1px solid var(--bs-border-color); border-radius: 4px; overflow: hidden;"
+                   title="Open original in a new tab">
+                    <img src="{{ storey.uploaded_url }}" alt="Uploaded plan thumbnail"
+                         style="width: 100%; height: 100%; object-fit: contain;">
+                </a>
+                <div class="d-flex flex-column flex-grow-1 min-width-0">
+                    <div class="d-flex align-items-center gap-2 mb-1">
+                        <i class="bi bi-upload" style="color: var(--castor-facilities, #14b8a6);"></i>
+                        <strong class="fs-7">Uploaded</strong>
+                        {% if storey.image_source == "uploaded" %}
+                        <span class="badge rounded-pill fs-8"
+                              style="background-color: rgba(16,185,129,0.15); color: var(--castor-success, #10b981); border: 1px solid rgba(16,185,129,0.3);">
+                            <i class="bi bi-eye"></i> active
+                        </span>
+                        {% endif %}
+                    </div>
+                    {% if storey.knockout %}
+                    <div class="fs-8 text-secondary mb-1">
+                        <i class="bi bi-eraser"></i> white knock-out applied
+                    </div>
+                    {% endif %}
+                    <div class="mt-auto d-flex gap-2 flex-wrap">
+                        {% if storey.image_source != "uploaded" %}
+                        <form method="post" action="{{ storey.source_url }}"
+                              hx-post="{{ storey.source_url }}"
+                              hx-target="#explorePlansManagerRows" hx-swap="innerHTML"
+                              hx-on::after-request="if (event.detail.successful) window.__exploreFloorsDirty = true;"
+                              class="m-0">
+                            {% csrf_token %}
+                            <input type="hidden" name="source" value="uploaded">
+                            <button type="submit" class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1">
+                                <i class="bi bi-eye"></i> Show this
+                            </button>
+                        </form>
+                        {% endif %}
+                        <form method="post" action="{{ storey.delete_url }}"
+                              hx-post="{{ storey.delete_url }}"
+                              hx-target="#explorePlansManagerRows" hx-swap="innerHTML"
+                              hx-confirm="Delete the uploaded plan for {{ storey.name }}? The generated plan (if any) is kept. Points + photos stay anchored to the storey."
+                              hx-on::after-request="if (event.detail.successful) window.__exploreFloorsDirty = true;"
+                              class="m-0">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-outline-danger d-inline-flex align-items-center gap-1">
+                                <i class="bi bi-trash"></i> Delete
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Generated card -->
+        {% if storey.has_generated %}
+        <div class="col-12 col-md-6">
+            <div class="rounded border p-2 d-flex gap-2 h-100"
+                 style="background-color: var(--bs-body-bg); border-color: var(--bs-border-color) !important;">
+                <a href="{{ storey.generated_url }}" target="_blank" rel="noopener"
+                   class="d-block flex-shrink-0"
+                   style="width: 120px; height: 90px; background: #ffffff; border: 1px solid var(--bs-border-color); border-radius: 4px; overflow: hidden;"
+                   title="Open original in a new tab">
+                    <img src="{{ storey.generated_url }}" alt="Generated plan thumbnail"
+                         style="width: 100%; height: 100%; object-fit: contain;">
+                </a>
+                <div class="d-flex flex-column flex-grow-1 min-width-0">
+                    <div class="d-flex align-items-center gap-2 mb-1">
+                        <i class="bi bi-bounding-box" style="color: var(--castor-facilities, #14b8a6);"></i>
+                        <strong class="fs-7">Generated from IFC</strong>
+                        {% if storey.image_source == "generated" %}
+                        <span class="badge rounded-pill fs-8"
+                              style="background-color: rgba(16,185,129,0.15); color: var(--castor-success, #10b981); border: 1px solid rgba(16,185,129,0.3);">
+                            <i class="bi bi-eye"></i> active
+                        </span>
+                        {% endif %}
+                    </div>
+                    <div class="fs-8 text-secondary mb-1">
+                        {% if storey.cut_height_mm %}
+                        cut at {% widthratio storey.cut_height_mm 1000 1 %} m
+                        {% endif %}
+                        {% if storey.included_kinds %}
+                        · {{ storey.included_kinds|join:", " }}
+                        {% endif %}
+                    </div>
+                    {% if storey.generated_at %}
+                    <div class="fs-8 text-secondary mb-1">
+                        <i class="bi bi-clock"></i> {{ storey.generated_at|date:"Y-m-d H:i" }}
+                    </div>
+                    {% endif %}
+                    <div class="mt-auto d-flex gap-2 flex-wrap">
+                        {% if storey.image_source != "generated" %}
+                        <form method="post" action="{{ storey.source_url }}"
+                              hx-post="{{ storey.source_url }}"
+                              hx-target="#explorePlansManagerRows" hx-swap="innerHTML"
+                              hx-on::after-request="if (event.detail.successful) window.__exploreFloorsDirty = true;"
+                              class="m-0">
+                            {% csrf_token %}
+                            <input type="hidden" name="source" value="generated">
+                            <button type="submit" class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1">
+                                <i class="bi bi-eye"></i> Show this
+                            </button>
+                        </form>
+                        {% endif %}
+                        <form method="post" action="{{ storey.delete_generated_url }}"
+                              hx-post="{{ storey.delete_generated_url }}"
+                              hx-target="#explorePlansManagerRows" hx-swap="innerHTML"
+                              hx-confirm="Delete the generated plan for {{ storey.name }}? You can re-create it any time from the Floors modal. The uploaded plan (if any) is kept."
+                              hx-on::after-request="if (event.detail.successful) window.__exploreFloorsDirty = true;"
+                              class="m-0">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-outline-danger d-inline-flex align-items-center gap-1">
+                                <i class="bi bi-trash"></i> Delete
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    {% else %}
+    <div class="fs-8 text-secondary py-2 px-2 rounded"
+         style="background-color: var(--bs-tertiary-bg); border: 1px dashed var(--bs-border-color);">
+        No uploaded or generated plan for this storey yet. Use the
+        <strong>Floors</strong> button in Explore to upload or generate one.
+    </div>
+    {% endif %}
+</div>
+{% endfor %}

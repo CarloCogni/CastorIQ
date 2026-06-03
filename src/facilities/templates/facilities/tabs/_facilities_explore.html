@@ -1,0 +1,375 @@
+<!-- facilities/tabs/_facilities_explore.html — Explore sub-tab body -->
+<!--
+    Hosts Pavla's floor-plan + photo / 360° module in an iframe. The module
+    lives at src/facilities/explore/ as a vendored peer (NOT under static/)
+    and is delivered through ExploreEmbedView so authentication applies.
+    The iframe is the rendering authority; this template supplies the
+    shell, the help modal, and a postMessage bridge that:
+      1. responds to VIEWER_READY with VIEWER_INIT (theme),
+      2. fetches floors / rooms / catalog / saved state and pushes them in,
+      3. POSTs every STATE_CHANGED snapshot back to ExploreUserStateApiView,
+      4. forwards HOTSPOT_CLICKED + errors to the global castor:toast system.
+    See src/facilities/explore/README.md for protocol v0.2.
+-->
+
+<div class="facilities-scope d-flex flex-column gap-3 h-100" id="facilities-explore-body">
+
+    <!-- Top bar: title + help pill + "Floor plans" (levels) trigger -->
+    <div class="d-flex align-items-center gap-3 flex-wrap flex-shrink-0">
+        <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-map fs-5" style="color: var(--castor-facilities, #14b8a6);"></i>
+            <h5 class="m-0">Spaces</h5>
+            <button type="button"
+                    class="help-pill"
+                    data-bs-toggle="modal"
+                    data-bs-target="#exploreHelpModal"
+                    title="How Explore works"
+                    aria-label="How Explore works">
+                <i class="bi bi-question-circle"></i>
+            </button>
+        </div>
+        {% if explore_storeys %}
+        <!-- Hidden trigger: the Explore iframe's toolbar "Floors" button opens the
+             levels manager by sending OPEN_LEVELS, which clicks this (Bootstrap
+             data API). No visible host button — the trigger lives in the viewer. -->
+        <button type="button"
+                id="exploreLevelsTrigger"
+                class="d-none"
+                data-bs-toggle="modal"
+                data-bs-target="#exploreLevelsModal"
+                aria-hidden="true"
+                tabindex="-1"></button>
+        {% endif %}
+        <div class="ms-auto fs-8 text-secondary">
+            <i class="bi bi-info-circle me-1"></i>
+            Place pins on floor plans, attach photos, link them to IFC spaces. Changes save automatically.
+        </div>
+    </div>
+
+    <!--
+        Floor-plan / levels manager — opened via the "Floor plans" button in the
+        top bar (Bootstrap modal), so the Explore viewer below stays the main
+        view. Surfaces every IFC building storey and lets editors attach /
+        replace / remove a plan image per floor. The iframe needs a plan on a
+        floor to render anything; without it that floor stays empty.
+    -->
+    {% if explore_storeys %}
+    <div class="modal fade" id="exploreLevelsModal" tabindex="-1" aria-labelledby="exploreLevelsModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title d-flex align-items-center gap-2" id="exploreLevelsModalLabel">
+                <i class="bi bi-layers" style="color: var(--castor-facilities, #14b8a6);"></i>
+                Floor plans
+                <span class="fs-8 fw-normal text-secondary">
+                    {{ explore_storeys|length }} storey{{ explore_storeys|length|pluralize:"s" }} detected from IFC
+                </span>
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div class="d-flex flex-column gap-1" id="exploreFloorRows">
+              {% include "facilities/tabs/_explore_floor_rows.html" %}
+            </div>
+          </div>
+          <div class="modal-footer py-2">
+            <button type="button" class="btn btn-sm btn-primary" data-bs-dismiss="modal">Done</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Plans Manager modal — opened by the iframe's gear button via
+         OPEN_PLANS_MANAGER. We render an empty shell here; the body is
+         HTMX-loaded into #explorePlansManagerMount on every open so it
+         reflects the latest state without a page reload. -->
+    <div class="modal fade" id="explorePlansManagerModal" tabindex="-1"
+         aria-labelledby="explorePlansManagerModalLabel" aria-hidden="true">
+        <div id="explorePlansManagerMount"></div>
+    </div>
+
+    <!-- Iframe host -->
+    <div class="border rounded overflow-hidden flex-grow-1"
+         style="background-color: var(--bs-body-bg); min-height: 600px;">
+        <iframe id="exploreIframe"
+                src="{{ explore_urls.embed }}"
+                title="Explore — floor plans, photos, 360°"
+                allow="camera"
+                referrerpolicy="same-origin"
+                style="border: 0; width: 100%; height: 100%; min-height: 600px;"></iframe>
+    </div>
+
+    {% include "facilities/components/explore_help_modal.html" %}
+</div>
+
+<script>
+(function() {
+    "use strict";
+
+    // ── postMessage bridge between Castor and Pavla's iframe (protocol v0.2).
+    //    The iframe announces itself with VIEWER_READY; we reply with VIEWER_INIT
+    //    (locks the origin on the iframe side), then push floors / rooms /
+    //    catalog / saved state. Outbound STATE_CHANGED snapshots round-trip
+    //    through ExploreUserStateApiView for server-side persistence.
+
+    var iframe = document.getElementById("exploreIframe");
+    if (!iframe) return;
+
+    var URLS = {
+        floors: "{{ explore_urls.floors|escapejs }}",
+        roomsBase: "{{ explore_urls.rooms_base|escapejs }}",
+        catalog: "{{ explore_urls.catalog|escapejs }}",
+        state: "{{ explore_urls.state|escapejs }}",
+        plansManager: "{{ explore_urls.plans_manager|escapejs }}",
+    };
+
+    function csrfToken() {
+        var match = document.cookie.match(/(^|; )csrftoken=([^;]+)/);
+        return match ? decodeURIComponent(match[2]) : "";
+    }
+
+    function castorTheme() {
+        return document.documentElement.getAttribute("data-bs-theme") === "light" ? "light" : "dark";
+    }
+
+    // Castor's current Bootstrap palette, so the iframe can match the host
+    // background exactly (re-read on theme switch).
+    function castorPalette() {
+        var cs = getComputedStyle(document.body);
+        function v(name) { return (cs.getPropertyValue(name) || "").trim(); }
+        return {
+            body: v("--bs-body-bg"),
+            tertiary: v("--bs-tertiary-bg"),
+            secondary: v("--bs-secondary-bg"),
+            border: v("--bs-border-color"),
+            text: v("--bs-body-color"),
+            muted: v("--bs-secondary-color"),
+        };
+    }
+
+    function fireToast(message, level) {
+        document.dispatchEvent(new CustomEvent("castor:toast", {
+            detail: { message: message, level: level || "info" },
+        }));
+    }
+
+    function send(type, payload, requestId) {
+        var msg = Object.assign({ type: type }, payload || {});
+        if (requestId) msg.requestId = requestId;
+        try {
+            iframe.contentWindow.postMessage(msg, "*");
+        } catch (err) {
+            console.error("[explore-host] postMessage failed", err);
+        }
+    }
+
+    // ── Pull host-supplied data into the iframe. Calls in parallel.
+    //
+    // Empty responses are deliberately NOT sent: SET_FLOORS {replace:true}
+    // with an empty list would wipe Pavla's bundled demo data, and SET_USER_STATE
+    // with an empty `points` array would erase the demo points. When the project
+    // has no IFC storeys / no saved user state yet, the iframe keeps its demo
+    // so the page is interactive on first open.
+    //
+    // `embedded:true` in VIEWER_INIT tells Pavla's module to hide the
+    // standalone-only toolbar controls (import plans / theme toggle / reset)
+    // whose responsibility moved to Castor.
+    // Fetch the project's floors (+ their rooms) and push them to the iframe.
+    // Called on first hydrate and again after the Floor-plans manager changes a
+    // plan / visibility, so the viewer reflects uploads / removes / hides live.
+    function loadFloors() {
+        fetch(URLS.floors, { credentials: "same-origin" })
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(data) {
+                if (!data || !Array.isArray(data.floors) || !data.floors.length) return;
+                send("SET_FLOORS", { floors: data.floors, replace: true });
+                data.floors.forEach(function(floor) {
+                    if (!floor.id) return;
+                    fetch(URLS.roomsBase + floor.id + "/", { credentials: "same-origin" })
+                        .then(function(r) { return r.ok ? r.json() : null; })
+                        .then(function(roomsData) {
+                            if (roomsData && Array.isArray(roomsData.rooms)) {
+                                send("SET_ROOMS", { floorId: floor.id, rooms: roomsData.rooms });
+                            }
+                        })
+                        .catch(function(err) { console.warn("[explore-host] rooms fetch failed", err); });
+                });
+            })
+            .catch(function(err) { console.warn("[explore-host] floors fetch failed", err); });
+    }
+
+    function hydrate() {
+        send("VIEWER_INIT", { theme: castorTheme(), embedded: true, palette: castorPalette() });
+        loadFloors();
+
+        fetch(URLS.catalog, { credentials: "same-origin" })
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(data) {
+                if (data && data.tables) send("SET_TABLE_CATALOG", { tables: data.tables });
+            })
+            .catch(function(err) { console.warn("[explore-host] catalog fetch failed", err); });
+
+        fetch(URLS.state, { credentials: "same-origin" })
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(data) {
+                if (!data || !data.state) return;
+                var hasUserData =
+                    (Array.isArray(data.state.points) && data.state.points.length) ||
+                    (Array.isArray(data.state.floors) && data.state.floors.length);
+                if (hasUserData) send("SET_USER_STATE", { state: data.state });
+            })
+            .catch(function(err) { console.warn("[explore-host] state fetch failed", err); });
+    }
+
+    // ── Debounced persist of STATE_CHANGED snapshots. The iframe already
+    //    debounces by 350ms; we add nothing on top — but we coalesce
+    //    overlapping requests by tracking the in-flight one.
+    var saving = false;
+    var pending = false;
+
+    function persistState() {
+        if (saving) { pending = true; return; }
+        saving = true;
+        // Ask the iframe for a full snapshot (Pavla's GET_STATE { full:true } reply).
+        send("GET_STATE", { full: true }, "host-persist");
+    }
+
+    function handleStateReply(snapshot) {
+        if (!snapshot) { saving = false; return; }
+        fetch(URLS.state, {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": csrfToken(),
+            },
+            body: JSON.stringify({ state: snapshot }),
+        })
+            .then(function(r) {
+                if (!r.ok) throw new Error("save failed: " + r.status);
+                return r.json();
+            })
+            .then(function(data) {
+                if (data && data.media_url_map && Object.keys(data.media_url_map).length) {
+                    // Push the real URLs back so the iframe drops its data URLs.
+                    // Done by re-fetching the canonical state — simpler than
+                    // patching in place and avoids divergence.
+                    fetch(URLS.state, { credentials: "same-origin" })
+                        .then(function(r) { return r.ok ? r.json() : null; })
+                        .then(function(payload) {
+                            if (payload && payload.state) send("SET_USER_STATE", { state: payload.state });
+                        });
+                }
+            })
+            .catch(function(err) {
+                console.error("[explore-host] state save failed", err);
+                fireToast("Explore: couldn't save changes — see console", "error");
+            })
+            .finally(function() {
+                saving = false;
+                if (pending) { pending = false; persistState(); }
+            });
+    }
+
+    // ── Inbound messages from the iframe.
+    window.addEventListener("message", function(event) {
+        var data = event && event.data;
+        if (!data || typeof data !== "object" || data.source !== "fm-explore") return;
+        if (event.source !== iframe.contentWindow) return;
+        switch (data.type) {
+            case "VIEWER_READY":
+                hydrate();
+                break;
+            case "STATE_CHANGED":
+                persistState();
+                break;
+            case "STATE":
+                if (data.requestId === "host-persist") handleStateReply(data);
+                break;
+            case "HOTSPOT_CLICKED":
+                fireToast("Hotspot: " + (data.label || data.globalId || "point"), "info");
+                break;
+            case "ERROR":
+                console.warn("[explore-host] iframe reported error", data);
+                break;
+            case "OPEN_LEVELS":
+                // Toolbar "Floors" button in the iframe → open the levels manager.
+                var levelsTrigger = document.getElementById("exploreLevelsTrigger");
+                if (levelsTrigger) levelsTrigger.click();
+                break;
+            case "OPEN_PLANS_MANAGER":
+                // Header gear button in the iframe → load the Plans Manager
+                // modal body (file-browser-style view of uploaded vs generated
+                // plans per storey) and show the modal. We HTMX-load every
+                // open so the rows reflect any changes made via the Floors
+                // modal in between.
+                openPlansManager();
+                break;
+            default:
+                break;
+        }
+    });
+
+    // ── Push theme changes from Castor into the iframe.
+    var themeObserver = new MutationObserver(function(mutations) {
+        for (var i = 0; i < mutations.length; i++) {
+            if (mutations[i].attributeName === "data-bs-theme") {
+                send("SET_THEME", { theme: castorTheme(), palette: castorPalette() });
+                break;
+            }
+        }
+    });
+    themeObserver.observe(document.documentElement, { attributes: true });
+
+    // Floor-plans modal: white-out toggles drive per-floor knockout inside the
+    // iframe. Delegated so it survives the HTMX row-refresh swaps.
+    document.addEventListener("change", function(e) {
+        var t = e.target;
+        if (t && t.classList && t.classList.contains("explore-knockout-toggle")) {
+            send("SET_FLOOR_KNOCKOUT", { floorId: t.dataset.floorId, on: t.checked });
+        }
+    });
+
+    // After the Floor-plans manager refreshes its rows (HTMX swaps #exploreFloorRows
+    // on upload / replace / remove / hide), re-push floors to the iframe so the
+    // viewer reflects the change immediately — no page reload, modal stays open.
+    // Same for the Plans Manager: after a delete / source-switch / etc., re-push
+    // floors so the viewer's active image and floor switcher stay in sync.
+    document.body.addEventListener("htmx:afterSwap", function(e) {
+        if (!e.target) return;
+        if (e.target.id === "exploreFloorRows") loadFloors();
+        if (e.target.id === "explorePlansManagerRows") loadFloors();
+        // First open of the Plans Manager modal also triggers afterSwap on the
+        // mount itself — show the modal once the body is in.
+        if (e.target.id === "explorePlansManagerMount") {
+            var modalEl = document.getElementById("explorePlansManagerModal");
+            if (modalEl && window.bootstrap) {
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            }
+        }
+    });
+
+    // Plans Manager opener — HTMX-loads the modal body into its mount on every
+    // open so the data is fresh, then Bootstrap shows the modal (triggered
+    // from the htmx:afterSwap handler above so we don't race the swap).
+    function openPlansManager() {
+        var mount = document.getElementById("explorePlansManagerMount");
+        if (!mount) return;
+        if (window.htmx) {
+            htmx.ajax("GET", URLS.plansManager, { target: "#explorePlansManagerMount", swap: "innerHTML" });
+        } else {
+            // Fallback: vanilla fetch when HTMX isn't loaded yet (shouldn't happen).
+            fetch(URLS.plansManager, { credentials: "same-origin" })
+                .then(function (r) { return r.text(); })
+                .then(function (html) {
+                    mount.innerHTML = html;
+                    var modalEl = document.getElementById("explorePlansManagerModal");
+                    if (modalEl && window.bootstrap) {
+                        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                    }
+                });
+        }
+    }
+})();
+</script>

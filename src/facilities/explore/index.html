@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Castor · Explore</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./src/style/tokens.css" />
+  <link rel="stylesheet" href="./src/style/layout.css" />
+  <link rel="stylesheet" href="./src/style/components.css" />
+  <link rel="stylesheet" href="./src/style/annotations.css" />
+  <!-- Bare-specifier imports for the no-build setup. Swap for npm/Vite later by removing this map. -->
+  <script type="importmap">
+  {
+    "imports": {
+      "pdfjs-dist": "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.7.76/build/pdf.min.mjs",
+      "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js"
+    }
+  }
+  </script>
+  <!-- Fabric.js for the annotation overlay. UMD build exposes window.fabric;
+       loaded with `defer` so the module bundle can read it on boot without
+       blocking the page paint. -->
+  <script src="https://cdn.jsdelivr.net/npm/fabric@5.3.0/dist/fabric.min.js" defer></script>
+</head>
+<body>
+  <div id="app" class="exp-app">
+    <div class="exp-shell">
+
+      <!-- ── Center: floor-plan viewer + timeline (module toolbar sits on top) ── -->
+      <main class="exp-center">
+
+      <!-- ── Module toolbar (Castor's top nav lives in the host) ── -->
+      <header class="mh">
+      <div class="mh-titles">
+        <div class="mh-title" id="mhTitle">Explore</div>
+        <div class="mh-sub" id="mhSub">Floor plan</div>
+      </div>
+      <span class="mh-tag">EXPLORE</span>
+      <span class="mh-build" id="mhBuild" title="Build marker — if this looks old, you're on a cached JS: run python serve.py + Ctrl+Shift+R"></span>
+      <div class="numbering" id="numbering"></div>
+      <div class="kindfilter" id="kindFilter"></div>
+      <div class="mh-spacer"></div>
+      <button class="btn" id="btnImport">⤓ Import plans</button>
+      <input type="file" id="fileInput" accept="image/png,image/jpeg,image/webp,application/pdf" multiple hidden />
+      <input type="file" id="photoUpload" accept="image/*" multiple hidden />
+      <input type="file" id="photoCamera" accept="image/*" capture="environment" hidden />
+      <!-- Plans Manager (file-browser-style view of uploaded vs generated plans, per storey).
+           Embedded mode delegates to the host via OPEN_PLANS_MANAGER; standalone hides it. -->
+      <button class="btn" id="btnPlansManager" title="Plans Manager — uploaded &amp; generated floor plans per storey">⚙ Plans</button>
+      <button class="btn annot-toggle" id="btnAnnotate" title="Draw on the floor plan (Paint-style annotation overlay)">✏ Draw</button>
+      <button class="btn" id="btnTheme" title="Toggle light / dark theme">◐</button>
+      </header>
+
+      <!-- Drawing toolbar (Paint-style). Hidden by default — expanded by the
+           "✏ Draw" header button. Section structure: Nástroje / Štětce /
+           Tvary / Barvy. Anchored just below the module header so the
+           viewer stays in view. -->
+      <div class="annot-bar" id="annotBar" hidden>
+        <div class="annot-sect">
+          <div class="annot-sect-row">
+            <button class="annot-btn on" data-tool="select" title="Select / move (V)">⬚</button>
+            <button class="annot-btn" data-tool="pencil" title="Pencil (free hand)">✎</button>
+            <button class="annot-btn" data-tool="eraser" title="Eraser (click an annotation to delete)">⌫</button>
+            <button class="annot-btn" data-tool="text" title="Text label">A</button>
+          </div>
+          <span class="annot-sect-lbl">Nástroje</span>
+        </div>
+        <div class="annot-sect">
+          <div class="annot-sect-row">
+            <button class="annot-btn annot-brush size-s" data-brush="2" title="Thin"><span class="annot-brush-dot"></span></button>
+            <button class="annot-btn annot-brush size-m on" data-brush="4" title="Medium"><span class="annot-brush-dot"></span></button>
+            <button class="annot-btn annot-brush size-l" data-brush="8" title="Thick"><span class="annot-brush-dot"></span></button>
+          </div>
+          <span class="annot-sect-lbl">Štětce</span>
+        </div>
+        <div class="annot-sect">
+          <div class="annot-sect-row">
+            <button class="annot-btn" data-shape="line" title="Straight line">╱</button>
+            <button class="annot-btn" data-shape="rect" title="Rectangle">▭</button>
+            <button class="annot-btn" data-shape="rect-fill" title="Filled rectangle">▬</button>
+            <button class="annot-btn" data-shape="ellipse" title="Ellipse / circle">◯</button>
+            <button class="annot-btn" data-shape="ellipse-fill" title="Filled ellipse">●</button>
+            <button class="annot-btn" data-shape="triangle" title="Triangle">△</button>
+            <button class="annot-btn" data-shape="arrow" title="Arrow">→</button>
+            <button class="annot-btn" data-shape="star" title="Star">★</button>
+          </div>
+          <span class="annot-sect-lbl">Tvary</span>
+        </div>
+        <div class="annot-sect">
+          <div class="annot-sect-row">
+            <div class="annot-colors" id="annotColors">
+              <!-- swatches injected by annotations.js -->
+            </div>
+            <label class="annot-color-custom" title="Custom colour">
+              <input type="color" id="annotColorCustom" value="#1f6feb">
+            </label>
+          </div>
+          <span class="annot-sect-lbl">Barvy</span>
+        </div>
+        <div class="annot-sect">
+          <div class="annot-sect-row">
+            <button class="annot-btn" id="annotUndo" title="Undo (Ctrl+Z)">↶</button>
+            <button class="annot-btn" id="annotRedo" title="Redo (Ctrl+Shift+Z)">↷</button>
+            <button class="annot-btn" id="annotClear" title="Clear the active layer on this floor">🗑</button>
+          </div>
+          <span class="annot-sect-lbl">Akce</span>
+        </div>
+        <!-- Layers panel: every storey can carry several named overlay layers.
+             New strokes go to the active one (radio selection in the list);
+             toggle the eye on a layer to hide / show it independently. -->
+        <div class="annot-sect annot-layers-sect">
+          <div class="annot-layers" id="annotLayers" aria-label="Vrstvy"></div>
+          <div class="annot-sect-row">
+            <button class="annot-btn" id="annotLayerAdd" title="New layer">＋</button>
+          </div>
+          <span class="annot-sect-lbl">Vrstvy</span>
+        </div>
+      </div>
+
+        <div class="exp-viewer" id="viewer">
+          <div class="plan-stage" id="planStage">
+            <img class="plan-img" id="planImg" src="./assets/plans/floor-4.svg" alt="Floor plan" draggable="false" />
+            <!-- Annotation canvas: transparent overlay sized to match the
+                 plan image box. Drawing tools draw here; pins (next sibling)
+                 stay on top so they remain clickable. pointer-events flips
+                 between "auto" (Draw mode) and "none" (View mode) via JS. -->
+            <canvas class="annot-canvas" id="annotCanvas" style="position:absolute;inset:0;pointer-events:none;"></canvas>
+            <div class="pin-layer" id="pinLayer"></div>
+          </div>
+          <div class="v-label"><span class="v-ld"></span><span id="vLabel">Floor plan</span></div>
+          <div class="floor-switcher" id="floorSwitcher"></div>
+          <div class="exp-legend" id="legend" hidden></div>
+
+          <!-- Zoom controls: lupa (+/−), slider, and "Fit" reset. Anchored
+               bottom-left of the viewer so they don't clash with the right-
+               edge floor switcher or the bottom-left phase legend. -->
+          <div class="zoom-ctrl" id="zoomCtrl">
+            <button type="button" class="zoom-btn" id="zoomOut" title="Zoom out">−</button>
+            <input type="range" class="zoom-slider" id="zoomSlider"
+                   min="10" max="400" step="5" value="100"
+                   title="Zoom level (10–400 %)">
+            <button type="button" class="zoom-btn" id="zoomIn" title="Zoom in">+</button>
+            <span class="zoom-pct" id="zoomPct">100&nbsp;%</span>
+            <button type="button" class="zoom-btn zoom-fit" id="zoomFit" title="Fit plan to view (reset zoom + pan)">⤢</button>
+          </div>
+        </div>
+
+        <div class="exp-timeline" id="expTimeline">
+          <div class="etl-resize" id="tlResize" title="Drag to resize the photo strip" aria-hidden="true"></div>
+          <div class="etl-head">
+            <button class="etl-collapse" id="tlCollapse" title="Hide / show the photo timeline" aria-label="Toggle photo timeline">▾</button>
+            <span class="etl-label">Photo timeline</span>
+            <span class="etl-room" id="tlRoom">—</span>
+            <div class="etl-sort" id="tlSort"></div>
+            <div class="etl-types" id="tlTypes"></div>
+            <div class="etl-view" id="tlView"></div>
+          </div>
+          <div class="etl-track" id="tlTrack">
+            <span class="etl-empty">Select a point to see its photo versions</span>
+          </div>
+        </div>
+      </main>
+
+      <!-- ── Right: detail panel (full window height) — actions live here now ── -->
+      <aside class="detail-panel">
+        <div class="dp-resize" id="dpResize" title="Drag to resize the info panel" aria-hidden="true"></div>
+        <div class="dp-toolbar">
+          <button class="btn" id="btnFloors" title="Floor plans &amp; levels — upload, white-out, manage">🗂 Floors</button>
+          <button class="btn" id="btnPoints" title="All points — search &amp; jump across floors">≣ Points</button>
+          <button class="btn" id="btnAddPoint">+ Point</button>
+          <button class="btn vb vb-cmp" id="btnCmp" disabled title="Select a point with 2+ photo versions">⇔ Compare</button>
+        </div>
+        <div class="dp-kinds" id="dpKinds"></div>
+        <div class="dp-head">
+          <div class="dp-title" id="dpTitle">No point selected</div>
+          <div class="dp-sub" id="dpSub">Click the plan to place one</div>
+        </div>
+        <div class="dp-body" id="dpBody">
+          <div class="dp-empty">
+            <div class="dp-empty-icon">◎</div>
+            <div class="dp-empty-text">Click anywhere on the floor plan to drop a point, then attach a photo to it. (Placement lands in Step 2.)</div>
+          </div>
+        </div>
+        <div class="dp-actions" id="dpActions" hidden>
+          <button class="btn btn-p btn-sm">FM detail</button>
+          <button class="btn btn-sm">Leasing</button>
+          <button class="btn btn-sm">BIM</button>
+        </div>
+      </aside>
+
+    </div>
+  </div>
+
+  <!-- Compare: two versions side-by-side with a draggable divider -->
+  <div id="compare" class="cmp" hidden>
+    <div class="cmp-top">
+      <div class="cmp-sel"><span>Left</span><select id="cmpLeft"></select></div>
+      <div class="cmp-sel"><span>Right</span><select id="cmpRight"></select></div>
+      <span class="cmp-hint" id="cmpHint">drag the divider ⇔</span>
+      <button class="lb-close" id="cmpClose" title="Close" style="margin-left:auto;position:static;">✕</button>
+    </div>
+    <div class="cmp-stage" id="cmpStage">
+      <div class="cmp-media" id="cmpMediaL"></div>
+      <div class="cmp-media cmp-clip" id="cmpMediaR"></div>
+      <div class="cmp-pano" id="cmpPano"></div>
+      <div class="cmp-lbl cmp-lbl-l" id="cmpLblL"></div>
+      <div class="cmp-lbl cmp-lbl-r" id="cmpLblR"></div>
+      <div class="cmp-divider" id="cmpDivider"><div class="cmp-handle">⇔</div></div>
+    </div>
+  </div>
+
+  <!-- Reusable modal (floor manager, add-phase) -->
+  <div id="modalOverlay" class="modal-overlay" hidden>
+    <div class="modal-box">
+      <div class="modal-head"><span class="modal-title" id="modalTitle"></span><button class="modal-x" id="modalX" title="Close">✕</button></div>
+      <div class="modal-body" id="modalBody"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <!-- Lightbox for viewing a flat photo full-size -->
+  <div id="lightbox" class="lightbox" hidden>
+    <button class="lb-close" id="lbClose" title="Close">✕</button>
+    <img class="lb-img" id="lbImg" alt="" />
+  </div>
+
+  <!-- 360° panoramic viewer (Three.js) -->
+  <div id="pano" class="pano" hidden>
+    <div class="pano-mount" id="panoMount"></div>
+    <div class="pano-label" id="panoLabel"><span class="v-ld"></span><span id="panoTitle">360°</span></div>
+    <div class="pano-warn" id="panoWarn" hidden></div>
+    <div class="pano-hint">drag to look · scroll to zoom</div>
+    <button class="lb-close" id="panoReset" style="right:60px;" title="Reset view">⊕</button>
+    <button class="lb-close" id="panoClose" title="Close">✕</button>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

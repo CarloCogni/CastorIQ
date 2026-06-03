@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" width="800" height="500" font-family="ui-monospace, 'DM Mono', monospace">
+  <!-- Placeholder floor plan for Step 1. Real plans will be user-supplied PNG/PDF or IFC-derived. -->
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0 H0 V40" fill="none" stroke="#23243440" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect x="0" y="0" width="800" height="500" fill="#0d0e16"/>
+  <rect x="0" y="0" width="800" height="500" fill="url(#grid)"/>
+
+  <!-- Outer wall -->
+  <rect x="20" y="20" width="760" height="460" fill="none" stroke="#5b5d78" stroke-width="3"/>
+
+  <!-- Top row -->
+  <!-- Office 4A (vacant) -->
+  <g>
+    <rect x="20" y="20" width="275" height="215" fill="#d4903a" fill-opacity="0.06" stroke="#464760" stroke-width="1.5"/>
+    <text x="157" y="120" text-anchor="middle" font-size="20" fill="#e2e3ef">Office 4A</text>
+    <text x="157" y="142" text-anchor="middle" font-size="11" fill="#9294ab">210 m² · vacant</text>
+  </g>
+  <!-- Office 4B (active / TechSpace) -->
+  <g>
+    <rect x="295" y="20" width="275" height="215" fill="#4fc4cf" fill-opacity="0.08" stroke="#4fc4cf" stroke-width="2"/>
+    <text x="432" y="120" text-anchor="middle" font-size="20" fill="#e2e3ef">Office 4B</text>
+    <text x="432" y="142" text-anchor="middle" font-size="11" fill="#4fc4cf">240 m² · TechSpace s.r.o.</text>
+  </g>
+  <!-- Core -->
+  <g>
+    <rect x="570" y="20" width="210" height="215" fill="#8b7fd4" fill-opacity="0.06" stroke="#464760" stroke-width="1.5"/>
+    <text x="675" y="120" text-anchor="middle" font-size="16" fill="#8b7fd4">Core</text>
+    <text x="675" y="140" text-anchor="middle" font-size="10" fill="#9294ab">lifts · stairs · shafts</text>
+  </g>
+
+  <!-- Corridor band -->
+  <rect x="20" y="235" width="760" height="30" fill="#ffffff" fill-opacity="0.02" stroke="#464760" stroke-width="1"/>
+  <text x="400" y="254" text-anchor="middle" font-size="10" fill="#555770" letter-spacing="2">C O R R I D O R</text>
+
+  <!-- Bottom row -->
+  <!-- Office 4C -->
+  <g>
+    <rect x="20" y="265" width="210" height="215" fill="#ffffff" fill-opacity="0.02" stroke="#464760" stroke-width="1.5"/>
+    <text x="125" y="368" text-anchor="middle" font-size="18" fill="#e2e3ef">Office 4C</text>
+    <text x="125" y="388" text-anchor="middle" font-size="11" fill="#9294ab">100 m²</text>
+  </g>
+  <!-- Office 4D -->
+  <g>
+    <rect x="230" y="265" width="210" height="215" fill="#ffffff" fill-opacity="0.02" stroke="#464760" stroke-width="1.5"/>
+    <text x="335" y="368" text-anchor="middle" font-size="18" fill="#e2e3ef">Office 4D</text>
+    <text x="335" y="388" text-anchor="middle" font-size="11" fill="#9294ab">210 m² · reserved</text>
+  </g>
+  <!-- WC -->
+  <g>
+    <rect x="440" y="265" width="130" height="107" fill="#ffffff" fill-opacity="0.02" stroke="#464760" stroke-width="1.5"/>
+    <text x="505" y="324" text-anchor="middle" font-size="14" fill="#9294ab">WC</text>
+  </g>
+  <!-- Kitchen -->
+  <g>
+    <rect x="440" y="372" width="130" height="108" fill="#ffffff" fill-opacity="0.02" stroke="#464760" stroke-width="1.5"/>
+    <text x="505" y="432" text-anchor="middle" font-size="13" fill="#9294ab">Kitchen</text>
+  </g>
+  <!-- Meeting room -->
+  <g>
+    <rect x="570" y="265" width="210" height="215" fill="#ffffff" fill-opacity="0.02" stroke="#464760" stroke-width="1.5"/>
+    <text x="675" y="368" text-anchor="middle" font-size="16" fill="#e2e3ef">Meeting 3B</text>
+    <text x="675" y="388" text-anchor="middle" font-size="11" fill="#9294ab">60 m²</text>
+  </g>
+
+  <!-- Floor tag -->
+  <text x="34" y="44" font-size="11" fill="#555770">PALÁC JIRÁSKOVO · 4F</text>
+</svg>

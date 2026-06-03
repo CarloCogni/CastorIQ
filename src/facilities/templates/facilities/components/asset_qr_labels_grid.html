@@ -1,0 +1,181 @@
+<!-- facilities/components/asset_qr_labels_grid.html — QR-tab body.
+
+     Same filtered asset queryset as asset_grid.html (same pagination context),
+     but each tile is a large QR + label + checkbox optimised for printing
+     stickers. Bulk-print button at the top hands the selected (or all visible)
+     assets to the print sheet builder defined inline below.
+-->
+
+{% if page_obj and page_obj.object_list %}
+<!-- Bulk print bar — operates on the checkboxes inside this grid. -->
+<div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+    <button type="button"
+            class="btn btn-sm d-inline-flex align-items-center gap-2"
+            id="qr-bulk-print"
+            style="background-color: var(--castor-facilities, #14b8a6); color: white; border: none;">
+        <i class="bi bi-printer-fill"></i>
+        <span>Print labels</span>
+        <span class="badge bg-light text-dark" id="qr-bulk-print-count">all visible</span>
+    </button>
+    <button type="button"
+            class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-2"
+            id="qr-bulk-select-all">
+        <i class="bi bi-check2-square"></i> Select all on page
+    </button>
+    <button type="button"
+            class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-2"
+            id="qr-bulk-clear">
+        <i class="bi bi-x-circle"></i> Clear selection
+    </button>
+    <span class="fs-8 text-secondary ms-auto">
+        Click a QR to view / print one label. Use <strong>Print labels</strong>
+        for a printable sheet of multiple labels (3&times;8 per A4).
+    </span>
+</div>
+
+<div class="row g-3" id="qr-labels-grid">
+    {% for asset in page_obj.object_list %}
+        {% url 'facilities:assets_detail' project.pk asset.pk as asset_detail_path %}
+        <div class="col-12 col-md-6 col-xl-4 col-xxl-3">
+            <div class="p-3 rounded border d-flex flex-column gap-2 align-items-center text-center h-100 position-relative qr-label-card"
+                 data-asset-url="{{ request.scheme }}://{{ request.get_host }}{{ asset_detail_path }}"
+                 data-asset-tag="{{ asset.asset_tag|default:'' }}"
+                 data-asset-name="{{ asset.display_name|default:asset.asset_tag|default:'Asset' }}"
+                 style="background: var(--bs-body-bg);">
+                <div class="position-absolute" style="top: 8px; left: 10px;">
+                    <input class="form-check-input qr-label-checkbox"
+                           type="checkbox"
+                           value="{{ asset.pk }}"
+                           aria-label="Select for bulk print">
+                </div>
+                <button type="button"
+                        class="border-0 p-2 rounded"
+                        style="background: #ffffff; cursor: pointer; line-height: 0;"
+                        title="Open / print this label"
+                        data-bs-toggle="modal"
+                        data-bs-target="#assetQRModal"
+                        data-asset-url="{{ request.scheme }}://{{ request.get_host }}{{ asset_detail_path }}"
+                        data-asset-tag="{{ asset.asset_tag|default:'' }}"
+                        data-asset-name="{{ asset.display_name|default:asset.asset_tag|default:'Asset' }}">
+                    <span class="d-block"
+                          style="width: 160px; height: 160px;"
+                          data-qr-url="{{ request.scheme }}://{{ request.get_host }}{{ asset_detail_path }}"
+                          data-qr-size="160"></span>
+                </button>
+                <div class="w-100">
+                    <div class="fw-semibold text-truncate" title="{{ asset.asset_tag|default:asset.display_name }}">
+                        {{ asset.asset_tag|default:asset.display_name|default:"Untitled asset" }}
+                    </div>
+                    {% if asset.asset_tag and asset.display_name and asset.asset_tag != asset.display_name %}
+                    <div class="fs-8 text-secondary text-truncate" title="{{ asset.display_name }}">
+                        {{ asset.display_name }}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    {% endfor %}
+</div>
+
+{% if page_obj.paginator.num_pages > 1 %}
+<nav aria-label="QR label pagination" class="mt-3">
+    <ul class="pagination pagination-sm justify-content-center m-0">
+        {% if page_obj.has_previous %}
+        <li class="page-item">
+            <a class="page-link"
+               href="?page={{ page_obj.previous_page_number }}{% if active_q %}&q={{ active_q }}{% endif %}{% if active_type %}&ifc_type={{ active_type }}{% endif %}"
+               hx-get="{% url 'facilities:assets_qr_labels' project.pk %}?page={{ page_obj.previous_page_number }}{% if active_q %}&q={{ active_q }}{% endif %}{% if active_type %}&ifc_type={{ active_type }}{% endif %}"
+               hx-target="#asset-grid-mount"
+               hx-swap="innerHTML">
+                <i class="bi bi-chevron-left"></i>
+            </a>
+        </li>
+        {% endif %}
+        <li class="page-item active">
+            <span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+        </li>
+        {% if page_obj.has_next %}
+        <li class="page-item">
+            <a class="page-link"
+               href="?page={{ page_obj.next_page_number }}{% if active_q %}&q={{ active_q }}{% endif %}{% if active_type %}&ifc_type={{ active_type }}{% endif %}"
+               hx-get="{% url 'facilities:assets_qr_labels' project.pk %}?page={{ page_obj.next_page_number }}{% if active_q %}&q={{ active_q }}{% endif %}{% if active_type %}&ifc_type={{ active_type }}{% endif %}"
+               hx-target="#asset-grid-mount"
+               hx-swap="innerHTML">
+                <i class="bi bi-chevron-right"></i>
+            </a>
+        </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+
+<script>
+(function () {
+    // Wiring for the QR-labels grid: checkbox selection counter + bulk print.
+    // Re-runs after every HTMX swap because the grid is replaced (the script
+    // tag ships inside the partial, so it executes when the partial mounts).
+    const grid = document.getElementById('qr-labels-grid');
+    if (!grid || grid.dataset.castorWired === '1') return;
+    grid.dataset.castorWired = '1';
+
+    const countLabel = document.getElementById('qr-bulk-print-count');
+    const btnPrint = document.getElementById('qr-bulk-print');
+    const btnSelectAll = document.getElementById('qr-bulk-select-all');
+    const btnClear = document.getElementById('qr-bulk-clear');
+
+    function getCheckboxes() {
+        return Array.from(grid.querySelectorAll('.qr-label-checkbox'));
+    }
+    function getCheckedCards() {
+        const checked = getCheckboxes().filter(cb => cb.checked);
+        const cards = checked.map(cb => cb.closest('.qr-label-card')).filter(Boolean);
+        return cards.length ? cards : Array.from(grid.querySelectorAll('.qr-label-card'));
+    }
+
+    function syncCount() {
+        const checked = getCheckboxes().filter(cb => cb.checked).length;
+        if (!countLabel) return;
+        countLabel.textContent = checked > 0
+            ? checked + ' selected'
+            : 'all visible (' + grid.querySelectorAll('.qr-label-card').length + ')';
+    }
+
+    grid.addEventListener('change', function (event) {
+        if (event.target && event.target.classList.contains('qr-label-checkbox')) {
+            syncCount();
+        }
+    });
+    if (btnSelectAll) btnSelectAll.addEventListener('click', function () {
+        getCheckboxes().forEach(cb => cb.checked = true);
+        syncCount();
+    });
+    if (btnClear) btnClear.addEventListener('click', function () {
+        getCheckboxes().forEach(cb => cb.checked = false);
+        syncCount();
+    });
+
+    if (btnPrint) btnPrint.addEventListener('click', function () {
+        const cards = getCheckedCards();
+        if (!cards.length) return;
+        const labels = cards.map(card => ({
+            url: card.getAttribute('data-asset-url') || '',
+            tag: card.getAttribute('data-asset-tag') || '',
+            name: card.getAttribute('data-asset-name') || ''
+        })).filter(l => l.url);
+        if (!labels.length) return;
+        window.castorAssetQRPrintSheet(labels);
+    });
+
+    syncCount();
+})();
+</script>
+
+{% else %}
+<div class="p-5 rounded text-center mt-3" style="background-color: var(--bs-tertiary-bg); border: 1px dashed var(--bs-border-color);">
+    <i class="bi bi-qr-code fs-1 d-block mb-2" style="color: var(--castor-facilities, #14b8a6); opacity: 0.6;"></i>
+    <div class="h6 mb-1">No assets to print</div>
+    <div class="fs-8 text-secondary mb-3">
+        Add or import assets in the Assets tab first, or relax the filter — QR labels follow the same scope.
+    </div>
+</div>
+{% endif %}
