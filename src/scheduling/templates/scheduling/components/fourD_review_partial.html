@@ -20,14 +20,14 @@
 <ul class="nav nav-pills mt-1 mb-2" style="font-size:0.74rem; gap:2px;">
     <li class="nav-item">
         <a class="nav-link py-0 px-2 {% if filter_by == 'all' %}active{% endif %}"
-           hx-get="{% url 'castor:review' project.pk %}?filter=all&inline=1"
+           hx-get="{% url 'scheduling:review' project.pk %}?filter=all&inline=1"
            hx-target="#fourD-review-pane" hx-swap="innerHTML" style="cursor:pointer;">
             All
         </a>
     </li>
     <li class="nav-item">
         <a class="nav-link py-0 px-2 {% if filter_by == 'linked' %}active{% endif %}"
-           hx-get="{% url 'castor:review' project.pk %}?filter=linked&inline=1"
+           hx-get="{% url 'scheduling:review' project.pk %}?filter=linked&inline=1"
            hx-target="#fourD-review-pane" hx-swap="innerHTML" style="cursor:pointer;">
             Linked
             {% if summary.auto_accepted %}<span class="badge bg-success ms-1">{{ summary.auto_accepted }}</span>{% endif %}
@@ -35,7 +35,7 @@
     </li>
     <li class="nav-item">
         <a class="nav-link py-0 px-2 {% if filter_by == 'needs_review' %}active{% endif %}"
-           hx-get="{% url 'castor:review' project.pk %}?filter=needs_review&inline=1"
+           hx-get="{% url 'scheduling:review' project.pk %}?filter=needs_review&inline=1"
            hx-target="#fourD-review-pane" hx-swap="innerHTML" style="cursor:pointer;">
             Needs Review
             {% if summary.needs_review %}<span class="badge bg-warning text-dark ms-1">{{ summary.needs_review }}</span>{% endif %}
@@ -43,7 +43,7 @@
     </li>
     <li class="nav-item">
         <a class="nav-link py-0 px-2 {% if filter_by == 'unlinked' %}active{% endif %}"
-           hx-get="{% url 'castor:review' project.pk %}?filter=unlinked&inline=1"
+           hx-get="{% url 'scheduling:review' project.pk %}?filter=unlinked&inline=1"
            hx-target="#fourD-review-pane" hx-swap="innerHTML" style="cursor:pointer;">
             Unlinked
             {% if summary.unlinked_tasks %}<span class="badge bg-danger ms-1">{{ summary.unlinked_tasks }}</span>{% endif %}
@@ -106,7 +106,7 @@
                 </td>
                 <!-- Unlink -->
                 <td>
-                    <form hx-post="{% url 'castor:binding_remove' project.pk row.binding.pk %}"
+                    <form hx-post="{% url 'scheduling:binding_remove' project.pk row.binding.pk %}"
                           hx-target="#binding-row-{{ row.binding.pk }}"
                           hx-swap="outerHTML">
                         {% csrf_token %}

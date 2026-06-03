@@ -1,21 +1,21 @@
 <!-- scheduling/tabs/data_sources.html — dynamic preview table + mapping pills -->
 <div id="ds-root"
      style="display:flex; flex-direction:column; height:calc(100vh - 120px); overflow:hidden;"
-     data-preview-url="{% url 'castor:schedule_preview' project.pk %}"
-     data-save-url="{% url 'castor:schedule_save' project.pk %}"
-     data-mapping-url="{% url 'castor:schedule_mapping_submit' project.pk %}"
-     data-detect-url="{% url 'castor:schedule_detect_columns' project.pk %}"
-     data-save-lookup-url="{% url 'castor:schedule_save_mapping_lookup' project.pk %}"
-     data-review-url="{% url 'castor:schedule' project.pk %}?tab=review"
-     data-gantt-url="{% url 'castor:schedule' project.pk %}?tab=fourD_link"
-     data-all-tasks-url="{% url 'castor:all_tasks_preview' project.pk %}"
+     data-preview-url="{% url 'scheduling:schedule_preview' project.pk %}"
+     data-save-url="{% url 'scheduling:schedule_save' project.pk %}"
+     data-mapping-url="{% url 'scheduling:schedule_mapping_submit' project.pk %}"
+     data-detect-url="{% url 'scheduling:schedule_detect_columns' project.pk %}"
+     data-save-lookup-url="{% url 'scheduling:schedule_save_mapping_lookup' project.pk %}"
+     data-review-url="{% url 'scheduling:schedule' project.pk %}?tab=review"
+     data-gantt-url="{% url 'scheduling:schedule' project.pk %}?tab=fourD_link"
+     data-all-tasks-url="{% url 'scheduling:all_tasks_preview' project.pk %}"
      data-csrf="{{ csrf_token }}"
      data-task-count="{{ task_count }}">
 
     <!-- ── Imported sources (chips, shown when at least one import exists) ─ -->
     {% if schedule_sources %}
     <div class="d-flex align-items-center gap-2 flex-wrap mb-2" id="ds-sources-row"
-         data-autoload-url="{% url 'castor:schedule_source_preview' project.pk schedule_sources.0.pk %}"
+         data-autoload-url="{% url 'scheduling:schedule_source_preview' project.pk schedule_sources.0.pk %}"
          data-autoload-name="{{ schedule_sources.0.filename|default:'source' }}"
          style="flex-shrink:0;">
         <span class="text-secondary" style="font-size:.75rem; font-weight:600; white-space:nowrap;">
@@ -24,7 +24,7 @@
         {% for src in schedule_sources %}
         <span class="badge d-inline-flex align-items-center gap-1 px-2 py-1 ds-source-chip"
               id="ds-source-chip-{{ src.pk }}"
-              data-source-preview-url="{% url 'castor:schedule_source_preview' project.pk src.pk %}"
+              data-source-preview-url="{% url 'scheduling:schedule_source_preview' project.pk src.pk %}"
               data-source-filename="{{ src.filename|default:'source' }}"
               style="background:var(--bs-secondary-bg); color:var(--bs-body-color);
                      border:1px solid var(--bs-border-color); border-radius:20px;
@@ -38,7 +38,7 @@
             <span class="text-secondary ms-1" style="font-size:.68rem;">{{ src.task_count }} tasks</span>
             <button type="button"
                     class="ds-source-delete-btn btn-close btn-close-sm ms-1"
-                    data-delete-url="{% url 'castor:schedule_source_delete' project.pk src.pk %}"
+                    data-delete-url="{% url 'scheduling:schedule_source_delete' project.pk src.pk %}"
                     data-chip-id="ds-source-chip-{{ src.pk }}"
                     data-filename="{{ src.filename|default:'this source' }}"
                     style="font-size:.55rem; opacity:.5;"
@@ -353,7 +353,7 @@
             </button>
             {% if task_count %}
             <button id="ds-clear-btn" type="button" class="btn btn-outline-danger btn-sm"
-                    data-clear-url="{% url 'castor:schedule_clear' project.pk %}"
+                    data-clear-url="{% url 'scheduling:schedule_clear' project.pk %}"
                     title="Delete all tasks for this project">
                 <span class="spinner-border spinner-border-sm me-1 d-none" id="ds-clear-spin"></span>
                 <i class="bi bi-trash3 me-1"></i>Clear

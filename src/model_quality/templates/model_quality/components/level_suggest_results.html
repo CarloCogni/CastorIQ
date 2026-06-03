@@ -11,7 +11,7 @@
             <small class="text-secondary">Z = {{ s.z_elevation|floatformat:0 }} mm</small>
         </div>
         <button class="btn btn-sm btn-outline-primary"
-                hx-post="{% url 'castor:level_add' project.pk %}"
+                hx-post="{% url 'model_quality:level_add' project.pk %}"
                 hx-vals='{"name": "{{ s.name|escapejs }}", "z_elevation": "{{ s.z_elevation }}", "ifc_storey_global_id": "{{ s.global_id|default:""|escapejs }}"}'
                 hx-target="#storey-registry-body"
                 hx-swap="innerHTML">

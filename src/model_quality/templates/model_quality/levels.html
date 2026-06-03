@@ -96,7 +96,7 @@
             </span>
             {% if ifc_file %}
             <button class="btn btn-sm btn-outline-secondary"
-                    hx-get="{% url 'castor:level_suggest' project.pk %}"
+                    hx-get="{% url 'model_quality:level_suggest' project.pk %}"
                     hx-target="#storey-registry-body"
                     hx-swap="innerHTML"
                     hx-indicator="#storey-refresh-spinner">
@@ -190,7 +190,7 @@
                 </tbody>
             </table>
             <div class="border-top px-3 py-3">
-                <form hx-post="{% url 'castor:level_add' project.pk %}"
+                <form hx-post="{% url 'model_quality:level_add' project.pk %}"
                       hx-target="#manual-levels-tbody"
                       hx-swap="beforeend"
                       hx-on::after-request="this.reset(); const e=document.getElementById('manual-empty-row'); if(e) e.remove();"
@@ -236,7 +236,7 @@
                     manual level{{ apply_diff.will_create|pluralize }} will be <strong>created</strong>
                 </div>
                 <button class="ms-auto btn btn-sm btn-primary"
-                        hx-post="{% url 'castor:level_apply' project.pk %}"
+                        hx-post="{% url 'model_quality:level_apply' project.pk %}"
                         hx-swap="none"
                         {% if not apply_diff.will_update and not apply_diff.will_create %}disabled{% endif %}>
                     <i class="bi bi-cloud-upload me-1"></i>Apply to IFC

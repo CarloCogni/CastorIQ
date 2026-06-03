@@ -191,7 +191,7 @@
     <div style="flex: 1; position: relative; min-height: 0;">
       <iframe
         id="fd-iframe"
-        src="{% url 'castor:viewer_embed' project.pk %}?v={% now "U" %}"
+        src="{% url 'ifc_viewer:viewer_embed' project.pk %}?v={% now "U" %}"
         style="width: 100%; height: 100%; border: none;"
         allow="fullscreen">
       </iframe>
@@ -323,7 +323,7 @@
     flex-wrap: wrap;
   ">
     <!-- Castor Link Engine -->
-    <form hx-post="{% url 'castor:schedule_link_smart' project.pk %}"
+    <form hx-post="{% url 'scheduling:schedule_link_smart' project.pk %}"
           hx-target="#fourD-link-results"
           hx-swap="innerHTML"
           hx-indicator="#fd-link-spinner"
@@ -355,7 +355,7 @@
     <div style="height: 24px; width: 1px; background: var(--bs-border-color);"></div>
 
     <!-- Parameter Match -->
-    <form hx-post="{% url 'castor:schedule_link_param' project.pk %}"
+    <form hx-post="{% url 'scheduling:schedule_link_param' project.pk %}"
           hx-target="#fourD-link-results"
           hx-swap="innerHTML"
           hx-indicator="#fd-param-spinner"
@@ -385,7 +385,7 @@
   <div id="fourD-review-pane"
        style="flex-shrink:0; overflow-y:auto; max-height:32vh; padding:8px 12px;
               border-top:1px solid var(--bs-border-color);"
-       hx-get="{% url 'castor:review' project.pk %}?filter=all&inline=1"
+       hx-get="{% url 'scheduling:review' project.pk %}?filter=all&inline=1"
        hx-trigger="load"
        hx-swap="innerHTML">
       <div class="d-flex align-items-center justify-content-center py-3 text-secondary"
@@ -430,13 +430,13 @@
 <script>
 (function () {
   "use strict";
-  const GANTT_URL               = "{% url 'castor:gantt_data' project.pk %}";
-  const TIMELINE_URL            = "{% url 'castor:viewer_timeline' project.pk %}";
-  const FD_INTELLIGENCE_ASK_URL   = "{% url 'castor:intelligence_ask' project.pk %}";
-  const FD_INTELLIGENCE_EMBED_URL = "{% url 'castor:intelligence_embed' project.pk %}";
-  const FD_WRITEBACK_URL          = "{% url 'castor:schedule_writeback' project.pk %}";
-  const TASKS_FOR_LINK_URL      = "{% url 'castor:tasks_for_link' project.pk %}";
-  const BULK_LINK_URL           = "{% url 'castor:bulk_link_element' project.pk %}";
+  const GANTT_URL               = "{% url 'scheduling:gantt_data' project.pk %}";
+  const TIMELINE_URL            = "{% url 'ifc_viewer:viewer_timeline' project.pk %}";
+  const FD_INTELLIGENCE_ASK_URL   = "{% url 'scheduling:intelligence_ask' project.pk %}";
+  const FD_INTELLIGENCE_EMBED_URL = "{% url 'scheduling:intelligence_embed' project.pk %}";
+  const FD_WRITEBACK_URL          = "{% url 'scheduling:schedule_writeback' project.pk %}";
+  const TASKS_FOR_LINK_URL      = "{% url 'scheduling:tasks_for_link' project.pk %}";
+  const BULK_LINK_URL           = "{% url 'scheduling:bulk_link_element' project.pk %}";
   const FD_CSRF                 = "{{ csrf_token }}";
 
   /* ── Full Gantt (fd_ prefix) ─────────────────────────────────────── */

@@ -87,7 +87,7 @@
 
 <div class="d-flex justify-content-between align-items-center mb-2">
     <span class="text-secondary small">{{ tasks_preview|length }} task{{ tasks_preview|length|pluralize }} parsed from <strong>{{ source }}</strong></span>
-    <form hx-post="{% url 'castor:schedule_save' project.pk %}"
+    <form hx-post="{% url 'scheduling:schedule_save' project.pk %}"
           hx-target="#task-preview-area"
           hx-swap="innerHTML"
           hx-indicator="#save-spinner">
@@ -139,7 +139,7 @@
 {% elif tasks %}
 
 <!-- URL template for TaskActualDateView — __TASK_PK__ replaced by JS -->
-<script>const ACTUAL_DATES_URL_TEMPLATE = "{% url 'castor:task_actual_dates' project.pk '00000000-0000-0000-0000-000000000000' %}".replace("00000000-0000-0000-0000-000000000000", "__TASK_PK__");</script>
+<script>const ACTUAL_DATES_URL_TEMPLATE = "{% url 'scheduling:task_actual_dates' project.pk '00000000-0000-0000-0000-000000000000' %}".replace("00000000-0000-0000-0000-000000000000", "__TASK_PK__");</script>
 
 {% if dep_count %}
 <div class="d-flex align-items-center gap-2 mb-2 text-secondary" style="font-size:0.8rem;">
@@ -189,7 +189,7 @@
                 </td>
                 <td>
                     <button class="btn btn-sm btn-outline-danger py-0"
-                            hx-post="{% url 'castor:task_delete' project.pk task.pk %}"
+                            hx-post="{% url 'scheduling:task_delete' project.pk task.pk %}"
                             hx-target="closest tbody"
                             hx-swap="outerHTML"
                             hx-confirm="Delete '{{ task.name }}'?"

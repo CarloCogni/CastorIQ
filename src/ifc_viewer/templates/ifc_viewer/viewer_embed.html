@@ -123,8 +123,8 @@ import * as THREE from "three";
 
 {% if ifc_file_url %}
 const IFC_URL      = "{{ ifc_file_url }}";
-const FRAG_URL     = "{% url 'castor:viewer_fragments' project.pk %}";
-const COLORMAP_URL = "{% url 'castor:viewer_colormap' project.pk %}";
+const FRAG_URL     = "{% url 'ifc_viewer:viewer_fragments' project.pk %}";
+const COLORMAP_URL = "{% url 'ifc_viewer:viewer_colormap' project.pk %}";
 const CSRF_TOKEN   = "{{ csrf_token }}";
 
 const container = document.getElementById("embed-canvas-wrap");
@@ -898,7 +898,7 @@ function _initSelector() {
 
 // ── 6. Context menu & Properties panel ──────────────────────────────
 
-const ELEM_PROPS_URL_TMPL = "{% url 'castor:viewer_element_props' project.pk 'ELEM_PH' %}";
+const ELEM_PROPS_URL_TMPL = "{% url 'ifc_viewer:viewer_element_props' project.pk 'ELEM_PH' %}";
 
 const _ctxMenuEl    = document.getElementById("sel-ctx-menu");
 const _propsPanelEl = document.getElementById("sel-props-panel");

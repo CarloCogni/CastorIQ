@@ -654,7 +654,7 @@ class IssuesMissingActivityView(ProjectAccessMixin, View):
         project = self.get_project()
         ifc_file = _get_active_ifc_file(project)
         rows = _missing_activity_rows(ifc_file) if ifc_file else []
-        viewer_url = reverse("castor:viewer", kwargs={"pk": project.pk})
+        viewer_url = reverse("ifc_viewer:viewer", kwargs={"pk": project.pk})
         return render(
             request,
             "model_quality/components/issues_missing_activity.html",
@@ -674,7 +674,7 @@ class IssuesMissingCostView(ProjectAccessMixin, View):
         project = self.get_project()
         ifc_file = _get_active_ifc_file(project)
         rows = _missing_cost_rows(ifc_file) if ifc_file else []
-        viewer_url = reverse("castor:viewer", kwargs={"pk": project.pk})
+        viewer_url = reverse("ifc_viewer:viewer", kwargs={"pk": project.pk})
         return render(
             request,
             "model_quality/components/issues_missing_cost.html",
@@ -723,7 +723,7 @@ class IssuesLevelsHealthView(ProjectAccessMixin, View):
                     status = "no_elements"
                 storey_rows.append({**s, "in_schedule": in_sched, "status": status})
 
-        levels_url = reverse("castor:levels", kwargs={"pk": project.pk})
+        levels_url = reverse("model_quality:levels", kwargs={"pk": project.pk})
         return render(
             request,
             "model_quality/components/issues_levels_health.html",

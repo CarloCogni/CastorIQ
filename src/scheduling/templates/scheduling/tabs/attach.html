@@ -20,7 +20,7 @@
                         normalized, heuristic, and AI embedding matching in one pass.
                         Auto-accepts high-confidence matches and flags low-confidence for review.
                     </p>
-                    <form hx-post="{% url 'castor:schedule_link_smart' project.pk %}"
+                    <form hx-post="{% url 'scheduling:schedule_link_smart' project.pk %}"
                           hx-target="#attach-results"
                           hx-swap="innerHTML"
                           hx-indicator="#smart-spinner">
@@ -42,7 +42,7 @@
                         Match by an IFC property value. Enter the property name that holds
                         the activity code (e.g. <code>ActivityCode</code>, <code>WBS</code>).
                     </p>
-                    <form hx-post="{% url 'castor:schedule_link_param' project.pk %}"
+                    <form hx-post="{% url 'scheduling:schedule_link_param' project.pk %}"
                           hx-target="#attach-results"
                           hx-swap="innerHTML"
                           hx-indicator="#param-spinner">

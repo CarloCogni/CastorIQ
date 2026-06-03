@@ -1166,7 +1166,7 @@ function _esc(s) {
 }
 
 (function () {
-    const EVM_URL = "{% url 'castor:evm_data' project.pk %}";
+    const EVM_URL = "{% url 'scheduling:evm_data' project.pk %}";
     const LS_KEY  = "castor_evm_currency";
 
     let _evmData   = null;
@@ -1223,7 +1223,7 @@ function _esc(s) {
         if (banner) {
             banner.classList.remove("d-none");
             const qtoLink = document.getElementById("evm-qto-link");
-            if (qtoLink) qtoLink.href = "{% url 'castor:qto' project.pk %}";
+            if (qtoLink) qtoLink.href = "{% url 'takeoff:qto' project.pk %}";
         }
     }
 
@@ -1733,7 +1733,7 @@ function _esc(s) {
     async function loadWbsHeatmap() {
         let data;
         try {
-            const resp = await fetch("{% url 'castor:wbs_heatmap' project.pk %}");
+            const resp = await fetch("{% url 'scheduling:wbs_heatmap' project.pk %}");
             data = await resp.json();
         } catch (_) {
             document.getElementById("evm-wbs-section").style.display = "none";
@@ -1810,7 +1810,7 @@ function _esc(s) {
     async function loadDelayDistribution() {
         let data;
         try {
-            const resp = await fetch("{% url 'castor:delay_distribution' project.pk %}");
+            const resp = await fetch("{% url 'scheduling:delay_distribution' project.pk %}");
             data = await resp.json();
         } catch (_) {
             document.getElementById("evm-delay-section").style.display = "none";
@@ -1868,7 +1868,7 @@ function _esc(s) {
 
     /* ── Monte Carlo / Probabilistic Forecast ─────────────────────────── */
     (function () {
-        const MC_URL   = "{% url 'castor:monte_carlo' project.pk %}";
+        const MC_URL   = "{% url 'scheduling:monte_carlo' project.pk %}";
         const runBtn   = document.getElementById("evm-mc-run-btn");
         const idleEl   = document.getElementById("evm-mc-idle");
         const loadEl   = document.getElementById("evm-mc-loading");
@@ -2130,7 +2130,7 @@ function _esc(s) {
     async function loadTrendAnalysis() {
         let data;
         try {
-            const resp = await fetch("{% url 'castor:trend_analysis' project.pk %}");
+            const resp = await fetch("{% url 'scheduling:trend_analysis' project.pk %}");
             data = await resp.json();
         } catch (_) { return; }
         if (!data.has_data) return;
@@ -2451,7 +2451,7 @@ function _esc(s) {
 
     /* ── Delay Root-Cause Analysis ────────────────────────────────────── */
     (function () {
-        const DRC_URL = "{% url 'castor:delay_rootcause' project.pk %}";
+        const DRC_URL = "{% url 'scheduling:delay_rootcause' project.pk %}";
 
         // Stores the coded-mode trade clusters so corrected mode can show deltas.
         let _drcCodedTrade = null;
@@ -2625,7 +2625,7 @@ function _esc(s) {
 
     /* ── Cash Flow Forecast ───────────────────────────────────────────── */
     (function () {
-        const CF_URL = "{% url 'castor:cashflow' project.pk %}";
+        const CF_URL = "{% url 'scheduling:cashflow' project.pk %}";
         const CURRENCY = () => document.getElementById("evm-currency-select")?.value || "USD";
         let _cfData = null;  // stored for resize re-render
 
@@ -2904,7 +2904,7 @@ function _esc(s) {
 
     /* ── Time-Location (Flowline) Chart ───────────────────────────────── */
     (function () {
-        const BASE_URL = "{% url 'castor:timelocation' project.pk %}";
+        const BASE_URL = "{% url 'scheduling:timelocation' project.pk %}";
         let _data = null;
         let _highlightKeys = new Set();  // empty = show all; non-empty = dim others
 
@@ -3294,7 +3294,7 @@ function _esc(s) {
 
     /* ── DCMA 14-Point Assessment ──────────────────────────────────────── */
     (function () {
-        const DCMA_URL = "{% url 'castor:dcma_check' project.pk %}";
+        const DCMA_URL = "{% url 'scheduling:dcma_check' project.pk %}";
 
         function _renderGauge(canvas, score, color) {
             if (!canvas) return;
@@ -3495,7 +3495,7 @@ function _esc(s) {
 
     /* ── Completion Probability (ML) ──────────────────────────────────── */
     (function () {
-        const ML_URL = "{% url 'castor:completion_ml' project.pk %}";
+        const ML_URL = "{% url 'scheduling:completion_ml' project.pk %}";
 
         function _probColor(p) {
             if (p >= 0.70) return "#16a34a";
@@ -3622,7 +3622,7 @@ function _esc(s) {
 
     /* ── Anomaly Detection ─────────────────────────────────────────────── */
     (function () {
-        const ANOMALY_URL = "{% url 'castor:anomaly_detection' project.pk %}";
+        const ANOMALY_URL = "{% url 'scheduling:anomaly_detection' project.pk %}";
         let _anomalyGen = 0;  // generation counter — discards superseded async responses
 
         function _typeColor(type) {
@@ -3752,7 +3752,7 @@ function _esc(s) {
 
     /* ── Schedule Audit — Section Mismatches ────────────────────────────── */
     (function () {
-        const AUDIT_URL = "{% url 'castor:audit_section_mismatches' project.pk %}";
+        const AUDIT_URL = "{% url 'scheduling:audit_section_mismatches' project.pk %}";
 
         /* Confidence badge */
         function _confBadge(conf) {
@@ -3915,7 +3915,7 @@ function _esc(s) {
 
     /* ── Decision Summary ────────────────────────────────────────────────── */
     (function () {
-        const DS_URL = "{% url 'castor:decision_summary' project.pk %}";
+        const DS_URL = "{% url 'scheduling:decision_summary' project.pk %}";
 
         const _SEV_COLOR = { green: "#16a34a", amber: "#d97706", red: "#dc2626" };
         const _SEV_BG    = { green: "rgba(22,163,74,.10)", amber: "rgba(217,119,6,.10)", red: "rgba(220,38,38,.08)" };
@@ -4007,7 +4007,7 @@ function _esc(s) {
 
     /* ── Project Health Matrix ────────────────────────────────────────────── */
     (function () {
-        const HEALTH_URL = "{% url 'castor:floor_health' project.pk %}";
+        const HEALTH_URL = "{% url 'scheduling:floor_health' project.pk %}";
         let _healthGen = 0;  // generation counter — discards superseded async responses
 
         function _scoreColor(s) {
@@ -4188,7 +4188,7 @@ function _esc(s) {
 
     /* ── Report Generator ────────────────────────────────────────────────── */
     (function () {
-        const REPORT_URL = "{% url 'castor:schedule_report' project.pk %}";
+        const REPORT_URL = "{% url 'scheduling:schedule_report' project.pk %}";
 
         const SECTIONS = [
             ["executive_summary", "Executive Summary"],
@@ -4265,7 +4265,7 @@ function _esc(s) {
 
     /* ── Project Controls Chat ─────────────────────────────────────────── */
     (function () {
-        const CHAT_URL  = "{% url 'castor:schedule_chat' project.pk %}";
+        const CHAT_URL  = "{% url 'scheduling:schedule_chat' project.pk %}";
         const CSRF      = "{{ csrf_token }}";
         const toggleBtn = document.getElementById("evm-chat-toggle");
         const chatBody  = document.getElementById("evm-chat-body");
@@ -4406,7 +4406,7 @@ function _esc(s) {
 
     /* ── Schedule Intelligence — ES row, WBS risk badges, CPM count ──────── */
     (function () {
-        const INTEL_URL = "{% url 'castor:schedule_intelligence' project.pk %}";
+        const INTEL_URL = "{% url 'scheduling:schedule_intelligence' project.pk %}";
 
         /* ── Helpers ───────────────────────────────────────────────────────── */
         function _fmtMonth(iso) {

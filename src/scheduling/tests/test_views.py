@@ -47,7 +47,7 @@ class ScheduleUploadTests(TestCase):
         self.user = make_user()
         self.project = make_project(owner=self.user)
         _login(self.client, self.user)
-        self.url = reverse("castor:schedule_upload", kwargs={"pk": self.project.pk})
+        self.url = reverse("scheduling:schedule_upload", kwargs={"pk": self.project.pk})
 
     def test_unauthenticated_redirects(self):
         self.client.logout()
@@ -129,7 +129,7 @@ class ScheduleSaveTests(TestCase):
         self.user = make_user()
         self.project = make_project(owner=self.user)
         _login(self.client, self.user)
-        self.url = reverse("castor:schedule_save", kwargs={"pk": self.project.pk})
+        self.url = reverse("scheduling:schedule_save", kwargs={"pk": self.project.pk})
 
     def _seed_session(self, tasks_data, deps_data=None):
         _set_session(
@@ -285,7 +285,7 @@ class TaskActualDateTests(TestCase):
         self.task = make_task(self.project)
         _login(self.client, self.user)
         self.url = reverse(
-            "castor:task_actual_dates",
+            "scheduling:task_actual_dates",
             kwargs={"pk": self.project.pk, "task_pk": self.task.pk},
         )
 
@@ -342,7 +342,7 @@ class GanttDataTests(TestCase):
         self.user = make_user()
         self.project = make_project(owner=self.user)
         _login(self.client, self.user)
-        self.url = reverse("castor:gantt_data", kwargs={"pk": self.project.pk})
+        self.url = reverse("scheduling:gantt_data", kwargs={"pk": self.project.pk})
 
     def test_empty_project_returns_empty_list(self):
         response = self.client.get(self.url)
@@ -383,7 +383,7 @@ class CriticalPathViewTests(TestCase):
         self.user = make_user()
         self.project = make_project(owner=self.user)
         _login(self.client, self.user)
-        self.url = reverse("castor:critical_path", kwargs={"pk": self.project.pk})
+        self.url = reverse("scheduling:critical_path", kwargs={"pk": self.project.pk})
 
     def test_no_tasks_returns_empty_result(self):
         response = self.client.post(self.url)
@@ -418,7 +418,7 @@ class EVMDataTests(TestCase):
         self.user = make_user()
         self.project = make_project(owner=self.user)
         _login(self.client, self.user)
-        self.url = reverse("castor:evm_data", kwargs={"pk": self.project.pk})
+        self.url = reverse("scheduling:evm_data", kwargs={"pk": self.project.pk})
 
     def test_no_tasks_returns_no_data(self):
         response = self.client.get(self.url)
@@ -459,7 +459,7 @@ class LookaheadDataTests(TestCase):
         self.user = make_user()
         self.project = make_project(owner=self.user)
         _login(self.client, self.user)
-        self.url = reverse("castor:lookahead_data", kwargs={"pk": self.project.pk})
+        self.url = reverse("scheduling:lookahead_data", kwargs={"pk": self.project.pk})
 
     def test_no_tasks_returns_empty_weeks(self):
         response = self.client.get(self.url)
@@ -524,7 +524,7 @@ class ScheduleViewTests(TestCase):
         self.user = make_user()
         self.project = make_project(owner=self.user)
         _login(self.client, self.user)
-        self.url = reverse("castor:schedule", kwargs={"pk": self.project.pk})
+        self.url = reverse("scheduling:schedule", kwargs={"pk": self.project.pk})
 
     def test_renders_200(self):
         response = self.client.get(self.url)

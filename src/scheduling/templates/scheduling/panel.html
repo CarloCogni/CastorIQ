@@ -19,32 +19,32 @@
         <ul class="nav nav-tabs border-0 ms-4 flex-grow-1" style="font-size:0.85rem;">
             <li class="nav-item">
                 <a class="nav-link {% if schedule_tab == 'data_sources' %}active{% endif %}"
-                   href="{% url 'castor:schedule' project.pk %}?tab=data_sources">
+                   href="{% url 'scheduling:schedule' project.pk %}?tab=data_sources">
                     <i class="bi bi-upload me-1"></i>Data Sources
                 </a>
             </li>
             <li class="nav-item">
                 <a class="nav-link {% if schedule_tab == 'fourD_link' %}active{% endif %}"
-                   href="{% url 'castor:schedule' project.pk %}?tab=fourD_link">
+                   href="{% url 'scheduling:schedule' project.pk %}?tab=fourD_link">
                     <i class="bi bi-boxes me-1"></i>4D Link
                     {% if task_count %}<span class="badge bg-secondary ms-1">{{ task_count }}</span>{% endif %}
                 </a>
             </li>
             <li class="nav-item">
                 <a class="nav-link {% if schedule_tab == 'evm' %}active{% endif %}"
-                   href="{% url 'castor:schedule' project.pk %}?tab=evm">
+                   href="{% url 'scheduling:schedule' project.pk %}?tab=evm">
                     <i class="bi bi-graph-up-arrow me-1"></i>EVM
                 </a>
             </li>
             <li class="nav-item">
                 <a class="nav-link {% if schedule_tab == 'lookahead' %}active{% endif %}"
-                   href="{% url 'castor:schedule' project.pk %}?tab=lookahead">
+                   href="{% url 'scheduling:schedule' project.pk %}?tab=lookahead">
                     <i class="bi bi-calendar-week me-1"></i>Look-ahead
                 </a>
             </li>
             <li class="nav-item">
                 <a class="nav-link {% if schedule_tab == 'intelligence' %}active{% endif %}"
-                   href="{% url 'castor:schedule' project.pk %}?tab=intelligence">
+                   href="{% url 'scheduling:schedule' project.pk %}?tab=intelligence">
                     <i class="bi bi-robot me-1"></i>Intelligence
                 </a>
             </li>

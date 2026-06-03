@@ -27,7 +27,7 @@
             </div>
             {% include "model_quality/components/export_btn.html" %}
             <button class="btn btn-sm btn-outline-secondary"
-                    hx-get="{% url 'castor:insights_rerun' project.pk %}"
+                    hx-get="{% url 'model_quality:insights_rerun' project.pk %}"
                     hx-target="#ifc-insights-panel"
                     hx-swap="outerHTML"
                     hx-indicator="#insights-spinner">
@@ -96,7 +96,7 @@
                     <p class="small mt-1 mb-0" style="color:#22c55e;">All elements have Cost data</p>
                     {% endif %}
                     <div class="mt-2">
-                        <a href="{% url 'castor:qto' project.pk %}" class="text-decoration-none">
+                        <a href="{% url 'takeoff:qto' project.pk %}" class="text-decoration-none">
                             <span class="badge rounded-pill"
                                   style="background:rgba(59,130,246,0.10); color:#3b82f6; font-size:0.7rem; font-weight:500; border:1px solid rgba(59,130,246,0.25);">
                                 <i class="bi bi-calculator me-1"></i>
@@ -114,7 +114,7 @@
 
     <!-- ── View Issues link ──────────────────────────────────────────── -->
     <div class="d-flex justify-content-end mb-1">
-        <a href="{% url 'castor:ifc_issues' project.pk %}" class="btn btn-sm btn-outline-danger">
+        <a href="{% url 'model_quality:ifc_issues' project.pk %}" class="btn btn-sm btn-outline-danger">
             <i class="bi bi-bug me-1"></i>View Issues &rarr;
         </a>
     </div>
@@ -122,7 +122,7 @@
     <!-- ── Breakdown Cards (HTMX lazy-loaded) ─────────────────────────── -->
     <div class="row g-3 mb-4">
         <div class="col-md-4"
-             hx-get="{% url 'castor:insights_breakdown' project.pk 'level' %}"
+             hx-get="{% url 'model_quality:insights_breakdown' project.pk 'level' %}"
              hx-trigger="load"
              hx-swap="innerHTML">
             <div class="card h-100"><div class="card-body d-flex align-items-center justify-content-center text-secondary">
@@ -130,7 +130,7 @@
             </div></div>
         </div>
         <div class="col-md-4"
-             hx-get="{% url 'castor:insights_breakdown' project.pk 'element_type' %}"
+             hx-get="{% url 'model_quality:insights_breakdown' project.pk 'element_type' %}"
              hx-trigger="load"
              hx-swap="innerHTML">
             <div class="card h-100"><div class="card-body d-flex align-items-center justify-content-center text-secondary">
@@ -138,7 +138,7 @@
             </div></div>
         </div>
         <div class="col-md-4"
-             hx-get="{% url 'castor:insights_breakdown' project.pk 'material' %}"
+             hx-get="{% url 'model_quality:insights_breakdown' project.pk 'material' %}"
              hx-trigger="load"
              hx-swap="innerHTML">
             <div class="card h-100"><div class="card-body d-flex align-items-center justify-content-center text-secondary">

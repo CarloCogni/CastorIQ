@@ -167,7 +167,7 @@
    Called by the task detail panel's "View in Simulator" button.
    The pending-jump payload is read by viewer.html on load via _checkPendingJump(). */
 window.jumpToSimulator = (function () {
-    const _VIEWER_URL = "{% url 'castor:viewer' project.pk %}";
+    const _VIEWER_URL = "{% url 'ifc_viewer:viewer' project.pk %}";
     return function (date, globalIds) {
         try {
             localStorage.setItem("castor:pending-jump", JSON.stringify({ date, globalIds }));
@@ -177,9 +177,9 @@ window.jumpToSimulator = (function () {
 }());
 
 (function () {
-    const GANTT_URL        = "{% url 'castor:gantt_data' project.pk %}";
-    const DETAIL_URL_TPL   = "{% url 'castor:task_detail' project.pk '00000000-0000-0000-0000-000000000000' %}";
-    const CPM_URL          = "{% url 'castor:critical_path' project.pk %}";
+    const GANTT_URL        = "{% url 'scheduling:gantt_data' project.pk %}";
+    const DETAIL_URL_TPL   = "{% url 'scheduling:task_detail' project.pk '00000000-0000-0000-0000-000000000000' %}";
+    const CPM_URL          = "{% url 'scheduling:critical_path' project.pk %}";
     const DAY_MS           = 86400000;
 
     const STAGE_COLORS = {

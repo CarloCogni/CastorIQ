@@ -51,7 +51,7 @@
     <small class="text-secondary">
         {{ total_count }} element{{ total_count|pluralize }} affected{% if total_count > 500 %} &mdash; showing first 500{% endif %}
     </small>
-    <a href="{% url 'castor:issues_export' project.pk %}?section=missing_activity"
+    <a href="{% url 'model_quality:issues_export' project.pk %}?section=missing_activity"
        class="btn btn-sm btn-outline-secondary">
         <i class="bi bi-download me-1"></i>Export CSV
     </a>

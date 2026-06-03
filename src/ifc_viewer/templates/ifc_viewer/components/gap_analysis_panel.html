@@ -7,7 +7,7 @@
         <span class="text-secondary">Show by:</span>
         <select class="form-select form-select-sm" style="width:auto;"
                 name="by"
-                hx-get="{% url 'castor:viewer_gap_analysis' project.pk %}"
+                hx-get="{% url 'ifc_viewer:viewer_gap_analysis' project.pk %}"
                 hx-target="#gap-panel-body"
                 hx-swap="innerHTML"
                 hx-include="this">
@@ -55,7 +55,7 @@
 
     <!-- Export -->
     <div class="px-3 py-2 border-top flex-shrink-0">
-        <a href="{% url 'castor:viewer_gap_analysis' project.pk %}?by={{ by }}&export=1"
+        <a href="{% url 'ifc_viewer:viewer_gap_analysis' project.pk %}?by={{ by }}&export=1"
            class="btn btn-sm btn-outline-secondary w-100" style="font-size:0.78rem;">
             <i class="bi bi-download me-1"></i>Export CSV
         </a>

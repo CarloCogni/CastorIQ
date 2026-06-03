@@ -48,7 +48,7 @@
         <span class="text-success">&#10003;</span> linked &nbsp;
         <span class="text-warning">&#9888;</span> unlinked to schedule
     </small>
-    <a href="{% url 'castor:issues_export' project.pk %}?section=activity_audit"
+    <a href="{% url 'model_quality:issues_export' project.pk %}?section=activity_audit"
        class="btn btn-sm btn-outline-secondary">
         <i class="bi bi-download me-1"></i>Export CSV
     </a>

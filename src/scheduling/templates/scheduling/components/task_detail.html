@@ -59,7 +59,7 @@
     {% if entities %}
     <div class="d-flex flex-column gap-1" style="max-height:130px; overflow-y:auto;">
         {% for entity in entities %}
-        <a href="{% url 'castor:viewer' project.pk %}?highlight={{ entity.global_id }}"
+        <a href="{% url 'ifc_viewer:viewer' project.pk %}?highlight={{ entity.global_id }}"
            class="d-flex align-items-center gap-2 rounded text-decoration-none px-2 py-1"
            style="font-size:0.75rem; background:var(--bs-tertiary-bg); color:var(--bs-body-color);"
            title="{{ entity.global_id }}"
