@@ -5,16 +5,20 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('castor_scheduling', '0022_clear_explicit_table_names'),
-        ('environments', '0007_add_audit_name_cache_to_project'),
+        ("castor_scheduling", "0022_clear_explicit_table_names"),
+        ("environments", "0007_add_audit_name_cache_to_project"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='progressmode',
-            name='project',
-            field=models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='progress_mode', to='environments.project', verbose_name='Project'),
+            model_name="progressmode",
+            name="project",
+            field=models.OneToOneField(
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="progress_mode",
+                to="environments.project",
+                verbose_name="Project",
+            ),
         ),
     ]

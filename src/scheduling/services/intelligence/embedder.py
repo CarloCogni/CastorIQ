@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 
 from embeddings.services.embedding_service import EmbeddingService
-from scheduling.models import TaskEmbedding, Task
+from scheduling.models import Task, TaskEmbedding
 
 logger = logging.getLogger(__name__)
 
@@ -59,8 +59,7 @@ class ScheduleEmbedder:
             return {"embedded": 0, "skipped": 0, "errors": 0}
 
         existing: dict[str, TaskEmbedding] = {
-            str(e.task_id): e
-            for e in TaskEmbedding.objects.filter(task__project_id=project_id)
+            str(e.task_id): e for e in TaskEmbedding.objects.filter(task__project_id=project_id)
         }
 
         to_embed: list[tuple[Task, str]] = []

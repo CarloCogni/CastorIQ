@@ -19,8 +19,8 @@ from pgvector.django import CosineDistance
 
 from core.llm import cached_system, get_llm
 from embeddings.services.embedding_service import EmbeddingService
-from scheduling.services.intelligence.embedder import ScheduleEmbedder, _task_text
 from scheduling.models import TaskEmbedding
+from scheduling.services.intelligence.embedder import ScheduleEmbedder, _task_text
 
 logger = logging.getLogger(__name__)
 

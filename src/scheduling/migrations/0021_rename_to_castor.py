@@ -25,7 +25,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("castor_scheduling", "0020_add_data_date_to_schedule_source"),
     ]
@@ -33,23 +32,25 @@ class Migration(migrations.Migration):
     operations = [
         # ── Phase 1: AlterModelTable ─────────────────────────────────────────
         # Regular models: rename table from islam_scheduling_<x> → castor_scheduling_<x>
-        migrations.AlterModelTable("Task",                 "castor_scheduling_task"),
-        migrations.AlterModelTable("TaskDependency",        "castor_scheduling_taskdependency"),
-        migrations.AlterModelTable("MappingProfile",        "castor_scheduling_mappingprofile"),
-        migrations.AlterModelTable("ScheduleSource",        "castor_scheduling_schedulesource"),
-        migrations.AlterModelTable("ColumnMappingLookup",   "castor_scheduling_columnmappinglookup"),
-        migrations.AlterModelTable("TaskEntityBinding",     "castor_scheduling_taskentitybinding"),
-        migrations.AlterModelTable("LinkFeedback",          "castor_scheduling_linkfeedback"),
-        migrations.AlterModelTable("ProjectComprehension",  "castor_scheduling_projectcomprehension"),
-        migrations.AlterModelTable("P6WBSNode",             "castor_scheduling_p6wbsnode"),
-        migrations.AlterModelTable("P6ResourceAssignment",  "castor_scheduling_p6resourceassignment"),
-        migrations.AlterModelTable("P6Calendar",            "castor_scheduling_p6calendar"),
-
+        migrations.AlterModelTable("Task", "castor_scheduling_task"),
+        migrations.AlterModelTable("TaskDependency", "castor_scheduling_taskdependency"),
+        migrations.AlterModelTable("MappingProfile", "castor_scheduling_mappingprofile"),
+        migrations.AlterModelTable("ScheduleSource", "castor_scheduling_schedulesource"),
+        migrations.AlterModelTable("ColumnMappingLookup", "castor_scheduling_columnmappinglookup"),
+        migrations.AlterModelTable("TaskEntityBinding", "castor_scheduling_taskentitybinding"),
+        migrations.AlterModelTable("LinkFeedback", "castor_scheduling_linkfeedback"),
+        migrations.AlterModelTable(
+            "ProjectComprehension", "castor_scheduling_projectcomprehension"
+        ),
+        migrations.AlterModelTable("P6WBSNode", "castor_scheduling_p6wbsnode"),
+        migrations.AlterModelTable(
+            "P6ResourceAssignment", "castor_scheduling_p6resourceassignment"
+        ),
+        migrations.AlterModelTable("P6Calendar", "castor_scheduling_p6calendar"),
         # Islam-prefix models: go straight to the final name so RenameModel
         # (Phase 3) is a Python-only rename (old db_table == new db_table).
-        migrations.AlterModelTable("ProgressMode",  "castor_scheduling_progressmode"),
+        migrations.AlterModelTable("ProgressMode", "castor_scheduling_progressmode"),
         migrations.AlterModelTable("TaskEmbedding", "castor_scheduling_taskembedding"),
-
         # ── Phase 2: RenameIndex ─────────────────────────────────────────────
         # Must run BEFORE RenameModel so the model_name lookups still resolve.
         migrations.RenameIndex(
@@ -122,7 +123,6 @@ class Migration(migrations.Migration):
             old_name="islam_sched_project_991a7e_idx",
             new_name="castor_sched_project_991a7e_idx",
         ),
-
         # ── Phase 3: AlterField — update related_name ────────────────────────
         migrations.AlterField(
             model_name="ProgressMode",

@@ -47,8 +47,8 @@ def _qto_task_costs(project_id: str, tasks: list) -> dict[str, float]:
     Returns an empty dict if any prerequisite is missing.
     """
     try:
-        from takeoff.models import QTOCache
         from scheduling.models import TaskEntityBinding
+        from takeoff.models import QTOCache
     except ImportError:
         return {}
 
