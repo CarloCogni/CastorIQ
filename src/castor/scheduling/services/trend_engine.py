@@ -1,12 +1,9 @@
 # castor/scheduling/services/trend_engine.py
 """Trend Analysis Engine — SPI/CPI historical trends, TCPI, Schedule Recovery.
 
-Operates on the weekly S-curve series produced by compute_evm().  All maths
-is pure Python; no additional DB queries when evm_data is provided by the
-caller (e.g. controls_chat passes it in to avoid a second round-trip).
-
-Public entry point:
-    compute_trend_analysis(project_id, evm_data=None) -> dict
+Operates on the weekly S-curve series from compute_evm(). Pass evm_data in to
+avoid a second DB round-trip (controls_chat does this). Pure Python maths; no
+additional queries.
 """
 
 from __future__ import annotations
@@ -16,16 +13,12 @@ from datetime import date
 
 logger = logging.getLogger(__name__)
 
-# ── Constants ─────────────────────────────────────────────────────────────────
 
 _STABLE_THRESHOLD = 0.003  # SPI change/week below which trend is "stable"
 _REGRESSION_WINDOW = 12  # max weeks of history used for regression
 _CPI_TROUBLE_THRESHOLD = 0.90
 _TCPI_RED = 1.10
 _TCPI_AMBER = 1.00
-
-
-# ── Math helpers ──────────────────────────────────────────────────────────────
 
 
 def _linreg(xs: list[float], ys: list[float]) -> tuple[float, float]:
@@ -70,9 +63,6 @@ def _consecutive_improve(values: list[float]) -> int:
         else:
             break
     return count
-
-
-# ── Series extraction ─────────────────────────────────────────────────────────
 
 
 def _build_performance_series(evm_data: dict) -> tuple[list[dict], list[dict]]:
@@ -120,9 +110,6 @@ def _build_performance_series(evm_data: dict) -> tuple[list[dict], list[dict]]:
     return spi_series[-_REGRESSION_WINDOW:], cpi_series[-_REGRESSION_WINDOW:]
 
 
-# ── Series analysis ───────────────────────────────────────────────────────────
-
-
 def _analyse_series(series: list[dict], key: str) -> dict:
     """Regression + trend metadata for a weekly series.
 
@@ -156,9 +143,6 @@ def _analyse_series(series: list[dict], key: str) -> dict:
         "min": round(min(values), 3),
         "max": round(max(values), 3),
     }
-
-
-# ── TCPI ──────────────────────────────────────────────────────────────────────
 
 
 def _compute_tcpi(evm_data: dict) -> dict:
@@ -215,9 +199,6 @@ def _compute_tcpi(evm_data: dict) -> dict:
         "status": "green",
         "verdict": (f"TCPI {tcpi:.2f} vs CPI {cpi:.2f} — within reach of current performance."),
     }
-
-
-# ── Schedule Recovery Index ───────────────────────────────────────────────────
 
 
 def _compute_recovery(evm_data: dict, spi_trend: dict) -> dict:
@@ -330,9 +311,6 @@ def _compute_recovery(evm_data: dict, spi_trend: dict) -> dict:
     }
 
 
-# ── Chat summary ──────────────────────────────────────────────────────────────
-
-
 def _build_summary_lines(
     spi_trend: dict,
     cpi_trend: dict,
@@ -382,9 +360,6 @@ def _build_summary_lines(
     lines.append(recovery["verdict"])
 
     return lines
-
-
-# ── Public entry point ────────────────────────────────────────────────────────
 
 
 def compute_trend_analysis(project_id: str, evm_data: dict | None = None) -> dict:

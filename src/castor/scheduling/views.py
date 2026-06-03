@@ -98,7 +98,6 @@ class ScheduleView(ProjectTabMixin, TemplateView):
             "What work is planned to start next week?",
         ]
 
-        # ── Project calendars (for Data Sources tab card) ─────────────────
         if ctx["schedule_tab"] == "data_sources":
             from django.db.models import Count as _Count
 
@@ -153,7 +152,6 @@ class ScheduleView(ProjectTabMixin, TemplateView):
                 )
             ctx["project_calendars"] = sorted(used_cals, key=lambda c: -c["task_count"])
 
-            # ── Data Readiness panel ──────────────────────────────────────
             from .models import P6ResourceAssignment
 
             phys_tasks = (
@@ -217,11 +215,6 @@ class ScheduleView(ProjectTabMixin, TemplateView):
                 ctx["data_readiness"] = None
 
         return ctx
-
-
-# ---------------------------------------------------------------------------
-# Preview endpoint — returns raw columns + suggested mapping + 200 sample rows
-# ---------------------------------------------------------------------------
 
 
 def _scan_date_range(
@@ -468,11 +461,6 @@ class SchedulePreviewView(ProjectModifyAccessMixin, View):
                 "deps": normalized_deps,
             }
         )
-
-
-# ---------------------------------------------------------------------------
-# Upload + parse
-# ---------------------------------------------------------------------------
 
 
 class TaskUploadView(ProjectModifyAccessMixin, View):
@@ -747,7 +735,6 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
 
         del request.session[session_key]
 
-        # ── Dependency resolution ────────────────────────────────────────
         raw_deps_json = request.session.pop(f"parsed_deps_{project.pk}", None)
         raw_deps: list[dict] = json.loads(raw_deps_json) if raw_deps_json else []
 
@@ -1073,11 +1060,6 @@ class TaskActualDateView(ProjectModifyAccessMixin, View):
         return trigger_toast(response, "Actual dates updated.", "success")
 
 
-# ---------------------------------------------------------------------------
-# Linking
-# ---------------------------------------------------------------------------
-
-
 class LinkParamView(ProjectModifyAccessMixin, View):
     """HTMX POST — parameter mapping of tasks to IFC entities."""
 
@@ -1149,11 +1131,6 @@ class AutoLinkView(ProjectModifyAccessMixin, View):
         return trigger_toast(response, msg, "success")
 
 
-# ---------------------------------------------------------------------------
-# Task management partials
-# ---------------------------------------------------------------------------
-
-
 class TaskListPartialView(ProjectAccessMixin, View):
     """HTMX GET — return the task list partial."""
 
@@ -1184,10 +1161,6 @@ class TaskDeleteView(ProjectModifyAccessMixin, View):
         )
         return trigger_toast(response, f"'{task_name}' deleted.", "success")
 
-
-# ---------------------------------------------------------------------------
-# Data endpoints
-# ---------------------------------------------------------------------------
 
 _STAGE_COLORS: dict[str, str] = {
     "substructure": "#78350f",
@@ -1761,11 +1734,6 @@ class LookaheadDataView(ProjectAccessMixin, View):
         )
 
 
-# ---------------------------------------------------------------------------
-# Column mapping — Excel / CSV flow
-# ---------------------------------------------------------------------------
-
-
 class MappingSubmitView(ProjectModifyAccessMixin, View):
     """HTMX POST — apply user column mapping to raw rows, show preview."""
 
@@ -1858,11 +1826,6 @@ class MappingSubmitView(ProjectModifyAccessMixin, View):
                 "preview_mode": True,
             },
         )
-
-
-# ---------------------------------------------------------------------------
-# Auto column detection
-# ---------------------------------------------------------------------------
 
 
 class DetectColumnsView(ProjectModifyAccessMixin, View):
@@ -2008,11 +1971,6 @@ class ProjectComprehensionView(ProjectAccessMixin, View):
 
         result = build_comprehension(project, user=request.user)
         return JsonResponse(result)
-
-
-# ---------------------------------------------------------------------------
-# Link Review — binding review tab
-# ---------------------------------------------------------------------------
 
 
 def _get_ifc_files(project):
@@ -2402,7 +2360,6 @@ class ScheduleWritebackView(ProjectModifyAccessMixin, View):
         except (json.JSONDecodeError, ValueError):
             return JsonResponse({"error": "Invalid JSON body."}, status=400)
 
-        # ── Phase 2: apply confirmed proposals ────────────────────────────
         if body.get("confirm") and body.get("proposals"):
             svc = ScheduleModificationService()
             proposals = [
@@ -2424,7 +2381,6 @@ class ScheduleWritebackView(ProjectModifyAccessMixin, View):
                 }
             )
 
-        # ── Phase 1: analyse and propose ──────────────────────────────────
         message = (body.get("message") or "").strip()
         if not message:
             return JsonResponse({"error": "No message provided."}, status=400)
@@ -2508,11 +2464,6 @@ class ScheduleWritebackView(ProjectModifyAccessMixin, View):
                 "warnings": warnings,
             }
         )
-
-
-# ---------------------------------------------------------------------------
-# Manual element linking
-# ---------------------------------------------------------------------------
 
 
 class LinkElementView(ProjectModifyAccessMixin, View):

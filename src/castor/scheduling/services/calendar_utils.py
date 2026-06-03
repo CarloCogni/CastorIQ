@@ -1,23 +1,10 @@
 # castor/scheduling/services/calendar_utils.py
 """Project-calendar arithmetic shared across scheduling analytics.
 
-A *cal dict* has two keys:
-    working_day_names   set[str]       e.g. {"Sunday", "Monday", ..., "Saturday"}
-    holiday_dates       frozenset[date] ISO-date exceptions (non-working days)
-
-Public API
-----------
-  load_project_calendars(project_id)      -> {p6_calendar_id: cal}
-  task_cal(task, cal_map)                 -> cal  (falls back to _DEFAULT_CAL)
-  count_working_days(start, end, cal)     -> int  inclusive [start, end]
-  working_day_diff(d1, d2, cal)           -> int  signed, half-open (d1, d2]
-
-  _DEFAULT_CAL   all-days-working, no holidays (used when no P6Calendar available)
-
-Low-level helpers (used by critical_path.py and the analytics services):
-  _is_working_day, _next_working_day, _prev_working_day,
-  _add_working_days, _subtract_working_days, _count_working_days,
-  _load_project_calendars (alias of load_project_calendars)
+Builds cal dicts from P6Calendar records ({working_day_names, holiday_dates}) and
+provides working-day arithmetic: load_project_calendars(), task_cal(),
+count_working_days(), working_day_diff(). Falls back to _DEFAULT_CAL (all days
+working, no holidays) when no P6 calendar data is available.
 """
 
 from __future__ import annotations
@@ -27,7 +14,6 @@ from datetime import date, timedelta
 
 logger = logging.getLogger(__name__)
 
-# ── Default calendar ──────────────────────────────────────────────────────────
 
 _DEFAULT_CAL: dict = {
     "working_day_names": {
@@ -41,8 +27,6 @@ _DEFAULT_CAL: dict = {
     },
     "holiday_dates": frozenset(),
 }
-
-# ── Day-level helpers ─────────────────────────────────────────────────────────
 
 
 def _is_working_day(d: date, cal: dict) -> bool:
@@ -105,9 +89,6 @@ def _count_working_days(start: date, end: date, cal: dict) -> int:
     return max(count, 1)
 
 
-# ── Public counting functions ─────────────────────────────────────────────────
-
-
 def count_working_days(start: date, end: date, cal: dict) -> int:
     """Count working days in the inclusive range [start, end].
 
@@ -145,9 +126,6 @@ def working_day_diff(d1: date, d2: date, cal: dict) -> int:
     return -working_day_diff(d2, d1, cal)
 
 
-# ── Calendar loader ───────────────────────────────────────────────────────────
-
-
 def load_project_calendars(project_id: str) -> dict[str, dict]:
     """Return a ``{p6_calendar_id: cal_dict}`` map for the project.
 
@@ -172,7 +150,6 @@ def load_project_calendars(project_id: str) -> dict[str, dict]:
         return {}
 
 
-# Alias used by critical_path.py (keeps its internal name unchanged).
 _load_project_calendars = load_project_calendars
 
 
@@ -190,6 +167,5 @@ def calendar_basis_note(cal_map: dict[str, dict]) -> str:
     """Human-readable basis note for API responses and UI labels."""
     if not cal_map:
         return "calendar days (no P6 calendar imported)"
-    # Summarise the work-week of the most common calendar
-    # (full description is surfaced separately via the calendar card)
+        # (full description is surfaced separately via the calendar card)
     return "working days per project calendar"

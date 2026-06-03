@@ -18,7 +18,6 @@ from textwrap import dedent
 
 logger = logging.getLogger(__name__)
 
-# ── System prompt template ────────────────────────────────────────────────────
 
 _SYSTEM_TEMPLATE = dedent("""\
     You are a Senior Project Controls Consultant with 20+ years on major \
@@ -44,8 +43,6 @@ _SYSTEM_TEMPLATE = dedent("""\
     5. Propose corrective actions when the situation warrants it.\
 """)
 
-
-# ── Context assembly ──────────────────────────────────────────────────────────
 
 _MFO_TYPES = frozenset({"Mandatory Finish", "Finish On", "Finish On or Before"})
 _SNET_TYPES = frozenset({"Start On or After", "Mandatory Start", "Start On"})
@@ -299,14 +296,12 @@ def _build_context(
 
     constraint_data = _load_constraint_data(project_id) if project_id else {}
 
-    # ── Identity ──────────────────────────────────────────────────────────
     lines += [
         f"PROJECT: {project_name}",
         f"Data Date: {evm_data.get('as_of', '—')}",
         f"Timeline: {evm_data.get('project_start', '—')} → {evm_data.get('project_end', '—')}",
     ]
 
-    # ── EVM KPIs ──────────────────────────────────────────────────────────
     if evm_data.get("has_data"):
         uc = evm_data.get("use_cost", False)
         basis = evm_data.get("cost_basis", "task durations")
@@ -340,7 +335,6 @@ def _build_context(
             f"  CV    {_fmt(cv, uc)}  ({'under' if cv >= 0 else 'over'} budget in cost terms)",
         ]
 
-    # ── Earned Schedule ───────────────────────────────────────────────────
     es = intelligence.get("earned_schedule", {})
     if es.get("has_data"):
         sv_t = es["sv_t_days"]
@@ -355,7 +349,6 @@ def _build_context(
             f"  Status  {es['interpretation']}",
         ]
 
-    # ── Critical Path ─────────────────────────────────────────────────────
     cpm = intelligence.get("critical_path", {})
     if cpm.get("computed"):
         n_crit = cpm["critical_task_count"]
@@ -376,7 +369,6 @@ def _build_context(
         if extra > 0:
             lines.append(f"  … plus {extra} more critical tasks")
 
-    # ── WBS Risk Scores ───────────────────────────────────────────────────
     wbs_scores = intelligence.get("wbs_risk_scores", [])
     if wbs_scores:
         lines += ["", "WBS Package Risk  (score 0=safe → 100=critical)"]
@@ -392,7 +384,6 @@ def _build_context(
             if w["drivers"] and "No significant" not in w["drivers"][0]:
                 lines.append(f"           Drivers: {'; '.join(w['drivers'])}")
 
-    # ── Probabilistic Forecast (Monte Carlo) ──────────────────────────────
     if mc_data and mc_data.get("has_data"):
         md = mc_data
         lines += [
@@ -421,14 +412,12 @@ def _build_context(
                 "  Do NOT state the project is on track or ahead of schedule for its baseline.",
             ]
 
-    # ── Performance Trend ─────────────────────────────────────────────────
     if trend_data and trend_data.get("has_data"):
         td = trend_data
         lines += ["", f"Performance Trend  ({td['weeks_of_data']} weeks of history)"]
         for line in td.get("summary_lines", []):
             lines.append(f"  {line}")
 
-    # ── Hard Deadline Constraints (MFO) ───────────────────────────────────
     mfo_tasks = constraint_data.get("mfo_tasks", [])
     snet_count = constraint_data.get("snet_count", 0)
     if mfo_tasks:
@@ -448,7 +437,6 @@ def _build_context(
                 f"  {t['end_date']:<12s}  {float_str:<10s}  {t['status'].upper()}{risk_flag}"
             )
 
-    # ── Network Float Violations (non-MFO negative float) ─────────────────
     neg_float = constraint_data.get("neg_float", [])
     if neg_float:
         lines += [
@@ -462,17 +450,14 @@ def _build_context(
                 f"  float={tf:+d} wd  stage={t['stage']}  [{t['status'].upper()}]"
             )
 
-    # ── Completion Probability ML ─────────────────────────────────────────
     ml_summary = _load_completion_ml_summary(project_id) if project_id else None
     if ml_summary:
         lines += ["", ml_summary]
 
-    # ── Time-Location summary ─────────────────────────────────────────────
     tl_summary = _load_timelocation_summary(project_id) if project_id else None
     if tl_summary:
         lines += ["", tl_summary]
 
-    # ── Delay Root-Cause Analysis ─────────────────────────────────────────
     drc = _load_delay_rootcause_summary(project_id) if project_id else None
     if drc:
         s = drc["summary"]
@@ -523,7 +508,6 @@ def _build_context(
                     f" → {g['downstream_tasks']} downstream tasks"
                 )
 
-    # ── Cash Flow Forecast ────────────────────────────────────────────────
     cf = _load_cashflow_summary(project_id) if project_id else None
     if cf:
         cm = cf["metrics"]
@@ -546,7 +530,6 @@ def _build_context(
                     f"  ⚠ Actual burn ({ratio:.0%} of planned) — severe under-spend vs plan"
                 )
 
-    # ── DCMA 14-Point Schedule Health ─────────────────────────────────────
     dcma = _load_dcma_summary(project_id) if project_id else None
     if dcma:
         s = dcma["summary"]
@@ -568,15 +551,11 @@ def _build_context(
                 val = f"{c['value']}{c['unit']}" if c["unit"] in ("%", "") else c["value"]
                 lines.append(f"    ⚠ {c['name']:<22s} {val}  (target {c['target']})")
 
-    # ── Anomaly Detection ─────────────────────────────────────────────────
     anomaly_summary = _load_anomaly_summary(project_id) if project_id else None
     if anomaly_summary:
         lines += ["", anomaly_summary]
 
     return "\n".join(lines)
-
-
-# ── Service class ─────────────────────────────────────────────────────────────
 
 
 class ProjectControlsChatService:

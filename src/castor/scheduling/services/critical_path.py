@@ -1,24 +1,10 @@
 # castor/scheduling/services/critical_path.py
 """Critical Path Method (CPM) — calendar-aware forward/backward pass.
 
-Enhancements over the original implementation:
-
-* Working-day arithmetic — durations are counted in working days using the
-  calendar assigned to each activity (P6Calendar).  The default calendar
-  treats every day as a working day so behaviour is unchanged when no P6
-  calendar data is available.
-
-* SNET constraints (Start On or After) — the earliest start date from the
-  network logic is clamped to the constraint date (advanced to the next
-  working day on the activity's calendar if needed).
-
-* MFO / Mandatory Finish constraints — the latest finish from the backward
-  pass is capped at the constraint date.  This may produce negative float
-  for activities whose planned finish already exceeds the deadline.
-
-* Total float is now stored as a signed integer: negative values indicate
-  a mandatory-finish overrun and are more useful to the planner than a
-  clamped zero.
+Progress-aware: completed tasks anchor at actual dates; in-progress tasks use
+data_date + remaining duration; not-started tasks floor at data_date. Supports
+per-activity P6 calendars, SNET / MFO date constraints, and signed total float
+(negative values indicate an MFO deadline overrun).
 """
 
 from __future__ import annotations
@@ -35,7 +21,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# ── Calendar arithmetic — imported from shared utilities ──────────────────────
 # All calendar helpers live in calendar_utils.py so delay_rootcause, anomaly_detect,
 # and dcma_check can share them without importing critical_path.
 from .calendar_utils import (  # noqa: E402
@@ -48,15 +33,10 @@ from .calendar_utils import (  # noqa: E402
     _subtract_working_days,
 )
 
-# ── Duration helper ───────────────────────────────────────────────────────────
-
 
 def _duration(task, cal: dict) -> int:
     """Duration in working days on *cal* between task.start_date and task.end_date."""
     return _count_working_days(task.start_date, task.end_date, cal)
-
-
-# ── Public entry point ────────────────────────────────────────────────────────
 
 
 def compute_critical_path(project_id: str) -> dict:
@@ -85,7 +65,6 @@ def compute_critical_path(project_id: str) -> dict:
     if not tasks:
         return {"critical_task_ids": [], "project_duration": 0, "task_data": {}}
 
-    # ── Build calendar lookup ────────────────────────────────────────────
     cal_defs = _load_project_calendars(project_id)
     task_cal: dict[str, dict] = {}
     for t in tasks:

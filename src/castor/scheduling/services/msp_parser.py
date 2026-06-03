@@ -30,7 +30,6 @@ logger = logging.getLogger(__name__)
 
 _DATE_FMTS = ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d")
 
-# ── MS Project constants ─────────────────────────────────────────────────────
 
 _MSP_STATUS_MAP = {
     "0": "planned",  # Not Started
@@ -40,7 +39,6 @@ _MSP_STATUS_MAP = {
 
 _MSP_DEP_TYPE: dict[str, str] = {"0": "FF", "1": "FS", "2": "SF", "3": "SS"}
 
-# ── P6 XML constants ─────────────────────────────────────────────────────────
 
 _P6_STATUS_MAP: dict[str, str] = {
     "not started": "planned",
@@ -62,9 +60,6 @@ _P6_DEP_TYPE: dict[str, str] = {
     "PR_FF": "FF",
     "PR_SF": "SF",
 }
-
-
-# ── Public entry point ────────────────────────────────────────────────────────
 
 
 def parse_msp(file_obj, preview_only: bool = False) -> tuple[list[dict], list[dict]]:
@@ -91,9 +86,6 @@ def parse_msp(file_obj, preview_only: bool = False) -> tuple[list[dict], list[di
         return _parse_p6_xml(file_bytes, preview_only)
 
     return _parse_msp_xml(file_bytes, preview_only)
-
-
-# ── MS Project XML ────────────────────────────────────────────────────────────
 
 
 def _parse_msp_xml(file_bytes: bytes, preview_only: bool) -> tuple[list[dict], list[dict]]:
@@ -194,9 +186,6 @@ def _parse_msp_task(el, ns: str) -> dict | None:
         "source": "msp",
         "description": text("Notes"),
     }
-
-
-# ── Primavera P6 XML ──────────────────────────────────────────────────────────
 
 
 def _parse_p6_xml(file_bytes: bytes, preview_only: bool) -> tuple[list[dict], list[dict]]:
@@ -435,9 +424,6 @@ def _parse_p6_activity(el, nsp: str, obj_id: str) -> dict | None:
         "expected_finish": expected_finish,
         "wbs_name": "",  # filled in by _parse_p6_lxml / _parse_p6_stdlib
     }
-
-
-# ── Shared helpers ────────────────────────────────────────────────────────────
 
 
 def _ns_text(el, nsp: str, tag: str) -> str:

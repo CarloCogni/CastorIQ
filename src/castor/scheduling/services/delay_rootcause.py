@@ -1,31 +1,14 @@
 # castor/scheduling/services/delay_rootcause.py
 """Delay Root-Cause Clustering via CPM driving-relationship propagation.
 
-Algorithm
----------
-1. finish_variance per task = (actual_end if complete, else early_finish) - end_date.
-   Tasks without end_date have no baseline and are excluded from analysis.
+For each delayed task, identifies the driving predecessor (FS/SS predecessor
+whose finish + lag aligns with the task's early_start within BINDING_TOLERANCE).
+Tasks whose delay can't be explained by network predecessors are classified as
+CONSTRAINT-driven (hard date) or ORPHAN (no logic links).
 
-2. For each delayed task, identify the DRIVING predecessor: the FS/SS predecessor
-   whose (early_finish + lag) is within BINDING_TOLERANCE days of the task's
-   early_start.  If no predecessor binding date is close to early_start the task's
-   delay originates from a date constraint (SNET/MFO), not from network logic.
-
-3. Classification:
-   - PROPAGATED  — driving predecessor is itself delayed.
-   - ROOT_CAUSE  — delayed task whose driving predecessor is NOT delayed (delay
-                   originates here: late constraint, large lag, or subchain start).
-   - CONSTRAINT  — delayed task where ALL predecessors finish well before its
-                   early_start (≥ CONSTRAINT_GAP days gap); a hard date pushes it.
-   - ORPHAN      — delayed task with no logic links at all; cannot be traced.
-
-4. For each root-cause node, BFS forward through the driving graph (root→driven→…)
-   among delayed tasks only.  Downstream impact = count + sum of delay days.
-
-5. Cluster root causes by CSI trade (parsed from activity code), construction
-   stage (Task.stage), and activity type (inferred from task name).
-
-Numbers and labels are computed entirely from DB data.  No invented figures.
+Classification: PROPAGATED (predecessor also delayed) / ROOT_CAUSE (origin node)
+/ CONSTRAINT / ORPHAN.  Root causes are ranked by downstream task count via BFS
+and clustered by trade, stage, and activity type.
 """
 
 from __future__ import annotations
@@ -39,7 +22,6 @@ from .utils import get_project_data_date
 
 logger = logging.getLogger(__name__)
 
-# ── Constants ─────────────────────────────────────────────────────────────────
 
 # A predecessor is "binding" if its (EF + lag) is within this many calendar days
 # of the successor's early_start (accounts for working-day vs calendar-day CPM).
@@ -49,7 +31,6 @@ BINDING_TOLERANCE = 7
 # the delay is driven by a date constraint, not by the predecessor chain.
 CONSTRAINT_GAP = 14
 
-# ── Trade / type lookup tables ────────────────────────────────────────────────
 
 _CSI_TRADE: dict[str, str] = {
     "00": "General",
@@ -89,7 +70,6 @@ _STAGE_LABELS: dict[str, str] = {
     "": "General / Unassigned",
 }
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
 
 _CSI_RE = re.compile(r"-[A-Z]*(\d{2})\d{4}")
 
@@ -165,9 +145,6 @@ def _binding_date(pred, dep_type: str, lag_days: int) -> date | None:
     return None  # FF/SF not handled for driving logic
 
 
-# ── Main service ──────────────────────────────────────────────────────────────
-
-
 def run_delay_rootcause(
     project_id: str,
     delay_threshold_days: int = 0,
@@ -205,7 +182,6 @@ def run_delay_rootcause(
 
     task_map: dict[str, object] = {str(t.pk): t for t in tasks}
 
-    # ── Compute finish variance ───────────────────────────────────────────
     variances: dict[str, int] = {}  # pk → finish_variance_days (working days)
     excluded_no_baseline = 0
 
@@ -233,7 +209,6 @@ def run_delay_rootcause(
             "orphans": {"count": 0, "tasks": []},
         }
 
-    # ── Load dependency graph ─────────────────────────────────────────────
     # preds_of[successor_pk] = [(pred_pk, dep_type, lag_days), ...]
     # succs_of[pred_pk]      = [(succ_pk, dep_type, lag_days), ...]
     all_deps = list(
@@ -250,7 +225,6 @@ def run_delay_rootcause(
         preds_of[s].append((p, d["dep_type"], d["lag_days"]))
         succs_of[p].append((s, d["dep_type"], d["lag_days"]))
 
-    # ── Classify each delayed task ────────────────────────────────────────
     # driving_delayed_pred[pk] = pred_pk if propagated, else None
     classification: dict[
         str, str
@@ -296,8 +270,7 @@ def run_delay_rootcause(
             if min_gap is None or delta < min_gap:
                 min_gap = delta
             if delta <= BINDING_TOLERANCE:
-                # This predecessor is binding
-                if best_delta is None or delta < best_delta:
+                    if best_delta is None or delta < best_delta:
                     best_pred_pk = pred_pk
                     best_delta = delta
 
@@ -322,7 +295,6 @@ def run_delay_rootcause(
             driving_pred_of[pk] = None
             rc_confidence[pk] = "lower"  # origin inferred, not network-confirmed
 
-    # ── Forward-walk each root cause / constraint node to measure impact ──
     root_cause_pks = [
         pk for pk, cls in classification.items() if cls in ("root_cause", "constraint")
     ]
@@ -351,7 +323,6 @@ def run_delay_rootcause(
         sorted_ds = sorted(visited, key=lambda n: -delayed.get(n, 0))[:3]
         downstream_examples[rc_pk] = [task_map[n].name for n in sorted_ds if n in task_map]
 
-    # ── Build root_causes list — ranked by downstream COUNT (primary) ─────
     # Ranking by downstream_days would mis-rank: a root cause with 2 downstream
     # tasks each 400 days late beats one with 300 downstream tasks 10 days late.
     # Count is the honest primary ranking; chain_delay_days is a secondary scale
@@ -404,7 +375,6 @@ def run_delay_rootcause(
             }
         )
 
-    # ── Clusters ──────────────────────────────────────────────────────────
     def _build_cluster(key_fn: object, label_fn: object) -> list[dict]:
         groups: dict[str, dict] = {}
         for pk in root_cause_pks:
@@ -441,7 +411,6 @@ def run_delay_rootcause(
         label_fn=lambda k: k,
     )
 
-    # ── Summary ───────────────────────────────────────────────────────────
     n_root = sum(1 for c in classification.values() if c == "root_cause")
     n_root_firm = sum(1 for pk, v in rc_confidence.items() if v == "firm")
     n_root_lower = sum(1 for pk, v in rc_confidence.items() if v == "lower")

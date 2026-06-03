@@ -1,42 +1,10 @@
 # castor/scheduling/services/schedule_audit.py
-"""Schedule Audit engine — Layer 1: Section-Mismatch detection.
+"""Schedule Audit — CSI section-mismatch detection. Read-only.
 
-Compares each floor-located activity NAME against its planner-coded CSI
-division.  Strong keyword disagreement → Stage 1 candidate → Stage 2 LLM
-review → Stage 3 verdict.
-
-This service is READ-ONLY.  It never modifies task records, trade mappings,
-or any analytics result.  It returns a review queue for human inspection.
-
-Stages
-------
-1. Keyword pre-filter (no AI) — narrows ~10k tasks to a few hundred candidates
-   by looking for name tokens that strongly imply a different CSI division.
-2. LLM batch review — classifies each unique candidate name; cached by name to
-   avoid repeat calls.  Skipped gracefully when no LLM provider is available.
-3. Verdict assignment — CONFIRMED / LIKELY_OK / UNCERTAIN / UNAVAILABLE.
-
-Output shape
-------------
-{
-  has_data: bool,
-  stage1_candidates: int,
-  ai_ran: bool,
-  confirmed_count: int,      -- high-confidence, unambiguous coding errors
-  needs_review_count: int,   -- medium-confidence, planner choice is defensible
-  uncertain_count: int,      -- low-confidence or AI returned "uncertain"
-  likely_ok_count: int,      -- keyword false-positives cleared by AI
-  unavailable_count: int,    -- LLM skipped or batch failed
-  items: [
-    { name, activity_code, coded_csi, coded_trade,
-      keyword_csi, keyword_trade,
-      ai_csi, ai_trade, ai_confidence, ai_reason,
-      verdict },
-    ...
-  ]
-}
-Items contain CONFIRMED, NEEDS_REVIEW, UNCERTAIN, and UNAVAILABLE verdicts.
-LIKELY_OK items are excluded — they are cleared keyword false-positives.
+Stage 1 (no AI): keyword pre-filter narrows floor-located tasks to candidates
+where the activity name implies a different CSI division. Stage 2 (LLM): batch
+classification with per-name caching. Verdicts: CONFIRMED / NEEDS_REVIEW /
+UNCERTAIN / UNAVAILABLE. LIKELY_OK (keyword false-positives) are excluded from output.
 """
 
 from __future__ import annotations
@@ -49,7 +17,6 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
-# ── Floor & CSI detection (same logic as timelocation.py) ─────────────────────
 
 _FLOOR_RE = re.compile(r"^(B0?[1-3]|L\d{1,2}|R0?[1-2])", re.IGNORECASE)
 _CSI_RE = re.compile(r"-[A-Z]*(\d{2})\d{4}")
@@ -76,7 +43,6 @@ _TRADE_NAMES: dict[str, str] = {
     "33": "Utilities",
 }
 
-# ── Keyword rules ─────────────────────────────────────────────────────────────
 #
 # Each rule: (keyword_list, suggested_csi, suggested_trade_label).
 # Rules are ordered most-specific first.  A keyword match suggests the
@@ -362,9 +328,6 @@ All output must be valid JSON only — no text outside the object.\
 """
 
 
-# ── Data model ────────────────────────────────────────────────────────────────
-
-
 @dataclass
 class _Candidate:
     task_id: str
@@ -379,9 +342,6 @@ class _Candidate:
     ai_confidence: str | None = None
     ai_reason: str | None = None
     verdict: str = "pending"  # confirmed | needs_review | likely_ok | uncertain | unavailable
-
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
 
 
 def _name_cache_key(name: str, coded_csi: str) -> str:
@@ -409,9 +369,6 @@ def _keyword_match(name: str) -> tuple[str, str] | None:
         if any(kw in name_lc for kw in keywords):
             return csi, trade
     return None
-
-
-# ── Stage 1 — keyword pre-filter ──────────────────────────────────────────────
 
 
 def _run_stage1(project_id: str) -> list[_Candidate]:
@@ -461,9 +418,6 @@ def _run_stage1(project_id: str) -> list[_Candidate]:
     return candidates
 
 
-# ── Stage 2 — LLM batch review ────────────────────────────────────────────────
-
-
 def _llm_classify_batch(names: list[str], user) -> list[dict]:
     """Send one batch of names to the LLM.  Returns the parsed 'items' list."""
     from langchain_core.messages import HumanMessage
@@ -511,7 +465,6 @@ def _run_stage2(candidates: list[_Candidate], user, project_id: str) -> bool:
             seen[c.name] = len(unique_names)
             unique_names.append(c.name)
 
-    # ── Check Django cache for already-classified names ───────────────────────
     from django.core.cache import cache
 
     # Each unique_name is keyed by (name, coded_csi) — we need the coded_csi per
@@ -535,7 +488,6 @@ def _run_stage2(candidates: list[_Candidate], user, project_id: str) -> bool:
         else:
             uncached_names.append(n)
 
-    # ── DB fallback: check project-level persistent cache for names not in
     #    Django locmem cache (survives server restarts and 24-hour TTL expiry).
     #    This prevents Ollama non-determinism from changing the confirmed set
     #    between runs — once a name is classified it stays classified.
@@ -692,9 +644,6 @@ def _run_stage2(candidates: list[_Candidate], user, project_id: str) -> bool:
             c.verdict = "needs_review"
 
     return True
-
-
-# ── Public API ────────────────────────────────────────────────────────────────
 
 
 def run_section_mismatch_audit(project_id: str, user=None) -> dict:
