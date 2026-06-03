@@ -27,9 +27,6 @@ from .linker import _read_property
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Layer 0 — non-physical activity pre-filter
-# ---------------------------------------------------------------------------
 
 _NON_PHYSICAL_KEYWORDS: frozenset[str] = frozenset(
     {
@@ -103,10 +100,6 @@ _IFC_KEYWORDS: dict[str, str] = {
     "fill": "IfcEarthworksFill",
 }
 
-
-# ---------------------------------------------------------------------------
-# Stage auto-detection
-# ---------------------------------------------------------------------------
 
 _STAGE_KEYWORDS: dict[str, tuple[str, ...]] = {
     "substructure": (
@@ -404,9 +397,6 @@ def run_autolink(project, ifc_param_name: str | None = None) -> dict:
     if not all_tasks:
         return _empty_summary(0)
 
-    # ------------------------------------------------------------------ #
-    # Layer 0 — pre-filter non-physical activities                        #
-    # ------------------------------------------------------------------ #
     tasks, non_physical_tasks = _run_layer0(all_tasks)
     excluded = len(non_physical_tasks)
 
@@ -458,9 +448,6 @@ def run_autolink(project, ifc_param_name: str | None = None) -> dict:
 
     t0 = time.perf_counter()
 
-    # ------------------------------------------------------------------ #
-    # Layers 1 & 2 — property value match                                 #
-    # ------------------------------------------------------------------ #
     for task in tasks:
         code = (task.activity_code or "").strip()
         if not code:
@@ -490,9 +477,6 @@ def run_autolink(project, ifc_param_name: str | None = None) -> dict:
         len(remaining),
     )
 
-    # ------------------------------------------------------------------ #
-    # Layer 3 — IFC-type keyword heuristic with zone/trade context        #
-    # ------------------------------------------------------------------ #
     embed_remaining: list[Task] = []
     for task in remaining:
         entities, confidence, needs_review = _run_layer3(
@@ -514,9 +498,6 @@ def run_autolink(project, ifc_param_name: str | None = None) -> dict:
         len(embed_remaining),
     )
 
-    # ------------------------------------------------------------------ #
-    # Layer 4 — embedding cosine similarity (batched)                     #
-    # ------------------------------------------------------------------ #
     if embed_remaining:
         try:
             from embeddings.services.embedding_service import EmbeddingService
@@ -565,9 +546,6 @@ def run_autolink(project, ifc_param_name: str | None = None) -> dict:
         len(embed_remaining),
     )
 
-    # ------------------------------------------------------------------ #
-    # Persist                                                             #
-    # ------------------------------------------------------------------ #
     TaskEntityBinding.objects.bulk_create(new_bindings, ignore_conflicts=True, batch_size=500)
 
     ThroughModel = Task.ifc_entities.through
@@ -600,11 +578,6 @@ def run_autolink(project, ifc_param_name: str | None = None) -> dict:
         "needs_review": needs_review_count,
         "excluded_non_physical": excluded,
     }
-
-
-# ---------------------------------------------------------------------------
-# Index builders
-# ---------------------------------------------------------------------------
 
 
 def _build_prop_index(
@@ -691,11 +664,6 @@ def _discover_ifc_param(entities: list[IFCEntity], tasks: list[Task]) -> str | N
     return best_key[dot + 1 :].strip() if dot != -1 else best_key
 
 
-# ---------------------------------------------------------------------------
-# Per-layer match helpers
-# ---------------------------------------------------------------------------
-
-
 def _record(
     task: Task,
     entities: list[IFCEntity],
@@ -780,11 +748,6 @@ def _run_layer3(
     if zone_match:
         return candidates[:_MAX_HEURISTIC], _HEURISTIC_ZONE_MATCH, True
     return candidates[:_MAX_HEURISTIC], _HEURISTIC_TYPE_ONLY, True
-
-
-# ---------------------------------------------------------------------------
-# String utilities
-# ---------------------------------------------------------------------------
 
 
 def _extract_level_hint(task_name: str) -> str | None:
