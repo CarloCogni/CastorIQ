@@ -1,0 +1,211 @@
+<!-- scheduling/components/task_list.html — task list partial (preview + live) -->
+<!-- Actual-date inline editor — shared across both preview and live modes -->
+<div class="modal fade" id="actualDateModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content bg-dark text-light border-secondary">
+            <div class="modal-header border-secondary py-2">
+                <span class="modal-title" style="font-size:0.9rem;">Edit Actual Dates</span>
+                <button type="button" class="btn-close btn-close-white btn-sm" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="actualDateForm">
+                <div class="modal-body pb-2">
+                    <div class="mb-2">
+                        <label class="form-label mb-1" style="font-size:0.8rem;">Actual Start</label>
+                        <input type="date" id="actualStartInput" name="actual_start" class="form-control form-control-sm bg-dark text-light border-secondary">
+                    </div>
+                    <div>
+                        <label class="form-label mb-1" style="font-size:0.8rem;">Actual End</label>
+                        <input type="date" id="actualEndInput" name="actual_end" class="form-control form-control-sm bg-dark text-light border-secondary">
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary py-2">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-sm btn-primary">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    let _currentTaskPk = null;
+
+    window.openActualDateEditor = function (taskPk, startVal, endVal) {
+        _currentTaskPk = taskPk;
+        document.getElementById("actualStartInput").value = startVal || "";
+        document.getElementById("actualEndInput").value = endVal || "";
+        const modal = bootstrap.Modal.getOrCreate(document.getElementById("actualDateModal"));
+        modal.show();
+    };
+
+    document.getElementById("actualDateForm").addEventListener("submit", function (e) {
+        e.preventDefault();
+        if (!_currentTaskPk) return;
+        const fd = new FormData(this);
+        const url = (typeof ACTUAL_DATES_URL_TEMPLATE !== "undefined" ? ACTUAL_DATES_URL_TEMPLATE : "").replace("__TASK_PK__", _currentTaskPk);
+        if (!url) return;
+        fetch(url, {
+            method: "POST",
+            body: fd,
+            headers: { "X-CSRFToken": document.cookie.match(/csrftoken=([^;]+)/)?.[1] || "" },
+        })
+            .then(r => r.text())
+            .then(html => {
+                const dp = new DOMParser();
+                const doc = dp.parseFromString(html, "text/html");
+                // Swap each cell by ID (OOB-style via JS)
+                ["actual-start-cell-" + _currentTaskPk, "actual-end-cell-" + _currentTaskPk].forEach(id => {
+                    const newEl = doc.getElementById(id);
+                    const oldEl = document.getElementById(id);
+                    if (newEl && oldEl) oldEl.replaceWith(newEl);
+                });
+                // Dispatch toast event if HX-Trigger header present — handled by htmx
+                htmx.trigger(document.body, "castor:toast", { message: "Actual dates updated.", level: "success" });
+                bootstrap.Modal.getInstance(document.getElementById("actualDateModal"))?.hide();
+            })
+            .catch(() => {
+                htmx.trigger(document.body, "castor:toast", { message: "Save failed.", level: "error" });
+            });
+    });
+})();
+</script>
+
+{% if preview_mode and tasks_preview %}
+
+<!-- AI validation badge -->
+{% if validation %}
+<div class="alert {% if validation.looks_valid %}alert-success{% else %}alert-warning{% endif %} py-2 mb-3" style="font-size:0.83rem;">
+    <strong>AI check:</strong> {{ validation.summary }}
+    {% if validation.anomalies %}
+    <ul class="mb-0 mt-1">
+        {% for a in validation.anomalies %}<li>{{ a }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+</div>
+{% endif %}
+
+<div class="d-flex justify-content-between align-items-center mb-2">
+    <span class="text-secondary small">{{ tasks_preview|length }} task{{ tasks_preview|length|pluralize }} parsed from <strong>{{ source }}</strong></span>
+    <form hx-post="{% url 'castor:schedule_save' project.pk %}"
+          hx-target="#task-preview-area"
+          hx-swap="innerHTML"
+          hx-indicator="#save-spinner">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-sm btn-success">
+            <span id="save-spinner" class="htmx-indicator spinner-border spinner-border-sm me-1"></span>
+            <i class="bi bi-floppy me-1"></i>Save {{ tasks_preview|length }} tasks
+        </button>
+    </form>
+</div>
+
+<div class="table-responsive" style="max-height:50vh; overflow-y:auto;">
+    <table class="table table-sm table-hover align-middle mb-0">
+        <thead class="table-dark sticky-top">
+            <tr>
+                <th>Activity Code</th>
+                <th>Task Name</th>
+                <th>Planned Start</th>
+                <th>Planned End</th>
+                <th>Actual Start</th>
+                <th>Actual End</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for task in tasks_preview %}
+            <tr>
+                <td class="text-secondary" style="font-size:0.8rem;">{{ task.activity_code|default:"—" }}</td>
+                <td style="font-size:0.85rem;">{{ task.name }}</td>
+                <td style="font-size:0.82rem;">{{ task.start_date }}</td>
+                <td style="font-size:0.82rem;">{{ task.end_date }}</td>
+                <td class="text-secondary" style="font-size:0.82rem;">—</td>
+                <td class="text-secondary" style="font-size:0.82rem;">—</td>
+                <td>
+                    <span class="badge
+                        {% if task.status == 'active' %}bg-success
+                        {% elif task.status == 'complete' %}bg-primary
+                        {% elif task.status == 'delayed' %}bg-warning text-dark
+                        {% else %}bg-secondary{% endif %}">
+                        {{ task.status }}
+                    </span>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% elif tasks %}
+
+<!-- URL template for TaskActualDateView — __TASK_PK__ replaced by JS -->
+<script>const ACTUAL_DATES_URL_TEMPLATE = "{% url 'castor:task_actual_dates' project.pk '00000000-0000-0000-0000-000000000000' %}".replace("00000000-0000-0000-0000-000000000000", "__TASK_PK__");</script>
+
+{% if dep_count %}
+<div class="d-flex align-items-center gap-2 mb-2 text-secondary" style="font-size:0.8rem;">
+    <i class="bi bi-diagram-3 me-1"></i>
+    <span>{{ dep_count }} task dependenc{{ dep_count|pluralize:"y,ies" }} linked</span>
+</div>
+{% endif %}
+
+<div class="table-responsive" style="max-height:60vh; overflow-y:auto;">
+    <table class="table table-sm table-hover align-middle mb-0">
+        <thead class="table-dark sticky-top">
+            <tr>
+                <th>Activity Code</th>
+                <th>Task Name</th>
+                <th>Planned Start</th>
+                <th>Planned End</th>
+                <th>Actual Start</th>
+                <th>Actual End</th>
+                <th>Status</th>
+                <th>Source</th>
+                <th>Linked</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for task in tasks %}
+            <tr>
+                <td class="text-secondary" style="font-size:0.8rem;">{{ task.activity_code|default:"—" }}</td>
+                <td style="font-size:0.85rem;">{{ task.name }}</td>
+                <td style="font-size:0.82rem;">{{ task.start_date }}</td>
+                <td style="font-size:0.82rem;">{{ task.end_date }}</td>
+                {% include "scheduling/components/actual_date_cells.html" %}
+                <td>
+                    <span class="badge
+                        {% if task.status == 'active' %}bg-success
+                        {% elif task.status == 'complete' %}bg-primary
+                        {% elif task.status == 'delayed' %}bg-warning text-dark
+                        {% else %}bg-secondary{% endif %}">
+                        {{ task.status }}
+                    </span>
+                </td>
+                <td class="text-secondary" style="font-size:0.78rem;">{{ task.source }}</td>
+                <td class="text-center">
+                    {% with cnt=task.ifc_entities.all|length %}
+                        {% if cnt %}<span class="badge bg-primary">{{ cnt }}</span>{% else %}<span class="text-secondary">—</span>{% endif %}
+                    {% endwith %}
+                </td>
+                <td>
+                    <button class="btn btn-sm btn-outline-danger py-0"
+                            hx-post="{% url 'castor:task_delete' project.pk task.pk %}"
+                            hx-target="closest tbody"
+                            hx-swap="outerHTML"
+                            hx-confirm="Delete '{{ task.name }}'?"
+                            title="Delete task">
+                        <i class="bi bi-trash3"></i>
+                    </button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% else %}
+<div class="text-center text-secondary py-4">
+    <i class="bi bi-table fs-2 d-block mb-2"></i>
+    No tasks yet — upload a schedule file above.
+</div>
+{% endif %}

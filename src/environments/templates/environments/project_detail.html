@@ -64,7 +64,7 @@
                 </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link {% if active_tab == 'islam' %}active{% endif %}" href="{% url 'islam:viewer' project.pk %}">
+                <a class="nav-link {% if active_tab == 'castor' %}active{% endif %}" href="{% url 'castor:viewer' project.pk %}">
                     <i class="bi bi-boxes me-2"></i>Castor 4D/5D Controls
                 </a>
             </li>
@@ -92,8 +92,8 @@
             {% include "ifc_processor/tabs/_explore.html" %}
         {% elif active_tab == 'schedule' %}
             {% include "ifc_processor/tabs/_schedule.html" %}
-        {% elif active_tab == 'islam' %}
-            {% include "islam/panel.html" %}
+        {% elif active_tab == 'castor' %}
+            {% include "castor/panel.html" %}
         {% elif active_tab == 'facilities' %}
             {% include "facilities/tabs/_facilities.html" %}
         {% endif %}

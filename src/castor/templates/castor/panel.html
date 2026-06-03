@@ -1,0 +1,121 @@
+<!-- castor/templates/castor/panel.html — master 4D Insights sub-tab dispatcher -->
+<div class="d-flex flex-column h-100 overflow-hidden">
+
+    <!-- Sub-tab navigation bar -->
+    <div class="d-flex align-items-center px-3 py-2 border-bottom bg-body flex-shrink-0" style="gap: 0.5rem;">
+        <span class="fw-semibold text-secondary me-2" style="font-size:0.8rem; letter-spacing:0.05em;">4D INSIGHTS</span>
+
+        <ul class="nav nav-pills" style="gap: 0.25rem;">
+            <!-- Visible tabs -->
+            <li class="nav-item">
+                <a class="nav-link py-1 px-3 {% if castor_subtab == 'viewer' %}active{% endif %}"
+                   href="{% url 'castor:viewer' project.pk %}"
+                   style="font-size:0.85rem;">
+                    <i class="bi bi-cube me-1"></i>3D Viewer
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link py-1 px-3 {% if schedule_tab == 'data_sources' %}active{% endif %}"
+                   href="{% url 'castor:schedule' project.pk %}?tab=data_sources"
+                   style="font-size:0.85rem;">
+                    <i class="bi bi-upload me-1"></i>Data Sources
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link py-1 px-3 {% if schedule_tab == 'fourD_link' %}active{% endif %}"
+                   href="{% url 'castor:schedule' project.pk %}?tab=fourD_link"
+                   style="font-size:0.85rem;">
+                    <i class="bi bi-boxes me-1"></i>4D Link
+                    {% if task_count %}<span class="badge bg-secondary ms-1" style="font-size:0.65rem;">{{ task_count }}</span>{% endif %}
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link py-1 px-3 {% if schedule_tab == 'evm' %}active{% endif %}"
+                   href="{% url 'castor:schedule' project.pk %}?tab=evm"
+                   style="font-size:0.85rem;">
+                    <i class="bi bi-graph-up-arrow me-1"></i>EVM
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link py-1 px-3 {% if schedule_tab == 'lookahead' %}active{% endif %}"
+                   href="{% url 'castor:schedule' project.pk %}?tab=lookahead"
+                   style="font-size:0.85rem;">
+                    <i class="bi bi-calendar-week me-1"></i>Look-ahead
+                </a>
+            </li>
+            <!-- Hidden tabs — preserved for direct URL access, not shown in nav -->
+            <li class="nav-item d-none">
+                <a class="nav-link py-1 px-3 {% if castor_subtab == 'schedule' %}active{% endif %}"
+                   href="{% url 'castor:schedule' project.pk %}"
+                   style="font-size:0.85rem;">
+                    <i class="bi bi-calendar3-range me-1"></i>TimeLiner
+                </a>
+            </li>
+            <li class="nav-item d-none">
+                <a class="nav-link py-1 px-3 {% if castor_subtab == 'insights' %}active{% endif %}"
+                   href="{% url 'castor:insights' project.pk %}"
+                   style="font-size:0.85rem;">
+                    <i class="bi bi-shield-check me-1"></i>IFC Insights
+                </a>
+            </li>
+            <li class="nav-item d-none">
+                <a class="nav-link py-1 px-3 {% if castor_subtab == 'ifc_issues' %}active{% endif %}"
+                   href="{% url 'castor:ifc_issues' project.pk %}"
+                   style="font-size:0.85rem;">
+                    <i class="bi bi-bug me-1"></i>IFC Issues
+                    <span id="ifc-issues-nav-badge"
+                          class="badge bg-danger ms-1 d-none"
+                          style="font-size:0.65rem;"></span>
+                </a>
+            </li>
+            <li class="nav-item d-none">
+                <a class="nav-link py-1 px-3 {% if castor_subtab == 'levels' %}active{% endif %}"
+                   href="{% url 'castor:levels' project.pk %}"
+                   style="font-size:0.85rem;">
+                    <i class="bi bi-layers me-1"></i>Levels
+                </a>
+            </li>
+            <li class="nav-item d-none">
+                <a class="nav-link py-1 px-3 {% if castor_subtab == 'qto' %}active{% endif %}"
+                   href="{% url 'castor:qto' project.pk %}"
+                   style="font-size:0.85rem;">
+                    <i class="bi bi-calculator me-1"></i>Quantities
+                </a>
+            </li>
+        </ul>
+    </div>
+
+    <!-- Sub-tab content -->
+    <div class="flex-grow-1 overflow-auto">
+        {% if castor_subtab == 'viewer' %}
+            {% include "ifc_viewer/viewer.html" %}
+        {% elif castor_subtab == 'schedule' %}
+            {% include "scheduling/panel.html" %}
+        {% elif castor_subtab == 'insights' %}
+            {% include "ifc_insights/panel.html" %}
+        {% elif castor_subtab == 'ifc_issues' %}
+            {% include "ifc_insights/issues_panel.html" %}
+        {% elif castor_subtab == 'levels' %}
+            {% include "ifc_insights/levels.html" %}
+        {% elif castor_subtab == 'qto' %}
+            {% include "ifc_insights/qto.html" %}
+        {% endif %}
+    </div>
+
+</div>
+
+<script>
+(function () {
+    var badge = document.getElementById('ifc-issues-nav-badge');
+    if (!badge) return;
+    fetch('{% url "castor:issues_count" project.pk %}')
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            if (d.total > 0) {
+                badge.textContent = d.total;
+                badge.classList.remove('d-none');
+            }
+        })
+        .catch(function () {});
+}());
+</script>
