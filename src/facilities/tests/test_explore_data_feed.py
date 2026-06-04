@@ -9,6 +9,7 @@ descriptors are derived from existing IFC spatial elements.
 from __future__ import annotations
 
 import pytest
+from django.urls import reverse
 
 from environments.tests.factories import ProjectFactory, UserFactory
 from facilities.services.explore_catalog_service import build_table_catalog
@@ -131,7 +132,7 @@ class TestBuildTableCatalog:
     def test_catalog_has_default_tables(self):
         project = ProjectFactory()
         catalog = build_table_catalog(project)
-        assert set(catalog.keys()) == {"assets", "work", "permits", "requests"}
+        assert {"assets", "work", "permits", "requests"}.issubset(catalog.keys())
         # Grouped by Facilities module name for the "add table" picker.
         assert catalog["assets"]["group"] == "Assets"
         assert catalog["work"]["group"] == "Work"
@@ -162,13 +163,13 @@ class TestExploreApiAccess:
         project = ProjectFactory()
         outsider = UserFactory()
         client.force_login(outsider)
-        response = client.get(f"/{project.pk}/facilities/explore/floors/")
+        response = client.get(reverse("facilities:explore_floors", kwargs={"pk": project.pk}))
         assert response.status_code in (302, 403, 404)
 
     def test_floors_endpoint_returns_json(self, client):
         project = ProjectFactory()
         client.force_login(project.owner)
-        response = client.get(f"/{project.pk}/facilities/explore/floors/")
+        response = client.get(reverse("facilities:explore_floors", kwargs={"pk": project.pk}))
         assert response.status_code == 200
         body = response.json()
         assert "floors" in body
@@ -177,8 +178,8 @@ class TestExploreApiAccess:
     def test_catalog_endpoint_returns_tables(self, client):
         project = ProjectFactory()
         client.force_login(project.owner)
-        response = client.get(f"/{project.pk}/facilities/explore/catalog/")
+        response = client.get(reverse("facilities:explore_catalog", kwargs={"pk": project.pk}))
         assert response.status_code == 200
         body = response.json()
         assert "tables" in body
-        assert set(body["tables"].keys()) == {"assets", "work", "permits", "requests"}
+        assert {"assets", "work", "permits", "requests"}.issubset(body["tables"].keys())

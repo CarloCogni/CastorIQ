@@ -7,6 +7,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+from django.urls import reverse
 
 from environments.tests.factories import ProjectFactory, UserFactory
 from scheduling.services.column_detector import (
@@ -180,7 +181,7 @@ def test_detect_columns_malformed_json_falls_back():
 def test_detect_columns_view_requires_login(client):
     """Unauthenticated requests get redirected."""
     project = ProjectFactory()
-    url = f"/castor/projects/{project.pk}/schedule/detect-columns/"
+    url = reverse("scheduling:schedule_detect_columns", kwargs={"pk": project.pk})
     r = client.post(
         url,
         data=json.dumps(
@@ -207,7 +208,7 @@ def test_detect_columns_view_returns_mapping(client):
         }
     )
 
-    url = f"/castor/projects/{project.pk}/schedule/detect-columns/"
+    url = reverse("scheduling:schedule_detect_columns", kwargs={"pk": project.pk})
     with patch("scheduling.services.column_detector.get_llm") as mock_get_llm:
         mock_get_llm.return_value.invoke.return_value = mock_response
         r = client.post(
@@ -236,7 +237,7 @@ def test_detect_columns_view_rejects_missing_headers(client):
     project = ProjectFactory(owner=user)
     client.force_login(user)
 
-    url = f"/castor/projects/{project.pk}/schedule/detect-columns/"
+    url = reverse("scheduling:schedule_detect_columns", kwargs={"pk": project.pk})
     r = client.post(
         url,
         data=json.dumps({"headers": [], "sample_rows": [], "filename": "x.xlsx"}),
@@ -252,7 +253,7 @@ def test_detect_columns_view_rejects_invalid_json(client):
     project = ProjectFactory(owner=user)
     client.force_login(user)
 
-    url = f"/castor/projects/{project.pk}/schedule/detect-columns/"
+    url = reverse("scheduling:schedule_detect_columns", kwargs={"pk": project.pk})
     r = client.post(url, data="not json at all", content_type="application/json")
     assert r.status_code == 400
 
@@ -319,7 +320,7 @@ def test_detect_columns_view_returns_from_lookup_on_second_upload(client):
         hit_count=2,
     )
 
-    url = f"/castor/projects/{project.pk}/schedule/detect-columns/"
+    url = reverse("scheduling:schedule_detect_columns", kwargs={"pk": project.pk})
     with patch("scheduling.services.column_detector.get_llm") as mock_llm:
         r = client.post(
             url,
@@ -355,7 +356,7 @@ def test_detect_columns_view_increments_hit_count_on_lookup_hit(client):
         hit_count=5,
     )
 
-    url = f"/castor/projects/{project.pk}/schedule/detect-columns/"
+    url = reverse("scheduling:schedule_detect_columns", kwargs={"pk": project.pk})
     client.post(
         url,
         data=json.dumps({"headers": headers, "sample_rows": [], "filename": "sched.xlsx"}),
@@ -378,7 +379,7 @@ def test_save_mapping_lookup_creates_record(client):
     fp = "abc123def456" + "0" * 28  # 40-char fake sha1
     mapping = {"name": "Task", "start_date": "Begin", "end_date": "End"}
 
-    url = f"/castor/projects/{project.pk}/schedule/mapping-lookup/save/"
+    url = reverse("scheduling:schedule_save_mapping_lookup", kwargs={"pk": project.pk})
     r = client.post(
         url,
         data=json.dumps({"fingerprint": fp, "filename_pattern": "myfile", "mapping": mapping}),
@@ -408,7 +409,7 @@ def test_save_mapping_lookup_updates_existing_record(client):
         hit_count=3,
     )
 
-    url = f"/castor/projects/{project.pk}/schedule/mapping-lookup/save/"
+    url = reverse("scheduling:schedule_save_mapping_lookup", kwargs={"pk": project.pk})
     client.post(
         url,
         data=json.dumps(
@@ -434,7 +435,7 @@ def test_save_mapping_lookup_rejects_missing_fields(client):
     project = ProjectFactory(owner=user)
     client.force_login(user)
 
-    url = f"/castor/projects/{project.pk}/schedule/mapping-lookup/save/"
+    url = reverse("scheduling:schedule_save_mapping_lookup", kwargs={"pk": project.pk})
     r = client.post(
         url,
         data=json.dumps({"filename_pattern": "x"}),

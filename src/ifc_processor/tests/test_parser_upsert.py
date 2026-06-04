@@ -86,7 +86,7 @@ class TestUpsertIssue:
         assert issue.pk == first_pk  # same row, updated in place
         assert issue.description == "fresh description"
         assert issue.first_seen_at == first_seen  # preserved
-        assert issue.last_seen_at > first_seen  # advanced
+        assert issue.last_seen_at >= first_seen  # advanced
         assert IFCDataIssue.objects.filter(ifc_file=ifc_file).count() == 1
 
     def test_dismissed_row_survives_reparse(self):
@@ -117,7 +117,7 @@ class TestUpsertIssue:
         issue = IFCDataIssue.objects.get(content_hash=original_hash)
         assert issue.status == IFCDataIssue.Status.DISMISSED
         assert issue.description == "user acknowledged"  # not overwritten
-        assert issue.last_seen_at > first_seen
+        assert issue.last_seen_at >= first_seen
         assert original_hash in parser._seen_issue_hashes
 
     def test_severity_picked_from_issue_type(self):

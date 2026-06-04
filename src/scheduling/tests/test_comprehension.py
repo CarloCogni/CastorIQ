@@ -8,6 +8,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+from django.urls import reverse
 
 from environments.tests.factories import ProjectFactory, UserFactory
 from scheduling.services.comprehension import (
@@ -212,7 +213,7 @@ def test_comprehension_view_get_returns_exists_false_if_no_comprehension(client)
     project = ProjectFactory(owner=user)
     client.force_login(user)
 
-    url = f"/castor/projects/{project.pk}/schedule/comprehension/"
+    url = reverse("scheduling:schedule_comprehension", kwargs={"pk": project.pk})
     r = client.get(url)
 
     assert r.status_code == 200
@@ -236,7 +237,7 @@ def test_comprehension_view_get_returns_existing_data(client):
         phases=["structure", "mep"],
     )
 
-    url = f"/castor/projects/{project.pk}/schedule/comprehension/"
+    url = reverse("scheduling:schedule_comprehension", kwargs={"pk": project.pk})
     r = client.get(url)
 
     assert r.status_code == 200
@@ -272,7 +273,7 @@ def test_comprehension_view_post_returns_valid_result(client):
         }
     )
 
-    url = f"/castor/projects/{project.pk}/schedule/comprehension/"
+    url = reverse("scheduling:schedule_comprehension", kwargs={"pk": project.pk})
     with patch("scheduling.services.comprehension.get_llm") as mock_llm:
         mock_llm.return_value.invoke.return_value = mock_response
         r = client.post(url, content_type="application/json")
@@ -288,6 +289,6 @@ def test_comprehension_view_post_returns_valid_result(client):
 def test_comprehension_view_requires_login(client):
     """Unauthenticated requests are redirected."""
     project = ProjectFactory()
-    url = f"/castor/projects/{project.pk}/schedule/comprehension/"
+    url = reverse("scheduling:schedule_comprehension", kwargs={"pk": project.pk})
     r = client.get(url)
     assert r.status_code in (302, 403)

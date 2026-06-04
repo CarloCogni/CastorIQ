@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 
 import pytest
+from django.urls import reverse
 
 from environments.tests.factories import ProjectFactory, UserFactory
 from scheduling.models import TaskEntityBinding
@@ -20,7 +21,10 @@ def test_link_element_creates_binding(client):
     task = TaskFactory(project=project)
     client.force_login(user)
 
-    url = f"/castor/projects/{project.pk}/tasks/{task.pk}/link-element/"
+    url = reverse(
+        "scheduling:link_element",
+        kwargs={"pk": project.pk, "task_pk": task.pk},
+    )
     r = client.post(
         url,
         data=json.dumps({"global_id": "19iO7YoRr7ze7jVuR7Kvet"}),
@@ -44,7 +48,10 @@ def test_link_element_idempotent(client):
     task = TaskFactory(project=project)
     client.force_login(user)
 
-    url = f"/castor/projects/{project.pk}/tasks/{task.pk}/link-element/"
+    url = reverse(
+        "scheduling:link_element",
+        kwargs={"pk": project.pk, "task_pk": task.pk},
+    )
     payload = json.dumps({"global_id": "19iO7YoRr7ze7jVuR7Kvet"})
 
     r1 = client.post(url, data=payload, content_type="application/json")
@@ -76,7 +83,10 @@ def test_unlink_element_removes_binding(client):
     )
     client.force_login(user)
 
-    url = f"/castor/projects/{project.pk}/tasks/{task.pk}/unlink-element/"
+    url = reverse(
+        "scheduling:unlink_element",
+        kwargs={"pk": project.pk, "task_pk": task.pk},
+    )
     r = client.post(
         url,
         data=json.dumps({"global_id": "19iO7YoRr7ze7jVuR7Kvet"}),
@@ -112,7 +122,10 @@ def test_unlink_all_removes_all_bindings(client):
     )
     client.force_login(user)
 
-    url = f"/castor/projects/{project.pk}/elements/unlink-all/"
+    url = reverse(
+        "scheduling:unlink_all_element",
+        kwargs={"pk": project.pk},
+    )
     r = client.post(
         url,
         data=json.dumps({"global_id": global_id}),
@@ -134,7 +147,10 @@ def test_unlink_element_404_if_not_found(client):
     task = TaskFactory(project=project)
     client.force_login(user)
 
-    url = f"/castor/projects/{project.pk}/tasks/{task.pk}/unlink-element/"
+    url = reverse(
+        "scheduling:unlink_element",
+        kwargs={"pk": project.pk, "task_pk": task.pk},
+    )
     r = client.post(
         url,
         data=json.dumps({"global_id": "NONEXISTENT_GLOBAL_ID"}),
