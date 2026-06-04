@@ -8,119 +8,387 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('environments', '0005_projectrole_assigned_space'),
-        ('facilities', '0008_action_request_intake_fields'),
-        ('ifc_processor', '0011_ifcentity_ifc_description_ifcentity_tag'),
+        ("environments", "0005_projectrole_assigned_space"),
+        ("facilities", "0008_action_request_intake_fields"),
+        ("ifc_processor", "0011_ifcentity_ifc_description_ifcentity_tag"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='ExploreFloorPlan',
+            name="ExploreFloorPlan",
             fields=[
-                ('created_at', models.DateTimeField(auto_now_add=True, db_index=True, verbose_name='Created At')),
-                ('updated_at', models.DateTimeField(auto_now=True, verbose_name='Updated At')),
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False, verbose_name='ID')),
-                ('image', models.ImageField(upload_to='facilities/explore/plans/%Y/%m/', verbose_name='Plan Image')),
-                ('original_image', models.ImageField(blank=True, help_text='Pre-knockout image (kept so the user can revert)', null=True, upload_to='facilities/explore/plans/%Y/%m/', verbose_name='Original Plan Image')),
-                ('knockout', models.BooleanField(default=False, help_text='True when the user has stripped the white background', verbose_name='White Knock-out Applied')),
-                ('storey', models.OneToOneField(help_text='The IfcBuildingStorey this plan belongs to', on_delete=django.db.models.deletion.CASCADE, related_name='explore_floor_plan', to='ifc_processor.ifcspatialelement', verbose_name='Storey')),
-                ('uploaded_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to=settings.AUTH_USER_MODEL, verbose_name='Uploaded By')),
+                (
+                    "created_at",
+                    models.DateTimeField(
+                        auto_now_add=True, db_index=True, verbose_name="Created At"
+                    ),
+                ),
+                ("updated_at", models.DateTimeField(auto_now=True, verbose_name="Updated At")),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "image",
+                    models.ImageField(
+                        upload_to="facilities/explore/plans/%Y/%m/", verbose_name="Plan Image"
+                    ),
+                ),
+                (
+                    "original_image",
+                    models.ImageField(
+                        blank=True,
+                        help_text="Pre-knockout image (kept so the user can revert)",
+                        null=True,
+                        upload_to="facilities/explore/plans/%Y/%m/",
+                        verbose_name="Original Plan Image",
+                    ),
+                ),
+                (
+                    "knockout",
+                    models.BooleanField(
+                        default=False,
+                        help_text="True when the user has stripped the white background",
+                        verbose_name="White Knock-out Applied",
+                    ),
+                ),
+                (
+                    "storey",
+                    models.OneToOneField(
+                        help_text="The IfcBuildingStorey this plan belongs to",
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="explore_floor_plan",
+                        to="ifc_processor.ifcspatialelement",
+                        verbose_name="Storey",
+                    ),
+                ),
+                (
+                    "uploaded_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="+",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="Uploaded By",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Explore Floor Plan',
-                'verbose_name_plural': 'Explore Floor Plans',
-                'ordering': ['-created_at'],
+                "verbose_name": "Explore Floor Plan",
+                "verbose_name_plural": "Explore Floor Plans",
+                "ordering": ["-created_at"],
             },
         ),
         migrations.CreateModel(
-            name='ExplorePhase',
+            name="ExplorePhase",
             fields=[
-                ('created_at', models.DateTimeField(auto_now_add=True, db_index=True, verbose_name='Created At')),
-                ('updated_at', models.DateTimeField(auto_now=True, verbose_name='Updated At')),
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False, verbose_name='ID')),
-                ('name', models.CharField(help_text="Phase label (e.g. 'Construction', 'Fit-out', 'Occupied')", max_length=80, verbose_name='Name')),
-                ('color', models.CharField(default='#8a8da6', help_text='CSS colour for pins in this phase', max_length=20, verbose_name='Pin Colour')),
-                ('position', models.PositiveSmallIntegerField(default=0, help_text='Display order in the palette', verbose_name='Position')),
-                ('project', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='explore_phases', to='environments.project', verbose_name='Project')),
+                (
+                    "created_at",
+                    models.DateTimeField(
+                        auto_now_add=True, db_index=True, verbose_name="Created At"
+                    ),
+                ),
+                ("updated_at", models.DateTimeField(auto_now=True, verbose_name="Updated At")),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "name",
+                    models.CharField(
+                        help_text="Phase label (e.g. 'Construction', 'Fit-out', 'Occupied')",
+                        max_length=80,
+                        verbose_name="Name",
+                    ),
+                ),
+                (
+                    "color",
+                    models.CharField(
+                        default="#8a8da6",
+                        help_text="CSS colour for pins in this phase",
+                        max_length=20,
+                        verbose_name="Pin Colour",
+                    ),
+                ),
+                (
+                    "position",
+                    models.PositiveSmallIntegerField(
+                        default=0, help_text="Display order in the palette", verbose_name="Position"
+                    ),
+                ),
+                (
+                    "project",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="explore_phases",
+                        to="environments.project",
+                        verbose_name="Project",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Explore Phase',
-                'verbose_name_plural': 'Explore Phases',
-                'ordering': ['position', 'name'],
+                "verbose_name": "Explore Phase",
+                "verbose_name_plural": "Explore Phases",
+                "ordering": ["position", "name"],
             },
         ),
         migrations.CreateModel(
-            name='ExplorePoint',
+            name="ExplorePoint",
             fields=[
-                ('created_at', models.DateTimeField(auto_now_add=True, db_index=True, verbose_name='Created At')),
-                ('updated_at', models.DateTimeField(auto_now=True, verbose_name='Updated At')),
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False, verbose_name='ID')),
-                ('client_id', models.CharField(db_index=True, help_text="Stable in-iframe id from Pavla's state.js (pt-xxxxxxxx)", max_length=64, verbose_name='Client ID')),
-                ('label', models.CharField(blank=True, max_length=80, verbose_name='Label')),
-                ('x_percent', models.DecimalField(decimal_places=3, help_text='0–100, percent of plan image width', max_digits=6, verbose_name='X (% of plan)')),
-                ('y_percent', models.DecimalField(decimal_places=3, help_text='0–100, percent of plan image height', max_digits=6, verbose_name='Y (% of plan)')),
-                ('table_links', models.JSONField(blank=True, default=list, help_text="List of {key, filterBy} per Pavla's PointTable shape", verbose_name='Linked Tables')),
-                ('created_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to=settings.AUTH_USER_MODEL, verbose_name='Created By')),
-                ('floor', models.ForeignKey(help_text='The IfcBuildingStorey this point sits on', on_delete=django.db.models.deletion.CASCADE, related_name='explore_points', to='ifc_processor.ifcspatialelement', verbose_name='Floor (Storey)')),
-                ('ifc_entity', models.ForeignKey(blank=True, help_text='The IfcSpace this point links to (for cross-tool focus)', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='explore_points', to='ifc_processor.ifcentity', verbose_name='IFC Entity')),
-                ('phase', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='points', to='facilities.explorephase', verbose_name='Phase')),
-                ('project', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='explore_points', to='environments.project', verbose_name='Project')),
+                (
+                    "created_at",
+                    models.DateTimeField(
+                        auto_now_add=True, db_index=True, verbose_name="Created At"
+                    ),
+                ),
+                ("updated_at", models.DateTimeField(auto_now=True, verbose_name="Updated At")),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "client_id",
+                    models.CharField(
+                        db_index=True,
+                        help_text="Stable in-iframe id from Pavla's state.js (pt-xxxxxxxx)",
+                        max_length=64,
+                        verbose_name="Client ID",
+                    ),
+                ),
+                ("label", models.CharField(blank=True, max_length=80, verbose_name="Label")),
+                (
+                    "x_percent",
+                    models.DecimalField(
+                        decimal_places=3,
+                        help_text="0–100, percent of plan image width",
+                        max_digits=6,
+                        verbose_name="X (% of plan)",
+                    ),
+                ),
+                (
+                    "y_percent",
+                    models.DecimalField(
+                        decimal_places=3,
+                        help_text="0–100, percent of plan image height",
+                        max_digits=6,
+                        verbose_name="Y (% of plan)",
+                    ),
+                ),
+                (
+                    "table_links",
+                    models.JSONField(
+                        blank=True,
+                        default=list,
+                        help_text="List of {key, filterBy} per Pavla's PointTable shape",
+                        verbose_name="Linked Tables",
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="+",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="Created By",
+                    ),
+                ),
+                (
+                    "floor",
+                    models.ForeignKey(
+                        help_text="The IfcBuildingStorey this point sits on",
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="explore_points",
+                        to="ifc_processor.ifcspatialelement",
+                        verbose_name="Floor (Storey)",
+                    ),
+                ),
+                (
+                    "ifc_entity",
+                    models.ForeignKey(
+                        blank=True,
+                        help_text="The IfcSpace this point links to (for cross-tool focus)",
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="explore_points",
+                        to="ifc_processor.ifcentity",
+                        verbose_name="IFC Entity",
+                    ),
+                ),
+                (
+                    "phase",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="points",
+                        to="facilities.explorephase",
+                        verbose_name="Phase",
+                    ),
+                ),
+                (
+                    "project",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="explore_points",
+                        to="environments.project",
+                        verbose_name="Project",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Explore Point',
-                'verbose_name_plural': 'Explore Points',
-                'ordering': ['-created_at'],
+                "verbose_name": "Explore Point",
+                "verbose_name_plural": "Explore Points",
+                "ordering": ["-created_at"],
             },
         ),
         migrations.CreateModel(
-            name='ExploreMedia',
+            name="ExploreMedia",
             fields=[
-                ('created_at', models.DateTimeField(auto_now_add=True, db_index=True, verbose_name='Created At')),
-                ('updated_at', models.DateTimeField(auto_now=True, verbose_name='Updated At')),
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False, verbose_name='ID')),
-                ('client_id', models.CharField(db_index=True, help_text="Stable in-iframe id from Pavla's state.js (m-xxxxxxxx)", max_length=64, verbose_name='Client ID')),
-                ('media_type', models.CharField(choices=[('photo', 'Photo'), ('360', '360° Panorama')], default='photo', max_length=16, verbose_name='Media Type')),
-                ('file', models.ImageField(upload_to='facilities/explore/media/%Y/%m/', verbose_name='File')),
-                ('taken_on', models.DateField(blank=True, null=True, verbose_name='Taken On')),
-                ('taken_at', models.TimeField(blank=True, null=True, verbose_name='Taken At')),
-                ('label', models.CharField(blank=True, max_length=120, verbose_name='Label')),
-                ('code', models.CharField(blank=True, help_text="Free-text photo code (e.g. 'IMG_4821')", max_length=80, verbose_name='Photo Code')),
-                ('description', models.TextField(blank=True, verbose_name='Description')),
-                ('uploaded_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to=settings.AUTH_USER_MODEL, verbose_name='Uploaded By')),
-                ('phase', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='media', to='facilities.explorephase', verbose_name='Phase')),
-                ('point', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='media', to='facilities.explorepoint', verbose_name='Point')),
+                (
+                    "created_at",
+                    models.DateTimeField(
+                        auto_now_add=True, db_index=True, verbose_name="Created At"
+                    ),
+                ),
+                ("updated_at", models.DateTimeField(auto_now=True, verbose_name="Updated At")),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "client_id",
+                    models.CharField(
+                        db_index=True,
+                        help_text="Stable in-iframe id from Pavla's state.js (m-xxxxxxxx)",
+                        max_length=64,
+                        verbose_name="Client ID",
+                    ),
+                ),
+                (
+                    "media_type",
+                    models.CharField(
+                        choices=[("photo", "Photo"), ("360", "360° Panorama")],
+                        default="photo",
+                        max_length=16,
+                        verbose_name="Media Type",
+                    ),
+                ),
+                (
+                    "file",
+                    models.ImageField(
+                        upload_to="facilities/explore/media/%Y/%m/", verbose_name="File"
+                    ),
+                ),
+                ("taken_on", models.DateField(blank=True, null=True, verbose_name="Taken On")),
+                ("taken_at", models.TimeField(blank=True, null=True, verbose_name="Taken At")),
+                ("label", models.CharField(blank=True, max_length=120, verbose_name="Label")),
+                (
+                    "code",
+                    models.CharField(
+                        blank=True,
+                        help_text="Free-text photo code (e.g. 'IMG_4821')",
+                        max_length=80,
+                        verbose_name="Photo Code",
+                    ),
+                ),
+                ("description", models.TextField(blank=True, verbose_name="Description")),
+                (
+                    "uploaded_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="+",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="Uploaded By",
+                    ),
+                ),
+                (
+                    "phase",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="media",
+                        to="facilities.explorephase",
+                        verbose_name="Phase",
+                    ),
+                ),
+                (
+                    "point",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="media",
+                        to="facilities.explorepoint",
+                        verbose_name="Point",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Explore Media',
-                'verbose_name_plural': 'Explore Media',
-                'ordering': ['-taken_on', '-created_at'],
+                "verbose_name": "Explore Media",
+                "verbose_name_plural": "Explore Media",
+                "ordering": ["-taken_on", "-created_at"],
             },
         ),
         migrations.AddConstraint(
-            model_name='explorephase',
-            constraint=models.UniqueConstraint(fields=('project', 'name'), name='unique_explore_phase_per_project'),
+            model_name="explorephase",
+            constraint=models.UniqueConstraint(
+                fields=("project", "name"), name="unique_explore_phase_per_project"
+            ),
         ),
         migrations.AddIndex(
-            model_name='explorepoint',
-            index=models.Index(fields=['floor', 'phase'], name='facilities__floor_i_b98317_idx'),
+            model_name="explorepoint",
+            index=models.Index(fields=["floor", "phase"], name="facilities__floor_i_b98317_idx"),
         ),
         migrations.AddIndex(
-            model_name='explorepoint',
-            index=models.Index(fields=['project', 'floor'], name='facilities__project_e03363_idx'),
+            model_name="explorepoint",
+            index=models.Index(fields=["project", "floor"], name="facilities__project_e03363_idx"),
         ),
         migrations.AddConstraint(
-            model_name='explorepoint',
-            constraint=models.UniqueConstraint(fields=('project', 'client_id'), name='unique_explore_point_per_project'),
+            model_name="explorepoint",
+            constraint=models.UniqueConstraint(
+                fields=("project", "client_id"), name="unique_explore_point_per_project"
+            ),
         ),
         migrations.AddIndex(
-            model_name='exploremedia',
-            index=models.Index(fields=['point', 'media_type'], name='facilities__point_i_76930f_idx'),
+            model_name="exploremedia",
+            index=models.Index(
+                fields=["point", "media_type"], name="facilities__point_i_76930f_idx"
+            ),
         ),
         migrations.AddConstraint(
-            model_name='exploremedia',
-            constraint=models.UniqueConstraint(fields=('point', 'client_id'), name='unique_explore_media_per_point'),
+            model_name="exploremedia",
+            constraint=models.UniqueConstraint(
+                fields=("point", "client_id"), name="unique_explore_media_per_point"
+            ),
         ),
     ]
