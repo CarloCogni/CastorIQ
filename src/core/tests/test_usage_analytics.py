@@ -601,9 +601,8 @@ def test_failure_record_taxonomy_empty_returns_zero_total():
 
 
 def test_failure_record_taxonomy_buckets_by_phase_and_category_and_tier():
-    from metacastor.models import FailureRecord
-
     from environments.tests.factories import ProjectFactory
+    from metacastor.models import FailureRecord
 
     project = ProjectFactory()
 
@@ -1071,8 +1070,8 @@ def test_ifc_ingestion_scatter_empty_returns_no_points():
 
 def test_ifc_ingestion_scatter_only_includes_completed_with_processed_at():
     """Failed / in-flight files must be excluded so the scatter is honest."""
-    from ifc_processor.models import IFCFile
     from environments.tests.factories import ProjectFactory
+    from ifc_processor.models import IFCFile
 
     project = ProjectFactory()
     now = timezone.now()
@@ -1161,8 +1160,8 @@ def test_investor_kpis_empty_dataset_returns_safe_defaults():
 
 
 def test_investor_kpis_sums_entities_for_completed_only():
-    from ifc_processor.models import IFCFile
     from environments.tests.factories import ProjectFactory
+    from ifc_processor.models import IFCFile
 
     project = ProjectFactory()
     IFCFile.objects.create(

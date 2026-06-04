@@ -66,6 +66,27 @@ target-version = "py311"
 select = ["E", "F", "I", "N", "W", "UP"]
 ignore = ["E501"]
 
+[tool.ruff.lint.per-file-ignores]
+# Tests pervasively use unittest.mock with PascalCase names (`MockSvc`,
+# `MockRAG`, `MockProc`) — that's the documented convention, not a bug.
+# `Status = WeeklyDigestConfig.Status` etc. are local aliases to enum classes,
+# also legitimate PascalCase.
+"**/tests/**" = ["N806"]
+"src/core/services/digest_email.py" = ["N806"]
+"src/facilities/views.py" = ["N806"]
+# Diagnostic / verification scripts at src/ root and a few service modules
+# do late imports after Django setup, after manually setting
+# DJANGO_SETTINGS_MODULE. E402 is intentional there.
+"src/verify_*.py" = ["E402"]
+"src/scheduling/parsers/p6xml_parser.py" = ["N813"]
+# `GREEN`, `GRAY`, `HDR_H`, `LEFT_W` are local constants in a draw routine —
+# they read naturally as uppercase even though Ruff treats them as variables.
+"src/ifc_viewer/services/colormap.py" = ["N806"]
+"src/ifc_viewer/views.py" = ["N806"]
+"src/scheduling/services/autolink.py" = ["N806"]
+"src/scheduling/services/linker.py" = ["N806"]
+"src/facilities/services/explore_catalog_service.py" = ["E741"]
+
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "config.settings.local"
 python_files = ["test_*.py"]

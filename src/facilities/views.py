@@ -2260,7 +2260,6 @@ class ExploreFloorVisibilityView(ProjectModifyAccessMixin, View):
         settings_row, _created = ExploreFloorSettings.objects.get_or_create(storey=storey)
         settings_row.hidden = not settings_row.hidden
         settings_row.save()
-        name = storey.entity.name if storey.entity_id else "storey"
         state = "hidden in" if settings_row.hidden else "shown in"
         logger.info("Explore storey %s %s Explore by user %s", storey_pk, state, request.user.pk)
         # Return the refreshed rows so the manager updates in place (modal stays open).

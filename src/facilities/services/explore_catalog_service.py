@@ -21,7 +21,7 @@ from typing import Any
 from environments.models import Project
 from facilities.models import ActionRequest, FacilityAsset, Permit, WorkOrder
 from facilities.services.workorder_service import KANBAN_STATUSES
-from ifc_processor.models import IFCEntity, IFCSpatialElement
+from ifc_processor.models import IFCEntity
 
 # IFC spatial container types — excluded from the "Elements" table (they are the
 # rooms/storeys, not elements placed in them).

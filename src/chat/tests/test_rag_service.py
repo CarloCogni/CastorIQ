@@ -260,7 +260,7 @@ class TestBuildHistoryWithinBudget:
         result = rag_service._build_history_within_budget(session, max_history_tokens=10)
 
         # With a 10-token budget, at most a couple of short lines can fit
-        lines = [l for l in result.split("\n") if l.strip()]
+        lines = [line for line in result.split("\n") if line.strip()]
         assert len(lines) <= 2
 
 
