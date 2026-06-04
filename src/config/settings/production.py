@@ -2,6 +2,8 @@
 
 import os
 
+from django.core.exceptions import ImproperlyConfigured
+
 from .base import *  # noqa: F401, F403
 
 DEBUG = False
@@ -47,7 +49,15 @@ SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 
 # Allowed hosts and CSRF origins from env so we don't bake the domain into code.
+# Empty / unset DJANGO_ALLOWED_HOSTS silently rejects every request (Django returns
+# 400 DisallowedHost for everything), which on first deploy looks like a hung site.
+# Fail at settings-load instead.
 ALLOWED_HOSTS = [h.strip() for h in os.getenv("DJANGO_ALLOWED_HOSTS", "").split(",") if h.strip()]
+if not ALLOWED_HOSTS:
+    raise ImproperlyConfigured(
+        "DJANGO_ALLOWED_HOSTS must be a non-empty comma-separated list of hostnames "
+        "(e.g. 'castoriq.io,www.castoriq.io')."
+    )
 CSRF_TRUSTED_ORIGINS = [
     o.strip() for o in os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",") if o.strip()
 ]
@@ -72,6 +82,23 @@ STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
 }
+
+# Channels layer — base.py defaults to InMemoryChannelLayer which is safe ONLY
+# while Daphne runs as a single worker. The moment ops scales horizontally,
+# WebSocket group fan-out (Modify pipeline progress, conflict scan, FM exports,
+# work-order broadcasts) silently stops crossing workers and clients miss events.
+#
+# Beta lives on Hetzner CCX13 with a single Daphne process, so InMemory is
+# correct today. This guard prevents the foot-gun if someone bumps the worker
+# count in docker-compose.prod.yml without first wiring a real backend
+# (channels_redis + REDIS_URL).
+_daphne_workers = int(os.getenv("DAPHNE_WORKER_COUNT", "1"))
+if _daphne_workers > 1:
+    raise ImproperlyConfigured(
+        f"DAPHNE_WORKER_COUNT={_daphne_workers} but CHANNEL_LAYERS is still "
+        "InMemoryChannelLayer. Multi-worker WS requires channels_redis + a "
+        "REDIS_URL-backed RedisChannelLayer. See base.py CHANNEL_LAYERS comment."
+    )
 
 # Database from environment
 DATABASES = {
