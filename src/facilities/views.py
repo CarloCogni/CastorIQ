@@ -2064,19 +2064,33 @@ def build_explore_storeys(project):
                 "generated_url": generated_url,
                 "image_source": (plan.image_source if plan else "uploaded"),
                 "cut_height_mm": (plan.cut_height_mm if plan else None),
-                "included_kinds": list(plan.included_kinds) if (plan and plan.included_kinds) else [],
+                "included_kinds": list(plan.included_kinds)
+                if (plan and plan.included_kinds)
+                else [],
                 "generated_at": (plan.generated_at if plan else None),
                 "knockout": getattr(plan, "knockout", False),
                 "hidden": getattr(getattr(storey, "explore_settings", None), "hidden", False),
-                "upload_url": reverse("facilities:explore_floor_plan_upload", args=[project.pk, storey.pk]),
-                "delete_url": reverse("facilities:explore_floor_plan_delete", args=[project.pk, storey.pk]),
+                "upload_url": reverse(
+                    "facilities:explore_floor_plan_upload", args=[project.pk, storey.pk]
+                ),
+                "delete_url": reverse(
+                    "facilities:explore_floor_plan_delete", args=[project.pk, storey.pk]
+                ),
                 "delete_generated_url": reverse(
                     "facilities:explore_floor_plan_generated_delete", args=[project.pk, storey.pk]
                 ),
-                "visibility_url": reverse("facilities:explore_floor_visibility", args=[project.pk, storey.pk]),
-                "rename_url": reverse("facilities:explore_floor_rename", args=[project.pk, storey.pk]),
-                "generate_url": reverse("facilities:explore_floor_plan_generate", args=[project.pk, storey.pk]),
-                "source_url": reverse("facilities:explore_floor_plan_source", args=[project.pk, storey.pk]),
+                "visibility_url": reverse(
+                    "facilities:explore_floor_visibility", args=[project.pk, storey.pk]
+                ),
+                "rename_url": reverse(
+                    "facilities:explore_floor_rename", args=[project.pk, storey.pk]
+                ),
+                "generate_url": reverse(
+                    "facilities:explore_floor_plan_generate", args=[project.pk, storey.pk]
+                ),
+                "source_url": reverse(
+                    "facilities:explore_floor_plan_source", args=[project.pk, storey.pk]
+                ),
             }
         )
     return descriptors
@@ -2223,9 +2237,7 @@ class ExploreFloorPlanDeleteView(ProjectModifyAccessMixin, View):
             # viewer doesn't blank out.
             plan.image_source = ExploreFloorPlan.ImageSource.GENERATED
             plan.save()
-        logger.info(
-            "Removed uploaded plan for storey %s by user %s", storey_pk, request.user.pk
-        )
+        logger.info("Removed uploaded plan for storey %s by user %s", storey_pk, request.user.pk)
         return _explore_floor_rows_response(request, project)
 
 
@@ -2250,9 +2262,7 @@ class ExploreFloorVisibilityView(ProjectModifyAccessMixin, View):
         settings_row.save()
         name = storey.entity.name if storey.entity_id else "storey"
         state = "hidden in" if settings_row.hidden else "shown in"
-        logger.info(
-            "Explore storey %s %s Explore by user %s", storey_pk, state, request.user.pk
-        )
+        logger.info("Explore storey %s %s Explore by user %s", storey_pk, state, request.user.pk)
         # Return the refreshed rows so the manager updates in place (modal stays open).
         return _explore_floor_rows_response(request, project)
 
@@ -2339,9 +2349,7 @@ class ExploreFloorPlanGeneratedDeleteView(ProjectModifyAccessMixin, View):
         if plan.image_source == ExploreFloorPlan.ImageSource.GENERATED:
             plan.image_source = ExploreFloorPlan.ImageSource.UPLOADED
         plan.save()
-        logger.info(
-            "Removed generated plan for storey %s by user %s", storey_pk, request.user.pk
-        )
+        logger.info("Removed generated plan for storey %s by user %s", storey_pk, request.user.pk)
         return _explore_floor_rows_response(request, project)
 
 
@@ -2488,7 +2496,10 @@ class ExploreFloorRenameView(ProjectModifyAccessMixin, View):
 
         logger.info(
             "Explore proposed rename of storey %s ('%s' -> '%s') by user %s",
-            storey_pk, old_name, new_name, request.user.pk,
+            storey_pk,
+            old_name,
+            new_name,
+            request.user.pk,
         )
         return toast_response(
             "Rename proposed — review & approve it in Modify to rewrite the IFC.",
@@ -2530,6 +2541,39 @@ class ExploreCatalogApiView(_ExploreApiBase):
         return JsonResponse({"tables": build_explore_catalog(project)})
 
 
+def _explore_snapshot_invalid_reason(snapshot: dict) -> str | None:
+    """Sub-field type validation for the iframe postMessage snapshot.
+
+    Returns a short reason string if any top-level field has the wrong shape,
+    or ``None`` if the snapshot is structurally acceptable. Per-item content
+    (coord clamping, phase resolution, kind whitelisting) is handled defensively
+    by the downstream services; this helper only catches gross type mismatches
+    (e.g. iframe bug or tampered client sends ``points`` as a dict instead of
+    a list of dicts) that would crash the services with AttributeError or
+    TypeError instead of being silently ignored.
+    """
+    phases = snapshot.get("phases")
+    if phases is not None:
+        if not isinstance(phases, list) or not all(isinstance(p, str) for p in phases):
+            return "phases must be a list of strings"
+
+    colors = snapshot.get("phaseColors")
+    if colors is not None and not isinstance(colors, dict):
+        return "phaseColors must be an object"
+
+    floors = snapshot.get("floors")
+    if floors is not None:
+        if not isinstance(floors, list) or not all(isinstance(f, dict) for f in floors):
+            return "floors must be a list of objects"
+
+    points = snapshot.get("points")
+    if points is not None:
+        if not isinstance(points, list) or not all(isinstance(p, dict) for p in points):
+            return "points must be a list of objects"
+
+    return None
+
+
 class ExploreUserStateApiView(ProjectModifyAccessMixin, View):
     """GET → saved working set in Pavla's ``SET_USER_STATE`` shape.
 
@@ -2569,6 +2613,10 @@ class ExploreUserStateApiView(ProjectModifyAccessMixin, View):
         snapshot = payload.get("state") if isinstance(payload, dict) else None
         if not isinstance(snapshot, dict):
             return toast_response("Missing state in payload", "error", status=400)
+
+        reason = _explore_snapshot_invalid_reason(snapshot)
+        if reason is not None:
+            return toast_response(f"Malformed explore state: {reason}", "error", status=400)
 
         sync_phases_for_project(
             project,
