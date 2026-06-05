@@ -1,0 +1,158 @@
+<!doctype html>
+<!--
+  static/errors/404.html — served by nginx (NOT Django) when nginx itself
+  originates a 404. This covers misses under alias-served locations
+  (/media/, /static/, /__errors/), where the request never reaches Daphne
+  and so Django's own core/templates/errors/404.html cannot fire.
+  Must be fully self-contained: no template tags, no external CSS, only
+  assets nginx serves directly from the static volume.
+  Copy is media-flavoured but generic enough for static-file misses too.
+-->
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex,nofollow">
+    <title>File not available — 404 — CastorIQ</title>
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --castor-primary: #3b82f6;
+            --castor-blue-light: #4facfe;
+            --castor-blue-cyan: #00f2fe;
+            --castor-accent: #8b5cf6;
+            --castor-bg: #050505;
+            --castor-text: #e7e7e7;
+            --castor-text-muted: #a4a6ab;
+            --castor-text-faint: #6b7076;
+            --castor-border: #1f2024;
+        }
+        * { box-sizing: border-box; }
+        html, body { height: 100%; margin: 0; padding: 0; }
+        body {
+            background: var(--castor-bg);
+            color: var(--castor-text);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            line-height: 1.6;
+        }
+        .shell {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem 1.25rem 5rem;
+            text-align: center;
+            animation: fadeIn 0.5s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .logo {
+            height: 56px;
+            margin-bottom: 1.25rem;
+            animation: bob 4s ease-in-out infinite;
+            filter: drop-shadow(0 4px 18px rgba(79, 172, 254, 0.30));
+        }
+        @keyframes bob {
+            0%, 100% { transform: translateY(0); }
+            50%      { transform: translateY(-7px); }
+        }
+        .code {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: clamp(6rem, 18vw, 11rem);
+            font-weight: 800;
+            line-height: 0.95;
+            letter-spacing: -0.05em;
+            margin: 0;
+            background: linear-gradient(
+                90deg,
+                var(--castor-blue-light) 0%,
+                var(--castor-blue-cyan) 25%,
+                var(--castor-accent) 50%,
+                var(--castor-blue-cyan) 75%,
+                var(--castor-blue-light) 100%
+            );
+            background-size: 200% 100%;
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            animation: shimmer 6s linear infinite;
+        }
+        @keyframes shimmer {
+            0%   { background-position: 0% 50%; }
+            100% { background-position: 200% 50%; }
+        }
+        .title {
+            font-size: clamp(1.4rem, 3vw, 1.85rem);
+            font-weight: 600;
+            margin: 1.25rem 0 0.6rem;
+            letter-spacing: -0.01em;
+        }
+        .message {
+            color: var(--castor-text-muted);
+            max-width: 540px;
+            margin: 0 auto 2rem;
+            font-size: 1.05rem;
+        }
+        .actions { display: flex; gap: 0.75rem; flex-wrap: wrap; justify-content: center; }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            padding: 0.65rem 1.5rem;
+            border-radius: 10px;
+            font-weight: 500;
+            font-size: 0.95rem;
+            text-decoration: none;
+            border: 1px solid transparent;
+            transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .btn-primary { background: var(--castor-primary); color: #fff; border-color: var(--castor-primary); }
+        .btn-primary:hover { background: #2563eb; border-color: #2563eb; transform: translateY(-1px); box-shadow: 0 8px 20px rgba(59, 130, 246, 0.35); }
+        .btn-secondary { background: transparent; color: var(--castor-text-muted); border-color: var(--castor-border); }
+        .btn-secondary:hover { color: var(--castor-text); border-color: var(--castor-text-muted); }
+        .footer {
+            position: fixed; bottom: 1rem; left: 0; right: 0;
+            text-align: center; font-size: 0.8rem; color: var(--castor-text-faint);
+        }
+        .wordmark { font-family: 'Inter', sans-serif; letter-spacing: -0.02em; display: inline-flex; align-items: baseline; }
+        .wordmark .prefix { font-weight: 700; background: linear-gradient(90deg, #fff 0%, var(--castor-blue-light) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+        .wordmark .iq { font-weight: 800; color: var(--castor-blue-cyan); letter-spacing: -0.04em; margin-left: 0.04em; }
+        @media (prefers-reduced-motion: reduce) {
+            .shell, .logo, .code { animation: none; }
+        }
+        @media (max-width: 480px) {
+            .shell { padding-top: 1rem; }
+            .btn { width: 100%; justify-content: center; }
+        }
+    </style>
+</head>
+<body>
+    <main class="shell">
+        <img src="/static/images/castor-logo-nobg.png" alt="" class="logo">
+        <h1 class="code">404</h1>
+        <h2 class="title">This file isn&rsquo;t available</h2>
+        <p class="message">
+            The document may have been removed, or its upload didn&rsquo;t finish.
+            If you uploaded it recently, try re-uploading from the project&rsquo;s
+            documents tab.
+        </p>
+        <div class="actions">
+            <a href="/projects/" class="btn btn-primary">
+                <span aria-hidden="true">&larr;</span> Back to projects
+            </a>
+            <a href="mailto:carlo.cogni@protonmail.com?subject=Castor%20missing%20file&body=URL:%20" class="btn btn-secondary">
+                Report this
+            </a>
+        </div>
+    </main>
+    <footer class="footer">
+        <span class="wordmark"><span class="prefix">Castor</span><span class="iq">IQ</span></span>
+    </footer>
+</body>
+</html>
