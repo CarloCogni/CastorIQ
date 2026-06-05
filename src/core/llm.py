@@ -26,6 +26,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from typing import Any, TypeVar
 
 from django.conf import settings
@@ -34,6 +35,23 @@ from langchain_core.language_models.chat_models import BaseChatModel
 logger = logging.getLogger(__name__)
 
 _T = TypeVar("_T")
+
+
+@dataclass(frozen=True)
+class ResolvedLLM:
+    """Outcome of (site config, user override, BYOK key) resolution.
+
+    - provider/model: chosen provider tag and exact model identifier.
+    - api_key: BYOK plaintext when ``byok`` is True; None otherwise (the
+      builder falls back to settings.{ANTHROPIC,GROQ}_API_KEY).
+    - byok: True when the request will use the user's own credentials,
+      bypassing the shared-pool token budget.
+    """
+
+    provider: str
+    model: str
+    api_key: str | None
+    byok: bool
 
 
 class LLMConfigurationError(RuntimeError):
@@ -53,6 +71,22 @@ class TokenBudgetExceededError(RuntimeError):
         self.cap = cap
 
 
+class BYOKAuthError(RuntimeError):
+    """Raised when a BYOK call to a cloud provider returns 401 (invalid key)."""
+
+    def __init__(self, message: str, *, provider: str = ""):
+        super().__init__(message)
+        self.provider = provider
+
+
+class BYOKRateLimitError(RuntimeError):
+    """Raised when a BYOK call to a cloud provider returns 429 (rate-limited)."""
+
+    def __init__(self, message: str, *, provider: str = ""):
+        super().__init__(message)
+        self.provider = provider
+
+
 # Provider price table — USD per million tokens (input / output). Numbers are
 # rough public list prices as of 2026-05; exact reconciliation against the
 # provider dashboards happens during dogfood. Update without ceremony as
@@ -65,12 +99,17 @@ _PRICE_TABLE: dict[tuple[str, str], tuple[float, float]] = {
     # Wildcard fallback for any future Anthropic model; mirrors Sonnet (the Ask default).
     # Cache-aware pricing (write/read tiers) is not modelled here yet — see follow-up note.
     ("anthropic", "*"): (3.0, 15.0),
-    ("groq", "meta-llama/llama-4-scout-17b-16e-instruct"): (0.11, 0.34),
+    # Groq production models — pricing as of 2026-06 from https://console.groq.com/docs/models
+    ("groq", "llama-3.1-8b-instant"): (0.05, 0.08),
     ("groq", "llama-3.3-70b-versatile"): (0.59, 0.79),
-    ("groq", "qwen/qwen3-32b"): (0.29, 0.59),
     ("groq", "openai/gpt-oss-120b"): (0.15, 0.60),
-    # Wildcard fallback for any Groq model we haven't priced yet — picks the
-    # current default's prices so cost logging stays sane until the table is updated.
+    ("groq", "openai/gpt-oss-20b"): (0.075, 0.30),
+    # Groq preview / legacy models — kept so the operator's site default (Scout)
+    # and any historical LLMCallLog rows still price correctly.
+    ("groq", "meta-llama/llama-4-scout-17b-16e-instruct"): (0.11, 0.34),
+    ("groq", "qwen/qwen3-32b"): (0.29, 0.59),
+    # Wildcard fallback for any Groq model we haven't priced yet — picks a
+    # safe middle price so cost logging stays sane until the table is updated.
     ("groq", "*"): (0.11, 0.34),
 }
 
@@ -131,7 +170,16 @@ class TrackedChatModel:
     wrapped model so chain composition keeps working.
     """
 
-    def __init__(self, llm: BaseChatModel, *, user, provider: str, model: str, purpose: str):
+    def __init__(
+        self,
+        llm: BaseChatModel,
+        *,
+        user,
+        provider: str,
+        model: str,
+        purpose: str,
+        byok: bool = False,
+    ):
         # Use object.__setattr__ to bypass any Pydantic frozen-field guards on
         # the wrapped LLM — we never write to the underlying model from here.
         object.__setattr__(self, "_llm", llm)
@@ -139,6 +187,10 @@ class TrackedChatModel:
         object.__setattr__(self, "provider", provider)  # exposed so cached_system can detect
         object.__setattr__(self, "model_name", model)
         object.__setattr__(self, "_purpose", purpose)
+        # BYOK calls use the user's own credentials, so they bypass the shared
+        # token budget. They still write an LLMCallLog row (observability) but
+        # never increment UserTokenBudget.used_today.
+        object.__setattr__(self, "byok", byok)
 
     def __getattr__(self, name):
         # Falls through to the underlying LLM for everything we don't override.
@@ -158,8 +210,11 @@ class TrackedChatModel:
         from core.models import LLMCallLog, UserTokenBudget
 
         is_cloud = self.provider != "ollama"
+        # BYOK calls use the user's own credentials — never gated by the
+        # shared-pool token budget. Managed cloud calls still are.
+        meters_budget = is_cloud and not self.byok
         budget = None
-        if is_cloud and self._user and getattr(self._user, "is_authenticated", False):
+        if meters_budget and self._user and getattr(self._user, "is_authenticated", False):
             try:
                 budget = UserTokenBudget.load(self._user)
                 budget.reset_if_new_day()
@@ -186,6 +241,23 @@ class TrackedChatModel:
         except Exception as e:
             succeeded = False
             error_type = type(e).__name__
+            # Translate provider 401 / 429 into typed BYOK errors so the chat
+            # and writeback layers can render a friendly "your key was
+            # rejected, fix it in Settings" message instead of a raw traceback.
+            # Detection is by status_code attribute, which both the anthropic
+            # and groq SDKs set on their APIStatusError subclasses.
+            if self.byok:
+                status = getattr(e, "status_code", None)
+                if status == 401:
+                    raise BYOKAuthError(
+                        f"Your {self.provider.title()} API key was rejected by the provider.",
+                        provider=self.provider,
+                    ) from e
+                if status == 429:
+                    raise BYOKRateLimitError(
+                        f"Your {self.provider.title()} key hit the provider's rate limit.",
+                        provider=self.provider,
+                    ) from e
             raise
         finally:
             elapsed_ms = int((time.perf_counter() - t0) * 1000)
@@ -208,6 +280,7 @@ class TrackedChatModel:
                     latency_ms=elapsed_ms,
                     succeeded=succeeded,
                     error_type=error_type[:120],
+                    byok=self.byok,
                 )
             except (OperationalError, ProgrammingError):
                 pass  # DB not ready — observability is best-effort.
@@ -298,16 +371,112 @@ def _user_ollama_override(user) -> str | None:
         return None
 
 
+def _resolve_llm_choice(user, purpose: str) -> ResolvedLLM:
+    """Decide provider, model, and credentials for one call.
+
+    Resolution order:
+
+    1. ``LLM_MASTER_KILL`` is checked in get_llm() itself (raise rather than
+       silently route).
+    2. ``SiteLLMConfig.force_local_ollama`` always wins (kill switch — beats
+       BYOK overrides too, so the operator can pin every call to local Ollama
+       during an incident).
+    3. ``UserLLMConfig.{purpose}_provider_override`` — if non-blank:
+         - ``"ollama"``: switch to Ollama, apply the user's active_model.
+         - ``"anthropic"``/``"groq"`` AND user has a stored key → BYOK
+           (the user's chosen model + decrypted key).
+         - ``"anthropic"``/``"groq"`` AND key blank → fall back to site
+           default and log a warning. The atomic reset in ``byok_service``
+           normally prevents this, but the fallback is defense-in-depth.
+    4. Otherwise → SiteLLMConfig defaults (managed pool).
+    """
+    # Kill switch first: force_local_ollama beats every per-user setting so the
+    # operator can pin every call to local Ollama during an incident.
+    try:
+        from core.models import SiteLLMConfig
+
+        if SiteLLMConfig.load().force_local_ollama:
+            return ResolvedLLM("ollama", settings.OLLAMA_MODEL, None, False)
+    except Exception:
+        pass  # DB not ready (migrations, tests) — fall through.
+
+    site_provider, site_model = _resolve_site_config(purpose)
+
+    if not (user and getattr(user, "is_authenticated", False)):
+        # Anonymous or no user: site defaults only, no BYOK.
+        if site_provider == "ollama":
+            return ResolvedLLM("ollama", settings.OLLAMA_MODEL, None, False)
+        return ResolvedLLM(site_provider, site_model, None, False)
+
+    try:
+        from core.models import UserLLMConfig
+
+        cfg = UserLLMConfig.load(user)
+    except Exception:
+        cfg = None
+
+    override = ""
+    if cfg is not None:
+        override = getattr(cfg, f"{purpose}_provider_override", "") or ""
+
+    # No override — follow site config (Ollama may still be the user's model).
+    if not override:
+        if site_provider == "ollama":
+            return ResolvedLLM(
+                "ollama",
+                (cfg.active_model if cfg else "") or settings.OLLAMA_MODEL,
+                None,
+                False,
+            )
+        return ResolvedLLM(site_provider, site_model, None, False)
+
+    if override == "ollama":
+        return ResolvedLLM(
+            "ollama",
+            (cfg.active_model if cfg else "") or settings.OLLAMA_MODEL,
+            None,
+            False,
+        )
+
+    if override in ("anthropic", "groq"):
+        key = cfg.anthropic_api_key if override == "anthropic" else cfg.groq_api_key
+        if not key:
+            # Defense-in-depth: byok_service.remove_key() normally clears the
+            # override atomically when the key is wiped. If we land here, treat
+            # it as a transient race and fall back to the site default.
+            logger.warning(
+                "User %s set %s override to %s but has no stored key; falling back to site default",
+                user.pk,
+                purpose,
+                override,
+            )
+            if site_provider == "ollama":
+                return ResolvedLLM("ollama", settings.OLLAMA_MODEL, None, False)
+            return ResolvedLLM(site_provider, site_model, None, False)
+
+        catalog_model = getattr(cfg, f"{override}_model", "") or ""
+        if not catalog_model:
+            # User hasn't picked one yet — fall back to the curated default.
+            from core.llm_catalog import default_model_for
+
+            catalog_model = default_model_for(override)
+
+        return ResolvedLLM(override, catalog_model, key, True)
+
+    # Unknown override value — treat as site default rather than crashing.
+    logger.warning("Unknown provider override %r for user %s; ignoring", override, user.pk)
+    if site_provider == "ollama":
+        return ResolvedLLM("ollama", settings.OLLAMA_MODEL, None, False)
+    return ResolvedLLM(site_provider, site_model, None, False)
+
+
 def resolve_model_name(user=None, purpose: str = "modify") -> str:
     """
     Backward-compatible helper used by call sites that only need the model tag.
 
-    Honours the per-user Ollama override when the active provider is Ollama.
+    Honours per-user BYOK and Ollama overrides.
     """
-    provider, model = _resolve_site_config(purpose)
-    if provider == "ollama":
-        return _user_ollama_override(user) or model
-    return model
+    return _resolve_llm_choice(user, purpose).model
 
 
 def get_llm(
@@ -331,40 +500,54 @@ def get_llm(
                      so call sites can stay provider-agnostic. Provider-specific
                      unknowns are passed through as-is.
     """
-    provider, model = _resolve_site_config(purpose)
+    choice = _resolve_llm_choice(user, purpose)
 
-    if provider == "ollama":
-        override = _user_ollama_override(user)
-        if override:
-            model = override
-
-    if provider != "ollama" and settings.LLM_MASTER_KILL:
+    if choice.provider != "ollama" and settings.LLM_MASTER_KILL:
         raise LLMMasterKillError(
             "LLM_MASTER_KILL is set: cloud LLM calls are disabled. "
             "Flip force_local_ollama in SiteLLMConfig to use local Ollama."
         )
 
-    builder = _BUILDERS.get(provider)
+    builder = _BUILDERS.get(choice.provider)
     if builder is None:
-        raise LLMConfigurationError(f"Unknown LLM provider: {provider!r}")
+        raise LLMConfigurationError(f"Unknown LLM provider: {choice.provider!r}")
 
     logger.debug(
-        "LLM init: provider=%s model=%s user=%s temp=%s purpose=%s",
-        provider,
-        model,
+        "LLM init: provider=%s model=%s user=%s temp=%s purpose=%s byok=%s",
+        choice.provider,
+        choice.model,
         user,
         temperature,
         purpose,
+        choice.byok,
     )
-    raw = builder(model=model, temperature=temperature, format_json=format_json, kwargs=kwargs)
-    return TrackedChatModel(raw, user=user, provider=provider, model=model, purpose=purpose)
+    raw = builder(
+        model=choice.model,
+        temperature=temperature,
+        format_json=format_json,
+        kwargs=kwargs,
+        api_key=choice.api_key,
+    )
+    return TrackedChatModel(
+        raw,
+        user=user,
+        provider=choice.provider,
+        model=choice.model,
+        purpose=purpose,
+        byok=choice.byok,
+    )
 
 
 # --- provider builders ----------------------------------------------------
 
 
 def _build_ollama(
-    *, model: str, temperature: float, format_json: bool, kwargs: dict
+    *,
+    model: str,
+    temperature: float,
+    format_json: bool,
+    kwargs: dict,
+    api_key: str | None = None,  # accepted for signature parity, unused
 ) -> BaseChatModel:
     from langchain_ollama import ChatOllama
 
@@ -401,9 +584,16 @@ def _translate_for_cloud(kwargs: dict) -> dict:
 
 
 def _build_anthropic(
-    *, model: str, temperature: float, format_json: bool, kwargs: dict
+    *,
+    model: str,
+    temperature: float,
+    format_json: bool,
+    kwargs: dict,
+    api_key: str | None = None,
 ) -> BaseChatModel:
-    if not settings.ANTHROPIC_API_KEY:
+    """Build a ChatAnthropic. ``api_key`` overrides settings.ANTHROPIC_API_KEY (BYOK)."""
+    effective_key = api_key or settings.ANTHROPIC_API_KEY
+    if not effective_key:
         raise LLMConfigurationError("ANTHROPIC_API_KEY is not configured")
     from langchain_anthropic import ChatAnthropic
 
@@ -418,15 +608,22 @@ def _build_anthropic(
     return ChatAnthropic(
         model=model,
         temperature=temperature,
-        api_key=settings.ANTHROPIC_API_KEY,
+        api_key=effective_key,
         **cloud_kwargs,
     )
 
 
 def _build_groq(
-    *, model: str, temperature: float, format_json: bool, kwargs: dict
+    *,
+    model: str,
+    temperature: float,
+    format_json: bool,
+    kwargs: dict,
+    api_key: str | None = None,
 ) -> BaseChatModel:
-    if not settings.GROQ_API_KEY:
+    """Build a ChatGroq. ``api_key`` overrides settings.GROQ_API_KEY (BYOK)."""
+    effective_key = api_key or settings.GROQ_API_KEY
+    if not effective_key:
         raise LLMConfigurationError("GROQ_API_KEY is not configured")
     from langchain_groq import ChatGroq
 
@@ -437,7 +634,7 @@ def _build_groq(
     return ChatGroq(
         model=model,
         temperature=temperature,
-        api_key=settings.GROQ_API_KEY,
+        api_key=effective_key,
         **cloud_kwargs,
     )
 

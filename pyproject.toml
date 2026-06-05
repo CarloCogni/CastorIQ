@@ -42,6 +42,7 @@ dependencies = [
     "crispy-bootstrap5>=2025.10",
     "django-ratelimit>=4.1",
     "django-axes>=7.0",
+    "cryptography>=42",
 ]
 
 [project.optional-dependencies]

@@ -45,6 +45,18 @@
                     </div>
                     <div class="d-flex gap-2 align-items-start">
                         <span class="badge rounded-pill flex-shrink-0 mt-1"
+                              style="background-color: rgba(59, 130, 246, 0.15); color: var(--castor-primary, #3b82f6); border: 1px solid rgba(59, 130, 246, 0.3);">
+                            <i class="bi bi-key-fill"></i> BYOK
+                        </span>
+                        <span class="text-secondary">
+                            <strong class="text-body">Bring Your Own Key.</strong> Paste your own Anthropic
+                            or Groq API key, pick a model per purpose (Ask, Modify), and your calls bypass
+                            the shared daily cap. Keys are encrypted at rest, never logged, scoped to your
+                            account, and sent only to the named provider's API.
+                        </span>
+                    </div>
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge rounded-pill flex-shrink-0 mt-1"
                               style="background-color: rgba(148, 163, 184, 0.15); color: var(--bs-body-color); border: 1px solid var(--bs-border-color);">
                             <i class="bi bi-person"></i> Account
                         </span>
@@ -54,6 +66,18 @@
                             address on the release notes.
                         </span>
                     </div>
+                </div>
+
+                <!-- 2a. How BYOK routes calls -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-arrow-right-circle me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    How BYOK routes calls
+                </p>
+                <div class="d-flex flex-column gap-1 fs-8 text-secondary mb-4">
+                    <span><i class="bi bi-dot"></i><strong class="text-body">Per-purpose.</strong> Ask and Modify can each point at a different provider — mirrors the site default (Anthropic for Ask, Groq for Modify).</span>
+                    <span><i class="bi bi-dot"></i><strong class="text-body">Cloud option = grey until key is saved.</strong> The dropdown only enables a provider once you've stored a key for it.</span>
+                    <span><i class="bi bi-dot"></i><strong class="text-body">Removing a key auto-reverts the routing.</strong> If you delete your Anthropic key while it was selected, that purpose drops back to the site default in the same response.</span>
+                    <span><i class="bi bi-dot"></i><strong class="text-body">Per-call disclosure.</strong> The Ask and Modify input bars show a small badge identifying which provider that call will use, so you always know whose dollar is paying.</span>
                 </div>
 
                 <!-- 3. What's host-controlled in the beta -->
@@ -74,9 +98,9 @@
                     What's coming
                 </p>
                 <div class="d-flex flex-column gap-1 fs-8 text-secondary mb-4">
-                    <span><i class="bi bi-dot"></i><strong class="text-body">Bring Your Own Key (v1.1).</strong> Plug in your own Anthropic or Groq API key to bypass the shared cap. Encrypted at rest, scoped to your account.</span>
                     <span><i class="bi bi-dot"></i><strong class="text-body">RAG tuning.</strong> Per-user chunk size, top-K, and similarity threshold.</span>
                     <span><i class="bi bi-dot"></i><strong class="text-body">Notifications.</strong> Opt-in email for processing errors and write-back conflicts.</span>
+                    <span><i class="bi bi-dot"></i><strong class="text-body">BYOK key verification.</strong> A "Verify" button that pings the provider before you discover a typo on your first real Ask.</span>
                 </div>
 
                 {% if user.is_staff %}

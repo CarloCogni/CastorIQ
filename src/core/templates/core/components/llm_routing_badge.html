@@ -1,0 +1,36 @@
+{% comment %}
+core/templates/core/components/llm_routing_badge.html — per-call provider disclosure.
+Include with:
+   {% include "core/components/llm_routing_badge.html" with purpose="ask" %}
+   {% include "core/components/llm_routing_badge.html" with purpose="modify" %}
+Renders nothing if llm_routing data isn't in context (anonymous user, DB
+unavailable, etc.) — never crashes the chat page.
+{% endcomment %}
+
+{% if purpose == "ask" and llm_routing.ask %}
+  <div class="llm-routing-badge d-inline-flex align-items-center gap-1 fs-8 px-2 py-1 rounded"
+       title="Sending to: {{ llm_routing.ask.label }} · model: {{ llm_routing.ask.detail }}"
+       style="background-color: var(--bs-body-bg); border: 1px solid var(--bs-border-color); color: var(--bs-secondary-color);">
+    {% if llm_routing.ask.tone == "ollama" %}
+      <i class="bi bi-hdd-stack"></i>
+    {% elif llm_routing.ask.byok %}
+      <i class="bi bi-key-fill" style="color: var(--castor-primary, #3b82f6);"></i>
+    {% else %}
+      <i class="bi bi-cloud"></i>
+    {% endif %}
+    <span>{{ llm_routing.ask.label }}</span>
+  </div>
+{% elif purpose == "modify" and llm_routing.modify %}
+  <div class="llm-routing-badge d-inline-flex align-items-center gap-1 fs-8 px-2 py-1 rounded"
+       title="Sending to: {{ llm_routing.modify.label }} · model: {{ llm_routing.modify.detail }}"
+       style="background-color: var(--bs-body-bg); border: 1px solid var(--bs-border-color); color: var(--bs-secondary-color);">
+    {% if llm_routing.modify.tone == "ollama" %}
+      <i class="bi bi-hdd-stack"></i>
+    {% elif llm_routing.modify.byok %}
+      <i class="bi bi-key-fill" style="color: var(--castor-primary, #3b82f6);"></i>
+    {% else %}
+      <i class="bi bi-cloud"></i>
+    {% endif %}
+    <span>{{ llm_routing.modify.label }}</span>
+  </div>
+{% endif %}

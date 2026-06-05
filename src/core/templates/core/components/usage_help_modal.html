@@ -1,0 +1,119 @@
+<!-- core/components/usage_help_modal.html — "How usage and limits work"
+     Explains the two strips on the projects landing (storage + tokens),
+     plus how BYOK and local Ollama interact with the token cap. Included
+     from environments/project_list.html with a `?` help pill on the heading. -->
+
+<div class="modal fade" id="usageHelpModal" tabindex="-1" aria-labelledby="usageHelpLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+
+            <div class="modal-header border-bottom px-4 py-3"
+                 style="border-color: var(--bs-border-color) !important;">
+                <h5 class="modal-title fw-semibold fs-6 mb-0" id="usageHelpLabel">
+                    <i class="bi bi-bar-chart-line me-2" style="color: var(--castor-primary, #3b82f6);"></i>
+                    How usage and limits work
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body px-4 py-4">
+
+                <!-- 1. What is it? -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-box-seam me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    What are these two strips?
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    The two banners at the top of this page summarise your account's two
+                    consumption surfaces during the beta:
+                    <strong class="text-body">storage</strong> (files you've uploaded plus the
+                    per-project Git history of your Modify approvals) and
+                    <strong class="text-body">tokens</strong> (LLM input + output for the day,
+                    only for calls that draw from the host's shared pool).
+                </p>
+
+                <!-- 2. Storage -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-hdd me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    Storage
+                </p>
+                <div class="d-flex flex-column gap-1 fs-8 text-secondary mb-4">
+                    <span><i class="bi bi-dot"></i><strong class="text-body">Files</strong> — IFC models and documents you've uploaded across all your projects.</span>
+                    <span><i class="bi bi-dot"></i><strong class="text-body">History</strong> — per-project Git repositories that track every IFC modification you approve. Grows as you use Modify.</span>
+                    <span><i class="bi bi-dot"></i><strong class="text-body">Default quota: 1 GB.</strong> Recalculated when you visit this page. Email the operator to request an increase.</span>
+                </div>
+
+                <!-- 3. Tokens -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-coin me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    Tokens — the 50,000/day cap explained
+                </p>
+                <div class="d-flex flex-column gap-1 fs-8 text-secondary mb-2">
+                    <span><i class="bi bi-dot"></i><strong class="text-body">What counts:</strong> input + output tokens for every LLM call routed through the host's <strong class="text-body">shared pool</strong> ($150 of pre-paid Anthropic + Groq credit funding the beta).</span>
+                    <span><i class="bi bi-dot"></i><strong class="text-body">What doesn't count:</strong> calls using <em>your own</em> Anthropic / Groq API key (BYOK), and any call routed through <em>local Ollama</em>.</span>
+                    <span><i class="bi bi-dot"></i><strong class="text-body">Reset:</strong> daily at midnight UTC.</span>
+                    <span><i class="bi bi-dot"></i><strong class="text-body">Per-call visibility:</strong> the Ask and Modify chat input bars show a "Sending to: …" badge so you always know which path the next call will take.</span>
+                </div>
+                <p class="text-secondary fs-8 mb-4">
+                    <i class="bi bi-info-circle me-1"></i>
+                    The banner only renders when at least one of your purposes (Ask or
+                    Modify) still routes through the shared pool. If you've set both to
+                    BYOK or to Ollama, the cap doesn't constrain you and the banner
+                    disappears — that's intentional, not a bug.
+                </p>
+
+                <!-- 4. The three routing modes -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-diagram-3 me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    Three ways calls get routed
+                </p>
+                <div class="d-flex flex-column gap-2 fs-8 mb-4">
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge rounded-pill flex-shrink-0 mt-1"
+                              style="background-color: rgba(148, 163, 184, 0.15); color: var(--bs-body-color); border: 1px solid var(--bs-border-color);">
+                            <i class="bi bi-cloud"></i> Shared
+                        </span>
+                        <span class="text-secondary">
+                            <strong class="text-body">Managed (host pool).</strong> The default for new accounts.
+                            Counts toward your 50K/day cap. Anthropic Claude for Ask, Groq Llama for Modify.
+                        </span>
+                    </div>
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge rounded-pill flex-shrink-0 mt-1"
+                              style="background-color: rgba(59, 130, 246, 0.15); color: var(--castor-primary, #3b82f6); border: 1px solid rgba(59, 130, 246, 0.3);">
+                            <i class="bi bi-key-fill"></i> BYOK
+                        </span>
+                        <span class="text-secondary">
+                            <strong class="text-body">Your key.</strong> Paste your own Anthropic or Groq key
+                            in <a href="{% url 'core:settings' %}">Settings → Bring Your Own Key</a>.
+                            Bypasses the cap entirely — calls bill directly to your provider account.
+                        </span>
+                    </div>
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge rounded-pill flex-shrink-0 mt-1"
+                              style="background-color: rgba(148, 163, 184, 0.15); color: var(--bs-body-color); border: 1px solid var(--bs-border-color);">
+                            <i class="bi bi-hdd-stack"></i> Local
+                        </span>
+                        <span class="text-secondary">
+                            <strong class="text-body">Local Ollama.</strong> Inference runs on the host's
+                            own Ollama instance. Free, no cap, no provider. The operator can flip
+                            individual purposes to Ollama from the admin in a single click.
+                        </span>
+                    </div>
+                </div>
+
+                <!-- 5. Caveats -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-exclamation-circle me-1" style="color: var(--castor-accent, #8b5cf6);"></i>
+                    Caveats
+                </p>
+                <div class="d-flex flex-column gap-1 fs-8 text-secondary">
+                    <span><i class="bi bi-dot"></i>Storage is recalculated when this page loads; elsewhere it shows the last cached total — small lag after a fresh upload is normal.</span>
+                    <span><i class="bi bi-dot"></i>The token cap is a <strong class="text-body">soft second layer</strong>: the hard limit is whatever's left of the host's pre-paid provider balance. If the balance runs out, every managed call gets a friendly "paused for maintenance" message until the operator tops up.</span>
+                    <span><i class="bi bi-dot"></i>BYOK auth failures (wrong key, rate limit) surface as a chat message pointing back to Settings — they never silently fall back to the shared pool.</span>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>

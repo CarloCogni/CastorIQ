@@ -252,6 +252,13 @@ MODIFY_MODEL = os.getenv("MODIFY_MODEL", "meta-llama/llama-4-scout-17b-16e-instr
 # the site renders a "paused for maintenance" banner. Local Ollama still works.
 LLM_MASTER_KILL = os.getenv("LLM_MASTER_KILL", "0") == "1"
 
+# Fernet symmetric key used to encrypt at-rest user secrets (BYOK API keys).
+# Generate once with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# When unset in DEBUG mode, core.crypto derives a key from SECRET_KEY (dev convenience,
+# logs a warning). Production MUST set this explicitly — a key change invalidates
+# all previously stored ciphertext.
+FIELD_ENCRYPTION_KEY = os.getenv("FIELD_ENCRYPTION_KEY", "")
+
 # RAG Token Budget
 RAG_RESPONSE_RESERVE = int(os.getenv("RAG_RESPONSE_RESERVE", "1500"))
 RAG_SAFETY_RATIO = float(os.getenv("RAG_SAFETY_RATIO", "0.90"))

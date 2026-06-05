@@ -94,6 +94,26 @@ Visible per-user daily cap, real cost logging, kill-switch. Detail and pricing m
 
 ---
 
+## M2.5 · BYOK launch escape valve (June 5–12)
+
+Power users plug their own Anthropic / Groq keys in Settings, bypass the shared $150 pool and the 50K/day cap. Originally deferred to v1.1; pulled forward because friction-free trial of the shared pool isn't enough for users who already have an account with the provider — and the spec was already designed.
+
+- [x] `core/crypto.py` — Fernet symmetric encryption keyed by `FIELD_ENCRYPTION_KEY` env var (dev derives from `SECRET_KEY` with a warning; production must set it explicitly)
+- [x] `UserLLMConfig` extended with seven new BYOK fields (ciphertext + hint + per-purpose override + per-provider model) plus `keys_updated_at`
+- [x] `LLMCallLog.byok` flag so cost dashboards can exclude BYOK calls from managed-pool spend
+- [x] `core.services.byok_service` with atomic key-removal that resets any provider override pointing at the removed key (no `override=anthropic, key=blank` half-state)
+- [x] `core/llm.py:_resolve_llm_choice()` — single resolution function for site/override/BYOK, replacing the inline Ollama-override branch; `_build_anthropic` / `_build_groq` now accept an explicit `api_key` parameter
+- [x] `TrackedChatModel(byok=True)` skips `UserTokenBudget` pre-check and `record_usage` while still writing the `LLMCallLog` row
+- [x] Settings UI partial `byok_panel.html` with HTMX endpoints in `core.views_byok` — paste key, choose provider per purpose, pick curated model from `core.llm_catalog`
+- [x] Per-call routing disclosure badge on Ask + Modify chat input ("Sending to: Anthropic (your key)") via the extended `llm_context` context processor
+- [x] Settings help modal rewritten — BYOK now in "What you can change today", removed "v1.1" wording, added "How BYOK routes calls" five-section block per CLAUDE.md help-modal rule
+- [x] Tests: `test_crypto.py`, `test_byok_service.py`, `test_llm_routing.py`, `test_views_byok.py`, `test_tracked_chat_byok.py` (50 tests, all passing alongside full core regression)
+- [ ] VPS deploy: `FIELD_ENCRYPTION_KEY` added to prod `.env` BEFORE first traffic post-migration (see `vps-deployment.md`)
+
+**Done when:** a real user pastes a valid Anthropic key in Settings, selects "Anthropic (my key)" for Ask, runs an Ask query, and `LLMCallLog` records `byok=True` while `UserTokenBudget.used_today` is unchanged.
+
+---
+
 ## M3 · Beta application + admin vetting (May 13–18)
 
 The funnel. Public landing → form → admin review → manual user creation → welcome email.
@@ -205,7 +225,8 @@ Second cohort. In-person at Zigurat Students Week. Watch costs.
 
 Things consciously cut to make May 31. Re-evaluate after Barcelona feedback.
 
-- BYOK encrypted credential storage (`LLMProviderCredential` model + settings UI). Power users plug their own Claude/Groq keys, bypass the daily cap.
+- ~~BYOK encrypted credential storage~~. **Shipped 2026-06** — Fernet-encrypted fields on `UserLLMConfig`, per-purpose override (Ask vs Modify), curated 3-model dropdown per provider, `LLMCallLog.byok=True` flag. Power users plug their own Claude/Groq keys and bypass both the shared pool and the daily cap. See `docs/specs/llm-connection.md` Tier B.
+- "Verify key" button — pings the provider on save instead of waiting for first real Ask to surface a typo. Cheap to add post-launch.
 - Embeddings outsource path (Voyage AI `voyage-3-lite`). Only if VPS CPU pain materialises during dogfood.
 - Subprocess + ulimit isolation for Tier 3 execution (~3 days). Trigger if a T3 OOM-kills the worker.
 - Streaming LLM tokens to the UI.

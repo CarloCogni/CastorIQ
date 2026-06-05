@@ -21,6 +21,8 @@ from django.views.generic import (
 from chat.models import ChatSession, Message
 from core.http import toast_response, trigger_toast
 from core.llm import (
+    BYOKAuthError,
+    BYOKRateLimitError,
     LLMConfigurationError,
     LLMMasterKillError,
     TokenBudgetExceededError,
@@ -47,6 +49,17 @@ def _friendly_llm_error(exc: Exception) -> str:
         )
     if isinstance(exc, LLMMasterKillError):
         return "Castor is paused for maintenance. Cloud LLM calls are disabled right now."
+    if isinstance(exc, BYOKAuthError):
+        return (
+            f"Your {exc.provider.title()} API key was rejected (401). "
+            "Update it in Settings → Bring Your Own Key, or switch the For Modify "
+            "dropdown back to the site default."
+        )
+    if isinstance(exc, BYOKRateLimitError):
+        return (
+            f"Your {exc.provider.title()} key hit the provider's rate limit (429). "
+            "Wait a moment and try again, or switch provider in Settings."
+        )
     if isinstance(exc, LLMConfigurationError):
         return "The configured LLM provider is missing its API key. The operator has been notified."
     return "The LLM provider returned an error. Try again in a moment or contact the operator."
@@ -187,7 +200,13 @@ class ModifyView(ProjectTabMixin, TemplateView):
 
         try:
             proposal = svc.propose(user_message=user_text, user=request.user)
-        except (LLMConfigurationError, LLMMasterKillError, TokenBudgetExceededError) as e:
+        except (
+            LLMConfigurationError,
+            LLMMasterKillError,
+            TokenBudgetExceededError,
+            BYOKAuthError,
+            BYOKRateLimitError,
+        ) as e:
             # Cloud-side guardrail tripped — surface the friendly reason and stop.
             friendly = _friendly_llm_error(e)
             Message.objects.create(
@@ -197,7 +216,9 @@ class ModifyView(ProjectTabMixin, TemplateView):
             )
             return JsonResponse(
                 {"status": "blocked", "message": friendly},
-                status=429 if isinstance(e, TokenBudgetExceededError) else 503,
+                status=429
+                if isinstance(e, (TokenBudgetExceededError, BYOKRateLimitError))
+                else 503,
             )
         except ModificationError as e:
             # Save error as assistant message

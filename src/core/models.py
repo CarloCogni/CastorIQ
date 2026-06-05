@@ -182,13 +182,26 @@ class UserLLMConfig(models.Model):
     """
     Per-user UI + LLM preferences.
 
-    Each user can choose their own Ollama model and UI theme.
-    When `active_model` is blank, get_llm() falls back to settings.OLLAMA_MODEL.
+    Each user can choose their own Ollama model, UI theme, and — via BYOK —
+    paste their own Anthropic / Groq API key with a curated model selection.
+    When ``active_model`` is blank, get_llm() falls back to settings.OLLAMA_MODEL.
+    When ``{ask,modify}_provider_override`` is blank, get_llm() reads from
+    SiteLLMConfig (the developer-paid managed pool).
+
+    BYOK API keys are stored as Fernet ciphertext in ``*_api_key_ciphertext``
+    fields. The plaintext is accessed via property-style getters/setters that
+    route through ``core.crypto`` so plaintext never lives on the instance.
     """
 
     class Theme(models.TextChoices):
         DARK = "dark", "Dark"
         LIGHT = "light", "Light"
+
+    class ProviderOverride(models.TextChoices):
+        SITE_DEFAULT = "", "Use site default"
+        OLLAMA = "ollama", "Local Ollama"
+        ANTHROPIC = "anthropic", "Anthropic (my key)"
+        GROQ = "groq", "Groq (my key)"
 
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
@@ -210,6 +223,68 @@ class UserLLMConfig(models.Model):
         verbose_name="Theme",
         help_text="UI color theme.",
     )
+
+    # ── BYOK (Bring Your Own Key) ─────────────────────────────────────────
+    # Ciphertext is Fernet-encrypted; never stored or logged in plaintext.
+    # Hint is the masked display form (first 7 + … + last 5), safe to render.
+    anthropic_api_key_ciphertext = models.TextField(
+        blank=True,
+        default="",
+        verbose_name="Anthropic API key (encrypted)",
+    )
+    anthropic_api_key_hint = models.CharField(
+        max_length=24,
+        blank=True,
+        default="",
+        verbose_name="Anthropic key hint",
+        help_text="Masked display form, e.g. 'sk-ant-…12345'.",
+    )
+    groq_api_key_ciphertext = models.TextField(
+        blank=True,
+        default="",
+        verbose_name="Groq API key (encrypted)",
+    )
+    groq_api_key_hint = models.CharField(
+        max_length=24,
+        blank=True,
+        default="",
+        verbose_name="Groq key hint",
+    )
+
+    ask_provider_override = models.CharField(
+        max_length=20,
+        choices=ProviderOverride.choices,
+        blank=True,
+        default="",
+        verbose_name="Ask provider override",
+        help_text="Per-purpose override. Blank = follow SiteLLMConfig.",
+    )
+    modify_provider_override = models.CharField(
+        max_length=20,
+        choices=ProviderOverride.choices,
+        blank=True,
+        default="",
+        verbose_name="Modify provider override",
+    )
+    anthropic_model = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        verbose_name="Anthropic model",
+        help_text="Curated Anthropic model identifier (see core.llm_catalog).",
+    )
+    groq_model = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        verbose_name="Groq model",
+        help_text="Curated Groq model identifier (see core.llm_catalog).",
+    )
+    keys_updated_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Keys last updated",
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -217,6 +292,7 @@ class UserLLMConfig(models.Model):
         verbose_name_plural = "User LLM Configurations"
 
     def __str__(self):
+        # NEVER reference ciphertext or hint fields here — __str__ is logged.
         model_display = self.active_model or "(default)"
         return f"{self.user.username} → {model_display}"
 
@@ -225,6 +301,32 @@ class UserLLMConfig(models.Model):
         """Get or create config for a given user."""
         obj, _ = cls.objects.get_or_create(user=user)
         return obj
+
+    # ── BYOK plaintext accessors ──────────────────────────────────────────
+    # Properties route through core.crypto so plaintext lives only on the
+    # caller's stack frame; it is never assigned to ``self``.
+
+    @property
+    def anthropic_api_key(self) -> str | None:
+        """Decrypted Anthropic API key, or None if not set / unreadable."""
+        from core.crypto import decrypt
+
+        return decrypt(self.anthropic_api_key_ciphertext)
+
+    @property
+    def groq_api_key(self) -> str | None:
+        """Decrypted Groq API key, or None if not set / unreadable."""
+        from core.crypto import decrypt
+
+        return decrypt(self.groq_api_key_ciphertext)
+
+    def has_byok_key(self, provider: str) -> bool:
+        """True if the user has stored a non-empty ciphertext for ``provider``."""
+        if provider == "anthropic":
+            return bool(self.anthropic_api_key_ciphertext)
+        if provider == "groq":
+            return bool(self.groq_api_key_ciphertext)
+        return False
 
 
 class TeamNote(UUIDModel):
@@ -941,6 +1043,12 @@ class LLMCallLog(models.Model):
     latency_ms = models.PositiveIntegerField(null=True, blank=True)
     succeeded = models.BooleanField(default=True, db_index=True)
     error_type = models.CharField(max_length=120, blank=True, default="")
+    byok = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name="BYOK",
+        help_text="True if this call used the user's own API key (excluded from managed-pool spend).",
+    )
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
@@ -950,6 +1058,7 @@ class LLMCallLog(models.Model):
         indexes = [
             models.Index(fields=["user", "-created_at"]),
             models.Index(fields=["provider", "-created_at"]),
+            models.Index(fields=["byok", "-created_at"]),
         ]
 
     def __str__(self) -> str:

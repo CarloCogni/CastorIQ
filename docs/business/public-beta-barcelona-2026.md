@@ -48,8 +48,7 @@ audience known and the cost predictable.
 
 - Self-serve public Tier 3. Strangers from the QR code never reach the modify pipeline. Only manually approved beta users do.
 - **Self-service signup of any kind.** No "create account" button. The only path in is: application form → operator review → manual user creation.
-- **BYOK** (users supplying their own API keys). Documented as **v1.1 post-launch** work — the encrypted-credential model
-    + settings UI is roughly 3–4 days and would put May 31 at risk. Power users wait two weeks.
+- ~~**BYOK** (users supplying their own API keys).~~ **Pulled into the launch window (shipped 2026-06).** The May 31 date slipped to ~June 19 anyway, and "the platform won't let me use my own account" was the single most common point of friction in early dogfood — making it harder to defer than to build. See `docs/specs/llm-connection.md` (Tier B) and `docs/business/token-economics.md` (BYOK section).
 - **Outsourced embeddings.** Voyage AI is documented as the contingency path in `docs/business/vps-deployment.md` but is
     not switched on at launch — Ollama CPU on the VPS handles the load for ~30 vetted users with a pre-indexed sample project.
 - OpenAI as a third LLM provider. Groq + Anthropic cover the cheap-fast and frontier-reasoning paths.
@@ -82,8 +81,8 @@ We accept this for the alpha and watch closely during dogfood. If it bites, the 
 **Budget posture.** Pre-paying provider balances offloads the hard cost cap to the provider — when the balance hits zero,
 the API just refuses. That removes the need to build sophisticated rate-limiting infrastructure. We add a **per-user daily
 token cap (50K tokens) as a soft second layer** so one runaway tester can't drain the whole pool in an afternoon, and a
-global `LLM_MASTER_KILL=1` env var as a last-resort circuit-breaker. The full pricing math and post-launch BYOK escape
-valve live in `docs/business/token-economics.md`.
+global `LLM_MASTER_KILL=1` env var as a last-resort circuit-breaker. **BYOK is the escape valve users get on day one** —
+power users plug their own Anthropic/Groq key in Settings and bypass both the pool and the cap. The full pricing math lives in `docs/business/token-economics.md`.
 
 **Timeline posture.** ~3.7 weeks is aggressive but feasible because the codebase is more ready than expected: the LLM
 factory is a single seam (`src/core/llm.py`), settings already split into base/dev/prod, multi-tenancy is consistently
@@ -103,7 +102,7 @@ outside that critical path is deferred to the post-launch backlog.
 - **No self-service signup at all.** No public registration form. The only path in is: application form → operator review → optional 10-min intro call → manual user creation in admin → welcome email with one-time set-password link.
 - **One sample project per user, auto-provisioned.** Same curated IFC + same documents for everyone. Idempotent provisioning so re-running is safe.
 - **Mandatory T3 review checkpoint.** A checkbox the user must tick before the Approve button enables. The "human review" CLAUDE.md describes is currently aspirational — this milestone makes it real.
-- **BYOK is post-launch.** Adding encrypted credential storage + a settings UI is ~3–4 days of work that would put May 31 at risk. Re-evaluate after Barcelona feedback.
+- **BYOK shipped with launch.** ~5 focused days at the factory seam in `core/llm.py`. Anthropic + Groq keys stored encrypted, per-purpose provider override (Ask vs Modify), curated 3-model dropdown per provider, hard-error on auth failure (no silent fallback to the shared pool). See `docs/specs/llm-connection.md` Tier B for the architecture and `core/services/byok_service.py` for the service layer.
 - **Hard stop:** if a Tier 3 execution OOM-kills the worker during dogfood, external invites pause until subprocess isolation is in place.
 
 ---
@@ -124,7 +123,7 @@ Cloud providers solve that. Preserving local-Ollama as an option is non-negotiab
 - Castor already has a single LLM factory; every call site routes through it. Extend the factory rather than touching call sites.
 - A new `SiteLLMConfig` **singleton model** (one row, ever) holds the active configuration: `ask_provider`, `ask_model`, `modify_provider`, `modify_model`, plus a global "force local Ollama everywhere" emergency override. Managed in Django admin with `django-solo` or a hand-rolled singleton pattern. The dispatcher reads this singleton at call time — flip a value in admin and the next call uses the new provider, no deploy needed.
 - The dispatcher picks the right client based on which call site is firing (Ask vs Modify) and what the singleton says. Local Ollama remains a first-class option at all times, not a fallback.
-- API keys for cloud providers live in env vars (`ANTHROPIC_API_KEY`, `GROQ_API_KEY`), not in the DB. BYOK with encrypted per-user credentials is post-launch.
+- Site-wide API keys for cloud providers live in env vars (`ANTHROPIC_API_KEY`, `GROQ_API_KEY`) and fund the shared pool. **Per-user BYOK credentials are Fernet-encrypted in `UserLLMConfig`** and consulted first by the factory — a user with a stored key uses their own credentials and bypasses both the shared pool and the daily cap.
 - Translate provider-specific kwargs at the factory boundary. Ollama's `num_predict` is Groq's and Anthropic's `max_tokens`;
 - temperature is universal; timeout semantics differ. The call sites should remain provider-agnostic.
 - Cloud APIs hang differently than Ollama. The codebase already has a real wall-clock timeout helper
