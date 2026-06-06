@@ -1,0 +1,535 @@
+<!-- scheduling/tabs/gantt.html — Interactive Gantt Chart with zoom, stage filters, and task detail panel -->
+
+{% if not tasks %}
+<div class="d-flex flex-column align-items-center justify-content-center text-secondary py-5">
+    <i class="bi bi-bar-chart-steps fs-1 mb-2"></i>
+    <span>No tasks to display — import a schedule in the Data Sources tab.</span>
+</div>
+{% else %}
+
+<div style="display:flex; flex-direction:column; gap:8px; height:100%;">
+
+    <!-- ── Toolbar: Zoom + Stage filter chips ────────────────────────────── -->
+    <div style="flex-shrink:0; display:flex; align-items:center; gap:12px; flex-wrap:wrap; font-size:0.82rem;">
+
+        <!-- Zoom controls -->
+        <div class="d-flex align-items-center gap-2">
+            <span class="text-secondary" style="font-size:0.78rem;">Zoom:</span>
+            <div class="btn-group btn-group-sm" id="gantt-zoom-btns" role="group" aria-label="Chart zoom">
+                <button type="button" class="btn btn-outline-secondary" data-zoom="day">Day</button>
+                <button type="button" class="btn btn-outline-secondary active" data-zoom="week">Week</button>
+                <button type="button" class="btn btn-outline-secondary" data-zoom="month">Month</button>
+            </div>
+        </div>
+
+        <!-- Stage chips -->
+        <div class="d-flex gap-2 flex-wrap" id="gantt-stage-chips">
+            <button type="button" class="gantt-chip active" data-stage="">All</button>
+            <button type="button" class="gantt-chip" data-stage="substructure" style="--chip-c:#78350f;">Substructure</button>
+            <button type="button" class="gantt-chip" data-stage="structure"    style="--chip-c:#dc2626;">Structure</button>
+            <button type="button" class="gantt-chip" data-stage="envelope"     style="--chip-c:#d97706;">Envelope</button>
+            <button type="button" class="gantt-chip" data-stage="mep"          style="--chip-c:#2563eb;">MEP</button>
+            <button type="button" class="gantt-chip" data-stage="finishes"     style="--chip-c:#16a34a;">Finishes</button>
+            <button type="button" class="gantt-chip" data-stage="external"     style="--chip-c:#0891b2;">External</button>
+        </div>
+
+        <!-- Critical path toggle -->
+        <div class="ms-auto d-flex align-items-center gap-2">
+            <button type="button" id="gantt-cp-btn"
+                    class="btn btn-sm btn-outline-danger"
+                    style="font-size:0.75rem; white-space:nowrap;"
+                    title="Highlight critical path tasks (zero float)">
+                <i class="bi bi-exclamation-diamond me-1"></i>Critical Path
+            </button>
+            <span id="gantt-cp-status" class="d-none" style="font-size:0.72rem; color:var(--bs-secondary-color);"></span>
+        </div>
+
+    </div>
+
+    <!-- ── Main layout: chart + detail panel ─────────────────────────────── -->
+    <div style="flex:1; min-height:0; display:flex; gap:8px;">
+
+        <!-- Chart box -->
+        <div style="flex:1; min-width:0; border:1px solid var(--bs-border-color); border-radius:6px; overflow:hidden;">
+            {% include "scheduling/components/gantt_chart.html" %}
+        </div>
+
+        <!-- Task detail side panel (hidden until a bar is clicked) -->
+        <div id="gantt-detail-panel"
+             class="d-none"
+             style="width:272px; min-width:272px; overflow-y:auto;
+                    border:1px solid var(--bs-border-color); border-radius:6px;
+                    background:var(--bs-body-bg); padding:14px; font-size:0.82rem;">
+            <div class="d-flex flex-column align-items-center justify-content-center text-secondary"
+                 style="height:140px; font-size:0.82rem;">
+                <i class="bi bi-mouse2 fs-2 mb-2"></i>
+                Click a task bar to see details.
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- ── Styles ─────────────────────────────────────────────────────────────── -->
+<style>
+/* Stage filter chips */
+.gantt-chip {
+    font-size: 0.73rem;
+    padding: 2px 11px;
+    border-radius: 20px;
+    border: 1px solid var(--bs-border-color);
+    background: var(--bs-secondary-bg);
+    color: var(--bs-body-color);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.gantt-chip.active {
+    background: var(--chip-c, var(--bs-primary));
+    border-color: var(--chip-c, var(--bs-primary));
+    color: #fff;
+}
+.gantt-chip:not(.active):hover {
+    border-color: var(--chip-c, var(--bs-primary));
+    color: var(--chip-c, var(--bs-primary));
+}
+/* Gantt frozen label column */
+.gantt-label-cell {
+    width: 220px;
+    min-width: 220px;
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: var(--bs-body-bg);
+    border-right: 1px solid var(--bs-border-color);
+    padding: 4px 8px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    overflow: hidden;
+}
+/* Task row */
+.gantt-row {
+    display: flex;
+    align-items: stretch;
+    height: 40px;
+    border-bottom: 1px solid var(--bs-border-color);
+}
+.gantt-row:hover { background: var(--bs-secondary-bg); }
+.gantt-row:hover .gantt-label-cell { background: var(--bs-secondary-bg); }
+.gantt-row-selected { background: rgba(59,130,246,0.08) !important; }
+.gantt-row-selected .gantt-label-cell { background: rgba(59,130,246,0.08) !important; }
+/* Task bar */
+.gantt-bar {
+    position: absolute;
+    top: 10px;
+    height: 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: filter 0.12s;
+}
+.gantt-bar:hover { filter: brightness(1.18); }
+.gantt-bar-outline {
+    position: absolute;
+    top: 10px;
+    height: 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    background: transparent;
+    border: 2px solid;
+    transition: filter 0.12s;
+}
+.gantt-bar-outline:hover { filter: brightness(0.85); }
+/* Date markers + ticks in header */
+.gantt-date-lbl { position: absolute; top: 6px; font-size: 0.68rem; color: var(--bs-secondary-color); white-space: nowrap; padding-left: 3px; }
+.gantt-tick     { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--bs-border-color); }
+/* Weekend columns */
+.gantt-weekend  { position: absolute; top: 0; bottom: 0; background: rgba(0,0,0,0.05); }
+/* Today marker */
+.gantt-today-line { position: absolute; top: 0; bottom: 0; border-left: 2px dashed #dc2626; z-index: 3; }
+.gantt-today-lbl  { position: absolute; top: 2px; font-size: 0.62rem; color: #dc2626; white-space: nowrap; padding-left: 3px; z-index: 3; }
+/* Critical path */
+.gantt-bar-critical { box-shadow: inset 3px 0 0 #dc2626; }
+.gantt-float-ext {
+    position: absolute;
+    top: 17px;
+    height: 6px;
+    border-radius: 0 2px 2px 0;
+    background: repeating-linear-gradient(90deg, #dc2626 0, #dc2626 4px, transparent 4px, transparent 8px);
+    opacity: 0.55;
+    pointer-events: none;
+}
+</style>
+
+<!-- ── Gantt script ───────────────────────────────────────────────────────── -->
+<script>
+/* Global: navigate to Simulator tab with pre-set date + entity highlight.
+   Called by the task detail panel's "View in Simulator" button.
+   The pending-jump payload is read by viewer.html on load via _checkPendingJump(). */
+window.jumpToSimulator = (function () {
+    const _VIEWER_URL = "{% url 'ifc_viewer:viewer' project.pk %}";
+    return function (date, globalIds) {
+        try {
+            localStorage.setItem("castor:pending-jump", JSON.stringify({ date, globalIds }));
+        } catch (_) {}
+        window.location.href = _VIEWER_URL;
+    };
+}());
+
+(function () {
+    const GANTT_URL        = "{% url 'scheduling:gantt_data' project.pk %}";
+    const DETAIL_URL_TPL   = "{% url 'scheduling:task_detail' project.pk '00000000-0000-0000-0000-000000000000' %}";
+    const CPM_URL          = "{% url 'scheduling:critical_path' project.pk %}";
+    const DAY_MS           = 86400000;
+
+    const STAGE_COLORS = {
+        substructure: "#78350f",
+        structure:    "#dc2626",
+        envelope:     "#d97706",
+        mep:          "#2563eb",
+        finishes:     "#16a34a",
+        external:     "#0891b2",
+        "":           "#6b7280",
+    };
+
+    /* pixels-per-day for each zoom level */
+    const PPD = { day: 28, week: 8, month: 2.8 };
+
+    let allTasks    = [];
+    let zoom        = "week";
+    let stageFilter = "";
+    let criticalMode = false;
+
+    // ── Fetch ─────────────────────────────────────────────────────────────
+    async function load() {
+        try {
+            const resp = await fetch(GANTT_URL + "?page=1&page_size=200");
+            const data = await resp.json();
+            allTasks = data.tasks || [];
+            render();
+            if (data.has_more) {
+                _loadRemainingPages(data.total_pages);
+            }
+        } catch (e) {
+            const el = document.getElementById("gantt-loading");
+            if (el) el.textContent = "Failed to load Gantt data.";
+        }
+    }
+
+    async function _loadRemainingPages(totalPages) {
+        const fetches = [];
+        for (let page = 2; page <= totalPages; page++) {
+            fetches.push(
+                fetch(GANTT_URL + "?page=" + page + "&page_size=200")
+                    .then(r => r.json())
+                    .then(d => d.tasks || [])
+                    .catch(() => [])
+            );
+        }
+        const pages = await Promise.all(fetches);
+        allTasks = allTasks.concat(...pages);
+        const scroll = document.getElementById("gantt-scroll");
+        const sx = scroll ? scroll.scrollLeft : 0;
+        const sy = scroll ? scroll.scrollTop  : 0;
+        render();
+        if (scroll) { scroll.scrollLeft = sx; scroll.scrollTop = sy; }
+    }
+
+    function visibleTasks() {
+        return stageFilter ? allTasks.filter(t => t.stage === stageFilter) : allTasks;
+    }
+
+    // ── Main render ───────────────────────────────────────────────────────
+    function render() {
+        const tasks   = visibleTasks();
+        const header  = document.getElementById("gantt-header-tl");
+        const body    = document.getElementById("gantt-body");
+        const overlay = document.getElementById("gantt-bg-overlay");
+        const loading = document.getElementById("gantt-loading");
+        if (loading) loading.remove();
+
+        if (!tasks.length) {
+            body.innerHTML = '<div class="d-flex align-items-center justify-content-center text-secondary py-4" style="min-width:420px;">No tasks match the current filter.</div>';
+            header.innerHTML = "";
+            overlay.innerHTML = "";
+            overlay.style.width = "0";
+            return;
+        }
+
+        const ppd   = PPD[zoom];
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        /* Date range with padding */
+        const allDates = tasks.flatMap(t => [new Date(t.start), new Date(t.end)]);
+        let minD = new Date(Math.min(...allDates));
+        let maxD = new Date(Math.max(...allDates));
+        minD = new Date(minD.getTime() - 7  * DAY_MS);
+        maxD = new Date(maxD.getTime() + 14 * DAY_MS);
+
+        function dx(d) { return Math.round((d - minD) / DAY_MS * ppd); }
+
+        const totalW = dx(maxD);
+
+        /* ── Header ───────────────────────────────────────────────────── */
+        header.innerHTML = "";
+        header.style.cssText = `position:relative; height:28px; width:${totalW}px; min-width:${totalW}px; flex-shrink:0;`;
+
+        if (zoom === "month") {
+            const mc = new Date(minD);
+            mc.setDate(1);
+            while (mc <= maxD) {
+                _addHeaderMark(header, dx(mc),
+                    mc.toLocaleDateString(undefined, { month: "short", year: "2-digit" }));
+                mc.setMonth(mc.getMonth() + 1);
+            }
+        } else {
+            const wc = new Date(minD);
+            if (zoom === "week") {
+                /* advance to Monday */
+                const dow = wc.getDay();
+                wc.setDate(wc.getDate() + ((1 - dow + 7) % 7));
+            }
+            const step = 7; /* day and week both label every 7 days */
+            while (wc <= maxD) {
+                _addHeaderMark(header, dx(wc),
+                    wc.toLocaleDateString(undefined, { month: "short", day: "numeric" }));
+                wc.setDate(wc.getDate() + step);
+            }
+        }
+
+        /* ── Background overlay ────────────────────────────────────────── */
+        overlay.innerHTML = "";
+        overlay.style.cssText = `position:absolute; top:28px; left:220px; bottom:0; pointer-events:none; z-index:0; width:${totalW}px; overflow:hidden;`;
+
+        /* Weekend columns (day + week zoom only) */
+        if (zoom !== "month") {
+            const bc = new Date(minD);
+            while (bc <= maxD) {
+                const dow = bc.getDay();
+                if (dow === 0 || dow === 6) {
+                    const col = document.createElement("div");
+                    col.className = "gantt-weekend";
+                    col.style.left  = dx(bc) + "px";
+                    col.style.width = Math.ceil(ppd) + "px";
+                    overlay.appendChild(col);
+                }
+                bc.setDate(bc.getDate() + 1);
+            }
+        }
+
+        /* Today marker */
+        const todayX = dx(today);
+        if (todayX >= 0 && todayX <= totalW) {
+            const line = document.createElement("div");
+            line.className = "gantt-today-line";
+            line.style.left = todayX + "px";
+            const lbl = document.createElement("div");
+            lbl.className = "gantt-today-lbl";
+            lbl.style.left = (todayX + 3) + "px";
+            lbl.textContent = "Today";
+            overlay.append(line, lbl);
+        }
+
+        /* ── Task rows ─────────────────────────────────────────────────── */
+        body.innerHTML = "";
+
+        tasks.forEach(task => {
+            const s = new Date(task.start);
+            const e = new Date(task.end);
+            const x = dx(s);
+            const w = Math.max(dx(e) - x, Math.ceil(ppd * 0.5));
+
+            const color      = STAGE_COLORS[task.stage] || STAGE_COLORS[""];
+            const progress   = task.progress ?? 0;
+            const notStarted = s > today && progress === 0;
+            const opacity    = notStarted ? 1 : (0.3 + 0.7 * (progress / 100));
+
+            const row = document.createElement("div");
+            row.className = "gantt-row";
+            row.dataset.taskId = task.id;
+            row.dataset.stage  = task.stage || "";
+
+            /* Frozen label */
+            const label = document.createElement("div");
+            label.className = "gantt-label-cell";
+            label.innerHTML = `<div class="text-truncate" style="font-size:0.79rem;" title="${_esc(task.name)}">${_esc(task.name)}</div>` +
+                (task.activity_code ? `<div style="font-size:0.67rem;color:var(--bs-secondary-color);font-family:monospace;">${_esc(task.activity_code)}</div>` : "");
+
+            /* Timeline cell */
+            const tlCell = document.createElement("div");
+            tlCell.style.cssText = `position:relative; height:100%; width:${totalW}px; min-width:${totalW}px; flex-shrink:0;`;
+
+            /* Bar */
+            const bar = document.createElement("div");
+            bar.title = `${task.name} · ${progress}% · ${task.start} → ${task.end}`;
+
+            if (notStarted) {
+                bar.className = "gantt-bar-outline";
+                bar.style.left        = x + "px";
+                bar.style.width       = w + "px";
+                bar.style.borderColor = color;
+            } else {
+                bar.className = "gantt-bar";
+                bar.style.left       = x + "px";
+                bar.style.width      = w + "px";
+                bar.style.background = color;
+                bar.style.opacity    = opacity.toFixed(2);
+            }
+
+            if (criticalMode && task.is_critical) {
+                bar.classList.add("gantt-bar-critical");
+            }
+
+            /* Float extension — shown in critical mode when float > 0 */
+            if (criticalMode && task.total_float != null && task.total_float > 0) {
+                const floatW = Math.round(task.total_float * ppd);
+                if (floatW >= 2) {
+                    const floatEl = document.createElement("div");
+                    floatEl.className = "gantt-float-ext";
+                    floatEl.style.left  = (x + w) + "px";
+                    floatEl.style.width = floatW + "px";
+                    floatEl.title = `Float: ${task.total_float} day(s)`;
+                    tlCell.appendChild(floatEl);
+                }
+            }
+
+            bar.addEventListener("click", (ev) => {
+                ev.stopPropagation();
+                _selectTask(task, row);
+            });
+
+            tlCell.appendChild(bar);
+            row.append(label, tlCell);
+            body.appendChild(row);
+        });
+
+        /* Fix overlay height now that rows are rendered */
+        overlay.style.height = (tasks.length * 40) + "px";
+    }
+
+    /* ── Helpers ───────────────────────────────────────────────────────── */
+    function _addHeaderMark(container, x, label) {
+        const tick = document.createElement("div");
+        tick.className = "gantt-tick";
+        tick.style.left = x + "px";
+        const lbl = document.createElement("div");
+        lbl.className = "gantt-date-lbl";
+        lbl.style.left = (x + 2) + "px";
+        lbl.textContent = label;
+        container.append(tick, lbl);
+    }
+
+    function _esc(str) {
+        return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+
+    /* ── Task detail panel ─────────────────────────────────────────────── */
+    async function _selectTask(task, row) {
+        /* Visual: highlight selected row */
+        document.querySelectorAll(".gantt-row-selected").forEach(r => r.classList.remove("gantt-row-selected"));
+        row.classList.add("gantt-row-selected");
+
+        /* Highlight entities in 3D viewer */
+        document.dispatchEvent(new CustomEvent("castor:highlight", {
+            detail: { globalIds: task.entity_global_ids || [] }
+        }));
+
+        /* Load detail panel */
+        const panel = document.getElementById("gantt-detail-panel");
+        panel.classList.remove("d-none");
+        panel.innerHTML = '<div class="d-flex justify-content-center py-4"><span class="spinner-border spinner-border-sm"></span></div>';
+
+        try {
+            const url  = DETAIL_URL_TPL.replace("00000000-0000-0000-0000-000000000000", task.id);
+            const resp = await fetch(url, { headers: { "X-Requested-With": "XMLHttpRequest" } });
+            panel.innerHTML = resp.ok ? await resp.text() : '<div class="text-danger p-2 small">Failed to load task details.</div>';
+        } catch (_) {
+            panel.innerHTML = '<div class="text-danger p-2 small">Network error.</div>';
+        }
+    }
+
+    /* ── Zoom buttons ──────────────────────────────────────────────────── */
+    document.getElementById("gantt-zoom-btns")?.addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-zoom]");
+        if (!btn) return;
+        document.querySelectorAll("#gantt-zoom-btns [data-zoom]").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        zoom = btn.dataset.zoom;
+        render();
+    });
+
+    /* ── Stage chips ───────────────────────────────────────────────────── */
+    document.getElementById("gantt-stage-chips")?.addEventListener("click", (e) => {
+        const chip = e.target.closest(".gantt-chip");
+        if (!chip) return;
+        document.querySelectorAll(".gantt-chip").forEach(c => c.classList.remove("active"));
+        chip.classList.add("active");
+        stageFilter = chip.dataset.stage;
+        render();
+    });
+
+    /* ── Critical Path toggle ──────────────────────────────────────────── */
+    document.getElementById("gantt-cp-btn")?.addEventListener("click", async () => {
+        criticalMode = !criticalMode;
+        const btn = document.getElementById("gantt-cp-btn");
+        const status = document.getElementById("gantt-cp-status");
+
+        if (!criticalMode) {
+            btn.classList.remove("btn-danger");
+            btn.classList.add("btn-outline-danger");
+            status.classList.add("d-none");
+            render();
+            return;
+        }
+
+        btn.classList.remove("btn-outline-danger");
+        btn.classList.add("btn-danger");
+
+        /* If no tasks have CPM data yet, trigger computation */
+        const hasCpm = allTasks.some(t => t.total_float != null);
+        if (!hasCpm) {
+            btn.disabled = true;
+            status.textContent = "Computing…";
+            status.classList.remove("d-none");
+            try {
+                const resp = await fetch(CPM_URL, {
+                    method: "POST",
+                    headers: {
+                        "X-CSRFToken": (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || "",
+                        "X-Requested-With": "XMLHttpRequest",
+                    },
+                });
+                const result = await resp.json();
+                if (result.error) throw new Error(result.error);
+
+                /* Patch task data with computed fields */
+                const cpmMap = result.task_data || {};
+                allTasks.forEach(t => {
+                    const d = cpmMap[t.id];
+                    if (d) {
+                        t.is_critical   = d.is_critical;
+                        t.total_float   = d.total_float;
+                    }
+                });
+                const critCount = allTasks.filter(t => t.is_critical).length;
+                status.textContent = `${critCount} critical task(s)`;
+            } catch (err) {
+                status.textContent = "CPM failed";
+                console.error("CPM error:", err);
+            } finally {
+                btn.disabled = false;
+            }
+        } else {
+            const critCount = allTasks.filter(t => t.is_critical).length;
+            status.textContent = `${critCount} critical task(s)`;
+            status.classList.remove("d-none");
+        }
+        render();
+    });
+
+    load();
+}());
+</script>
+
+{% endif %}

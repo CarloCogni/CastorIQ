@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.13'",
@@ -251,6 +251,7 @@ dependencies = [
     { name = "anthropic" },
     { name = "channels", extra = ["daphne"] },
     { name = "crispy-bootstrap5" },
+    { name = "cryptography" },
     { name = "django", version = "5.2.11", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "django", version = "6.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "django-axes" },
@@ -312,6 +313,7 @@ requires-dist = [
     { name = "anthropic", specifier = ">=0.99.0" },
     { name = "channels", extras = ["daphne"], specifier = ">=4.3.2" },
     { name = "crispy-bootstrap5", specifier = ">=2025.10" },
+    { name = "cryptography", specifier = ">=42" },
     { name = "django", specifier = ">=5.0" },
     { name = "django-axes", specifier = ">=7.0" },
     { name = "django-crispy-forms", specifier = ">=2.5" },

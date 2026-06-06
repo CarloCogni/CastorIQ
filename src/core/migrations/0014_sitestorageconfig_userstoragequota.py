@@ -6,39 +6,90 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('core', '0013_weeklydigestconfig'),
-        ('users', '0001_initial'),
+        ("core", "0013_weeklydigestconfig"),
+        ("users", "0001_initial"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='SiteStorageConfig',
+            name="SiteStorageConfig",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('default_per_user_quota_bytes', models.PositiveBigIntegerField(default=1073741824, help_text="Total bytes a user can occupy across all their projects (files + per-project Git history). Applied when the user's row has quota_bytes=0. 1 GB by default.", verbose_name='Default per-user quota (bytes)')),
-                ('per_file_cap_bytes', models.PositiveBigIntegerField(default=209715200, help_text='Maximum size of any single uploaded file (IFC or document). Enforced at upload time before the per-user quota check. 200 MB by default.', verbose_name='Per-file upload cap (bytes)')),
-                ('updated_at', models.DateTimeField(auto_now=True)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                (
+                    "default_per_user_quota_bytes",
+                    models.PositiveBigIntegerField(
+                        default=1073741824,
+                        help_text="Total bytes a user can occupy across all their projects (files + per-project Git history). Applied when the user's row has quota_bytes=0. 1 GB by default.",
+                        verbose_name="Default per-user quota (bytes)",
+                    ),
+                ),
+                (
+                    "per_file_cap_bytes",
+                    models.PositiveBigIntegerField(
+                        default=209715200,
+                        help_text="Maximum size of any single uploaded file (IFC or document). Enforced at upload time before the per-user quota check. 200 MB by default.",
+                        verbose_name="Per-file upload cap (bytes)",
+                    ),
+                ),
+                ("updated_at", models.DateTimeField(auto_now=True)),
             ],
             options={
-                'verbose_name': 'Site Storage Configuration',
-                'verbose_name_plural': 'Site Storage Configuration',
+                "verbose_name": "Site Storage Configuration",
+                "verbose_name_plural": "Site Storage Configuration",
             },
         ),
         migrations.CreateModel(
-            name='UserStorageQuota',
+            name="UserStorageQuota",
             fields=[
-                ('user', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, primary_key=True, related_name='storage_quota', serialize=False, to=settings.AUTH_USER_MODEL)),
-                ('quota_bytes', models.PositiveBigIntegerField(default=0, help_text='0 = use SiteStorageConfig.default_per_user_quota_bytes.', verbose_name='Quota override (bytes)')),
-                ('cached_used_bytes', models.PositiveBigIntegerField(default=0, help_text='Last computed total. Recalculated on upload and on the projects page.', verbose_name='Used (cached bytes)')),
-                ('hard_blocked', models.BooleanField(default=False, help_text='When set, refuse all uploads regardless of remaining quota.', verbose_name='Hard Blocked')),
-                ('last_recalculated_at', models.DateTimeField(blank=True, null=True, verbose_name='Last recalculated')),
-                ('updated_at', models.DateTimeField(auto_now=True)),
+                (
+                    "user",
+                    models.OneToOneField(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        primary_key=True,
+                        related_name="storage_quota",
+                        serialize=False,
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "quota_bytes",
+                    models.PositiveBigIntegerField(
+                        default=0,
+                        help_text="0 = use SiteStorageConfig.default_per_user_quota_bytes.",
+                        verbose_name="Quota override (bytes)",
+                    ),
+                ),
+                (
+                    "cached_used_bytes",
+                    models.PositiveBigIntegerField(
+                        default=0,
+                        help_text="Last computed total. Recalculated on upload and on the projects page.",
+                        verbose_name="Used (cached bytes)",
+                    ),
+                ),
+                (
+                    "hard_blocked",
+                    models.BooleanField(
+                        default=False,
+                        help_text="When set, refuse all uploads regardless of remaining quota.",
+                        verbose_name="Hard Blocked",
+                    ),
+                ),
+                (
+                    "last_recalculated_at",
+                    models.DateTimeField(blank=True, null=True, verbose_name="Last recalculated"),
+                ),
+                ("updated_at", models.DateTimeField(auto_now=True)),
             ],
             options={
-                'verbose_name': 'User Storage Quota',
-                'verbose_name_plural': 'User Storage Quotas',
+                "verbose_name": "User Storage Quota",
+                "verbose_name_plural": "User Storage Quotas",
             },
         ),
     ]

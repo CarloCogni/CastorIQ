@@ -1,0 +1,72 @@
+<!-- ifc_viewer/components/gap_analysis_panel.html — Gap Analysis HTMX partial -->
+
+<div class="d-flex flex-column h-100">
+
+    <!-- Filter bar -->
+    <div class="d-flex align-items-center gap-2 px-3 py-2 border-bottom flex-shrink-0" style="font-size:0.8rem;">
+        <span class="text-secondary">Show by:</span>
+        <select class="form-select form-select-sm" style="width:auto;"
+                name="by"
+                hx-get="{% url 'ifc_viewer:viewer_gap_analysis' project.pk %}"
+                hx-target="#gap-panel-body"
+                hx-swap="innerHTML"
+                hx-include="this">
+            <option value="level"        {% if by == 'level' %}selected{% endif %}>Level</option>
+            <option value="element_type" {% if by == 'element_type' %}selected{% endif %}>Element Type</option>
+            <option value="material"     {% if by == 'material' %}selected{% endif %}>Material</option>
+        </select>
+    </div>
+
+    {% if rows %}
+    <!-- Table -->
+    <div class="flex-grow-1 overflow-auto">
+        <table class="table table-sm table-hover mb-0" style="font-size:0.78rem;">
+            <thead class="table-light" style="position:sticky; top:0; z-index:1;">
+                <tr>
+                    <th class="ps-3 py-2">Group</th>
+                    <th class="py-2 text-end">Total</th>
+                    <th class="py-2 text-end">Linked</th>
+                    <th class="py-2" style="min-width:48px;">%</th>
+                    <th class="py-2 pe-3 text-end">Gap</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr style="cursor:pointer;"
+                    data-ids='{{ row.global_ids_json }}'
+                    onclick="highlightEntities(JSON.parse(this.dataset.ids))"
+                    title="Click to highlight {{ row.gap }} unlinked elements in viewer">
+                    <td class="ps-3 py-2" style="max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ row.group }}</td>
+                    <td class="py-2 text-end">{{ row.total }}</td>
+                    <td class="py-2 text-end text-success">{{ row.linked }}</td>
+                    <td class="py-2">
+                        <div class="progress" style="height:5px; min-width:36px;">
+                            <div class="progress-bar bg-success" style="width:{{ row.pct }}%;"></div>
+                        </div>
+                    </td>
+                    <td class="py-2 pe-3 text-end fw-semibold {% if row.gap > 0 %}text-danger{% else %}text-success{% endif %}">
+                        {{ row.gap }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Export -->
+    <div class="px-3 py-2 border-top flex-shrink-0">
+        <a href="{% url 'ifc_viewer:viewer_gap_analysis' project.pk %}?by={{ by }}&export=1"
+           class="btn btn-sm btn-outline-secondary w-100" style="font-size:0.78rem;">
+            <i class="bi bi-download me-1"></i>Export CSV
+        </a>
+    </div>
+
+    {% else %}
+    <div class="d-flex flex-column align-items-center justify-content-center flex-grow-1 text-secondary px-3 text-center"
+         style="font-size:0.82rem;">
+        <i class="bi bi-bar-chart-line fs-2 mb-2"></i>
+        <span>No entity data found.<br>Upload and process an IFC file first.</span>
+    </div>
+    {% endif %}
+
+</div>

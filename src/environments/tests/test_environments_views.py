@@ -11,7 +11,11 @@ from django.urls import reverse
 from documents.models import Document
 from documents.tests.factories import DocumentFactory
 from environments.tests.factories import ProjectFactory, UserFactory
-from ifc_processor.tests.factories import IFCEntityFactory, IFCFileFactory
+from ifc_processor.tests.factories import (
+    IFCEntityFactory,
+    IFCFileFactory,
+    IFCSpatialElementFactory,
+)
 
 # ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -1152,43 +1156,55 @@ class TestExploreTreePartial:
         assert response.status_code == 302
         assert "login" in response["Location"]
 
-    def test_no_params_returns_building_level(self, client):
-        """No query params → level='building' in context."""
+    def test_no_params_returns_root_nodes(self, client):
+        """No spatial_id → returns parent-less (root) spatial nodes."""
         user = UserFactory()
         project = ProjectFactory(owner=user)
         ifc_file = IFCFileFactory(project=project, status="completed")
-        IFCEntityFactory(ifc_file=ifc_file, building="Block A")
+        building = IFCSpatialElementFactory(ifc_file=ifc_file, spatial_type="building", parent=None)
+        IFCSpatialElementFactory(ifc_file=ifc_file, spatial_type="building_storey", parent=building)
         client.force_login(user)
 
         response = client.get(self._url(project, ifc_file))
         assert response.status_code == 200
-        assert response.context["level"] == "building"
+        nodes = list(response.context["nodes"])
+        assert len(nodes) == 1
+        assert nodes[0].id == building.id
 
-    def test_building_param_returns_storey_level(self, client):
-        """?building=X → level='storey' with storeys for that building."""
+    def test_spatial_id_returns_child_nodes(self, client):
+        """?spatial_id=<building_uuid> → returns its direct children (storeys)."""
         user = UserFactory()
         project = ProjectFactory(owner=user)
         ifc_file = IFCFileFactory(project=project, status="completed")
-        IFCEntityFactory(ifc_file=ifc_file, building="Block A", building_storey="L1")
-        client.force_login(user)
-
-        response = client.get(self._url(project, ifc_file) + "?building=Block+A")
-        assert response.status_code == 200
-        assert response.context["level"] == "storey"
-
-    def test_building_and_storey_params_return_space_level(self, client):
-        """?building=X&storey=Y → level='space' with spaces for that storey."""
-        user = UserFactory()
-        project = ProjectFactory(owner=user)
-        ifc_file = IFCFileFactory(project=project, status="completed")
-        IFCEntityFactory(
-            ifc_file=ifc_file, building="Block A", building_storey="L1", space="Room 101"
+        building = IFCSpatialElementFactory(ifc_file=ifc_file, spatial_type="building", parent=None)
+        storey = IFCSpatialElementFactory(
+            ifc_file=ifc_file, spatial_type="building_storey", parent=building
         )
         client.force_login(user)
 
-        response = client.get(self._url(project, ifc_file) + "?building=Block+A&storey=L1")
+        response = client.get(self._url(project, ifc_file) + f"?spatial_id={building.id}")
         assert response.status_code == 200
-        assert response.context["level"] == "space"
+        nodes = list(response.context["nodes"])
+        assert len(nodes) == 1
+        assert nodes[0].id == storey.id
+
+    def test_spatial_id_at_storey_returns_spaces(self, client):
+        """?spatial_id=<storey_uuid> → returns its space children."""
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        ifc_file = IFCFileFactory(project=project, status="completed")
+        building = IFCSpatialElementFactory(ifc_file=ifc_file, spatial_type="building", parent=None)
+        storey = IFCSpatialElementFactory(
+            ifc_file=ifc_file, spatial_type="building_storey", parent=building
+        )
+        space = IFCSpatialElementFactory(ifc_file=ifc_file, spatial_type="space", parent=storey)
+        client.force_login(user)
+
+        response = client.get(self._url(project, ifc_file) + f"?spatial_id={storey.id}")
+        assert response.status_code == 200
+        nodes = list(response.context["nodes"])
+        assert len(nodes) == 1
+        assert nodes[0].id == space.id
 
     def test_non_member_gets_403(self, client):
         """User without project access is denied."""
@@ -1235,16 +1251,22 @@ class TestExploreEntitiesPartial:
         assert response.status_code == 200
         assert response.context["page_obj"].paginator.count == 2
 
-    def test_filters_by_building(self, client):
-        """?building=X only returns entities assigned to that building."""
+    def test_filters_by_spatial_id(self, client):
+        """?spatial_id=<uuid> only returns entities contained in that spatial subtree."""
         user = UserFactory()
         project = ProjectFactory(owner=user)
         ifc_file = IFCFileFactory(project=project, status="completed")
-        IFCEntityFactory(ifc_file=ifc_file, building="Block A")
-        IFCEntityFactory(ifc_file=ifc_file, building="Block B")
+        building_a = IFCSpatialElementFactory(
+            ifc_file=ifc_file, spatial_type="building", parent=None
+        )
+        building_b = IFCSpatialElementFactory(
+            ifc_file=ifc_file, spatial_type="building", parent=None
+        )
+        IFCEntityFactory(ifc_file=ifc_file, spatial_container=building_a)
+        IFCEntityFactory(ifc_file=ifc_file, spatial_container=building_b)
         client.force_login(user)
 
-        response = client.get(self._url(project, ifc_file) + "?building=Block+A")
+        response = client.get(self._url(project, ifc_file) + f"?spatial_id={building_a.id}")
         assert response.status_code == 200
         assert response.context["page_obj"].paginator.count == 1
 

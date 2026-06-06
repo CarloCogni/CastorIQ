@@ -183,21 +183,22 @@ That's the difference between a $150 budget lasting 2 weeks and lasting 6+ weeks
 
 ---
 
-## Post-launch: BYOK (deferred to v1.1)
+## BYOK (Bring Your Own Key) — shipped 2026-06
 
-Power users can plug their own Anthropic / Groq API keys via the settings page; their calls bypass the daily cap and the shared balance entirely.
+Power users plug their own Anthropic / Groq API keys via Settings; their calls bypass the daily cap and the shared $150 balance entirely. The shared pool funds the friction-free default; BYOK is the escape hatch for users who want more or who don't want their usage gated.
 
-**Why deferred:**
-- Adds an encrypted credential model (`LLMProviderCredential` with cryptography-backed field), settings UI, key validation, key rotation. ~3–4 days.
-- Risks the May 31 deadline.
-- The 50k/day cap is enough for genuine exploration during the beta; power users wait two weeks for v1.1.
+**Shipped design:**
+- Storage: encrypted Fernet ciphertext on `UserLLMConfig` (`anthropic_api_key_ciphertext`, `groq_api_key_ciphertext`). Keyed by `FIELD_ENCRYPTION_KEY` env var. Plaintext access via property getters that route through `core.crypto` — never assigned to the instance.
+- Scope: per-purpose. `ask_provider_override` and `modify_provider_override` independently route Ask and Modify, mirroring the site-level Anthropic/Groq split.
+- Model selection: curated 3-option dropdown per provider (see `core/llm_catalog.py`). Every option is keyed into the `_PRICE_TABLE` in `core/llm.py` so cost tracking stays accurate.
+- Failure handling: 401/429 surface as a toast pointing back to Settings. **No silent fallback to the shared pool** — that would defeat the user's choice and risk unexpected $ from the $150 if a key goes bad. Spec at `docs/specs/llm-connection.md`.
+- Audit: `LLMCallLog.byok = True` for every BYOK call. Cost dashboards exclude these from managed-pool spend. The daily-cap counter (`UserTokenBudget.used_today`) is never incremented for BYOK calls.
+- Key removal atomically resets any provider override that pointed at the removed key (no `override=anthropic, key=blank` half-state).
 
-**v1.1 design notes (when we build it):**
-- One credential per (user, provider) pair.
-- Encrypted at rest using a Django key from env var; decrypted only at call time.
-- Validation: try a `tokens=1` ping against the provider on save; reject invalid keys.
-- UI: per-provider "Use my own key" toggle in user settings; when on, that provider's calls go through the user's key and don't count against `used_today`.
-- Audit: `LLMCallLog` records `used_byok=True` so we can distinguish for analytics.
+**What's deferred to v1.1:**
+- "Verify key" button that pings the provider on save instead of waiting for the first real Ask to discover a typo.
+- Key rotation management command (manual SQL acceptable for the < 100 beta users until then).
+- OpenAI / other providers — Anthropic + Groq cover the cheap-fast and frontier-reasoning paths.
 
 ---
 

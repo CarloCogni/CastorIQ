@@ -128,9 +128,7 @@ def generate_plan_png(
         import ifcopenshell.geom  # noqa: PLC0415
         import ifcopenshell.util.unit  # noqa: PLC0415
     except ImportError as exc:  # pragma: no cover — ifcopenshell is in deps
-        raise PlanGenerationError(
-            "ifcopenshell is not installed on this server."
-        ) from exc
+        raise PlanGenerationError("ifcopenshell is not installed on this server.") from exc
 
     kinds = _normalize_kinds(included_kinds)
     ifc_types = _ifc_types_for_kinds(kinds)
@@ -141,9 +139,7 @@ def generate_plan_png(
     try:
         ifc = ifcopenshell.open(ifc_file_path)
     except Exception as exc:  # pragma: no cover — depends on file health
-        raise PlanGenerationError(
-            f"Could not open IFC file: {exc}"
-        ) from exc
+        raise PlanGenerationError(f"Could not open IFC file: {exc}") from exc
 
     # Unit scale: factor that turns IFC values into metres. mm-based files
     # return 0.001 here; metre files return 1.0; feet files ~0.3048.
@@ -159,9 +155,7 @@ def generate_plan_png(
     try:
         ifc_storey = ifc.by_guid(storey_gid)
     except RuntimeError as exc:
-        raise PlanGenerationError(
-            f"Storey {storey_gid} not found in IFC file."
-        ) from exc
+        raise PlanGenerationError(f"Storey {storey_gid} not found in IFC file.") from exc
     if ifc_storey is None or not ifc_storey.is_a("IfcBuildingStorey"):
         raise PlanGenerationError(
             f"Storey {storey_gid} is not an IfcBuildingStorey in the IFC file."
@@ -237,9 +231,7 @@ def generate_plan_png(
     if failed_shapes:
         logger.info("Skipped %d shapes that failed to triangulate", failed_shapes)
     if not z_values:
-        raise PlanGenerationError(
-            "No usable geometry found in this storey's elements."
-        )
+        raise PlanGenerationError("No usable geometry found in this storey's elements.")
 
     # Pass 1b: triangulate walls + slabs of EVERY storey to get the project's
     # XY bounding box. Using the same bounds for every storey's PNG means a
@@ -284,7 +276,7 @@ def generate_plan_png(
     raw_span_x = max(project_xs) - min(project_xs) if project_xs else 0.0
     raw_span_y = max(project_ys) - min(project_ys) if project_ys else 0.0
     raw_span_z = max(z_values) - min(z_values)
-    raw_diagonal = (raw_span_x ** 2 + raw_span_y ** 2 + raw_span_z ** 2) ** 0.5
+    raw_diagonal = (raw_span_x**2 + raw_span_y**2 + raw_span_z**2) ** 0.5
     scale_factor = _infer_to_metres_scale(raw_diagonal, unit_scale_to_m)
     if scale_factor != 1.0:
         logger.warning(
@@ -296,8 +288,7 @@ def generate_plan_png(
         )
         element_geometry = [
             (
-                [(x * scale_factor, y * scale_factor, z * scale_factor)
-                 for (x, y, z) in verts],
+                [(x * scale_factor, y * scale_factor, z * scale_factor) for (x, y, z) in verts],
                 faces,
             )
             for verts, faces in element_geometry
@@ -450,7 +441,9 @@ def generate_plan_png(
     # Record the height we actually used (post-clamp). If we fell through to
     # the top-down fallback, persist the user's request as-is so they see what
     # they asked for and the UI can flag the fallback to them next time.
-    effective_height_m = used_cut_height_m if used_cut_height_m is not None else requested_cut_height_m
+    effective_height_m = (
+        used_cut_height_m if used_cut_height_m is not None else requested_cut_height_m
+    )
     return PlanGenerationResult(
         content=ContentFile(bio.read(), name=filename),
         cut_height_mm=int(round(effective_height_m * 1000)),
@@ -540,9 +533,7 @@ def _resolve_ifc_path(storey: IFCSpatialElement) -> str:
     try:
         return file_field.path
     except (ValueError, NotImplementedError) as exc:
-        raise PlanGenerationError(
-            "IFC file is not stored on the local filesystem."
-        ) from exc
+        raise PlanGenerationError("IFC file is not stored on the local filesystem.") from exc
 
 
 def _normalize_kinds(raw: list[str] | None) -> tuple[str, ...]:

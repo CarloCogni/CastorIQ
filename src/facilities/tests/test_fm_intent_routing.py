@@ -22,7 +22,8 @@ class TestDetectIntent:
         """A lightweight RAGService with LLM / embedding init stubbed out."""
         monkeypatch.setattr("chat.services.rag_service.get_llm", lambda **_: None)
         monkeypatch.setattr(
-            "chat.services.rag_service.resolve_model_name", lambda _user: "stub-model"
+            "chat.services.rag_service.resolve_model_name",
+            lambda _user, **_kwargs: "stub-model",
         )
         monkeypatch.setattr("chat.services.rag_service.EmbeddingService", lambda: None)
         return RAGService(user=None)

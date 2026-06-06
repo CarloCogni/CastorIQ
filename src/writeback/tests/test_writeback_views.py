@@ -230,7 +230,7 @@ class TestModifyViewPostPropose:
         """Successful propose returns status=proposed with proposal data."""
         user = UserFactory()
         project = ProjectFactory(owner=user)
-        ifc_file = IFCFileFactory(project=project)
+        IFCFileFactory(project=project)
         _login(client, user)
 
         mock_proposal = MagicMock()
@@ -516,7 +516,7 @@ class TestDismissConflictView:
 
         user = UserFactory()
         project = ProjectFactory(owner=user)
-        ifc_file = IFCFileFactory(project=project)
+        IFCFileFactory(project=project)
         _login(client, user)
 
         conflict = Conflict.objects.create(

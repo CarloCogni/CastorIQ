@@ -1,0 +1,2194 @@
+<!-- ifc_viewer/viewer.html — Castor Simulator: 3D viewer + 4D/5D controls -->
+{% load static %}
+<div class="d-flex flex-column h-100 position-relative" id="ifc-viewer-root">
+
+    {% if not ifc_file_url %}
+    <!-- No IFC file state -->
+    <div class="d-flex flex-column align-items-center justify-content-center h-100 text-secondary">
+        <i class="bi bi-box fs-1 mb-3"></i>
+        <p class="mb-1 fw-semibold">No processed IFC file</p>
+        <p class="small">Upload and process an IFC file from the project settings to enable the 3D viewer.</p>
+    </div>
+
+    {% else %}
+
+    <!-- ── Toolbar ──────────────────────────────────────────────────────── -->
+    <div class="d-flex align-items-center px-3 py-2 border-bottom bg-body flex-shrink-0 flex-wrap gap-2"
+         style="font-size:0.82rem;">
+
+        <span class="fw-semibold me-1">Castor Simulator</span>
+        <span class="text-secondary text-truncate" style="font-size:0.78rem; max-width:200px;">{{ viewer_ifc_file.name }}</span>
+
+        <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
+
+            <!-- Color By -->
+            <div class="d-flex align-items-center gap-1">
+                <label class="text-secondary mb-0" style="white-space:nowrap;">Color by:</label>
+                <select id="colorby-select" class="form-select form-select-sm" style="width:auto; font-size:0.78rem;">
+                    <option value="none">None</option>
+                    <option value="material">Material</option>
+                    <option value="level">Level</option>
+                    <option value="element_type">Element Type</option>
+                    <option value="schedule_status">Schedule Status</option>
+                </select>
+            </div>
+
+            <!-- Reset -->
+            <button id="viewer-reset-btn" class="btn btn-sm btn-outline-secondary" title="Reset camera and colours">
+                <i class="bi bi-aspect-ratio me-1"></i>Reset
+            </button>
+
+            <!-- Help -->
+            <button type="button"
+                    class="help-pill"
+                    data-bs-toggle="modal"
+                    data-bs-target="#simulatorHelpModal"
+                    title="How Castor Simulator works"
+                    aria-label="How Castor Simulator works">
+                <i class="bi bi-question-circle"></i>
+            </button>
+
+        </div>
+    </div>
+
+    <!-- ── View Controls secondary toolbar ──────────────────────────────── -->
+    <div id="view-controls-bar" style="display:flex;align-items:center;gap:4px;
+         padding:4px 8px;border-top:1px solid rgba(255,255,255,0.1);
+         background:rgba(0,0,0,0.3);flex-shrink:0;">
+        <button class="vctl-btn" data-view="home"  title="Fit All">⌂</button>
+        <button class="vctl-btn" data-view="top"   title="Top View">⊤</button>
+        <button class="vctl-btn" data-view="front" title="Front View">↑</button>
+        <button class="vctl-btn" data-view="right" title="Right View">→</button>
+        <button class="vctl-btn" data-view="left"  title="Left View">←</button>
+        <div style="width:1px;height:16px;background:rgba(255,255,255,0.2);margin:0 4px;"></div>
+        <button id="proj-toggle" class="vctl-btn" title="Toggle Perspective/Orthographic"
+                style="min-width:48px;">Persp</button>
+        <button id="vis-toggle-btn" class="vctl-btn" title="Visibility Controls"
+                style="font-size:12px;">👁 Vis</button>
+        <button id="sect-toggle-btn" class="vctl-btn" title="Section Box — clip model with 6 planes"
+                style="font-size:12px;">✂ Sect</button>
+        <button id="meas-toggle-btn" class="vctl-btn" title="Measurement Tool — click two points"
+                style="font-size:12px;">📏 Measure</button>
+        <button id="meas-clear-btn" class="vctl-btn" title="Clear all measurements"
+                style="font-size:12px;">🗑</button>
+        <select id="meas-axis-select" title="Measurement axis constraint"
+                style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);
+                       color:#fff;border-radius:4px;padding:2px 4px;font-size:11px;
+                       cursor:pointer;height:26px;outline:none;">
+            <option value="3d"  style="background:#1e293b;">Point to Point</option>
+            <option value="x"   style="background:#1e293b;">X (Horizontal)</option>
+            <option value="z"   style="background:#1e293b;">Y (Horizontal)</option>
+            <option value="y"   style="background:#1e293b;">Z (Vertical ↕)</option>
+        </select>
+        <button id="show-hidden-btn" class="vctl-btn" title="Show all hidden elements"
+                style="font-size:12px;">👁 Show</button>
+        <button id="export-report-btn" class="vctl-btn"
+                title="Download standalone stakeholder report (HTML)"
+                style="font-size:12px;"
+                onclick="window.location.href='{% url 'ifc_viewer:export_report' project.pk %}'">📤 Export</button>
+        <div style="flex:1;"></div>
+        <button class="vctl-btn" data-zoom="+" title="Zoom In">+</button>
+        <button class="vctl-btn" data-zoom="-" title="Zoom Out">−</button>
+    </div>
+
+    <!-- ── Main content: viewer + collapsible gap panel ─────────────────── -->
+    <div class="d-flex flex-grow-1 overflow-hidden">
+
+        <!-- 3D viewer -->
+        <div class="flex-grow-1 position-relative overflow-hidden bg-dark">
+            <div id="ifc-container" style="width:100%; height:100%; position:relative;"></div>
+
+            <!-- Measurement distance labels (HTML overlay, updated by rAF loop) -->
+            <div id="measure-labels"
+                 style="position:absolute;top:0;left:0;width:100%;height:100%;
+                        pointer-events:none;z-index:6;overflow:hidden;"></div>
+
+            <!-- Loading overlay -->
+            <div id="viewer-loading"
+                 class="position-absolute top-0 start-0 w-100 h-100 d-flex flex-column align-items-center justify-content-center bg-dark text-light"
+                 style="z-index:10;">
+                <div class="spinner-border text-primary mb-3" role="status"></div>
+                <span id="viewer-loading-msg">Loading IFC model…</span>
+            </div>
+
+            <!-- Error overlay -->
+            <div id="viewer-error"
+                 class="position-absolute top-0 start-0 w-100 h-100 d-flex flex-column align-items-center justify-content-center bg-dark text-danger d-none"
+                 style="z-index:10;">
+                <i class="bi bi-exclamation-triangle fs-1 mb-2"></i>
+                <span id="viewer-error-msg">Failed to load model.</span>
+            </div>
+
+            <!-- Simulation legend (TimeLiner / timeline slider) -->
+            <div id="sim-legend"
+                 class="position-absolute bottom-0 start-0 m-3 p-2 rounded bg-dark bg-opacity-75 text-light d-none"
+                 style="font-size:0.75rem; z-index:5;">
+                <div class="d-flex align-items-center gap-2 mb-1"><span style="width:10px;height:10px;border-radius:2px;background:#22c55e;display:inline-block;"></span> Active</div>
+                <div class="d-flex align-items-center gap-2 mb-1"><span style="width:10px;height:10px;border-radius:2px;background:#3b82f6;display:inline-block;"></span> Complete</div>
+                <div class="d-flex align-items-center gap-2 mb-1"><span style="width:10px;height:10px;border-radius:2px;background:#94a3b8;display:inline-block;"></span> Pending</div>
+                <div class="d-flex align-items-center gap-2">       <span style="width:10px;height:10px;border-radius:2px;background:#f59e0b;display:inline-block;"></span> Delayed</div>
+            </div>
+
+            <!-- Color-by legend (top-right) -->
+            <div id="colorby-legend"
+                 class="position-absolute top-0 end-0 m-2 p-2 rounded bg-dark bg-opacity-75 text-light d-none"
+                 style="font-size:0.75rem; z-index:5; max-width:160px;">
+                <div id="colorby-legend-body" class="d-flex flex-column gap-1"></div>
+            </div>
+
+            <!-- Element selection — context menu -->
+            <div id="sel-ctx-menu"
+                 class="position-absolute bg-dark border border-secondary rounded shadow-sm py-1"
+                 style="display:none; z-index:100; min-width:164px; font-size:0.82rem;">
+                <button class="btn btn-link text-light d-flex align-items-center gap-2 w-100 text-start px-3 py-1"
+                        id="sel-ctx-props"><i class="bi bi-info-circle"></i>Properties</button>
+                <button class="btn btn-link text-light d-flex align-items-center gap-2 w-100 text-start px-3 py-1"
+                        id="sel-ctx-isolate"><i class="bi bi-bounding-box"></i>Isolate</button>
+                <button class="btn btn-link text-light d-flex align-items-center gap-2 w-100 text-start px-3 py-1"
+                        id="sel-ctx-hide"><i class="bi bi-eye-slash"></i>Hide</button>
+                <div class="border-top border-secondary my-1"></div>
+                <button class="btn btn-link text-secondary d-flex align-items-center gap-2 w-100 text-start px-3 py-1"
+                        id="sel-ctx-deselect"><i class="bi bi-x-circle"></i>Deselect</button>
+            </div>
+
+            <!-- Element selection — properties float panel -->
+            <div id="sel-props-panel"
+                 class="position-absolute bg-dark border border-secondary rounded shadow"
+                 style="display:none; z-index:99; width:280px; top:8px; right:8px;">
+                <div class="d-flex align-items-center justify-content-between px-3 py-2 border-bottom border-secondary">
+                    <span class="fw-semibold text-light" style="font-size:0.83rem;">
+                        <i class="bi bi-layers me-1 text-info"></i>Element Info
+                    </span>
+                    <button id="sel-props-close" class="btn btn-sm btn-link text-secondary p-0" title="Close">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+                <div id="sel-props-body" class="p-2 text-light"
+                     style="max-height:55vh; overflow-y:auto; font-size:0.78rem;"></div>
+            </div>
+
+            <!-- Selection sidebar (slides in from left) -->
+            <div id="selection-sidebar"
+                 style="position:absolute;left:0;top:0;bottom:0;width:220px;
+                        background:rgba(15,23,42,0.95);border-right:1px solid rgba(255,255,255,0.1);
+                        transform:translateX(-220px);transition:transform 0.25s ease;
+                        z-index:50;overflow-y:auto;padding:10px 8px;">
+                <div style="font-size:10px;color:#94a3b8;font-weight:600;
+                            text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Selection</div>
+                <div id="sel-counter" style="color:#e2e8f0;font-size:12px;margin-bottom:8px;">
+                    0 elements selected
+                </div>
+                <div style="display:flex;gap:4px;margin-bottom:10px;">
+                    <button id="sel-all-btn"   class="vctl-btn" style="flex:1;font-size:11px;">All</button>
+                    <button id="sel-clear-btn" class="vctl-btn" style="flex:1;font-size:11px;">None</button>
+                </div>
+                <div style="color:#94a3b8;font-size:10px;font-weight:600;
+                            text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">By Type</div>
+                <select id="sel-by-type"
+                        style="width:100%;margin-bottom:4px;background:#1e293b;color:#e2e8f0;
+                               border:1px solid rgba(255,255,255,0.15);border-radius:4px;
+                               padding:4px 6px;font-size:11px;">
+                    <option value="">— choose type —</option>
+                </select>
+                <button id="sel-type-btn" class="vctl-btn"
+                        style="width:100%;font-size:11px;margin-bottom:10px;">Select Type</button>
+                <div style="color:#94a3b8;font-size:10px;font-weight:600;
+                            text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">By Level</div>
+                <select id="sel-by-level"
+                        style="width:100%;margin-bottom:4px;background:#1e293b;color:#e2e8f0;
+                               border:1px solid rgba(255,255,255,0.15);border-radius:4px;
+                               padding:4px 6px;font-size:11px;">
+                    <option value="">— choose level —</option>
+                </select>
+                <button id="sel-level-btn" class="vctl-btn"
+                        style="width:100%;font-size:11px;">Select Level</button>
+            </div>
+            <!-- Sidebar toggle tab on left edge — z:54 keeps it above both sidebars (tree z:52, sel z:50) -->
+            <button id="sel-sidebar-toggle"
+                    style="position:absolute;left:0;top:50%;transform:translateY(-50%);
+                           transition:left 0.25s ease;
+                           z-index:54;background:rgba(0,0,0,0.7);color:white;
+                           border:1px solid rgba(255,255,255,0.2);border-radius:4px;
+                           padding:6px 4px;cursor:pointer;writing-mode:vertical-rl;
+                           font-size:11px;letter-spacing:.5px;white-space:nowrap;"
+                    title="Toggle selection panel">Selection</button>
+
+            <!-- Visibility controls panel (top-right, z:90 — below props panel z:99) -->
+            <div id="visibility-panel"
+                 style="position:absolute;right:8px;top:8px;width:240px;max-height:50vh;
+                        overflow-y:auto;background:rgba(15,23,42,0.93);
+                        border:1px solid rgba(255,255,255,0.15);border-radius:8px;
+                        padding:10px;z-index:90;display:none;">
+                <div style="display:flex;justify-content:space-between;align-items:center;
+                            margin-bottom:8px;">
+                    <span style="color:white;font-weight:600;font-size:13px;">Visibility</span>
+                    <span id="vis-close"
+                          style="cursor:pointer;color:#94a3b8;font-size:14px;line-height:1;">✕</span>
+                </div>
+                <div style="color:#94a3b8;font-size:11px;margin-bottom:4px;">
+                    Hidden element opacity
+                </div>
+                <input type="range" id="vis-opacity" min="0" max="50" value="0"
+                       style="width:100%;margin-bottom:10px;">
+                <div style="color:#94a3b8;font-size:10px;font-weight:600;
+                            text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">
+                    Levels
+                </div>
+                <div id="vis-levels-list" style="margin-bottom:8px;"></div>
+                <div style="color:#94a3b8;font-size:10px;font-weight:600;
+                            text-transform:uppercase;letter-spacing:.4px;
+                            margin:4px 0 4px;">Types</div>
+                <div id="vis-types-list" style="margin-bottom:8px;"></div>
+                <div style="display:flex;gap:4px;">
+                    <button id="vis-show-all" class="vctl-btn"
+                            style="flex:1;font-size:11px;">Show All</button>
+                    <button id="vis-hide-all" class="vctl-btn"
+                            style="flex:1;font-size:11px;">Hide All</button>
+                </div>
+            </div>
+
+            <!-- Spatial tree sidebar (slides from left, z:52 — above selection z:50) -->
+            <div id="tree-sidebar"
+                 style="position:absolute;left:0;top:0;bottom:0;width:280px;
+                        background:rgba(13,20,38,0.97);border-right:1px solid rgba(255,255,255,0.1);
+                        transform:translateX(-280px);transition:transform 0.25s ease;
+                        z-index:52;overflow:hidden;display:flex;flex-direction:column;">
+                <div style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                        <span style="font-size:10px;color:#94a3b8;font-weight:600;
+                                     text-transform:uppercase;letter-spacing:.5px;">Spatial Structure</span>
+                        <button id="tree-clear-btn"
+                                style="background:none;border:none;color:#64748b;cursor:pointer;
+                                       font-size:11px;padding:0 2px;line-height:1;"
+                                title="Clear selection">✕ Clear</button>
+                    </div>
+                    <input type="text" id="tree-search" placeholder="Filter elements…"
+                           style="width:100%;background:#1e293b;color:#e2e8f0;
+                                  border:1px solid rgba(255,255,255,0.15);border-radius:4px;
+                                  padding:4px 7px;font-size:11px;outline:none;box-sizing:border-box;">
+                </div>
+                <div id="tree-body" style="flex:1;overflow-y:auto;padding:6px 8px;font-size:11px;"></div>
+            </div>
+            <!-- Tree toggle on left edge, above selection toggle -->
+            <button id="tree-toggle"
+                    style="position:absolute;left:0;top:28%;transform:translateY(-50%);
+                           transition:left 0.25s ease;
+                           z-index:53;background:rgba(0,0,0,0.7);color:white;
+                           border:1px solid rgba(255,255,255,0.2);border-radius:4px;
+                           padding:6px 4px;cursor:pointer;writing-mode:vertical-rl;
+                           font-size:11px;letter-spacing:.5px;white-space:nowrap;"
+                    title="Toggle spatial tree">🌳 Tree</button>
+
+        </div>
+
+
+    </div>
+
+    <!-- Timeline is disabled in standalone 3D viewer — use Simulate tab for 4D -->
+    <div id="timeline-section"
+         class="border-top bg-body flex-shrink-0 px-3 py-2 d-none"
+         style="display:none!important; font-size:0.82rem;">
+
+        <!-- Row 1: controls + current date -->
+        <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+            <span class="fw-medium text-secondary me-1" style="white-space:nowrap; font-size:0.8rem;">4D Timeline</span>
+            <button id="tl-prev-btn"  class="btn btn-sm btn-outline-secondary" title="Previous week">
+                <i class="bi bi-skip-backward-fill"></i>
+            </button>
+            <button id="tl-play-btn"  class="btn btn-sm btn-primary" title="Play">
+                <i class="bi bi-play-fill"></i>
+            </button>
+            <button id="tl-pause-btn" class="btn btn-sm btn-outline-secondary d-none" title="Pause">
+                <i class="bi bi-pause-fill"></i>
+            </button>
+            <button id="tl-next-btn"  class="btn btn-sm btn-outline-secondary" title="Next week">
+                <i class="bi bi-skip-forward-fill"></i>
+            </button>
+            <select id="tl-speed-select" class="form-select form-select-sm" style="width:auto; font-size:0.78rem;">
+                <option value="0.5">0.5×</option>
+                <option value="1" selected>1×</option>
+                <option value="2">2×</option>
+            </select>
+            <span id="tl-current-date" class="fw-bold ms-1" style="font-size:0.92rem; min-width:110px;"></span>
+            <button id="tl-close-btn" class="btn btn-sm btn-link text-secondary ms-auto p-0" title="Close timeline" style="font-size:0.8rem;">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
+
+        <!-- Row 2: slider with project start / end labels -->
+        <div class="d-flex align-items-center gap-2">
+            <span id="tl-min-date" class="text-secondary" style="font-size:0.75rem; white-space:nowrap;"></span>
+            <input id="timeline-slider" type="range" class="form-range flex-grow-1" min="0" value="0" style="min-width:120px;">
+            <span id="tl-max-date" class="text-secondary" style="font-size:0.75rem; white-space:nowrap;"></span>
+        </div>
+
+        <!-- Row 3: live stats bar -->
+        <div id="tl-stats-bar" class="d-flex align-items-center gap-3 mt-2 flex-wrap" style="font-size:0.77rem;">
+            <div class="d-flex align-items-center gap-1">
+                <span style="width:9px;height:9px;border-radius:2px;background:#10B981;display:inline-block;flex-shrink:0;"></span>
+                <span id="tl-stat-complete" class="fw-semibold">0</span>
+                <span class="text-secondary">Complete</span>
+            </div>
+            <div class="d-flex align-items-center gap-1">
+                <span style="width:9px;height:9px;border-radius:2px;background:#F59E0B;display:inline-block;flex-shrink:0;"></span>
+                <span id="tl-stat-in-progress" class="fw-semibold">0</span>
+                <span class="text-secondary">In Progress</span>
+            </div>
+            <div class="d-flex align-items-center gap-1">
+                <span style="width:9px;height:9px;border-radius:2px;background:#9CA3AF;display:inline-block;flex-shrink:0;"></span>
+                <span id="tl-stat-not-started" class="fw-semibold">0</span>
+                <span class="text-secondary">Not Started</span>
+            </div>
+            <div class="d-flex align-items-center gap-1 ms-2">
+                <span id="tl-stat-pct" class="fw-bold text-success">0%</span>
+                <span class="text-secondary">complete</span>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- No-schedule banner is suppressed in standalone 3D viewer -->
+    <div id="no-tasks-banner"
+         class="border-top bg-body flex-shrink-0 px-3 py-2 d-none text-secondary"
+         style="display:none!important; font-size:0.8rem;">
+        <i class="bi bi-info-circle me-1"></i>
+        No schedule linked — import a schedule in 4D/5D Controls &gt; TimeLiner to enable the timeline.
+    </div>
+
+    <style>
+    .vctl-btn {
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.15);
+        color: white;
+        border-radius: 4px;
+        padding: 3px 8px;
+        cursor: pointer;
+        font-size: 13px;
+        line-height: 1.4;
+    }
+    .vctl-btn:hover { background: rgba(255,255,255,0.16); }
+    </style>
+
+    <!-- ── importmap ─────────────────────────────────────────────────────── -->
+    <script type="importmap">
+    {
+      "imports": {
+        "three":               "{% static 'vendor/three/build/three.module.js' %}",
+        "@thatopen/fragments": "{% static 'vendor/thatopen-fragments/dist/index.min.mjs' %}",
+        "web-ifc":             "{% static 'vendor/web-ifc/web-ifc-api.js' %}?v=2"
+      }
+    }
+    </script>
+
+    <!-- ── Module script ─────────────────────────────────────────────────── -->
+    <script type="module">
+    import * as OBC   from "{% static 'vendor/thatopen-components/dist/index.min.mjs' %}";
+    import * as THREE from "three";
+
+    const IFC_URL           = "{{ ifc_file_url }}";
+    const FRAG_URL          = "{% url 'ifc_viewer:viewer_fragments'      project.pk %}";
+    const COLORMAP_URL      = "{% url 'ifc_viewer:viewer_colormap'       project.pk %}";
+    const TIMELINE_URL      = "{% url 'ifc_viewer:viewer_timeline'       project.pk %}";
+    const ENTITY_TYPES_URL  = "{% url 'ifc_viewer:viewer_entity_types'   project.pk %}";
+    const SPATIAL_TREE_URL  = "{% url 'ifc_viewer:viewer_spatial_tree'   project.pk %}";
+    const CSRF_TOKEN        = "{{ csrf_token }}";
+
+    const container  = document.getElementById("ifc-container");
+    const loading    = document.getElementById("viewer-loading");
+    const loadMsg    = document.getElementById("viewer-loading-msg");
+    const errBox     = document.getElementById("viewer-error");
+    const errMsg     = document.getElementById("viewer-error-msg");
+    const simLegend  = document.getElementById("sim-legend");
+
+    const C = {
+        /* legacy castor:simulate colours (simulate.html) */
+        active:    new THREE.Color(0.133, 0.773, 0.369),
+        complete:  new THREE.Color(0.231, 0.510, 0.965),
+        pending:   new THREE.Color(0.580, 0.639, 0.722),
+        delayed:   new THREE.Color(0.961, 0.620, 0.043),
+        highlight: new THREE.Color(1.000, 0.863, 0.000),
+        /* 4D timeline — colours pre-multiplied against #111 background */
+        tl_complete:    new THREE.Color(0.063, 0.722, 0.506),   // #10B981 opacity 1.0
+        tl_in_progress: new THREE.Color(0.335, 0.233, 0.060),   // #F59E0B blended @ 0.3
+        tl_no_task:     new THREE.Color(0.104, 0.105, 0.106),   // #D1D5DB blended @ 0.05
+        // not_started → hidden via fragment.setVisibility(false)
+    };
+
+    let world = null;
+    let model = null;
+    const globalIdIndex     = new Map();
+    const fragmentIndex     = new Map();
+    const meshToFragment    = new Map();   // InstancedMesh → Fragment (raycaster hit lookup)
+    const expressIdToGlobalId = new Map(); // expressId → globalId (reverse of globalIdIndex)
+
+    // ── 1. Init ──────────────────────────────────────────────────────────
+
+    async function init() {
+        try {
+            loadMsg.textContent = "Initialising renderer…";
+            const components = new OBC.Components();
+            const worlds = components.get(OBC.Worlds);
+            world = worlds.create();
+            world.scene    = new OBC.SimpleScene(components);
+            world.renderer = new OBC.SimpleRenderer(components, container);
+            world.camera   = new OBC.OrthoPerspectiveCamera(components);
+            components.init();
+            world.scene.setup();
+
+            loadMsg.textContent = "Checking geometry cache…";
+            const fragResp = await fetch(FRAG_URL);
+
+            if (fragResp.ok) {
+                loadMsg.textContent = "Loading cached model…";
+                const fragData = new Uint8Array(await fragResp.arrayBuffer());
+                const fragmentsManager = components.get(OBC.FragmentsManager);
+                model = fragmentsManager.load(fragData);
+                world.scene.three.add(model);
+                buildIndex();
+                if (globalIdIndex.size === 0) {
+                    console.warn("[simulator] Fragment cache has no GlobalId properties — falling back to IFC load.");
+                    world.scene.three.remove(model);
+                    globalIdIndex.clear();
+                    fragmentIndex.clear();
+                    model = null;
+                }
+            }
+
+            if (!model) {
+                loadMsg.textContent = "Initialising WASM…";
+                const ifcLoader = components.get(OBC.IfcLoader);
+                ifcLoader.settings.wasm = {
+                    path: "{% static 'vendor/web-ifc/' %}",
+                    absolute: true,
+                };
+                await ifcLoader.setup();
+
+                loadMsg.textContent = "Fetching IFC file…";
+                const resp = await fetch(IFC_URL);
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+                loadMsg.textContent = "Parsing IFC model…";
+                const data = new Uint8Array(await resp.arrayBuffer());
+                model = await ifcLoader.load(data);
+                world.scene.three.add(model);
+                _saveFragments(components, model);
+                buildIndex();
+            }
+
+            loading.classList.add("d-none");
+            resetAllColors();
+            _initSelector();
+            _initViewControls();
+            _initSelectionSidebar();
+            _initVisibilityPanel();
+            _initSectionBox();
+            _initMeasureTool();
+            _initSpatialTree();
+
+        } catch (err) {
+            console.error("IFC viewer init failed:", err);
+            loading.classList.add("d-none");
+            errMsg.textContent = `Failed to load model: ${err.message}`;
+            errBox.classList.remove("d-none");
+        }
+    }
+
+    // ── 1b. Fragment cache save ──────────────────────────────────────────
+
+    async function _saveFragments(components, model) {
+        try {
+            const fragmentsManager = components.get(OBC.FragmentsManager);
+            const fragBinary = fragmentsManager.export(model);
+            const resp = await fetch(FRAG_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/octet-stream", "X-CSRFToken": CSRF_TOKEN },
+                body: fragBinary,
+            });
+            if (resp.ok) console.log("[simulator] Fragment cache saved (" + fragBinary.byteLength + " bytes).");
+            else         console.warn("[simulator] Fragment cache POST returned", resp.status);
+        } catch (e) {
+            console.warn("[simulator] Fragment cache save failed:", e);
+        }
+    }
+
+    // ── 2. GlobalId index ────────────────────────────────────────────────
+
+    function buildIndex() {
+        if (!model) return;
+        try {
+            for (const fragment of model.items) {
+                meshToFragment.set(fragment.mesh, fragment);
+                for (const expressId of fragment.ids) {
+                    fragmentIndex.set(expressId, fragment);
+                }
+            }
+            for (const [gid, expressId] of model.globalToExpressIDs) {
+                globalIdIndex.set(gid, expressId);
+                expressIdToGlobalId.set(expressId, gid);
+            }
+        } catch (e) {
+            console.warn("[simulator] GlobalId index build failed:", e);
+        }
+    }
+
+    // ── 3. Colour helpers ────────────────────────────────────────────────
+
+    function colorByGlobalIds(globalIds, color) {
+        for (const gid of globalIds) {
+            const expressId = globalIdIndex.get(gid);
+            if (expressId === undefined) continue;
+            const fragment = fragmentIndex.get(expressId);
+            if (!fragment) continue;
+            fragment.setColor(color, [expressId]);
+        }
+    }
+
+    function resetAllColors() {
+        if (!model) return;
+        for (const fragment of model.items) {
+            fragment.resetColor();
+            fragment.setVisibility(true);   // restore any instances hidden by timeline mode
+        }
+        /* Re-apply user-hidden elements so they survive color/timeline resets */
+        if (_hiddenGlobalIds.size) hideGlobalIds([..._hiddenGlobalIds]);
+    }
+
+    function hideGlobalIds(globalIds) {
+        for (const gid of globalIds) {
+            const expressId = globalIdIndex.get(gid);
+            if (expressId === undefined) continue;
+            const fragment = fragmentIndex.get(expressId);
+            if (!fragment) continue;
+            fragment.setVisibility(false, [expressId]);
+        }
+    }
+
+    function showGlobalIds(globalIds) {
+        for (const gid of globalIds) {
+            const expressId = globalIdIndex.get(gid);
+            if (expressId === undefined) continue;
+            const fragment = fragmentIndex.get(expressId);
+            if (!fragment) continue;
+            fragment.setVisibility(true, [expressId]);
+            try { fragment.resetColor([expressId]); } catch (_) { /* OBC v1 fallback */ }
+        }
+    }
+
+    function makeColor(hex) {
+        return new THREE.Color(hex);
+    }
+
+    // ── 4. Existing CustomEvent listeners (TimeLiner integration) ────────
+
+    document.addEventListener("castor:highlight", (e) => {
+        if (!model) return;
+        colorByGlobalIds(e.detail?.globalIds || [], C.highlight);
+    });
+
+    /* Original legend markup — restored when castor:simulate fires after timeline use */
+    const _simLegendOrig = simLegend.innerHTML;
+
+    document.addEventListener("castor:simulate", (e) => {
+        if (!model) return;
+        simLegend.innerHTML = _simLegendOrig;
+        simLegend.classList.remove("d-none");
+        const { active = [], complete = [], pending = [], delayed = [] } = e.detail || {};
+        resetAllColors();
+        colorByGlobalIds(active,   C.active);
+        colorByGlobalIds(complete, C.complete);
+        colorByGlobalIds(pending,  C.pending);
+        colorByGlobalIds(delayed,  C.delayed);
+    });
+
+    // ── 5. Color By ──────────────────────────────────────────────────────
+
+    async function applyColormap(by) {
+        if (by === "none") {
+            resetAllColors();
+            document.getElementById("colorby-legend").classList.add("d-none");
+            return;
+        }
+        if (!model) return;
+        try {
+            const resp = await fetch(`${COLORMAP_URL}?by=${by}`);
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const colormap = data.colormap || {};
+            const legend   = data.legend   || [];
+
+            /* group global_ids by colour hex for efficiency */
+            const byHex = {};
+            for (const [gid, hex] of Object.entries(colormap)) {
+                (byHex[hex] = byHex[hex] || []).push(gid);
+            }
+            resetAllColors();
+            for (const [hex, ids] of Object.entries(byHex)) {
+                colorByGlobalIds(ids, makeColor(hex));
+            }
+
+            const legendEl   = document.getElementById("colorby-legend");
+            const legendBody = document.getElementById("colorby-legend-body");
+            legendBody.innerHTML = legend.map(({ label, color }) =>
+                `<div class="d-flex align-items-center gap-2">` +
+                `<span style="width:10px;height:10px;border-radius:2px;background:${color};display:inline-block;flex-shrink:0;"></span>` +
+                `<span style="font-size:0.72rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:110px;" title="${label}">${label}</span>` +
+                `</div>`
+            ).join("");
+            legendEl.classList.remove("d-none");
+        } catch (e) {
+            console.warn("[simulator] Colormap fetch failed:", e);
+        }
+    }
+
+    document.getElementById("colorby-select")?.addEventListener("change", (e) => {
+        applyColormap(e.target.value);
+    });
+
+    // ── 6. 4D Timeline Slider ────────────────────────────────────────────
+    // Timeline is disabled in standalone 3D viewer — use Simulate tab for 4D
+
+    let timelineIntervals = [];
+    let timelineNoTask    = [];
+    let timelineTimer     = null;
+    let timelineSpeed     = 1;
+
+    async function initTimeline() {
+        try {
+            const resp = await fetch(TIMELINE_URL);
+            if (!resp.ok) return;
+            const data = await resp.json();
+
+            if (!data.has_tasks) {
+                document.getElementById("no-tasks-banner").classList.remove("d-none");
+                return;
+            }
+
+            timelineIntervals = data.intervals || [];
+            timelineNoTask    = data.no_task   || [];
+            if (!timelineIntervals.length) return;
+
+            document.getElementById("tl-min-date").textContent = data.project_start || "";
+            document.getElementById("tl-max-date").textContent = data.project_end   || "";
+
+            const slider = document.getElementById("timeline-slider");
+            slider.max   = timelineIntervals.length - 1;
+            slider.value = 0;
+
+            _applyIntervalAt(0);
+            document.getElementById("timeline-section").classList.remove("d-none");
+
+            _checkPendingJump();
+        } catch (e) {
+            console.warn("[simulator] Timeline init failed:", e);
+        }
+    }
+
+    function _applyIntervalAt(idx) {
+        if (!timelineIntervals.length || !model) return;
+        const iv = timelineIntervals[Math.min(idx, timelineIntervals.length - 1)];
+
+        resetAllColors();
+        /* paint in ascending priority so complete always wins; not_started is hidden */
+        colorByGlobalIds(timelineNoTask              || [], C.tl_no_task);      // near-invisible
+        colorByGlobalIds(iv.entities.in_progress     || [], C.tl_in_progress);  // ghost amber
+        colorByGlobalIds(iv.entities.complete        || [], C.tl_complete);     // solid green
+        hideGlobalIds(iv.entities.not_started        || []);                    // fully hidden
+
+        /* Update date label */
+        const label = new Date(iv.date + "T00:00:00").toLocaleDateString(undefined, {
+            year: "numeric", month: "short", day: "numeric",
+        });
+        document.getElementById("tl-current-date").textContent = label;
+        document.getElementById("timeline-slider").value = idx;
+
+        /* Update stats bar */
+        const s = iv.stats || {};
+        const total = s.total || 1;
+        const cmp   = s.complete    || 0;
+        const inp   = s.in_progress || 0;
+        const ns    = s.not_started || 0;
+        const pct   = Math.round((cmp / total) * 100);
+        document.getElementById("tl-stat-complete").textContent    = cmp.toLocaleString();
+        document.getElementById("tl-stat-in-progress").textContent = inp.toLocaleString();
+        document.getElementById("tl-stat-not-started").textContent = ns.toLocaleString();
+        document.getElementById("tl-stat-pct").textContent         = pct + "%";
+
+        /* Update legend */
+        simLegend.innerHTML =
+            `<div class="d-flex align-items-center gap-2 mb-1"><span style="width:10px;height:10px;border-radius:2px;background:#10B981;display:inline-block;"></span> Complete</div>` +
+            `<div class="d-flex align-items-center gap-2 mb-1"><span style="width:10px;height:10px;border-radius:2px;background:#F59E0B;opacity:0.3;display:inline-block;"></span> In Progress</div>` +
+            `<div class="d-flex align-items-center gap-2 mb-1"><span style="width:10px;height:10px;border-radius:2px;background:#333;border:1px solid #555;display:inline-block;"></span> Not Started (hidden)</div>` +
+            `<div class="d-flex align-items-center gap-2">       <span style="width:10px;height:10px;border-radius:2px;background:#1B1B1B;display:inline-block;"></span> No Task</div>`;
+        simLegend.classList.remove("d-none");
+    }
+
+    /* Pending jump: set from Gantt detail via localStorage, applied on load */
+    function _checkPendingJump() {
+        try {
+            const raw = localStorage.getItem("castor:pending-jump");
+            if (!raw) return;
+            localStorage.removeItem("castor:pending-jump");
+            const { date: targetDate, globalIds } = JSON.parse(raw);
+
+            const target = new Date(targetDate).getTime();
+            let bestIdx  = 0;
+            let bestDiff = Infinity;
+            timelineIntervals.forEach((iv, i) => {
+                const diff = Math.abs(new Date(iv.date).getTime() - target);
+                if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
+            });
+
+            _applyIntervalAt(bestIdx);
+            if (globalIds && globalIds.length && model) {
+                setTimeout(() => colorByGlobalIds(globalIds, C.highlight), 60);
+            }
+        } catch (e) {
+            console.warn("[simulator] Pending jump failed:", e);
+        }
+    }
+
+    /* Slider input */
+    document.getElementById("timeline-slider")?.addEventListener("input", (e) => {
+        _applyIntervalAt(parseInt(e.target.value));
+    });
+
+    /* Prev / Next */
+    document.getElementById("tl-prev-btn")?.addEventListener("click", () => {
+        const s = document.getElementById("timeline-slider");
+        _applyIntervalAt(Math.max(0, parseInt(s.value) - 1));
+    });
+    document.getElementById("tl-next-btn")?.addEventListener("click", () => {
+        const s = document.getElementById("timeline-slider");
+        _applyIntervalAt(Math.min(parseInt(s.max), parseInt(s.value) + 1));
+    });
+
+    /* Play / Pause */
+    document.getElementById("tl-play-btn")?.addEventListener("click", () => {
+        document.getElementById("tl-play-btn").classList.add("d-none");
+        document.getElementById("tl-pause-btn").classList.remove("d-none");
+        _timelinePlay();
+    });
+    document.getElementById("tl-pause-btn")?.addEventListener("click", () => {
+        _timelinePause();
+        document.getElementById("tl-pause-btn").classList.add("d-none");
+        document.getElementById("tl-play-btn").classList.remove("d-none");
+    });
+
+    /* Speed */
+    document.getElementById("tl-speed-select")?.addEventListener("change", (e) => {
+        timelineSpeed = parseFloat(e.target.value);
+        if (timelineTimer) { _timelinePause(); _timelinePlay(); }
+    });
+
+    /* Close timeline — restore previous Color By state */
+    document.getElementById("tl-close-btn")?.addEventListener("click", () => {
+        _timelinePause();
+        document.getElementById("tl-pause-btn").classList.add("d-none");
+        document.getElementById("tl-play-btn").classList.remove("d-none");
+        simLegend.classList.add("d-none");
+        simLegend.innerHTML = _simLegendOrig;
+        document.getElementById("timeline-section").classList.add("d-none");
+        resetAllColors();
+        const cb = document.getElementById("colorby-select")?.value;
+        if (cb && cb !== "none") applyColormap(cb);
+    });
+
+    function _timelinePlay() {
+        const slider = document.getElementById("timeline-slider");
+        timelineTimer = setInterval(() => {
+            const next = parseInt(slider.value) + 1;
+            if (next > parseInt(slider.max)) {
+                _timelinePause();
+                document.getElementById("tl-pause-btn").classList.add("d-none");
+                document.getElementById("tl-play-btn").classList.remove("d-none");
+                return;
+            }
+            _applyIntervalAt(next);
+        }, 1500 / timelineSpeed);
+    }
+
+    function _timelinePause() {
+        clearInterval(timelineTimer);
+        timelineTimer = null;
+    }
+
+    // ── 9. Reset button ──────────────────────────────────────────────────
+
+    document.getElementById("viewer-reset-btn")?.addEventListener("click", () => {
+        world?.camera?.controls?.setLookAt(10, 10, 10, 0, 0, 0, true);
+        _timelinePause();
+        simLegend.innerHTML = _simLegendOrig;
+        simLegend.classList.add("d-none");
+        document.getElementById("colorby-legend").classList.add("d-none");
+        document.getElementById("colorby-select").value = "none";
+        _selectedGlobalIds.clear();
+        _hiddenGlobalIds.clear();   // clear BEFORE resetAllColors so nothing gets re-hidden
+        _updateSelCounter();
+        resetAllColors();
+        if (_sectionEnabled) {
+            _disableSectionBox();
+            _sectionEnabled = false;
+            const sb = document.getElementById("sect-toggle-btn");
+            if (sb) sb.style.background = "rgba(255,255,255,0.08)";
+        }
+        _clearMeasurements();
+    });
+
+    document.getElementById("show-hidden-btn")?.addEventListener("click", () => {
+        if (!_hiddenGlobalIds.size) return;
+        showGlobalIds([..._hiddenGlobalIds]);
+        _hiddenGlobalIds.clear();
+    });
+
+    // ── 10. Element selection — click → identify GlobalId, multi-select ──
+
+    const _selectedGlobalIds = new Set();   // elements with cyan highlight
+    const _hiddenGlobalIds   = new Set();   // elements hidden by user — re-applied after every resetAllColors
+    const _SEL_COLOR = new THREE.Color('#00BCD4');
+
+    function _updateSelCounter() {
+        const el = document.getElementById("sel-counter");
+        if (!el) return;
+        const n = _selectedGlobalIds.size;
+        el.textContent = n === 0 ? "0 elements selected"
+                       : n === 1 ? "1 element selected"
+                       : `${n} elements selected`;
+    }
+
+    function _clearAllSelections() {
+        _selectedGlobalIds.clear();
+        resetAllColors();
+        _updateSelCounter();
+    }
+
+    function _findGlobalIdFromHit(intersection) {
+        if (intersection.instanceId === undefined) return null;
+        const fragment = meshToFragment.get(intersection.object);
+        if (!fragment) return null;
+        let expressId;
+        if (typeof fragment.getItemID === 'function') {
+            expressId = fragment.getItemID(intersection.instanceId);
+        } else if (fragment.instanceToId instanceof Map) {
+            expressId = fragment.instanceToId.get(intersection.instanceId);
+        }
+        if (expressId == null) return null;
+        return expressIdToGlobalId.get(expressId) ?? null;
+    }
+
+    function _initSelector() {
+        const raycaster = new THREE.Raycaster();
+        const mouse     = new THREE.Vector2();
+        const canvas    = world.renderer.three.domElement;
+        let   _pointerMoved = false;
+
+        canvas.addEventListener('pointerdown', () => { _pointerMoved = false; });
+        canvas.addEventListener('pointermove', () => { _pointerMoved = true; });
+
+        canvas.addEventListener('click', (e) => {
+            if (_activeDrag) return;   // section handle drag — not a real click
+            if (_measureMode) { _handleMeasureClick(e); return; }
+            if (_pointerMoved || !model) return;
+            const rect = canvas.getBoundingClientRect();
+            mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
+            mouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
+            raycaster.setFromCamera(mouse, world.camera.three);
+            const hits = raycaster.intersectObjects(world.scene.three.children, true);
+            if (!hits.length) {
+                if (_selectedGlobalIds.size) {
+                    resetAllColors();
+                    _selectedGlobalIds.clear();
+                    _updateSelCounter();
+                }
+                return;
+            }
+            const globalId = _findGlobalIdFromHit(hits[0]);
+            if (!globalId) return;
+            console.log('[selector] clicked globalId:', globalId);
+
+            if (e.ctrlKey || e.metaKey) {
+                /* Ctrl/Cmd+Click — toggle element in set */
+                if (_selectedGlobalIds.has(globalId)) {
+                    _selectedGlobalIds.delete(globalId);
+                } else {
+                    _selectedGlobalIds.add(globalId);
+                }
+            } else {
+                /* Regular click — replace selection; deselect if same single element */
+                if (_selectedGlobalIds.size === 1 && _selectedGlobalIds.has(globalId)) {
+                    _selectedGlobalIds.clear();
+                } else {
+                    _selectedGlobalIds.clear();
+                    _selectedGlobalIds.add(globalId);
+                }
+            }
+            resetAllColors();
+            if (_selectedGlobalIds.size) colorByGlobalIds([..._selectedGlobalIds], _SEL_COLOR);
+            _updateSelCounter();
+        });
+
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            if (!model) return;
+            if (_measureMode) return;
+            const rect = canvas.getBoundingClientRect();
+            mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
+            mouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
+            raycaster.setFromCamera(mouse, world.camera.three);
+            const hits = raycaster.intersectObjects(world.scene.three.children, true);
+            if (!hits.length) { if (_ctxMenuEl) _ctxMenuEl.style.display = "none"; return; }
+            const globalId = _findGlobalIdFromHit(hits[0]);
+            if (!globalId) return;
+            /* Right-click on an unselected element: select it alone */
+            if (!_selectedGlobalIds.has(globalId)) {
+                _selectedGlobalIds.clear();
+                _selectedGlobalIds.add(globalId);
+                resetAllColors();
+                colorByGlobalIds([..._selectedGlobalIds], _SEL_COLOR);
+                _updateSelCounter();
+            }
+            if (!_ctxMenuEl) return;
+            const cRect = _ctxMenuEl.parentElement.getBoundingClientRect();
+            _ctxMenuEl.style.left = Math.min(e.clientX - cRect.left, cRect.width  - 170) + "px";
+            _ctxMenuEl.style.top  = Math.min(e.clientY - cRect.top,  cRect.height - 140) + "px";
+            _ctxMenuEl.dataset.globalId = globalId;
+            _ctxMenuEl.style.display = "block";
+        });
+    }
+
+    // ── 11. Context menu & Properties panel ─────────────────────────────
+
+    const ELEM_PROPS_URL_TMPL = "{% url 'ifc_viewer:viewer_element_props' project.pk 'ELEM_PH' %}";
+
+    const _ctxMenuEl    = document.getElementById("sel-ctx-menu");
+    const _propsPanelEl = document.getElementById("sel-props-panel");
+    const _propsBodyEl  = document.getElementById("sel-props-body");
+
+    function _esc(s) {
+        return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    function _renderProps(data) {
+        if (!data.found) {
+            return `<div style="color:#94a3b8;"><code style="color:#67e8f9;font-size:0.73rem;">${_esc(data.global_id)}</code><p class="mt-1 mb-0 small">Not indexed in database.</p></div>`;
+        }
+        const meta = [
+            ["GlobalId",  `<code style="color:#67e8f9;font-size:0.73rem;">${_esc(data.global_id)}</code>`],
+            ["Type",      _esc(data.ifc_type)],
+            ["Name",      _esc(data.name || "—")],
+            data.tag      ? ["Tag",   _esc(data.tag)]      : null,
+            data.location ? ["Level", _esc(data.location)] : null,
+        ].filter(Boolean);
+
+        let html = `<table style="width:100%;border-collapse:collapse;font-size:0.78rem;">`;
+        for (const [label, val] of meta) {
+            html += `<tr>
+                <td style="color:#94a3b8;padding:2px 8px 2px 0;white-space:nowrap;vertical-align:top;">${label}</td>
+                <td style="padding:2px 0;vertical-align:top;">${val}</td></tr>`;
+        }
+        html += `</table>`;
+
+        /* Properties are stored as flat dot-notation keys: "Pset_WallCommon.IsExternal": true.
+           Group by prefix (before first dot), skip internal .id entries. */
+        const groups = {};
+        for (const [key, val] of Object.entries(data.properties || {})) {
+            if (key.endsWith('.id')) continue;
+            const dot   = key.indexOf('.');
+            const group = dot >= 0 ? key.substring(0, dot) : 'General';
+            const attr  = dot >= 0 ? key.substring(dot + 1) : key;
+            (groups[group] = groups[group] || []).push([attr, val]);
+        }
+
+        for (const [group, entries] of Object.entries(groups)) {
+            html += `<div style="border-top:1px solid #334155;margin-top:8px;padding-top:5px;
+                                  color:#94a3b8;font-size:0.73rem;font-weight:600;">${_esc(group)}</div>
+                     <table style="width:100%;border-collapse:collapse;font-size:0.75rem;margin-top:2px;">`;
+            for (const [k, v] of entries) {
+                const display = v == null      ? "—"
+                              : typeof v === "boolean" ? (v ? "✓" : "✗")
+                              : typeof v === "number"  ? v.toLocaleString(undefined, {maximumFractionDigits: 4})
+                              : String(v);
+                html += `<tr>
+                    <td style="color:#94a3b8;padding:1px 8px 1px 0;white-space:nowrap;">${_esc(k)}</td>
+                    <td style="padding:1px 0;word-break:break-word;">${_esc(display)}</td></tr>`;
+            }
+            html += `</table>`;
+        }
+
+        /* ── 4D linked tasks ───────────────────────────────────────────── */
+        const _4dTasks = data.linked_tasks || [];
+        const _SC = {
+            complete: { icon: "✅", color: "#10B981", label: "complete" },
+            active:   { icon: "🔄", color: "#185FA5", label: "active"   },
+            delayed:  { icon: "⚠️", color: "#EF4444", label: "delayed"  },
+            planned:  { icon: "⏳", color: "#94a3b8", label: "planned"  },
+        };
+        const _fmtD = (iso) => iso
+            ? new Date(iso + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })
+            : "—";
+
+        html += `<div style="border-top:1px solid #334155;margin-top:8px;padding-top:5px;
+                              color:#94a3b8;font-size:0.73rem;font-weight:600;">4D</div>`;
+
+        if (!_4dTasks.length) {
+            html += `<div style="font-size:0.74rem;color:#f59e0b;padding:4px 0;">
+                ⚠️ No linked tasks — run AutoLink in TimeLiner → Attach</div>`;
+        } else {
+            html += `<div style="font-size:0.74rem;color:#94a3b8;padding:2px 0 4px;">
+                🔗 ${_4dTasks.length} linked task${_4dTasks.length === 1 ? "" : "s"}</div>`;
+            _4dTasks.forEach((t, i) => {
+                const last    = i === _4dTasks.length - 1;
+                const cfg     = _SC[t.status] || _SC.planned;
+                const code    = t.activity_code ? `${_esc(t.activity_code)} — ` : "";
+                const planned = `${_fmtD(t.planned_start)} → ${_fmtD(t.planned_end)}`;
+                const actual  = t.actual_start
+                    ? ` | Actual: ${_fmtD(t.actual_start)} → ${_fmtD(t.actual_end)}`
+                    : "";
+                html += `<div style="font-size:0.74rem;padding:2px 0;">
+                    <span style="color:#475569;">${last ? "└──" : "├──"}</span>
+                    <span style="color:${cfg.color};margin:0 3px;">[${cfg.label} ${cfg.icon}]</span>
+                    <span>${code}${_esc(t.name)}</span></div>
+                <div style="font-size:0.71rem;color:#64748b;padding-left:22px;margin-bottom:2px;">
+                    Planned: ${planned}${actual}</div>`;
+            });
+        }
+        return html;
+    }
+
+    function _openPropsPanel(globalId) {
+        if (!_propsPanelEl) return;
+        _propsPanelEl.style.display = "block";
+        _propsBodyEl.innerHTML = '<div class="py-3 text-center"><div class="spinner-border spinner-border-sm text-secondary" role="status"></div></div>';
+        fetch(ELEM_PROPS_URL_TMPL.replace("ELEM_PH", encodeURIComponent(globalId)))
+            .then(r => r.json())
+            .then(data => { _propsBodyEl.innerHTML = _renderProps(data); })
+            .catch(() => { _propsBodyEl.innerHTML = '<span class="text-danger small">Failed to load properties.</span>'; });
+    }
+
+    document.getElementById("sel-ctx-props")?.addEventListener("click", () => {
+        const gid = _ctxMenuEl?.dataset.globalId;
+        if (_ctxMenuEl) _ctxMenuEl.style.display = "none";
+        if (gid) _openPropsPanel(gid);
+    });
+
+    document.getElementById("sel-ctx-isolate")?.addEventListener("click", () => {
+        const gid = _ctxMenuEl?.dataset.globalId;
+        if (_ctxMenuEl) _ctxMenuEl.style.display = "none";
+        if (!gid || !model) return;
+        for (const fragment of model.items) { fragment.setVisibility(false); }
+        const expressId = globalIdIndex.get(gid);
+        if (expressId !== undefined) {
+            fragmentIndex.get(expressId)?.setVisibility(true, [expressId]);
+        }
+        colorByGlobalIds([gid], _SEL_COLOR);
+    });
+
+    document.getElementById("sel-ctx-hide")?.addEventListener("click", () => {
+        const gid = _ctxMenuEl?.dataset.globalId;
+        if (_ctxMenuEl) _ctxMenuEl.style.display = "none";
+        if (!gid) return;
+        _hiddenGlobalIds.add(gid);
+        hideGlobalIds([gid]);
+        _selectedGlobalIds.delete(gid);
+        _updateSelCounter();
+    });
+
+    document.getElementById("sel-ctx-deselect")?.addEventListener("click", () => {
+        const gid = _ctxMenuEl?.dataset.globalId;
+        if (_ctxMenuEl) _ctxMenuEl.style.display = "none";
+        if (!gid) return;
+        _selectedGlobalIds.delete(gid);
+        /* Reset colour for this element only — it stays fully visible */
+        const expressId = globalIdIndex.get(gid);
+        if (expressId !== undefined) {
+            try { fragmentIndex.get(expressId)?.resetColor([expressId]); } catch (_) {}
+        }
+        _updateSelCounter();
+    });
+
+    document.getElementById("sel-props-close")?.addEventListener("click", () => {
+        if (_propsPanelEl) _propsPanelEl.style.display = "none";
+    });
+
+    document.addEventListener("click", (e) => {
+        if (_ctxMenuEl && !_ctxMenuEl.contains(e.target)) _ctxMenuEl.style.display = "none";
+    });
+
+    document.addEventListener("keydown", (e) => {
+        if (e.key !== "Escape") return;
+        if (_ctxMenuEl) _ctxMenuEl.style.display = "none";
+        if (_propsPanelEl) _propsPanelEl.style.display = "none";
+        _clearAllSelections();
+    });
+
+    // ── 12. View Controls toolbar ────────────────────────────────────────
+
+    function _getSceneBBox() {
+        const bbox = new THREE.Box3();
+        if (!model) return bbox;
+        for (const fragment of model.items) {
+            const mesh = fragment.mesh;
+            if (mesh && mesh.geometry) {
+                mesh.updateMatrixWorld(true);
+                bbox.union(new THREE.Box3().setFromObject(mesh));
+            }
+        }
+        return bbox;
+    }
+
+    function _initViewControls() {
+        const controls = world?.camera?.controls;
+        if (!controls) return;
+
+        /* View preset buttons */
+        document.querySelectorAll(".vctl-btn[data-view]").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const bbox   = _getSceneBBox();
+                const center = new THREE.Vector3();
+                const size   = new THREE.Vector3();
+                if (!bbox.isEmpty()) { bbox.getCenter(center); bbox.getSize(size); }
+                const dist = Math.max(size.x, size.y, size.z, 5) * 2.5;
+
+                switch (btn.dataset.view) {
+                    case "home":
+                        if (!bbox.isEmpty() && typeof controls.fitToBox === "function") {
+                            controls.fitToBox(bbox, true);
+                        } else {
+                            controls.setLookAt(10, 10, 10, 0, 0, 0, true);
+                        }
+                        break;
+                    case "top":
+                        world.camera.three.up.set(0, 0, -1);
+                        controls.setLookAt(
+                            center.x, center.y + dist, center.z,
+                            center.x, center.y, center.z, true);
+                        break;
+                    case "front":
+                        world.camera.three.up.set(0, 1, 0);
+                        controls.setLookAt(
+                            center.x, center.y, center.z + dist,
+                            center.x, center.y, center.z, true);
+                        break;
+                    case "right":
+                        world.camera.three.up.set(0, 1, 0);
+                        controls.setLookAt(
+                            center.x + dist, center.y, center.z,
+                            center.x, center.y, center.z, true);
+                        break;
+                    case "left":
+                        world.camera.three.up.set(0, 1, 0);
+                        controls.setLookAt(
+                            center.x - dist, center.y, center.z,
+                            center.x, center.y, center.z, true);
+                        break;
+                }
+            });
+        });
+
+        /* Zoom buttons — dolly to scaled distance */
+        document.querySelectorAll(".vctl-btn[data-zoom]").forEach(btn => {
+            btn.addEventListener("click", () => {
+                if (!controls) return;
+                const factor = btn.dataset.zoom === "+" ? 0.75 : 1.33;
+                if (typeof controls.dollyTo === "function" && controls.distance != null) {
+                    controls.dollyTo(Math.max(0.5, controls.distance * factor), true);
+                } else if (btn.dataset.zoom === "+" && typeof controls.dollyIn === "function") {
+                    controls.dollyIn(0.5, true);
+                } else if (typeof controls.dollyOut === "function") {
+                    controls.dollyOut(0.5, true);
+                }
+            });
+        });
+
+        /* Projection toggle — OrthoPerspectiveCamera native API */
+        const projBtn = document.getElementById("proj-toggle");
+        if (projBtn && world.camera.projection) {
+            world.camera.projection.onChanged.add(() => {
+                const isOrtho = world.camera.projection.current === "Orthographic";
+                projBtn.textContent   = isOrtho ? "Ortho" : "Persp";
+                projBtn.style.outline = isOrtho ? "1px solid rgba(59,130,246,0.7)" : "";
+                projBtn.disabled      = false;
+            });
+            projBtn.addEventListener("click", async () => {
+                projBtn.disabled = true;
+                await world.camera.projection.toggle();
+            });
+        }
+    }
+
+    // ── 15. Section Box (clipping planes) ───────────────────────────────
+
+    let _sectionEnabled     = false;
+    let _sectionPlanes      = null;
+    let _sectionHandles     = [];
+    let _activeDrag         = null;
+
+    const _HANDLE_COLORS = [0xef4444, 0xef4444, 0x22c55e, 0x22c55e, 0x3b82f6, 0x3b82f6];
+
+    function _enableSectionBox() {
+        const bbox = _getSceneBBox();
+        if (bbox.isEmpty()) return;
+        const min = bbox.min, max = bbox.max;
+        const size = new THREE.Vector3();
+        bbox.getSize(size);
+        const hSize = Math.max(0.05, Math.min(Math.min(size.x, size.y, size.z) * 0.05, 1.5));
+        const hGeo  = new THREE.BoxGeometry(hSize, hSize, hSize);
+
+        _sectionPlanes = [
+            new THREE.Plane(new THREE.Vector3(-1, 0, 0),  max.x),
+            new THREE.Plane(new THREE.Vector3( 1, 0, 0), -min.x),
+            new THREE.Plane(new THREE.Vector3( 0,-1, 0),  max.y),
+            new THREE.Plane(new THREE.Vector3( 0, 1, 0), -min.y),
+            new THREE.Plane(new THREE.Vector3( 0, 0,-1),  max.z),
+            new THREE.Plane(new THREE.Vector3( 0, 0, 1), -min.z),
+        ];
+        world.renderer.three.clippingPlanes = _sectionPlanes;
+
+        const center = new THREE.Vector3();
+        bbox.getCenter(center);
+
+        _sectionHandles = _sectionPlanes.map((plane, i) => {
+            const mat  = new THREE.MeshBasicMaterial({ color: _HANDLE_COLORS[i] });
+            const mesh = new THREE.Mesh(hGeo, mat);
+            /* place handle at the face center on this clipping plane */
+            const t = -plane.constant - plane.normal.dot(center);
+            mesh.position.copy(center).addScaledVector(plane.normal, t);
+            mesh.renderOrder = 999;
+            world.scene.three.add(mesh);
+            return mesh;
+        });
+    }
+
+    function _disableSectionBox() {
+        _sectionHandles.forEach(h => world.scene.three.remove(h));
+        _sectionHandles = [];
+        if (world?.renderer?.three) world.renderer.three.clippingPlanes = [];
+        _sectionPlanes = null;
+    }
+
+    function _initSectionBox() {
+        const btn = document.getElementById("sect-toggle-btn");
+        if (!btn) return;
+
+        btn.addEventListener("click", () => {
+            _sectionEnabled = !_sectionEnabled;
+            btn.style.background = _sectionEnabled
+                ? "rgba(239,68,68,0.35)" : "rgba(255,255,255,0.08)";
+            if (_sectionEnabled) _enableSectionBox();
+            else                  _disableSectionBox();
+        });
+
+        const canvas     = world.renderer.three.domElement;
+        const ray        = new THREE.Raycaster();
+        const mouse      = new THREE.Vector2();
+        const dragPlane  = new THREE.Plane();
+        const dragTarget = new THREE.Vector3();
+        const camDir     = new THREE.Vector3();
+
+        canvas.addEventListener("pointerdown", (e) => {
+            if (!_sectionEnabled || !_sectionHandles.length) return;
+            const rect = canvas.getBoundingClientRect();
+            mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
+            mouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
+            ray.setFromCamera(mouse, world.camera.three);
+            const hits = ray.intersectObjects(_sectionHandles);
+            if (!hits.length) return;
+            const handle   = hits[0].object;
+            const planeIdx = _sectionHandles.indexOf(handle);
+            world.camera.three.getWorldDirection(camDir);
+            dragPlane.setFromNormalAndCoplanarPoint(camDir.clone().negate(), hits[0].point);
+            _activeDrag = { handle, planeIdx };
+            canvas.setPointerCapture(e.pointerId);
+            canvas.style.cursor = "grabbing";
+            /* Pause camera orbit so the drag isn't stolen by CameraControls */
+            if (world?.camera?.controls) world.camera.controls.enabled = false;
+        });
+
+        canvas.addEventListener("pointermove", (e) => {
+            if (_sectionEnabled && _sectionHandles.length && !_activeDrag) {
+                /* Hover feedback — change cursor when over a handle */
+                const rect = canvas.getBoundingClientRect();
+                mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
+                mouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
+                ray.setFromCamera(mouse, world.camera.three);
+                canvas.style.cursor = ray.intersectObjects(_sectionHandles).length ? "grab" : "";
+            }
+            if (!_activeDrag) return;
+            const rect = canvas.getBoundingClientRect();
+            mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
+            mouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
+            ray.setFromCamera(mouse, world.camera.three);
+            if (!ray.ray.intersectPlane(dragPlane, dragTarget)) return;
+
+            const { handle, planeIdx } = _activeDrag;
+            const plane     = _sectionPlanes[planeIdx];
+            const pairConst = _sectionPlanes[planeIdx ^ 1].constant;
+            const MIN_GAP   = 0.05;
+
+            /* new constant = -dot(normal, dragTarget), clamped against paired plane */
+            let newConst = -plane.normal.dot(dragTarget);
+            newConst = Math.max(newConst, MIN_GAP - pairConst);
+            plane.constant = newConst;
+
+            /* move handle mesh to new face-center position */
+            const bbox = _getSceneBBox();
+            const center = new THREE.Vector3();
+            bbox.getCenter(center);
+            const t = -newConst - plane.normal.dot(center);
+            handle.position.copy(center).addScaledVector(plane.normal, t);
+        });
+
+        canvas.addEventListener("pointerup", (e) => {
+            if (!_activeDrag) return;
+            canvas.releasePointerCapture(e.pointerId);
+            _activeDrag = null;
+            canvas.style.cursor = "";
+            /* Resume camera orbit */
+            if (world?.camera?.controls) world.camera.controls.enabled = true;
+        });
+    }
+
+    // ── 14. Visibility Controls panel ───────────────────────────────────
+
+    window._visibilityState = { hidden: { level: {}, type: {} } };
+    const _visCache = { level: {}, type: {} };  // lazy cache: name → [globalId, ...]
+
+    function _ghostColor(sliderVal) {
+        /* Map slider 1-50 to a dark gray (nearly black → dark grey) */
+        const t = Math.max(1, sliderVal) / 50;
+        const v = t * 0.15;
+        return new THREE.Color(v, v, v);
+    }
+
+    async function _fetchVisCache(kind, name) {
+        if (_visCache[kind][name]) return _visCache[kind][name];
+        const param = kind === "level" ? "level" : "type";
+        try {
+            const resp = await fetch(`${ENTITY_TYPES_URL}?${param}=${encodeURIComponent(name)}`);
+            const data = await resp.json();
+            _visCache[kind][name] = data.global_ids || [];
+        } catch (_) {
+            _visCache[kind][name] = [];
+        }
+        return _visCache[kind][name];
+    }
+
+    function _applyHideCategory(gids, sliderVal) {
+        if (sliderVal === 0) {
+            hideGlobalIds(gids);
+        } else {
+            for (const gid of gids) {
+                const expressId = globalIdIndex.get(gid);
+                if (expressId === undefined) continue;
+                fragmentIndex.get(expressId)?.setVisibility(true, [expressId]);
+            }
+            colorByGlobalIds(gids, _ghostColor(sliderVal));
+        }
+    }
+
+    async function _initVisibilityPanel() {
+        const panel      = document.getElementById("visibility-panel");
+        const toggleBtn  = document.getElementById("vis-toggle-btn");
+        const closeSpan  = document.getElementById("vis-close");
+        const levelsDiv  = document.getElementById("vis-levels-list");
+        const typesDiv   = document.getElementById("vis-types-list");
+        const opacitySlider = document.getElementById("vis-opacity");
+        if (!panel) return;
+
+        /* Toggle */
+        function _setPanelVisible(on) {
+            panel.style.display = on ? "block" : "none";
+            if (toggleBtn) toggleBtn.style.background =
+                on ? "rgba(59,130,246,0.35)" : "rgba(255,255,255,0.08)";
+        }
+        toggleBtn?.addEventListener("click", () => _setPanelVisible(panel.style.display === "none"));
+        closeSpan?.addEventListener("click", () => _setPanelVisible(false));
+
+        /* Build a checkbox row for one visibility category */
+        function _mkCheckbox(kind, name) {
+            const row = document.createElement("div");
+            row.style.cssText = "display:flex;align-items:center;gap:6px;margin-bottom:3px;";
+            const cb  = document.createElement("input");
+            cb.type = "checkbox"; cb.checked = true; cb.style.cursor = "pointer";
+            const lbl = document.createElement("label");
+            lbl.textContent = name;
+            lbl.style.cssText = "font-size:11px;color:#e2e8f0;cursor:pointer;user-select:none;";
+            row.appendChild(cb); row.appendChild(lbl);
+
+            cb.addEventListener("change", async () => {
+                const sliderVal = parseInt(opacitySlider?.value ?? 0);
+                const gids = await _fetchVisCache(kind, name);
+                if (!cb.checked) {
+                    window._visibilityState.hidden[kind][name] = true;
+                    _applyHideCategory(gids, sliderVal);
+                } else {
+                    delete window._visibilityState.hidden[kind][name];
+                    showGlobalIds(gids);
+                    /* Restore selection highlight on any restored gids */
+                    const selHit = gids.filter(g => _selectedGlobalIds.has(g));
+                    if (selHit.length) colorByGlobalIds(selHit, _SEL_COLOR);
+                }
+            });
+            return row;
+        }
+
+        /* Populate from backend */
+        try {
+            const resp = await fetch(ENTITY_TYPES_URL);
+            if (resp.ok) {
+                const data = await resp.json();
+                (data.levels || []).forEach(n => levelsDiv?.appendChild(_mkCheckbox("level", n)));
+                (data.types  || []).forEach(n => typesDiv?.appendChild(_mkCheckbox("type",  n)));
+            }
+        } catch (e) { console.warn("[vis] Populate failed:", e); }
+
+        /* Opacity slider — re-apply all currently hidden categories */
+        opacitySlider?.addEventListener("input", async () => {
+            const sliderVal = parseInt(opacitySlider.value);
+            const hidden = window._visibilityState.hidden;
+            for (const name of Object.keys(hidden.level)) {
+                _applyHideCategory(await _fetchVisCache("level", name), sliderVal);
+            }
+            for (const name of Object.keys(hidden.type)) {
+                _applyHideCategory(await _fetchVisCache("type", name), sliderVal);
+            }
+        });
+
+        /* Show All */
+        document.getElementById("vis-show-all")?.addEventListener("click", () => {
+            window._visibilityState.hidden = { level: {}, type: {} };
+            panel.querySelectorAll("input[type=checkbox]").forEach(cb => { cb.checked = true; });
+            if (opacitySlider) opacitySlider.value = "0";
+            resetAllColors();
+            if (_selectedGlobalIds.size) colorByGlobalIds([..._selectedGlobalIds], _SEL_COLOR);
+        });
+
+        /* Hide All */
+        document.getElementById("vis-hide-all")?.addEventListener("click", () => {
+            panel.querySelectorAll("input[type=checkbox]").forEach(cb => {
+                if (cb.checked) { cb.checked = false; cb.dispatchEvent(new Event("change")); }
+            });
+        });
+    }
+
+    // ── 13. Selection sidebar ────────────────────────────────────────────
+
+    async function _initSelectionSidebar() {
+        const sidebar = document.getElementById("selection-sidebar");
+        const toggle  = document.getElementById("sel-sidebar-toggle");
+        if (!sidebar || !toggle) return;
+
+        /* Toggle open/closed */
+        let _sidebarOpen = false;
+        toggle.addEventListener("click", () => {
+            _sidebarOpen = !_sidebarOpen;
+            sidebar.style.transform = _sidebarOpen ? "translateX(0)" : "translateX(-220px)";
+            toggle.style.left       = _sidebarOpen ? "220px" : "0px";
+            if (_sidebarOpen) {
+                /* Collapse tree sidebar when selection opens */
+                const ts = document.getElementById("tree-sidebar");
+                const tt = document.getElementById("tree-toggle");
+                if (ts) ts.style.transform = "translateX(-280px)";
+                if (tt) { tt.style.left = "0px"; tt.style.background = "rgba(0,0,0,0.7)"; }
+            }
+            setTimeout(() => world?.renderer?.resize(), 260);
+        });
+
+        /* Populate dropdowns from backend */
+        try {
+            const resp = await fetch(ENTITY_TYPES_URL);
+            if (resp.ok) {
+                const data = await resp.json();
+                const typeSelect  = document.getElementById("sel-by-type");
+                const levelSelect = document.getElementById("sel-by-level");
+                (data.types  || []).forEach(t => {
+                    const o = document.createElement("option"); o.value = t; o.textContent = t;
+                    typeSelect.appendChild(o);
+                });
+                (data.levels || []).forEach(l => {
+                    const o = document.createElement("option"); o.value = l; o.textContent = l;
+                    levelSelect.appendChild(o);
+                });
+            }
+        } catch (e) {
+            console.warn("[sidebar] Entity types fetch failed:", e);
+        }
+
+        /* Select All */
+        document.getElementById("sel-all-btn")?.addEventListener("click", () => {
+            if (!model) return;
+            _selectedGlobalIds.clear();
+            for (const gid of globalIdIndex.keys()) _selectedGlobalIds.add(gid);
+            resetAllColors();
+            colorByGlobalIds([..._selectedGlobalIds], _SEL_COLOR);
+            _updateSelCounter();
+        });
+
+        /* Deselect All */
+        document.getElementById("sel-clear-btn")?.addEventListener("click", () => {
+            _selectedGlobalIds.clear();
+            resetAllColors();
+            _updateSelCounter();
+        });
+
+        /* Select by Type */
+        document.getElementById("sel-type-btn")?.addEventListener("click", async () => {
+            const type = document.getElementById("sel-by-type")?.value;
+            if (!type) return;
+            try {
+                const resp = await fetch(`${ENTITY_TYPES_URL}?type=${encodeURIComponent(type)}`);
+                const data = await resp.json();
+                _selectedGlobalIds.clear();
+                (data.global_ids || []).forEach(g => _selectedGlobalIds.add(g));
+                resetAllColors();
+                if (_selectedGlobalIds.size) colorByGlobalIds([..._selectedGlobalIds], _SEL_COLOR);
+                _updateSelCounter();
+            } catch (e) { console.warn("[sidebar] Type select failed:", e); }
+        });
+
+        /* Select by Level */
+        document.getElementById("sel-level-btn")?.addEventListener("click", async () => {
+            const level = document.getElementById("sel-by-level")?.value;
+            if (!level) return;
+            try {
+                const resp = await fetch(`${ENTITY_TYPES_URL}?level=${encodeURIComponent(level)}`);
+                const data = await resp.json();
+                _selectedGlobalIds.clear();
+                (data.global_ids || []).forEach(g => _selectedGlobalIds.add(g));
+                resetAllColors();
+                if (_selectedGlobalIds.size) colorByGlobalIds([..._selectedGlobalIds], _SEL_COLOR);
+                _updateSelCounter();
+            } catch (e) { console.warn("[sidebar] Level select failed:", e); }
+        });
+    }
+
+    // ── 17. Spatial Structure Tree ───────────────────────────────────────
+
+    function _initSpatialTree() {
+        const sidebar = document.getElementById("tree-sidebar");
+        const toggle  = document.getElementById("tree-toggle");
+        const body    = document.getElementById("tree-body");
+        const search  = document.getElementById("tree-search");
+        if (!sidebar || !toggle) return;
+
+        let _treeOpen = false;
+        let _loaded   = false;
+        let _treeData = [];
+
+        function _setTreeOpen(on) {
+            _treeOpen = on;
+            sidebar.style.transform = on ? "translateX(0)" : "translateX(-280px)";
+            toggle.style.left       = on ? "280px" : "0px";
+            toggle.style.background = on ? "rgba(34,197,94,0.3)" : "rgba(0,0,0,0.7)";
+            if (on) {
+                /* Collapse selection sidebar */
+                const ss = document.getElementById("selection-sidebar");
+                const st = document.getElementById("sel-sidebar-toggle");
+                if (ss) ss.style.transform = "translateX(-220px)";
+                if (st) st.style.left = "0px";
+            }
+            setTimeout(() => world?.renderer?.resize(), 260);
+        }
+
+        toggle.addEventListener("click", () => {
+            const opening = !_treeOpen;
+            _setTreeOpen(opening);
+            if (opening && !_loaded) { _loaded = true; _loadTree(); }
+        });
+
+        async function _loadTree() {
+            if (!body) return;
+            body.innerHTML = '<div style="color:#94a3b8;padding:8px 0;">Loading…</div>';
+            try {
+                const resp = await fetch(SPATIAL_TREE_URL);
+                if (!resp.ok) throw new Error("fetch failed");
+                const data = await resp.json();
+                _treeData = data.tree || [];
+                _renderTree("", _treeData);
+            } catch (e) {
+                body.innerHTML = '<div style="color:#ef4444;padding:8px 0;">Failed to load structure.</div>';
+            }
+        }
+
+        search?.addEventListener("input", () => {
+            _renderTree(search.value.trim().toLowerCase(), _treeData);
+        });
+
+        document.getElementById("tree-clear-btn")?.addEventListener("click", () => _clearAllSelections());
+
+        function _renderTree(filter, treeData) {
+            if (!body) return;
+            body.innerHTML = "";
+            if (!treeData.length) {
+                body.innerHTML = '<div style="color:#94a3b8;padding:4px 0;">No spatial data.</div>';
+                return;
+            }
+            for (const storey of treeData) {
+                const el = _makeStoreyNode(storey, filter);
+                if (el) body.appendChild(el);
+            }
+        }
+
+        function _mkHiBtn(symbol, color, title) {
+            const btn = document.createElement("button");
+            btn.textContent = symbol;
+            btn.title = title;
+            btn.style.cssText = `background:none;border:none;color:${color};cursor:pointer;` +
+                                "font-size:12px;padding:0 2px;flex-shrink:0;line-height:1;";
+            return btn;
+        }
+
+        function _makeStoreyNode(storey, filter) {
+            const childWrap = document.createElement("div");
+            childWrap.style.cssText =
+                "display:none;padding-left:12px;" +
+                "border-left:1px solid rgba(255,255,255,0.06);margin-left:5px;";
+
+            let matchCount = 0;
+            for (const tg of storey.children) {
+                const tgEl = _makeTypeNode(tg, filter);
+                if (tgEl) { childWrap.appendChild(tgEl); matchCount++; }
+            }
+
+            const hasFilter = !!filter;
+            if (hasFilter && !matchCount && !storey.name.toLowerCase().includes(filter)) {
+                return null;
+            }
+
+            const wrap  = document.createElement("div");
+            wrap.style.cssText = "margin-bottom:3px;";
+
+            const arrow = document.createElement("span");
+            arrow.textContent = "▶";
+            arrow.style.cssText =
+                "font-size:9px;color:#64748b;transition:transform .15s;" +
+                "flex-shrink:0;display:inline-block;margin-right:4px;";
+
+            const hdr = document.createElement("div");
+            hdr.style.cssText = "display:flex;align-items:center;cursor:pointer;padding:3px 2px;border-radius:3px;";
+
+            const nameSpan = document.createElement("span");
+            nameSpan.textContent = storey.name;
+            nameSpan.style.cssText = "color:#e2e8f0;font-weight:600;flex:1;font-size:12px;";
+
+            const cntSpan = document.createElement("span");
+            cntSpan.textContent = storey.count;
+            cntSpan.style.cssText = "color:#64748b;font-size:10px;margin-right:4px;";
+
+            const hiBtn = _mkHiBtn("◎", "#3b82f6", "Highlight level");
+            hiBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                resetAllColors();
+                colorByGlobalIds(storey.global_ids, C.highlight);
+            });
+
+            hdr.appendChild(arrow); hdr.appendChild(nameSpan);
+            hdr.appendChild(cntSpan); hdr.appendChild(hiBtn);
+            hdr.addEventListener("mouseenter", () => { hdr.style.background = "rgba(255,255,255,0.04)"; });
+            hdr.addEventListener("mouseleave", () => { hdr.style.background = ""; });
+
+            let expanded = hasFilter && matchCount > 0;
+            if (expanded) {
+                childWrap.style.display = "block";
+                arrow.style.transform = "rotate(90deg)";
+            }
+
+            hdr.addEventListener("click", () => {
+                expanded = !expanded;
+                childWrap.style.display = expanded ? "block" : "none";
+                arrow.style.transform   = expanded ? "rotate(90deg)" : "";
+            });
+
+            wrap.appendChild(hdr);
+            wrap.appendChild(childWrap);
+            return wrap;
+        }
+
+        function _makeTypeNode(tg, filter) {
+            let visChildren = tg.children;
+            if (filter) {
+                const typeMatch = tg.name.toLowerCase().includes(filter);
+                visChildren = typeMatch
+                    ? tg.children
+                    : tg.children.filter(c => (c.name || "").toLowerCase().includes(filter));
+                if (!visChildren.length) return null;
+            }
+
+            const wrap  = document.createElement("div");
+            wrap.style.cssText = "margin-bottom:2px;";
+
+            const arrow = document.createElement("span");
+            arrow.textContent = "▶";
+            arrow.style.cssText =
+                "font-size:8px;color:#475569;transition:transform .15s;" +
+                "flex-shrink:0;display:inline-block;margin-right:4px;";
+
+            const hdr = document.createElement("div");
+            hdr.style.cssText = "display:flex;align-items:center;cursor:pointer;padding:2px 2px;border-radius:2px;";
+
+            const lbl = document.createElement("span");
+            lbl.textContent = tg.name;
+            lbl.style.cssText = "color:#94a3b8;flex:1;";
+
+            const cnt = document.createElement("span");
+            cnt.textContent = tg.count;
+            cnt.style.cssText = "color:#475569;font-size:10px;margin-right:4px;";
+
+            const hiBtn = _mkHiBtn("◎", "#22c55e", "Highlight type in level");
+            hiBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                resetAllColors();
+                colorByGlobalIds(tg.global_ids, C.highlight);
+            });
+
+            hdr.appendChild(arrow); hdr.appendChild(lbl);
+            hdr.appendChild(cnt);   hdr.appendChild(hiBtn);
+            hdr.addEventListener("mouseenter", () => { hdr.style.background = "rgba(255,255,255,0.03)"; });
+            hdr.addEventListener("mouseleave", () => { hdr.style.background = ""; });
+
+            const childWrap = document.createElement("div");
+            childWrap.style.cssText = "display:none;padding-left:10px;";
+
+            let expanded = !!filter;
+            if (expanded) {
+                childWrap.style.display = "block";
+                arrow.style.transform = "rotate(90deg)";
+            }
+
+            for (const child of visChildren) {
+                childWrap.appendChild(_makeLeafNode(child, tg.name));
+            }
+            if (!filter && tg.count > tg.children.length) {
+                const more = document.createElement("div");
+                more.textContent = `+ ${tg.count - tg.children.length} more`;
+                more.style.cssText = "color:#475569;font-size:10px;padding:1px 0;";
+                childWrap.appendChild(more);
+            }
+
+            hdr.addEventListener("click", () => {
+                expanded = !expanded;
+                childWrap.style.display = expanded ? "block" : "none";
+                arrow.style.transform   = expanded ? "rotate(90deg)" : "";
+            });
+
+            wrap.appendChild(hdr);
+            wrap.appendChild(childWrap);
+            return wrap;
+        }
+
+        function _makeLeafNode(child, ifcType) {
+            const row = document.createElement("div");
+            row.textContent = child.name;
+            row.title = `${child.name} (${ifcType}) — ${child.globalId}`;
+            row.style.cssText =
+                "padding:2px 2px;color:#cbd5e1;cursor:pointer;white-space:nowrap;" +
+                "overflow:hidden;text-overflow:ellipsis;border-radius:2px;";
+            row.addEventListener("mouseenter", () => {
+                row.style.background = "rgba(255,255,255,0.06)";
+                row.style.color = "#fff";
+            });
+            row.addEventListener("mouseleave", () => {
+                row.style.background = "";
+                row.style.color = "#cbd5e1";
+            });
+            row.addEventListener("click", () => {
+                /* Toggle: clicking the already-selected element clears the selection */
+                if (_selectedGlobalIds.size === 1 && _selectedGlobalIds.has(child.globalId)) {
+                    _clearAllSelections();
+                    return;
+                }
+                _selectedGlobalIds.clear();
+                _selectedGlobalIds.add(child.globalId);
+                resetAllColors();
+                colorByGlobalIds([child.globalId], _SEL_COLOR);
+                _updateSelCounter();
+            });
+            return row;
+        }
+    }
+
+    // ── 16. Measurement Tool ─────────────────────────────────────────────
+
+    let _measureMode    = false;
+    let _measurePtA     = null;
+    let _measureMkrA    = null;
+    const _measurements = [];
+    let _measureLabelLoopRunning = false;
+    let _snapIndicator  = null;   // wireframe yellow sphere tracking snap point on mousemove
+    let _snapPoint      = null;   // last snapped world point (used by click handler)
+    let _previewLine    = null;   // semi-transparent line from ptA to current snap point
+    let _axisGuideLine  = null;   // colored rail along axis from ptA (ΔX=red, ΔY=green, ΔZ=blue)
+    let _axisGuideMode  = null;   // which axis the current guide line was built for
+
+    function _markerRadius(point) {
+        const camDist = point.distanceTo(world.camera.three.position);
+        return Math.min(Math.max(camDist * 0.008, 0.02), 0.5);
+    }
+
+    function _makeSphere(point, color) {
+        const r    = _markerRadius(point);
+        const mesh = new THREE.Mesh(
+            new THREE.SphereGeometry(r, 8, 8),
+            new THREE.MeshBasicMaterial({ color, depthTest: false }),
+        );
+        mesh.position.copy(point);
+        mesh.renderOrder = 999;
+        world.scene.three.add(mesh);
+        return mesh;
+    }
+
+    function _makeLine(a, b) {
+        const geo  = new THREE.BufferGeometry().setFromPoints([a, b]);
+        const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffd700, depthTest: false }));
+        line.renderOrder = 999;
+        world.scene.three.add(line);
+        return line;
+    }
+
+    function _makeMeasureLabel(text) {
+        const el = document.createElement("div");
+        el.textContent = text;
+        el.style.cssText =
+            "position:absolute;transform:translate(-50%,-120%);background:rgba(0,0,0,0.8);" +
+            "color:#ffd700;padding:2px 7px;border-radius:3px;font-size:11px;font-weight:600;" +
+            "white-space:nowrap;pointer-events:none;border:1px solid rgba(255,215,0,0.4);";
+        document.getElementById("measure-labels")?.appendChild(el);
+        return el;
+    }
+
+    function _worldToScreen(pos) {
+        if (!world?.camera?.three || !world?.renderer?.three) return null;
+        const v = pos.clone().project(world.camera.three);
+        if (v.z > 1) return null;
+        const canvas = world.renderer.three.domElement;
+        return {
+            x: (v.x + 1) / 2 * canvas.clientWidth,
+            y: (-v.y + 1) / 2 * canvas.clientHeight,
+        };
+    }
+
+    function _updateMeasureLabels() {
+        for (const m of _measurements) {
+            if (!m.labelEl || !m.midpoint) continue;
+            const s = _worldToScreen(m.midpoint);
+            if (!s) { m.labelEl.style.display = "none"; continue; }
+            m.labelEl.style.display = "block";
+            m.labelEl.style.left = s.x + "px";
+            m.labelEl.style.top  = s.y + "px";
+        }
+    }
+
+    function _startLabelLoop() {
+        if (_measureLabelLoopRunning) return;
+        _measureLabelLoopRunning = true;
+        (function tick() {
+            if (!_measurements.length) { _measureLabelLoopRunning = false; return; }
+            _updateMeasureLabels();
+            requestAnimationFrame(tick);
+        })();
+    }
+
+    function _clearMeasurePreview() {
+        if (_snapIndicator) _snapIndicator.visible = false;
+        if (_previewLine)   { world.scene.three.remove(_previewLine);   _previewLine   = null; }
+        if (_axisGuideLine) { world.scene.three.remove(_axisGuideLine); _axisGuideLine = null; }
+        _axisGuideMode = null;
+        _snapPoint     = null;
+    }
+
+    function _clearMeasurements() {
+        _clearMeasurePreview();
+        for (const m of _measurements) {
+            if (m.mkrA)    world.scene.three.remove(m.mkrA);
+            if (m.mkrB)    world.scene.three.remove(m.mkrB);
+            if (m.line)    world.scene.three.remove(m.line);
+            if (m.labelEl) m.labelEl.remove();
+        }
+        _measurements.length = 0;
+        if (_measureMkrA) { world.scene.three.remove(_measureMkrA); _measureMkrA = null; }
+        _measurePtA = null;
+    }
+
+    function _snapToInstance(intersection) {
+        const mesh       = intersection.object;
+        const instanceId = intersection.instanceId;
+
+        if (instanceId === undefined || !mesh.isInstancedMesh)
+            return { point: intersection.point.clone(), type: 'free' };
+
+        const pos = mesh.geometry.attributes.position;
+        if (!pos) return { point: intersection.point.clone(), type: 'free' };
+
+        const matrix    = new THREE.Matrix4();
+        mesh.getMatrixAt(instanceId, matrix);
+
+        const camDist   = world.camera.three.position.distanceTo(intersection.point);
+        const threshold = camDist * 0.03;
+
+        /* ── Pass 1: vertex snap ──────────────────────────────────────────── */
+        const MAX_VERTS = 500;
+        const vtxCount  = Math.min(pos.count, MAX_VERTS);
+        const vtx       = new THREE.Vector3();
+        let bestVtx = null, bestVtxD = Infinity;
+
+        for (let i = 0; i < vtxCount; i++) {
+            vtx.fromBufferAttribute(pos, i).applyMatrix4(matrix);
+            const d = vtx.distanceTo(intersection.point);
+            if (d < threshold && d < bestVtxD) { bestVtxD = d; bestVtx = vtx.clone(); }
+        }
+        if (bestVtx) return { point: bestVtx, type: 'corner' };
+
+        /* ── Pass 2: edge snap — closest point on each triangle edge ─────── */
+        const idx = mesh.geometry.index;
+        if (idx) {
+            const MAX_TRIS = 200;
+            const triCount  = Math.min(Math.floor(idx.count / 3), MAX_TRIS);
+            const vA = new THREE.Vector3(), vB = new THREE.Vector3();
+            const seg = new THREE.Line3();
+            const cp  = new THREE.Vector3();
+            let bestEdgePt = null, bestEdgeD = Infinity;
+
+            for (let t = 0; t < triCount; t++) {
+                const i0 = idx.getX(t * 3),
+                      i1 = idx.getX(t * 3 + 1),
+                      i2 = idx.getX(t * 3 + 2);
+
+                const pairs = [[i0, i1], [i1, i2], [i2, i0]];
+                for (const [ia, ib] of pairs) {
+                    vA.fromBufferAttribute(pos, ia).applyMatrix4(matrix);
+                    vB.fromBufferAttribute(pos, ib).applyMatrix4(matrix);
+                    seg.set(vA, vB);
+                    seg.closestPointToPoint(intersection.point, true, cp);
+                    const d = cp.distanceTo(intersection.point);
+                    if (d < threshold && d < bestEdgeD) { bestEdgeD = d; bestEdgePt = cp.clone(); }
+                }
+            }
+            if (bestEdgePt) return { point: bestEdgePt, type: 'edge' };
+        }
+
+        return { point: intersection.point.clone(), type: 'free' };
+    }
+
+    function _handleMeasureClick(e) {
+        if (!model) return;
+        const axisMode = document.getElementById("meas-axis-select")?.value ?? "3d";
+
+        /* Use the snap point cached by the last mousemove — avoids a duplicate raycast
+           and ensures the click lands exactly where the indicator was showing. */
+        let pt = _snapPoint ? _snapPoint.clone() : null;
+
+        if (!pt) {
+            /* Fallback: fresh raycast (covers touch / no-mousemove scenarios) */
+            const canvas = world.renderer.three.domElement;
+            const rect   = canvas.getBoundingClientRect();
+            const mouse  = new THREE.Vector2(
+                 ((e.clientX - rect.left) / rect.width)  * 2 - 1,
+                -((e.clientY - rect.top)  / rect.height) * 2 + 1,
+            );
+            const ray = new THREE.Raycaster();
+            ray.setFromCamera(mouse, world.camera.three);
+            const hits = ray.intersectObjects(world.scene.three.children, true);
+            const modelHit = hits.find(h =>
+                !_sectionHandles.includes(h.object) &&
+                h.object !== _snapIndicator &&
+                !_measurements.some(m => m.mkrA === h.object || m.mkrB === h.object) &&
+                h.object !== _measureMkrA
+            );
+            if (!modelHit) return;
+            pt = _snapToInstance(modelHit).point;
+        }
+
+        if (!_measurePtA) {
+            _measurePtA  = pt;
+            _measureMkrA = _makeSphere(pt, 0x22c55e);
+            /* Remove preview line — it will be re-created on next mousemove from the new ptA */
+            if (_previewLine) { world.scene.three.remove(_previewLine); _previewLine = null; }
+        } else {
+            const ptA = _measurePtA;
+            const ptB = pt;
+
+            _clearMeasurePreview();  // remove snap indicator + preview line before committing
+
+            /* Axis constraint: project ptB onto the constrained axis through ptA */
+            let lineEnd, dist, text;
+            if (axisMode === "x") {
+                lineEnd = new THREE.Vector3(ptB.x, ptA.y, ptA.z);
+                dist    = Math.abs(ptB.x - ptA.x);
+                text    = `ΔX: ${Math.round(dist * 1000).toLocaleString()} mm`;
+            } else if (axisMode === "y") {
+                lineEnd = new THREE.Vector3(ptA.x, ptB.y, ptA.z);
+                dist    = Math.abs(ptB.y - ptA.y);
+                text    = `Height: ${Math.round(dist * 1000).toLocaleString()} mm`;
+            } else if (axisMode === "z") {
+                lineEnd = new THREE.Vector3(ptA.x, ptA.y, ptB.z);
+                dist    = Math.abs(ptB.z - ptA.z);
+                text    = `ΔY: ${Math.round(dist * 1000).toLocaleString()} mm`;
+            } else {
+                lineEnd = ptB;
+                dist    = ptA.distanceTo(ptB);
+                text    = `${Math.round(dist * 1000).toLocaleString()} mm (${dist.toFixed(3)} m)`;
+            }
+
+            const mkrA    = _measureMkrA;
+            const mkrB    = _makeSphere(lineEnd, 0xef4444);
+            const line    = _makeLine(ptA, lineEnd);
+            const midpt   = ptA.clone().lerp(lineEnd, 0.5);
+            const labelEl = _makeMeasureLabel(text);
+
+            _measurements.push({ mkrA, mkrB, line, midpoint: midpt, labelEl });
+            _startLabelLoop();
+
+            _measurePtA  = null;
+            _measureMkrA = null;
+        }
+    }
+
+    function _initMeasureTool() {
+        const btn      = document.getElementById("meas-toggle-btn");
+        const clearBtn = document.getElementById("meas-clear-btn");
+        if (!btn) return;
+
+        try {
+
+        /* Create snap indicator once — visibility is toggled; never removed/re-added */
+        _snapIndicator = new THREE.Mesh(
+            new THREE.RingGeometry(0.6, 1.0, 16),
+            new THREE.MeshBasicMaterial({ color: 0xffd700, side: THREE.DoubleSide, depthTest: false, depthWrite: false }),
+        );
+        _snapIndicator.renderOrder = 1000;
+        _snapIndicator.frustumCulled = false;
+        _snapIndicator.visible = false;
+        world.scene.three.add(_snapIndicator);
+
+        btn.addEventListener("click", () => {
+            _measureMode = !_measureMode;
+            btn.style.background = _measureMode ? "rgba(255,215,0,0.3)" : "rgba(255,255,255,0.08)";
+            if (!_measureMode) {
+                _clearMeasurePreview();
+                if (_measureMkrA) { world.scene.three.remove(_measureMkrA); _measureMkrA = null; }
+                _measurePtA = null;
+            }
+            world.renderer.three.domElement.style.cursor = _measureMode ? "crosshair" : "";
+        });
+
+        clearBtn?.addEventListener("click", () => _clearMeasurements());
+
+        /* ── Mousemove preview: snap indicator + preview line ─────────────── */
+        const canvas   = world.renderer.three.domElement;
+        const _mvRay   = new THREE.Raycaster();
+        const _mvMouse = new THREE.Vector2();
+
+        canvas.addEventListener("pointermove", (e) => {
+            if (!_measureMode) {
+                /* Clean up any leftover preview if mode was switched off externally */
+                if ((_snapIndicator?.visible) || _previewLine) _clearMeasurePreview();
+                return;
+            }
+            if (_activeDrag) return;   // section drag in progress
+
+            const rect = canvas.getBoundingClientRect();
+            _mvMouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
+            _mvMouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
+            _mvRay.setFromCamera(_mvMouse, world.camera.three);
+
+            const hits = _mvRay.intersectObjects(world.scene.three.children, true);
+            const hit  = hits.find(h =>
+                !_sectionHandles.includes(h.object) &&
+                h.object !== _snapIndicator &&
+                h.object !== _axisGuideLine &&
+                h.object !== _previewLine &&
+                !_measurements.some(m => m.mkrA === h.object || m.mkrB === h.object) &&
+                h.object !== _measureMkrA
+            );
+
+            if (!hit) { _clearMeasurePreview(); return; }
+
+            let _snapResult;
+            try { _snapResult = _snapToInstance(hit); }
+            catch (err) { console.warn('[SNAP] _snapToInstance failed:', err); _snapResult = { point: hit.point.clone(), type: 'free' }; }
+            const { point: snapPt, type: snapType } = _snapResult;
+            const axisMode = document.getElementById("meas-axis-select")?.value ?? "3d";
+
+            /* Axis projection — constrain snap point to the chosen axis through ptA */
+            let effectivePt = snapPt.clone();
+            let axisColor   = null;
+            if (_measurePtA && axisMode !== "3d") {
+                if      (axisMode === "x") { effectivePt.set(snapPt.x,      _measurePtA.y, _measurePtA.z); axisColor = 0xef4444; }
+                else if (axisMode === "y") { effectivePt.set(_measurePtA.x, snapPt.y,      _measurePtA.z); axisColor = 0x22c55e; }
+                else if (axisMode === "z") { effectivePt.set(_measurePtA.x, _measurePtA.y, snapPt.z);      axisColor = 0x3b82f6; }
+            }
+            _snapPoint = effectivePt;
+
+            /* Snap indicator — billboarded ring at effective (possibly axis-projected) point */
+            _snapIndicator.visible = true;
+            const _snapR = _markerRadius(effectivePt) * 2.0;
+            _snapIndicator.scale.setScalar(_snapR);
+            _snapIndicator.position.copy(effectivePt);
+            _snapIndicator.lookAt(world.camera.three.position);  // billboard: ring normal faces camera
+            /* Yellow = corner snap, cyan = edge midpoint snap, grey = free float */
+            _snapIndicator.material.color.setHex(
+                snapType === 'corner' ? 0xffd700 :
+                snapType === 'edge'   ? 0x00ffff : 0x555555
+            );
+
+            /* Axis guide rail — colored line along the constrained axis from ptA.
+               Only rebuild when axis mode changes; otherwise leave existing line. */
+            if (_measurePtA && axisColor !== null) {
+                if (!_axisGuideLine || _axisGuideMode !== axisMode) {
+                    if (_axisGuideLine) world.scene.three.remove(_axisGuideLine);
+                    const bbox = _getSceneBBox();
+                    const size = new THREE.Vector3();
+                    bbox.getSize(size);
+                    const ext = Math.max(size.x, size.y, size.z) * 0.7 + 1;
+                    const p = _measurePtA;
+                    const rA = axisMode === "x" ? new THREE.Vector3(p.x - ext, p.y, p.z)
+                             : axisMode === "y" ? new THREE.Vector3(p.x, p.y - ext, p.z)
+                             :                   new THREE.Vector3(p.x, p.y, p.z - ext);
+                    const rB = axisMode === "x" ? new THREE.Vector3(p.x + ext, p.y, p.z)
+                             : axisMode === "y" ? new THREE.Vector3(p.x, p.y + ext, p.z)
+                             :                   new THREE.Vector3(p.x, p.y, p.z + ext);
+                    _axisGuideLine = new THREE.Line(
+                        new THREE.BufferGeometry().setFromPoints([rA, rB]),
+                        new THREE.LineBasicMaterial({ color: axisColor, transparent: true, opacity: 0.6, depthTest: false }),
+                    );
+                    _axisGuideLine.renderOrder = 997;
+                    world.scene.three.add(_axisGuideLine);
+                    _axisGuideMode = axisMode;
+                }
+            } else {
+                /* No axis constraint active — remove any stale guide line */
+                if (_axisGuideLine) { world.scene.three.remove(_axisGuideLine); _axisGuideLine = null; _axisGuideMode = null; }
+            }
+
+            /* Preview line from ptA → effective point (only once first point is placed) */
+            if (_measurePtA) {
+                if (!_previewLine) {
+                    const geo = new THREE.BufferGeometry().setFromPoints([_measurePtA, effectivePt]);
+                    _previewLine = new THREE.Line(
+                        geo,
+                        new THREE.LineBasicMaterial({ color: 0xffd700, transparent: true, opacity: 0.4, depthTest: false }),
+                    );
+                    _previewLine.renderOrder = 998;
+                    world.scene.three.add(_previewLine);
+                } else {
+                    const pos = _previewLine.geometry.attributes.position;
+                    pos.setXYZ(0, _measurePtA.x, _measurePtA.y, _measurePtA.z);
+                    pos.setXYZ(1, effectivePt.x, effectivePt.y, effectivePt.z);
+                    pos.needsUpdate = true;
+                }
+            }
+        });
+
+        } catch(e) {
+            console.error('[MEAS INIT ERROR]', e.message, e.stack);
+        }
+    }
+
+    init();
+    </script>
+
+    {% endif %}
+
+    <!-- Help modal (always in DOM so Bootstrap can find it) -->
+    {% include "ifc_viewer/components/simulator_help_modal.html" %}
+
+</div>

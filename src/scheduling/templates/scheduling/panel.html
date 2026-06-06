@@ -1,0 +1,99 @@
+<!-- scheduling/panel.html — TimeLiner main panel (partial) -->
+<div class="d-flex flex-column h-100 overflow-hidden" id="timeliner-root">
+
+    <!-- Tab bar + help pill (hidden: sub-tabs promoted to top-level nav in castor/panel.html) -->
+    <div class="d-flex align-items-center px-3 py-2 border-bottom bg-body flex-shrink-0 d-none">
+        <h5 class="mb-0 me-2">
+            <i class="bi bi-calendar3-range me-2 text-primary"></i>TimeLiner
+        </h5>
+        <button type="button"
+                class="help-pill"
+                data-bs-toggle="modal"
+                data-bs-target="#timelinerHelpModal"
+                title="How TimeLiner works"
+                aria-label="How TimeLiner works">
+            <i class="bi bi-question-circle"></i>
+        </button>
+
+        <!-- Internal sub-tabs -->
+        <ul class="nav nav-tabs border-0 ms-4 flex-grow-1" style="font-size:0.85rem;">
+            <li class="nav-item">
+                <a class="nav-link {% if schedule_tab == 'data_sources' %}active{% endif %}"
+                   href="{% url 'scheduling:schedule' project.pk %}?tab=data_sources">
+                    <i class="bi bi-upload me-1"></i>Data Sources
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if schedule_tab == 'fourD_link' %}active{% endif %}"
+                   href="{% url 'scheduling:schedule' project.pk %}?tab=fourD_link">
+                    <i class="bi bi-boxes me-1"></i>4D Link
+                    {% if task_count %}<span class="badge bg-secondary ms-1">{{ task_count }}</span>{% endif %}
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if schedule_tab == 'evm' %}active{% endif %}"
+                   href="{% url 'scheduling:schedule' project.pk %}?tab=evm">
+                    <i class="bi bi-graph-up-arrow me-1"></i>EVM
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if schedule_tab == 'lookahead' %}active{% endif %}"
+                   href="{% url 'scheduling:schedule' project.pk %}?tab=lookahead">
+                    <i class="bi bi-calendar-week me-1"></i>Look-ahead
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if schedule_tab == 'intelligence' %}active{% endif %}"
+                   href="{% url 'scheduling:schedule' project.pk %}?tab=intelligence">
+                    <i class="bi bi-robot me-1"></i>Intelligence
+                </a>
+            </li>
+        </ul>
+    </div>
+
+    <!-- Tab content -->
+    {% if schedule_tab == 'fourD_link' %}
+    <div class="flex-grow-1" style="overflow: hidden; padding: 0;">
+    {% else %}
+    <div class="flex-grow-1 overflow-auto p-3">
+    {% endif %}
+        {% if schedule_tab == 'data_sources' %}
+            {% include "scheduling/tabs/data_sources.html" %}
+        {% elif schedule_tab == 'fourD_link' %}
+            {% include "scheduling/tabs/fourD_link.html" %}
+        {% elif schedule_tab == 'evm' %}
+            {% include "scheduling/tabs/evm.html" %}
+        {% elif schedule_tab == 'lookahead' %}
+            {% include "scheduling/tabs/lookahead.html" %}
+        {% elif schedule_tab == 'intelligence' %}
+            {% include "scheduling/tabs/intelligence.html" %}
+        {% endif %}
+    </div>
+
+</div>
+
+<!-- Help modal -->
+<div class="modal fade" id="timelinerHelpModal" tabindex="-1" aria-labelledby="timelinerHelpLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="timelinerHelpLabel">
+                    <i class="bi bi-calendar3-range me-2"></i>How TimeLiner works
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p><strong>What is it?</strong> TimeLiner links your construction schedule to IFC model elements — exactly like Navisworks TimeLiner — enabling 4D simulation of your build sequence.</p>
+                <p><strong>Workflow:</strong></p>
+                <ol>
+                    <li><strong>Data Sources</strong> — upload a schedule file (.xlsx, .xer, or .xml). The system parses it and uses AI to validate it looks like a real construction programme.</li>
+                    <li><strong>4D Link</strong> — the unified linking, simulation, and review workspace. Run <em>Castor Link Engine</em> (5-layer: exact → normalised → heuristic → embedding, with LLM schedule context analysis) or match by IFC property name. The 3D viewer shows the model in real time; drag the 4D timeline slider to animate the build sequence. Review Links loads every binding — accept, remove, bulk-accept at ≥ 95% confidence, or manually add links. Export the binding table as CSV from the Review panel.</li>
+                    <li><strong>EVM</strong> — Earned Value Management dashboard. Shows SPI, CPI, EAC, and VAC KPI cards plus a cumulative S-curve (PV, EV, AC). Uses task costs when available; falls back to duration weighting when no costs are in the schedule.</li>
+                    <li><strong>Look-ahead</strong> — Rolling window showing what starts, is in progress, and finishes across the next 2–6 weeks. Critical path tasks are flagged with a CP badge. Click a week card to expand/collapse it.</li>
+                    <li><strong>Intelligence</strong> — AI-powered Q&amp;A over your schedule. Ask natural-language questions such as "Which tasks are delayed?" or "Summarise MEP progress." The system embeds all tasks into a vector store and retrieves the most relevant ones as context for the LLM. Click <em>Embed Tasks</em> before asking for the first time, or after uploading a new schedule.</li>
+                </ol>
+                <p><strong>Caveats:</strong> Castor Link Engine matching is probabilistic — always review heuristic and embedding results via Review Links before relying on 4D simulation. Elements must be processed (IFC Insights complete) for best coverage. EVM actual cost (AC) comes directly from P6 resource assignments; CPI, EAC, and VAC are disabled (shown as N/A) when no actual cost has been imported — they are never estimated or synthesised. Intelligence answers are only as good as the schedule data — always verify LLM output against your programme.</p>
+            </div>
+        </div>
+    </div>
+</div>

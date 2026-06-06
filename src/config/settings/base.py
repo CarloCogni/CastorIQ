@@ -47,6 +47,13 @@ INSTALLED_APPS = [
     "eastereggs",
     "facilities",
     "beta",
+    # 4D/5D BIM integration — atomic apps split from the former castor/ module.
+    # Order matters: takeoff and model_quality have no scheduling dep, and
+    # scheduling reads QTOCache from takeoff so takeoff goes first.
+    "takeoff",
+    "model_quality",
+    "scheduling",
+    "ifc_viewer",
     # Login lockout for /admin/ and /accounts/login. Must come after
     # django.contrib.auth so its signals are loaded first.
     "axes",
@@ -197,7 +204,7 @@ STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [
     BASE_DIR / "static",
-    BASE_DIR / "castor" / "frontend",
+    BASE_DIR / "ifc_viewer" / "frontend",
 ]
 
 # Media files
@@ -244,6 +251,13 @@ MODIFY_MODEL = os.getenv("MODIFY_MODEL", "meta-llama/llama-4-scout-17b-16e-instr
 # Last-resort circuit-breaker. When set, the dispatcher refuses every cloud call and
 # the site renders a "paused for maintenance" banner. Local Ollama still works.
 LLM_MASTER_KILL = os.getenv("LLM_MASTER_KILL", "0") == "1"
+
+# Fernet symmetric key used to encrypt at-rest user secrets (BYOK API keys).
+# Generate once with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# When unset in DEBUG mode, core.crypto derives a key from SECRET_KEY (dev convenience,
+# logs a warning). Production MUST set this explicitly — a key change invalidates
+# all previously stored ciphertext.
+FIELD_ENCRYPTION_KEY = os.getenv("FIELD_ENCRYPTION_KEY", "")
 
 # RAG Token Budget
 RAG_RESPONSE_RESERVE = int(os.getenv("RAG_RESPONSE_RESERVE", "1500"))

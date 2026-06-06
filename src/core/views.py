@@ -378,6 +378,11 @@ class SettingsView(LoginRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
 
+        # BYOK panel context (every authenticated user).
+        from core.views_byok import build_byok_context
+
+        context.update(build_byok_context(self.request.user))
+
         if self.request.user.is_staff:
             config = UserLLMConfig.load(self.request.user)
             active_model = config.active_model or settings.OLLAMA_MODEL

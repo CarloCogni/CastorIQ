@@ -1,0 +1,71 @@
+<!-- scheduling/components/autolink_summary.html — Smart Auto-Link result summary -->
+<div class="p-3 border rounded" style="background-color: var(--bs-tertiary-bg); font-size:0.85rem;">
+
+    <div class="d-flex align-items-center gap-2 mb-3">
+        <i class="bi bi-check2-all text-success"></i>
+        <span class="fw-semibold">Smart Auto-Link complete</span>
+        <span class="badge bg-secondary ms-auto">{{ summary.total_tasks }} task{{ summary.total_tasks|pluralize }}</span>
+    </div>
+
+    <!-- Layer breakdown -->
+    <div class="row g-2 mb-3">
+        <div class="col-6 col-sm-3">
+            <div class="border rounded p-2 text-center">
+                <div class="fs-5 fw-bold text-success">{{ summary.linked_exact }}</div>
+                <div class="text-secondary" style="font-size:0.75rem;">Exact</div>
+            </div>
+        </div>
+        <div class="col-6 col-sm-3">
+            <div class="border rounded p-2 text-center">
+                <div class="fs-5 fw-bold text-primary">{{ summary.linked_normalized }}</div>
+                <div class="text-secondary" style="font-size:0.75rem;">Normalized</div>
+            </div>
+        </div>
+        <div class="col-6 col-sm-3">
+            <div class="border rounded p-2 text-center">
+                <div class="fs-5 fw-bold" style="color:var(--bs-warning);">{{ summary.linked_heuristic }}</div>
+                <div class="text-secondary" style="font-size:0.75rem;">Heuristic</div>
+            </div>
+        </div>
+        <div class="col-6 col-sm-3">
+            <div class="border rounded p-2 text-center">
+                <div class="fs-5 fw-bold text-info">{{ summary.linked_embedding }}</div>
+                <div class="text-secondary" style="font-size:0.75rem;">Embedding</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer stats -->
+    <div class="d-flex flex-wrap gap-3 align-items-center" style="font-size:0.8rem;">
+        {% if summary.unlinked %}
+        <span class="text-danger">
+            <i class="bi bi-x-circle me-1"></i>{{ summary.unlinked }} unlinked
+        </span>
+        {% endif %}
+        {% if summary.needs_review %}
+        <span class="text-warning">
+            <i class="bi bi-eye me-1"></i>{{ summary.needs_review }} need review
+        </span>
+        {% endif %}
+        {% if summary.excluded_non_physical %}
+        <span class="text-secondary">
+            <i class="bi bi-slash-circle me-1"></i>{{ summary.excluded_non_physical }} excluded (non-physical)
+        </span>
+        {% endif %}
+        {% if not summary.unlinked and not summary.needs_review %}
+        <span class="text-success">
+            <i class="bi bi-check-circle me-1"></i>All physical tasks linked automatically
+        </span>
+        {% endif %}
+        <span class="text-secondary ms-auto">
+            Property: <code>{{ ifc_param_name }}</code>
+        </span>
+    </div>
+
+</div>
+
+<!-- Reload the inline review pane now that bindings have changed -->
+<div hx-get="{% url 'scheduling:review' project.pk %}?filter=all&inline=1"
+     hx-target="#fourD-review-pane"
+     hx-swap="innerHTML"
+     hx-trigger="load"></div>

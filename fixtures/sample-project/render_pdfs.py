@@ -21,7 +21,6 @@ pyproject.toml.
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 import markdown as md

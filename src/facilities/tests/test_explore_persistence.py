@@ -13,6 +13,7 @@ from decimal import Decimal
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.urls import reverse
 
 from environments.tests.factories import ProjectFactory
 from facilities.models import (
@@ -255,7 +256,10 @@ class TestExploreFloorPlanUpload:
         client.force_login(project.owner)
 
         response = client.post(
-            f"/{project.pk}/facilities/explore/floor-plans/{storey.pk}/upload/",
+            reverse(
+                "facilities:explore_floor_plan_upload",
+                kwargs={"pk": project.pk, "storey_pk": storey.pk},
+            ),
             data={"image": self._png()},
         )
         assert response.status_code == 200
@@ -271,11 +275,17 @@ class TestExploreFloorPlanUpload:
         client.force_login(project.owner)
 
         client.post(
-            f"/{project.pk}/facilities/explore/floor-plans/{storey.pk}/upload/",
+            reverse(
+                "facilities:explore_floor_plan_upload",
+                kwargs={"pk": project.pk, "storey_pk": storey.pk},
+            ),
             data={"image": self._png("v1.png", b"a")},
         )
         client.post(
-            f"/{project.pk}/facilities/explore/floor-plans/{storey.pk}/upload/",
+            reverse(
+                "facilities:explore_floor_plan_upload",
+                kwargs={"pk": project.pk, "storey_pk": storey.pk},
+            ),
             data={"image": self._png("v2.png", b"b")},
         )
         assert ExploreFloorPlan.objects.filter(storey=storey).count() == 1
@@ -285,7 +295,10 @@ class TestExploreFloorPlanUpload:
         storey = _make_storey(project)
         client.force_login(project.owner)
         response = client.post(
-            f"/{project.pk}/facilities/explore/floor-plans/{storey.pk}/upload/",
+            reverse(
+                "facilities:explore_floor_plan_upload",
+                kwargs={"pk": project.pk, "storey_pk": storey.pk},
+            ),
             data={},
         )
         assert response.status_code == 400
@@ -300,7 +313,10 @@ class TestExploreFloorPlanUpload:
         client.force_login(project.owner)
 
         client.post(
-            f"/{project.pk}/facilities/explore/floor-plans/{storey.pk}/upload/",
+            reverse(
+                "facilities:explore_floor_plan_upload",
+                kwargs={"pk": project.pk, "storey_pk": storey.pk},
+            ),
             data={"image": self._png()},
         )
         floors = list_floors_for_project(project)
@@ -313,7 +329,7 @@ class TestExploreUserStateApi:
     def test_get_returns_seeded_phases(self, client):
         project = ProjectFactory()
         client.force_login(project.owner)
-        response = client.get(f"/{project.pk}/facilities/explore/state/")
+        response = client.get(reverse("facilities:explore_state", kwargs={"pk": project.pk}))
         assert response.status_code == 200
         body = response.json()
         assert "state" in body
@@ -323,7 +339,7 @@ class TestExploreUserStateApi:
         project = ProjectFactory()
         client.force_login(project.owner)
         response = client.post(
-            f"/{project.pk}/facilities/explore/state/",
+            reverse("facilities:explore_state", kwargs={"pk": project.pk}),
             data="not-json",
             content_type="application/json",
         )
@@ -353,10 +369,83 @@ class TestExploreUserStateApi:
             }
         }
         response = client.post(
-            f"/{project.pk}/facilities/explore/state/",
+            reverse("facilities:explore_state", kwargs={"pk": project.pk}),
             data=json.dumps(payload),
             content_type="application/json",
         )
         assert response.status_code == 200
         assert response.json()["status"] == "ok"
         assert ExplorePoint.objects.filter(client_id="pt-roundtrip").exists()
+
+
+class TestExploreSnapshotSubfieldValidation:
+    """The view rejects snapshots whose top-level fields have the wrong shape.
+
+    Per-item content (coord clamping, phase resolution, kind whitelisting) is
+    handled defensively inside the services. These tests cover the gross-type
+    layer — when the iframe (or a tampered client) sends e.g. ``points`` as a
+    dict instead of a list of dicts, the services would crash with
+    AttributeError or TypeError mid-transaction. The view rejects with 400
+    before that happens.
+    """
+
+    @pytest.mark.parametrize(
+        "bad_state,reason_fragment",
+        [
+            ({"phases": "Construction"}, "phases"),  # string instead of list
+            ({"phases": [1, 2, 3]}, "phases"),  # list of non-strings
+            ({"phaseColors": ["a", "b"]}, "phaseColors"),  # list instead of dict
+            ({"floors": "not-a-list"}, "floors"),
+            ({"floors": [1, 2]}, "floors"),  # list of non-dicts
+            ({"points": "not-a-list"}, "points"),
+            ({"points": [1, 2]}, "points"),  # list of non-dicts
+            ({"points": {"id": "pt-x"}}, "points"),  # dict instead of list
+        ],
+    )
+    def test_rejects_with_400_on_subfield_type_mismatch(self, client, bad_state, reason_fragment):
+        """Each bad sub-field shape → 400 with the field name in the reason."""
+        project = ProjectFactory()
+        client.force_login(project.owner)
+        response = client.post(
+            reverse("facilities:explore_state", kwargs={"pk": project.pk}),
+            data=json.dumps({"state": bad_state}),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+
+    def test_does_not_persist_any_partial_state_on_bad_subfield(self, client):
+        """A bad snapshot must not partially write — phases/floors/points all
+        sync inside the view, so a mid-flight reject must leave the DB clean."""
+        project = ProjectFactory()
+        client.force_login(project.owner)
+        before_phases = ExplorePhase.objects.filter(project=project).count()
+        before_points = ExplorePoint.objects.filter(project=project).count()
+
+        # Phases is valid but points is wrong — pre-validation must catch this
+        # before sync_phases_for_project would have run successfully.
+        response = client.post(
+            reverse("facilities:explore_state", kwargs={"pk": project.pk}),
+            data=json.dumps(
+                {
+                    "state": {
+                        "phases": ["Construction"],
+                        "points": "not-a-list",
+                    }
+                }
+            ),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+        assert ExplorePhase.objects.filter(project=project).count() == before_phases
+        assert ExplorePoint.objects.filter(project=project).count() == before_points
+
+    def test_accepts_snapshot_with_omitted_optional_fields(self, client):
+        """All four top-level fields are optional. An empty state {} is valid."""
+        project = ProjectFactory()
+        client.force_login(project.owner)
+        response = client.post(
+            reverse("facilities:explore_state", kwargs={"pk": project.pk}),
+            data=json.dumps({"state": {}}),
+            content_type="application/json",
+        )
+        assert response.status_code == 200

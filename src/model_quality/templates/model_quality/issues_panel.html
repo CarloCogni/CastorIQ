@@ -1,0 +1,158 @@
+<!-- ifc_insights/issues_panel.html — IFC Issues tab (4 lazy-loaded HTMX sections) -->
+
+<div class="p-4 d-flex flex-column gap-4">
+
+    <!-- Header -->
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <i class="bi bi-bug fs-5 text-danger"></i>
+        <h5 class="m-0">IFC Issues</h5>
+        <span id="issues-total-badge" class="badge bg-danger d-none"></span>
+        <button type="button"
+                class="help-pill"
+                data-bs-toggle="modal"
+                data-bs-target="#ifcIssuesHelpModal"
+                title="How IFC Issues works"
+                aria-label="How IFC Issues works">
+            <i class="bi bi-question-circle"></i>
+        </button>
+    </div>
+
+    <!-- ── Section 0: IFC Health Checks ─────────────────────────────────── -->
+    <div class="card border">
+        <div class="card-header d-flex align-items-center gap-2 py-2 px-3"
+             style="cursor:pointer;"
+             data-bs-toggle="collapse"
+             data-bs-target="#sect-health-checks"
+             aria-expanded="true"
+             aria-controls="sect-health-checks">
+            <i class="bi bi-shield-check text-danger"></i>
+            <span class="fw-medium fs-7">IFC Health Checks</span>
+            <i class="bi bi-chevron-down ms-auto"></i>
+        </div>
+        <div id="sect-health-checks" class="collapse show">
+            <div class="p-3">
+                {% if not ifc_file %}
+                <p class="text-secondary fs-7 mb-0"><i class="bi bi-info-circle me-1"></i>No processed IFC file found.</p>
+                {% elif check_results.error %}
+                <div class="alert alert-danger d-flex align-items-center gap-2 mb-0">
+                    <i class="bi bi-x-circle-fill"></i>
+                    <span>Could not open IFC file: {{ check_results.error }}</span>
+                </div>
+                {% else %}
+                {% include "model_quality/components/summary_cards.html" %}
+                <div class="mt-3">{% include "model_quality/components/issues_table.html" %}</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Section 1: Missing Activity ID ──────────────────────────────── -->
+    <div class="card border">
+        <div class="card-header d-flex align-items-center gap-2 py-2 px-3"
+             style="cursor:pointer;"
+             data-bs-toggle="collapse"
+             data-bs-target="#sect-missing-activity"
+             aria-expanded="true"
+             aria-controls="sect-missing-activity">
+            <i class="bi bi-tag text-warning"></i>
+            <span class="fw-medium fs-7">Missing Activity ID</span>
+            <i class="bi bi-chevron-down ms-auto"></i>
+        </div>
+        <div id="sect-missing-activity" class="collapse show">
+            <div hx-get="{% url 'model_quality:issues_missing_activity' project.pk %}"
+                 hx-trigger="load"
+                 hx-swap="innerHTML">
+                <div class="card-body text-secondary fs-7">
+                    <div class="spinner-border spinner-border-sm me-2" role="status"></div>Loading&hellip;
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Section 2: Missing Cost ─────────────────────────────────────── -->
+    <div class="card border">
+        <div class="card-header d-flex align-items-center gap-2 py-2 px-3"
+             style="cursor:pointer;"
+             data-bs-toggle="collapse"
+             data-bs-target="#sect-missing-cost"
+             aria-expanded="false"
+             aria-controls="sect-missing-cost">
+            <i class="bi bi-currency-dollar text-warning"></i>
+            <span class="fw-medium fs-7">Missing Cost Data</span>
+            <i class="bi bi-chevron-down ms-auto"></i>
+        </div>
+        <div id="sect-missing-cost" class="collapse">
+            <div hx-get="{% url 'model_quality:issues_missing_cost' project.pk %}"
+                 hx-trigger="load"
+                 hx-swap="innerHTML">
+                <div class="card-body text-secondary fs-7">
+                    <div class="spinner-border spinner-border-sm me-2" role="status"></div>Loading&hellip;
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Section 3: Activity ID + Name Audit ─────────────────────────── -->
+    <div class="card border">
+        <div class="card-header d-flex align-items-center gap-2 py-2 px-3"
+             style="cursor:pointer;"
+             data-bs-toggle="collapse"
+             data-bs-target="#sect-activity-audit"
+             aria-expanded="false"
+             aria-controls="sect-activity-audit">
+            <i class="bi bi-table text-primary"></i>
+            <span class="fw-medium fs-7">Activity ID &amp; Name Audit</span>
+            <i class="bi bi-chevron-down ms-auto"></i>
+        </div>
+        <div id="sect-activity-audit" class="collapse">
+            <div hx-get="{% url 'model_quality:issues_activity_audit' project.pk %}"
+                 hx-trigger="load"
+                 hx-swap="innerHTML">
+                <div class="card-body text-secondary fs-7">
+                    <div class="spinner-border spinner-border-sm me-2" role="status"></div>Loading&hellip;
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Section 4: Levels Health ────────────────────────────────────── -->
+    <div class="card border">
+        <div class="card-header d-flex align-items-center gap-2 py-2 px-3"
+             style="cursor:pointer;"
+             data-bs-toggle="collapse"
+             data-bs-target="#sect-levels-health"
+             aria-expanded="false"
+             aria-controls="sect-levels-health">
+            <i class="bi bi-layers text-info"></i>
+            <span class="fw-medium fs-7">Levels Health</span>
+            <i class="bi bi-chevron-down ms-auto"></i>
+        </div>
+        <div id="sect-levels-health" class="collapse">
+            <div hx-get="{% url 'model_quality:issues_levels_health' project.pk %}"
+                 hx-trigger="load"
+                 hx-swap="innerHTML">
+                <div class="card-body text-secondary fs-7">
+                    <div class="spinner-border spinner-border-sm me-2" role="status"></div>Loading&hellip;
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- Help modal -->
+{% include "model_quality/components/issues_help_modal.html" %}
+
+<script>
+(function () {
+    fetch('{% url "model_quality:issues_count" project.pk %}')
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            if (d.total > 0) {
+                var b = document.getElementById('issues-total-badge');
+                if (b) { b.textContent = d.total; b.classList.remove('d-none'); }
+            }
+        })
+        .catch(function () {});
+}());
+</script>

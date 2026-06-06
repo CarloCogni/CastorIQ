@@ -3,7 +3,7 @@
 from django.conf import settings
 from django.urls import path
 
-from . import views
+from . import views, views_byok
 
 app_name = "core"
 
@@ -29,6 +29,27 @@ urlpatterns = [
     ),
     path("settings/api/set-model/", views.SetModelAPIView.as_view(), name="set_model_api"),
     path("settings/api/set-theme/", views.SetThemeAPIView.as_view(), name="set_theme_api"),
+    # BYOK (Bring Your Own Key) — encrypted credential management.
+    path(
+        "settings/api/byok/save-key/<str:provider>/",
+        views_byok.SaveKeyView.as_view(),
+        name="byok_save_key",
+    ),
+    path(
+        "settings/api/byok/remove-key/<str:provider>/",
+        views_byok.RemoveKeyView.as_view(),
+        name="byok_remove_key",
+    ),
+    path(
+        "settings/api/byok/set-provider/<str:purpose>/",
+        views_byok.SetProviderView.as_view(),
+        name="byok_set_provider",
+    ),
+    path(
+        "settings/api/byok/set-model/<str:provider>/",
+        views_byok.SetModelView.as_view(),
+        name="byok_set_model",
+    ),
     path("notes/create/", views.create_team_note, name="create_team_note"),
     path("notes/send-to-supabase/", views.send_notes_to_supabase, name="send_notes_to_supabase"),
     path(

@@ -148,6 +148,31 @@ The staff BI dashboard at `/staff/dashboard/` is reactive — the operator has t
 
 ---
 
+## BYOK encryption key (FIELD_ENCRYPTION_KEY)
+
+BYOK credentials in `UserLLMConfig` are Fernet-encrypted at rest. The key lives in `FIELD_ENCRYPTION_KEY` and **must be set in production before any user pastes a key** — there is no auto-fallback in production (the dev fallback derives a key from `SECRET_KEY` only when `DEBUG=True`).
+
+**One-time setup on the VPS:**
+
+```bash
+# Generate a Fernet key (32-byte url-safe base64).
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+
+# Add to /etc/castor/.env (or whichever .env the docker-compose service reads):
+FIELD_ENCRYPTION_KEY=<output from the line above>
+
+# Restart daphne to pick up the new env var.
+docker compose -f docker-compose.prod.yml restart daphne
+```
+
+**Order of operations on first deploy of the BYOK release:** add `FIELD_ENCRYPTION_KEY` BEFORE running migrations, BEFORE traffic resumes. The migration itself is safe without the key (the new columns are all blank), but a user saving their first key against an unconfigured `FIELD_ENCRYPTION_KEY` will hit a 500 — and we can't recover any plaintext later.
+
+**Key rotation** (when ever needed): generate a new key with the snippet above, then run a one-shot management command (TBD — see `docs/business/live-roadmap.md` post-launch backlog) that re-encrypts every populated row under the new key. Until that command lands, treat rotation as "wipe all stored BYOK keys, ask users to re-paste." Acceptable for the < 100 beta users; not acceptable past v1.
+
+**Loss of `FIELD_ENCRYPTION_KEY`:** every stored BYOK ciphertext becomes unreadable. `decrypt()` returns `None`, the factory's defense-in-depth fallback routes those users back to the site default until they re-paste. No data is corrupted; users just notice their override silently stopped working.
+
+---
+
 ## Monitoring
 
 - **Sentry** (developer tier, free) for errors. DSN in `production.py` only, tagged `environment=production`.

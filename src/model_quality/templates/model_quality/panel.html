@@ -1,0 +1,211 @@
+﻿<!-- ifc_insights/panel.html — redesigned Insights dashboard (partial) -->
+{% load static %}
+<div class="container-fluid py-3 px-4" id="ifc-insights-panel">
+
+    <!-- Header row -->
+    <div class="d-flex align-items-center mb-3 gap-2 flex-wrap">
+        <h5 class="mb-0">
+            <i class="bi bi-graph-up me-2 text-primary"></i>IFC Insights
+        </h5>
+        <button type="button"
+                class="help-pill"
+                data-bs-toggle="modal"
+                data-bs-target="#ifcInsightsHelpModal"
+                title="How IFC Insights works"
+                aria-label="How IFC Insights works">
+            <i class="bi bi-question-circle"></i>
+        </button>
+        <div class="ms-auto d-flex gap-2 align-items-center flex-wrap">
+            <!-- Engine selector -->
+            <div class="btn-group btn-group-sm" id="engine-selector">
+                <button type="button" class="btn btn-outline-secondary" id="btn-castor-engine" onclick="setInsightsEngine('castor')">
+                    <i class="bi bi-cpu me-1"></i>Castor Engine
+                </button>
+                <button type="button" class="btn btn-outline-secondary" id="btn-legacy-engine" onclick="setInsightsEngine('legacy')">
+                    <i class="bi bi-lightning me-1"></i>Legacy Engine
+                </button>
+            </div>
+            {% include "model_quality/components/export_btn.html" %}
+            <button class="btn btn-sm btn-outline-secondary"
+                    hx-get="{% url 'model_quality:insights_rerun' project.pk %}"
+                    hx-target="#ifc-insights-panel"
+                    hx-swap="outerHTML"
+                    hx-indicator="#insights-spinner">
+                <span id="insights-spinner" class="htmx-indicator spinner-border spinner-border-sm me-1" role="status"></span>
+                <i class="bi bi-arrow-clockwise me-1"></i>Re-run
+            </button>
+        </div>
+    </div>
+
+    <!-- Legacy Engine banner (hidden by default, shown via JS) -->
+    <div id="legacy-engine-banner" class="alert alert-warning d-flex align-items-center gap-2 d-none mb-3">
+        <i class="bi bi-lightning-fill"></i>
+        <span>Legacy Engine — experimental</span>
+    </div>
+
+    {% if not ifc_file %}
+    <div class="alert alert-warning d-flex align-items-center gap-2">
+        <i class="bi bi-exclamation-triangle-fill"></i>
+        No processed IFC file found. Upload and process an IFC file first.
+    </div>
+
+    {% else %}
+    <!-- ── Readiness Rings ─────────────────────────────────────────────── -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card h-100 text-center">
+                <div class="card-body py-4">
+                    <svg viewBox="0 0 100 100" width="120" height="120" class="mb-2">
+                        <circle cx="50" cy="50" r="36" fill="none" stroke="#e5e7eb" stroke-width="10"/>
+                        <circle cx="50" cy="50" r="36" fill="none"
+                                stroke="{{ ring_4d.color }}" stroke-width="10"
+                                stroke-dasharray="{{ ring_4d.dasharray }}"
+                                stroke-linecap="round"
+                                transform="rotate(-90 50 50)"/>
+                        <text x="50" y="50" text-anchor="middle" dominant-baseline="central"
+                              font-size="20" font-weight="bold" fill="{{ ring_4d.color }}">{{ ring_4d.pct }}%</text>
+                    </svg>
+                    <h6 class="fw-semibold mb-1">4D Readiness</h6>
+                    <p class="text-secondary small mb-0">Activity ID linked &middot; {{ total_entities }} elements</p>
+                    {% if missing_4d > 0 %}
+                    <p class="small mt-1 mb-0 fw-medium" style="color:#ef4444;">{{ missing_4d }} missing Activity ID</p>
+                    {% else %}
+                    <p class="small mt-1 mb-0" style="color:#22c55e;">All elements have Activity ID</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card h-100 text-center">
+                <div class="card-body py-4">
+                    <svg viewBox="0 0 100 100" width="120" height="120" class="mb-2">
+                        <circle cx="50" cy="50" r="36" fill="none" stroke="#e5e7eb" stroke-width="10"/>
+                        <circle cx="50" cy="50" r="36" fill="none"
+                                stroke="{{ ring_5d.color }}" stroke-width="10"
+                                stroke-dasharray="{{ ring_5d.dasharray }}"
+                                stroke-linecap="round"
+                                transform="rotate(-90 50 50)"/>
+                        <text x="50" y="50" text-anchor="middle" dominant-baseline="central"
+                              font-size="20" font-weight="bold" fill="{{ ring_5d.color }}">{{ ring_5d.pct }}%</text>
+                    </svg>
+                    <h6 class="fw-semibold mb-1">5D Readiness</h6>
+                    <p class="text-secondary small mb-0">Cost data present &middot; {{ total_entities }} elements</p>
+                    {% if missing_5d > 0 %}
+                    <p class="small mt-1 mb-0 fw-medium" style="color:#ef4444;">{{ missing_5d }} missing Cost data</p>
+                    {% else %}
+                    <p class="small mt-1 mb-0" style="color:#22c55e;">All elements have Cost data</p>
+                    {% endif %}
+                    <div class="mt-2">
+                        <a href="{% url 'takeoff:qto' project.pk %}" class="text-decoration-none">
+                            <span class="badge rounded-pill"
+                                  style="background:rgba(59,130,246,0.10); color:#3b82f6; font-size:0.7rem; font-weight:500; border:1px solid rgba(59,130,246,0.25);">
+                                <i class="bi bi-calculator me-1"></i>
+                                {% if qto_cache %}QTO: {{ qto_cache.coverage_pct|floatformat:0 }}% coverage{% else %}QTO: not computed{% endif %}
+                            </span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            {% include "model_quality/components/progress_ring.html" %}
+        </div>
+    </div>
+
+    <!-- ── View Issues link ──────────────────────────────────────────── -->
+    <div class="d-flex justify-content-end mb-1">
+        <a href="{% url 'model_quality:ifc_issues' project.pk %}" class="btn btn-sm btn-outline-danger">
+            <i class="bi bi-bug me-1"></i>View Issues &rarr;
+        </a>
+    </div>
+
+    <!-- ── Breakdown Cards (HTMX lazy-loaded) ─────────────────────────── -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-4"
+             hx-get="{% url 'model_quality:insights_breakdown' project.pk 'level' %}"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+            <div class="card h-100"><div class="card-body d-flex align-items-center justify-content-center text-secondary">
+                <div class="spinner-border spinner-border-sm me-2"></div>Loading&hellip;
+            </div></div>
+        </div>
+        <div class="col-md-4"
+             hx-get="{% url 'model_quality:insights_breakdown' project.pk 'element_type' %}"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+            <div class="card h-100"><div class="card-body d-flex align-items-center justify-content-center text-secondary">
+                <div class="spinner-border spinner-border-sm me-2"></div>Loading&hellip;
+            </div></div>
+        </div>
+        <div class="col-md-4"
+             hx-get="{% url 'model_quality:insights_breakdown' project.pk 'material' %}"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+            <div class="card h-100"><div class="card-body d-flex align-items-center justify-content-center text-secondary">
+                <div class="spinner-border spinner-border-sm me-2"></div>Loading&hellip;
+            </div></div>
+        </div>
+    </div>
+
+    {% endif %}
+
+    <!-- ── Non-Physical Tasks panel ──────────────────────────────────────── -->
+    {% if np_total %}
+    {% include "model_quality/components/non_physical_panel.html" %}
+    {% endif %}
+
+</div>
+
+<!-- ── Help modal ─────────────────────────────────────────────────────── -->
+<div class="modal fade" id="ifcInsightsHelpModal" tabindex="-1" aria-labelledby="ifcInsightsHelpModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="ifcInsightsHelpModalLabel">
+                    <i class="bi bi-graph-up me-2"></i>How IFC Insights works
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p><strong>Readiness Rings</strong> &mdash; show what percentage of your IFC elements have Activity ID (4D) and Cost (5D) data populated. Green &ge; 80%, Amber 40&ndash;79%, Red &lt; 40%. The count beneath each ring shows how many elements are missing that property.</p>
+                <p><strong>Schedule Progress ring</strong> &mdash; shows what fraction of physical schedule tasks are complete (status = Complete, or actual end date set). Use the selector beneath the ring to switch the weighting: <em>By Task Count</em> (equal weight), <em>By Cost</em> (proportional to task cost), <em>By Duration</em> (proportional to planned days), or <em>Custom Weight</em> (uses the per-task weight field). The selected mode is saved per project. Click any construction stage chip to filter progress to that stage only (Substructure, Structure, Envelope, MEP, Finishes, External Works). Chips only appear for stages that have at least one task in the project. Stages are auto-detected from task name keywords when tasks are imported.</p>
+                <p><strong>View Issues &rarr;</strong> &mdash; opens the IFC Issues tab with four detailed audit sections: Missing Activity ID, Missing Cost, Activity ID &amp; Name Audit, and Levels Health.</p>
+                <p><strong>Breakdown Cards</strong> &mdash; element counts grouped by Level, Element Type, and Material. Loaded live from the database.</p>
+                <p><strong>Non-Physical Tasks</strong> &mdash; appears when the schedule contains tasks flagged as non-physical (procurement, admin, milestones, commissioning). Shows total count, how many were auto-detected vs. manually locked, top activity types, and stage distribution. Non-physical tasks are excluded from all readiness and progress calculations. Click &ldquo;Review in schedule &rarr;&rdquo; to open the schedule tab filtered to these tasks.</p>
+                <p><strong>IFC Health Checks</strong> &mdash; detailed quality checks (severity, global ID, type, issue, suggested fix) are now in the <strong>IFC Issues</strong> tab under Section 0.</p>
+                <p><strong>QTO badge on 5D ring</strong> &mdash; the blue <em>QTO: X% coverage</em> pill below the 5D Readiness ring shows what fraction of model elements have IFC quantity data computed. Click it to open the Quantities tab. If no QTO has been run yet, the badge shows &ldquo;not computed&rdquo;.</p>
+                <p><strong>Engine Selector</strong> &mdash; Castor Engine uses the main analysis pipeline. Legacy Engine is experimental.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Engine selector JS ─────────────────────────────────────────────── -->
+<script>
+function setInsightsEngine(engine) {
+    localStorage.setItem('insights_engine', engine);
+    var banner = document.getElementById('legacy-engine-banner');
+    var btnCastor = document.getElementById('btn-castor-engine');
+    var btnLegacy = document.getElementById('btn-legacy-engine');
+    if (engine === 'legacy') {
+        banner.classList.remove('d-none');
+        btnCastor.classList.remove('active');
+        btnLegacy.classList.add('active');
+    } else {
+        banner.classList.add('d-none');
+        btnCastor.classList.add('active');
+        btnLegacy.classList.remove('active');
+    }
+}
+function filterActivityTable(q) {
+    var rows = document.querySelectorAll('#activity-table tbody tr');
+    var needle = q.toLowerCase();
+    rows.forEach(function(row) {
+        row.style.display = row.textContent.toLowerCase().includes(needle) ? '' : 'none';
+    });
+}
+(function() {
+    var saved = localStorage.getItem('insights_engine') || 'castor';
+    setInsightsEngine(saved);
+})();
+</script>

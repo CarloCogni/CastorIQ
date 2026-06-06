@@ -1,9 +1,8 @@
 """One-shot script: patch ifc_viewer/views.py with export report code."""
+
 import pathlib
 
-filepath = pathlib.Path(
-    r"D:\Projects\02 IMAR\CASTOR UPDATED\Castor\src\islam\ifc_viewer\views.py"
-)
+filepath = pathlib.Path(r"D:\Projects\02 IMAR\CASTOR UPDATED\Castor\src\islam\ifc_viewer\views.py")
 content = filepath.read_text(encoding="utf-8")
 
 # ── 1. Patch imports ────────────────────────────────────────────────────────
