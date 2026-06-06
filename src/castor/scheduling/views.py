@@ -51,6 +51,23 @@ from .services.xer_parser import parse_xer
 logger = logging.getLogger(__name__)
 
 
+def _task_list_render_context(project, queryset, **extra: object) -> dict:
+    """Build task_list.html context with TaskEntityBinding link counts (not M2M)."""
+    from .services.link_resolver import entity_gids_by_task
+
+    tasks = list(queryset)
+    if tasks:
+        link_map = entity_gids_by_task(project.pk, [t.pk for t in tasks])
+        for task in tasks:
+            task.binding_link_count = len(link_map.get(str(task.pk), []))
+    return {
+        "tasks": tasks,
+        "project": project,
+        "preview_mode": False,
+        **extra,
+    }
+
+
 class ScheduleView(ProjectTabMixin, TemplateView):
     """Main TimeLiner panel — entry point for all scheduling sub-tabs."""
 
@@ -649,7 +666,15 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
         has_p6_cpm = any(
             td.get("total_float_days") is not None or td.get("early_start") for td in tasks_data
         )
+        if has_p6_cpm:
+            logger.info(
+                "P6 CPM fields present in import for project %s — will recompute after save",
+                project.pk,
+            )
 
+        from .services.pct_normalize import normalize_pct_complete
+
+        skipped_count = 0
         for td in tasks_data:
             try:
                 cost_str = td.get("cost") or td.get("budgeted_cost")
@@ -661,6 +686,13 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
                 late_finish_raw = td.get("late_finish")
                 total_float_val = td.get("total_float_days")
                 activity_code = td.get("activity_code", "")
+
+                phys_pct = normalize_pct_complete(td.get("_p6_phys_pct"))
+                if phys_pct is None:
+                    phys_pct = normalize_pct_complete(td.get("_csv_pct_complete"))
+                dur_pct = normalize_pct_complete(td.get("_p6_dur_pct"))
+
+                imported_critical = total_float_val is not None and int(total_float_val) <= 0
 
                 task_fields = dict(
                     name=td["name"],
@@ -682,16 +714,14 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
                     late_start=date.fromisoformat(late_start_raw) if late_start_raw else None,
                     late_finish=date.fromisoformat(late_finish_raw) if late_finish_raw else None,
                     total_float=int(total_float_val) if total_float_val is not None else None,
-                    is_critical=total_float_val is not None and int(total_float_val) == 0,
+                    is_critical=imported_critical,
                     calendar_object_id=td.get("calendar_object_id", ""),
                     constraint_type=td.get("constraint_type", ""),
                     constraint_date=date.fromisoformat(td["constraint_date"])
                     if td.get("constraint_date")
                     else None,
-                    physical_percent_complete=td.get("_p6_phys_pct")
-                    or td.get("_csv_pct_complete")
-                    or None,
-                    duration_percent_complete=td.get("_p6_dur_pct") or None,
+                    physical_percent_complete=phys_pct,
+                    duration_percent_complete=dur_pct,
                 )
 
                 existing = None
@@ -731,6 +761,7 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
                 if raw_preds:
                     tasks_with_preds.append((pk, raw_preds))
             except Exception as exc:
+                skipped_count += 1
                 logger.warning("Skipping task row: %s", exc)
 
         del request.session[session_key]
@@ -782,16 +813,28 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
             TaskDependency.objects.bulk_create(dep_objects, ignore_conflicts=True)
             dep_count = len(dep_objects)
             logger.info("Dependencies saved: %d for project %s", dep_count, project.pk)
-            if not has_p6_cpm:
-                try:
-                    cpm = compute_critical_path(str(project.pk))
-                    logger.info(
-                        "CPM computed: %d critical of %d tasks",
-                        len(cpm["critical_task_ids"]),
-                        len(cpm["task_data"]),
-                    )
-                except Exception as exc:
-                    logger.warning("CPM auto-run failed: %s", exc)
+
+        # Always recompute CPM after import — recomputed float/criticality drive analytics.
+        cpm_attempted = False
+        cpm_ok = False
+        try:
+            schedulable = (
+                Task.objects.filter(project=project, is_non_physical=False)
+                .exclude(start_date=None)
+                .exclude(end_date=None)
+            )
+            if schedulable.exists():
+                cpm_attempted = True
+                cpm = compute_critical_path(str(project.pk))
+                cpm_ok = True
+                logger.info(
+                    "CPM recomputed after import: %d critical of %d tasks (project %s)",
+                    len(cpm["critical_task_ids"]),
+                    len(cpm["task_data"]),
+                    project.pk,
+                )
+        except Exception as exc:
+            logger.warning("CPM recompute after import failed: %s", exc)
 
         all_tasks = list(
             Task.objects.filter(project=project).only("pk", "name", "stage", "sub_stage")
@@ -815,11 +858,11 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
         if source_format == "p6xml" and p6_obj_id_map:
             finalise_p6_data(project, current_source, p6_obj_id_map)
 
-        tasks = Task.objects.filter(project=project).prefetch_related("ifc_entities")
+        tasks_qs = Task.objects.filter(project=project).order_by("start_date", "name")
         response = render(
             request,
             "scheduling/components/task_list.html",
-            {"tasks": tasks, "project": project, "preview_mode": False, "dep_count": dep_count},
+            _task_list_render_context(project, tasks_qs, dep_count=dep_count),
         )
         parts = []
         if created:
@@ -830,12 +873,23 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
             parts.append(f"{unchanged} unchanged")
         msg = (", ".join(parts) or "No new tasks") + "."
         if dep_count:
-            msg += (
-                f" {dep_count} dependenc{'y' if dep_count == 1 else 'ies'} imported, CPM computed."
-            )
+            msg += f" {dep_count} dependenc{'y' if dep_count == 1 else 'ies'} imported."
+            if cpm_attempted and cpm_ok:
+                msg += " CPM recomputed."
+        elif cpm_attempted and cpm_ok:
+            msg += " CPM recomputed."
+        if cpm_attempted and not cpm_ok:
+            msg += " Schedule imported, but CPM recompute failed — check logs or re-run CPM."
+        if skipped_count:
+            msg += f" {skipped_count} task row{'s' if skipped_count != 1 else ''} skipped — check logs."
         if cleaned:
             msg += f" Cleaned {cleaned} duplicate task{'s' if cleaned != 1 else ''}."
-        return trigger_toast(response, msg, "success")
+        toast_level = "success"
+        if cpm_attempted and not cpm_ok:
+            toast_level = "error"
+        elif skipped_count:
+            toast_level = "info"
+        return trigger_toast(response, msg, toast_level)
 
 
 class ScheduleClearView(ProjectModifyAccessMixin, View):
@@ -1136,11 +1190,11 @@ class TaskListPartialView(ProjectAccessMixin, View):
 
     def get(self, request, **kwargs: object) -> HttpResponse:
         project = self.get_project()
-        tasks = Task.objects.filter(project=project).prefetch_related("ifc_entities")
+        tasks_qs = Task.objects.filter(project=project).order_by("start_date", "name")
         return render(
             request,
             "scheduling/components/task_list.html",
-            {"tasks": tasks, "project": project, "preview_mode": False},
+            _task_list_render_context(project, tasks_qs),
         )
 
 
@@ -1153,11 +1207,11 @@ class TaskDeleteView(ProjectModifyAccessMixin, View):
         task_name = task.name
         task.delete()
 
-        tasks = Task.objects.filter(project=project).prefetch_related("ifc_entities")
+        tasks_qs = Task.objects.filter(project=project).order_by("start_date", "name")
         response = render(
             request,
             "scheduling/components/task_list.html",
-            {"tasks": tasks, "project": project, "preview_mode": False},
+            _task_list_render_context(project, tasks_qs),
         )
         return trigger_toast(response, f"'{task_name}' deleted.", "success")
 
@@ -1201,10 +1255,8 @@ class GanttDataView(ProjectAccessMixin, View):
 
     def get(self, request, **kwargs: object) -> JsonResponse:
         project = self.get_project()
-        qs = (
-            Task.objects.filter(project=project, is_non_physical=False)
-            .prefetch_related("ifc_entities")
-            .order_by("start_date", "activity_code")
+        qs = Task.objects.filter(project=project, is_non_physical=False).order_by(
+            "start_date", "activity_code"
         )
 
         page_str = request.GET.get("page")
@@ -1235,12 +1287,17 @@ class GanttDataView(ProjectAccessMixin, View):
                 "has_more": page < total_pages,
             }
         else:
-            tasks = qs
+            tasks = list(qs)
             pagination = None
 
+        from .services.link_resolver import entity_gids_by_task, link_status_for_task
+
+        task_list = list(tasks)
+        link_map = entity_gids_by_task(project.pk, [t.pk for t in task_list])
+
         data = []
-        for task in tasks:
-            gids = [e["global_id"] for e in task.ifc_entities.values("global_id")]
+        for task in task_list:
+            gids = link_map.get(str(task.pk), [])
             data.append(
                 {
                     "id": str(task.pk),
@@ -1255,7 +1312,7 @@ class GanttDataView(ProjectAccessMixin, View):
                     "total_float": task.total_float,
                     "activity_code": task.activity_code or "",
                     "status": task.status,
-                    "link_status": task.link_status,
+                    "link_status": link_status_for_task(task, gids),
                     "entity_global_ids": gids,
                 }
             )
@@ -1272,18 +1329,26 @@ class TaskDetailView(ProjectAccessMixin, View):
     def get(self, request, **kwargs: object) -> HttpResponse:
         project = self.get_project()
         task = get_object_or_404(Task, pk=kwargs["task_pk"], project=project)
-        entities = list(task.ifc_entities.only("global_id", "name", "ifc_type"))
+        from castor.scheduling.models import TaskEntityBinding
+        from ifc_processor.models import IFCEntity
+
+        from .services.link_resolver import entity_gids_for_task
+
+        gids = entity_gids_for_task(task.pk)
+        entities = list(
+            IFCEntity.objects.filter(project=project, global_id__in=gids).only(
+                "global_id", "name", "ifc_type"
+            )
+        )
         today = date.today()
         progress = _compute_progress(task, today)
 
-        gids = [e.global_id for e in entities]
         siblings_count = (
-            (
-                Task.objects.filter(project=project, ifc_entities__global_id__in=gids)
-                .exclude(pk=task.pk)
-                .distinct()
-                .count()
-            )
+            TaskEntityBinding.objects.filter(entity_global_id__in=gids)
+            .exclude(task_id=task.pk)
+            .values("task_id")
+            .distinct()
+            .count()
             if gids
             else 0
         )

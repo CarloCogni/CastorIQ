@@ -66,11 +66,14 @@
                               font-size="20" font-weight="bold" fill="{{ ring_4d.color }}">{{ ring_4d.pct }}%</text>
                     </svg>
                     <h6 class="fw-semibold mb-1">4D Readiness</h6>
-                    <p class="text-secondary small mb-0">Activity ID linked &middot; {{ total_entities }} elements</p>
+                    <p class="text-secondary small mb-0">{{ total_entities }} elements</p>
+                    <p class="text-secondary small mb-0 mt-1" style="font-size:0.72rem; line-height:1.35;">
+                        Based on Activity ID properties and accepted task-element bindings.
+                    </p>
                     {% if missing_4d > 0 %}
-                    <p class="small mt-1 mb-0 fw-medium" style="color:#ef4444;">{{ missing_4d }} missing Activity ID</p>
+                    <p class="small mt-1 mb-0 fw-medium" style="color:#ef4444;">{{ missing_4d }} not 4D-ready</p>
                     {% else %}
-                    <p class="small mt-1 mb-0" style="color:#22c55e;">All elements have Activity ID</p>
+                    <p class="small mt-1 mb-0" style="color:#22c55e;">All elements are 4D-ready</p>
                     {% endif %}
                 </div>
             </div>

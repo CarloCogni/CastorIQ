@@ -153,7 +153,7 @@ class ColormapView(ProjectAccessMixin, View):
         if not ifc_file:
             return JsonResponse({"colormap": {}, "legend": []})
 
-        return JsonResponse(build_colormap(ifc_file, by))
+        return JsonResponse(build_colormap(ifc_file, by, project_id=str(project.pk)))
 
 
 class GapAnalysisView(ProjectAccessMixin, View):
@@ -180,7 +180,7 @@ class GapAnalysisView(ProjectAccessMixin, View):
                 {"rows": [], "by": by, "project": project},
             )
 
-        rows = build_gap_analysis(ifc_file, by)
+        rows = build_gap_analysis(ifc_file, by, project_id=str(project.pk))
 
         if request.GET.get("export"):
             return self._csv_response(rows, project.name)
@@ -350,8 +350,8 @@ class BuildSequenceView(ProjectAccessMixin, View):
         if not ifc_file:
             return JsonResponse({"levels": []})
 
-        from ifc_processor.models import IFCEntity
         from castor.ifc_insights.models import Level
+        from ifc_processor.models import IFCEntity
 
         level_z: dict[str, float] = {
             lvl.name: lvl.z_elevation for lvl in Level.objects.filter(project=project)
@@ -480,8 +480,8 @@ class TimelineView(ProjectAccessMixin, View):
     def get(self, request, **kwargs: object) -> HttpResponse:
         from collections import defaultdict
 
-        from ifc_processor.models import IFCEntity as IFCEntityModel
         from castor.scheduling.models import Task, TaskEntityBinding
+        from ifc_processor.models import IFCEntity as IFCEntityModel
 
         project = self.get_project()
 

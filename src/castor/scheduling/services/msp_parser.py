@@ -399,6 +399,23 @@ def _parse_p6_activity(el, nsp: str, obj_id: str) -> dict | None:
     expected_finish = _to_actual_date(t("ExpectedFinishDate"))
     wbs_obj_id = t("WBSObjectId")
 
+    from castor.scheduling.services.pct_normalize import normalize_pct_complete
+
+    def _pct_tag(tag: str) -> float | None:
+        raw = t(tag)
+        if not raw:
+            return None
+        try:
+            return float(raw)
+        except (ValueError, TypeError):
+            return None
+
+    phys_pct = normalize_pct_complete(_pct_tag("PhysicalPercentComplete"))
+    dur_raw = _pct_tag("DurationPercentComplete")
+    if dur_raw is None:
+        dur_raw = _pct_tag("PercentComplete")
+    dur_pct = normalize_pct_complete(dur_raw)
+
     return {
         "name": name,
         "start_date": start,
@@ -423,6 +440,8 @@ def _parse_p6_activity(el, nsp: str, obj_id: str) -> dict | None:
         "total_float_days": total_float_days,
         "expected_finish": expected_finish,
         "wbs_name": "",  # filled in by _parse_p6_lxml / _parse_p6_stdlib
+        "_p6_phys_pct": phys_pct,
+        "_p6_dur_pct": dur_pct,
     }
 
 

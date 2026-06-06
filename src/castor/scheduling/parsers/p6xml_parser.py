@@ -295,15 +295,19 @@ def _parse_activity(elem, nsp: str, obj_id: str) -> dict | None:
     constraint_type = t("PrimaryConstraintType") or t("SecondaryConstraintType") or ""
     constraint_date = _to_actual_date(t("PrimaryConstraintDate") or t("SecondaryConstraintDate"))
 
-    try:
-        phys_pct = float(t("PhysicalPercentComplete") or "0")
-    except (ValueError, TypeError):
-        phys_pct = 0.0
+    from castor.scheduling.services.pct_normalize import normalize_pct_complete
 
-    try:
-        dur_pct = float(t("DurationPercentComplete") or "0")
-    except (ValueError, TypeError):
-        dur_pct = 0.0
+    def _pct_raw(tag: str) -> float | None:
+        raw = t(tag)
+        if not raw:
+            return None
+        try:
+            return float(raw)
+        except (ValueError, TypeError):
+            return None
+
+    phys_pct = normalize_pct_complete(_pct_raw("PhysicalPercentComplete"))
+    dur_pct = normalize_pct_complete(_pct_raw("DurationPercentComplete"))
 
     return {
         "name": name,

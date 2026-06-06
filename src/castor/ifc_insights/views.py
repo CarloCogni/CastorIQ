@@ -493,6 +493,18 @@ def _has_activity_id(props: dict) -> bool:
     return any(k.lower().endswith("activity id") and v for k, v in props.items())
 
 
+def _is_4d_ready(props: dict, global_id: str, bound_gids: set[str]) -> bool:
+    """True when entity has Activity ID property or a TaskEntityBinding."""
+    return global_id in bound_gids or _has_activity_id(props)
+
+
+def _bound_gids_for_project(project) -> set[str]:
+    """Load all entity global_ids with TaskEntityBinding on *project*."""
+    from castor.scheduling.services.link_resolver import linked_entity_gids_for_project
+
+    return linked_entity_gids_for_project(project.pk)
+
+
 def _has_cost(props: dict) -> bool:
     """Return True if props contains a parseable Cost or Unit Cost value."""
     for k, v in props.items():
@@ -513,8 +525,8 @@ def _entity_level(entity) -> str:
         return "—"
 
 
-def _missing_activity_rows(ifc_file) -> list[dict]:
-    """Return dicts for all entities that have no valid Activity ID."""
+def _missing_activity_rows(ifc_file, bound_gids: set[str]) -> list[dict]:
+    """Return dicts for entities with neither Activity ID nor TaskEntityBinding."""
     rows: list[dict] = []
     qs = (
         IFCEntity.objects.filter(ifc_file=ifc_file)
@@ -522,15 +534,17 @@ def _missing_activity_rows(ifc_file) -> list[dict]:
         .select_related("spatial_container__entity")
     )
     for entity in qs.iterator(chunk_size=500):
-        if not _has_activity_id(entity.properties or {}):
-            rows.append(
-                {
-                    "global_id": entity.global_id,
-                    "ifc_type": entity.ifc_type or "—",
-                    "name": entity.name or "—",
-                    "level": _entity_level(entity),
-                }
-            )
+        props = entity.properties or {}
+        if _is_4d_ready(props, entity.global_id, bound_gids):
+            continue
+        rows.append(
+            {
+                "global_id": entity.global_id,
+                "ifc_type": entity.ifc_type or "—",
+                "name": entity.name or "—",
+                "level": _entity_level(entity),
+            }
+        )
     return rows
 
 
@@ -630,12 +644,15 @@ class IssuesCountView(ProjectAccessMixin, View):
         ifc_file = _get_active_ifc_file(project)
         if not ifc_file:
             return JsonResponse({"total": 0})
+        bound_gids = _bound_gids_for_project(project)
         missing_4d = missing_5d = 0
         for entity in (
-            IFCEntity.objects.filter(ifc_file=ifc_file).only("properties").iterator(chunk_size=500)
+            IFCEntity.objects.filter(ifc_file=ifc_file)
+            .only("global_id", "properties")
+            .iterator(chunk_size=500)
         ):
             props = entity.properties or {}
-            if not _has_activity_id(props):
+            if not _is_4d_ready(props, entity.global_id, bound_gids):
                 missing_4d += 1
             if not _has_cost(props):
                 missing_5d += 1
@@ -648,7 +665,8 @@ class IssuesMissingActivityView(ProjectAccessMixin, View):
     def get(self, request, **kwargs: object) -> HttpResponse:
         project = self.get_project()
         ifc_file = _get_active_ifc_file(project)
-        rows = _missing_activity_rows(ifc_file) if ifc_file else []
+        bound_gids = _bound_gids_for_project(project) if ifc_file else set()
+        rows = _missing_activity_rows(ifc_file, bound_gids) if ifc_file else []
         viewer_url = reverse("castor:viewer", kwargs={"pk": project.pk})
         return render(
             request,
@@ -922,7 +940,8 @@ class IssuesExportView(ProjectAccessMixin, View):
         writer.writeheader()
 
         if section == "missing_activity":
-            for row in _missing_activity_rows(ifc_file):
+            bound_gids = _bound_gids_for_project(project)
+            for row in _missing_activity_rows(ifc_file, bound_gids):
                 writer.writerow(row)
         elif section == "missing_cost":
             for row in _missing_cost_rows(ifc_file):

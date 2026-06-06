@@ -124,7 +124,24 @@ def _map_task_row(record: dict) -> dict | None:
     actual_start = _to_actual_date(get("act_start_date"))
     actual_end = _to_actual_date(get("act_end_date"))
 
-    return {
+    from castor.scheduling.services.pct_normalize import normalize_pct_complete
+
+    def _pct_field(*names: str) -> float | None:
+        for name in names:
+            raw = get(name)
+            if not raw:
+                continue
+            try:
+                return normalize_pct_complete(float(raw))
+            except (ValueError, TypeError):
+                continue
+        return None
+
+    # Standard P6 XER TASK columns (P6 Professional export).
+    phys_pct = _pct_field("phys_complete_pct")
+    dur_pct = _pct_field("complete_pct")
+
+    result = {
         "name": name,
         "start_date": start,
         "end_date": end,
@@ -137,6 +154,11 @@ def _map_task_row(record: dict) -> dict | None:
         "description": get("task_memo") or "",
         "_xer_task_id": get("task_id"),
     }
+    if phys_pct is not None:
+        result["_p6_phys_pct"] = phys_pct
+    if dur_pct is not None:
+        result["_p6_dur_pct"] = dur_pct
+    return result
 
 
 def _map_dep_row(record: dict) -> dict | None:

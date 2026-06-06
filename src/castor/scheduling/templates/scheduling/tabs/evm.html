@@ -22,6 +22,50 @@
 
 <div id="evm-root" style="display:flex; flex-direction:column; gap:16px;">
 
+    <!-- Trusted 4D/5D Readiness — scope summary for demo / launch users -->
+    <div id="evm-trust-readiness-card"
+         style="border:1px solid var(--bs-border-color); border-radius:8px; padding:12px 14px;
+                background:var(--bs-body-bg);">
+        <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+            <div style="font-size:0.82rem; font-weight:700;">Trusted 4D/5D Readiness</div>
+            <span id="evm-trust-readiness-loading"
+                  class="spinner-border spinner-border-sm text-secondary"
+                  role="status" aria-label="Loading readiness"></span>
+        </div>
+        <div id="evm-trust-readiness-body" class="d-none">
+            <div class="row g-2 mb-2" style="font-size:0.76rem;">
+                <div class="col-6 col-md-3">
+                    <div style="color:var(--bs-secondary-color); font-weight:600; font-size:0.68rem;
+                                text-transform:uppercase; letter-spacing:.04em;">Schedule Data</div>
+                    <div id="evm-trust-schedule-status" style="font-weight:600;"></div>
+                    <div id="evm-trust-schedule-detail" style="color:var(--bs-secondary-color); font-size:0.7rem;"></div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div style="color:var(--bs-secondary-color); font-weight:600; font-size:0.68rem;
+                                text-transform:uppercase; letter-spacing:.04em;">4D Links</div>
+                    <div id="evm-trust-links-status" style="font-weight:600;"></div>
+                    <div id="evm-trust-links-detail" style="color:var(--bs-secondary-color); font-size:0.7rem;"></div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div style="color:var(--bs-secondary-color); font-weight:600; font-size:0.68rem;
+                                text-transform:uppercase; letter-spacing:.04em;">EVM Mode</div>
+                    <div id="evm-trust-evm-mode" style="font-weight:600;"></div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div style="color:var(--bs-secondary-color); font-weight:600; font-size:0.68rem;
+                                text-transform:uppercase; letter-spacing:.04em;">Baseline Scope</div>
+                    <div id="evm-trust-baseline" style="font-weight:600; color:var(--bs-secondary-color);">
+                        Current imported schedule only
+                    </div>
+                </div>
+            </div>
+            <div style="font-size:0.72rem; color:var(--bs-secondary-color); line-height:1.45;
+                        border-top:1px solid var(--bs-border-color); padding-top:8px;">
+                Castor highlights assumptions and data-quality risks before project performance metrics are trusted.
+            </div>
+        </div>
+    </div>
+
     <!-- ── Schedule view toggle: As-coded | Audit-suggested ─────────────── -->
     <div id="evm-audit-view-bar"
          style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:8px 14px;
@@ -92,14 +136,34 @@
         </div>
     </div>
 
-    <!-- Cost guidance banner — shown when no schedule costs or QTO data available -->
+    <!-- Schedule Performance mode banner — duration proxy (non-monetary EVM) -->
     <div id="evm-cost-banner" class="d-none alert alert-warning alert-dismissible py-2 px-3 mb-0" role="alert" style="font-size:0.82rem;">
         <i class="bi bi-exclamation-triangle-fill me-2"></i>
-        <strong>No cost data found.</strong>
-        EVM values are weighted by task duration — add costs to your schedule or configure
-        unit costs in the <a href="#" id="evm-qto-link" class="alert-link">QTO tab</a> for
-        accurate monetary figures.
+        <strong>Schedule Performance mode:</strong>
+        values are duration-weighted and are not monetary EVM.
+        Add cost-loaded schedule data or
+        <a href="#" id="evm-qto-link" class="alert-link">QTO costs</a>
+        for cost-based EVM.
         <button type="button" class="btn-close btn-sm" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+
+    <!-- Legacy 0–100 progress scale — detection only; re-import recommended -->
+    <div id="evm-legacy-pct-banner" class="d-none alert alert-warning alert-dismissible py-2 px-3 mb-0" role="alert" style="font-size:0.82rem;">
+        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+        Some stored progress values appear to use a 0–100 scale.
+        Re-import the schedule to normalize progress before trusting EVM metrics.
+        <button type="button" class="btn-close btn-sm" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+
+    <!-- Schedule baseline scope — current import, not contractual baseline versioning -->
+    <div id="evm-baseline-scope-note"
+         style="border-left:4px solid #6366f1; background:rgba(99,102,241,.07);
+                border-radius:0 6px 6px 0; padding:8px 12px; font-size:0.76rem;">
+        <i class="bi bi-info-circle me-1" style="color:#6366f1;"></i>
+        <span style="color:var(--bs-secondary-color);">
+            Baseline versioning is not enabled. Variance, delay, and forecast metrics are measured
+            against the current imported schedule, not an approved contractual baseline.
+        </span>
     </div>
 
     <!-- Currency selector -->
@@ -607,6 +671,12 @@
 
         <!-- Results -->
         <div id="cf-results" class="d-none">
+
+            <p class="text-secondary mb-2 mb-3" style="font-size:0.75rem; line-height:1.45;">
+                <i class="bi bi-info-circle me-1"></i>
+                Cashflow is based on schedule/resource costs only.
+                QTO-derived estimates are not included in this cashflow view yet.
+            </p>
 
             <!-- Metrics row -->
             <div id="cf-metrics-row" class="row g-2 mb-3"></div>
@@ -1167,9 +1237,12 @@ function _esc(s) {
 
 (function () {
     const EVM_URL = "{% url 'castor:evm_data' project.pk %}";
+    const HEALTH_URL = "{% url 'castor:schedule_health_check' project.pk %}";
     const LS_KEY  = "castor_evm_currency";
 
     let _evmData   = null;
+    let _readinessIntel  = null;
+    let _readinessHealth = null;
     let _trendData = null;  // stored for sparkline resize re-render
     let _currency  = localStorage.getItem(LS_KEY) || "USD";
 
@@ -1195,9 +1268,14 @@ function _esc(s) {
 
     async function loadEvm() {
         let data;
+        let healthData = null;
         try {
-            const resp = await fetch(EVM_URL);
-            data = await resp.json();
+            const [evmResp, healthResp] = await Promise.all([
+                fetch(EVM_URL),
+                fetch(HEALTH_URL),
+            ]);
+            data = await evmResp.json();
+            healthData = await healthResp.json();
         } catch (_) {
             _showError("Failed to load EVM data.");
             return;
@@ -1209,16 +1287,111 @@ function _esc(s) {
         }
 
         _evmData = data;
+        _readinessHealth = healthData;
         _renderBanner(data);
         _renderKpis(data);
         _renderChart(data);
         _renderForecast(data);
         _renderSecondary(data);
+        _renderTrustReadiness();
+    }
+
+    /* ── Trusted 4D/5D Readiness card ──────────────────────────────────── */
+    function _trustToneColor(tone) {
+        if (tone === "good") return "#16a34a";
+        if (tone === "review") return "#d97706";
+        return "var(--bs-secondary-color)";
+    }
+
+    function _setTrustCell(statusEl, detailEl, label, tone, detail) {
+        if (!statusEl) return;
+        statusEl.textContent = label;
+        statusEl.style.color = _trustToneColor(tone);
+        if (detailEl) {
+            detailEl.textContent = detail || "";
+        }
+    }
+
+    function _renderTrustReadiness() {
+        const loading = document.getElementById("evm-trust-readiness-loading");
+        const body = document.getElementById("evm-trust-readiness-body");
+        if (!_evmData || !body) return;
+
+        const cpmOk = Boolean(_readinessIntel && _readinessIntel.critical_path
+            && _readinessIntel.critical_path.computed);
+        const scheduleIssues = (_readinessHealth && _readinessHealth.issues)
+            ? _readinessHealth.issues.filter(i => i.code !== "unlinked_physical" && i.count > 0)
+            : [];
+        const scheduleNeedsReview = Boolean(
+            _evmData.legacy_progress_scale
+            || !cpmOk
+            || (_evmData.overdue_linear_capped && _evmData.overdue_linear_capped > 0)
+            || scheduleIssues.some(i => i.severity === "error" || i.severity === "warning")
+        );
+        let scheduleDetail = "";
+        if (_evmData.legacy_progress_scale) {
+            scheduleDetail = "Legacy progress scale detected";
+        } else if (!cpmOk) {
+            scheduleDetail = "Critical path not computed";
+        } else if (_evmData.overdue_linear_capped > 0) {
+            scheduleDetail = `${_evmData.overdue_linear_capped} task(s) with estimated progress`;
+        } else if (scheduleIssues.length) {
+            scheduleDetail = scheduleIssues[0].label;
+        }
+        _setTrustCell(
+            document.getElementById("evm-trust-schedule-status"),
+            document.getElementById("evm-trust-schedule-detail"),
+            scheduleNeedsReview ? "Needs Review" : "Good",
+            scheduleNeedsReview ? "review" : "good",
+            scheduleDetail,
+        );
+
+        const unlinkedIssue = _readinessHealth && _readinessHealth.issues
+            ? _readinessHealth.issues.find(i => i.code === "unlinked_physical")
+            : null;
+        if (!_readinessHealth) {
+            _setTrustCell(
+                document.getElementById("evm-trust-links-status"),
+                document.getElementById("evm-trust-links-detail"),
+                "Review in 4D/Gap Analysis",
+                "info",
+                "",
+            );
+        } else if (unlinkedIssue && unlinkedIssue.count > 0) {
+            _setTrustCell(
+                document.getElementById("evm-trust-links-status"),
+                document.getElementById("evm-trust-links-detail"),
+                "Needs Review",
+                "review",
+                `${unlinkedIssue.count} unlinked physical task${unlinkedIssue.count === 1 ? "" : "s"}`,
+            );
+        } else {
+            _setTrustCell(
+                document.getElementById("evm-trust-links-status"),
+                document.getElementById("evm-trust-links-detail"),
+                "Good",
+                "good",
+                "Physical tasks linked",
+            );
+        }
+
+        const evmModeEl = document.getElementById("evm-trust-evm-mode");
+        if (evmModeEl) {
+            evmModeEl.textContent = _evmData.is_monetary_evm ? "Cost EVM" : "Schedule Performance";
+            evmModeEl.style.color = _evmData.is_monetary_evm ? "#16a34a" : "#d97706";
+        }
+
+        if (loading) loading.classList.add("d-none");
+        body.classList.remove("d-none");
     }
 
     /* ── Cost guidance banner ──────────────────────────────────────────── */
     function _renderBanner(d) {
-        if (d.cost_basis !== "task durations") return;
+        if (d.is_monetary_evm !== false && d.performance_mode !== "schedule_performance") {
+            if (d.cost_basis !== "task durations") return;
+        } else if (d.is_monetary_evm) {
+            return;
+        }
         const banner = document.getElementById("evm-cost-banner");
         if (banner) {
             banner.classList.remove("d-none");
@@ -1583,11 +1756,17 @@ function _esc(s) {
                 `${d.overdue_linear_capped}`;
             document.getElementById("evm-overdue-cap-banner").classList.remove("d-none");
         }
+
+        if (d.legacy_progress_scale) {
+            const legacyEl = document.getElementById("evm-legacy-pct-banner");
+            if (legacyEl) legacyEl.classList.remove("d-none");
+        }
     }
 
     /* ── Utilities ─────────────────────────────────────────────────────── */
     function _fmt(v, useCost) {
-        if (useCost) {
+        const monetary = useCost !== false && (!_evmData || _evmData.is_monetary_evm !== false);
+        if (monetary) {
             return new Intl.NumberFormat(undefined, {
                 style: "currency",
                 currency: _currency,
@@ -1595,7 +1774,7 @@ function _esc(s) {
                 notation: Math.abs(v) >= 1e6 ? "compact" : "standard",
             }).format(v);
         }
-        return Math.round(v).toLocaleString();
+        return `${Math.round(v).toLocaleString()} wd`;
     }
 
     function _fmtDateShort(iso) {
@@ -1626,8 +1805,24 @@ function _esc(s) {
         const today    = new Date(d.as_of         + "T00:00:00");
         const totalMs  = Math.max(baseline - start, 1);
 
-        /* Forecast end: spi-adjusted remaining duration */
-        const spi = Math.max(d.spi || 1.0, 0.05);
+        /* Align with server decision_layer._forecast_finish — no hidden SPI floor. */
+        if (!d.ev || d.ev <= 0) {
+            section.classList.remove("d-none");
+            section.innerHTML = `<div class="text-secondary" style="font-size:0.82rem;">
+                <i class="bi bi-info-circle me-1"></i>
+                Insufficient earned value to forecast a finish date.</div>`;
+            return;
+        }
+
+        const spi = d.spi || 1.0;
+        if (spi <= 0) {
+            section.classList.remove("d-none");
+            section.innerHTML = `<div class="text-secondary" style="font-size:0.82rem;">
+                <i class="bi bi-info-circle me-1"></i>
+                Progress too low to forecast a reliable finish date (SPI ${spi.toFixed(2)}).</div>`;
+            return;
+        }
+
         const remainingMs = Math.max(baseline - today, 0);
         const elapsedMs   = Math.max(today - start, 0);
         const forecastMs  = today < baseline
@@ -1635,6 +1830,17 @@ function _esc(s) {
             : elapsedMs / spi;
         const forecast = new Date(start.getTime() + forecastMs);
 
+        const planDays = (baseline - start) / 86400000;
+        const saneHorizon = new Date(baseline.getTime() + planDays * 3 * 86400000);
+        if (forecast > saneHorizon) {
+            section.classList.remove("d-none");
+            section.innerHTML = `<div class="text-secondary" style="font-size:0.82rem;">
+                <i class="bi bi-info-circle me-1"></i>
+                Progress too low to forecast a reliable finish date (SPI ${spi.toFixed(2)}).</div>`;
+            return;
+        }
+
+        section.classList.remove("d-none");
         const varianceDays = Math.round((baseline - forecast) / 86400000);
         const varColor = varianceDays === 0 ? "var(--bs-secondary-color)"
             : varianceDays > 0 ? "#16a34a" : "#dc2626";
@@ -4526,15 +4732,18 @@ function _esc(s) {
                 data = await resp.json();
             } catch (_) { return; }
 
+            _readinessIntel = data || null;
+
             if (!data || !data.has_data) {
-                // Still show ES section with honest message if EV=0
                 _renderEsRow(data && data.earned_schedule);
+                _renderTrustReadiness();
                 return;
             }
 
             _renderEsRow(data.earned_schedule);
             _overlayWbsRisk(data.wbs_risk_scores);
             _setCritPath(data.critical_path);
+            _renderTrustReadiness();
         }
 
         loadIntelligence();

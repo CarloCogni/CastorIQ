@@ -531,6 +531,12 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
         and t.duration_percent_complete is None
     )
 
+    legacy_progress_scale = any(
+        (t.physical_percent_complete is not None and t.physical_percent_complete > 1.0)
+        or (t.duration_percent_complete is not None and t.duration_percent_complete > 1.0)
+        for t in tasks
+    )
+
     return {
         "has_data": True,
         "bac": round(bac, 2),
@@ -544,12 +550,20 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
         "sv": sv,
         "cv": cv,
         "use_cost": use_cost,
+        "is_monetary_evm": use_cost,
+        "performance_mode": "cost_evm" if use_cost else "schedule_performance",
+        "performance_mode_label": (
+            "Cost EVM — monetary BAC from schedule costs and/or QTO"
+            if use_cost
+            else "Schedule Performance — duration-weighted index (not monetary EVM)"
+        ),
         "cost_basis": cost_basis,
         "cost_coverage_pct": cost_coverage_pct,
         "ac_available": ac_available,
         "ac_coverage_pct": ac_coverage_pct,
         "ac_disabled_reason": ac_disabled_reason,
         "overdue_linear_capped": overdue_linear_capped,
+        "legacy_progress_scale": legacy_progress_scale,
         "as_of": today.isoformat(),
         "project_start": project_start.isoformat(),
         "project_end": project_end.isoformat(),

@@ -393,13 +393,9 @@ def parse_predecessor_string(raw: str) -> list[dict]:
 
 
 def _parse_pct(value: str) -> float | None:
-    """Parse a %-complete cell and normalise to the 0–1 range used by the Task model.
+    """Parse a %-complete cell and normalise to the 0–1 range used by the Task model."""
+    from .pct_normalize import normalize_pct_complete
 
-    Accepts:
-      - 0–100 scale (e.g. "75", "75%", "75.5")  → divided by 100 → 0.75
-      - 0–1 scale  (e.g. "0.75")                 → kept as-is
-    Anything outside [0, 100] or non-numeric returns None.
-    """
     if not value:
         return None
     cleaned = value.strip().rstrip("%").strip()
@@ -407,16 +403,7 @@ def _parse_pct(value: str) -> float | None:
         v = float(cleaned)
     except ValueError:
         return None
-    if v < 0 or v > 100:
-        return None
-    # Values > 1 are unambiguously on the 0–100 scale; values in [0,1] are
-    # already normalised.  A value of exactly 1 is treated as 1% (0–100 scale)
-    # only when the column header implies percentage — we cannot know here, so
-    # values ≤ 1 are kept as-is (0–1 range).  This is the conservative choice:
-    # misinterpreting 1% as 100% is far worse than misinterpreting 100% as 1%.
-    if v > 1.0:
-        v = v / 100.0
-    return round(max(0.0, min(1.0, v)), 4)
+    return normalize_pct_complete(v)
 
 
 def _parse_cost(value: str) -> str | None:
