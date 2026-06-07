@@ -341,24 +341,66 @@
 
     <!-- ═══════════════════════════════════════════════════════ -->
     <!-- About this build (READ-ONLY)                           -->
+    <!-- Per-user routing + cap derived from SettingsView ctx + -->
+    <!-- the global token_budget context processor. Values      -->
+    <!-- reflect the user's effective Ask / Modify routing.     -->
     <!-- ═══════════════════════════════════════════════════════ -->
     <div class="settings-section">
         <div class="settings-section-header">
             <i class="bi bi-info-circle text-secondary"></i>
             <h3>About this build</h3>
         </div>
+
         <div class="setting-row">
             <span class="setting-label">Edition</span>
             <span class="setting-value">Castor — Public Beta</span>
         </div>
+
         <div class="setting-row">
-            <span class="setting-label">LLM access</span>
-            <span class="setting-value text-secondary fs-7">Shared host balance · daily token cap</span>
+            <span class="setting-label">Ask route</span>
+            <span class="setting-value">
+                {{ ask_route_label }}
+                <span class="text-secondary fs-8">· {{ ask_route_meta }}</span>
+            </span>
         </div>
-        <p class="text-secondary fs-8 mt-2 mb-0">
+
+        <div class="setting-row">
+            <span class="setting-label">Modify route</span>
+            <span class="setting-value">
+                {{ modify_route_label }}
+                <span class="text-secondary fs-8">· {{ modify_route_meta }}</span>
+            </span>
+        </div>
+
+        <div class="setting-row">
+            <span class="setting-label">Daily tokens</span>
+            <span class="setting-value">
+                {% if token_mode == "byok" %}
+                    <span class="text-secondary">No cap on BYOK calls</span>
+                {% elif token_mode == "ollama" %}
+                    <span class="text-secondary">No cap on local Ollama</span>
+                {% elif token_cap %}
+                    {{ token_used }} / {{ token_cap }}
+                    <span class="text-secondary fs-8">({{ token_pct }}%) · resets 00:00 UTC</span>
+                {% else %}
+                    <span class="text-secondary">—</span>
+                {% endif %}
+            </span>
+        </div>
+
+        <div class="setting-row">
+            <span class="setting-label">Embeddings</span>
+            <span class="setting-value">
+                {{ embed_model }}
+                <span class="text-secondary fs-8">· {{ embed_dimensions }}d · local Ollama</span>
+            </span>
+        </div>
+
+        <p class="text-secondary fs-8 mt-3 mb-0">
             <i class="bi bi-info-circle me-1"></i>
-            The provider, model, and embedding model are managed by the host during the beta.
-            Daily token usage is shown above the chat input on Ask and Modify.
+            <a href="#" data-bs-toggle="modal" data-bs-target="#usageHelpModal" class="text-decoration-none">
+                How usage and limits work →
+            </a>
         </p>
     </div>
 
@@ -449,6 +491,7 @@
     <div style="height: 2rem;"></div>
 
     {% include "core/components/settings_help_modal.html" %}
+    {% include "core/components/usage_help_modal.html" %}
 
 </div>
 {% endblock %}

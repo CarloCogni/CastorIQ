@@ -47,8 +47,21 @@ def build_byok_context(user) -> dict:
 
     Centralised so both the SettingsView (full-page render) and the HTMX
     endpoints (partial swap) produce identical context shape.
+
+    The "Local Ollama" provider choice is filtered out of the dropdown unless
+    ``SiteLLMConfig.expose_ollama_to_users`` is on — the cloud-hosted beta
+    can't usefully expose it (user's browser can't reach their own Ollama),
+    and self-hosted operators flip the flag on once.
     """
+    from core.models import SiteLLMConfig
+
     cfg = UserLLMConfig.load(user)
+    expose_ollama = SiteLLMConfig.load().expose_ollama_to_users
+    provider_choices = [
+        (value, label)
+        for value, label in UserLLMConfig.ProviderOverride.choices
+        if value != "ollama" or expose_ollama
+    ]
     return {
         "byok_config": cfg,
         "byok_has_anthropic": bool(cfg.anthropic_api_key_ciphertext),
@@ -61,7 +74,7 @@ def build_byok_context(user) -> dict:
         "byok_groq_model": cfg.groq_model or llm_catalog.default_model_for("groq"),
         "byok_anthropic_models": llm_catalog.ANTHROPIC_MODELS,
         "byok_groq_models": llm_catalog.GROQ_MODELS,
-        "byok_provider_choices": UserLLMConfig.ProviderOverride.choices,
+        "byok_provider_choices": provider_choices,
         "byok_anthropic_pricing_url": llm_catalog.PROVIDER_PRICING_URL["anthropic"],
         "byok_groq_pricing_url": llm_catalog.PROVIDER_PRICING_URL["groq"],
     }

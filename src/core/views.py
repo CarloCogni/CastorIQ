@@ -379,9 +379,25 @@ class SettingsView(LoginRequiredMixin, TemplateView):
         context = super().get_context_data(**kwargs)
 
         # BYOK panel context (every authenticated user).
+        from core.llm import _resolve_llm_choice, friendly_provider_label
         from core.views_byok import build_byok_context
 
         context.update(build_byok_context(self.request.user))
+
+        # "About this build" — every authenticated user sees their actual
+        # per-purpose routing plus the embedding model. The token-budget
+        # numbers (used/cap/pct/mode) come from the token_budget context
+        # processor, so no duplicate work here.
+        ask_label, ask_meta = friendly_provider_label(_resolve_llm_choice(self.request.user, "ask"))
+        modify_label, modify_meta = friendly_provider_label(
+            _resolve_llm_choice(self.request.user, "modify")
+        )
+        context["ask_route_label"] = ask_label
+        context["ask_route_meta"] = ask_meta
+        context["modify_route_label"] = modify_label
+        context["modify_route_meta"] = modify_meta
+        context["embed_model"] = settings.OLLAMA_EMBED_MODEL
+        context["embed_dimensions"] = settings.PGVECTOR_DIMENSIONS
 
         if self.request.user.is_staff:
             config = UserLLMConfig.load(self.request.user)
@@ -390,8 +406,6 @@ class SettingsView(LoginRequiredMixin, TemplateView):
             context["active_model_info"] = get_model_info(active_model)
             context["default_model"] = settings.OLLAMA_MODEL
             context["is_using_default"] = not config.active_model
-            context["embed_model"] = settings.OLLAMA_EMBED_MODEL
-            context["embed_dimensions"] = settings.PGVECTOR_DIMENSIONS
             context["ollama_host"] = settings.OLLAMA_HOST
             context["vram_tiers"] = VRAM_TIERS
 

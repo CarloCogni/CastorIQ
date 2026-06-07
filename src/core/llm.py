@@ -479,6 +479,28 @@ def resolve_model_name(user=None, purpose: str = "modify") -> str:
     return _resolve_llm_choice(user, purpose).model
 
 
+def friendly_provider_label(choice: ResolvedLLM) -> tuple[str, str]:
+    """Render a ``ResolvedLLM`` as (provider_label, route_meta) for UI surfaces.
+
+    Friendly names — stable across model swaps and matching the BYOK panel
+    wording. Used by the settings page "About this build" block; safe to
+    reuse anywhere a per-purpose route needs to be shown to a user.
+    """
+    if choice.provider == "ollama":
+        return ("Local Ollama", "no shared-pool usage")
+    if choice.byok:
+        if choice.provider == "anthropic":
+            return ("Your Anthropic key", "no shared-pool usage")
+        if choice.provider == "groq":
+            return ("Your Groq key", "no shared-pool usage")
+        return (f"Your {choice.provider} key", "no shared-pool usage")
+    if choice.provider == "anthropic":
+        return ("Anthropic Claude", "shared host pool")
+    if choice.provider == "groq":
+        return ("Groq Llama", "shared host pool")
+    return (choice.provider.title(), "shared host pool")
+
+
 def get_llm(
     user=None,
     *,

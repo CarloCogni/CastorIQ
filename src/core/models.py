@@ -495,6 +495,18 @@ class SiteLLMConfig(SingletonModel):
             "or provider-outage failover."
         ),
     )
+    expose_ollama_to_users = models.BooleanField(
+        default=False,
+        verbose_name="Expose Ollama to users",
+        help_text=(
+            "When on, end users can pick 'Local Ollama' from the For Ask / For "
+            "Modify dropdowns in Settings → Bring Your Own Key. Leave off for "
+            "cloud-hosted deployments where the user's browser can't reach their "
+            "own Ollama. Self-hosted Castor installs flip this on once. "
+            "Independent of force_local_ollama, which is a separate emergency "
+            "kill switch."
+        ),
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

@@ -94,3 +94,5 @@ visual_*.png
 audit_evm_datasources.py
 oracle-Documentation/
 backup_pre_rename*.dump
+
+docs-local/

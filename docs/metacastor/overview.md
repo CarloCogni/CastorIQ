@@ -8,6 +8,8 @@ Plain-English reference for the MetaCastor app.
 
 When a writeback proposal fails — at validation, at execution, or inside a Tier 3 sandbox — MetaCastor captures **what went wrong** in a structured, queryable form. The Modify chat surfaces that record as a help card so the user gets an actionable retry path instead of a raw stack trace.
 
+The user-visible surface is that Modify failure card. The raw `FailureRecord` rows are also available to staff at the Django admin (`/admin/metacastor/failurerecord/`) for triage and pattern detection — there is no public URL.
+
 That's the entire scope. Three concrete surfaces:
 
 1. **`FailureRecord` model** — one row per caught failure, with deterministic taxonomy (`error_type`, `failure_phase`, `category`), human-readable `diagnosis`, and a 1024-d query embedding when Ollama is reachable.

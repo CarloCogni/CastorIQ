@@ -1,7 +1,0 @@
-EOF
-Create three new IfcZone entities for Fire Zone A, Fire Zone B, and Fire Zone C
-Create a custom property set Pset_Maintenance on all walls with Inspector TBD and LastInspection 2026-01-01
-set FireRating to EI120 on all walls
-set FireRating to EI120 and IsExternal to true on IfcWall wall-Ext-EastWing-01
-set Inspector to TBD on all walls
-EOF

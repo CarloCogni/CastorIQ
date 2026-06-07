@@ -107,12 +107,27 @@ def set_provider_override(user, purpose: str, provider: str) -> UserLLMConfig:
 
     ``provider`` is one of ``""`` (site default), ``"ollama"``, ``"anthropic"``,
     or ``"groq"``. Cloud values require a stored key for that provider.
+    ``ollama`` is only accepted when the operator has flipped
+    ``SiteLLMConfig.expose_ollama_to_users`` on (off by default — see plan
+    `we-are-getting-close-radiant-melody`).
     """
     if purpose not in PURPOSES:
         raise BYOKValidationError(f"Unknown purpose: {purpose!r}")
     valid_values = {choice for choice, _ in UserLLMConfig.ProviderOverride.choices}
     if provider not in valid_values:
         raise BYOKValidationError(f"Unknown provider override: {provider!r}")
+
+    # Defense-in-depth: even if the dropdown is hidden, reject hand-crafted
+    # POSTs that set the override to ollama on a deployment that doesn't expose
+    # it to users (e.g. the cloud-hosted beta).
+    if provider == "ollama":
+        from core.models import SiteLLMConfig
+
+        if not SiteLLMConfig.load().expose_ollama_to_users:
+            raise BYOKValidationError(
+                "Local Ollama isn't available on this Castor deployment. "
+                "Ask the host operator to enable it in admin if you need it."
+            )
 
     config = UserLLMConfig.load(user)
     if provider in CLOUD_PROVIDERS and not config.has_byok_key(provider):

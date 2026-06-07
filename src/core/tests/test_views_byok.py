@@ -206,3 +206,32 @@ def test_settings_page_shows_masked_hint_for_stored_key(client):
     response = client.get(reverse("core:settings"))
     assert response.status_code == 200
     assert b"gsk_" in response.content  # hint is rendered
+
+
+@pytest.mark.django_db
+def test_settings_dropdown_hides_ollama_by_default(client):
+    """Default deployment (SiteLLMConfig.expose_ollama_to_users=False) must NOT
+    render '<option value="ollama"' in either routing dropdown."""
+    user = UserFactory()
+    _login(client, user)
+
+    response = client.get(reverse("core:settings"))
+    assert response.status_code == 200
+    assert b'value="ollama"' not in response.content
+
+
+@pytest.mark.django_db
+def test_settings_dropdown_shows_ollama_when_flag_on(client):
+    """Self-hosted operator flipped the flag on → dropdown includes Ollama."""
+    from core.models import SiteLLMConfig
+
+    site = SiteLLMConfig.load()
+    site.expose_ollama_to_users = True
+    site.save()
+
+    user = UserFactory()
+    _login(client, user)
+
+    response = client.get(reverse("core:settings"))
+    assert response.status_code == 200
+    assert b'value="ollama"' in response.content

@@ -132,9 +132,38 @@ class TestSetProviderOverride:
         assert cfg.ask_provider_override == ""
 
     def test_set_ollama_does_not_require_key(self):
+        # Ollama selection is gated by SiteLLMConfig.expose_ollama_to_users
+        # (default False — see plan we-are-getting-close-radiant-melody).
+        # Flip it on so the original "ollama needs no API key" invariant is
+        # still reachable.
+        from core.models import SiteLLMConfig
+
+        site = SiteLLMConfig.load()
+        site.expose_ollama_to_users = True
+        site.save()
+
         user = UserFactory()
         cfg = byok_service.set_provider_override(user, "modify", "ollama")
         assert cfg.modify_provider_override == "ollama"
+
+    def test_set_ollama_rejected_when_flag_off(self):
+        """Default SiteLLMConfig hides Ollama — service must refuse the override."""
+        user = UserFactory()
+        with pytest.raises(byok_service.BYOKValidationError) as excinfo:
+            byok_service.set_provider_override(user, "ask", "ollama")
+        assert "Local Ollama isn't available" in str(excinfo.value)
+
+    def test_set_ollama_accepted_when_flag_on(self):
+        """Operator flips expose_ollama_to_users on → service accepts ollama."""
+        from core.models import SiteLLMConfig
+
+        site = SiteLLMConfig.load()
+        site.expose_ollama_to_users = True
+        site.save()
+
+        user = UserFactory()
+        cfg = byok_service.set_provider_override(user, "ask", "ollama")
+        assert cfg.ask_provider_override == "ollama"
 
     def test_set_cloud_without_key_rejected(self):
         user = UserFactory()
