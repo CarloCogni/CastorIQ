@@ -25,12 +25,11 @@ logger = logging.getLogger(__name__)
 class QTOView(ProjectTabMixin, TemplateView):
     """QTO tab — Quantity Take-Off dashboard."""
 
-    active_tab = "takeoff"
-    template_name = "takeoff/qto.html"
+    active_tab = "castor"
 
     def get_context_data(self, **kwargs: object) -> dict:
         ctx = super().get_context_data(**kwargs)
-        ctx["takeoff_subtab"] = "qto"
+        ctx["castor_subtab"] = "qto"
         project = ctx["project"]
         ctx["qto_cache"] = QTOCache.objects.filter(project=project).first()
         return ctx
