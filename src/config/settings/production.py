@@ -78,6 +78,14 @@ EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.smtp.Email
 # Django would write to BASE_DIR / "staticfiles" = /app/src/staticfiles, which
 # the volume never sees → nginx 404s on /static/.
 STATIC_ROOT = "/app/staticfiles"
+
+# MEDIA_ROOT is overridden out of the source tree for the same reason as
+# STATIC_ROOT above: it must line up with the named volume `media_volume:/app/media`
+# mounted by both `web` (writer, at runtime) and `nginx` (reader) in
+# docker-compose.prod.yml. Without this override Django writes uploads to
+# BASE_DIR / "media" = /app/src/media (the container's ephemeral layer), which
+# the volume never sees → nginx 404s on /media/ for every uploaded document.
+MEDIA_ROOT = "/app/media"
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},

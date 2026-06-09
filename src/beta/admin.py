@@ -147,12 +147,16 @@ class BetaApplicationAdmin(admin.ModelAdmin):
                     user.set_unusable_password()  # forces the welcome flow
                     user.save()
 
-                # Sample-project provisioning. The post_save signal in
-                # users/signals.py already runs the same command during
-                # `get_or_create` above, so this explicit call is usually
-                # a no-op (idempotency short-circuits). It stays in place
-                # to capture failures into BetaApplication.provisioning_error
-                # — the signal swallows exceptions, this branch records them.
+                # Sample-project provisioning — fast half only. The post_save
+                # signal in users/signals.py already runs this during
+                # `get_or_create` above (on_commit), so this explicit call is
+                # usually a no-op (idempotency short-circuits). It stays in place
+                # to capture row-creation/file-copy failures into
+                # BetaApplication.provisioning_error — the signal swallows
+                # exceptions, this branch records them. `--skip-pipeline` keeps
+                # approve sub-second; the heavy IFC/doc pipeline runs off-request
+                # via the signal's daemon thread (see users/signals.py), so it
+                # never blocks the admin request past nginx's read timeout.
                 provisioning_error = ""
                 try:
                     from django.core.management import call_command
@@ -160,6 +164,7 @@ class BetaApplicationAdmin(admin.ModelAdmin):
                     call_command(
                         "provision_sample_project",
                         str(user.pk),
+                        skip_pipeline=True,
                         verbosity=0,
                     )
                 except Exception as prov_exc:
