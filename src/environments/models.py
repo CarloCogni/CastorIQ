@@ -48,12 +48,14 @@ class Project(UUIDModel):
 
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.PROTECT,
+        on_delete=models.CASCADE,
         related_name="owned_projects",
         verbose_name="Owner",
         help_text=(
             "Denormalized pointer to the user holding the OWNER membership. "
-            "Kept in sync by ProjectAccessService."
+            "Kept in sync by ProjectAccessService. When the user is deleted, "
+            "the project and its full tree (memberships, IFC files, documents, "
+            "chats, modify proposals, facility data) cascade with them."
         ),
     )
 
