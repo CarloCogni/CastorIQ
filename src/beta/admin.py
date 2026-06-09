@@ -59,12 +59,19 @@ class BetaApplicationAdmin(admin.ModelAdmin):
         "name",
         "job_title",
         "status",
+        "needs_provisioning_repair",
         "created_at",
         "reviewed_by",
         "reviewed_at",
     )
     list_filter = ("status", "created_at")
     search_fields = ("email", "name", "job_title", "description", "notes")
+
+    @admin.display(boolean=True, description="Provisioning OK?")
+    def needs_provisioning_repair(self, obj: BetaApplication) -> bool:
+        # Inverted: True = healthy (no provisioning error recorded).
+        return not obj.provisioning_error
+
     readonly_fields = (
         "id",
         "submitted_ip",
@@ -80,7 +87,16 @@ class BetaApplicationAdmin(admin.ModelAdmin):
         ("Application", {"fields": ("email", "name", "job_title", "description")}),
         (
             "Vetting",
-            {"fields": ("status", "notes", "reviewed_by", "reviewed_at", "created_user")},
+            {
+                "fields": (
+                    "status",
+                    "notes",
+                    "reviewed_by",
+                    "reviewed_at",
+                    "created_user",
+                    "provisioning_error",
+                ),
+            },
         ),
         (
             "Submission context",
@@ -131,10 +147,13 @@ class BetaApplicationAdmin(admin.ModelAdmin):
                     user.set_unusable_password()  # forces the welcome flow
                     user.save()
 
-                # Sample-project provisioning. Failures here are surfaced as
-                # a warning but don't block the approval — a re-run of the
-                # management command can recover. Skipped on idempotent
-                # re-approve (the command itself short-circuits).
+                # Sample-project provisioning. The post_save signal in
+                # users/signals.py already runs the same command during
+                # `get_or_create` above, so this explicit call is usually
+                # a no-op (idempotency short-circuits). It stays in place
+                # to capture failures into BetaApplication.provisioning_error
+                # — the signal swallows exceptions, this branch records them.
+                provisioning_error = ""
                 try:
                     from django.core.management import call_command
 
@@ -149,11 +168,12 @@ class BetaApplicationAdmin(admin.ModelAdmin):
                         application.email,
                         prov_exc,
                     )
+                    provisioning_error = f"{type(prov_exc).__name__}: {prov_exc}"
                     self.message_user(
                         request,
                         f"{application.email}: account created and email queued, "
                         f"but sample-project provisioning failed ({prov_exc}). "
-                        "Re-run `manage.py provision_sample_project` to recover.",
+                        "Re-run `manage.py provision_sample_project --force-files` to recover.",
                         level=messages.WARNING,
                     )
 
@@ -164,12 +184,14 @@ class BetaApplicationAdmin(admin.ModelAdmin):
                 application.reviewed_by = request.user
                 application.reviewed_at = timezone.now()
                 application.created_user = user
+                application.provisioning_error = provisioning_error
                 application.save(
                     update_fields=[
                         "status",
                         "reviewed_by",
                         "reviewed_at",
                         "created_user",
+                        "provisioning_error",
                     ]
                 )
                 approved += 1

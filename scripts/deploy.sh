@@ -14,6 +14,11 @@
 #   5. docker compose exec web python manage.py migrate --noinput
 #   6. docker compose exec web python manage.py collectstatic --noinput
 #      (no-op for image-baked assets but cheap insurance for hot-reloaded ones)
+#   7. docker compose exec nginx nginx -s reload
+#      (nginx.conf is mounted from the host, so `docker compose up -d` does
+#      NOT restart nginx when only the conf file changed — image + command
+#      hashes are unchanged. Explicit reload picks up edits to error_page
+#      blocks, location rules, etc. without dropping connections.)
 #
 # Pre-flight: refuses to deploy if .env is missing, since the stack needs it.
 
@@ -46,6 +51,13 @@ docker compose -f "$COMPOSE_FILE" exec -T web python manage.py migrate --noinput
 
 echo "→ Refreshing static assets…"
 docker compose -f "$COMPOSE_FILE" exec -T web python manage.py collectstatic --noinput
+
+echo "→ Reloading nginx (in case docker/nginx.conf changed)…"
+if docker compose -f "$COMPOSE_FILE" exec -T nginx nginx -t >/dev/null 2>&1; then
+    docker compose -f "$COMPOSE_FILE" exec -T nginx nginx -s reload
+else
+    echo "  WARNING: nginx -t failed; skipping reload. Run \`docker compose exec nginx nginx -t\` to debug." >&2
+fi
 
 echo "✓ Deploy complete. Probe:"
 echo "  curl -fsS https://castoriq.io/healthz/"

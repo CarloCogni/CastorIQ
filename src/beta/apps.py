@@ -8,3 +8,6 @@ class BetaConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "beta"
     verbose_name = "Beta Vetting"
+
+    def ready(self) -> None:
+        from . import checks  # noqa: F401 — registers system checks on import

@@ -199,6 +199,14 @@ BETA_RATE_LIMIT = os.getenv("BETA_RATE_LIMIT", "5/h")
 BETA_DAILY_TOTAL_CAP = int(os.getenv("BETA_DAILY_TOTAL_CAP", "290"))
 BETA_DAILY_OPERATOR_CAP = int(os.getenv("BETA_DAILY_OPERATOR_CAP", "250"))
 
+# Whether to auto-provision a Sample Project for every newly created user.
+# The hook lives in `users/signals.py` (post_save on User, created=True).
+# True everywhere by default — tests flip it off via `src/conftest.py`'s
+# autouse fixture so they don't drag the IFC pipeline into every test run.
+PROVISION_SAMPLE_PROJECT_ON_USER_CREATE = (
+    os.getenv("PROVISION_SAMPLE_PROJECT_ON_USER_CREATE", "True").lower() == "true"
+)
+
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
