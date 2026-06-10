@@ -52,6 +52,23 @@ from .services.xer_parser import parse_xer
 logger = logging.getLogger(__name__)
 
 
+def _task_list_render_context(project, queryset, **extra: object) -> dict:
+    """Build task_list.html context with TaskEntityBinding link counts (not M2M)."""
+    from .services.link_resolver import entity_gids_by_task
+
+    tasks = list(queryset)
+    if tasks:
+        link_map = entity_gids_by_task(project.pk, [t.pk for t in tasks])
+        for task in tasks:
+            task.binding_link_count = len(link_map.get(str(task.pk), []))
+    return {
+        "tasks": tasks,
+        "project": project,
+        "preview_mode": False,
+        **extra,
+    }
+
+
 class ScheduleView(ProjectTabMixin, TemplateView):
     """Main TimeLiner panel — entry point for all scheduling sub-tabs."""
 
@@ -849,11 +866,11 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
         if source_format == "p6xml" and p6_obj_id_map:
             finalise_p6_data(project, current_source, p6_obj_id_map)
 
-        tasks = Task.objects.filter(project=project).prefetch_related("ifc_entities")
+        tasks = Task.objects.filter(project=project).order_by("start_date", "name")
         response = render(
             request,
             "scheduling/components/task_list.html",
-            {"tasks": tasks, "project": project, "preview_mode": False, "dep_count": dep_count},
+            _task_list_render_context(project, tasks, dep_count=dep_count),
         )
         parts = []
         if created:
@@ -1183,11 +1200,11 @@ class TaskListPartialView(ProjectAccessMixin, View):
 
     def get(self, request, **kwargs: object) -> HttpResponse:
         project = self.get_project()
-        tasks = Task.objects.filter(project=project).prefetch_related("ifc_entities")
+        tasks = Task.objects.filter(project=project).order_by("start_date", "name")
         return render(
             request,
             "scheduling/components/task_list.html",
-            {"tasks": tasks, "project": project, "preview_mode": False},
+            _task_list_render_context(project, tasks),
         )
 
 
@@ -1200,11 +1217,11 @@ class TaskDeleteView(ProjectModifyAccessMixin, View):
         task_name = task.name
         task.delete()
 
-        tasks = Task.objects.filter(project=project).prefetch_related("ifc_entities")
+        tasks = Task.objects.filter(project=project).order_by("start_date", "name")
         response = render(
             request,
             "scheduling/components/task_list.html",
-            {"tasks": tasks, "project": project, "preview_mode": False},
+            _task_list_render_context(project, tasks),
         )
         return trigger_toast(response, f"'{task_name}' deleted.", "success")
 
@@ -1247,11 +1264,11 @@ class GanttDataView(ProjectAccessMixin, View):
     _MAX_PAGE_SIZE = 1000
 
     def get(self, request, **kwargs: object) -> JsonResponse:
+        from .services.link_resolver import entity_gids_by_task, link_status_for_task
+
         project = self.get_project()
-        qs = (
-            Task.objects.filter(project=project, is_non_physical=False)
-            .prefetch_related("ifc_entities")
-            .order_by("start_date", "activity_code")
+        qs = Task.objects.filter(project=project, is_non_physical=False).order_by(
+            "start_date", "activity_code"
         )
 
         page_str = request.GET.get("page")
@@ -1274,7 +1291,7 @@ class GanttDataView(ProjectAccessMixin, View):
             total_count = qs.count()
             total_pages = max(1, math.ceil(total_count / page_size))
             offset = (page - 1) * page_size
-            tasks = qs[offset : offset + page_size]
+            tasks = list(qs[offset : offset + page_size])
             pagination = {
                 "total_count": total_count,
                 "total_pages": total_pages,
@@ -1282,12 +1299,13 @@ class GanttDataView(ProjectAccessMixin, View):
                 "has_more": page < total_pages,
             }
         else:
-            tasks = qs
+            tasks = list(qs)
             pagination = None
 
+        link_map = entity_gids_by_task(project.pk, [t.pk for t in tasks])
         data = []
         for task in tasks:
-            gids = [e["global_id"] for e in task.ifc_entities.values("global_id")]
+            gids = link_map.get(str(task.pk), [])
             data.append(
                 {
                     "id": str(task.pk),
@@ -1302,7 +1320,7 @@ class GanttDataView(ProjectAccessMixin, View):
                     "total_float": task.total_float,
                     "activity_code": task.activity_code or "",
                     "status": task.status,
-                    "link_status": task.link_status,
+                    "link_status": link_status_for_task(task, gids),
                     "entity_global_ids": gids,
                 }
             )
@@ -1317,20 +1335,29 @@ class TaskDetailView(ProjectAccessMixin, View):
     """HTMX GET — task detail side panel for the Gantt chart."""
 
     def get(self, request, **kwargs: object) -> HttpResponse:
+        from .services.link_resolver import entity_gids_for_task
+
         project = self.get_project()
         task = get_object_or_404(Task, pk=kwargs["task_pk"], project=project)
-        entities = list(task.ifc_entities.only("global_id", "name", "ifc_type"))
+        gids = entity_gids_for_task(task.pk)
+        ifc_files = IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
+        entities = list(
+            IFCEntity.objects.filter(ifc_file__in=ifc_files, global_id__in=gids).only(
+                "global_id", "name", "ifc_type"
+            )
+        )
         today = date.today()
         progress = _compute_progress(task, today)
 
-        gids = [e.global_id for e in entities]
         siblings_count = (
-            (
-                Task.objects.filter(project=project, ifc_entities__global_id__in=gids)
-                .exclude(pk=task.pk)
-                .distinct()
-                .count()
+            TaskEntityBinding.objects.filter(
+                entity_global_id__in=gids,
+                task__project=project,
             )
+            .exclude(task_id=task.pk)
+            .values("task_id")
+            .distinct()
+            .count()
             if gids
             else 0
         )

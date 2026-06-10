@@ -35,8 +35,10 @@ def run_health_check(project) -> dict:
           passed       – list of passed checks, each: {code, label}
     """
     from ..models import Task
+    from .link_resolver import entity_gids_by_task
 
-    tasks = list(Task.objects.filter(project=project).prefetch_related("ifc_entities"))
+    tasks = list(Task.objects.filter(project=project))
+    link_map = entity_gids_by_task(project.pk, [t.pk for t in tasks]) if tasks else {}
     total = len(tasks)
 
     if total == 0:
@@ -54,7 +56,7 @@ def run_health_check(project) -> dict:
         _check_actual_anomaly(tasks),
         _check_missing_codes(tasks),
         _check_long_tasks(tasks),
-        _check_unlinked_physical(tasks),
+        _check_unlinked_physical(tasks, link_map),
     ]
 
     issues = [c for c in all_checks if c["count"] > 0]
@@ -141,9 +143,8 @@ def _check_long_tasks(tasks: list) -> dict:
     }
 
 
-def _check_unlinked_physical(tasks: list) -> dict:
-    # Use len() on the prefetched queryset — avoids extra DB hits vs .count()
-    hits = [t.name for t in tasks if not t.is_non_physical and not len(t.ifc_entities.all())]
+def _check_unlinked_physical(tasks: list, link_map: dict[str, list[str]]) -> dict:
+    hits = [t.name for t in tasks if not t.is_non_physical and not link_map.get(str(t.pk))]
     return {
         "code": "unlinked_physical",
         "label": "Unlinked Physical Tasks",
