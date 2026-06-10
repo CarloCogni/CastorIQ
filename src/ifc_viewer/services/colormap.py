@@ -29,7 +29,7 @@ def build_colormap(ifc_file, by: str, project_id: str | None = None) -> dict:
     """Return {"colormap": {global_id: color_hex}, "legend": [{label, color}]}.
 
     by: "material" | "level" | "element_type" | "schedule_status"
-    project_id: when set, TaskEntityBinding global_ids count as linked for schedule_status.
+    project_id: when set, only TaskEntityBinding global_ids count as linked for schedule_status.
     """
     if by not in _VALID:
         return {"colormap": {}, "legend": []}
@@ -56,14 +56,12 @@ def _schedule_status(qs, project_id: str | None) -> dict:
         bound_gids = linked_entity_gids_for_project(project_id)
     colormap: dict[str, str] = {}
     for entity in qs.iterator(chunk_size=500):
-        props = entity.properties or {}
-        prop_linked = any(k.lower().endswith("activity id") for k, v in props.items() if v)
-        linked = entity.global_id in bound_gids or prop_linked
+        linked = entity.global_id in bound_gids
         colormap[entity.global_id] = GREEN if linked else GRAY
     return {
         "colormap": colormap,
         "legend": [
-            {"label": "Linked to schedule", "color": GREEN},
+            {"label": "Linked via task binding", "color": GREEN},
             {"label": "Not linked", "color": GRAY},
         ],
     }

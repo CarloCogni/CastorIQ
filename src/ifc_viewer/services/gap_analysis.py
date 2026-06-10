@@ -19,7 +19,7 @@ def build_gap_analysis(
     Each row: {group, total, linked, pct, gap, global_ids_json}
     Sorted by gap descending (biggest gaps first).
 
-    project_id: when set, entities with TaskEntityBinding count as linked.
+    project_id: when set, only entities with TaskEntityBinding count as linked.
     """
     from ifc_processor.models import IFCEntity  # local import — avoids circular
 
@@ -41,9 +41,7 @@ def build_gap_analysis(
         bucket = groups[key]
         bucket["total"] += 1
         bucket["global_ids"].append(entity.global_id)
-        props = entity.properties or {}
-        prop_linked = any(k.lower().endswith("activity id") for k, v in props.items() if v)
-        if entity.global_id in bound_gids or prop_linked:
+        if entity.global_id in bound_gids:
             bucket["linked"] += 1
 
     rows = []

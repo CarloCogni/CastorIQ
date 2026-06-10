@@ -107,11 +107,11 @@ def entity_metrics(ifc_file) -> dict:
                 except (TypeError, ValueError):
                     pass
 
-        if act_id or entity.global_id in bound_gids:
+        if entity.global_id in bound_gids:
             fourd_hits += 1
-            if act_id:
-                key = (act_id, act_name or "—", entity.ifc_type or "Unknown")
-                activity_groups[key] = activity_groups.get(key, 0) + 1
+        if act_id:
+            key = (act_id, act_name or "—", entity.ifc_type or "Unknown")
+            activity_groups[key] = activity_groups.get(key, 0) + 1
 
         # Priority: schedule cost > IFC cost
         sched_cost = schedule_cost_map.get(entity.global_id)

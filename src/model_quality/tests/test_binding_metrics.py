@@ -35,8 +35,8 @@ def test_entity_metrics_4d_ring_includes_binding_only():
 
 
 @pytest.mark.django_db
-def test_entity_metrics_property_only_still_counts_4d():
-    """Activity ID property alone still contributes to 4D readiness."""
+def test_entity_metrics_property_only_not_counted_in_4d_ring():
+    """Activity ID property alone does not contribute to trusted 4D ring coverage."""
     project = ProjectFactory()
     ifc_file = IFCFileFactory(project=project)
     IFCEntityFactory(
@@ -45,8 +45,25 @@ def test_entity_metrics_property_only_still_counts_4d():
     )
 
     metrics = entity_metrics(ifc_file)
-    assert metrics["ring_4d"]["pct"] == 100
-    assert metrics["missing_4d"] == 0
+    assert metrics["ring_4d"]["pct"] == 0
+    assert metrics["missing_4d"] == 1
+
+
+@pytest.mark.django_db
+def test_entity_metrics_activity_table_still_lists_property_activity_id():
+    """Raw Activity ID values remain in the audit table without affecting 4D ring."""
+    project = ProjectFactory()
+    ifc_file = IFCFileFactory(project=project)
+    IFCEntityFactory(
+        ifc_file=ifc_file,
+        ifc_type="IfcColumn",
+        properties={"Castor.Activity ID": "ACT-RAW", "Castor.Activity Name": "Pour"},
+    )
+
+    metrics = entity_metrics(ifc_file)
+    assert metrics["ring_4d"]["pct"] == 0
+    assert len(metrics["activity_table"]) == 1
+    assert metrics["activity_table"][0]["act_id"] == "ACT-RAW"
 
 
 @pytest.mark.django_db

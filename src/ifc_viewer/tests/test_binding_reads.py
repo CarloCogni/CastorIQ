@@ -36,14 +36,37 @@ def test_colormap_schedule_status_binding_only_entity_is_linked():
 
 
 @pytest.mark.django_db
-def test_colormap_schedule_status_property_only_still_linked():
-    """Activity ID property still marks entity linked when no binding exists."""
+def test_colormap_schedule_status_property_only_not_linked():
+    """Activity ID property alone does not mark entity linked without a binding."""
     project = ProjectFactory()
     ifc_file = IFCFileFactory(project=project)
     entity = IFCEntityFactory(
         ifc_file=ifc_file,
         global_id="GID-COLOR-PROP",
         properties={"Castor.Activity ID": "ACT-100"},
+    )
+
+    result = build_colormap(ifc_file, "schedule_status", project_id=str(project.pk))
+    assert result["colormap"][entity.global_id] == _GRAY
+
+
+@pytest.mark.django_db
+def test_colormap_schedule_status_binding_and_property_still_linked():
+    """Binding wins when both Activity ID property and binding exist."""
+    project = ProjectFactory()
+    ifc_file = IFCFileFactory(project=project)
+    entity = IFCEntityFactory(
+        ifc_file=ifc_file,
+        global_id="GID-COLOR-BOTH",
+        properties={"Castor.Activity ID": "ACT-101"},
+    )
+    task = TaskFactory(project=project)
+    TaskEntityBinding.objects.create(
+        task=task,
+        entity_global_id=entity.global_id,
+        confidence=1.0,
+        link_method=TaskEntityBinding.LinkMethod.MANUAL,
+        needs_review=False,
     )
 
     result = build_colormap(ifc_file, "schedule_status", project_id=str(project.pk))
@@ -88,8 +111,8 @@ def test_gap_analysis_counts_binding_only_as_linked():
 
 
 @pytest.mark.django_db
-def test_gap_analysis_property_only_still_linked():
-    """Gap analysis still counts Activity ID property as linked."""
+def test_gap_analysis_property_only_not_linked():
+    """Gap analysis does not count Activity ID property without a binding."""
     project = ProjectFactory()
     ifc_file = IFCFileFactory(project=project)
     IFCEntityFactory(
@@ -100,4 +123,4 @@ def test_gap_analysis_property_only_still_linked():
 
     rows = build_gap_analysis(ifc_file, "element_type", project_id=str(project.pk))
     slab_row = next(r for r in rows if r["group"] == "IfcSlab")
-    assert slab_row["linked"] == 1
+    assert slab_row["linked"] == 0
