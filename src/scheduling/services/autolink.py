@@ -425,8 +425,11 @@ def run_autolink(project, ifc_param_name: str | None = None) -> dict:
     if not entity_list:
         return {**_empty_summary(len(tasks)), "excluded_non_physical": excluded}
 
-    # Clear stale bindings for physical tasks only
+    # Clear stale bindings and legacy M2M for physical tasks in scope only.
     TaskEntityBinding.objects.filter(task__in=tasks).delete()
+    physical_task_ids = [task.pk for task in tasks]
+    if physical_task_ids:
+        Task.ifc_entities.through.objects.filter(task_id__in=physical_task_ids).delete()
 
     # Analyze schedule patterns — graceful no-op on LLM failure
     context = analyse_schedule_context(tasks)
