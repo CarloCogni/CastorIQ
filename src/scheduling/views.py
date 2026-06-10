@@ -2561,10 +2561,22 @@ class LinkElementView(ProjectModifyAccessMixin, View):
             entity_global_id=global_id,
             defaults={
                 "confidence": 1.0,
-                "link_method": TaskEntityBinding.LinkMethod.EXACT,
+                "link_method": TaskEntityBinding.LinkMethod.MANUAL,
                 "needs_review": False,
             },
         )
+        if not created:
+            TaskEntityBinding.objects.filter(pk=binding.pk).update(
+                confidence=1.0,
+                link_method=TaskEntityBinding.LinkMethod.MANUAL,
+                needs_review=False,
+            )
+
+        ifc_files = _get_ifc_files(project)
+        entities = list(IFCEntity.objects.filter(ifc_file__in=ifc_files, global_id=global_id))
+        if entities:
+            task.ifc_entities.add(*entities)
+
         status_code = 201 if created else 200
         return JsonResponse({"status": "linked", "binding_id": str(binding.id)}, status=status_code)
 

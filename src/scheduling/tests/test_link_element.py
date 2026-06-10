@@ -9,6 +9,7 @@ import pytest
 from django.urls import reverse
 
 from environments.tests.factories import ProjectFactory, UserFactory
+from ifc_processor.tests.factories import IFCEntityFactory
 from scheduling.models import TaskEntityBinding
 from scheduling.tests.factories import TaskFactory
 
@@ -41,6 +42,57 @@ def test_link_element_creates_binding(client):
 
 
 @pytest.mark.django_db
+def test_link_element_syncs_m2m_when_entity_exists(client):
+    """POST link-element adds the IFCEntity to legacy M2M for backward compatibility."""
+    user = UserFactory()
+    project = ProjectFactory(owner=user)
+    task = TaskFactory(project=project)
+    global_id = "19iO7YoRr7ze7jVuR7Kvet"
+    entity = IFCEntityFactory(ifc_file__project=project, global_id=global_id)
+    client.force_login(user)
+
+    url = reverse(
+        "scheduling:link_element",
+        kwargs={"pk": project.pk, "task_pk": task.pk},
+    )
+    r = client.post(
+        url,
+        data=json.dumps({"global_id": global_id}),
+        content_type="application/json",
+    )
+
+    assert r.status_code == 201
+    binding = TaskEntityBinding.objects.get(task=task, entity_global_id=global_id)
+    assert binding.link_method == TaskEntityBinding.LinkMethod.MANUAL
+    assert binding.needs_review is False
+    assert task.ifc_entities.filter(pk=entity.pk).exists()
+
+
+@pytest.mark.django_db
+def test_link_element_succeeds_without_ifc_entity(client):
+    """POST link-element still creates a binding when no IFCEntity row exists."""
+    user = UserFactory()
+    project = ProjectFactory(owner=user)
+    task = TaskFactory(project=project)
+    global_id = "MISSING-ENTITY-GID"
+    client.force_login(user)
+
+    url = reverse(
+        "scheduling:link_element",
+        kwargs={"pk": project.pk, "task_pk": task.pk},
+    )
+    r = client.post(
+        url,
+        data=json.dumps({"global_id": global_id}),
+        content_type="application/json",
+    )
+
+    assert r.status_code == 201
+    assert TaskEntityBinding.objects.filter(task=task, entity_global_id=global_id).exists()
+    assert task.ifc_entities.count() == 0
+
+
+@pytest.mark.django_db
 def test_link_element_idempotent(client):
     """Calling link-element twice returns 200 on the second call, not an error."""
     user = UserFactory()
@@ -48,11 +100,13 @@ def test_link_element_idempotent(client):
     task = TaskFactory(project=project)
     client.force_login(user)
 
+    global_id = "19iO7YoRr7ze7jVuR7Kvet"
+    entity = IFCEntityFactory(ifc_file__project=project, global_id=global_id)
     url = reverse(
         "scheduling:link_element",
         kwargs={"pk": project.pk, "task_pk": task.pk},
     )
-    payload = json.dumps({"global_id": "19iO7YoRr7ze7jVuR7Kvet"})
+    payload = json.dumps({"global_id": global_id})
 
     r1 = client.post(url, data=payload, content_type="application/json")
     r2 = client.post(url, data=payload, content_type="application/json")
@@ -62,11 +116,10 @@ def test_link_element_idempotent(client):
     assert r2.json()["status"] == "linked"
     # Still only one binding row
     assert (
-        TaskEntityBinding.objects.filter(
-            task=task, entity_global_id="19iO7YoRr7ze7jVuR7Kvet"
-        ).count()
+        TaskEntityBinding.objects.filter(task=task, entity_global_id=global_id).count()
         == 1
     )
+    assert task.ifc_entities.filter(pk=entity.pk).count() == 1
 
 
 @pytest.mark.django_db
