@@ -45,6 +45,7 @@ from .services.evm import compute_evm
 from .services.linker import apply_matches, param_match_tasks
 from .services.msp_parser import parse_msp
 from .services.p6_save import finalise_p6_data, save_p6_pending_data
+from .services.pct_normalize import normalize_pct_complete
 from .services.validator import validate_schedule
 from .services.xer_parser import parse_xer
 
@@ -571,6 +572,15 @@ class TaskUploadView(ProjectModifyAccessMixin, View):
         )
 
 
+def _resolve_import_phys_pct(task_data: dict) -> float | None:
+    """Normalize physical progress from import dict keys (defense in depth at save)."""
+    for key in ("_p6_phys_pct", "_csv_pct_complete"):
+        normalized = normalize_pct_complete(task_data.get(key))
+        if normalized is not None:
+            return normalized
+    return None
+
+
 class TaskSaveView(ProjectModifyAccessMixin, View):
     """HTMX POST — persist parsed tasks from session to the database."""
 
@@ -688,10 +698,8 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
                     constraint_date=date.fromisoformat(td["constraint_date"])
                     if td.get("constraint_date")
                     else None,
-                    physical_percent_complete=td.get("_p6_phys_pct")
-                    or td.get("_csv_pct_complete")
-                    or None,
-                    duration_percent_complete=td.get("_p6_dur_pct") or None,
+                    physical_percent_complete=_resolve_import_phys_pct(td),
+                    duration_percent_complete=normalize_pct_complete(td.get("_p6_dur_pct")),
                 )
 
                 existing = None

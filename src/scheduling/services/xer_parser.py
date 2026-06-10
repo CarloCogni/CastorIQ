@@ -124,6 +124,13 @@ def _map_task_row(record: dict) -> dict | None:
     actual_start = _to_actual_date(get("act_start_date"))
     actual_end = _to_actual_date(get("act_end_date"))
 
+    from scheduling.services.pct_normalize import normalize_pct_complete
+
+    phys_raw = get("phys_complete_pct") or get("complete_pct")
+    dur_raw = get("duration_complete_pct") or get("dur_complete_pct")
+    _p6_phys_pct = normalize_pct_complete(phys_raw) if phys_raw else None
+    _p6_dur_pct = normalize_pct_complete(dur_raw) if dur_raw else None
+
     return {
         "name": name,
         "start_date": start,
@@ -136,6 +143,8 @@ def _map_task_row(record: dict) -> dict | None:
         "source": "xer",
         "description": get("task_memo") or "",
         "_xer_task_id": get("task_id"),
+        "_p6_phys_pct": _p6_phys_pct,
+        "_p6_dur_pct": _p6_dur_pct,
     }
 
 
