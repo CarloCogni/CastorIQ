@@ -52,15 +52,23 @@ from .services.xer_parser import parse_xer
 logger = logging.getLogger(__name__)
 
 
+def _annotate_binding_link_state(project, tasks: list) -> None:
+    """Attach binding_link_count and binding_link_status to task instances in-place."""
+    from .services.link_resolver import entity_gids_by_task, link_status_for_task
+
+    if not tasks:
+        return
+    link_map = entity_gids_by_task(project.pk, [t.pk for t in tasks])
+    for task in tasks:
+        gids = link_map.get(str(task.pk), [])
+        task.binding_link_count = len(gids)
+        task.binding_link_status = link_status_for_task(task, gids)
+
+
 def _task_list_render_context(project, queryset, **extra: object) -> dict:
     """Build task_list.html context with TaskEntityBinding link counts (not M2M)."""
-    from .services.link_resolver import entity_gids_by_task
-
     tasks = list(queryset)
-    if tasks:
-        link_map = entity_gids_by_task(project.pk, [t.pk for t in tasks])
-        for task in tasks:
-            task.binding_link_count = len(link_map.get(str(task.pk), []))
+    _annotate_binding_link_state(project, tasks)
     return {
         "tasks": tasks,
         "project": project,
@@ -1146,17 +1154,17 @@ class LinkParamView(ProjectModifyAccessMixin, View):
         if matches:
             persist_param_matches(matches, entities)
 
-        tasks_qs = Task.objects.filter(project=project).prefetch_related("ifc_entities")
+        tasks_qs = Task.objects.filter(project=project).order_by("start_date", "name")
         response = render(
             request,
             "scheduling/components/attach_results.html",
-            {
-                "tasks": tasks_qs,
-                "matches": matches,
-                "project": project,
-                "match_mode": "param",
-                "param_name": param_name,
-            },
+            _task_list_render_context(
+                project,
+                tasks_qs,
+                matches=matches,
+                match_mode="param",
+                param_name=param_name,
+            ),
         )
         linked = sum(1 for m in matches if m["entity_ids"])
         return trigger_toast(

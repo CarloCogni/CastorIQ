@@ -106,3 +106,61 @@ def test_link_param_view_creates_binding_visible_to_resolver(client):
     assert response.status_code == 200
     assert TaskEntityBinding.objects.filter(task=task, entity_global_id=entity.global_id).exists()
     assert entity_gids_for_task(task.pk) == [entity.global_id]
+    html = response.content.decode()
+    assert "A-4004" in html
+    assert 'title="Linked via TaskEntityBinding">✅' in html
+    assert 'badge bg-secondary">1</span>' in html
+
+
+@pytest.mark.django_db
+def test_link_param_results_show_binding_without_m2m(client):
+    """Parameter Match results use bindings even when legacy M2M is empty."""
+    user = UserFactory()
+    project = ProjectFactory(owner=user)
+    task = TaskFactory(project=project, activity_code="BIND-ONLY-001")
+    IFCEntityFactory(
+        ifc_file__project=project,
+        global_id="GID-OTHER",
+        properties={"Castor.Activity ID": "NO-MATCH"},
+    )
+    TaskEntityBinding.objects.create(
+        task=task,
+        entity_global_id="GID-BIND-ONLY",
+        confidence=1.0,
+        link_method=TaskEntityBinding.LinkMethod.MANUAL,
+        needs_review=False,
+    )
+    assert task.ifc_entities.count() == 0
+    client.force_login(user)
+
+    url = reverse("scheduling:schedule_link_param", kwargs={"pk": project.pk})
+    response = client.post(url, {"param_name": "Activity ID"})
+
+    html = response.content.decode()
+    assert response.status_code == 200
+    assert "BIND-ONLY-001" in html
+    assert 'title="Linked via TaskEntityBinding">✅' in html
+    assert 'badge bg-secondary">1</span>' in html
+
+
+@pytest.mark.django_db
+def test_link_param_results_show_unlinked_without_binding(client):
+    """Tasks without bindings render as unlinked in Parameter Match results."""
+    user = UserFactory()
+    project = ProjectFactory(owner=user)
+    task = TaskFactory(project=project, activity_code="UNLINKED-001")
+    IFCEntityFactory(
+        ifc_file__project=project,
+        global_id="GID-NOMATCH",
+        properties={"Castor.Activity ID": "DIFFERENT"},
+    )
+    client.force_login(user)
+
+    url = reverse("scheduling:schedule_link_param", kwargs={"pk": project.pk})
+    response = client.post(url, {"param_name": "Activity ID"})
+
+    html = response.content.decode()
+    assert response.status_code == 200
+    assert "UNLINKED-001" in html
+    assert 'title="No trusted bindings">❌' in html
+    assert not TaskEntityBinding.objects.filter(task=task).exists()
