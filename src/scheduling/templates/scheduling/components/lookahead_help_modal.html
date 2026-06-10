@@ -1,0 +1,73 @@
+<!-- scheduling/components/lookahead_help_modal.html — "How Look-ahead Works" -->
+
+<div class="modal fade" id="lookaheadHelpModal" tabindex="-1" aria-labelledby="lookaheadHelpLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+
+            <div class="modal-header border-bottom px-4 py-3"
+                 style="border-color: var(--bs-border-color) !important;">
+                <h5 class="modal-title fw-semibold fs-6 mb-0" id="lookaheadHelpLabel">
+                    <i class="bi bi-calendar-week me-2" style="color: #3b82f6;"></i>
+                    How Look-ahead Works
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body px-4 py-4">
+
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-box-seam me-1" style="color: #3b82f6;"></i>
+                    What is it?
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    Look-ahead shows a rolling window of schedule work — what <strong>starts</strong>,
+                    is <strong>in progress</strong>, and <strong>finishes</strong> across the next 2–6 weeks.
+                    Critical-path tasks are flagged with a CP badge. The 3D preview pane shows how linked
+                    model elements would appear at each week's snapshot.
+                </p>
+
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-arrow-repeat me-1" style="color: #3b82f6;"></i>
+                    Lifecycle
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    Import a schedule in <strong>Data Sources</strong>, link tasks to IFC elements in
+                    <strong>4D Link</strong>, then open Look-ahead. Week cards are built from today's
+                    Monday forward. Expand a week to see task buckets and update the 3D preview colors
+                    for that week.
+                </p>
+
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-cube me-1" style="color: #3b82f6;"></i>
+                    3D preview
+                </p>
+                <ul class="text-secondary fs-7 mb-4">
+                    <li>Uses the <strong>latest processed IFC</strong> for this project.</li>
+                    <li>Colors are a <strong>week-scoped 4D preview</strong> (complete, in progress, delayed, not started) — not full simulation playback.</li>
+                    <li>Click a <strong>linked</strong> task row to highlight its model elements in amber.</li>
+                    <li>Unlinked tasks show a note — linking is done in the <strong>4D Link</strong> tab.</li>
+                </ul>
+
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-person-check me-1" style="color: #3b82f6;"></i>
+                    Who can do what
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    Any project member with schedule access can view Look-ahead and the 3D preview.
+                    Creating or editing task-to-model links requires modify access on the 4D Link tab.
+                </p>
+
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-exclamation-triangle me-1" style="color: #d97706;"></i>
+                    Caveats
+                </p>
+                <p class="text-secondary fs-7 mb-0">
+                    This is a read-only planning view — no links are created here. Preview coloring depends
+                    on schedule dates, bindings, and a processed IFC file. For timeline scrubbing, playback,
+                    and link review, use <strong>4D Link</strong>.
+                </p>
+
+            </div>
+        </div>
+    </div>
+</div>

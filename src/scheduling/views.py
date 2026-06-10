@@ -1762,6 +1762,10 @@ class LookaheadDataView(ProjectAccessMixin, View):
             .order_by("start_date")
         )
 
+        from scheduling.services.link_resolver import entity_gids_by_task
+
+        gids_by_task = entity_gids_by_task(project.pk, [t.pk for t in tasks])
+
         result_weeks = []
         for w in range(weeks):
             ws = today_monday + timedelta(weeks=w)
@@ -1785,6 +1789,7 @@ class LookaheadDataView(ProjectAccessMixin, View):
                     "stage": t.stage or "",
                     "activity_code": t.activity_code or "",
                     "is_critical": t.is_critical,
+                    "entity_global_ids": gids_by_task.get(str(t.pk), []),
                 }
 
                 if in_week_start:

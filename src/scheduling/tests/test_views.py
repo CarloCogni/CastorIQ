@@ -705,6 +705,51 @@ class LookaheadDataTests(TestCase):
         week_0 = data["weeks"][0]
         self.assertTrue(len(week_0["starting"]) >= 1)
 
+    def test_task_entry_includes_entity_global_ids(self):
+        from datetime import timedelta
+
+        from scheduling.models import TaskEntityBinding
+
+        today = date.today()
+        monday = today - timedelta(days=today.weekday())
+        friday = monday + timedelta(days=4)
+        task = make_task(
+            self.project,
+            start_date=monday,
+            end_date=friday,
+            is_non_physical=False,
+        )
+        TaskEntityBinding.objects.create(
+            task=task,
+            entity_global_id="GID-LA-001",
+            confidence=1.0,
+            link_method=TaskEntityBinding.LinkMethod.MANUAL,
+        )
+        response = self.client.get(self.url)
+        data = json.loads(response.content)
+        week_0 = data["weeks"][0]
+        all_tasks = week_0["starting"] + week_0["in_progress"] + week_0["finishing"]
+        task_entry = next(t for t in all_tasks if t["id"] == str(task.pk))
+        self.assertEqual(task_entry["entity_global_ids"], ["GID-LA-001"])
+
+    def test_task_entry_empty_entity_global_ids_when_unlinked(self):
+        from datetime import timedelta
+
+        today = date.today()
+        monday = today - timedelta(days=today.weekday())
+        task = make_task(
+            self.project,
+            start_date=monday,
+            end_date=monday + timedelta(days=4),
+            is_non_physical=False,
+        )
+        response = self.client.get(self.url)
+        data = json.loads(response.content)
+        week_0 = data["weeks"][0]
+        all_tasks = week_0["starting"] + week_0["in_progress"] + week_0["finishing"]
+        task_entry = next(t for t in all_tasks if t["id"] == str(task.pk))
+        self.assertEqual(task_entry.get("entity_global_ids"), [])
+
     def test_unauthenticated_redirects(self):
         self.client.logout()
         response = self.client.get(self.url)

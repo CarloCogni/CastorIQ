@@ -1,4 +1,4 @@
-<!-- scheduling/tabs/lookahead.html — Look-ahead window: per-week collapsible task cards -->
+<!-- scheduling/tabs/lookahead.html — Look-ahead window: per-week task cards + 3D preview -->
 
 {% if not tasks %}
 <div class="d-flex flex-column align-items-center justify-content-center text-secondary py-5">
@@ -7,30 +7,92 @@
 </div>
 {% else %}
 
-<div id="lookahead-root" style="display:flex; flex-direction:column; gap:12px;">
+<div id="lookahead-root" style="display:flex; flex-direction:column; gap:12px; min-height:480px;">
 
-    <!-- Toolbar: week-count chips -->
-    <div style="flex-shrink:0; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-        <span style="font-size:0.78rem; color:var(--bs-secondary-color);">Window:</span>
-        <div class="d-flex gap-2" id="la-week-chips">
-            <button type="button" class="la-chip" data-weeks="2">2 weeks</button>
-            <button type="button" class="la-chip active" data-weeks="3">3 weeks</button>
-            <button type="button" class="la-chip" data-weeks="4">4 weeks</button>
-            <button type="button" class="la-chip" data-weeks="6">6 weeks</button>
-        </div>
+    <!-- Page header -->
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <i class="bi bi-calendar-week" style="color:#3b82f6;"></i>
+        <h5 class="m-0">Look-ahead</h5>
+        <button type="button"
+                class="help-pill"
+                data-bs-toggle="modal"
+                data-bs-target="#lookaheadHelpModal"
+                title="How Look-ahead works"
+                aria-label="How Look-ahead works">
+            <i class="bi bi-question-circle"></i>
+        </button>
         <span id="la-as-of" style="margin-left:auto; font-size:0.72rem; color:var(--bs-secondary-color);"></span>
     </div>
 
-    <!-- Week cards body -->
-    <div id="la-body">
-        <div class="d-flex align-items-center justify-content-center text-secondary py-4" style="font-size:0.82rem;">
-            <span class="spinner-border spinner-border-sm me-2"></span>Loading…
-        </div>
-    </div>
+    <div id="lookahead-split" style="display:flex; flex:1; gap:12px; min-height:420px; flex-wrap:wrap;">
 
+        <!-- Left: week list -->
+        <div id="la-list-col" style="flex:1 1 320px; min-width:280px; display:flex; flex-direction:column; gap:12px; min-height:0;">
+            <div style="flex-shrink:0; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                <span style="font-size:0.78rem; color:var(--bs-secondary-color);">Window:</span>
+                <div class="d-flex gap-2" id="la-week-chips">
+                    <button type="button" class="la-chip" data-weeks="2">2 weeks</button>
+                    <button type="button" class="la-chip active" data-weeks="3">3 weeks</button>
+                    <button type="button" class="la-chip" data-weeks="4">4 weeks</button>
+                    <button type="button" class="la-chip" data-weeks="6">6 weeks</button>
+                </div>
+            </div>
+
+            <div id="la-body" style="flex:1; overflow-y:auto; min-height:200px;">
+                <div class="d-flex align-items-center justify-content-center text-secondary py-4" style="font-size:0.82rem;">
+                    <span class="spinner-border spinner-border-sm me-2"></span>Loading…
+                </div>
+            </div>
+        </div>
+
+        <!-- Right: 3D preview -->
+        <div id="la-preview-col" style="flex:1 1 320px; min-width:280px; min-height:360px; display:flex; flex-direction:column;
+                                         border:1px solid var(--bs-border-color); border-radius:8px; overflow:hidden; background:#111;">
+            <div style="flex-shrink:0; padding:8px 12px; background:var(--bs-secondary-bg); border-bottom:1px solid var(--bs-border-color);
+                        font-size:0.78rem; font-weight:600; color:var(--bs-body-color);">
+                3D Preview
+            </div>
+            <div id="la-link-note" class="d-none"
+                 style="flex-shrink:0; padding:6px 12px; font-size:0.72rem; color:#d97706;
+                        background:rgba(217,119,6,0.12); border-bottom:1px solid rgba(217,119,6,0.25);"></div>
+            <div id="la-preview-warn" class="d-none"
+                 style="flex-shrink:0; padding:6px 12px; font-size:0.72rem; color:var(--bs-secondary-color);
+                        background:var(--bs-tertiary-bg); border-bottom:1px solid var(--bs-border-color);"></div>
+
+            {% if ifc_files_available %}
+            <div id="la-preview-frame-wrap" style="flex:1; position:relative; min-height:280px;">
+                <iframe
+                    id="la-iframe"
+                    src="{% url 'ifc_viewer:viewer_embed' project.pk %}?v={% now 'U' %}"
+                    style="width:100%; height:100%; border:none;"
+                    allow="fullscreen"
+                    title="Look-ahead 3D preview">
+                </iframe>
+                <div id="la-iframe-loading"
+                     style="position:absolute; inset:0; background:#111; display:flex; flex-direction:column;
+                            align-items:center; justify-content:center; color:#94a3b8;
+                            font-family:system-ui,sans-serif; z-index:10; pointer-events:none;">
+                    <div style="width:34px; height:34px; border:3px solid #1e293b; border-top-color:#3b82f6;
+                                border-radius:50%; animation:la-spin 0.8s linear infinite; margin-bottom:12px;"></div>
+                    <span style="font-size:0.85rem;">Loading 3D viewer…</span>
+                </div>
+            </div>
+            {% else %}
+            <div class="d-flex flex-column align-items-center justify-content-center text-secondary flex-grow-1 p-4"
+                 style="font-size:0.82rem; text-align:center; min-height:280px;">
+                <i class="bi bi-cube fs-2 mb-2" style="opacity:0.5;"></i>
+                <span>Upload and process an IFC to enable 3D preview.</span>
+            </div>
+            {% endif %}
+        </div>
+
+    </div>
 </div>
 
+{% include "scheduling/components/lookahead_help_modal.html" %}
+
 <style>
+@keyframes la-spin { to { transform: rotate(360deg); } }
 .la-chip {
     font-size: 0.73rem;
     padding: 2px 12px;
@@ -55,6 +117,10 @@
     border: 1px solid var(--bs-border-color);
     border-radius: 8px;
     overflow: hidden;
+}
+.la-week-card.la-week-focused {
+    border-color: var(--bs-primary);
+    box-shadow: 0 0 0 1px var(--bs-primary);
 }
 .la-week-header {
     display: flex;
@@ -84,8 +150,13 @@
     border-radius: 5px;
     background: var(--bs-body-bg);
     border: 1px solid var(--bs-border-color);
+    cursor: pointer;
 }
 .la-task-row:hover { background: var(--bs-tertiary-bg); }
+.la-task-row.la-task-selected {
+    border-color: #f59e0b;
+    background: rgba(245, 158, 11, 0.08);
+}
 .la-stage-dot {
     width: 8px; height: 8px;
     border-radius: 50%;
@@ -97,11 +168,17 @@
     font-style: italic;
     padding: 2px 0;
 }
+@media (max-width: 768px) {
+    #lookahead-split { flex-direction: column; }
+    #la-preview-col { min-height: 320px; }
+}
 </style>
 
 <script>
 (function () {
-    const LA_URL_BASE = "{% url 'scheduling:lookahead_data' project.pk %}";
+    const LA_URL_BASE   = "{% url 'scheduling:lookahead_data' project.pk %}";
+    const TIMELINE_URL  = "{% url 'ifc_viewer:viewer_timeline' project.pk %}";
+    const HAS_IFC       = {{ ifc_files_available|yesno:"true,false" }};
 
     const STAGE_COLORS = {
         substructure: "#78350f",
@@ -114,6 +191,142 @@
     };
 
     let currentWeeks = 3;
+    let viewerReady  = false;
+    let pendingMsg   = null;
+    let tlIntervals  = [];
+    let tlNoTask     = [];
+    let timelineOk   = false;
+    let _linkNoteTimer = null;
+    let _selectedTaskId = null;
+    let _focusedWeekStart = null;
+
+    const iframe    = document.getElementById("la-iframe");
+    const iframeOvl = document.getElementById("la-iframe-loading");
+    const previewWarn = document.getElementById("la-preview-warn");
+
+    function sendToViewer(msg) {
+        if (!HAS_IFC || !iframe?.contentWindow) return;
+        if (!viewerReady) {
+            pendingMsg = msg;
+            return;
+        }
+        iframe.contentWindow.postMessage(msg, "*");
+    }
+
+    function _showPreviewWarn(text) {
+        if (!previewWarn) return;
+        previewWarn.textContent = text;
+        previewWarn.classList.remove("d-none");
+    }
+
+    function _showUnlinkedNote() {
+        const el = document.getElementById("la-link-note");
+        if (!el) return;
+        el.textContent = "No linked model elements for this task. Link it from 4D Link.";
+        el.classList.remove("d-none");
+        clearTimeout(_linkNoteTimer);
+        _linkNoteTimer = setTimeout(() => el.classList.add("d-none"), 5000);
+    }
+
+    function _intervalForWeekStart(weekStartIso) {
+        if (!tlIntervals.length) return null;
+        const target = new Date(weekStartIso + "T00:00:00");
+        let best = tlIntervals[0];
+        for (const iv of tlIntervals) {
+            const d = new Date(iv.date + "T00:00:00");
+            if (d <= target) best = iv;
+            else break;
+        }
+        return best;
+    }
+
+    function _applyWeekColors(weekStartIso) {
+        if (!timelineOk || !weekStartIso) return;
+        _focusedWeekStart = weekStartIso;
+        _selectedTaskId = null;
+        document.querySelectorAll(".la-task-row.la-task-selected").forEach(r => {
+            r.classList.remove("la-task-selected");
+        });
+        const iv = _intervalForWeekStart(weekStartIso);
+        if (!iv) return;
+        const { not_started = [], in_progress = [], complete = [], delayed = [] } = iv.entities || {};
+        sendToViewer({
+            type: "castor:timeline-colors",
+            not_started,
+            in_progress,
+            complete,
+            delayed,
+            no_task: tlNoTask,
+        });
+    }
+
+    function _focusWeekCard(card, weekStartIso) {
+        document.querySelectorAll(".la-week-card.la-week-focused").forEach(c => {
+            c.classList.remove("la-week-focused");
+        });
+        if (card) card.classList.add("la-week-focused");
+        _applyWeekColors(weekStartIso);
+    }
+
+    function _onTaskClick(task, row) {
+        const gids = task.entity_global_ids || [];
+        document.querySelectorAll(".la-task-row.la-task-selected").forEach(r => {
+            r.classList.remove("la-task-selected");
+        });
+        if (!gids.length) {
+            _showUnlinkedNote();
+            return;
+        }
+        row.classList.add("la-task-selected");
+        _selectedTaskId = task.id;
+        const linkNote = document.getElementById("la-link-note");
+        if (linkNote) linkNote.classList.add("d-none");
+        sendToViewer({ type: "castor:highlight", global_ids: gids });
+    }
+
+    async function loadTimeline() {
+        if (!HAS_IFC) return;
+        try {
+            const resp = await fetch(TIMELINE_URL);
+            if (!resp.ok) throw new Error("HTTP " + resp.status);
+            const data = await resp.json();
+            if (!data.has_tasks || !(data.intervals || []).length) {
+                _showPreviewWarn("4D preview unavailable — no schedule timeline data.");
+                return;
+            }
+            tlIntervals = data.intervals || [];
+            tlNoTask    = data.no_task || [];
+            timelineOk  = tlIntervals.length > 0;
+            if (_focusedWeekStart) _applyWeekColors(_focusedWeekStart);
+        } catch (_) {
+            _showPreviewWarn("4D preview unavailable — timeline could not be loaded.");
+        }
+    }
+
+    if (HAS_IFC && iframe) {
+        window.addEventListener("message", (e) => {
+            if (e.source !== iframe.contentWindow) return;
+            const msg = e.data;
+            if (!msg?.type) return;
+            if (msg.type === "castor:viewer-ready") {
+                viewerReady = true;
+                if (iframeOvl) iframeOvl.style.display = "none";
+                if (pendingMsg) {
+                    iframe.contentWindow.postMessage(pendingMsg, "*");
+                    pendingMsg = null;
+                } else if (_focusedWeekStart) {
+                    _applyWeekColors(_focusedWeekStart);
+                }
+            }
+            if (msg.type === "castor:viewer-error") {
+                if (iframeOvl) {
+                    iframeOvl.style.display = "flex";
+                    iframeOvl.innerHTML = `<span style="color:#ef4444;">&#9888; ${msg.message || "Viewer error"}</span>`;
+                }
+            }
+        });
+        loadTimeline();
+    }
 
     async function load(weeks) {
         currentWeeks = weeks;
@@ -138,19 +351,25 @@
         if (asOf) asOf.textContent = `As of ${_fmtDate(data.as_of)}`;
 
         body.innerHTML = "";
+        let firstCard = null;
         data.weeks.forEach((week, idx) => {
-            body.appendChild(_buildWeekCard(week, idx === 0));
+            const card = _buildWeekCard(week, idx === 0);
+            body.appendChild(card);
+            if (idx === 0) firstCard = card;
         });
+
+        if (firstCard && data.weeks[0]) {
+            _focusWeekCard(firstCard, data.weeks[0].start);
+        }
     }
 
-    /* ── Week card ────────────────────────────────────────────────────── */
     function _buildWeekCard(week, expanded) {
         const totalCount = week.starting.length + week.in_progress.length + week.finishing.length;
 
         const card = document.createElement("div");
         card.className = "la-week-card";
+        card.dataset.weekStart = week.start;
 
-        /* Header */
         const hdr = document.createElement("div");
         hdr.className = "la-week-header";
         hdr.innerHTML = `
@@ -164,7 +383,6 @@
             </span>
         `;
 
-        /* Body */
         const bdy = document.createElement("div");
         bdy.className = "la-week-body";
         if (!expanded) bdy.style.display = "none";
@@ -173,13 +391,14 @@
         _addSection(bdy, "In Progress", week.in_progress, "#f59e0b");
         _addSection(bdy, "Finishing", week.finishing, "#6366f1");
 
-        /* Collapse toggle */
         hdr.addEventListener("click", () => {
             const icon = hdr.querySelector(".bi");
-            if (bdy.style.display === "none") {
+            const opening = bdy.style.display === "none";
+            if (opening) {
                 bdy.style.display = "flex";
                 icon.className = "bi bi-chevron-down";
                 icon.style.cssText = "font-size:0.75rem; color:var(--bs-secondary-color); flex-shrink:0;";
+                _focusWeekCard(card, week.start);
             } else {
                 bdy.style.display = "none";
                 icon.className = "bi bi-chevron-right";
@@ -191,7 +410,6 @@
         return card;
     }
 
-    /* ── Section (Starting / In Progress / Finishing) ─────────────────── */
     function _addSection(parent, label, tasks, accentColor) {
         const wrap = document.createElement("div");
 
@@ -212,10 +430,10 @@
         parent.appendChild(wrap);
     }
 
-    /* ── Task row ──────────────────────────────────────────────────────── */
     function _buildTaskRow(task) {
         const row = document.createElement("div");
         row.className = "la-task-row";
+        if (task.id === _selectedTaskId) row.classList.add("la-task-selected");
 
         const stageColor = STAGE_COLORS[task.stage] || STAGE_COLORS[""];
         const critBadge  = task.is_critical
@@ -230,10 +448,15 @@
                 ${_fmtDate(task.start)} – ${_fmtDate(task.end)}
             </div>
         `;
+
+        row.addEventListener("click", (e) => {
+            e.stopPropagation();
+            _onTaskClick(task, row);
+        });
+
         return row;
     }
 
-    /* ── Utilities ─────────────────────────────────────────────────────── */
     function _fmtDate(iso) {
         const d = new Date(iso + "T00:00:00");
         return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
@@ -245,7 +468,6 @@
             .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     }
 
-    /* ── Week chips ────────────────────────────────────────────────────── */
     document.getElementById("la-week-chips")?.addEventListener("click", (e) => {
         const chip = e.target.closest(".la-chip");
         if (!chip) return;
