@@ -27,23 +27,21 @@ def _ring(pct: int) -> dict:
 
 
 def _build_schedule_cost_map(ifc_file) -> dict[str, float]:
-    """Return {entity_global_id: task_cost} for entities linked to tasks that have cost set.
-
-    Used to implement schedule cost priority over IFC property cost.
-    Returns an empty dict if the scheduling app is unavailable or no tasks have cost.
-    """
+    """Return {entity_global_id: task_cost} from TaskEntityBinding + task.cost."""
     try:
-        from scheduling.models import Task as ScheduleTask
+        from scheduling.models import TaskEntityBinding
 
         cost_map: dict[str, float] = {}
-        for task in (
-            ScheduleTask.objects.filter(project=ifc_file.project, cost__isnull=False)
-            .only("cost")
-            .prefetch_related("ifc_entities")
+        for row in (
+            TaskEntityBinding.objects.filter(
+                task__project_id=ifc_file.project_id,
+                task__cost__isnull=False,
+            )
+            .select_related("task")
+            .only("entity_global_id", "task__cost")
         ):
-            task_cost = float(task.cost)
-            for entity in task.ifc_entities.filter(ifc_file=ifc_file).only("global_id"):
-                cost_map[entity.global_id] = task_cost
+            if row.task.cost is not None:
+                cost_map[row.entity_global_id] = float(row.task.cost)
         return cost_map
     except Exception:
         return {}
@@ -74,6 +72,13 @@ def entity_metrics(ifc_file) -> dict:
     # Schedule cost map: global_id → float cost (overrides IFC property cost)
     schedule_cost_map = _build_schedule_cost_map(ifc_file)
 
+    try:
+        from scheduling.services.link_resolver import linked_entity_gids_for_project
+
+        bound_gids = linked_entity_gids_for_project(ifc_file.project_id)
+    except Exception:
+        bound_gids = set()
+
     fourd_hits = 0
     fived_hits = 0
     activity_groups: dict[tuple, int] = {}
@@ -102,10 +107,11 @@ def entity_metrics(ifc_file) -> dict:
                 except (TypeError, ValueError):
                     pass
 
-        if act_id:
+        if act_id or entity.global_id in bound_gids:
             fourd_hits += 1
-            key = (act_id, act_name or "—", entity.ifc_type or "Unknown")
-            activity_groups[key] = activity_groups.get(key, 0) + 1
+            if act_id:
+                key = (act_id, act_name or "—", entity.ifc_type or "Unknown")
+                activity_groups[key] = activity_groups.get(key, 0) + 1
 
         # Priority: schedule cost > IFC cost
         sched_cost = schedule_cost_map.get(entity.global_id)

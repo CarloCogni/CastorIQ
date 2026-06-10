@@ -153,7 +153,7 @@ class ColormapView(ProjectAccessMixin, View):
         if not ifc_file:
             return JsonResponse({"colormap": {}, "legend": []})
 
-        return JsonResponse(build_colormap(ifc_file, by))
+        return JsonResponse(build_colormap(ifc_file, by, project_id=str(project.pk)))
 
 
 class GapAnalysisView(ProjectAccessMixin, View):
@@ -180,7 +180,7 @@ class GapAnalysisView(ProjectAccessMixin, View):
                 {"rows": [], "by": by, "project": project},
             )
 
-        rows = build_gap_analysis(ifc_file, by)
+        rows = build_gap_analysis(ifc_file, by, project_id=str(project.pk))
 
         if request.GET.get("export"):
             return self._csv_response(rows, project.name)

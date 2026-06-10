@@ -25,10 +25,11 @@ _PALETTE = [
 _VALID = {"material", "level", "element_type", "schedule_status"}
 
 
-def build_colormap(ifc_file, by: str) -> dict:
+def build_colormap(ifc_file, by: str, project_id: str | None = None) -> dict:
     """Return {"colormap": {global_id: color_hex}, "legend": [{label, color}]}.
 
     by: "material" | "level" | "element_type" | "schedule_status"
+    project_id: when set, TaskEntityBinding global_ids count as linked for schedule_status.
     """
     if by not in _VALID:
         return {"colormap": {}, "legend": []}
@@ -40,17 +41,24 @@ def build_colormap(ifc_file, by: str) -> dict:
     )
 
     if by == "schedule_status":
-        return _schedule_status(qs)
+        pid = project_id or getattr(ifc_file, "project_id", None)
+        return _schedule_status(qs, str(pid) if pid else None)
     return _by_field(qs, by)
 
 
-def _schedule_status(qs) -> dict:
+def _schedule_status(qs, project_id: str | None) -> dict:
     GREEN = "#22c55e"
     GRAY = "#94a3b8"
+    bound_gids: set[str] = set()
+    if project_id:
+        from scheduling.services.link_resolver import linked_entity_gids_for_project
+
+        bound_gids = linked_entity_gids_for_project(project_id)
     colormap: dict[str, str] = {}
     for entity in qs.iterator(chunk_size=500):
         props = entity.properties or {}
-        linked = any(k.lower().endswith("activity id") for k, v in props.items() if v)
+        prop_linked = any(k.lower().endswith("activity id") for k, v in props.items() if v)
+        linked = entity.global_id in bound_gids or prop_linked
         colormap[entity.global_id] = GREEN if linked else GRAY
     return {
         "colormap": colormap,
