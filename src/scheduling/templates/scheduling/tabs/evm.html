@@ -1331,15 +1331,24 @@ function _esc(s) {
         if (health) {
             const unlinked = (health.issues || []).find(i => i.code === "unlinked_physical");
             const n = unlinked ? unlinked.count : 0;
-            if (n > 0) {
+            const reviewN = BINDING_REVIEW_COUNT || 0;
+            if (n > 0 || reviewN > 0) {
                 linkPill = _trustPill("Needs review", "review");
-                linkDetail = `${n} physical task(s) have no IFC element links — run Smart Link or review bindings.`;
+                const parts = [];
+                if (n > 0) {
+                    parts.push(
+                        `${n} physical task(s) have no IFC element links — run Smart Link or review bindings.`
+                    );
+                }
+                if (reviewN > 0) {
+                    parts.push(
+                        `${reviewN} task-to-model binding(s) flagged for review — confirm links in 4D Link.`
+                    );
+                }
+                linkDetail = parts.join(" ");
             } else {
                 linkPill = _trustPill("Good", "good");
                 linkDetail = "All physical tasks are linked to model elements (binding-aware check).";
-            }
-            if (BINDING_REVIEW_COUNT > 0) {
-                linkDetail += ` ${BINDING_REVIEW_COUNT} binding(s) flagged for review.`;
             }
         }
         rows.push(_trustRow("4D task links", linkPill, linkDetail));
