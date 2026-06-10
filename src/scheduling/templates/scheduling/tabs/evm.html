@@ -1688,7 +1688,9 @@ function _esc(s) {
         const fmtD = dt  => dt.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "2-digit" });
         const fmtI = iso => fmtD(new Date(iso + "T00:00:00"));
 
-        const elapsedDays   = Math.round(elapsedMs   / 86400000);
+        const elapsedMs     = Math.max(today - start, 0);
+        const remainingMs   = Math.max(baseline - today, 0);
+        const elapsedDays   = Math.round(elapsedMs / 86400000);
         const remainingDays = Math.round(remainingMs / 86400000);
 
         /* Marker helper: vertical line + label centred at left% */
