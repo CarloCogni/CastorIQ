@@ -49,6 +49,31 @@
         </span>
     </div>
 
+    <!-- 4D / 5D readiness — client-side digest of existing dashboard signals -->
+    <div id="evm-trust-readiness-card"
+         style="border:1px solid var(--bs-border-color); border-radius:8px; padding:12px 14px;
+                background:var(--bs-body-bg); font-size:0.78rem;">
+        <div class="d-flex align-items-center gap-2 mb-2">
+            <span style="font-size:0.67rem; font-weight:700; text-transform:uppercase;
+                         letter-spacing:.07em; color:var(--bs-secondary-color);">
+                4D / 5D Readiness
+            </span>
+            <button type="button"
+                    class="help-pill"
+                    data-bs-toggle="modal"
+                    data-bs-target="#evmHelpModal"
+                    title="How 4D/5D readiness labels work"
+                    aria-label="How 4D/5D readiness labels work">
+                <i class="bi bi-question-circle"></i>
+            </button>
+        </div>
+        <div id="evm-trust-readiness-loading" class="d-flex align-items-center gap-2"
+             style="color:var(--bs-secondary-color); font-size:0.76rem;">
+            <span class="spinner-border spinner-border-sm"></span> Checking readiness signals…
+        </div>
+        <div id="evm-trust-readiness-body" class="d-none"></div>
+    </div>
+
     <!-- Decision Summary — executive plain-language read of the project -->
     <div id="evm-decision-section"
          style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
@@ -1171,10 +1196,15 @@ function _esc(s) {
 }
 
 (function () {
-    const EVM_URL = "{% url 'scheduling:evm_data' project.pk %}";
-    const LS_KEY  = "castor_evm_currency";
+    const EVM_URL    = "{% url 'scheduling:evm_data' project.pk %}";
+    const INTEL_URL  = "{% url 'scheduling:schedule_intelligence' project.pk %}";
+    const HEALTH_URL = "{% url 'scheduling:schedule_health_check' project.pk %}";
+    const LS_KEY     = "castor_evm_currency";
+    const BINDING_REVIEW_COUNT = {{ binding_review_count|default:0 }};
 
     let _evmData   = null;
+    let _intelData = null;
+    let _healthData = null;
     let _trendData = null;  // stored for sparkline resize re-render
     let _currency  = localStorage.getItem(LS_KEY) || "USD";
 
@@ -1205,11 +1235,13 @@ function _esc(s) {
             data = await resp.json();
         } catch (_) {
             _showError("Failed to load EVM data.");
+            _renderTrustReadiness(null, _intelData, _healthData);
             return;
         }
 
         if (!data.has_data) {
             _showError("No schedule data available.");
+            _renderTrustReadiness(data, _intelData, _healthData);
             return;
         }
 
@@ -1220,6 +1252,160 @@ function _esc(s) {
         _renderChart(data);
         _renderForecast(data);
         _renderSecondary(data);
+        _renderTrustReadiness(data, _intelData, _healthData);
+    }
+
+    /* ── 4D / 5D trust readiness card ─────────────────────────────────── */
+    function _trustPill(label, status) {
+        const styles = {
+            good:        { color: "#16a34a", bg: "#16a34a18", border: "#16a34a40" },
+            review:      { color: "#d97706", bg: "#d9770618", border: "#d9770640" },
+            unavailable: { color: "var(--bs-secondary-color)", bg: "var(--bs-secondary-bg)", border: "var(--bs-border-color)" },
+            info:        { color: "#3b82f6", bg: "#3b82f618", border: "#3b82f640" },
+            note:        { color: "#d97706", bg: "#d9770612", border: "#d9770630" },
+        };
+        const s = styles[status] || styles.unavailable;
+        return `<span style="font-size:0.64rem; font-weight:700; text-transform:uppercase;
+                             letter-spacing:.05em; color:${s.color}; background:${s.bg};
+                             border:1px solid ${s.border}; border-radius:8px;
+                             padding:1px 8px; white-space:nowrap;">${label}</span>`;
+    }
+
+    function _trustRow(title, pillHtml, detail) {
+        return `<div class="d-flex flex-wrap align-items-start gap-2 py-1"
+                     style="border-bottom:1px solid var(--bs-border-color);">
+            <div style="min-width:118px; font-weight:600; color:var(--bs-body-color);">${title}</div>
+            <div>${pillHtml}</div>
+            <div style="flex:1 1 200px; color:var(--bs-secondary-color); line-height:1.45; min-width:0;">${detail}</div>
+        </div>`;
+    }
+
+    function _renderTrustReadiness(evm, intel, health) {
+        const loading = document.getElementById("evm-trust-readiness-loading");
+        const body    = document.getElementById("evm-trust-readiness-body");
+        if (!body) return;
+
+        const rows = [];
+
+        /* Schedule data */
+        let schedPill = _trustPill("Unavailable", "unavailable");
+        let schedDetail = "Waiting for schedule metrics…";
+        if (evm && evm.has_data) {
+            const reasons = [];
+            if (!evm.data_date_is_real) {
+                reasons.push("no P6 data date — metrics use today's date");
+            }
+            if ((evm.overdue_linear_capped || 0) > 0) {
+                reasons.push(
+                    `${evm.overdue_linear_capped} in-progress task(s) past planned end without %-complete`
+                );
+            }
+            const cpm = intel && intel.critical_path;
+            if (cpm && cpm.computed === false) {
+                reasons.push("critical path not computed");
+            }
+            if (health && health.score != null && health.score < 70) {
+                reasons.push(`schedule health score ${health.score} (${health.label || "low"})`);
+            }
+            if (health && health.issues) {
+                const errN = health.issues.filter(i => i.severity === "error").length;
+                if (errN > 0) {
+                    reasons.push(`${errN} schedule error check(s) failing`);
+                }
+            }
+            if (reasons.length) {
+                schedPill = _trustPill("Needs review", "review");
+                schedDetail = reasons.join(" · ");
+            } else {
+                schedPill = _trustPill("Good", "good");
+                schedDetail = "Data date, CPM, and schedule health signals look acceptable for dashboard use.";
+            }
+        } else if (evm && !evm.has_data) {
+            schedDetail = "Import a schedule to assess schedule data readiness.";
+        }
+        rows.push(_trustRow("Schedule data", schedPill, schedDetail));
+
+        /* 4D task links */
+        let linkPill = _trustPill("Unavailable", "unavailable");
+        let linkDetail = "Schedule health check not loaded.";
+        if (health) {
+            const unlinked = (health.issues || []).find(i => i.code === "unlinked_physical");
+            const n = unlinked ? unlinked.count : 0;
+            if (n > 0) {
+                linkPill = _trustPill("Needs review", "review");
+                linkDetail = `${n} physical task(s) have no IFC element links — run Smart Link or review bindings.`;
+            } else {
+                linkPill = _trustPill("Good", "good");
+                linkDetail = "All physical tasks are linked to model elements (binding-aware check).";
+            }
+            if (BINDING_REVIEW_COUNT > 0) {
+                linkDetail += ` ${BINDING_REVIEW_COUNT} binding(s) flagged for review.`;
+            }
+        }
+        rows.push(_trustRow("4D task links", linkPill, linkDetail));
+
+        /* EVM mode — display only */
+        let modePill = _trustPill("Unavailable", "unavailable");
+        let modeDetail = "Waiting for EVM metrics…";
+        if (evm && evm.has_data && evm.performance_mode) {
+            const isCost = evm.performance_mode === "cost_evm";
+            modePill = _trustPill(isCost ? "Cost EVM" : "Schedule performance", "info");
+            modeDetail = evm.performance_mode_label || (
+                isCost ? "Monetary EVM using schedule/QTO costs." :
+                "Duration-weighted schedule performance — not monetary EVM."
+            );
+        } else if (evm && !evm.has_data) {
+            modeDetail = "EVM mode available after schedule import.";
+        }
+        rows.push(_trustRow("EVM mode", modePill, modeDetail));
+
+        /* 5D cost data */
+        let costPill = _trustPill("Unavailable", "unavailable");
+        let costDetail = "Waiting for EVM cost signals…";
+        if (evm && evm.has_data) {
+            if (!evm.is_monetary_evm) {
+                costPill = _trustPill("Needs review", "review");
+                costDetail = "No schedule costs or QTO estimates — 5D monetary metrics are not active.";
+            } else if ((evm.cost_coverage_pct || 0) < 80) {
+                costPill = _trustPill("Needs review", "review");
+                costDetail = `Only ${evm.cost_coverage_pct}% of tasks carry planned cost — BAC/PV/EV weighting is partial.`;
+            } else {
+                costPill = _trustPill("Good", "good");
+                costDetail = `${evm.cost_coverage_pct}% of tasks have planned cost for monetary EVM.`;
+            }
+            if (evm.is_monetary_evm && !evm.ac_available) {
+                costDetail += " Note: actual cost (AC) not imported — CPI/EAC/VAC remain disabled.";
+            }
+        } else if (evm && !evm.has_data) {
+            costDetail = "Import cost-loaded schedule or QTO data to assess 5D readiness.";
+        }
+        rows.push(_trustRow("5D cost data", costPill, costDetail));
+
+        body.innerHTML =
+            rows.join("") +
+            `<div style="margin-top:8px; padding-top:8px; font-size:0.7rem; color:var(--bs-secondary-color); line-height:1.5;">
+                <strong style="color:var(--bs-body-color);">Baseline scope:</strong>
+                Variance, delay, and forecast metrics are measured against the
+                <em>current imported schedule</em>, not an approved contractual baseline.
+                Baseline versioning is not enabled.
+            </div>
+            <div style="margin-top:6px; font-size:0.68rem; color:var(--bs-secondary-color); font-style:italic;">
+                Readiness labels reuse existing dashboard data — not a certified 4D/5D trust score.
+                Re-import the schedule and refresh bindings to improve signals.
+            </div>`;
+
+        if (loading) loading.classList.add("d-none");
+        body.classList.remove("d-none");
+    }
+
+    async function _fetchTrustInputs() {
+        const [intel, health] = await Promise.all([
+            fetch(INTEL_URL).then(r => r.ok ? r.json() : null).catch(() => null),
+            fetch(HEALTH_URL).then(r => r.ok ? r.json() : null).catch(() => null),
+        ]);
+        _intelData = intel;
+        _healthData = health;
+        _renderTrustReadiness(_evmData, _intelData, _healthData);
     }
 
     /* ── Performance mode badge ───────────────────────────────────────── */
@@ -3510,6 +3696,7 @@ function _esc(s) {
     }());
 
     loadEvm();
+    _fetchTrustInputs();
     loadWbsHeatmap();
     loadDelayDistribution();
     loadTrendAnalysis();
