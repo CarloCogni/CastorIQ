@@ -27,6 +27,8 @@
                 <td class="text-center">
                     {% if task.binding_link_status == 'linked' %}
                         <span title="Linked via TaskEntityBinding">✅</span>
+                    {% elif task.binding_link_status == 'needs_review' %}
+                        <span title="Bindings need review">⚠️</span>
                     {% elif task.binding_link_status == 'non_physical' %}
                         <span class="text-secondary" title="Non-physical task">—</span>
                     {% else %}
