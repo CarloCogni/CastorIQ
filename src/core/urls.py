@@ -29,6 +29,8 @@ urlpatterns = [
     ),
     path("settings/api/set-model/", views.SetModelAPIView.as_view(), name="set_model_api"),
     path("settings/api/set-theme/", views.SetThemeAPIView.as_view(), name="set_theme_api"),
+    # Self-service account deletion — Settings → Danger zone.
+    path("account/delete/", views.DeleteAccountView.as_view(), name="account_delete"),
     # BYOK (Bring Your Own Key) — encrypted credential management.
     path(
         "settings/api/byok/save-key/<str:provider>/",

@@ -6,7 +6,9 @@ from logging import getLogger
 
 import requests as http_requests
 from django.conf import settings
+from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
+from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.core.cache import cache
@@ -399,6 +401,11 @@ class SettingsView(LoginRequiredMixin, TemplateView):
         context["embed_model"] = settings.OLLAMA_EMBED_MODEL
         context["embed_dimensions"] = settings.PGVECTOR_DIMENSIONS
 
+        # Danger zone — show the user the real blast radius of a delete.
+        from core.services.account_service import impact_snapshot
+
+        context["delete_impact"] = impact_snapshot(self.request.user)
+
         if self.request.user.is_staff:
             config = UserLLMConfig.load(self.request.user)
             active_model = config.active_model or settings.OLLAMA_MODEL
@@ -410,6 +417,37 @@ class SettingsView(LoginRequiredMixin, TemplateView):
             context["vram_tiers"] = VRAM_TIERS
 
         return context
+
+
+class DeleteAccountView(LoginRequiredMixin, View):
+    """POST endpoint that hard-deletes the requesting user.
+
+    Self-service path for the "Delete my account" button in
+    Settings → Danger zone. The browser submits a plain form (not HTMX) —
+    after the user row is gone the session is invalid, so an HTMX swap can't
+    render anything useful. A full redirect to ``home`` is cleaner, and the
+    base template's messages bridge fires the goodbye toast there.
+
+    Server-side re-checks the typed-username confirmation; the disabled
+    submit button is a UX nicety, never the security boundary.
+    """
+
+    def post(self, request):
+        from core.services.account_service import delete_user_account
+
+        confirmation = request.POST.get("confirm_username", "").strip()
+        if confirmation != request.user.username:
+            return toast_response(
+                "Confirmation text did not match your username.",
+                "error",
+                status=400,
+            )
+
+        username = request.user.username
+        delete_user_account(request.user)
+        logout(request)
+        messages.success(request, f"Account '{username}' deleted. Goodbye.")
+        return redirect("home")
 
 
 class OllamaModelsAPIView(LoginRequiredMixin, UserPassesTestMixin, View):

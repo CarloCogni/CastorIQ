@@ -76,6 +76,11 @@
         user-select: none;
     }
 
+    /* Danger zone — red left border so it visually separates from harmless rows. */
+    .settings-section.danger-zone {
+        border-left: 3px solid var(--bs-danger);
+    }
+
     .placeholder-overlay::after {
         content: "Coming soon";
         position: absolute;
@@ -487,11 +492,39 @@
     </div>
     {% endif %}
 
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- Danger zone — irreversible self-service account delete -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <div class="settings-section danger-zone">
+        <div class="settings-section-header">
+            <i class="bi bi-exclamation-triangle-fill text-danger"></i>
+            <h3>Danger zone</h3>
+        </div>
+
+        <div class="setting-row align-items-start">
+            <div class="flex-grow-1">
+                <div class="setting-label fw-semibold text-body">Delete my account</div>
+                <div class="text-secondary fs-7 mt-1">
+                    Permanently removes your account, every project you own, and all
+                    associated IFC files, Git history, chat sessions, and proposals.
+                    This cannot be undone.
+                </div>
+            </div>
+            <button type="button"
+                    class="btn btn-outline-danger btn-sm flex-shrink-0"
+                    data-bs-toggle="modal"
+                    data-bs-target="#deleteAccountModal">
+                Delete my account
+            </button>
+        </div>
+    </div>
+
     <!-- Bottom spacer -->
     <div style="height: 2rem;"></div>
 
     {% include "core/components/settings_help_modal.html" %}
     {% include "core/components/usage_help_modal.html" %}
+    {% include "core/components/delete_account_modal.html" %}
 
 </div>
 {% endblock %}

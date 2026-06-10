@@ -41,16 +41,49 @@
             text-decoration: none;
         }
         .nav-bar-brand img {
-            height: 28px;
+            height: 40px;
             width: auto;
         }
         .nav-bar-brand .castoriq-wordmark {
             font-size: 1.2rem;
         }
 
+        .hero-logo {
+            text-align: center;
+            margin: 2.5rem auto 0;
+        }
+        .hero-logo img {
+            height: 96px;
+            width: auto;
+            max-width: 80%;
+            filter: drop-shadow(0 4px 24px rgba(59, 130, 246, 0.18));
+        }
+        @media (max-width: 576px) {
+            .hero-logo img { height: 72px; }
+        }
+
         .hero {
             padding: 5rem 0 3rem;
             text-align: center;
+        }
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.35rem 0.85rem;
+            border: 1px solid var(--castor-border);
+            border-radius: 999px;
+            color: var(--castor-text-muted);
+            text-decoration: none;
+            font-size: 0.85rem;
+            margin-bottom: 1.25rem;
+            transition: border-color 0.2s ease, color 0.2s ease;
+        }
+        .hero-badge:hover,
+        .hero-badge:focus-visible {
+            border-color: var(--castor-blue-light);
+            color: var(--castor-blue-light);
+            outline: none;
         }
         .hero h1 {
             font-size: clamp(2.2rem, 5vw, 3.6rem);
@@ -68,6 +101,11 @@
             margin: 0 auto 2rem;
         }
 
+        .video-hero {
+            max-width: 960px;
+            margin: 2rem auto 0;
+            padding: 0 1rem;
+        }
         .video-wrap {
             position: relative;
             padding-bottom: 56.25%;
@@ -79,6 +117,70 @@
         }
         .video-wrap iframe {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;
+        }
+        /* Facade pattern: poster + play button until the user clicks. Keeps the YouTube
+         * iframe (~1.5MB) off the first paint so the page is interactive instantly. */
+        .video-facade {
+            cursor: pointer;
+            background:
+                radial-gradient(circle at 50% 45%, rgba(59, 130, 246, 0.12), transparent 55%),
+                linear-gradient(135deg, #0a1628 0%, #050505 100%);
+        }
+        .video-facade .video-play {
+            position: absolute;
+            inset: 0;
+            width: 100%; height: 100%;
+            background: transparent;
+            border: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+        .video-facade .video-play:hover,
+        .video-facade .video-play:focus-visible {
+            background: rgba(59, 130, 246, 0.08);
+            outline: none;
+        }
+        .video-facade .play-icon .bi {
+            font-size: clamp(3.5rem, 8vw, 5.5rem);
+            color: var(--castor-blue-light);
+            filter: drop-shadow(0 6px 24px rgba(0, 0, 0, 0.6));
+            transition: transform 0.2s ease;
+        }
+        .video-facade .video-play:hover .play-icon .bi,
+        .video-facade .video-play:focus-visible .play-icon .bi {
+            transform: scale(1.08);
+        }
+        .video-caption {
+            text-align: center;
+            color: var(--castor-text-muted);
+            font-size: 0.95rem;
+            margin: 1rem 0 0;
+        }
+        .scroll-cue {
+            display: inline-block;
+            margin-left: 0.35rem;
+            color: var(--castor-blue-light);
+            animation: scroll-cue-bob 2s ease-in-out infinite;
+        }
+        @keyframes scroll-cue-bob {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(4px); }
+        }
+
+        .hero-compact {
+            padding: 2.5rem 0 2rem;
+        }
+
+        .pillar-row-label {
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: var(--castor-text-muted);
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin: 0 0 1rem;
         }
 
         .feature-card {
@@ -118,78 +220,141 @@
                 <span class="cw-prefix">Castor</span><span class="cw-iq">IQ</span>
             </span>
         </a>
-        <a href="{% url 'login' %}" class="subtle small">
-            Already have an account? Sign in <i class="bi bi-arrow-right"></i>
-        </a>
+        <div class="d-flex align-items-center gap-3">
+            <a href="https://github.com/CarloCogni/CastorIQ"
+               class="subtle small d-inline-flex align-items-center gap-1"
+               target="_blank" rel="noopener"
+               title="View source on GitHub">
+                <i class="bi bi-github"></i>
+                <span class="d-none d-sm-inline">Source</span>
+            </a>
+            <a href="https://www.linkedin.com/company/castor-iq/"
+               class="subtle small d-inline-flex align-items-center gap-1"
+               target="_blank" rel="noopener"
+               title="Follow CastorIQ on LinkedIn">
+                <i class="bi bi-linkedin"></i>
+                <span class="d-none d-sm-inline">LinkedIn</span>
+            </a>
+            <a href="{% url 'login' %}" class="subtle small">
+                Already have an account? Sign in <i class="bi bi-arrow-right"></i>
+            </a>
+        </div>
     </div>
 </nav>
 
 <main class="container">
 
-    <section class="hero">
+    <!-- Video first: QR visitors land cold and the 60s demo is the hook. Facade renders
+         a static poster + play button; the YouTube iframe loads only on click. -->
+    <section class="video-hero">
+        <div class="video-wrap video-facade" id="video-facade" data-video-id="dQw4w9WgXcQ">
+            <button type="button" class="video-play" aria-label="Play demo video">
+                <span class="play-icon"><i class="bi bi-play-circle-fill"></i></span>
+            </button>
+        </div>
+<!--        <p class="video-caption">-->
+<!--            60 seconds. Watch what CastorIQ does. <span class="scroll-cue" aria-hidden="true">↓</span>-->
+<!--        </p>-->
+<!--        NOT NECESSAYR FOR NOW-->
+    </section>
+
+    <div class="hero-logo">
+        <img src="{% static 'images/castor-logo-nobg.png' %}" alt="CastorIQ">
+    </div>
+
+    <section class="hero hero-compact">
+        <a href="https://github.com/CarloCogni/CastorIQ"
+           class="hero-badge"
+           target="_blank" rel="noopener"
+           title="View source on GitHub">
+            <i class="bi bi-github"></i>
+            <span>100% open source · AGPL-3.0</span>
+            <i class="bi bi-arrow-right"></i>
+        </a>
         <h1>The bi-directional bridge between
             <span class="gradient-accent">IFC models</span>
             and
             <span class="gradient-accent">technical docs</span>
         </h1>
-        <p class="lede">
-            Ask CastorIQ about any building model and the documents that describe it.
-            Propose modifications in plain language and let the risk-stratified review pipeline keep your IFC safe.
-        </p>
         <div class="d-flex justify-content-center gap-2 flex-wrap">
             <a href="#apply" class="btn btn-primary btn-lg">
                 <i class="bi bi-envelope-paper me-1"></i>Apply for beta access
             </a>
             <a href="#what-it-does" class="btn btn-outline-secondary btn-lg">
-                Learn more
+                See what's inside
             </a>
         </div>
     </section>
 
-    <section class="row g-4 my-5" style="max-width: 920px; margin: 0 auto;">
-        <div class="col-12">
-            <div class="video-wrap">
-                <!-- Replace <YOUTUBE_ID> once the demo video is uploaded (M6.1). -->
-                <iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"
-                        title="CastorIQ demo (placeholder)"
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                        allowfullscreen></iframe>
+    <div id="what-it-does" class="my-5">
+        <h6 class="pillar-row-label">What you do</h6>
+        <section class="row g-4">
+            <div class="col-md-4">
+                <div class="feature-card">
+                    <i class="bi bi-search"></i>
+                    <h5 class="mt-2">Ask</h5>
+                    <p class="text-secondary mb-0">
+                        Natural-language queries across the IFC model and any uploaded specs.
+                        Answers cite the entity or page they came from.
+                    </p>
+                </div>
             </div>
-        </div>
-    </section>
+            <div class="col-md-4">
+                <div class="feature-card">
+                    <i class="bi bi-tools"></i>
+                    <h5 class="mt-2">Modify</h5>
+                    <p class="text-secondary mb-0">
+                        Propose property changes in plain English. A three-tier review pipeline
+                        keeps low-risk edits fast and high-risk edits reviewable.
+                    </p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="feature-card">
+                    <i class="bi bi-buildings"></i>
+                    <h5 class="mt-2">Explore</h5>
+                    <p class="text-secondary mb-0">
+                        Click through floor plans, points of interest, and uploaded media —
+                        no BIM viewer required.
+                    </p>
+                </div>
+            </div>
+        </section>
 
-    <section id="what-it-does" class="row g-4 my-5">
-        <div class="col-md-4">
-            <div class="feature-card">
-                <i class="bi bi-search"></i>
-                <h5 class="mt-2">Ask</h5>
-                <p class="text-secondary mb-0">
-                    Natural-language queries across the IFC model and any uploaded specs.
-                    Answers cite the entity or page they came from.
-                </p>
+        <h6 class="pillar-row-label mt-5">What backs it</h6>
+        <section class="row g-4">
+            <div class="col-md-4">
+                <div class="feature-card">
+                    <i class="bi bi-git"></i>
+                    <h5 class="mt-2">Versioned</h5>
+                    <p class="text-secondary mb-0">
+                        Every accepted modification is a Git commit on a per-project repository.
+                        Reverts cost a click.
+                    </p>
+                </div>
             </div>
-        </div>
-        <div class="col-md-4">
-            <div class="feature-card">
-                <i class="bi bi-tools"></i>
-                <h5 class="mt-2">Modify</h5>
-                <p class="text-secondary mb-0">
-                    Propose property changes in plain English. A three-tier review pipeline
-                    keeps low-risk edits fast and high-risk edits reviewable.
-                </p>
+            <div class="col-md-4">
+                <div class="feature-card">
+                    <i class="bi bi-clipboard-check"></i>
+                    <h5 class="mt-2">Manage</h5>
+                    <p class="text-secondary mb-0">
+                        Track assets, work orders, permits, and maintenance against the same
+                        model your team queries.
+                    </p>
+                </div>
             </div>
-        </div>
-        <div class="col-md-4">
-            <div class="feature-card">
-                <i class="bi bi-git"></i>
-                <h5 class="mt-2">Versioned</h5>
-                <p class="text-secondary mb-0">
-                    Every accepted modification is a Git commit on a per-project repository.
-                    Reverts cost a click.
-                </p>
+            <div class="col-md-4">
+                <div class="feature-card">
+                    <i class="bi bi-shield-lock"></i>
+                    <h5 class="mt-2">Yours</h5>
+                    <p class="text-secondary mb-0">
+                        Bring your own Anthropic or Groq key — or run fully on-prem with Ollama.
+                        Your IFC stays where you put it.
+                    </p>
+                </div>
             </div>
-        </div>
-    </section>
+        </section>
+    </div>
 
     <section id="apply" class="my-5">
         <div class="form-card mx-auto" style="max-width: 640px;">
@@ -313,6 +478,17 @@
             providers (Anthropic, Groq) when those providers are active. By applying you opt into a
             research / test setup.
         </p>
+        <p class="mb-1">
+            <i class="bi bi-github me-1"></i>
+            <a href="https://github.com/CarloCogni/CastorIQ" class="subtle" target="_blank" rel="noopener">
+                Open source under AGPL-3.0
+            </a>
+            <span class="mx-2">·</span>
+            <i class="bi bi-linkedin me-1"></i>
+            <a href="https://www.linkedin.com/company/castor-iq/" class="subtle" target="_blank" rel="noopener">
+                Follow on LinkedIn
+            </a>
+        </p>
         <p class="mb-0">
             <a href="{% url 'login' %}" class="subtle">Sign in</a> ·
             <a href="{% url 'privacy' %}" class="subtle">Privacy</a> ·
@@ -323,6 +499,27 @@
 
 </main>
 
+<script>
+    // Video facade -> real YouTube iframe on click. Keeps first paint instant.
+    (function () {
+        var facade = document.getElementById('video-facade');
+        if (!facade) return;
+        facade.addEventListener('click', function () {
+            var videoId = facade.dataset.videoId;
+            if (!videoId) return;
+            var iframe = document.createElement('iframe');
+            iframe.src = 'https://www.youtube.com/embed/' + videoId +
+                         '?autoplay=1&rel=0&modestbranding=1&playsinline=1';
+            iframe.title = 'CastorIQ demo';
+            iframe.setAttribute('allow',
+                'accelerometer; autoplay; clipboard-write; encrypted-media; ' +
+                'gyroscope; picture-in-picture; web-share');
+            iframe.setAttribute('allowfullscreen', '');
+            facade.innerHTML = '';
+            facade.appendChild(iframe);
+        });
+    })();
+</script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
 </body>
