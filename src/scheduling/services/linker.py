@@ -56,6 +56,53 @@ def param_match_tasks(tasks: list, ifc_entities: list, param_name: str) -> list[
     return results
 
 
+def persist_param_matches(matches: list[dict], entities: list[IFCEntity]) -> dict[str, int]:
+    """Upsert trusted TaskEntityBinding rows for parameter-match results.
+
+    Only matched (task, entity) pairs are written. Existing bindings on other
+    tasks or unmatched links are left untouched. Matched entities are also added
+    to Task.ifc_entities M2M for backward compatibility.
+    """
+    from scheduling.models import Task, TaskEntityBinding
+
+    entity_by_id = {str(entity.pk): entity for entity in entities}
+    summary: dict[str, int] = {}
+
+    for match in matches:
+        task_pk = match["task_id"]
+        entity_ids = match.get("entity_ids") or []
+        matched_entities: list[IFCEntity] = []
+
+        for entity_id in entity_ids:
+            entity = entity_by_id.get(str(entity_id))
+            if entity is None:
+                continue
+            matched_entities.append(entity)
+            binding, created = TaskEntityBinding.objects.get_or_create(
+                task_id=task_pk,
+                entity_global_id=entity.global_id,
+                defaults={
+                    "confidence": 1.0,
+                    "link_method": TaskEntityBinding.LinkMethod.EXACT,
+                    "needs_review": False,
+                },
+            )
+            if not created:
+                TaskEntityBinding.objects.filter(pk=binding.pk).update(
+                    confidence=1.0,
+                    link_method=TaskEntityBinding.LinkMethod.EXACT,
+                    needs_review=False,
+                )
+
+        if matched_entities:
+            task = Task.objects.get(pk=task_pk)
+            task.ifc_entities.add(*matched_entities)
+
+        summary[task_pk] = len(matched_entities)
+
+    return summary
+
+
 def apply_matches(task_model_class, matches: list[dict]) -> dict[str, int]:
     """Persist match results by replacing each task's ifc_entities M2M links.
 

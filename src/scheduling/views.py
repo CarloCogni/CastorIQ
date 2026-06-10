@@ -42,7 +42,7 @@ from .services.column_mapper import (
 )
 from .services.critical_path import compute_critical_path
 from .services.evm import compute_evm
-from .services.linker import apply_matches, param_match_tasks
+from .services.linker import param_match_tasks, persist_param_matches
 from .services.msp_parser import parse_msp
 from .services.p6_save import finalise_p6_data, save_p6_pending_data
 from .services.pct_normalize import normalize_pct_complete
@@ -1144,7 +1144,7 @@ class LinkParamView(ProjectModifyAccessMixin, View):
 
         matches = param_match_tasks(tasks, entities, param_name)
         if matches:
-            apply_matches(Task, matches)
+            persist_param_matches(matches, entities)
 
         tasks_qs = Task.objects.filter(project=project).prefetch_related("ifc_entities")
         response = render(
