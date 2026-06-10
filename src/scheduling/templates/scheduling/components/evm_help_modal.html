@@ -126,9 +126,20 @@
                     Cost Basis
                 </p>
                 <p class="text-secondary fs-7 mb-1">
+                    <strong>Performance mode:</strong> when schedule costs or QTO estimates exist, Castor runs
+                    <em>monetary EVM</em> (<code>cost_evm</code>). When neither is available, it falls back to
+                    <em>schedule performance</em> mode — BAC is weighted by task durations and SPI reflects
+                    progress vs plan, not dollars. The mode badge above the KPI cards shows which mode is active.
+                </p>
+                <p class="text-secondary fs-7 mb-1">
                     Planned cost comes from P6 resource assignments; uncosted tasks are supplemented by QTO
                     quantity estimates when available, then by task <em>durations</em> as a last-resort proxy
                     (a banner warns you when a proxy is active — these are not monetary EVM numbers).
+                </p>
+                <p class="text-secondary fs-7 mb-1">
+                    <strong>SPI forecast</strong> is computed server-side with the same guards as the Decision
+                    Summary: suppressed when no earned value is recorded, when SPI is non-positive, or when the
+                    extrapolated date exceeds a sane horizon (3× planned duration past baseline).
                 </p>
                 <p class="text-secondary fs-7 mb-4">
                     <strong>Actual Cost (AC) is read directly from <code>P6ResourceAssignment.actual_cost</code></strong>
