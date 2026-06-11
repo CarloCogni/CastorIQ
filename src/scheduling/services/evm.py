@@ -13,6 +13,7 @@ import logging
 from datetime import date, timedelta
 
 from .calendar_utils import load_project_calendars, task_cal, working_day_diff
+from .evm_forecast import compute_spi_forecast, performance_mode_fields
 from .utils import get_project_data_date
 
 logger = logging.getLogger(__name__)
@@ -531,6 +532,15 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
         and t.duration_percent_complete is None
     )
 
+    mode_fields = performance_mode_fields(use_cost, cost_basis)
+    spi_forecast = compute_spi_forecast(
+        spi=spi,
+        ev=ev_today,
+        project_start=project_start,
+        project_end=project_end,
+        as_of=today,
+    )
+
     return {
         "has_data": True,
         "bac": round(bac, 2),
@@ -550,6 +560,10 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
         "ac_coverage_pct": ac_coverage_pct,
         "ac_disabled_reason": ac_disabled_reason,
         "overdue_linear_capped": overdue_linear_capped,
+        "is_monetary_evm": mode_fields["is_monetary_evm"],
+        "performance_mode": mode_fields["performance_mode"],
+        "performance_mode_label": mode_fields["performance_mode_label"],
+        "spi_forecast": spi_forecast,
         "as_of": today.isoformat(),
         "project_start": project_start.isoformat(),
         "project_end": project_end.isoformat(),

@@ -626,7 +626,18 @@ class EVMDataTests(TestCase):
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.content)
         self.assertTrue(data["has_data"])
-        for key in ("bac", "pv", "ev", "ac", "spi", "cpi"):
+        for key in (
+            "bac",
+            "pv",
+            "ev",
+            "ac",
+            "spi",
+            "cpi",
+            "performance_mode",
+            "performance_mode_label",
+            "is_monetary_evm",
+            "spi_forecast",
+        ):
             self.assertIn(key, data)
 
     def test_unauthenticated_redirects(self):

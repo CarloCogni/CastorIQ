@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 import math
-from datetime import date, timedelta
+from datetime import date
 
 logger = logging.getLogger(__name__)
 
@@ -20,23 +20,6 @@ logger = logging.getLogger(__name__)
 def _months_diff(later: date, earlier: date) -> float:
     """Signed months between two dates. Positive = later is after earlier."""
     return (later - earlier).days / 30.44
-
-
-def _forecast_finish(spi: float, start: date, baseline: date, as_of: date) -> date:
-    """SPI-adjusted forecast completion date (mirrors the JS formula in evm.html).
-
-    Caller is responsible for ensuring spi > 0 before calling this function.
-    The old 0.05 floor clamp has been removed — it masked the blowup instead of
-    preventing it, producing absurd multi-decade forecasts for near-zero SPI.
-    Use _build_block1's ev/sane-horizon guards instead.
-    """
-    elapsed = (as_of - start).days
-    if as_of < baseline:
-        remaining = max((baseline - as_of).days, 0)
-        forecast_days = elapsed + remaining / spi
-    else:
-        forecast_days = elapsed / spi
-    return start + timedelta(days=max(0, round(forecast_days)))
 
 
 def _fmt_month(d: date) -> str:
@@ -87,9 +70,6 @@ def _build_block1(evm: dict, drc: dict, mc: dict) -> dict:
     baseline = date.fromisoformat(evm["project_end"])
     as_of = date.fromisoformat(evm["as_of"])
 
-    # Sane horizon: forecast beyond this is a formula artefact, not a prediction.
-    sane_horizon = baseline + timedelta(days=(baseline - start).days * 3)
-
     if spi >= 1.02:
         perf_label = "Ahead of schedule"
     elif spi >= 0.95:
@@ -105,21 +85,28 @@ def _build_block1(evm: dict, drc: dict, mc: dict) -> dict:
     forecast: date | None = None
     months_late: float | None = None
 
-    if ev == 0:
-        var_str = "Insufficient progress to forecast a finish date — no earned value recorded."
+    from .evm_forecast import compute_spi_forecast
+
+    spi_fc = compute_spi_forecast(
+        spi=spi,
+        ev=ev,
+        project_start=start,
+        project_end=baseline,
+        as_of=as_of,
+    )
+    if spi_fc["suppressed"]:
+        var_str = spi_fc["reason"] or (
+            "Insufficient progress to forecast a finish date — no earned value recorded."
+        )
     else:
-        candidate = _forecast_finish(spi, start, baseline, as_of)
-        if candidate > sane_horizon:
-            var_str = f"Progress too low to forecast a reliable finish date (SPI {spi:.2f})."
+        forecast = date.fromisoformat(spi_fc["date"])
+        months_late = round(_months_diff(forecast, baseline), 1)
+        if months_late > 0.5:
+            var_str = f"Forecast finish {_fmt_month(forecast)} — {math.ceil(months_late)} months past baseline."
+        elif months_late < -0.5:
+            var_str = f"Forecast finish {_fmt_month(forecast)} — {math.floor(abs(months_late))} months ahead of baseline."
         else:
-            forecast = candidate
-            months_late = round(_months_diff(forecast, baseline), 1)
-            if months_late > 0.5:
-                var_str = f"Forecast finish {_fmt_month(forecast)} — {math.ceil(months_late)} months past baseline."
-            elif months_late < -0.5:
-                var_str = f"Forecast finish {_fmt_month(forecast)} — {math.floor(abs(months_late))} months ahead of baseline."
-            else:
-                var_str = f"Forecast finish {_fmt_month(forecast)} — on or near baseline ({_fmt_month(baseline)})."
+            var_str = f"Forecast finish {_fmt_month(forecast)} — on or near baseline ({_fmt_month(baseline)})."
 
     biggest_driver = None
     driver_str = ""
