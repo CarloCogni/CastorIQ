@@ -120,7 +120,9 @@ def test_issues_count_matches_filtered_s1_and_s2_rows(client):
     assert missing_5d == len(_missing_cost_rows(ifc_file, project)) == 2
     assert unbound.global_id in {r["global_id"] for r in _missing_activity_rows(ifc_file, project)}
     assert review.global_id in {r["global_id"] for r in _missing_activity_rows(ifc_file, project)}
-    assert bound.global_id not in {r["global_id"] for r in _missing_activity_rows(ifc_file, project)}
+    assert bound.global_id not in {
+        r["global_id"] for r in _missing_activity_rows(ifc_file, project)
+    }
 
     url = reverse("model_quality:issues_count", kwargs={"pk": project.pk})
     response = client.get(url)

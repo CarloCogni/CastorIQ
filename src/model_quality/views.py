@@ -586,13 +586,13 @@ def _missing_activity_rows(ifc_file, project) -> list[dict]:
         if entity.global_id in accepted_bound:
             continue
         rows.append(
-                {
-                    "global_id": entity.global_id,
-                    "ifc_type": entity.ifc_type or "—",
-                    "name": entity.name or "—",
-                    "level": _entity_level(entity),
-                }
-            )
+            {
+                "global_id": entity.global_id,
+                "ifc_type": entity.ifc_type or "—",
+                "name": entity.name or "—",
+                "level": _entity_level(entity),
+            }
+        )
     return rows
 
 
@@ -612,13 +612,13 @@ def _missing_cost_rows(ifc_file, project) -> list[dict]:
         if entity.global_id in accepted_cost:
             continue
         rows.append(
-                {
-                    "global_id": entity.global_id,
-                    "ifc_type": entity.ifc_type or "—",
-                    "name": entity.name or "—",
-                    "level": _entity_level(entity),
-                }
-            )
+            {
+                "global_id": entity.global_id,
+                "ifc_type": entity.ifc_type or "—",
+                "name": entity.name or "—",
+                "level": _entity_level(entity),
+            }
+        )
     return rows
 
 
