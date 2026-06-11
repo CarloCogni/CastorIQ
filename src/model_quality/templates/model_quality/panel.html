@@ -66,11 +66,11 @@
                               font-size="20" font-weight="bold" fill="{{ ring_4d.color }}">{{ ring_4d.pct }}%</text>
                     </svg>
                     <h6 class="fw-semibold mb-1">4D Readiness</h6>
-                    <p class="text-secondary small mb-0">Activity ID linked &middot; {{ total_entities }} elements</p>
+                    <p class="text-secondary small mb-0">Task binding linked &middot; {{ total_entities }} elements</p>
                     {% if missing_4d > 0 %}
-                    <p class="small mt-1 mb-0 fw-medium" style="color:#ef4444;">{{ missing_4d }} missing Activity ID</p>
+                    <p class="small mt-1 mb-0 fw-medium" style="color:#ef4444;">{{ missing_4d }} without schedule binding</p>
                     {% else %}
-                    <p class="small mt-1 mb-0" style="color:#22c55e;">All elements have Activity ID</p>
+                    <p class="small mt-1 mb-0" style="color:#22c55e;">All elements linked via task binding</p>
                     {% endif %}
                 </div>
             </div>
