@@ -198,6 +198,28 @@ class XerParserTests(TestCase):
         self.assertIsNone(tasks[0]["actual_start"])
         self.assertIsNone(tasks[0]["actual_end"])
 
+    def test_xer_phys_complete_pct_normalized(self):
+        """phys_complete_pct=40 → _p6_phys_pct=0.4."""
+        raw = xer_bytes(
+            tasks=[
+                {
+                    "task_id": "1",
+                    "task_code": "A1",
+                    "task_name": "In Progress",
+                    "target_start_date": "2025-01-01 08:00",
+                    "target_end_date": "2025-01-10 08:00",
+                    "status_code": "TK_Active",
+                    "act_start_date": "2025-01-01 08:00",
+                    "act_end_date": "",
+                    "phys_complete_pct": "40",
+                }
+            ]
+        )
+        from scheduling.services.xer_parser import parse_xer
+
+        tasks, _ = parse_xer(io.BytesIO(raw))
+        self.assertAlmostEqual(tasks[0]["_p6_phys_pct"], 0.4, places=4)
+
     def test_xer_no_tasks_raises(self):
         """File with no TASK table → ValueError."""
         raw = b"%T\tPROJECT\n%F\tproj_id\n%R\t100\n%E\n"
@@ -341,6 +363,49 @@ class P6XmlParserTests(TestCase):
         ]
         tasks, _ = self._parse(activities=acts)
         self.assertEqual(tasks[0]["status"], "complete")
+
+    def test_p6xml_physical_percent_complete_normalized(self):
+        """PhysicalPercentComplete=40 → _p6_phys_pct=0.4 (not raw 40)."""
+        from scheduling.parsers.p6xml_parser import parse_p6xml
+
+        acts = [
+            {
+                "ObjectId": "1",
+                "Id": "A1",
+                "Name": "In Progress",
+                "PlannedStartDate": "2025-01-01T08:00:00",
+                "PlannedFinishDate": "2025-01-10T08:00:00",
+                "Status": "In Progress",
+                "PhysicalPercentComplete": "40",
+                "DurationPercentComplete": "40",
+                "ActualStartDate": "2025-01-01T08:00:00",
+                "ActualFinishDate": "",
+            }
+        ]
+        tasks, _, _ = parse_p6xml(io.BytesIO(p6xml_bytes(activities=acts)))
+        self.assertAlmostEqual(tasks[0]["_p6_phys_pct"], 0.4, places=4)
+        self.assertAlmostEqual(tasks[0]["_p6_dur_pct"], 0.4, places=4)
+
+    def test_p6xml_missing_physical_percent_is_none(self):
+        """Absent PhysicalPercentComplete → _p6_phys_pct is None (not 0.0)."""
+        from scheduling.parsers.p6xml_parser import parse_p6xml
+
+        acts = [
+            {
+                "ObjectId": "1",
+                "Id": "A1",
+                "Name": "Not Started",
+                "PlannedStartDate": "2025-06-01T08:00:00",
+                "PlannedFinishDate": "2025-06-10T08:00:00",
+                "Status": "Not Started",
+                "PercentComplete": "0",
+                "ActualStartDate": "",
+                "ActualFinishDate": "",
+            }
+        ]
+        tasks, _, _ = parse_p6xml(io.BytesIO(p6xml_bytes(activities=acts)))
+        self.assertIsNone(tasks[0].get("_p6_phys_pct"))
+        self.assertIsNone(tasks[0].get("_p6_dur_pct"))
 
     def test_p6xml_actual_dates(self):
         """ActualStartDate / ActualFinishDate → actual_start / actual_end."""
@@ -612,6 +677,7 @@ class MspXmlParserTests(TestCase):
         ]
         tasks, _ = self._parse(tasks=task_list)
         self.assertEqual(tasks[0]["status"], "active")
+        self.assertAlmostEqual(tasks[0]["_p6_phys_pct"], 0.555, places=3)
 
     def test_msp_ff_dep_type(self):
         """PredecessorLink Type=0 → dep_type='FF'."""

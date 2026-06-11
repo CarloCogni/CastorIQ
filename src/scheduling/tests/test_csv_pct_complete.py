@@ -39,8 +39,8 @@ PARSE_PCT_CASES = [
     ("1.0", 1.0),
     ("", None),
     ("abc", None),
-    ("-5", None),  # negative — rejected
-    ("101", None),  # > 100 — rejected
+    ("-5", 0.0),  # negative — clamped to 0
+    ("101", 1.0),  # > 100 — capped at 1.0
     (" 50 ", 0.5),  # whitespace stripped
     ("50.0%", 0.5),
 ]
