@@ -510,6 +510,58 @@ def _has_cost(props: dict) -> bool:
     return False
 
 
+def _accepted_bound_gids(project) -> set[str]:
+    """Entity global_ids with at least one accepted (needs_review=False) binding."""
+    try:
+        from scheduling.models import TaskEntityBinding
+
+        return set(
+            TaskEntityBinding.objects.filter(
+                task__project=project,
+                needs_review=False,
+            ).values_list("entity_global_id", flat=True)
+        )
+    except ImportError:
+        return set()
+
+
+def _accepted_schedule_cost_gids(project) -> set[str]:
+    """Entity global_ids with accepted binding to a task that has schedule cost."""
+    try:
+        from scheduling.models import TaskEntityBinding
+
+        return set(
+            TaskEntityBinding.objects.filter(
+                task__project=project,
+                needs_review=False,
+                task__cost__isnull=False,
+            )
+            .exclude(task__cost=0)
+            .values_list("entity_global_id", flat=True)
+        )
+    except ImportError:
+        return set()
+
+
+def _issues_property_gap_counts(ifc_file, project) -> tuple[int, int]:
+    """Return (missing_ifc_activity_id_property, missing_ifc_cost_property) counts."""
+    accepted_bound = _accepted_bound_gids(project)
+    accepted_cost = _accepted_schedule_cost_gids(project)
+    missing_4d = missing_5d = 0
+    for entity in (
+        IFCEntity.objects.filter(ifc_file=ifc_file)
+        .only("global_id", "properties")
+        .iterator(chunk_size=500)
+    ):
+        props = entity.properties or {}
+        gid = entity.global_id
+        if not _has_activity_id(props) and gid not in accepted_bound:
+            missing_4d += 1
+        if not _has_cost(props) and gid not in accepted_cost:
+            missing_5d += 1
+    return missing_4d, missing_5d
+
+
 def _entity_level(entity) -> str:
     """Return storey name from spatial_container chain, or '—'."""
     try:
@@ -518,8 +570,9 @@ def _entity_level(entity) -> str:
         return "—"
 
 
-def _missing_activity_rows(ifc_file) -> list[dict]:
-    """Return dicts for all entities that have no valid Activity ID."""
+def _missing_activity_rows(ifc_file, project) -> list[dict]:
+    """Return entities missing IFC Activity ID property and no accepted 4D binding."""
+    accepted_bound = _accepted_bound_gids(project)
     rows: list[dict] = []
     qs = (
         IFCEntity.objects.filter(ifc_file=ifc_file)
@@ -527,20 +580,25 @@ def _missing_activity_rows(ifc_file) -> list[dict]:
         .select_related("spatial_container__entity")
     )
     for entity in qs.iterator(chunk_size=500):
-        if not _has_activity_id(entity.properties or {}):
-            rows.append(
-                {
-                    "global_id": entity.global_id,
-                    "ifc_type": entity.ifc_type or "—",
-                    "name": entity.name or "—",
-                    "level": _entity_level(entity),
-                }
-            )
+        props = entity.properties or {}
+        if _has_activity_id(props):
+            continue
+        if entity.global_id in accepted_bound:
+            continue
+        rows.append(
+            {
+                "global_id": entity.global_id,
+                "ifc_type": entity.ifc_type or "—",
+                "name": entity.name or "—",
+                "level": _entity_level(entity),
+            }
+        )
     return rows
 
 
-def _missing_cost_rows(ifc_file) -> list[dict]:
-    """Return dicts for all entities that have no valid Cost property."""
+def _missing_cost_rows(ifc_file, project) -> list[dict]:
+    """Return entities missing IFC cost property and no accepted schedule-cost binding."""
+    accepted_cost = _accepted_schedule_cost_gids(project)
     rows: list[dict] = []
     qs = (
         IFCEntity.objects.filter(ifc_file=ifc_file)
@@ -548,15 +606,19 @@ def _missing_cost_rows(ifc_file) -> list[dict]:
         .select_related("spatial_container__entity")
     )
     for entity in qs.iterator(chunk_size=500):
-        if not _has_cost(entity.properties or {}):
-            rows.append(
-                {
-                    "global_id": entity.global_id,
-                    "ifc_type": entity.ifc_type or "—",
-                    "name": entity.name or "—",
-                    "level": _entity_level(entity),
-                }
-            )
+        props = entity.properties or {}
+        if _has_cost(props):
+            continue
+        if entity.global_id in accepted_cost:
+            continue
+        rows.append(
+            {
+                "global_id": entity.global_id,
+                "ifc_type": entity.ifc_type or "—",
+                "name": entity.name or "—",
+                "level": _entity_level(entity),
+            }
+        )
     return rows
 
 
@@ -628,22 +690,14 @@ class IssuesView(ProjectTabMixin, TemplateView):
 
 
 class IssuesCountView(ProjectAccessMixin, View):
-    """JSON endpoint — total missing-activity + missing-cost count for badge."""
+    """JSON endpoint — IFC property-gap counts aligned with Issues S1/S2 filters."""
 
     def get(self, request, **kwargs: object) -> JsonResponse:
         project = self.get_project()
         ifc_file = _get_active_ifc_file(project)
         if not ifc_file:
             return JsonResponse({"total": 0})
-        missing_4d = missing_5d = 0
-        for entity in (
-            IFCEntity.objects.filter(ifc_file=ifc_file).only("properties").iterator(chunk_size=500)
-        ):
-            props = entity.properties or {}
-            if not _has_activity_id(props):
-                missing_4d += 1
-            if not _has_cost(props):
-                missing_5d += 1
+        missing_4d, missing_5d = _issues_property_gap_counts(ifc_file, project)
         return JsonResponse({"total": missing_4d + missing_5d})
 
 
@@ -653,7 +707,7 @@ class IssuesMissingActivityView(ProjectAccessMixin, View):
     def get(self, request, **kwargs: object) -> HttpResponse:
         project = self.get_project()
         ifc_file = _get_active_ifc_file(project)
-        rows = _missing_activity_rows(ifc_file) if ifc_file else []
+        rows = _missing_activity_rows(ifc_file, project) if ifc_file else []
         viewer_url = reverse("ifc_viewer:viewer", kwargs={"pk": project.pk})
         return render(
             request,
@@ -673,7 +727,7 @@ class IssuesMissingCostView(ProjectAccessMixin, View):
     def get(self, request, **kwargs: object) -> HttpResponse:
         project = self.get_project()
         ifc_file = _get_active_ifc_file(project)
-        rows = _missing_cost_rows(ifc_file) if ifc_file else []
+        rows = _missing_cost_rows(ifc_file, project) if ifc_file else []
         viewer_url = reverse("ifc_viewer:viewer", kwargs={"pk": project.pk})
         return render(
             request,
@@ -755,10 +809,10 @@ class IssuesExportView(ProjectAccessMixin, View):
         writer.writeheader()
 
         if section == "missing_activity":
-            for row in _missing_activity_rows(ifc_file):
+            for row in _missing_activity_rows(ifc_file, project):
                 writer.writerow(row)
         elif section == "missing_cost":
-            for row in _missing_cost_rows(ifc_file):
+            for row in _missing_cost_rows(ifc_file, project):
                 writer.writerow(row)
         elif section == "activity_audit":
             for row in _activity_audit_rows(ifc_file, project):

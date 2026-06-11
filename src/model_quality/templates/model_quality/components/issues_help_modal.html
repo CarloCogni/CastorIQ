@@ -22,7 +22,8 @@
                 <p class="text-secondary fs-7 mb-4">
                     IFC Issues gives you a targeted audit of data quality problems in your model.
                     Section 0 runs 10 automated health checks against the IFC file itself.
-                    Sections 1–4 audit which elements are missing properties needed for 4D and 5D workflows,
+                    Sections 1–4 audit IFC property metadata and schedule alignment for 4D and 5D workflows.
+                    Trusted 4D links come from accepted Castor task bindings, not IFC properties alone.
                     how your Activity IDs relate to the schedule, and whether your floor levels are
                     correctly populated and matched to tasks.
                     Sections 1–4 load independently via HTMX so slow sections never block faster ones.
@@ -41,16 +42,18 @@
                         Use the filter buttons to focus on a specific severity. All three are active by default.
                     </div>
                     <div>
-                        <span class="fw-semibold text-body"><i class="bi bi-tag text-warning me-1"></i>Missing Activity ID</span> —
-                        Every IFC element that has no <code>Activity ID</code> property (or has an empty value).
-                        These elements cannot be linked to schedule tasks.
+                        <span class="fw-semibold text-body"><i class="bi bi-tag text-warning me-1"></i>Missing IFC Activity ID property</span> —
+                        Elements with no <code>Activity ID</code> property (or empty value) and no accepted
+                        <code>TaskEntityBinding</code> (<code>needs_review=False</code>).
+                        This is an IFC metadata audit — not a missing trusted 4D link when Castor already has a binding.
                         Use <em>Copy Global ID</em> to grab the identifier, or <em>Open in 3D Viewer</em>
                         to locate the element in the model.
                     </div>
                     <div>
-                        <span class="fw-semibold text-body"><i class="bi bi-currency-dollar text-warning me-1"></i>Missing Cost Data</span> —
-                        Elements with no <code>Cost</code> or <code>Unit Cost</code> property.
-                        These are excluded from 5D cost totals.
+                        <span class="fw-semibold text-body"><i class="bi bi-currency-dollar text-warning me-1"></i>Missing IFC Cost property</span> —
+                        Elements with no <code>Cost</code> or <code>Unit Cost</code> IFC property and no accepted
+                        binding to a schedule task with cost.
+                        QTO-derived costs are not counted here yet (see IFC Insights 5D ring / EVM).
                     </div>
                     <div>
                         <span class="fw-semibold text-body"><i class="bi bi-table text-primary me-1"></i>Activity ID &amp; Name Audit</span> —
@@ -78,10 +81,10 @@
                 </p>
                 <ol class="text-secondary fs-7 ps-3 mb-4">
                     <li class="mb-1">Check <strong>IFC Health Checks</strong> — resolve any Critical issues first; they indicate structural problems in the file that affect all downstream workflows.</li>
-                    <li class="mb-1">Check <strong>Missing Activity ID</strong> — export the CSV and share with your BIM team to populate the property in their authoring tool, then re-upload and re-process the IFC.</li>
+                    <li class="mb-1">Check <strong>Missing IFC Activity ID property</strong> — export the CSV for elements still missing both the property and an accepted Castor binding; share with your BIM team to populate the property in Revit, then re-upload.</li>
                     <li class="mb-1">Check <strong>Activity ID &amp; Name Audit</strong> — confirm every Activity ID group is linked to a schedule task. Unlinked groups (&#9888;) should be re-run through the TimeLiner auto-link.</li>
                     <li class="mb-1">Check <strong>Levels Health</strong> — storeys with no elements indicate spatial containment gaps; storeys not in schedule need task names that reference the storey name.</li>
-                    <li class="mb-1">The red badge on the tab heading shows the combined count of missing Activity ID + missing Cost elements. Aim for zero.</li>
+                    <li class="mb-1">The red badge shows combined IFC property gaps (Activity ID + Cost) after excluding accepted task bindings. Aim for zero.</li>
                 </ol>
 
                 <!-- 4. Who can do what -->
@@ -102,7 +105,7 @@
                 <div class="d-flex flex-column gap-1 fs-7 text-secondary">
                     <span><i class="bi bi-dot"></i>Sections load in parallel on page open — large models may take a few seconds per section.</span>
                     <span><i class="bi bi-dot"></i>Activity ID matching uses a suffix check (<code>.endswith("activity id")</code>) so custom Pset prefixes like <code>Castor_ActivityID</code> are correctly detected.</span>
-                    <span><i class="bi bi-dot"></i>Missing Cost counts <em>all</em> elements without a numeric Cost or Unit Cost — elements with a <code>Cost = 0</code> are treated as missing.</span>
+                    <span><i class="bi bi-dot"></i>Missing IFC Cost counts elements without a numeric Cost or Unit Cost property and without accepted schedule cost via binding — elements with <code>Cost = 0</code> in IFC are treated as missing. QTO coverage is not applied in this section yet.</span>
                     <span><i class="bi bi-dot"></i>The In Schedule check for Levels Health is a text-substring match — it is a hint, not a guarantee of a formal schedule link.</span>
                     <span><i class="bi bi-dot"></i>Display is capped at 500 rows per section; use Export CSV for the full list.</span>
                 </div>
