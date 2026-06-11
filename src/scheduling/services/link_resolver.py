@@ -65,7 +65,7 @@ def link_status_for_task(task, binding_gids: list[str] | None = None) -> str:
 
     Returns one of: non_physical | linked | needs_review | unlinked.
     Trusted links require at least one binding with needs_review=False.
-  """
+    """
     if task.is_non_physical:
         return "non_physical"
     if binding_gids is not None and not binding_gids:

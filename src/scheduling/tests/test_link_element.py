@@ -115,10 +115,7 @@ def test_link_element_idempotent(client):
     assert r2.status_code == 200
     assert r2.json()["status"] == "linked"
     # Still only one binding row
-    assert (
-        TaskEntityBinding.objects.filter(task=task, entity_global_id=global_id).count()
-        == 1
-    )
+    assert TaskEntityBinding.objects.filter(task=task, entity_global_id=global_id).count() == 1
     assert task.ifc_entities.filter(pk=entity.pk).count() == 1
 
 
