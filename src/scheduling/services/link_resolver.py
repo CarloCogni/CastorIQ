@@ -61,8 +61,21 @@ def task_is_linked(task_id: str | UUID, binding_gids: list[str] | None = None) -
 
 
 def link_status_for_task(task, binding_gids: list[str] | None = None) -> str:
-    """Return 'non_physical' | 'linked' | 'unlinked' using binding counts."""
+    """Return link display status from TaskEntityBinding review flags.
+
+    Returns one of: non_physical | linked | needs_review | unlinked.
+    Trusted links require at least one binding with needs_review=False.
+    """
     if task.is_non_physical:
         return "non_physical"
-    gids = binding_gids if binding_gids is not None else entity_gids_for_task(task.pk)
-    return "linked" if gids else "unlinked"
+    if binding_gids is not None and not binding_gids:
+        return "unlinked"
+
+    from scheduling.models import TaskEntityBinding
+
+    bindings = TaskEntityBinding.objects.filter(task_id=task.pk)
+    if not bindings.exists():
+        return "unlinked"
+    if bindings.filter(needs_review=False).exists():
+        return "linked"
+    return "needs_review"

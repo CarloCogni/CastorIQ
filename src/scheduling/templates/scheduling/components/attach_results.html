@@ -22,15 +22,17 @@
                     {% endif %}
                 </td>
                 <td class="text-center">
-                    <span class="badge bg-secondary">{{ task.ifc_entities.all|length }}</span>
+                    <span class="badge bg-secondary">{{ task.binding_link_count|default:0 }}</span>
                 </td>
                 <td class="text-center">
-                    {% if task.link_status == 'linked' %}
-                        <span title="All entities linked">✅</span>
-                    {% elif task.link_status == 'partial' %}
-                        <span title="Partially linked">⚠️</span>
+                    {% if task.binding_link_status == 'linked' %}
+                        <span title="Linked via TaskEntityBinding">✅</span>
+                    {% elif task.binding_link_status == 'needs_review' %}
+                        <span title="Bindings need review">⚠️</span>
+                    {% elif task.binding_link_status == 'non_physical' %}
+                        <span class="text-secondary" title="Non-physical task">—</span>
                     {% else %}
-                        <span title="No entities linked">❌</span>
+                        <span title="No trusted bindings">❌</span>
                     {% endif %}
                 </td>
             </tr>

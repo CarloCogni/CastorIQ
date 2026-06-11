@@ -42,7 +42,7 @@ from .services.column_mapper import (
 )
 from .services.critical_path import compute_critical_path
 from .services.evm import compute_evm
-from .services.linker import apply_matches, param_match_tasks
+from .services.linker import param_match_tasks, persist_param_matches
 from .services.msp_parser import parse_msp
 from .services.p6_save import finalise_p6_data, save_p6_pending_data
 from .services.pct_normalize import normalize_pct_complete
@@ -52,15 +52,23 @@ from .services.xer_parser import parse_xer
 logger = logging.getLogger(__name__)
 
 
+def _annotate_binding_link_state(project, tasks: list) -> None:
+    """Attach binding_link_count and binding_link_status to task instances in-place."""
+    from .services.link_resolver import entity_gids_by_task, link_status_for_task
+
+    if not tasks:
+        return
+    link_map = entity_gids_by_task(project.pk, [t.pk for t in tasks])
+    for task in tasks:
+        gids = link_map.get(str(task.pk), [])
+        task.binding_link_count = len(gids)
+        task.binding_link_status = link_status_for_task(task, gids)
+
+
 def _task_list_render_context(project, queryset, **extra: object) -> dict:
     """Build task_list.html context with TaskEntityBinding link counts (not M2M)."""
-    from .services.link_resolver import entity_gids_by_task
-
     tasks = list(queryset)
-    if tasks:
-        link_map = entity_gids_by_task(project.pk, [t.pk for t in tasks])
-        for task in tasks:
-            task.binding_link_count = len(link_map.get(str(task.pk), []))
+    _annotate_binding_link_state(project, tasks)
     return {
         "tasks": tasks,
         "project": project,
@@ -1144,19 +1152,19 @@ class LinkParamView(ProjectModifyAccessMixin, View):
 
         matches = param_match_tasks(tasks, entities, param_name)
         if matches:
-            apply_matches(Task, matches)
+            persist_param_matches(matches, entities)
 
-        tasks_qs = Task.objects.filter(project=project).prefetch_related("ifc_entities")
+        tasks_qs = Task.objects.filter(project=project).order_by("start_date", "name")
         response = render(
             request,
             "scheduling/components/attach_results.html",
-            {
-                "tasks": tasks_qs,
-                "matches": matches,
-                "project": project,
-                "match_mode": "param",
-                "param_name": param_name,
-            },
+            _task_list_render_context(
+                project,
+                tasks_qs,
+                matches=matches,
+                match_mode="param",
+                param_name=param_name,
+            ),
         )
         linked = sum(1 for m in matches if m["entity_ids"])
         return trigger_toast(
@@ -2561,10 +2569,22 @@ class LinkElementView(ProjectModifyAccessMixin, View):
             entity_global_id=global_id,
             defaults={
                 "confidence": 1.0,
-                "link_method": TaskEntityBinding.LinkMethod.EXACT,
+                "link_method": TaskEntityBinding.LinkMethod.MANUAL,
                 "needs_review": False,
             },
         )
+        if not created:
+            TaskEntityBinding.objects.filter(pk=binding.pk).update(
+                confidence=1.0,
+                link_method=TaskEntityBinding.LinkMethod.MANUAL,
+                needs_review=False,
+            )
+
+        ifc_files = _get_ifc_files(project)
+        entities = list(IFCEntity.objects.filter(ifc_file__in=ifc_files, global_id=global_id))
+        if entities:
+            task.ifc_entities.add(*entities)
+
         status_code = 201 if created else 200
         return JsonResponse({"status": "linked", "binding_id": str(binding.id)}, status=status_code)
 
