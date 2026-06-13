@@ -76,6 +76,14 @@ class GovernanceSummaryService:
             "property_hint_entities": property_hints,
             "trusted_method_mix": trusted_method_mix,
             "review_method_mix": review_method_mix,
+            "reconciliation_diagnostic": {
+                "status": "not_evaluated",
+                "message": (
+                    "Full binding reconciliation counts are available via the "
+                    "Reconciliation diagnostic tab (read-only)."
+                ),
+                "legacy_m2m_parity_hint": legacy_only,
+            },
             "warnings": warnings,
         }
 

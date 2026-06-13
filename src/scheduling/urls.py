@@ -274,6 +274,16 @@ urlpatterns = [
         name="link_decision_bulk_apply",
     ),
     path(
+        "projects/<uuid:pk>/link-governance/reconciliation/",
+        views.LinkGovernanceReconciliationView.as_view(),
+        name="link_governance_reconciliation",
+    ),
+    path(
+        "projects/<uuid:pk>/link-governance/reconciliation/<uuid:binding_pk>/",
+        views.LinkGovernanceReconciliationDetailView.as_view(),
+        name="link_governance_reconciliation_detail",
+    ),
+    path(
         "projects/<uuid:pk>/comprehension/",
         views.ProjectComprehensionView.as_view(),
         name="schedule_comprehension",

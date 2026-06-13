@@ -2207,6 +2207,46 @@ class LinkDecisionBulkApplyView(ProjectModifyAccessMixin, View):
         return trigger_toast(response, msg, "success")
 
 
+class LinkGovernanceReconciliationView(ProjectAccessMixin, View):
+    """GET — read-only binding reconciliation diagnostic (JSON or HTMX)."""
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.binding_reconciliation import (
+            BindingReconciliationService,
+        )
+
+        project = self.get_project()
+        filters = BindingReconciliationService.filters_from_request(request.GET.dict())
+        payload = BindingReconciliationService(str(project.pk), project_pk=project.pk).build(
+            filters
+        )
+
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "scheduling/components/governance_reconciliation_panel.html",
+                {"project": project, "reconciliation": payload, "filters": filters},
+            )
+        return JsonResponse(payload)
+
+
+class LinkGovernanceReconciliationDetailView(ProjectAccessMixin, View):
+    """GET — read-only reconciliation detail for one binding."""
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.binding_reconciliation import (
+            BindingReconciliationService,
+        )
+
+        project = self.get_project()
+        payload = BindingReconciliationService(str(project.pk), project_pk=project.pk).binding_detail(
+            kwargs["binding_pk"]
+        )
+        if "error" in payload:
+            return JsonResponse(payload, status=404)
+        return JsonResponse(payload)
+
+
 class LookaheadDataView(ProjectAccessMixin, View):
     """JSON — per-week task buckets (starting/in_progress/finishing) for the Look-ahead tab."""
 
