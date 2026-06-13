@@ -1,0 +1,55 @@
+<!-- scheduling/components/governance_decision_confirm_one.html — individual approval confirm -->
+
+<div id="decision-confirm-{{ binding_id }}" class="border rounded p-3 bg-body-tertiary small">
+    <div class="fw-semibold mb-2">Confirm approval</div>
+    {% with item=preview.items.0 %}
+    <dl class="row mb-2 g-1">
+        <dt class="col-sm-3">Task</dt>
+        <dd class="col-sm-9">{{ item.task_name }}</dd>
+        <dt class="col-sm-3">Entity</dt>
+        <dd class="col-sm-9"><code>{{ item.entity_global_id }}</code></dd>
+        <dt class="col-sm-3">Evidence</dt>
+        <dd class="col-sm-9">{{ item.evidence_label }} · conf {{ item.confidence|floatformat:2 }}</dd>
+        <dt class="col-sm-3">Status</dt>
+        <dd class="col-sm-9">
+            {% if item.status == 'eligible' %}Eligible for trusted acceptance
+            {% elif item.status == 'already_accepted' %}Already trusted (no-op)
+            {% else %}{{ item.status }}{% endif %}
+        </dd>
+    </dl>
+    {% if item.conflict_warning %}
+    <div class="alert alert-warning py-2 mb-2">{{ item.conflict_warning }}</div>
+    {% endif %}
+    {% endwith %}
+    <p class="text-secondary mb-2">
+        Confidence is informational only — human approval is required regardless of score.
+    </p>
+    <form hx-post="{% url 'scheduling:link_decision_apply_one' project.pk binding_id %}"
+          hx-target="#decision-confirm-{{ binding_id }}"
+          hx-swap="outerHTML">
+        {% csrf_token %}
+        <input type="hidden" name="selection_fingerprint" value="{{ preview.selection_fingerprint }}">
+        <input type="hidden" name="queue_mode" value="{{ queue_mode }}">
+        <input type="hidden" name="queue_page" value="{{ queue_page }}">
+        {% if preview.conflict_warning_count %}
+        <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" name="conflict_acknowledged" id="conflict-ack-{{ binding_id }}" value="true">
+            <label class="form-check-label" for="conflict-ack-{{ binding_id }}">
+                I acknowledge possible conflict warnings for this entity.
+            </label>
+        </div>
+        {% endif %}
+        <div class="d-flex gap-2 flex-wrap">
+            {% if preview.eligible_count %}
+            <button type="submit" class="btn btn-sm btn-success">Approve trusted</button>
+            {% endif %}
+            <button type="button" class="btn btn-sm btn-outline-secondary"
+                    onclick="this.closest('[id^=decision-confirm-]').remove()">
+                Defer
+            </button>
+        </div>
+        <div class="mt-2 text-secondary" style="font-size:0.75rem;">
+            Defer closes this panel with no database change. Persistent rejection history arrives in E2-E.
+        </div>
+    </form>
+</div>

@@ -12,13 +12,17 @@
             </div>
             <div class="modal-body px-4 py-4">
                 <h6 class="fw-semibold">What is it?</h6>
-                <p class="small">Read-only workspace separating trusted accepted bindings, review suggestions, property hints, legacy M2M compatibility, and deterministic possible conflicts under policy <code>trusted-binding-v1</code>.</p>
+                <p class="small">Workspace separating trusted accepted bindings, review suggestions, property hints, legacy M2M compatibility, and deterministic possible conflicts under policy <code>trusted-binding-v1</code>.</p>
                 <h6 class="fw-semibold mt-3">Trusted vs review</h6>
-                <p class="small">Trusted means <code>needs_review=False</code>. Review suggestions never drive colormap, readiness, or viewer highlights. Property Activity ID metadata is evidence only.</p>
-                <h6 class="fw-semibold mt-3">How to use this page</h6>
-                <p class="small">Switch queue modes, filter by method or confidence, open evidence panels, and navigate to task detail or the model viewer. Approve/reject controls arrive in E2-C.</p>
+                <p class="small">Trusted means <code>needs_review=False</code>. Review suggestions never drive colormap, readiness, or viewer highlights until explicitly approved. Property Activity ID metadata is evidence only.</p>
+                <h6 class="fw-semibold mt-3">How to approve (E2-C)</h6>
+                <p class="small">In Review mode, use Approve on one row or select up to 100 items for bulk preview. Exact literal full-preview uses the separate E1 flow (Activity ID parameter match). Normalized, heuristic, and semantic suggestions require explicit human approval — confidence never auto-trusts.</p>
+                <h6 class="fw-semibold mt-3">Defer and reject</h6>
+                <p class="small">Defer closes the panel with no database change. Persistent rejection history and reversal arrive in E2-E — there is no reject button in E2-C.</p>
+                <h6 class="fw-semibold mt-3">Who can approve</h6>
+                <p class="small">Project editors and owners with link-management modify permission. Viewers can browse the queue but cannot approve.</p>
                 <h6 class="fw-semibold mt-3">Caveats</h6>
-                <p class="small mb-0">Multiple accepted tasks on one entity are allowed unless overlap evidence triggers a possible conflict. Legacy M2M rows without accepted bindings are compatibility storage only.</p>
+                <p class="small mb-0">Multiple accepted tasks on one entity are allowed unless overlap evidence triggers a possible conflict requiring acknowledgment. Legacy M2M rows without accepted bindings are compatibility storage only. Decision references in responses are operational — not immutable audit records.</p>
             </div>
         </div>
     </div>

@@ -80,6 +80,34 @@
         </div>
     </form>
 
+    {% if queue.mode == 'review' %}
+    <div class="d-flex align-items-center gap-2 flex-wrap border rounded p-2 bg-body-tertiary">
+        <span class="small fw-semibold">Review decisions</span>
+        <span class="small text-secondary">Select up to 100 items · explicit approval only</span>
+        <button type="button" class="btn btn-sm btn-outline-primary ms-auto"
+                hx-post="{% url 'scheduling:link_decision_bulk_preview' project.pk %}"
+                hx-include="#gq-selection-form"
+                hx-target="#governance-bulk-preview-slot"
+                hx-swap="innerHTML"
+                hx-vals='{"queue_mode": "{{ queue.mode }}", "queue_page": "{{ queue.pagination.page }}"}'>
+            Bulk preview
+        </button>
+    </div>
+    <div id="governance-bulk-preview-slot"></div>
+    {% elif queue.mode == 'trusted' %}
+    <div class="alert alert-secondary py-2 small mb-0" role="status">
+        Trusted mode is read-only in E2-C. Reversal and downgrade arrive in E2-E.
+    </div>
+    {% elif queue.mode == 'property_hints' %}
+    <div class="alert alert-info py-2 small mb-0" role="status">
+        Property hints are evidence only — approve requires an actual review binding row (use manual link workflow).
+    </div>
+    {% elif queue.mode == 'legacy_only' %}
+    <div class="alert alert-secondary py-2 small mb-0" role="status">
+        Legacy M2M rows cannot be approved as suggestions — create or accept a binding row first.
+    </div>
+    {% endif %}
+
     {% if queue.warnings %}
     <div class="alert alert-warning py-2 small mb-0" role="status">
         {% for w in queue.warnings %}<div>{{ w }}</div>{% endfor %}
@@ -88,10 +116,14 @@
 
     <!-- Queue rows -->
     {% if queue.items %}
+    <form id="gq-selection-form">
     <div class="table-responsive">
         <table class="table table-sm table-hover align-middle mb-0" style="font-size:0.82rem;">
             <thead class="table-light">
                 <tr>
+                    {% if queue.mode == 'review' %}
+                    <th scope="col" style="width:2rem;"></th>
+                    {% endif %}
                     <th scope="col">Task</th>
                     <th scope="col">Entity</th>
                     <th scope="col">Category</th>
@@ -103,6 +135,15 @@
             <tbody>
                 {% for item in queue.items %}
                 <tr>
+                    {% if queue.mode == 'review' %}
+                    <td>
+                        {% if item.item_type == 'binding' and item.governance.needs_review %}
+                        <input type="checkbox" class="form-check-input gq-select"
+                               name="binding_ids" value="{{ item.item_id }}"
+                               aria-label="Select {{ item.identity.task_name }}">
+                        {% endif %}
+                    </td>
+                    {% endif %}
                     <td>
                         {% if item.identity.task_name %}
                         <div class="fw-semibold text-truncate" style="max-width:160px;">{{ item.identity.task_name }}</div>
@@ -145,19 +186,34 @@
                                     aria-controls="evidence-{{ forloop.counter }}">
                                 Evidence
                             </button>
+                            {% if queue.mode == 'review' and item.item_type == 'binding' and item.governance.needs_review %}
+                            <button type="button" class="btn btn-sm btn-success py-0 px-1"
+                                    hx-post="{% url 'scheduling:link_decision_preview_one' project.pk item.item_id %}"
+                                    hx-target="#decision-slot-{{ forloop.counter }}"
+                                    hx-swap="innerHTML"
+                                    hx-vals='{"queue_mode": "{{ queue.mode }}", "queue_page": "{{ queue.pagination.page }}"}'>
+                                Approve
+                            </button>
+                            {% endif %}
                         </div>
                     </td>
                 </tr>
                 <tr class="collapse" id="evidence-{{ forloop.counter }}">
-                    <td colspan="6" class="bg-body-secondary small">
+                    <td colspan="{% if queue.mode == 'review' %}7{% else %}6{% endif %}" class="bg-body-secondary small">
                         {% include "scheduling/components/governance_evidence_panel.html" with evidence=item.evidence warnings=item.warnings %}
-                        <div class="mt-2 text-secondary">Decision controls arrive in E2-C</div>
+                        <div id="decision-slot-{{ forloop.counter }}" class="mt-2"></div>
+                        {% if queue.mode == 'review' and item.item_type == 'binding' and item.governance.needs_review %}
+                        <div class="mt-2 text-secondary" style="font-size:0.75rem;">
+                            Confidence does not grant trust. Reject with persistent history arrives in E2-E — use Defer to dismiss without changes.
+                        </div>
+                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
+    </form>
     {% else %}
     <div class="text-center text-secondary py-4" role="status">
         <i class="bi bi-inbox fs-3 d-block mb-2" aria-hidden="true"></i>

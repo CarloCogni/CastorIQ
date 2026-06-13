@@ -1,4 +1,4 @@
-<!-- scheduling/tabs/link_governance.html — read-only link governance review workspace (E2-B) -->
+<!-- scheduling/tabs/link_governance.html — link governance review workspace (E2-B/C) -->
 
 <div id="link-governance-workspace" class="d-flex flex-column gap-3 h-100">
     <div class="d-flex align-items-center gap-2 flex-wrap">
@@ -14,10 +14,17 @@
                 <i class="bi bi-question-circle"></i>
             </button>
         </div>
-        <span class="badge bg-secondary-subtle text-secondary-emphasis border"
-              style="font-size:0.72rem;">Read-only · trusted-binding-v1</span>
-        <span class="ms-auto text-secondary small">Decision controls arrive in E2-C</span>
+        <span class="badge bg-primary-subtle text-primary-emphasis border"
+              style="font-size:0.72rem;">trusted-binding-v1 · E2-C decisions</span>
+        <a class="btn btn-sm btn-outline-primary ms-auto"
+           hx-get="{% url 'scheduling:schedule_link_preview_param' project.pk %}?param_name=Activity%20ID"
+           hx-target="#governance-exact-preview-slot"
+           hx-swap="innerHTML">
+            Exact full preview
+        </a>
     </div>
+
+    <div id="governance-exact-preview-slot"></div>
 
     <div id="governance-queue-panel"
          hx-get="{% url 'scheduling:link_governance_review_queue' project.pk %}?mode=review&page=1"
