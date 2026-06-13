@@ -1,0 +1,62 @@
+<!-- scheduling/components/governance_audit_panel.html — immutable audit timeline -->
+
+<div id="governance-audit-panel" class="d-flex flex-column gap-3">
+    <div class="alert alert-secondary py-2 small mb-0" role="status">
+        Append-only governance history. Events cannot be edited or deleted through the application.
+        Pre-E2-E trusted links appear as legacy baseline without fabricated approval actors.
+    </div>
+
+    <form class="row g-2 align-items-end"
+          hx-get="{% url 'scheduling:link_governance_audit' project.pk %}"
+          hx-target="#governance-audit-panel"
+          hx-swap="outerHTML">
+        <div class="col-auto">
+            <label class="form-label small mb-0" for="audit-event-type">Event type</label>
+            <input id="audit-event-type" type="text" name="event_type" class="form-control form-control-sm"
+                   value="{{ filters.event_type|default:'' }}" placeholder="rejected">
+        </div>
+        <div class="col-auto">
+            <label class="form-label small mb-0" for="audit-binding">Binding ID</label>
+            <input id="audit-binding" type="text" name="binding_id" class="form-control form-control-sm"
+                   value="{{ filters.binding_id|default:'' }}">
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-sm btn-primary">Filter</button>
+        </div>
+    </form>
+
+    {% if audit.events %}
+    <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0" style="font-size:0.82rem;">
+            <thead class="table-light">
+                <tr>
+                    <th>Time</th>
+                    <th>Type</th>
+                    <th>Actor</th>
+                    <th>Binding</th>
+                    <th>State</th>
+                    <th>Reason</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for e in audit.events %}
+                <tr>
+                    <td class="text-nowrap">{{ e.created_at }}</td>
+                    <td><code>{{ e.event_type }}</code></td>
+                    <td>{{ e.actor|default:"—" }}</td>
+                    <td><code class="small">{{ e.binding_id|default:"—" }}</code></td>
+                    <td><code>{{ e.previous_state }}</code> → <code>{{ e.resulting_state }}</code></td>
+                    <td>{{ e.reason_code }}{% if e.reason_text %}: {{ e.reason_text|truncatechars:40 }}{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="small text-secondary">
+        Page {{ audit.pagination.page }} of {{ audit.pagination.total_pages }}
+        · {{ audit.pagination.total_items }} event(s)
+    </div>
+    {% else %}
+    <div class="text-secondary small py-3">No governance events yet for this project.</div>
+    {% endif %}
+</div>

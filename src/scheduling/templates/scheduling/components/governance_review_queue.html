@@ -96,7 +96,7 @@
     <div id="governance-bulk-preview-slot"></div>
     {% elif queue.mode == 'trusted' %}
     <div class="alert alert-secondary py-2 small mb-0" role="status">
-        Trusted mode is read-only in E2-C. Reversal and downgrade arrive in E2-E.
+        Trusted bindings can be reaffirmed, reversed, or superseded with audited lifecycle events (E2-E).
     </div>
     {% elif queue.mode == 'property_hints' %}
     <div class="alert alert-info py-2 small mb-0" role="status">
@@ -193,6 +193,25 @@
                                     hx-swap="innerHTML"
                                     hx-vals='{"queue_mode": "{{ queue.mode }}", "queue_page": "{{ queue.pagination.page }}"}'>
                                 Approve
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1"
+                                    hx-post="{% url 'scheduling:link_lifecycle_reject_preview' project.pk item.item_id %}"
+                                    hx-target="#decision-slot-{{ forloop.counter }}"
+                                    hx-swap="innerHTML">
+                                Reject
+                            </button>
+                            {% elif queue.mode == 'trusted' and item.item_type == 'binding' and item.governance.trusted %}
+                            <button type="button" class="btn btn-sm btn-outline-primary py-0 px-1"
+                                    hx-post="{% url 'scheduling:link_lifecycle_reaffirm_preview' project.pk item.item_id %}"
+                                    hx-target="#decision-slot-{{ forloop.counter }}"
+                                    hx-swap="innerHTML">
+                                Reaffirm
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1"
+                                    hx-post="{% url 'scheduling:link_lifecycle_reverse_preview' project.pk item.item_id %}"
+                                    hx-target="#decision-slot-{{ forloop.counter }}"
+                                    hx-swap="innerHTML">
+                                Reverse
                             </button>
                             {% endif %}
                         </div>

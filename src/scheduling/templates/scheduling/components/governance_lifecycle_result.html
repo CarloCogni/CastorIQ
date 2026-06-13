@@ -1,0 +1,13 @@
+<!-- scheduling/components/governance_lifecycle_result.html — lifecycle apply outcome -->
+
+<div class="alert {% if result.noop %}alert-secondary{% else %}alert-success{% endif %} py-2 small mb-0" role="status">
+    <div class="fw-semibold text-capitalize">{{ operation }} {% if result.noop %}already applied (no-op){% else %}recorded{% endif %}</div>
+    <div>Event <code>{{ result.event_id }}</code></div>
+    <div>{{ result.previous_state }} → {{ result.resulting_state }}</div>
+    {% if result.m2m_added %}<div>M2M added: {{ result.m2m_added }}</div>{% endif %}
+    {% if result.m2m_removed %}<div>M2M removed: {{ result.m2m_removed }}</div>{% endif %}
+    {% for rid in result.related_event_ids %}
+    <div>Related event: <code>{{ rid }}</code></div>
+    {% endfor %}
+    <div class="text-secondary mt-1">Immutable audit history preserved — corrections require new events.</div>
+</div>
