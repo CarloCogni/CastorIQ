@@ -6,7 +6,7 @@ from __future__ import annotations
 import pytest
 from django.urls import reverse
 
-from environments.tests.factories import ProjectFactory, UserFactory
+from environments.tests.factories import ProjectFactory, ProjectMembershipFactory, UserFactory
 from ifc_processor.tests.factories import IFCEntityFactory, IFCFileFactory
 from scheduling.models import BindingGovernanceEvent, TaskEntityBinding
 from scheduling.services.governance.active_state import apply_active_review, apply_trusted
@@ -35,6 +35,12 @@ def _bind(task, gid: str, *, needs_review: bool = True, method=None, confidence=
     )
 
 
+def _editor(project):
+    user = UserFactory()
+    ProjectMembershipFactory(project=project, user=user, permission="editor")
+    return user
+
+
 @pytest.mark.django_db
 def test_migration_backfill_maps_review_and_trusted():
     """Existing needs_review flags map to active_review and trusted lifecycle states."""
@@ -59,7 +65,7 @@ def test_trusted_reads_use_lifecycle_filter():
     reader = BindingGovernanceReader(project.pk)
     assert "GID-A" in reader.trusted_entity_gids()
 
-    svc = BindingLifecycleService(project, UserFactory())
+    svc = BindingLifecycleService(project, project.owner)
     preview = svc.preview_reverse(str(trusted.pk))
     svc.reverse(
         str(trusted.pk),
@@ -78,7 +84,7 @@ def test_governance_event_is_append_only():
     project = ProjectFactory()
     task = TaskFactory(project=project)
     binding = _bind(task, "GID-E", needs_review=True)
-    svc = BindingLifecycleService(project, UserFactory())
+    svc = BindingLifecycleService(project, project.owner)
     preview = svc.preview_reject(str(binding.pk))
     result = svc.reject(
         str(binding.pk),
@@ -100,7 +106,7 @@ def test_reject_requires_reason_and_excludes_from_queue():
     project = ProjectFactory()
     task = TaskFactory(project=project)
     binding = _bind(task, "GID-RJ", needs_review=True)
-    user = UserFactory()
+    user = _editor(project)
     svc = BindingLifecycleService(project, user)
 
     with pytest.raises(LifecycleValidationError):
@@ -127,7 +133,7 @@ def test_reject_idempotent_on_repeat():
     project = ProjectFactory()
     task = TaskFactory(project=project)
     binding = _bind(task, "GID-IDEM", needs_review=True)
-    user = UserFactory()
+    user = _editor(project)
     svc = BindingLifecycleService(project, user)
     preview = svc.preview_reject(str(binding.pk))
     first = svc.reject(
@@ -155,7 +161,7 @@ def test_stale_fingerprint_blocks_reject():
     project = ProjectFactory()
     task = TaskFactory(project=project)
     binding = _bind(task, "GID-STALE", needs_review=True)
-    svc = BindingLifecycleService(project, UserFactory())
+    svc = BindingLifecycleService(project, project.owner)
     with pytest.raises(StaleLifecycleError):
         svc.reject(
             str(binding.pk),
@@ -179,7 +185,7 @@ def test_reverse_removes_m2m_when_safe():
         task, entity.global_id, needs_review=False, method=TaskEntityBinding.LinkMethod.EXACT
     )
 
-    svc = BindingLifecycleService(project, UserFactory())
+    svc = BindingLifecycleService(project, project.owner)
     preview = svc.preview_reverse(str(binding.pk))
     result = svc.reverse(
         str(binding.pk),
@@ -198,7 +204,7 @@ def test_reverse_preview_retains_m2m_when_unsafe(monkeypatch):
     project = ProjectFactory()
     task = TaskFactory(project=project)
     binding = _bind(task, "GID-RET", needs_review=False, method=TaskEntityBinding.LinkMethod.EXACT)
-    svc = BindingLifecycleService(project, UserFactory())
+    svc = BindingLifecycleService(project, project.owner)
     monkeypatch.setattr(svc, "_can_remove_m2m", lambda _b: False)
     preview = svc.preview_reverse(str(binding.pk))
     assert preview.expected_m2m_change == "retain"
@@ -218,7 +224,7 @@ def test_supersede_atomic_linked_events():
     )
     new_b = _bind(task, new_entity.global_id, needs_review=True)
 
-    svc = BindingLifecycleService(project, UserFactory())
+    svc = BindingLifecycleService(project, project.owner)
     preview = svc.preview_supersede(str(old_b.pk), str(new_b.pk))
     result = svc.supersede(
         str(old_b.pk),
@@ -247,7 +253,7 @@ def test_parity_add_missing_m2m():
         task, entity.global_id, needs_review=False, method=TaskEntityBinding.LinkMethod.EXACT
     )
 
-    svc = BindingLifecycleService(project, UserFactory())
+    svc = BindingLifecycleService(project, project.owner)
     preview = svc.preview_parity_repair(
         binding_id=str(binding.pk),
         repair_type="accepted_missing_m2m",
@@ -270,7 +276,7 @@ def test_audit_history_paginated_and_filtered():
     project = ProjectFactory()
     task = TaskFactory(project=project)
     binding = _bind(task, "GID-AUD", needs_review=True)
-    user = UserFactory()
+    user = _editor(project)
     svc = BindingLifecycleService(project, user)
     preview = svc.preview_reject(str(binding.pk))
     svc.reject(
