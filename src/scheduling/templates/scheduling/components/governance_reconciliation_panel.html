@@ -5,14 +5,34 @@
 
     <div class="alert alert-warning py-2 small mb-0" role="status">
         <i class="bi bi-info-circle me-1" aria-hidden="true"></i>
-        Reconciliation is diagnostic only. No links are changed.
+        Reconciliation is diagnostic only. Results are not cached — run explicitly when needed.
     </div>
+
+    {% if r.not_evaluated %}
+    <div class="border rounded p-3 bg-body-tertiary">
+        <p class="small mb-2 mb-md-0">
+            Full project scan has <strong>not been evaluated</strong> for this view.
+            Prior summary cards do not reflect live binding state until you run a diagnostic.
+        </p>
+        <button type="button" class="btn btn-sm btn-primary mt-2"
+                hx-get="{% url 'scheduling:link_governance_reconciliation' project.pk %}?run=1&scope=all&page=1"
+                hx-target="#governance-reconciliation-panel"
+                hx-swap="outerHTML">
+            <span class="spinner-border spinner-border-sm d-none htmx-indicator me-1" role="status"></span>
+            Run full diagnostic
+        </button>
+    </div>
+    {% elif r.evaluated_at %}
+    <div class="small text-secondary">
+        Evaluated {{ r.evaluated_at }} · scope {{ r.evaluation_scope|default:"all" }}
+    </div>
+    {% endif %}
 
     <!-- Summary cards -->
     <div class="row g-2" role="group" aria-label="Reconciliation summary">
         <div class="col-6 col-md-4 col-lg-2">
             <div class="border rounded p-2 text-center bg-success-subtle">
-                <div class="fw-semibold">{{ s.valid }}</div>
+                <div class="fw-semibold">{% if s.valid != None %}{{ s.valid }}{% else %}—{% endif %}</div>
                 <div class="small text-secondary">Valid</div>
             </div>
         </div>
@@ -115,10 +135,30 @@
     {% endif %}
 
     {% if r.findings %}
+    {% if governance_capabilities %}
+    <div class="d-flex align-items-center gap-2 flex-wrap border rounded p-2 bg-body-tertiary">
+        <span class="small fw-semibold">Parity repair (selected only, max 500)</span>
+        {% if governance_capabilities.capabilities.can_repair_m2m_add or governance_capabilities.capabilities.can_repair_m2m_remove %}
+        <button type="button" class="btn btn-sm btn-outline-danger ms-auto"
+                hx-post="{% url 'scheduling:link_lifecycle_parity_bulk_preview' project.pk %}"
+                hx-include="#gr-parity-form"
+                hx-target="#gr-parity-preview-slot"
+                hx-swap="innerHTML">
+            Preview parity repair
+        </button>
+        {% else %}
+        <span class="small text-secondary ms-auto">Parity repair requires editor/owner authority</span>
+        {% endif %}
+    </div>
+    <div id="gr-parity-preview-slot"></div>
+    {% endif %}
+    <form id="gr-parity-form">
+    {% csrf_token %}
     <div class="table-responsive">
         <table class="table table-sm table-hover align-middle mb-0" style="font-size:0.82rem;">
             <thead class="table-light">
                 <tr>
+                    <th scope="col" style="width:2rem;"></th>
                     <th scope="col">Status</th>
                     <th scope="col">Task</th>
                     <th scope="col">Entity</th>
@@ -130,6 +170,24 @@
             <tbody>
                 {% for item in r.findings %}
                 <tr>
+                    <td>
+                        {% if item.primary_status == 'accepted_without_m2m' %}
+                        <input type="checkbox" class="form-check-input" name="binding_ids"
+                               value="{{ item.binding_id }}"
+                               aria-label="Select accepted missing M2M repair">
+                        <input type="hidden" name="repair_type_{{ item.binding_id }}" value="accepted_missing_m2m">
+                        {% elif item.primary_status == 'review_with_m2m' %}
+                        <input type="checkbox" class="form-check-input" name="binding_ids"
+                               value="{{ item.binding_id }}"
+                               aria-label="Select review M2M leak repair">
+                        <input type="hidden" name="repair_type_{{ item.binding_id }}" value="review_m2m_leak">
+                        {% elif item.primary_status == 'm2m_without_accepted' %}
+                        <input type="checkbox" class="form-check-input" name="parity_row" value="{{ forloop.counter }}">
+                        <input type="hidden" name="repair_type_row_{{ forloop.counter }}" value="m2m_without_accepted">
+                        <input type="hidden" name="task_id_row_{{ forloop.counter }}" value="{{ item.task.task_id }}">
+                        <input type="hidden" name="entity_gid_row_{{ forloop.counter }}" value="{{ item.entity.entity_global_id }}">
+                        {% endif %}
+                    </td>
                     <td>
                         <span class="badge {% if item.severity == 'critical' %}bg-danger{% elif item.severity == 'high' %}bg-warning text-dark{% elif item.severity == 'medium' %}bg-primary{% else %}bg-secondary{% endif %}-subtle border">
                             {{ item.primary_status }}
@@ -180,7 +238,8 @@
             </tbody>
         </table>
     </div>
-    {% else %}
+    </form>
+    {% elif not r.not_evaluated %}
     <div class="text-center text-secondary py-4" role="status">
         <i class="bi bi-check2-circle fs-3 d-block mb-2" aria-hidden="true"></i>
         No findings match the current filters.

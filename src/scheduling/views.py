@@ -1981,6 +1981,28 @@ def _parse_binding_ids(payload: dict) -> list[str]:
     return [str(x).strip() for x in raw if str(x).strip()]
 
 
+def _parse_parity_items_from_request(request) -> list[dict[str, str]]:
+    """Build parity repair item dicts from HTMX form selection."""
+    items: list[dict[str, str]] = []
+    for bid in request.POST.getlist("binding_ids"):
+        repair_type = request.POST.get(f"repair_type_{bid}", "")
+        if bid and repair_type:
+            items.append({"binding_id": bid, "repair_type": repair_type})
+    for row_key in request.POST.getlist("parity_row"):
+        repair_type = request.POST.get(f"repair_type_row_{row_key}", "")
+        task_id = request.POST.get(f"task_id_row_{row_key}", "")
+        entity_gid = request.POST.get(f"entity_gid_row_{row_key}", "")
+        if repair_type and task_id and entity_gid:
+            items.append(
+                {
+                    "task_id": task_id,
+                    "entity_global_id": entity_gid,
+                    "repair_type": repair_type,
+                }
+            )
+    return items
+
+
 def _decision_error(
     request,
     message: str,
@@ -2257,7 +2279,14 @@ class LinkGovernanceReconciliationView(ProjectAccessMixin, View):
             return render(
                 request,
                 "scheduling/components/governance_reconciliation_panel.html",
-                {"project": project, "reconciliation": payload, "filters": filters},
+                {
+                    "project": project,
+                    "reconciliation": payload,
+                    "filters": filters,
+                    "governance_capabilities": _governance_capabilities_context(
+                        project, request.user
+                    ),
+                },
             )
         return JsonResponse(payload)
 
@@ -2633,6 +2662,115 @@ class LinkLifecycleSupersedeApplyView(GovernanceCapabilityMixin, View):
                 request,
                 "scheduling/components/governance_lifecycle_result.html",
                 {"project": project, "result": result, "operation": "supersede"},
+            )
+        return JsonResponse(result.to_dict())
+
+
+class LinkLifecycleSupersedePairView(GovernanceCapabilityMixin, View):
+    """GET — supersede pairing form with eligible review replacements."""
+
+    governance_capability = GovernanceCapability.SUPERSEDE
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.review_queue import LinkReviewQueueService
+
+        project = self.get_project()
+        service = LinkReviewQueueService(str(project.pk), project_pk=project.pk)
+        candidates = service.supersede_replacement_candidates(kwargs["binding_pk"])
+        return render(
+            request,
+            "scheduling/components/governance_supersede_pair.html",
+            {
+                "project": project,
+                "binding_id": kwargs["binding_pk"],
+                "candidates": candidates,
+            },
+        )
+
+
+class LinkLifecycleParityBulkPreviewView(GovernanceCapabilityMixin, View):
+    """POST — preview selected parity repairs."""
+
+    governance_capability = GovernanceCapability.REPAIR_M2M_ADD
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.binding_lifecycle import (
+            BindingLifecycleService,
+            LifecycleValidationError,
+        )
+
+        project = self.get_project()
+        items = _parse_parity_items_from_request(request)
+        if not items:
+            payload = _parse_json_or_form(request) or {}
+            items = payload.get("parity_items") or payload.get("items") or []
+            if isinstance(items, dict):
+                items = [items]
+        service = BindingLifecycleService(project, request.user)
+        try:
+            preview = service.preview_parity_selected(items)
+        except LifecycleValidationError as exc:
+            return _lifecycle_error(request, exc.message, status=400)
+
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "scheduling/components/governance_lifecycle_confirm.html",
+                {
+                    "project": project,
+                    "preview": preview,
+                    "operation": "parity_bulk",
+                    "confirm_phrase": "PARITY REPAIR",
+                    "reason_codes": [
+                        ("accepted_missing_m2m", "Accepted missing M2M"),
+                        ("m2m_without_accepted", "M2M without accepted binding"),
+                        ("review_m2m_leak", "Review M2M leak"),
+                        ("other", "Other"),
+                    ],
+                    "parity_items_json": json.dumps(items),
+                },
+            )
+        return JsonResponse(preview)
+
+
+class LinkLifecycleParityBulkApplyView(GovernanceCapabilityMixin, View):
+    """POST — apply selected parity repairs atomically."""
+
+    governance_capability = GovernanceCapability.REPAIR_M2M_ADD
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.binding_lifecycle import (
+            BindingLifecycleService,
+            LifecycleValidationError,
+            StaleLifecycleError,
+        )
+
+        project = self.get_project()
+        payload = _parse_json_or_form(request) or {}
+        items = _parse_parity_items_from_request(request)
+        if not items:
+            items = payload.get("parity_items") or []
+            if isinstance(items, str):
+                items = json.loads(items or "[]")
+        service = BindingLifecycleService(project, request.user)
+        try:
+            result = service.repair_parity_selected(
+                items,
+                fingerprint=payload.get("fingerprint", ""),
+                reason_code=payload.get("reason_code", ""),
+                reason_text=payload.get("reason_text", ""),
+                confirmation=payload.get("confirmation", ""),
+            )
+        except StaleLifecycleError as exc:
+            return _lifecycle_error(request, exc.message, status=409, details=exc.details)
+        except LifecycleValidationError as exc:
+            return _lifecycle_error(request, exc.message, status=400)
+
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "scheduling/components/governance_lifecycle_result.html",
+                {"project": project, "result": result, "operation": "parity"},
             )
         return JsonResponse(result.to_dict())
 

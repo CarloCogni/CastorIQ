@@ -1,0 +1,54 @@
+<!-- scheduling/components/governance_methodology_help_modal.html — metric methodology (E2-G) -->
+
+<div class="modal fade" id="governanceMethodologyHelpModal" tabindex="-1"
+     aria-labelledby="governanceMethodologyHelpLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+            <div class="modal-header border-bottom px-4 py-3">
+                <h5 class="modal-title fw-semibold fs-6 mb-0" id="governanceMethodologyHelpLabel">
+                    <i class="bi bi-calculator me-2 text-primary"></i>
+                    Governance Methodology
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body px-4 py-4 fs-7">
+
+                <p class="fw-semibold mb-2">Trust states</p>
+                <p class="text-secondary mb-3">
+                    <strong>Trusted</strong> = <code>is_active</code>, <code>governance_status=trusted</code>,
+                    <code>needs_review=false</code>.
+                    <strong>Active review</strong> = active + <code>active_review</code> + <code>needs_review=true</code>.
+                    Rejected, reversed, and superseded bindings are inactive and excluded from trusted and review reads.
+                </p>
+
+                <p class="fw-semibold mb-2">Coverage denominators</p>
+                <p class="text-secondary mb-3">
+                    Task coverage numerator = distinct tasks with trusted bindings.
+                    Denominator = <em>all schedule activities</em> (includes procurement, milestones, non-model work).
+                    Entity coverage numerator = trusted entity GIDs; denominator = indexed entities in completed IFC files.
+                    Low task % with high entity % can both be valid on the same project.
+                </p>
+
+                <p class="fw-semibold mb-2">Evidence and confidence</p>
+                <p class="text-secondary mb-3">
+                    Evidence labels (exact, normalized, manual, heuristic, semantic) describe the match channel —
+                    not approval authority. Confidence never auto-trusts. Property Activity ID metadata is not a binding.
+                    Legacy M2M without a trusted binding is compatibility storage only.
+                </p>
+
+                <p class="fw-semibold mb-2">Lifecycle and audit</p>
+                <p class="text-secondary mb-3">
+                    Approve, reject, reaffirm, reverse, supersede, and parity repair create append-only events
+                    prospectively after migration 0024. Pre-audit trusted rows (e.g. IBS baseline) have no historical events.
+                    Zero events does not mean zero historical decisions.
+                </p>
+
+                <p class="fw-semibold mb-2">Reconciliation</p>
+                <p class="text-secondary mb-0">
+                    Reconciliation is diagnostic only — run explicitly; results are not cached on overview load.
+                    Drift checks compare indexed IFC snapshots; version lineage has known limits.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>

@@ -32,6 +32,7 @@ from scheduling.services.governance.governance_events import (
     record_event,
 )
 from scheduling.services.governance.lifecycle_vocabulary import (
+    BULK_PARITY_MAX,
     PARITY_REPAIR_CONFIRM_PHRASE,
     REVERSE_CONFIRM_PHRASE,
     SUPERSEDE_CONFIRM_PHRASE,
@@ -546,6 +547,184 @@ class BindingLifecycleService:
         result.m2m_added = m2m_added
         result.m2m_removed = m2m_removed
         return result
+
+    def preview_parity_selected(self, items: list[dict[str, str]]) -> dict[str, Any]:
+        """Preview selected parity repairs (max BULK_PARITY_MAX, all-or-nothing)."""
+        if len(items) > BULK_PARITY_MAX:
+            raise LifecycleValidationError(
+                f"Selection exceeds maximum of {BULK_PARITY_MAX} parity repairs."
+            )
+        if not items:
+            raise LifecycleValidationError("At least one parity repair row must be selected.")
+        previews: list[LifecyclePreviewResult] = []
+        add_count = remove_count = 0
+        for raw in items:
+            preview = self.preview_parity_repair(
+                binding_id=raw.get("binding_id"),
+                task_id=raw.get("task_id"),
+                entity_global_id=raw.get("entity_global_id"),
+                repair_type=raw.get("repair_type", ""),
+            )
+            previews.append(preview)
+            if preview.expected_m2m_change == "add":
+                add_count += 1
+            elif preview.expected_m2m_change == "remove":
+                remove_count += 1
+        fp_payload = {
+            "op": "parity_selected",
+            "items": [
+                {
+                    "repair_type": raw.get("repair_type"),
+                    "binding_id": raw.get("binding_id"),
+                    "task_id": raw.get("task_id"),
+                    "entity_global_id": raw.get("entity_global_id"),
+                    "fingerprint": p.fingerprint,
+                }
+                for raw, p in zip(items, previews, strict=True)
+            ],
+        }
+        fingerprint = operation_fingerprint(str(self.project.pk), fp_payload)
+        errors = [err for p in previews for err in p.errors]
+        return {
+            "operation": "parity_selected",
+            "fingerprint": fingerprint,
+            "eligible": all(p.eligible for p in previews),
+            "previews": [p.to_dict() for p in previews],
+            "add_count": add_count,
+            "remove_count": remove_count,
+            "errors": errors,
+            "selection_count": len(items),
+        }
+
+    def repair_parity_selected(
+        self,
+        items: list[dict[str, str]],
+        *,
+        fingerprint: str,
+        reason_code: str,
+        reason_text: str = "",
+        confirmation: str = "",
+    ) -> LifecycleApplyResult:
+        """Apply selected parity repairs atomically."""
+        preview = self.preview_parity_selected(items)
+        if preview["fingerprint"] != fingerprint:
+            raise StaleLifecycleError(
+                "Parity selection fingerprint is stale — refresh preview.",
+                {"supplied": fingerprint, "current": preview["fingerprint"]},
+            )
+        if not preview["eligible"]:
+            raise LifecycleValidationError(
+                preview["errors"][0] if preview["errors"] else "Selection ineligible."
+            )
+        if confirmation != PARITY_REPAIR_CONFIRM_PHRASE:
+            raise LifecycleValidationError(
+                f"Confirmation phrase must be exactly '{PARITY_REPAIR_CONFIRM_PHRASE}'."
+            )
+        err = validate_reason(reason_code, reason_text)
+        if err:
+            raise LifecycleValidationError(err)
+
+        m2m_added = m2m_removed = 0
+        event_ids: list[str] = []
+        with transaction.atomic():
+            for raw in items:
+                p = self.preview_parity_repair(
+                    binding_id=raw.get("binding_id"),
+                    task_id=raw.get("task_id"),
+                    entity_global_id=raw.get("entity_global_id"),
+                    repair_type=raw.get("repair_type", ""),
+                )
+                if not p.eligible:
+                    raise LifecycleValidationError(
+                        p.errors[0] if p.errors else "Ineligible parity row in selection."
+                    )
+                added, removed, event_id = self._apply_parity_repair(
+                    raw,
+                    reason_code=reason_code,
+                    reason_text=reason_text,
+                    batch_fingerprint=fingerprint,
+                )
+                m2m_added += added
+                m2m_removed += removed
+                event_ids.append(event_id)
+
+        return LifecycleApplyResult(
+            event_id=event_ids[-1] if event_ids else "",
+            decision_reference_id=fingerprint,
+            previous_state="mixed",
+            resulting_state="parity_repaired",
+            binding_id=None,
+            m2m_added=m2m_added,
+            m2m_removed=m2m_removed,
+            noop=False,
+            related_event_ids=event_ids,
+        )
+
+    def _apply_parity_repair(
+        self,
+        raw: dict[str, str],
+        *,
+        reason_code: str,
+        reason_text: str,
+        batch_fingerprint: str,
+    ) -> tuple[int, int, str]:
+        """Apply one parity repair row (caller holds transaction)."""
+        repair_type = raw.get("repair_type", "")
+        binding_id = raw.get("binding_id")
+        task_id = raw.get("task_id")
+        entity_global_id = raw.get("entity_global_id")
+        require_parity_repair_authority(
+            GovernanceAuthorityPolicy(self.project, self.user),
+            repair_type,
+        )
+        ctx = self._parity_context(binding_id, task_id, entity_global_id, repair_type)
+        ref = decision_reference(
+            project_id=str(self.project.pk),
+            event_type=GovernanceEventType.PARITY_REPAIRED,
+            binding_id=binding_id,
+            fingerprint=batch_fingerprint + ":" + repair_type + ":" + str(binding_id or task_id),
+            actor_id=str(self.user.pk) if self.user else None,
+        )
+        existing = find_existing_event(ref)
+        if existing:
+            return 0, 0, str(existing.pk)
+
+        m2m_added = m2m_removed = 0
+        task = None
+        gid = entity_global_id or ""
+        binding_obj = None
+        if repair_type == "accepted_missing_m2m":
+            binding = self._get_binding(binding_id or "")
+            m2m_added = self._add_m2m(binding)
+            task = binding.task
+            gid = binding.entity_global_id
+            binding_obj = binding
+        elif repair_type in ("m2m_without_accepted", "review_m2m_leak"):
+            task = Task.objects.get(pk=task_id, project=self.project)
+            gid = entity_global_id or ""
+            binding_obj = TaskEntityBinding.objects.filter(task=task, entity_global_id=gid).first()
+            m2m_removed = self._remove_m2m_pair(task, gid)
+        else:
+            raise LifecycleValidationError("Unsupported parity repair type.")
+
+        event = record_event(
+            project=self.project,
+            binding=binding_obj,
+            task=task,
+            entity_global_id=gid,
+            event_type=GovernanceEventType.PARITY_REPAIRED,
+            previous_state=ctx.get("current_state", ""),
+            resulting_state=ctx.get("target_state", ""),
+            reason_code=reason_code,
+            reason_text=reason_text,
+            actor=self.user,
+            decision_reference_id=ref,
+            batch_fingerprint=batch_fingerprint,
+            m2m_before=ctx.get("m2m_before"),
+            m2m_after=ctx.get("m2m_after"),
+            metadata={"repair_type": repair_type, **ctx.get("evidence", {})},
+        )
+        return m2m_added, m2m_removed, str(event.pk)
 
     def _get_binding(self, binding_id: str) -> TaskEntityBinding:
         try:

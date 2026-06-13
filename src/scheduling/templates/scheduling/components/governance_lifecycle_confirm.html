@@ -5,9 +5,14 @@
 
     {% if not preview.eligible %}
     <div class="alert alert-danger py-2 mb-2">
+        {% if preview.errors %}
         {% for err in preview.errors %}{{ err }}{% if not forloop.last %} · {% endif %}{% endfor %}
+        {% else %}
+        Ineligible operation.
+        {% endif %}
     </div>
     {% else %}
+    {% if operation != 'parity_bulk' %}
     <dl class="row mb-2 g-1">
         <dt class="col-sm-3">Current</dt>
         <dd class="col-sm-9"><code>{{ preview.current_state }}</code></dd>
@@ -16,6 +21,7 @@
         <dt class="col-sm-3">M2M effect</dt>
         <dd class="col-sm-9">{{ preview.expected_m2m_change }}</dd>
     </dl>
+    {% endif %}
     {% for w in preview.warnings %}
     <div class="alert alert-warning py-1 mb-2 small">{{ w }}</div>
     {% endfor %}
@@ -25,12 +31,13 @@
         Governance history is append-only — this action is preserved and cannot be silently undone.
     </p>
 
-    <form hx-post="{% if operation == 'reject' %}{% url 'scheduling:link_lifecycle_reject_apply' project.pk binding_id %}{% elif operation == 'reaffirm' %}{% url 'scheduling:link_lifecycle_reaffirm_apply' project.pk binding_id %}{% elif operation == 'reverse' %}{% url 'scheduling:link_lifecycle_reverse_apply' project.pk binding_id %}{% elif operation == 'supersede' %}{% url 'scheduling:link_lifecycle_supersede_apply' project.pk binding_id %}{% else %}{% url 'scheduling:link_lifecycle_parity_apply' project.pk %}{% endif %}"
+    <form hx-post="{% if operation == 'reject' %}{% url 'scheduling:link_lifecycle_reject_apply' project.pk binding_id %}{% elif operation == 'reaffirm' %}{% url 'scheduling:link_lifecycle_reaffirm_apply' project.pk binding_id %}{% elif operation == 'reverse' %}{% url 'scheduling:link_lifecycle_reverse_apply' project.pk binding_id %}{% elif operation == 'supersede' %}{% url 'scheduling:link_lifecycle_supersede_apply' project.pk binding_id %}{% elif operation == 'parity_bulk' %}{% url 'scheduling:link_lifecycle_parity_bulk_apply' project.pk %}{% else %}{% url 'scheduling:link_lifecycle_parity_apply' project.pk %}{% endif %}"
           hx-target="#lifecycle-confirm-{{ binding_id|default:repair_type }}"
           hx-swap="outerHTML">
         {% csrf_token %}
         <input type="hidden" name="fingerprint" value="{{ preview.fingerprint }}">
         {% if replacement_binding_id %}<input type="hidden" name="replacement_binding_id" value="{{ replacement_binding_id }}">{% endif %}
+        {% if parity_items_json %}<input type="hidden" name="parity_items" value="{{ parity_items_json|escape }}">{% endif %}
         {% if repair_type %}<input type="hidden" name="repair_type" value="{{ repair_type }}">{% endif %}
         {% if task_id %}<input type="hidden" name="task_id" value="{{ task_id }}">{% endif %}
         {% if entity_global_id %}<input type="hidden" name="entity_global_id" value="{{ entity_global_id }}">{% endif %}
@@ -63,6 +70,9 @@
         {% endif %}
         <div class="d-flex gap-2 flex-wrap">
             {% if preview.eligible %}
+            {% if operation == 'parity_bulk' %}
+            <p class="small text-secondary">Add {{ preview.add_count }} · Remove {{ preview.remove_count }} · {{ preview.selection_count }} selected</p>
+            {% endif %}
             <button type="submit" class="btn btn-sm {% if operation == 'reverse' or operation == 'supersede' %}btn-danger{% else %}btn-primary{% endif %}">
                 Confirm {{ operation }}
             </button>

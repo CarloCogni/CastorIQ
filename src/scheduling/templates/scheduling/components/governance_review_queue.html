@@ -216,6 +216,7 @@
                                     hx-swap="innerHTML">
                                 Reaffirm
                             </button>
+                            {% endif %}
                             {% if governance_capabilities.capabilities.can_reverse %}
                             <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1"
                                     hx-post="{% url 'scheduling:link_lifecycle_reverse_preview' project.pk item.item_id %}"
@@ -223,6 +224,17 @@
                                     hx-swap="innerHTML">
                                 Reverse
                             </button>
+                            {% endif %}
+                            {% if governance_capabilities.capabilities.can_supersede %}
+                            <button type="button" class="btn btn-sm btn-outline-warning py-0 px-1"
+                                    hx-get="{% url 'scheduling:link_lifecycle_supersede_pair' project.pk item.item_id %}"
+                                    hx-target="#decision-slot-{{ forloop.counter }}"
+                                    hx-swap="innerHTML">
+                                Supersede
+                            </button>
+                            {% endif %}
+                            {% if not governance_capabilities.capabilities.can_reaffirm and not governance_capabilities.capabilities.can_reverse and not governance_capabilities.capabilities.can_supersede %}
+                            <span class="small text-secondary" title="Requires project membership">No lifecycle authority</span>
                             {% endif %}
                             {% endif %}
                         </div>
@@ -234,7 +246,7 @@
                         <div id="decision-slot-{{ forloop.counter }}" class="mt-2"></div>
                         {% if queue.mode == 'review' and item.item_type == 'binding' and item.governance.needs_review %}
                         <div class="mt-2 text-secondary" style="font-size:0.75rem;">
-                            Confidence does not grant trust. Reject with persistent history arrives in E2-E — use Defer to dismiss without changes.
+                            Confidence does not grant trust. Reject creates an audited inactive state — it cannot be silently undone.
                         </div>
                         {% endif %}
                     </td>

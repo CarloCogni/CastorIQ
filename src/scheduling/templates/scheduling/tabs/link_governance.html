@@ -13,6 +13,14 @@
                     aria-label="How Link Governance works">
                 <i class="bi bi-question-circle"></i>
             </button>
+            <button type="button"
+                    class="help-pill"
+                    data-bs-toggle="modal"
+                    data-bs-target="#governanceMethodologyHelpModal"
+                    title="Governance methodology and metrics"
+                    aria-label="Governance methodology and metrics">
+                <i class="bi bi-calculator"></i>
+            </button>
         </div>
         <span class="badge bg-primary-subtle text-primary-emphasis border"
               style="font-size:0.72rem;">trusted-binding-v1</span>
@@ -66,7 +74,7 @@
             <button class="nav-link" id="gq-tab-reconciliation" data-bs-toggle="tab"
                     data-bs-target="#gq-panel-reconciliation" type="button" role="tab"
                     aria-selected="false" aria-controls="gq-panel-reconciliation"
-                    hx-get="{% url 'scheduling:link_governance_reconciliation' project.pk %}?scope=all&page=1"
+                    hx-get="{% url 'scheduling:link_governance_reconciliation' project.pk %}"
                     hx-target="#governance-reconciliation-panel"
                     hx-trigger="click once"
                     hx-swap="innerHTML">
@@ -126,4 +134,5 @@
     </div>
 
     {% include "scheduling/components/link_governance_help_modal.html" %}
+    {% include "scheduling/components/governance_methodology_help_modal.html" %}
 </div>

@@ -324,6 +324,21 @@ urlpatterns = [
         name="link_lifecycle_supersede_apply",
     ),
     path(
+        "projects/<uuid:pk>/link-governance/lifecycle/<uuid:binding_pk>/supersede/pair/",
+        views.LinkLifecycleSupersedePairView.as_view(),
+        name="link_lifecycle_supersede_pair",
+    ),
+    path(
+        "projects/<uuid:pk>/link-governance/lifecycle/parity/bulk/preview/",
+        views.LinkLifecycleParityBulkPreviewView.as_view(),
+        name="link_lifecycle_parity_bulk_preview",
+    ),
+    path(
+        "projects/<uuid:pk>/link-governance/lifecycle/parity/bulk/apply/",
+        views.LinkLifecycleParityBulkApplyView.as_view(),
+        name="link_lifecycle_parity_bulk_apply",
+    ),
+    path(
         "projects/<uuid:pk>/link-governance/lifecycle/parity/preview/",
         views.LinkLifecycleParityPreviewView.as_view(),
         name="link_lifecycle_parity_preview",

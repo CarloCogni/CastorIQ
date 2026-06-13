@@ -11,20 +11,59 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body px-4 py-4">
-                <h6 class="fw-semibold">What is it?</h6>
-                <p class="small">Workspace separating trusted accepted bindings, review suggestions, property hints, legacy M2M compatibility, and deterministic possible conflicts under policy <code>trusted-binding-v1</code>.</p>
-                <h6 class="fw-semibold mt-3">Trusted vs review</h6>
-                <p class="small">Trusted means <code>needs_review=False</code>. Review suggestions never drive colormap, readiness, or viewer highlights until explicitly approved. Property Activity ID metadata is evidence only.</p>
-                <h6 class="fw-semibold mt-3">How to approve (E2-C)</h6>
-                <p class="small">In Review mode, use Approve on one row or select up to 100 items for bulk preview. Exact literal full-preview uses the separate E1 flow (Activity ID parameter match). Normalized, heuristic, and semantic suggestions require explicit human approval — confidence never auto-trusts.</p>
-                <h6 class="fw-semibold mt-3">Defer and reject</h6>
-                <p class="small">Defer closes the panel with no database change. Persistent rejection history and reversal arrive in E2-E — there is no reject button in E2-C.</p>
-                <h6 class="fw-semibold mt-3">Who can approve</h6>
-                <p class="small">Project editors and owners with link-management modify permission. Viewers can browse the queue but cannot approve.</p>
-                <h6 class="fw-semibold mt-3">Reconciliation (E2-D)</h6>
-                <p class="small">The Reconciliation tab runs a read-only diagnostic over bindings, evidence drift, M2M parity, and multi-task conflicts. No links are changed — remediation is preview-only until E2-E.</p>
-                <h6 class="fw-semibold mt-3">Caveats</h6>
-                <p class="small mb-0">Multiple accepted tasks on one entity are allowed unless overlap evidence triggers a possible conflict requiring acknowledgment. Legacy M2M rows without accepted bindings are compatibility storage only. Decision references in responses are operational — not immutable audit records.</p>
+
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-box-seam me-1 text-primary"></i>
+                    What is it?
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    Workspace separating trusted accepted bindings, active review suggestions, property hints,
+                    legacy M2M compatibility, and deterministic possible conflicts under policies
+                    <code>trusted-binding-v1</code> and <code>governance-authority-v1</code>.
+                </p>
+
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-shield-check me-1 text-primary"></i>
+                    Trusted vs review vs inactive
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    <strong>Trusted</strong> requires <code>is_active</code>, <code>governance_status=trusted</code>,
+                    and <code>needs_review=false</code>.
+                    <strong>Active review</strong> requires <code>active_review</code> and <code>needs_review=true</code>.
+                    Rejected, reversed, and superseded bindings are inactive — excluded from Gantt, viewer, EVM, and overview trusted reads.
+                    Confidence never grants trust.
+                </p>
+
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-check2-circle me-1 text-primary"></i>
+                    Decisions and lifecycle
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    Approve individual (editor+), bulk approve (owner+), reject, reaffirm, reverse, supersede, and parity repair
+                    each require explicit authority and create append-only audit events after migration 0024.
+                    Pre-audit trusted rows have no retrospective events.
+                </p>
+
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-person-check me-1 text-primary"></i>
+                    Who can do what
+                </p>
+                <ul class="text-secondary fs-7 mb-4">
+                    <li><strong>Viewer</strong> — overview, queue, reconciliation shell, audit read</li>
+                    <li><strong>Editor</strong> — approve one, reject, reaffirm, M2M add parity</li>
+                    <li><strong>Owner</strong> — bulk approve, exact preview, reverse, supersede, M2M remove parity</li>
+                </ul>
+
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-exclamation-circle me-1 text-primary"></i>
+                    Caveats
+                </p>
+                <div class="d-flex flex-column gap-1 fs-8 text-secondary">
+                    <span><i class="bi bi-dot"></i>Property Activity ID is evidence only — not a trusted binding.</span>
+                    <span><i class="bi bi-dot"></i>Reconciliation is diagnostic — run explicitly; not evaluated on overview load.</span>
+                    <span><i class="bi bi-dot"></i>Task coverage denominator is all schedule activities, not physical-scope 4D completeness.</span>
+                    <span><i class="bi bi-dot"></i>Multiple trusted tasks on one entity are allowed unless overlap evidence triggers conflict acknowledgment.</span>
+                </div>
             </div>
         </div>
     </div>
