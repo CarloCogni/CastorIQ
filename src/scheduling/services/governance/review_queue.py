@@ -298,7 +298,6 @@ class LinkReviewQueueService:
         return self._items_from_bindings(bindings), total
 
     def _binding_queryset(self, filters: QueueFilters) -> QuerySet:
-
         mode = filters.mode
         if mode == QueueMode.REVIEW.value:
             qs = self._reader.review_bindings_qs()

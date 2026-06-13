@@ -24,12 +24,16 @@ class BindingGovernanceReader:
         return TaskEntityBinding.objects.filter(task__project_id=self.project_id)
 
     def trusted_bindings_qs(self) -> QuerySet:
-        """Accepted bindings only (needs_review=False)."""
-        return self._scoped_bindings().filter(needs_review=False)
+        """Accepted active trusted bindings only."""
+        from scheduling.services.governance.active_state import apply_trusted
+
+        return apply_trusted(self._scoped_bindings())
 
     def review_bindings_qs(self) -> QuerySet:
-        """Review-only bindings (needs_review=True)."""
-        return self._scoped_bindings().filter(needs_review=True)
+        """Active review suggestions only (excludes rejected/inactive)."""
+        from scheduling.services.governance.active_state import apply_active_review
+
+        return apply_active_review(self._scoped_bindings())
 
     def trusted_entity_gids(self, *, ifc_scope: bool = False) -> set[str]:
         """Distinct entity GlobalIds with at least one accepted binding."""
@@ -105,11 +109,16 @@ class BindingGovernanceReader:
             return {}
         qs = self._scoped_bindings()
         if trusted_only:
-            qs = qs.filter(needs_review=False)
+            qs = self.trusted_bindings_qs()
+            if task_ids is not None:
+                qs = qs.filter(task_id__in=task_ids)
         elif review_only:
-            qs = qs.filter(needs_review=True)
-        if task_ids is not None:
-            qs = qs.filter(task_id__in=task_ids)
+            qs = self.review_bindings_qs()
+            if task_ids is not None:
+                qs = qs.filter(task_id__in=task_ids)
+        else:
+            if task_ids is not None:
+                qs = qs.filter(task_id__in=task_ids)
         result: dict[str, list[str]] = {}
         for task_id, gid in qs.values_list("task_id", "entity_global_id").order_by(
             "task_id", "entity_global_id"
@@ -196,6 +205,8 @@ class BindingGovernanceReader:
                     ON b.task_id = te.task_id
                     AND b.entity_global_id = e.global_id
                     AND b.needs_review = FALSE
+                    AND b.governance_status = 'trusted'
+                    AND b.is_active = TRUE
                 WHERE t.project_id = %s AND b.id IS NULL
                 """,
                 [self.project_id],

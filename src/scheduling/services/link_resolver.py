@@ -22,10 +22,11 @@ def entity_gids_for_task(
     When *trusted_only* is True, review bindings are excluded.
     """
     from scheduling.models import TaskEntityBinding
+    from scheduling.services.governance.active_state import apply_trusted
 
     qs = TaskEntityBinding.objects.filter(task_id=task_id)
     if trusted_only:
-        qs = qs.filter(needs_review=False)
+        qs = apply_trusted(qs)
     return list(qs.order_by("entity_global_id").values_list("entity_global_id", flat=True))
 
 
@@ -73,10 +74,11 @@ def task_is_linked(
     if binding_gids is not None:
         return len(binding_gids) > 0
     from scheduling.models import TaskEntityBinding
+    from scheduling.services.governance.active_state import apply_trusted
 
     qs = TaskEntityBinding.objects.filter(task_id=task_id)
     if trusted_only:
-        qs = qs.filter(needs_review=False)
+        qs = apply_trusted(qs)
     return qs.exists()
 
 
@@ -92,10 +94,11 @@ def link_status_for_task(task, binding_gids: list[str] | None = None) -> str:
         return "unlinked"
 
     from scheduling.models import TaskEntityBinding
+    from scheduling.services.governance.active_state import apply_trusted
 
     bindings = TaskEntityBinding.objects.filter(task_id=task.pk)
     if not bindings.exists():
         return "unlinked"
-    if bindings.filter(needs_review=False).exists():
+    if apply_trusted(bindings).exists():
         return "linked"
     return "needs_review"

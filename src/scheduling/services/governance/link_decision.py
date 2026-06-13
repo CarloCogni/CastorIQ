@@ -276,7 +276,7 @@ class LinkDecisionService:
         eligible_ids = [
             item["binding_id"] for item in preview.items if item["status"] == "eligible"
         ]
-        counts = self._promote_binding_ids(eligible_ids)
+        counts = self._promote_binding_ids(eligible_ids, selection_fingerprint)
 
         return self._apply_result(
             preview,
@@ -384,7 +384,10 @@ class LinkDecisionService:
                 items.append(item)
                 continue
 
-            if not binding.needs_review:
+            if (
+                not binding.needs_review
+                and binding.governance_status == TaskEntityBinding.GovernanceStatus.TRUSTED
+            ):
                 stats["noop"] += 1
                 item["status"] = "already_accepted"
                 items.append(item)
@@ -411,21 +414,24 @@ class LinkDecisionService:
 
     def _conflict_for_binding(self, binding) -> dict[str, Any]:
         from scheduling.models import Task, TaskEntityBinding
+        from scheduling.services.governance.active_state import apply_active_review, apply_trusted
 
         trusted_tids = [
             str(pk)
-            for pk in TaskEntityBinding.objects.filter(
-                entity_global_id=binding.entity_global_id,
-                task__project=self.project,
-                needs_review=False,
+            for pk in apply_trusted(
+                TaskEntityBinding.objects.filter(
+                    entity_global_id=binding.entity_global_id,
+                    task__project=self.project,
+                )
             ).values_list("task_id", flat=True)
         ]
         review_tids = [
             str(pk)
-            for pk in TaskEntityBinding.objects.filter(
-                entity_global_id=binding.entity_global_id,
-                task__project=self.project,
-                needs_review=True,
+            for pk in apply_active_review(
+                TaskEntityBinding.objects.filter(
+                    entity_global_id=binding.entity_global_id,
+                    task__project=self.project,
+                )
             )
             .exclude(pk=binding.pk)
             .values_list("task_id", flat=True)
@@ -469,9 +475,20 @@ class LinkDecisionService:
             .distinct()
         ]
 
-    def _promote_binding_ids(self, binding_ids: list[str]) -> dict[str, Any]:
+    def _promote_binding_ids(
+        self,
+        binding_ids: list[str],
+        selection_fingerprint: str = "",
+    ) -> dict[str, Any]:
         from ifc_processor.models import IFCEntity, IFCFile
         from scheduling.models import Task, TaskEntityBinding
+        from scheduling.services.governance.active_state import promote_fields
+        from scheduling.services.governance.governance_events import (
+            build_evidence_snapshot,
+            decision_reference,
+            record_event,
+        )
+        from scheduling.services.governance.lifecycle_vocabulary import GovernanceEventType
 
         if not binding_ids:
             return {
@@ -488,10 +505,14 @@ class LinkDecisionService:
             project=self.project,
             status=IFCFile.Status.COMPLETED,
         )
-        gid_to_entity_pk = {
-            e.global_id: e.pk
-            for e in IFCEntity.objects.filter(ifc_file__in=ifc_files).only("pk", "global_id")
+        gid_to_entity = {
+            e.global_id: e
+            for e in IFCEntity.objects.filter(ifc_file__in=ifc_files).only(
+                "pk", "global_id", "properties"
+            )
         }
+
+        actor_id = str(self.user.pk) if self.user and self.user.pk else None
 
         with transaction.atomic():
             bindings = list(
@@ -518,30 +539,62 @@ class LinkDecisionService:
             promote_pks = []
             m2m_rows = []
             m2m_added = m2m_noop = 0
+            m2m_before_by_binding: dict[str, bool] = {}
 
             for binding in bindings:
-                entity_pk = gid_to_entity_pk.get(binding.entity_global_id)
-                if entity_pk is None:
+                entity = gid_to_entity.get(binding.entity_global_id)
+                if entity is None:
                     raise StaleDecisionError(
                         "Entity scope changed since preview.",
                     )
                 promote_pks.append(binding.pk)
-                pair = (str(binding.task_id), str(entity_pk))
+                pair = (str(binding.task_id), str(entity.pk))
+                m2m_before_by_binding[str(binding.pk)] = pair in existing_m2m
                 if pair in existing_m2m:
                     m2m_noop += 1
                 else:
-                    m2m_rows.append(through(task_id=binding.task_id, ifcentity_id=entity_pk))
+                    m2m_rows.append(through(task_id=binding.task_id, ifcentity_id=entity.pk))
                     m2m_added += 1
                     existing_m2m.add(pair)
 
             if promote_pks:
-                TaskEntityBinding.objects.filter(pk__in=promote_pks).update(needs_review=False)
+                TaskEntityBinding.objects.filter(pk__in=promote_pks).update(**promote_fields())
 
             if m2m_rows:
                 through.objects.bulk_create(
                     m2m_rows,
                     batch_size=BULK_BATCH_SIZE,
                     ignore_conflicts=True,
+                )
+
+            for binding in bindings:
+                entity = gid_to_entity[binding.entity_global_id]
+                ref = decision_reference(
+                    project_id=str(self.project.pk),
+                    event_type=GovernanceEventType.APPROVED,
+                    binding_id=str(binding.pk),
+                    fingerprint=selection_fingerprint or str(binding.pk),
+                    actor_id=actor_id,
+                )
+                record_event(
+                    project=self.project,
+                    binding=binding,
+                    task=binding.task,
+                    entity_global_id=binding.entity_global_id,
+                    event_type=GovernanceEventType.APPROVED,
+                    previous_state=TaskEntityBinding.GovernanceStatus.ACTIVE_REVIEW,
+                    resulting_state=TaskEntityBinding.GovernanceStatus.TRUSTED,
+                    reason_code="approved",
+                    reason_text="Governance approval",
+                    actor=self.user,
+                    decision_reference_id=ref,
+                    batch_fingerprint=selection_fingerprint,
+                    trusted_before=False,
+                    trusted_after=True,
+                    m2m_before=m2m_before_by_binding.get(str(binding.pk), False),
+                    m2m_after=True,
+                    metadata={"evidence": build_evidence_snapshot(binding, entity)},
+                    request_source="governance_approval",
                 )
 
         return {
