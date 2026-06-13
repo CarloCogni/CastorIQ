@@ -1,0 +1,190 @@
+<!-- scheduling/components/governance_review_queue.html — HTMX partial for review queue -->
+
+{% with sc=queue.summary_counts %}
+<div id="governance-review-queue" class="d-flex flex-column gap-3">
+
+    <!-- Summary strip -->
+    <div class="d-flex flex-wrap gap-2" role="group" aria-label="Governance summary counts">
+        <span class="badge rounded-pill bg-success-subtle text-success-emphasis border">
+            Trusted {{ sc.trusted_bindings }}
+        </span>
+        <span class="badge rounded-pill bg-warning-subtle text-warning-emphasis border">
+            Review {{ sc.review_bindings }}
+        </span>
+        <span class="badge rounded-pill bg-info-subtle text-info-emphasis border">
+            Property hints {% if sc.property_hints != None %}{{ sc.property_hints }}{% else %}—{% endif %}
+        </span>
+        <span class="badge rounded-pill bg-secondary-subtle text-secondary-emphasis border">
+            Legacy M2M {{ sc.legacy_only }}
+        </span>
+        <span class="badge rounded-pill bg-primary-subtle text-primary-emphasis border">
+            Multi-trusted {{ sc.multiple_trusted_entities }}
+        </span>
+        <span class="badge rounded-pill bg-danger-subtle text-danger-emphasis border">
+            Conflicts {{ sc.possible_conflicts }}
+        </span>
+    </div>
+
+    <!-- Mode tabs -->
+    <ul class="nav nav-pills flex-wrap gap-1" style="font-size:0.82rem;" role="tablist"
+        aria-label="Governance queue modes">
+        {% for mode, label in queue_modes %}
+        <li class="nav-item" role="presentation">
+            <a class="nav-link py-1 px-2 {% if queue.mode == mode %}active{% endif %}"
+               role="tab"
+               hx-get="{% url 'scheduling:link_governance_review_queue' project.pk %}?mode={{ mode }}&page=1"
+               hx-target="#governance-queue-panel"
+               hx-swap="innerHTML"
+               href="#"
+               aria-selected="{% if queue.mode == mode %}true{% else %}false{% endif %}">
+                {{ label }}
+            </a>
+        </li>
+        {% endfor %}
+    </ul>
+
+    <!-- Filters -->
+    <form class="row g-2 align-items-end"
+          hx-get="{% url 'scheduling:link_governance_review_queue' project.pk %}"
+          hx-target="#governance-queue-panel"
+          hx-swap="innerHTML">
+        <input type="hidden" name="mode" value="{{ queue.mode }}">
+        <div class="col-auto">
+            <label class="form-label small mb-0" for="gq-method">Method</label>
+            <select id="gq-method" name="method" class="form-select form-select-sm">
+                <option value="">All</option>
+                <option value="exact" {% if filters.method == 'exact' %}selected{% endif %}>Exact</option>
+                <option value="normalized" {% if filters.method == 'normalized' %}selected{% endif %}>Normalized</option>
+                <option value="heuristic" {% if filters.method == 'heuristic' %}selected{% endif %}>Heuristic</option>
+                <option value="embedding" {% if filters.method == 'embedding' %}selected{% endif %}>Semantic</option>
+                <option value="manual" {% if filters.method == 'manual' %}selected{% endif %}>Manual</option>
+            </select>
+        </div>
+        <div class="col-auto">
+            <label class="form-label small mb-0" for="gq-conf-min">Conf min</label>
+            <input id="gq-conf-min" type="number" step="0.01" min="0" max="1" name="confidence_min"
+                   class="form-control form-control-sm" style="width:5rem;"
+                   value="{{ filters.confidence_min|default:'' }}">
+        </div>
+        <div class="col-auto">
+            <label class="form-label small mb-0" for="gq-ifc">IFC class</label>
+            <input id="gq-ifc" type="text" name="ifc_class" class="form-control form-control-sm"
+                   placeholder="IfcWall" value="{{ filters.ifc_class|default:'' }}">
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-sm btn-primary">Filter</button>
+            <a class="btn btn-sm btn-outline-secondary"
+               hx-get="{% url 'scheduling:link_governance_review_queue' project.pk %}?mode={{ queue.mode }}&page=1"
+               hx-target="#governance-queue-panel"
+               hx-swap="innerHTML">Reset</a>
+        </div>
+    </form>
+
+    {% if queue.warnings %}
+    <div class="alert alert-warning py-2 small mb-0" role="status">
+        {% for w in queue.warnings %}<div>{{ w }}</div>{% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Queue rows -->
+    {% if queue.items %}
+    <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0" style="font-size:0.82rem;">
+            <thead class="table-light">
+                <tr>
+                    <th scope="col">Task</th>
+                    <th scope="col">Entity</th>
+                    <th scope="col">Category</th>
+                    <th scope="col">Evidence</th>
+                    <th scope="col" class="text-center">Conf.</th>
+                    <th scope="col">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in queue.items %}
+                <tr>
+                    <td>
+                        {% if item.identity.task_name %}
+                        <div class="fw-semibold text-truncate" style="max-width:160px;">{{ item.identity.task_name }}</div>
+                        <code class="small text-secondary">{{ item.identity.task_activity_code|default:"—" }}</code>
+                        {% else %}
+                        <span class="text-secondary">—</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="text-truncate" style="max-width:140px;">{{ item.identity.entity_name|default:item.identity.entity_global_id }}</div>
+                        <code class="small text-secondary">{{ item.identity.entity_class|default:"" }}</code>
+                    </td>
+                    <td>
+                        <span class="badge {% if item.governance.trusted %}bg-success-subtle text-success-emphasis{% elif item.governance.category == 'review' %}bg-warning-subtle text-warning-emphasis{% else %}bg-secondary-subtle text-secondary-emphasis{% endif %}">
+                            {{ item.governance.category }}
+                        </span>
+                    </td>
+                    <td class="small">{{ item.governance.evidence_label }}</td>
+                    <td class="text-center">
+                        {% if item.governance.confidence != None %}{{ item.governance.confidence|floatformat:2 }}{% else %}—{% endif %}
+                    </td>
+                    <td>
+                        <div class="d-flex gap-1 flex-wrap">
+                            {% if item.navigation.task_detail_url %}
+                            <a class="btn btn-sm btn-outline-primary py-0 px-1"
+                               href="{{ item.navigation.task_detail_url }}"
+                               hx-get="{{ item.navigation.task_detail_url }}"
+                               hx-target="#task-detail-panel"
+                               hx-swap="innerHTML">Task</a>
+                            {% endif %}
+                            {% if item.navigation.viewer_url %}
+                            <a class="btn btn-sm btn-outline-secondary py-0 px-1"
+                               href="{{ item.navigation.viewer_url }}"
+                               target="_self">Model</a>
+                            {% endif %}
+                            <button type="button" class="btn btn-sm btn-outline-info py-0 px-1"
+                                    data-bs-toggle="collapse"
+                                    data-bs-target="#evidence-{{ forloop.counter }}"
+                                    aria-expanded="false"
+                                    aria-controls="evidence-{{ forloop.counter }}">
+                                Evidence
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                <tr class="collapse" id="evidence-{{ forloop.counter }}">
+                    <td colspan="6" class="bg-body-secondary small">
+                        {% include "scheduling/components/governance_evidence_panel.html" with evidence=item.evidence warnings=item.warnings %}
+                        <div class="mt-2 text-secondary">Decision controls arrive in E2-C</div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="text-center text-secondary py-4" role="status">
+        <i class="bi bi-inbox fs-3 d-block mb-2" aria-hidden="true"></i>
+        No items match this governance queue mode and filters.
+    </div>
+    {% endif %}
+
+    <!-- Pagination -->
+    {% with p=queue.pagination %}
+    <nav aria-label="Governance queue pagination" class="d-flex align-items-center gap-2 flex-wrap">
+        <span class="small text-secondary">
+            Page {{ p.page }} of {{ p.total_pages }} · {{ p.total_items }} items
+        </span>
+        {% if p.has_previous %}
+        <a class="btn btn-sm btn-outline-secondary"
+           hx-get="{% url 'scheduling:link_governance_review_queue' project.pk %}?mode={{ queue.mode }}&page={{ p.prev_page }}"
+           hx-target="#governance-queue-panel"
+           hx-swap="innerHTML">Previous</a>
+        {% endif %}
+        {% if p.has_next %}
+        <a class="btn btn-sm btn-outline-secondary"
+           hx-get="{% url 'scheduling:link_governance_review_queue' project.pk %}?mode={{ queue.mode }}&page={{ p.next_page }}"
+           hx-target="#governance-queue-panel"
+           hx-swap="innerHTML">Next</a>
+        {% endif %}
+    </nav>
+    {% endwith %}
+
+</div>
+{% endwith %}

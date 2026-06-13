@@ -51,31 +51,68 @@
     </div>
 </div>
 
-<!-- Linked elements -->
+<!-- Trusted linked elements -->
 <div class="mb-3">
     <div class="text-secondary mb-2" style="font-size:0.73rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em;">
-        Linked Elements ({{ entities|length }}{% if siblings_count > 0 %}&nbsp;&middot;&nbsp;<span style="color:var(--bs-warning-text-emphasis);">{{ siblings_count }} shared</span>{% endif %})
+        Trusted Links ({{ trusted_count|default:entities|length }}{% if siblings_count > 0 %}&nbsp;&middot;&nbsp;<span style="color:var(--bs-warning-text-emphasis);">{{ siblings_count }} shared</span>{% endif %})
     </div>
-    {% if entities %}
-    <div class="d-flex flex-column gap-1" style="max-height:130px; overflow-y:auto;">
-        {% for entity in entities %}
+    {% if trusted_entities %}
+    <div class="d-flex flex-column gap-1" style="max-height:100px; overflow-y:auto;">
+        {% for entity in trusted_entities %}
         <a href="{% url 'ifc_viewer:viewer' project.pk %}?highlight={{ entity.global_id }}"
            class="d-flex align-items-center gap-2 rounded text-decoration-none px-2 py-1"
            style="font-size:0.75rem; background:var(--bs-tertiary-bg); color:var(--bs-body-color);"
            title="{{ entity.global_id }}"
            target="_self">
-            <i class="bi bi-box" style="font-size:0.7rem; flex-shrink:0; color:var(--bs-primary);"></i>
+            <i class="bi bi-check-circle text-success" style="font-size:0.7rem; flex-shrink:0;"></i>
             <span class="text-truncate">{{ entity.name|default:entity.global_id|truncatechars:30 }}</span>
         </a>
         {% endfor %}
     </div>
     {% else %}
-    <div class="text-secondary" style="font-size:0.75rem;">No elements linked to this task.</div>
+    <div class="text-secondary" style="font-size:0.75rem;">No accepted bindings for this task.</div>
     {% endif %}
 </div>
 
-<!-- View in Simulator (dispatches event; Feature 2 will handle it) -->
-{% if entities %}
+<!-- Review suggestions -->
+<div class="mb-3">
+    <div class="text-secondary mb-2" style="font-size:0.73rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em;">
+        Review Suggestions ({{ review_count|default:0 }})
+    </div>
+    {% if review_entities %}
+    <div class="d-flex flex-column gap-1" style="max-height:80px; overflow-y:auto;">
+        {% for entity in review_entities %}
+        <div class="d-flex align-items-center gap-2 rounded px-2 py-1"
+             style="font-size:0.75rem; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.25);">
+            <i class="bi bi-exclamation-circle text-warning" style="font-size:0.7rem; flex-shrink:0;"></i>
+            <span class="text-truncate">{{ entity.name|default:entity.global_id|truncatechars:30 }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    <div class="text-secondary mt-1" style="font-size:0.68rem;">Not trusted until accepted · E2-C</div>
+    {% else %}
+    <div class="text-secondary" style="font-size:0.75rem;">No review suggestions.</div>
+    {% endif %}
+</div>
+
+<!-- Property hints -->
+{% if property_hints %}
+<div class="mb-3">
+    <div class="text-secondary mb-2" style="font-size:0.73rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em;">
+        Property Hints (metadata only)
+    </div>
+    <div class="d-flex flex-column gap-1" style="max-height:70px; overflow-y:auto;">
+        {% for hint in property_hints %}
+        <div class="small px-2 py-1 rounded bg-body-secondary">
+            <code>{{ hint.activity_id }}</code> · {{ hint.name|truncatechars:24 }}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- View in Simulator (trusted IDs only) -->
+{% if trusted_entities %}
 <hr class="my-2">
 <button class="btn btn-sm btn-primary w-100"
         style="font-size:0.78rem;"

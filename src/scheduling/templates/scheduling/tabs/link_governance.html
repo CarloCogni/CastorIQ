@@ -1,0 +1,33 @@
+<!-- scheduling/tabs/link_governance.html — read-only link governance review workspace (E2-B) -->
+
+<div id="link-governance-workspace" class="d-flex flex-column gap-3 h-100">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-shield-check fs-5 text-primary"></i>
+            <h5 class="m-0">Link Governance</h5>
+            <button type="button"
+                    class="help-pill"
+                    data-bs-toggle="modal"
+                    data-bs-target="#linkGovernanceHelpModal"
+                    title="How Link Governance works"
+                    aria-label="How Link Governance works">
+                <i class="bi bi-question-circle"></i>
+            </button>
+        </div>
+        <span class="badge bg-secondary-subtle text-secondary-emphasis border"
+              style="font-size:0.72rem;">Read-only · trusted-binding-v1</span>
+        <span class="ms-auto text-secondary small">Decision controls arrive in E2-C</span>
+    </div>
+
+    <div id="governance-queue-panel"
+         hx-get="{% url 'scheduling:link_governance_review_queue' project.pk %}?mode=review&page=1"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+        <div class="d-flex align-items-center justify-content-center py-4 text-secondary">
+            <span class="spinner-border spinner-border-sm me-2" role="status" aria-label="Loading queue"></span>
+            Loading governance queue…
+        </div>
+    </div>
+
+    {% include "scheduling/components/link_governance_help_modal.html" %}
+</div>

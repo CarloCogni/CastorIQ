@@ -382,17 +382,38 @@
   <!-- Results area: Link Engine / param match feedback (collapses when empty) -->
   <div id="fourD-link-results" style="flex-shrink:0; overflow-y:auto; max-height:180px;"></div>
 
-  <!-- Review pane: always visible, auto-loads on page render -->
-  <div id="fourD-review-pane"
-       style="flex-shrink:0; overflow-y:auto; max-height:32vh; padding:8px 12px;
-              border-top:1px solid var(--bs-border-color);"
-       hx-get="{% url 'scheduling:review' project.pk %}?filter=all&inline=1"
-       hx-trigger="load"
-       hx-swap="innerHTML">
-      <div class="d-flex align-items-center justify-content-center py-3 text-secondary"
-           style="font-size:0.82rem;">
-          <span class="spinner-border spinner-border-sm me-2"></span>Loading review…
+  <!-- Review pane: governance (read-only) + Smart Pipeline review -->
+  <div style="flex-shrink:0; border-top:1px solid var(--bs-border-color);">
+    <ul class="nav nav-tabs px-2 pt-1 mb-0" style="font-size:0.8rem;" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active py-1 px-2" id="fd-gov-tab" data-bs-toggle="tab"
+                data-bs-target="#fd-gov-pane" type="button" role="tab"
+                aria-controls="fd-gov-pane" aria-selected="true">
+          <i class="bi bi-shield-check me-1"></i>Governance
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link py-1 px-2" id="fd-pipeline-tab" data-bs-toggle="tab"
+                data-bs-target="#fourD-review-pane" type="button" role="tab"
+                aria-controls="fourD-review-pane" aria-selected="false">
+          Smart Pipeline
+        </button>
+      </li>
+    </ul>
+    <div class="tab-content" style="max-height:32vh; overflow-y:auto;">
+      <div class="tab-pane fade show active p-2" id="fd-gov-pane" role="tabpanel"
+           hx-get="{% url 'scheduling:link_governance_workspace' project.pk %}"
+           hx-trigger="load"
+           hx-swap="innerHTML">
+        <div class="text-secondary small py-2"><span class="spinner-border spinner-border-sm me-1"></span>Loading governance…</div>
       </div>
+      <div class="tab-pane fade" id="fourD-review-pane" role="tabpanel"
+           hx-get="{% url 'scheduling:review' project.pk %}?filter=all&inline=1"
+           hx-trigger="revealed"
+           hx-swap="innerHTML">
+        <div class="text-secondary small py-2 px-2">Open Smart Pipeline tab to load write review.</div>
+      </div>
+    </div>
   </div>
 
 </div><!-- /fourD-root -->
@@ -946,7 +967,7 @@
             }
             fd_vs.dirty = true;
             fd_vsRefresh(true);
-            const allIds = _fdMultiSelectedTasks.flatMap(x => x.entity_global_ids || []);
+            const allIds = _fdMultiSelectedTasks.flatMap(x => x.trusted_entity_global_ids || x.entity_global_ids || []);
             if (allIds.length) sendToViewer({ type: "castor:highlight", global_ids: allIds });
             return;
           }
@@ -965,7 +986,7 @@
           fd_selectedRowIdx = rowIdx;
           fd_vs.dirty = true;
           fd_vsRefresh(true);
-          const ids = t.entity_global_ids || [];
+          const ids = t.trusted_entity_global_ids || t.entity_global_ids || [];
           if (ids.length) sendToViewer({ type: "castor:highlight", global_ids: ids });
           _fdFocusGlobalId = ids.length ? ids[0] : null;
           _fdTaskSelected  = ids.length > 0;
@@ -980,7 +1001,7 @@
     const tasks = fd_vs.tasks;
     for (let i = 0; i < tasks.length; i++) {
       if (tasks[i].isGroup) continue;
-      if ((tasks[i].entity_global_ids || []).includes(gid)) {
+      if ((tasks[i].trusted_entity_global_ids || tasks[i].entity_global_ids || []).includes(gid)) {
         fd_selectedRowIdx = i;
         fd_vs.dirty = true;
         fd_vsRefresh(true);
@@ -1042,7 +1063,7 @@
 
     const linked = [], unlinked = [];
     for (const t of (_fdLastData.tasks || [])) {
-      const ids = t.entity_global_ids || [];
+      const ids = t.trusted_entity_global_ids || t.entity_global_ids || [];
       if (!ids.length) continue;
       if (t.link_status === "linked")        linked.push(...ids);
       else if (t.link_status === "unlinked") unlinked.push(...ids);
@@ -1085,11 +1106,16 @@
     let patched = 0;
     for (const t of _fdLastData.tasks) {
       if (t.isGroup) continue;
-      const ids = t.entity_global_ids;
+      const ids = t.trusted_entity_global_ids || t.entity_global_ids;
       if (!ids) continue;
       const idx = ids.indexOf(globalId);
       if (idx === -1) continue;
       ids.splice(idx, 1);
+      if (t.trusted_entity_global_ids) {
+        const ridx = (t.review_entity_global_ids || []).indexOf(globalId);
+        if (ridx >= 0) t.review_entity_global_ids.splice(ridx, 1);
+      }
+      t.entity_global_ids = t.trusted_entity_global_ids || ids;
       if (ids.length === 0) t.link_status = "unlinked";
       patched++;
     }
@@ -1210,7 +1236,7 @@
       _fdMultiSelectedSet.clear();
       for (const t of fd_vs.tasks) {
         if (t.isGroup) continue;
-        if ((t.entity_global_ids || []).some(id => ids.includes(id))) {
+        if ((t.trusted_entity_global_ids || t.entity_global_ids || []).some(id => ids.includes(id))) {
           _fdMultiSelectedTasks.push(t);
           _fdMultiSelectedSet.add(t.pk || t.id);
         }
@@ -1849,8 +1875,9 @@
       if (t.isGroup) continue;
       if (!pkSet.has(t.pk || t.id)) continue;
       t.link_status = "linked";
-      if (!t.entity_global_ids) t.entity_global_ids = [];
-      if (!t.entity_global_ids.includes(globalId)) t.entity_global_ids.push(globalId);
+      if (!t.trusted_entity_global_ids) t.trusted_entity_global_ids = [];
+      if (!t.trusted_entity_global_ids.includes(globalId)) t.trusted_entity_global_ids.push(globalId);
+      t.entity_global_ids = t.trusted_entity_global_ids;
     }
   }
 

@@ -1,0 +1,25 @@
+<!-- scheduling/components/link_governance_help_modal.html — "How Link Governance Work" -->
+
+<div class="modal fade" id="linkGovernanceHelpModal" tabindex="-1" aria-labelledby="linkGovernanceHelpLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+            <div class="modal-header border-bottom px-4 py-3">
+                <h5 class="modal-title fw-semibold fs-6 mb-0" id="linkGovernanceHelpLabel">
+                    <i class="bi bi-shield-check me-2 text-primary"></i>
+                    How Link Governance Work
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body px-4 py-4">
+                <h6 class="fw-semibold">What is it?</h6>
+                <p class="small">Read-only workspace separating trusted accepted bindings, review suggestions, property hints, legacy M2M compatibility, and deterministic possible conflicts under policy <code>trusted-binding-v1</code>.</p>
+                <h6 class="fw-semibold mt-3">Trusted vs review</h6>
+                <p class="small">Trusted means <code>needs_review=False</code>. Review suggestions never drive colormap, readiness, or viewer highlights. Property Activity ID metadata is evidence only.</p>
+                <h6 class="fw-semibold mt-3">How to use this page</h6>
+                <p class="small">Switch queue modes, filter by method or confidence, open evidence panels, and navigate to task detail or the model viewer. Approve/reject controls arrive in E2-C.</p>
+                <h6 class="fw-semibold mt-3">Caveats</h6>
+                <p class="small mb-0">Multiple accepted tasks on one entity are allowed unless overlap evidence triggers a possible conflict. Legacy M2M rows without accepted bindings are compatibility storage only.</p>
+            </div>
+        </div>
+    </div>
+</div>
