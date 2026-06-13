@@ -1272,7 +1272,9 @@ class GanttDataView(ProjectAccessMixin, View):
     _MAX_PAGE_SIZE = 1000
 
     def get(self, request, **kwargs: object) -> JsonResponse:
-        from .services.link_resolver import entity_gids_by_task, link_status_for_task
+        from scheduling.services.governance.reader import BindingGovernanceReader
+
+        from .services.link_resolver import link_status_for_task
 
         project = self.get_project()
         qs = Task.objects.filter(project=project, is_non_physical=False).order_by(
@@ -1310,13 +1312,18 @@ class GanttDataView(ProjectAccessMixin, View):
             tasks = list(qs)
             pagination = None
 
-        link_map = entity_gids_by_task(project.pk, [t.pk for t in tasks])
+        task_pks = [t.pk for t in tasks]
+        reader = BindingGovernanceReader(project.pk)
+        trusted_map = reader.entity_gids_by_task(task_pks, trusted_only=True)
+        review_map = reader.entity_gids_by_task(task_pks, review_only=True)
         data = []
         for task in tasks:
-            gids = link_map.get(str(task.pk), [])
+            tid = str(task.pk)
+            trusted_gids = trusted_map.get(tid, [])
+            review_gids = review_map.get(tid, [])
             data.append(
                 {
-                    "id": str(task.pk),
+                    "id": tid,
                     "name": task.name,
                     "start": task.start_date.isoformat(),
                     "end": task.end_date.isoformat(),
@@ -1328,8 +1335,12 @@ class GanttDataView(ProjectAccessMixin, View):
                     "total_float": task.total_float,
                     "activity_code": task.activity_code or "",
                     "status": task.status,
-                    "link_status": link_status_for_task(task, gids),
-                    "entity_global_ids": gids,
+                    "link_status": link_status_for_task(task, trusted_gids + review_gids),
+                    "trusted_entity_global_ids": trusted_gids,
+                    "review_entity_global_ids": review_gids,
+                    "trusted_entity_count": len(trusted_gids),
+                    "review_entity_count": len(review_gids),
+                    "entity_global_ids": trusted_gids,
                 }
             )
 
@@ -1343,30 +1354,63 @@ class TaskDetailView(ProjectAccessMixin, View):
     """HTMX GET — task detail side panel for the Gantt chart."""
 
     def get(self, request, **kwargs: object) -> HttpResponse:
-        from .services.link_resolver import entity_gids_for_task
+        from scheduling.services.governance.reader import BindingGovernanceReader
 
         project = self.get_project()
         task = get_object_or_404(Task, pk=kwargs["task_pk"], project=project)
-        gids = entity_gids_for_task(task.pk)
+        reader = BindingGovernanceReader(project.pk)
+        trusted_gids = reader.trusted_entity_gids_for_task(task.pk)
+        review_gids = reader.review_entity_gids_for_task(task.pk)
         ifc_files = IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
-        entities = list(
-            IFCEntity.objects.filter(ifc_file__in=ifc_files, global_id__in=gids).only(
-                "global_id", "name", "ifc_type"
+        trusted_entities = list(
+            IFCEntity.objects.filter(ifc_file__in=ifc_files, global_id__in=trusted_gids).only(
+                "global_id", "name", "ifc_type", "properties"
             )
         )
+        review_entities = list(
+            IFCEntity.objects.filter(ifc_file__in=ifc_files, global_id__in=review_gids).only(
+                "global_id", "name", "ifc_type", "properties"
+            )
+        )
+        property_hints = []
+        for entity in (
+            IFCEntity.objects.filter(ifc_file__in=ifc_files)
+            .only("global_id", "name", "ifc_type", "properties")
+            .iterator(chunk_size=200)
+        ):
+            if entity.global_id in trusted_gids or entity.global_id in review_gids:
+                continue
+            act_id = None
+            for key, value in (entity.properties or {}).items():
+                if value and key.lower().endswith("activity id"):
+                    act_id = str(value).strip()
+                    break
+            if act_id:
+                property_hints.append(
+                    {
+                        "global_id": entity.global_id,
+                        "name": entity.name or entity.global_id,
+                        "ifc_type": entity.ifc_type,
+                        "activity_id": act_id,
+                    }
+                )
+                if len(property_hints) >= 20:
+                    break
+
         today = date.today()
         progress = _compute_progress(task, today)
 
         siblings_count = (
             TaskEntityBinding.objects.filter(
-                entity_global_id__in=gids,
+                entity_global_id__in=trusted_gids,
                 task__project=project,
+                needs_review=False,
             )
             .exclude(task_id=task.pk)
             .values("task_id")
             .distinct()
             .count()
-            if gids
+            if trusted_gids
             else 0
         )
 
@@ -1375,11 +1419,16 @@ class TaskDetailView(ProjectAccessMixin, View):
             "scheduling/components/task_detail.html",
             {
                 "task": task,
-                "entities": entities,
+                "entities": trusted_entities,
+                "trusted_entities": trusted_entities,
+                "review_entities": review_entities,
+                "property_hints": property_hints,
+                "trusted_count": len(trusted_gids),
+                "review_count": len(review_gids),
                 "progress": progress,
                 "siblings_count": siblings_count,
                 "stage_color": _STAGE_COLORS.get(task.stage or "", "#6b7280"),
-                "entity_global_ids_json": json.dumps(gids),
+                "entity_global_ids_json": json.dumps(trusted_gids),
                 "project": project,
             },
         )
@@ -1747,6 +1796,76 @@ class LinkGovernanceSummaryView(ProjectAccessMixin, View):
         project = self.get_project()
         payload = GovernanceSummaryService(str(project.pk)).build()
         return JsonResponse(payload)
+
+
+class LinkGovernanceReviewQueueView(ProjectAccessMixin, View):
+    """GET — paginated read-only link governance review queue (JSON or HTMX)."""
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.review_queue import LinkReviewQueueService
+
+        project = self.get_project()
+        filters = LinkReviewQueueService.filters_from_request(request.GET.dict())
+        service = LinkReviewQueueService(str(project.pk), project_pk=project.pk)
+        payload = service.build(filters)
+
+        if request.headers.get("HX-Request"):
+            queue_modes = [
+                ("review", "Review"),
+                ("trusted", "Trusted"),
+                ("property_hints", "Property hints"),
+                ("legacy_only", "Legacy M2M"),
+                ("multiple_trusted", "Multi-trusted"),
+                ("possible_conflicts", "Conflicts"),
+                ("all_governance", "All"),
+            ]
+            return render(
+                request,
+                "scheduling/components/governance_review_queue.html",
+                {
+                    "project": project,
+                    "queue": payload,
+                    "filters": filters,
+                    "queue_modes": queue_modes,
+                },
+            )
+        return JsonResponse(payload)
+
+
+class LinkGovernanceTaskView(ProjectAccessMixin, View):
+    """GET — task-centric governance read model."""
+
+    def get(self, request, **kwargs: object) -> JsonResponse:
+        from scheduling.services.governance.review_queue import LinkReviewQueueService
+
+        project = self.get_project()
+        service = LinkReviewQueueService(str(project.pk), project_pk=project.pk)
+        payload = service.task_centric(kwargs["task_pk"])
+        return JsonResponse(payload)
+
+
+class LinkGovernanceEntityView(ProjectAccessMixin, View):
+    """GET — entity-centric governance read model by GlobalId."""
+
+    def get(self, request, **kwargs: object) -> JsonResponse:
+        from scheduling.services.governance.review_queue import LinkReviewQueueService
+
+        project = self.get_project()
+        service = LinkReviewQueueService(str(project.pk), project_pk=project.pk)
+        payload = service.entity_centric(kwargs["global_id"])
+        return JsonResponse(payload)
+
+
+class LinkGovernanceWorkspaceView(ProjectAccessMixin, View):
+    """GET — HTMX shell for read-only link governance review workspace."""
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        return render(
+            request,
+            "scheduling/tabs/link_governance.html",
+            {"project": project},
+        )
 
 
 class LookaheadDataView(ProjectAccessMixin, View):

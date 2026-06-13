@@ -34,10 +34,12 @@ def entity_gids_by_task(
     task_ids: list[str | UUID] | None = None,
     *,
     accepted_only: bool = False,
+    review_only: bool = False,
 ) -> dict[str, list[str]]:
     """Return {str(task_id): [entity_global_id, ...]} for *project_id*.
 
     When *accepted_only* is True, review-only bindings (needs_review=True) are excluded.
+    When *review_only* is True, only review bindings are returned.
     """
     from scheduling.services.governance.reader import BindingGovernanceReader
 
@@ -45,7 +47,7 @@ def entity_gids_by_task(
     return reader.entity_gids_by_task(
         task_ids,
         trusted_only=accepted_only,
-        review_only=False,
+        review_only=review_only,
     )
 
 

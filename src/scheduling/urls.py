@@ -224,6 +224,26 @@ urlpatterns = [
         name="link_governance_summary",
     ),
     path(
+        "projects/<uuid:pk>/link-governance/review-queue/",
+        views.LinkGovernanceReviewQueueView.as_view(),
+        name="link_governance_review_queue",
+    ),
+    path(
+        "projects/<uuid:pk>/link-governance/workspace/",
+        views.LinkGovernanceWorkspaceView.as_view(),
+        name="link_governance_workspace",
+    ),
+    path(
+        "projects/<uuid:pk>/link-governance/tasks/<uuid:task_pk>/",
+        views.LinkGovernanceTaskView.as_view(),
+        name="link_governance_task",
+    ),
+    path(
+        "projects/<uuid:pk>/link-governance/entities/<str:global_id>/",
+        views.LinkGovernanceEntityView.as_view(),
+        name="link_governance_entity",
+    ),
+    path(
         "projects/<uuid:pk>/comprehension/",
         views.ProjectComprehensionView.as_view(),
         name="schedule_comprehension",
