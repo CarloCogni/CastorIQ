@@ -284,6 +284,61 @@ urlpatterns = [
         name="link_governance_reconciliation_detail",
     ),
     path(
+        "projects/<uuid:pk>/link-governance/lifecycle/<uuid:binding_pk>/reject/preview/",
+        views.LinkLifecycleRejectPreviewView.as_view(),
+        name="link_lifecycle_reject_preview",
+    ),
+    path(
+        "projects/<uuid:pk>/link-governance/lifecycle/<uuid:binding_pk>/reject/apply/",
+        views.LinkLifecycleRejectApplyView.as_view(),
+        name="link_lifecycle_reject_apply",
+    ),
+    path(
+        "projects/<uuid:pk>/link-governance/lifecycle/<uuid:binding_pk>/reaffirm/preview/",
+        views.LinkLifecycleReaffirmPreviewView.as_view(),
+        name="link_lifecycle_reaffirm_preview",
+    ),
+    path(
+        "projects/<uuid:pk>/link-governance/lifecycle/<uuid:binding_pk>/reaffirm/apply/",
+        views.LinkLifecycleReaffirmApplyView.as_view(),
+        name="link_lifecycle_reaffirm_apply",
+    ),
+    path(
+        "projects/<uuid:pk>/link-governance/lifecycle/<uuid:binding_pk>/reverse/preview/",
+        views.LinkLifecycleReversePreviewView.as_view(),
+        name="link_lifecycle_reverse_preview",
+    ),
+    path(
+        "projects/<uuid:pk>/link-governance/lifecycle/<uuid:binding_pk>/reverse/apply/",
+        views.LinkLifecycleReverseApplyView.as_view(),
+        name="link_lifecycle_reverse_apply",
+    ),
+    path(
+        "projects/<uuid:pk>/link-governance/lifecycle/<uuid:binding_pk>/supersede/preview/",
+        views.LinkLifecycleSupersedePreviewView.as_view(),
+        name="link_lifecycle_supersede_preview",
+    ),
+    path(
+        "projects/<uuid:pk>/link-governance/lifecycle/<uuid:binding_pk>/supersede/apply/",
+        views.LinkLifecycleSupersedeApplyView.as_view(),
+        name="link_lifecycle_supersede_apply",
+    ),
+    path(
+        "projects/<uuid:pk>/link-governance/lifecycle/parity/preview/",
+        views.LinkLifecycleParityPreviewView.as_view(),
+        name="link_lifecycle_parity_preview",
+    ),
+    path(
+        "projects/<uuid:pk>/link-governance/lifecycle/parity/apply/",
+        views.LinkLifecycleParityApplyView.as_view(),
+        name="link_lifecycle_parity_apply",
+    ),
+    path(
+        "projects/<uuid:pk>/link-governance/audit/",
+        views.LinkGovernanceAuditHistoryView.as_view(),
+        name="link_governance_audit",
+    ),
+    path(
         "projects/<uuid:pk>/comprehension/",
         views.ProjectComprehensionView.as_view(),
         name="schedule_comprehension",

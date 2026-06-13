@@ -2239,11 +2239,449 @@ class LinkGovernanceReconciliationDetailView(ProjectAccessMixin, View):
         )
 
         project = self.get_project()
-        payload = BindingReconciliationService(str(project.pk), project_pk=project.pk).binding_detail(
-            kwargs["binding_pk"]
-        )
+        payload = BindingReconciliationService(
+            str(project.pk), project_pk=project.pk
+        ).binding_detail(kwargs["binding_pk"])
         if "error" in payload:
             return JsonResponse(payload, status=404)
+        return JsonResponse(payload)
+
+
+def _lifecycle_error(
+    request,
+    message: str,
+    *,
+    status: int = 400,
+    details: dict | None = None,
+) -> HttpResponse:
+    """Return JSON or HTMX toast for lifecycle validation errors."""
+    body = {"error": message, **(details or {})}
+    if request.headers.get("HX-Request"):
+        return toast_response(message, "error", status=status)
+    return JsonResponse(body, status=status)
+
+
+class LinkLifecycleRejectPreviewView(ProjectModifyAccessMixin, View):
+    """POST — preview rejection of an active review binding."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.binding_lifecycle import (
+            BindingLifecycleService,
+            LifecycleValidationError,
+        )
+
+        project = self.get_project()
+        service = BindingLifecycleService(project, request.user)
+        try:
+            preview = service.preview_reject(str(kwargs["binding_pk"]))
+        except LifecycleValidationError as exc:
+            return _lifecycle_error(request, exc.message, status=400, details=exc.details)
+
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "scheduling/components/governance_lifecycle_confirm.html",
+                {
+                    "project": project,
+                    "preview": preview,
+                    "operation": "reject",
+                    "binding_id": kwargs["binding_pk"],
+                    "reason_codes": [
+                        ("wrong_task", "Wrong task"),
+                        ("wrong_entity", "Wrong entity"),
+                        ("wrong_location", "Wrong location"),
+                        ("wrong_discipline", "Wrong discipline"),
+                        ("wrong_type", "Wrong type"),
+                        ("duplicate", "Duplicate"),
+                        ("insufficient_evidence", "Insufficient evidence"),
+                        ("obsolete_suggestion", "Obsolete suggestion"),
+                        ("other", "Other"),
+                    ],
+                },
+            )
+        return JsonResponse(preview.to_dict())
+
+
+class LinkLifecycleRejectApplyView(ProjectModifyAccessMixin, View):
+    """POST — apply audited rejection."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.binding_lifecycle import (
+            BindingLifecycleService,
+            LifecycleValidationError,
+            StaleLifecycleError,
+        )
+        from scheduling.services.governance.review_queue import LinkReviewQueueService
+
+        project = self.get_project()
+        payload = _parse_json_or_form(request) or {}
+        service = BindingLifecycleService(project, request.user)
+        try:
+            result = service.reject(
+                str(kwargs["binding_pk"]),
+                fingerprint=payload.get("fingerprint", ""),
+                reason_code=payload.get("reason_code", ""),
+                reason_text=payload.get("reason_text", ""),
+            )
+        except StaleLifecycleError as exc:
+            return _lifecycle_error(request, exc.message, status=409, details=exc.details)
+        except LifecycleValidationError as exc:
+            return _lifecycle_error(request, exc.message, status=400, details=exc.details)
+
+        if request.headers.get("HX-Request"):
+            queue_svc = LinkReviewQueueService(project.pk, project_pk=project.pk)
+            queue = queue_svc.build(queue_svc.filters_from_request({"mode": "review", "page": 1}))
+            queue_html = render_to_string(
+                "scheduling/components/governance_review_queue.html",
+                {
+                    "project": project,
+                    "queue": queue,
+                    "filters": queue_svc.filters_from_request({"mode": "review", "page": 1}),
+                    "queue_modes": [("review", "Review"), ("trusted", "Trusted")],
+                },
+                request=request,
+            )
+            result_html = render_to_string(
+                "scheduling/components/governance_lifecycle_result.html",
+                {"project": project, "result": result, "operation": "reject"},
+                request=request,
+            )
+            return HttpResponse(
+                result_html
+                + f'<div id="governance-queue-panel" hx-swap-oob="innerHTML">{queue_html}</div>'
+            )
+        return JsonResponse(result.to_dict())
+
+
+class LinkLifecycleReaffirmPreviewView(ProjectModifyAccessMixin, View):
+    """POST — preview reaffirmation of a trusted binding."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.binding_lifecycle import (
+            BindingLifecycleService,
+            LifecycleValidationError,
+        )
+
+        project = self.get_project()
+        service = BindingLifecycleService(project, request.user)
+        try:
+            preview = service.preview_reaffirm(str(kwargs["binding_pk"]))
+        except LifecycleValidationError as exc:
+            return _lifecycle_error(request, exc.message, status=400, details=exc.details)
+
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "scheduling/components/governance_lifecycle_confirm.html",
+                {
+                    "project": project,
+                    "preview": preview,
+                    "operation": "reaffirm",
+                    "binding_id": kwargs["binding_pk"],
+                    "reason_codes": [
+                        ("evidence_verified", "Evidence verified"),
+                        ("manual_override_confirmed", "Manual override confirmed"),
+                        ("source_change_reviewed", "Source change reviewed"),
+                        ("reconciliation_false_positive", "Reconciliation false positive"),
+                        ("other", "Other"),
+                    ],
+                },
+            )
+        return JsonResponse(preview.to_dict())
+
+
+class LinkLifecycleReaffirmApplyView(ProjectModifyAccessMixin, View):
+    """POST — apply reaffirmation."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.binding_lifecycle import (
+            BindingLifecycleService,
+            LifecycleValidationError,
+            StaleLifecycleError,
+        )
+
+        project = self.get_project()
+        payload = _parse_json_or_form(request) or {}
+        service = BindingLifecycleService(project, request.user)
+        try:
+            result = service.reaffirm(
+                str(kwargs["binding_pk"]),
+                fingerprint=payload.get("fingerprint", ""),
+                reason_code=payload.get("reason_code", ""),
+                reason_text=payload.get("reason_text", ""),
+                repair_m2m=payload.get("repair_m2m") in (True, "true", "1", "on"),
+            )
+        except StaleLifecycleError as exc:
+            return _lifecycle_error(request, exc.message, status=409, details=exc.details)
+        except LifecycleValidationError as exc:
+            return _lifecycle_error(request, exc.message, status=400, details=exc.details)
+
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "scheduling/components/governance_lifecycle_result.html",
+                {"project": project, "result": result, "operation": "reaffirm"},
+            )
+        return JsonResponse(result.to_dict())
+
+
+class LinkLifecycleReversePreviewView(ProjectModifyAccessMixin, View):
+    """POST — preview trusted binding reversal."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.binding_lifecycle import (
+            BindingLifecycleService,
+            LifecycleValidationError,
+        )
+
+        project = self.get_project()
+        service = BindingLifecycleService(project, request.user)
+        try:
+            preview = service.preview_reverse(str(kwargs["binding_pk"]))
+        except LifecycleValidationError as exc:
+            return _lifecycle_error(request, exc.message, status=400, details=exc.details)
+
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "scheduling/components/governance_lifecycle_confirm.html",
+                {
+                    "project": project,
+                    "preview": preview,
+                    "operation": "reverse",
+                    "binding_id": kwargs["binding_pk"],
+                    "confirm_phrase": "REVERSE TRUSTED LINK",
+                    "reason_codes": [
+                        ("mistaken_approval", "Mistaken approval"),
+                        ("source_changed", "Source changed"),
+                        ("task_removed", "Task removed"),
+                        ("entity_removed", "Entity removed"),
+                        ("scope_changed", "Scope changed"),
+                        ("governance_correction", "Governance correction"),
+                        ("other", "Other"),
+                    ],
+                },
+            )
+        return JsonResponse(preview.to_dict())
+
+
+class LinkLifecycleReverseApplyView(ProjectModifyAccessMixin, View):
+    """POST — apply audited reversal."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.binding_lifecycle import (
+            BindingLifecycleService,
+            LifecycleValidationError,
+            StaleLifecycleError,
+        )
+
+        project = self.get_project()
+        payload = _parse_json_or_form(request) or {}
+        service = BindingLifecycleService(project, request.user)
+        try:
+            result = service.reverse(
+                str(kwargs["binding_pk"]),
+                fingerprint=payload.get("fingerprint", ""),
+                reason_code=payload.get("reason_code", ""),
+                reason_text=payload.get("reason_text", ""),
+                confirmation=payload.get("confirmation", ""),
+            )
+        except StaleLifecycleError as exc:
+            return _lifecycle_error(request, exc.message, status=409, details=exc.details)
+        except LifecycleValidationError as exc:
+            return _lifecycle_error(request, exc.message, status=400, details=exc.details)
+
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "scheduling/components/governance_lifecycle_result.html",
+                {"project": project, "result": result, "operation": "reverse"},
+            )
+        return JsonResponse(result.to_dict())
+
+
+class LinkLifecycleSupersedePreviewView(ProjectModifyAccessMixin, View):
+    """POST — preview supersession of trusted binding by review replacement."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.binding_lifecycle import (
+            BindingLifecycleService,
+            LifecycleValidationError,
+        )
+
+        project = self.get_project()
+        payload = _parse_json_or_form(request) or {}
+        replacement_id = payload.get("replacement_binding_id", "")
+        service = BindingLifecycleService(project, request.user)
+        try:
+            preview = service.preview_supersede(str(kwargs["binding_pk"]), str(replacement_id))
+        except LifecycleValidationError as exc:
+            return _lifecycle_error(request, exc.message, status=400, details=exc.details)
+
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "scheduling/components/governance_lifecycle_confirm.html",
+                {
+                    "project": project,
+                    "preview": preview,
+                    "operation": "supersede",
+                    "binding_id": kwargs["binding_pk"],
+                    "replacement_binding_id": replacement_id,
+                    "confirm_phrase": "SUPERSEDE LINK",
+                    "reason_codes": [
+                        ("mistaken_approval", "Mistaken approval"),
+                        ("source_changed", "Source changed"),
+                        ("scope_changed", "Scope changed"),
+                        ("governance_correction", "Governance correction"),
+                        ("other", "Other"),
+                    ],
+                },
+            )
+        return JsonResponse(preview.to_dict())
+
+
+class LinkLifecycleSupersedeApplyView(ProjectModifyAccessMixin, View):
+    """POST — apply atomic supersession."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.binding_lifecycle import (
+            BindingLifecycleService,
+            LifecycleValidationError,
+            StaleLifecycleError,
+        )
+
+        project = self.get_project()
+        payload = _parse_json_or_form(request) or {}
+        service = BindingLifecycleService(project, request.user)
+        try:
+            result = service.supersede(
+                str(kwargs["binding_pk"]),
+                str(payload.get("replacement_binding_id", "")),
+                fingerprint=payload.get("fingerprint", ""),
+                reason_code=payload.get("reason_code", ""),
+                reason_text=payload.get("reason_text", ""),
+                confirmation=payload.get("confirmation", ""),
+            )
+        except StaleLifecycleError as exc:
+            return _lifecycle_error(request, exc.message, status=409, details=exc.details)
+        except LifecycleValidationError as exc:
+            return _lifecycle_error(request, exc.message, status=400, details=exc.details)
+
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "scheduling/components/governance_lifecycle_result.html",
+                {"project": project, "result": result, "operation": "supersede"},
+            )
+        return JsonResponse(result.to_dict())
+
+
+class LinkLifecycleParityPreviewView(ProjectModifyAccessMixin, View):
+    """POST — preview audited M2M parity repair."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.binding_lifecycle import (
+            BindingLifecycleService,
+            LifecycleValidationError,
+        )
+
+        project = self.get_project()
+        payload = _parse_json_or_form(request) or {}
+        service = BindingLifecycleService(project, request.user)
+        try:
+            preview = service.preview_parity_repair(
+                binding_id=payload.get("binding_id"),
+                task_id=payload.get("task_id"),
+                entity_global_id=payload.get("entity_global_id"),
+                repair_type=payload.get("repair_type", ""),
+            )
+        except LifecycleValidationError as exc:
+            return _lifecycle_error(request, exc.message, status=400, details=exc.details)
+
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "scheduling/components/governance_lifecycle_confirm.html",
+                {
+                    "project": project,
+                    "preview": preview,
+                    "operation": "parity",
+                    "binding_id": payload.get("binding_id"),
+                    "task_id": payload.get("task_id"),
+                    "entity_global_id": payload.get("entity_global_id"),
+                    "repair_type": payload.get("repair_type"),
+                    "confirm_phrase": "PARITY REPAIR",
+                    "reason_codes": [
+                        ("accepted_missing_m2m", "Accepted missing M2M"),
+                        ("m2m_without_accepted", "M2M without accepted binding"),
+                        ("review_m2m_leak", "Review M2M leak"),
+                        ("duplicate_compatibility", "Duplicate compatibility"),
+                        ("other", "Other"),
+                    ],
+                },
+            )
+        return JsonResponse(preview.to_dict())
+
+
+class LinkLifecycleParityApplyView(ProjectModifyAccessMixin, View):
+    """POST — apply audited parity repair."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.binding_lifecycle import (
+            BindingLifecycleService,
+            LifecycleValidationError,
+            StaleLifecycleError,
+        )
+
+        project = self.get_project()
+        payload = _parse_json_or_form(request) or {}
+        service = BindingLifecycleService(project, request.user)
+        try:
+            result = service.repair_parity(
+                fingerprint=payload.get("fingerprint", ""),
+                reason_code=payload.get("reason_code", ""),
+                reason_text=payload.get("reason_text", ""),
+                confirmation=payload.get("confirmation", ""),
+                binding_id=payload.get("binding_id"),
+                task_id=payload.get("task_id"),
+                entity_global_id=payload.get("entity_global_id"),
+                repair_type=payload.get("repair_type", ""),
+            )
+        except StaleLifecycleError as exc:
+            return _lifecycle_error(request, exc.message, status=409, details=exc.details)
+        except LifecycleValidationError as exc:
+            return _lifecycle_error(request, exc.message, status=400, details=exc.details)
+
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "scheduling/components/governance_lifecycle_result.html",
+                {"project": project, "result": result, "operation": "parity"},
+            )
+        return JsonResponse(result.to_dict())
+
+
+class LinkGovernanceAuditHistoryView(ProjectAccessMixin, View):
+    """GET — read-only immutable governance audit timeline."""
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.audit_history import BindingAuditHistoryService
+
+        project = self.get_project()
+        filters = BindingAuditHistoryService.filters_from_request(dict(request.GET.items()))
+        payload = BindingAuditHistoryService(str(project.pk)).build(filters)
+
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "scheduling/components/governance_audit_panel.html",
+                {
+                    "project": project,
+                    "audit": payload,
+                    "filters": filters,
+                },
+            )
         return JsonResponse(payload)
 
 
