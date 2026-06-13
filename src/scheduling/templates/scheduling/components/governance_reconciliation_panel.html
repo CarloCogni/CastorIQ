@@ -1,0 +1,209 @@
+<!-- scheduling/components/governance_reconciliation_panel.html — HTMX reconciliation diagnostic -->
+
+{% with r=reconciliation s=r.summary %}
+<div id="governance-reconciliation-panel" class="d-flex flex-column gap-3">
+
+    <div class="alert alert-warning py-2 small mb-0" role="status">
+        <i class="bi bi-info-circle me-1" aria-hidden="true"></i>
+        Reconciliation is diagnostic only. No links are changed.
+    </div>
+
+    <!-- Summary cards -->
+    <div class="row g-2" role="group" aria-label="Reconciliation summary">
+        <div class="col-6 col-md-4 col-lg-2">
+            <div class="border rounded p-2 text-center bg-success-subtle">
+                <div class="fw-semibold">{{ s.valid }}</div>
+                <div class="small text-secondary">Valid</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4 col-lg-2">
+            <div class="border rounded p-2 text-center bg-warning-subtle">
+                <div class="fw-semibold">{{ s.review_required }}</div>
+                <div class="small text-secondary">Review req.</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4 col-lg-2">
+            <div class="border rounded p-2 text-center bg-danger-subtle">
+                <div class="fw-semibold">{{ s.broken_orphaned }}</div>
+                <div class="small text-secondary">Broken</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4 col-lg-2">
+            <div class="border rounded p-2 text-center bg-primary-subtle">
+                <div class="fw-semibold">{{ s.possible_conflicts }}</div>
+                <div class="small text-secondary">Conflicts</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4 col-lg-2">
+            <div class="border rounded p-2 text-center bg-secondary-subtle">
+                <div class="fw-semibold">{{ s.version_unknown }}</div>
+                <div class="small text-secondary">Ver. unknown</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4 col-lg-2">
+            <div class="border rounded p-2 text-center bg-info-subtle">
+                <div class="fw-semibold">{{ s.m2m_parity_issues }}</div>
+                <div class="small text-secondary">M2M parity</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="small text-secondary">
+        Evaluated {{ s.total_evaluated }} finding(s) · {{ s.binding_rows }} binding row(s)
+    </div>
+
+    <!-- Filters -->
+    <form class="row g-2 align-items-end"
+          hx-get="{% url 'scheduling:link_governance_reconciliation' project.pk %}"
+          hx-target="#governance-reconciliation-panel"
+          hx-swap="outerHTML">
+        <div class="col-auto">
+            <label class="form-label small mb-0" for="gr-scope">Scope</label>
+            <select id="gr-scope" name="scope" class="form-select form-select-sm">
+                <option value="all" {% if filters.scope == 'all' %}selected{% endif %}>All</option>
+                <option value="trusted" {% if filters.scope == 'trusted' %}selected{% endif %}>Trusted</option>
+                <option value="review" {% if filters.scope == 'review' %}selected{% endif %}>Review</option>
+            </select>
+        </div>
+        <div class="col-auto">
+            <label class="form-label small mb-0" for="gr-status">Status</label>
+            <input id="gr-status" type="text" name="status" class="form-control form-control-sm"
+                   placeholder="valid" value="{{ filters.status|default:'' }}">
+        </div>
+        <div class="col-auto">
+            <label class="form-label small mb-0" for="gr-severity">Severity</label>
+            <select id="gr-severity" name="severity" class="form-select form-select-sm">
+                <option value="">All</option>
+                <option value="critical" {% if filters.severity == 'critical' %}selected{% endif %}>Critical</option>
+                <option value="high" {% if filters.severity == 'high' %}selected{% endif %}>High</option>
+                <option value="medium" {% if filters.severity == 'medium' %}selected{% endif %}>Medium</option>
+                <option value="low" {% if filters.severity == 'low' %}selected{% endif %}>Low</option>
+            </select>
+        </div>
+        <div class="col-auto">
+            <label class="form-label small mb-0" for="gr-method">Method</label>
+            <select id="gr-method" name="method" class="form-select form-select-sm">
+                <option value="">All</option>
+                <option value="exact" {% if filters.method == 'exact' %}selected{% endif %}>Exact</option>
+                <option value="normalized" {% if filters.method == 'normalized' %}selected{% endif %}>Normalized</option>
+                <option value="manual" {% if filters.method == 'manual' %}selected{% endif %}>Manual</option>
+                <option value="heuristic" {% if filters.method == 'heuristic' %}selected{% endif %}>Heuristic</option>
+                <option value="embedding" {% if filters.method == 'embedding' %}selected{% endif %}>Semantic</option>
+            </select>
+        </div>
+        <div class="col-auto">
+            <div class="form-check mb-1">
+                <input class="form-check-input" type="checkbox" name="possible_conflict" value="true"
+                       id="gr-conflict" {% if filters.possible_conflict %}checked{% endif %}>
+                <label class="form-check-label small" for="gr-conflict">Conflicts only</label>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="orphaned" value="true"
+                       id="gr-orphan" {% if filters.orphaned %}checked{% endif %}>
+                <label class="form-check-label small" for="gr-orphan">Orphaned only</label>
+            </div>
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-sm btn-primary">Filter</button>
+        </div>
+    </form>
+
+    {% if r.warnings %}
+    <div class="alert alert-secondary py-2 small mb-0">
+        {% for w in r.warnings %}<div>{{ w }}</div>{% endfor %}
+    </div>
+    {% endif %}
+
+    {% if r.findings %}
+    <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0" style="font-size:0.82rem;">
+            <thead class="table-light">
+                <tr>
+                    <th scope="col">Status</th>
+                    <th scope="col">Task</th>
+                    <th scope="col">Entity</th>
+                    <th scope="col">Evidence</th>
+                    <th scope="col">Action</th>
+                    <th scope="col">Navigate</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in r.findings %}
+                <tr>
+                    <td>
+                        <span class="badge {% if item.severity == 'critical' %}bg-danger{% elif item.severity == 'high' %}bg-warning text-dark{% elif item.severity == 'medium' %}bg-primary{% else %}bg-secondary{% endif %}-subtle border">
+                            {{ item.primary_status }}
+                        </span>
+                        <div class="small text-secondary">{{ item.severity }}</div>
+                    </td>
+                    <td>
+                        {% if item.task %}
+                        <div class="text-truncate" style="max-width:120px;">{{ item.task.task_name }}</div>
+                        <code class="small">{{ item.task.activity_code|default:"—" }}</code>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td>
+                        <div class="text-truncate" style="max-width:120px;">{{ item.entity.entity_name|default:item.entity.entity_global_id }}</div>
+                    </td>
+                    <td class="small">{{ item.governance.evidence_label|default:"—" }}</td>
+                    <td class="small">
+                        <div>{{ item.recommended_action }}</div>
+                        <div class="text-secondary">{{ item.explanation|truncatechars:80 }}</div>
+                    </td>
+                    <td>
+                        <div class="d-flex gap-1 flex-wrap">
+                            {% if item.navigation.task_detail_url %}
+                            <a class="btn btn-sm btn-outline-primary py-0 px-1" href="{{ item.navigation.task_detail_url }}">Task</a>
+                            {% endif %}
+                            {% if item.navigation.viewer_url %}
+                            <a class="btn btn-sm btn-outline-secondary py-0 px-1" href="{{ item.navigation.viewer_url }}">Model</a>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                <tr>
+                    <td colspan="6" class="bg-body-secondary small">
+                        {% if item.current_values.task_activity_code or item.current_values.ifc_activity_id_property %}
+                        <strong>Current:</strong>
+                        task=<code>{{ item.current_values.task_activity_code|default:"—" }}</code>,
+                        property=<code>{{ item.current_values.ifc_activity_id_property|default:"—" }}</code>
+                        {% endif %}
+                        {% if item.evidence_drift %}
+                        · <span class="text-warning-emphasis">{{ item.evidence_drift }}</span>
+                        {% endif %}
+                        {% if item.warnings %}
+                        {% for w in item.warnings %}<div class="text-secondary">{{ w }}</div>{% endfor %}
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="text-center text-secondary py-4" role="status">
+        <i class="bi bi-check2-circle fs-3 d-block mb-2" aria-hidden="true"></i>
+        No findings match the current filters.
+    </div>
+    {% endif %}
+
+    {% with p=r.pagination %}
+    <nav aria-label="Reconciliation pagination" class="d-flex align-items-center gap-2 flex-wrap">
+        <span class="small text-secondary">Page {{ p.page }} of {{ p.total_pages }}</span>
+        {% if p.has_previous %}
+        <a class="btn btn-sm btn-outline-secondary"
+           hx-get="{% url 'scheduling:link_governance_reconciliation' project.pk %}?scope={{ filters.scope|default:'all' }}&page={{ p.prev_page }}"
+           hx-target="#governance-reconciliation-panel"
+           hx-swap="outerHTML">Previous</a>
+        {% endif %}
+        {% if p.has_next %}
+        <a class="btn btn-sm btn-outline-secondary"
+           hx-get="{% url 'scheduling:link_governance_reconciliation' project.pk %}?scope={{ filters.scope|default:'all' }}&page={{ p.next_page }}"
+           hx-target="#governance-reconciliation-panel"
+           hx-swap="outerHTML">Next</a>
+        {% endif %}
+    </nav>
+    {% endwith %}
+
+</div>
+{% endwith %}

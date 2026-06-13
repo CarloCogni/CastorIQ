@@ -1,4 +1,4 @@
-<!-- scheduling/tabs/link_governance.html — link governance review workspace (E2-B/C) -->
+<!-- scheduling/tabs/link_governance.html — link governance workspace (E2-B/C/D) -->
 
 <div id="link-governance-workspace" class="d-flex flex-column gap-3 h-100">
     <div class="d-flex align-items-center gap-2 flex-wrap">
@@ -15,7 +15,7 @@
             </button>
         </div>
         <span class="badge bg-primary-subtle text-primary-emphasis border"
-              style="font-size:0.72rem;">trusted-binding-v1 · E2-C decisions</span>
+              style="font-size:0.72rem;">trusted-binding-v1</span>
         <a class="btn btn-sm btn-outline-primary ms-auto"
            hx-get="{% url 'scheduling:schedule_link_preview_param' project.pk %}?param_name=Activity%20ID"
            hx-target="#governance-exact-preview-slot"
@@ -24,15 +24,49 @@
         </a>
     </div>
 
+    <ul class="nav nav-tabs" role="tablist" aria-label="Governance workspace tabs">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="gq-tab-queue" data-bs-toggle="tab"
+                    data-bs-target="#gq-panel-queue" type="button" role="tab"
+                    aria-selected="true" aria-controls="gq-panel-queue">
+                Review queue
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="gq-tab-reconciliation" data-bs-toggle="tab"
+                    data-bs-target="#gq-panel-reconciliation" type="button" role="tab"
+                    aria-selected="false" aria-controls="gq-panel-reconciliation"
+                    hx-get="{% url 'scheduling:link_governance_reconciliation' project.pk %}?scope=all&page=1"
+                    hx-target="#governance-reconciliation-panel"
+                    hx-trigger="click once"
+                    hx-swap="innerHTML">
+                Reconciliation
+            </button>
+        </li>
+    </ul>
+
     <div id="governance-exact-preview-slot"></div>
 
-    <div id="governance-queue-panel"
-         hx-get="{% url 'scheduling:link_governance_review_queue' project.pk %}?mode=review&page=1"
-         hx-trigger="load"
-         hx-swap="innerHTML">
-        <div class="d-flex align-items-center justify-content-center py-4 text-secondary">
-            <span class="spinner-border spinner-border-sm me-2" role="status" aria-label="Loading queue"></span>
-            Loading governance queue…
+    <div class="tab-content">
+        <div class="tab-pane fade show active" id="gq-panel-queue" role="tabpanel"
+             aria-labelledby="gq-tab-queue">
+            <div id="governance-queue-panel"
+                 hx-get="{% url 'scheduling:link_governance_review_queue' project.pk %}?mode=review&page=1"
+                 hx-trigger="load"
+                 hx-swap="innerHTML">
+                <div class="d-flex align-items-center justify-content-center py-4 text-secondary">
+                    <span class="spinner-border spinner-border-sm me-2" role="status" aria-label="Loading queue"></span>
+                    Loading governance queue…
+                </div>
+            </div>
+        </div>
+        <div class="tab-pane fade" id="gq-panel-reconciliation" role="tabpanel"
+             aria-labelledby="gq-tab-reconciliation">
+            <div id="governance-reconciliation-panel">
+                <div class="text-secondary small py-3" role="status">
+                    Open this tab to load the read-only reconciliation diagnostic.
+                </div>
+            </div>
         </div>
     </div>
 
