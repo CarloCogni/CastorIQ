@@ -1939,7 +1939,7 @@ class LinkGovernanceEntityView(ProjectAccessMixin, View):
 
 
 class LinkGovernanceWorkspaceView(ProjectAccessMixin, View):
-    """GET — HTMX shell for read-only link governance review workspace."""
+    """GET — HTMX shell for link governance review workspace."""
 
     def get(self, request, **kwargs: object) -> HttpResponse:
         project = self.get_project()
@@ -1948,6 +1948,263 @@ class LinkGovernanceWorkspaceView(ProjectAccessMixin, View):
             "scheduling/tabs/link_governance.html",
             {"project": project},
         )
+
+
+def _parse_json_or_form(request) -> dict | None:
+    """Parse POST body as JSON or form fields."""
+    if request.content_type.startswith("application/json"):
+        try:
+            return json.loads(request.body.decode() or "{}")
+        except json.JSONDecodeError:
+            return None
+    data = request.POST.dict()
+    if "binding_ids" not in data and request.POST.getlist("binding_ids"):
+        data["binding_ids"] = request.POST.getlist("binding_ids")
+    return data
+
+
+def _parse_binding_ids(payload: dict) -> list[str]:
+    """Extract binding UUID strings from request payload."""
+    raw = payload.get("binding_ids") or payload.get("binding_id")
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        return [raw.strip()] if raw.strip() else []
+    return [str(x).strip() for x in raw if str(x).strip()]
+
+
+def _decision_error(
+    request,
+    message: str,
+    *,
+    status: int = 400,
+    details: dict | None = None,
+) -> HttpResponse:
+    """Return JSON or HTMX toast for decision validation errors."""
+    body = {"error": message, **(details or {})}
+    if request.headers.get("HX-Request"):
+        return toast_response(message, "error", status=status)
+    return JsonResponse(body, status=status)
+
+
+class LinkDecisionPreviewOneView(ProjectModifyAccessMixin, View):
+    """POST — preview individual binding approval with fingerprint."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.link_decision import (
+            DecisionValidationError,
+            LinkDecisionService,
+        )
+
+        project = self.get_project()
+        payload = _parse_json_or_form(request) or {}
+        service = LinkDecisionService(project, request.user)
+        try:
+            preview = service.preview_one(kwargs["binding_pk"])
+        except DecisionValidationError as exc:
+            return _decision_error(request, exc.message, status=400, details=exc.details)
+
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "scheduling/components/governance_decision_confirm_one.html",
+                {
+                    "project": project,
+                    "preview": preview,
+                    "binding_id": kwargs["binding_pk"],
+                    "queue_mode": payload.get("queue_mode", "review"),
+                    "queue_page": payload.get("queue_page", 1),
+                },
+            )
+        return JsonResponse(preview.to_dict())
+
+
+class LinkDecisionApplyOneView(ProjectModifyAccessMixin, View):
+    """POST — apply individual binding approval."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.link_decision import (
+            DecisionValidationError,
+            LinkDecisionService,
+            StaleDecisionError,
+        )
+        from scheduling.services.governance.review_queue import LinkReviewQueueService
+
+        project = self.get_project()
+        payload = _parse_json_or_form(request) or {}
+        fingerprint = payload.get("selection_fingerprint", "")
+        conflict_ack = payload.get("conflict_acknowledged") in (True, "true", "1", "on")
+
+        service = LinkDecisionService(project, request.user)
+        try:
+            result = service.approve_one(
+                kwargs["binding_pk"],
+                selection_fingerprint=fingerprint,
+                conflict_acknowledged=conflict_ack,
+            )
+        except StaleDecisionError as exc:
+            return _decision_error(request, exc.message, status=409, details=exc.details)
+        except DecisionValidationError as exc:
+            status = 422 if "acknowledgment" in exc.message.lower() else 400
+            return _decision_error(request, exc.message, status=status, details=exc.details)
+
+        mode = payload.get("queue_mode", "review")
+        page = int(payload.get("queue_page", 1) or 1)
+        filters = LinkReviewQueueService.filters_from_request({"mode": mode, "page": page})
+        queue = LinkReviewQueueService(str(project.pk), project_pk=project.pk).build(filters)
+        queue_modes = [
+            ("review", "Review"),
+            ("trusted", "Trusted"),
+            ("property_hints", "Property hints"),
+            ("legacy_only", "Legacy M2M"),
+            ("multiple_trusted", "Multi-trusted"),
+            ("possible_conflicts", "Conflicts"),
+            ("all_governance", "All"),
+        ]
+        queue_html = render_to_string(
+            "scheduling/components/governance_review_queue.html",
+            {
+                "project": project,
+                "queue": queue,
+                "filters": filters,
+                "queue_modes": queue_modes,
+            },
+            request=request,
+        )
+        result_html = render_to_string(
+            "scheduling/components/governance_decision_result.html",
+            {"result": result, "project": project},
+            request=request,
+        )
+        msg = (
+            f"Approved {result.promoted_count}, "
+            f"{result.noop_count} already trusted, "
+            f"{result.m2m_additions} M2M added."
+        )
+        response = HttpResponse(
+            result_html
+            + f'<div id="governance-queue-panel" hx-swap-oob="innerHTML">{queue_html}</div>'
+        )
+        return trigger_toast(response, msg, "success")
+
+
+class LinkDecisionBulkPreviewView(ProjectModifyAccessMixin, View):
+    """POST — preview selected bulk approval."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.link_decision import (
+            BULK_UI_MAX,
+            DecisionValidationError,
+            LinkDecisionService,
+        )
+
+        project = self.get_project()
+        payload = _parse_json_or_form(request) or {}
+        binding_ids = _parse_binding_ids(payload)
+        if not binding_ids:
+            return _decision_error(request, "At least one binding must be selected.", status=400)
+        if len(binding_ids) > BULK_UI_MAX:
+            return _decision_error(
+                request,
+                f"Selection exceeds UI maximum of {BULK_UI_MAX} items.",
+                status=400,
+                details={"max": BULK_UI_MAX, "requested": len(binding_ids)},
+            )
+
+        service = LinkDecisionService(project, request.user)
+        try:
+            preview = service.preview_selected(binding_ids)
+        except DecisionValidationError as exc:
+            return _decision_error(request, exc.message, status=400, details=exc.details)
+
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "scheduling/components/governance_bulk_preview.html",
+                {
+                    "project": project,
+                    "preview": preview,
+                    "binding_ids": binding_ids,
+                    "queue_mode": payload.get("queue_mode", "review"),
+                    "queue_page": payload.get("queue_page", 1),
+                },
+            )
+        return JsonResponse(preview.to_dict())
+
+
+class LinkDecisionBulkApplyView(ProjectModifyAccessMixin, View):
+    """POST — apply selected bulk approval (all-or-nothing)."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.link_decision import (
+            DecisionValidationError,
+            LinkDecisionService,
+            StaleDecisionError,
+        )
+        from scheduling.services.governance.review_queue import LinkReviewQueueService
+
+        project = self.get_project()
+        payload = _parse_json_or_form(request) or {}
+        binding_ids = _parse_binding_ids(payload)
+        fingerprint = payload.get("selection_fingerprint", "")
+        confirmation = payload.get("confirmation", "")
+        confirm_ack = payload.get("confirm_acknowledged") in (True, "true", "1", "on")
+        conflict_ack = payload.get("conflict_acknowledged") in (True, "true", "1", "on")
+
+        service = LinkDecisionService(project, request.user)
+        try:
+            result = service.approve_selected(
+                binding_ids,
+                selection_fingerprint=fingerprint,
+                confirmation=confirmation,
+                confirm_acknowledged=confirm_ack,
+                conflict_acknowledged=conflict_ack,
+                require_bulk_phrase=True,
+            )
+        except StaleDecisionError as exc:
+            return _decision_error(request, exc.message, status=409, details=exc.details)
+        except DecisionValidationError as exc:
+            status = 422 if "acknowledgment" in exc.message.lower() else 400
+            return _decision_error(request, exc.message, status=status, details=exc.details)
+
+        mode = payload.get("queue_mode", "review")
+        page = int(payload.get("queue_page", 1) or 1)
+        filters = LinkReviewQueueService.filters_from_request({"mode": mode, "page": page})
+        queue = LinkReviewQueueService(str(project.pk), project_pk=project.pk).build(filters)
+        queue_modes = [
+            ("review", "Review"),
+            ("trusted", "Trusted"),
+            ("property_hints", "Property hints"),
+            ("legacy_only", "Legacy M2M"),
+            ("multiple_trusted", "Multi-trusted"),
+            ("possible_conflicts", "Conflicts"),
+            ("all_governance", "All"),
+        ]
+        queue_html = render_to_string(
+            "scheduling/components/governance_review_queue.html",
+            {
+                "project": project,
+                "queue": queue,
+                "filters": filters,
+                "queue_modes": queue_modes,
+            },
+            request=request,
+        )
+        result_html = render_to_string(
+            "scheduling/components/governance_decision_result.html",
+            {"result": result, "project": project, "bulk": True},
+            request=request,
+        )
+        msg = (
+            f"Bulk approved {result.promoted_count}, "
+            f"{result.noop_count} no-op, "
+            f"{result.m2m_additions} M2M added."
+        )
+        response = HttpResponse(
+            result_html
+            + f'<div id="governance-queue-panel" hx-swap-oob="innerHTML">{queue_html}</div>'
+        )
+        return trigger_toast(response, msg, "success")
 
 
 class LookaheadDataView(ProjectAccessMixin, View):

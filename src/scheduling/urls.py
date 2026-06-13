@@ -254,6 +254,26 @@ urlpatterns = [
         name="link_governance_entity",
     ),
     path(
+        "projects/<uuid:pk>/link-governance/decisions/<uuid:binding_pk>/preview/",
+        views.LinkDecisionPreviewOneView.as_view(),
+        name="link_decision_preview_one",
+    ),
+    path(
+        "projects/<uuid:pk>/link-governance/decisions/<uuid:binding_pk>/apply/",
+        views.LinkDecisionApplyOneView.as_view(),
+        name="link_decision_apply_one",
+    ),
+    path(
+        "projects/<uuid:pk>/link-governance/decisions/bulk/preview/",
+        views.LinkDecisionBulkPreviewView.as_view(),
+        name="link_decision_bulk_preview",
+    ),
+    path(
+        "projects/<uuid:pk>/link-governance/decisions/bulk/apply/",
+        views.LinkDecisionBulkApplyView.as_view(),
+        name="link_decision_bulk_apply",
+    ),
+    path(
         "projects/<uuid:pk>/comprehension/",
         views.ProjectComprehensionView.as_view(),
         name="schedule_comprehension",
