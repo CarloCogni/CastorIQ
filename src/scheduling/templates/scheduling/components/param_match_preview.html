@@ -153,9 +153,91 @@
   </details>
   {% endif %}
 
+  {% if not preview.errors and preview.projected_binding_count > 0 %}
+  <div class="border rounded p-3 mb-2" id="param-match-approval-panel">
+    <div class="fw-semibold mb-2">
+      <i class="bi bi-shield-check me-1"></i>Approve trusted bindings
+    </div>
+    <p class="text-secondary mb-2" style="font-size:0.78rem;">
+      Full-preview approval only. This will persist exactly
+      <strong>{{ preview.projected_binding_count }}</strong> trusted binding{{ preview.projected_binding_count|pluralize }}
+      across <strong>{{ preview.matched_task_count }}</strong> matched activit{{ preview.matched_task_count|pluralize:"y,ies" }}.
+      Stale links will <strong>not</strong> be deleted.
+    </p>
+
+    <form id="param-match-apply-form"
+          hx-post="{% url 'scheduling:schedule_link_apply_approved_param' project.pk %}"
+          hx-target="#fourD-match-preview"
+          hx-swap="innerHTML"
+          hx-indicator="#param-apply-spinner">
+      {% csrf_token %}
+      <input type="hidden" name="preview_fingerprint" value="{{ preview.preview_fingerprint }}">
+      <input type="hidden" name="param_name" value="{{ preview.param_name }}">
+      <input type="hidden" name="expected_matched_task_count" value="{{ preview.matched_task_count }}">
+      <input type="hidden" name="expected_projected_binding_count" value="{{ preview.projected_binding_count }}">
+      <input type="hidden" name="overwrite_policy" value="upsert_only">
+      <input type="hidden" name="stale_binding_policy" value="report_only">
+      <input type="hidden" name="legacy_m2m_policy" value="add_only">
+
+      <div class="form-check mb-2">
+        <input class="form-check-input param-apply-gate" type="checkbox"
+               name="confirm_acknowledged" value="true" id="paramConfirmAck">
+        <label class="form-check-label" for="paramConfirmAck" style="font-size:0.8rem;">
+          I have reviewed the preview and approve persisting these exact trusted bindings.
+        </label>
+      </div>
+
+      <div class="mb-2">
+        <label for="paramConfirmPhrase" class="form-label mb-1" style="font-size:0.78rem;">
+          Type <code>APPROVE</code> to confirm
+        </label>
+        <input type="text" class="form-control form-control-sm param-apply-gate"
+               name="confirmation" id="paramConfirmPhrase"
+               autocomplete="off" placeholder="APPROVE">
+      </div>
+
+      <div class="mb-2">
+        <label for="paramApplyNote" class="form-label mb-1" style="font-size:0.78rem;">
+          Optional note
+        </label>
+        <input type="text" class="form-control form-control-sm" name="note"
+               id="paramApplyNote" maxlength="500" placeholder="Pilot run reference…">
+      </div>
+
+      <button type="submit" id="paramApplyBtn" class="btn btn-sm btn-success" disabled>
+        <span id="param-apply-spinner" class="htmx-indicator spinner-border spinner-border-sm me-1"></span>
+        <i class="bi bi-check2-circle me-1"></i>Apply approved bindings
+      </button>
+    </form>
+  </div>
+
+  <script>
+  (function () {
+    const panel = document.getElementById("param-match-approval-panel");
+    if (!panel) return;
+    const btn = document.getElementById("paramApplyBtn");
+    const phrase = document.getElementById("paramConfirmPhrase");
+    const ack = document.getElementById("paramConfirmAck");
+    function syncApplyBtn() {
+      if (!btn || !phrase || !ack) return;
+      btn.disabled = !(ack.checked && phrase.value.trim() === "APPROVE");
+    }
+    panel.querySelectorAll(".param-apply-gate").forEach(function (el) {
+      el.addEventListener("input", syncApplyBtn);
+      el.addEventListener("change", syncApplyBtn);
+    });
+    syncApplyBtn();
+  })();
+  </script>
+  {% elif not preview.errors %}
+  <div class="border rounded p-2 bg-body-secondary text-secondary mb-2" style="font-size:0.78rem;">
+    <i class="bi bi-info-circle me-1"></i>
+    No projected bindings to approve. Adjust schedule or IFC data and preview again.
+  </div>
+  {% endif %}
+
   <div class="border rounded p-2 bg-body-secondary text-secondary" style="font-size:0.78rem;">
-    <i class="bi bi-lock me-1"></i>
-    Trusted binding persistence requires approval (E1-E — coming next).
-    This preview made no database changes.
+    <i class="bi bi-eye me-1"></i>
+    Preview is read-only until you explicitly apply approved bindings above.
   </div>
 </div>

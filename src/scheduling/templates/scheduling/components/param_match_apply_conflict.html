@@ -1,0 +1,18 @@
+<!-- scheduling/components/param_match_apply_conflict.html — stale preview conflict -->
+<div class="param-match-apply-conflict border rounded p-3 mb-2 border-danger" style="font-size:0.82rem;">
+  <div class="d-flex align-items-center gap-2 mb-2">
+    <span class="badge bg-danger">Stale preview</span>
+    <strong>No changes applied</strong>
+  </div>
+  <p class="mb-2">{{ error }}</p>
+  <p class="text-secondary mb-2" style="font-size:0.78rem;">
+    Schedule, IFC, or binding data changed since you generated the preview.
+    Regenerate preview and approve again.
+  </p>
+  <button type="button" class="btn btn-sm btn-outline-primary"
+          hx-get="{% url 'scheduling:schedule_link_preview_param' project.pk %}?param_name=Activity+ID"
+          hx-target="#fourD-match-preview"
+          hx-swap="innerHTML">
+    <i class="bi bi-arrow-clockwise me-1"></i>Regenerate preview
+  </button>
+</div>
