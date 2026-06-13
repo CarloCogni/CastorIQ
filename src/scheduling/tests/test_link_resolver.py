@@ -126,7 +126,11 @@ def test_gantt_data_reports_review_only_task_as_needs_review(client):
     payload = json.loads(response.content)
     row = next(t for t in payload["tasks"] if t["id"] == str(task.pk))
     assert row["link_status"] == "needs_review"
-    assert row["entity_global_ids"] == ["GID-GANTT-001"]
+    assert row["entity_global_ids"] == []
+    assert row["review_entity_global_ids"] == ["GID-GANTT-001"]
+    assert row["trusted_entity_global_ids"] == []
+    assert row["review_entity_count"] == 1
+    assert row["trusted_entity_count"] == 0
 
 
 @pytest.mark.django_db
