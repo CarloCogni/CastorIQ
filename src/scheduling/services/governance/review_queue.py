@@ -12,6 +12,7 @@ from uuid import UUID
 from django.db.models import Count, F, QuerySet
 from django.urls import reverse
 
+from scheduling.services.governance.active_state import apply_trusted
 from scheduling.services.governance.classifier import GovernanceStateClassifier
 from scheduling.services.governance.conflicts import detect_entity_conflicts
 from scheduling.services.governance.evidence_contract import (
@@ -23,7 +24,6 @@ from scheduling.services.governance.evidence_contract import (
 from scheduling.services.governance.policy import TRUSTED_BINDING_POLICY, TRUSTED_BINDING_POLICY_ID
 from scheduling.services.governance.property_hints import PropertyHintProvider
 from scheduling.services.governance.reader import BindingGovernanceReader
-from scheduling.services.governance.summary import GovernanceSummaryService
 from scheduling.services.governance.vocabulary import EvidenceLabel, GovernanceCategory, QueueMode
 
 logger = logging.getLogger(__name__)
@@ -146,7 +146,7 @@ class LinkReviewQueueService:
 
     def build(self, filters: QueueFilters) -> dict[str, Any]:
         """Return full queue API payload."""
-        summary = GovernanceSummaryService(self.project_id).build()
+        summary_counts = self._queue_summary_counts(filters.mode)
         mode = filters.mode
 
         if mode == QueueMode.PROPERTY_HINTS.value:
@@ -157,7 +157,15 @@ class LinkReviewQueueService:
             items, total = self._binding_page(filters)
 
         total_pages = max(1, (total + filters.page_size - 1) // filters.page_size)
-        warnings: list[str] = list(summary.get("warnings") or [])
+        warnings: list[str] = []
+        if summary_counts.get("legacy_only"):
+            warnings.append(
+                f"{summary_counts['legacy_only']} legacy M2M relation(s) without trusted binding."
+            )
+        if summary_counts.get("review_bindings"):
+            warnings.append(
+                f"{summary_counts['review_bindings']} review binding(s) excluded from trusted reads."
+            )
         if mode == QueueMode.PROPERTY_HINTS.value and total == 0:
             warnings.append(
                 "Property hint scan skipped when all IFC entities have accepted bindings."
@@ -182,14 +190,7 @@ class LinkReviewQueueService:
                 "review_rule": TRUSTED_BINDING_POLICY["review_rule"],
             },
             "mode": mode,
-            "summary_counts": {
-                "trusted_bindings": summary["trusted_bindings"],
-                "review_bindings": summary["review_bindings"],
-                "property_hints": summary.get("property_hint_entities"),
-                "legacy_only": summary["legacy_m2m_only_relations"],
-                "multiple_trusted_entities": summary["multiple_trusted_entities"],
-                "possible_conflicts": summary["possible_conflict_entities"],
-            },
+            "summary_counts": summary_counts,
             "filters_applied": self._filters_dict(filters),
             "pagination": pagination,
             "items": items,
@@ -375,33 +376,75 @@ class LinkReviewQueueService:
         items = [self._property_hint_item(r) for r in rows]
         return items, total
 
+    def _queue_summary_counts(self, mode: str) -> dict[str, Any]:
+        """Lightweight summary strip — avoids full GovernanceSummaryService scan."""
+        counts = self._reader.trusted_counts()
+        legacy_only = self._reader.legacy_m2m_only_relation_count()
+        property_hints: int | None = None
+        if mode == QueueMode.PROPERTY_HINTS.value:
+            property_hints = self._reader.property_hint_entity_count()
+        multi_count = (
+            self._reader.trusted_bindings_qs()
+            .values("entity_global_id")
+            .annotate(c=Count("task_id", distinct=True))
+            .filter(c__gt=1)
+            .count()
+        )
+        return {
+            "trusted_bindings": counts["trusted_bindings"],
+            "review_bindings": counts["review_bindings"],
+            "property_hints": property_hints,
+            "legacy_only": legacy_only,
+            "multiple_trusted_entities": multi_count,
+            "possible_conflicts": None,
+        }
+
+    def supersede_replacement_candidates(self, trusted_binding_id: str | UUID) -> list[dict]:
+        """Active review bindings eligible as supersede replacements (read-only)."""
+        from scheduling.models import TaskEntityBinding
+
+        try:
+            old = TaskEntityBinding.objects.select_related("task").get(
+                pk=trusted_binding_id,
+                task__project_id=self.project_id,
+            )
+        except TaskEntityBinding.DoesNotExist:
+            return []
+        qs = (
+            self._reader.review_bindings_qs()
+            .select_related("task")
+            .order_by("entity_global_id", "task__name")
+        )
+        same_entity = list(qs.filter(entity_global_id=old.entity_global_id)[:100])
+        same_task = list(
+            qs.filter(task_id=old.task_id).exclude(pk__in=[b.pk for b in same_entity])[:50]
+        )
+        seen: set[str] = set()
+        rows: list[dict] = []
+        for binding in same_entity + same_task + list(qs[:100]):
+            bid = str(binding.pk)
+            if bid in seen:
+                continue
+            seen.add(bid)
+            rows.append(
+                {
+                    "binding_id": bid,
+                    "task_id": str(binding.task_id),
+                    "task_name": binding.task.name,
+                    "activity_code": binding.task.activity_code or "",
+                    "entity_global_id": binding.entity_global_id,
+                    "link_method": binding.link_method,
+                    "confidence": binding.confidence,
+                }
+            )
+        return rows[:100]
+
     def _items_from_bindings(self, bindings: list) -> list[dict]:
         if not bindings:
             return []
         gids = {b.entity_global_id for b in bindings}
         entity_map = self._entity_map(gids)
-        entity_task_counts = dict(
-            self._reader._scoped_bindings()
-            .filter(entity_global_id__in=gids, needs_review=False)
-            .values("entity_global_id")
-            .annotate(c=Count("task_id", distinct=True))
-            .values_list("entity_global_id", "c")
-        )
-        review_counts = dict(
-            self._reader._scoped_bindings()
-            .filter(entity_global_id__in=gids, needs_review=True)
-            .values("entity_global_id")
-            .annotate(c=Count("task_id", distinct=True))
-            .values_list("entity_global_id", "c")
-        )
-        task_entity_trusted = dict(
-            self._reader.trusted_bindings_qs()
-            .filter(entity_global_id__in=gids)
-            .values("entity_global_id")
-            .annotate(c=Count("id"))
-            .values_list("entity_global_id", "c")
-        )
-        multi = self._reader.entities_with_multiple_trusted_tasks()
+        multi_gids = self._multi_gids_subset(gids)
         items = []
         for binding in bindings:
             gid = binding.entity_global_id
@@ -414,7 +457,7 @@ class LinkReviewQueueService:
                 entity_global_id=gid,
             )
             category = category_for_binding(needs_review=binding.needs_review)
-            if gid in multi and not binding.needs_review:
+            if gid in multi_gids and not binding.needs_review:
                 category = GovernanceCategory.MULTIPLE_TRUSTED
             items.append(
                 {
@@ -442,23 +485,26 @@ class LinkReviewQueueService:
                         if binding.created_at
                         else None,
                     },
-                    "context": self._task_context(binding.task),
-                    "entity_context": ent,
-                    "property_activity_id": _activity_id_from_entity(ent),
+                    "property_activity_id": ent.get("activity_id"),
                     "evidence": evidence.to_dict(),
-                    "conflict_context": {
-                        "trusted_tasks_for_entity": entity_task_counts.get(gid, 0),
-                        "review_tasks_for_entity": review_counts.get(gid, 0),
-                        "trusted_entities_for_task": task_entity_trusted.get(gid, 0),
-                        "overlap_classification": (
-                            "multiple_trusted" if gid in multi else "single"
-                        ),
-                    },
                     "navigation": self._item_navigation(binding.task_id, gid),
                     "warnings": list(evidence.warnings),
                 }
             )
         return items
+
+    def _multi_gids_subset(self, gids: set[str]) -> set[str]:
+        if not gids:
+            return set()
+        return {
+            row["entity_global_id"]
+            for row in (
+                apply_trusted(self._reader._scoped_bindings().filter(entity_global_id__in=gids))
+                .values("entity_global_id")
+                .annotate(c=Count("task_id", distinct=True))
+                .filter(c__gt=1)
+            )
+        }
 
     def _legacy_item(self, task, gid: str, name: str, ifc_type: str) -> dict:
         evidence = build_legacy_m2m_evidence()
@@ -544,8 +590,7 @@ class LinkReviewQueueService:
                 "name": ent.name or ent.global_id,
                 "ifc_type": ent.ifc_type or "",
                 "ifc_file_id": str(ent.ifc_file_id),
-                "storey": None,
-                "properties": props,
+                "activity_id": _activity_id_from_properties(props),
             }
         return result
 
@@ -673,9 +718,14 @@ def _evidence_to_methods(evidence: str) -> list[str]:
     return mapping.get(evidence, [])
 
 
-def _activity_id_from_entity(entity: dict) -> str | None:
-    props = entity.get("properties") or {}
+def _activity_id_from_properties(props: dict) -> str | None:
     for key, value in props.items():
         if value and key.lower().endswith("activity id"):
             return str(value).strip()
     return None
+
+
+def _activity_id_from_entity(entity: dict) -> str | None:
+    if entity.get("activity_id"):
+        return entity["activity_id"]
+    return _activity_id_from_properties(entity.get("properties") or {})

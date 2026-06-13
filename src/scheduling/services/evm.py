@@ -73,10 +73,11 @@ def _qto_task_costs(project_id: str, tasks: list) -> dict[str, float]:
         return {}
 
     result: dict[str, float] = {}
-    for binding in TaskEntityBinding.objects.filter(
-        task_id__in=no_cost_pks,
-        needs_review=False,
-    ).values("task_id", "entity_global_id"):
+    from scheduling.services.governance.active_state import apply_trusted
+
+    for binding in apply_trusted(TaskEntityBinding.objects.filter(task_id__in=no_cost_pks)).values(
+        "task_id", "entity_global_id"
+    ):
         cost = entity_costs.get(binding["entity_global_id"], 0.0)
         if cost > 0:
             pk_str = str(binding["task_id"])
