@@ -42,7 +42,7 @@ from .services.column_mapper import (
 )
 from .services.critical_path import compute_critical_path
 from .services.evm import compute_evm
-from .services.linker import param_match_tasks, persist_param_matches
+from .services.match_preview import MatchPreviewService
 from .services.msp_parser import parse_msp
 from .services.p6_save import finalise_p6_data, save_p6_pending_data
 from .services.pct_normalize import normalize_pct_complete
@@ -1133,43 +1133,54 @@ class TaskActualDateView(ProjectModifyAccessMixin, View):
 
 
 class LinkParamView(ProjectModifyAccessMixin, View):
-    """HTMX POST — parameter mapping of tasks to IFC entities."""
+    """HTMX POST — parameter mapping (persistence blocked until E1-E approval)."""
 
     def post(self, request, **kwargs: object) -> HttpResponse:
-        project = self.get_project()
+        self.get_project()
         param_name = request.POST.get("param_name", "").strip()
         if not param_name:
             return toast_response("Enter a property name to match on.", "error", status=400)
 
-        tasks = list(Task.objects.filter(project=project))
-        ifc_files = IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
-        entities = list(IFCEntity.objects.filter(ifc_file__in=ifc_files))
+        return toast_response(
+            "Parameter Match persistence is disabled until you preview and approve. "
+            "Use Preview Match on the 4D Link tab first.",
+            "info",
+            status=400,
+        )
 
-        if not tasks:
-            return toast_response(
-                "No tasks to link — import a schedule first.", "error", status=400
-            )
 
-        matches = param_match_tasks(tasks, entities, param_name)
-        if matches:
-            persist_param_matches(matches, entities)
+class MatchPreviewView(ProjectAccessMixin, View):
+    """GET — read-only exact-match preview for Task.activity_code ↔ IFC property."""
 
-        tasks_qs = Task.objects.filter(project=project).order_by("start_date", "name")
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        param_name = request.GET.get("param_name", "Activity ID").strip()
+        if not param_name:
+            return JsonResponse({"error": "param_name is required."}, status=400)
+
+        preview = MatchPreviewService(project).preview(param_name)
+        payload = preview.to_dict()
+
+        wants_json = request.GET.get(
+            "format"
+        ) == "json" or "application/json" in request.headers.get("Accept", "")
+        if wants_json and not request.headers.get("HX-Request"):
+            if preview.errors:
+                return JsonResponse(payload, status=400)
+            return JsonResponse(payload)
+
         response = render(
             request,
-            "scheduling/components/attach_results.html",
-            _task_list_render_context(
-                project,
-                tasks_qs,
-                matches=matches,
-                match_mode="param",
-                param_name=param_name,
-            ),
+            "scheduling/components/param_match_preview.html",
+            {"preview": preview, "project": project},
         )
-        linked = sum(1 for m in matches if m["entity_ids"])
-        return trigger_toast(
-            response, f"Parameter '{param_name}' matched {linked} tasks.", "success"
-        )
+        if preview.errors:
+            return trigger_toast(
+                response,
+                preview.errors[0],
+                "error",
+            )
+        return response
 
 
 class AutoLinkView(ProjectModifyAccessMixin, View):
