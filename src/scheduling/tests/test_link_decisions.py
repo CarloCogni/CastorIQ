@@ -490,16 +490,12 @@ def test_governance_reader_correct_after_decision():
 
 
 @pytest.mark.django_db
-def test_no_reject_endpoint_in_governance_urls():
-    """No persistent reject endpoint exists in E2-C governance routes."""
+def test_lifecycle_reject_endpoints_registered():
+    """E2-E registers audited reject lifecycle routes."""
     from scheduling import urls as scheduling_urls
 
-    decision_paths = [
-        str(p.pattern)
-        for p in scheduling_urls.urlpatterns
-        if "decision" in str(p.pattern) or "governance" in str(p.pattern)
-    ]
-    assert not any("reject" in p for p in decision_paths)
+    decision_paths = [str(p.pattern) for p in scheduling_urls.urlpatterns]
+    assert any("lifecycle" in p and "reject" in p for p in decision_paths)
 
 
 @pytest.mark.django_db

@@ -384,10 +384,9 @@ def test_legacy_evidence_label_is_compatibility_only():
 
 
 @pytest.mark.django_db
-def test_no_migration_files_created():
-    """E2-A must not add migration files."""
+def test_e2e_governance_migration_present():
+    """E2-E adds the binding governance events migration."""
     from pathlib import Path
 
     mig_dir = Path(__file__).resolve().parents[1] / "migrations"
-    new_migs = [p.name for p in mig_dir.glob("0*.py") if "governance" in p.read_text().lower()]
-    assert new_migs == []
+    assert (mig_dir / "0024_binding_governance_events.py").exists()

@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date, timedelta
+from datetime import date
 
 import pytest
 from django.db import connection
@@ -16,10 +16,8 @@ from ifc_processor.tests.factories import IFCEntityFactory, IFCFileFactory
 from scheduling.models import TaskEntityBinding
 from scheduling.services.governance.evidence_contract import (
     build_binding_evidence,
-    build_property_hint_evidence,
 )
 from scheduling.services.governance.review_queue import (
-    DEFAULT_PAGE_SIZE,
     MAX_PAGE_SIZE,
     LinkReviewQueueService,
 )
