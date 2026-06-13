@@ -32,6 +32,7 @@ def _bind(task, gid: str, *, needs_review=False, method=None, confidence=1.0):
 
 
 def _filters(**kwargs) -> ReconciliationFilters:
+    kwargs.setdefault("run", "1")
     return BindingReconciliationService.filters_from_request(kwargs)
 
 
@@ -343,7 +344,7 @@ def test_query_count_bounded():
 
 @pytest.mark.django_db
 def test_reconciliation_endpoint_json():
-    """Reconciliation API returns diagnostic payload."""
+    """Reconciliation API returns diagnostic shell until run=1."""
     project = ProjectFactory()
     url = reverse("scheduling:link_governance_reconciliation", kwargs={"pk": project.pk})
     from django.test import Client
@@ -354,7 +355,12 @@ def test_reconciliation_endpoint_json():
     assert response.status_code == 200
     data = response.json()
     assert data["diagnostic_only"] is True
+    assert data["not_evaluated"] is True
     assert "capability" in data
+
+    response_run = c.get(url + "?run=1")
+    assert response_run.status_code == 200
+    assert response_run.json().get("not_evaluated") is not True
 
 
 @pytest.mark.django_db
