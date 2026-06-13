@@ -38,7 +38,9 @@ def run_health_check(project) -> dict:
     from .link_resolver import entity_gids_by_task
 
     tasks = list(Task.objects.filter(project=project))
-    link_map = entity_gids_by_task(project.pk, [t.pk for t in tasks]) if tasks else {}
+    link_map = (
+        entity_gids_by_task(project.pk, [t.pk for t in tasks], accepted_only=True) if tasks else {}
+    )
     total = len(tasks)
 
     if total == 0:

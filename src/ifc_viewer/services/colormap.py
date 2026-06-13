@@ -29,7 +29,7 @@ def build_colormap(ifc_file, by: str, project_id: str | None = None) -> dict:
     """Return {"colormap": {global_id: color_hex}, "legend": [{label, color}]}.
 
     by: "material" | "level" | "element_type" | "schedule_status"
-    project_id: when set, only TaskEntityBinding global_ids count as linked for schedule_status.
+    project_id: when set, only accepted TaskEntityBinding global_ids count as linked for schedule_status.
     """
     if by not in _VALID:
         return {"colormap": {}, "legend": []}

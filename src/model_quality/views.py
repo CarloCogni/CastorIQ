@@ -646,13 +646,9 @@ def _activity_audit_rows(ifc_file, project) -> list[dict]:
         entry["global_ids"].add(entity.global_id)
 
     try:
-        from scheduling.models import TaskEntityBinding  # local — avoids circular
+        from scheduling.services.link_resolver import trusted_entity_gids_for_project
 
-        bound = set(
-            TaskEntityBinding.objects.filter(task__project=project).values_list(
-                "entity_global_id", flat=True
-            )
-        )
+        bound = trusted_entity_gids_for_project(project.pk)
     except ImportError:
         bound = set()
 

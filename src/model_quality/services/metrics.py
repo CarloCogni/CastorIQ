@@ -35,7 +35,7 @@ def _build_schedule_cost_map(ifc_file) -> dict[str, float]:
         for row in (
             TaskEntityBinding.objects.filter(
                 task__project_id=ifc_file.project_id,
-                task__cost__isnull=False,
+                needs_review=False,
             )
             .select_related("task")
             .only("entity_global_id", "task__cost")

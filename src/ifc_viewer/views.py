@@ -481,7 +481,8 @@ class TimelineView(ProjectAccessMixin, View):
         from collections import defaultdict
 
         from ifc_processor.models import IFCEntity as IFCEntityModel
-        from scheduling.models import Task, TaskEntityBinding
+        from scheduling.models import Task
+        from scheduling.services.governance.reader import BindingGovernanceReader
 
         project = self.get_project()
 
@@ -494,14 +495,12 @@ class TimelineView(ProjectAccessMixin, View):
         if not tasks:
             return JsonResponse({"has_tasks": False, "intervals": []})
 
-        # Load all bindings for these tasks in one query, group by task_id in Python.
-        # TaskEntityBinding is the authoritative source — M2M ifc_entities may lag behind.
         task_map = {t.pk: t for t in tasks}
-        binding_gids: dict[object, list[str]] = defaultdict(list)
-        for row in TaskEntityBinding.objects.filter(task_id__in=task_map).values(
-            "task_id", "entity_global_id"
-        ):
-            binding_gids[row["task_id"]].append(row["entity_global_id"])
+        reader = BindingGovernanceReader(project.pk)
+        gids_by_task = reader.entity_gids_by_task([t.pk for t in tasks], trusted_only=True)
+        binding_gids: dict[object, list[str]] = {
+            task.pk: gids_by_task.get(str(task.pk), []) for task in tasks
+        }
 
         # entity GID → [(start_date, end_date, actual_start, actual_end), ...]
         entity_tasks: dict[str, list] = defaultdict(list)

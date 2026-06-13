@@ -1738,6 +1738,17 @@ class FloorHealthView(ProjectAccessMixin, View):
         return JsonResponse(result)
 
 
+class LinkGovernanceSummaryView(ProjectAccessMixin, View):
+    """GET — read-only trusted link governance summary for one project."""
+
+    def get(self, request, **kwargs: object) -> JsonResponse:
+        from scheduling.services.governance.summary import GovernanceSummaryService
+
+        project = self.get_project()
+        payload = GovernanceSummaryService(str(project.pk)).build()
+        return JsonResponse(payload)
+
+
 class LookaheadDataView(ProjectAccessMixin, View):
     """JSON — per-week task buckets (starting/in_progress/finishing) for the Look-ahead tab."""
 
@@ -1764,7 +1775,7 @@ class LookaheadDataView(ProjectAccessMixin, View):
 
         from scheduling.services.link_resolver import entity_gids_by_task
 
-        gids_by_task = entity_gids_by_task(project.pk, [t.pk for t in tasks])
+        gids_by_task = entity_gids_by_task(project.pk, [t.pk for t in tasks], accepted_only=True)
 
         result_weeks = []
         for w in range(weeks):

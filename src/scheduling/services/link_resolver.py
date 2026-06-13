@@ -3,6 +3,8 @@
 
 TaskEntityBinding is the source of truth for schedule-to-model links.
 Task.ifc_entities M2M may lag behind and is not read here.
+
+Trusted (accepted) reads require needs_review=False — see BindingGovernanceReader.
 """
 
 from __future__ import annotations
@@ -10,54 +12,70 @@ from __future__ import annotations
 from uuid import UUID
 
 
-def entity_gids_for_task(task_id: str | UUID) -> list[str]:
-    """Return entity global_ids bound to *task_id* (binding table only)."""
+def entity_gids_for_task(
+    task_id: str | UUID,
+    *,
+    trusted_only: bool = False,
+) -> list[str]:
+    """Return entity global_ids bound to *task_id*.
+
+    When *trusted_only* is True, review bindings are excluded.
+    """
     from scheduling.models import TaskEntityBinding
 
-    return list(
-        TaskEntityBinding.objects.filter(task_id=task_id)
-        .order_by("entity_global_id")
-        .values_list("entity_global_id", flat=True)
-    )
+    qs = TaskEntityBinding.objects.filter(task_id=task_id)
+    if trusted_only:
+        qs = qs.filter(needs_review=False)
+    return list(qs.order_by("entity_global_id").values_list("entity_global_id", flat=True))
 
 
 def entity_gids_by_task(
     project_id: str | UUID,
     task_ids: list[str | UUID] | None = None,
+    *,
+    accepted_only: bool = False,
 ) -> dict[str, list[str]]:
-    """Return {str(task_id): [entity_global_id, ...]} for *project_id*."""
-    from scheduling.models import TaskEntityBinding
+    """Return {str(task_id): [entity_global_id, ...]} for *project_id*.
 
-    qs = TaskEntityBinding.objects.filter(task__project_id=project_id)
-    if task_ids is not None:
-        qs = qs.filter(task_id__in=task_ids)
-    result: dict[str, list[str]] = {}
-    for task_id, gid in qs.values_list("task_id", "entity_global_id"):
-        tid = str(task_id)
-        result.setdefault(tid, []).append(gid)
-    for gids in result.values():
-        gids.sort()
-    return result
+    When *accepted_only* is True, review-only bindings (needs_review=True) are excluded.
+    """
+    from scheduling.services.governance.reader import BindingGovernanceReader
 
-
-def linked_entity_gids_for_project(project_id: str | UUID) -> set[str]:
-    """All IFC entity global_ids with at least one TaskEntityBinding on *project_id*."""
-    from scheduling.models import TaskEntityBinding
-
-    return set(
-        TaskEntityBinding.objects.filter(task__project_id=project_id).values_list(
-            "entity_global_id", flat=True
-        )
+    reader = BindingGovernanceReader(project_id)
+    return reader.entity_gids_by_task(
+        task_ids,
+        trusted_only=accepted_only,
+        review_only=False,
     )
 
 
-def task_is_linked(task_id: str | UUID, binding_gids: list[str] | None = None) -> bool:
-    """True when *task_id* has one or more bindings."""
+def linked_entity_gids_for_project(project_id: str | UUID) -> set[str]:
+    """Trusted entity global_ids with accepted binding, scoped to project IFC files."""
+    from scheduling.services.governance.reader import BindingGovernanceReader
+
+    return BindingGovernanceReader(project_id).trusted_entity_gids(ifc_scope=True)
+
+
+def trusted_entity_gids_for_project(project_id: str | UUID) -> set[str]:
+    """Alias for accepted-only project entity GlobalIds."""
+    return linked_entity_gids_for_project(project_id)
+
+
+def task_is_linked(
+    task_id: str | UUID,
+    binding_gids: list[str] | None = None,
+    *,
+    trusted_only: bool = False,
+) -> bool:
+    """True when *task_id* has one or more bindings (or trusted bindings when flagged)."""
     if binding_gids is not None:
         return len(binding_gids) > 0
     from scheduling.models import TaskEntityBinding
 
-    return TaskEntityBinding.objects.filter(task_id=task_id).exists()
+    qs = TaskEntityBinding.objects.filter(task_id=task_id)
+    if trusted_only:
+        qs = qs.filter(needs_review=False)
+    return qs.exists()
 
 
 def link_status_for_task(task, binding_gids: list[str] | None = None) -> str:
