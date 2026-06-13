@@ -15,11 +15,31 @@ from scheduling.tests.factories import TaskFactory
 
 
 @pytest.mark.django_db
-def test_entity_metrics_4d_ring_includes_binding_only():
-    """4D readiness counts entities linked via TaskEntityBinding without Activity ID."""
+def test_entity_metrics_4d_ring_includes_accepted_binding_only():
+    """4D readiness counts entities with accepted TaskEntityBinding only."""
     project = ProjectFactory()
     ifc_file = IFCFileFactory(project=project)
     entity = IFCEntityFactory(ifc_file=ifc_file, global_id="GID-MQ-4D", properties={})
+    task = TaskFactory(project=project)
+    TaskEntityBinding.objects.create(
+        task=task,
+        entity_global_id=entity.global_id,
+        confidence=1.0,
+        link_method=TaskEntityBinding.LinkMethod.MANUAL,
+        needs_review=False,
+    )
+
+    metrics = entity_metrics(ifc_file)
+    assert metrics["ring_4d"]["pct"] == 100
+    assert metrics["missing_4d"] == 0
+
+
+@pytest.mark.django_db
+def test_entity_metrics_4d_ring_excludes_review_binding():
+    """Review-only bindings must not contribute to trusted 4D ring coverage."""
+    project = ProjectFactory()
+    ifc_file = IFCFileFactory(project=project)
+    entity = IFCEntityFactory(ifc_file=ifc_file, global_id="GID-MQ-REV", properties={})
     task = TaskFactory(project=project)
     TaskEntityBinding.objects.create(
         task=task,
@@ -30,8 +50,8 @@ def test_entity_metrics_4d_ring_includes_binding_only():
     )
 
     metrics = entity_metrics(ifc_file)
-    assert metrics["ring_4d"]["pct"] == 100
-    assert metrics["missing_4d"] == 0
+    assert metrics["ring_4d"]["pct"] == 0
+    assert metrics["missing_4d"] == 1
 
 
 @pytest.mark.django_db

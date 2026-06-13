@@ -17,8 +17,27 @@ _GRAY = "#94a3b8"
 
 
 @pytest.mark.django_db
-def test_colormap_schedule_status_binding_only_entity_is_linked():
-    """Binding-only entity is green without Activity ID property."""
+def test_colormap_schedule_status_accepted_binding_is_linked():
+    """Accepted binding-only entity is green without Activity ID property."""
+    project = ProjectFactory()
+    ifc_file = IFCFileFactory(project=project)
+    entity = IFCEntityFactory(ifc_file=ifc_file, global_id="GID-COLOR-ACCEPT", properties={})
+    task = TaskFactory(project=project)
+    TaskEntityBinding.objects.create(
+        task=task,
+        entity_global_id=entity.global_id,
+        confidence=1.0,
+        link_method=TaskEntityBinding.LinkMethod.MANUAL,
+        needs_review=False,
+    )
+
+    result = build_colormap(ifc_file, "schedule_status", project_id=str(project.pk))
+    assert result["colormap"][entity.global_id] == _GREEN
+
+
+@pytest.mark.django_db
+def test_colormap_schedule_status_review_binding_not_linked():
+    """Review-only bindings must not appear as trusted linked (green) in colormap."""
     project = ProjectFactory()
     ifc_file = IFCFileFactory(project=project)
     entity = IFCEntityFactory(ifc_file=ifc_file, global_id="GID-COLOR-BIND", properties={})
@@ -32,7 +51,7 @@ def test_colormap_schedule_status_binding_only_entity_is_linked():
     )
 
     result = build_colormap(ifc_file, "schedule_status", project_id=str(project.pk))
-    assert result["colormap"][entity.global_id] == _GREEN
+    assert result["colormap"][entity.global_id] == _GRAY
 
 
 @pytest.mark.django_db
@@ -82,6 +101,32 @@ def test_colormap_schedule_status_unlinked_entity_is_gray():
 
     result = build_colormap(ifc_file, "schedule_status", project_id=str(project.pk))
     assert result["colormap"][entity.global_id] == _GRAY
+
+
+@pytest.mark.django_db
+def test_gap_analysis_review_binding_not_linked():
+    """Gap analysis must not count review-only bindings as linked."""
+    project = ProjectFactory()
+    ifc_file = IFCFileFactory(project=project)
+    entity = IFCEntityFactory(
+        ifc_file=ifc_file,
+        global_id="GID-GAP-REVIEW",
+        ifc_type="IfcWall",
+        properties={},
+    )
+    task = TaskFactory(project=project)
+    TaskEntityBinding.objects.create(
+        task=task,
+        entity_global_id=entity.global_id,
+        confidence=0.95,
+        link_method=TaskEntityBinding.LinkMethod.NORMALIZED,
+        needs_review=True,
+    )
+
+    rows = build_gap_analysis(ifc_file, "element_type", project_id=str(project.pk))
+    wall_row = next(r for r in rows if r["group"] == "IfcWall")
+    assert wall_row["linked"] == 0
+    assert wall_row["total"] == 1
 
 
 @pytest.mark.django_db

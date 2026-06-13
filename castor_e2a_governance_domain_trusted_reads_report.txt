@@ -1,0 +1,257 @@
+Castor E2-A — Governance Domain and Trusted Read Model
+Implementation Report
+Package: 4D5D-E2-A-IMPLEMENTATION-001
+Branch: feature/e2-trusted-link-governance
+Baseline: extract/pr6-lookahead-3d @ 4d0a196
+
+================================================================================
+1. Starting State
+================================================================================
+Branch created: feature/e2-trusted-link-governance from 4d0a196
+Starting HEAD: 4d0a196 (extract/pr6-lookahead-3d)
+Frozen baseline, E1 (fa109e9), E4 (3b9239e): untouched
+No schema migrations, no binding/M2M writes, no push/PR
+
+================================================================================
+2. Full Trusted-Read Audit
+================================================================================
+Reader                          | Current source              | Trusted filter | Review behavior      | Property | M2M fallback | Risk              | E2-A action
+--------------------------------|-----------------------------|----------------|----------------------|----------|--------------|-------------------|-------------
+linked_entity_gids_for_project  | All bindings (baseline)     | NO             | included as linked   | N/A      | N/A          | HIGH leak         | FIXED → ifc-scoped accepted only
+colormap schedule_status        | linked_entity_gids_for_project | via resolver | excluded after fix   | gray     | no           | HIGH              | FIXED (indirect)
+gap_analysis                    | linked_entity_gids_for_project | via resolver | excluded after fix   | not linked | no         | HIGH              | FIXED (indirect)
+TimelineView                    | All bindings (baseline)     | NO             | included in buckets  | N/A      | no           | HIGH              | FIXED → BindingGovernanceReader trusted_only
+LookaheadDataView               | entity_gids_by_task all     | NO             | included             | N/A      | no           | MEDIUM            | FIXED → accepted_only=True
+health_check unlinked_physical  | entity_gids_by_task all     | NO             | counted linked       | N/A      | no           | MEDIUM            | FIXED → accepted_only=True
+evm QTO bridge                  | All bindings                | NO             | included             | N/A      | no           | MEDIUM            | FIXED → needs_review=False
+model_quality metrics 4D ring   | All bindings                | NO             | included             | hint only| no           | HIGH              | FIXED → trusted via linked_entity_gids
+model_quality views activity    | All bindings                | NO             | included             | listed   | no           | MEDIUM            | FIXED → trusted_entity_gids_for_project
+model_quality _accepted_bound   | needs_review=False          | YES            | excluded             | N/A      | no           | OK                | unchanged
+GanttDataView entity_global_ids | entity_gids_by_task all     | NO             | returned in payload  | N/A      | no           | LOW (status split)| DEFERRED E2-B — link_status correct; gids list includes review for viewer highlight compatibility
+TaskDetailView entity list      | entity_gids_for_task all    | NO             | shown in panel       | N/A      | no           | LOW               | DEFERRED E2-B — UI detail, not trusted metric
+Task.ifc_entities M2M           | Direct M2M                  | NO             | N/A                  | N/A      | primary bug  | HIGH if used      | Never used in trusted paths; legacy_m2m_only counted in summary
+link_status_for_task            | Binding flags               | YES (linked)   | needs_review state   | N/A      | no           | OK                | unchanged (correct)
+Autolink/write paths            | TaskEntityBinding writes    | N/A            | N/A                  | N/A      | sync         | out of scope      | untouched
+
+================================================================================
+3. Governance Vocabulary
+================================================================================
+Module: scheduling/services/governance/vocabulary.py
+
+GovernanceCategory (logical, not persisted):
+  trusted, review, property_hint, legacy_compatibility, unlinked,
+  multiple_trusted, possible_conflict, stale_candidate, invalid_scope
+
+EvidenceLabel (distinct from link_method):
+  exact_identifier_equality, normalized_identifier_equality,
+  manual_explicit_selection, legacy_compatibility, heuristic, semantic, unknown
+
+================================================================================
+4. Trust Policy
+================================================================================
+Policy ID: trusted-binding-v1
+Module: scheduling/services/governance/policy.py
+
+Rules:
+  - Accepted/trusted = TaskEntityBinding.needs_review=False
+  - Review = needs_review=True (never trusted)
+  - Property metadata (Activity ID) = evidence hint only
+  - Task.ifc_entities M2M = compatibility storage only
+  - Normalized/heuristic/embedding = review-only suggestions
+  - Multiple accepted tasks allowed; conflict requires explicit overlap evidence
+
+================================================================================
+5. Binding Governance Reader
+================================================================================
+Module: scheduling/services/governance/reader.py
+
+BindingGovernanceReader(project_id):
+  - trusted_bindings_qs / review_bindings_qs (project-scoped via task__project)
+  - trusted_entity_gids(ifc_scope=) — optional IFC file scope filter
+  - trusted/review entity and task lookups (task-scoped, entity-scoped)
+  - entity_gids_by_task(trusted_only/review_only)
+  - trusted_counts, method_distribution
+  - entities_with_multiple_trusted_tasks
+  - legacy_m2m_only_relation_count (SQL anti-join at scale)
+  - property_hint_entity_count (excludes trusted gids; short-circuit when full coverage)
+
+link_resolver.py delegates trusted project reads to reader.
+
+================================================================================
+6. Governance State Classifier
+================================================================================
+Module: scheduling/services/governance/classifier.py
+
+GovernanceStateClassifier (pure, no writes):
+  - classify_task(trusted_count, review_count, property_hint, legacy_m2m)
+  - classify_entity(trusted_task_ids, review_task_ids, task_date_ranges)
+  - possible_conflict only when overlapping accepted task date ranges on same entity
+  - multiple_trusted without overlap is NOT conflict
+
+================================================================================
+7. Read Leaks Fixed
+================================================================================
+Mandatory fixes applied:
+  1. linked_entity_gids_for_project → accepted bindings + IFC scope
+  2. colormap schedule_status → inherits trusted resolver
+  3. gap_analysis → inherits trusted resolver
+  4. TimelineView → trusted_only batch via BindingGovernanceReader
+  5. LookaheadDataView → accepted_only=True
+  6. health_check → accepted_only=True
+  7. evm QTO → needs_review=False filter
+  8. model_quality 4D ring + activity grouping → trusted gids only
+
+Synthetic leak prevention tests (not on IBS):
+  - Review binding → gray colormap, gap linked=0
+  - Property-only → not trusted
+  - M2M-only → legacy_compatibility, not trusted
+
+================================================================================
+8. Readers Deferred and Why
+================================================================================
+GanttDataView.entity_global_ids:
+  Still returns all bindings (including review) for viewer highlight compatibility.
+  link_status field correctly reports needs_review vs linked.
+  Owner: E2-B — split trusted vs review entity lists in payload.
+
+TaskDetailView entity panel:
+  Lists all bindings for human review context.
+  Owner: E2-B — add governance badges / trusted-only toggle.
+
+Autolink / write / M2M sync:
+  Out of E2-A scope per package rules.
+
+IFC Insights (ifc_insights app):
+  Not in 4D/5D integration read boundary for this package; unchanged.
+
+================================================================================
+9. Governance Summary Contract
+================================================================================
+Endpoint: GET /scheduling/projects/<uuid:pk>/link-governance/summary/
+View: LinkGovernanceSummaryView
+Service: GovernanceSummaryService.build()
+
+Response fields:
+  project_id, policy_id, policy{accepted_rule, review_rule, property_metadata_rule, m2m_rule},
+  trusted_bindings, review_bindings, trusted_tasks, trusted_entities,
+  review_tasks, multiple_trusted_entities, possible_conflict_entities,
+  legacy_m2m_only_relations, property_hint_entities,
+  trusted_method_mix, review_method_mix, warnings
+
+Read-only, pageless, no queue rows, no schema dependency.
+
+================================================================================
+10. Files Changed
+================================================================================
+Added:
+  src/scheduling/services/governance/__init__.py
+  src/scheduling/services/governance/policy.py
+  src/scheduling/services/governance/vocabulary.py
+  src/scheduling/services/governance/evidence.py
+  src/scheduling/services/governance/classifier.py
+  src/scheduling/services/governance/reader.py
+  src/scheduling/services/governance/summary.py
+  src/scheduling/tests/test_binding_governance.py
+
+Modified:
+  src/scheduling/services/link_resolver.py
+  src/scheduling/services/health_check.py
+  src/scheduling/services/evm.py
+  src/scheduling/views.py
+  src/scheduling/urls.py
+  src/ifc_viewer/views.py
+  src/ifc_viewer/services/colormap.py
+  src/ifc_viewer/tests/test_binding_reads.py
+  src/model_quality/services/metrics.py
+  src/model_quality/views.py
+  src/model_quality/tests/test_binding_metrics.py
+
+================================================================================
+11. Tests and No-Write Evidence
+================================================================================
+New: scheduling/tests/test_binding_governance.py (24 tests)
+Updated: ifc_viewer/tests/test_binding_reads.py, model_quality/tests/test_binding_metrics.py
+
+Coverage includes:
+  trusted/review query separation, colormap/gap leak prevention,
+  property-only, M2M-only, accepted+M2M, cross-project binding/IFC scope,
+  task/entity scoped counts, multiple_trusted vs conflict, evidence labels,
+  normalized 0.95 not trusted, summary reconciliation + endpoint + policy_id,
+  zero writes on repeated reads, query count bounded (<=12 synthetic),
+  health check review-only unlinked, link_resolver accepted_only batch,
+  no migration files created
+
+test_repeated_reads_zero_writes: TaskEntityBinding count unchanged after reader + summary.
+
+================================================================================
+12. Real-Pilot Validation (IBS read-only)
+================================================================================
+Project: eb3b0c76-4812-4ce0-8927-ad85a111763a
+
+Expected vs actual:
+  trusted_bindings: 6472 ✓
+  review_bindings: 0 ✓
+  trusted_tasks: 178 ✓
+  trusted_entities: 6472 ✓
+  legacy_m2m_only_relations: 0 ✓ (6472 M2M rows all have matching accepted bindings)
+  trusted_method_mix: exact=6472 ✓
+  No count regression
+
+================================================================================
+13. Performance Results (IBS)
+================================================================================
+GovernanceSummaryService.build():
+  elapsed: ~874 ms (acceptable <1 s; preferred <300 ms — E2-B optimization candidate)
+  queries: 8 (target <=12 ✓)
+  payload: ~713 bytes (<50 KB ✓)
+
+linked_entity_gids_for_project():
+  elapsed: ~67 ms (preferred <500 ms ✓)
+
+================================================================================
+14. Schema Boundary
+================================================================================
+No new migration files.
+No governance_status database field.
+No model field changes.
+All governance state is logical/read-model only.
+
+================================================================================
+15. Risks and E2-B Dependencies
+================================================================================
+- Gantt/TaskDetail still expose review entity gids in UI payloads (documented defer).
+- Autolink may still create normalized matches with needs_review=True — write path unchanged.
+- property_hint_entity_count scans non-trusted entities; skipped when trusted covers all IFC entities.
+- stale_candidate and invalid_scope categories defined but not yet wired to persistence/events (E2-B/C).
+- E1 dependency (controlled accept/reject) deferred to E2-C per owner decision.
+
+================================================================================
+16. Commit Summary
+================================================================================
+1. feat(scheduling): add link governance vocabulary
+2. fix(scheduling): enforce trusted binding reads
+3. feat(scheduling): expose governance summary
+4. test(scheduling): lock trusted link semantics
+
+================================================================================
+17. Suggested PR Strategy
+================================================================================
+When ready (not in E2-A scope):
+  - PR from feature/e2-trusted-link-governance → extract/pr6-lookahead-3d
+  - Title: "E2-A: Trusted link governance domain and read-model foundation"
+  - Keep separate from E1/E4 branches
+  - Follow with E2-B review queue UI after this merges
+
+================================================================================
+18. Explicit Safety Confirmation
+================================================================================
+✓ No schema/migration changes
+✓ No pilot data mutation
+✓ No binding create/update/delete
+✓ No M2M mutation
+✓ No autolink/import runs
+✓ No ifc-lite changes
+✓ No push, PR, review, or merge performed
+✓ Frozen baseline extract/pr6-lookahead-3d @ 4d0a196 untouched
+✓ E1 feature/e1-real-pilot-execution @ fa109e9 untouched
+✓ E4 feature/e4-simulation-navigation @ 3b9239e untouched
