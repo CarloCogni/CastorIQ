@@ -13,6 +13,10 @@ from typing import TYPE_CHECKING, Any
 
 from django.db import transaction
 
+from scheduling.services.governance.authority import (
+    GovernanceAuthorityPolicy,
+    GovernanceCapability,
+)
 from scheduling.services.governance.conflicts import detect_entity_conflicts
 from scheduling.services.governance.evidence import evidence_label_for_binding
 from scheduling.services.governance.policy import TRUSTED_BINDING_POLICY_ID
@@ -229,6 +233,12 @@ class LinkDecisionService:
         require_bulk_phrase: bool = False,
     ) -> DecisionApplyResult:
         """Atomically promote eligible selected review bindings."""
+        policy = GovernanceAuthorityPolicy(self.project, self.user)
+        if require_bulk_phrase or len(binding_ids) > 1:
+            policy.require(GovernanceCapability.APPROVE_BULK)
+        else:
+            policy.require(GovernanceCapability.APPROVE_INDIVIDUAL)
+
         preview = self.preview_selected(binding_ids)
 
         if preview.selection_fingerprint != selection_fingerprint:

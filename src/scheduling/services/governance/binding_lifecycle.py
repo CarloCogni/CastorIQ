@@ -19,6 +19,11 @@ from scheduling.services.governance.active_state import (
     reverse_fields,
     supersede_fields,
 )
+from scheduling.services.governance.authority import (
+    GovernanceAuthorityPolicy,
+    GovernanceCapability,
+    require_parity_repair_authority,
+)
 from scheduling.services.governance.governance_events import (
     build_evidence_snapshot,
     decision_reference,
@@ -115,6 +120,7 @@ class BindingLifecycleService:
         reason_code: str,
         reason_text: str = "",
     ) -> LifecycleApplyResult:
+        GovernanceAuthorityPolicy(self.project, self.user).require(GovernanceCapability.REJECT)
         binding = self._get_binding(binding_id)
         ref = decision_reference(
             project_id=str(self.project.pk),
@@ -183,6 +189,7 @@ class BindingLifecycleService:
         reason_text: str = "",
         repair_m2m: bool = False,
     ) -> LifecycleApplyResult:
+        GovernanceAuthorityPolicy(self.project, self.user).require(GovernanceCapability.REAFFIRM)
         binding = self._get_binding(binding_id)
         ref = decision_reference(
             project_id=str(self.project.pk),
@@ -256,6 +263,7 @@ class BindingLifecycleService:
         reason_text: str = "",
         confirmation: str = "",
     ) -> LifecycleApplyResult:
+        GovernanceAuthorityPolicy(self.project, self.user).require(GovernanceCapability.REVERSE)
         if confirmation != REVERSE_CONFIRM_PHRASE:
             raise LifecycleValidationError(
                 f"Confirmation phrase must be exactly '{REVERSE_CONFIRM_PHRASE}'."
@@ -351,6 +359,7 @@ class BindingLifecycleService:
         reason_text: str = "",
         confirmation: str = "",
     ) -> LifecycleApplyResult:
+        GovernanceAuthorityPolicy(self.project, self.user).require(GovernanceCapability.SUPERSEDE)
         if confirmation != SUPERSEDE_CONFIRM_PHRASE:
             raise LifecycleValidationError(
                 f"Confirmation phrase must be exactly '{SUPERSEDE_CONFIRM_PHRASE}'."
@@ -470,6 +479,10 @@ class BindingLifecycleService:
         entity_global_id: str | None = None,
         repair_type: str,
     ) -> LifecycleApplyResult:
+        require_parity_repair_authority(
+            GovernanceAuthorityPolicy(self.project, self.user),
+            repair_type,
+        )
         if confirmation != PARITY_REPAIR_CONFIRM_PHRASE:
             raise LifecycleValidationError(
                 f"Confirmation phrase must be exactly '{PARITY_REPAIR_CONFIRM_PHRASE}'."

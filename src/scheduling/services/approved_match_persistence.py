@@ -225,6 +225,14 @@ class ApprovedMatchPersistenceService:
 
     def persist(self, approval: MatchApprovalRequest) -> ApprovedMatchPersistenceResult:
         """Validate approval, recompute preview, and persist accepted bindings atomically."""
+        from scheduling.services.governance.authority import (
+            GovernanceAuthorityPolicy,
+            GovernanceCapability,
+        )
+
+        GovernanceAuthorityPolicy(self.project, self.user).require(
+            GovernanceCapability.APPROVE_EXACT_PREVIEW
+        )
         preview = MatchPreviewService(self.project).preview(approval.param_name)
         validate_approval_request(approval, preview)
 
