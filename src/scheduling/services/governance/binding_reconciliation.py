@@ -47,6 +47,7 @@ class ReconciliationFilters:
     """Parsed reconciliation query parameters."""
 
     scope: str = "all"
+    run: bool = False
     status: str | None = None
     severity: str | None = None
     method: str | None = None
@@ -90,12 +91,15 @@ class BindingReconciliationService:
                 return None
             return raw.lower() in ("1", "true", "yes")
 
+        run = params.get("run", "") in ("1", "true", "yes")
+
         sort = params.get("sort", "severity")
         if sort not in SORT_FIELDS:
             sort = "severity"
 
         return ReconciliationFilters(
             scope=scope,
+            run=run,
             status=params.get("status") or None,
             severity=params.get("severity") or None,
             method=params.get("method") or None,
@@ -111,7 +115,9 @@ class BindingReconciliationService:
         )
 
     def build(self, filters: ReconciliationFilters) -> dict[str, Any]:
-        """Return full reconciliation payload (read-only)."""
+        """Return reconciliation payload (shell until explicitly run)."""
+        if not self._should_run_scan(filters):
+            return self._shell_payload(filters)
         ctx = self._load_context()
         findings = self._evaluate_all(ctx, filters)
         findings = self._apply_filters(findings, filters)
@@ -146,6 +152,67 @@ class BindingReconciliationService:
             "findings": page_items,
             "warnings": self._global_warnings(ctx),
             "diagnostic_only": True,
+            "evaluated_at": datetime.now().isoformat(),
+            "evaluation_scope": filters.scope,
+        }
+
+    def _should_run_scan(self, filters: ReconciliationFilters) -> bool:
+        """Full scan only when explicitly requested or narrowly scoped."""
+        if filters.run:
+            return True
+        if filters.task_id or filters.entity_global_id:
+            return True
+        if filters.scope in ("task", "entity", "ifc_file"):
+            return True
+        if filters.status or filters.severity or filters.method or filters.possible_conflict:
+            return filters.run
+        return False
+
+    def _shell_payload(self, filters: ReconciliationFilters) -> dict[str, Any]:
+        """Fast shell — no full project scan."""
+        return {
+            "project_id": self.project_id,
+            "policy_id": TRUSTED_BINDING_POLICY_ID,
+            "policy": {
+                "accepted_rule": TRUSTED_BINDING_POLICY["accepted_rule"],
+                "review_rule": TRUSTED_BINDING_POLICY["review_rule"],
+            },
+            "capability": self._capability_matrix(),
+            "lineage_limitations": [
+                "Evidence drift compares indexed IFC property snapshots — not live file edits.",
+                "Version lineage for bindings is prospective from migration 0024 onward.",
+            ],
+            "summary": {
+                "status": "not_evaluated",
+                "valid": None,
+                "review_required": None,
+                "broken_orphaned": None,
+                "possible_conflicts": None,
+                "version_unknown": None,
+                "m2m_parity_issues": None,
+                "total_evaluated": 0,
+                "binding_rows": None,
+            },
+            "filters_applied": self._filters_dict(filters),
+            "pagination": {
+                "page": 1,
+                "page_size": filters.page_size,
+                "total_items": 0,
+                "total_pages": 1,
+                "has_next": False,
+                "has_previous": False,
+                "prev_page": 1,
+                "next_page": 1,
+            },
+            "findings": [],
+            "warnings": [
+                "Reconciliation has not been run for this view. Click Run diagnostic to evaluate bindings.",
+                "Prior results are not cached — each run reflects current database state.",
+            ],
+            "diagnostic_only": True,
+            "evaluated_at": None,
+            "evaluation_scope": filters.scope,
+            "not_evaluated": True,
         }
 
     def binding_detail(self, binding_id: str | UUID) -> dict[str, Any]:
