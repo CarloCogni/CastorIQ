@@ -524,6 +524,39 @@ class TaskEntityBinding(UUIDModel):
         verbose_name="Needs Review",
         help_text="True when confidence is below the auto-accept threshold (0.95)",
     )
+
+    class GovernanceStatus(models.TextChoices):
+        """E2-E lifecycle state — complements needs_review for audit transitions."""
+
+        ACTIVE_REVIEW = "active_review", "Active review"
+        TRUSTED = "trusted", "Trusted"
+        REJECTED = "rejected", "Rejected"
+        REVERSED = "reversed", "Reversed"
+        SUPERSEDED = "superseded", "Superseded"
+
+    governance_status = models.CharField(
+        max_length=20,
+        choices=GovernanceStatus.choices,
+        default=GovernanceStatus.ACTIVE_REVIEW,
+        db_index=True,
+        verbose_name="Governance Status",
+    )
+    is_active = models.BooleanField(
+        default=True,
+        db_index=True,
+        verbose_name="Active",
+        help_text="False when rejected, reversed, or superseded.",
+    )
+    superseded_by = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="supersedes",
+        verbose_name="Superseded By",
+    )
+    rejected_at = models.DateTimeField(null=True, blank=True, verbose_name="Rejected At")
+    reversed_at = models.DateTimeField(null=True, blank=True, verbose_name="Reversed At")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -533,6 +566,7 @@ class TaskEntityBinding(UUIDModel):
         indexes = [
             models.Index(fields=["task", "needs_review"]),
             models.Index(fields=["entity_global_id"]),
+            models.Index(fields=["governance_status", "is_active"]),
         ]
         constraints = [
             models.UniqueConstraint(
@@ -543,6 +577,134 @@ class TaskEntityBinding(UUIDModel):
 
     def __str__(self) -> str:
         return f"{self.task.name} → {self.entity_global_id} ({self.link_method}, {self.confidence:.2f})"
+
+    def save(self, *args, **kwargs) -> None:
+        """Align lifecycle defaults on create from needs_review (migration-era compatibility)."""
+        if self._state.adding and self.governance_status == self.GovernanceStatus.ACTIVE_REVIEW:
+            if not self.needs_review:
+                self.governance_status = self.GovernanceStatus.TRUSTED
+        super().save(*args, **kwargs)
+
+
+class BindingGovernanceEvent(UUIDModel):
+    """Append-only immutable governance decision event (E2-E)."""
+
+    class EventType(models.TextChoices):
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected"
+        REAFFIRMED = "reaffirmed", "Reaffirmed"
+        REVERSED = "reversed", "Reversed"
+        SUPERSEDED = "superseded", "Superseded"
+        SUPERSEDING_ACCEPTANCE = "superseding_acceptance", "Superseding acceptance"
+        M2M_ADDED = "m2m_added", "M2M added"
+        M2M_REMOVED = "m2m_removed", "M2M removed"
+        PARITY_REPAIRED = "parity_repaired", "Parity repaired"
+        CONFLICT_ACKNOWLEDGED = "conflict_acknowledged", "Conflict acknowledged"
+        MIGRATION_INITIALIZED = "migration_initialized", "Migration initialized"
+
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name="binding_governance_events",
+        verbose_name="Project",
+    )
+    binding = models.ForeignKey(
+        TaskEntityBinding,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="governance_events",
+        verbose_name="Binding",
+    )
+    task = models.ForeignKey(
+        Task,
+        on_delete=models.CASCADE,
+        related_name="binding_governance_events",
+        verbose_name="Task",
+    )
+    entity_global_id = models.CharField(
+        max_length=64, db_index=True, verbose_name="Entity GlobalId"
+    )
+    ifc_file = models.ForeignKey(
+        "ifc_processor.IFCFile",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="binding_governance_events",
+        verbose_name="IFC File",
+    )
+    event_type = models.CharField(max_length=32, choices=EventType.choices, db_index=True)
+    previous_state = models.CharField(max_length=32)
+    resulting_state = models.CharField(max_length=32)
+    reason_code = models.CharField(max_length=64)
+    reason_text = models.TextField(blank=True)
+    policy_id = models.CharField(max_length=64, default="trusted-binding-v1")
+    decision_reference_id = models.CharField(max_length=64, db_index=True)
+    batch_fingerprint = models.CharField(max_length=64, blank=True, default="")
+    parent_event = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="child_events",
+        verbose_name="Parent Event",
+    )
+    related_event = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="linked_events",
+        verbose_name="Related Event",
+    )
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="binding_governance_events",
+        verbose_name="Actor",
+    )
+    request_source = models.CharField(max_length=64, blank=True, default="")
+    trusted_before = models.BooleanField(null=True)
+    trusted_after = models.BooleanField(null=True)
+    m2m_before = models.BooleanField(null=True)
+    m2m_after = models.BooleanField(null=True)
+    replacement_binding = models.ForeignKey(
+        TaskEntityBinding,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="replacement_events",
+        verbose_name="Replacement Binding",
+    )
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        verbose_name = "Binding Governance Event"
+        verbose_name_plural = "Binding Governance Events"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["project", "created_at"]),
+            models.Index(fields=["project", "event_type", "created_at"]),
+            models.Index(fields=["binding", "created_at"]),
+            models.Index(fields=["task", "created_at"]),
+            models.Index(fields=["entity_global_id", "created_at"]),
+            models.Index(fields=["decision_reference_id"]),
+        ]
+
+    def save(self, *args, **kwargs) -> None:
+        if not self._state.adding:
+            raise ValueError(
+                "BindingGovernanceEvent records are append-only and cannot be updated."
+            )
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs) -> tuple[int, dict[str, int]]:
+        raise ValueError("BindingGovernanceEvent records are append-only and cannot be deleted.")
+
+    def __str__(self) -> str:
+        return f"{self.event_type} {self.entity_global_id} @ {self.created_at}"
 
 
 class LinkFeedback(UUIDModel):
