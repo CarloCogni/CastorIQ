@@ -1,6 +1,6 @@
 <!-- scheduling/components/governance_lifecycle_confirm.html — lifecycle action confirm -->
 
-<div id="lifecycle-confirm-{{ binding_id|default:repair_type }}" class="border rounded p-3 small {% if operation == 'reverse' or operation == 'supersede' %}border-danger{% else %}bg-body-tertiary{% endif %}">
+<div id="lifecycle-confirm-{% if binding_id %}{{ binding_id }}{% else %}parity-bulk{% endif %}" class="border rounded p-3 small {% if operation == 'reverse' or operation == 'supersede' %}border-danger{% else %}bg-body-tertiary{% endif %}">
     <div class="fw-semibold mb-2 text-capitalize">{{ operation }} — confirm</div>
 
     {% if not preview.eligible %}
@@ -32,7 +32,7 @@
     </p>
 
     <form hx-post="{% if operation == 'reject' %}{% url 'scheduling:link_lifecycle_reject_apply' project.pk binding_id %}{% elif operation == 'reaffirm' %}{% url 'scheduling:link_lifecycle_reaffirm_apply' project.pk binding_id %}{% elif operation == 'reverse' %}{% url 'scheduling:link_lifecycle_reverse_apply' project.pk binding_id %}{% elif operation == 'supersede' %}{% url 'scheduling:link_lifecycle_supersede_apply' project.pk binding_id %}{% elif operation == 'parity_bulk' %}{% url 'scheduling:link_lifecycle_parity_bulk_apply' project.pk %}{% else %}{% url 'scheduling:link_lifecycle_parity_apply' project.pk %}{% endif %}"
-          hx-target="#lifecycle-confirm-{{ binding_id|default:repair_type }}"
+          hx-target="#lifecycle-confirm-{% if binding_id %}{{ binding_id }}{% else %}parity-bulk{% endif %}"
           hx-swap="outerHTML">
         {% csrf_token %}
         <input type="hidden" name="fingerprint" value="{{ preview.fingerprint }}">

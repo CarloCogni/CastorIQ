@@ -307,6 +307,20 @@ def test_lifecycle_reject_api_post_only(client):
 
 
 @pytest.mark.django_db
+def test_reject_preview_htmx_renders_without_repair_type(client):
+    """Reject preview HTMX partial must not require parity repair_type context."""
+    project = ProjectFactory()
+    client.force_login(project.owner)
+    task = TaskFactory(project=project)
+    binding = _bind(task, "GID-RJ-PV", needs_review=True)
+    url = reverse("scheduling:link_lifecycle_reject_preview", args=[project.pk, binding.pk])
+    response = client.post(url, HTTP_HX_REQUEST="true")
+    assert response.status_code == 200
+    assert b"lifecycle-confirm-" in response.content
+    assert b"Reject" in response.content or b"reject" in response.content
+
+
+@pytest.mark.django_db
 def test_no_fake_migration_events_created():
     """Lifecycle backfill does not fabricate historical approval events."""
     project = ProjectFactory()
