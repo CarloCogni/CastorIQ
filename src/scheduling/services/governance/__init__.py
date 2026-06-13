@@ -2,6 +2,7 @@
 """E2 link governance vocabulary, trusted reads, and summary contracts."""
 
 from scheduling.services.governance.classifier import GovernanceStateClassifier
+from scheduling.services.governance.link_decision import LinkDecisionService
 from scheduling.services.governance.policy import TRUSTED_BINDING_POLICY_ID
 from scheduling.services.governance.reader import BindingGovernanceReader
 from scheduling.services.governance.review_queue import LinkReviewQueueService
@@ -13,6 +14,7 @@ __all__ = [
     "GovernanceCategory",
     "GovernanceStateClassifier",
     "GovernanceSummaryService",
+    "LinkDecisionService",
     "LinkReviewQueueService",
     "QueueMode",
     "TRUSTED_BINDING_POLICY_ID",
