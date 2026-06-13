@@ -1,0 +1,161 @@
+<!-- scheduling/components/param_match_preview.html — read-only exact-match preview -->
+<div class="param-match-preview border rounded p-3 mb-2" style="font-size:0.82rem;">
+  <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">
+    <div>
+      <span class="badge bg-secondary me-1">Read-only preview</span>
+      <strong>No changes applied</strong>
+    </div>
+    <div class="text-secondary">
+      Generated {{ preview.generated_at|slice:":19" }} UTC
+    </div>
+  </div>
+
+  {% if preview.errors %}
+  <div class="alert alert-danger py-2 mb-2">
+    {% for err in preview.errors %}
+    <div>{{ err }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- Key distinction banner -->
+  <div class="alert alert-info py-2 mb-3">
+    <div class="fw-semibold mb-1">
+      {{ preview.matched_task_count }} matched activit{{ preview.matched_task_count|pluralize:"y,ies" }}
+      &nbsp;≠&nbsp;
+      {{ preview.projected_binding_count }} projected trusted binding{{ preview.projected_binding_count|pluralize }}
+    </div>
+    <div class="text-secondary" style="font-size:0.78rem;">
+      One schedule activity can map to many IFC products. Bindings are per entity, not per task.
+    </div>
+  </div>
+
+  <div class="row g-2 mb-3">
+    <div class="col-6 col-md-3">
+      <div class="border rounded p-2 text-center">
+        <div class="text-secondary" style="font-size:0.72rem;">Schedule tasks</div>
+        <div class="fw-bold fs-5">{{ preview.total_tasks }}</div>
+        <div class="text-secondary" style="font-size:0.7rem;">{{ preview.physical_task_count }} physical</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="border rounded p-2 text-center">
+        <div class="text-secondary" style="font-size:0.72rem;">IFC entities</div>
+        <div class="fw-bold fs-5">{{ preview.total_ifc_entities }}</div>
+        <div class="text-secondary" style="font-size:0.7rem;">{{ preview.ifc_entities_with_activity_id }} with Activity ID</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="border rounded p-2 text-center">
+        <div class="text-secondary" style="font-size:0.72rem;">Unique IFC Activity IDs</div>
+        <div class="fw-bold fs-5">{{ preview.unique_ifc_activity_ids }}</div>
+        <div class="text-secondary" style="font-size:0.7rem;">{{ preview.exact_matched_activity_ids }} exact matches</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="border rounded p-2 text-center">
+        <div class="text-secondary" style="font-size:0.72rem;">Projected bindings</div>
+        <div class="fw-bold fs-5 text-primary">{{ preview.projected_binding_count }}</div>
+        <div class="text-secondary" style="font-size:0.7rem;">across {{ preview.matched_task_count }} tasks</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-2 mb-3">
+    <div class="col-md-4">
+      <div class="border rounded p-2">
+        <div class="fw-semibold mb-1">Existing links</div>
+        <div>Accepted bindings: <strong>{{ preview.existing_accepted_bindings }}</strong></div>
+        <div>Review bindings: <strong>{{ preview.existing_review_bindings }}</strong></div>
+        <div>Legacy M2M links: <strong>{{ preview.existing_legacy_m2m_links }}</strong></div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="border rounded p-2">
+        <div class="fw-semibold mb-1">Projected write plan</div>
+        <div>Inserts: <strong>{{ preview.projected_inserts }}</strong></div>
+        <div>Updates: <strong>{{ preview.projected_updates }}</strong></div>
+        <div>No-ops: <strong>{{ preview.projected_no_ops }}</strong></div>
+        <div class="text-secondary">Stale (report): {{ preview.projected_stale_bindings }}</div>
+        <div class="text-secondary">M2M adds (report): {{ preview.projected_legacy_m2m_additions }}</div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="border rounded p-2">
+        <div class="fw-semibold mb-1">Unmatched</div>
+        <div>IFC-only IDs: <strong>{{ preview.unmatched_ifc_activity_ids }}</strong></div>
+        <div>Schedule-only codes: <strong>{{ preview.schedule_only_activity_codes }}</strong></div>
+        <div>Malformed values: <strong>{{ preview.malformed_activity_id_values }}</strong></div>
+        <div>Case-only (diag): <strong>{{ preview.case_insensitive_only_count }}</strong></div>
+      </div>
+    </div>
+  </div>
+
+  {% if preview.warnings %}
+  <div class="alert alert-warning py-2 mb-3">
+    <div class="fw-semibold mb-1">
+      <i class="bi bi-exclamation-triangle me-1"></i>
+      {{ preview.warnings|length }} warning{{ preview.warnings|length|pluralize }}
+    </div>
+    <ul class="mb-0 ps-3">
+      {% for w in preview.warnings %}
+      <li>{{ w }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <div class="d-flex flex-wrap gap-3 mb-2 text-secondary" style="font-size:0.75rem;">
+    <span>Property: <code>{{ preview.param_name }}</code></span>
+    {% if preview.schedule_source_filename %}
+    <span>Schedule: <code>{{ preview.schedule_source_filename }}</code></span>
+    {% endif %}
+    {% if preview.ifc_filenames %}
+    <span>IFC: <code>{{ preview.ifc_filenames.0 }}</code>{% if preview.ifc_filenames|length > 1 %} +{{ preview.ifc_filenames|length|add:"-1" }}{% endif %}</span>
+    {% endif %}
+    <span>Fingerprint: <code title="{{ preview.preview_fingerprint }}">{{ preview.preview_fingerprint|slice:":12" }}…</code></span>
+  </div>
+
+  {% if preview.task_distribution %}
+  <details open class="mb-2">
+    <summary class="fw-semibold mb-2" style="cursor:pointer;">
+      Activity distribution (top {{ preview.task_distribution|length }})
+      — min {{ preview.entity_count_min }}, max {{ preview.entity_count_max }}, median {{ preview.entity_count_median }}
+    </summary>
+    <div class="table-responsive" style="max-height:240px; overflow-y:auto;">
+      <table class="table table-sm table-hover align-middle mb-0">
+        <thead class="table-light sticky-top">
+          <tr>
+            <th>Activity ID</th>
+            <th>Task</th>
+            <th class="text-end">IFC entities</th>
+            <th class="text-end">Accepted</th>
+            <th class="text-end">Insert</th>
+            <th class="text-end">Update</th>
+            <th class="text-end">No-op</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in preview.task_distribution %}
+          <tr>
+            <td><code>{{ row.activity_code_trimmed }}</code></td>
+            <td style="max-width:180px;" class="text-truncate" title="{{ row.task_name }}">{{ row.task_name }}</td>
+            <td class="text-end"><span class="badge bg-primary">{{ row.entity_count }}</span></td>
+            <td class="text-end">{{ row.existing_accepted_count }}</td>
+            <td class="text-end">{{ row.projected_insert }}</td>
+            <td class="text-end">{{ row.projected_update }}</td>
+            <td class="text-end">{{ row.projected_no_op }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+  {% endif %}
+
+  <div class="border rounded p-2 bg-body-secondary text-secondary" style="font-size:0.78rem;">
+    <i class="bi bi-lock me-1"></i>
+    Trusted binding persistence requires approval (E1-E — coming next).
+    This preview made no database changes.
+  </div>
+</div>

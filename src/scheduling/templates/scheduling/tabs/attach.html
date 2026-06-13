@@ -42,21 +42,23 @@
                         Match by an IFC property value. Enter the property name that holds
                         the activity code (e.g. <code>ActivityCode</code>, <code>WBS</code>).
                     </p>
-                    <form hx-post="{% url 'scheduling:schedule_link_param' project.pk %}"
+                    <form hx-get="{% url 'scheduling:schedule_link_preview_param' project.pk %}"
                           hx-target="#attach-results"
                           hx-swap="innerHTML"
                           hx-indicator="#param-spinner">
-                        {% csrf_token %}
                         <div class="input-group input-group-sm">
                             <input type="text" name="param_name" class="form-control"
-                                   placeholder="e.g. ActivityCode"
-                                   value="{{ param_name|default:'' }}">
+                                   placeholder="e.g. Activity ID"
+                                   value="{{ param_name|default:'Activity ID' }}">
                             <button class="btn btn-info" type="submit">
                                 <span id="param-spinner" class="htmx-indicator spinner-border spinner-border-sm me-1"></span>
-                                Match
+                                <i class="bi bi-eye"></i> Preview
                             </button>
                         </div>
                     </form>
+                    <p class="text-secondary mt-2 mb-0" style="font-size:0.75rem;">
+                        <i class="bi bi-lock me-1"></i>Persistence disabled until approval (E1-E).
+                    </p>
                 </div>
             </div>
         </div>

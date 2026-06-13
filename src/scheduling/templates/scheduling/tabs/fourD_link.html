@@ -355,16 +355,15 @@
     <!-- Separator -->
     <div style="height: 24px; width: 1px; background: var(--bs-border-color);"></div>
 
-    <!-- Parameter Match -->
-    <form hx-post="{% url 'scheduling:schedule_link_param' project.pk %}"
-          hx-target="#fourD-link-results"
+    <!-- Parameter Match — read-only preview (E1-D) -->
+    <form hx-get="{% url 'scheduling:schedule_link_preview_param' project.pk %}"
+          hx-target="#fourD-match-preview"
           hx-swap="innerHTML"
           hx-indicator="#fd-param-spinner"
           style="display: contents;">
-      {% csrf_token %}
       <input type="text" name="param_name" id="fourD-param-input"
-             placeholder="e.g. ActivityCode"
-             value="{{ ifc_param_name|default:'' }}"
+             placeholder="e.g. Activity ID"
+             value="{{ ifc_param_name|default:'Activity ID' }}"
              style="padding: 5px 10px; font-size: 12px; width: 160px;
                     background: var(--bs-body-bg);
                     border: 1px solid var(--bs-border-color);
@@ -374,12 +373,24 @@
                      border: none; border-radius: 6px; cursor: pointer; font-size: 12px;
                      display: inline-flex; align-items: center; gap: 4px;">
         <span id="fd-param-spinner" class="htmx-indicator spinner-border spinner-border-sm"></span>
-        Match
+        <i class="bi bi-eye"></i> Preview Match
       </button>
     </form>
+    <button type="button" disabled
+            title="Trusted binding persistence requires approval (E1-E)"
+            style="padding: 5px 12px; background: var(--bs-secondary-bg);
+                   color: var(--bs-secondary-color);
+                   border: 1px solid var(--bs-border-color);
+                   border-radius: 6px; font-size: 12px; cursor: not-allowed;
+                   display: inline-flex; align-items: center; gap: 4px; opacity: 0.7;">
+      <i class="bi bi-lock"></i> Apply (approval step)
+    </button>
   </div><!-- /fourD-footer -->
 
-  <!-- Results area: Link Engine / param match feedback (collapses when empty) -->
+  <!-- Match preview area (read-only, E1-D) -->
+  <div id="fourD-match-preview" style="flex-shrink:0; overflow-y:auto; max-height:42vh;"></div>
+
+  <!-- Results area: Link Engine feedback (collapses when empty) -->
   <div id="fourD-link-results" style="flex-shrink:0; overflow-y:auto; max-height:180px;"></div>
 
   <!-- Review pane: governance (read-only) + Smart Pipeline review -->
