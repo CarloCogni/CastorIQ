@@ -20,6 +20,8 @@ from django.views.generic import TemplateView
 from core.http import toast_response, trigger_toast
 from core.mixins import ProjectAccessMixin, ProjectModifyAccessMixin, ProjectTabMixin
 from ifc_processor.models import IFCEntity, IFCFile
+from scheduling.governance_access import GovernanceCapabilityMixin
+from scheduling.services.governance.authority import GovernanceAuthorityError, GovernanceCapability
 
 from .models import (
     MappingProfile,
@@ -1909,6 +1911,9 @@ class LinkGovernanceReviewQueueView(ProjectAccessMixin, View):
                     "queue": payload,
                     "filters": filters,
                     "queue_modes": queue_modes,
+                    "governance_capabilities": _governance_capabilities_context(
+                        project, request.user
+                    ),
                 },
             )
         return JsonResponse(payload)
@@ -1942,11 +1947,14 @@ class LinkGovernanceWorkspaceView(ProjectAccessMixin, View):
     """GET — HTMX shell for link governance review workspace."""
 
     def get(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.authority import GovernanceAuthorityPolicy
+
         project = self.get_project()
+        capabilities = GovernanceAuthorityPolicy(project, request.user).capabilities_summary()
         return render(
             request,
             "scheduling/tabs/link_governance.html",
-            {"project": project},
+            {"project": project, "governance_capabilities": capabilities},
         )
 
 
@@ -1985,6 +1993,12 @@ def _decision_error(
     if request.headers.get("HX-Request"):
         return toast_response(message, "error", status=status)
     return JsonResponse(body, status=status)
+
+
+def _governance_capabilities_context(project, user) -> dict:
+    from scheduling.services.governance.authority import GovernanceAuthorityPolicy
+
+    return GovernanceAuthorityPolicy(project, user).capabilities_summary()
 
 
 class LinkDecisionPreviewOneView(ProjectModifyAccessMixin, View):
@@ -2044,9 +2058,17 @@ class LinkDecisionApplyOneView(ProjectModifyAccessMixin, View):
             )
         except StaleDecisionError as exc:
             return _decision_error(request, exc.message, status=409, details=exc.details)
+        except GovernanceAuthorityError as exc:
+            return _decision_error(
+                request, exc.result.reason, status=403, details=exc.result.to_dict()
+            )
         except DecisionValidationError as exc:
             status = 422 if "acknowledgment" in exc.message.lower() else 400
             return _decision_error(request, exc.message, status=status, details=exc.details)
+        except GovernanceAuthorityError as exc:
+            return _decision_error(
+                request, exc.result.reason, status=403, details=exc.result.to_dict()
+            )
 
         mode = payload.get("queue_mode", "review")
         page = int(payload.get("queue_page", 1) or 1)
@@ -2068,6 +2090,7 @@ class LinkDecisionApplyOneView(ProjectModifyAccessMixin, View):
                 "queue": queue,
                 "filters": filters,
                 "queue_modes": queue_modes,
+                "governance_capabilities": _governance_capabilities_context(project, request.user),
             },
             request=request,
         )
@@ -2088,8 +2111,10 @@ class LinkDecisionApplyOneView(ProjectModifyAccessMixin, View):
         return trigger_toast(response, msg, "success")
 
 
-class LinkDecisionBulkPreviewView(ProjectModifyAccessMixin, View):
+class LinkDecisionBulkPreviewView(GovernanceCapabilityMixin, View):
     """POST — preview selected bulk approval."""
+
+    governance_capability = GovernanceCapability.APPROVE_BULK
 
     def post(self, request, **kwargs: object) -> HttpResponse:
         from scheduling.services.governance.link_decision import (
@@ -2132,8 +2157,10 @@ class LinkDecisionBulkPreviewView(ProjectModifyAccessMixin, View):
         return JsonResponse(preview.to_dict())
 
 
-class LinkDecisionBulkApplyView(ProjectModifyAccessMixin, View):
+class LinkDecisionBulkApplyView(GovernanceCapabilityMixin, View):
     """POST — apply selected bulk approval (all-or-nothing)."""
+
+    governance_capability = GovernanceCapability.APPROVE_BULK
 
     def post(self, request, **kwargs: object) -> HttpResponse:
         from scheduling.services.governance.link_decision import (
@@ -2166,6 +2193,10 @@ class LinkDecisionBulkApplyView(ProjectModifyAccessMixin, View):
         except DecisionValidationError as exc:
             status = 422 if "acknowledgment" in exc.message.lower() else 400
             return _decision_error(request, exc.message, status=status, details=exc.details)
+        except GovernanceAuthorityError as exc:
+            return _decision_error(
+                request, exc.result.reason, status=403, details=exc.result.to_dict()
+            )
 
         mode = payload.get("queue_mode", "review")
         page = int(payload.get("queue_page", 1) or 1)
@@ -2187,6 +2218,7 @@ class LinkDecisionBulkApplyView(ProjectModifyAccessMixin, View):
                 "queue": queue,
                 "filters": filters,
                 "queue_modes": queue_modes,
+                "governance_capabilities": _governance_capabilities_context(project, request.user),
             },
             request=request,
         )
@@ -2259,6 +2291,23 @@ def _lifecycle_error(
     if request.headers.get("HX-Request"):
         return toast_response(message, "error", status=status)
     return JsonResponse(body, status=status)
+
+
+def _lifecycle_error_from_exc(request, exc: Exception) -> HttpResponse:
+    if isinstance(exc, GovernanceAuthorityError):
+        return _lifecycle_error(
+            request, exc.result.reason, status=403, details=exc.result.to_dict()
+        )
+    from scheduling.services.governance.binding_lifecycle import (
+        LifecycleValidationError,
+        StaleLifecycleError,
+    )
+
+    if isinstance(exc, StaleLifecycleError):
+        return _lifecycle_error(request, exc.message, status=409, details=exc.details)
+    if isinstance(exc, LifecycleValidationError):
+        return _lifecycle_error(request, exc.message, status=400, details=exc.details)
+    raise exc
 
 
 class LinkLifecycleRejectPreviewView(ProjectModifyAccessMixin, View):
@@ -2338,6 +2387,9 @@ class LinkLifecycleRejectApplyView(ProjectModifyAccessMixin, View):
                     "queue": queue,
                     "filters": queue_svc.filters_from_request({"mode": "review", "page": 1}),
                     "queue_modes": [("review", "Review"), ("trusted", "Trusted")],
+                    "governance_capabilities": _governance_capabilities_context(
+                        project, request.user
+                    ),
                 },
                 request=request,
             )
@@ -2425,8 +2477,10 @@ class LinkLifecycleReaffirmApplyView(ProjectModifyAccessMixin, View):
         return JsonResponse(result.to_dict())
 
 
-class LinkLifecycleReversePreviewView(ProjectModifyAccessMixin, View):
+class LinkLifecycleReversePreviewView(GovernanceCapabilityMixin, View):
     """POST — preview trusted binding reversal."""
+
+    governance_capability = GovernanceCapability.REVERSE
 
     def post(self, request, **kwargs: object) -> HttpResponse:
         from scheduling.services.governance.binding_lifecycle import (
@@ -2465,8 +2519,10 @@ class LinkLifecycleReversePreviewView(ProjectModifyAccessMixin, View):
         return JsonResponse(preview.to_dict())
 
 
-class LinkLifecycleReverseApplyView(ProjectModifyAccessMixin, View):
+class LinkLifecycleReverseApplyView(GovernanceCapabilityMixin, View):
     """POST — apply audited reversal."""
+
+    governance_capability = GovernanceCapability.REVERSE
 
     def post(self, request, **kwargs: object) -> HttpResponse:
         from scheduling.services.governance.binding_lifecycle import (
@@ -2500,8 +2556,10 @@ class LinkLifecycleReverseApplyView(ProjectModifyAccessMixin, View):
         return JsonResponse(result.to_dict())
 
 
-class LinkLifecycleSupersedePreviewView(ProjectModifyAccessMixin, View):
+class LinkLifecycleSupersedePreviewView(GovernanceCapabilityMixin, View):
     """POST — preview supersession of trusted binding by review replacement."""
+
+    governance_capability = GovernanceCapability.SUPERSEDE
 
     def post(self, request, **kwargs: object) -> HttpResponse:
         from scheduling.services.governance.binding_lifecycle import (
@@ -2541,8 +2599,10 @@ class LinkLifecycleSupersedePreviewView(ProjectModifyAccessMixin, View):
         return JsonResponse(preview.to_dict())
 
 
-class LinkLifecycleSupersedeApplyView(ProjectModifyAccessMixin, View):
+class LinkLifecycleSupersedeApplyView(GovernanceCapabilityMixin, View):
     """POST — apply atomic supersession."""
+
+    governance_capability = GovernanceCapability.SUPERSEDE
 
     def post(self, request, **kwargs: object) -> HttpResponse:
         from scheduling.services.governance.binding_lifecycle import (
@@ -2577,10 +2637,17 @@ class LinkLifecycleSupersedeApplyView(ProjectModifyAccessMixin, View):
         return JsonResponse(result.to_dict())
 
 
-class LinkLifecycleParityPreviewView(ProjectModifyAccessMixin, View):
+class LinkLifecycleParityPreviewView(ProjectAccessMixin, View):
     """POST — preview audited M2M parity repair."""
 
     def post(self, request, **kwargs: object) -> HttpResponse:
+        from django.core.exceptions import PermissionDenied
+
+        from scheduling.services.governance.authority import (
+            GovernanceAuthorityError,
+            GovernanceAuthorityPolicy,
+            require_parity_repair_authority,
+        )
         from scheduling.services.governance.binding_lifecycle import (
             BindingLifecycleService,
             LifecycleValidationError,
@@ -2588,6 +2655,15 @@ class LinkLifecycleParityPreviewView(ProjectModifyAccessMixin, View):
 
         project = self.get_project()
         payload = _parse_json_or_form(request) or {}
+        repair_type = payload.get("repair_type", "")
+        try:
+            require_parity_repair_authority(
+                GovernanceAuthorityPolicy(project, request.user),
+                repair_type,
+            )
+        except GovernanceAuthorityError as exc:
+            raise PermissionDenied(exc.result.reason) from exc
+
         service = BindingLifecycleService(project, request.user)
         try:
             preview = service.preview_parity_repair(
@@ -2624,14 +2700,12 @@ class LinkLifecycleParityPreviewView(ProjectModifyAccessMixin, View):
         return JsonResponse(preview.to_dict())
 
 
-class LinkLifecycleParityApplyView(ProjectModifyAccessMixin, View):
+class LinkLifecycleParityApplyView(ProjectAccessMixin, View):
     """POST — apply audited parity repair."""
 
     def post(self, request, **kwargs: object) -> HttpResponse:
         from scheduling.services.governance.binding_lifecycle import (
             BindingLifecycleService,
-            LifecycleValidationError,
-            StaleLifecycleError,
         )
 
         project = self.get_project()
@@ -2648,10 +2722,8 @@ class LinkLifecycleParityApplyView(ProjectModifyAccessMixin, View):
                 entity_global_id=payload.get("entity_global_id"),
                 repair_type=payload.get("repair_type", ""),
             )
-        except StaleLifecycleError as exc:
-            return _lifecycle_error(request, exc.message, status=409, details=exc.details)
-        except LifecycleValidationError as exc:
-            return _lifecycle_error(request, exc.message, status=400, details=exc.details)
+        except Exception as exc:
+            return _lifecycle_error_from_exc(request, exc)
 
         if request.headers.get("HX-Request"):
             return render(
@@ -2667,8 +2739,20 @@ class LinkGovernanceAuditHistoryView(ProjectAccessMixin, View):
 
     def get(self, request, **kwargs: object) -> HttpResponse:
         from scheduling.services.governance.audit_history import BindingAuditHistoryService
+        from scheduling.services.governance.authority import (
+            GovernanceAuthorityError,
+            GovernanceAuthorityPolicy,
+            GovernanceCapability,
+        )
 
         project = self.get_project()
+        try:
+            GovernanceAuthorityPolicy(project, request.user).require(
+                GovernanceCapability.VIEW_AUDIT
+            )
+        except GovernanceAuthorityError as exc:
+            return JsonResponse({"error": exc.result.reason}, status=403)
+
         filters = BindingAuditHistoryService.filters_from_request(dict(request.GET.items()))
         payload = BindingAuditHistoryService(str(project.pk)).build(filters)
 
@@ -2679,6 +2763,37 @@ class LinkGovernanceAuditHistoryView(ProjectAccessMixin, View):
                 {
                     "project": project,
                     "audit": payload,
+                    "filters": filters,
+                },
+            )
+        return JsonResponse(payload)
+
+
+class LinkGovernanceOverviewView(ProjectAccessMixin, View):
+    """GET — methodology-aware governance scorecard and overview."""
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        from django.core.exceptions import PermissionDenied
+
+        from scheduling.services.governance.authority import GovernanceAuthorityError
+        from scheduling.services.governance.governance_overview import (
+            GovernanceOverviewService,
+        )
+
+        project = self.get_project()
+        filters = GovernanceOverviewService.filters_from_request(request.GET.dict())
+        try:
+            payload = GovernanceOverviewService(project).build(request.user, filters)
+        except GovernanceAuthorityError as exc:
+            raise PermissionDenied(exc.result.reason) from exc
+
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "scheduling/components/governance_overview_panel.html",
+                {
+                    "project": project,
+                    "overview": payload,
                     "filters": filters,
                 },
             )

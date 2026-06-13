@@ -339,6 +339,11 @@ urlpatterns = [
         name="link_governance_audit",
     ),
     path(
+        "projects/<uuid:pk>/link-governance/overview/",
+        views.LinkGovernanceOverviewView.as_view(),
+        name="link_governance_overview",
+    ),
+    path(
         "projects/<uuid:pk>/comprehension/",
         views.ProjectComprehensionView.as_view(),
         name="schedule_comprehension",

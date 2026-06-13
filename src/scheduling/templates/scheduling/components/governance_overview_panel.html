@@ -1,0 +1,146 @@
+<!-- scheduling/components/governance_overview_panel.html — E2-F scorecard overview -->
+
+{% with o=overview sc=o.scorecard auth=o.authority %}
+<div id="governance-overview-panel" class="d-flex flex-column gap-3">
+
+    <!-- Policy and authority banner -->
+    <div class="border rounded p-3 bg-body-tertiary small">
+        <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+            <span class="badge bg-primary-subtle text-primary-emphasis border">{{ o.policy_id }}</span>
+            <span class="badge bg-secondary-subtle text-secondary-emphasis border">{{ o.authority_policy_id }}</span>
+            <span class="text-secondary">Methodology {{ o.methodology_version }}</span>
+        </div>
+        <div class="mb-1">
+            <strong>Your access:</strong> {{ auth.permission|default:"none" }}
+            {% if auth.capabilities.can_reverse or auth.capabilities.can_supersede %}
+            <span class="badge bg-danger-subtle text-danger-emphasis ms-1">Destructive ops available</span>
+            {% else %}
+            <span class="badge bg-secondary-subtle text-secondary-emphasis ms-1">Destructive ops require owner</span>
+            {% endif %}
+        </div>
+        <div class="text-secondary">{{ o.audit_boundary.pre_audit_legacy_caveat }}</div>
+    </div>
+
+    <!-- Trust state -->
+    <div>
+        <h6 class="fw-semibold">Trust state</h6>
+        <div class="row g-2">
+            <div class="col-6 col-md-4 col-lg-2">
+                <div class="border rounded p-2 text-center">
+                    <div class="fw-semibold">{{ sc.trust_state.trusted.value }}</div>
+                    <div class="small text-secondary">Trusted</div>
+                    <a class="small" hx-get="{% url 'scheduling:link_governance_review_queue' project.pk %}?mode=trusted&page=1"
+                       hx-target="#governance-queue-panel" hx-swap="innerHTML" href="#">Drill down</a>
+                </div>
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+                <div class="border rounded p-2 text-center bg-warning-subtle">
+                    <div class="fw-semibold">{{ sc.trust_state.active_review.value }}</div>
+                    <div class="small text-secondary">Review</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+                <div class="border rounded p-2 text-center">
+                    <div class="fw-semibold">{{ sc.trust_state.rejected.value }}</div>
+                    <div class="small text-secondary">Rejected</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+                <div class="border rounded p-2 text-center">
+                    <div class="fw-semibold">{{ sc.trust_state.reversed.value }}</div>
+                    <div class="small text-secondary">Reversed</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+                <div class="border rounded p-2 text-center">
+                    <div class="fw-semibold">{{ sc.trust_state.superseded.value }}</div>
+                    <div class="small text-secondary">Superseded</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Coverage -->
+    <div>
+        <h6 class="fw-semibold">Coverage</h6>
+        <div class="row g-2">
+            <div class="col-md-6">
+                <div class="border rounded p-2">
+                    <div class="fw-semibold">
+                        {{ sc.coverage.task_coverage.numerator }} / {{ sc.coverage.task_coverage.denominator }}
+                        {% if sc.coverage.task_coverage.percentage %}({{ sc.coverage.task_coverage.percentage }}%){% endif %}
+                    </div>
+                    <div class="small">Trusted-linked tasks / all schedule activities</div>
+                    <div class="small text-secondary">{{ sc.coverage.task_coverage.caveat }}</div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="border rounded p-2">
+                    <div class="fw-semibold">
+                        {{ sc.coverage.entity_coverage.numerator }} / {{ sc.coverage.entity_coverage.denominator }}
+                        {% if sc.coverage.entity_coverage.percentage %}({{ sc.coverage.entity_coverage.percentage }}%){% endif %}
+                    </div>
+                    <div class="small">Trusted entities / indexed IFC entities</div>
+                    <div class="small text-secondary">{{ sc.coverage.entity_coverage.caveat }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Evidence mix -->
+    <div>
+        <h6 class="fw-semibold">Evidence / source mix (trusted)</h6>
+        <div class="d-flex flex-wrap gap-2">
+            {% for method, count in sc.evidence_quality.trusted_by_method.items %}
+            <span class="badge bg-light text-dark border">{{ method }}: {{ count }}</span>
+            {% empty %}
+            <span class="text-secondary small">No trusted bindings.</span>
+            {% endfor %}
+        </div>
+        <div class="small text-secondary mt-1">{{ sc.evidence_quality.caveat }}</div>
+    </div>
+
+    <!-- Governance risk (lightweight) -->
+    <div>
+        <h6 class="fw-semibold">Governance risk</h6>
+        <div class="alert alert-secondary py-2 small mb-0">
+            {{ sc.reconciliation_risk.message }}
+        </div>
+        <div class="small mt-1">
+            Property hints: {{ sc.coverage.property_hints.value }} ·
+            Legacy M2M: {{ sc.coverage.legacy_m2m.value }}
+        </div>
+    </div>
+
+    <!-- Decision activity -->
+    <div>
+        <h6 class="fw-semibold">Decision activity (prospective audit)</h6>
+        <div class="small">
+            Events recorded: {{ sc.decision_activity.total_events.value }}
+            · {{ sc.decision_activity.caveat }}
+        </div>
+    </div>
+
+    <!-- Review workload -->
+    <div>
+        <h6 class="fw-semibold">Reviewer workload</h6>
+        <div class="small">
+            Active review: {{ sc.review_workload.active_review_count }}
+            {% if sc.review_workload.age_bands %}
+            · &lt;7d: {{ sc.review_workload.age_bands.under_7d }}
+            · 7–30d: {{ sc.review_workload.age_bands.7_30d }}
+            · &gt;30d: {{ sc.review_workload.age_bands.over_30d }}
+            {% endif %}
+        </div>
+    </div>
+
+    <details class="small">
+        <summary class="fw-semibold">Methodology definitions</summary>
+        <ul class="mt-2 mb-0">
+            {% for m in o.methodology %}
+            <li><strong>{{ m.label }}</strong> — {{ m.description }} (source: {{ m.source }})</li>
+            {% endfor %}
+        </ul>
+    </details>
+</div>
+{% endwith %}

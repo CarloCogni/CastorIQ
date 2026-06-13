@@ -1,4 +1,4 @@
-<!-- scheduling/tabs/link_governance.html — link governance workspace (E2-B/C/D) -->
+<!-- scheduling/tabs/link_governance.html — link governance workspace (E2-B/C/D/F) -->
 
 <div id="link-governance-workspace" class="d-flex flex-column gap-3 h-100">
     <div class="d-flex align-items-center gap-2 flex-wrap">
@@ -16,19 +16,49 @@
         </div>
         <span class="badge bg-primary-subtle text-primary-emphasis border"
               style="font-size:0.72rem;">trusted-binding-v1</span>
+        {% if governance_capabilities.capabilities.can_approve_exact_preview %}
         <a class="btn btn-sm btn-outline-primary ms-auto"
            hx-get="{% url 'scheduling:schedule_link_preview_param' project.pk %}?param_name=Activity%20ID"
            hx-target="#governance-exact-preview-slot"
            hx-swap="innerHTML">
             Exact full preview
         </a>
+        {% else %}
+        <span class="small text-secondary ms-auto" title="Requires project owner permission">
+            Exact preview: owner only
+        </span>
+        {% endif %}
     </div>
+
+    {% if governance_capabilities %}
+    <div class="small text-secondary border rounded px-2 py-1">
+        Authority: {{ governance_capabilities.permission|default:"none" }}
+        {% if not governance_capabilities.capabilities.can_approve_individual %}
+        · Approval actions hidden (viewer)
+        {% endif %}
+    </div>
+    {% endif %}
 
     <ul class="nav nav-tabs" role="tablist" aria-label="Governance workspace tabs">
         <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="gq-tab-queue" data-bs-toggle="tab"
+            <button class="nav-link active" id="gq-tab-overview" data-bs-toggle="tab"
+                    data-bs-target="#gq-panel-overview" type="button" role="tab"
+                    aria-selected="true" aria-controls="gq-panel-overview"
+                    hx-get="{% url 'scheduling:link_governance_overview' project.pk %}"
+                    hx-target="#governance-overview-panel"
+                    hx-trigger="load once"
+                    hx-swap="innerHTML">
+                Overview
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="gq-tab-queue" data-bs-toggle="tab"
                     data-bs-target="#gq-panel-queue" type="button" role="tab"
-                    aria-selected="true" aria-controls="gq-panel-queue">
+                    aria-selected="false" aria-controls="gq-panel-queue"
+                    hx-get="{% url 'scheduling:link_governance_review_queue' project.pk %}?mode=review&page=1"
+                    hx-target="#governance-queue-panel"
+                    hx-trigger="click once"
+                    hx-swap="innerHTML">
                 Review queue
             </button>
         </li>
@@ -59,16 +89,22 @@
     <div id="governance-exact-preview-slot"></div>
 
     <div class="tab-content">
-        <div class="tab-pane fade show active" id="gq-panel-queue" role="tabpanel"
+        <div class="tab-pane fade show active" id="gq-panel-overview" role="tabpanel"
+             aria-labelledby="gq-tab-overview">
+            <div id="governance-overview-panel">
+                <div class="d-flex align-items-center justify-content-center py-4 text-secondary">
+                    <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                    Loading governance overview…
+                </div>
+            </div>
+        </div>
+        <div class="tab-pane fade" id="gq-panel-queue" role="tabpanel"
              aria-labelledby="gq-tab-queue">
             <div id="governance-queue-panel"
                  hx-get="{% url 'scheduling:link_governance_review_queue' project.pk %}?mode=review&page=1"
-                 hx-trigger="load"
+                 hx-trigger="revealed"
                  hx-swap="innerHTML">
-                <div class="d-flex align-items-center justify-content-center py-4 text-secondary">
-                    <span class="spinner-border spinner-border-sm me-2" role="status" aria-label="Loading queue"></span>
-                    Loading governance queue…
-                </div>
+                <div class="text-secondary small py-3">Open Review queue tab to load items.</div>
             </div>
         </div>
         <div class="tab-pane fade" id="gq-panel-reconciliation" role="tabpanel"

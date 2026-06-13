@@ -84,6 +84,7 @@
     <div class="d-flex align-items-center gap-2 flex-wrap border rounded p-2 bg-body-tertiary">
         <span class="small fw-semibold">Review decisions</span>
         <span class="small text-secondary">Select up to 100 items · explicit approval only</span>
+        {% if governance_capabilities.capabilities.can_approve_bulk %}
         <button type="button" class="btn btn-sm btn-outline-primary ms-auto"
                 hx-post="{% url 'scheduling:link_decision_bulk_preview' project.pk %}"
                 hx-include="#gq-selection-form"
@@ -92,6 +93,9 @@
                 hx-vals='{"queue_mode": "{{ queue.mode }}", "queue_page": "{{ queue.pagination.page }}"}'>
             Bulk preview
         </button>
+        {% else %}
+        <span class="small text-secondary ms-auto">Bulk approval requires owner</span>
+        {% endif %}
     </div>
     <div id="governance-bulk-preview-slot"></div>
     {% elif queue.mode == 'trusted' %}
@@ -187,6 +191,7 @@
                                 Evidence
                             </button>
                             {% if queue.mode == 'review' and item.item_type == 'binding' and item.governance.needs_review %}
+                            {% if governance_capabilities.capabilities.can_approve_individual %}
                             <button type="button" class="btn btn-sm btn-success py-0 px-1"
                                     hx-post="{% url 'scheduling:link_decision_preview_one' project.pk item.item_id %}"
                                     hx-target="#decision-slot-{{ forloop.counter }}"
@@ -194,25 +199,31 @@
                                     hx-vals='{"queue_mode": "{{ queue.mode }}", "queue_page": "{{ queue.pagination.page }}"}'>
                                 Approve
                             </button>
+                            {% if governance_capabilities.capabilities.can_reject %}
                             <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1"
                                     hx-post="{% url 'scheduling:link_lifecycle_reject_preview' project.pk item.item_id %}"
                                     hx-target="#decision-slot-{{ forloop.counter }}"
                                     hx-swap="innerHTML">
                                 Reject
                             </button>
+                            {% endif %}
+                            {% endif %}
                             {% elif queue.mode == 'trusted' and item.item_type == 'binding' and item.governance.trusted %}
+                            {% if governance_capabilities.capabilities.can_reaffirm %}
                             <button type="button" class="btn btn-sm btn-outline-primary py-0 px-1"
                                     hx-post="{% url 'scheduling:link_lifecycle_reaffirm_preview' project.pk item.item_id %}"
                                     hx-target="#decision-slot-{{ forloop.counter }}"
                                     hx-swap="innerHTML">
                                 Reaffirm
                             </button>
+                            {% if governance_capabilities.capabilities.can_reverse %}
                             <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1"
                                     hx-post="{% url 'scheduling:link_lifecycle_reverse_preview' project.pk item.item_id %}"
                                     hx-target="#decision-slot-{{ forloop.counter }}"
                                     hx-swap="innerHTML">
                                 Reverse
                             </button>
+                            {% endif %}
                             {% endif %}
                         </div>
                     </td>
