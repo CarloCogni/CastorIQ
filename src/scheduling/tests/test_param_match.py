@@ -88,12 +88,12 @@ def test_persist_param_match_does_not_remove_unrelated_bindings():
 
 
 @pytest.mark.django_db
-def test_link_param_view_creates_binding_visible_to_resolver(client):
-    """LinkParamView persists bindings that link_resolver can read."""
+def test_link_param_view_post_blocked_until_approval(client):
+    """LinkParamView POST is blocked — bindings require preview + approval (E1-E)."""
     user = UserFactory()
     project = ProjectFactory(owner=user)
     task = TaskFactory(project=project, activity_code="A-4004")
-    entity = IFCEntityFactory(
+    IFCEntityFactory(
         ifc_file__project=project,
         global_id="GID-PARAM-004",
         properties={"Castor.Activity ID": "A-4004"},
@@ -103,18 +103,13 @@ def test_link_param_view_creates_binding_visible_to_resolver(client):
     url = reverse("scheduling:schedule_link_param", kwargs={"pk": project.pk})
     response = client.post(url, {"param_name": "Activity ID"})
 
-    assert response.status_code == 200
-    assert TaskEntityBinding.objects.filter(task=task, entity_global_id=entity.global_id).exists()
-    assert entity_gids_for_task(task.pk) == [entity.global_id]
-    html = response.content.decode()
-    assert "A-4004" in html
-    assert 'title="Linked via TaskEntityBinding">✅' in html
-    assert 'badge bg-secondary">1</span>' in html
+    assert response.status_code == 400
+    assert not TaskEntityBinding.objects.filter(task=task).exists()
 
 
 @pytest.mark.django_db
-def test_link_param_results_show_binding_without_m2m(client):
-    """Parameter Match results use bindings even when legacy M2M is empty."""
+def test_link_param_preview_shows_binding_without_m2m(client):
+    """Preview reflects existing bindings even when legacy M2M is empty."""
     user = UserFactory()
     project = ProjectFactory(owner=user)
     task = TaskFactory(project=project, activity_code="BIND-ONLY-001")
@@ -133,22 +128,24 @@ def test_link_param_results_show_binding_without_m2m(client):
     assert task.ifc_entities.count() == 0
     client.force_login(user)
 
-    url = reverse("scheduling:schedule_link_param", kwargs={"pk": project.pk})
-    response = client.post(url, {"param_name": "Activity ID"})
+    url = (
+        reverse("scheduling:schedule_link_preview_param", kwargs={"pk": project.pk})
+        + "?param_name=Activity+ID&format=json"
+    )
+    response = client.get(url)
 
-    html = response.content.decode()
     assert response.status_code == 200
-    assert "BIND-ONLY-001" in html
-    assert 'title="Linked via TaskEntityBinding">✅' in html
-    assert 'badge bg-secondary">1</span>' in html
+    data = response.json()
+    assert data["existing_accepted_bindings"] == 1
+    assert data["matched_task_count"] == 0
 
 
 @pytest.mark.django_db
-def test_link_param_results_show_unlinked_without_binding(client):
-    """Tasks without bindings render as unlinked in Parameter Match results."""
+def test_link_param_preview_shows_unlinked_task(client):
+    """Preview reports zero matches for tasks without matching IFC Activity IDs."""
     user = UserFactory()
     project = ProjectFactory(owner=user)
-    task = TaskFactory(project=project, activity_code="UNLINKED-001")
+    TaskFactory(project=project, activity_code="UNLINKED-001")
     IFCEntityFactory(
         ifc_file__project=project,
         global_id="GID-NOMATCH",
@@ -156,11 +153,14 @@ def test_link_param_results_show_unlinked_without_binding(client):
     )
     client.force_login(user)
 
-    url = reverse("scheduling:schedule_link_param", kwargs={"pk": project.pk})
-    response = client.post(url, {"param_name": "Activity ID"})
+    url = (
+        reverse("scheduling:schedule_link_preview_param", kwargs={"pk": project.pk})
+        + "?param_name=Activity+ID&format=json"
+    )
+    response = client.get(url)
 
-    html = response.content.decode()
+    data = response.json()
     assert response.status_code == 200
-    assert "UNLINKED-001" in html
-    assert 'title="No trusted bindings">❌' in html
-    assert not TaskEntityBinding.objects.filter(task=task).exists()
+    assert data["matched_task_count"] == 0
+    assert data["schedule_only_activity_codes"] == 1
+    assert not TaskEntityBinding.objects.filter(task__project=project).exists()
