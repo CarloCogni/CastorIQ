@@ -31,6 +31,12 @@ from .models import (
     TaskEntityBinding,
 )
 from .parsers.p6xml_parser import parse_p6xml
+from .services.approved_match_persistence import (
+    ApprovalValidationError,
+    ApprovedMatchPersistenceService,
+    MatchApprovalRequest,
+    StalePreviewError,
+)
 from .services.autolink import autodetect_stages, run_autolink
 from .services.column_mapper import (
     CANONICAL_FIELDS,
@@ -1181,6 +1187,71 @@ class MatchPreviewView(ProjectAccessMixin, View):
                 "error",
             )
         return response
+
+
+class ApplyApprovedMatchView(ProjectModifyAccessMixin, View):
+    """POST — persist trusted bindings after fingerprint-validated approval."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+
+        if request.content_type.startswith("application/json"):
+            try:
+                payload = json.loads(request.body.decode() or "{}")
+            except json.JSONDecodeError:
+                return JsonResponse({"error": "Invalid JSON body."}, status=400)
+        else:
+            payload = request.POST.dict()
+            payload["confirm_acknowledged"] = request.POST.get("confirm_acknowledged")
+
+        try:
+            approval = MatchApprovalRequest.from_payload(payload)
+            result = ApprovedMatchPersistenceService(project, request.user).persist(approval)
+        except StalePreviewError as exc:
+            if request.headers.get("HX-Request"):
+                response = render(
+                    request,
+                    "scheduling/components/param_match_apply_conflict.html",
+                    {"error": exc.message, "details": exc.details, "project": project},
+                    status=409,
+                )
+                return trigger_toast(
+                    response,
+                    "Preview is stale — regenerate preview before applying.",
+                    "error",
+                )
+            return JsonResponse(
+                {"error": exc.message, **exc.details},
+                status=409,
+            )
+        except ApprovalValidationError as exc:
+            if request.headers.get("HX-Request"):
+                return toast_response(exc.message, "error", status=400)
+            return JsonResponse({"error": exc.message, **exc.details}, status=400)
+
+        result_dict = result.to_dict()
+        wants_json = (
+            request.GET.get("format") == "json"
+            or payload.get("format") == "json"
+            or (
+                "application/json" in request.headers.get("Accept", "")
+                and not request.headers.get("HX-Request")
+            )
+        )
+        if wants_json:
+            return JsonResponse(result_dict)
+
+        response = render(
+            request,
+            "scheduling/components/param_match_apply_result.html",
+            {"result": result, "project": project},
+        )
+        msg = (
+            f"Persisted {result.inserted_accepted_bindings} new, "
+            f"{result.promoted_review_bindings} promoted, "
+            f"{result.noop_existing_accepted_bindings} unchanged."
+        )
+        return trigger_toast(response, msg, "success")
 
 
 class AutoLinkView(ProjectModifyAccessMixin, View):

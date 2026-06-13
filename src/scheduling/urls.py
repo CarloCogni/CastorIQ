@@ -151,6 +151,11 @@ urlpatterns = [
         views.MatchPreviewView.as_view(),
         name="schedule_link_preview_param",
     ),
+    path(
+        "projects/<uuid:pk>/link/apply-approved-param/",
+        views.ApplyApprovedMatchView.as_view(),
+        name="schedule_link_apply_approved_param",
+    ),
     # Task list / detail / Gantt / CPM
     path(
         "projects/<uuid:pk>/tasks/",
