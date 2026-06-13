@@ -5,7 +5,7 @@ intelligence, writeback, and manual element linking.
 
 from django.urls import path
 
-from . import views
+from . import views, views_executive_controls
 
 app_name = "scheduling"
 
@@ -357,6 +357,47 @@ urlpatterns = [
         "projects/<uuid:pk>/link-governance/overview/",
         views.LinkGovernanceOverviewView.as_view(),
         name="link_governance_overview",
+    ),
+    # E8-A — Executive controls analytical foundation (read-only)
+    path(
+        "projects/<uuid:pk>/executive-controls/context/",
+        views_executive_controls.ExecutiveControlsContextView.as_view(),
+        name="executive_controls_context",
+    ),
+    path(
+        "projects/<uuid:pk>/executive-controls/methodology/",
+        views_executive_controls.ExecutiveControlsMethodologyView.as_view(),
+        name="executive_controls_methodology",
+    ),
+    path(
+        "projects/<uuid:pk>/executive-controls/coverage/",
+        views_executive_controls.ExecutiveControlsCoverageView.as_view(),
+        name="executive_controls_coverage",
+    ),
+    path(
+        "projects/<uuid:pk>/executive-controls/delays/summary/",
+        views_executive_controls.ExecutiveControlsDelaySummaryView.as_view(),
+        name="executive_controls_delay_summary",
+    ),
+    path(
+        "projects/<uuid:pk>/executive-controls/delays/",
+        views_executive_controls.ExecutiveControlsDelayDetailView.as_view(),
+        name="executive_controls_delays",
+    ),
+    path(
+        "projects/<uuid:pk>/executive-controls/evm-availability/",
+        views_executive_controls.ExecutiveControlsEVMAvailabilityView.as_view(),
+        name="executive_controls_evm_availability",
+    ),
+    path(
+        "projects/<uuid:pk>/executive-controls/resource-availability/",
+        views_executive_controls.ExecutiveControlsResourceAvailabilityView.as_view(),
+        name="executive_controls_resource_availability",
+    ),
+    path(
+        "projects/<uuid:pk>/executive-controls/foundation/",
+        views_executive_controls.ExecutiveControlsFoundationView.as_view(),
+        name="executive_controls_foundation",
     ),
     path(
         "projects/<uuid:pk>/comprehension/",

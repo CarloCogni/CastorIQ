@@ -1,0 +1,87 @@
+<!-- scheduling/tabs/e8_foundation.html — E8-A diagnostic surface, not executive dashboard -->
+<div class="container-fluid py-3">
+  <div class="d-flex align-items-center gap-2 mb-3">
+    <h5 class="mb-0">E8 Analytical Foundation</h5>
+    <span class="badge bg-secondary">E8-A diagnostic</span>
+  </div>
+  <p class="text-muted small">
+    Developer/reviewer surface for analytical contracts. Not the Executive Overview (E8-B).
+  </p>
+
+  <div class="card mb-3">
+    <div class="card-header">Analytical Context</div>
+    <div class="card-body">
+      <dl class="row mb-0 small">
+        <dt class="col-sm-3">State</dt>
+        <dd class="col-sm-9">{{ analytical_context.analytical_state_label }}</dd>
+        <dt class="col-sm-3">Data date</dt>
+        <dd class="col-sm-9">{{ analytical_context.data_date }}</dd>
+        <dt class="col-sm-3">Baseline</dt>
+        <dd class="col-sm-9">{{ analytical_context.baseline_description }}</dd>
+        <dt class="col-sm-3">Methodology</dt>
+        <dd class="col-sm-9">{{ analytical_context.methodology_version }}</dd>
+        <dt class="col-sm-3">Drift warning</dt>
+        <dd class="col-sm-9">{{ analytical_context.reimport_drift_warning }}</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-md-6">
+      <div class="card h-100">
+        <div class="card-header">Coverage (denominators)</div>
+        <div class="card-body small">
+          <ul class="mb-0">
+            <li>All tasks: {{ coverage.denominators.all_tasks }}</li>
+            <li>Schedulable: {{ coverage.denominators.schedulable_tasks }}</li>
+            <li>Indexed entities: {{ coverage.denominators.indexed_entities }}</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="card h-100">
+        <div class="card-header">Delay summary (primary counts)</div>
+        <div class="card-body small">
+          <ul class="mb-0">
+            {% for k, v in delay_summary.primary_counts.items %}
+            {% if v %}
+            <li>{{ k }}: {{ v }}</li>
+            {% endif %}
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="card h-100">
+        <div class="card-header">EVM availability</div>
+        <div class="card-body small">
+          <p class="mb-1">Mode: {{ evm_availability.performance_mode_label|default:evm_availability.selected_mode }}</p>
+          <p class="mb-1">Cost EVM: {{ evm_availability.cost_evm_available }}</p>
+          <p class="mb-0">Schedule performance: {{ evm_availability.schedule_performance_available }}</p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="card h-100">
+        <div class="card-header">Resource availability</div>
+        <div class="card-body small">
+          <p class="mb-1">{{ resource_availability.recommended_label }}</p>
+          <p class="mb-1">Manhours available: {{ resource_availability.labor_manhours_fields_available }}</p>
+          <p class="mb-0">Site headcount: {{ resource_availability.actual_site_headcount_available }}</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-3 small text-muted">
+    API endpoints:
+    {% url 'scheduling:executive_controls_context' project.pk as ctx_url %}
+    <a href="{{ ctx_url }}">context</a> ·
+    {% url 'scheduling:executive_controls_methodology' project.pk as meth_url %}
+    <a href="{{ meth_url }}">methodology</a> ·
+    {% url 'scheduling:executive_controls_coverage' project.pk as cov_url %}
+    <a href="{{ cov_url }}">coverage</a>
+  </div>
+</div>
