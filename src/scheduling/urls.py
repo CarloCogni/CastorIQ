@@ -219,6 +219,11 @@ urlpatterns = [
         name="schedule_health_check",
     ),
     path(
+        "projects/<uuid:pk>/link-governance/summary/",
+        views.LinkGovernanceSummaryView.as_view(),
+        name="link_governance_summary",
+    ),
+    path(
         "projects/<uuid:pk>/comprehension/",
         views.ProjectComprehensionView.as_view(),
         name="schedule_comprehension",
