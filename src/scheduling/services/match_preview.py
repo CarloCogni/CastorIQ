@@ -98,10 +98,13 @@ class MatchPreviewResult:
     case_insensitive_only_samples: list[dict[str, str]]
     warnings: list[str]
     errors: list[str]
+    approved_pairs: list[dict[str, str]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize preview result for JSON responses."""
-        return asdict(self)
+        """Serialize preview result for JSON responses (excludes internal pair list)."""
+        data = asdict(self)
+        data.pop("approved_pairs", None)
+        return data
 
 
 def _is_malformed_activity_id(raw: str) -> bool:
@@ -345,6 +348,7 @@ class MatchPreviewService:
         projected_conflicts = 0
         projected_legacy_m2m_additions = 0
         task_distribution: list[TaskDistributionRow] = []
+        approved_pairs: list[dict[str, str]] = []
 
         for code in sorted(matched_codes):
             task = task_by_code[code]
@@ -359,6 +363,13 @@ class MatchPreviewService:
             for entity in entities_for_task:
                 pair = (task_id, entity.global_id)
                 matched_pairs.append(pair)
+                approved_pairs.append(
+                    {
+                        "task_id": task_id,
+                        "entity_global_id": entity.global_id,
+                        "entity_pk": str(entity.pk),
+                    }
+                )
                 binding = binding_index.get(pair)
                 if binding is None:
                     projected_inserts += 1
@@ -506,6 +517,7 @@ class MatchPreviewService:
             case_insensitive_only_samples=case_insensitive_only_samples,
             warnings=warnings,
             errors=errors,
+            approved_pairs=approved_pairs,
         )
         logger.info(
             "Match preview generated for project %s: %d tasks, %d bindings projected",
