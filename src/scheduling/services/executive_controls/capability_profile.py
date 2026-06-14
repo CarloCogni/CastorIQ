@@ -73,6 +73,11 @@ class _ProjectSignals:
     trusted_entities: int
     authoritative_scope_n: int
     wbs_node_count: int
+    current_source_version_id: str | None
+    source_version_count: int
+    import_run_count: int
+    tasks_with_source_version: int
+    tasks_with_schedule_activity: int
 
 
 class ProjectAnalyticsCapabilityProfile:
@@ -94,6 +99,7 @@ class ProjectAnalyticsCapabilityProfile:
         pages = self._page_visibility(cap_dicts, signals)
         series = build_series_contracts(schedulable_tasks=signals.schedulable_n)
         banner = self._build_banner(signals, cap_dicts)
+        provenance = self._provenance_capabilities(signals)
 
         payload = CapabilityProfilePayload(
             profile_version=PROFILE_VERSION,
@@ -112,8 +118,65 @@ class ProjectAnalyticsCapabilityProfile:
             page_reasons=pages["reasons"],
             warnings=self._warnings(signals, cap_dicts),
             banner=banner,
+            provenance_capabilities=provenance,
         )
         return payload.to_dict()
+
+    def _provenance_capabilities(self, signals: _ProjectSignals) -> dict[str, dict[str, Any]]:
+        """DF-A1 schema availability — does not unlock historical analytics."""
+        total = signals.total_tasks or 0
+        sa_linked = signals.tasks_with_schedule_activity
+        has_schema = True
+        has_current = signals.current_source_version_id is not None
+        has_runs = signals.import_run_count > 0
+
+        def _entry(
+            available: bool,
+            state: CapabilityState,
+            *,
+            caveats: tuple[str, ...] = (),
+        ) -> dict[str, Any]:
+            return {
+                "available": available,
+                "state": state.value,
+                "caveats": list(caveats),
+            }
+
+        legacy_caveat = ("Legacy project — tasks may lack source_version linkage until backfill.",)
+        return {
+            "source_version_identity": _entry(
+                has_schema,
+                CapabilityState.AVAILABLE
+                if has_current
+                else CapabilityState.AVAILABLE_WITH_CAVEATS,
+                caveats=()
+                if has_current
+                else ("No current ScheduleSourceVersion.",) + legacy_caveat,
+            ),
+            "import_run_traceability": _entry(
+                has_schema,
+                CapabilityState.AVAILABLE if has_runs else CapabilityState.AVAILABLE_WITH_CAVEATS,
+                caveats=() if has_runs else ("No ScheduleImportRun records yet.",),
+            ),
+            "task_activity_identity": _entry(
+                has_schema,
+                CapabilityState.AVAILABLE
+                if total and sa_linked == total
+                else CapabilityState.AVAILABLE_WITH_CAVEATS
+                if sa_linked
+                else CapabilityState.AVAILABLE_WITH_CAVEATS
+                if has_schema
+                else CapabilityState.UNAVAILABLE,
+                caveats=legacy_caveat if total and sa_linked < total else (),
+            ),
+            "repeatable_source_version": _entry(
+                has_schema and has_current,
+                CapabilityState.AVAILABLE_WITH_CAVEATS,
+                caveats=(
+                    "Repeatable analytics require AnalyticalSnapshot (DF-B) — schema only in DF-A1.",
+                ),
+            ),
+        }
 
     def feature(self, feature_id: str) -> dict[str, Any]:
         """Evaluate a single feature (uses full gather — prefer build() per request)."""
@@ -129,7 +192,9 @@ class ProjectAnalyticsCapabilityProfile:
             P6Calendar,
             P6ResourceAssignment,
             P6WBSNode,
+            ScheduleImportRun,
             ScheduleSource,
+            ScheduleSourceVersion,
             Task,
             TaskDependency,
         )
@@ -213,6 +278,19 @@ class ProjectAnalyticsCapabilityProfile:
         indexed = len(reader._project_ifc_entity_gids())
         has_ifc = indexed > 0
 
+        current_ssv = (
+            ScheduleSourceVersion.objects.filter(
+                project_id=self.project_id,
+                status=ScheduleSourceVersion.Status.CURRENT,
+            )
+            .only("pk")
+            .first()
+        )
+        ssv_count = ScheduleSourceVersion.objects.filter(project_id=self.project_id).count()
+        import_run_count = ScheduleImportRun.objects.filter(project_id=self.project_id).count()
+        tasks_with_sv = all_tasks.filter(source_version_id__isnull=False).count()
+        tasks_with_sa = all_tasks.filter(schedule_activity_id__isnull=False).count()
+
         return _ProjectSignals(
             source_type=source_type,
             source_identity=source_identity,
@@ -242,6 +320,11 @@ class ProjectAnalyticsCapabilityProfile:
             trusted_entities=len(reader.trusted_entity_gids(ifc_scope=True)),
             authoritative_scope_n=authoritative_scope_n,
             wbs_node_count=wbs_node_count,
+            current_source_version_id=str(current_ssv.pk) if current_ssv else None,
+            source_version_count=ssv_count,
+            import_run_count=import_run_count,
+            tasks_with_source_version=tasks_with_sv,
+            tasks_with_schedule_activity=tasks_with_sa,
         )
 
     def _pct(self, num: int, denom: int) -> float | None:
