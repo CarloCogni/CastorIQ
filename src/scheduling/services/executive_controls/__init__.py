@@ -1,10 +1,12 @@
 # scheduling/services/executive_controls/__init__.py
 """E8-A analytical definitions, delay semantics, scope classification, and coverage contracts."""
 
+from scheduling.services.executive_controls.activity_drilldown import ActivityDrilldownService
 from scheduling.services.executive_controls.context import AnalyticalContextService
 from scheduling.services.executive_controls.coverage import AnalyticalCoverageService
 from scheduling.services.executive_controls.delay_classification import DelayClassificationService
 from scheduling.services.executive_controls.delays import ExecutiveDelayService
+from scheduling.services.executive_controls.dimension_registry import ExecutiveDimensionRegistry
 from scheduling.services.executive_controls.evm_availability import E8EVMAvailabilityService
 from scheduling.services.executive_controls.methodology import (
     E8_METHODOLOGY_VERSION,
@@ -13,10 +15,17 @@ from scheduling.services.executive_controls.methodology import (
 from scheduling.services.executive_controls.overview_service import (
     ExecutiveControlsOverviewService,
 )
+from scheduling.services.executive_controls.performance_cube import ProjectPerformanceCubeService
+from scheduling.services.executive_controls.progress_aggregation import (
+    ScheduleProgressAggregationService,
+)
 from scheduling.services.executive_controls.resource_availability import (
     EquivalentWorkforceAvailabilityService,
 )
 from scheduling.services.executive_controls.scope_classification import ScopeClassificationResolver
+from scheduling.services.executive_controls.trade_package_analysis import (
+    TradePackageAnalysisService,
+)
 
 __all__ = [
     "AnalyticalContextService",
@@ -25,7 +34,12 @@ __all__ = [
     "E8EVMAvailabilityService",
     "E8_METHODOLOGY_VERSION",
     "EquivalentWorkforceAvailabilityService",
+    "ActivityDrilldownService",
     "ExecutiveControlsOverviewService",
+    "ExecutiveDimensionRegistry",
+    "ProjectPerformanceCubeService",
+    "ScheduleProgressAggregationService",
+    "TradePackageAnalysisService",
     "ExecutiveDelayService",
     "ScopeClassificationResolver",
     "methodology_registry_payload",

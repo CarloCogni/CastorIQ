@@ -122,8 +122,11 @@ class ExecutiveControlsOverviewService:
         }
 
     def build_schedule_section(self, filters: OverviewFilters) -> dict[str, Any]:
-        """Schedule position cards — DB aggregates + EVM progress snapshot."""
+        """Schedule position cards — DB aggregates + lightweight progress aggregation."""
         from scheduling.models import Task
+        from scheduling.services.executive_controls.progress_aggregation import (
+            ScheduleProgressAggregationService,
+        )
 
         data_date, _ = get_project_data_date(self.project_id)
         qs = Task.objects.filter(project_id=self.project_id)
@@ -146,19 +149,12 @@ class ExecutiveControlsOverviewService:
             negative_float=Count("pk", filter=Q(total_float__lt=0)),
         )
 
-        evm = self._cache.evm_availability()
-        snap = evm.get("evm_snapshot", {})
-        mode_label = evm.get("performance_mode_label", "Schedule performance")
-        bac = snap.get("bac")
-        pv = snap.get("pv")
-        ev = snap.get("ev")
-        planned_pct = round(100.0 * pv / bac, 1) if bac and pv is not None else None
-        actual_pct = round(100.0 * ev / bac, 1) if bac and ev is not None else None
-        variance = (
-            round(actual_pct - planned_pct, 1)
-            if planned_pct is not None and actual_pct is not None
-            else None
-        )
+        progress_svc = ScheduleProgressAggregationService(self.project_id)
+        progress = progress_svc.aggregate_queryset(qs)
+        mode_label = progress.get("weighting_label", "Schedule progress")
+        planned_pct = progress.get("planned_progress_pct")
+        actual_pct = progress.get("actual_progress_pct")
+        variance = progress.get("variance_pct")
 
         delay_svc = ExecutiveDelayService(self.project_id)
         df = self._delay_filters(filters)
@@ -191,24 +187,26 @@ class ExecutiveControlsOverviewService:
                 label="Planned progress",
                 value=planned_pct,
                 unit="percent",
-                numerator=pv,
-                denominator=bac,
-                available=planned_pct is not None,
+                numerator=progress.get("planned_numerator"),
+                denominator=progress.get("weight_denominator"),
+                available=progress.get("available", False),
                 methodology_label=mode_label,
-                caveat=evm.get("cost_basis", ""),
+                caveat=progress.get("caveat", ""),
                 data_date=data_date.isoformat(),
-                drilldown_url=reverse("scheduling:schedule", kwargs={"pk": self.project_id})
-                + "?tab=evm",
+                drilldown_url=reverse(
+                    "scheduling:executive_controls_matrix", kwargs={"pk": self.project_id}
+                ),
             ),
             kpi_card(
                 metric_id="e8.actual_progress",
                 label="Actual progress",
                 value=actual_pct,
                 unit="percent",
-                numerator=ev,
-                denominator=bac,
-                available=actual_pct is not None,
+                numerator=progress.get("actual_numerator"),
+                denominator=progress.get("weight_denominator"),
+                available=progress.get("available", False),
                 methodology_label=mode_label,
+                caveat=progress.get("caveat", ""),
                 data_date=data_date.isoformat(),
             ),
             kpi_card(
@@ -254,7 +252,7 @@ class ExecutiveControlsOverviewService:
             "filters": filters.to_query(),
             "data_date": data_date.isoformat(),
             "cards": cards,
-            "weighting_note": evm.get("cost_basis") or "duration proxy",
+            "weighting_note": progress.get("weighting_label") or "duration proxy",
             "calculated_at": datetime.now(UTC).isoformat(),
         }
 
