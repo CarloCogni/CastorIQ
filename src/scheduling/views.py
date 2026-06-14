@@ -10,6 +10,7 @@ import logging
 import math
 from datetime import date
 
+from django.db import transaction
 from django.db.models import Count, Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, render
@@ -39,7 +40,7 @@ from .services.approved_match_persistence import (
     MatchApprovalRequest,
     StalePreviewError,
 )
-from .services.autolink import autodetect_stages, run_autolink
+from .services.autolink import run_autolink
 from .services.column_mapper import (
     CANONICAL_FIELDS,
     CANONICAL_LABELS,
@@ -52,8 +53,17 @@ from .services.critical_path import compute_critical_path
 from .services.evm import compute_evm
 from .services.match_preview import MatchPreviewService
 from .services.msp_parser import parse_msp
-from .services.p6_save import finalise_p6_data, save_p6_pending_data
+from .services.p6_save import save_p6_pending_data
 from .services.pct_normalize import normalize_pct_complete
+from .services.source_version.content_hash import (
+    hash_parsed_tasks_payload,
+    store_session_import_artifact,
+)
+from .services.source_version.import_persistence import persist_schedule_import
+from .services.source_version.import_provenance import (
+    ImportProvenanceContext,
+    ScheduleImportProvenanceCoordinator,
+)
 from .services.validator import validate_schedule
 from .services.xer_parser import parse_xer
 
@@ -359,7 +369,14 @@ class SchedulePreviewView(ProjectModifyAccessMixin, View):
         request.session[f"raw_headers_{project.pk}"] = json.dumps(headers)
         request.session[f"raw_rows_{project.pk}"] = json.dumps(raw_rows)
         request.session[f"raw_source_{project.pk}"] = col_data["source"]
-        request.session[f"schedule_filename_{project.pk}"] = file_obj.name
+        store_session_import_artifact(
+            request,
+            project.pk,
+            filename=file_obj.name,
+            content=file_obj.read() if hasattr(file_obj, "read") else None,
+        )
+        if hasattr(file_obj, "seek"):
+            file_obj.seek(0)
 
         mapping = suggest_mapping(headers)
         visible = default_visible_columns(headers, mapping)
@@ -386,8 +403,17 @@ class SchedulePreviewView(ProjectModifyAccessMixin, View):
         )
 
     def _preview_parsed(self, request, project, file_obj, parser_fn) -> JsonResponse:
+        content = file_obj.read() if hasattr(file_obj, "read") else b""
+        if hasattr(file_obj, "seek"):
+            file_obj.seek(0)
         tasks, raw_deps = parser_fn(file_obj)
-        request.session[f"schedule_filename_{project.pk}"] = file_obj.name
+        store_session_import_artifact(
+            request,
+            project.pk,
+            filename=getattr(file_obj, "name", ""),
+            content=content,
+            tasks_fallback=tasks,
+        )
 
         # Full parse — store in session so TaskSaveView can persist without a re-upload.
         request.session[f"parsed_tasks_{project.pk}"] = json.dumps(
@@ -540,8 +566,12 @@ class TaskUploadView(ProjectModifyAccessMixin, View):
                     },
                 )
             elif filename.endswith(".xer"):
-                tasks, raw_deps = parse_xer(uploaded)
+                xer_bytes = uploaded.read()
+                tasks, raw_deps = parse_xer(io.BytesIO(xer_bytes))
                 source = "xer"
+                store_session_import_artifact(
+                    request, project.pk, filename=uploaded.name, content=xer_bytes
+                )
             elif filename.endswith(".xml"):
                 file_bytes = uploaded.read()
                 if b"APIBusinessObjects" in file_bytes[:2048]:
@@ -554,6 +584,9 @@ class TaskUploadView(ProjectModifyAccessMixin, View):
                 else:
                     tasks, raw_deps = parse_msp(io.BytesIO(file_bytes))
                     source = "msp"
+                store_session_import_artifact(
+                    request, project.pk, filename=uploaded.name, content=file_bytes
+                )
             else:
                 return toast_response(
                     "Unsupported file type. Upload .xlsx, .xls, .csv, .xer, or .xml.",
@@ -626,68 +659,65 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
                 "No parsed tasks in session — re-upload the file.", "error", status=400
             )
 
-        from decimal import Decimal
-
-        from .services.column_mapper import parse_predecessor_string
-
         try:
             tasks_data = json.loads(raw)
         except json.JSONDecodeError:
             return toast_response("Session data corrupt — re-upload the file.", "error", status=400)
 
-        # Replace mode: wipe existing tasks before saving (cascades deps + bindings)
         replace_mode = request.POST.get("replace") == "true" or bool(
             request.session.pop(f"schedule_replace_{project.pk}", False)
         )
+
+        filename = request.session.pop(f"schedule_filename_{project.pk}", "")
+        source_format = tasks_data[0].get("source", "excel") if tasks_data else "excel"
+        content_hash = request.session.pop(f"schedule_content_hash_{project.pk}", "") or (
+            hash_parsed_tasks_payload(tasks_data)
+        )
+        _p6_dd_str = request.session.pop(f"p6_data_date_{project.pk}", None)
+        _p6_data_date = date.fromisoformat(_p6_dd_str) if _p6_dd_str else None
+
+        coordinator = ScheduleImportProvenanceCoordinator(project, request.user)
+        ctx = ImportProvenanceContext(
+            source_type=source_format,
+            source_filename=filename,
+            content_hash=content_hash,
+            mode=ScheduleImportProvenanceCoordinator.resolve_mode(replace_mode),
+            data_date=_p6_data_date,
+        )
+        run_id = coordinator.start_run(ctx)
+
         if replace_mode:
             existing = Task.objects.filter(project=project).count()
             Task.objects.filter(project=project).delete()
             logger.info("Replace mode: cleared %d tasks for project %s", existing, project.pk)
 
-        created = 0
-        updated = 0
-        unchanged = 0
-        touched_pks: list[str] = []  # PKs of tasks created or updated in this import
-        xer_id_map: dict[str, str] = {}  # _xer_task_id  → str(task.pk)
-        msp_uid_map: dict[str, str] = {}  # _msp_uid      → str(task.pk)
-        p6_obj_id_map: dict[str, str] = {}  # _p6_obj_id    → str(task.pk)
-        activity_code_map: dict[str, str] = {}  # activity_code → str(task.pk)
-        tasks_with_preds: list[tuple[str, str]] = []  # (task_pk, raw_predecessors)
+        raw_deps_json = request.session.pop(f"parsed_deps_{project.pk}", None)
+        raw_deps: list[dict] = json.loads(raw_deps_json) if raw_deps_json else []
+        del request.session[session_key]
 
-        # Pre-load existing tasks for dedup:
-        #   primary key   — activity_code (str)
-        #   secondary key — (name, start_date) for tasks without an activity code
-        existing_by_code: dict[str, Task] = {}
-        existing_by_name_date: dict[tuple, Task] = {}
-        cleaned = 0
-        if not replace_mode:
-            for t in Task.objects.filter(project=project).only(
-                "pk", "activity_code", "name", "start_date", "end_date"
-            ):
-                if t.activity_code:
-                    existing_by_code[t.activity_code] = t
-                existing_by_name_date[(t.name, str(t.start_date))] = t
-
-            # Clean pre-existing duplicates: same (project, activity_code) — keep first, delete rest
-            dup_codes = list(
-                Task.objects.filter(project=project)
-                .exclude(activity_code="")
-                .values("activity_code")
-                .annotate(cnt=Count("pk"))
-                .filter(cnt__gt=1)
-                .values_list("activity_code", flat=True)
-            )
-            for code in dup_codes:
-                tasks_for_code = list(
-                    Task.objects.filter(project=project, activity_code=code).order_by(
-                        "start_date", "name"
-                    )
+        try:
+            with transaction.atomic():
+                persist_result = persist_schedule_import(
+                    project,
+                    tasks_data=tasks_data,
+                    raw_deps=raw_deps,
+                    replace_mode=False,
+                    filename=filename,
+                    source_format=source_format,
+                    data_date=_p6_data_date,
                 )
-                to_delete = [t.pk for t in tasks_for_code[1:]]
-                Task.objects.filter(pk__in=to_delete).delete()
-                cleaned += len(to_delete)
-            if cleaned:
-                logger.info("Cleaned %d duplicate tasks for project %s", cleaned, project.pk)
+                coordinator.complete_success(run_id, ctx, persist_result)
+        except Exception as exc:
+            logger.exception("Schedule import failed for project %s", project.pk)
+            coordinator.complete_failure(run_id, error_summary=str(exc))
+            return toast_response(f"Import failed: {exc}", "error", status=500)
+
+        created = persist_result.created
+        updated = persist_result.updated
+        unchanged = persist_result.unchanged
+        skipped_count = persist_result.skipped_count
+        cleaned = persist_result.cleaned
+        dep_count = persist_result.dep_count
 
         has_p6_cpm = any(
             td.get("total_float_days") is not None or td.get("early_start") for td in tasks_data
@@ -698,140 +728,6 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
                 project.pk,
             )
 
-        skipped_count = 0
-        for td in tasks_data:
-            try:
-                cost_str = td.get("cost") or td.get("budgeted_cost")
-                actual_start_raw = td.get("actual_start")
-                actual_end_raw = td.get("actual_end")
-                early_start_raw = td.get("early_start")
-                early_finish_raw = td.get("early_finish")
-                late_start_raw = td.get("late_start")
-                late_finish_raw = td.get("late_finish")
-                total_float_val = td.get("total_float_days")
-                activity_code = td.get("activity_code", "")
-
-                task_fields = dict(
-                    name=td["name"],
-                    description=td.get("description", ""),
-                    start_date=date.fromisoformat(td["start_date"]),
-                    end_date=date.fromisoformat(td["end_date"]),
-                    actual_start=date.fromisoformat(actual_start_raw) if actual_start_raw else None,
-                    actual_end=date.fromisoformat(actual_end_raw) if actual_end_raw else None,
-                    status=td.get("status", "planned"),
-                    source=td.get("source", "excel"),
-                    activity_code=activity_code,
-                    color=td.get("color", "#3b82f6"),
-                    cost=Decimal(cost_str) if cost_str else None,
-                    activity_type=td.get("activity_type", ""),
-                    stage=td.get("stage", ""),
-                    sub_stage=td.get("sub_stage", ""),
-                    early_start=date.fromisoformat(early_start_raw) if early_start_raw else None,
-                    early_finish=date.fromisoformat(early_finish_raw) if early_finish_raw else None,
-                    late_start=date.fromisoformat(late_start_raw) if late_start_raw else None,
-                    late_finish=date.fromisoformat(late_finish_raw) if late_finish_raw else None,
-                    total_float=int(total_float_val) if total_float_val is not None else None,
-                    is_critical=total_float_val is not None and int(total_float_val) <= 0,
-                    calendar_object_id=td.get("calendar_object_id", ""),
-                    constraint_type=td.get("constraint_type", ""),
-                    constraint_date=date.fromisoformat(td["constraint_date"])
-                    if td.get("constraint_date")
-                    else None,
-                    physical_percent_complete=_resolve_import_phys_pct(td),
-                    duration_percent_complete=normalize_pct_complete(td.get("_p6_dur_pct")),
-                )
-
-                existing = None
-                if activity_code and activity_code in existing_by_code:
-                    existing = existing_by_code[activity_code]
-                else:
-                    existing = existing_by_name_date.get(
-                        (task_fields["name"], str(task_fields["start_date"]))
-                    )
-
-                if existing is not None:
-                    dirty = [f for f, v in task_fields.items() if getattr(existing, f) != v]
-                    if dirty:
-                        for f in dirty:
-                            setattr(existing, f, task_fields[f])
-                        existing.save(update_fields=dirty)
-                        updated += 1
-                        touched_pks.append(str(existing.pk))
-                    else:
-                        unchanged += 1
-                    task = existing
-                else:
-                    task = Task.objects.create(project=project, **task_fields)
-                    created += 1
-                    touched_pks.append(str(task.pk))
-
-                pk = str(task.pk)
-                if td.get("_xer_task_id"):
-                    xer_id_map[td["_xer_task_id"]] = pk
-                if td.get("_msp_uid"):
-                    msp_uid_map[td["_msp_uid"]] = pk
-                if td.get("_p6_obj_id"):
-                    p6_obj_id_map[td["_p6_obj_id"]] = pk
-                if activity_code:
-                    activity_code_map[activity_code] = pk
-                raw_preds = td.get("_raw_predecessors", "").strip()
-                if raw_preds:
-                    tasks_with_preds.append((pk, raw_preds))
-            except Exception as exc:
-                skipped_count += 1
-                logger.warning("Skipping task row: %s", exc)
-
-        del request.session[session_key]
-
-        raw_deps_json = request.session.pop(f"parsed_deps_{project.pk}", None)
-        raw_deps: list[dict] = json.loads(raw_deps_json) if raw_deps_json else []
-
-        dep_objects: list[TaskDependency] = []
-        dep_set: set[tuple] = set()
-
-        def _add(pred_pk: str, succ_pk: str, dep_type: str, lag_days: int) -> None:
-            key = (pred_pk, succ_pk, dep_type)
-            if key in dep_set or pred_pk == succ_pk:
-                return
-            dep_set.add(key)
-            dep_objects.append(
-                TaskDependency(
-                    predecessor_id=pred_pk,
-                    successor_id=succ_pk,
-                    dep_type=dep_type,
-                    lag_days=lag_days,
-                )
-            )
-
-        for d in raw_deps:
-            if "pred_xer_id" in d:
-                pred_pk = xer_id_map.get(d["pred_xer_id"])
-                succ_pk = xer_id_map.get(d["succ_xer_id"])
-            elif "pred_uid" in d:
-                pred_pk = msp_uid_map.get(d["pred_uid"])
-                succ_pk = msp_uid_map.get(d["succ_uid"])
-            elif "pred_p6_obj_id" in d:
-                pred_pk = p6_obj_id_map.get(d["pred_p6_obj_id"])
-                succ_pk = p6_obj_id_map.get(d["succ_p6_obj_id"])
-            else:
-                continue
-            if pred_pk and succ_pk:
-                _add(pred_pk, succ_pk, d.get("dep_type", "FS"), d.get("lag_days", 0))
-
-        for task_pk, raw_preds in tasks_with_preds:
-            for ref in parse_predecessor_string(raw_preds):
-                pred_pk = activity_code_map.get(ref["activity_code"])
-                if pred_pk:
-                    _add(pred_pk, task_pk, ref["dep_type"], ref["lag_days"])
-
-        dep_count = 0
-        if dep_objects:
-            TaskDependency.objects.filter(predecessor__project=project).delete()
-            TaskDependency.objects.bulk_create(dep_objects, ignore_conflicts=True)
-            dep_count = len(dep_objects)
-            logger.info("Dependencies saved: %d for project %s", dep_count, project.pk)
-
-        # Always recompute CPM after import — recomputed float/criticality drive analytics.
         cpm_attempted = False
         cpm_ok = False
         cpm_skipped = False
@@ -859,28 +755,6 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
                 )
         except Exception as exc:
             logger.warning("CPM recompute after import failed: %s", exc)
-
-        all_tasks = list(
-            Task.objects.filter(project=project).only("pk", "name", "stage", "sub_stage")
-        )
-        autodetect_stages([t for t in all_tasks if not t.stage])
-
-        # Record this import event so the Data Sources tab can show source chips.
-        filename = request.session.pop(f"schedule_filename_{project.pk}", "")
-        source_format = tasks_data[0].get("source", "excel") if tasks_data else "excel"
-        _p6_dd_str = request.session.pop(f"p6_data_date_{project.pk}", None)
-        _p6_data_date = date.fromisoformat(_p6_dd_str) if _p6_dd_str else None
-        current_source = ScheduleSource.objects.create(
-            project=project,
-            filename=filename,
-            source_format=source_format,
-            task_count=created + updated + unchanged,
-            data_date=_p6_data_date,
-        )
-        if touched_pks:
-            Task.objects.filter(pk__in=touched_pks).update(schedule_source=current_source)
-        if source_format == "p6xml" and p6_obj_id_map:
-            finalise_p6_data(project, current_source, p6_obj_id_map)
 
         tasks = Task.objects.filter(project=project).order_by("start_date", "name")
         response = render(
@@ -3072,6 +2946,12 @@ class MappingSubmitView(ProjectModifyAccessMixin, View):
             )
 
         validation = validate_schedule(tasks, project_name=project.name)
+        store_session_import_artifact(
+            request,
+            project.pk,
+            filename=request.session.get(f"schedule_filename_{project.pk}", ""),
+            tasks_fallback=tasks,
+        )
         request.session[f"parsed_tasks_{project.pk}"] = json.dumps(
             [
                 {
