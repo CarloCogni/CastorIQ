@@ -118,7 +118,7 @@ def test_reconciliation_endpoint_post_not_allowed(client):
 
 @pytest.mark.django_db
 def test_migration_0024_present():
-    """Migration 0024 exists; DF-A1 adds 0025 as the only 002x successor."""
+    """Migration 0024 exists; DF-B1 adds 0027 as latest provisional 002x successor."""
     from pathlib import Path
 
     mig_dir = Path(__file__).resolve().parents[1] / "migrations"
@@ -127,7 +127,11 @@ def test_migration_0024_present():
     successors = [
         n for n in names if n > "0024_binding_governance_events.py" and n.startswith("002")
     ]
-    assert successors == ["0025_source_version_foundation.py"]
+    assert successors == [
+        "0025_source_version_foundation.py",
+        "0026_baseline_domain.py",
+        "0027_analytical_snapshot_manifest.py",
+    ]
 
 
 @pytest.mark.django_db

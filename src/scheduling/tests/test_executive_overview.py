@@ -542,7 +542,7 @@ class TestOverviewHTTP:
         url = reverse("scheduling:executive_controls", kwargs={"pk": project.pk})
         with CaptureQueriesContext(connection) as ctx:
             client.get(url)
-        assert len(ctx.captured_queries) <= 55
+        assert len(ctx.captured_queries) <= 57  # +1 for DF-B1 snapshot table counts
 
     def test_payload_bounded(self, client):
         """Overview JSON shell is lightweight."""
