@@ -49,8 +49,19 @@ class E8EVMAvailabilityService:
 
     def build(self) -> dict[str, Any]:
         """Return EVM mode availability without recalculating full EVM unnecessarily."""
+        from environments.models import Project
         from scheduling.models import P6ResourceAssignment, Task
         from scheduling.services.evm import compute_evm
+        from scheduling.services.executive_controls.capability_profile import (
+            PROFILE_VERSION,
+            ProjectAnalyticsCapabilityProfile,
+        )
+        from scheduling.services.executive_controls.enums import FeatureId
+
+        project = Project.objects.get(pk=self.project_id)
+        capability = ProjectAnalyticsCapabilityProfile(project).build()
+        cap_cost = capability["capabilities"][FeatureId.COST_EVM.value]
+        cap_spi = capability["capabilities"][FeatureId.CURRENT_SPI.value]
 
         data_date, is_p6 = get_project_data_date(self.project_id)
         calculated_at = datetime.now(UTC).isoformat()
@@ -80,7 +91,11 @@ class E8EVMAvailabilityService:
         quantity_available = n_with_physical_pct > 0
 
         cost_evm_available = use_cost and performance_mode == "cost_evm"
-        schedule_performance_available = performance_mode == "schedule_performance" or not use_cost
+        if cost_evm_available and not cap_cost["available"]:
+            cost_evm_available = False
+        schedule_performance_available = (
+            performance_mode == "schedule_performance" or not use_cost or cap_spi["available"]
+        )
 
         available_metrics: list[str] = ["e8.pv", "e8.ev", "e8.bac", "e8.spi"]
         unavailable: dict[str, str] = {}
@@ -104,7 +119,7 @@ class E8EVMAvailabilityService:
             selected_mode = "unavailable"
             recommended = "unavailable"
 
-        if ac_available:
+        if ac_available and cap_cost["available"]:
             available_metrics.extend(["e8.ac", "e8.cpi", "e8.etc", "e8.eac", "e8.vac", "e8.tcpi"])
         else:
             for mid in ("e8.ac", "e8.cpi", "e8.etc", "e8.eac", "e8.vac", "e8.tcpi"):
@@ -117,6 +132,18 @@ class E8EVMAvailabilityService:
         return {
             "project_id": self.project_id,
             "methodology_version": E8_METHODOLOGY_VERSION,
+            "capability_profile_version": PROFILE_VERSION,
+            "capability_gating": {
+                "cost_evm": cap_cost,
+                "current_spi": cap_spi,
+                "historical_spi_trend": capability["capabilities"][
+                    FeatureId.HISTORICAL_SPI_TREND.value
+                ],
+                "derived_cost_curve": capability["capabilities"][
+                    FeatureId.DERIVED_COST_CURVE.value
+                ],
+            },
+            "series_contracts": capability.get("series_contracts", {}),
             "data_date": data_date.isoformat(),
             "data_date_is_p6": is_p6,
             "calculated_at": calculated_at,
@@ -151,6 +178,9 @@ class E8EVMAvailabilityService:
                 "Cost EVM and Schedule Performance are separate analytical sections.",
                 evm.get("performance_mode_label", ""),
                 "Duration proxy must never be labelled Earned Value without schedule_performance qualifier.",
+                capability.get("series_contracts", {})
+                .get("imported_historical", {})
+                .get("caveat", ""),
             ],
             "evm_snapshot": {
                 "spi": evm.get("spi"),

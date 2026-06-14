@@ -9,12 +9,22 @@ from typing import Any
 
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
+from django.urls import reverse
 from django.views import View
 from django.views.generic import TemplateView
 
 from core.mixins import ProjectAccessMixin
 
 logger = logging.getLogger(__name__)
+
+
+def _capability_profile(project) -> dict[str, Any]:
+    """Project analytics capability profile — cached per view call."""
+    from scheduling.services.executive_controls.capability_profile import (
+        ProjectAnalyticsCapabilityProfile,
+    )
+
+    return ProjectAnalyticsCapabilityProfile(project).build()
 
 
 def _overview_filters(request) -> Any:
@@ -62,8 +72,10 @@ class ExecutiveControlsOverviewPageView(ProjectAccessMixin, TemplateView):
         ctx = super().get_context_data(**kwargs)
         project = self.get_project()
         filters = OverviewFilters.from_params(self.request.GET.dict())
+        capability = _capability_profile(project)
         ctx["project"] = project
-        ctx["analytical_context"] = AnalyticalContextService(project).build()
+        ctx["analytical_context"] = AnalyticalContextService(project).build(capability)
+        ctx["capability_profile"] = capability
         ctx["filters"] = filters
         ctx["filter_query"] = filters.query_string()
         return ctx
@@ -154,6 +166,23 @@ class ExecutiveControlsOverviewCoverageView(ProjectAccessMixin, View):
             build_fn=lambda s, f: s.build_coverage_section(f),
             template="scheduling/components/executive_section_coverage.html",
         )
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        return JsonResponse({"error": "Method not allowed."}, status=405)
+
+
+class ExecutiveControlsCapabilitiesView(ProjectAccessMixin, View):
+    """GET — project analytics capability profile (read-only)."""
+
+    def get(self, request, **kwargs: object) -> JsonResponse:
+        project = self.get_project()
+        payload = _capability_profile(project)
+        methodology_url = reverse(
+            "scheduling:executive_controls_methodology",
+            kwargs={"pk": project.pk},
+        )
+        payload["methodology_url"] = methodology_url
+        return JsonResponse(payload)
 
     def post(self, request, **kwargs: object) -> JsonResponse:
         return JsonResponse({"error": "Method not allowed."}, status=405)
@@ -295,8 +324,10 @@ class ExecutiveControlsMatrixPageView(ProjectAccessMixin, TemplateView):
         ctx = super().get_context_data(**kwargs)
         project = self.get_project()
         filters = _matrix_filters(self.request)
+        capability = _capability_profile(project)
         ctx["project"] = project
-        ctx["analytical_context"] = AnalyticalContextService(project).build()
+        ctx["analytical_context"] = AnalyticalContextService(project).build(capability)
+        ctx["capability_profile"] = capability
         ctx["filters"] = filters
         ctx["filter_query"] = filters.query_string()
         ctx["available_dimensions"] = ExecutiveDimensionRegistry(str(project.pk)).discover()
@@ -346,8 +377,10 @@ class ExecutiveControlsTradesPageView(ProjectAccessMixin, TemplateView):
         ctx = super().get_context_data(**kwargs)
         project = self.get_project()
         filters = _matrix_filters(self.request)
+        capability = _capability_profile(project)
         ctx["project"] = project
-        ctx["analytical_context"] = AnalyticalContextService(project).build()
+        ctx["analytical_context"] = AnalyticalContextService(project).build(capability)
+        ctx["capability_profile"] = capability
         ctx["filters"] = filters
         ctx["filter_query"] = filters.query_string()
         ctx["exec_subtab"] = "trades"

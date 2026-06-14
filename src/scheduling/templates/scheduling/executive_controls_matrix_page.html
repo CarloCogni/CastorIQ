@@ -13,7 +13,7 @@
         </ol>
     </nav>
 
-    {% include "scheduling/components/executive_controls_subnav.html" with exec_subtab="matrix" %}
+    {% include "scheduling/components/executive_controls_subnav.html" with exec_subtab="matrix" capability_profile=capability_profile %}
     {% include "scheduling/components/executive_context_header.html" with ctx=analytical_context %}
 
     <form class="exec-filters border rounded p-3 mb-3 bg-body" method="get" id="exec-matrix-filter-form" aria-label="Matrix filters">

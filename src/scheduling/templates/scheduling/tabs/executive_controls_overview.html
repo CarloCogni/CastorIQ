@@ -1,6 +1,6 @@
 <!-- scheduling/tabs/executive_controls_overview.html — E8-B Executive Controls overview -->
 <div class="executive-controls-scope" id="executive-controls-root">
-    {% include "scheduling/components/executive_context_header.html" with ctx=analytical_context %}
+    {% include "scheduling/components/executive_context_header.html" with ctx=analytical_context capability_profile=capability_profile %}
 
     <!-- Global filters -->
     <form class="exec-filters border rounded p-3 mb-3 bg-body" method="get" id="exec-filter-form" aria-label="Overview filters">
@@ -53,7 +53,9 @@
         .exec-methodology-badge { font-size: 0.65rem; max-width: 8rem; overflow: hidden; text-overflow: ellipsis; }
     </style>
 
-    <!-- Progressive sections -->
+    <!-- Progressive sections — capability-gated -->
+    {% with sections=capability_profile.banner.overview_sections %}
+    {% if sections.schedule %}
     <div id="exec-section-schedule-slot"
          class="exec-section-loading"
          hx-get="{% url 'scheduling:executive_controls_overview_schedule' project.pk %}?{{ filter_query }}"
@@ -66,7 +68,9 @@
             Loading schedule position…
         </div>
     </div>
+    {% endif %}
 
+    {% if sections.cost %}
     <div id="exec-section-cost-slot"
          class="exec-section-loading"
          hx-get="{% url 'scheduling:executive_controls_overview_cost' project.pk %}?{{ filter_query }}"
@@ -79,7 +83,9 @@
             Loading cost position…
         </div>
     </div>
+    {% endif %}
 
+    {% if sections.delays %}
     <div id="exec-section-delays-slot"
          class="exec-section-loading"
          hx-get="{% url 'scheduling:executive_controls_overview_delays' project.pk %}?{{ filter_query }}"
@@ -92,7 +98,9 @@
             Loading delay exposure…
         </div>
     </div>
+    {% endif %}
 
+    {% if sections.model_impact %}
     <div id="exec-section-model-slot"
          class="exec-section-loading"
          hx-get="{% url 'scheduling:executive_controls_overview_model' project.pk %}?{{ filter_query }}"
@@ -105,7 +113,14 @@
             Loading trusted model impact…
         </div>
     </div>
+    {% else %}
+    <div class="alert alert-secondary small mb-4" role="status">
+        <strong>Trusted Model Impact</strong> unavailable —
+        {% if not capability_profile.banner.ifc_available %}no indexed IFC model on this project.{% else %}no trusted bindings or IFC coverage.{% endif %}
+    </div>
+    {% endif %}
 
+    {% if sections.coverage %}
     <div id="exec-section-coverage-slot"
          class="exec-section-loading"
          hx-get="{% url 'scheduling:executive_controls_overview_coverage' project.pk %}?{{ filter_query }}"
@@ -118,6 +133,8 @@
             Loading data coverage…
         </div>
     </div>
+    {% endif %}
+    {% endwith %}
 
     {% include "scheduling/components/executive_controls_help_modal.html" %}
 </div>

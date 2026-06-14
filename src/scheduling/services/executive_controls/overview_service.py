@@ -10,10 +10,13 @@ from typing import Any
 from django.db.models import Count, Q
 from django.urls import reverse
 
+from scheduling.services.executive_controls.capability_profile import (
+    ProjectAnalyticsCapabilityProfile,
+)
 from scheduling.services.executive_controls.card_contract import kpi_card
 from scheduling.services.executive_controls.context import AnalyticalContextService
 from scheduling.services.executive_controls.delays import DelayFilters, ExecutiveDelayService
-from scheduling.services.executive_controls.enums import DelayType, MetricAuthority
+from scheduling.services.executive_controls.enums import DelayType, FeatureId, MetricAuthority
 from scheduling.services.executive_controls.evm_availability import E8EVMAvailabilityService
 from scheduling.services.executive_controls.methodology import (
     BASELINE_SEMANTICS,
@@ -56,6 +59,13 @@ class ExecutiveControlsOverviewService:
         self.project_id = str(project.pk)
         self._cache = _OverviewComputeCache(self.project_id)
         self._reader = BindingGovernanceReader(self.project_id)
+        self._capability: dict[str, Any] | None = None
+
+    def capability_profile(self) -> dict[str, Any]:
+        """Cached capability profile for this request — no full EVM."""
+        if self._capability is None:
+            self._capability = ProjectAnalyticsCapabilityProfile(self.project).build()
+        return self._capability
 
     @classmethod
     def filters_from_params(cls, params: dict[str, str]) -> OverviewFilters:
@@ -85,7 +95,8 @@ class ExecutiveControlsOverviewService:
         """Lightweight shell — no full delay classification or EVM."""
         from scheduling.models import Task
 
-        ctx = AnalyticalContextService(self.project).build()
+        capability = self.capability_profile()
+        ctx = AnalyticalContextService(self.project).build(capability)
         all_count = Task.objects.filter(project_id=self.project_id).count()
         schedulable = (
             Task.objects.filter(project_id=self.project_id)
@@ -93,6 +104,8 @@ class ExecutiveControlsOverviewService:
             .exclude(end_date=None)
             .count()
         )
+        section_map = capability.get("banner", {}).get("overview_sections", {})
+        visible_sections = [k for k, v in section_map.items() if v]
 
         return {
             "section": "shell",
@@ -100,6 +113,7 @@ class ExecutiveControlsOverviewService:
             "methodology_version": E8_METHODOLOGY_VERSION,
             "filters": filters.to_query(),
             "analytical_context": ctx,
+            "capability_profile": capability,
             "lightweight_coverage": {
                 "all_tasks": all_count,
                 "schedulable_tasks": schedulable,
@@ -107,17 +121,13 @@ class ExecutiveControlsOverviewService:
             "warnings": [
                 ctx["reimport_drift_warning"],
                 BASELINE_SEMANTICS,
+                *capability.get("warnings", []),
             ],
             "methodology_url": reverse(
                 "scheduling:executive_controls_methodology", kwargs={"pk": self.project_id}
             ),
-            "sections": [
-                "schedule",
-                "cost",
-                "delays",
-                "model_impact",
-                "coverage",
-            ],
+            "sections": visible_sections,
+            "hidden_sections": [k for k, v in section_map.items() if not v],
             "calculated_at": datetime.now(UTC).isoformat(),
         }
 
@@ -258,6 +268,23 @@ class ExecutiveControlsOverviewService:
 
     def build_cost_section(self, filters: OverviewFilters) -> dict[str, Any]:
         """Cost position — single compute_evm via availability service."""
+        capability = self.capability_profile()
+        caps = capability["capabilities"]
+        if not caps[FeatureId.SCHEDULE_OVERVIEW.value]["available"]:
+            return {
+                "section": "cost",
+                "section_available": False,
+                "project_id": self.project_id,
+                "cards": [],
+                "warnings": [],
+                "unavailable_reason": "No schedulable tasks for cost analytics.",
+                "series_contract": capability.get("series_contracts", {}).get(
+                    "derived_as_of_curve"
+                ),
+                "filters": filters.to_query(),
+                "calculated_at": datetime.now(UTC).isoformat(),
+            }
+
         data_date, _ = get_project_data_date(self.project_id)
         evm = self._cache.evm_availability()
         snap = evm.get("evm_snapshot", {})
@@ -314,13 +341,19 @@ class ExecutiveControlsOverviewService:
             )
         if unavailable.get("e8.cpi"):
             warnings.append(str(unavailable["e8.cpi"]))
+        derived = capability.get("series_contracts", {}).get("derived_as_of_curve", {})
+        if derived.get("caveat"):
+            warnings.append(str(derived["caveat"]))
 
         return {
             "section": "cost",
+            "section_available": True,
             "project_id": self.project_id,
             "performance_mode": evm.get("performance_mode"),
             "performance_mode_label": evm.get("performance_mode_label"),
             "cost_evm_available": cost_evm,
+            "capability_cost_evm": caps[FeatureId.COST_EVM.value]["available"],
+            "series_contract": derived,
             "cards": cards,
             "warnings": warnings,
             "filters": filters.to_query(),
@@ -394,6 +427,21 @@ class ExecutiveControlsOverviewService:
 
     def build_model_impact_section(self, filters: OverviewFilters) -> dict[str, Any]:
         """Trusted model impact — trusted reads only, classify trusted tasks subset."""
+        capability = self.capability_profile()
+        model_cap = capability["capabilities"][FeatureId.MODEL_IMPACT.value]
+        if not model_cap["available"]:
+            return {
+                "section": "model_impact",
+                "section_available": False,
+                "project_id": self.project_id,
+                "cards": [],
+                "caveats": list(model_cap.get("caveats", [])),
+                "unavailable_reason": ", ".join(model_cap.get("missing_reasons", []))
+                or "Model impact unavailable.",
+                "filters": filters.to_query(),
+                "calculated_at": datetime.now(UTC).isoformat(),
+            }
+
         from scheduling.models import Task
 
         data_date, _ = get_project_data_date(self.project_id)
@@ -477,6 +525,7 @@ class ExecutiveControlsOverviewService:
 
         return {
             "section": "model_impact",
+            "section_available": True,
             "project_id": self.project_id,
             "cards": cards,
             "caveats": [

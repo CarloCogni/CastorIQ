@@ -1,0 +1,46 @@
+<!-- scheduling/components/executive_capability_banner.html -->
+<!-- Planner-neutral project capability summary — field evidence, not source name -->
+<div class="exec-capability-banner border rounded p-3 mb-3 bg-body" role="region" aria-label="Project analytics capabilities">
+    {% with b=capability_profile.banner %}
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+        <span class="badge bg-primary-subtle text-primary-emphasis border">
+            Source: {{ b.source_label|default:"MANUAL" }}
+        </span>
+        <span class="badge bg-secondary-subtle text-secondary-emphasis border">
+            {{ capability_profile.analytical_state|default:"live_current" }}
+        </span>
+        {% if b.data_date_authoritative %}
+        <span class="badge bg-success-subtle text-success-emphasis border">Data date authoritative</span>
+        {% else %}
+        <span class="badge bg-warning-subtle text-warning-emphasis border">Data date estimated</span>
+        {% endif %}
+        {% if b.cost_evm_available %}
+        <span class="badge bg-success-subtle text-success-emphasis border">Cost EVM</span>
+        {% elif b.schedule_performance_available %}
+        <span class="badge bg-info-subtle text-info-emphasis border">Schedule performance</span>
+        {% endif %}
+        {% if b.calendar_available %}
+        <span class="badge bg-success-subtle text-success-emphasis border">Calendar-aware delays</span>
+        {% else %}
+        <span class="badge bg-warning-subtle text-warning-emphasis border">Calendar-day delay fallback</span>
+        {% endif %}
+        {% if b.resource_analytics_available %}
+        <span class="badge bg-success-subtle text-success-emphasis border">Resource analytics</span>
+        {% endif %}
+        {% if b.ifc_available %}
+        <span class="badge bg-info-subtle text-info-emphasis border">IFC indexed</span>
+        {% else %}
+        <span class="badge bg-secondary-subtle text-secondary-emphasis border">No IFC</span>
+        {% endif %}
+        <span class="badge bg-secondary-subtle text-secondary-emphasis border">Historical trends unavailable</span>
+    </div>
+    <p class="small text-secondary mb-0">
+        Capabilities derived from persisted project data ({{ capability_profile.profile_version }}).
+        {% if capability_profile.warnings %}
+        {% for w in capability_profile.warnings %}
+        <span class="d-block mt-1"><i class="bi bi-info-circle me-1"></i>{{ w }}</span>
+        {% endfor %}
+        {% endif %}
+    </p>
+    {% endwith %}
+</div>

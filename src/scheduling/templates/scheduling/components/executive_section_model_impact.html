@@ -5,6 +5,10 @@
     </h2>
     {% if section_error %}
     <div class="alert alert-danger" role="alert">{{ section_error }}</div>
+    {% elif section_available == False %}
+    <div class="alert alert-secondary" role="status">
+        Trusted model impact unavailable — {{ unavailable_reason|default:"No IFC model indexed on this project." }}
+    </div>
     {% else %}
     {% for c in caveats %}
     <div class="alert alert-info py-2 small" role="note">{{ c }}</div>

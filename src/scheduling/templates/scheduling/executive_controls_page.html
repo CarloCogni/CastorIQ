@@ -11,7 +11,7 @@
             <li class="breadcrumb-item active" aria-current="page">Executive Controls</li>
         </ol>
     </nav>
-    {% include "scheduling/components/executive_controls_subnav.html" with exec_subtab="overview" %}
+    {% include "scheduling/components/executive_controls_subnav.html" with exec_subtab="overview" capability_profile=capability_profile %}
     {% include "scheduling/tabs/executive_controls_overview.html" %}
 </div>
 {% endblock %}

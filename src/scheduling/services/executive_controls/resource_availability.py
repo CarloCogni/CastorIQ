@@ -24,7 +24,17 @@ class EquivalentWorkforceAvailabilityService:
         self.project_id = str(project_id)
 
     def build(self) -> dict[str, Any]:
+        from environments.models import Project
         from scheduling.models import P6Calendar, P6ResourceAssignment
+        from scheduling.services.executive_controls.capability_profile import (
+            PROFILE_VERSION,
+            ProjectAnalyticsCapabilityProfile,
+        )
+        from scheduling.services.executive_controls.enums import FeatureId
+
+        project = Project.objects.get(pk=self.project_id)
+        capability = ProjectAnalyticsCapabilityProfile(project).build()
+        workforce_cap = capability["capabilities"][FeatureId.EQUIVALENT_WORKFORCE.value]
 
         data_date, _ = get_project_data_date(self.project_id)
         calculated_at = datetime.now(UTC).isoformat()
@@ -52,11 +62,15 @@ class EquivalentWorkforceAvailabilityService:
         calendar_available = cal is not None
 
         manhours_available = planned > 0 or actual > 0
-        equivalent_calculable = manhours_available and hours_per_day > 0
+        equivalent_calculable = (
+            manhours_available and hours_per_day > 0 and workforce_cap["available"]
+        )
 
         return {
             "project_id": self.project_id,
             "methodology_version": E8_METHODOLOGY_VERSION,
+            "capability_profile_version": PROFILE_VERSION,
+            "capability": workforce_cap,
             "data_date": data_date.isoformat(),
             "calculated_at": calculated_at,
             "recommended_label": EQUIVALENT_WORKFORCE_LABEL,

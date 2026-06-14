@@ -6,6 +6,10 @@
     </h2>
     {% if section_error %}
     <div class="alert alert-danger" role="alert">{{ section_error }}</div>
+    {% elif section_available == False %}
+    <div class="alert alert-secondary" role="status">
+        Cost position unavailable — {{ unavailable_reason|default:"Insufficient schedule or cost data." }}
+    </div>
     {% else %}
     {% for w in warnings %}
     <div class="alert alert-warning py-2 small" role="status">{{ w }}</div>

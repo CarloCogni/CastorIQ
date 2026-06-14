@@ -420,6 +420,11 @@ urlpatterns = [
         name="executive_controls_trades_analysis",
     ),
     path(
+        "projects/<uuid:pk>/executive-controls/capabilities/",
+        views_executive_controls.ExecutiveControlsCapabilitiesView.as_view(),
+        name="executive_controls_capabilities",
+    ),
+    path(
         "projects/<uuid:pk>/executive-controls/context/",
         views_executive_controls.ExecutiveControlsContextView.as_view(),
         name="executive_controls_context",

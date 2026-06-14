@@ -30,7 +30,7 @@ class AnalyticalContextService:
         self.project = project
         self.project_id = str(project.pk)
 
-    def build(self) -> dict[str, Any]:
+    def build(self, capability_profile: dict[str, Any] | None = None) -> dict[str, Any]:
         """Return source identity, data date, and analytical state metadata."""
         from scheduling.models import ScheduleSource
 
@@ -69,6 +69,9 @@ class AnalyticalContextService:
             "schedule_source": source_identity,
             "calculated_at": calculated_at,
             "methodology_version": E8_METHODOLOGY_VERSION,
+            "capability_profile_version": (
+                capability_profile.get("profile_version") if capability_profile else None
+            ),
             "trust_policy": TRUSTED_BINDING_POLICY_ID,
             "governance_policy": GOVERNANCE_AUTHORITY_POLICY_ID,
             "snapshot_available": False,
@@ -77,4 +80,8 @@ class AnalyticalContextService:
                 REIMPORT_CAVEAT,
                 BASELINE_SEMANTICS,
             ],
+            "capability_banner": capability_profile.get("banner", {}) if capability_profile else {},
+            "capability_warnings": capability_profile.get("warnings", [])
+            if capability_profile
+            else [],
         }

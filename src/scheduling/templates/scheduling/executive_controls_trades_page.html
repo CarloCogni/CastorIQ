@@ -13,7 +13,7 @@
         </ol>
     </nav>
 
-    {% include "scheduling/components/executive_controls_subnav.html" with exec_subtab="trades" %}
+    {% include "scheduling/components/executive_controls_subnav.html" with exec_subtab="trades" capability_profile=capability_profile %}
     {% include "scheduling/components/executive_context_header.html" with ctx=analytical_context %}
 
     <div id="exec-trades-slot"
