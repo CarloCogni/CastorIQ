@@ -5,7 +5,7 @@ intelligence, writeback, and manual element linking.
 
 from django.urls import path
 
-from . import views, views_executive_controls, views_source_provenance
+from . import views, views_baseline, views_executive_controls, views_source_provenance
 
 app_name = "scheduling"
 
@@ -57,6 +57,31 @@ urlpatterns = [
         "projects/<uuid:pk>/tasks/<uuid:task_pk>/provenance/",
         views_source_provenance.TaskProvenanceView.as_view(),
         name="task_provenance",
+    ),
+    path(
+        "projects/<uuid:pk>/baselines/",
+        views_baseline.BaselineListView.as_view(),
+        name="schedule_baselines",
+    ),
+    path(
+        "projects/<uuid:pk>/baselines/selected/",
+        views_baseline.BaselineSelectedView.as_view(),
+        name="schedule_baseline_selected",
+    ),
+    path(
+        "projects/<uuid:pk>/baselines/comparison/",
+        views_baseline.BaselineComparisonView.as_view(),
+        name="schedule_baseline_comparison",
+    ),
+    path(
+        "projects/<uuid:pk>/baselines/<uuid:baseline_pk>/",
+        views_baseline.BaselineDetailView.as_view(),
+        name="schedule_baseline_detail",
+    ),
+    path(
+        "projects/<uuid:pk>/baselines/<uuid:baseline_pk>/task-states/",
+        views_baseline.BaselineTaskStateListView.as_view(),
+        name="schedule_baseline_task_states",
     ),
     path(
         "projects/<uuid:pk>/all-tasks-preview/",

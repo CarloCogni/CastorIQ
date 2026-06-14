@@ -78,6 +78,12 @@ class _ProjectSignals:
     import_run_count: int
     tasks_with_source_version: int
     tasks_with_schedule_activity: int
+    baseline_version_count: int
+    selected_baseline_id: str | None
+    selected_baseline_type: str | None
+    selected_baseline_status: str | None
+    selected_baseline_task_states: int
+    selected_baseline_cost_states: int
 
 
 class ProjectAnalyticsCapabilityProfile:
@@ -100,6 +106,7 @@ class ProjectAnalyticsCapabilityProfile:
         series = build_series_contracts(schedulable_tasks=signals.schedulable_n)
         banner = self._build_banner(signals, cap_dicts)
         provenance = self._provenance_capabilities(signals)
+        baseline = self._baseline_capabilities(signals)
 
         payload = CapabilityProfilePayload(
             profile_version=PROFILE_VERSION,
@@ -119,6 +126,7 @@ class ProjectAnalyticsCapabilityProfile:
             warnings=self._warnings(signals, cap_dicts),
             banner=banner,
             provenance_capabilities=provenance,
+            baseline_capabilities=baseline,
         )
         return payload.to_dict()
 
@@ -175,6 +183,80 @@ class ProjectAnalyticsCapabilityProfile:
                 caveats=(
                     "Repeatable analytics require AnalyticalSnapshot (DF-B) — schema only in DF-A1.",
                 ),
+            ),
+        }
+
+    def _baseline_capabilities(self, signals: _ProjectSignals) -> dict[str, dict[str, Any]]:
+        """DF-A2 baseline schema availability — does not switch EVM calculations."""
+
+        def _entry(
+            available: bool,
+            state: CapabilityState,
+            *,
+            caveats: tuple[str, ...] = (),
+        ) -> dict[str, Any]:
+            return {
+                "available": available,
+                "state": state.value,
+                "caveats": list(caveats),
+            }
+
+        has_any = signals.baseline_version_count > 0
+        selected = signals.selected_baseline_id is not None
+        btype = signals.selected_baseline_type
+        bstatus = signals.selected_baseline_status
+
+        imported_ref = btype == "imported_reference" and selected
+        approved = btype == "approved" and selected and bstatus == "published"
+
+        comparison_ready = selected and signals.selected_baseline_task_states > 0
+
+        return {
+            "baseline_version_identity": _entry(
+                has_any,
+                CapabilityState.AVAILABLE if has_any else CapabilityState.UNAVAILABLE,
+                caveats=()
+                if has_any
+                else ("No BaselineVersion records — legacy project remains operational.",),
+            ),
+            "imported_reference_baseline": _entry(
+                imported_ref,
+                CapabilityState.AVAILABLE_WITH_CAVEATS
+                if imported_ref
+                else CapabilityState.UNAVAILABLE,
+                caveats=("Imported reference baseline — not contractual or approved EVM baseline.",)
+                if imported_ref
+                else (),
+            ),
+            "approved_baseline": _entry(
+                approved,
+                CapabilityState.AVAILABLE if approved else CapabilityState.UNAVAILABLE,
+                caveats=("Approved baseline authoritative only for populated task-state fields.",)
+                if approved
+                else (),
+            ),
+            "baseline_task_coverage": _entry(
+                selected and signals.selected_baseline_task_states > 0,
+                CapabilityState.AVAILABLE
+                if selected and signals.selected_baseline_task_states > 0
+                else CapabilityState.UNAVAILABLE,
+                caveats=("Coverage from BaselineTaskState dated rows vs schedulable tasks.",),
+            ),
+            "baseline_cost_coverage": _entry(
+                selected and signals.selected_baseline_cost_states > 0,
+                CapabilityState.AVAILABLE
+                if selected and signals.selected_baseline_cost_states > 0
+                else CapabilityState.UNAVAILABLE,
+                caveats=("Null cost remains unavailable — not zero.",),
+            ),
+            "baseline_comparison_readiness": _entry(
+                comparison_ready,
+                CapabilityState.AVAILABLE if comparison_ready else CapabilityState.UNAVAILABLE,
+                caveats=(
+                    "Comparison uses ScheduleActivity identity — EVM PV/BAC still on Task.cost until DF-A2.1.",
+                )
+                if comparison_ready
+                else (),
             ),
         }
 
@@ -300,6 +382,7 @@ class ProjectAnalyticsCapabilityProfile:
             source_version_count,
             import_run_count,
         ) = self._provenance_table_counts()
+        baseline_counts = self._baseline_table_counts()
 
         return _ProjectSignals(
             source_type=source_type,
@@ -335,7 +418,66 @@ class ProjectAnalyticsCapabilityProfile:
             import_run_count=import_run_count,
             tasks_with_source_version=agg["tasks_with_source_version"] or 0,
             tasks_with_schedule_activity=agg["tasks_with_schedule_activity"] or 0,
+            baseline_version_count=baseline_counts["count"],
+            selected_baseline_id=baseline_counts["selected_id"],
+            selected_baseline_type=baseline_counts["selected_type"],
+            selected_baseline_status=baseline_counts["selected_status"],
+            selected_baseline_task_states=baseline_counts["task_states"],
+            selected_baseline_cost_states=baseline_counts["cost_states"],
         )
+
+    def _baseline_table_counts(self) -> dict[str, Any]:
+        """Single round-trip for DF-A2 baseline counts."""
+        from django.db import connection
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    (SELECT COUNT(*) FROM castor_scheduling_baselineversion WHERE project_id = %s),
+                    (
+                        SELECT id::text
+                        FROM castor_scheduling_baselineversion
+                        WHERE project_id = %s AND is_selected_for_analysis = true
+                        LIMIT 1
+                    ),
+                    (
+                        SELECT baseline_type
+                        FROM castor_scheduling_baselineversion
+                        WHERE project_id = %s AND is_selected_for_analysis = true
+                        LIMIT 1
+                    ),
+                    (
+                        SELECT status
+                        FROM castor_scheduling_baselineversion
+                        WHERE project_id = %s AND is_selected_for_analysis = true
+                        LIMIT 1
+                    ),
+                    (
+                        SELECT COUNT(*)
+                        FROM castor_scheduling_baselinetaskstate bts
+                        JOIN castor_scheduling_baselineversion bv ON bv.id = bts.baseline_version_id
+                        WHERE bv.project_id = %s AND bv.is_selected_for_analysis = true
+                    ),
+                    (
+                        SELECT COUNT(*)
+                        FROM castor_scheduling_baselinetaskstate bts
+                        JOIN castor_scheduling_baselineversion bv ON bv.id = bts.baseline_version_id
+                        WHERE bv.project_id = %s AND bv.is_selected_for_analysis = true
+                          AND bts.baseline_cost IS NOT NULL
+                    )
+                """,
+                [self.project_id] * 6,
+            )
+            row = cursor.fetchone()
+        return {
+            "count": int(row[0] or 0),
+            "selected_id": row[1],
+            "selected_type": row[2],
+            "selected_status": row[3],
+            "task_states": int(row[4] or 0),
+            "cost_states": int(row[5] or 0),
+        }
 
     def _provenance_table_counts(self) -> tuple[str | None, int, int]:
         """Single round-trip for DF-A1 provenance counts (capability profile only)."""

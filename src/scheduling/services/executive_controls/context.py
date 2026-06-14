@@ -55,6 +55,71 @@ class AnalyticalContextService:
         data_date, is_real_data_date = get_project_data_date(self.project_id)
         calculated_at = datetime.now(UTC).isoformat()
 
+        from scheduling.models import BaselineVersion
+        from scheduling.services.baseline.lifecycle import BaselineVersionService
+        from scheduling.services.baseline.population import BaselinePopulationService
+
+        selected_baseline = None
+        baseline_context: dict[str, Any] | None = None
+        contractual_available = False
+        baseline_description = BASELINE_REFERENCE_LABEL
+        baseline_caveat = (
+            "No BaselineVersion schema — metrics use imported schedule reference fields."
+        )
+        has_baseline_schema = False
+        if capability_profile:
+            bl_caps = capability_profile.get("baseline_capabilities") or {}
+            has_baseline_schema = bl_caps.get("baseline_version_identity", {}).get(
+                "available", False
+            )
+        if has_baseline_schema:
+            selected_baseline = BaselineVersionService.get_selected_baseline(self.project)
+        if selected_baseline:
+            coverage = BaselinePopulationService.coverage_summary(selected_baseline)
+            baseline_context = {
+                "id": str(selected_baseline.pk),
+                "name": selected_baseline.name,
+                "baseline_type": selected_baseline.baseline_type,
+                "status": selected_baseline.status,
+                "data_date": selected_baseline.data_date.isoformat()
+                if selected_baseline.data_date
+                else None,
+                "effective_date": selected_baseline.effective_date.isoformat()
+                if selected_baseline.effective_date
+                else None,
+                "source_version_id": str(selected_baseline.source_version_id)
+                if selected_baseline.source_version_id
+                else None,
+                "approved_by_id": str(selected_baseline.approved_by_id)
+                if selected_baseline.approved_by_id
+                else None,
+                "approved_at": selected_baseline.approved_at.isoformat()
+                if selected_baseline.approved_at
+                else None,
+                "task_coverage": coverage,
+            }
+            if selected_baseline.baseline_type == BaselineVersion.BaselineType.IMPORTED_REFERENCE:
+                baseline_description = (
+                    f"Selected imported reference baseline: {selected_baseline.name}"
+                )
+                baseline_caveat = "Imported reference — not contractual or approved EVM baseline."
+            elif selected_baseline.baseline_type == BaselineVersion.BaselineType.WORKING:
+                baseline_description = f"Selected working baseline: {selected_baseline.name}"
+                baseline_caveat = "Working baseline — internal target only, not approved."
+            elif selected_baseline.baseline_type == BaselineVersion.BaselineType.APPROVED:
+                baseline_description = f"Selected approved baseline: {selected_baseline.name}"
+                baseline_caveat = (
+                    "Approved baseline — authoritative only for populated BaselineTaskState fields. "
+                    "EVM PV/BAC still uses Task.cost until DF-A2.1."
+                )
+                contractual_available = (
+                    selected_baseline.status == BaselineVersion.Status.PUBLISHED
+                    and selected_baseline.approved_at is not None
+                )
+            else:
+                baseline_description = f"Selected comparison baseline: {selected_baseline.name}"
+                baseline_caveat = "Comparison-only baseline — not authoritative."
+
         source_identity: dict[str, Any] | None = None
         if source:
             source_identity = {
@@ -71,12 +136,11 @@ class AnalyticalContextService:
             "project_name": self.project.name,
             "analytical_state": AnalyticalState.LIVE_CURRENT.value,
             "analytical_state_label": LIVE_CURRENT_LABEL,
-            "baseline_description": BASELINE_REFERENCE_LABEL,
+            "baseline_description": baseline_description,
             "baseline_semantics": BASELINE_SEMANTICS,
-            "contractual_baseline_available": False,
-            "contractual_baseline_caveat": (
-                "No BaselineVersion schema — metrics use imported schedule reference fields."
-            ),
+            "contractual_baseline_available": contractual_available,
+            "contractual_baseline_caveat": baseline_caveat,
+            "selected_baseline": baseline_context,
             "data_date": data_date.isoformat(),
             "data_date_is_p6": is_real_data_date,
             "schedule_source": source_identity,
