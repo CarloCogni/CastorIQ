@@ -1,0 +1,93 @@
+<!-- scheduling/components/executive_trades_table.html -->
+<section id="exec-trades-analysis" aria-labelledby="exec-trades-heading">
+    <h2 class="h6 fw-semibold mb-2" id="exec-trades-heading">
+        <i class="bi bi-box-seam me-1 text-primary"></i> Trade / package performance
+    </h2>
+
+    {% if section_error %}
+    <div class="alert alert-danger" role="alert">{{ section_error }}</div>
+    {% else %}
+
+    {% if warnings %}
+    <div class="alert alert-warning py-2 small" role="note">
+        {% for w in warnings %}{% if w %}<div>{{ w }}</div>{% endif %}{% endfor %}
+    </div>
+    {% endif %}
+
+    {% if high_materiality_underperforming %}
+    <h3 class="fs-7 fw-semibold mt-3">High-materiality underperforming groups</h3>
+    <div class="table-responsive mb-4">
+        <table class="table table-sm">
+            <thead><tr>
+                <th>Group</th><th>Variance</th><th>Budget</th><th>Delayed</th><th>Prioritization index</th>
+            </tr></thead>
+            <tbody>
+            {% for row in high_materiality_underperforming %}
+            <tr>
+                <td>{{ row.label }} <span class="badge bg-body-secondary">{{ row.authority }}</span></td>
+                <td>{{ row.schedule.variance_pct|default:"—" }} pp</td>
+                <td>{{ row.cost.budget_total|default:"N/A" }}</td>
+                <td>{{ row.schedule.primary_late_count }}</td>
+                <td title="{{ row.prioritization.formula }}">{{ row.prioritization.prioritization_index }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <h3 class="fs-7 fw-semibold">Performance comparison</h3>
+    <div class="table-responsive">
+        <table class="table table-sm table-hover">
+            <thead class="table-light">
+                <tr>
+                    <th>Group</th><th>Authority</th><th>Activities</th><th>Planned</th><th>Actual</th><th>Variance</th><th>Budget</th><th>Trusted tasks</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for row in authoritative_groups %}
+            <tr>
+                <td>{{ row.label }}</td>
+                <td><span class="badge bg-body-secondary">{{ row.authority }}</span></td>
+                <td>{{ row.population.activity_count }}</td>
+                <td>{{ row.schedule.planned_progress_pct|default:"—" }}{% if row.schedule.planned_progress_pct != None %}%{% endif %}</td>
+                <td>{{ row.schedule.actual_progress_pct|default:"—" }}{% if row.schedule.actual_progress_pct != None %}%{% endif %}</td>
+                <td>{{ row.schedule.variance_pct|default:"—" }}</td>
+                <td>{% if row.cost.available %}{{ row.cost.budget_total }}{% else %}N/A{% endif %}</td>
+                <td>{{ row.model_impact.trusted_task_count }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="8" class="text-secondary text-center">No authoritative groups available for this project.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if suggestion_groups %}
+    <h3 class="fs-7 fw-semibold mt-4">Suggested groupings (not authoritative)</h3>
+    <p class="small text-secondary">Keyword-inferred — excluded from default KPI denominators.</p>
+    <div class="table-responsive">
+        <table class="table table-sm">
+            <tbody>
+            {% for row in suggestion_groups %}
+            <tr>
+                <td>{{ row.label }}</td>
+                <td>{{ row.population.activity_count }} activities</td>
+                <td>{{ row.schedule.variance_pct|default:"—" }} pp variance</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    {% if unknown_groups %}
+    <h3 class="fs-7 fw-semibold mt-4">Unknown / unclassified</h3>
+    <ul class="list-unstyled small">
+        {% for row in unknown_groups %}
+        <li>{{ row.label }}: {{ row.population.activity_count }} activities</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+    {% endif %}
+</section>

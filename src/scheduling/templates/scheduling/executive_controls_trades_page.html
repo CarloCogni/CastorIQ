@@ -1,0 +1,33 @@
+{% extends "core/base.html" %}
+<!-- scheduling/executive_controls_trades_page.html — E8-C trade/package analysis -->
+
+{% block title %}Trades / Packages — {{ project.name }} — Castor{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3 px-3 px-lg-4 executive-controls-scope">
+    <nav aria-label="breadcrumb" class="mb-2">
+        <ol class="breadcrumb small mb-0">
+            <li class="breadcrumb-item"><a href="{% url 'projects:detail' project.pk %}">{{ project.name }}</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'scheduling:executive_controls' project.pk %}">Executive Controls</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Trades / Packages</li>
+        </ol>
+    </nav>
+
+    {% include "scheduling/components/executive_controls_subnav.html" with exec_subtab="trades" %}
+    {% include "scheduling/components/executive_context_header.html" with ctx=analytical_context %}
+
+    <div id="exec-trades-slot"
+         hx-get="{% url 'scheduling:executive_controls_trades_analysis' project.pk %}?{{ filter_query }}"
+         hx-trigger="load"
+         hx-swap="innerHTML"
+         aria-busy="true"
+         aria-live="polite">
+        <div class="d-flex align-items-center gap-2 text-secondary py-4">
+            <div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading…</span></div>
+            Loading trade and package analysis…
+        </div>
+    </div>
+
+    {% include "scheduling/components/executive_controls_help_modal.html" %}
+</div>
+{% endblock %}

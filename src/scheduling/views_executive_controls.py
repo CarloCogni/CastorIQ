@@ -275,6 +275,151 @@ class ExecutiveControlsResourceAvailabilityView(ProjectAccessMixin, View):
         return JsonResponse({"error": "Method not allowed."}, status=405)
 
 
+def _matrix_filters(request) -> Any:
+    from scheduling.services.executive_controls.matrix_filters import ExecutiveMatrixFilters
+
+    return ExecutiveMatrixFilters.from_params(request.GET.dict())
+
+
+class ExecutiveControlsMatrixPageView(ProjectAccessMixin, TemplateView):
+    """GET — hierarchical performance matrix shell."""
+
+    template_name = "scheduling/executive_controls_matrix_page.html"
+
+    def get_context_data(self, **kwargs: object) -> dict:
+        from scheduling.services.executive_controls.context import AnalyticalContextService
+        from scheduling.services.executive_controls.dimension_registry import (
+            ExecutiveDimensionRegistry,
+        )
+
+        ctx = super().get_context_data(**kwargs)
+        project = self.get_project()
+        filters = _matrix_filters(self.request)
+        ctx["project"] = project
+        ctx["analytical_context"] = AnalyticalContextService(project).build()
+        ctx["filters"] = filters
+        ctx["filter_query"] = filters.query_string()
+        ctx["available_dimensions"] = ExecutiveDimensionRegistry(str(project.pk)).discover()
+        ctx["exec_subtab"] = "matrix"
+        return ctx
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        return JsonResponse({"error": "Method not allowed."}, status=405)
+
+
+class ExecutiveControlsMatrixRowsView(ProjectAccessMixin, View):
+    """GET — paginated matrix rows fragment or JSON."""
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.executive_controls.performance_cube import (
+            ProjectPerformanceCubeService,
+        )
+
+        project = self.get_project()
+        filters = _matrix_filters(request)
+        try:
+            payload = ProjectPerformanceCubeService(project).build_rows(filters)
+            if request.headers.get("HX-Request"):
+                return render(request, "scheduling/components/executive_matrix_rows.html", payload)
+            return JsonResponse(payload)
+        except Exception as exc:
+            logger.exception("Matrix rows failed: %s", exc)
+            err = {"section_error": "Matrix rows temporarily unavailable."}
+            if request.headers.get("HX-Request"):
+                return render(
+                    request, "scheduling/components/executive_matrix_rows.html", err, status=200
+                )
+            return JsonResponse({"error": str(exc)}, status=500)
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        return JsonResponse({"error": "Method not allowed."}, status=405)
+
+
+class ExecutiveControlsTradesPageView(ProjectAccessMixin, TemplateView):
+    """GET — trade and package analysis page."""
+
+    template_name = "scheduling/executive_controls_trades_page.html"
+
+    def get_context_data(self, **kwargs: object) -> dict:
+        from scheduling.services.executive_controls.context import AnalyticalContextService
+
+        ctx = super().get_context_data(**kwargs)
+        project = self.get_project()
+        filters = _matrix_filters(self.request)
+        ctx["project"] = project
+        ctx["analytical_context"] = AnalyticalContextService(project).build()
+        ctx["filters"] = filters
+        ctx["filter_query"] = filters.query_string()
+        ctx["exec_subtab"] = "trades"
+        return ctx
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        return JsonResponse({"error": "Method not allowed."}, status=405)
+
+
+class ExecutiveControlsTradesAnalysisView(ProjectAccessMixin, View):
+    """GET — trade/package analysis fragment or JSON."""
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.executive_controls.trade_package_analysis import (
+            TradePackageAnalysisService,
+        )
+
+        project = self.get_project()
+        filters = _matrix_filters(request)
+        try:
+            payload = TradePackageAnalysisService(project).build(filters)
+            if request.headers.get("HX-Request"):
+                return render(request, "scheduling/components/executive_trades_table.html", payload)
+            return JsonResponse(payload)
+        except Exception as exc:
+            logger.exception("Trade analysis failed: %s", exc)
+            err = {"section_error": "Trade analysis temporarily unavailable."}
+            if request.headers.get("HX-Request"):
+                return render(
+                    request, "scheduling/components/executive_trades_table.html", err, status=200
+                )
+            return JsonResponse({"error": str(exc)}, status=500)
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        return JsonResponse({"error": "Method not allowed."}, status=405)
+
+
+class ExecutiveControlsMatrixActivitiesView(ProjectAccessMixin, View):
+    """GET — paginated activity drilldown for a matrix group."""
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.executive_controls.activity_drilldown import (
+            ActivityDrilldownService,
+        )
+
+        project = self.get_project()
+        filters = _matrix_filters(request)
+        try:
+            payload = ActivityDrilldownService(project).build(filters)
+            if request.headers.get("HX-Request"):
+                return render(
+                    request,
+                    "scheduling/components/executive_matrix_activity_drilldown.html",
+                    payload,
+                )
+            return JsonResponse(payload)
+        except Exception as exc:
+            logger.exception("Activity drilldown failed: %s", exc)
+            err = {"section_error": "Activity drilldown temporarily unavailable."}
+            if request.headers.get("HX-Request"):
+                return render(
+                    request,
+                    "scheduling/components/executive_matrix_activity_drilldown.html",
+                    err,
+                    status=200,
+                )
+            return JsonResponse({"error": str(exc)}, status=500)
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        return JsonResponse({"error": "Method not allowed."}, status=405)
+
+
 class ExecutiveControlsFoundationView(ProjectAccessMixin, View):
     """Minimal E8-A diagnostic surface — not the executive dashboard."""
 

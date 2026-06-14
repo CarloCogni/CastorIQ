@@ -1,0 +1,98 @@
+<!-- scheduling/components/executive_matrix_rows.html -->
+<section id="exec-matrix-rows" aria-labelledby="exec-matrix-heading">
+    <h2 class="h6 fw-semibold mb-2" id="exec-matrix-heading">
+        <i class="bi bi-diagram-3 me-1 text-primary"></i>
+        {% if selected_dimension %}{{ selected_dimension.label }}{% else %}Performance groups{% endif %}
+    </h2>
+
+    {% if section_error %}
+    <div class="alert alert-danger" role="alert">{{ section_error }}</div>
+    {% else %}
+
+    {% if summary %}
+    <p class="small text-secondary mb-2">
+        {{ summary.filtered_task_count }} tasks · {{ summary.group_count }} groups ·
+        weighting: {{ summary.progress.weighting_label|default:"—" }}
+    </p>
+    {% endif %}
+
+    {% if warnings %}
+    <div class="alert alert-warning py-2 small" role="note">
+        {% for w in warnings %}<div>{{ w }}</div>{% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle exec-matrix-table">
+            <thead class="table-light sticky-top">
+                <tr>
+                    <th scope="col">Group</th>
+                    <th scope="col">Authority</th>
+                    <th scope="col" class="text-end">Activities</th>
+                    <th scope="col" class="text-end d-none d-md-table-cell">Planned</th>
+                    <th scope="col" class="text-end d-none d-md-table-cell">Actual</th>
+                    <th scope="col" class="text-end">Variance</th>
+                    <th scope="col" class="d-none d-lg-table-cell">Weighting</th>
+                    <th scope="col" class="text-end d-none d-xl-table-cell">Budget</th>
+                    <th scope="col" class="text-end">Critical</th>
+                    <th scope="col" class="text-end">Delayed</th>
+                    <th scope="col" class="text-end d-none d-lg-table-cell">Trusted</th>
+                    <th scope="col"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr>
+                    <th scope="row">
+                        {{ row.label }}
+                        {% if row.key == '__unknown__' %}
+                        <span class="badge bg-secondary-subtle text-secondary-emphasis ms-1">Unknown</span>
+                        {% endif %}
+                    </th>
+                    <td><span class="badge bg-body-secondary text-body">{{ row.authority }}</span></td>
+                    <td class="text-end">{{ row.population.activity_count }}</td>
+                    <td class="text-end d-none d-md-table-cell">
+                        {% if row.schedule.planned_progress_pct != None %}{{ row.schedule.planned_progress_pct }}%{% else %}—{% endif %}
+                    </td>
+                    <td class="text-end d-none d-md-table-cell">
+                        {% if row.schedule.actual_progress_pct != None %}{{ row.schedule.actual_progress_pct }}%{% else %}—{% endif %}
+                    </td>
+                    <td class="text-end {% if row.schedule.variance_pct != None and row.schedule.variance_pct < 0 %}text-warning-emphasis{% endif %}">
+                        {% if row.schedule.variance_pct != None %}{{ row.schedule.variance_pct }} pp{% else %}—{% endif %}
+                    </td>
+                    <td class="small d-none d-lg-table-cell">{{ row.schedule.weighting_label|default:"—" }}</td>
+                    <td class="text-end d-none d-xl-table-cell">
+                        {% if row.cost.available %}{{ row.cost.budget_total }}{% else %}<span class="text-secondary" title="{{ row.cost.unavailable_reason }}">N/A</span>{% endif %}
+                    </td>
+                    <td class="text-end">{{ row.schedule.critical_count }}</td>
+                    <td class="text-end">{{ row.schedule.primary_late_count }}</td>
+                    <td class="text-end d-none d-lg-table-cell">{{ row.model_impact.trusted_task_count }}</td>
+                    <td class="text-end text-nowrap">
+                        {% if row.navigation.expand_url %}
+                        <a href="{{ row.navigation.expand_url }}" class="btn btn-sm btn-outline-secondary py-0">Expand</a>
+                        {% endif %}
+                        <a href="{{ row.navigation.activity_drilldown_url }}" class="btn btn-sm btn-outline-primary py-0">Activities</a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="12" class="text-secondary text-center py-4">No groups match the current filters.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if pagination and pagination.pages > 1 %}
+    <nav aria-label="Matrix pagination" class="mt-2">
+        <ul class="pagination pagination-sm mb-0">
+            {% if pagination.page > 1 %}
+            <li class="page-item"><a class="page-link" href="?page={{ pagination.page|add:'-1' }}&page_size={{ pagination.page_size }}">Previous</a></li>
+            {% endif %}
+            <li class="page-item disabled"><span class="page-link">Page {{ pagination.page }} / {{ pagination.pages }}</span></li>
+            {% if pagination.page < pagination.pages %}
+            <li class="page-item"><a class="page-link" href="?page={{ pagination.page|add:'1' }}&page_size={{ pagination.page_size }}">Next</a></li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
+    {% endif %}
+</section>

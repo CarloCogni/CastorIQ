@@ -395,6 +395,31 @@ urlpatterns = [
         name="executive_controls_overview_coverage",
     ),
     path(
+        "projects/<uuid:pk>/executive-controls/matrix/",
+        views_executive_controls.ExecutiveControlsMatrixPageView.as_view(),
+        name="executive_controls_matrix",
+    ),
+    path(
+        "projects/<uuid:pk>/executive-controls/matrix/rows/",
+        views_executive_controls.ExecutiveControlsMatrixRowsView.as_view(),
+        name="executive_controls_matrix_rows",
+    ),
+    path(
+        "projects/<uuid:pk>/executive-controls/matrix/activities/",
+        views_executive_controls.ExecutiveControlsMatrixActivitiesView.as_view(),
+        name="executive_controls_matrix_activities",
+    ),
+    path(
+        "projects/<uuid:pk>/executive-controls/trades/",
+        views_executive_controls.ExecutiveControlsTradesPageView.as_view(),
+        name="executive_controls_trades",
+    ),
+    path(
+        "projects/<uuid:pk>/executive-controls/trades/analysis/",
+        views_executive_controls.ExecutiveControlsTradesAnalysisView.as_view(),
+        name="executive_controls_trades_analysis",
+    ),
+    path(
         "projects/<uuid:pk>/executive-controls/context/",
         views_executive_controls.ExecutiveControlsContextView.as_view(),
         name="executive_controls_context",

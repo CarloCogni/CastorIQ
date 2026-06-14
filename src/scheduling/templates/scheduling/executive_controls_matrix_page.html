@@ -1,0 +1,98 @@
+{% extends "core/base.html" %}
+<!-- scheduling/executive_controls_matrix_page.html — E8-C matrix shell -->
+
+{% block title %}Performance Matrix — {{ project.name }} — Castor{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3 px-3 px-lg-4 executive-controls-scope">
+    <nav aria-label="breadcrumb" class="mb-2">
+        <ol class="breadcrumb small mb-0">
+            <li class="breadcrumb-item"><a href="{% url 'projects:detail' project.pk %}">{{ project.name }}</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'scheduling:executive_controls' project.pk %}">Executive Controls</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Performance Matrix</li>
+        </ol>
+    </nav>
+
+    {% include "scheduling/components/executive_controls_subnav.html" with exec_subtab="matrix" %}
+    {% include "scheduling/components/executive_context_header.html" with ctx=analytical_context %}
+
+    <form class="exec-filters border rounded p-3 mb-3 bg-body" method="get" id="exec-matrix-filter-form" aria-label="Matrix filters">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small mb-0" for="matrix-dimension">Dimension</label>
+                <select class="form-select form-select-sm" id="matrix-dimension" name="dimension">
+                    {% for dim in available_dimensions %}
+                    <option value="{{ dim.dimension_id }}" {% if filters.dimension == dim.dimension_id %}selected{% endif %}>
+                        {{ dim.label }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small mb-0" for="matrix-weighting">Weighting</label>
+                <select class="form-select form-select-sm" id="matrix-weighting" name="weighting_mode">
+                    <option value="">Auto</option>
+                    <option value="cost_weighted" {% if filters.weighting_mode == 'cost_weighted' %}selected{% endif %}>Cost-weighted</option>
+                    <option value="duration_weighted" {% if filters.weighting_mode == 'duration_weighted' %}selected{% endif %}>Duration proxy</option>
+                    <option value="count_based" {% if filters.weighting_mode == 'count_based' %}selected{% endif %}>Count-based</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small mb-0" for="matrix-status">Status</label>
+                <select class="form-select form-select-sm" id="matrix-status" name="status">
+                    <option value="">All</option>
+                    <option value="planned" {% if filters.status == 'planned' %}selected{% endif %}>Planned</option>
+                    <option value="active" {% if filters.status == 'active' %}selected{% endif %}>Active</option>
+                    <option value="complete" {% if filters.status == 'complete' %}selected{% endif %}>Complete</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <div class="form-check mt-3">
+                    <input class="form-check-input" type="checkbox" name="linked_trusted" value="1" id="matrix-trusted"
+                           {% if filters.linked_trusted %}checked{% endif %}>
+                    <label class="form-check-label small" for="matrix-trusted">Trusted-linked only</label>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-sm btn-primary">Apply</button>
+            </div>
+        </div>
+        {% if filters.parent_key %}
+        <p class="small text-secondary mt-2 mb-0">
+            Drill context: {{ filters.parent_dimension }} = <strong>{{ filters.parent_key }}</strong>
+            <a href="{% url 'scheduling:executive_controls_matrix' project.pk %}?dimension={{ filters.dimension }}" class="ms-2">Reset drill</a>
+        </p>
+        {% endif %}
+    </form>
+
+    <div id="exec-matrix-rows-slot"
+         hx-get="{% url 'scheduling:executive_controls_matrix_rows' project.pk %}?{{ filter_query }}"
+         hx-trigger="load"
+         hx-swap="innerHTML"
+         aria-busy="true"
+         aria-live="polite">
+        <div class="d-flex align-items-center gap-2 text-secondary py-4">
+            <div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading matrix…</span></div>
+            Loading performance matrix…
+        </div>
+    </div>
+
+    {% include "scheduling/components/executive_controls_help_modal.html" %}
+</div>
+
+<script>
+(function () {
+    document.getElementById('exec-matrix-filter-form')?.addEventListener('submit', function (e) {
+        e.preventDefault();
+        const qs = new URLSearchParams(new FormData(this)).toString();
+        const base = window.location.pathname;
+        window.history.pushState({}, '', qs ? base + '?' + qs : base);
+        const slot = document.getElementById('exec-matrix-rows-slot');
+        if (slot && typeof htmx !== 'undefined') {
+            const url = slot.getAttribute('hx-get').split('?')[0] + (qs ? '?' + qs : '');
+            htmx.ajax('GET', url, { target: slot, swap: 'innerHTML' });
+        }
+    });
+})();
+</script>
+{% endblock %}
