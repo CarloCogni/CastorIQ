@@ -77,7 +77,9 @@ def test_supersede_pair_candidates_review_only():
     project = ProjectFactory()
     task = TaskFactory(project=project)
     trusted = _bind(task, "GID-OLD", needs_review=False)
-    review = _bind(task, "GID-NEW", needs_review=True, method=TaskEntityBinding.LinkMethod.HEURISTIC)
+    review = _bind(
+        task, "GID-NEW", needs_review=True, method=TaskEntityBinding.LinkMethod.HEURISTIC
+    )
     svc = LinkReviewQueueService(str(project.pk))
     candidates = svc.supersede_replacement_candidates(trusted.pk)
     ids = {c["binding_id"] for c in candidates}
@@ -116,13 +118,16 @@ def test_reconciliation_endpoint_post_not_allowed(client):
 
 @pytest.mark.django_db
 def test_migration_0024_present():
-    """Migration 0024 file exists without successor."""
+    """Migration 0024 exists; DF-A1 adds 0025 as the only 002x successor."""
     from pathlib import Path
 
     mig_dir = Path(__file__).resolve().parents[1] / "migrations"
     names = sorted(p.name for p in mig_dir.glob("002*.py"))
     assert "0024_binding_governance_events.py" in names
-    assert not any(n > "0024_binding_governance_events.py" for n in names if n.startswith("002"))
+    successors = [
+        n for n in names if n > "0024_binding_governance_events.py" and n.startswith("002")
+    ]
+    assert successors == ["0025_source_version_foundation.py"]
 
 
 @pytest.mark.django_db
