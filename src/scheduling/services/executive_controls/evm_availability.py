@@ -159,6 +159,8 @@ class E8EVMAvailabilityService:
                 "pv": evm.get("pv"),
                 "ev": evm.get("ev"),
                 "ac": evm.get("ac"),
+                "eac": evm.get("eac"),
+                "vac": evm.get("vac"),
             },
         }
 

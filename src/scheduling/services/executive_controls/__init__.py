@@ -10,6 +10,9 @@ from scheduling.services.executive_controls.methodology import (
     E8_METHODOLOGY_VERSION,
     methodology_registry_payload,
 )
+from scheduling.services.executive_controls.overview_service import (
+    ExecutiveControlsOverviewService,
+)
 from scheduling.services.executive_controls.resource_availability import (
     EquivalentWorkforceAvailabilityService,
 )
@@ -22,6 +25,7 @@ __all__ = [
     "E8EVMAvailabilityService",
     "E8_METHODOLOGY_VERSION",
     "EquivalentWorkforceAvailabilityService",
+    "ExecutiveControlsOverviewService",
     "ExecutiveDelayService",
     "ScopeClassificationResolver",
     "methodology_registry_payload",

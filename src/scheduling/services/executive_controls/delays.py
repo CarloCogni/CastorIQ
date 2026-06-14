@@ -121,35 +121,85 @@ class ExecutiveDelayService:
             )
         )
 
-    def _classify_all(self, classifier: DelayClassificationService, tasks) -> list:
+    def _classify_all(
+        self,
+        classifier: DelayClassificationService,
+        tasks,
+        *,
+        include_scope: bool = False,
+    ) -> list:
         results = []
         for task in tasks:
             tid = str(task.pk)
-            scope = self._scope.resolve(task, trusted_model_linked=tid in self._trusted_task_ids)
+            scope_class = "unknown"
+            scope_auth = False
+            if include_scope:
+                scope = self._scope.resolve(
+                    task, trusted_model_linked=tid in self._trusted_task_ids
+                )
+                scope_class = scope.classification
+                scope_auth = scope.authoritative
             results.append(
                 classifier.classify_task(
                     task,
                     trusted_entity_count=len(self._entities_by_task.get(tid, [])),
-                    scope_classification=scope.classification,
-                    scope_authoritative=scope.authoritative,
+                    scope_classification=scope_class,
+                    scope_authoritative=scope_auth,
                 )
             )
         return results
 
-    def build_summary(self, filters: DelayFilters | None = None) -> dict[str, Any]:
-        """Aggregate delay counts without full task payloads."""
-        filters = filters or DelayFilters()
-        classifier = self._classifier(filters)
-        tasks = list(self._base_qs())
-        results = self._classify_all(classifier, tasks)
-        counts = classifier.summarize_counts(results)
-
+    def _primary_and_secondary_counts(self, results: list) -> tuple[dict[str, int], dict[str, int]]:
         primary_counts = {dt.value: 0 for dt in DelayType}
+        secondary_counts: dict[str, int] = {}
         for r in results:
             if r.primary_delay_type in primary_counts:
                 primary_counts[r.primary_delay_type] += 1
+            for indicator in r.secondary_indicators:
+                secondary_counts[indicator] = secondary_counts.get(indicator, 0) + 1
+        return primary_counts, secondary_counts
 
+    def classification_pass(
+        self,
+        filters: DelayFilters | None = None,
+        *,
+        include_scope: bool = False,
+        task_ids: set[str] | None = None,
+    ) -> dict[str, Any]:
+        """One-pass delay classification — primary and secondary counts."""
+        filters = filters or DelayFilters()
+        classifier = self._classifier(filters)
+        tasks = list(self._base_qs())
+        if task_ids is not None:
+            tasks = [t for t in tasks if str(t.pk) in task_ids]
+        if filters.status:
+            tasks = [t for t in tasks if t.status == filters.status]
+        if filters.stage:
+            tasks = [t for t in tasks if t.stage == filters.stage]
+        if filters.linked_trusted is True:
+            tasks = [t for t in tasks if str(t.pk) in self._trusted_task_ids]
+        elif filters.linked_trusted is False:
+            tasks = [t for t in tasks if str(t.pk) not in self._trusted_task_ids]
+
+        results = self._classify_all(classifier, tasks, include_scope=include_scope)
+        primary, secondary = self._primary_and_secondary_counts(results)
         finish = classifier.project_finish_variance(tasks)
+        return {
+            "classifier": classifier,
+            "tasks": tasks,
+            "results": results,
+            "primary_counts": primary,
+            "secondary_counts": secondary,
+            "project_finish_variance": finish,
+            "task_count": len(tasks),
+        }
+
+    def build_summary(self, filters: DelayFilters | None = None) -> dict[str, Any]:
+        """Aggregate delay counts without full task payloads."""
+        filters = filters or DelayFilters()
+        need_scope = bool(filters.scope_classification or filters.scope_authoritative is not None)
+        passed = self.classification_pass(filters, include_scope=need_scope)
+        classifier = passed["classifier"]
 
         return {
             "project_id": self.project_id,
@@ -158,10 +208,10 @@ class ExecutiveDelayService:
             "calculated_at": datetime.now(UTC).isoformat(),
             "day_type": filters.day_type,
             "near_critical_threshold": self.near_critical_threshold,
-            "primary_counts": primary_counts,
-            "indicator_counts": counts,
-            "project_finish_variance": finish,
-            "task_count": len(tasks),
+            "primary_counts": passed["primary_counts"],
+            "indicator_counts": passed["secondary_counts"],
+            "project_finish_variance": passed["project_finish_variance"],
+            "task_count": passed["task_count"],
             "caveats": [
                 "No generic slip field — use typed delay modes.",
                 "Baseline = Current Reference/Baseline Fields from Imported Schedule.",
@@ -178,7 +228,8 @@ class ExecutiveDelayService:
         if filters.stage:
             tasks = [t for t in tasks if t.stage == filters.stage]
 
-        classified = self._classify_all(classifier, tasks)
+        need_scope = bool(filters.scope_classification or filters.scope_authoritative is not None)
+        classified = self._classify_all(classifier, tasks, include_scope=need_scope)
         paired = list(zip(tasks, classified, strict=True))
 
         if filters.delay_type:
