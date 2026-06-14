@@ -12,6 +12,7 @@ from django.db import transaction
 
 from scheduling.models import ScheduleImportRun, ScheduleSourceVersion, Task
 from scheduling.services.source_version.contracts import ImportRunCounts
+from scheduling.services.source_version.failure_hooks import maybe_raise
 from scheduling.services.source_version.identity_adapters import BatchScheduleActivityLinker
 from scheduling.services.source_version.import_persistence import ImportPersistResult
 from scheduling.services.source_version.import_run import ScheduleImportRunService
@@ -101,6 +102,7 @@ class ScheduleImportProvenanceCoordinator:
         activity_map = BatchScheduleActivityLinker(self.project, ctx.source_type).link_task_rows(
             touched_items
         )
+        maybe_raise("after_activity_link")
 
         if persist_result.touched_pks:
             Task.objects.filter(pk__in=persist_result.touched_pks).update(
@@ -112,7 +114,9 @@ class ScheduleImportProvenanceCoordinator:
                 if act_id:
                     task.schedule_activity_id = act_id
             Task.objects.bulk_update(tasks, ["schedule_activity"])
+            maybe_raise("after_provenance_assign")
 
+        maybe_raise("before_version_activation")
         accepted = self._version_service.accept_as_current(version_id)
         if accepted.error:
             raise RuntimeError(accepted.error)
@@ -132,8 +136,10 @@ class ScheduleImportProvenanceCoordinator:
         )
         if run_result.error:
             raise RuntimeError(run_result.error)
+        maybe_raise("before_import_run_success")
         return version_id
 
+    @transaction.atomic
     def complete_failure(
         self,
         run_id: str,

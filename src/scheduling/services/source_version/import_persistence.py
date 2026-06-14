@@ -9,14 +9,17 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
+from django.db import transaction
 from django.db.models import Count
 
+from environments.models import Project
 from scheduling.models import ScheduleSource, Task, TaskDependency
 from scheduling.services.autolink import autodetect_stages
 from scheduling.services.column_mapper import parse_predecessor_string
 from scheduling.services.p6_save import finalise_p6_data
 from scheduling.services.pct_normalize import normalize_pct_complete
 from scheduling.services.source_version.activity_identity import ScheduleActivityIdentityService
+from scheduling.services.source_version.failure_hooks import maybe_raise
 
 logger = logging.getLogger(__name__)
 
@@ -60,9 +63,11 @@ def persist_schedule_import(
     result = ImportPersistResult()
 
     if replace_mode:
+        Project.objects.select_for_update().get(pk=project.pk)
         existing = Task.objects.filter(project=project).count()
         Task.objects.filter(project=project).delete()
         logger.info("Replace mode: cleared %d tasks for project %s", existing, project.pk)
+        maybe_raise("after_replace_delete")
 
     existing_by_code: dict[str, Task] = {}
     existing_by_name_date: dict[tuple, Task] = {}
@@ -164,6 +169,7 @@ def persist_schedule_import(
                 task = existing
             else:
                 task = Task.objects.create(project=project, **task_fields)
+                maybe_raise("during_task_create")
                 result.created += 1
                 result.touched_pks.append(str(task.pk))
                 result.touched_task_data.append(td)
@@ -185,7 +191,7 @@ def persist_schedule_import(
             raw_preds = td.get("_raw_predecessors", "").strip()
             if raw_preds:
                 tasks_with_preds.append((pk, raw_preds))
-        except Exception as exc:
+        except (ValueError, KeyError, TypeError) as exc:
             result.skipped_count += 1
             logger.warning("Skipping task row: %s", exc)
 
@@ -232,6 +238,7 @@ def persist_schedule_import(
         TaskDependency.objects.bulk_create(dep_objects, ignore_conflicts=True)
         result.dep_count = len(dep_objects)
         logger.info("Dependencies saved: %d for project %s", result.dep_count, project.pk)
+        maybe_raise("after_dependency_persist")
 
     all_tasks = list(Task.objects.filter(project=project).only("pk", "name", "stage", "sub_stage"))
     autodetect_stages([t for t in all_tasks if not t.stage])
@@ -243,6 +250,7 @@ def persist_schedule_import(
         task_count=result.created + result.updated + result.unchanged,
         data_date=data_date,
     )
+    maybe_raise("after_schedule_source_create")
     if result.touched_pks:
         Task.objects.filter(pk__in=result.touched_pks).update(schedule_source=current_source)
     if source_format == "p6xml" and p6_obj_id_map:
