@@ -192,9 +192,7 @@ class ProjectAnalyticsCapabilityProfile:
             P6Calendar,
             P6ResourceAssignment,
             P6WBSNode,
-            ScheduleImportRun,
             ScheduleSource,
-            ScheduleSourceVersion,
             Task,
             TaskDependency,
         )
@@ -219,33 +217,52 @@ class ProjectAnalyticsCapabilityProfile:
 
         data_date, data_date_authoritative = get_project_data_date(self.project_id)
 
-        physical = Task.objects.filter(project_id=self.project_id, is_non_physical=False)
-        schedulable = physical.exclude(start_date=None).exclude(end_date=None)
         all_tasks = Task.objects.filter(project_id=self.project_id)
-        dated = all_tasks.exclude(start_date=None).exclude(end_date=None)
-
-        agg = schedulable.aggregate(
-            schedulable_n=Count("pk"),
-            with_baseline_ref=Count("pk", filter=Q(end_date__isnull=False)),
-            with_actual_end=Count("pk", filter=Q(actual_end__isnull=False)),
-            with_progress=Count(
-                "pk",
-                filter=Q(physical_percent_complete__isnull=False)
-                | Q(duration_percent_complete__isnull=False)
-                | Q(status="complete"),
-            ),
-            with_cost=Count("pk", filter=Q(cost__gt=0)),
-            with_float=Count("pk", filter=Q(total_float__isnull=False)),
-            with_activity_type=Count("pk", filter=~Q(activity_type="")),
-            with_stage=Count("pk", filter=~Q(stage="")),
-            with_sub_stage=Count("pk", filter=~Q(sub_stage="")),
-            with_calendar_id=Count("pk", filter=~Q(calendar_object_id="")),
+        schedulable_filter = (
+            Q(is_non_physical=False) & Q(start_date__isnull=False) & Q(end_date__isnull=False)
         )
-
         auth_q = Q()
         for token in AUTHORITATIVE_ACTIVITY_TYPE_MAP:
             auth_q |= Q(activity_type__iexact=token)
-        authoritative_scope_n = schedulable.filter(auth_q).count() if auth_q else 0
+
+        agg = all_tasks.aggregate(
+            total_tasks=Count("pk"),
+            dated_tasks=Count(
+                "pk",
+                filter=Q(start_date__isnull=False) & Q(end_date__isnull=False),
+            ),
+            tasks_with_source_version=Count(
+                "pk",
+                filter=Q(source_version_id__isnull=False),
+            ),
+            tasks_with_schedule_activity=Count(
+                "pk",
+                filter=Q(schedule_activity_id__isnull=False),
+            ),
+            schedulable_n=Count("pk", filter=schedulable_filter),
+            with_baseline_ref=Count("pk", filter=schedulable_filter),
+            with_actual_end=Count("pk", filter=schedulable_filter & Q(actual_end__isnull=False)),
+            with_progress=Count(
+                "pk",
+                filter=schedulable_filter
+                & (
+                    Q(physical_percent_complete__isnull=False)
+                    | Q(duration_percent_complete__isnull=False)
+                    | Q(status="complete")
+                ),
+            ),
+            with_cost=Count("pk", filter=schedulable_filter & Q(cost__gt=0)),
+            with_float=Count("pk", filter=schedulable_filter & Q(total_float__isnull=False)),
+            with_activity_type=Count("pk", filter=schedulable_filter & ~Q(activity_type="")),
+            with_stage=Count("pk", filter=schedulable_filter & ~Q(stage="")),
+            with_sub_stage=Count("pk", filter=schedulable_filter & ~Q(sub_stage="")),
+            with_calendar_id=Count("pk", filter=schedulable_filter & ~Q(calendar_object_id="")),
+            authoritative_scope_n=Count("pk", filter=schedulable_filter & auth_q)
+            if auth_q
+            else Count("pk", filter=Q(pk__isnull=True)),
+        )
+
+        authoritative_scope_n = agg["authoritative_scope_n"] or 0
 
         dep_count = TaskDependency.objects.filter(
             predecessor__project_id=self.project_id,
@@ -278,26 +295,19 @@ class ProjectAnalyticsCapabilityProfile:
         indexed = len(reader._project_ifc_entity_gids())
         has_ifc = indexed > 0
 
-        current_ssv = (
-            ScheduleSourceVersion.objects.filter(
-                project_id=self.project_id,
-                status=ScheduleSourceVersion.Status.CURRENT,
-            )
-            .only("pk")
-            .first()
-        )
-        ssv_count = ScheduleSourceVersion.objects.filter(project_id=self.project_id).count()
-        import_run_count = ScheduleImportRun.objects.filter(project_id=self.project_id).count()
-        tasks_with_sv = all_tasks.filter(source_version_id__isnull=False).count()
-        tasks_with_sa = all_tasks.filter(schedule_activity_id__isnull=False).count()
+        (
+            current_source_version_id,
+            source_version_count,
+            import_run_count,
+        ) = self._provenance_table_counts()
 
         return _ProjectSignals(
             source_type=source_type,
             source_identity=source_identity,
             data_date=data_date.isoformat(),
             data_date_authoritative=data_date_authoritative,
-            total_tasks=all_tasks.count(),
-            dated_tasks=dated.count(),
+            total_tasks=agg["total_tasks"] or 0,
+            dated_tasks=agg["dated_tasks"] or 0,
             schedulable_n=agg["schedulable_n"] or 0,
             with_baseline_ref=agg["with_baseline_ref"] or 0,
             with_actual_end=agg["with_actual_end"] or 0,
@@ -320,12 +330,43 @@ class ProjectAnalyticsCapabilityProfile:
             trusted_entities=len(reader.trusted_entity_gids(ifc_scope=True)),
             authoritative_scope_n=authoritative_scope_n,
             wbs_node_count=wbs_node_count,
-            current_source_version_id=str(current_ssv.pk) if current_ssv else None,
-            source_version_count=ssv_count,
+            current_source_version_id=current_source_version_id,
+            source_version_count=source_version_count,
             import_run_count=import_run_count,
-            tasks_with_source_version=tasks_with_sv,
-            tasks_with_schedule_activity=tasks_with_sa,
+            tasks_with_source_version=agg["tasks_with_source_version"] or 0,
+            tasks_with_schedule_activity=agg["tasks_with_schedule_activity"] or 0,
         )
+
+    def _provenance_table_counts(self) -> tuple[str | None, int, int]:
+        """Single round-trip for DF-A1 provenance counts (capability profile only)."""
+        from django.db import connection
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    (
+                        SELECT id::text
+                        FROM castor_scheduling_schedulesourceversion
+                        WHERE project_id = %s AND status = 'current'
+                        ORDER BY imported_at DESC, version_number DESC
+                        LIMIT 1
+                    ),
+                    (
+                        SELECT COUNT(*)
+                        FROM castor_scheduling_schedulesourceversion
+                        WHERE project_id = %s
+                    ),
+                    (
+                        SELECT COUNT(*)
+                        FROM castor_scheduling_scheduleimportrun
+                        WHERE project_id = %s
+                    )
+                """,
+                [self.project_id, self.project_id, self.project_id],
+            )
+            current_id, ssv_count, run_count = cursor.fetchone()
+        return current_id, int(ssv_count or 0), int(run_count or 0)
 
     def _pct(self, num: int, denom: int) -> float | None:
         if denom <= 0:
