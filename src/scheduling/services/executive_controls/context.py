@@ -109,8 +109,7 @@ class AnalyticalContextService:
             elif selected_baseline.baseline_type == BaselineVersion.BaselineType.APPROVED:
                 baseline_description = f"Selected approved baseline: {selected_baseline.name}"
                 baseline_caveat = (
-                    "Approved baseline — authoritative only for populated BaselineTaskState fields. "
-                    "EVM PV/BAC still uses Task.cost until DF-A2.1."
+                    "Approved baseline — PV/BAC/EV weight from BaselineTaskState where populated."
                 )
                 contractual_available = (
                     selected_baseline.status == BaselineVersion.Status.PUBLISHED
@@ -141,6 +140,9 @@ class AnalyticalContextService:
             "contractual_baseline_available": contractual_available,
             "contractual_baseline_caveat": baseline_caveat,
             "selected_baseline": baseline_context,
+            "evm_baseline_capabilities": (
+                capability_profile.get("baseline_capabilities") if capability_profile else None
+            ),
             "data_date": data_date.isoformat(),
             "data_date_is_p6": is_real_data_date,
             "schedule_source": source_identity,

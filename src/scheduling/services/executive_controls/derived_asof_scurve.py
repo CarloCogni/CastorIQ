@@ -98,8 +98,14 @@ class DerivedAsOfSCurveService:
         series = evm.get("series", {})
         unit = "currency" if cost_mode else "index"
         weighting = evm.get("cost_basis", "task durations")
+        baseline_evm = evm.get("baseline_evm") or {}
+        pv_provenance = (
+            "baseline_task_state"
+            if baseline_evm.get("series_authority") == "baseline_task_state"
+            else "current_task_snapshot"
+        )
 
-        def enrich(raw: list[dict], curve_id: str, label: str) -> CurveSeriesResult:
+        def enrich(raw: list[dict], curve_id: str, label: str, *, provenance: str) -> CurveSeriesResult:
             pts = list(raw)
             if filters.granularity == "monthly":
                 pts = _resample_monthly(pts)
@@ -111,7 +117,7 @@ class DerivedAsOfSCurveService:
                         "date": pt["date"],
                         "cumulative_pct": pct,
                         "cumulative_value": _pct_to_absolute(pct, bac) if bac else None,
-                        "provenance": "current_task_snapshot",
+                        "provenance": provenance,
                         "is_data_date": pt["date"] == data_date,
                     }
                 )
@@ -140,12 +146,18 @@ class DerivedAsOfSCurveService:
             )
 
         curves: dict[str, dict] = {}
-        curves["pv"] = enrich(series.get("pv", []), "derived_pv", "Derived as-of PV").to_dict()
-        curves["ev"] = enrich(series.get("ev", []), "derived_ev", "Derived as-of EV").to_dict()
+        curves["pv"] = enrich(
+            series.get("pv", []), "derived_pv", "Derived as-of PV", provenance=pv_provenance
+        ).to_dict()
+        curves["ev"] = enrich(
+            series.get("ev", []), "derived_ev", "Derived as-of EV", provenance="current_task_snapshot"
+        ).to_dict()
 
         ac_avail = evm.get("ac_available") and caps[FeatureId.DERIVED_COST_CURVE.value]["available"]
         if cost_mode and ac_avail and "ac" in series:
-            curves["ac"] = enrich(series.get("ac", []), "derived_ac", "Derived as-of AC").to_dict()
+            curves["ac"] = enrich(
+                series.get("ac", []), "derived_ac", "Derived as-of AC", provenance="current_task_snapshot"
+            ).to_dict()
 
         forecast = evm.get("spi_forecast") or {}
         if forecast.get("date") and not forecast.get("suppressed"):
@@ -186,6 +198,7 @@ class DerivedAsOfSCurveService:
             "included_tasks": schedulable,
             "excluded_tasks": 0,
             "caveat": DERIVED_CURVE_CAVEAT,
+            "baseline_evm": baseline_evm,
         }
         return self._curve_cache
 

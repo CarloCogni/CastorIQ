@@ -158,6 +158,16 @@ class CurrentEVMAnalyticsService:
             return payload.to_dict()
 
         resolved_mode, mode_label = self._resolve_mode(evm, caps, mode)
+        baseline_evm = evm.get("baseline_evm") or {}
+        if baseline_evm.get("methodology_mode") == "approved_baseline_cost_evm":
+            mode_label = f"Approved baseline EVM — {baseline_evm.get('baseline_name', '')}"
+        elif baseline_evm.get("methodology_mode") == "reference_baseline_cost_evm":
+            mode_label = f"Imported reference baseline EVM — {baseline_evm.get('baseline_name', '')}"
+        elif baseline_evm.get("methodology_mode") == "working_baseline_cost_evm":
+            mode_label = f"Working baseline EVM — {baseline_evm.get('baseline_name', '')}"
+        elif baseline_evm.get("methodology_mode") == "derived_current_schedule_evm":
+            mode_label = "Derived current schedule EVM"
+
         cost_mode = resolved_mode == "cost_evm"
         ac_available = (
             bool(evm.get("ac_available")) and caps[FeatureId.CURRENT_CPI.value]["available"]
@@ -166,8 +176,11 @@ class CurrentEVMAnalyticsService:
         coverage = {
             "cost_coverage_pct": evm.get("cost_coverage_pct"),
             "ac_coverage_pct": evm.get("ac_coverage_pct"),
-            "schedulable_tasks": evm.get("cost_coverage_pct"),  # reuse pct context
+            "schedulable_tasks": evm.get("cost_coverage_pct"),
+            "baseline_evm": baseline_evm,
         }
+        if baseline_evm.get("coverage"):
+            coverage.update(baseline_evm["coverage"])
 
         bac = evm.get("bac")
         pv = evm.get("pv")
@@ -366,6 +379,7 @@ class CurrentEVMAnalyticsService:
                 unavailable[mid] = reason
 
         caveats = [DERIVED_BANNER]
+        caveats.extend(baseline_evm.get("caveats") or [])
         if not cost_mode:
             caveats.append("Schedule Performance mode — not Cost EVM.")
         if evm.get("overdue_linear_capped", 0) > 0:

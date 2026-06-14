@@ -253,10 +253,55 @@ class ProjectAnalyticsCapabilityProfile:
                 comparison_ready,
                 CapabilityState.AVAILABLE if comparison_ready else CapabilityState.UNAVAILABLE,
                 caveats=(
-                    "Comparison uses ScheduleActivity identity — EVM PV/BAC still on Task.cost until DF-A2.1.",
+                    "Comparison uses ScheduleActivity identity aligned with baseline-backed EVM.",
                 )
                 if comparison_ready
                 else (),
+            ),
+            "evm_baseline_mode": _entry(
+                selected,
+                CapabilityState.AVAILABLE
+                if approved
+                else CapabilityState.AVAILABLE_WITH_CAVEATS
+                if selected
+                else CapabilityState.UNAVAILABLE,
+                caveats=(
+                    "No selected baseline — EVM uses derived current schedule mode.",
+                )
+                if not selected
+                else (),
+            ),
+            "baseline_authority": _entry(
+                approved,
+                CapabilityState.AVAILABLE if approved else CapabilityState.UNAVAILABLE,
+                caveats=("Imported/working baselines are caveated — not contractual.",)
+                if selected and not approved
+                else (),
+            ),
+            "baseline_match_coverage": _entry(
+                selected and signals.selected_baseline_task_states > 0,
+                CapabilityState.AVAILABLE
+                if selected and signals.selected_baseline_task_states > 0
+                else CapabilityState.UNAVAILABLE,
+            ),
+            "cost_evm_readiness": _entry(
+                approved and signals.selected_baseline_cost_states > 0,
+                CapabilityState.AVAILABLE
+                if approved and signals.selected_baseline_cost_states > 0
+                else CapabilityState.UNAVAILABLE
+                if not selected
+                else CapabilityState.AVAILABLE_WITH_CAVEATS,
+                caveats=("Cost EVM requires matched BaselineTaskState cost coverage.",),
+            ),
+            "derived_schedule_fallback": _entry(
+                not selected,
+                CapabilityState.AVAILABLE if not selected else CapabilityState.UNAVAILABLE,
+                caveats=("Legacy derived mode when no baseline selected.",) if not selected else (),
+            ),
+            "historical_evm": _entry(
+                False,
+                CapabilityState.UNAVAILABLE,
+                caveats=("Historical EVM requires AnalyticalSnapshot (DF-B).",),
             ),
         }
 
@@ -731,8 +776,15 @@ class ProjectAnalyticsCapabilityProfile:
             )
 
         cost_cov = self._pct(s.with_cost, sched) if sched else None
-        cost_ok = sched > 0 and s.with_cost > 0 and (cost_cov or 0) >= COST_EVM_MIN_COVERAGE_PCT
         progress_ok = s.with_progress > 0
+        cost_ok = sched > 0 and s.with_cost > 0 and (cost_cov or 0) >= COST_EVM_MIN_COVERAGE_PCT
+        baseline_cost_ok = (
+            s.selected_baseline_id is not None
+            and s.selected_baseline_cost_states > 0
+            and s.selected_baseline_type in ("approved", "imported_reference", "working")
+        )
+        if baseline_cost_ok and s.selected_baseline_type == "approved":
+            cost_ok = progress_ok and s.selected_baseline_cost_states > 0
         ac_ok = s.ac_task_count >= CPI_MIN_AC_TASKS
 
         if feature_id == FeatureId.COST_EVM:
@@ -751,14 +803,24 @@ class ProjectAnalyticsCapabilityProfile:
                 state=CapabilityState.AVAILABLE if avail else CapabilityState.UNAVAILABLE,
                 available=avail,
                 authority=MetricAuthority.AUTHORITATIVE if avail else MetricAuthority.UNAVAILABLE,
-                source="Task.cost + progress",
+                source="BaselineTaskState.baseline_cost + progress"
+                if baseline_cost_ok and s.selected_baseline_type == "approved"
+                else "Task.cost + progress",
                 signals=s,
-                numerator=s.with_cost,
+                numerator=s.selected_baseline_cost_states
+                if baseline_cost_ok and s.selected_baseline_type == "approved"
+                else s.with_cost,
                 denominator=sched,
-                required_fields=("Task.cost", "progress"),
-                present_fields=("cost",) if s.with_cost else (),
+                required_fields=("baseline_cost", "progress")
+                if baseline_cost_ok and s.selected_baseline_type == "approved"
+                else ("Task.cost", "progress"),
+                present_fields=("baseline_cost",) if baseline_cost_ok else (("cost",) if s.with_cost else ()),
                 missing_reasons=tuple(missing_ce),
                 caveats=(
+                    "Cost EVM from selected approved BaselineTaskState coverage.",
+                )
+                if baseline_cost_ok and s.selected_baseline_type == "approved"
+                else (
                     "Cost EVM requires sufficient Task.cost coverage — not inferred from source name.",
                 ),
                 supported_analytical_mode="cost_evm",
