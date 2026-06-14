@@ -105,6 +105,31 @@ urlpatterns = [
         name="schedule_analytical_snapshot_detail",
     ),
     path(
+        "projects/<uuid:pk>/analytical-snapshots/<uuid:snapshot_pk>/result/",
+        views_analytical_snapshot.AnalyticalSnapshotResultView.as_view(),
+        name="schedule_analytical_snapshot_result",
+    ),
+    path(
+        "projects/<uuid:pk>/analytical-snapshots/<uuid:snapshot_pk>/series/",
+        views_analytical_snapshot.AnalyticalSnapshotSeriesView.as_view(),
+        name="schedule_analytical_snapshot_series",
+    ),
+    path(
+        "projects/<uuid:pk>/analytical-snapshots/<uuid:snapshot_pk>/periods/",
+        views_analytical_snapshot.AnalyticalSnapshotPeriodsView.as_view(),
+        name="schedule_analytical_snapshot_periods",
+    ),
+    path(
+        "projects/<uuid:pk>/analytical-snapshots/compare/",
+        views_analytical_snapshot.AnalyticalSnapshotCompareView.as_view(),
+        name="schedule_analytical_snapshots_compare",
+    ),
+    path(
+        "projects/<uuid:pk>/analytical-snapshots/<uuid:snapshot_pk>/report-data/",
+        views_analytical_snapshot.AnalyticalSnapshotReportDataView.as_view(),
+        name="schedule_analytical_snapshot_report_data",
+    ),
+    path(
         "projects/<uuid:pk>/all-tasks-preview/",
         views.AllTasksPreviewView.as_view(),
         name="all_tasks_preview",

@@ -87,6 +87,8 @@ class _ProjectSignals:
     snapshot_count: int = 0
     completed_snapshot_count: int = 0
     published_snapshot_count: int = 0
+    snapshot_result_count: int = 0
+    snapshot_result_distinct_dates: int = 0
 
 
 class ProjectAnalyticsCapabilityProfile:
@@ -208,6 +210,10 @@ class ProjectAnalyticsCapabilityProfile:
 
         has_schema = True
         has_completed = signals.completed_snapshot_count > 0
+        has_results = signals.snapshot_result_count > 0
+        has_historical = (
+            signals.snapshot_result_count >= 2 and signals.snapshot_result_distinct_dates >= 2
+        )
         has_source = signals.current_source_version_id is not None
 
         return {
@@ -215,11 +221,12 @@ class ProjectAnalyticsCapabilityProfile:
                 "total": signals.snapshot_count,
                 "completed": signals.completed_snapshot_count,
                 "published": signals.published_snapshot_count,
+                "with_results": signals.snapshot_result_count,
+                "distinct_result_dates": signals.snapshot_result_distinct_dates,
             },
             "snapshot_manifest_schema": _entry(
                 has_schema,
                 CapabilityState.AVAILABLE,
-                caveats=("Manifest identity only — KPI series deferred to DF-B2.",),
             ),
             "snapshot_request_readiness": _entry(
                 has_schema,
@@ -245,26 +252,56 @@ class ProjectAnalyticsCapabilityProfile:
                 else (),
             ),
             "snapshot_repeatability": _entry(
-                has_schema and has_source,
+                has_schema and has_results,
                 CapabilityState.AVAILABLE_WITH_CAVEATS,
-                caveats=(
-                    "Repeatability status recorded per snapshot — full replay requires DF-B2.",
-                ),
+                caveats=("Repeatability recorded per snapshot at computation time.",),
             ),
             "snapshot_publication_readiness": _entry(
-                has_schema and has_completed,
-                CapabilityState.AVAILABLE if has_completed else CapabilityState.UNAVAILABLE,
-                caveats=("Publication is separate from calculation completion.",),
+                has_schema and has_results,
+                CapabilityState.AVAILABLE if has_results else CapabilityState.UNAVAILABLE,
+            ),
+            "snapshot_result_persistence": _entry(
+                has_results,
+                CapabilityState.AVAILABLE if has_results else CapabilityState.UNAVAILABLE,
+            ),
+            "snapshot_series_persistence": _entry(
+                has_results,
+                CapabilityState.AVAILABLE_WITH_CAVEATS if has_results else CapabilityState.UNAVAILABLE,
+                caveats=("Series reconstructed at snapshot time — historical=false within curve.",)
+                if has_results
+                else (),
+            ),
+            "report_freeze_readiness": _entry(
+                has_results,
+                CapabilityState.AVAILABLE if has_results else CapabilityState.UNAVAILABLE,
+                caveats=("Report freeze requires completed persisted result.",),
+            ),
+            "snapshot_comparison_readiness": _entry(
+                has_historical,
+                CapabilityState.AVAILABLE_WITH_CAVEATS
+                if has_historical
+                else CapabilityState.UNAVAILABLE,
+                caveats=("Requires two persisted results on different data dates.",)
+                if not has_historical
+                else (),
             ),
             "historical_snapshot_series": _entry(
-                False,
-                CapabilityState.UNAVAILABLE,
-                caveats=("Historical time series requires DF-B2 persisted points.",),
+                has_historical,
+                CapabilityState.AVAILABLE_WITH_CAVEATS
+                if has_historical
+                else CapabilityState.UNAVAILABLE,
+                caveats=("Checkpoint trend from persisted snapshot sequence — not imported history.",)
+                if has_historical
+                else ("Requires two comparable persisted snapshot results.",),
             ),
             "historical_evm": _entry(
-                False,
-                CapabilityState.UNAVAILABLE,
-                caveats=("Historical EVM KPI persistence requires DF-B2.",),
+                has_historical,
+                CapabilityState.AVAILABLE_WITH_CAVEATS
+                if has_historical
+                else CapabilityState.UNAVAILABLE,
+                caveats=("Historical SPI/CPI from persisted snapshot checkpoints only.",)
+                if has_historical
+                else ("Requires two persisted comparable snapshot results.",),
             ),
         }
 
@@ -552,6 +589,8 @@ class ProjectAnalyticsCapabilityProfile:
             snapshot_count=baseline_counts["snapshot_count"],
             completed_snapshot_count=baseline_counts["completed_snapshot_count"],
             published_snapshot_count=baseline_counts["published_snapshot_count"],
+            snapshot_result_count=baseline_counts["snapshot_result_count"],
+            snapshot_result_distinct_dates=baseline_counts["snapshot_result_distinct_dates"],
         )
 
     def _baseline_table_counts(self) -> dict[str, Any]:
@@ -604,9 +643,24 @@ class ProjectAnalyticsCapabilityProfile:
                         SELECT COUNT(*)
                         FROM castor_scheduling_analyticalsnapshot
                         WHERE project_id = %s AND status = 'published'
+                    ),
+                    (
+                        SELECT COUNT(*)
+                        FROM castor_scheduling_analyticalsnapshotresult r
+                        JOIN castor_scheduling_analyticalsnapshot s ON s.id = r.snapshot_id
+                        WHERE s.project_id = %s
+                          AND s.status IN ('completed', 'published')
+                    ),
+                    (
+                        SELECT COUNT(DISTINCT s.data_date)
+                        FROM castor_scheduling_analyticalsnapshotresult r
+                        JOIN castor_scheduling_analyticalsnapshot s ON s.id = r.snapshot_id
+                        WHERE s.project_id = %s
+                          AND s.status IN ('completed', 'published')
+                          AND s.data_date IS NOT NULL
                     )
                 """,
-                [self.project_id] * 9,
+                [self.project_id] * 11,
             )
             row = cursor.fetchone()
         return {
@@ -619,6 +673,8 @@ class ProjectAnalyticsCapabilityProfile:
             "snapshot_count": int(row[6] or 0),
             "completed_snapshot_count": int(row[7] or 0),
             "published_snapshot_count": int(row[8] or 0),
+            "snapshot_result_count": int(row[9] or 0),
+            "snapshot_result_distinct_dates": int(row[10] or 0),
         }
 
     def _provenance_table_counts(self) -> tuple[str | None, int, int]:

@@ -316,6 +316,9 @@ class ExecutiveControlsEVMCurrentView(ProjectAccessMixin, View):
     """GET — current-point EVM metrics fragment or JSON."""
 
     def get(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.analytical_snapshot.snapshot_evm_read import (
+            PersistedSnapshotEVMReadService,
+        )
         from scheduling.services.executive_controls.current_evm_analytics import (
             CurrentEVMAnalyticsService,
         )
@@ -323,14 +326,20 @@ class ExecutiveControlsEVMCurrentView(ProjectAccessMixin, View):
         project = self.get_project()
         filters = _evm_filters(request)
         capability = _capability_profile(project)
-        session = _evm_session(project)
         try:
-            payload = CurrentEVMAnalyticsService(
-                project, capability_profile=capability, session=session
-            ).build(mode=filters.mode)
+            snapshot = _resolve_snapshot_for_e8_read(project, request)
+            if snapshot is not None:
+                payload = PersistedSnapshotEVMReadService(snapshot).build_current_payload()
+            else:
+                session = _evm_session(project)
+                payload = CurrentEVMAnalyticsService(
+                    project, capability_profile=capability, session=session
+                ).build(mode=filters.mode)
             if request.headers.get("HX-Request"):
                 return render(request, "scheduling/components/executive_evm_current.html", payload)
             return JsonResponse(payload)
+        except ValueError as exc:
+            return JsonResponse({"error": str(exc)}, status=404)
         except Exception as exc:
             logger.exception("EVM current metrics failed: %s", exc)
             err = {"section_error": "Current metrics temporarily unavailable."}
@@ -476,6 +485,30 @@ def _evm_session(project) -> Any:
     from scheduling.services.executive_controls.evm_compute_session import E8EVMComputeSession
 
     return E8EVMComputeSession(str(project.pk))
+
+
+def _resolve_snapshot_for_e8_read(project, request):
+    """Resolve explicit snapshot read mode — default live returns None."""
+    from django.shortcuts import get_object_or_404
+
+    from scheduling.models import AnalyticalSnapshot
+    from scheduling.services.analytical_snapshot.lifecycle import AnalyticalSnapshotService
+
+    mode = (request.GET.get("analytical_mode") or "live").strip().lower()
+    snapshot_id = request.GET.get("snapshot_id")
+    if snapshot_id:
+        snap = get_object_or_404(AnalyticalSnapshot, pk=snapshot_id, project=project)
+        if snap.status not in (
+            AnalyticalSnapshot.Status.COMPLETED,
+            AnalyticalSnapshot.Status.PUBLISHED,
+        ):
+            raise ValueError("Snapshot read mode requires a completed or published snapshot.")
+        return snap
+    if mode == "latest_completed":
+        return AnalyticalSnapshotService.get_latest_completed(project)
+    if mode == "latest_published":
+        return AnalyticalSnapshotService.get_latest_published(project)
+    return None
 
 
 class ExecutiveControlsMatrixPageView(ProjectAccessMixin, TemplateView):

@@ -3,12 +3,12 @@
 
 from __future__ import annotations
 
-from scheduling.models import AnalyticalSnapshot
+from scheduling.models import AnalyticalSnapshot, AnalyticalSnapshotResult
 
 
 def completed_snapshot_context(snapshot: AnalyticalSnapshot) -> dict:
     """Context summary for latest completed snapshot."""
-    return {
+    payload = {
         "id": str(snapshot.pk),
         "name": snapshot.name,
         "snapshot_type": snapshot.snapshot_type,
@@ -25,12 +25,22 @@ def completed_snapshot_context(snapshot: AnalyticalSnapshot) -> dict:
         "repeatability_status": snapshot.repeatability_status,
         "historical_authority": False,
         "caveats": snapshot.caveats or [],
+        "result_hash": None,
+        "has_persisted_result": False,
     }
+    try:
+        result = snapshot.result
+    except AnalyticalSnapshotResult.DoesNotExist:
+        return payload
+    payload["result_hash"] = result.content_hash
+    payload["has_persisted_result"] = True
+    payload["historical_authority"] = result.historical_authority
+    return payload
 
 
 def published_snapshot_context(snapshot: AnalyticalSnapshot) -> dict:
     """Context summary for latest published snapshot."""
-    return {
+    payload = {
         "id": str(snapshot.pk),
         "name": snapshot.name,
         "snapshot_type": snapshot.snapshot_type,
@@ -39,4 +49,14 @@ def published_snapshot_context(snapshot: AnalyticalSnapshot) -> dict:
         "as_of_date": snapshot.as_of_date.isoformat(),
         "published_at": snapshot.published_at.isoformat() if snapshot.published_at else None,
         "historical_authority": False,
+        "result_hash": None,
+        "has_persisted_result": False,
     }
+    try:
+        result = snapshot.result
+    except AnalyticalSnapshotResult.DoesNotExist:
+        return payload
+    payload["result_hash"] = result.content_hash
+    payload["has_persisted_result"] = True
+    payload["historical_authority"] = result.historical_authority
+    return payload
