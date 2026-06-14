@@ -1,0 +1,24 @@
+<!-- scheduling/components/executive_section_model_impact.html -->
+<section id="exec-section-model" class="exec-section mb-4" aria-labelledby="exec-model-heading">
+    <h2 class="h6 fw-semibold mb-3" id="exec-model-heading">
+        <i class="bi bi-boxes me-1 text-primary"></i> Trusted Model Impact
+    </h2>
+    {% if section_error %}
+    <div class="alert alert-danger" role="alert">{{ section_error }}</div>
+    {% else %}
+    {% for c in caveats %}
+    <div class="alert alert-info py-2 small" role="note">{{ c }}</div>
+    {% endfor %}
+    <div class="row g-3 mb-2">
+        {% for card in cards %}
+        <div class="col-12 col-sm-6 col-lg-4">
+            {% include "scheduling/components/executive_kpi_card.html" with card=card %}
+        </div>
+        {% endfor %}
+    </div>
+    <p class="small mb-0">
+        <a href="{{ links.governance_overview }}">Governance overview</a>
+        · <a href="{{ links.gantt }}">4D Link / Gantt</a>
+    </p>
+    {% endif %}
+</section>

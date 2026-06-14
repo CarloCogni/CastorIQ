@@ -1,0 +1,21 @@
+<!-- scheduling/components/executive_section_cost.html -->
+<section id="exec-section-cost" class="exec-section mb-4" aria-labelledby="exec-cost-heading">
+    <h2 class="h6 fw-semibold mb-3" id="exec-cost-heading">
+        <i class="bi bi-cash-stack me-1 text-primary"></i> Cost Position
+        <span class="badge bg-secondary-subtle text-secondary-emphasis ms-1">{{ performance_mode_label|default:"—" }}</span>
+    </h2>
+    {% if section_error %}
+    <div class="alert alert-danger" role="alert">{{ section_error }}</div>
+    {% else %}
+    {% for w in warnings %}
+    <div class="alert alert-warning py-2 small" role="status">{{ w }}</div>
+    {% endfor %}
+    <div class="row g-3">
+        {% for card in cards %}
+        <div class="col-12 col-sm-6 col-lg-4">
+            {% include "scheduling/components/executive_kpi_card.html" with card=card %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</section>

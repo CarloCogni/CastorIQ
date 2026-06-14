@@ -1,0 +1,144 @@
+<!-- scheduling/tabs/executive_controls_overview.html — E8-B Executive Controls overview -->
+<div class="executive-controls-scope" id="executive-controls-root">
+    {% include "scheduling/components/executive_context_header.html" with ctx=analytical_context %}
+
+    <!-- Global filters -->
+    <form class="exec-filters border rounded p-3 mb-3 bg-body" method="get" id="exec-filter-form" aria-label="Overview filters">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-2">
+                <label class="form-label small mb-0" for="exec-filter-stage">Stage</label>
+                <input type="text" class="form-control form-control-sm" id="exec-filter-stage" name="stage"
+                       value="{{ filters.stage|default:'' }}" placeholder="All stages">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small mb-0" for="exec-filter-status">Status</label>
+                <select class="form-select form-select-sm" id="exec-filter-status" name="status">
+                    <option value="">All</option>
+                    <option value="planned" {% if filters.status == 'planned' %}selected{% endif %}>Planned</option>
+                    <option value="active" {% if filters.status == 'active' %}selected{% endif %}>Active</option>
+                    <option value="complete" {% if filters.status == 'complete' %}selected{% endif %}>Complete</option>
+                    <option value="delayed" {% if filters.status == 'delayed' %}selected{% endif %}>Delayed</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small mb-0" for="exec-filter-day">Day type</label>
+                <select class="form-select form-select-sm" id="exec-filter-day" name="day_type">
+                    <option value="working" {% if filters.day_type == 'working' %}selected{% endif %}>Working days</option>
+                    <option value="calendar" {% if filters.day_type == 'calendar' %}selected{% endif %}>Calendar days</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <div class="form-check mt-3">
+                    <input class="form-check-input" type="checkbox" name="linked_trusted" value="1" id="exec-filter-trusted"
+                           {% if filters.linked_trusted %}checked{% endif %}>
+                    <label class="form-check-label small" for="exec-filter-trusted">Trusted-linked only</label>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-sm btn-primary">Apply filters</button>
+            </div>
+        </div>
+        <p class="small text-secondary mt-2 mb-0">
+            Data date: <strong>{{ analytical_context.data_date }}</strong> ·
+            Denominator: all schedule activities unless section notes otherwise.
+        </p>
+    </form>
+
+    <style>
+        .executive-controls-scope { --exec-accent: var(--castor-primary, #3b82f6); }
+        .exec-kpi-card { display: flex; flex-direction: column; background: var(--bs-body-bg); }
+        .exec-kpi-value { font-size: 1.35rem; font-weight: 600; line-height: 1.2; }
+        .exec-kpi-unavailable { opacity: 0.85; border-style: dashed !important; }
+        .exec-section-loading { min-height: 120px; }
+        .exec-methodology-badge { font-size: 0.65rem; max-width: 8rem; overflow: hidden; text-overflow: ellipsis; }
+    </style>
+
+    <!-- Progressive sections -->
+    <div id="exec-section-schedule-slot"
+         class="exec-section-loading"
+         hx-get="{% url 'scheduling:executive_controls_overview_schedule' project.pk %}?{{ filter_query }}"
+         hx-trigger="load"
+         hx-swap="innerHTML"
+         aria-busy="true"
+         aria-live="polite">
+        <div class="d-flex align-items-center gap-2 text-secondary py-4">
+            <div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading schedule…</span></div>
+            Loading schedule position…
+        </div>
+    </div>
+
+    <div id="exec-section-cost-slot"
+         class="exec-section-loading"
+         hx-get="{% url 'scheduling:executive_controls_overview_cost' project.pk %}?{{ filter_query }}"
+         hx-trigger="load"
+         hx-swap="innerHTML"
+         aria-busy="true"
+         aria-live="polite">
+        <div class="d-flex align-items-center gap-2 text-secondary py-4">
+            <div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading cost…</span></div>
+            Loading cost position…
+        </div>
+    </div>
+
+    <div id="exec-section-delays-slot"
+         class="exec-section-loading"
+         hx-get="{% url 'scheduling:executive_controls_overview_delays' project.pk %}?{{ filter_query }}"
+         hx-trigger="load"
+         hx-swap="innerHTML"
+         aria-busy="true"
+         aria-live="polite">
+        <div class="d-flex align-items-center gap-2 text-secondary py-4">
+            <div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading delays…</span></div>
+            Loading delay exposure…
+        </div>
+    </div>
+
+    <div id="exec-section-model-slot"
+         class="exec-section-loading"
+         hx-get="{% url 'scheduling:executive_controls_overview_model' project.pk %}?{{ filter_query }}"
+         hx-trigger="load"
+         hx-swap="innerHTML"
+         aria-busy="true"
+         aria-live="polite">
+        <div class="d-flex align-items-center gap-2 text-secondary py-4">
+            <div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading model impact…</span></div>
+            Loading trusted model impact…
+        </div>
+    </div>
+
+    <div id="exec-section-coverage-slot"
+         class="exec-section-loading"
+         hx-get="{% url 'scheduling:executive_controls_overview_coverage' project.pk %}?{{ filter_query }}"
+         hx-trigger="load"
+         hx-swap="innerHTML"
+         aria-busy="true"
+         aria-live="polite">
+        <div class="d-flex align-items-center gap-2 text-secondary py-4">
+            <div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading coverage…</span></div>
+            Loading data coverage…
+        </div>
+    </div>
+
+    {% include "scheduling/components/executive_controls_help_modal.html" %}
+</div>
+
+<script>
+(function () {
+    document.getElementById('exec-filter-form')?.addEventListener('submit', function (e) {
+        e.preventDefault();
+        const qs = new URLSearchParams(new FormData(this)).toString();
+        const base = window.location.pathname;
+        window.history.pushState({}, '', qs ? base + '?' + qs : base);
+        ['schedule', 'cost', 'delays', 'model', 'coverage'].forEach(function (name) {
+            const slot = document.getElementById('exec-section-' + name + '-slot');
+            if (slot && typeof htmx !== 'undefined') {
+                const url = slot.getAttribute('hx-get').split('?')[0] + (qs ? '?' + qs : '');
+                htmx.ajax('GET', url, { target: slot, swap: 'innerHTML' });
+            }
+        });
+    });
+    window.addEventListener('popstate', function () {
+        window.location.reload();
+    });
+})();
+</script>

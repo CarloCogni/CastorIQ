@@ -1,0 +1,47 @@
+<!-- scheduling/components/executive_kpi_card.html — methodology-aware KPI card -->
+<article class="exec-kpi-card border rounded p-3 h-100 {% if not card.available %}exec-kpi-unavailable{% endif %}"
+         aria-labelledby="kpi-{{ card.metric_id|slugify }}">
+    <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+        <h3 class="fs-7 fw-semibold mb-0" id="kpi-{{ card.metric_id|slugify }}">{{ card.label }}</h3>
+        <span class="badge rounded-pill text-bg-secondary exec-methodology-badge" title="Methodology">
+            {{ card.methodology_label|default:card.methodology_version }}
+        </span>
+    </div>
+
+    <p class="exec-kpi-value mb-1 {% if card.status == 'warning' %}text-warning-emphasis{% endif %}"
+       aria-live="polite">
+        {% if card.available %}
+            {{ card.display_value }}
+        {% else %}
+            <span class="text-secondary">Unavailable</span>
+        {% endif %}
+    </p>
+
+    {% if card.numerator is not None and card.denominator is not None %}
+    <p class="small text-secondary mb-1">
+        <span class="exec-coverage-label">Coverage:</span>
+        {{ card.numerator }} / {{ card.denominator }}
+        {% if card.percentage %}({{ card.percentage }}%){% endif %}
+    </p>
+    {% elif card.percentage is not None %}
+    <p class="small text-secondary mb-1">{{ card.percentage }}%</p>
+    {% endif %}
+
+    <p class="small mb-1">
+        <span class="badge bg-body-secondary text-body exec-authority-badge">{{ card.authority }}</span>
+    </p>
+
+    {% if card.caveat %}
+    <p class="small text-secondary mb-2">{{ card.caveat }}</p>
+    {% endif %}
+    {% if not card.available and card.unavailable_reason %}
+    <p class="small text-danger mb-2">{{ card.unavailable_reason }}</p>
+    {% endif %}
+
+    <footer class="small d-flex flex-wrap gap-2 justify-content-between align-items-center mt-auto pt-2 border-top">
+        <span class="text-secondary" title="Data date">As-of {{ card.data_date|default:"—" }}</span>
+        {% if card.drilldown_url %}
+        <a href="{{ card.drilldown_url }}" class="link-primary exec-drilldown-link">{{ card.drilldown_label|default:"Drill down" }}</a>
+        {% endif %}
+    </footer>
+</article>

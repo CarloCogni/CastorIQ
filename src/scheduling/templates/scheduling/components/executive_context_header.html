@@ -1,0 +1,44 @@
+<!-- scheduling/components/executive_context_header.html — persistent analytical context -->
+<header class="exec-context-header border rounded p-3 mb-3 bg-body-tertiary" aria-label="Analytical context">
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+        <h1 class="h5 mb-0">
+            <i class="bi bi-speedometer2 me-2 text-primary" aria-hidden="true"></i>
+            Executive Controls
+        </h1>
+        <span class="badge bg-primary-subtle text-primary-emphasis border">{{ ctx.analytical_state_label }}</span>
+        <span class="badge bg-secondary-subtle text-secondary-emphasis border">e8-v1</span>
+        <span class="badge bg-secondary-subtle text-secondary-emphasis border">{{ ctx.trust_policy }}</span>
+        <button type="button"
+                class="help-pill"
+                data-bs-toggle="modal"
+                data-bs-target="#executiveControlsHelpModal"
+                title="How Executive Controls works"
+                aria-label="How Executive Controls works">
+            <i class="bi bi-question-circle"></i>
+        </button>
+    </div>
+
+    <dl class="row small mb-2 exec-context-dl">
+        <dt class="col-sm-3 col-md-2">Project</dt>
+        <dd class="col-sm-9 col-md-4">{{ ctx.project_name }}</dd>
+        <dt class="col-sm-3 col-md-2">Data date</dt>
+        <dd class="col-sm-9 col-md-4">{{ ctx.data_date }}{% if not ctx.data_date_is_p6 %} <span class="text-warning">(estimated)</span>{% endif %}</dd>
+        <dt class="col-sm-3 col-md-2">Baseline</dt>
+        <dd class="col-sm-9 col-md-4">{{ ctx.baseline_description }}</dd>
+        <dt class="col-sm-3 col-md-2">Schedule source</dt>
+        <dd class="col-sm-9 col-md-4">
+            {% if ctx.schedule_source %}
+                {{ ctx.schedule_source.filename }} · {{ ctx.schedule_source.imported_at|slice:":10" }}
+            {% else %}
+                <span class="text-secondary">No import recorded</span>
+            {% endif %}
+        </dd>
+        <dt class="col-sm-3 col-md-2">Snapshot</dt>
+        <dd class="col-sm-9 col-md-4 text-secondary">Not selected / unavailable</dd>
+    </dl>
+
+    <div class="alert alert-warning py-2 px-3 small mb-0" role="status">
+        <i class="bi bi-exclamation-triangle me-1" aria-hidden="true"></i>
+        {{ ctx.reimport_drift_warning }}
+    </div>
+</header>

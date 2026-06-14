@@ -1,0 +1,40 @@
+<!-- scheduling/components/executive_controls_help_modal.html -->
+<div class="modal fade" id="executiveControlsHelpModal" tabindex="-1" aria-labelledby="executiveControlsHelpLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+            <div class="modal-header border-bottom px-4 py-3">
+                <h2 class="modal-title fw-semibold fs-6 mb-0" id="executiveControlsHelpLabel">
+                    <i class="bi bi-speedometer2 me-2 text-primary"></i>
+                    How Executive Controls Work
+                </h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body px-4 py-4 small">
+                <p class="fw-semibold fs-7 mb-2"><i class="bi bi-broadcast me-1 text-primary"></i> Analytical state</p>
+                <p class="text-secondary mb-4">Metrics reflect <strong>Live Current Analytical State</strong> — they update when schedule or model data is re-imported. No frozen snapshot is selected.</p>
+
+                <p class="fw-semibold fs-7 mb-2"><i class="bi bi-calendar-event me-1 text-primary"></i> Baseline / reference limitation</p>
+                <p class="text-secondary mb-4">Baseline dates come from <em>Current Reference/Baseline Fields from Imported Schedule</em> — not a contractual baseline until BaselineVersion exists.</p>
+
+                <p class="fw-semibold fs-7 mb-2"><i class="bi bi-graph-up me-1 text-primary"></i> Planned / actual progress</p>
+                <p class="text-secondary mb-4">Progress weighting follows the active performance mode (cost-weighted BAC or duration proxy). Each card shows numerator, denominator, and methodology badge.</p>
+
+                <p class="fw-semibold fs-7 mb-2"><i class="bi bi-currency-dollar me-1 text-primary"></i> Cost EVM vs Schedule Performance</p>
+                <p class="text-secondary mb-4">Cost EVM requires defensible cost and actual cost data. Duration-weighted schedule performance is labelled separately and is not monetary Earned Value.</p>
+
+                <p class="fw-semibold fs-7 mb-2"><i class="bi bi-clock-history me-1 text-primary"></i> Delay types</p>
+                <p class="text-secondary mb-4">Primary delay states (completed late, currently late, forecast late, not late) are mutually exclusive. Risk indicators (critical, negative float, etc.) may overlap.</p>
+
+                <p class="fw-semibold fs-7 mb-2"><i class="bi bi-link-45deg me-1 text-primary"></i> Trusted model scope</p>
+                <p class="text-secondary mb-4">Model impact uses accepted active bindings only. Task coverage (all activities) and entity coverage (indexed IFC entities) use separate denominators.</p>
+
+                <p class="fw-semibold fs-7 mb-2"><i class="bi bi-exclamation-circle me-1 text-primary"></i> Caveats</p>
+                <div class="d-flex flex-column gap-1 text-secondary">
+                    <span><i class="bi bi-dot"></i>Re-import may change KPIs silently until snapshot support lands.</span>
+                    <span><i class="bi bi-dot"></i>Keyword scope suggestions are not authoritative.</span>
+                    <span><i class="bi bi-dot"></i>Equivalent workforce curves are defined but not shown until E8-E.</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

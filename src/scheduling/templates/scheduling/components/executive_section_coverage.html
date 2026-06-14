@@ -1,0 +1,39 @@
+<!-- scheduling/components/executive_section_coverage.html -->
+<section id="exec-section-coverage" class="exec-section mb-4" aria-labelledby="exec-coverage-heading">
+    <h2 class="h6 fw-semibold mb-3" id="exec-coverage-heading">
+        <i class="bi bi-shield-check me-1 text-primary"></i> Data and Methodology Coverage
+    </h2>
+    {% if section_error %}
+    <div class="alert alert-danger" role="alert">{{ section_error }}</div>
+    {% else %}
+    <div class="table-responsive">
+        <table class="table table-sm table-bordered exec-coverage-table" aria-describedby="exec-coverage-heading">
+            <thead class="table-light">
+                <tr>
+                    <th scope="col">Metric</th>
+                    <th scope="col">Numerator</th>
+                    <th scope="col">Denominator</th>
+                    <th scope="col">%</th>
+                    <th scope="col">Authority</th>
+                    <th scope="col">Caveat</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr>
+                    <td>{{ row.label }}</td>
+                    <td>{{ row.numerator }}</td>
+                    <td>{% if row.denominator is not None %}{{ row.denominator }}{% else %}—{% endif %}</td>
+                    <td>{% if row.percentage is not None %}{{ row.percentage }}%{% else %}—{% endif %}</td>
+                    <td><span class="badge bg-body-secondary">{{ row.authority }}</span></td>
+                    <td class="small text-secondary">{{ row.caveat|truncatewords:12 }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-secondary">No coverage rows.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <p class="small mb-0"><a href="{{ methodology_url }}">Full e8-v1 methodology registry (JSON)</a></p>
+    {% endif %}
+</section>
