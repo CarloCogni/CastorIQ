@@ -9,7 +9,6 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from django.db import transaction
 from django.db.models import Count
 
 from environments.models import Project
