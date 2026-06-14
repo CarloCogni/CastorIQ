@@ -1,17 +1,162 @@
 # scheduling/views_executive_controls.py
-"""E8-A read-only executive controls API and diagnostic views."""
+"""E8 executive controls API and overview views."""
 
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
+from typing import Any
 
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.views import View
+from django.views.generic import TemplateView
 
 from core.mixins import ProjectAccessMixin
 
 logger = logging.getLogger(__name__)
+
+
+def _overview_filters(request) -> Any:
+    from scheduling.services.executive_controls.overview_filters import OverviewFilters
+
+    return OverviewFilters.from_params(request.GET.dict())
+
+
+def _section_view(
+    request,
+    project,
+    *,
+    build_fn: Callable,
+    template: str,
+) -> HttpResponse:
+    """Render section fragment or JSON; isolate failures."""
+    filters = _overview_filters(request)
+    try:
+        from scheduling.services.executive_controls.overview_service import (
+            ExecutiveControlsOverviewService,
+        )
+
+        svc = ExecutiveControlsOverviewService(project)
+        payload = build_fn(svc, filters)
+        if request.headers.get("HX-Request"):
+            return render(request, template, payload)
+        return JsonResponse(payload)
+    except Exception as exc:
+        logger.exception("Executive controls section failed: %s", exc)
+        err_ctx = {"section_error": "This section is temporarily unavailable."}
+        if request.headers.get("HX-Request"):
+            return render(request, template, err_ctx, status=200)
+        return JsonResponse({"error": str(exc), "section": template}, status=500)
+
+
+class ExecutiveControlsOverviewPageView(ProjectAccessMixin, TemplateView):
+    """GET — executive overview shell with progressive HTMX sections."""
+
+    template_name = "scheduling/executive_controls_page.html"
+
+    def get_context_data(self, **kwargs: object) -> dict:
+        from scheduling.services.executive_controls.context import AnalyticalContextService
+        from scheduling.services.executive_controls.overview_filters import OverviewFilters
+
+        ctx = super().get_context_data(**kwargs)
+        project = self.get_project()
+        filters = OverviewFilters.from_params(self.request.GET.dict())
+        ctx["project"] = project
+        ctx["analytical_context"] = AnalyticalContextService(project).build()
+        ctx["filters"] = filters
+        ctx["filter_query"] = filters.query_string()
+        return ctx
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        return JsonResponse({"error": "Method not allowed."}, status=405)
+
+
+class ExecutiveControlsOverviewJSONView(ProjectAccessMixin, View):
+    """GET — full overview JSON (shell metadata only by default)."""
+
+    def get(self, request, **kwargs: object) -> JsonResponse:
+        from scheduling.services.executive_controls.overview_service import (
+            ExecutiveControlsOverviewService,
+        )
+
+        project = self.get_project()
+        filters = _overview_filters(request)
+        payload = ExecutiveControlsOverviewService(project).build_shell(filters)
+        return JsonResponse(payload)
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        return JsonResponse({"error": "Method not allowed."}, status=405)
+
+
+class ExecutiveControlsOverviewScheduleView(ProjectAccessMixin, View):
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        return _section_view(
+            request,
+            project,
+            build_fn=lambda s, f: s.build_schedule_section(f),
+            template="scheduling/components/executive_section_schedule.html",
+        )
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        return JsonResponse({"error": "Method not allowed."}, status=405)
+
+
+class ExecutiveControlsOverviewCostView(ProjectAccessMixin, View):
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        return _section_view(
+            request,
+            project,
+            build_fn=lambda s, f: s.build_cost_section(f),
+            template="scheduling/components/executive_section_cost.html",
+        )
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        return JsonResponse({"error": "Method not allowed."}, status=405)
+
+
+class ExecutiveControlsOverviewDelaysView(ProjectAccessMixin, View):
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        return _section_view(
+            request,
+            project,
+            build_fn=lambda s, f: s.build_delays_section(f),
+            template="scheduling/components/executive_section_delays.html",
+        )
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        return JsonResponse({"error": "Method not allowed."}, status=405)
+
+
+class ExecutiveControlsOverviewModelView(ProjectAccessMixin, View):
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        return _section_view(
+            request,
+            project,
+            build_fn=lambda s, f: s.build_model_impact_section(f),
+            template="scheduling/components/executive_section_model_impact.html",
+        )
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        return JsonResponse({"error": "Method not allowed."}, status=405)
+
+
+class ExecutiveControlsOverviewCoverageView(ProjectAccessMixin, View):
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        return _section_view(
+            request,
+            project,
+            build_fn=lambda s, f: s.build_coverage_section(f),
+            template="scheduling/components/executive_section_coverage.html",
+        )
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        return JsonResponse({"error": "Method not allowed."}, status=405)
 
 
 class ExecutiveControlsContextView(ProjectAccessMixin, View):

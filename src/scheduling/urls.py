@@ -360,6 +360,41 @@ urlpatterns = [
     ),
     # E8-A — Executive controls analytical foundation (read-only)
     path(
+        "projects/<uuid:pk>/executive-controls/",
+        views_executive_controls.ExecutiveControlsOverviewPageView.as_view(),
+        name="executive_controls",
+    ),
+    path(
+        "projects/<uuid:pk>/executive-controls/overview/",
+        views_executive_controls.ExecutiveControlsOverviewJSONView.as_view(),
+        name="executive_controls_overview",
+    ),
+    path(
+        "projects/<uuid:pk>/executive-controls/overview/schedule/",
+        views_executive_controls.ExecutiveControlsOverviewScheduleView.as_view(),
+        name="executive_controls_overview_schedule",
+    ),
+    path(
+        "projects/<uuid:pk>/executive-controls/overview/cost/",
+        views_executive_controls.ExecutiveControlsOverviewCostView.as_view(),
+        name="executive_controls_overview_cost",
+    ),
+    path(
+        "projects/<uuid:pk>/executive-controls/overview/delays/",
+        views_executive_controls.ExecutiveControlsOverviewDelaysView.as_view(),
+        name="executive_controls_overview_delays",
+    ),
+    path(
+        "projects/<uuid:pk>/executive-controls/overview/model-impact/",
+        views_executive_controls.ExecutiveControlsOverviewModelView.as_view(),
+        name="executive_controls_overview_model",
+    ),
+    path(
+        "projects/<uuid:pk>/executive-controls/overview/coverage/",
+        views_executive_controls.ExecutiveControlsOverviewCoverageView.as_view(),
+        name="executive_controls_overview_coverage",
+    ),
+    path(
         "projects/<uuid:pk>/executive-controls/context/",
         views_executive_controls.ExecutiveControlsContextView.as_view(),
         name="executive_controls_context",
