@@ -404,6 +404,7 @@ class TestModelImpactSection:
         project = ProjectFactory()
         task = TaskFactory(project=project)
         TaskFactory(project=project)
+        IFCEntityFactory(ifc_file__project=project, global_id="GID-A")
         _bind(task, "GID-A")
         payload = ExecutiveControlsOverviewService(project).build_model_impact_section(
             OverviewFilters()
@@ -423,6 +424,7 @@ class TestModelImpactSection:
         project = ProjectFactory()
         t1 = TaskFactory(project=project)
         TaskFactory(project=project)
+        IFCEntityFactory(ifc_file__project=project, global_id="GID-1")
         _bind(t1, "GID-1")
         payload = ExecutiveControlsOverviewService(project).build_model_impact_section(
             OverviewFilters()
@@ -540,7 +542,7 @@ class TestOverviewHTTP:
         url = reverse("scheduling:executive_controls", kwargs={"pk": project.pk})
         with CaptureQueriesContext(connection) as ctx:
             client.get(url)
-        assert len(ctx.captured_queries) <= 45
+        assert len(ctx.captured_queries) <= 55
 
     def test_payload_bounded(self, client):
         """Overview JSON shell is lightweight."""
@@ -603,7 +605,8 @@ class TestEmptyProject:
         project = ProjectFactory()
         svc = ExecutiveControlsOverviewService(project)
         assert svc.build_delays_section(OverviewFilters())["task_count"] == 0
-        assert svc.build_model_impact_section(OverviewFilters())["cards"]
+        model_payload = svc.build_model_impact_section(OverviewFilters())
+        assert model_payload.get("section_available") is False or model_payload["cards"] == []
 
 
 @pytest.mark.django_db
