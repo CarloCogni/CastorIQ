@@ -201,6 +201,24 @@ class Task(UUIDModel):
         verbose_name="Schedule Source",
         help_text="Import event that last created or updated this task.",
     )
+    schedule_activity = models.ForeignKey(
+        "ScheduleActivity",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="tasks",
+        verbose_name="Schedule Activity",
+        help_text="Logical activity identity across source versions (nullable until linked).",
+    )
+    source_version = models.ForeignKey(
+        "ScheduleSourceVersion",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="tasks",
+        verbose_name="Source Version",
+        help_text="Accepted schedule source version that last touched this task (nullable).",
+    )
 
     # ------------------------------------------------------------------
     # CPM fields — populated by compute_critical_path()
@@ -396,12 +414,296 @@ class MappingProfile(UUIDModel):
         return f"{self.name} ({self.project.name})"
 
 
+class ScheduleActivity(UUIDModel):
+    """Stable logical schedule activity identity within one project."""
+
+    class Origin(models.TextChoices):
+        IMPORTED = "imported", "Imported"
+        MANUAL = "manual", "Manual"
+        SYSTEM = "system", "System"
+
+    class IdentityStatus(models.TextChoices):
+        ACTIVE = "active", "Active"
+        UNRESOLVED = "unresolved", "Unresolved"
+        SUPERSEDED = "superseded", "Superseded"
+        RETIRED = "retired", "Retired"
+
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name="schedule_activities",
+        verbose_name="Project",
+    )
+    canonical_activity_key = models.CharField(
+        max_length=255,
+        db_index=True,
+        verbose_name="Canonical Activity Key",
+        help_text="Project-scoped stable key — never derived from name or dates alone.",
+    )
+    external_activity_id = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="External Activity ID",
+    )
+    activity_code = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="Activity Code",
+    )
+    display_name = models.CharField(
+        max_length=500,
+        blank=True,
+        verbose_name="Display Name",
+    )
+    source_identity_hint = models.CharField(
+        max_length=32,
+        blank=True,
+        verbose_name="Source Identity Hint",
+        help_text="Importer hint: p6xml, xer, msp, column, manual, etc.",
+    )
+    origin = models.CharField(
+        max_length=16,
+        choices=Origin.choices,
+        default=Origin.IMPORTED,
+        db_index=True,
+        verbose_name="Origin",
+    )
+    identity_status = models.CharField(
+        max_length=16,
+        choices=IdentityStatus.choices,
+        default=IdentityStatus.ACTIVE,
+        db_index=True,
+        verbose_name="Identity Status",
+    )
+    metadata = models.JSONField(default=dict, blank=True, verbose_name="Metadata")
+
+    class Meta:
+        verbose_name = "Schedule Activity"
+        verbose_name_plural = "Schedule Activities"
+        ordering = ["canonical_activity_key"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "canonical_activity_key"],
+                name="castor_scheduling_unique_activity_key_per_project",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["project", "identity_status"]),
+            models.Index(fields=["project", "external_activity_id"]),
+            models.Index(fields=["project", "activity_code"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.canonical_activity_key} ({self.project_id})"
+
+
+class ScheduleSourceVersion(UUIDModel):
+    """One accepted schedule source artifact/version for a project."""
+
+    class Status(models.TextChoices):
+        CANDIDATE = "candidate", "Candidate"
+        CURRENT = "current", "Current"
+        SUPERSEDED = "superseded", "Superseded"
+        REJECTED = "rejected", "Rejected"
+        ARCHIVED = "archived", "Archived"
+
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name="schedule_source_versions",
+        verbose_name="Project",
+    )
+    schedule_source = models.ForeignKey(
+        "ScheduleSource",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="source_versions",
+        verbose_name="Legacy Schedule Source",
+        help_text="Optional link to legacy import audit row during transition.",
+    )
+    version_number = models.PositiveIntegerField(
+        default=1,
+        verbose_name="Version Number",
+    )
+    source_type = models.CharField(
+        max_length=20,
+        choices=Task.Source.choices,
+        default=Task.Source.MANUAL,
+        verbose_name="Source Type",
+    )
+    source_filename = models.CharField(max_length=500, verbose_name="Source Filename")
+    content_hash = models.CharField(
+        max_length=64,
+        blank=True,
+        verbose_name="Content Hash",
+    )
+    external_project_id = models.CharField(
+        max_length=255, blank=True, verbose_name="External Project ID"
+    )
+    external_schedule_id = models.CharField(
+        max_length=255, blank=True, verbose_name="External Schedule ID"
+    )
+    external_revision = models.CharField(
+        max_length=255, blank=True, verbose_name="External Revision"
+    )
+    data_date = models.DateField(null=True, blank=True, verbose_name="Data Date")
+    imported_at = models.DateTimeField(verbose_name="Imported At")
+    importer_version = models.CharField(max_length=64, blank=True, verbose_name="Importer Version")
+    parser_version = models.CharField(max_length=64, blank=True, verbose_name="Parser Version")
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.CANDIDATE,
+        db_index=True,
+        verbose_name="Status",
+    )
+    supersedes = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="superseded_by_versions",
+        verbose_name="Supersedes",
+    )
+    source_metadata = models.JSONField(default=dict, blank=True, verbose_name="Source Metadata")
+    validation_summary = models.JSONField(
+        default=dict, blank=True, verbose_name="Validation Summary"
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="schedule_source_versions_created",
+        verbose_name="Created By",
+    )
+
+    class Meta:
+        verbose_name = "Schedule Source Version"
+        verbose_name_plural = "Schedule Source Versions"
+        ordering = ["-imported_at", "-version_number"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project"],
+                condition=models.Q(status="current"),
+                name="castor_scheduling_unique_current_ssv_per_project",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["project", "status"]),
+            models.Index(fields=["project", "imported_at"]),
+            models.Index(fields=["project", "version_number"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"v{self.version_number} {self.source_filename} ({self.status})"
+
+
+class ScheduleImportRun(UUIDModel):
+    """Audit record for one schedule import attempt."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        RUNNING = "running", "Running"
+        SUCCEEDED = "succeeded", "Succeeded"
+        FAILED = "failed", "Failed"
+        CANCELLED = "cancelled", "Cancelled"
+
+    class Mode(models.TextChoices):
+        APPEND = "append", "Append"
+        UPDATE = "update", "Update"
+        REPLACE = "replace", "Replace"
+        PREVIEW = "preview", "Preview"
+        UNKNOWN = "unknown", "Unknown"
+
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name="schedule_import_runs",
+        verbose_name="Project",
+    )
+    schedule_source = models.ForeignKey(
+        "ScheduleSource",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="import_runs",
+        verbose_name="Legacy Schedule Source",
+    )
+    source_version = models.ForeignKey(
+        ScheduleSourceVersion,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="import_runs",
+        verbose_name="Accepted Source Version",
+    )
+    source_type = models.CharField(
+        max_length=20,
+        choices=Task.Source.choices,
+        default=Task.Source.MANUAL,
+        verbose_name="Source Type",
+    )
+    source_filename = models.CharField(max_length=500, verbose_name="Source Filename")
+    content_hash = models.CharField(max_length=64, blank=True, verbose_name="Content Hash")
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+        verbose_name="Status",
+    )
+    mode = models.CharField(
+        max_length=16,
+        choices=Mode.choices,
+        default=Mode.UNKNOWN,
+        verbose_name="Import Mode",
+    )
+    started_at = models.DateTimeField(verbose_name="Started At")
+    completed_at = models.DateTimeField(null=True, blank=True, verbose_name="Completed At")
+    importer_version = models.CharField(max_length=64, blank=True, verbose_name="Importer Version")
+    parser_version = models.CharField(max_length=64, blank=True, verbose_name="Parser Version")
+    task_count = models.IntegerField(default=0, verbose_name="Task Count")
+    dependency_count = models.IntegerField(default=0, verbose_name="Dependency Count")
+    skipped_count = models.IntegerField(default=0, verbose_name="Skipped Count")
+    warning_count = models.IntegerField(default=0, verbose_name="Warning Count")
+    error_count = models.IntegerField(default=0, verbose_name="Error Count")
+    validation_summary = models.JSONField(
+        default=dict, blank=True, verbose_name="Validation Summary"
+    )
+    error_summary = models.TextField(blank=True, verbose_name="Error Summary")
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="schedule_import_runs_requested",
+        verbose_name="Requested By",
+    )
+
+    class Meta:
+        verbose_name = "Schedule Import Run"
+        verbose_name_plural = "Schedule Import Runs"
+        ordering = ["-started_at"]
+        indexes = [
+            models.Index(fields=["project", "status"]),
+            models.Index(fields=["project", "started_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.source_filename} ({self.status})"
+
+
 class ScheduleSource(UUIDModel):
     """Audit record of each schedule file imported into a project.
 
     Created by TaskSaveView after a successful import.  Used by the
     Data Sources tab to show the user which files have been imported and
     when — without requiring a FK from every Task back to its source file.
+
+    Transitional role (DF-A1): legacy import audit chip.  New provenance
+    authority lives on :class:`ScheduleSourceVersion` and :class:`ScheduleImportRun`.
     """
 
     project = models.ForeignKey(
