@@ -370,6 +370,19 @@ def compute_evm(
         Task.objects.filter(project_id=project_id, is_non_physical=False)
         .exclude(start_date=None)
         .exclude(end_date=None)
+        .only(
+            "pk",
+            "start_date",
+            "end_date",
+            "cost",
+            "status",
+            "actual_start",
+            "actual_end",
+            "physical_percent_complete",
+            "duration_percent_complete",
+            "schedule_activity_id",
+            "is_non_physical",
+        )
     )
     if not tasks:
         return {
@@ -545,14 +558,20 @@ def compute_evm(
                 ac_attribution.append((today, ta))
         ac_attribution.sort()
 
-    pv_series: list[dict] = []
-    ev_series: list[dict] = []
-    ac_series: list[dict] = []
-
     ac_idx = 0
     cum_ac = 0.0
 
+    pv_abs_by_date: list[float] | None = None
+    if not task_cals and not use_baseline_planned:
+        from scheduling.services.evm_series import cumulative_linear_calendar, pv_entries_from_tasks
+
+        pv_abs_by_date = cumulative_linear_calendar(
+            pv_entries_from_tasks(calc_tasks, values), dates
+        )
+
     def _pv_at(d: date) -> float:
+        if pv_abs_by_date is not None:
+            return pv_abs_by_date[dates.index(d)]
         if use_baseline_planned and pv_slices:
             return sum(
                 _planned_pct_at_dates(ps, pf, d, cal) * values[str(t.pk)]
@@ -569,8 +588,12 @@ def compute_evm(
             _earned_pct_at(t, d, task_cals.get(str(t.pk))) * values[str(t.pk)] for t in calc_tasks
         )
 
-    for d in dates:
-        pv_abs = _pv_at(d)
+    pv_series: list[dict] = []
+    ev_series: list[dict] = []
+    ac_series: list[dict] = []
+
+    for i, d in enumerate(dates):
+        pv_abs = pv_abs_by_date[i] if pv_abs_by_date is not None else _pv_at(d)
         pv_series.append({"date": d.isoformat(), "pct": round(pv_abs / bac * 100, 2) if bac else 0})
 
         if d <= today:
@@ -613,7 +636,7 @@ def compute_evm(
         eac = None
         vac = None
 
-    logger.info(
+    logger.debug(
         "EVM — project %s: BAC=%.0f SPI=%.2f CPI=%s EAC=%s ac_available=%s cost_coverage=%.0f%%",
         project_id,
         bac,
@@ -680,4 +703,5 @@ def compute_evm(
         "project_end": project_end.isoformat(),
         "series": series,
         "baseline_evm": baseline_evm,
+        "schedulable_tasks": total_tasks,
     }

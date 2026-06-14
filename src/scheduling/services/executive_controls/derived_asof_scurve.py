@@ -172,14 +172,8 @@ class DerivedAsOfSCurveService:
                 "caveat": "Derived projection from current SPI — not imported history.",
             }
 
-        from scheduling.models import Task
-
-        schedulable = (
-            Task.objects.filter(project_id=self.project_id, is_non_physical=False)
-            .exclude(start_date=None)
-            .exclude(end_date=None)
-            .count()
-        )
+        included = int(evm.get("schedulable_tasks") or 0)
+        schedulable = included
 
         self._curve_cache = {
             "available": True,

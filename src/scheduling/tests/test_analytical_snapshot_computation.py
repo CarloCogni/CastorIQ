@@ -402,7 +402,7 @@ class TestSnapshotPerformance:
         report_elapsed = time.perf_counter() - t3
 
         assert series_count > 0
-        assert compute_elapsed < 120.0, f"10k compute took {compute_elapsed:.1f}s"
+        assert compute_elapsed < 20.0, f"10k single-run compute {compute_elapsed:.2f}s"
         assert result_fetch_elapsed < 0.3
         assert report_elapsed < 1.0
         assert series_fetch_elapsed < 0.5
