@@ -60,13 +60,41 @@ def frozen_snapshot_history_contract() -> SeriesAuthorityContract:
     )
 
 
+def current_point_contract(*, available: bool, caveat: str = "") -> SeriesAuthorityContract:
+    """Single as-of metric — not a time series."""
+    return SeriesAuthorityContract(
+        series_type=SeriesType.CURRENT_POINT.value,
+        historical_authority=MetricAuthority.DERIVED.value,
+        available=available,
+        caveat=caveat or "Current point at data date — not a historical trend.",
+        source_versions=(),
+        data_point_provenance="current_task_snapshot",
+    )
+
+
+def forecast_projection_contract(*, available: bool) -> SeriesAuthorityContract:
+    """Derived forward projection — explicitly not imported history."""
+    return SeriesAuthorityContract(
+        series_type=SeriesType.FORECAST_PROJECTION.value,
+        historical_authority=MetricAuthority.DERIVED.value,
+        available=available,
+        caveat="Derived projection from current SPI/CPI — not imported historical forecast.",
+        source_versions=(),
+        data_point_provenance="derived_forecast",
+    )
+
+
 def build_series_contracts(*, schedulable_tasks: int) -> dict[str, dict]:
     """Return all series authority contracts for E8 surfaces."""
     derived = derived_as_of_curve_contract(schedulable_tasks=schedulable_tasks)
     imported = imported_historical_contract()
     frozen = frozen_snapshot_history_contract()
+    current_pt = current_point_contract(available=schedulable_tasks > 0)
+    forecast = forecast_projection_contract(available=schedulable_tasks > 0)
     return {
+        "current_point": current_pt.to_dict(),
         "derived_as_of_curve": derived.to_dict(),
+        "forecast_projection": forecast.to_dict(),
         "imported_historical": imported.to_dict(),
         "frozen_snapshot_history": frozen.to_dict(),
     }

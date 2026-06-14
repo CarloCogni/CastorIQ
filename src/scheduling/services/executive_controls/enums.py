@@ -152,6 +152,9 @@ class FeatureId(StrEnum):
 class SeriesType(StrEnum):
     """Provenance classification for time-series analytics."""
 
+    CURRENT_POINT = "current_point"
     CURRENT_SNAPSHOT_RECONSTRUCTION = "current_snapshot_reconstruction"
     IMPORTED_HISTORICAL = "imported_historical"
     FROZEN_SNAPSHOT_HISTORY = "frozen_snapshot_history"
+    FORECAST_PROJECTION = "forecast_projection"
+    UNAVAILABLE = "unavailable"
