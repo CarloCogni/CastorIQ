@@ -130,6 +130,10 @@ class AnalyticalContextService:
                 "data_date": source.data_date.isoformat() if source.data_date else None,
             }
 
+        from scheduling.services.analytical_snapshot.context_payload import (
+            completed_snapshot_context,
+            published_snapshot_context,
+        )
         from scheduling.services.analytical_snapshot.lifecycle import AnalyticalSnapshotService
 
         snapshot_caps = (capability_profile or {}).get("snapshot_capabilities") or {}
@@ -137,44 +141,20 @@ class AnalyticalContextService:
             "available", False
         )
         snapshot_counts = snapshot_caps.get("snapshot_counts") or {}
+        completed_count = int(snapshot_counts.get("completed", 0) or 0)
+        published_count = int(snapshot_counts.get("published", 0) or 0)
         latest_completed = None
         latest_published = None
-        if has_snapshot_schema and snapshot_counts.get("completed", 0) > 0:
-            completed = AnalyticalSnapshotService.get_latest_completed(self.project)
+        if has_snapshot_schema and (completed_count > 0 or published_count > 0):
+            completed, published = AnalyticalSnapshotService.get_latest_context_snapshots(
+                self.project,
+                need_completed=completed_count > 0,
+                need_published=published_count > 0,
+            )
             if completed:
-                latest_completed = {
-                    "id": str(completed.pk),
-                    "name": completed.name,
-                    "snapshot_type": completed.snapshot_type,
-                    "status": completed.status,
-                    "data_date": completed.data_date.isoformat() if completed.data_date else None,
-                    "as_of_date": completed.as_of_date.isoformat(),
-                    "source_version_id": str(completed.source_version_id)
-                    if completed.source_version_id
-                    else None,
-                    "baseline_version_id": str(completed.baseline_version_id)
-                    if completed.baseline_version_id
-                    else None,
-                    "methodology_version": completed.methodology_version,
-                    "repeatability_status": completed.repeatability_status,
-                    "historical_authority": False,
-                    "caveats": completed.caveats or [],
-                }
-        if has_snapshot_schema and snapshot_counts.get("published", 0) > 0:
-            published = AnalyticalSnapshotService.get_latest_published(self.project)
+                latest_completed = completed_snapshot_context(completed)
             if published:
-                latest_published = {
-                    "id": str(published.pk),
-                    "name": published.name,
-                    "snapshot_type": published.snapshot_type,
-                    "status": published.status,
-                    "data_date": published.data_date.isoformat() if published.data_date else None,
-                    "as_of_date": published.as_of_date.isoformat(),
-                    "published_at": published.published_at.isoformat()
-                    if published.published_at
-                    else None,
-                    "historical_authority": False,
-                }
+                latest_published = published_snapshot_context(published)
 
         return {
             "project_id": self.project_id,

@@ -208,7 +208,6 @@ class ProjectAnalyticsCapabilityProfile:
 
         has_schema = True
         has_completed = signals.completed_snapshot_count > 0
-        has_published = signals.published_snapshot_count > 0
         has_source = signals.current_source_version_id is not None
 
         return {
@@ -509,7 +508,6 @@ class ProjectAnalyticsCapabilityProfile:
             import_run_count,
         ) = self._provenance_table_counts()
         baseline_counts = self._baseline_table_counts()
-        snapshot_counts = self._snapshot_table_counts()
 
         return _ProjectSignals(
             source_type=source_type,
@@ -551,42 +549,13 @@ class ProjectAnalyticsCapabilityProfile:
             selected_baseline_status=baseline_counts["selected_status"],
             selected_baseline_task_states=baseline_counts["task_states"],
             selected_baseline_cost_states=baseline_counts["cost_states"],
-            snapshot_count=snapshot_counts["count"],
-            completed_snapshot_count=snapshot_counts["completed"],
-            published_snapshot_count=snapshot_counts["published"],
+            snapshot_count=baseline_counts["snapshot_count"],
+            completed_snapshot_count=baseline_counts["completed_snapshot_count"],
+            published_snapshot_count=baseline_counts["published_snapshot_count"],
         )
 
-    def _snapshot_table_counts(self) -> dict[str, int]:
-        """Single round-trip for DF-B1 snapshot counts."""
-        from django.db import connection
-
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT
-                    (SELECT COUNT(*) FROM castor_scheduling_analyticalsnapshot WHERE project_id = %s),
-                    (
-                        SELECT COUNT(*)
-                        FROM castor_scheduling_analyticalsnapshot
-                        WHERE project_id = %s AND status = 'completed'
-                    ),
-                    (
-                        SELECT COUNT(*)
-                        FROM castor_scheduling_analyticalsnapshot
-                        WHERE project_id = %s AND status = 'published'
-                    )
-                """,
-                [self.project_id] * 3,
-            )
-            row = cursor.fetchone()
-        return {
-            "count": int(row[0] or 0),
-            "completed": int(row[1] or 0),
-            "published": int(row[2] or 0),
-        }
-
     def _baseline_table_counts(self) -> dict[str, Any]:
-        """Single round-trip for DF-A2 baseline counts."""
+        """Single round-trip for DF-A2 baseline + DF-B1 snapshot counts."""
         from django.db import connection
 
         with connection.cursor() as cursor:
@@ -624,9 +593,20 @@ class ProjectAnalyticsCapabilityProfile:
                         JOIN castor_scheduling_baselineversion bv ON bv.id = bts.baseline_version_id
                         WHERE bv.project_id = %s AND bv.is_selected_for_analysis = true
                           AND bts.baseline_cost IS NOT NULL
+                    ),
+                    (SELECT COUNT(*) FROM castor_scheduling_analyticalsnapshot WHERE project_id = %s),
+                    (
+                        SELECT COUNT(*)
+                        FROM castor_scheduling_analyticalsnapshot
+                        WHERE project_id = %s AND status = 'completed'
+                    ),
+                    (
+                        SELECT COUNT(*)
+                        FROM castor_scheduling_analyticalsnapshot
+                        WHERE project_id = %s AND status = 'published'
                     )
                 """,
-                [self.project_id] * 6,
+                [self.project_id] * 9,
             )
             row = cursor.fetchone()
         return {
@@ -636,6 +616,9 @@ class ProjectAnalyticsCapabilityProfile:
             "selected_status": row[3],
             "task_states": int(row[4] or 0),
             "cost_states": int(row[5] or 0),
+            "snapshot_count": int(row[6] or 0),
+            "completed_snapshot_count": int(row[7] or 0),
+            "published_snapshot_count": int(row[8] or 0),
         }
 
     def _provenance_table_counts(self) -> tuple[str | None, int, int]:

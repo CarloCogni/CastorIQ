@@ -542,7 +542,7 @@ class TestOverviewHTTP:
         url = reverse("scheduling:executive_controls", kwargs={"pk": project.pk})
         with CaptureQueriesContext(connection) as ctx:
             client.get(url)
-        assert len(ctx.captured_queries) <= 57  # +1 for DF-B1 snapshot table counts
+        assert len(ctx.captured_queries) <= 55
 
     def test_payload_bounded(self, client):
         """Overview JSON shell is lightweight."""
@@ -607,6 +607,127 @@ class TestEmptyProject:
         assert svc.build_delays_section(OverviewFilters())["task_count"] == 0
         model_payload = svc.build_model_impact_section(OverviewFilters())
         assert model_payload.get("section_available") is False or model_payload["cards"] == []
+
+
+@pytest.mark.django_db
+class TestSnapshotQueryBudget:
+    """DF-B1.1 — E8 overview snapshot query attribution and budgets."""
+
+    def _overview_url(self, project):
+        return reverse("scheduling:executive_controls", kwargs={"pk": project.pk})
+
+    def _snapshot_sql_count(self, captured) -> int:
+        return sum(1 for q in captured if "analyticalsnapshot" in q["sql"].lower())
+
+    def test_zero_snapshot_overview_restores_55_budget(self, client):
+        project = ProjectFactory()
+        TaskFactory.create_batch(5, project=project)
+        _member_client(client, project)
+        with CaptureQueriesContext(connection) as ctx:
+            client.get(self._overview_url(project))
+        assert len(ctx.captured_queries) <= 55
+
+    def test_zero_snapshot_no_latest_lookup_queries(self, client):
+        """Counts live in merged foundation SQL; no latest-row fetch when zero."""
+        project = ProjectFactory()
+        TaskFactory.create_batch(3, project=project)
+        _member_client(client, project)
+        with CaptureQueriesContext(connection) as ctx:
+            client.get(self._overview_url(project))
+        assert not any(
+            "order by" in q["sql"].lower() and "analyticalsnapshot" in q["sql"].lower()
+            for q in ctx.captured_queries
+        )
+
+    def test_completed_snapshot_context_correct(self, client):
+        from django.utils import timezone
+
+        from scheduling.models import AnalyticalSnapshot, ScheduleSourceVersion
+        from scheduling.services.analytical_snapshot.lifecycle import AnalyticalSnapshotService
+        from scheduling.services.executive_controls.capability_profile import (
+            ProjectAnalyticsCapabilityProfile,
+        )
+        from scheduling.services.executive_controls.context import AnalyticalContextService
+
+        project = ProjectFactory()
+        user = UserFactory()
+        ScheduleSourceVersion.objects.create(
+            project=project,
+            version_number=1,
+            source_type=Task.Source.XER,
+            source_filename="t.xer",
+            status=ScheduleSourceVersion.Status.CURRENT,
+            imported_at=timezone.now(),
+        )
+        snap = AnalyticalSnapshotService.request_snapshot(
+            project=project,
+            name="Done",
+            snapshot_type=AnalyticalSnapshot.SnapshotType.MANUAL_CHECKPOINT,
+            actor=user,
+        )
+        AnalyticalSnapshotService.begin_calculation(snap, actor=user)
+        AnalyticalSnapshotService.complete_manifest(snap, actor=user)
+        profile = ProjectAnalyticsCapabilityProfile(project).build()
+        ctx = AnalyticalContextService(project).build(capability_profile=profile)
+        assert ctx["latest_completed_snapshot"]["id"] == str(snap.pk)
+        assert ctx["latest_published_snapshot"] is None
+
+    def test_published_snapshot_context_with_bounded_queries(self, client):
+        from django.utils import timezone
+
+        from scheduling.models import AnalyticalSnapshot, ScheduleSourceVersion
+        from scheduling.services.analytical_snapshot.lifecycle import AnalyticalSnapshotService
+
+        project = ProjectFactory()
+        user = UserFactory()
+        _member_client(client, project)
+        ScheduleSourceVersion.objects.create(
+            project=project,
+            version_number=1,
+            source_type=Task.Source.XER,
+            source_filename="t.xer",
+            status=ScheduleSourceVersion.Status.CURRENT,
+            imported_at=timezone.now(),
+        )
+        snap = AnalyticalSnapshotService.request_snapshot(
+            project=project,
+            name="Pub",
+            snapshot_type=AnalyticalSnapshot.SnapshotType.REPORT_FREEZE,
+            actor=user,
+        )
+        AnalyticalSnapshotService.begin_calculation(snap, actor=user)
+        AnalyticalSnapshotService.complete_manifest(snap, actor=user)
+        AnalyticalSnapshotService.publish(snap, actor=user)
+        with CaptureQueriesContext(connection) as ctx:
+            client.get(self._overview_url(project))
+        assert len(ctx.captured_queries) <= 58
+        assert self._snapshot_sql_count(ctx.captured_queries) <= 3
+
+    def test_capability_and_context_counts_consistent(self):
+        from scheduling.services.executive_controls.capability_profile import (
+            ProjectAnalyticsCapabilityProfile,
+        )
+        from scheduling.services.executive_controls.context import AnalyticalContextService
+
+        project = ProjectFactory()
+        profile = ProjectAnalyticsCapabilityProfile(project).build()
+        ctx = AnalyticalContextService(project).build(capability_profile=profile)
+        counts = profile["snapshot_capabilities"]["snapshot_counts"]
+        assert counts["total"] == 0
+        assert ctx["latest_completed_snapshot"] is None
+        assert ctx["latest_published_snapshot"] is None
+        assert ctx["snapshot_manifest_available"] is True
+
+    def test_repeated_get_no_writes(self, client):
+        from scheduling.models import AnalyticalSnapshot
+
+        project = ProjectFactory()
+        _member_client(client, project)
+        url = self._overview_url(project)
+        before = AnalyticalSnapshot.objects.filter(project=project).count()
+        client.get(url)
+        client.get(url)
+        assert AnalyticalSnapshot.objects.filter(project=project).count() == before
 
 
 @pytest.mark.django_db

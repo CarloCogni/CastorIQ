@@ -432,6 +432,73 @@ class AnalyticalSnapshotService:
         )
 
     @classmethod
+    def get_latest_context_snapshots(
+        cls,
+        project,
+        *,
+        need_completed: bool,
+        need_published: bool,
+    ) -> tuple[AnalyticalSnapshot | None, AnalyticalSnapshot | None]:
+        """Bounded fetch for E8 context — skips work when counts are zero."""
+        if not need_completed and not need_published:
+            return None, None
+        if need_completed and not need_published:
+            return cls.get_latest_completed(project), None
+        if need_published and not need_completed:
+            return None, cls.get_latest_published(project)
+
+        from django.db import connection
+
+        project_id = str(project.pk)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    (
+                        SELECT id::text
+                        FROM castor_scheduling_analyticalsnapshot
+                        WHERE project_id = %s AND status = 'completed'
+                        ORDER BY calculation_completed_at DESC NULLS LAST
+                        LIMIT 1
+                    ),
+                    (
+                        SELECT id::text
+                        FROM castor_scheduling_analyticalsnapshot
+                        WHERE project_id = %s AND status = 'published'
+                        ORDER BY published_at DESC NULLS LAST
+                        LIMIT 1
+                    )
+                """,
+                [project_id, project_id],
+            )
+            row = cursor.fetchone()
+
+        ids = [x for x in (row[0], row[1]) if x]
+        if not ids:
+            return None, None
+        snaps = {
+            str(s.pk): s
+            for s in AnalyticalSnapshot.objects.filter(pk__in=ids).only(
+                "id",
+                "name",
+                "snapshot_type",
+                "status",
+                "data_date",
+                "as_of_date",
+                "source_version_id",
+                "baseline_version_id",
+                "methodology_version",
+                "repeatability_status",
+                "caveats",
+                "published_at",
+            )
+        }
+        return (
+            snaps.get(row[0]) if row[0] else None,
+            snaps.get(row[1]) if row[1] else None,
+        )
+
+    @classmethod
     @transaction.atomic
     def run_manifest_pipeline(
         cls,
