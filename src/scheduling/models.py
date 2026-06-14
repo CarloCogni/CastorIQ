@@ -979,6 +979,282 @@ class BaselineAuditEvent(UUIDModel):
         raise ValueError("BaselineAuditEvent records are append-only.")
 
 
+class AnalyticalSnapshot(UUIDModel):
+    """Canonical analytical checkpoint manifest — identity and provenance, not KPI series."""
+
+    class SnapshotType(models.TextChoices):
+        IMPORT_SNAPSHOT = "import_snapshot", "Import snapshot"
+        MANUAL_CHECKPOINT = "manual_checkpoint", "Manual checkpoint"
+        SCHEDULED_CHECKPOINT = "scheduled_checkpoint", "Scheduled checkpoint"
+        REPORT_FREEZE = "report_freeze", "Report freeze"
+        PRE_IMPORT_SAFETY = "pre_import_safety", "Pre-import safety"
+        RELEASE_CHECKPOINT = "release_checkpoint", "Release checkpoint"
+
+    class Status(models.TextChoices):
+        REQUESTED = "requested", "Requested"
+        CALCULATING = "calculating", "Calculating"
+        COMPLETED = "completed", "Completed"
+        FAILED = "failed", "Failed"
+        PUBLISHED = "published", "Published"
+        SUPERSEDED = "superseded", "Superseded"
+        ARCHIVED = "archived", "Archived"
+        CANCELLED = "cancelled", "Cancelled"
+
+    class RepeatabilityStatus(models.TextChoices):
+        FULLY_REPEATABLE = "fully_repeatable", "Fully repeatable"
+        SOURCE_REPEATABLE = "source_repeatable", "Source repeatable"
+        PARTIALLY_REPEATABLE = "partially_repeatable", "Partially repeatable"
+        MANIFEST_ONLY = "manifest_only", "Manifest only"
+
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name="analytical_snapshots",
+        verbose_name="Project",
+    )
+    name = models.CharField(max_length=255, verbose_name="Name")
+    snapshot_type = models.CharField(
+        max_length=32,
+        choices=SnapshotType.choices,
+        db_index=True,
+        verbose_name="Snapshot Type",
+    )
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.REQUESTED,
+        db_index=True,
+        verbose_name="Status",
+    )
+    sequence_number = models.PositiveIntegerField(default=1, verbose_name="Sequence")
+    source_version = models.ForeignKey(
+        ScheduleSourceVersion,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="analytical_snapshots",
+        verbose_name="Source Version",
+    )
+    baseline_version = models.ForeignKey(
+        BaselineVersion,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="analytical_snapshots",
+        verbose_name="Baseline Version",
+    )
+    data_date = models.DateField(null=True, blank=True, verbose_name="Data Date")
+    as_of_date = models.DateField(verbose_name="As-Of Date")
+    requested_at = models.DateTimeField(auto_now_add=True, verbose_name="Requested At")
+    calculation_started_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="Calculation Started At"
+    )
+    calculation_completed_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="Calculation Completed At"
+    )
+    published_at = models.DateTimeField(null=True, blank=True, verbose_name="Published At")
+    superseded_at = models.DateTimeField(null=True, blank=True, verbose_name="Superseded At")
+    archived_at = models.DateTimeField(null=True, blank=True, verbose_name="Archived At")
+    methodology_version = models.CharField(max_length=64, verbose_name="Methodology Version")
+    capability_profile_version = models.CharField(
+        max_length=64, verbose_name="Capability Profile Version"
+    )
+    trust_policy_version = models.CharField(max_length=64, verbose_name="Trust Policy Version")
+    calculation_engine_version = models.CharField(
+        max_length=64, blank=True, verbose_name="Calculation Engine Version"
+    )
+    source_content_hash = models.CharField(
+        max_length=128, blank=True, verbose_name="Source Content Hash"
+    )
+    input_fingerprint = models.CharField(
+        max_length=64, db_index=True, verbose_name="Input Fingerprint"
+    )
+    scope_fingerprint = models.CharField(
+        max_length=64, db_index=True, verbose_name="Scope Fingerprint"
+    )
+    repeatability_status = models.CharField(
+        max_length=32,
+        choices=RepeatabilityStatus.choices,
+        default=RepeatabilityStatus.MANIFEST_ONLY,
+        verbose_name="Repeatability Status",
+    )
+    filter_context = models.JSONField(default=dict, blank=True, verbose_name="Filter Context")
+    input_manifest = models.JSONField(default=dict, blank=True, verbose_name="Input Manifest")
+    validation_summary = models.JSONField(
+        default=dict, blank=True, verbose_name="Validation Summary"
+    )
+    coverage_summary = models.JSONField(default=dict, blank=True, verbose_name="Coverage Summary")
+    caveats = models.JSONField(default=list, blank=True, verbose_name="Caveats")
+    failure_summary = models.TextField(blank=True, verbose_name="Failure Summary")
+    artifact_manifest = models.JSONField(default=dict, blank=True, verbose_name="Artifact Manifest")
+    metadata = models.JSONField(default=dict, blank=True, verbose_name="Metadata")
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="analytical_snapshots_requested",
+        verbose_name="Requested By",
+    )
+    calculated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="analytical_snapshots_calculated",
+        verbose_name="Calculated By",
+    )
+    published_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="analytical_snapshots_published",
+        verbose_name="Published By",
+    )
+    archived_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="analytical_snapshots_archived",
+        verbose_name="Archived By",
+    )
+    supersedes = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="superseded_by",
+        verbose_name="Supersedes",
+    )
+
+    class Meta:
+        verbose_name = "Analytical Snapshot"
+        verbose_name_plural = "Analytical Snapshots"
+        ordering = ["-requested_at", "-sequence_number"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "sequence_number"],
+                name="castor_scheduling_unique_snapshot_sequence_per_project",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["project", "status"]),
+            models.Index(fields=["project", "snapshot_type"]),
+            models.Index(fields=["project", "data_date"]),
+            models.Index(fields=["project", "input_fingerprint"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.snapshot_type}/{self.status})"
+
+    @property
+    def is_provenance_immutable(self) -> bool:
+        """Completed or published snapshots cannot mutate provenance fields."""
+        return self.status in (
+            self.Status.COMPLETED,
+            self.Status.PUBLISHED,
+            self.Status.SUPERSEDED,
+            self.Status.ARCHIVED,
+        )
+
+    def save(self, *args, **kwargs) -> None:
+        if not self._state.adding and self.is_provenance_immutable and self.pk:
+            prior = AnalyticalSnapshot.objects.filter(pk=self.pk).first()
+            if prior and prior.is_provenance_immutable:
+                immutable = (
+                    "source_version_id",
+                    "baseline_version_id",
+                    "data_date",
+                    "as_of_date",
+                    "methodology_version",
+                    "capability_profile_version",
+                    "trust_policy_version",
+                    "input_fingerprint",
+                    "scope_fingerprint",
+                    "input_manifest",
+                    "source_content_hash",
+                )
+                for field in immutable:
+                    if getattr(self, field) != getattr(prior, field):
+                        raise ValueError(f"Cannot modify {field} on completed/published snapshot.")
+        super().save(*args, **kwargs)
+
+
+class AnalyticalSnapshotAuditEvent(UUIDModel):
+    """Append-only analytical snapshot lifecycle audit event."""
+
+    class EventType(models.TextChoices):
+        SNAPSHOT_REQUESTED = "snapshot_requested", "Snapshot requested"
+        SNAPSHOT_CALCULATION_STARTED = "snapshot_calculation_started", "Calculation started"
+        SNAPSHOT_COMPLETED = "snapshot_completed", "Snapshot completed"
+        SNAPSHOT_FAILED = "snapshot_failed", "Snapshot failed"
+        SNAPSHOT_PUBLISHED = "snapshot_published", "Snapshot published"
+        SNAPSHOT_SUPERSEDED = "snapshot_superseded", "Snapshot superseded"
+        SNAPSHOT_ARCHIVED = "snapshot_archived", "Snapshot archived"
+
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name="analytical_snapshot_audit_events",
+        verbose_name="Project",
+    )
+    snapshot = models.ForeignKey(
+        AnalyticalSnapshot,
+        on_delete=models.CASCADE,
+        related_name="audit_events",
+        verbose_name="Snapshot",
+    )
+    event_type = models.CharField(max_length=48, choices=EventType.choices, db_index=True)
+    previous_status = models.CharField(max_length=16, blank=True)
+    new_status = models.CharField(max_length=16, blank=True)
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="analytical_snapshot_audit_events",
+        verbose_name="Actor",
+    )
+    reason = models.TextField(blank=True, verbose_name="Reason")
+    source_version = models.ForeignKey(
+        ScheduleSourceVersion,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="snapshot_audit_events",
+        verbose_name="Source Version",
+    )
+    baseline_version = models.ForeignKey(
+        BaselineVersion,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="snapshot_audit_events",
+        verbose_name="Baseline Version",
+    )
+    methodology_version = models.CharField(max_length=64, blank=True)
+    metadata = models.JSONField(default=dict, blank=True, verbose_name="Metadata")
+
+    class Meta:
+        verbose_name = "Analytical Snapshot Audit Event"
+        verbose_name_plural = "Analytical Snapshot Audit Events"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["project", "event_type"]),
+            models.Index(fields=["snapshot", "created_at"]),
+        ]
+
+    def save(self, *args, **kwargs) -> None:
+        if not self._state.adding:
+            raise ValueError("AnalyticalSnapshotAuditEvent records are append-only.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs) -> None:
+        raise ValueError("AnalyticalSnapshotAuditEvent records are append-only.")
+
+
 class ScheduleSource(UUIDModel):
     """Audit record of each schedule file imported into a project.
 
