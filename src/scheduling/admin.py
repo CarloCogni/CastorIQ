@@ -6,6 +6,9 @@ from django.contrib import admin
 from scheduling.models import (
     AnalyticalSnapshot,
     AnalyticalSnapshotAuditEvent,
+    AnalyticalSnapshotPeriod,
+    AnalyticalSnapshotResult,
+    AnalyticalSnapshotSeriesPoint,
     BaselineAuditEvent,
     BaselineTaskState,
     BaselineVersion,
@@ -293,6 +296,60 @@ class AnalyticalSnapshotAuditEventAdmin(admin.ModelAdmin):
         return False
 
     def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(AnalyticalSnapshotResult)
+class AnalyticalSnapshotResultAdmin(admin.ModelAdmin):
+    """Read-only persisted snapshot analytics."""
+
+    list_display = ("snapshot", "methodology_mode", "spi", "cpi", "content_hash", "created_at")
+    list_filter = ("methodology_mode", "historical_authority")
+    readonly_fields = (
+        "id",
+        "snapshot",
+        "schema_version",
+        "content_hash",
+        "created_at",
+        "updated_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(AnalyticalSnapshotSeriesPoint)
+class AnalyticalSnapshotSeriesPointAdmin(admin.ModelAdmin):
+    """Read-only snapshot series points."""
+
+    list_display = ("snapshot", "series_type", "period_start", "cumulative_value", "sequence")
+    list_filter = ("series_type",)
+    readonly_fields = ("id", "snapshot", "created_at", "updated_at")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(AnalyticalSnapshotPeriod)
+class AnalyticalSnapshotPeriodAdmin(admin.ModelAdmin):
+    """Read-only snapshot period rows."""
+
+    list_display = ("snapshot", "period_start", "pv", "ev", "spi", "sequence")
+    readonly_fields = ("id", "snapshot", "created_at", "updated_at")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
         return False
 
 

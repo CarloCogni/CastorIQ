@@ -1255,6 +1255,156 @@ class AnalyticalSnapshotAuditEvent(UUIDModel):
         raise ValueError("AnalyticalSnapshotAuditEvent records are append-only.")
 
 
+class AnalyticalSnapshotResult(UUIDModel):
+    """Immutable persisted analytical summary for one completed snapshot (DF-B2)."""
+
+    SCHEMA_VERSION = "snapshot-result-v1"
+
+    snapshot = models.OneToOneField(
+        AnalyticalSnapshot,
+        on_delete=models.CASCADE,
+        related_name="result",
+        verbose_name="Snapshot",
+    )
+    schema_version = models.CharField(max_length=32, default=SCHEMA_VERSION)
+    methodology_mode = models.CharField(max_length=64, blank=True)
+    currency = models.CharField(max_length=16, blank=True)
+    historical_authority = models.BooleanField(default=False)
+    series_authority = models.CharField(max_length=32, blank=True)
+    baseline_authority = models.CharField(max_length=32, blank=True)
+    source_authority = models.CharField(max_length=32, blank=True)
+    model_scope_authority = models.CharField(max_length=32, blank=True)
+    pv = models.DecimalField(max_digits=20, decimal_places=4, null=True, blank=True)
+    ev = models.DecimalField(max_digits=20, decimal_places=4, null=True, blank=True)
+    ac = models.DecimalField(max_digits=20, decimal_places=4, null=True, blank=True)
+    bac = models.DecimalField(max_digits=20, decimal_places=4, null=True, blank=True)
+    spi = models.DecimalField(max_digits=12, decimal_places=6, null=True, blank=True)
+    cpi = models.DecimalField(max_digits=12, decimal_places=6, null=True, blank=True)
+    eac = models.DecimalField(max_digits=20, decimal_places=4, null=True, blank=True)
+    etc = models.DecimalField(max_digits=20, decimal_places=4, null=True, blank=True)
+    vac = models.DecimalField(max_digits=20, decimal_places=4, null=True, blank=True)
+    tcpi = models.DecimalField(max_digits=12, decimal_places=6, null=True, blank=True)
+    schedule_summary = models.JSONField(default=dict, blank=True)
+    delay_summary = models.JSONField(default=dict, blank=True)
+    model_impact_summary = models.JSONField(default=dict, blank=True)
+    coverage_summary = models.JSONField(default=dict, blank=True)
+    exclusion_summary = models.JSONField(default=dict, blank=True)
+    caveats = models.JSONField(default=list, blank=True)
+    kpi_payload = models.JSONField(default=dict, blank=True)
+    calculation_started_at = models.DateTimeField(null=True, blank=True)
+    calculation_completed_at = models.DateTimeField(null=True, blank=True)
+    duration_ms = models.PositiveIntegerField(null=True, blank=True)
+    engine_metadata = models.JSONField(default=dict, blank=True)
+    content_hash = models.CharField(max_length=64, db_index=True)
+
+    class Meta:
+        verbose_name = "Analytical Snapshot Result"
+        verbose_name_plural = "Analytical Snapshot Results"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"Result for {self.snapshot_id}"
+
+    def save(self, *args, **kwargs) -> None:
+        if not self._state.adding and self.pk:
+            raise ValueError("AnalyticalSnapshotResult is immutable after creation.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs) -> None:
+        raise ValueError("AnalyticalSnapshotResult deletion is restricted.")
+
+
+class AnalyticalSnapshotSeriesPoint(UUIDModel):
+    """Normalized persisted series point for a snapshot (DF-B2)."""
+
+    class SeriesType(models.TextChoices):
+        PLANNED_VALUE = "planned_value", "Planned value"
+        EARNED_VALUE = "earned_value", "Earned value"
+        ACTUAL_COST = "actual_cost", "Actual cost"
+        PLANNED_PROGRESS = "planned_progress", "Planned progress"
+        EARNED_PROGRESS = "earned_progress", "Earned progress"
+
+    snapshot = models.ForeignKey(
+        AnalyticalSnapshot,
+        on_delete=models.CASCADE,
+        related_name="series_points",
+        verbose_name="Snapshot",
+    )
+    series_type = models.CharField(max_length=32, choices=SeriesType.choices, db_index=True)
+    period_start = models.DateField(db_index=True)
+    period_end = models.DateField(null=True, blank=True)
+    value = models.DecimalField(max_digits=20, decimal_places=4, null=True, blank=True)
+    cumulative_value = models.DecimalField(max_digits=20, decimal_places=4, null=True, blank=True)
+    unit = models.CharField(max_length=16, blank=True)
+    authority = models.CharField(max_length=32, blank=True)
+    sequence = models.PositiveIntegerField(default=0)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        verbose_name = "Analytical Snapshot Series Point"
+        verbose_name_plural = "Analytical Snapshot Series Points"
+        ordering = ["series_type", "sequence", "period_start"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["snapshot", "series_type", "period_start", "sequence"],
+                name="castor_scheduling_unique_snapshot_series_point",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["snapshot", "series_type", "period_start"]),
+        ]
+
+    def save(self, *args, **kwargs) -> None:
+        if not self._state.adding and self.pk:
+            raise ValueError("AnalyticalSnapshotSeriesPoint is immutable after creation.")
+        super().save(*args, **kwargs)
+
+
+class AnalyticalSnapshotPeriod(UUIDModel):
+    """Persisted period-table row for snapshot EVM (DF-B2)."""
+
+    snapshot = models.ForeignKey(
+        AnalyticalSnapshot,
+        on_delete=models.CASCADE,
+        related_name="periods",
+        verbose_name="Snapshot",
+    )
+    period_start = models.DateField(db_index=True)
+    period_end = models.DateField(null=True, blank=True)
+    pv = models.DecimalField(max_digits=20, decimal_places=4, null=True, blank=True)
+    ev = models.DecimalField(max_digits=20, decimal_places=4, null=True, blank=True)
+    ac = models.DecimalField(max_digits=20, decimal_places=4, null=True, blank=True)
+    period_pv = models.DecimalField(max_digits=20, decimal_places=4, null=True, blank=True)
+    period_ev = models.DecimalField(max_digits=20, decimal_places=4, null=True, blank=True)
+    period_ac = models.DecimalField(max_digits=20, decimal_places=4, null=True, blank=True)
+    spi = models.DecimalField(max_digits=12, decimal_places=6, null=True, blank=True)
+    cpi = models.DecimalField(max_digits=12, decimal_places=6, null=True, blank=True)
+    eac = models.DecimalField(max_digits=20, decimal_places=4, null=True, blank=True)
+    vac = models.DecimalField(max_digits=20, decimal_places=4, null=True, blank=True)
+    authority = models.CharField(max_length=32, blank=True)
+    coverage = models.JSONField(default=dict, blank=True)
+    sequence = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name = "Analytical Snapshot Period"
+        verbose_name_plural = "Analytical Snapshot Periods"
+        ordering = ["sequence", "period_start"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["snapshot", "period_start", "sequence"],
+                name="castor_scheduling_unique_snapshot_period",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["snapshot", "period_start"]),
+        ]
+
+    def save(self, *args, **kwargs) -> None:
+        if not self._state.adding and self.pk:
+            raise ValueError("AnalyticalSnapshotPeriod is immutable after creation.")
+        super().save(*args, **kwargs)
+
+
 class ScheduleSource(UUIDModel):
     """Audit record of each schedule file imported into a project.
 
