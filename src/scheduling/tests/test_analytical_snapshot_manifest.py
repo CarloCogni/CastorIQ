@@ -436,8 +436,12 @@ class TestSnapshotIBSNoWrite:
     def test_no_ibs_snapshot_rows(self):
         from environments.models import Project
 
+        from scheduling.models import AnalyticalSnapshotResult, AnalyticalSnapshotSeriesPoint
+
         ibs_ids = list(Project.objects.filter(name__icontains="IBS").values_list("pk", flat=True))
         assert AnalyticalSnapshot.objects.filter(project_id__in=ibs_ids).count() == 0
+        assert AnalyticalSnapshotResult.objects.filter(snapshot__project_id__in=ibs_ids).count() == 0
+        assert AnalyticalSnapshotSeriesPoint.objects.filter(snapshot__project_id__in=ibs_ids).count() == 0
 
 
 @pytest.mark.django_db
