@@ -695,6 +695,290 @@ class ScheduleImportRun(UUIDModel):
         return f"{self.source_filename} ({self.status})"
 
 
+class BaselineVersion(UUIDModel):
+    """Named baseline definition — separate from operational schedule and source version."""
+
+    class BaselineType(models.TextChoices):
+        IMPORTED_REFERENCE = "imported_reference", "Imported reference"
+        WORKING = "working", "Working"
+        APPROVED = "approved", "Approved"
+        COMPARISON_ONLY = "comparison_only", "Comparison only"
+
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        PUBLISHED = "published", "Published"
+        SUPERSEDED = "superseded", "Superseded"
+        ARCHIVED = "archived", "Archived"
+        REJECTED = "rejected", "Rejected"
+
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name="baseline_versions",
+        verbose_name="Project",
+    )
+    source_version = models.ForeignKey(
+        ScheduleSourceVersion,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="baseline_versions",
+        verbose_name="Source Version",
+    )
+    name = models.CharField(max_length=255, verbose_name="Name")
+    code = models.CharField(max_length=64, blank=True, verbose_name="Code / Reference")
+    baseline_type = models.CharField(
+        max_length=32,
+        choices=BaselineType.choices,
+        db_index=True,
+        verbose_name="Baseline Type",
+    )
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.DRAFT,
+        db_index=True,
+        verbose_name="Status",
+    )
+    data_date = models.DateField(null=True, blank=True, verbose_name="Data Date")
+    effective_date = models.DateField(null=True, blank=True, verbose_name="Effective Date")
+    parent_baseline = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="child_revisions",
+        verbose_name="Parent Baseline",
+    )
+    revision_number = models.PositiveIntegerField(default=1, verbose_name="Revision")
+    currency = models.CharField(max_length=8, blank=True, verbose_name="Currency")
+    methodology_version = models.CharField(
+        max_length=64, blank=True, verbose_name="Methodology Version"
+    )
+    notes = models.TextField(blank=True, verbose_name="Notes")
+    is_selected_for_analysis = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name="Selected for Analysis",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="baseline_versions_created",
+        verbose_name="Created By",
+    )
+    published_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="baseline_versions_published",
+        verbose_name="Published By",
+    )
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="baseline_versions_approved",
+        verbose_name="Approved By",
+    )
+    published_at = models.DateTimeField(null=True, blank=True, verbose_name="Published At")
+    approved_at = models.DateTimeField(null=True, blank=True, verbose_name="Approved At")
+    superseded_at = models.DateTimeField(null=True, blank=True, verbose_name="Superseded At")
+    metadata = models.JSONField(default=dict, blank=True, verbose_name="Metadata")
+    validation_summary = models.JSONField(
+        default=dict, blank=True, verbose_name="Validation Summary"
+    )
+
+    class Meta:
+        verbose_name = "Baseline Version"
+        verbose_name_plural = "Baseline Versions"
+        ordering = ["-created_at", "-revision_number"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "revision_number"],
+                name="castor_scheduling_unique_baseline_revision_per_project",
+            ),
+            models.UniqueConstraint(
+                fields=["project"],
+                condition=models.Q(is_selected_for_analysis=True),
+                name="castor_scheduling_unique_selected_baseline_per_project",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["project", "status"]),
+            models.Index(fields=["project", "baseline_type"]),
+            models.Index(fields=["project", "is_selected_for_analysis"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.name} rev{self.revision_number} ({self.baseline_type}/{self.status})"
+
+    @property
+    def is_immutable(self) -> bool:
+        """Published baselines cannot mutate authoritative fields."""
+        return self.status == self.Status.PUBLISHED
+
+    def save(self, *args, **kwargs) -> None:
+        """Block mutation of authoritative fields on published baselines."""
+        if not self._state.adding and self.is_immutable:
+            if self.pk:
+                prior = BaselineVersion.objects.filter(pk=self.pk).first()
+                if prior and prior.is_immutable:
+                    for field in (
+                        "source_version_id",
+                        "baseline_type",
+                        "data_date",
+                        "effective_date",
+                        "currency",
+                        "methodology_version",
+                        "revision_number",
+                        "parent_baseline_id",
+                        "name",
+                        "code",
+                    ):
+                        if getattr(self, field) != getattr(prior, field):
+                            raise ValueError(f"Cannot modify {field} on published baseline.")
+        super().save(*args, **kwargs)
+
+
+class BaselineTaskState(UUIDModel):
+    """Immutable task-level snapshot belonging to one BaselineVersion."""
+
+    baseline_version = models.ForeignKey(
+        BaselineVersion,
+        on_delete=models.CASCADE,
+        related_name="task_states",
+        verbose_name="Baseline Version",
+    )
+    schedule_activity = models.ForeignKey(
+        ScheduleActivity,
+        on_delete=models.PROTECT,
+        related_name="baseline_task_states",
+        verbose_name="Schedule Activity",
+    )
+    source_task_id = models.CharField(
+        max_length=36, blank=True, verbose_name="Source Task ID Reference"
+    )
+    activity_code = models.CharField(max_length=255, blank=True, verbose_name="Activity Code")
+    name_snapshot = models.CharField(max_length=500, verbose_name="Name Snapshot")
+    planned_start = models.DateField(null=True, blank=True, verbose_name="Planned Start")
+    planned_finish = models.DateField(null=True, blank=True, verbose_name="Planned Finish")
+    duration_days = models.IntegerField(null=True, blank=True, verbose_name="Duration (days)")
+    calendar_reference = models.CharField(
+        max_length=128, blank=True, verbose_name="Calendar Reference"
+    )
+    baseline_cost = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="Baseline Cost / BAC",
+    )
+    planned_resource_units = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="Planned Resource Units",
+    )
+    progress_basis = models.CharField(max_length=64, blank=True, verbose_name="Progress Basis")
+    activity_type = models.CharField(max_length=100, blank=True, verbose_name="Activity Type")
+    source_metadata = models.JSONField(default=dict, blank=True, verbose_name="Source Metadata")
+    field_provenance = models.JSONField(default=dict, blank=True, verbose_name="Field Provenance")
+
+    class Meta:
+        verbose_name = "Baseline Task State"
+        verbose_name_plural = "Baseline Task States"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["baseline_version", "schedule_activity"],
+                name="castor_scheduling_unique_baseline_task_per_activity",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["baseline_version", "schedule_activity"]),
+            models.Index(fields=["baseline_version", "activity_code"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.name_snapshot} @ {self.baseline_version_id}"
+
+    def save(self, *args, **kwargs) -> None:
+        """Block mutation when parent baseline is published."""
+        if not self._state.adding and self.baseline_version.is_immutable:
+            raise ValueError("BaselineTaskState is immutable after baseline publication.")
+        super().save(*args, **kwargs)
+
+
+class BaselineAuditEvent(UUIDModel):
+    """Append-only baseline lifecycle audit event."""
+
+    class EventType(models.TextChoices):
+        BASELINE_CREATED = "baseline_created", "Baseline created"
+        BASELINE_POPULATION_COMPLETED = "baseline_population_completed", "Population completed"
+        BASELINE_PUBLISHED = "baseline_published", "Baseline published"
+        BASELINE_APPROVED = "baseline_approved", "Baseline approved"
+        BASELINE_SELECTED = "baseline_selected", "Baseline selected"
+        BASELINE_SUPERSEDED = "baseline_superseded", "Baseline superseded"
+        BASELINE_ARCHIVED = "baseline_archived", "Baseline archived"
+        BASELINE_REJECTED = "baseline_rejected", "Baseline rejected"
+
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name="baseline_audit_events",
+        verbose_name="Project",
+    )
+    baseline_version = models.ForeignKey(
+        BaselineVersion,
+        on_delete=models.CASCADE,
+        related_name="audit_events",
+        verbose_name="Baseline Version",
+    )
+    event_type = models.CharField(max_length=48, choices=EventType.choices, db_index=True)
+    previous_status = models.CharField(max_length=16, blank=True)
+    new_status = models.CharField(max_length=16, blank=True)
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="baseline_audit_events",
+        verbose_name="Actor",
+    )
+    reason = models.TextField(blank=True, verbose_name="Reason / Reference")
+    source_version = models.ForeignKey(
+        ScheduleSourceVersion,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="baseline_audit_events",
+        verbose_name="Source Version",
+    )
+    metadata = models.JSONField(default=dict, blank=True, verbose_name="Metadata")
+
+    class Meta:
+        verbose_name = "Baseline Audit Event"
+        verbose_name_plural = "Baseline Audit Events"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["project", "event_type"]),
+            models.Index(fields=["baseline_version", "created_at"]),
+        ]
+
+    def save(self, *args, **kwargs) -> None:
+        if not self._state.adding:
+            raise ValueError("BaselineAuditEvent records are append-only.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs) -> None:
+        raise ValueError("BaselineAuditEvent records are append-only.")
+
+
 class ScheduleSource(UUIDModel):
     """Audit record of each schedule file imported into a project.
 
