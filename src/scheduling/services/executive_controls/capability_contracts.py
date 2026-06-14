@@ -68,6 +68,7 @@ class CapabilityProfilePayload:
     banner: dict[str, Any] = field(default_factory=dict)
     provenance_capabilities: dict[str, dict[str, Any]] = field(default_factory=dict)
     baseline_capabilities: dict[str, dict[str, Any]] = field(default_factory=dict)
+    snapshot_capabilities: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

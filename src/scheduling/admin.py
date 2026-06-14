@@ -4,6 +4,8 @@
 from django.contrib import admin
 
 from scheduling.models import (
+    AnalyticalSnapshot,
+    AnalyticalSnapshotAuditEvent,
     BaselineAuditEvent,
     BaselineTaskState,
     BaselineVersion,
@@ -169,6 +171,129 @@ class ScheduleSourceVersionAdmin(admin.ModelAdmin):
         "updated_at",
     )
     raw_id_fields = ("project", "schedule_source", "supersedes", "created_by")
+
+
+class AnalyticalSnapshotAuditEventInline(admin.TabularInline):
+    """Read-only snapshot audit trail."""
+
+    model = AnalyticalSnapshotAuditEvent
+    extra = 0
+    readonly_fields = (
+        "event_type",
+        "previous_status",
+        "new_status",
+        "actor",
+        "reason",
+        "created_at",
+    )
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(AnalyticalSnapshot)
+class AnalyticalSnapshotAdmin(admin.ModelAdmin):
+    """Inspect analytical snapshot manifests — lifecycle via services only."""
+
+    list_display = (
+        "name",
+        "project",
+        "snapshot_type",
+        "status",
+        "data_date",
+        "as_of_date",
+        "repeatability_status",
+        "requested_at",
+    )
+    list_filter = ("snapshot_type", "status", "repeatability_status")
+    search_fields = ("name", "input_fingerprint", "scope_fingerprint")
+    readonly_fields = (
+        "id",
+        "project",
+        "sequence_number",
+        "requested_at",
+        "calculation_started_at",
+        "calculation_completed_at",
+        "published_at",
+        "superseded_at",
+        "archived_at",
+        "input_fingerprint",
+        "scope_fingerprint",
+        "source_content_hash",
+        "created_at",
+        "updated_at",
+    )
+    raw_id_fields = (
+        "project",
+        "source_version",
+        "baseline_version",
+        "requested_by",
+        "calculated_by",
+        "published_by",
+        "archived_by",
+        "supersedes",
+    )
+    inlines = [AnalyticalSnapshotAuditEventInline]
+
+    def get_readonly_fields(self, request, obj=None):
+        fields = list(super().get_readonly_fields(request, obj))
+        if obj and obj.is_provenance_immutable:
+            fields.extend(
+                [
+                    "source_version",
+                    "baseline_version",
+                    "data_date",
+                    "as_of_date",
+                    "methodology_version",
+                    "capability_profile_version",
+                    "trust_policy_version",
+                    "input_manifest",
+                    "filter_context",
+                    "name",
+                    "snapshot_type",
+                    "status",
+                ]
+            )
+        return fields
+
+    def has_delete_permission(self, request, obj=None):
+        if obj and obj.is_provenance_immutable:
+            return False
+        return super().has_delete_permission(request, obj)
+
+
+@admin.register(AnalyticalSnapshotAuditEvent)
+class AnalyticalSnapshotAuditEventAdmin(admin.ModelAdmin):
+    """Append-only analytical snapshot audit trail."""
+
+    list_display = ("event_type", "snapshot", "project", "actor", "created_at")
+    list_filter = ("event_type",)
+    readonly_fields = (
+        "id",
+        "project",
+        "snapshot",
+        "event_type",
+        "previous_status",
+        "new_status",
+        "actor",
+        "reason",
+        "source_version",
+        "baseline_version",
+        "methodology_version",
+        "metadata",
+        "created_at",
+        "updated_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(ScheduleImportRun)

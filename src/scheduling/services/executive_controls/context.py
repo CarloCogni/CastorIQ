@@ -130,6 +130,52 @@ class AnalyticalContextService:
                 "data_date": source.data_date.isoformat() if source.data_date else None,
             }
 
+        from scheduling.services.analytical_snapshot.lifecycle import AnalyticalSnapshotService
+
+        snapshot_caps = (capability_profile or {}).get("snapshot_capabilities") or {}
+        has_snapshot_schema = snapshot_caps.get("snapshot_manifest_schema", {}).get(
+            "available", False
+        )
+        snapshot_counts = snapshot_caps.get("snapshot_counts") or {}
+        latest_completed = None
+        latest_published = None
+        if has_snapshot_schema and snapshot_counts.get("completed", 0) > 0:
+            completed = AnalyticalSnapshotService.get_latest_completed(self.project)
+            if completed:
+                latest_completed = {
+                    "id": str(completed.pk),
+                    "name": completed.name,
+                    "snapshot_type": completed.snapshot_type,
+                    "status": completed.status,
+                    "data_date": completed.data_date.isoformat() if completed.data_date else None,
+                    "as_of_date": completed.as_of_date.isoformat(),
+                    "source_version_id": str(completed.source_version_id)
+                    if completed.source_version_id
+                    else None,
+                    "baseline_version_id": str(completed.baseline_version_id)
+                    if completed.baseline_version_id
+                    else None,
+                    "methodology_version": completed.methodology_version,
+                    "repeatability_status": completed.repeatability_status,
+                    "historical_authority": False,
+                    "caveats": completed.caveats or [],
+                }
+        if has_snapshot_schema and snapshot_counts.get("published", 0) > 0:
+            published = AnalyticalSnapshotService.get_latest_published(self.project)
+            if published:
+                latest_published = {
+                    "id": str(published.pk),
+                    "name": published.name,
+                    "snapshot_type": published.snapshot_type,
+                    "status": published.status,
+                    "data_date": published.data_date.isoformat() if published.data_date else None,
+                    "as_of_date": published.as_of_date.isoformat(),
+                    "published_at": published.published_at.isoformat()
+                    if published.published_at
+                    else None,
+                    "historical_authority": False,
+                }
+
         return {
             "project_id": self.project_id,
             "project_name": self.project.name,
@@ -183,6 +229,11 @@ class AnalyticalContextService:
             "trust_policy": TRUSTED_BINDING_POLICY_ID,
             "governance_policy": GOVERNANCE_AUTHORITY_POLICY_ID,
             "snapshot_available": False,
+            "snapshot_manifest_available": has_snapshot_schema,
+            "historical_authority": False,
+            "latest_completed_snapshot": latest_completed,
+            "latest_published_snapshot": latest_published,
+            "snapshot_capabilities": snapshot_caps if has_snapshot_schema else None,
             "reimport_drift_warning": REIMPORT_CAVEAT,
             "source_caveats": [
                 REIMPORT_CAVEAT,

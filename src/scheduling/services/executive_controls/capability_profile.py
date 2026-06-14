@@ -84,6 +84,9 @@ class _ProjectSignals:
     selected_baseline_status: str | None
     selected_baseline_task_states: int
     selected_baseline_cost_states: int
+    snapshot_count: int = 0
+    completed_snapshot_count: int = 0
+    published_snapshot_count: int = 0
 
 
 class ProjectAnalyticsCapabilityProfile:
@@ -107,6 +110,7 @@ class ProjectAnalyticsCapabilityProfile:
         banner = self._build_banner(signals, cap_dicts)
         provenance = self._provenance_capabilities(signals)
         baseline = self._baseline_capabilities(signals)
+        snapshot = self._snapshot_capabilities(signals)
 
         payload = CapabilityProfilePayload(
             profile_version=PROFILE_VERSION,
@@ -127,6 +131,7 @@ class ProjectAnalyticsCapabilityProfile:
             banner=banner,
             provenance_capabilities=provenance,
             baseline_capabilities=baseline,
+            snapshot_capabilities=snapshot,
         )
         return payload.to_dict()
 
@@ -181,8 +186,86 @@ class ProjectAnalyticsCapabilityProfile:
                 has_schema and has_current,
                 CapabilityState.AVAILABLE_WITH_CAVEATS,
                 caveats=(
-                    "Repeatable analytics require AnalyticalSnapshot (DF-B) — schema only in DF-A1.",
+                    "Source version identity recorded on AnalyticalSnapshot manifests (DF-B1).",
                 ),
+            ),
+        }
+
+    def _snapshot_capabilities(self, signals: _ProjectSignals) -> dict[str, dict[str, Any]]:
+        """DF-B1 snapshot manifest schema — historical series remains unavailable."""
+
+        def _entry(
+            available: bool,
+            state: CapabilityState,
+            *,
+            caveats: tuple[str, ...] = (),
+        ) -> dict[str, Any]:
+            return {
+                "available": available,
+                "state": state.value,
+                "caveats": list(caveats),
+            }
+
+        has_schema = True
+        has_completed = signals.completed_snapshot_count > 0
+        has_published = signals.published_snapshot_count > 0
+        has_source = signals.current_source_version_id is not None
+
+        return {
+            "snapshot_counts": {
+                "total": signals.snapshot_count,
+                "completed": signals.completed_snapshot_count,
+                "published": signals.published_snapshot_count,
+            },
+            "snapshot_manifest_schema": _entry(
+                has_schema,
+                CapabilityState.AVAILABLE,
+                caveats=("Manifest identity only — KPI series deferred to DF-B2.",),
+            ),
+            "snapshot_request_readiness": _entry(
+                has_schema,
+                CapabilityState.AVAILABLE if has_source else CapabilityState.AVAILABLE_WITH_CAVEATS,
+                caveats=()
+                if has_source
+                else ("Legacy project may create manifest_only snapshots with caveats.",),
+            ),
+            "snapshot_source_traceability": _entry(
+                has_schema and has_source,
+                CapabilityState.AVAILABLE if has_source else CapabilityState.UNAVAILABLE,
+                caveats=("Requires current ScheduleSourceVersion at request time.",)
+                if not has_source
+                else (),
+            ),
+            "snapshot_baseline_traceability": _entry(
+                has_schema,
+                CapabilityState.AVAILABLE
+                if signals.selected_baseline_id
+                else CapabilityState.AVAILABLE_WITH_CAVEATS,
+                caveats=("Baseline FK nullable — snapshots without baseline remain valid.",)
+                if not signals.selected_baseline_id
+                else (),
+            ),
+            "snapshot_repeatability": _entry(
+                has_schema and has_source,
+                CapabilityState.AVAILABLE_WITH_CAVEATS,
+                caveats=(
+                    "Repeatability status recorded per snapshot — full replay requires DF-B2.",
+                ),
+            ),
+            "snapshot_publication_readiness": _entry(
+                has_schema and has_completed,
+                CapabilityState.AVAILABLE if has_completed else CapabilityState.UNAVAILABLE,
+                caveats=("Publication is separate from calculation completion.",),
+            ),
+            "historical_snapshot_series": _entry(
+                False,
+                CapabilityState.UNAVAILABLE,
+                caveats=("Historical time series requires DF-B2 persisted points.",),
+            ),
+            "historical_evm": _entry(
+                False,
+                CapabilityState.UNAVAILABLE,
+                caveats=("Historical EVM KPI persistence requires DF-B2.",),
             ),
         }
 
@@ -265,9 +348,7 @@ class ProjectAnalyticsCapabilityProfile:
                 else CapabilityState.AVAILABLE_WITH_CAVEATS
                 if selected
                 else CapabilityState.UNAVAILABLE,
-                caveats=(
-                    "No selected baseline — EVM uses derived current schedule mode.",
-                )
+                caveats=("No selected baseline — EVM uses derived current schedule mode.",)
                 if not selected
                 else (),
             ),
@@ -428,6 +509,7 @@ class ProjectAnalyticsCapabilityProfile:
             import_run_count,
         ) = self._provenance_table_counts()
         baseline_counts = self._baseline_table_counts()
+        snapshot_counts = self._snapshot_table_counts()
 
         return _ProjectSignals(
             source_type=source_type,
@@ -469,7 +551,39 @@ class ProjectAnalyticsCapabilityProfile:
             selected_baseline_status=baseline_counts["selected_status"],
             selected_baseline_task_states=baseline_counts["task_states"],
             selected_baseline_cost_states=baseline_counts["cost_states"],
+            snapshot_count=snapshot_counts["count"],
+            completed_snapshot_count=snapshot_counts["completed"],
+            published_snapshot_count=snapshot_counts["published"],
         )
+
+    def _snapshot_table_counts(self) -> dict[str, int]:
+        """Single round-trip for DF-B1 snapshot counts."""
+        from django.db import connection
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    (SELECT COUNT(*) FROM castor_scheduling_analyticalsnapshot WHERE project_id = %s),
+                    (
+                        SELECT COUNT(*)
+                        FROM castor_scheduling_analyticalsnapshot
+                        WHERE project_id = %s AND status = 'completed'
+                    ),
+                    (
+                        SELECT COUNT(*)
+                        FROM castor_scheduling_analyticalsnapshot
+                        WHERE project_id = %s AND status = 'published'
+                    )
+                """,
+                [self.project_id] * 3,
+            )
+            row = cursor.fetchone()
+        return {
+            "count": int(row[0] or 0),
+            "completed": int(row[1] or 0),
+            "published": int(row[2] or 0),
+        }
 
     def _baseline_table_counts(self) -> dict[str, Any]:
         """Single round-trip for DF-A2 baseline counts."""
@@ -814,11 +928,11 @@ class ProjectAnalyticsCapabilityProfile:
                 required_fields=("baseline_cost", "progress")
                 if baseline_cost_ok and s.selected_baseline_type == "approved"
                 else ("Task.cost", "progress"),
-                present_fields=("baseline_cost",) if baseline_cost_ok else (("cost",) if s.with_cost else ()),
+                present_fields=("baseline_cost",)
+                if baseline_cost_ok
+                else (("cost",) if s.with_cost else ()),
                 missing_reasons=tuple(missing_ce),
-                caveats=(
-                    "Cost EVM from selected approved BaselineTaskState coverage.",
-                )
+                caveats=("Cost EVM from selected approved BaselineTaskState coverage.",)
                 if baseline_cost_ok and s.selected_baseline_type == "approved"
                 else (
                     "Cost EVM requires sufficient Task.cost coverage — not inferred from source name.",

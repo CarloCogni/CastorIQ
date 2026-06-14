@@ -5,7 +5,13 @@ intelligence, writeback, and manual element linking.
 
 from django.urls import path
 
-from . import views, views_baseline, views_executive_controls, views_source_provenance
+from . import (
+    views,
+    views_analytical_snapshot,
+    views_baseline,
+    views_executive_controls,
+    views_source_provenance,
+)
 
 app_name = "scheduling"
 
@@ -82,6 +88,21 @@ urlpatterns = [
         "projects/<uuid:pk>/baselines/<uuid:baseline_pk>/task-states/",
         views_baseline.BaselineTaskStateListView.as_view(),
         name="schedule_baseline_task_states",
+    ),
+    path(
+        "projects/<uuid:pk>/analytical-snapshots/",
+        views_analytical_snapshot.AnalyticalSnapshotListView.as_view(),
+        name="schedule_analytical_snapshots",
+    ),
+    path(
+        "projects/<uuid:pk>/analytical-snapshots/latest/",
+        views_analytical_snapshot.AnalyticalSnapshotLatestView.as_view(),
+        name="schedule_analytical_snapshots_latest",
+    ),
+    path(
+        "projects/<uuid:pk>/analytical-snapshots/<uuid:snapshot_pk>/",
+        views_analytical_snapshot.AnalyticalSnapshotDetailView.as_view(),
+        name="schedule_analytical_snapshot_detail",
     ),
     path(
         "projects/<uuid:pk>/all-tasks-preview/",
