@@ -324,7 +324,12 @@ def compute_wbs_heatmap(project_id: str) -> list[dict]:
     return result
 
 
-def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
+def compute_evm(
+    project_id: str,
+    as_of_date: date | None = None,
+    *,
+    baseline_version_id: str | None = None,
+) -> dict:
     """Compute EVM metrics and weekly S-curve series for *project_id*.
 
     AC, CPI, CV, EAC, VAC require real actual cost from P6ResourceAssignment.
@@ -347,12 +352,19 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
         as_of / project_start / project_end — ISO date strings
         series             — {pv, ev, ac}  (ac absent when not available)
     """
-    from scheduling.models import Task
+    from scheduling.models import BaselineVersion, Task
     from scheduling.services.baseline.evm_scope import (
         ActivityMatchKind,
         BaselineEVMScopeService,
         EVMMethodologyMode,
     )
+
+    baseline_override = None
+    if baseline_version_id:
+        baseline_override = BaselineVersion.objects.filter(
+            pk=baseline_version_id,
+            project_id=project_id,
+        ).first()
 
     tasks = list(
         Task.objects.filter(project_id=project_id, is_non_physical=False)
@@ -368,7 +380,10 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
     today = as_of_date or get_project_data_date(project_id)[0]
     total_tasks = len(tasks)
 
-    scope = BaselineEVMScopeService(str(project_id)).resolve(tasks)
+    scope = BaselineEVMScopeService(str(project_id)).resolve(
+        tasks,
+        baseline=baseline_override,
+    )
     baseline_evm = scope.to_metadata()
 
     # Per-task calendar for working-day span calculations (PV, EV fallback)

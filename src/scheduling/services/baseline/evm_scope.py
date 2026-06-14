@@ -154,15 +154,21 @@ class BaselineEVMScopeService:
     def __init__(self, project_id: str) -> None:
         self.project_id = project_id
 
-    def resolve(self, tasks: list[Task]) -> BaselineEVMScope:
-        """Build scope from selected baseline and current schedulable tasks."""
+    def resolve(
+        self,
+        tasks: list[Task],
+        *,
+        baseline: BaselineVersion | None = None,
+    ) -> BaselineEVMScope:
+        """Build scope from selected or overridden baseline and current schedulable tasks."""
         from environments.models import Project
 
         project = Project.objects.filter(pk=self.project_id).first()
         if project is None:
             return self._derived_scope(tasks, caveats=("Project not found.",))
 
-        baseline = BaselineVersionService.get_selected_baseline(project)
+        if baseline is None:
+            baseline = BaselineVersionService.get_selected_baseline(project)
         if baseline is None:
             return self._derived_scope(tasks)
 
