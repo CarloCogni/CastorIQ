@@ -686,11 +686,6 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
         )
         run_id = coordinator.start_run(ctx)
 
-        if replace_mode:
-            existing = Task.objects.filter(project=project).count()
-            Task.objects.filter(project=project).delete()
-            logger.info("Replace mode: cleared %d tasks for project %s", existing, project.pk)
-
         raw_deps_json = request.session.pop(f"parsed_deps_{project.pk}", None)
         raw_deps: list[dict] = json.loads(raw_deps_json) if raw_deps_json else []
         del request.session[session_key]
@@ -701,7 +696,7 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
                     project,
                     tasks_data=tasks_data,
                     raw_deps=raw_deps,
-                    replace_mode=False,
+                    replace_mode=replace_mode,
                     filename=filename,
                     source_format=source_format,
                     data_date=_p6_data_date,
