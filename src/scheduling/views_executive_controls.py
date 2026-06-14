@@ -288,6 +288,162 @@ class ExecutiveControlsEVMAvailabilityView(ProjectAccessMixin, View):
         return JsonResponse({"error": "Method not allowed."}, status=405)
 
 
+class ExecutiveControlsEVMPageView(ProjectAccessMixin, TemplateView):
+    """GET — E8-D EVM analytics shell."""
+
+    template_name = "scheduling/executive_controls_evm_page.html"
+
+    def get_context_data(self, **kwargs: object) -> dict:
+        from scheduling.services.executive_controls.context import AnalyticalContextService
+
+        ctx = super().get_context_data(**kwargs)
+        project = self.get_project()
+        capability = _capability_profile(project)
+        filters = _evm_filters(self.request)
+        ctx["project"] = project
+        ctx["analytical_context"] = AnalyticalContextService(project).build(capability)
+        ctx["capability_profile"] = capability
+        ctx["filters"] = filters
+        ctx["filter_query"] = filters.query_string()
+        ctx["exec_subtab"] = "evm"
+        return ctx
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        return JsonResponse({"error": "Method not allowed."}, status=405)
+
+
+class ExecutiveControlsEVMCurrentView(ProjectAccessMixin, View):
+    """GET — current-point EVM metrics fragment or JSON."""
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.executive_controls.current_evm_analytics import (
+            CurrentEVMAnalyticsService,
+        )
+
+        project = self.get_project()
+        filters = _evm_filters(request)
+        capability = _capability_profile(project)
+        session = _evm_session(project)
+        try:
+            payload = CurrentEVMAnalyticsService(
+                project, capability_profile=capability, session=session
+            ).build(mode=filters.mode)
+            if request.headers.get("HX-Request"):
+                return render(request, "scheduling/components/executive_evm_current.html", payload)
+            return JsonResponse(payload)
+        except Exception as exc:
+            logger.exception("EVM current metrics failed: %s", exc)
+            err = {"section_error": "Current metrics temporarily unavailable."}
+            if request.headers.get("HX-Request"):
+                return render(
+                    request, "scheduling/components/executive_evm_current.html", err, status=200
+                )
+            return JsonResponse({"error": str(exc)}, status=500)
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        return JsonResponse({"error": "Method not allowed."}, status=405)
+
+
+class ExecutiveControlsEVMSCureView(ProjectAccessMixin, View):
+    """GET — derived as-of S-curve fragment or JSON."""
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.executive_controls.derived_asof_scurve import (
+            DerivedAsOfSCurveService,
+        )
+
+        project = self.get_project()
+        filters = _evm_filters(request)
+        capability = _capability_profile(project)
+        session = _evm_session(project)
+        try:
+            svc = DerivedAsOfSCurveService(project, capability_profile=capability, session=session)
+            payload = svc.build_scurve(filters)
+            if request.headers.get("HX-Request"):
+                return render(request, "scheduling/components/executive_evm_scurve.html", payload)
+            return JsonResponse(payload)
+        except Exception as exc:
+            logger.exception("EVM S-curve failed: %s", exc)
+            err = {"section_error": "Derived curve temporarily unavailable."}
+            if request.headers.get("HX-Request"):
+                return render(
+                    request, "scheduling/components/executive_evm_scurve.html", err, status=200
+                )
+            return JsonResponse({"error": str(exc)}, status=500)
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        return JsonResponse({"error": "Method not allowed."}, status=405)
+
+
+class ExecutiveControlsEVMPeriodsView(ProjectAccessMixin, View):
+    """GET — underlying period table fragment or JSON."""
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.executive_controls.derived_asof_scurve import (
+            DerivedAsOfSCurveService,
+        )
+
+        project = self.get_project()
+        filters = _evm_filters(request)
+        capability = _capability_profile(project)
+        session = _evm_session(project)
+        try:
+            svc = DerivedAsOfSCurveService(project, capability_profile=capability, session=session)
+            payload = svc.build_periods(filters)
+            if request.headers.get("HX-Request"):
+                return render(request, "scheduling/components/executive_evm_periods.html", payload)
+            return JsonResponse(payload)
+        except Exception as exc:
+            logger.exception("EVM periods failed: %s", exc)
+            err = {"section_error": "Period table temporarily unavailable."}
+            if request.headers.get("HX-Request"):
+                return render(
+                    request, "scheduling/components/executive_evm_periods.html", err, status=200
+                )
+            return JsonResponse({"error": str(exc)}, status=500)
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        return JsonResponse({"error": "Method not allowed."}, status=405)
+
+
+class ExecutiveControlsEVMMethodologyView(ProjectAccessMixin, View):
+    """GET — E8-D methodology and coverage panel."""
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.executive_controls.current_evm_analytics import (
+            CurrentEVMAnalyticsService,
+        )
+        from scheduling.services.executive_controls.methodology import methodology_registry_payload
+
+        project = self.get_project()
+        filters = _evm_filters(request)
+        capability = _capability_profile(project)
+        session = _evm_session(project)
+        current = CurrentEVMAnalyticsService(
+            project, capability_profile=capability, session=session
+        ).build(mode=filters.mode)
+        payload = {
+            "definitions": [
+                d
+                for d in methodology_registry_payload()
+                if d["metric_id"].startswith("e8.")
+                and (
+                    "evm" in d.get("drilldown_route", "")
+                    or "current" in d["metric_id"]
+                    or "derived" in d["metric_id"]
+                )
+            ],
+            "current": current,
+            "capability_profile": capability,
+        }
+        if request.headers.get("HX-Request"):
+            return render(request, "scheduling/components/executive_evm_methodology.html", payload)
+        return JsonResponse(payload)
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        return JsonResponse({"error": "Method not allowed."}, status=405)
+
+
 class ExecutiveControlsResourceAvailabilityView(ProjectAccessMixin, View):
     """GET — equivalent workforce availability contract."""
 
@@ -308,6 +464,18 @@ def _matrix_filters(request) -> Any:
     from scheduling.services.executive_controls.matrix_filters import ExecutiveMatrixFilters
 
     return ExecutiveMatrixFilters.from_params(request.GET.dict())
+
+
+def _evm_filters(request) -> Any:
+    from scheduling.services.executive_controls.evm_filters import EVMFilters
+
+    return EVMFilters.from_params(request.GET.dict())
+
+
+def _evm_session(project) -> Any:
+    from scheduling.services.executive_controls.evm_compute_session import E8EVMComputeSession
+
+    return E8EVMComputeSession(str(project.pk))
 
 
 class ExecutiveControlsMatrixPageView(ProjectAccessMixin, TemplateView):

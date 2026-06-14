@@ -1,0 +1,35 @@
+<!-- scheduling/components/executive_evm_methodology.html -->
+<section id="exec-evm-methodology-section" aria-labelledby="exec-evm-methodology-heading">
+    <h2 class="h6 fw-semibold mb-3" id="exec-evm-methodology-heading">
+        <i class="bi bi-journal-text me-1 text-primary"></i> Methodology &amp; Coverage
+    </h2>
+    {% if current %}
+    <p class="small mb-2">
+        Mode: <strong>{{ current.mode_label }}</strong> · Cost basis: {{ current.cost_basis|default:"—" }}
+    </p>
+    <p class="small text-secondary mb-3">{{ current.currency_assumption }}</p>
+    {% endif %}
+    <div class="accordion accordion-flush" id="evmMethodologyAccordion">
+        {% for def in definitions|slice:":12" %}
+        <div class="accordion-item">
+            <h3 class="accordion-header">
+                <button class="accordion-button collapsed py-2 small" type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#evm-def-{{ forloop.counter }}">
+                    {{ def.label }}
+                </button>
+            </h3>
+            <div id="evm-def-{{ forloop.counter }}" class="accordion-collapse collapse"
+                 data-bs-parent="#evmMethodologyAccordion">
+                <div class="accordion-body small">
+                    <p>{{ def.business_question }}</p>
+                    <p><strong>Formula:</strong> {{ def.formula }}</p>
+                    <p class="text-secondary mb-0">{{ def.caveat }}</p>
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <p class="small text-secondary">Methodology definitions loading from e8-v1 registry.</p>
+        {% endfor %}
+    </div>
+</section>

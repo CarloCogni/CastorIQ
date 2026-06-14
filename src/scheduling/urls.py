@@ -450,6 +450,31 @@ urlpatterns = [
         name="executive_controls_delays",
     ),
     path(
+        "projects/<uuid:pk>/executive-controls/evm/",
+        views_executive_controls.ExecutiveControlsEVMPageView.as_view(),
+        name="executive_controls_evm",
+    ),
+    path(
+        "projects/<uuid:pk>/executive-controls/evm/current/",
+        views_executive_controls.ExecutiveControlsEVMCurrentView.as_view(),
+        name="executive_controls_evm_current",
+    ),
+    path(
+        "projects/<uuid:pk>/executive-controls/evm/s-curve/",
+        views_executive_controls.ExecutiveControlsEVMSCureView.as_view(),
+        name="executive_controls_evm_scurve",
+    ),
+    path(
+        "projects/<uuid:pk>/executive-controls/evm/periods/",
+        views_executive_controls.ExecutiveControlsEVMPeriodsView.as_view(),
+        name="executive_controls_evm_periods",
+    ),
+    path(
+        "projects/<uuid:pk>/executive-controls/evm/methodology/",
+        views_executive_controls.ExecutiveControlsEVMMethodologyView.as_view(),
+        name="executive_controls_evm_methodology",
+    ),
+    path(
         "projects/<uuid:pk>/executive-controls/evm-availability/",
         views_executive_controls.ExecutiveControlsEVMAvailabilityView.as_view(),
         name="executive_controls_evm_availability",

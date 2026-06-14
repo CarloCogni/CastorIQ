@@ -1,0 +1,45 @@
+<!-- scheduling/components/executive_evm_periods.html -->
+<section id="exec-evm-periods-section" aria-labelledby="exec-evm-periods-heading">
+    <h2 class="h6 fw-semibold mb-3" id="exec-evm-periods-heading">
+        <i class="bi bi-table me-1 text-primary"></i> Underlying Period Table
+    </h2>
+    {% if section_error %}
+    <div class="alert alert-danger" role="alert">{{ section_error }}</div>
+    {% elif not rows %}
+    <div class="alert alert-secondary" role="status">No period rows available.</div>
+    {% else %}
+    <p class="small text-secondary">{{ caveat }} Data-date marker: <strong>{{ data_date_marker }}</strong></p>
+    <div class="table-responsive">
+        <table class="table table-sm table-striped align-middle exec-evm-period-table">
+            <caption class="small text-secondary">Derived as-of cumulative values — current snapshot reconstruction</caption>
+            <thead>
+                <tr>
+                    <th scope="col">Period</th>
+                    <th scope="col">PV</th>
+                    <th scope="col">EV</th>
+                    <th scope="col">AC</th>
+                    <th scope="col">PV %</th>
+                    <th scope="col">EV %</th>
+                    <th scope="col">AC %</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr>
+                    <th scope="row">{{ row.period }}</th>
+                    <td>{% if row.cumulative_pv is not None %}{{ row.cumulative_pv }}{% else %}—{% endif %}</td>
+                    <td>{% if row.cumulative_ev is not None %}{{ row.cumulative_ev }}{% else %}—{% endif %}</td>
+                    <td>{% if row.cumulative_ac is not None %}{{ row.cumulative_ac }}{% else %}—{% endif %}</td>
+                    <td>{{ row.cumulative_pv_pct|default:"—" }}</td>
+                    <td>{{ row.cumulative_ev_pct|default:"—" }}</td>
+                    <td>{{ row.cumulative_ac_pct|default:"—" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <p class="small text-secondary mb-0">
+        Page {{ pagination.page }} of {{ pagination.total_pages }} ({{ pagination.total }} periods)
+    </p>
+    {% endif %}
+</section>

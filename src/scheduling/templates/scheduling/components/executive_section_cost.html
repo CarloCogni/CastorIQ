@@ -14,6 +14,12 @@
     {% for w in warnings %}
     <div class="alert alert-warning py-2 small" role="status">{{ w }}</div>
     {% endfor %}
+    {% if evm_detail_url %}
+    <p class="small mb-2">
+        <a href="{{ evm_detail_url }}" class="link-primary">Open full EVM Analytics</a>
+        — derived as-of curves, period table, and methodology.
+    </p>
+    {% endif %}
     <div class="row g-3">
         {% for card in cards %}
         <div class="col-12 col-sm-6 col-lg-4">

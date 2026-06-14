@@ -1,0 +1,42 @@
+<!-- scheduling/components/executive_evm_scurve.html -->
+<section id="exec-evm-scurve-section" aria-labelledby="exec-evm-scurve-heading">
+    <h2 class="h6 fw-semibold mb-2" id="exec-evm-scurve-heading">
+        <i class="bi bi-graph-up me-1 text-primary"></i> Derived As-of S-Curve
+        <span class="badge bg-warning-subtle text-warning-emphasis ms-1">Derived</span>
+    </h2>
+    {% if section_error %}
+    <div class="alert alert-danger" role="alert">{{ section_error }}</div>
+    {% elif not available %}
+    <div class="alert alert-secondary" role="status">{{ reason|default:"Curve unavailable." }}</div>
+    {% else %}
+    <p class="small text-secondary mb-2">{{ banner }}</p>
+    <p class="small mb-3">
+        Mode: <strong>{{ mode }}</strong> · Granularity: {{ granularity }}
+        · Data-date marker: <strong>{{ data_date_marker }}</strong>
+        · Included tasks: {{ included_tasks }}
+    </p>
+    <div class="row g-3 mb-2" role="img" aria-label="Derived as-of cumulative curve summary at data date">
+        {% for cid, curve in curves.items %}
+        {% if curve.points %}
+        <div class="col-md-4">
+            <div class="border rounded p-2 h-100">
+                <div class="small fw-semibold mb-1">{{ curve.label }}</div>
+                <div class="progress mb-1" style="height: 1.25rem;">
+                    {% with last=curve.points|last %}
+                    <div class="progress-bar {% if cid == 'pv' %}bg-primary{% elif cid == 'ev' %}bg-success{% else %}bg-warning{% endif %}"
+                         style="width: {{ last.cumulative_pct }}%;"
+                         aria-valuenow="{{ last.cumulative_pct }}"
+                         aria-valuemin="0" aria-valuemax="100">
+                        {{ last.cumulative_pct }}%
+                    </div>
+                    {% endwith %}
+                </div>
+                <div class="small text-secondary">{{ curve.points|length }} periods · {{ curve.series_type }}</div>
+            </div>
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+    <p class="small text-secondary mb-0">Not imported historical performance. Full series in period table below.</p>
+    {% endif %}
+</section>

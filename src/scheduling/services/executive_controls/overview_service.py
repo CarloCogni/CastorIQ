@@ -309,8 +309,9 @@ class ExecutiveControlsOverviewService:
                 caveat=unavailable.get(f"e8.{key}", "") or evm.get("performance_mode_label", ""),
                 unavailable_reason=unavailable.get(f"e8.{key}", unavailable.get("e8.cpi", "")),
                 data_date=data_date.isoformat(),
-                drilldown_url=reverse("scheduling:schedule", kwargs={"pk": self.project_id})
-                + "?tab=evm",
+                drilldown_url=reverse(
+                    "scheduling:executive_controls_evm", kwargs={"pk": self.project_id}
+                ),
             )
 
         cards = [
@@ -354,6 +355,9 @@ class ExecutiveControlsOverviewService:
             "cost_evm_available": cost_evm,
             "capability_cost_evm": caps[FeatureId.COST_EVM.value]["available"],
             "series_contract": derived,
+            "evm_detail_url": reverse(
+                "scheduling:executive_controls_evm", kwargs={"pk": self.project_id}
+            ),
             "cards": cards,
             "warnings": warnings,
             "filters": filters.to_query(),

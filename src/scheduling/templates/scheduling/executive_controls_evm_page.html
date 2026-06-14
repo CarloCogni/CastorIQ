@@ -1,0 +1,96 @@
+{% extends "core/base.html" %}
+<!-- scheduling/executive_controls_evm_page.html — E8-D EVM analytics shell -->
+
+{% block title %}EVM Analytics — {{ project.name }} — Castor{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3 px-3 px-lg-4 evm-analytics-scope">
+    <nav aria-label="breadcrumb" class="mb-2">
+        <ol class="breadcrumb small mb-0">
+            <li class="breadcrumb-item"><a href="{% url 'projects:detail' project.pk %}">{{ project.name }}</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'scheduling:executive_controls' project.pk %}">Executive Controls</a></li>
+            <li class="breadcrumb-item active" aria-current="page">EVM Analytics</li>
+        </ol>
+    </nav>
+
+    <div class="d-flex align-items-center gap-2 mb-3">
+        <h1 class="h5 fw-semibold mb-0">EVM Analytics</h1>
+        <button type="button"
+                class="help-pill"
+                data-bs-toggle="modal"
+                data-bs-target="#evmAnalyticsHelpModal"
+                title="How EVM Analytics works"
+                aria-label="How EVM Analytics works">
+            <i class="bi bi-question-circle"></i>
+        </button>
+    </div>
+
+    {% include "scheduling/components/executive_controls_subnav.html" with exec_subtab="evm" capability_profile=capability_profile %}
+    {% include "scheduling/components/executive_capability_banner.html" %}
+
+    <div class="alert alert-info py-2 small mb-3" role="status">
+        Derived As-of S-Curve — reconstructed from the current schedule state.
+        This is not imported historical performance and may change after re-import.
+    </div>
+
+    <div class="row g-2 mb-3 align-items-end">
+        <div class="col-auto">
+            <label for="evm-granularity" class="form-label small mb-0">Granularity</label>
+            <select id="evm-granularity" class="form-select form-select-sm"
+                    hx-get="{% url 'scheduling:executive_controls_evm_scurve' project.pk %}"
+                    hx-target="#exec-evm-scurve"
+                    hx-include="#evm-filter-form"
+                    name="granularity">
+                <option value="weekly" {% if filters.granularity == 'weekly' %}selected{% endif %}>Weekly</option>
+                <option value="monthly" {% if filters.granularity == 'monthly' %}selected{% endif %}>Monthly</option>
+            </select>
+        </div>
+        <div class="col-auto">
+            <label for="evm-mode" class="form-label small mb-0">Mode</label>
+            <select id="evm-mode" class="form-select form-select-sm"
+                    hx-get="{% url 'scheduling:executive_controls_evm_current' project.pk %}"
+                    hx-target="#exec-evm-current"
+                    hx-include="#evm-filter-form"
+                    name="mode">
+                <option value="auto" {% if filters.mode == 'auto' %}selected{% endif %}>Auto</option>
+                <option value="cost_evm" {% if filters.mode == 'cost_evm' %}selected{% endif %}>Cost EVM</option>
+                <option value="schedule_performance" {% if filters.mode == 'schedule_performance' %}selected{% endif %}>Schedule Performance</option>
+            </select>
+        </div>
+    </div>
+    <form id="evm-filter-form" class="d-none">
+        <input type="hidden" name="granularity" value="{{ filters.granularity }}">
+        <input type="hidden" name="mode" value="{{ filters.mode }}">
+    </form>
+
+    <div id="exec-evm-current"
+         hx-get="{% url 'scheduling:executive_controls_evm_current' project.pk %}?{{ filter_query }}"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+        <div class="text-secondary small py-3">Loading current metrics…</div>
+    </div>
+
+    <div id="exec-evm-scurve" class="mt-4"
+         hx-get="{% url 'scheduling:executive_controls_evm_scurve' project.pk %}?{{ filter_query }}"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+        <div class="text-secondary small py-3">Loading derived curve…</div>
+    </div>
+
+    <div id="exec-evm-periods" class="mt-4"
+         hx-get="{% url 'scheduling:executive_controls_evm_periods' project.pk %}?{{ filter_query }}"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+        <div class="text-secondary small py-3">Loading period table…</div>
+    </div>
+
+    <div id="exec-evm-methodology" class="mt-4"
+         hx-get="{% url 'scheduling:executive_controls_evm_methodology' project.pk %}?{{ filter_query }}"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+        <div class="text-secondary small py-3">Loading methodology…</div>
+    </div>
+</div>
+
+{% include "scheduling/components/executive_evm_help_modal.html" %}
+{% endblock %}

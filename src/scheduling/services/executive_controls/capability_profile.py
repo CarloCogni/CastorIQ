@@ -809,6 +809,17 @@ class ProjectAnalyticsCapabilityProfile:
             hidden.append("overview")
             reasons["overview"] = "No dated schedule tasks."
 
+        evm_ok = (
+            caps[FeatureId.CURRENT_SPI.value]["available"]
+            or caps[FeatureId.SCHEDULE_PERFORMANCE.value]["available"]
+            or caps[FeatureId.COST_EVM.value]["available"]
+        )
+        if evm_ok:
+            visible.append("evm")
+        else:
+            hidden.append("evm")
+            reasons["evm"] = "Current SPI and schedule performance unavailable."
+
         matrix_dims = (
             any(
                 caps[f.value]["available"]
