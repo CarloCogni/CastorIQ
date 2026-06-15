@@ -522,6 +522,26 @@ urlpatterns = [
         name="executive_controls_matrix_activities",
     ),
     path(
+        "projects/<uuid:pk>/executive-controls/hierarchy-context/",
+        views_executive_controls.ExecutiveControlsHierarchyContextView.as_view(),
+        name="executive_controls_hierarchy_context",
+    ),
+    path(
+        "projects/<uuid:pk>/executive-controls/wbs/<str:node_pk>/",
+        views_executive_controls.ExecutiveControlsWBSNodeView.as_view(),
+        name="executive_controls_wbs_node",
+    ),
+    path(
+        "projects/<uuid:pk>/executive-controls/wbs/<str:node_pk>/tasks/",
+        views_executive_controls.ExecutiveControlsWBSTasksView.as_view(),
+        name="executive_controls_wbs_tasks",
+    ),
+    path(
+        "projects/<uuid:pk>/executive-controls/wbs/<str:node_pk>/model-scope/",
+        views_executive_controls.ExecutiveControlsWBSModelScopeView.as_view(),
+        name="executive_controls_wbs_model_scope",
+    ),
+    path(
         "projects/<uuid:pk>/executive-controls/trades/",
         views_executive_controls.ExecutiveControlsTradesPageView.as_view(),
         name="executive_controls_trades",

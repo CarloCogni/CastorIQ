@@ -511,6 +511,56 @@ def _resolve_snapshot_for_e8_read(project, request):
     return None
 
 
+def _hierarchy_context(project, request):
+    from scheduling.services.executive_controls.hierarchy_mode import HierarchyModeResolver
+
+    force_stage = (request.GET.get("hierarchy_mode") or "").strip() == "stage_proxy"
+    return HierarchyModeResolver(project).resolve(force_stage_proxy=force_stage)
+
+
+def _build_matrix_rows(project, request, filters):
+    from scheduling.services.executive_controls.hierarchy_mode import (
+        CANONICAL_MODES,
+        HierarchyMode,
+    )
+    from scheduling.services.executive_controls.performance_cube import (
+        ProjectPerformanceCubeService,
+    )
+    from scheduling.services.executive_controls.wbs_analytics_session import WBSAnalyticsSession
+    from scheduling.services.executive_controls.wbs_matrix import WBSMatrixService
+
+    hierarchy = _hierarchy_context(project, request)
+    snapshot = _resolve_snapshot_for_e8_read(project, request)
+
+    if hierarchy.hierarchy_mode in {m.value for m in CANONICAL_MODES}:
+        session = WBSAnalyticsSession.load(project, hierarchy)
+        if snapshot is not None:
+            return WBSMatrixService(project, session).build_snapshot_unavailable(
+                reason="Snapshot read mode — WBS node metrics are live-only in DF-C3.",
+            )
+        return WBSMatrixService(project, session).build_rows(filters)
+
+    if hierarchy.hierarchy_mode == HierarchyMode.STAGE_PROXY.value:
+        payload = ProjectPerformanceCubeService(project).build_rows(filters)
+        payload["hierarchy"] = hierarchy.to_dict()
+        return payload
+
+    return {
+        "section": "matrix_rows",
+        "hierarchy": hierarchy.to_dict(),
+        "rows": [],
+        "summary": {"filtered_task_count": 0, "group_count": 0},
+        "pagination": {
+            "page": filters.page,
+            "page_size": filters.page_size,
+            "total": 0,
+            "pages": 1,
+        },
+        "warnings": list(hierarchy.caveats),
+        "unavailable_reason": "No usable canonical WBS or stage proxy hierarchy.",
+    }
+
+
 class ExecutiveControlsMatrixPageView(ProjectAccessMixin, TemplateView):
     """GET — hierarchical performance matrix shell."""
 
@@ -532,6 +582,7 @@ class ExecutiveControlsMatrixPageView(ProjectAccessMixin, TemplateView):
         ctx["filters"] = filters
         ctx["filter_query"] = filters.query_string()
         ctx["available_dimensions"] = ExecutiveDimensionRegistry(str(project.pk)).discover()
+        ctx["hierarchy_context"] = _hierarchy_context(project, self.request)
         ctx["exec_subtab"] = "matrix"
         return ctx
 
@@ -543,14 +594,10 @@ class ExecutiveControlsMatrixRowsView(ProjectAccessMixin, View):
     """GET — paginated matrix rows fragment or JSON."""
 
     def get(self, request, **kwargs: object) -> HttpResponse:
-        from scheduling.services.executive_controls.performance_cube import (
-            ProjectPerformanceCubeService,
-        )
-
         project = self.get_project()
         filters = _matrix_filters(request)
         try:
-            payload = ProjectPerformanceCubeService(project).build_rows(filters)
+            payload = _build_matrix_rows(project, request, filters)
             if request.headers.get("HX-Request"):
                 return render(request, "scheduling/components/executive_matrix_rows.html", payload)
             return JsonResponse(payload)
@@ -562,6 +609,83 @@ class ExecutiveControlsMatrixRowsView(ProjectAccessMixin, View):
                     request, "scheduling/components/executive_matrix_rows.html", err, status=200
                 )
             return JsonResponse({"error": str(exc)}, status=500)
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        return JsonResponse({"error": "Method not allowed."}, status=405)
+
+
+class ExecutiveControlsHierarchyContextView(ProjectAccessMixin, View):
+    """GET — hierarchy mode and WBS context for E8 matrix."""
+
+    def get(self, request, **kwargs: object) -> JsonResponse:
+        project = self.get_project()
+        return JsonResponse({"hierarchy": _hierarchy_context(project, request).to_dict()})
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        return JsonResponse({"error": "Method not allowed."}, status=405)
+
+
+class ExecutiveControlsWBSNodeView(ProjectAccessMixin, View):
+    """GET — canonical WBS node analytics."""
+
+    def get(self, request, **kwargs: object) -> JsonResponse:
+        from scheduling.services.executive_controls.hierarchy_mode import CANONICAL_MODES
+        from scheduling.services.executive_controls.wbs_analytics_session import WBSAnalyticsSession
+        from scheduling.services.executive_controls.wbs_drilldown import WBSDrilldownService
+
+        project = self.get_project()
+        hierarchy = _hierarchy_context(project, request)
+        if hierarchy.hierarchy_mode not in {m.value for m in CANONICAL_MODES}:
+            return JsonResponse({"error": "Canonical WBS not available."}, status=404)
+        filters = _matrix_filters(request)
+        session = WBSAnalyticsSession.load(project, hierarchy)
+        payload = WBSDrilldownService(project, session).node_detail(
+            str(kwargs["node_pk"]),
+            filters,
+        )
+        return JsonResponse(payload)
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        return JsonResponse({"error": "Method not allowed."}, status=405)
+
+
+class ExecutiveControlsWBSTasksView(ProjectAccessMixin, View):
+    """GET — tasks for a WBS node or unassigned bucket."""
+
+    def get(self, request, **kwargs: object) -> JsonResponse:
+        from scheduling.services.executive_controls.hierarchy_mode import CANONICAL_MODES
+        from scheduling.services.executive_controls.wbs_analytics_session import WBSAnalyticsSession
+        from scheduling.services.executive_controls.wbs_drilldown import WBSDrilldownService
+
+        project = self.get_project()
+        hierarchy = _hierarchy_context(project, request)
+        if hierarchy.hierarchy_mode not in {m.value for m in CANONICAL_MODES}:
+            return JsonResponse({"error": "Canonical WBS not available."}, status=404)
+        filters = _matrix_filters(request)
+        session = WBSAnalyticsSession.load(project, hierarchy)
+        payload = WBSDrilldownService(project, session).task_list(str(kwargs["node_pk"]), filters)
+        return JsonResponse(payload)
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        return JsonResponse({"error": "Method not allowed."}, status=405)
+
+
+class ExecutiveControlsWBSModelScopeView(ProjectAccessMixin, View):
+    """GET — trusted IFC model scope for a WBS node."""
+
+    def get(self, request, **kwargs: object) -> JsonResponse:
+        from scheduling.services.executive_controls.hierarchy_mode import CANONICAL_MODES
+        from scheduling.services.executive_controls.wbs_analytics_session import WBSAnalyticsSession
+        from scheduling.services.executive_controls.wbs_drilldown import WBSDrilldownService
+
+        project = self.get_project()
+        hierarchy = _hierarchy_context(project, request)
+        if hierarchy.hierarchy_mode not in {m.value for m in CANONICAL_MODES}:
+            return JsonResponse({"error": "Canonical WBS not available."}, status=404)
+        filters = _matrix_filters(request)
+        session = WBSAnalyticsSession.load(project, hierarchy)
+        payload = WBSDrilldownService(project, session).model_scope(str(kwargs["node_pk"]), filters)
+        return JsonResponse(payload)
 
     def post(self, request, **kwargs: object) -> JsonResponse:
         return JsonResponse({"error": "Method not allowed."}, status=405)
