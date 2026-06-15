@@ -16,6 +16,30 @@
     {% include "scheduling/components/executive_controls_subnav.html" with exec_subtab="matrix" capability_profile=capability_profile %}
     {% include "scheduling/components/executive_context_header.html" with ctx=analytical_context %}
 
+    {% if hierarchy_context %}
+    <div class="alert alert-secondary py-2 small mb-3" role="status">
+        <strong>Hierarchy:</strong>
+        {% if hierarchy_context.hierarchy_mode == "canonical_wbs" %}
+        <span class="badge bg-primary-subtle text-primary-emphasis">Canonical WBS</span>
+        {% elif hierarchy_context.hierarchy_mode == "canonical_wbs_partial" %}
+        <span class="badge bg-warning-subtle text-warning-emphasis">Partial Canonical WBS</span>
+        {% elif hierarchy_context.hierarchy_mode == "stage_proxy" %}
+        <span class="badge bg-secondary-subtle text-secondary-emphasis">Stage Proxy</span>
+        {% else %}
+        <span class="badge bg-danger-subtle text-danger-emphasis">Unavailable</span>
+        {% endif %}
+        {{ hierarchy_context.hierarchy_name }}
+        {% if hierarchy_context.assignment_coverage_pct != None %}
+        · Coverage: {{ hierarchy_context.assignment_coverage_pct }}%
+        ({{ hierarchy_context.assigned_task_count }}/{{ hierarchy_context.eligible_task_count }} tasks)
+        {% endif %}
+        {% if hierarchy_context.unassigned_task_count %}
+        · <span class="text-warning-emphasis">{{ hierarchy_context.unassigned_task_count }} unassigned</span>
+        {% endif %}
+        {% for c in hierarchy_context.caveats %}<div class="mt-1 text-secondary">{{ c }}</div>{% endfor %}
+    </div>
+    {% endif %}
+
     <form class="exec-filters border rounded p-3 mb-3 bg-body" method="get" id="exec-matrix-filter-form" aria-label="Matrix filters">
         <div class="row g-2 align-items-end">
             <div class="col-md-3">

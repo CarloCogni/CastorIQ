@@ -518,11 +518,53 @@ class ProjectAnalyticsCapabilityProfile:
                 CapabilityState.AVAILABLE
                 if full_coverage and integrity_ok
                 else CapabilityState.AVAILABLE_WITH_CAVEATS
-                if has_versions or assigned > 0
+                if has_versions and assigned > 0
                 else CapabilityState.UNAVAILABLE,
+                caveats=()
+                if full_coverage and integrity_ok
+                else (
+                    "Canonical WBS matrix available with assignment caveats when populated.",
+                    "Stage proxy remains fallback when canonical data does not qualify.",
+                ),
+            ),
+            "canonical_wbs_matrix": _entry(
+                assigned > 0 and has_nodes and selected,
+                CapabilityState.AVAILABLE
+                if full_coverage and integrity_ok
+                else CapabilityState.AVAILABLE_WITH_CAVEATS
+                if assigned > 0
+                else CapabilityState.UNAVAILABLE,
+                caveats=("E8 matrix uses canonical WBS when selected version has assignments.",)
+                if assigned > 0
+                else ("Populate and assign canonical WBS to enable matrix.",),
+            ),
+            "canonical_wbs_drilldown": _entry(
+                assigned > 0 and selected,
+                CapabilityState.AVAILABLE if assigned > 0 else CapabilityState.UNAVAILABLE,
+            ),
+            "wbs_delay_analytics": _entry(
+                assigned > 0 and selected,
+                CapabilityState.AVAILABLE if assigned > 0 else CapabilityState.UNAVAILABLE,
+            ),
+            "wbs_cost_evm": _entry(
+                False,
+                CapabilityState.UNAVAILABLE,
+                caveats=("Per-node cost EVM follows baseline coverage — may be partial per node.",),
+            ),
+            "wbs_model_impact": _entry(
+                assigned > 0 and selected,
+                CapabilityState.AVAILABLE_WITH_CAVEATS,
+                caveats=("Requires trusted TaskEntityBinding evidence.",),
+            ),
+            "unassigned_scope_visibility": _entry(
+                total > 0,
+                CapabilityState.AVAILABLE if total else CapabilityState.UNAVAILABLE,
+            ),
+            "snapshot_wbs_analytics": _entry(
+                False,
+                CapabilityState.UNAVAILABLE,
                 caveats=(
-                    "E8 WBS Matrix remains stage proxy until DF-C2 population and explicit cutover.",
-                    "Schema presence alone does not unlock WBS matrix analytics.",
+                    "Snapshot WBS node metrics unavailable until persisted node payload (DF-B+).",
                 ),
             ),
         }
@@ -1251,22 +1293,37 @@ class ProjectAnalyticsCapabilityProfile:
             )
 
         if feature_id == FeatureId.WBS_MATRIX:
-            canonical_assigned = s.tasks_with_wbs_assignment
+            selected = s.selected_wbs_version_id is not None
+            has_nodes = s.canonical_wbs_node_count > 0
+            assigned = s.tasks_with_wbs_assignment
+            sched = s.schedulable_n or s.total_tasks
+            full = sched > 0 and assigned == sched
+            integrity = has_nodes and selected
+            avail = assigned > 0 and has_nodes and selected
+            if full and integrity:
+                state = CapabilityState.AVAILABLE
+                mode = "canonical_wbs"
+            elif avail:
+                state = CapabilityState.AVAILABLE_WITH_CAVEATS
+                mode = "canonical_wbs_partial"
+            else:
+                state = CapabilityState.UNAVAILABLE
+                mode = "unavailable"
+            missing: tuple[str, ...] = ()
+            if not avail:
+                missing = (MissingReason.NO_HIERARCHY_LINK,)
             return self._cap(
                 feature_id,
-                state=CapabilityState.UNAVAILABLE,
-                available=False,
-                authority=MetricAuthority.UNAVAILABLE,
-                source="WBSNode / Task.wbs_node (canonical); P6WBSNode legacy staging",
+                state=state,
+                available=avail,
+                authority=MetricAuthority.AUTHORITATIVE if avail else MetricAuthority.UNAVAILABLE,
+                source="WBSVersion / WBSNode / Task.wbs_node",
                 signals=s,
-                numerator=canonical_assigned or s.wbs_node_count,
+                numerator=assigned,
                 denominator=sched,
-                missing_reasons=(MissingReason.NO_HIERARCHY_LINK,),
-                caveats=(
-                    "E8 WBS Matrix remains stage proxy — canonical WBS not wired to matrix (DF-C1).",
-                    f"Legacy P6WBSNode rows ({s.wbs_node_count}) are not Task-linked.",
-                    "Canonical Task.wbs_node population deferred to DF-C2.",
-                ),
+                missing_reasons=missing,
+                caveats=() if full and integrity else ("Partial or missing Task→WBS assignment.",),
+                supported_analytical_mode=mode,
             )
 
         if feature_id == FeatureId.TRADE_ANALYSIS:
