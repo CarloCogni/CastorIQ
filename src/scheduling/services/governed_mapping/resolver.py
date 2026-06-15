@@ -1,5 +1,5 @@
 # scheduling/services/governed_mapping/resolver.py
-"""Effective governed mapping resolution — read-only (DF-D1)."""
+"""Effective governed mapping resolution — read-only (DF-D1/DF-D2)."""
 
 from __future__ import annotations
 
@@ -16,12 +16,15 @@ from scheduling.models import (
     Task,
     WBSNode,
 )
-from scheduling.services.governed_mapping.contracts import EffectiveMappingResult
+from scheduling.services.governed_mapping.contracts import (
+    EffectiveMappingProvenance,
+    EffectiveMappingResult,
+)
+from scheduling.services.governed_mapping.cross_version import CrossVersionMappingService
 
 logger = logging.getLogger(__name__)
 
 _APPROVED = AnalyticalMappingAssignment.GovernanceStatus.APPROVED
-_DIRECT_OVERRIDE_INHERITED = True
 
 
 class EffectiveMappingResolver:
@@ -30,6 +33,7 @@ class EffectiveMappingResolver:
     def __init__(self, project) -> None:
         self.project = project
         self.project_id = project.pk
+        self._cross_version = CrossVersionMappingService()
 
     def active_mapping_set(self, dimension: AnalyticalDimension) -> AnalyticalMappingSet | None:
         """Return selected active mapping set for dimension."""
@@ -61,19 +65,53 @@ class EffectiveMappingResolver:
         *,
         mapping_set: AnalyticalMappingSet | None = None,
     ) -> EffectiveMappingResult:
-        """Resolve effective mapping for a Task within one dimension."""
+        """Resolve effective mapping with Task > ScheduleActivity > WBS precedence."""
         mapping_set = mapping_set or self.active_mapping_set(dimension)
         if mapping_set is None:
             return self._unmapped(
                 dimension, resolution="unmapped", caveats=("No active mapping set.",)
             )
 
-        direct = self._approved_assignments(mapping_set).filter(
-            target_type=AnalyticalMappingAssignment.TargetType.TASK,
-            task_id=task.pk,
+        direct = list(
+            self._approved_assignments(mapping_set).filter(
+                target_type=AnalyticalMappingAssignment.TargetType.TASK,
+                task_id=task.pk,
+            )
         )
-        inherited = self._resolve_wbs_inheritance(task, mapping_set, direct.exists())
-        return self._merge_results(dimension, direct, inherited)
+        if direct:
+            return self._finalize(
+                dimension,
+                mapping_set,
+                direct,
+                resolution="direct",
+                cross_outcome="",
+            )
+
+        activity_rows = self._cross_version.activity_assignments_for_task(mapping_set, task)
+        if activity_rows:
+            _, outcome = self._cross_version.resolve_activity_for_task(task)
+            return self._finalize(
+                dimension,
+                mapping_set,
+                activity_rows,
+                resolution="logical_identity",
+                cross_outcome=str(outcome),
+            )
+
+        inherited = self._resolve_wbs_inheritance(task, mapping_set)
+        if inherited:
+            return self._finalize(
+                dimension,
+                mapping_set,
+                inherited,
+                resolution="inherited",
+                cross_outcome="",
+                inherited_from=str(inherited[0].pk),
+            )
+
+        if self._has_proposed_for_task(mapping_set, task):
+            return self._unmapped(dimension, resolution="proposed_only")
+        return self._unmapped(dimension, resolution="unmapped")
 
     def resolve_wbs_node(
         self,
@@ -90,7 +128,7 @@ class EffectiveMappingResolver:
             target_type=AnalyticalMappingAssignment.TargetType.WBS_NODE,
             wbs_node_id=wbs_node.pk,
         )
-        return self._merge_results(dimension, direct, [])
+        return self._finalize(dimension, mapping_set, list(direct), resolution="direct")
 
     def resolve_entity(
         self,
@@ -107,7 +145,7 @@ class EffectiveMappingResolver:
             target_type=AnalyticalMappingAssignment.TargetType.IFC_ENTITY,
             entity_global_id=entity_global_id,
         )
-        return self._merge_results(dimension, direct, [])
+        return self._finalize(dimension, mapping_set, list(direct), resolution="direct")
 
     def task_provenance(self, task: Task) -> dict[str, Any]:
         """Full provenance across active dimensions for one task."""
@@ -118,6 +156,9 @@ class EffectiveMappingResolver:
             by_dimension[dim.dimension_key] = result.to_dict()
         return {
             "task_id": str(task.pk),
+            "schedule_activity_id": str(task.schedule_activity_id)
+            if task.schedule_activity_id
+            else None,
             "dimensions": by_dimension,
         }
 
@@ -131,12 +172,9 @@ class EffectiveMappingResolver:
         self,
         task: Task,
         mapping_set: AnalyticalMappingSet,
-        has_direct: bool,
     ) -> list[AnalyticalMappingAssignment]:
         """WBS-node mapping inherited by descendant Tasks when enabled."""
-        if not mapping_set.inherit_wbs_to_tasks or has_direct:
-            return []
-        if not task.wbs_node_id:
+        if not mapping_set.inherit_wbs_to_tasks or not task.wbs_node_id:
             return []
         node = task.wbs_node
         if node is None:
@@ -154,7 +192,6 @@ class EffectiveMappingResolver:
         return [deepest]
 
     def _ancestor_nodes(self, node: WBSNode) -> list[WBSNode]:
-        """Node and ancestors by path prefix."""
         if not node.path:
             return [node]
         version_id = node.wbs_version_id
@@ -175,31 +212,20 @@ class EffectiveMappingResolver:
             prefixes.append(acc)
         return prefixes
 
-    def _merge_results(
+    def _finalize(
         self,
         dimension: AnalyticalDimension,
-        direct_qs,
-        inherited: list[AnalyticalMappingAssignment],
+        mapping_set: AnalyticalMappingSet,
+        assignments: list[AnalyticalMappingAssignment],
+        *,
+        resolution: str,
+        cross_outcome: str = "",
+        inherited_from: str | None = None,
     ) -> EffectiveMappingResult:
-        direct = list(direct_qs)
-        if direct and inherited and _DIRECT_OVERRIDE_INHERITED:
-            inherited = []
-        assignments = direct or inherited
         if not assignments:
-            proposed = self._has_non_effective(dimension, direct_qs)
-            if proposed:
-                return self._unmapped(dimension, resolution="proposed_only")
             return self._unmapped(dimension, resolution="unmapped")
-
         value_ids = {a.dimension_value_id for a in assignments}
-        conflicts: list[dict[str, Any]] = []
         if dimension.cardinality == AnalyticalDimension.Cardinality.SINGLE and len(value_ids) > 1:
-            conflicts = [
-                {
-                    "reason": "single_cardinality_conflict",
-                    "value_ids": [str(v) for v in value_ids],
-                }
-            ]
             return EffectiveMappingResult(
                 dimension_key=dimension.dimension_key,
                 dimension_id=str(dimension.pk),
@@ -208,11 +234,21 @@ class EffectiveMappingResolver:
                 governance_status=_APPROVED,
                 mapping_method=assignments[0].mapping_method,
                 values=[],
-                conflicts=conflicts,
+                conflicts=[
+                    {
+                        "reason": "single_cardinality_conflict",
+                        "value_ids": [str(v) for v in value_ids],
+                    }
+                ],
                 caveats=("Conflicting approved values — effective resolution blocked.",),
+                provenance=EffectiveMappingProvenance(
+                    mapping_set_id=str(mapping_set.pk),
+                    mapping_set_revision=mapping_set.revision,
+                    dimension_revision=dimension.revision_number,
+                    resolution_method=resolution,
+                    cross_version_outcome=cross_outcome,
+                ),
             )
-
-        resolution = "direct" if direct else "inherited"
         values = [
             {
                 "value_id": str(a.dimension_value_id),
@@ -229,18 +265,27 @@ class EffectiveMappingResolver:
             governance_status=assignments[0].governance_status,
             mapping_method=assignments[0].mapping_method,
             values=values,
-            conflicts=conflicts,
-            inherited_from=str(inherited[0].pk) if inherited else None,
+            conflicts=[],
+            inherited_from=inherited_from,
             assignment_ids=[str(a.pk) for a in assignments],
+            provenance=EffectiveMappingProvenance(
+                mapping_set_id=str(mapping_set.pk),
+                mapping_set_revision=mapping_set.revision,
+                dimension_revision=dimension.revision_number,
+                source_assignment_id=str(assignments[0].pk),
+                resolution_method=resolution,
+                cross_version_outcome=cross_outcome,
+                inherited_from_target=inherited_from,
+                evidence_summary=assignments[0].evidence or {},
+            ),
         )
 
-    def _has_non_effective(self, dimension: AnalyticalDimension, direct_qs) -> bool:
-        mapping_set = self.active_mapping_set(dimension)
-        if mapping_set is None:
-            return False
+    def _has_proposed_for_task(self, mapping_set: AnalyticalMappingSet, task: Task) -> bool:
         return AnalyticalMappingAssignment.objects.filter(
             mapping_set=mapping_set,
             governance_status=AnalyticalMappingAssignment.GovernanceStatus.PROPOSED,
+            target_type=AnalyticalMappingAssignment.TargetType.TASK,
+            task_id=task.pk,
         ).exists()
 
     def _unmapped(
@@ -275,7 +320,7 @@ class EffectiveMappingResolver:
 
         tasks = list(
             Task.objects.filter(pk__in=task_ids, project_id=self.project_id).select_related(
-                "wbs_node"
+                "wbs_node", "schedule_activity"
             )
         )
         results: dict[str, EffectiveMappingResult] = {}

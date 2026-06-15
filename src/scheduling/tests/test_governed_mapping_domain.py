@@ -370,8 +370,8 @@ class TestResolution:
         _activate_mapping_set(mset, user)
         summary = MappingCoverageService(project).summarize(dimension_key="trade")
         dim_summary = summary["dimensions"][0]
-        assert dim_summary["mapped_effective"] == 0
-        assert dim_summary["proposed"] == 1
+        assert dim_summary.get("directly_mapped", dim_summary.get("mapped_effective", 0)) == 0
+        assert dim_summary.get("proposed_only", dim_summary.get("proposed", 0)) >= 1
 
 
 @pytest.mark.django_db

@@ -386,6 +386,7 @@ class AnalyticalMappingAssignment(UUIDModel):
         TASK = "task", "Task"
         WBS_NODE = "wbs_node", "WBS Node"
         IFC_ENTITY = "ifc_entity", "IFC Entity"
+        SCHEDULE_ACTIVITY = "schedule_activity", "Schedule Activity"
 
     class MappingMethod(models.TextChoices):
         MANUAL = "manual", "Manual"
@@ -422,7 +423,7 @@ class AnalyticalMappingAssignment(UUIDModel):
         verbose_name="Dimension Value",
     )
     target_type = models.CharField(
-        max_length=16,
+        max_length=20,
         choices=TargetType.choices,
         db_index=True,
         verbose_name="Target Type",
@@ -456,6 +457,14 @@ class AnalyticalMappingAssignment(UUIDModel):
         on_delete=models.SET_NULL,
         related_name="analytical_mapping_assignments",
         verbose_name="IFC File",
+    )
+    schedule_activity = models.ForeignKey(
+        "ScheduleActivity",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="analytical_mapping_assignments",
+        verbose_name="Schedule Activity",
     )
     mapping_method = models.CharField(
         max_length=24,
@@ -544,12 +553,14 @@ class AnalyticalMappingAssignment(UUIDModel):
                         target_type="task",
                         task_id__isnull=False,
                         wbs_node_id__isnull=True,
+                        schedule_activity_id__isnull=True,
                         entity_global_id="",
                     )
                     | Q(
                         target_type="wbs_node",
                         wbs_node_id__isnull=False,
                         task_id__isnull=True,
+                        schedule_activity_id__isnull=True,
                         entity_global_id="",
                     )
                     | Q(
@@ -557,6 +568,14 @@ class AnalyticalMappingAssignment(UUIDModel):
                         entity_global_id__gt="",
                         task_id__isnull=True,
                         wbs_node_id__isnull=True,
+                        schedule_activity_id__isnull=True,
+                    )
+                    | Q(
+                        target_type="schedule_activity",
+                        schedule_activity_id__isnull=False,
+                        task_id__isnull=True,
+                        wbs_node_id__isnull=True,
+                        entity_global_id="",
                     )
                 ),
                 name="castor_scheduling_mapping_assignment_one_target",
@@ -566,6 +585,7 @@ class AnalyticalMappingAssignment(UUIDModel):
             models.Index(fields=["mapping_set", "governance_status"]),
             models.Index(fields=["task", "governance_status"]),
             models.Index(fields=["wbs_node", "governance_status"]),
+            models.Index(fields=["schedule_activity", "governance_status"]),
             models.Index(fields=["entity_global_id"]),
         ]
 
@@ -596,6 +616,16 @@ class MappingGovernanceEvent(UUIDModel):
         ASSIGNMENT_REJECTED = "assignment_rejected", "Assignment rejected"
         CONFLICT_DETECTED = "conflict_detected", "Conflict detected"
         REVISION_SUPERSEDED = "revision_superseded", "Revision superseded"
+        POPULATION_STARTED = "mapping_population_started", "Population started"
+        POPULATION_COMPLETED = "mapping_population_completed", "Population completed"
+        POPULATION_FAILED = "mapping_population_failed", "Population failed"
+        PROPOSAL_ADOPTED = "proposal_adopted", "Proposal adopted"
+        PROPOSAL_DUPLICATE_SKIPPED = "proposal_duplicate_skipped", "Proposal duplicate skipped"
+        SET_ACTIVATION_FAILED = "mapping_set_activation_failed", "Mapping set activation failed"
+        CROSS_VERSION_RESOLVED = "cross_version_mapping_resolved", "Cross-version resolved"
+        CROSS_VERSION_BLOCKED = "cross_version_mapping_blocked", "Cross-version blocked"
+        ADOPTION_DRY_RUN = "adoption_dry_run", "Adoption dry run"
+        AUTHORITATIVE_IMPORTED = "authoritative_mapping_imported", "Authoritative imported"
 
     project = models.ForeignKey(
         Project,
@@ -630,7 +660,7 @@ class MappingGovernanceEvent(UUIDModel):
     event_type = models.CharField(max_length=32, choices=EventType.choices, db_index=True)
     previous_state = models.CharField(max_length=32, blank=True)
     resulting_state = models.CharField(max_length=32, blank=True)
-    target_type = models.CharField(max_length=16, blank=True)
+    target_type = models.CharField(max_length=20, blank=True)
     target_id = models.CharField(max_length=64, blank=True, db_index=True)
     reason_code = models.CharField(max_length=64, blank=True)
     reason_text = models.TextField(blank=True)

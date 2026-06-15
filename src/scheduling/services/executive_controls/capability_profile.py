@@ -725,6 +725,38 @@ class ProjectAnalyticsCapabilityProfile:
                 CapabilityState.AVAILABLE,
                 caveats=("Stage/sub_stage and activity_type remain explicitly labeled proxy.",),
             ),
+            "logical_identity_coverage": _entry(
+                signals.tasks_with_schedule_activity > 0 and approved > 0,
+                CapabilityState.AVAILABLE_WITH_CAVEATS,
+                caveats=("ScheduleActivity target resolution enabled (DF-D2).",),
+            ),
+            "inherited_coverage": _entry(
+                signals.tasks_with_wbs_assignment > 0,
+                CapabilityState.AVAILABLE_WITH_CAVEATS,
+                caveats=("WBS inheritance requires active mapping set with inherit_wbs_to_tasks.",),
+            ),
+            "cross_version_readiness": _entry(
+                signals.tasks_with_schedule_activity > 0 and active_sets > 0,
+                CapabilityState.AVAILABLE_WITH_CAVEATS
+                if signals.tasks_with_schedule_activity
+                else CapabilityState.UNAVAILABLE,
+                caveats=("Cross-version carry-forward validated — never blind copy.",),
+            ),
+            "effective_mapping_coverage": _entry(
+                approved > 0,
+                CapabilityState.AVAILABLE
+                if governance_ready
+                else CapabilityState.AVAILABLE_WITH_CAVEATS
+                if partial
+                else CapabilityState.UNAVAILABLE,
+            ),
+            "df_d3_cutover_readiness": _entry(
+                governance_ready and proposed == 0,
+                CapabilityState.AVAILABLE_WITH_CAVEATS
+                if governance_ready
+                else CapabilityState.UNAVAILABLE,
+                caveats=("E8 cutover remains DF-D3 — proxies unchanged.",),
+            ),
             "dimension_count": {"total": dim_count, "active_selected": active_dims},
             "assignment_counts": {
                 "approved": approved,

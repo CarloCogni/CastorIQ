@@ -584,7 +584,7 @@ class AnalyticalMappingAssignmentAdmin(admin.ModelAdmin):
         "authority",
     )
     list_filter = ("target_type", "governance_status", "authority", "mapping_method")
-    raw_id_fields = ("mapping_set", "dimension_value", "task", "wbs_node", "ifc_file")
+    raw_id_fields = ("mapping_set", "dimension_value", "task", "wbs_node", "ifc_file", "schedule_activity")
 
     def has_add_permission(self, request):
         return False

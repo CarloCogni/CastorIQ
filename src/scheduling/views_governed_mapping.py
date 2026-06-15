@@ -272,3 +272,22 @@ class TaskMappingProvenanceView(ProjectAccessMixin, View):
 
     def post(self, request, **kwargs):
         return HttpResponseNotAllowed(["GET"])
+
+
+class MappingAdoptionDiagnosticsView(ProjectAccessMixin, View):
+    """GET — proxy vs governed adoption diagnostics (read-only)."""
+
+    def get(self, request, **kwargs):
+        project = self.get_project()
+        dimension_key = request.GET.get("dimension_key")
+        svc = MappingCoverageService(project)
+        payload = {
+            "coverage": svc.summarize(dimension_key=dimension_key),
+            "breakdown": svc.breakdown(dimension_key=dimension_key).to_dict()
+            if dimension_key
+            else {},
+        }
+        return JsonResponse(payload)
+
+    def post(self, request, **kwargs):
+        return HttpResponseNotAllowed(["GET"])

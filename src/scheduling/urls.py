@@ -157,6 +157,11 @@ urlpatterns = [
         name="schedule_task_mapping_provenance",
     ),
     path(
+        "projects/<uuid:pk>/mapping-adoption-diagnostics/",
+        views_governed_mapping.MappingAdoptionDiagnosticsView.as_view(),
+        name="schedule_mapping_adoption_diagnostics",
+    ),
+    path(
         "projects/<uuid:pk>/analytical-snapshots/",
         views_analytical_snapshot.AnalyticalSnapshotListView.as_view(),
         name="schedule_analytical_snapshots",
