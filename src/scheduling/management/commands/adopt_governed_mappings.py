@@ -84,5 +84,7 @@ class Command(BaseCommand):
             path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
             self.stdout.write(self.style.SUCCESS(f"Report written: {path}"))
 
-        if result.errors:
+        if result.errors and write:
             raise CommandError("; ".join(result.errors))
+        if result.errors and not write:
+            self.stderr.write(self.style.WARNING("; ".join(result.errors)))
