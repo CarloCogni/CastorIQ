@@ -623,16 +623,16 @@ class ProjectAnalyticsCapabilityProfile:
             "trade_mapping": _entry(
                 trade_governed,
                 CapabilityState.AVAILABLE if trade_governed else CapabilityState.UNAVAILABLE,
-                caveats=("E8 trades remain on proxy/suggestion until DF-D3 cutover.",)
-                if not trade_governed
-                else (),
+                caveats=("Governed trade schema present — E8 defaults to proxy until governed_ready.",)
+                if trade_governed
+                else ("No governed trade mapping.",),
             ),
             "package_mapping": _entry(
                 package_governed,
                 CapabilityState.AVAILABLE if package_governed else CapabilityState.UNAVAILABLE,
-                caveats=("E8 packages remain on proxy until DF-D3 cutover.",)
-                if not package_governed
-                else (),
+                caveats=("Governed package schema present — E8 defaults to proxy until governed_ready.",)
+                if package_governed
+                else ("No governed package mapping.",),
             ),
             "discipline_mapping": _entry(
                 False,
@@ -678,9 +678,9 @@ class ProjectAnalyticsCapabilityProfile:
                 else CapabilityState.PROXY_ONLY
                 if caps_trade
                 else CapabilityState.UNAVAILABLE,
-                caveats=("Proxy/suggestion trade analytics — governed mapping separate.",)
+                caveats=("Proxy/suggestion trade analytics — governed mode dimension-gated (DF-D3).",)
                 if not trade_governed
-                else ("Governed trade mapping present — E8 cutover deferred to DF-D3.",),
+                else ("Governed trade mapping present — select governed mode when governed_ready.",),
             ),
             "e8_package_analytics_readiness": _entry(
                 package_governed or caps_trade,
@@ -689,7 +689,9 @@ class ProjectAnalyticsCapabilityProfile:
                 else CapabilityState.PROXY_ONLY
                 if caps_trade
                 else CapabilityState.UNAVAILABLE,
-                caveats=("Package proxy remains until DF-D3.",) if not package_governed else (),
+                caveats=("Package proxy remains default until governed_ready (DF-D3).",)
+                if not package_governed
+                else (),
             ),
             "proxy_dimensions_labeled": _entry(
                 True,
@@ -722,11 +724,53 @@ class ProjectAnalyticsCapabilityProfile:
                 else CapabilityState.UNAVAILABLE,
             ),
             "df_d3_cutover_readiness": _entry(
+                True,
+                CapabilityState.AVAILABLE_WITH_CAVEATS,
+                caveats=(
+                    "Dimension-gated E8 integration (DF-D3) — per-dimension cutover only.",
+                    "Trade and Package readiness evaluated independently.",
+                ),
+            ),
+            "e8_trade_governed_mode": _entry(
+                False,
+                CapabilityState.PROXY_ONLY if caps_trade else CapabilityState.UNAVAILABLE,
+                caveats=("Default E8 trade view remains proxy until governed_ready.",),
+            ),
+            "e8_package_governed_mode": _entry(
+                False,
+                CapabilityState.PROXY_ONLY if caps_trade else CapabilityState.UNAVAILABLE,
+                caveats=("Default E8 package view remains proxy until governed_ready.",),
+            ),
+            "trade_proxy_mode": _entry(
+                caps_trade,
+                CapabilityState.AVAILABLE if caps_trade else CapabilityState.UNAVAILABLE,
+                caveats=("Trade Proxy — sub_stage/activity_type suggestion authority.",),
+            ),
+            "package_proxy_mode": _entry(
+                caps_trade,
+                CapabilityState.AVAILABLE if caps_trade else CapabilityState.UNAVAILABLE,
+                caveats=("Package Proxy — activity_type scope labels.",),
+            ),
+            "governed_dimension_drilldown": _entry(
+                has_schema,
+                CapabilityState.AVAILABLE,
+                caveats=("GET-only drilldowns under executive-controls/governed-dimensions/.",),
+            ),
+            "governed_mapping_unmapped_scope": _entry(
+                has_schema,
+                CapabilityState.AVAILABLE,
+                caveats=("Unmapped is a virtual bucket — not a stored dimension value.",),
+            ),
+            "governed_mapping_conflict_visibility": _entry(
+                has_schema,
+                CapabilityState.AVAILABLE,
+                caveats=("Conflicts excluded from governed aggregates.",),
+            ),
+            "snapshot_governed_mapping_analytics": _entry(
                 False,
                 CapabilityState.UNAVAILABLE,
                 caveats=(
-                    "Evaluate trade_cutover_readiness and package_cutover_readiness independently.",
-                    "E8 cutover remains DF-D3 — proxies unchanged.",
+                    "DF-B snapshots do not persist governed dimension aggregates (DF-D3).",
                 ),
             ),
             "dimension_count": {"total": dim_count, "active_selected": active_dims},
@@ -736,11 +780,36 @@ class ProjectAnalyticsCapabilityProfile:
             },
         }
         if dim_count > 0:
+            from scheduling.services.executive_controls.dimension_mode import (
+                MODE_GOVERNED,
+                DimensionModeService,
+            )
             from scheduling.services.governed_mapping.cutover_readiness import (
                 CutoverReadinessService,
             )
 
             cutover = CutoverReadinessService(self.project).summarize()
+            modes = DimensionModeService(self.project).build()
+            trade_mode = modes.trade
+            package_mode = modes.package
+            result["e8_trade_governed_mode"] = _entry(
+                trade_mode.selected_mode == MODE_GOVERNED,
+                CapabilityState.AVAILABLE
+                if trade_mode.selected_mode == MODE_GOVERNED
+                else CapabilityState.AVAILABLE_WITH_CAVEATS
+                if trade_mode.selected_mode == "governed_partial"
+                else CapabilityState.PROXY_ONLY,
+                caveats=trade_mode.caveats,
+            )
+            result["e8_package_governed_mode"] = _entry(
+                package_mode.selected_mode == MODE_GOVERNED,
+                CapabilityState.AVAILABLE
+                if package_mode.selected_mode == MODE_GOVERNED
+                else CapabilityState.AVAILABLE_WITH_CAVEATS
+                if package_mode.selected_mode == "governed_partial"
+                else CapabilityState.PROXY_ONLY,
+                caveats=package_mode.caveats,
+            )
             trade = cutover.trade_cutover_readiness
             package = cutover.package_cutover_readiness
             result["trade_cutover_readiness"] = {
