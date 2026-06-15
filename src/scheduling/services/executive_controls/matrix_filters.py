@@ -40,6 +40,11 @@ class ExecutiveMatrixFilters:
     page_size: int = DEFAULT_PAGE_SIZE
     group_key: str | None = None
     authoritative_only: bool = True
+    aggregation_mode: str = "rolled_up"
+    wbs_parent_id: str | None = None
+    wbs_node_id: str | None = None
+    wbs_hide_unassigned: bool = False
+    hierarchy_mode_override: str | None = None
     extra: dict[str, str] = field(default_factory=dict)
 
     @classmethod
@@ -87,6 +92,11 @@ class ExecutiveMatrixFilters:
             page_size=page_size,
             group_key=params.get("group_key") or None,
             authoritative_only=auth_only,
+            aggregation_mode=params.get("aggregation_mode") or "rolled_up",
+            wbs_parent_id=params.get("wbs_parent_id") or None,
+            wbs_node_id=params.get("wbs_node_id") or None,
+            wbs_hide_unassigned=params.get("wbs_hide_unassigned") in ("1", "true", "yes"),
+            hierarchy_mode_override=params.get("hierarchy_mode") or None,
         )
 
     def to_overview_filters(self) -> OverviewFilters:
@@ -142,6 +152,16 @@ class ExecutiveMatrixFilters:
             q["page_size"] = str(self.page_size)
         if not self.authoritative_only:
             q["authoritative_only"] = "0"
+        if self.aggregation_mode and self.aggregation_mode != "rolled_up":
+            q["aggregation_mode"] = self.aggregation_mode
+        if self.wbs_parent_id:
+            q["wbs_parent_id"] = self.wbs_parent_id
+        if self.wbs_node_id:
+            q["wbs_node_id"] = self.wbs_node_id
+        if self.wbs_hide_unassigned:
+            q["wbs_hide_unassigned"] = "1"
+        if self.hierarchy_mode_override:
+            q["hierarchy_mode"] = self.hierarchy_mode_override
         return q
 
     def query_string(self) -> str:
