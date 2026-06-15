@@ -511,10 +511,15 @@ def _resolve_snapshot_for_e8_read(project, request):
     return None
 
 
-def _hierarchy_context(project, request):
+def _hierarchy_context(project, request, filters=None):
     from scheduling.services.executive_controls.hierarchy_mode import HierarchyModeResolver
 
-    force_stage = (request.GET.get("hierarchy_mode") or "").strip() == "stage_proxy"
+    override = None
+    if filters is not None:
+        override = filters.hierarchy_mode_override
+    else:
+        override = (request.GET.get("hierarchy_mode") or "").strip() or None
+    force_stage = override == "stage_proxy"
     return HierarchyModeResolver(project).resolve(force_stage_proxy=force_stage)
 
 
@@ -529,7 +534,7 @@ def _build_matrix_rows(project, request, filters):
     from scheduling.services.executive_controls.wbs_analytics_session import WBSAnalyticsSession
     from scheduling.services.executive_controls.wbs_matrix import WBSMatrixService
 
-    hierarchy = _hierarchy_context(project, request)
+    hierarchy = _hierarchy_context(project, request, filters)
     snapshot = _resolve_snapshot_for_e8_read(project, request)
 
     if hierarchy.hierarchy_mode in {m.value for m in CANONICAL_MODES}:
@@ -568,9 +573,6 @@ class ExecutiveControlsMatrixPageView(ProjectAccessMixin, TemplateView):
 
     def get_context_data(self, **kwargs: object) -> dict:
         from scheduling.services.executive_controls.context import AnalyticalContextService
-        from scheduling.services.executive_controls.dimension_registry import (
-            ExecutiveDimensionRegistry,
-        )
 
         ctx = super().get_context_data(**kwargs)
         project = self.get_project()
@@ -581,8 +583,16 @@ class ExecutiveControlsMatrixPageView(ProjectAccessMixin, TemplateView):
         ctx["capability_profile"] = capability
         ctx["filters"] = filters
         ctx["filter_query"] = filters.query_string()
-        ctx["available_dimensions"] = ExecutiveDimensionRegistry(str(project.pk)).discover()
-        ctx["hierarchy_context"] = _hierarchy_context(project, self.request)
+        from scheduling.services.executive_controls.matrix_hierarchy_options import (
+            MatrixHierarchyOptionsService,
+        )
+
+        matrix_options = MatrixHierarchyOptionsService(project).build(
+            hierarchy_mode_override=filters.hierarchy_mode_override,
+        )
+        ctx["matrix_hierarchy_options"] = matrix_options
+        ctx["available_dimensions"] = matrix_options["filter_dimensions"]
+        ctx["hierarchy_context"] = matrix_options["hierarchy"]
         ctx["exec_subtab"] = "matrix"
         return ctx
 
@@ -619,7 +629,8 @@ class ExecutiveControlsHierarchyContextView(ProjectAccessMixin, View):
 
     def get(self, request, **kwargs: object) -> JsonResponse:
         project = self.get_project()
-        return JsonResponse({"hierarchy": _hierarchy_context(project, request).to_dict()})
+        filters = _matrix_filters(request)
+        return JsonResponse({"hierarchy": _hierarchy_context(project, request, filters).to_dict()})
 
     def post(self, request, **kwargs: object) -> JsonResponse:
         return JsonResponse({"error": "Method not allowed."}, status=405)
@@ -634,10 +645,10 @@ class ExecutiveControlsWBSNodeView(ProjectAccessMixin, View):
         from scheduling.services.executive_controls.wbs_drilldown import WBSDrilldownService
 
         project = self.get_project()
-        hierarchy = _hierarchy_context(project, request)
+        filters = _matrix_filters(request)
+        hierarchy = _hierarchy_context(project, request, filters)
         if hierarchy.hierarchy_mode not in {m.value for m in CANONICAL_MODES}:
             return JsonResponse({"error": "Canonical WBS not available."}, status=404)
-        filters = _matrix_filters(request)
         session = WBSAnalyticsSession.load(project, hierarchy)
         payload = WBSDrilldownService(project, session).node_detail(
             str(kwargs["node_pk"]),
@@ -658,10 +669,10 @@ class ExecutiveControlsWBSTasksView(ProjectAccessMixin, View):
         from scheduling.services.executive_controls.wbs_drilldown import WBSDrilldownService
 
         project = self.get_project()
-        hierarchy = _hierarchy_context(project, request)
+        filters = _matrix_filters(request)
+        hierarchy = _hierarchy_context(project, request, filters)
         if hierarchy.hierarchy_mode not in {m.value for m in CANONICAL_MODES}:
             return JsonResponse({"error": "Canonical WBS not available."}, status=404)
-        filters = _matrix_filters(request)
         session = WBSAnalyticsSession.load(project, hierarchy)
         payload = WBSDrilldownService(project, session).task_list(str(kwargs["node_pk"]), filters)
         return JsonResponse(payload)
@@ -679,10 +690,10 @@ class ExecutiveControlsWBSModelScopeView(ProjectAccessMixin, View):
         from scheduling.services.executive_controls.wbs_drilldown import WBSDrilldownService
 
         project = self.get_project()
-        hierarchy = _hierarchy_context(project, request)
+        filters = _matrix_filters(request)
+        hierarchy = _hierarchy_context(project, request, filters)
         if hierarchy.hierarchy_mode not in {m.value for m in CANONICAL_MODES}:
             return JsonResponse({"error": "Canonical WBS not available."}, status=404)
-        filters = _matrix_filters(request)
         session = WBSAnalyticsSession.load(project, hierarchy)
         payload = WBSDrilldownService(project, session).model_scope(str(kwargs["node_pk"]), filters)
         return JsonResponse(payload)

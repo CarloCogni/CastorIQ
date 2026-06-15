@@ -42,8 +42,23 @@
 
     <form class="exec-filters border rounded p-3 mb-3 bg-body" method="get" id="exec-matrix-filter-form" aria-label="Matrix filters">
         <div class="row g-2 align-items-end">
+            {% if matrix_hierarchy_options.show_hierarchy_selector %}
             <div class="col-md-3">
-                <label class="form-label small mb-0" for="matrix-dimension">Dimension</label>
+                <label class="form-label small mb-0" for="matrix-hierarchy">Hierarchy view</label>
+                <select class="form-select form-select-sm" id="matrix-hierarchy" name="hierarchy_mode">
+                    {% for view in matrix_hierarchy_options.hierarchy_views %}
+                    <option value="{{ view.option_id }}"
+                            {% if view.active %}selected{% endif %}
+                            title="{{ view.caveat }}">
+                        {{ view.label }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+            {% if matrix_hierarchy_options.show_dimension_selector %}
+            <div class="col-md-3">
+                <label class="form-label small mb-0" for="matrix-dimension">Stage proxy grouping</label>
                 <select class="form-select form-select-sm" id="matrix-dimension" name="dimension">
                     {% for dim in available_dimensions %}
                     <option value="{{ dim.dimension_id }}" {% if filters.dimension == dim.dimension_id %}selected{% endif %}>
@@ -52,6 +67,16 @@
                     {% endfor %}
                 </select>
             </div>
+            {% endif %}
+            {% if matrix_hierarchy_options.show_aggregation_selector %}
+            <div class="col-md-2">
+                <label class="form-label small mb-0" for="matrix-aggregation">WBS aggregation</label>
+                <select class="form-select form-select-sm" id="matrix-aggregation" name="aggregation_mode">
+                    <option value="rolled_up" {% if filters.aggregation_mode == 'rolled_up' %}selected{% endif %}>Rolled up</option>
+                    <option value="direct" {% if filters.aggregation_mode == 'direct' %}selected{% endif %}>Direct only</option>
+                </select>
+            </div>
+            {% endif %}
             <div class="col-md-2">
                 <label class="form-label small mb-0" for="matrix-weighting">Weighting</label>
                 <select class="form-select form-select-sm" id="matrix-weighting" name="weighting_mode">
