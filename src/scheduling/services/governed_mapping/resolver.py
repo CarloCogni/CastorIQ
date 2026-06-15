@@ -8,7 +8,7 @@ from collections import defaultdict
 from typing import Any
 from uuid import UUID
 
-from django.db.models import Count, Q
+from django.db.models import Count
 
 from scheduling.models import (
     AnalyticalDimension,
@@ -184,7 +184,13 @@ class EffectiveMappingResolver:
         node = task.wbs_node
         if node is None:
             return []
-        ancestors = self._ancestor_nodes(node)
+        nodes_by_id = {
+            n.pk: n
+            for n in WBSNode.objects.filter(wbs_version_id=node.wbs_version_id).only(
+                "pk", "parent_id", "depth", "path"
+            )
+        }
+        ancestors = self._ancestor_nodes_cached(node, nodes_by_id)
         assignments = list(
             self._approved_assignments(mapping_set).filter(
                 target_type=AnalyticalMappingAssignment.TargetType.WBS_NODE,
@@ -195,17 +201,6 @@ class EffectiveMappingResolver:
             return []
         deepest = max(assignments, key=lambda a: a.wbs_node.depth if a.wbs_node else 0)
         return [deepest]
-
-    def _ancestor_nodes(self, node: WBSNode) -> list[WBSNode]:
-        if not node.path:
-            return [node]
-        version_id = node.wbs_version_id
-        prefix = node.path
-        return list(
-            WBSNode.objects.filter(wbs_version_id=version_id)
-            .filter(Q(path=prefix) | Q(path__in=self._path_prefixes(prefix)))
-            .order_by("-depth")
-        )
 
     @staticmethod
     def _path_prefixes(path: str) -> list[str]:
@@ -477,46 +472,42 @@ class EffectiveMappingResolver:
         tasks: list[Task],
         by_wbs: dict[UUID, list[AnalyticalMappingAssignment]],
     ) -> dict[UUID, list[AnalyticalMappingAssignment]]:
-        """Resolve WBS inheritance for many tasks with one ancestor-node query."""
-        node_ids: set[UUID] = set()
+        """Resolve WBS inheritance for many tasks with bounded ancestor lookups."""
         task_nodes: dict[UUID, WBSNode] = {}
+        version_ids: set[UUID] = set()
         for task in tasks:
             if task.wbs_node_id and task.wbs_node is not None:
                 task_nodes[task.pk] = task.wbs_node
-                node_ids.add(task.wbs_node_id)
+                version_ids.add(task.wbs_node.wbs_version_id)
 
-        if not node_ids:
+        if not task_nodes:
             return {}
 
-        paths = {node.path for node in task_nodes.values() if node.path}
-        prefix_paths: set[str] = set()
-        for path in paths:
-            prefix_paths.update(self._path_prefixes(path))
-        all_paths = paths | prefix_paths
-
-        version_ids = {node.wbs_version_id for node in task_nodes.values()}
-        ancestor_nodes = list(
-            WBSNode.objects.filter(wbs_version_id__in=version_ids, path__in=all_paths).order_by(
-                "-depth"
-            )
-        )
-        nodes_by_path_version: dict[tuple[UUID, str], WBSNode] = {}
-        for node in ancestor_nodes:
-            nodes_by_path_version[(node.wbs_version_id, node.path)] = node
+        all_nodes = list(WBSNode.objects.filter(wbs_version_id__in=version_ids))
+        nodes_by_id = {node.pk: node for node in all_nodes}
 
         inherited: dict[UUID, list[AnalyticalMappingAssignment]] = {}
         for task_id, node in task_nodes.items():
-            chain_paths = [node.path] + self._path_prefixes(node.path or "")
-            chain_ids = [
-                nodes_by_path_version[(node.wbs_version_id, path)].pk
-                for path in chain_paths
-                if (node.wbs_version_id, path) in nodes_by_path_version
-            ]
+            chain = self._ancestor_nodes_cached(node, nodes_by_id)
             candidates: list[AnalyticalMappingAssignment] = []
-            for chain_id in chain_ids:
-                candidates.extend(by_wbs.get(chain_id, []))
+            for chain_node in chain:
+                candidates.extend(by_wbs.get(chain_node.pk, []))
             if not candidates:
                 continue
             deepest = max(candidates, key=lambda a: a.wbs_node.depth if a.wbs_node else 0)
             inherited[task_id] = [deepest]
         return inherited
+
+    def _ancestor_nodes_cached(
+        self,
+        node: WBSNode,
+        nodes_by_id: dict[UUID, WBSNode],
+    ) -> list[WBSNode]:
+        chain: list[WBSNode] = []
+        current: WBSNode | None = node
+        seen: set[UUID] = set()
+        while current is not None and current.pk not in seen:
+            chain.append(current)
+            seen.add(current.pk)
+            current = nodes_by_id.get(current.parent_id) if current.parent_id else None
+        return chain
