@@ -11,6 +11,7 @@ from . import (
     views_baseline,
     views_executive_controls,
     views_governed_mapping,
+    views_governed_mapping_e8,
     views_source_provenance,
     views_wbs,
 )
@@ -666,6 +667,36 @@ urlpatterns = [
         "projects/<uuid:pk>/executive-controls/foundation/",
         views_executive_controls.ExecutiveControlsFoundationView.as_view(),
         name="executive_controls_foundation",
+    ),
+    path(
+        "projects/<uuid:pk>/executive-controls/governed-dimensions/",
+        views_governed_mapping_e8.ExecutiveGovernedDimensionsListView.as_view(),
+        name="executive_controls_governed_dimensions",
+    ),
+    path(
+        "projects/<uuid:pk>/executive-controls/governed-dimensions/<str:dimension_key>/summary/",
+        views_governed_mapping_e8.ExecutiveGovernedDimensionSummaryView.as_view(),
+        name="executive_controls_governed_dimension_summary",
+    ),
+    path(
+        "projects/<uuid:pk>/executive-controls/governed-dimensions/<str:dimension_key>/values/",
+        views_governed_mapping_e8.ExecutiveGovernedDimensionValuesView.as_view(),
+        name="executive_controls_governed_dimension_values",
+    ),
+    path(
+        "projects/<uuid:pk>/executive-controls/governed-dimensions/<str:dimension_key>/values/<str:value_id>/tasks/",
+        views_governed_mapping_e8.ExecutiveGovernedDimensionValueTasksView.as_view(),
+        name="executive_controls_governed_dimension_value_tasks",
+    ),
+    path(
+        "projects/<uuid:pk>/executive-controls/governed-dimensions/<str:dimension_key>/unmapped/tasks/",
+        views_governed_mapping_e8.ExecutiveGovernedDimensionUnmappedTasksView.as_view(),
+        name="executive_controls_governed_dimension_unmapped_tasks",
+    ),
+    path(
+        "projects/<uuid:pk>/executive-controls/governed-dimensions/<str:dimension_key>/conflicts/",
+        views_governed_mapping_e8.ExecutiveGovernedDimensionConflictsView.as_view(),
+        name="executive_controls_governed_dimension_conflicts",
     ),
     path(
         "projects/<uuid:pk>/comprehension/",

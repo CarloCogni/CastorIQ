@@ -738,6 +738,7 @@ class ExecutiveControlsTradesAnalysisView(ProjectAccessMixin, View):
         filters = _matrix_filters(request)
         try:
             payload = TradePackageAnalysisService(project).build(filters)
+            payload["project"] = project
             if request.headers.get("HX-Request"):
                 return render(request, "scheduling/components/executive_trades_table.html", payload)
             return JsonResponse(payload)
