@@ -94,6 +94,13 @@ class _ProjectSignals:
     selected_wbs_status: str | None = None
     canonical_wbs_node_count: int = 0
     tasks_with_wbs_assignment: int = 0
+    governed_dim_count: int = 0
+    governed_active_dims: int = 0
+    governed_active_sets: int = 0
+    governed_approved_assignments: int = 0
+    governed_proposed_assignments: int = 0
+    governed_trade_dim: bool = False
+    governed_package_dim: bool = False
 
 
 class ProjectAnalyticsCapabilityProfile:
@@ -586,14 +593,14 @@ class ProjectAnalyticsCapabilityProfile:
                 "caveats": list(caveats),
             }
 
-        counts = self._governed_mapping_table_counts()
-        dim_count = counts["dim_count"]
-        active_dims = counts["active_dims"]
-        active_sets = counts["active_sets"]
-        approved = counts["approved"]
-        proposed = counts["proposed"]
-        trade_dim = counts["trade_dim"]
-        package_dim = counts["package_dim"]
+        counts = signals
+        dim_count = counts.governed_dim_count
+        active_dims = counts.governed_active_dims
+        active_sets = counts.governed_active_sets
+        approved = counts.governed_approved_assignments
+        proposed = counts.governed_proposed_assignments
+        trade_dim = counts.governed_trade_dim
+        package_dim = counts.governed_package_dim
 
         has_schema = True
         governance_ready = active_dims > 0 and active_sets > 0 and approved > 0
@@ -603,7 +610,7 @@ class ProjectAnalyticsCapabilityProfile:
         trade_governed = trade_dim and active_sets > 0 and approved > 0
         package_governed = package_dim and active_sets > 0 and approved > 0
 
-        return {
+        result = {
             "governed_mapping_schema": _entry(
                 has_schema,
                 CapabilityState.AVAILABLE,
@@ -615,18 +622,14 @@ class ProjectAnalyticsCapabilityProfile:
             ),
             "trade_mapping": _entry(
                 trade_governed,
-                CapabilityState.AVAILABLE
-                if trade_governed
-                else CapabilityState.UNAVAILABLE,
+                CapabilityState.AVAILABLE if trade_governed else CapabilityState.UNAVAILABLE,
                 caveats=("E8 trades remain on proxy/suggestion until DF-D3 cutover.",)
                 if not trade_governed
                 else (),
             ),
             "package_mapping": _entry(
                 package_governed,
-                CapabilityState.AVAILABLE
-                if package_governed
-                else CapabilityState.UNAVAILABLE,
+                CapabilityState.AVAILABLE if package_governed else CapabilityState.UNAVAILABLE,
                 caveats=("E8 packages remain on proxy until DF-D3 cutover.",)
                 if not package_governed
                 else (),
@@ -675,9 +678,7 @@ class ProjectAnalyticsCapabilityProfile:
                 else CapabilityState.PROXY_ONLY
                 if caps_trade
                 else CapabilityState.UNAVAILABLE,
-                caveats=(
-                    "Proxy/suggestion trade analytics — governed mapping separate.",
-                )
+                caveats=("Proxy/suggestion trade analytics — governed mapping separate.",)
                 if not trade_governed
                 else ("Governed trade mapping present — E8 cutover deferred to DF-D3.",),
             ),
@@ -721,11 +722,12 @@ class ProjectAnalyticsCapabilityProfile:
                 else CapabilityState.UNAVAILABLE,
             ),
             "df_d3_cutover_readiness": _entry(
-                governance_ready and proposed == 0,
-                CapabilityState.AVAILABLE_WITH_CAVEATS
-                if governance_ready
-                else CapabilityState.UNAVAILABLE,
-                caveats=("E8 cutover remains DF-D3 — proxies unchanged.",),
+                False,
+                CapabilityState.UNAVAILABLE,
+                caveats=(
+                    "Evaluate trade_cutover_readiness and package_cutover_readiness independently.",
+                    "E8 cutover remains DF-D3 — proxies unchanged.",
+                ),
             ),
             "dimension_count": {"total": dim_count, "active_selected": active_dims},
             "assignment_counts": {
@@ -733,77 +735,40 @@ class ProjectAnalyticsCapabilityProfile:
                 "proposed": proposed,
             },
         }
-
-    def _governed_mapping_table_counts(self) -> dict[str, int | bool]:
-        """Single round-trip for DF-D1/D2 governed mapping capability counts."""
-        from django.db import connection
-
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT
-                    (SELECT COUNT(*) FROM castor_scheduling_analyticaldimension WHERE project_id = %s),
-                    (
-                        SELECT COUNT(*)
-                        FROM castor_scheduling_analyticaldimension
-                        WHERE project_id = %s
-                          AND status = 'active'
-                          AND is_selected_for_analysis = true
-                    ),
-                    (
-                        SELECT COUNT(*)
-                        FROM castor_scheduling_analyticalmappingset
-                        WHERE project_id = %s
-                          AND status = 'active'
-                          AND is_selected_for_analysis = true
-                    ),
-                    (
-                        SELECT COUNT(*)
-                        FROM castor_scheduling_analyticalmappingassignment a
-                        JOIN castor_scheduling_analyticalmappingset m ON m.id = a.mapping_set_id
-                        WHERE m.project_id = %s
-                          AND a.governance_status = 'approved'
-                    ),
-                    (
-                        SELECT COUNT(*)
-                        FROM castor_scheduling_analyticalmappingassignment a
-                        JOIN castor_scheduling_analyticalmappingset m ON m.id = a.mapping_set_id
-                        WHERE m.project_id = %s
-                          AND a.governance_status = 'proposed'
-                    ),
-                    (
-                        SELECT EXISTS(
-                            SELECT 1
-                            FROM castor_scheduling_analyticaldimension
-                            WHERE project_id = %s
-                              AND dimension_type = 'trade'
-                              AND is_selected_for_analysis = true
-                              AND status = 'active'
-                        )
-                    ),
-                    (
-                        SELECT EXISTS(
-                            SELECT 1
-                            FROM castor_scheduling_analyticaldimension
-                            WHERE project_id = %s
-                              AND dimension_type = 'package'
-                              AND is_selected_for_analysis = true
-                              AND status = 'active'
-                        )
-                    )
-                """,
-                [self.project_id] * 7,
+        if dim_count > 0:
+            from scheduling.services.governed_mapping.cutover_readiness import (
+                CutoverReadinessService,
             )
-            row = cursor.fetchone()
-        return {
-            "dim_count": int(row[0] or 0),
-            "active_dims": int(row[1] or 0),
-            "active_sets": int(row[2] or 0),
-            "approved": int(row[3] or 0),
-            "proposed": int(row[4] or 0),
-            "trade_dim": bool(row[5]),
-            "package_dim": bool(row[6]),
-        }
+
+            cutover = CutoverReadinessService(self.project).summarize()
+            trade = cutover.trade_cutover_readiness
+            package = cutover.package_cutover_readiness
+            result["trade_cutover_readiness"] = {
+                "state": trade.state,
+                "effective_coverage_pct": trade.effective_coverage_pct,
+                "blocking_conflicts": trade.blocking_conflicts,
+                "source_authority": trade.source_authority,
+                "eligible_targets": trade.eligible_targets,
+                "unmapped": trade.unmapped,
+                "cutover_caveats": list(trade.cutover_caveats),
+            }
+            result["package_cutover_readiness"] = {
+                "state": package.state,
+                "effective_coverage_pct": package.effective_coverage_pct,
+                "blocking_conflicts": package.blocking_conflicts,
+                "source_authority": package.source_authority,
+                "eligible_targets": package.eligible_targets,
+                "unmapped": package.unmapped,
+                "cutover_caveats": list(package.cutover_caveats),
+            }
+            result["trade_effective_coverage"] = trade.effective_coverage_pct
+            result["package_effective_coverage"] = package.effective_coverage_pct
+            result["trade_blocking_conflicts"] = trade.blocking_conflicts
+            result["package_blocking_conflicts"] = package.blocking_conflicts
+            result["trade_source_authority"] = trade.source_authority
+            result["package_source_authority"] = package.source_authority
+            result["cutover_caveats"] = list(cutover.cutover_caveats)
+        return result
 
     def feature(self, feature_id: str) -> dict[str, Any]:
         """Evaluate a single feature (uses full gather — prefer build() per request)."""
@@ -980,6 +945,13 @@ class ProjectAnalyticsCapabilityProfile:
             selected_wbs_status=baseline_counts["selected_wbs_status"],
             canonical_wbs_node_count=baseline_counts["canonical_wbs_node_count"],
             tasks_with_wbs_assignment=agg["with_wbs_assignment"] or 0,
+            governed_dim_count=baseline_counts["governed_dim_count"],
+            governed_active_dims=baseline_counts["governed_active_dims"],
+            governed_active_sets=baseline_counts["governed_active_sets"],
+            governed_approved_assignments=baseline_counts["governed_approved_assignments"],
+            governed_proposed_assignments=baseline_counts["governed_proposed_assignments"],
+            governed_trade_dim=baseline_counts["governed_trade_dim"],
+            governed_package_dim=baseline_counts["governed_package_dim"],
         )
 
     def _baseline_table_counts(self) -> dict[str, Any]:
@@ -1066,9 +1038,58 @@ class ProjectAnalyticsCapabilityProfile:
                         FROM castor_scheduling_wbsnode n
                         JOIN castor_scheduling_wbsversion v ON v.id = n.wbs_version_id
                         WHERE v.project_id = %s
+                    ),
+                    (SELECT COUNT(*) FROM castor_scheduling_analyticaldimension WHERE project_id = %s),
+                    (
+                        SELECT COUNT(*)
+                        FROM castor_scheduling_analyticaldimension
+                        WHERE project_id = %s
+                          AND status = 'active'
+                          AND is_selected_for_analysis = true
+                    ),
+                    (
+                        SELECT COUNT(*)
+                        FROM castor_scheduling_analyticalmappingset
+                        WHERE project_id = %s
+                          AND status = 'active'
+                          AND is_selected_for_analysis = true
+                    ),
+                    (
+                        SELECT COUNT(*)
+                        FROM castor_scheduling_analyticalmappingassignment a
+                        JOIN castor_scheduling_analyticalmappingset m ON m.id = a.mapping_set_id
+                        WHERE m.project_id = %s
+                          AND a.governance_status = 'approved'
+                    ),
+                    (
+                        SELECT COUNT(*)
+                        FROM castor_scheduling_analyticalmappingassignment a
+                        JOIN castor_scheduling_analyticalmappingset m ON m.id = a.mapping_set_id
+                        WHERE m.project_id = %s
+                          AND a.governance_status = 'proposed'
+                    ),
+                    (
+                        SELECT EXISTS(
+                            SELECT 1
+                            FROM castor_scheduling_analyticaldimension
+                            WHERE project_id = %s
+                              AND dimension_type = 'trade'
+                              AND is_selected_for_analysis = true
+                              AND status = 'active'
+                        )
+                    ),
+                    (
+                        SELECT EXISTS(
+                            SELECT 1
+                            FROM castor_scheduling_analyticaldimension
+                            WHERE project_id = %s
+                              AND dimension_type = 'package'
+                              AND is_selected_for_analysis = true
+                              AND status = 'active'
+                        )
                     )
                 """,
-                [self.project_id] * 15,
+                [self.project_id] * 22,
             )
             row = cursor.fetchone()
         return {
@@ -1087,6 +1108,13 @@ class ProjectAnalyticsCapabilityProfile:
             "selected_wbs_id": row[12],
             "selected_wbs_status": row[13],
             "canonical_wbs_node_count": int(row[14] or 0),
+            "governed_dim_count": int(row[15] or 0),
+            "governed_active_dims": int(row[16] or 0),
+            "governed_active_sets": int(row[17] or 0),
+            "governed_approved_assignments": int(row[18] or 0),
+            "governed_proposed_assignments": int(row[19] or 0),
+            "governed_trade_dim": bool(row[20]),
+            "governed_package_dim": bool(row[21]),
         }
 
     def _provenance_table_counts(self) -> tuple[str | None, int, int]:
