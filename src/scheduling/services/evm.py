@@ -537,6 +537,8 @@ def compute_evm(
         cur += timedelta(weeks=1)
     if spine_end not in dates:
         dates.append(spine_end)
+    if today not in dates:
+        dates.append(today)
     dates.sort()
 
     # Each task's actual_cost is attributed to:

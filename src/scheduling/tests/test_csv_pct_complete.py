@@ -192,6 +192,22 @@ def test_earned_pct_linear_cap_overdue_no_data():
 
 
 @pytest.mark.django_db
+def test_compute_evm_pv_at_as_of_date_on_spine():
+    """Regression: as-of date must exist on weekly spine when using linear PV fast path."""
+    today = datetime.date(2026, 6, 15)
+    project = ProjectFactory()
+    TaskFactory(
+        project=project,
+        status="active",
+        start_date=today - datetime.timedelta(days=90),
+        end_date=today + datetime.timedelta(days=30),
+    )
+    result = compute_evm(str(project.pk), as_of_date=today)
+    assert result["has_data"] is True
+    assert result["pv"] is not None
+
+
+@pytest.mark.django_db
 def test_compute_evm_overdue_linear_capped_count():
     """overdue_linear_capped counts only active overdue tasks with no pct data."""
     project = ProjectFactory()
