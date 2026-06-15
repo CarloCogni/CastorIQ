@@ -123,13 +123,11 @@ class WBSAnalyticsSession:
                 unassigned.add(tid)
 
         rollup: dict[str, set[str]] = {}
-        for node in nodes:
+        for node in sorted(nodes, key=lambda n: -n.depth):
             nid = str(node.pk)
-            scope: set[str] = set(direct.get(nid, set()))
-            prefix = node.path or ""
-            for other in nodes:
-                if other.pk != node.pk and other.path.startswith(prefix):
-                    scope |= direct.get(str(other.pk), set())
+            scope = set(direct.get(nid, set()))
+            for child in children.get(nid, []):
+                scope |= rollup.get(str(child.pk), set())
             rollup[nid] = scope
 
         session = cls(
