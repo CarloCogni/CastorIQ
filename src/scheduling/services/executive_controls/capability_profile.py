@@ -119,6 +119,7 @@ class ProjectAnalyticsCapabilityProfile:
         baseline = self._baseline_capabilities(signals)
         snapshot = self._snapshot_capabilities(signals)
         wbs = self._wbs_capabilities(signals)
+        governed_mapping = self._governed_mapping_capabilities(signals)
 
         payload = CapabilityProfilePayload(
             profile_version=PROFILE_VERSION,
@@ -141,6 +142,7 @@ class ProjectAnalyticsCapabilityProfile:
             baseline_capabilities=baseline,
             snapshot_capabilities=snapshot,
             wbs_capabilities=wbs,
+            governed_mapping_capabilities=governed_mapping,
         )
         return payload.to_dict()
 
@@ -567,6 +569,167 @@ class ProjectAnalyticsCapabilityProfile:
                     "Snapshot WBS node metrics unavailable until persisted node payload (DF-B+).",
                 ),
             ),
+        }
+
+    def _governed_mapping_capabilities(self, signals: _ProjectSignals) -> dict[str, dict[str, Any]]:
+        """DF-D1 governed mapping schema — does not switch E8 trade/package analytics."""
+
+        def _entry(
+            available: bool,
+            state: CapabilityState,
+            *,
+            caveats: tuple[str, ...] = (),
+        ) -> dict[str, Any]:
+            return {
+                "available": available,
+                "state": state.value,
+                "caveats": list(caveats),
+            }
+
+        from scheduling.models import (
+            AnalyticalDimension,
+            AnalyticalMappingAssignment,
+            AnalyticalMappingSet,
+        )
+
+        dim_count = AnalyticalDimension.objects.filter(project_id=self.project_id).count()
+        active_dims = AnalyticalDimension.objects.filter(
+            project_id=self.project_id,
+            status=AnalyticalDimension.Status.ACTIVE,
+            is_selected_for_analysis=True,
+        ).count()
+        active_sets = AnalyticalMappingSet.objects.filter(
+            project_id=self.project_id,
+            status=AnalyticalMappingSet.Status.ACTIVE,
+            is_selected_for_analysis=True,
+        ).count()
+        approved = AnalyticalMappingAssignment.objects.filter(
+            mapping_set__project_id=self.project_id,
+            governance_status=AnalyticalMappingAssignment.GovernanceStatus.APPROVED,
+        ).count()
+        proposed = AnalyticalMappingAssignment.objects.filter(
+            mapping_set__project_id=self.project_id,
+            governance_status=AnalyticalMappingAssignment.GovernanceStatus.PROPOSED,
+        ).count()
+
+        trade_dim = AnalyticalDimension.objects.filter(
+            project_id=self.project_id,
+            dimension_type=AnalyticalDimension.DimensionType.TRADE,
+            is_selected_for_analysis=True,
+            status=AnalyticalDimension.Status.ACTIVE,
+        ).exists()
+        package_dim = AnalyticalDimension.objects.filter(
+            project_id=self.project_id,
+            dimension_type=AnalyticalDimension.DimensionType.PACKAGE,
+            is_selected_for_analysis=True,
+            status=AnalyticalDimension.Status.ACTIVE,
+        ).exists()
+
+        has_schema = True
+        governance_ready = active_dims > 0 and active_sets > 0 and approved > 0
+        partial = approved > 0 and not governance_ready
+        caps_trade = signals.with_sub_stage > 0 or signals.authoritative_scope_n > 0
+
+        trade_governed = trade_dim and active_sets > 0 and approved > 0
+        package_governed = package_dim and active_sets > 0 and approved > 0
+
+        return {
+            "governed_mapping_schema": _entry(
+                has_schema,
+                CapabilityState.AVAILABLE,
+                caveats=("Governed mapping domain schema deployed (DF-D1).",),
+            ),
+            "active_dimensions": _entry(
+                active_dims > 0,
+                CapabilityState.AVAILABLE if active_dims else CapabilityState.UNAVAILABLE,
+            ),
+            "trade_mapping": _entry(
+                trade_governed,
+                CapabilityState.AVAILABLE
+                if trade_governed
+                else CapabilityState.UNAVAILABLE,
+                caveats=("E8 trades remain on proxy/suggestion until DF-D3 cutover.",)
+                if not trade_governed
+                else (),
+            ),
+            "package_mapping": _entry(
+                package_governed,
+                CapabilityState.AVAILABLE
+                if package_governed
+                else CapabilityState.UNAVAILABLE,
+                caveats=("E8 packages remain on proxy until DF-D3 cutover.",)
+                if not package_governed
+                else (),
+            ),
+            "discipline_mapping": _entry(
+                False,
+                CapabilityState.UNAVAILABLE,
+                caveats=("Discipline governed mapping not populated.",),
+            ),
+            "location_mapping": _entry(
+                False,
+                CapabilityState.UNAVAILABLE,
+                caveats=("Location governed mapping not populated.",),
+            ),
+            "mapping_coverage": _entry(
+                approved > 0,
+                CapabilityState.AVAILABLE
+                if governance_ready
+                else CapabilityState.AVAILABLE_WITH_CAVEATS
+                if partial
+                else CapabilityState.UNAVAILABLE,
+                caveats=("Proposed mappings excluded from effective coverage.",)
+                if proposed
+                else (),
+            ),
+            "mapping_conflicts": _entry(
+                has_schema,
+                CapabilityState.AVAILABLE_WITH_CAVEATS,
+                caveats=("Conflict detection via EffectiveMappingResolver.",),
+            ),
+            "mapping_governance_readiness": _entry(
+                governance_ready,
+                CapabilityState.AVAILABLE
+                if governance_ready
+                else CapabilityState.AVAILABLE_WITH_CAVEATS
+                if proposed
+                else CapabilityState.UNAVAILABLE,
+                caveats=("Proposed-only mappings do not unlock governed analytics.",)
+                if proposed and not approved
+                else (),
+            ),
+            "e8_trade_analytics_readiness": _entry(
+                caps_trade,
+                CapabilityState.AVAILABLE
+                if trade_governed
+                else CapabilityState.PROXY_ONLY
+                if caps_trade
+                else CapabilityState.UNAVAILABLE,
+                caveats=(
+                    "Proxy/suggestion trade analytics — governed mapping separate.",
+                )
+                if not trade_governed
+                else ("Governed trade mapping present — E8 cutover deferred to DF-D3.",),
+            ),
+            "e8_package_analytics_readiness": _entry(
+                package_governed or caps_trade,
+                CapabilityState.AVAILABLE
+                if package_governed
+                else CapabilityState.PROXY_ONLY
+                if caps_trade
+                else CapabilityState.UNAVAILABLE,
+                caveats=("Package proxy remains until DF-D3.",) if not package_governed else (),
+            ),
+            "proxy_dimensions_labeled": _entry(
+                True,
+                CapabilityState.AVAILABLE,
+                caveats=("Stage/sub_stage and activity_type remain explicitly labeled proxy.",),
+            ),
+            "dimension_count": {"total": dim_count, "active_selected": active_dims},
+            "assignment_counts": {
+                "approved": approved,
+                "proposed": proposed,
+            },
         }
 
     def feature(self, feature_id: str) -> dict[str, Any]:

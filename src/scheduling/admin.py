@@ -4,6 +4,10 @@
 from django.contrib import admin
 
 from scheduling.models import (
+    AnalyticalDimension,
+    AnalyticalDimensionValue,
+    AnalyticalMappingAssignment,
+    AnalyticalMappingSet,
     AnalyticalSnapshot,
     AnalyticalSnapshotAuditEvent,
     AnalyticalSnapshotPeriod,
@@ -12,6 +16,7 @@ from scheduling.models import (
     BaselineAuditEvent,
     BaselineTaskState,
     BaselineVersion,
+    MappingGovernanceEvent,
     ScheduleActivity,
     ScheduleImportRun,
     ScheduleSourceVersion,
@@ -480,3 +485,148 @@ class WBSNodeAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return obj is not None and obj.wbs_version.status == WBSVersion.Status.DRAFT
+
+
+class AnalyticalDimensionValueInline(admin.TabularInline):
+    """Inspect values on draft dimensions only."""
+
+    model = AnalyticalDimensionValue
+    extra = 0
+    readonly_fields = ("code", "name", "parent", "path", "depth", "sequence", "status")
+    raw_id_fields = ("parent",)
+
+    def has_add_permission(self, request, obj=None):
+        return obj is not None and obj.status == AnalyticalDimension.Status.DRAFT
+
+    def has_delete_permission(self, request, obj=None):
+        return obj is not None and obj.status == AnalyticalDimension.Status.DRAFT
+
+
+@admin.register(AnalyticalDimension)
+class AnalyticalDimensionAdmin(admin.ModelAdmin):
+    """Inspect governed dimensions — lifecycle via services only."""
+
+    list_display = (
+        "dimension_key",
+        "name",
+        "project",
+        "dimension_type",
+        "status",
+        "revision_number",
+        "is_selected_for_analysis",
+    )
+    list_filter = ("dimension_type", "status", "structure_type", "cardinality")
+    search_fields = ("dimension_key", "name")
+    readonly_fields = (
+        "id",
+        "revision_number",
+        "activated_at",
+        "superseded_at",
+        "created_at",
+        "updated_at",
+    )
+    raw_id_fields = ("project", "parent_dimension", "created_by", "activated_by")
+    inlines = [AnalyticalDimensionValueInline]
+
+    def has_delete_permission(self, request, obj=None):
+        return obj is not None and obj.status == AnalyticalDimension.Status.DRAFT
+
+
+@admin.register(AnalyticalDimensionValue)
+class AnalyticalDimensionValueAdmin(admin.ModelAdmin):
+    """Inspect dimension values."""
+
+    list_display = ("name", "code", "dimension", "depth", "status", "authority")
+    list_filter = ("status", "identity_status", "authority")
+    search_fields = ("name", "code", "external_id")
+    raw_id_fields = ("dimension", "parent")
+
+    def has_add_permission(self, request):
+        return False
+
+
+@admin.register(AnalyticalMappingSet)
+class AnalyticalMappingSetAdmin(admin.ModelAdmin):
+    """Inspect mapping sets."""
+
+    list_display = (
+        "name",
+        "project",
+        "dimension",
+        "status",
+        "revision",
+        "is_selected_for_analysis",
+    )
+    list_filter = ("status", "is_selected_for_analysis")
+    raw_id_fields = (
+        "project",
+        "dimension",
+        "source_version",
+        "baseline_version",
+        "supersedes",
+        "created_by",
+        "approved_by",
+    )
+
+    def has_delete_permission(self, request, obj=None):
+        return obj is not None and obj.status == AnalyticalMappingSet.Status.DRAFT
+
+
+@admin.register(AnalyticalMappingAssignment)
+class AnalyticalMappingAssignmentAdmin(admin.ModelAdmin):
+    """Inspect mapping assignments."""
+
+    list_display = (
+        "target_type",
+        "dimension_value",
+        "mapping_set",
+        "governance_status",
+        "authority",
+    )
+    list_filter = ("target_type", "governance_status", "authority", "mapping_method")
+    raw_id_fields = ("mapping_set", "dimension_value", "task", "wbs_node", "ifc_file")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return (
+            obj is not None
+            and obj.mapping_set.status == AnalyticalMappingSet.Status.DRAFT
+            and obj.governance_status != AnalyticalMappingAssignment.GovernanceStatus.APPROVED
+        )
+
+
+@admin.register(MappingGovernanceEvent)
+class MappingGovernanceEventAdmin(admin.ModelAdmin):
+    """Append-only mapping audit events."""
+
+    list_display = ("event_type", "project", "dimension", "created_at")
+    list_filter = ("event_type",)
+    readonly_fields = (
+        "id",
+        "project",
+        "dimension",
+        "mapping_set",
+        "assignment",
+        "event_type",
+        "previous_state",
+        "resulting_state",
+        "target_type",
+        "target_id",
+        "reason_code",
+        "reason_text",
+        "evidence_summary",
+        "actor",
+        "created_at",
+        "updated_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

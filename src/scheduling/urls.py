@@ -10,6 +10,7 @@ from . import (
     views_analytical_snapshot,
     views_baseline,
     views_executive_controls,
+    views_governed_mapping,
     views_source_provenance,
     views_wbs,
 )
@@ -114,6 +115,46 @@ urlpatterns = [
         "projects/<uuid:pk>/tasks/<uuid:task_pk>/wbs-provenance/",
         views_wbs.TaskWBSProvenanceView.as_view(),
         name="schedule_task_wbs_provenance",
+    ),
+    path(
+        "projects/<uuid:pk>/analytical-dimensions/",
+        views_governed_mapping.AnalyticalDimensionListView.as_view(),
+        name="schedule_analytical_dimensions",
+    ),
+    path(
+        "projects/<uuid:pk>/analytical-dimensions/<uuid:dimension_pk>/",
+        views_governed_mapping.AnalyticalDimensionDetailView.as_view(),
+        name="schedule_analytical_dimension_detail",
+    ),
+    path(
+        "projects/<uuid:pk>/analytical-dimensions/<uuid:dimension_pk>/values/",
+        views_governed_mapping.AnalyticalDimensionValueListView.as_view(),
+        name="schedule_analytical_dimension_values",
+    ),
+    path(
+        "projects/<uuid:pk>/mapping-sets/",
+        views_governed_mapping.MappingSetListView.as_view(),
+        name="schedule_mapping_sets",
+    ),
+    path(
+        "projects/<uuid:pk>/mapping-sets/active/",
+        views_governed_mapping.ActiveMappingSetView.as_view(),
+        name="schedule_active_mapping_sets",
+    ),
+    path(
+        "projects/<uuid:pk>/mapping-assignments/",
+        views_governed_mapping.MappingAssignmentListView.as_view(),
+        name="schedule_mapping_assignments",
+    ),
+    path(
+        "projects/<uuid:pk>/mapping-coverage/",
+        views_governed_mapping.MappingCoverageView.as_view(),
+        name="schedule_mapping_coverage",
+    ),
+    path(
+        "projects/<uuid:pk>/tasks/<uuid:task_pk>/mapping-provenance/",
+        views_governed_mapping.TaskMappingProvenanceView.as_view(),
+        name="schedule_task_mapping_provenance",
     ),
     path(
         "projects/<uuid:pk>/analytical-snapshots/",
