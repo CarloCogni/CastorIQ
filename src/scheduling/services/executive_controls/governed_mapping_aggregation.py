@@ -47,7 +47,9 @@ class GovernedMappingAggregationService:
             return {"error": "Unknown dimension", "dimension_key": dimension_key}
 
         buckets = session.bucket_task_ids(dimension_key)
-        value_rows = self._value_rows(session, dimension_key, buckets, mode.selected_mode)
+        value_rows = self._value_rows_from_rollup(
+            session, dimension_key, buckets, mode.selected_mode
+        )
 
         return {
             "section": "governed_dimension_summary",
@@ -100,6 +102,89 @@ class GovernedMappingAggregationService:
                 "has_next": start + page_size < total,
             },
         }
+
+    def build_summary_from_session(
+        self,
+        session: GovernedMappingAnalyticsSession,
+        dimension_key: str,
+    ) -> dict[str, Any]:
+        """Build summary from pre-loaded session — avoids duplicate resolution (DF-D3.1)."""
+        mode = session.mode_context.dimensions.get(dimension_key)
+        if mode is None:
+            return {"error": "Unknown dimension", "dimension_key": dimension_key}
+        buckets = session.bucket_task_ids(dimension_key)
+        value_rows = self._value_rows_from_rollup(
+            session, dimension_key, buckets, mode.selected_mode
+        )
+        return {
+            "section": "governed_dimension_summary",
+            "project_id": self.project_id,
+            "methodology_version": E8_METHODOLOGY_VERSION,
+            "dimension_key": dimension_key,
+            "dimension_mode": mode.to_dict(),
+            "mode_label": mode.mode_label,
+            "selected_mode": mode.selected_mode,
+            "mapping_set_id": mode.active_mapping_set_id,
+            "mapping_set_revision": mode.mapping_set_revision,
+            "value_count": len([r for r in value_rows if not r["is_virtual_bucket"]]),
+            "virtual_buckets": [r for r in value_rows if r["is_virtual_bucket"]],
+            "governed_values": [r for r in value_rows if not r["is_virtual_bucket"]],
+            "totals": self._totals(value_rows, mode.selected_mode),
+            "snapshot_governed_mapping_analytics": "unavailable",
+            "snapshot_caveat": (
+                "Frozen snapshot KPIs do not include governed mapping aggregates in DF-D3."
+            ),
+            "calculated_at": datetime.now(UTC).isoformat(),
+        }
+
+    def _value_rows_from_rollup(
+        self,
+        session: GovernedMappingAnalyticsSession,
+        dimension_key: str,
+        buckets: dict[str, set[str]],
+        selected_mode: str,
+    ) -> list[dict[str, Any]]:
+        if selected_mode not in (MODE_GOVERNED, MODE_GOVERNED_PARTIAL):
+            return self._empty_mode_rows(session, dimension_key, selected_mode, buckets)
+
+        dim = session.dimensions_by_key.get(dimension_key)
+        value_meta: dict[str, AnalyticalDimensionValue] = {}
+        if dim:
+            value_meta = {str(v.pk): v for v in dim.values.filter(status="active")}
+
+        rollup = session.build_dimension_rollup(dimension_key)
+        rows: list[dict[str, Any]] = []
+        mode = session.mode_context.dimensions[dimension_key]
+        for bucket_id, data in rollup.items():
+            is_virtual = data.get("is_virtual_bucket", False)
+            if is_virtual:
+                label = BUCKET_LABELS.get(bucket_id, bucket_id)
+                code = None
+            else:
+                val = value_meta.get(bucket_id)
+                label = val.name if val else bucket_id
+                code = val.code if val else None
+            rows.append(
+                {
+                    "value_id": bucket_id,
+                    "code": code,
+                    "label": label,
+                    "is_virtual_bucket": is_virtual,
+                    "task_count": data["task_count"],
+                    "schedulable_count": data["schedulable_count"],
+                    "completed_count": data["completed_count"],
+                    "delay": data["delay"],
+                    "evm": data["evm"],
+                    "model_scope": data["model_scope"],
+                    "provenance": {
+                        "mapping_set_id": mode.active_mapping_set_id,
+                        "mapping_set_revision": mode.mapping_set_revision,
+                        "selected_mode": selected_mode,
+                    },
+                    "caveats": list(mode.caveats),
+                }
+            )
+        return rows
 
     def _value_rows(
         self,

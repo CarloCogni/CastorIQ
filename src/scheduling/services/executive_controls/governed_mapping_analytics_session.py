@@ -56,6 +56,8 @@ class GovernedMappingAnalyticsSession:
     task_evm: dict[str, TaskEvmPoint] = field(default_factory=dict)
     evm_methodology: dict[str, Any] = field(default_factory=dict)
     classifier: DelayClassificationService | None = None
+    _delay_by_task: dict[str, Any] = field(default_factory=dict, repr=False)
+    _metrics_cached: bool = field(default=False, repr=False)
 
     @classmethod
     def load(
@@ -268,6 +270,7 @@ class GovernedMappingAnalyticsSession:
 
     def aggregate_delay(self, task_ids: set[str]) -> dict[str, int]:
         """Delay counts for a task scope."""
+        self.ensure_task_metrics_cache()
         primary_late = near_critical = completed_late = 0
         if not self.classifier:
             return {
@@ -276,11 +279,13 @@ class GovernedMappingAnalyticsSession:
                 "completed_late_count": 0,
             }
         for tid in task_ids:
-            task = self.tasks_by_id.get(tid)
-            if not task:
-                continue
-            trusted_ent = len(self.entities_by_task.get(tid, []))
-            delay = self.classifier.classify_task(task, trusted_entity_count=trusted_ent)
+            delay = self._delay_by_task.get(tid)
+            if not delay:
+                task = self.tasks_by_id.get(tid)
+                if not task:
+                    continue
+                trusted_ent = len(self.entities_by_task.get(tid, []))
+                delay = self.classifier.classify_task(task, trusted_entity_count=trusted_ent)
             primary = delay.primary_delay_type
             if primary in DELAYED_PRIMARY:
                 primary_late += 1
@@ -323,3 +328,153 @@ class GovernedMappingAnalyticsSession:
         return sum(
             1 for tid in task_ids if (t := self.tasks_by_id.get(tid)) and t.status == "complete"
         )
+
+    def ensure_task_metrics_cache(self) -> None:
+        """Classify delay once per task — reused by rollup and drilldowns."""
+        if self._metrics_cached or not self.classifier:
+            return
+        for tid, task in self.tasks_by_id.items():
+            trusted_ent = len(self.entities_by_task.get(tid, []))
+            self._delay_by_task[tid] = self.classifier.classify_task(
+                task, trusted_entity_count=trusted_ent
+            )
+        self._metrics_cached = True
+
+    def _bucket_key_for_result(self, result: EffectiveMappingResult | None) -> str:
+        if result is None:
+            return UNMAPPED_BUCKET
+        if result.resolution == "conflict":
+            return CONFLICT_BUCKET
+        if result.resolution == "proposed_only":
+            return PROPOSED_BUCKET
+        if result.resolution == "unmapped" or not result.values:
+            return UNMAPPED_BUCKET
+        return result.values[0]["value_id"]
+
+    def build_dimension_rollup(self, dimension_key: str) -> dict[str, dict[str, Any]]:
+        """Single-pass per-task accumulation into value/virtual buckets (DF-D3.1)."""
+        self.ensure_task_metrics_cache()
+        resolved = self.resolutions_by_dimension.get(dimension_key, {})
+        dim = self.dimensions_by_key.get(dimension_key)
+        cardinality = dim.cardinality if dim else "single"
+
+        accum: dict[str, dict[str, Any]] = {}
+
+        def _acc(key: str) -> dict[str, Any]:
+            if key not in accum:
+                accum[key] = {
+                    "value_id": key,
+                    "is_virtual_bucket": key.startswith("__"),
+                    "task_ids": set(),
+                    "pv": 0.0,
+                    "ev": 0.0,
+                    "ac": 0.0,
+                    "bac": 0.0,
+                    "evm_available_count": 0,
+                    "primary_late_count": 0,
+                    "near_critical_late_count": 0,
+                    "completed_late_count": 0,
+                    "trusted_entity_gids": set(),
+                    "review_entity_gids": set(),
+                    "schedulable_count": 0,
+                    "completed_count": 0,
+                }
+            return accum[key]
+
+        for tid, task in self.tasks_by_id.items():
+            result = resolved.get(tid)
+            if cardinality == "multi":
+                if (
+                    result
+                    and result.values
+                    and result.resolution
+                    not in (
+                        "conflict",
+                        "proposed_only",
+                        "unmapped",
+                    )
+                ):
+                    keys = [v["value_id"] for v in result.values]
+                else:
+                    keys = [self._bucket_key_for_result(result)]
+            else:
+                keys = [self._bucket_key_for_result(result)]
+
+            for key in keys:
+                bucket = _acc(key)
+                bucket["task_ids"].add(tid)
+                point = self.task_evm.get(tid)
+                if point and point.available:
+                    bucket["pv"] += point.pv
+                    bucket["ev"] += point.ev
+                    bucket["ac"] += point.ac
+                    bucket["bac"] += point.bac
+                    bucket["evm_available_count"] += 1
+                delay = self._delay_by_task.get(tid)
+                if delay:
+                    primary = delay.primary_delay_type
+                    if primary in DELAYED_PRIMARY:
+                        bucket["primary_late_count"] += 1
+                    if primary == "near_critical":
+                        bucket["near_critical_late_count"] += 1
+                    if primary == "completed_late":
+                        bucket["completed_late_count"] += 1
+                bucket["trusted_entity_gids"].update(self.entities_by_task.get(tid, []))
+                bucket["review_entity_gids"].update(self.review_entities_by_task.get(tid, []))
+                if not task.is_non_physical and task.start_date and task.end_date:
+                    bucket["schedulable_count"] += 1
+                if task.status == "complete":
+                    bucket["completed_count"] += 1
+
+        for bucket in accum.values():
+            task_ids = bucket["task_ids"]
+            bucket["task_count"] = len(task_ids)
+            bucket["trusted_task_count"] = sum(
+                1 for tid in task_ids if tid in self.trusted_task_ids
+            )
+            bucket["trusted_entity_count"] = len(bucket["trusted_entity_gids"])
+            bucket["review_entity_count"] = len(bucket["review_entity_gids"])
+            bucket["unmapped_task_count"] = bucket["task_count"] - bucket["trusted_task_count"]
+            if bucket["evm_available_count"] == 0:
+                bucket["evm"] = {
+                    "pv": None,
+                    "ev": None,
+                    "ac": None,
+                    "bac": None,
+                    "spi": None,
+                    "cpi": None,
+                    "available": False,
+                    "task_count": bucket["task_count"],
+                }
+            else:
+                pv, ev, ac = bucket["pv"], bucket["ev"], bucket["ac"]
+                bucket["evm"] = {
+                    "pv": round(pv, 2),
+                    "ev": round(ev, 2),
+                    "ac": round(ac, 2) if ac > 0 else None,
+                    "bac": round(bucket["bac"], 2),
+                    "spi": round(ev / pv, 4) if pv > 0 else None,
+                    "cpi": round(ev / ac, 4) if ac > 0 else None,
+                    "available": True,
+                    "task_count": bucket["task_count"],
+                }
+            bucket["delay"] = {
+                "primary_late_count": bucket.pop("primary_late_count"),
+                "near_critical_late_count": bucket.pop("near_critical_late_count"),
+                "completed_late_count": bucket.pop("completed_late_count"),
+            }
+            bucket["model_scope"] = {
+                "trusted_task_count": bucket.pop("trusted_task_count"),
+                "trusted_entity_count": bucket.pop("trusted_entity_count"),
+                "review_entity_count": bucket.pop("review_entity_count"),
+                "unmapped_task_count": bucket.pop("unmapped_task_count"),
+            }
+            bucket.pop("trusted_entity_gids", None)
+            bucket.pop("review_entity_gids", None)
+            bucket.pop("pv", None)
+            bucket.pop("ev", None)
+            bucket.pop("ac", None)
+            bucket.pop("bac", None)
+            bucket.pop("evm_available_count", None)
+
+        return accum
