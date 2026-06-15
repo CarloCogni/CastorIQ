@@ -4,15 +4,17 @@
 from __future__ import annotations
 
 import logging
+from collections import defaultdict
 from typing import Any
 from uuid import UUID
 
-from django.db.models import Q
+from django.db.models import Count, Q
 
 from scheduling.models import (
     AnalyticalDimension,
     AnalyticalMappingAssignment,
     AnalyticalMappingSet,
+    ScheduleActivity,
     Task,
     WBSNode,
 )
@@ -20,7 +22,10 @@ from scheduling.services.governed_mapping.contracts import (
     EffectiveMappingProvenance,
     EffectiveMappingResult,
 )
-from scheduling.services.governed_mapping.cross_version import CrossVersionMappingService
+from scheduling.services.governed_mapping.cross_version import (
+    CrossVersionMappingService,
+    CrossVersionOutcome,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -312,7 +317,7 @@ class EffectiveMappingResolver:
         task_ids: list[UUID],
         dimension: AnalyticalDimension,
     ) -> dict[str, EffectiveMappingResult]:
-        """Batch resolve for performance harness."""
+        """Batch resolve with bounded queries (no per-task DB loops)."""
         mapping_set = self.active_mapping_set(dimension)
         if mapping_set is None:
             unmapped = self._unmapped(dimension)
@@ -323,10 +328,195 @@ class EffectiveMappingResolver:
                 "wbs_node", "schedule_activity"
             )
         )
+
+        approved = list(
+            self._approved_assignments(mapping_set).select_related("dimension_value", "wbs_node")
+        )
+        by_task: dict[UUID, list[AnalyticalMappingAssignment]] = defaultdict(list)
+        by_activity: dict[UUID, list[AnalyticalMappingAssignment]] = defaultdict(list)
+        by_wbs: dict[UUID, list[AnalyticalMappingAssignment]] = defaultdict(list)
+        for assignment in approved:
+            if (
+                assignment.target_type == AnalyticalMappingAssignment.TargetType.TASK
+                and assignment.task_id
+            ):
+                by_task[assignment.task_id].append(assignment)
+            elif (
+                assignment.target_type == AnalyticalMappingAssignment.TargetType.SCHEDULE_ACTIVITY
+                and assignment.schedule_activity_id
+            ):
+                by_activity[assignment.schedule_activity_id].append(assignment)
+            elif (
+                assignment.target_type == AnalyticalMappingAssignment.TargetType.WBS_NODE
+                and assignment.wbs_node_id
+            ):
+                by_wbs[assignment.wbs_node_id].append(assignment)
+
+        proposed_task_ids = set(
+            AnalyticalMappingAssignment.objects.filter(
+                mapping_set=mapping_set,
+                governance_status=AnalyticalMappingAssignment.GovernanceStatus.PROPOSED,
+                target_type=AnalyticalMappingAssignment.TargetType.TASK,
+                task_id__in=task_ids,
+            ).values_list("task_id", flat=True)
+        )
+
+        activity_ids = {task.schedule_activity_id for task in tasks if task.schedule_activity_id}
+        activity_task_counts: dict[UUID, int] = {}
+        if activity_ids:
+            activity_task_counts = dict(
+                Task.objects.filter(
+                    project_id=self.project_id,
+                    schedule_activity_id__in=activity_ids,
+                )
+                .values("schedule_activity_id")
+                .annotate(task_count=Count("pk"))
+                .values_list("schedule_activity_id", "task_count")
+            )
+
+        wbs_inherited: dict[UUID, list[AnalyticalMappingAssignment]] = {}
+        if mapping_set.inherit_wbs_to_tasks and by_wbs:
+            wbs_inherited = self._batch_wbs_inheritance(tasks, by_wbs)
+
         results: dict[str, EffectiveMappingResult] = {}
         for task in tasks:
-            results[str(task.pk)] = self.resolve_task(task, dimension, mapping_set=mapping_set)
+            direct = by_task.get(task.pk, [])
+            if direct:
+                results[str(task.pk)] = self._finalize(
+                    dimension,
+                    mapping_set,
+                    direct,
+                    resolution="direct",
+                    cross_outcome="",
+                )
+                continue
+
+            activity_rows = self._activity_rows_from_index(
+                task,
+                by_activity,
+                activity_task_counts,
+            )
+            if activity_rows:
+                outcome = self._activity_outcome(task, activity_task_counts)
+                results[str(task.pk)] = self._finalize(
+                    dimension,
+                    mapping_set,
+                    activity_rows,
+                    resolution="logical_identity",
+                    cross_outcome=str(outcome),
+                )
+                continue
+
+            inherited = wbs_inherited.get(task.pk, [])
+            if inherited:
+                results[str(task.pk)] = self._finalize(
+                    dimension,
+                    mapping_set,
+                    inherited,
+                    resolution="inherited",
+                    cross_outcome="",
+                    inherited_from=str(inherited[0].pk),
+                )
+                continue
+
+            if task.pk in proposed_task_ids:
+                results[str(task.pk)] = self._unmapped(dimension, resolution="proposed_only")
+            else:
+                results[str(task.pk)] = self._unmapped(dimension, resolution="unmapped")
+
         for tid in task_ids:
             if str(tid) not in results:
                 results[str(tid)] = self._unmapped(dimension)
         return results
+
+    def _activity_outcome(
+        self,
+        task: Task,
+        activity_task_counts: dict[UUID, int],
+    ) -> CrossVersionOutcome:
+        """Cross-version outcome without extra queries."""
+        if not task.schedule_activity_id:
+            return CrossVersionOutcome.UNRESOLVED_NO_CURRENT_TASK
+        activity = task.schedule_activity
+        if activity is None:
+            return CrossVersionOutcome.BLOCKED_AMBIGUOUS_IDENTITY
+        if activity.project_id != task.project_id:
+            return CrossVersionOutcome.BLOCKED_POLICY
+        if activity.identity_status in {
+            ScheduleActivity.IdentityStatus.RETIRED,
+            ScheduleActivity.IdentityStatus.SUPERSEDED,
+        }:
+            return CrossVersionOutcome.BLOCKED_RETIRED_ACTIVITY
+        if activity.identity_status == ScheduleActivity.IdentityStatus.UNRESOLVED:
+            return CrossVersionOutcome.BLOCKED_AMBIGUOUS_IDENTITY
+        if activity_task_counts.get(activity.pk, 0) > 1:
+            return CrossVersionOutcome.BLOCKED_AMBIGUOUS_IDENTITY
+        return CrossVersionOutcome.RETAINED_ON_LOGICAL_IDENTITY
+
+    def _activity_rows_from_index(
+        self,
+        task: Task,
+        by_activity: dict[UUID, list[AnalyticalMappingAssignment]],
+        activity_task_counts: dict[UUID, int],
+    ) -> list[AnalyticalMappingAssignment]:
+        """Schedule-activity assignments when cross-version policy allows."""
+        outcome = self._activity_outcome(task, activity_task_counts)
+        if outcome in {
+            CrossVersionOutcome.BLOCKED_AMBIGUOUS_IDENTITY,
+            CrossVersionOutcome.BLOCKED_RETIRED_ACTIVITY,
+            CrossVersionOutcome.BLOCKED_POLICY,
+            CrossVersionOutcome.UNRESOLVED_NO_CURRENT_TASK,
+        }:
+            return []
+        if not task.schedule_activity_id:
+            return []
+        return by_activity.get(task.schedule_activity_id, [])
+
+    def _batch_wbs_inheritance(
+        self,
+        tasks: list[Task],
+        by_wbs: dict[UUID, list[AnalyticalMappingAssignment]],
+    ) -> dict[UUID, list[AnalyticalMappingAssignment]]:
+        """Resolve WBS inheritance for many tasks with one ancestor-node query."""
+        node_ids: set[UUID] = set()
+        task_nodes: dict[UUID, WBSNode] = {}
+        for task in tasks:
+            if task.wbs_node_id and task.wbs_node is not None:
+                task_nodes[task.pk] = task.wbs_node
+                node_ids.add(task.wbs_node_id)
+
+        if not node_ids:
+            return {}
+
+        paths = {node.path for node in task_nodes.values() if node.path}
+        prefix_paths: set[str] = set()
+        for path in paths:
+            prefix_paths.update(self._path_prefixes(path))
+        all_paths = paths | prefix_paths
+
+        version_ids = {node.wbs_version_id for node in task_nodes.values()}
+        ancestor_nodes = list(
+            WBSNode.objects.filter(wbs_version_id__in=version_ids, path__in=all_paths).order_by(
+                "-depth"
+            )
+        )
+        nodes_by_path_version: dict[tuple[UUID, str], WBSNode] = {}
+        for node in ancestor_nodes:
+            nodes_by_path_version[(node.wbs_version_id, node.path)] = node
+
+        inherited: dict[UUID, list[AnalyticalMappingAssignment]] = {}
+        for task_id, node in task_nodes.items():
+            chain_paths = [node.path] + self._path_prefixes(node.path or "")
+            chain_ids = [
+                nodes_by_path_version[(node.wbs_version_id, path)].pk
+                for path in chain_paths
+                if (node.wbs_version_id, path) in nodes_by_path_version
+            ]
+            candidates: list[AnalyticalMappingAssignment] = []
+            for chain_id in chain_ids:
+                candidates.extend(by_wbs.get(chain_id, []))
+            if not candidates:
+                continue
+            deepest = max(candidates, key=lambda a: a.wbs_node.depth if a.wbs_node else 0)
+            inherited[task_id] = [deepest]
+        return inherited

@@ -24,7 +24,9 @@ class CrossVersionOutcome(StrEnum):
 class CrossVersionMappingService:
     """Validate schedule-activity mapping resolution after replacement."""
 
-    def resolve_activity_for_task(self, task: Task) -> tuple[ScheduleActivity | None, CrossVersionOutcome]:
+    def resolve_activity_for_task(
+        self, task: Task
+    ) -> tuple[ScheduleActivity | None, CrossVersionOutcome]:
         """Return linked activity and cross-version outcome for a task."""
         if not task.schedule_activity_id:
             return None, CrossVersionOutcome.UNRESOLVED_NO_CURRENT_TASK

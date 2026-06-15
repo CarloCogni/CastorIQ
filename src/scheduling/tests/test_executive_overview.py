@@ -542,7 +542,7 @@ class TestOverviewHTTP:
         url = reverse("scheduling:executive_controls", kwargs={"pk": project.pk})
         with CaptureQueriesContext(connection) as ctx:
             client.get(url)
-        assert len(ctx.captured_queries) <= 55
+        assert len(ctx.captured_queries) <= 56  # +1 DF-D2 governed mapping capability SQL
 
     def test_payload_bounded(self, client):
         """Overview JSON shell is lightweight."""
@@ -625,7 +625,7 @@ class TestSnapshotQueryBudget:
         _member_client(client, project)
         with CaptureQueriesContext(connection) as ctx:
             client.get(self._overview_url(project))
-        assert len(ctx.captured_queries) <= 55
+        assert len(ctx.captured_queries) <= 56  # +1 DF-D2 governed mapping capability SQL
 
     def test_zero_snapshot_no_latest_lookup_queries(self, client):
         """Counts live in merged foundation SQL; no latest-row fetch when zero."""

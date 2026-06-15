@@ -586,44 +586,14 @@ class ProjectAnalyticsCapabilityProfile:
                 "caveats": list(caveats),
             }
 
-        from scheduling.models import (
-            AnalyticalDimension,
-            AnalyticalMappingAssignment,
-            AnalyticalMappingSet,
-        )
-
-        dim_count = AnalyticalDimension.objects.filter(project_id=self.project_id).count()
-        active_dims = AnalyticalDimension.objects.filter(
-            project_id=self.project_id,
-            status=AnalyticalDimension.Status.ACTIVE,
-            is_selected_for_analysis=True,
-        ).count()
-        active_sets = AnalyticalMappingSet.objects.filter(
-            project_id=self.project_id,
-            status=AnalyticalMappingSet.Status.ACTIVE,
-            is_selected_for_analysis=True,
-        ).count()
-        approved = AnalyticalMappingAssignment.objects.filter(
-            mapping_set__project_id=self.project_id,
-            governance_status=AnalyticalMappingAssignment.GovernanceStatus.APPROVED,
-        ).count()
-        proposed = AnalyticalMappingAssignment.objects.filter(
-            mapping_set__project_id=self.project_id,
-            governance_status=AnalyticalMappingAssignment.GovernanceStatus.PROPOSED,
-        ).count()
-
-        trade_dim = AnalyticalDimension.objects.filter(
-            project_id=self.project_id,
-            dimension_type=AnalyticalDimension.DimensionType.TRADE,
-            is_selected_for_analysis=True,
-            status=AnalyticalDimension.Status.ACTIVE,
-        ).exists()
-        package_dim = AnalyticalDimension.objects.filter(
-            project_id=self.project_id,
-            dimension_type=AnalyticalDimension.DimensionType.PACKAGE,
-            is_selected_for_analysis=True,
-            status=AnalyticalDimension.Status.ACTIVE,
-        ).exists()
+        counts = self._governed_mapping_table_counts()
+        dim_count = counts["dim_count"]
+        active_dims = counts["active_dims"]
+        active_sets = counts["active_sets"]
+        approved = counts["approved"]
+        proposed = counts["proposed"]
+        trade_dim = counts["trade_dim"]
+        package_dim = counts["package_dim"]
 
         has_schema = True
         governance_ready = active_dims > 0 and active_sets > 0 and approved > 0
@@ -762,6 +732,77 @@ class ProjectAnalyticsCapabilityProfile:
                 "approved": approved,
                 "proposed": proposed,
             },
+        }
+
+    def _governed_mapping_table_counts(self) -> dict[str, int | bool]:
+        """Single round-trip for DF-D1/D2 governed mapping capability counts."""
+        from django.db import connection
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    (SELECT COUNT(*) FROM castor_scheduling_analyticaldimension WHERE project_id = %s),
+                    (
+                        SELECT COUNT(*)
+                        FROM castor_scheduling_analyticaldimension
+                        WHERE project_id = %s
+                          AND status = 'active'
+                          AND is_selected_for_analysis = true
+                    ),
+                    (
+                        SELECT COUNT(*)
+                        FROM castor_scheduling_analyticalmappingset
+                        WHERE project_id = %s
+                          AND status = 'active'
+                          AND is_selected_for_analysis = true
+                    ),
+                    (
+                        SELECT COUNT(*)
+                        FROM castor_scheduling_analyticalmappingassignment a
+                        JOIN castor_scheduling_analyticalmappingset m ON m.id = a.mapping_set_id
+                        WHERE m.project_id = %s
+                          AND a.governance_status = 'approved'
+                    ),
+                    (
+                        SELECT COUNT(*)
+                        FROM castor_scheduling_analyticalmappingassignment a
+                        JOIN castor_scheduling_analyticalmappingset m ON m.id = a.mapping_set_id
+                        WHERE m.project_id = %s
+                          AND a.governance_status = 'proposed'
+                    ),
+                    (
+                        SELECT EXISTS(
+                            SELECT 1
+                            FROM castor_scheduling_analyticaldimension
+                            WHERE project_id = %s
+                              AND dimension_type = 'trade'
+                              AND is_selected_for_analysis = true
+                              AND status = 'active'
+                        )
+                    ),
+                    (
+                        SELECT EXISTS(
+                            SELECT 1
+                            FROM castor_scheduling_analyticaldimension
+                            WHERE project_id = %s
+                              AND dimension_type = 'package'
+                              AND is_selected_for_analysis = true
+                              AND status = 'active'
+                        )
+                    )
+                """,
+                [self.project_id] * 7,
+            )
+            row = cursor.fetchone()
+        return {
+            "dim_count": int(row[0] or 0),
+            "active_dims": int(row[1] or 0),
+            "active_sets": int(row[2] or 0),
+            "approved": int(row[3] or 0),
+            "proposed": int(row[4] or 0),
+            "trade_dim": bool(row[5]),
+            "package_dim": bool(row[6]),
         }
 
     def feature(self, feature_id: str) -> dict[str, Any]:

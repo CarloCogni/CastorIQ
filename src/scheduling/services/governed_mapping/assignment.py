@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import logging
 from typing import Any
-from uuid import UUID
 
 from django.contrib.auth.models import AbstractUser
 from django.db import transaction

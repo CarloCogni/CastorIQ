@@ -15,10 +15,7 @@ from environments.tests.factories import ProjectFactory, ProjectMembershipFactor
 from scheduling.models import (
     AnalyticalDimension,
     AnalyticalMappingAssignment,
-    AnalyticalMappingSet,
-    MappingGovernanceEvent,
     ScheduleActivity,
-    Task,
 )
 from scheduling.services.executive_controls.capability_profile import (
     ProjectAnalyticsCapabilityProfile,
@@ -201,7 +198,7 @@ class TestReviewAndResolution:
         )
         task = TaskFactory(project=project, schedule_activity=activity)
         value = dim.values.get(code="electrical")
-        a = AnalyticalMappingAssignmentService.assign_manually(
+        AnalyticalMappingAssignmentService.assign_manually(
             mapping_set=mset,
             dimension_value=value,
             target_type=AnalyticalMappingAssignment.TargetType.SCHEDULE_ACTIVITY,
@@ -339,3 +336,21 @@ class TestMappingPopulationPerformance:
         EffectiveMappingResolver(project).resolve_many_tasks(ids, dim)
         elapsed = time.perf_counter() - t0
         assert elapsed < 5.0
+
+    def test_5k_scaling_diagnostic(self):
+        from scheduling.tests.mapping_population_benchmark_harness import run_benchmark
+
+        results = run_benchmark((5000,))
+        metrics = results["5000"]
+        assert metrics["resolve_seconds"] < 5.0
+        assert metrics["coverage_seconds"] < 1.0
+
+    def test_10k_recorded(self):
+        from scheduling.tests.mapping_population_benchmark_harness import run_benchmark
+
+        results = run_benchmark((10000,))
+        metrics = results["10000"]
+        assert metrics["resolve_seconds"] < 5.0
+        assert metrics["dry_run_seconds"] < 5.0
+        # Recorded metrics for DF-D2 report (fixture setup excluded).
+        print(f"DF-D2_BENCHMARK_10K={results}")

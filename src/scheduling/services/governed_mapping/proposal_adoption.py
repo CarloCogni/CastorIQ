@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from django.contrib.auth.models import AbstractUser
 from django.db import transaction
@@ -64,9 +63,13 @@ class ProposalAdoptionService:
             is_selected_for_analysis=True,
         ).first()
         if dimension is None:
-            dimension = AnalyticalDimension.objects.filter(
-                project=self.project, dimension_key=dimension_key
-            ).order_by("-revision_number").first()
+            dimension = (
+                AnalyticalDimension.objects.filter(
+                    project=self.project, dimension_key=dimension_key
+                )
+                .order_by("-revision_number")
+                .first()
+            )
         if dimension is None:
             result.errors.append(f"No dimension for key: {dimension_key}")
             return result
@@ -76,6 +79,7 @@ class ProposalAdoptionService:
         result.suggestions_inspected = len(proposals)
 
         value_cache = self._value_cache(dimension)
+        open_proposal_keys = self._open_proposal_keys(mapping_set) if dry_run else set()
 
         for proposal in proposals:
             if not self._validate_proposal(proposal, result):
@@ -85,8 +89,14 @@ class ProposalAdoptionService:
             if value is None:
                 result.unresolved_values += 1
                 continue
-            task, wbs_node, activity_id, gid = self._resolve_target(proposal, result)
-            if proposal.target_type == "task" and task is None:
+            task, wbs_node, activity_id, gid = self._resolve_target(
+                proposal, result, dry_run=dry_run
+            )
+            if (
+                proposal.target_type == "task"
+                and task is None
+                and not (dry_run and proposal.target_id)
+            ):
                 result.unresolved_targets += 1
                 continue
             if proposal.target_type == "wbs_node" and wbs_node is None:
@@ -94,7 +104,16 @@ class ProposalAdoptionService:
                 continue
 
             if dry_run:
-                if self._would_duplicate(mapping_set, value, proposal, task, wbs_node, gid, activity_id):
+                if self._is_duplicate_key(
+                    open_proposal_keys,
+                    mapping_set,
+                    value,
+                    proposal,
+                    task,
+                    wbs_node,
+                    gid,
+                    activity_id,
+                ):
                     result.duplicates_skipped += 1
                 else:
                     result.proposals_created += 1
@@ -120,9 +139,12 @@ class ProposalAdoptionService:
                 event_type=MappingGovernanceEvent.EventType.ADOPTION_DRY_RUN,
                 project=self.project,
                 dimension=dimension,
-                mapping_set=mapping_set,
+                mapping_set=None,
                 actor=self.actor,
-                evidence_summary=result.to_dict(),
+                evidence_summary={
+                    **result.to_dict(),
+                    "mapping_set_id": str(mapping_set.pk) if mapping_set.pk else None,
+                },
             )
         elif result.proposals_created:
             record_mapping_event(
@@ -135,7 +157,9 @@ class ProposalAdoptionService:
             )
         return result
 
-    def _validate_proposal(self, proposal: MappingProposalDTO, result: ProposalAdoptionResult) -> bool:
+    def _validate_proposal(
+        self, proposal: MappingProposalDTO, result: ProposalAdoptionResult
+    ) -> bool:
         if not proposal.target_id and not proposal.target_identity:
             result.warnings.append("Proposal missing target identity.")
             return False
@@ -164,6 +188,8 @@ class ProposalAdoptionService:
         self,
         proposal: MappingProposalDTO,
         result: ProposalAdoptionResult,
+        *,
+        dry_run: bool = False,
     ) -> tuple[Task | None, WBSNode | None, str | None, str]:
         identity = proposal.target_identity
         task = None
@@ -174,7 +200,10 @@ class ProposalAdoptionService:
             tid = proposal.target_id
             if identity and identity.task_id:
                 tid = identity.task_id
-            task = Task.objects.filter(pk=tid, project=self.project).first()
+            if dry_run and tid:
+                task = Task(pk=tid)
+            else:
+                task = Task.objects.filter(pk=tid, project=self.project).first()
         elif proposal.target_type == "wbs_node":
             nid = proposal.target_id
             if identity and identity.wbs_node_id:
@@ -188,6 +217,73 @@ class ProposalAdoptionService:
                 activity_id = identity.schedule_activity_id
         return task, wbs_node, activity_id, gid
 
+    def _open_proposal_keys(self, mapping_set: AnalyticalMappingSet) -> set[tuple]:
+        if not mapping_set.pk:
+            return set()
+        keys: set[tuple] = set()
+        rows = AnalyticalMappingAssignment.objects.filter(
+            mapping_set=mapping_set,
+            governance_status__in={
+                AnalyticalMappingAssignment.GovernanceStatus.PROPOSED,
+                AnalyticalMappingAssignment.GovernanceStatus.UNDER_REVIEW,
+            },
+        ).values_list(
+            "target_type",
+            "task_id",
+            "wbs_node_id",
+            "schedule_activity_id",
+            "entity_global_id",
+            "dimension_value_id",
+        )
+        for target_type, task_id, wbs_id, activity_id, gid, value_id in rows:
+            keys.add(
+                (
+                    target_type,
+                    str(task_id) if task_id else "",
+                    str(wbs_id) if wbs_id else "",
+                    str(activity_id) if activity_id else "",
+                    gid or "",
+                    str(value_id),
+                )
+            )
+        return keys
+
+    def _proposal_key(
+        self,
+        proposal: MappingProposalDTO,
+        value: AnalyticalDimensionValue,
+        task,
+        wbs_node,
+        gid: str,
+        activity_id: str | None,
+    ) -> tuple:
+        return (
+            proposal.target_type,
+            str(task.pk)
+            if task
+            else (proposal.target_id if proposal.target_type == "task" else ""),
+            str(wbs_node.pk) if wbs_node else "",
+            activity_id or "",
+            gid or "",
+            str(value.pk),
+        )
+
+    def _is_duplicate_key(
+        self,
+        open_keys: set[tuple],
+        mapping_set: AnalyticalMappingSet,
+        value: AnalyticalDimensionValue,
+        proposal: MappingProposalDTO,
+        task,
+        wbs_node,
+        gid: str,
+        activity_id: str | None,
+    ) -> bool:
+        if not mapping_set.pk:
+            return False
+        key = self._proposal_key(proposal, value, task, wbs_node, gid, activity_id)
+        return key in open_keys
+
     def _would_duplicate(
         self,
         mapping_set: AnalyticalMappingSet,
@@ -199,15 +295,18 @@ class ProposalAdoptionService:
         activity_id: str | None,
     ) -> bool:
         try:
-            return AnalyticalMappingAssignmentService.find_open_proposal(
-                mapping_set=mapping_set,
-                dimension_value=value,
-                target_type=proposal.target_type,
-                task=task,
-                wbs_node=wbs_node,
-                entity_global_id=gid,
-                schedule_activity_id=activity_id,
-            ) is not None
+            return (
+                AnalyticalMappingAssignmentService.find_open_proposal(
+                    mapping_set=mapping_set,
+                    dimension_value=value,
+                    target_type=proposal.target_type,
+                    task=task,
+                    wbs_node=wbs_node,
+                    entity_global_id=gid,
+                    schedule_activity_id=activity_id,
+                )
+                is not None
+            )
         except MappingValidationError:
             return False
 
@@ -228,9 +327,7 @@ class ProposalAdoptionService:
 
         activity = None
         if proposal.target_type == "schedule_activity" and activity_id:
-            activity = ScheduleActivity.objects.filter(
-                pk=activity_id, project=self.project
-            ).first()
+            activity = ScheduleActivity.objects.filter(pk=activity_id, project=self.project).first()
         assignment, created = AnalyticalMappingAssignmentService.create_proposal_idempotent(
             mapping_set=mapping_set,
             dimension_value=value,

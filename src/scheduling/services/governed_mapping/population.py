@@ -12,7 +12,6 @@ from django.db import transaction
 
 from scheduling.models import (
     AnalyticalDimension,
-    AnalyticalMappingAssignment,
     AnalyticalMappingSet,
     MappingGovernanceEvent,
     ScheduleActivity,
@@ -27,7 +26,10 @@ from scheduling.services.governed_mapping.contracts import (
     ProposalAdoptionResult,
 )
 from scheduling.services.governed_mapping.coverage import MappingCoverageService
-from scheduling.services.governed_mapping.exceptions import MappingTransitionError, MappingValidationError
+from scheduling.services.governed_mapping.exceptions import (
+    MappingTransitionError,
+    MappingValidationError,
+)
 from scheduling.services.governed_mapping.mapping_set import AnalyticalMappingSetService
 from scheduling.services.governed_mapping.proposal_adoption import ProposalAdoptionService
 from scheduling.services.governed_mapping.review import MappingReviewService
@@ -105,23 +107,31 @@ class GovernedMappingPopulationService:
             return result
 
         coverage_svc = MappingCoverageService(self.project)
-        result.coverage_before = coverage_svc.summarize(dimension_key=dimension_key)
+        if result.dry_run:
+            breakdown = coverage_svc.breakdown(dimension_key=dimension_key).to_dict()
+            result.coverage_before = breakdown
+            result.coverage_after = breakdown
+        else:
+            result.coverage_before = coverage_svc.summarize(dimension_key=dimension_key)
 
         try:
-            mapping_set = self._resolve_mapping_set(dimension_key, mapping_set_id, write=write_proposals or write_authoritative)
+            mapping_set = self._resolve_mapping_set(
+                dimension_key, mapping_set_id, write=write_proposals or write_authoritative
+            )
         except MappingValidationError as exc:
             result.errors.append(str(exc))
             return result
 
-        result.mapping_set_id = str(mapping_set.pk)
-        record_mapping_event(
-            event_type=MappingGovernanceEvent.EventType.POPULATION_STARTED,
-            project=self.project,
-            dimension=mapping_set.dimension,
-            mapping_set=mapping_set,
-            actor=self.actor,
-            evidence_summary={"source": source, "dry_run": result.dry_run},
-        )
+        result.mapping_set_id = str(mapping_set.pk) if mapping_set.pk else None
+        if not result.dry_run:
+            record_mapping_event(
+                event_type=MappingGovernanceEvent.EventType.POPULATION_STARTED,
+                project=self.project,
+                dimension=mapping_set.dimension,
+                mapping_set=mapping_set if mapping_set.pk else None,
+                actor=self.actor,
+                evidence_summary={"source": source, "dry_run": result.dry_run},
+            )
 
         try:
             if source in ADAPTER_REGISTRY:
@@ -149,26 +159,29 @@ class GovernedMappingPopulationService:
             if activate:
                 self._activate_mapping_set(mapping_set, result)
 
-            result.coverage_after = coverage_svc.summarize(dimension_key=dimension_key)
-            record_mapping_event(
-                event_type=MappingGovernanceEvent.EventType.POPULATION_COMPLETED,
-                project=self.project,
-                dimension=mapping_set.dimension,
-                mapping_set=mapping_set,
-                actor=self.actor,
-                evidence_summary=result.to_summary(),
-            )
+            if not result.dry_run:
+                result.coverage_after = coverage_svc.summarize(dimension_key=dimension_key)
+            if not result.dry_run:
+                record_mapping_event(
+                    event_type=MappingGovernanceEvent.EventType.POPULATION_COMPLETED,
+                    project=self.project,
+                    dimension=mapping_set.dimension,
+                    mapping_set=mapping_set,
+                    actor=self.actor,
+                    evidence_summary=result.to_summary(),
+                )
         except Exception as exc:
             logger.exception("Population failed project=%s", self.project.pk)
             result.errors.append(str(exc))
-            record_mapping_event(
-                event_type=MappingGovernanceEvent.EventType.POPULATION_FAILED,
-                project=self.project,
-                dimension=mapping_set.dimension,
-                mapping_set=mapping_set,
-                actor=self.actor,
-                reason_text=str(exc),
-            )
+            if mapping_set.dimension_id:
+                record_mapping_event(
+                    event_type=MappingGovernanceEvent.EventType.POPULATION_FAILED,
+                    project=self.project,
+                    dimension=mapping_set.dimension,
+                    mapping_set=mapping_set if mapping_set.pk else None,
+                    actor=self.actor,
+                    reason_text=str(exc),
+                )
             if write_proposals or write_authoritative:
                 raise
         return result
@@ -185,15 +198,21 @@ class GovernedMappingPopulationService:
             if mset.dimension.dimension_key != dimension_key:
                 raise MappingValidationError("Mapping set dimension mismatch.")
             return mset
-        dimension = AnalyticalDimension.objects.filter(
-            project=self.project, dimension_key=dimension_key
-        ).order_by("-revision_number").first()
+        dimension = (
+            AnalyticalDimension.objects.filter(project=self.project, dimension_key=dimension_key)
+            .order_by("-revision_number")
+            .first()
+        )
         if dimension is None:
             raise MappingValidationError(f"No dimension: {dimension_key}")
-        draft = AnalyticalMappingSet.objects.filter(
-            dimension=dimension,
-            status=AnalyticalMappingSet.Status.DRAFT,
-        ).order_by("-revision").first()
+        draft = (
+            AnalyticalMappingSet.objects.filter(
+                dimension=dimension,
+                status=AnalyticalMappingSet.Status.DRAFT,
+            )
+            .order_by("-revision")
+            .first()
+        )
         if draft:
             return draft
         if not write:
@@ -220,7 +239,9 @@ class GovernedMappingPopulationService:
         limit: int | None,
     ) -> tuple[int, int]:
         if mapping_set.pk is None:
-            raise MappingValidationError("Cannot write authoritative rows without a persisted mapping set.")
+            raise MappingValidationError(
+                "Cannot write authoritative rows without a persisted mapping set."
+            )
         adapter_cls = ADAPTER_REGISTRY.get(source)
         if adapter_cls is None:
             raise MappingValidationError(f"Unknown source: {source}")
@@ -232,9 +253,7 @@ class GovernedMappingPopulationService:
             )
         dimension = mapping_set.dimension
         value_cache = {
-            v.code.lower(): v
-            for v in dimension.values.filter(status="active")
-            if v.code
+            v.code.lower(): v for v in dimension.values.filter(status="active") if v.code
         }
         created = 0
         skipped = 0
@@ -288,13 +307,19 @@ class GovernedMappingPopulationService:
         if t.task_id:
             task = Task.objects.filter(pk=t.task_id, project=self.project).first()
         if t.wbs_node_id:
-            wbs = WBSNode.objects.filter(pk=t.wbs_node_id, wbs_version__project=self.project).first()
+            wbs = WBSNode.objects.filter(
+                pk=t.wbs_node_id, wbs_version__project=self.project
+            ).first()
         if t.schedule_activity_id:
-            activity = ScheduleActivity.objects.filter(pk=t.schedule_activity_id, project=self.project).first()
+            activity = ScheduleActivity.objects.filter(
+                pk=t.schedule_activity_id, project=self.project
+            ).first()
         return task, wbs, activity, gid
 
     @transaction.atomic
-    def _activate_mapping_set(self, mapping_set: AnalyticalMappingSet, result: PopulationRunResult) -> None:
+    def _activate_mapping_set(
+        self, mapping_set: AnalyticalMappingSet, result: PopulationRunResult
+    ) -> None:
         if mapping_set.pk is None:
             result.errors.append("Cannot activate unsaved mapping set.")
             return
@@ -303,7 +328,9 @@ class GovernedMappingPopulationService:
             is_selected_for_analysis=True,
             status=AnalyticalMappingSet.Status.ACTIVE,
         ).first()
-        conflicts = MappingCoverageService(self.project).breakdown(dimension_key=mapping_set.dimension.dimension_key)
+        conflicts = MappingCoverageService(self.project).breakdown(
+            dimension_key=mapping_set.dimension.dimension_key
+        )
         if conflicts.conflict_count > 0:
             MappingReviewService.record_activation_failure(
                 mapping_set, actor=self.actor, reason="blocking conflicts"
@@ -318,5 +345,7 @@ class GovernedMappingPopulationService:
                 AnalyticalMappingSetService.supersede(prior, actor=self.actor)
             result.activated = True
         except MappingTransitionError as exc:
-            MappingReviewService.record_activation_failure(mapping_set, actor=self.actor, reason=str(exc))
+            MappingReviewService.record_activation_failure(
+                mapping_set, actor=self.actor, reason=str(exc)
+            )
             raise

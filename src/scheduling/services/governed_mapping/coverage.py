@@ -75,9 +75,15 @@ class MappingCoverageService:
         mapping_set = self.resolver.active_mapping_set(dim)
         tasks = list(Task.objects.filter(project=self.project).only("pk"))
         eligible = len(tasks)
+        task_ids = [t.pk for t in tasks]
+        resolved = self.resolver.resolve_many_tasks(task_ids, dim) if mapping_set else {}
+
         direct = logical = inherited = conflicts = unmapped = 0
         for task in tasks:
-            result = self.resolver.resolve_task(task, dim, mapping_set=mapping_set)
+            result = resolved.get(str(task.pk))
+            if result is None:
+                unmapped += 1
+                continue
             if result.resolution == "direct":
                 direct += 1
             elif result.resolution == "logical_identity":
