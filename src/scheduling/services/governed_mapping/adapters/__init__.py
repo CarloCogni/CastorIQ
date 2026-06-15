@@ -6,6 +6,8 @@ from scheduling.services.governed_mapping.adapters.sub_stage_trade import SubSta
 
 ADAPTER_REGISTRY: dict[str, type] = {
     "sub_stage_trade": SubStageTradeAdapter,
+    "activity_type_scope": ActivityTypeSourceAdapter,
+    # Legacy alias — authoritative import disabled (DF-D2.1 semantics audit).
     "activity_type_authoritative": ActivityTypeSourceAdapter,
 }
 

@@ -179,3 +179,58 @@ class CoverageBreakdown:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+@dataclass
+class WBSBranchMappingPolicyDTO:
+    """Explicit WBS branch → governed value policy (no inference)."""
+
+    dimension_key: str
+    mapping_set_id: str
+    wbs_version_id: str
+    wbs_node_id: str
+    dimension_value_id: str
+    include_descendants: bool = True
+    target_behavior: str = "inherit_to_tasks"
+    authority: str = "approved"
+    reason: str = ""
+    evidence: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class DimensionCutoverReadiness:
+    """Per-dimension DF-D3 cutover readiness contract."""
+
+    dimension_key: str
+    dimension_type: str
+    state: str
+    effective_coverage_pct: float | None = None
+    blocking_conflicts: int = 0
+    source_authority: str = ""
+    eligible_targets: int = 0
+    unmapped: int = 0
+    proposed_only: int = 0
+    cross_version_blocked: int = 0
+    cutover_caveats: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class CutoverReadinessSummary:
+    """Trade and Package readiness evaluated independently."""
+
+    trade_cutover_readiness: DimensionCutoverReadiness
+    package_cutover_readiness: DimensionCutoverReadiness
+    cutover_caveats: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "trade_cutover_readiness": self.trade_cutover_readiness.to_dict(),
+            "package_cutover_readiness": self.package_cutover_readiness.to_dict(),
+            "cutover_caveats": list(self.cutover_caveats),
+        }
