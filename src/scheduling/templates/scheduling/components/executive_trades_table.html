@@ -8,6 +8,59 @@
     <div class="alert alert-danger" role="alert">{{ section_error }}</div>
     {% else %}
 
+    {% if dimension_modes %}
+    <div class="d-flex flex-wrap gap-2 mb-2">
+        <span class="badge {% if trade_mode_label == 'Governed Trade' %}bg-success{% else %}bg-secondary{% endif %}">{{ trade_mode_label|default:"Trade Proxy" }}</span>
+        <span class="badge {% if package_mode_label == 'Governed Package' %}bg-success{% else %}bg-secondary{% endif %}">{{ package_mode_label|default:"Package Proxy" }}</span>
+    </div>
+    {% include "scheduling/components/executive_governed_readiness_panel.html" with dimension_modes=dimension_modes snapshot_governed_mapping_analytics=snapshot_governed_mapping_analytics project=project %}
+    {% endif %}
+
+    {% if governed_trade_summary and governed_trade_summary.governed_values %}
+    <h3 class="fs-7 fw-semibold mt-3">Governed trade aggregates</h3>
+    <p class="small text-secondary">Approved effective mappings only — proxy table below remains authoritative when Trade Proxy is active.</p>
+    <div class="table-responsive mb-3">
+        <table class="table table-sm">
+            <thead><tr><th>Value</th><th>Tasks</th><th>Delayed</th><th>SPI</th><th>CPI</th><th>Trusted</th></tr></thead>
+            <tbody>
+            {% for row in governed_trade_summary.governed_values %}
+            <tr>
+                <td>{{ row.label }}{% if row.is_virtual_bucket %} <span class="badge bg-warning text-dark">virtual</span>{% endif %}</td>
+                <td>{{ row.task_count }}</td>
+                <td>{{ row.delay.primary_late_count|default:0 }}</td>
+                <td>{{ row.evm.spi|default:"—" }}</td>
+                <td>{{ row.evm.cpi|default:"—" }}</td>
+                <td>{{ row.model_scope.trusted_task_count|default:0 }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    {% if governed_package_summary and governed_package_summary.governed_values %}
+    <h3 class="fs-7 fw-semibold mt-3">Governed package aggregates</h3>
+    <div class="table-responsive mb-3">
+        <table class="table table-sm">
+            <thead><tr><th>Value</th><th>Tasks</th><th>Delayed</th><th>SPI</th><th>CPI</th></tr></thead>
+            <tbody>
+            {% for row in governed_package_summary.governed_values %}
+            <tr>
+                <td>{{ row.label }}</td>
+                <td>{{ row.task_count }}</td>
+                <td>{{ row.delay.primary_late_count|default:0 }}</td>
+                <td>{{ row.evm.spi|default:"—" }}</td>
+                <td>{{ row.evm.cpi|default:"—" }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <h3 class="fs-7 fw-semibold">Proxy trade / package performance</h3>
+    <p class="small text-secondary mb-2">Existing proxy analytics — labeled separately from governed mapping authority.</p>
+
     {% if warnings %}
     <div class="alert alert-warning py-2 small" role="note">
         {% for w in warnings %}{% if w %}<div>{{ w }}</div>{% endif %}{% endfor %}

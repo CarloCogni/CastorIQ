@@ -1,0 +1,55 @@
+<!-- scheduling/components/executive_governed_readiness_panel.html -->
+<section class="card border-secondary-subtle mb-3" aria-labelledby="governed-readiness-heading">
+    <div class="card-body py-2">
+        <h3 class="h6 fw-semibold mb-2" id="governed-readiness-heading">
+            <i class="bi bi-shield-check me-1"></i> Governed mapping readiness
+        </h3>
+        {% if dimension_modes %}
+        <div class="row g-2 small">
+            {% for key, mode in dimension_modes.dimensions.items %}
+            <div class="col-md-6">
+                <div class="border rounded p-2 h-100">
+                    <div class="d-flex justify-content-between align-items-start gap-2 mb-1">
+                        <span class="fw-semibold text-capitalize">{{ key }}</span>
+                        <span class="badge {% if mode.selected_mode == 'governed' %}bg-success{% elif mode.selected_mode == 'proxy' %}bg-secondary{% elif mode.selected_mode == 'proposals_only' %}bg-warning text-dark{% else %}bg-body-secondary{% endif %}">
+                            {{ mode.mode_label }}
+                        </span>
+                    </div>
+                    <dl class="mb-0 row g-0">
+                        <dt class="col-5 text-secondary">Readiness</dt>
+                        <dd class="col-7">{{ mode.readiness_state|default:"unavailable" }}</dd>
+                        <dt class="col-5 text-secondary">Coverage</dt>
+                        <dd class="col-7">{% if mode.effective_coverage != None %}{{ mode.effective_coverage }}%{% else %}—{% endif %}</dd>
+                        <dt class="col-5 text-secondary">Unmapped</dt>
+                        <dd class="col-7">{{ mode.unmapped_count|default:0 }}</dd>
+                        <dt class="col-5 text-secondary">Conflicts</dt>
+                        <dd class="col-7">{{ mode.conflict_count|default:0 }}</dd>
+                        <dt class="col-5 text-secondary">Proposed</dt>
+                        <dd class="col-7">{{ mode.proposed_count|default:0 }}</dd>
+                        <dt class="col-5 text-secondary">Fallback</dt>
+                        <dd class="col-7">{% if mode.fallback_available %}Proxy available{% else %}None{% endif %}</dd>
+                    </dl>
+                    {% if mode.caveats %}
+                    <ul class="mb-0 mt-1 ps-3 text-secondary">
+                        {% for c in mode.caveats %}<li>{{ c }}</li>{% endfor %}
+                    </ul>
+                    {% endif %}
+                    <div class="mt-1">
+                        <a class="small" href="{% url 'scheduling:executive_controls_governed_dimension_summary' project.pk mode.dimension_key %}">API summary</a>
+                        {% if mode.unmapped_count %}
+                        · <a class="small" href="{% url 'scheduling:executive_controls_governed_dimension_unmapped_tasks' project.pk mode.dimension_key %}">Unmapped tasks</a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        <p class="small text-secondary mb-0 mt-2">
+            Snapshot governed mapping analytics: <strong>{{ snapshot_governed_mapping_analytics|default:"unavailable" }}</strong>
+            — frozen KPIs do not include live governed aggregates.
+        </p>
+        {% else %}
+        <p class="small text-secondary mb-0">No governed dimensions configured for this project.</p>
+        {% endif %}
+    </div>
+</section>

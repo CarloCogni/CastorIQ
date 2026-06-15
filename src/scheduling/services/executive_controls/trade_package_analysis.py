@@ -10,11 +10,19 @@ from typing import Any
 from django.urls import reverse
 
 from scheduling.services.executive_controls.context import AnalyticalContextService
+from scheduling.services.executive_controls.dimension_mode import (
+    DimensionModeService,
+    MODE_GOVERNED,
+    MODE_GOVERNED_PARTIAL,
+)
 from scheduling.services.executive_controls.dimension_registry import (
     UNKNOWN_KEY,
     ExecutiveDimensionRegistry,
 )
 from scheduling.services.executive_controls.enums import MetricAuthority
+from scheduling.services.executive_controls.governed_mapping_aggregation import (
+    GovernedMappingAggregationService,
+)
 from scheduling.services.executive_controls.matrix_filters import ExecutiveMatrixFilters
 from scheduling.services.executive_controls.methodology import E8_METHODOLOGY_VERSION
 from scheduling.services.executive_controls.performance_cube import ProjectPerformanceCubeService
@@ -97,6 +105,30 @@ class TradePackageAnalysisService:
 
         ctx = AnalyticalContextService(self.project).build()
 
+        requested_modes = {}
+        trade_mode_param = trade_filters.to_query().get("trade_mode")
+        package_mode_param = trade_filters.to_query().get("package_mode")
+        if trade_mode_param:
+            requested_modes["trade"] = trade_mode_param
+        if package_mode_param:
+            requested_modes["package"] = package_mode_param
+        dimension_modes = DimensionModeService(self.project).build(
+            requested_modes=requested_modes or None
+        )
+
+        governed_trade = None
+        governed_package = None
+        if dimension_modes.trade.selected_mode in (MODE_GOVERNED, MODE_GOVERNED_PARTIAL):
+            governed_trade = GovernedMappingAggregationService(self.project).build_summary(
+                "trade",
+                requested_mode=dimension_modes.trade.selected_mode,
+            )
+        if dimension_modes.package.selected_mode in (MODE_GOVERNED, MODE_GOVERNED_PARTIAL):
+            governed_package = GovernedMappingAggregationService(self.project).build_summary(
+                "package",
+                requested_mode=dimension_modes.package.selected_mode,
+            )
+
         return {
             "section": "trade_package_analysis",
             "project_id": self.project_id,
@@ -104,6 +136,12 @@ class TradePackageAnalysisService:
             "analytical_context": ctx,
             "dimension": trade_filters.dimension,
             "filters": trade_filters.to_query(),
+            "dimension_modes": dimension_modes.to_dict(),
+            "trade_mode_label": dimension_modes.trade.mode_label,
+            "package_mode_label": dimension_modes.package.mode_label,
+            "governed_trade_summary": governed_trade,
+            "governed_package_summary": governed_package,
+            "snapshot_governed_mapping_analytics": "unavailable",
             "authoritative_groups": authoritative_rows,
             "suggestion_groups": suggestion_rows if not trade_filters.authoritative_only else [],
             "unknown_groups": unknown_rows,
