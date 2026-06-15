@@ -131,6 +131,8 @@ def test_migration_0024_present():
         "0025_source_version_foundation.py",
         "0026_baseline_domain.py",
         "0027_analytical_snapshot_manifest.py",
+        "0028_snapshot_results_and_series.py",
+        "0029_canonical_wbs_schema.py",
     ]
 
 
