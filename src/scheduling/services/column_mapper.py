@@ -103,6 +103,12 @@ CANONICAL_FIELDS = [
     "stage",
     "sub_stage",
     "percent_complete",
+    "wbs_external_id",
+    "wbs_parent_external_id",
+    "wbs_code",
+    "wbs_name",
+    "wbs_path",
+    "task_wbs_external_id",
 ]
 CANONICAL_LABELS = {
     "name": "Task Name *",
@@ -119,6 +125,12 @@ CANONICAL_LABELS = {
     "stage": "Stage (optional)",
     "sub_stage": "Sub-Stage (optional)",
     "percent_complete": "% Complete (optional)",
+    "wbs_external_id": "WBS External ID (optional)",
+    "wbs_parent_external_id": "WBS Parent External ID (optional)",
+    "wbs_code": "WBS Code (optional)",
+    "wbs_name": "WBS Name (optional)",
+    "wbs_path": "WBS Path (optional)",
+    "task_wbs_external_id": "Task WBS External ID (optional)",
 }
 
 _STATUS_MAP = {
@@ -228,6 +240,12 @@ def apply_mapping(
                 "stage": cell("stage").lower(),
                 "sub_stage": cell("sub_stage").lower(),
                 "_csv_pct_complete": _parse_pct(cell("percent_complete")),
+                "wbs_external_id": cell("wbs_external_id"),
+                "wbs_parent_external_id": cell("wbs_parent_external_id"),
+                "wbs_code": cell("wbs_code"),
+                "wbs_name": cell("wbs_name"),
+                "wbs_path": cell("wbs_path"),
+                "task_wbs_external_id": cell("task_wbs_external_id"),
             }
         )
 

@@ -17,6 +17,8 @@ from scheduling.services.source_version.identity_adapters import BatchScheduleAc
 from scheduling.services.source_version.import_persistence import ImportPersistResult
 from scheduling.services.source_version.import_run import ScheduleImportRunService
 from scheduling.services.source_version.source_version import ScheduleSourceVersionService
+from scheduling.services.wbs.exceptions import WBSValidationError
+from scheduling.services.wbs.population import CanonicalWBSPopulationService
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +118,21 @@ class ScheduleImportProvenanceCoordinator:
             Task.objects.bulk_update(tasks, ["schedule_activity"])
             maybe_raise("after_provenance_assign")
 
+        wbs_population_summary: dict[str, Any] = {}
+        try:
+            wbs_result = CanonicalWBSPopulationService(
+                self.project, self.user
+            ).populate_from_import(
+                source_version_id=version_id,
+                source_type=ctx.source_type,
+                persist_result=persist_result,
+                mode=ctx.mode,
+                activate=True,
+            )
+            wbs_population_summary = wbs_result.to_summary()
+        except WBSValidationError as exc:
+            raise RuntimeError(f"WBS population failed: {exc}") from exc
+
         maybe_raise("before_version_activation")
         accepted = self._version_service.accept_as_current(version_id)
         if accepted.error:
@@ -127,7 +144,10 @@ class ScheduleImportProvenanceCoordinator:
             skipped_count=persist_result.skipped_count,
             warning_count=persist_result.skipped_count,
             error_count=0,
-            validation_summary=ctx.validation_summary or {},
+            validation_summary={
+                **(ctx.validation_summary or {}),
+                "wbs_population": wbs_population_summary,
+            },
         )
         run_result = self._run_service.mark_succeeded(
             run_id,

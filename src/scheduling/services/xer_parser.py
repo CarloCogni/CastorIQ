@@ -28,15 +28,15 @@ _DEP_TYPE_XER: dict[str, str] = {
 _NEEDED_TABLES = frozenset({"TASK", "TASKPRED", "PROJECT", "PROJWBS", "RSRC", "TASKRSRC"})
 
 
-def parse_xer(file_obj, preview_only: bool = False) -> tuple[list[dict], list[dict]]:
+def parse_xer(file_obj, preview_only: bool = False) -> tuple[list[dict], list[dict], dict]:
     """Parse a Primavera XER file.
 
     When preview_only=True: returns up to 200 tasks with no dependency data.
 
-    Returns (tasks, raw_deps):
+    Returns (tasks, raw_deps, aux_data):
       tasks    — list of task dicts for TaskSaveView
-      raw_deps — list of {pred_xer_id, succ_xer_id, dep_type, lag_days} for
-                 TaskDependency creation; xer_ids are TASK.task_id values.
+      raw_deps — list of {pred_xer_id, succ_xer_id, dep_type, lag_days}
+      aux_data — {wbs_nodes: [...]} from PROJWBS when present
 
     Raises ValueError if file is not valid XER or no activities found.
     """
@@ -45,9 +45,14 @@ def parse_xer(file_obj, preview_only: bool = False) -> tuple[list[dict], list[di
 
     tasks: list[dict] = []
     raw_deps: list[dict] = []
+    wbs_nodes: list[dict] = []
 
     for table, record in _stream_xer(content):
-        if table == "TASK":
+        if table == "PROJWBS":
+            node = _map_projwbs_row(record)
+            if node:
+                wbs_nodes.append(node)
+        elif table == "TASK":
             if max_tasks is None or len(tasks) < max_tasks:
                 task = _map_task_row(record)
                 if task:
@@ -60,8 +65,31 @@ def parse_xer(file_obj, preview_only: bool = False) -> tuple[list[dict], list[di
     if not tasks:
         raise ValueError("XER file does not contain parseable TASK rows.")
 
-    logger.info("xer_parser: parsed %d tasks, %d dependencies", len(tasks), len(raw_deps))
-    return tasks, raw_deps
+    logger.info(
+        "xer_parser: parsed %d tasks, %d dependencies, %d wbs",
+        len(tasks),
+        len(raw_deps),
+        len(wbs_nodes),
+    )
+    return tasks, raw_deps, {"wbs_nodes": wbs_nodes}
+
+
+def _map_projwbs_row(record: dict) -> dict | None:
+    """Map PROJWBS row to canonical adapter aux node."""
+
+    def get(name: str) -> str:
+        return record.get(name, "").strip()
+
+    wbs_id = get("wbs_id")
+    if not wbs_id:
+        return None
+    return {
+        "external_id": wbs_id,
+        "external_parent_id": get("parent_wbs_id"),
+        "code": get("wbs_short_name") or get("wbs_id"),
+        "name": get("wbs_name") or get("wbs_short_name") or wbs_id,
+        "sequence": 0,
+    }
 
 
 def _stream_xer(content: str):
@@ -143,6 +171,7 @@ def _map_task_row(record: dict) -> dict | None:
         "source": "xer",
         "description": get("task_memo") or "",
         "_xer_task_id": get("task_id"),
+        "_xer_wbs_id": get("wbs_id"),
         "_p6_phys_pct": _p6_phys_pct,
         "_p6_dur_pct": _p6_dur_pct,
     }

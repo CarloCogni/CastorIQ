@@ -46,6 +46,7 @@ class ImportPersistResult:
     touched_task_data: list[dict[str, Any]] = field(default_factory=list)
     current_source: ScheduleSource | None = None
     p6_obj_id_map: dict[str, str] = field(default_factory=dict)
+    wbs_aux: dict[str, Any] = field(default_factory=dict)
 
 
 def persist_schedule_import(
@@ -258,3 +259,9 @@ def persist_schedule_import(
     result.current_source = current_source
     result.p6_obj_id_map = p6_obj_id_map
     return result
+
+
+def attach_wbs_aux(persist_result: ImportPersistResult, wbs_aux: dict[str, Any] | None) -> None:
+    """Attach parser WBS auxiliary data for canonical population adapters."""
+    if wbs_aux:
+        persist_result.wbs_aux = wbs_aux

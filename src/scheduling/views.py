@@ -59,7 +59,7 @@ from .services.source_version.content_hash import (
     hash_parsed_tasks_payload,
     store_session_import_artifact,
 )
-from .services.source_version.import_persistence import persist_schedule_import
+from .services.source_version.import_persistence import attach_wbs_aux, persist_schedule_import
 from .services.source_version.import_provenance import (
     ImportProvenanceContext,
     ScheduleImportProvenanceCoordinator,
@@ -406,7 +406,12 @@ class SchedulePreviewView(ProjectModifyAccessMixin, View):
         content = file_obj.read() if hasattr(file_obj, "read") else b""
         if hasattr(file_obj, "seek"):
             file_obj.seek(0)
-        tasks, raw_deps = parser_fn(file_obj)
+        parsed = parser_fn(file_obj)
+        if len(parsed) == 3:
+            tasks, raw_deps, wbs_aux = parsed
+            request.session[f"parsed_wbs_aux_{project.pk}"] = json.dumps(wbs_aux)
+        else:
+            tasks, raw_deps = parsed
         store_session_import_artifact(
             request,
             project.pk,
@@ -567,7 +572,8 @@ class TaskUploadView(ProjectModifyAccessMixin, View):
                 )
             elif filename.endswith(".xer"):
                 xer_bytes = uploaded.read()
-                tasks, raw_deps = parse_xer(io.BytesIO(xer_bytes))
+                tasks, raw_deps, wbs_aux = parse_xer(io.BytesIO(xer_bytes))
+                request.session[f"parsed_wbs_aux_{project.pk}"] = json.dumps(wbs_aux)
                 source = "xer"
                 store_session_import_artifact(
                     request, project.pk, filename=uploaded.name, content=xer_bytes
@@ -577,12 +583,16 @@ class TaskUploadView(ProjectModifyAccessMixin, View):
                 if b"APIBusinessObjects" in file_bytes[:2048]:
                     tasks, raw_deps, aux_data = parse_p6xml(io.BytesIO(file_bytes))
                     save_p6_pending_data(project, aux_data)
+                    request.session[f"parsed_wbs_aux_{project.pk}"] = json.dumps(
+                        {"wbs_nodes": aux_data.get("wbs_nodes", [])}
+                    )
                     source = "p6xml"
                     _dd = (aux_data.get("project_meta") or {}).get("data_date")
                     if _dd:
                         request.session[f"p6_data_date_{project.pk}"] = _dd.isoformat()
                 else:
-                    tasks, raw_deps = parse_msp(io.BytesIO(file_bytes))
+                    tasks, raw_deps, wbs_aux = parse_msp(io.BytesIO(file_bytes))
+                    request.session[f"parsed_wbs_aux_{project.pk}"] = json.dumps(wbs_aux)
                     source = "msp"
                 store_session_import_artifact(
                     request, project.pk, filename=uploaded.name, content=file_bytes
@@ -688,6 +698,8 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
 
         raw_deps_json = request.session.pop(f"parsed_deps_{project.pk}", None)
         raw_deps: list[dict] = json.loads(raw_deps_json) if raw_deps_json else []
+        wbs_aux_json = request.session.pop(f"parsed_wbs_aux_{project.pk}", None)
+        wbs_aux: dict = json.loads(wbs_aux_json) if wbs_aux_json else {}
         del request.session[session_key]
 
         try:
@@ -701,6 +713,7 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
                     source_format=source_format,
                     data_date=_p6_data_date,
                 )
+                attach_wbs_aux(persist_result, wbs_aux)
                 coordinator.complete_success(run_id, ctx, persist_result)
         except Exception as exc:
             logger.exception("Schedule import failed for project %s", project.pk)

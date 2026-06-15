@@ -66,3 +66,43 @@ class TaskWBSAssignmentService:
     def bulk_clear(cls, task_ids: list[UUID]) -> int:
         """Clear WBS assignment for multiple tasks."""
         return Task.objects.filter(pk__in=task_ids).update(wbs_node=None)
+
+    @classmethod
+    @transaction.atomic
+    def bulk_assign_by_external_ids(
+        cls,
+        *,
+        wbs_version: WBSVersion,
+        references: list[tuple[str, str]],
+    ) -> int:
+        """Batch-assign tasks using explicit external WBS IDs — no name matching."""
+        if not references:
+            return 0
+        node_map = {
+            n.external_id: n
+            for n in WBSNode.objects.filter(wbs_version=wbs_version).only(
+                "id", "wbs_version_id", "external_id"
+            )
+            if n.external_id
+        }
+        task_ids = [ref[0] for ref in references]
+        tasks = {
+            str(t.pk): t
+            for t in Task.objects.filter(pk__in=task_ids).select_related("source_version")
+        }
+        to_update: list[Task] = []
+        seen: set[str] = set()
+        for task_pk, external_wbs_id in references:
+            if task_pk in seen:
+                continue
+            node = node_map.get(external_wbs_id)
+            task = tasks.get(task_pk)
+            if node is None or task is None:
+                continue
+            cls._validate_node_for_task(task, node)
+            task.wbs_node = node
+            to_update.append(task)
+            seen.add(task_pk)
+        if to_update:
+            Task.objects.bulk_update(to_update, ["wbs_node", "updated_at"], batch_size=500)
+        return len(to_update)
