@@ -89,6 +89,11 @@ class _ProjectSignals:
     published_snapshot_count: int = 0
     snapshot_result_count: int = 0
     snapshot_result_distinct_dates: int = 0
+    wbs_version_count: int = 0
+    selected_wbs_version_id: str | None = None
+    selected_wbs_status: str | None = None
+    canonical_wbs_node_count: int = 0
+    tasks_with_wbs_assignment: int = 0
 
 
 class ProjectAnalyticsCapabilityProfile:
@@ -113,6 +118,7 @@ class ProjectAnalyticsCapabilityProfile:
         provenance = self._provenance_capabilities(signals)
         baseline = self._baseline_capabilities(signals)
         snapshot = self._snapshot_capabilities(signals)
+        wbs = self._wbs_capabilities(signals)
 
         payload = CapabilityProfilePayload(
             profile_version=PROFILE_VERSION,
@@ -134,6 +140,7 @@ class ProjectAnalyticsCapabilityProfile:
             provenance_capabilities=provenance,
             baseline_capabilities=baseline,
             snapshot_capabilities=snapshot,
+            wbs_capabilities=wbs,
         )
         return payload.to_dict()
 
@@ -266,7 +273,9 @@ class ProjectAnalyticsCapabilityProfile:
             ),
             "snapshot_series_persistence": _entry(
                 has_results,
-                CapabilityState.AVAILABLE_WITH_CAVEATS if has_results else CapabilityState.UNAVAILABLE,
+                CapabilityState.AVAILABLE_WITH_CAVEATS
+                if has_results
+                else CapabilityState.UNAVAILABLE,
                 caveats=("Series reconstructed at snapshot time — historical=false within curve.",)
                 if has_results
                 else (),
@@ -290,7 +299,9 @@ class ProjectAnalyticsCapabilityProfile:
                 CapabilityState.AVAILABLE_WITH_CAVEATS
                 if has_historical
                 else CapabilityState.UNAVAILABLE,
-                caveats=("Checkpoint trend from persisted snapshot sequence — not imported history.",)
+                caveats=(
+                    "Checkpoint trend from persisted snapshot sequence — not imported history.",
+                )
                 if has_historical
                 else ("Requires two comparable persisted snapshot results.",),
             ),
@@ -422,6 +433,100 @@ class ProjectAnalyticsCapabilityProfile:
             ),
         }
 
+    def _wbs_capabilities(self, signals: _ProjectSignals) -> dict[str, dict[str, Any]]:
+        """DF-C1 canonical WBS schema — does not switch E8 WBS Matrix from stage proxy."""
+
+        def _entry(
+            available: bool,
+            state: CapabilityState,
+            *,
+            caveats: tuple[str, ...] = (),
+        ) -> dict[str, Any]:
+            return {
+                "available": available,
+                "state": state.value,
+                "caveats": list(caveats),
+            }
+
+        has_schema = True
+        has_versions = signals.wbs_version_count > 0
+        selected = signals.selected_wbs_version_id is not None
+        has_nodes = signals.canonical_wbs_node_count > 0
+        assigned = signals.tasks_with_wbs_assignment
+        total = signals.total_tasks or 0
+        full_coverage = total > 0 and assigned == total
+        partial = 0 < assigned < total if total else False
+        integrity_ok = has_nodes and selected
+
+        return {
+            "wbs_counts": {
+                "versions": signals.wbs_version_count,
+                "nodes": signals.canonical_wbs_node_count,
+                "assigned_tasks": assigned,
+                "total_tasks": total,
+            },
+            "canonical_wbs_schema": _entry(
+                has_schema,
+                CapabilityState.AVAILABLE,
+                caveats=("Canonical WBSVersion/WBSNode schema deployed (DF-C1).",),
+            ),
+            "canonical_wbs_version": _entry(
+                has_versions,
+                CapabilityState.AVAILABLE if has_versions else CapabilityState.UNAVAILABLE,
+                caveats=() if has_versions else ("No WBSVersion records — hierarchy unavailable.",),
+            ),
+            "selected_wbs_version": _entry(
+                selected,
+                CapabilityState.AVAILABLE if selected else CapabilityState.UNAVAILABLE,
+                caveats=("Selected canonical WBS version for primary analytics.",)
+                if selected
+                else ("No WBS version selected for analysis.",),
+            ),
+            "task_wbs_assignment": _entry(
+                assigned > 0,
+                CapabilityState.AVAILABLE
+                if full_coverage
+                else CapabilityState.AVAILABLE_WITH_CAVEATS
+                if partial
+                else CapabilityState.UNAVAILABLE,
+                caveats=("Partial Task→WBS assignment coverage.",) if partial else (),
+            ),
+            "wbs_assignment_coverage": _entry(
+                full_coverage,
+                CapabilityState.AVAILABLE
+                if full_coverage
+                else CapabilityState.AVAILABLE_WITH_CAVEATS
+                if partial
+                else CapabilityState.UNAVAILABLE,
+                caveats=("Unassigned tasks remain operational and truthful.",)
+                if not full_coverage
+                else (),
+            ),
+            "wbs_hierarchy_integrity": _entry(
+                integrity_ok,
+                CapabilityState.AVAILABLE
+                if integrity_ok
+                else CapabilityState.UNAVAILABLE
+                if not has_nodes
+                else CapabilityState.AVAILABLE_WITH_CAVEATS,
+                caveats=("Hierarchy integrity validated at version scope.",)
+                if integrity_ok
+                else (),
+            ),
+            "wbs_analytics_readiness": _entry(
+                full_coverage and integrity_ok,
+                CapabilityState.AVAILABLE
+                if full_coverage and integrity_ok
+                else CapabilityState.AVAILABLE_WITH_CAVEATS
+                if has_versions or assigned > 0
+                else CapabilityState.UNAVAILABLE,
+                caveats=(
+                    "E8 WBS Matrix remains stage proxy until DF-C2 population and explicit cutover.",
+                    "Schema presence alone does not unlock WBS matrix analytics.",
+                ),
+            ),
+        }
+
     def feature(self, feature_id: str) -> dict[str, Any]:
         """Evaluate a single feature (uses full gather — prefer build() per request)."""
         signals = self._gather_signals()
@@ -501,6 +606,7 @@ class ProjectAnalyticsCapabilityProfile:
             with_stage=Count("pk", filter=schedulable_filter & ~Q(stage="")),
             with_sub_stage=Count("pk", filter=schedulable_filter & ~Q(sub_stage="")),
             with_calendar_id=Count("pk", filter=schedulable_filter & ~Q(calendar_object_id="")),
+            with_wbs_assignment=Count("pk", filter=Q(wbs_node_id__isnull=False)),
             authoritative_scope_n=Count("pk", filter=schedulable_filter & auth_q)
             if auth_q
             else Count("pk", filter=Q(pk__isnull=True)),
@@ -591,10 +697,15 @@ class ProjectAnalyticsCapabilityProfile:
             published_snapshot_count=baseline_counts["published_snapshot_count"],
             snapshot_result_count=baseline_counts["snapshot_result_count"],
             snapshot_result_distinct_dates=baseline_counts["snapshot_result_distinct_dates"],
+            wbs_version_count=baseline_counts["wbs_version_count"],
+            selected_wbs_version_id=baseline_counts["selected_wbs_id"],
+            selected_wbs_status=baseline_counts["selected_wbs_status"],
+            canonical_wbs_node_count=baseline_counts["canonical_wbs_node_count"],
+            tasks_with_wbs_assignment=agg["with_wbs_assignment"] or 0,
         )
 
     def _baseline_table_counts(self) -> dict[str, Any]:
-        """Single round-trip for DF-A2 baseline + DF-B1 snapshot counts."""
+        """Single round-trip for DF-A2 baseline + DF-B1 snapshot + DF-C1 WBS counts."""
         from django.db import connection
 
         with connection.cursor() as cursor:
@@ -658,9 +769,28 @@ class ProjectAnalyticsCapabilityProfile:
                         WHERE s.project_id = %s
                           AND s.status IN ('completed', 'published')
                           AND s.data_date IS NOT NULL
+                    ),
+                    (SELECT COUNT(*) FROM castor_scheduling_wbsversion WHERE project_id = %s),
+                    (
+                        SELECT id::text
+                        FROM castor_scheduling_wbsversion
+                        WHERE project_id = %s AND is_selected_for_analysis = true
+                        LIMIT 1
+                    ),
+                    (
+                        SELECT status
+                        FROM castor_scheduling_wbsversion
+                        WHERE project_id = %s AND is_selected_for_analysis = true
+                        LIMIT 1
+                    ),
+                    (
+                        SELECT COUNT(*)
+                        FROM castor_scheduling_wbsnode n
+                        JOIN castor_scheduling_wbsversion v ON v.id = n.wbs_version_id
+                        WHERE v.project_id = %s
                     )
                 """,
-                [self.project_id] * 11,
+                [self.project_id] * 15,
             )
             row = cursor.fetchone()
         return {
@@ -675,6 +805,10 @@ class ProjectAnalyticsCapabilityProfile:
             "published_snapshot_count": int(row[8] or 0),
             "snapshot_result_count": int(row[9] or 0),
             "snapshot_result_distinct_dates": int(row[10] or 0),
+            "wbs_version_count": int(row[11] or 0),
+            "selected_wbs_id": row[12],
+            "selected_wbs_status": row[13],
+            "canonical_wbs_node_count": int(row[14] or 0),
         }
 
     def _provenance_table_counts(self) -> tuple[str | None, int, int]:
@@ -1117,19 +1251,21 @@ class ProjectAnalyticsCapabilityProfile:
             )
 
         if feature_id == FeatureId.WBS_MATRIX:
+            canonical_assigned = s.tasks_with_wbs_assignment
             return self._cap(
                 feature_id,
                 state=CapabilityState.UNAVAILABLE,
                 available=False,
                 authority=MetricAuthority.UNAVAILABLE,
-                source="P6WBSNode",
+                source="WBSNode / Task.wbs_node (canonical); P6WBSNode legacy staging",
                 signals=s,
-                numerator=s.wbs_node_count,
+                numerator=canonical_assigned or s.wbs_node_count,
                 denominator=sched,
                 missing_reasons=(MissingReason.NO_HIERARCHY_LINK,),
                 caveats=(
-                    f"P6WBSNode rows ({s.wbs_node_count}) exist but no Task→WBS FK — "
-                    "WBS matrix blocked.",
+                    "E8 WBS Matrix remains stage proxy — canonical WBS not wired to matrix (DF-C1).",
+                    f"Legacy P6WBSNode rows ({s.wbs_node_count}) are not Task-linked.",
+                    "Canonical Task.wbs_node population deferred to DF-C2.",
                 ),
             )
 

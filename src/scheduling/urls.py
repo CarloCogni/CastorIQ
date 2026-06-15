@@ -11,6 +11,7 @@ from . import (
     views_baseline,
     views_executive_controls,
     views_source_provenance,
+    views_wbs,
 )
 
 app_name = "scheduling"
@@ -88,6 +89,31 @@ urlpatterns = [
         "projects/<uuid:pk>/baselines/<uuid:baseline_pk>/task-states/",
         views_baseline.BaselineTaskStateListView.as_view(),
         name="schedule_baseline_task_states",
+    ),
+    path(
+        "projects/<uuid:pk>/wbs-versions/",
+        views_wbs.WBSVersionListView.as_view(),
+        name="schedule_wbs_versions",
+    ),
+    path(
+        "projects/<uuid:pk>/wbs-versions/selected/",
+        views_wbs.WBSSelectedVersionView.as_view(),
+        name="schedule_wbs_selected_version",
+    ),
+    path(
+        "projects/<uuid:pk>/wbs-versions/<uuid:version_pk>/nodes/",
+        views_wbs.WBSNodeListView.as_view(),
+        name="schedule_wbs_nodes",
+    ),
+    path(
+        "projects/<uuid:pk>/wbs-coverage/",
+        views_wbs.WBSCoverageView.as_view(),
+        name="schedule_wbs_coverage",
+    ),
+    path(
+        "projects/<uuid:pk>/tasks/<uuid:task_pk>/wbs-provenance/",
+        views_wbs.TaskWBSProvenanceView.as_view(),
+        name="schedule_task_wbs_provenance",
     ),
     path(
         "projects/<uuid:pk>/analytical-snapshots/",

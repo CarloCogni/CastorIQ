@@ -15,6 +15,8 @@ from scheduling.models import (
     ScheduleActivity,
     ScheduleImportRun,
     ScheduleSourceVersion,
+    WBSNode,
+    WBSVersion,
 )
 
 
@@ -377,3 +379,104 @@ class ScheduleImportRunAdmin(admin.ModelAdmin):
         "updated_at",
     )
     raw_id_fields = ("project", "schedule_source", "source_version", "requested_by")
+
+
+class WBSNodeInline(admin.TabularInline):
+    """Inspect nodes on draft WBS versions only."""
+
+    model = WBSNode
+    extra = 0
+    readonly_fields = (
+        "external_id",
+        "code",
+        "name",
+        "parent",
+        "path",
+        "depth",
+        "sequence",
+        "node_type",
+        "identity_status",
+        "authority",
+    )
+    raw_id_fields = ("parent",)
+
+    def has_add_permission(self, request, obj=None):
+        return obj is not None and obj.status == WBSVersion.Status.DRAFT
+
+    def has_delete_permission(self, request, obj=None):
+        return obj is not None and obj.status == WBSVersion.Status.DRAFT
+
+
+@admin.register(WBSVersion)
+class WBSVersionAdmin(admin.ModelAdmin):
+    """Inspect canonical WBS versions — lifecycle via services only."""
+
+    list_display = (
+        "name",
+        "project",
+        "origin",
+        "status",
+        "revision_number",
+        "is_selected_for_analysis",
+        "activated_at",
+    )
+    list_filter = ("origin", "status", "is_selected_for_analysis")
+    search_fields = ("name", "code")
+    readonly_fields = (
+        "id",
+        "project",
+        "revision_number",
+        "activated_at",
+        "superseded_at",
+        "created_at",
+        "updated_at",
+    )
+    raw_id_fields = ("project", "source_version", "parent_version", "created_by", "activated_by")
+    inlines = [WBSNodeInline]
+
+    def get_readonly_fields(self, request, obj=None):
+        fields = list(super().get_readonly_fields(request, obj))
+        if obj and obj.is_hierarchy_immutable:
+            fields.extend(
+                ["source_version", "origin", "name", "code", "data_date", "parent_version"]
+            )
+        return fields
+
+    def has_delete_permission(self, request, obj=None):
+        return obj is not None and obj.status == WBSVersion.Status.DRAFT
+
+
+@admin.register(WBSNode)
+class WBSNodeAdmin(admin.ModelAdmin):
+    """Inspect canonical WBS nodes."""
+
+    list_display = ("name", "code", "wbs_version", "depth", "node_type", "identity_status")
+    list_filter = ("node_type", "identity_status", "authority")
+    search_fields = ("name", "code", "external_id")
+    readonly_fields = ("id", "path", "depth", "created_at", "updated_at")
+    raw_id_fields = ("wbs_version", "parent")
+
+    def get_readonly_fields(self, request, obj=None):
+        fields = list(super().get_readonly_fields(request, obj))
+        if obj and obj.wbs_version.is_hierarchy_immutable:
+            fields.extend(
+                [
+                    "wbs_version",
+                    "parent",
+                    "external_id",
+                    "external_parent_id",
+                    "code",
+                    "name",
+                    "sequence",
+                    "node_type",
+                    "identity_status",
+                    "authority",
+                ]
+            )
+        return fields
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return obj is not None and obj.wbs_version.status == WBSVersion.Status.DRAFT

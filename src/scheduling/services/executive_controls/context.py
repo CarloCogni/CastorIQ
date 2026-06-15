@@ -214,6 +214,9 @@ class AnalyticalContextService:
             "latest_completed_snapshot": latest_completed,
             "latest_published_snapshot": latest_published,
             "snapshot_capabilities": snapshot_caps if has_snapshot_schema else None,
+            "wbs_capabilities": (
+                capability_profile.get("wbs_capabilities") if capability_profile else None
+            ),
             "reimport_drift_warning": REIMPORT_CAVEAT,
             "source_caveats": [
                 REIMPORT_CAVEAT,
