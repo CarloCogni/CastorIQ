@@ -219,6 +219,15 @@ class Task(UUIDModel):
         verbose_name="Source Version",
         help_text="Accepted schedule source version that last touched this task (nullable).",
     )
+    wbs_node = models.ForeignKey(
+        "WBSNode",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="assigned_tasks",
+        verbose_name="WBS Node",
+        help_text="Canonical WBS assignment (nullable until DF-C2 population or manual assign).",
+    )
 
     # ------------------------------------------------------------------
     # CPM fields — populated by compute_critical_path()
@@ -977,6 +986,230 @@ class BaselineAuditEvent(UUIDModel):
 
     def delete(self, *args, **kwargs) -> None:
         raise ValueError("BaselineAuditEvent records are append-only.")
+
+
+class WBSVersion(UUIDModel):
+    """Planner-neutral canonical WBS hierarchy revision for a project."""
+
+    class Origin(models.TextChoices):
+        P6_XML = "p6_xml", "Primavera P6 XML"
+        P6_XER = "p6_xer", "Primavera P6 XER"
+        MSP_XML = "msp_xml", "MS Project XML"
+        COLUMN_MAPPING = "column_mapping", "Column mapping"
+        MANUAL = "manual", "Manual"
+        SYSTEM = "system", "System"
+
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        ACTIVE = "active", "Active"
+        SUPERSEDED = "superseded", "Superseded"
+        ARCHIVED = "archived", "Archived"
+        REJECTED = "rejected", "Rejected"
+
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name="wbs_versions",
+        verbose_name="Project",
+    )
+    source_version = models.ForeignKey(
+        ScheduleSourceVersion,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="wbs_versions",
+        verbose_name="Source Version",
+        help_text="Nullable for manual WBS hierarchies.",
+    )
+    name = models.CharField(max_length=255, verbose_name="Name")
+    code = models.CharField(max_length=64, blank=True, verbose_name="Code / Reference")
+    origin = models.CharField(
+        max_length=20,
+        choices=Origin.choices,
+        default=Origin.MANUAL,
+        db_index=True,
+        verbose_name="Origin",
+    )
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.DRAFT,
+        db_index=True,
+        verbose_name="Status",
+    )
+    revision_number = models.PositiveIntegerField(default=1, verbose_name="Revision")
+    data_date = models.DateField(null=True, blank=True, verbose_name="Data Date")
+    parent_version = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="child_revisions",
+        verbose_name="Parent Version",
+    )
+    is_selected_for_analysis = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name="Selected for Analysis",
+    )
+    source_metadata = models.JSONField(default=dict, blank=True, verbose_name="Source Metadata")
+    validation_summary = models.JSONField(
+        default=dict, blank=True, verbose_name="Validation Summary"
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="wbs_versions_created",
+        verbose_name="Created By",
+    )
+    activated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="wbs_versions_activated",
+        verbose_name="Activated By",
+    )
+    activated_at = models.DateTimeField(null=True, blank=True, verbose_name="Activated At")
+    superseded_at = models.DateTimeField(null=True, blank=True, verbose_name="Superseded At")
+
+    class Meta:
+        verbose_name = "WBS Version"
+        verbose_name_plural = "WBS Versions"
+        ordering = ["-created_at", "-revision_number"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "revision_number"],
+                name="castor_scheduling_unique_wbs_revision_per_project",
+            ),
+            models.UniqueConstraint(
+                fields=["project"],
+                condition=models.Q(is_selected_for_analysis=True),
+                name="castor_scheduling_unique_selected_wbs_per_project",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["project", "status"]),
+            models.Index(fields=["project", "revision_number"]),
+            models.Index(fields=["project", "is_selected_for_analysis"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.name} r{self.revision_number} ({self.status})"
+
+    @property
+    def is_hierarchy_immutable(self) -> bool:
+        """Active hierarchy identity must not be silently mutated."""
+        return self.status in {self.Status.ACTIVE, self.Status.SUPERSEDED}
+
+
+class WBSNode(UUIDModel):
+    """One node in a canonical WBS hierarchy revision."""
+
+    class NodeType(models.TextChoices):
+        ROOT = "root", "Root"
+        SUMMARY = "summary", "Summary"
+        WORK_PACKAGE = "work_package", "Work package"
+        LEAF = "leaf", "Leaf"
+        UNKNOWN = "unknown", "Unknown"
+
+    class IdentityStatus(models.TextChoices):
+        RESOLVED = "resolved", "Resolved"
+        UNRESOLVED = "unresolved", "Unresolved"
+        GENERATED = "generated", "Generated"
+        RETIRED = "retired", "Retired"
+
+    class Authority(models.TextChoices):
+        SOURCE = "source", "Source"
+        MANUAL = "manual", "Manual"
+        GOVERNED = "governed", "Governed"
+        INFERRED = "inferred", "Inferred"
+
+    wbs_version = models.ForeignKey(
+        WBSVersion,
+        on_delete=models.CASCADE,
+        related_name="nodes",
+        verbose_name="WBS Version",
+    )
+    external_id = models.CharField(
+        max_length=255,
+        blank=True,
+        db_index=True,
+        verbose_name="External ID",
+        help_text="Planner-native object identity when known.",
+    )
+    external_parent_id = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="External Parent ID",
+    )
+    code = models.CharField(max_length=100, blank=True, verbose_name="WBS Code")
+    name = models.CharField(max_length=500, verbose_name="WBS Name")
+    parent = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="children",
+        verbose_name="Parent Node",
+    )
+    path = models.CharField(
+        max_length=2048,
+        blank=True,
+        db_index=True,
+        verbose_name="Materialized Path",
+        help_text="Stable ancestor chain using node UUIDs — not display names.",
+    )
+    depth = models.PositiveSmallIntegerField(default=0, db_index=True, verbose_name="Depth")
+    sequence = models.PositiveIntegerField(default=0, verbose_name="Sequence")
+    node_type = models.CharField(
+        max_length=20,
+        choices=NodeType.choices,
+        default=NodeType.UNKNOWN,
+        db_index=True,
+        verbose_name="Node Type",
+    )
+    identity_status = models.CharField(
+        max_length=16,
+        choices=IdentityStatus.choices,
+        default=IdentityStatus.RESOLVED,
+        verbose_name="Identity Status",
+    )
+    authority = models.CharField(
+        max_length=16,
+        choices=Authority.choices,
+        default=Authority.MANUAL,
+        verbose_name="Authority",
+    )
+    source_metadata = models.JSONField(default=dict, blank=True, verbose_name="Source Metadata")
+
+    class Meta:
+        verbose_name = "WBS Node"
+        verbose_name_plural = "WBS Nodes"
+        ordering = ["sequence", "code", "name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["wbs_version", "external_id"],
+                condition=~models.Q(external_id=""),
+                name="castor_scheduling_unique_wbs_external_id_per_version",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["wbs_version", "parent"]),
+            models.Index(fields=["wbs_version", "path"]),
+            models.Index(fields=["wbs_version", "code"]),
+            models.Index(fields=["wbs_version", "depth"]),
+        ]
+
+    def __str__(self) -> str:
+        label = self.code or self.name
+        return f"{label} (d{self.depth})"
+
+    @property
+    def project_id(self):
+        return self.wbs_version.project_id
 
 
 class AnalyticalSnapshot(UUIDModel):
