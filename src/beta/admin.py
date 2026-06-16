@@ -33,9 +33,9 @@ def _build_set_password_url(user) -> str:
     return settings.SITE_URL.rstrip("/") + path
 
 
-def _send_welcome_email(application: BetaApplication, set_password_url: str) -> None:
+def _send_welcome_email(application: BetaApplication, user, set_password_url: str) -> None:
     ctx = {
-        "user": application.created_user,
+        "user": user,
         "user_full_name": application.name,
         "set_password_url": set_password_url,
         "site_url": settings.SITE_URL,
@@ -183,7 +183,7 @@ class BetaApplicationAdmin(admin.ModelAdmin):
                     )
 
                 set_password_url = _build_set_password_url(user)
-                _send_welcome_email(application, set_password_url)
+                _send_welcome_email(application, user, set_password_url)
 
                 application.status = BetaApplication.Status.APPROVED
                 application.reviewed_by = request.user
