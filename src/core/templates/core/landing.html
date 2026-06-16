@@ -49,17 +49,26 @@
         }
 
         .hero-logo {
-            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1.5rem;
             margin: 2.5rem auto 0;
         }
-        .hero-logo img {
+        .hero-logo-mark {
             height: 96px;
             width: auto;
             max-width: 80%;
             filter: drop-shadow(0 4px 24px rgba(59, 130, 246, 0.18));
         }
+        .hero-mascot {
+            height: 64px;
+            width: auto;
+            filter: drop-shadow(0 4px 12px rgba(59, 130, 246, 0.18));
+        }
         @media (max-width: 576px) {
-            .hero-logo img { height: 72px; }
+            .hero-logo-mark { height: 72px; }
+            .hero-mascot { display: none; }
         }
 
         .hero {
@@ -115,59 +124,11 @@
             background: var(--castor-surface);
             border: 1px solid var(--castor-border);
         }
-        .video-wrap iframe {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;
-        }
-        /* Facade pattern: poster + play button until the user clicks. Keeps the YouTube
-         * iframe (~1.5MB) off the first paint so the page is interactive instantly. */
-        .video-facade {
-            cursor: pointer;
-            background:
-                radial-gradient(circle at 50% 45%, rgba(59, 130, 246, 0.12), transparent 55%),
-                linear-gradient(135deg, #0a1628 0%, #050505 100%);
-        }
-        .video-facade .video-play {
-            position: absolute;
-            inset: 0;
+        .video-wrap .video-demo {
+            position: absolute; top: 0; left: 0;
             width: 100%; height: 100%;
-            background: transparent;
-            border: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: background 0.2s ease;
-        }
-        .video-facade .video-play:hover,
-        .video-facade .video-play:focus-visible {
-            background: rgba(59, 130, 246, 0.08);
-            outline: none;
-        }
-        .video-facade .play-icon .bi {
-            font-size: clamp(3.5rem, 8vw, 5.5rem);
-            color: var(--castor-blue-light);
-            filter: drop-shadow(0 6px 24px rgba(0, 0, 0, 0.6));
-            transition: transform 0.2s ease;
-        }
-        .video-facade .video-play:hover .play-icon .bi,
-        .video-facade .video-play:focus-visible .play-icon .bi {
-            transform: scale(1.08);
-        }
-        .video-caption {
-            text-align: center;
-            color: var(--castor-text-muted);
-            font-size: 0.95rem;
-            margin: 1rem 0 0;
-        }
-        .scroll-cue {
-            display: inline-block;
-            margin-left: 0.35rem;
-            color: var(--castor-blue-light);
-            animation: scroll-cue-bob 2s ease-in-out infinite;
-        }
-        @keyframes scroll-cue-bob {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(4px); }
+            object-fit: contain;
+            background: #000;
         }
 
         .hero-compact {
@@ -200,6 +161,31 @@
             border: 1px solid var(--castor-border);
             border-radius: 12px;
             padding: 2rem;
+        }
+
+        /* Castor mascot cameo. Sits inside the footer, centered. JS adds
+         * .castor-cameo--visible the first time it scrolls into view, which fades it
+         * in and triggers playback. Plays once per page load. */
+        .castor-cameo {
+            max-width: 240px;
+            margin: 0 auto 1.5rem;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid var(--castor-border);
+            background: var(--castor-bg);
+            opacity: 0;
+            transition: opacity 0.4s ease;
+        }
+        .castor-cameo--visible {
+            opacity: 1;
+        }
+        .castor-cameo-video {
+            display: block;
+            width: 100%;
+            height: auto;
+        }
+        @media (max-width: 576px) {
+            .castor-cameo { max-width: 180px; }
         }
     </style>
 </head>
@@ -235,6 +221,13 @@
                 <i class="bi bi-linkedin"></i>
                 <span class="d-none d-sm-inline">LinkedIn</span>
             </a>
+            <a href="https://www.youtube.com/watch?v=5JB-yFb7k0w"
+               class="subtle small d-inline-flex align-items-center gap-1"
+               target="_blank" rel="noopener"
+               title="Watch CastorIQ on YouTube">
+                <i class="bi bi-youtube"></i>
+                <span class="d-none d-sm-inline">YouTube</span>
+            </a>
             <a href="{% url 'login' %}" class="subtle small">
                 Already have an account? Sign in <i class="bi bi-arrow-right"></i>
             </a>
@@ -244,13 +237,17 @@
 
 <main class="container">
 
-    <!-- Video first: QR visitors land cold and the 60s demo is the hook. Facade renders
-         a static poster + play button; the YouTube iframe loads only on click. -->
+    <!-- Video first: QR visitors land cold and the 60s demo is the hook.
+         Self-hosted MP4 — sidesteps YouTube embedding entirely. -->
     <section class="video-hero">
-        <div class="video-wrap video-facade" id="video-facade" data-video-id="dQw4w9WgXcQ">
-            <button type="button" class="video-play" aria-label="Play demo video">
-                <span class="play-icon"><i class="bi bi-play-circle-fill"></i></span>
-            </button>
+        <div class="video-wrap">
+            <video class="video-demo"
+                   controls
+                   preload="metadata"
+                   playsinline>
+                <source src="{% static 'videos/CastorIQ_Teaser_Final.mp4' %}" type="video/mp4">
+                Your browser doesn't support embedded video. <a href="{% static 'videos/CastorIQ_Teaser_Final.mp4' %}">Download the demo</a>.
+            </video>
         </div>
 <!--        <p class="video-caption">-->
 <!--            60 seconds. Watch what CastorIQ does. <span class="scroll-cue" aria-hidden="true">↓</span>-->
@@ -259,7 +256,9 @@
     </section>
 
     <div class="hero-logo">
-        <img src="{% static 'images/castor-logo-nobg.png' %}" alt="CastorIQ">
+        <img class="hero-mascot" src="{% static 'images/castore-mascotte-happy-no-bg.png' %}" alt="" aria-hidden="true">
+        <img class="hero-logo-mark" src="{% static 'images/castor-logo-nobg.png' %}" alt="CastorIQ">
+        <img class="hero-mascot" src="{% static 'images/castor-mascotte-eating-logs-no-bg.png' %}" alt="" aria-hidden="true">
     </div>
 
     <section class="hero hero-compact">
@@ -473,6 +472,12 @@
     </div>
 
     <footer class="my-5 text-center footer-note">
+        <!-- Mascot cameo: fades in and plays once when this section scrolls into view. -->
+        <div class="castor-cameo" id="castor-cameo" aria-hidden="true">
+            <video class="castor-cameo-video"
+                   src="{% static 'videos/CastorIQ_Teaser_Loop.mp4' %}"
+                   muted playsinline preload="metadata"></video>
+        </div>
         <p class="mb-1">
             CastorIQ is a private testing environment. Uploaded IFC models are processed by cloud LLM
             providers (Anthropic, Groq) when those providers are active. By applying you opt into a
@@ -488,6 +493,11 @@
             <a href="https://www.linkedin.com/company/castor-iq/" class="subtle" target="_blank" rel="noopener">
                 Follow on LinkedIn
             </a>
+            <span class="mx-2">·</span>
+            <i class="bi bi-youtube me-1"></i>
+            <a href="https://www.youtube.com/watch?v=5JB-yFb7k0w" class="subtle" target="_blank" rel="noopener">
+                Watch on YouTube
+            </a>
         </p>
         <p class="mb-0">
             <a href="{% url 'login' %}" class="subtle">Sign in</a> ·
@@ -500,24 +510,25 @@
 </main>
 
 <script>
-    // Video facade -> real YouTube iframe on click. Keeps first paint instant.
+
+    // Castor mascot cameo — fades in and plays once when it scrolls into view.
     (function () {
-        var facade = document.getElementById('video-facade');
-        if (!facade) return;
-        facade.addEventListener('click', function () {
-            var videoId = facade.dataset.videoId;
-            if (!videoId) return;
-            var iframe = document.createElement('iframe');
-            iframe.src = 'https://www.youtube.com/embed/' + videoId +
-                         '?autoplay=1&rel=0&modestbranding=1&playsinline=1';
-            iframe.title = 'CastorIQ demo';
-            iframe.setAttribute('allow',
-                'accelerometer; autoplay; clipboard-write; encrypted-media; ' +
-                'gyroscope; picture-in-picture; web-share');
-            iframe.setAttribute('allowfullscreen', '');
-            facade.innerHTML = '';
-            facade.appendChild(iframe);
-        });
+        var cameo = document.getElementById('castor-cameo');
+        if (!cameo) return;
+
+        var video = cameo.querySelector('video');
+        var observer = new IntersectionObserver(function (entries) {
+            entries.forEach(function (entry) {
+                if (!entry.isIntersecting) return;
+                observer.disconnect();
+                cameo.classList.add('castor-cameo--visible');
+                if (video) {
+                    video.play().catch(function () { /* autoplay blocked, ignore */ });
+                }
+            });
+        }, { threshold: 0.3 });
+
+        observer.observe(cameo);
     })();
 </script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
