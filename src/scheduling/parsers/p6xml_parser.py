@@ -295,15 +295,12 @@ def _parse_activity(elem, nsp: str, obj_id: str) -> dict | None:
     constraint_type = t("PrimaryConstraintType") or t("SecondaryConstraintType") or ""
     constraint_date = _to_actual_date(t("PrimaryConstraintDate") or t("SecondaryConstraintDate"))
 
-    try:
-        phys_pct = float(t("PhysicalPercentComplete") or "0")
-    except (ValueError, TypeError):
-        phys_pct = 0.0
+    from scheduling.services.pct_normalize import normalize_pct_complete
 
-    try:
-        dur_pct = float(t("DurationPercentComplete") or "0")
-    except (ValueError, TypeError):
-        dur_pct = 0.0
+    phys_raw = t("PhysicalPercentComplete")
+    dur_raw = t("DurationPercentComplete")
+    phys_pct = normalize_pct_complete(phys_raw) if phys_raw else None
+    dur_pct = normalize_pct_complete(dur_raw) if dur_raw else None
 
     return {
         "name": name,

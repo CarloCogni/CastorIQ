@@ -174,6 +174,11 @@ def _parse_msp_task(el, ns: str) -> dict | None:
     )
     status = _MSP_STATUS_MAP.get(status_code, "planned")
 
+    from scheduling.services.pct_normalize import normalize_pct_complete
+
+    pct_raw = text("PercentComplete")
+    _p6_phys_pct = normalize_pct_complete(pct_raw) if pct_raw else None
+
     return {
         "name": name,
         "start_date": start,
@@ -185,6 +190,7 @@ def _parse_msp_task(el, ns: str) -> dict | None:
         "color": "#3b82f6",
         "source": "msp",
         "description": text("Notes"),
+        "_p6_phys_pct": _p6_phys_pct,
     }
 
 
@@ -399,6 +405,16 @@ def _parse_p6_activity(el, nsp: str, obj_id: str) -> dict | None:
     expected_finish = _to_actual_date(t("ExpectedFinishDate"))
     wbs_obj_id = t("WBSObjectId")
 
+    from scheduling.services.pct_normalize import normalize_pct_complete
+
+    phys_raw = t("PhysicalPercentComplete")
+    dur_raw = t("DurationPercentComplete")
+    pct_raw = t("PercentComplete")
+    _p6_phys_pct = normalize_pct_complete(phys_raw) if phys_raw else None
+    if _p6_phys_pct is None and pct_raw:
+        _p6_phys_pct = normalize_pct_complete(pct_raw)
+    _p6_dur_pct = normalize_pct_complete(dur_raw) if dur_raw else None
+
     return {
         "name": name,
         "start_date": start,
@@ -423,6 +439,8 @@ def _parse_p6_activity(el, nsp: str, obj_id: str) -> dict | None:
         "total_float_days": total_float_days,
         "expected_finish": expected_finish,
         "wbs_name": "",  # filled in by _parse_p6_lxml / _parse_p6_stdlib
+        "_p6_phys_pct": _p6_phys_pct,
+        "_p6_dur_pct": _p6_dur_pct,
     }
 
 

@@ -169,6 +169,32 @@ class ScheduleSaveTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(Task.objects.filter(project=self.project, name="Foundation Work").exists())
 
+    def test_save_normalizes_p6_phys_pct_to_task(self):
+        """Session _p6_phys_pct=40 persists as Task.physical_percent_complete=0.4."""
+        from scheduling.models import Task
+
+        self._seed_session(
+            [
+                {
+                    "name": "In Progress Task",
+                    "start_date": "2025-01-01",
+                    "end_date": "2025-01-10",
+                    "status": "active",
+                    "source": "p6xml",
+                    "activity_code": "ACT-002",
+                    "color": "#3b82f6",
+                    "description": "",
+                    "_p6_phys_pct": 40,
+                    "_p6_dur_pct": 40,
+                }
+            ]
+        )
+        response = self.client.post(self.url)
+        self.assertEqual(response.status_code, 200)
+        task = Task.objects.get(project=self.project, name="In Progress Task")
+        self.assertAlmostEqual(task.physical_percent_complete, 0.4, places=4)
+        self.assertAlmostEqual(task.duration_percent_complete, 0.4, places=4)
+
     def test_session_cleared_after_save(self):
         self._seed_session(
             [
