@@ -29,7 +29,7 @@ def _build_set_password_url(user) -> str:
     """
     uid = urlsafe_base64_encode(force_bytes(user.pk))
     token = default_token_generator.make_token(user)
-    path = reverse("password_reset_confirm", kwargs={"uidb64": uid, "token": token})
+    path = reverse("users_set_password_confirm", kwargs={"uidb64": uid, "token": token})
     return settings.SITE_URL.rstrip("/") + path
 
 
