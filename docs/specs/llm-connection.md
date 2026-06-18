@@ -1,6 +1,6 @@
 # Castor — LLM Connection Strategy
 
-**Status:** Decision memo. Deferred — roadmap input, not a build ticket.
+**Status:** Decision memo. Tier B (BYOK) **shipped 2026-06** for the public-beta launch. Tier A remains the default per CLAUDE.md §1. Tier C remains deferred — roadmap input, not a build ticket.
 **Author prompt:** "Platform online for FREE, but local LLM on user PC connecting through browser?"
 **Scope:** How Castor connects to LLM inference when served as an online platform, given the current all-local Ollama architecture and the business constraint of keeping hosting costs sustainable.
 
@@ -148,9 +148,11 @@ User points Castor at their own Ollama endpoint. Default is `http://localhost:11
 
 This is the path for AEC professionals with serious hardware and privacy-sensitive projects. It costs Castor nothing and upholds the local-first principle.
 
-### Tier B — BYOK (convenience, opt-in)
+### Tier B — BYOK (shipped 2026-06)
 
-User adds a provider key (Groq first — cheapest and fastest; Anthropic second — highest quality) in settings. Key is stored **encrypted at rest** (Django `cryptography`-based field), scoped per-user, never logged, never sent to anyone but the named provider. The UI makes clear when a call is about to leave the user's machine ("This call will be sent to Groq. Cost estimate: $0.004.") — every single time, not once at onboarding.
+User adds a provider key (Anthropic or Groq) on the Settings page. Key is stored **encrypted at rest** with Fernet (AES-128) via `core.crypto`, keyed by `FIELD_ENCRYPTION_KEY`, scoped per-user, never logged, never sent to anyone but the named provider. The Ask and Modify chat input bars carry a small "Sending to: …" badge that names the provider on every render — disclosure is continuous, not once at onboarding.
+
+Implementation lives in `core/llm.py:_resolve_llm_choice()`, `core/services/byok_service.py`, `core/views_byok.py`, and `core/templates/core/components/byok_panel.html`. The factory pattern in `get_llm(user, purpose)` means none of the 9 writeback services or the RAG service required call-site changes — credential dispatch happens entirely at the factory seam.
 
 This serves users who want frictionless onboarding and have verified that their project NDAs permit cloud LLM use. It is a user-initiated deviation from local-first, not a Castor default.
 
@@ -223,4 +225,6 @@ If Castor ships a Tauri or Electron desktop shell, the localhost-from-HTTPS ques
 
 **2026-04-17 — Deferred.** Current stance: Ollama-local remains Castor's default per CLAUDE.md §"Key Design Decisions" #1. Browser-to-localhost LLM is viable and aligns with the local-first principle. WebLLM is noted but not pursued in V1 (model-quality ceiling too low for Tier 3 writeback). BYOK and Castor-managed tiers are roadmap items contingent on platform go-to-market strategy and privacy-policy drafting. Any move to implement Tier B must be preceded by a CLAUDE.md update — the principle is not to be diluted silently.
 
-**Next revisit trigger:** when a platform-hosting decision is made, or when user demand for cloud LLM becomes load-bearing on adoption.
+**2026-06-05 — Tier B shipped for the public-beta launch.** The shared $150 Anthropic+Groq pool was running into the runway limit before product-market fit could be validated, and "the platform won't let me use my own account" was the single most common point of friction in early dogfood. BYOK ships as an opt-in escape hatch with a continuous per-call provider disclosure badge and a hard-error policy on auth failure (no silent fallback to the managed pool). The CLAUDE.md §1 principle is preserved — Ollama-local remains the default; BYOK is a user choice, never a Castor default. Implementation took ~5 focused days at the factory seam in `core/llm.py`.
+
+**Next revisit trigger:** when Tier C (Castor-managed inference) becomes load-bearing on adoption — likely after Barcelona feedback if usage outgrows the $150 pool faster than BYOK uptake compensates.

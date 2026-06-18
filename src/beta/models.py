@@ -82,6 +82,20 @@ class BetaApplication(models.Model):
         related_name="beta_application",
     )
 
+    # Persisted failure trace from sample-project provisioning during approval.
+    # Empty = healthy. Non-empty = User was created but Sample Project did not
+    # seed correctly — surfaced in the admin list view so it doesn't get lost
+    # in a transient Django messages toast (the prior behaviour).
+    provisioning_error = models.TextField(
+        blank=True,
+        default="",
+        verbose_name="Provisioning error",
+        help_text=(
+            "Sample-project provisioning failure trace, if any. Run "
+            "`manage.py provision_sample_project <user_id> --force-files` to recover."
+        ),
+    )
+
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
 

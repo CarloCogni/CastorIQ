@@ -83,9 +83,7 @@ def kpis(window_days: int) -> dict[str, Any]:
 
     error_log_count = ErrorLog.objects.filter(created_at__gte=since).count()
 
-    latencies = list(
-        qs.exclude(latency_ms__isnull=True).values_list("latency_ms", flat=True)
-    )
+    latencies = list(qs.exclude(latency_ms__isnull=True).values_list("latency_ms", flat=True))
 
     return {
         "window_days": window_days,
@@ -233,9 +231,7 @@ def cost_per_active_user_per_day(window_days: int) -> dict[str, Any]:
         )
         .order_by("day")
     )
-    by_day = {
-        r["day"].date().isoformat(): r for r in rows if r["day"] is not None
-    }
+    by_day = {r["day"].date().isoformat(): r for r in rows if r["day"] is not None}
     today = timezone.now().date()
     labels: list[str] = []
     values: list[float] = []
@@ -320,20 +316,18 @@ def kpis_for_reliability(window_days: int) -> dict[str, Any]:
     error_log_count = ErrorLog.objects.filter(created_at__gte=since).count()
 
     ask_latencies = list(
-        qs.filter(
-            purpose=LLMCallLog.Purpose.ASK, latency_ms__isnull=False
-        ).values_list("latency_ms", flat=True)
+        qs.filter(purpose=LLMCallLog.Purpose.ASK, latency_ms__isnull=False).values_list(
+            "latency_ms", flat=True
+        )
     )
     modify_latencies = list(
-        qs.filter(
-            purpose=LLMCallLog.Purpose.MODIFY, latency_ms__isnull=False
-        ).values_list("latency_ms", flat=True)
+        qs.filter(purpose=LLMCallLog.Purpose.MODIFY, latency_ms__isnull=False).values_list(
+            "latency_ms", flat=True
+        )
     )
 
     calls = aggs["calls"] or 0
-    success_pct = (
-        round(((aggs["succeeded_count"] or 0) / calls) * 100, 1) if calls else None
-    )
+    success_pct = round(((aggs["succeeded_count"] or 0) / calls) * 100, 1) if calls else None
 
     return {
         "window_days": window_days,
@@ -389,9 +383,7 @@ def p95_latency_per_purpose_per_day(window_days: int) -> dict[str, Any]:
     """
     since = _since(window_days)
     rows = (
-        LLMCallLog.objects.filter(
-            created_at__gte=since, latency_ms__isnull=False
-        )
+        LLMCallLog.objects.filter(created_at__gte=since, latency_ms__isnull=False)
         .annotate(day=TruncDay("created_at"))
         .values("day", "purpose", "latency_ms")
     )
@@ -405,10 +397,7 @@ def p95_latency_per_purpose_per_day(window_days: int) -> dict[str, Any]:
         by_day_purpose.setdefault(key, []).append(r["latency_ms"])
 
     today = timezone.now().date()
-    labels = [
-        (today - timedelta(days=window_days - 1 - i)).isoformat()
-        for i in range(window_days)
-    ]
+    labels = [(today - timedelta(days=window_days - 1 - i)).isoformat() for i in range(window_days)]
 
     series: dict[str, list[int | None]] = {"ask": [], "modify": []}
     for label in labels:
@@ -422,9 +411,7 @@ def p95_latency_per_purpose_per_day(window_days: int) -> dict[str, Any]:
     return {"labels": labels, "series": series}
 
 
-def error_type_breakdown(
-    window_days: int, limit: int = 10
-) -> dict[str, Any]:
+def error_type_breakdown(window_days: int, limit: int = 10) -> dict[str, Any]:
     """Top error categories from ``LLMCallLog.error_type`` ∪ ``ErrorLog.exception_type``.
 
     Free-form text on both sides; we normalise blanks to ``"(unknown)"`` and
@@ -477,9 +464,7 @@ def unresolved_error_backlog() -> dict[str, Any]:
     buckets = [
         {
             "label": "<24h",
-            "count": unresolved.filter(
-                created_at__gte=now - timedelta(hours=24)
-            ).count(),
+            "count": unresolved.filter(created_at__gte=now - timedelta(hours=24)).count(),
         },
         {
             "label": "24h–7d",
@@ -490,9 +475,7 @@ def unresolved_error_backlog() -> dict[str, Any]:
         },
         {
             "label": ">7d",
-            "count": unresolved.filter(
-                created_at__lt=now - timedelta(days=7)
-            ).count(),
+            "count": unresolved.filter(created_at__lt=now - timedelta(days=7)).count(),
         },
     ]
 
@@ -528,9 +511,7 @@ def failure_record_taxonomy(window_days: int) -> dict[str, Any]:
     tier_totals: dict[int | None, int] = {1: 0, 2: 0, 3: 0, None: 0}
 
     if total:
-        rows_by_phase_cat = (
-            qs.values("failure_phase", "category").annotate(n=Count("id"))
-        )
+        rows_by_phase_cat = qs.values("failure_phase", "category").annotate(n=Count("id"))
         phase_idx = {p: i for i, p in enumerate(phases)}
         cat_idx = {c: i for i, c in enumerate(categories)}
         for r in rows_by_phase_cat:
@@ -573,9 +554,7 @@ def ingestion_status(window_days: int) -> dict[str, Any]:
         for r in qs.values("status").annotate(n=Count("id")):
             by_status[r["status"]] = r["n"] or 0
         terminal = by_status["completed"] + by_status["failed"]
-        success_pct = (
-            round(by_status["completed"] / terminal * 100, 1) if terminal else None
-        )
+        success_pct = round(by_status["completed"] / terminal * 100, 1) if terminal else None
         return {
             "total": total,
             "by_status": by_status,
@@ -606,25 +585,19 @@ def engagement_kpis(window_days: int) -> dict[str, Any]:
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
     dau = (
-        LLMCallLog.objects.filter(
-            created_at__gte=today_start, user__isnull=False
-        )
+        LLMCallLog.objects.filter(created_at__gte=today_start, user__isnull=False)
         .values("user_id")
         .distinct()
         .count()
     )
     wau = (
-        LLMCallLog.objects.filter(
-            created_at__gte=now - timedelta(days=7), user__isnull=False
-        )
+        LLMCallLog.objects.filter(created_at__gte=now - timedelta(days=7), user__isnull=False)
         .values("user_id")
         .distinct()
         .count()
     )
     mau = (
-        LLMCallLog.objects.filter(
-            created_at__gte=now - timedelta(days=30), user__isnull=False
-        )
+        LLMCallLog.objects.filter(created_at__gte=now - timedelta(days=30), user__isnull=False)
         .values("user_id")
         .distinct()
         .count()
@@ -671,9 +644,7 @@ def dau_wau_mau(window_days: int = 60) -> dict[str, Any]:
     earliest = today - timedelta(days=window_days - 1 + 29)  # need 30d lookback for MAU on day 0
 
     rows = (
-        LLMCallLog.objects.filter(
-            created_at__date__gte=earliest, user__isnull=False
-        )
+        LLMCallLog.objects.filter(created_at__date__gte=earliest, user__isnull=False)
         .annotate(day=TruncDay("created_at"))
         .values("day", "user_id")
         .distinct()
@@ -751,10 +722,8 @@ def time_to_first_value() -> dict[str, Any]:
         first_ask.setdefault(row["user_id"], row["created_at"])
 
     first_proposal: dict[Any, Any] = {}
-    for row in (
-        ModificationProposal.objects.order_by("created_by_id", "created_at").values(
-            "created_by_id", "created_at"
-        )
+    for row in ModificationProposal.objects.order_by("created_by_id", "created_at").values(
+        "created_by_id", "created_at"
     ):
         first_proposal.setdefault(row["created_by_id"], row["created_at"])
 
@@ -845,9 +814,7 @@ def modify_funnel(window_days: int = 30) -> dict[str, Any]:
         if tier_key not in counts:
             counts[None][r["status"]] = counts[None].get(r["status"], 0) + (r["n"] or 0)
             continue
-        counts[tier_key][r["status"]] = counts[tier_key].get(r["status"], 0) + (
-            r["n"] or 0
-        )
+        counts[tier_key][r["status"]] = counts[tier_key].get(r["status"], 0) + (r["n"] or 0)
 
     tiers: list[Any] = [1, 2, 3]
     if any(counts[None].values()):
@@ -880,9 +847,7 @@ def activity_heatmap(window_days: int = 30) -> dict[str, Any]:
     normalised in the template without re-scanning the matrix in JS.
     """
     since = _since(window_days)
-    rows = LLMCallLog.objects.filter(created_at__gte=since).values_list(
-        "created_at", flat=True
-    )
+    rows = LLMCallLog.objects.filter(created_at__gte=since).values_list("created_at", flat=True)
     matrix = [[0 for _ in range(24)] for _ in range(7)]
     max_count = 0
     for created_at in rows:
@@ -944,9 +909,8 @@ def cohort_retention_grid(weeks: int = 8) -> dict[str, Any]:
         cohort_start_dates[label] = monday
 
     # All weekly activity rows once, then walk them per-user.
-    activity_rows = (
-        LLMCallLog.objects.filter(user__isnull=False)
-        .values_list("user_id", "created_at")
+    activity_rows = LLMCallLog.objects.filter(user__isnull=False).values_list(
+        "user_id", "created_at"
     )
     user_active_weeks: dict[Any, set] = {}
     for uid, created_at in activity_rows:
@@ -956,9 +920,7 @@ def cohort_retention_grid(weeks: int = 8) -> dict[str, Any]:
         monday = d - timedelta(days=d.weekday())
         user_active_weeks.setdefault(uid, set()).add(monday)
 
-    cohort_labels_sorted = sorted(
-        cohort_members.keys(), key=lambda lbl: cohort_start_dates[lbl]
-    )
+    cohort_labels_sorted = sorted(cohort_members.keys(), key=lambda lbl: cohort_start_dates[lbl])
 
     cohorts_out: list[dict[str, Any]] = []
     grid: list[list[Any]] = []
@@ -972,9 +934,7 @@ def cohort_retention_grid(weeks: int = 8) -> dict[str, Any]:
                 row.append(None)
                 continue
             active_count = sum(
-                1
-                for uid in members
-                if target_monday in user_active_weeks.get(uid, set())
+                1 for uid in members if target_monday in user_active_weeks.get(uid, set())
             )
             row.append(round(active_count / size * 100, 1) if size else 0.0)
         cohorts_out.append({"label": label, "size": size})
@@ -1009,9 +969,7 @@ def proposal_acceptance_rate_by_tier(window_days: int) -> dict[str, Any]:
 
     since = _since(window_days)
     rows = (
-        ModificationProposal.objects.filter(
-            created_at__gte=since, tier__isnull=False
-        )
+        ModificationProposal.objects.filter(created_at__gte=since, tier__isnull=False)
         .values("tier", "status")
         .annotate(n=Count("id"))
     )
@@ -1036,9 +994,7 @@ def proposal_acceptance_rate_by_tier(window_days: int) -> dict[str, Any]:
                 "applied": applied,
                 "accepted_pct": accepted_pct,
                 "target_pct": target,
-                "meets_target": (
-                    accepted_pct is not None and accepted_pct >= target
-                ),
+                "meets_target": (accepted_pct is not None and accepted_pct >= target),
             }
         )
         overall_total += total
@@ -1087,11 +1043,8 @@ def ifc_ingestion_scatter() -> dict[str, Any]:
     """
     from ifc_processor.models import IFCFile
 
-    qs = (
-        IFCFile.objects.filter(
-            status=IFCFile.Status.COMPLETED, processed_at__isnull=False
-        )
-        .values("name", "entity_count", "created_at", "processed_at")
+    qs = IFCFile.objects.filter(status=IFCFile.Status.COMPLETED, processed_at__isnull=False).values(
+        "name", "entity_count", "created_at", "processed_at"
     )
     points: list[dict[str, Any]] = []
     latencies: list[float] = []
@@ -1111,9 +1064,7 @@ def ifc_ingestion_scatter() -> dict[str, Any]:
         entity_counts.append(int(r["entity_count"] or 0))
 
     p95 = _percentile([int(x) for x in latencies], 0.95) if latencies else None
-    median_entities = (
-        sorted(entity_counts)[len(entity_counts) // 2] if entity_counts else None
-    )
+    median_entities = sorted(entity_counts)[len(entity_counts) // 2] if entity_counts else None
     return {
         "points": points,
         "p95_latency_s": p95,
@@ -1179,14 +1130,8 @@ def investor_kpis() -> dict[str, Any]:
     from ifc_processor.models import IFCFile
 
     cohort = cohort_retention_grid(weeks=8)
-    w4_pcts = [
-        row[4]
-        for row in cohort["grid"]
-        if len(row) > 4 and row[4] is not None
-    ]
-    avg_w4_retention = (
-        round(sum(w4_pcts) / len(w4_pcts), 1) if w4_pcts else None
-    )
+    w4_pcts = [row[4] for row in cohort["grid"] if len(row) > 4 and row[4] is not None]
+    avg_w4_retention = round(sum(w4_pcts) / len(w4_pcts), 1) if w4_pcts else None
 
     mau = (
         LLMCallLog.objects.filter(
@@ -1263,10 +1208,7 @@ def _bucket_by_day_and_category(
     regardless of activity gaps.
     """
     today = timezone.now().date()
-    labels = [
-        (today - timedelta(days=window_days - 1 - i)).isoformat()
-        for i in range(window_days)
-    ]
+    labels = [(today - timedelta(days=window_days - 1 - i)).isoformat() for i in range(window_days)]
     label_index = {label: i for i, label in enumerate(labels)}
 
     categories: list[str] = []

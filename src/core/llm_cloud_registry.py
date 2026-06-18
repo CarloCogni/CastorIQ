@@ -29,27 +29,30 @@ CLOUD_MODELS: tuple[CloudModel, ...] = (
     CloudModel("anthropic", "claude-opus-4-7", "Claude Opus 4.7 (highest quality)"),
     CloudModel("anthropic", "claude-sonnet-4-6", "Claude Sonnet 4.6 (balanced — Ask default)"),
     CloudModel("anthropic", "claude-haiku-4-5", "Claude Haiku 4.5 (cheapest)"),
-    # Groq — for the Modify (writeback) pipeline. Ordered cheapest-to-most-capable
-    # except for the explicit default at the top.
-    CloudModel(
-        "groq",
-        "meta-llama/llama-4-scout-17b-16e-instruct",
-        "Llama 4 Scout 17Bx16E (Modify default — fast + cheap MoE)",
-    ),
+    # Groq Production-tier models only. Preview models (Scout, Qwen3-32B) are
+    # deliberately excluded — Groq's own docs warn they "may be discontinued at
+    # short notice." See https://console.groq.com/docs/models for the live list.
+    # Scout remains in core.llm._PRICE_TABLE so any historical LLMCallLog rows
+    # still price correctly, but operators should not pick it for new traffic.
     CloudModel(
         "groq",
         "llama-3.3-70b-versatile",
-        "Llama 3.3 70B Versatile (low Groq TPD — short tests only, not for default traffic)",
-    ),
-    CloudModel(
-        "groq",
-        "qwen/qwen3-32b",
-        "Qwen3 32B (strongest JSON / tool-call adherence)",
+        "Llama 3.3 70B Versatile (production — strong reasoning, $0.59/$0.79 per Mtok)",
     ),
     CloudModel(
         "groq",
         "openai/gpt-oss-120b",
-        "GPT-OSS 120B (quality reach for Tier 3 code-gen)",
+        "GPT-OSS 120B (production — frontier reach for Tier 3 code-gen, $0.15/$0.60 per Mtok)",
+    ),
+    CloudModel(
+        "groq",
+        "llama-3.1-8b-instant",
+        "Llama 3.1 8B Instant (production — cheapest and fastest, $0.05/$0.08 per Mtok)",
+    ),
+    CloudModel(
+        "groq",
+        "openai/gpt-oss-20b",
+        "GPT-OSS 20B (production — fastest at ~1000 t/s, $0.075/$0.30 per Mtok)",
     ),
 )
 

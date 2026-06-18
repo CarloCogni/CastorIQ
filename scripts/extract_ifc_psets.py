@@ -8,7 +8,7 @@ Outputs a complete, ready-to-use Python module.
 """
 
 import sys
-import ifcopenshell
+
 from ifcopenshell.util.pset import PsetQto
 
 psetqto = PsetQto("IFC4")
@@ -16,34 +16,81 @@ psetqto = PsetQto("IFC4")
 # ── All IFC entity types that can have psets ───────────────
 ENTITY_TYPES = [
     # Building elements
-    "IfcWall", "IfcWallStandardCase", "IfcDoor", "IfcWindow",
-    "IfcSlab", "IfcColumn", "IfcBeam", "IfcRoof", "IfcStair",
-    "IfcStairFlight", "IfcRamp", "IfcRampFlight", "IfcRailing",
-    "IfcCovering", "IfcCurtainWall", "IfcPlate", "IfcMember",
-    "IfcFooting", "IfcPile", "IfcBuildingElementProxy",
+    "IfcWall",
+    "IfcWallStandardCase",
+    "IfcDoor",
+    "IfcWindow",
+    "IfcSlab",
+    "IfcColumn",
+    "IfcBeam",
+    "IfcRoof",
+    "IfcStair",
+    "IfcStairFlight",
+    "IfcRamp",
+    "IfcRampFlight",
+    "IfcRailing",
+    "IfcCovering",
+    "IfcCurtainWall",
+    "IfcPlate",
+    "IfcMember",
+    "IfcFooting",
+    "IfcPile",
+    "IfcBuildingElementProxy",
     # Spatial
-    "IfcSpace", "IfcBuilding", "IfcBuildingStorey", "IfcSite",
+    "IfcSpace",
+    "IfcBuilding",
+    "IfcBuildingStorey",
+    "IfcSite",
     # Distribution elements
-    "IfcDistributionElement", "IfcFlowTerminal", "IfcFlowSegment",
-    "IfcFlowFitting", "IfcFlowController", "IfcFlowMovingDevice",
-    "IfcFlowStorageDevice", "IfcFlowTreatmentDevice",
+    "IfcDistributionElement",
+    "IfcFlowTerminal",
+    "IfcFlowSegment",
+    "IfcFlowFitting",
+    "IfcFlowController",
+    "IfcFlowMovingDevice",
+    "IfcFlowStorageDevice",
+    "IfcFlowTreatmentDevice",
     "IfcEnergyConversionDevice",
     # Specific MEP
-    "IfcPipeSegment", "IfcPipeFitting", "IfcDuctSegment",
-    "IfcDuctFitting", "IfcCableCarrierSegment", "IfcCableSegment",
-    "IfcValve", "IfcPump", "IfcFan", "IfcCompressor",
-    "IfcBoiler", "IfcChiller", "IfcHeatExchanger", "IfcCoil",
-    "IfcAirTerminal", "IfcFireSuppressionTerminal",
-    "IfcSanitaryTerminal", "IfcLamp", "IfcLightFixture",
-    "IfcOutlet", "IfcSwitchingDevice", "IfcSensor",
-    "IfcActuator", "IfcAlarm", "IfcController",
-    "IfcProtectiveDevice", "IfcTransformer",
-    "IfcUnitaryEquipment", "IfcAirTerminalBox",
-    "IfcDamper", "IfcFilter", "IfcTank", "IfcInterceptor",
+    "IfcPipeSegment",
+    "IfcPipeFitting",
+    "IfcDuctSegment",
+    "IfcDuctFitting",
+    "IfcCableCarrierSegment",
+    "IfcCableSegment",
+    "IfcValve",
+    "IfcPump",
+    "IfcFan",
+    "IfcCompressor",
+    "IfcBoiler",
+    "IfcChiller",
+    "IfcHeatExchanger",
+    "IfcCoil",
+    "IfcAirTerminal",
+    "IfcFireSuppressionTerminal",
+    "IfcSanitaryTerminal",
+    "IfcLamp",
+    "IfcLightFixture",
+    "IfcOutlet",
+    "IfcSwitchingDevice",
+    "IfcSensor",
+    "IfcActuator",
+    "IfcAlarm",
+    "IfcController",
+    "IfcProtectiveDevice",
+    "IfcTransformer",
+    "IfcUnitaryEquipment",
+    "IfcAirTerminalBox",
+    "IfcDamper",
+    "IfcFilter",
+    "IfcTank",
+    "IfcInterceptor",
     # Openings and features
     "IfcOpeningElement",
     # Furnishing
-    "IfcFurnishingElement", "IfcFurniture", "IfcSystemFurnitureElement",
+    "IfcFurnishingElement",
+    "IfcFurniture",
+    "IfcSystemFurnitureElement",
     # Transport
     "IfcTransportElement",
 ]
@@ -165,8 +212,7 @@ for pset_name in sorted(all_pset_names):
                 if hasattr(prop, "Enumerators") and prop.Enumerators:
                     try:
                         enum_vals = [
-                            v.wrappedValue.strip()
-                            for v in prop.Enumerators.EnumerationValues
+                            v.wrappedValue.strip() for v in prop.Enumerators.EnumerationValues
                         ]
                     except Exception:
                         enum_vals = None
@@ -182,28 +228,28 @@ for pset_name in sorted(all_pset_names):
         errors.append(f"{pset_name}: {e}")
 
 # ── Output the complete Python module ──────────────────────
-print('# writeback/services/ifc_standard_psets.py')
+print("# writeback/services/ifc_standard_psets.py")
 print('"""')
-print('Registry of ALL IFC4 standard property sets and their property types.')
-print('')
-print('Auto-generated from IfcOpenShell IFC4 PSD templates.')
-print('Do NOT edit manually — re-run scripts/extract_ifc_psets.py instead.')
-print(f'')
-print(f'Total: {len(results)} psets, {sum(len(p) for p in results.values())} properties.')
-print('')
-print('Usage:')
-print('    from .ifc_standard_psets import lookup_property, coerce_from_registry')
+print("Registry of ALL IFC4 standard property sets and their property types.")
+print("")
+print("Auto-generated from IfcOpenShell IFC4 PSD templates.")
+print("Do NOT edit manually — re-run scripts/extract_ifc_psets.py instead.")
+print("")
+print(f"Total: {len(results)} psets, {sum(len(p) for p in results.values())} properties.")
+print("")
+print("Usage:")
+print("    from .ifc_standard_psets import lookup_property, coerce_from_registry")
 print('"""')
-print('')
-print('# Type constants')
+print("")
+print("# Type constants")
 print('BOOL = "bool"')
 print('STRING = "string"')
 print('REAL = "real"')
 print('INT = "int"')
 print('ENUM = "enum"')
-print('')
-print('')
-print('STANDARD_PSETS = {')
+print("")
+print("")
+print("STANDARD_PSETS = {")
 
 for pset_name in sorted(results.keys()):
     props = results[pset_name]
@@ -213,7 +259,7 @@ for pset_name in sorted(results.keys()):
     if len(short_entities) > 5:
         comment += ", ..."
 
-    print(f'    # Applies to: {comment}')
+    print(f"    # Applies to: {comment}")
     print(f'    "{pset_name}": {{')
     for prop_name in sorted(props.keys()):
         type_str, enum_vals = props[prop_name]
@@ -324,9 +370,10 @@ def coerce_from_registry(pset_name: str, prop_name: str, value):
 print(UTILITY_CODE)
 
 # ── Summary to stderr ──────────────────────────────────────
-print(f"\nTotal: {len(results)} psets, "
-      f"{sum(len(p) for p in results.values())} properties",
-      file=sys.stderr)
+print(
+    f"\nTotal: {len(results)} psets, {sum(len(p) for p in results.values())} properties",
+    file=sys.stderr,
+)
 
 if errors:
     print(f"\nErrors ({len(errors)}):", file=sys.stderr)

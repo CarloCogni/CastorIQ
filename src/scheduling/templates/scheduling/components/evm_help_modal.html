@@ -1,0 +1,157 @@
+<!-- scheduling/components/evm_help_modal.html — "How the EVM Dashboard Works" -->
+
+<div class="modal fade" id="evmHelpModal" tabindex="-1" aria-labelledby="evmHelpLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+
+            <div class="modal-header border-bottom px-4 py-3"
+                 style="border-color: var(--bs-border-color) !important;">
+                <h5 class="modal-title fw-semibold fs-6 mb-0" id="evmHelpLabel">
+                    <i class="bi bi-graph-up-arrow me-2" style="color: #3b82f6;"></i>
+                    How the EVM Dashboard Works
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body px-4 py-4">
+
+                <!-- 1. What is EVM? -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-box-seam me-1" style="color: #3b82f6;"></i>
+                    What is Earned Value Management?
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    EVM is the industry-standard method for measuring project performance. It compares
+                    <strong>what was planned</strong> (Planned Value), <strong>what was actually earned</strong>
+                    (Earned Value), and <strong>what was spent</strong> (Actual Cost) at any point in time.
+                    The ratios — SPI and CPI — give an objective answer to "are we on track?".
+                </p>
+
+                <!-- 2. KPI reference -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-speedometer2 me-1" style="color: #3b82f6;"></i>
+                    Key Performance Indicators
+                </p>
+                <table class="table table-sm table-borderless fs-8 mb-4" style="color: var(--bs-body-color);">
+                    <thead style="color: var(--bs-secondary-color);">
+                        <tr>
+                            <th style="width:70px;">KPI</th>
+                            <th style="width:160px;">Formula</th>
+                            <th>Meaning</th>
+                            <th style="width:90px;">Green / Red</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><strong>SPI</strong></td><td>EV ÷ PV</td><td>Schedule efficiency — how much work earned vs planned</td><td>≥ 1.0 / &lt; 1.0</td></tr>
+                        <tr><td><strong>CPI</strong></td><td>EV ÷ AC</td><td>Cost efficiency — earned vs actual spend</td><td>≥ 1.0 / &lt; 1.0</td></tr>
+                        <tr><td><strong>EAC</strong></td><td>BAC ÷ CPI</td><td>Estimate at Completion — projected final cost</td><td>≤ BAC / &gt; BAC</td></tr>
+                        <tr><td><strong>VAC</strong></td><td>BAC − EAC</td><td>Variance at Completion — over/under budget forecast</td><td>≥ 0 / &lt; 0</td></tr>
+                        <tr><td><strong>TCPI</strong></td><td>(BAC−EV) ÷ (BAC−AC)</td><td>Efficiency needed for remaining work to hit budget</td><td>≤ 1.0 / &gt; 1.10</td></tr>
+                    </tbody>
+                </table>
+
+                <!-- 3. Sections explained -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-layout-text-window me-1" style="color: #3b82f6;"></i>
+                    Dashboard Sections
+                </p>
+                <div class="d-flex flex-column gap-3 mb-4 fs-8">
+                    <div>
+                        <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 mb-1">S-Curve</span>
+                        <p class="text-secondary mb-0">
+                            Weekly cumulative PV (planned, blue dashed), EV (earned, green), and — when actual cost
+                            is imported — AC (actual cost, amber).
+                            The gap between EV and PV is the schedule variance; between EV and AC is cost variance.
+                            Hover for exact values at any week.
+                        </p>
+                    </div>
+                    <div>
+                        <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 mb-1">WBS Performance</span>
+                        <p class="text-secondary mb-0">
+                            Per-stage SPI coloured green/amber/red. Shows which construction packages are
+                            ahead, on track, or behind plan. Based on task count weighting, not cost.
+                        </p>
+                    </div>
+                    <div>
+                        <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 mb-1">Trend Analysis</span>
+                        <p class="text-secondary mb-0">
+                            Weekly SPI and CPI sparklines show whether performance is
+                            <strong>improving, stable, or declining</strong> over the last 12 weeks.
+                            Linear regression projects the trend 4/8/12 weeks ahead.
+                            TCPI flags whether budget recovery is realistic.
+                            The Schedule Recovery Index (TSPI) shows how much SPI must improve,
+                            and whether that improvement is achievable at the current trend rate.
+                        </p>
+                    </div>
+                    <div>
+                        <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 mb-1">Delay Distribution</span>
+                        <p class="text-secondary mb-0">
+                            Tasks bucketed by overrun severity — from On Time to 31+ days late.
+                            Hover a bar to see example tasks in that bucket.
+                        </p>
+                    </div>
+                    <div>
+                        <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 mb-1">Forecast Completion</span>
+                        <p class="text-secondary mb-0">
+                            SPI-adjusted finish date shown on a timeline strip alongside the baseline.
+                            Variance is positive when the project is expected to finish early.
+                        </p>
+                    </div>
+                    <div>
+                        <span class="badge" style="background:rgba(99,102,241,.12); color:#6366f1; border:1px solid rgba(99,102,241,.25);">Project Controls Chat</span>
+                        <p class="text-secondary mb-0">
+                            Ask free-form questions — "Which packages are at risk?", "When will we finish?",
+                            "Which deadlines are in danger?". The LLM has access to all live EVM metrics,
+                            trend analysis, critical path, WBS risk scores, and constraint data.
+                        </p>
+                    </div>
+                    <div>
+                        <span class="badge" style="background:rgba(245,158,11,.12); color:#d97706; border:1px solid rgba(245,158,11,.3);">Schedule Audit — Section Mismatches</span>
+                        <p class="text-secondary mb-0">
+                            Quality gate that compares each activity <strong>name</strong> against its
+                            planner-coded <strong>CSI MasterFormat division</strong> and flags likely
+                            mis-codes for human review. Two stages: (1) fast keyword pre-filter narrows
+                            ~10 k tasks to candidates in milliseconds; (2) LLM classifies each unique
+                            candidate name and assigns a verdict — <em>Confirmed mismatch</em>,
+                            <em>Uncertain</em>, or <em>Likely OK</em> (keyword false-positive). The
+                            planner's original CSI code is never changed; all flags are advisory.
+                            Correct mis-coded activities in P6 and re-import to resolve.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- 4. Cost basis -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-currency-dollar me-1" style="color: #3b82f6;"></i>
+                    Cost Basis
+                </p>
+                <p class="text-secondary fs-7 mb-1">
+                    Planned cost comes from P6 resource assignments; uncosted tasks are supplemented by QTO
+                    quantity estimates when available, then by task <em>durations</em> as a last-resort proxy
+                    (a banner warns you when a proxy is active — these are not monetary EVM numbers).
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    <strong>Actual Cost (AC) is read directly from <code>P6ResourceAssignment.actual_cost</code></strong>
+                    — real imported data only. When actual cost has not been imported, AC is absent and
+                    <strong>CPI, CV, EAC, and VAC are disabled</strong> with a clear notice on each KPI card;
+                    they are never estimated from a formula. Import resource assignments that include actual
+                    cost to activate these metrics.
+                </p>
+
+                <!-- 5. Caveats -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-exclamation-circle me-1" style="color: #8b5cf6;"></i>
+                    Caveats
+                </p>
+                <div class="d-flex flex-column gap-1 fs-8 text-secondary">
+                    <span><i class="bi bi-dot"></i>SPI trend convergence: point SPI tends toward 1.0 near project end regardless of performance — treat trend forecasts cautiously beyond 75% completion.</span>
+                    <span><i class="bi bi-dot"></i>CPI, CV, EAC, and VAC are disabled entirely — not estimated — when P6 actual cost has not been imported. The KPI cards show a notice rather than a placeholder value.</span>
+                    <span><i class="bi bi-dot"></i>TCPI requires at least some AC &lt; BAC; if AC has exceeded BAC the denominator is zero and TCPI is undefined.</span>
+                    <span><i class="bi bi-dot"></i>Constraint / deadline data (TCPI, MFO flags) requires a P6 XML re-import after the constraint fields were added — older imports have no constraint data.</span>
+                    <span><i class="bi bi-dot"></i>Trend regression uses a 12-week window. Fewer than 3 weeks of history will show "insufficient data" — this resolves automatically as the project progresses.</span>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>

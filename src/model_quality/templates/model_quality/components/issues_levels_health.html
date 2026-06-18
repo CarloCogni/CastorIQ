@@ -1,0 +1,63 @@
+<!-- ifc_insights/components/issues_levels_health.html — Section 4 partial -->
+<!-- Context: storey_rows (list[dict]), project, levels_url -->
+<!-- Each row: name, z_elevation, element_count, in_schedule, status (ok|no_schedule|no_elements) -->
+
+{% if not storey_rows %}
+<div class="card-body py-3 fs-7 text-secondary">
+    <i class="bi bi-info-circle me-1"></i>No IfcBuildingStorey objects found in this IFC file.
+</div>
+{% else %}
+<div class="table-responsive">
+    <table class="table table-sm table-hover mb-0">
+        <thead class="table-light">
+            <tr>
+                <th class="ps-3 py-2 fw-medium fs-7">Storey Name</th>
+                <th class="py-2 fw-medium fs-7">Z (mm)</th>
+                <th class="py-2 fw-medium fs-7 text-end">Elements</th>
+                <th class="py-2 fw-medium fs-7">In Schedule</th>
+                <th class="py-2 fw-medium fs-7">Status</th>
+                <th class="py-2 pe-3 fw-medium fs-7"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in storey_rows %}
+            <tr>
+                <td class="ps-3 py-2 fs-7 fw-medium">{{ s.name }}</td>
+                <td class="py-2 fs-7 text-secondary">{{ s.z_elevation|floatformat:0 }}</td>
+                <td class="py-2 fs-7 text-end">{{ s.element_count }}</td>
+                <td class="py-2">
+                    {% if s.in_schedule %}
+                    <span class="badge text-bg-success">Yes</span>
+                    {% else %}
+                    <span class="badge text-bg-secondary">No</span>
+                    {% endif %}
+                </td>
+                <td class="py-2 fs-7">
+                    {% if s.status == 'ok' %}
+                    <span class="text-success fw-semibold">&#10003; OK</span>
+                    {% elif s.status == 'no_schedule' %}
+                    <span class="text-warning fw-semibold">&#9888; Not in schedule</span>
+                    {% else %}
+                    <span class="text-danger fw-semibold">&#10007; No elements</span>
+                    {% endif %}
+                </td>
+                <td class="py-2 pe-3">
+                    <a href="{{ levels_url }}"
+                       class="btn btn-link btn-sm text-secondary p-0 fs-7">
+                        Fix in Levels &rarr;
+                    </a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+<div class="px-3 py-2 border-top">
+    <small class="text-secondary">
+        {{ storey_rows|length }} storey{{ storey_rows|length|pluralize }} &nbsp;&mdash;&nbsp;
+        <span class="text-success">&#10003;</span> OK &nbsp;
+        <span class="text-warning">&#9888;</span> not in schedule &nbsp;
+        <span class="text-danger">&#10007;</span> no elements
+    </small>
+</div>
+{% endif %}

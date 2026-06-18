@@ -1,0 +1,154 @@
+<!-- scheduling/components/fourD_review_partial.html — inline binding review for 4D Link tab -->
+
+<!-- Toggle header (always visible) -->
+<div class="d-flex align-items-center gap-1 py-1"
+     style="cursor:pointer; user-select:none;"
+     onclick="fdToggleReview()">
+    <i id="fd-review-chevron"
+       class="bi bi-chevron-right"
+       style="font-size:0.75rem; transition:transform 0.15s; color:var(--bs-secondary-color); flex-shrink:0;"></i>
+    <span class="fw-semibold" style="font-size:0.82rem;">
+        <i class="bi bi-layers me-1 text-primary"></i>Link Review
+        {% if summary.total %}<span class="badge bg-secondary ms-1">{{ summary.total }}</span>{% endif %}
+    </span>
+</div>
+
+<!-- Collapsible body (default collapsed; JS re-applies state after each HTMX swap) -->
+<div id="fd-review-body" style="display:none;">
+
+<!-- Filter tabs -->
+<ul class="nav nav-pills mt-1 mb-2" style="font-size:0.74rem; gap:2px;">
+    <li class="nav-item">
+        <a class="nav-link py-0 px-2 {% if filter_by == 'all' %}active{% endif %}"
+           hx-get="{% url 'scheduling:review' project.pk %}?filter=all&inline=1"
+           hx-target="#fourD-review-pane" hx-swap="innerHTML" style="cursor:pointer;">
+            All
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link py-0 px-2 {% if filter_by == 'linked' %}active{% endif %}"
+           hx-get="{% url 'scheduling:review' project.pk %}?filter=linked&inline=1"
+           hx-target="#fourD-review-pane" hx-swap="innerHTML" style="cursor:pointer;">
+            Linked
+            {% if summary.auto_accepted %}<span class="badge bg-success ms-1">{{ summary.auto_accepted }}</span>{% endif %}
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link py-0 px-2 {% if filter_by == 'needs_review' %}active{% endif %}"
+           hx-get="{% url 'scheduling:review' project.pk %}?filter=needs_review&inline=1"
+           hx-target="#fourD-review-pane" hx-swap="innerHTML" style="cursor:pointer;">
+            Needs Review
+            {% if summary.needs_review %}<span class="badge bg-warning text-dark ms-1">{{ summary.needs_review }}</span>{% endif %}
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link py-0 px-2 {% if filter_by == 'unlinked' %}active{% endif %}"
+           hx-get="{% url 'scheduling:review' project.pk %}?filter=unlinked&inline=1"
+           hx-target="#fourD-review-pane" hx-swap="innerHTML" style="cursor:pointer;">
+            Unlinked
+            {% if summary.unlinked_tasks %}<span class="badge bg-danger ms-1">{{ summary.unlinked_tasks }}</span>{% endif %}
+        </a>
+    </li>
+</ul>
+
+{% if summary.total == 0 and not unlinked_tasks %}
+
+<div class="d-flex align-items-center justify-content-center py-4 text-secondary" style="font-size:0.82rem;">
+    <i class="bi bi-layers me-2"></i>No bindings yet — run Castor Link Engine to auto-link tasks.
+</div>
+
+{% else %}
+
+<!-- Bindings table -->
+{% if rows %}
+<div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-2" style="font-size:0.80rem;">
+        <thead class="table-dark" style="position:sticky; top:0; z-index:1;">
+            <tr>
+                <th style="width:32%;">Task</th>
+                <th style="width:32%;">Entity</th>
+                <th style="width:18%;">Source</th>
+                <th style="width:18%;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            <tr id="binding-row-{{ row.binding.pk }}">
+                <!-- Task -->
+                <td style="max-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                    <div>{{ row.binding.task.name }}</div>
+                    {% if row.binding.task.activity_code %}
+                    <div class="text-secondary" style="font-size:0.71rem;">{{ row.binding.task.activity_code }}</div>
+                    {% endif %}
+                </td>
+                <!-- Entity -->
+                <td style="max-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                    <div>{{ row.entity_name }}</div>
+                    {% if row.entity_type %}
+                    <div class="text-secondary" style="font-size:0.71rem;">{{ row.entity_type }}</div>
+                    {% endif %}
+                </td>
+                <!-- Source badge -->
+                <td>
+                    {% if row.binding.needs_review %}
+                        <span class="badge bg-warning text-dark">Needs Review</span>
+                    {% elif row.binding.link_method == "manual" %}
+                        <span class="badge bg-success">Manual</span>
+                    {% elif row.binding.link_method == "exact" or row.binding.link_method == "normalized" %}
+                        <span class="badge" style="background:#3b82f6;">Exact</span>
+                    {% elif row.binding.link_method == "heuristic" %}
+                        <span class="badge" style="background:#3b82f6;">Heuristic</span>
+                    {% elif row.binding.link_method == "embedding" %}
+                        <span class="badge" style="background:#3b82f6;">Embedding</span>
+                    {% else %}
+                        <span class="badge bg-secondary">{{ row.binding.link_method }}</span>
+                    {% endif %}
+                </td>
+                <!-- Unlink -->
+                <td>
+                    <form hx-post="{% url 'scheduling:binding_remove' project.pk row.binding.pk %}"
+                          hx-target="#binding-row-{{ row.binding.pk }}"
+                          hx-swap="outerHTML">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-outline-danger btn-sm py-0 px-2" title="Remove binding">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% elif filter_by != 'unlinked' %}
+<p class="text-secondary small py-2 text-center">No bindings match this filter.</p>
+{% endif %}
+
+<!-- Unlinked tasks -->
+{% if unlinked_tasks %}
+<div class="border-top pt-2 mt-1" style="font-size:0.78rem;">
+    <div class="text-secondary mb-1" style="font-size:0.74rem;">
+        <i class="bi bi-x-circle text-danger me-1"></i>
+        {{ unlinked_tasks|length }} unlinked task{{ unlinked_tasks|length|pluralize }}
+    </div>
+    <table class="table table-sm mb-0" style="font-size:0.78rem;">
+        <tbody>
+            {% for task in unlinked_tasks %}
+            <tr>
+                <td class="text-truncate py-1" style="max-width:0;">{{ task.name }}</td>
+                <td class="py-1 text-secondary" style="width:130px;">
+                    {% if task.activity_code %}
+                    <code class="text-info">{{ task.activity_code }}</code>
+                    {% else %}—{% endif %}
+                </td>
+                <td class="py-1 text-end text-danger" style="width:28px;" title="Unlinked">✗</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+{% endif %}
+
+</div><!-- /fd-review-body -->

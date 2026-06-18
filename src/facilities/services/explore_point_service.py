@@ -154,7 +154,9 @@ def _create_point(
         table_links=_coerce_tables(item.get("tables")),
         kind=_point_kind(item.get("kind")),
         symbol=(item.get("symbol") or "")[:8] if _point_kind(item.get("kind")) == "custom" else "",
-        kind_label=(item.get("kindLabel") or "")[:80] if _point_kind(item.get("kind")) == "custom" else "",
+        kind_label=(item.get("kindLabel") or "")[:80]
+        if _point_kind(item.get("kind")) == "custom"
+        else "",
         created_by=user if (user and getattr(user, "is_authenticated", False)) else None,
     )
 

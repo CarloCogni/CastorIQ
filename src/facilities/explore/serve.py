@@ -6,6 +6,7 @@ so edits to src/*.js may not show up without a hard reload. This server sends
 
 Run:   python serve.py     →   http://127.0.0.1:5173/
 """
+
 import http.server
 import os
 import socketserver
@@ -25,7 +26,7 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
 
 
 class Server(socketserver.ThreadingTCPServer):
-    allow_reuse_address = True   # rebind immediately on restart
+    allow_reuse_address = True  # rebind immediately on restart
     daemon_threads = True
 
 

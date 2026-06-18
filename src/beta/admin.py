@@ -29,13 +29,13 @@ def _build_set_password_url(user) -> str:
     """
     uid = urlsafe_base64_encode(force_bytes(user.pk))
     token = default_token_generator.make_token(user)
-    path = reverse("password_reset_confirm", kwargs={"uidb64": uid, "token": token})
+    path = reverse("users_set_password_confirm", kwargs={"uidb64": uid, "token": token})
     return settings.SITE_URL.rstrip("/") + path
 
 
-def _send_welcome_email(application: BetaApplication, set_password_url: str) -> None:
+def _send_welcome_email(application: BetaApplication, user, set_password_url: str) -> None:
     ctx = {
-        "user": application.created_user,
+        "user": user,
         "user_full_name": application.name,
         "set_password_url": set_password_url,
         "site_url": settings.SITE_URL,
@@ -59,12 +59,19 @@ class BetaApplicationAdmin(admin.ModelAdmin):
         "name",
         "job_title",
         "status",
+        "needs_provisioning_repair",
         "created_at",
         "reviewed_by",
         "reviewed_at",
     )
     list_filter = ("status", "created_at")
     search_fields = ("email", "name", "job_title", "description", "notes")
+
+    @admin.display(boolean=True, description="Provisioning OK?")
+    def needs_provisioning_repair(self, obj: BetaApplication) -> bool:
+        # Inverted: True = healthy (no provisioning error recorded).
+        return not obj.provisioning_error
+
     readonly_fields = (
         "id",
         "submitted_ip",
@@ -80,7 +87,16 @@ class BetaApplicationAdmin(admin.ModelAdmin):
         ("Application", {"fields": ("email", "name", "job_title", "description")}),
         (
             "Vetting",
-            {"fields": ("status", "notes", "reviewed_by", "reviewed_at", "created_user")},
+            {
+                "fields": (
+                    "status",
+                    "notes",
+                    "reviewed_by",
+                    "reviewed_at",
+                    "created_user",
+                    "provisioning_error",
+                ),
+            },
         ),
         (
             "Submission context",
@@ -131,16 +147,24 @@ class BetaApplicationAdmin(admin.ModelAdmin):
                     user.set_unusable_password()  # forces the welcome flow
                     user.save()
 
-                # Sample-project provisioning. Failures here are surfaced as
-                # a warning but don't block the approval — a re-run of the
-                # management command can recover. Skipped on idempotent
-                # re-approve (the command itself short-circuits).
+                # Sample-project provisioning — fast half only. The post_save
+                # signal in users/signals.py already runs this during
+                # `get_or_create` above (on_commit), so this explicit call is
+                # usually a no-op (idempotency short-circuits). It stays in place
+                # to capture row-creation/file-copy failures into
+                # BetaApplication.provisioning_error — the signal swallows
+                # exceptions, this branch records them. `--skip-pipeline` keeps
+                # approve sub-second; the heavy IFC/doc pipeline runs off-request
+                # via the signal's daemon thread (see users/signals.py), so it
+                # never blocks the admin request past nginx's read timeout.
+                provisioning_error = ""
                 try:
                     from django.core.management import call_command
 
                     call_command(
                         "provision_sample_project",
                         str(user.pk),
+                        skip_pipeline=True,
                         verbosity=0,
                     )
                 except Exception as prov_exc:
@@ -149,27 +173,30 @@ class BetaApplicationAdmin(admin.ModelAdmin):
                         application.email,
                         prov_exc,
                     )
+                    provisioning_error = f"{type(prov_exc).__name__}: {prov_exc}"
                     self.message_user(
                         request,
                         f"{application.email}: account created and email queued, "
                         f"but sample-project provisioning failed ({prov_exc}). "
-                        "Re-run `manage.py provision_sample_project` to recover.",
+                        "Re-run `manage.py provision_sample_project --force-files` to recover.",
                         level=messages.WARNING,
                     )
 
                 set_password_url = _build_set_password_url(user)
-                _send_welcome_email(application, set_password_url)
+                _send_welcome_email(application, user, set_password_url)
 
                 application.status = BetaApplication.Status.APPROVED
                 application.reviewed_by = request.user
                 application.reviewed_at = timezone.now()
                 application.created_user = user
+                application.provisioning_error = provisioning_error
                 application.save(
                     update_fields=[
                         "status",
                         "reviewed_by",
                         "reviewed_at",
                         "created_user",
+                        "provisioning_error",
                     ]
                 )
                 approved += 1

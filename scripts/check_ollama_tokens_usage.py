@@ -15,9 +15,9 @@ except ImportError:
 
 
 def probe_model(model_name: str):
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"MODEL: {model_name}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     client = ollama.Client()  # defaults to localhost:11434
 
@@ -43,7 +43,7 @@ def probe_model(model_name: str):
     # 3) Check 'parameters' string for num_ctx
     if "parameters" in info:
         params = info["parameters"]
-        print(f"\n  --- parameters (raw string) ---")
+        print("\n  --- parameters (raw string) ---")
         print(f"  {repr(params)}")
         for line in str(params).splitlines():
             if "num_ctx" in line.lower() or "context" in line.lower():
@@ -51,11 +51,11 @@ def probe_model(model_name: str):
 
     # 4) Check 'details' dict
     if "details" in info and isinstance(info["details"], dict):
-        print(f"\n  --- details ---")
+        print("\n  --- details ---")
         print(f"  {json.dumps(info['details'], indent=4, default=str)}")
 
     # 5) Dump everything for inspection (truncated)
-    print(f"\n  --- FULL DUMP (truncated) ---")
+    print("\n  --- FULL DUMP (truncated) ---")
     dump = json.dumps(info, indent=2, default=str)
     if len(dump) > 3000:
         print(dump[:3000] + "\n  ... [truncated]")
@@ -86,7 +86,11 @@ def main():
 
     names = []
     for m in models:
-        name = m.get("name", m.get("model", "???")) if isinstance(m, dict) else getattr(m, "name", getattr(m, "model", "???"))
+        name = (
+            m.get("name", m.get("model", "???"))
+            if isinstance(m, dict)
+            else getattr(m, "name", getattr(m, "model", "???"))
+        )
         names.append(name)
 
     print(f"Installed models: {names}")

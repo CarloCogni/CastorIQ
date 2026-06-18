@@ -163,7 +163,7 @@ class TestFormatContext:
         real_entity = MagicMock(spec=IFCEntity)
         real_entity.name = "Wall-001"
         real_entity.ifc_type = "IfcWall"
-        real_entity.building_storey = "Level 1"
+        real_entity.spatial_container = None
         real_entity.description = "External load-bearing wall."
 
         result = rag_service._format_context([real_entity])
@@ -177,13 +177,13 @@ class TestFormatContext:
         e1 = MagicMock(spec=IFCEntity)
         e1.name = "Wall-001"
         e1.ifc_type = "IfcWall"
-        e1.building_storey = "L1"
+        e1.spatial_container = None
         e1.description = "Wall one."
 
         e2 = MagicMock(spec=IFCEntity)
         e2.name = "Wall-002"
         e2.ifc_type = "IfcWall"
-        e2.building_storey = "L1"
+        e2.spatial_container = None
         e2.description = "Wall two."
 
         result = rag_service._format_context([e1, e2])
@@ -260,7 +260,7 @@ class TestBuildHistoryWithinBudget:
         result = rag_service._build_history_within_budget(session, max_history_tokens=10)
 
         # With a 10-token budget, at most a couple of short lines can fit
-        lines = [l for l in result.split("\n") if l.strip()]
+        lines = [line for line in result.split("\n") if line.strip()]
         assert len(lines) <= 2
 
 
@@ -371,7 +371,7 @@ class TestSerializeContext:
         entity.id = "test-id"
         entity.name = "Wall-001"
         entity.ifc_type = "IfcWall"
-        entity.building_storey = "Level 1"
+        entity.spatial_container = None
         entity.global_id = "ABC123"
         entity.description = "An external wall."
 

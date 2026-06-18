@@ -63,6 +63,12 @@
                     <i class="bi bi-table me-2"></i>Schedule
                 </a>
             </li>
+            <li class="nav-item">
+                <a class="nav-link {% if active_tab == 'castor' %}active{% endif %}"
+                   href="{% url 'scheduling:schedule' project.pk %}?tab=data_sources">
+                    <i class="bi bi-boxes me-2"></i>4D/5D
+                </a>
+            </li>
             {% endif %}
             <li class="nav-item">
                 <a class="nav-link tab-facilities {% if active_tab == 'facilities' %}active{% endif %}" href="{% url 'facilities:tab' project.pk %}">
@@ -87,6 +93,8 @@
             {% include "ifc_processor/tabs/_explore.html" %}
         {% elif active_tab == 'schedule' %}
             {% include "ifc_processor/tabs/_schedule.html" %}
+        {% elif active_tab == 'castor' %}
+            {% include "environments/components/bim_panel.html" %}
         {% elif active_tab == 'facilities' %}
             {% include "facilities/tabs/_facilities.html" %}
         {% endif %}

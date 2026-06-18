@@ -5,7 +5,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("facilities", "0012_explorepoint_kind_label"),
     ]
@@ -42,8 +41,7 @@ class Migration(migrations.Migration):
             field=models.ImageField(
                 blank=True,
                 help_text=(
-                    "Plan rendered from the IFC model by slicing at the configured "
-                    "cut height"
+                    "Plan rendered from the IFC model by slicing at the configured cut height"
                 ),
                 null=True,
                 upload_to="facilities/explore/plans/generated/%Y/%m/",
@@ -56,10 +54,7 @@ class Migration(migrations.Migration):
             field=models.CharField(
                 choices=[("uploaded", "Uploaded"), ("generated", "Generated from IFC")],
                 default="uploaded",
-                help_text=(
-                    "Which image the viewer shows (uploaded vs generated). "
-                    "User-togglable."
-                ),
+                help_text=("Which image the viewer shows (uploaded vs generated). User-togglable."),
                 max_length=16,
                 verbose_name="Active Source",
             ),
@@ -70,8 +65,7 @@ class Migration(migrations.Migration):
             field=models.PositiveIntegerField(
                 blank=True,
                 help_text=(
-                    "Cut height above the storey elevation used for the last "
-                    "generation (mm)"
+                    "Cut height above the storey elevation used for the last generation (mm)"
                 ),
                 null=True,
                 verbose_name="Cut Height (mm)",

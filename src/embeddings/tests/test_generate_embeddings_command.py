@@ -74,7 +74,7 @@ class TestGenerateEmbeddingsCommand:
     def test_command_force_flag_re_embeds_existing(self, mock_embed_service):
         """--force flag causes already-embedded entities to be re-processed."""
         ifc_file = IFCFileFactory(status="completed")
-        entity = IFCEntityFactory(
+        IFCEntityFactory(
             ifc_file=ifc_file,
             description="Wall with stale embedding.",
             embedding=[0.5] * 1024,

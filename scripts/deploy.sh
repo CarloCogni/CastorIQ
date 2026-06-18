@@ -12,8 +12,28 @@
 #      run inside)
 #   4. docker compose up -d (recreates only the changed containers)
 #   5. docker compose exec web python manage.py migrate --noinput
+#   5b. docker compose exec web python manage.py createcachetable
+#      (Provisions DatabaseCache tables declared in settings.CACHES — currently
+#      just `castor_throttle_cache` for django-ratelimit + daily send-count
+#      circuit breaker. `migrate` does NOT create these because cache tables
+#      are not Django models; they are managed by `createcachetable` instead.
+#      Command is idempotent: it skips with "already exists" on subsequent
+#      runs, never drops or recreates an existing cache table.)
 #   6. docker compose exec web python manage.py collectstatic --noinput
 #      (no-op for image-baked assets but cheap insurance for hot-reloaded ones)
+#   7. docker compose restart web
+#      (REQUIRED, not optional. The named static_volume is mounted over
+#      /app/staticfiles and shadows the image-baked manifest, so the live
+#      staticfiles.json is the volume's — refreshed by step 6 on disk. But
+#      CompressedManifestStaticFilesStorage loads staticfiles.json into memory
+#      ONCE at process start; without a restart the running Daphne keeps
+#      serving the stale manifest and any newly-added {% static %} asset 500s
+#      with "Missing staticfiles manifest entry".)
+#   8. docker compose exec nginx nginx -s reload
+#      (nginx.conf is mounted from the host, so `docker compose up -d` does
+#      NOT restart nginx when only the conf file changed — image + command
+#      hashes are unchanged. Explicit reload picks up edits to error_page
+#      blocks, location rules, etc. without dropping connections.)
 #
 # Pre-flight: refuses to deploy if .env is missing, since the stack needs it.
 
@@ -44,8 +64,31 @@ docker compose -f "$COMPOSE_FILE" up -d
 echo "→ Applying migrations…"
 docker compose -f "$COMPOSE_FILE" exec -T web python manage.py migrate --noinput
 
+# DatabaseCache tables (e.g. `castor_throttle_cache`) are NOT created by
+# `migrate` — they are managed by Django's `createcachetable` command, which
+# introspects settings.CACHES and CREATEs any missing tables. Idempotent: a
+# re-run on a provisioned VPS prints "already exists, skipping" and exits 0.
+# Without this step, the throttle cache and rate limit code 500s with
+# `ProgrammingError: relation "castor_throttle_cache" does not exist`.
+echo "→ Provisioning DatabaseCache tables (idempotent)…"
+docker compose -f "$COMPOSE_FILE" exec -T web python manage.py createcachetable
+
 echo "→ Refreshing static assets…"
 docker compose -f "$COMPOSE_FILE" exec -T web python manage.py collectstatic --noinput
+
+# Reload the static manifest into the running process. collectstatic above only
+# rewrote staticfiles.json on disk (in the volume); ManifestStaticFilesStorage
+# caches it in memory at startup, so without this restart the live Daphne keeps
+# serving the stale manifest and any newly-added {% static %} asset 500s.
+echo "→ Restarting web to reload static manifest…"
+docker compose -f "$COMPOSE_FILE" restart web
+
+echo "→ Reloading nginx (in case docker/nginx.conf changed)…"
+if docker compose -f "$COMPOSE_FILE" exec -T nginx nginx -t >/dev/null 2>&1; then
+    docker compose -f "$COMPOSE_FILE" exec -T nginx nginx -s reload
+else
+    echo "  WARNING: nginx -t failed; skipping reload. Run \`docker compose exec nginx nginx -t\` to debug." >&2
+fi
 
 echo "✓ Deploy complete. Probe:"
 echo "  curl -fsS https://castoriq.io/healthz/"

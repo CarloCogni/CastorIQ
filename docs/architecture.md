@@ -46,6 +46,34 @@ The system treats IFC files and documents as two representations of the same pro
                                         └────────────────┘
 ```
 
+## User-visible features (v1.0.0)
+
+The main project navigation surfaces seven tabs, each with a dedicated guide. The `?` pill on every tab opens an in-app help modal — the modals are the authoritative how-to; the docs below give the conceptual frame.
+
+| Tab | What it does | Guide |
+|---|---|---|
+| **Ask** | Natural-language Q&A across IFC + documents (RAG) | [rag-pipeline.md](rag-pipeline.md) |
+| **Modify** | Propose IFC modifications via the three-tier RSAA pipeline | [writeback/overview.md](writeback/overview.md) |
+| **Conflicts** | Cross-source inconsistencies (IFC vs. document requirements) | [writeback/conflict-scan.md](writeback/conflict-scan.md) |
+| **History** | Per-IFC-file commit log with rollback | [history.md](history.md) |
+| **Explore** | IFC spatial hierarchy browser (tree + entity table) | [explore.md](explore.md) |
+| **Schedule** | Dynamic IFC element schedule, filtered by type / storey | [schedule.md](schedule.md) |
+| **Facilities** | 7D FM overlay — Assets, Work, Permits, Action Requests, Explore sub-tab | [facilities.md](facilities.md) |
+
+Settings → **LLM Configuration** also surfaces [BYOK](byok-setup.md) for users who want to route Ask or Modify through their own Anthropic / Groq key.
+
+### Code-present but not in the main nav (v1.0.0)
+
+These Django apps exist in the repository and have their own URL routes, but are **not linked from the main project navigation** for v1.0.0. They are reachable only by direct URL and may be incomplete, untested, or scoped for a future release:
+
+- `takeoff/` — lightweight QTO (Quantity Take-Off) dashboard
+- `scheduling/` — 4D project scheduling (Tasks, CPM, EVM, Monte Carlo)
+- `model_quality/` — IFC schema checks and issue tracking
+- `ifc_viewer/` — embedded 3D viewer (technical preview)
+- `assurance/` — six-stage assurance workflow (planned)
+
+Contributors will see them listed in `INSTALLED_APPS`; users should not be pointed at them. They will get a guide and a nav link when they ship.
+
 ## Tech Stack
 
 ### Backend
@@ -55,7 +83,7 @@ The system treats IFC files and documents as two representations of the same pro
 | Framework | Django 5.x | Rapid development, ORM, admin, battle-tested |
 | API | Django REST Framework | Serialization, viewsets, permissions |
 | Database | PostgreSQL 16 + pgvector | Vector similarity search for RAG |
-| LLM | Ollama (user-selectable) | Privacy-first, no API costs, local inference. Per-user model selection via Settings page. |
+| LLM | Ollama by default, BYOK optional | Local-first inference via Ollama (per-user model selection). Users may opt into Anthropic or Groq via [BYOK](byok-setup.md) — keys are Fernet-encrypted server-side. See [specs/llm-connection.md](specs/llm-connection.md). |
 | Embeddings | mxbai-embed-large (1024d) | Quality embeddings, runs locally |
 | IFC Processing | IfcOpenShell ≥ 0.7 | Industry standard, read AND write IFC |
 | Agent Orchestration | LangChain + LangGraph | ReAct loop, human-in-the-loop, state management |
@@ -134,8 +162,8 @@ A guardian layer that cross-references every modification proposal against the p
 3. **select_related / prefetch_related** in all views to prevent N+1 queries
 4. **App-based templates** — each app owns its templates (`app/templates/app/`)
 5. **Service layer** — business logic lives in `services/` modules, not in views or forms
-6. **Local-first** — all LLM inference and embedding runs locally, no external API calls
-7. **Per-user LLM selection** — each user picks their Ollama model from Settings; resolved at runtime via `get_llm(user)` factory in `core/llm.py`
+6. **Local-first by default, BYOK by choice** — Ollama handles all LLM inference out of the box. Users may opt into a cloud provider (Anthropic or Groq) via [BYOK](byok-setup.md); keys are Fernet-encrypted at rest. Embeddings always run locally regardless of LLM choice. See [specs/llm-connection.md](specs/llm-connection.md).
+7. **Per-user LLM selection** — each user picks their Ollama model (and, if BYOK is enabled, their cloud provider, curated model, and per-purpose override) from Settings. Resolved at runtime via `_resolve_llm_choice()` in `core/llm.py`.
 8. **Per-project Git repos** — IFC files tracked in project-scoped Git repositories
 9. **Shared vector space** — IFC entities and document chunks in the same 1024d space for cross-domain retrieval
 
@@ -143,7 +171,7 @@ A guardian layer that cross-references every modification proposal against the p
 
 1. **Partially async** — Key pipelines (writeback, conflict scan) are async via ASGI/Daphne with WebSocket streaming. Synchronous blocking remains only in IFC parsing and embedding generation.
 2. **No 3D visualization** — users view complex models in external tools (Blender + Bonsai)
-3. **Local LLM only** — no cloud API option by design (privacy-first). Users choose from locally pulled Ollama models via the Settings page.
+3. **No managed cloud LLM pool** — out of the box, Castor runs against your local Ollama. A user can opt into Anthropic or Groq via [BYOK](byok-setup.md), but Castor does not operate a managed inference pool that bills users. The third tier in [specs/llm-connection.md](specs/llm-connection.md) is deferred.
 4. **Single-file Git** — Git tracks individual IFC files, not inter-model relationships
 5. **English only** — UI and LLM prompts are English-only
 6. **Geometric modifications out of scope** — the system modifies properties, not geometry

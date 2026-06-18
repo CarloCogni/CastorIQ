@@ -6,7 +6,9 @@ from logging import getLogger
 
 import requests as http_requests
 from django.conf import settings
+from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
+from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.core.cache import cache
@@ -378,6 +380,32 @@ class SettingsView(LoginRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
 
+        # BYOK panel context (every authenticated user).
+        from core.llm import _resolve_llm_choice, friendly_provider_label
+        from core.views_byok import build_byok_context
+
+        context.update(build_byok_context(self.request.user))
+
+        # "About this build" — every authenticated user sees their actual
+        # per-purpose routing plus the embedding model. The token-budget
+        # numbers (used/cap/pct/mode) come from the token_budget context
+        # processor, so no duplicate work here.
+        ask_label, ask_meta = friendly_provider_label(_resolve_llm_choice(self.request.user, "ask"))
+        modify_label, modify_meta = friendly_provider_label(
+            _resolve_llm_choice(self.request.user, "modify")
+        )
+        context["ask_route_label"] = ask_label
+        context["ask_route_meta"] = ask_meta
+        context["modify_route_label"] = modify_label
+        context["modify_route_meta"] = modify_meta
+        context["embed_model"] = settings.OLLAMA_EMBED_MODEL
+        context["embed_dimensions"] = settings.PGVECTOR_DIMENSIONS
+
+        # Danger zone — show the user the real blast radius of a delete.
+        from core.services.account_service import impact_snapshot
+
+        context["delete_impact"] = impact_snapshot(self.request.user)
+
         if self.request.user.is_staff:
             config = UserLLMConfig.load(self.request.user)
             active_model = config.active_model or settings.OLLAMA_MODEL
@@ -385,12 +413,41 @@ class SettingsView(LoginRequiredMixin, TemplateView):
             context["active_model_info"] = get_model_info(active_model)
             context["default_model"] = settings.OLLAMA_MODEL
             context["is_using_default"] = not config.active_model
-            context["embed_model"] = settings.OLLAMA_EMBED_MODEL
-            context["embed_dimensions"] = settings.PGVECTOR_DIMENSIONS
             context["ollama_host"] = settings.OLLAMA_HOST
             context["vram_tiers"] = VRAM_TIERS
 
         return context
+
+
+class DeleteAccountView(LoginRequiredMixin, View):
+    """POST endpoint that hard-deletes the requesting user.
+
+    Self-service path for the "Delete my account" button in
+    Settings → Danger zone. The browser submits a plain form (not HTMX) —
+    after the user row is gone the session is invalid, so an HTMX swap can't
+    render anything useful. A full redirect to ``home`` is cleaner, and the
+    base template's messages bridge fires the goodbye toast there.
+
+    Server-side re-checks the typed-username confirmation; the disabled
+    submit button is a UX nicety, never the security boundary.
+    """
+
+    def post(self, request):
+        from core.services.account_service import delete_user_account
+
+        confirmation = request.POST.get("confirm_username", "").strip()
+        if confirmation != request.user.username:
+            return toast_response(
+                "Confirmation text did not match your username.",
+                "error",
+                status=400,
+            )
+
+        username = request.user.username
+        delete_user_account(request.user)
+        logout(request)
+        messages.success(request, f"Account '{username}' deleted. Goodbye.")
+        return redirect("home")
 
 
 class OllamaModelsAPIView(LoginRequiredMixin, UserPassesTestMixin, View):

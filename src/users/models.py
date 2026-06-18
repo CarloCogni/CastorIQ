@@ -11,6 +11,7 @@ all third-party integrations keep working unchanged.
 """
 
 from django.contrib.auth.models import AbstractUser
+from django.core.exceptions import ValidationError
 from django.db import models
 
 
@@ -33,3 +34,13 @@ class User(AbstractUser):
 
     def __str__(self) -> str:
         return self.username
+
+    def clean(self) -> None:
+        # `blank=False` only fires through form-level validation, which a stale
+        # admin form or a direct ORM call can skip. Reject empty/whitespace here
+        # so any path that runs `full_clean()` gets a readable ValidationError
+        # instead of a downstream UniqueViolation on the empty-email slot.
+        super().clean()
+        if not (self.email or "").strip():
+            raise ValidationError({"email": "Email is required."})
+        self.email = self.email.strip().lower()

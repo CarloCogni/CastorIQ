@@ -1,0 +1,51 @@
+<!-- ifc_insights/components/summary_cards.html -->
+<div class="row g-3">
+
+    <div class="col-6 col-md-3">
+        <div class="card border-0 bg-body-secondary h-100">
+            <div class="card-body text-center">
+                <div class="fs-2 fw-bold text-primary">{{ check_results.total_elements }}</div>
+                <div class="small text-secondary mt-1">Total Elements</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-6 col-md-3">
+        <div class="card border-0 h-100 {% if check_results.total_issues == 0 %}bg-success bg-opacity-10{% else %}bg-body-secondary{% endif %}">
+            <div class="card-body text-center">
+                <div class="fs-2 fw-bold {% if check_results.total_issues == 0 %}text-success{% else %}text-body{% endif %}">
+                    {{ check_results.total_issues }}
+                </div>
+                <div class="small text-secondary mt-1">Total Issues</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-6 col-md-2">
+        <div class="card border-0 h-100 {% if check_results.severity_counts.critical > 0 %}border-danger border-start border-3{% endif %} bg-body-secondary">
+            <div class="card-body text-center">
+                <div class="fs-2 fw-bold text-danger">{{ check_results.severity_counts.critical }}</div>
+                <div class="small text-secondary mt-1">Critical</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-6 col-md-2">
+        <div class="card border-0 bg-body-secondary h-100">
+            <div class="card-body text-center">
+                <div class="fs-2 fw-bold text-warning">{{ check_results.severity_counts.warning }}</div>
+                <div class="small text-secondary mt-1">Warnings</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-6 col-md-2">
+        <div class="card border-0 bg-body-secondary h-100">
+            <div class="card-body text-center">
+                <div class="fs-2 fw-bold text-secondary">{{ check_results.severity_counts.info }}</div>
+                <div class="small text-secondary mt-1">Info</div>
+            </div>
+        </div>
+    </div>
+
+</div>

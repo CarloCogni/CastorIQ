@@ -8,18 +8,42 @@ Registered in settings.TEMPLATES — injected into every template render.
 from django.conf import settings
 
 
+def _routing_badge(choice) -> dict:
+    """Translate a ResolvedLLM into a small dict the routing-badge partial reads."""
+    if choice.provider == "ollama":
+        return {
+            "label": "Local Ollama",
+            "detail": choice.model,
+            "tone": "ollama",
+            "byok": False,
+        }
+    suffix = "your key" if choice.byok else "shared pool"
+    provider_label = "Anthropic" if choice.provider == "anthropic" else "Groq"
+    return {
+        "label": f"{provider_label} ({suffix})",
+        "detail": choice.model,
+        "tone": "byok" if choice.byok else "shared",
+        "byok": choice.byok,
+    }
+
+
 def llm_context(request):
     """
-    Inject the current user's active LLM model and UI theme into every template.
+    Inject the current user's active LLM model, UI theme, and per-purpose
+    routing badge data into every template.
 
     Available in templates as:
         {{ active_llm_model }}  — the Ollama tag string
         {{ active_llm_info }}   — ModelInfo dataclass (or None)
         {{ user_theme }}        — "dark" | "light" (always present)
+        {{ llm_routing.ask }}   — dict with label/detail/tone/byok for Ask
+        {{ llm_routing.modify }} — same for Modify (rendered by
+                                   ``core/components/llm_routing_badge.html``)
     """
     if not hasattr(request, "user") or not request.user.is_authenticated:
         return {"user_theme": "dark"}
 
+    from core.llm import _resolve_llm_choice
     from core.llm_model_registry import get_model_info
     from core.models import UserLLMConfig
 
@@ -31,10 +55,24 @@ def llm_context(request):
         model_tag = settings.OLLAMA_MODEL
         user_theme = "dark"
 
+    # Per-call routing disclosure — spec requires every cloud call to surface
+    # which provider it will use. Cheap: _resolve_llm_choice reads the same
+    # UserLLMConfig already loaded above (no extra round trip in practice).
+    try:
+        ask_choice = _resolve_llm_choice(request.user, "ask")
+        modify_choice = _resolve_llm_choice(request.user, "modify")
+        routing = {
+            "ask": _routing_badge(ask_choice),
+            "modify": _routing_badge(modify_choice),
+        }
+    except Exception:
+        routing = {}
+
     return {
         "active_llm_model": model_tag,
         "active_llm_info": get_model_info(model_tag),
         "user_theme": user_theme,
+        "llm_routing": routing,
     }
 
 
@@ -59,14 +97,23 @@ def token_budget(request):
         {{ token_pct }}       — used / cap × 100, capped at 100
         {{ token_blocked }}   — True when hard_blocked is set
         {{ token_show }}      — whether to render the banner at all
+        {{ token_mode }}      — "managed" | "byok" | "ollama" (the actual
+                                routing in effect for this user — used by
+                                the help modal to explain the banner state)
 
-    Cap=0 hides the banner; UserTokenBudget rows are auto-created by
+    The banner is hidden when neither Ask nor Modify routes through the
+    managed shared pool — i.e. both purposes are on BYOK or both are on
+    Ollama. In that case the 50K/day cap has nothing to gate, so showing
+    "X / 50000 tokens today" is misleading.
+
+    Cap=0 also hides the banner; UserTokenBudget rows are auto-created by
     UserTokenBudget.load() so any authenticated user has a row.
     """
     if not hasattr(request, "user") or not request.user.is_authenticated:
         return {"token_show": False}
 
     try:
+        from core.llm import _resolve_llm_choice
         from core.models import UserTokenBudget
 
         budget = UserTokenBudget.load(request.user)
@@ -74,12 +121,35 @@ def token_budget(request):
         cap = budget.daily_cap or 0
         used = budget.used_today or 0
         pct = min(100, int((used / cap) * 100)) if cap else 0
+
+        # Decide whether the banner is meaningful for this user RIGHT NOW.
+        # If neither Ask nor Modify will draw from the managed pool, the cap
+        # doesn't constrain anything — hide the banner. Carry the mode tag
+        # so the usage help modal can explain why.
+        ask = _resolve_llm_choice(request.user, "ask")
+        modify = _resolve_llm_choice(request.user, "modify")
+
+        def _routes_to_managed(choice):
+            return choice.provider != "ollama" and not choice.byok
+
+        any_metered = _routes_to_managed(ask) or _routes_to_managed(modify)
+        all_byok = ask.byok and modify.byok
+        all_ollama = ask.provider == "ollama" and modify.provider == "ollama"
+
+        if all_byok:
+            mode = "byok"
+        elif all_ollama:
+            mode = "ollama"
+        else:
+            mode = "managed"
+
         return {
-            "token_show": cap > 0,
+            "token_show": cap > 0 and any_metered,
             "token_used": used,
             "token_cap": cap,
             "token_pct": pct,
             "token_blocked": budget.hard_blocked,
+            "token_mode": mode,
         }
     except Exception:
         # DB not ready or table missing — skip the banner silently.

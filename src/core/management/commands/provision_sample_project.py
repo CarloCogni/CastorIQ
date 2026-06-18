@@ -9,6 +9,7 @@ on a user who already has the sample project is a no-op.
 Usage:
     cd src && uv run python manage.py provision_sample_project <user_id>
     cd src && uv run python manage.py provision_sample_project <user_id> --skip-pipeline
+    cd src && uv run python manage.py provision_sample_project <user_id> --force-files
 
 The fixture layout is documented in fixtures/sample-project/README.md and
 fixtures/sample-project/PROVENANCE.md. The command provisions BOTH the
@@ -16,6 +17,12 @@ architectural and structural IFC files into the same Project so Ask can
 cross-cut between disciplines. If any expected fixture is missing, the
 command fails loud with all missing paths listed so the operator can
 drop them in.
+
+`--force-files` repairs an existing Sample Project whose files are missing
+from MEDIA_ROOT (e.g. after a media_volume reset). Top-up semantics: rows
+whose underlying files still exist on disk are left alone; rows whose files
+are missing get the fixture re-copied into storage; missing rows are created
+from the fixture. Never deletes existing rows.
 """
 
 from __future__ import annotations
@@ -73,6 +80,15 @@ class Command(BaseCommand):
             action="store_true",
             help="Create rows + copy files, but skip IFC parsing and embeddings (fast).",
         )
+        parser.add_argument(
+            "--force-files",
+            action="store_true",
+            help=(
+                "If the Sample Project already exists, top up missing files: "
+                "re-copy fixtures for rows whose file is gone from MEDIA_ROOT, "
+                "and create rows for fixtures with no matching row. Never deletes."
+            ),
+        )
 
     def handle(self, *args, **options):
         from environments.models import Project
@@ -80,6 +96,7 @@ class Command(BaseCommand):
 
         user = self._resolve_user(options["user_id"])
         skip_pipeline = options["skip_pipeline"]
+        force_files = options["force_files"]
 
         ifc_paths = _expected_ifc_paths()
         missing = [p for p in ifc_paths if not p.exists()]
@@ -91,26 +108,33 @@ class Command(BaseCommand):
             )
 
         existing = Project.objects.filter(owner=user, name=SAMPLE_PROJECT_NAME).first()
-        if existing:
+        if existing and not force_files:
             self.stdout.write(
                 self.style.SUCCESS(
                     f"User '{user.username}' already has the sample project (id={existing.id}). "
-                    "Nothing to do."
+                    "Nothing to do. Pass --force-files to re-seed missing files."
                 )
             )
             return
 
-        with transaction.atomic():
-            project = Project.objects.create(
-                name=SAMPLE_PROJECT_NAME,
-                description=SAMPLE_PROJECT_DESCRIPTION,
-                owner=user,
+        if existing:
+            project = existing
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"Topping up existing sample project (id={project.id}) for '{user.username}'."
+                )
             )
-            ProjectAccessService.bootstrap_owner_membership(project)
-
-        self.stdout.write(
-            self.style.SUCCESS(f"Created project '{project.name}' (id={project.id}).")
-        )
+        else:
+            with transaction.atomic():
+                project = Project.objects.create(
+                    name=SAMPLE_PROJECT_NAME,
+                    description=SAMPLE_PROJECT_DESCRIPTION,
+                    owner=user,
+                )
+                ProjectAccessService.bootstrap_owner_membership(project)
+            self.stdout.write(
+                self.style.SUCCESS(f"Created project '{project.name}' (id={project.id}).")
+            )
 
         for filename, label in _SAMPLE_IFCS:
             self._provision_ifc(
@@ -145,14 +169,28 @@ class Command(BaseCommand):
     def _provision_ifc(self, project, ifc_path: Path, *, label: str, skip_pipeline: bool) -> None:
         from ifc_processor.models import IFCFile
 
-        with ifc_path.open("rb") as fh:
-            ifc_file = IFCFile.objects.create(
-                project=project,
-                name=ifc_path.name,
-                file=File(fh, name=ifc_path.name),
-                status=IFCFile.Status.PENDING,
-            )
-        self.stdout.write(f"  + IFCFile {ifc_file.name} ({label}) ({ifc_file.id})")
+        existing = IFCFile.objects.filter(project=project, name=ifc_path.name).first()
+        if existing is not None:
+            if existing.file and existing.file.storage.exists(existing.file.name):
+                self.stdout.write(
+                    f"  = IFCFile {existing.name} ({label}) ({existing.id}) — file on disk, kept"
+                )
+                return
+            with ifc_path.open("rb") as fh:
+                existing.file.save(ifc_path.name, File(fh, name=ifc_path.name), save=False)
+            existing.status = IFCFile.Status.PENDING
+            existing.save()
+            ifc_file = existing
+            self.stdout.write(f"  ↻ IFCFile {ifc_file.name} ({label}) ({ifc_file.id}) — re-seeded")
+        else:
+            with ifc_path.open("rb") as fh:
+                ifc_file = IFCFile.objects.create(
+                    project=project,
+                    name=ifc_path.name,
+                    file=File(fh, name=ifc_path.name),
+                    status=IFCFile.Status.PENDING,
+                )
+            self.stdout.write(f"  + IFCFile {ifc_file.name} ({label}) ({ifc_file.id})")
 
         if skip_pipeline:
             self.stdout.write("    (skipped IFC pipeline — pass without --skip-pipeline to run it)")
@@ -201,15 +239,29 @@ class Command(BaseCommand):
             else:
                 doc_type = Document.DocumentType.OTHER
 
-            with path.open("rb") as fh:
-                doc = Document.objects.create(
-                    project=project,
-                    name=path.name,
-                    file=File(fh, name=path.name),
-                    document_type=doc_type,
-                    status=Document.Status.PENDING,
-                )
-            self.stdout.write(f"  + Document {doc.name} ({doc.id})")
+            existing = Document.objects.filter(project=project, name=path.name).first()
+            if existing is not None:
+                if existing.file and existing.file.storage.exists(existing.file.name):
+                    self.stdout.write(
+                        f"  = Document {existing.name} ({existing.id}) — file on disk, kept"
+                    )
+                    continue
+                with path.open("rb") as fh:
+                    existing.file.save(path.name, File(fh, name=path.name), save=False)
+                existing.status = Document.Status.PENDING
+                existing.save()
+                doc = existing
+                self.stdout.write(f"  ↻ Document {doc.name} ({doc.id}) — re-seeded")
+            else:
+                with path.open("rb") as fh:
+                    doc = Document.objects.create(
+                        project=project,
+                        name=path.name,
+                        file=File(fh, name=path.name),
+                        document_type=doc_type,
+                        status=Document.Status.PENDING,
+                    )
+                self.stdout.write(f"  + Document {doc.name} ({doc.id})")
 
             if skip_pipeline:
                 continue

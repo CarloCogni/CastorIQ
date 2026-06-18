@@ -4,32 +4,129 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('core', '0012_sitelaunchconfig_notify_operator_on_application'),
+        ("core", "0012_sitelaunchconfig_notify_operator_on_application"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='WeeklyDigestConfig',
+            name="WeeklyDigestConfig",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('enabled', models.BooleanField(default=False, help_text="Master kill-switch. When off, the cron job runs but the command returns 'skipped_disabled' without sending anything.", verbose_name='Send the weekly digest')),
-                ('recipients', models.JSONField(blank=True, default=list, help_text='JSON list of email addresses, e.g. ["you@castoriq.io", "cofounder@castoriq.io"]. The first address goes in To:, the rest are Bcc\'d. Invalid addresses are rejected at save time.', verbose_name='Recipient emails')),
-                ('send_day_of_week', models.IntegerField(choices=[(0, 'Monday'), (1, 'Tuesday'), (2, 'Wednesday'), (3, 'Thursday'), (4, 'Friday'), (5, 'Saturday'), (6, 'Sunday')], default=0, help_text='Day of week the command actually sends. Monday is the default.', verbose_name='Send day')),
-                ('include_investor_kpis', models.BooleanField(default=True, help_text='MAU, W4 retention, entities processed, Ollama-local share.', verbose_name='Section · Investor KPIs')),
-                ('include_cost_summary', models.BooleanField(default=True, help_text='7-day cost USD, top user, Ollama vs paid mix.', verbose_name='Section · Cost summary')),
-                ('include_reliability_summary', models.BooleanField(default=True, help_text='Success %, p95 latency Ask/Modify, open ErrorLog count.', verbose_name='Section · Reliability summary')),
-                ('include_engagement_summary', models.BooleanField(default=True, help_text='DAU/WAU/MAU, cohort W4 retention, proposal-generator share.', verbose_name='Section · Engagement summary')),
-                ('include_top_users_table', models.BooleanField(default=False, help_text='Verbose top-10 by cost. Off by default — keep the digest scannable. Drill into /staff/dashboard/overview/ when you actually need the list.', verbose_name='Section · Top users table')),
-                ('last_sent_at', models.DateTimeField(blank=True, null=True, verbose_name='Last send attempt')),
-                ('last_send_status', models.CharField(blank=True, choices=[('success', 'Sent'), ('failed', 'Failed'), ('skipped_disabled', 'Skipped — disabled'), ('skipped_wrong_day', 'Skipped — wrong day'), ('skipped_no_recipients', 'Skipped — no recipients'), ('skipped_quota', 'Skipped — Brevo daily cap')], default='', max_length=30, verbose_name='Last status')),
-                ('last_send_log', models.TextField(blank=True, default='', help_text='Truncated stdout / error from the most recent send attempt.', verbose_name='Last send log')),
-                ('updated_at', models.DateTimeField(auto_now=True)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                (
+                    "enabled",
+                    models.BooleanField(
+                        default=False,
+                        help_text="Master kill-switch. When off, the cron job runs but the command returns 'skipped_disabled' without sending anything.",
+                        verbose_name="Send the weekly digest",
+                    ),
+                ),
+                (
+                    "recipients",
+                    models.JSONField(
+                        blank=True,
+                        default=list,
+                        help_text='JSON list of email addresses, e.g. ["you@castoriq.io", "cofounder@castoriq.io"]. The first address goes in To:, the rest are Bcc\'d. Invalid addresses are rejected at save time.',
+                        verbose_name="Recipient emails",
+                    ),
+                ),
+                (
+                    "send_day_of_week",
+                    models.IntegerField(
+                        choices=[
+                            (0, "Monday"),
+                            (1, "Tuesday"),
+                            (2, "Wednesday"),
+                            (3, "Thursday"),
+                            (4, "Friday"),
+                            (5, "Saturday"),
+                            (6, "Sunday"),
+                        ],
+                        default=0,
+                        help_text="Day of week the command actually sends. Monday is the default.",
+                        verbose_name="Send day",
+                    ),
+                ),
+                (
+                    "include_investor_kpis",
+                    models.BooleanField(
+                        default=True,
+                        help_text="MAU, W4 retention, entities processed, Ollama-local share.",
+                        verbose_name="Section · Investor KPIs",
+                    ),
+                ),
+                (
+                    "include_cost_summary",
+                    models.BooleanField(
+                        default=True,
+                        help_text="7-day cost USD, top user, Ollama vs paid mix.",
+                        verbose_name="Section · Cost summary",
+                    ),
+                ),
+                (
+                    "include_reliability_summary",
+                    models.BooleanField(
+                        default=True,
+                        help_text="Success %, p95 latency Ask/Modify, open ErrorLog count.",
+                        verbose_name="Section · Reliability summary",
+                    ),
+                ),
+                (
+                    "include_engagement_summary",
+                    models.BooleanField(
+                        default=True,
+                        help_text="DAU/WAU/MAU, cohort W4 retention, proposal-generator share.",
+                        verbose_name="Section · Engagement summary",
+                    ),
+                ),
+                (
+                    "include_top_users_table",
+                    models.BooleanField(
+                        default=False,
+                        help_text="Verbose top-10 by cost. Off by default — keep the digest scannable. Drill into /staff/dashboard/overview/ when you actually need the list.",
+                        verbose_name="Section · Top users table",
+                    ),
+                ),
+                (
+                    "last_sent_at",
+                    models.DateTimeField(blank=True, null=True, verbose_name="Last send attempt"),
+                ),
+                (
+                    "last_send_status",
+                    models.CharField(
+                        blank=True,
+                        choices=[
+                            ("success", "Sent"),
+                            ("failed", "Failed"),
+                            ("skipped_disabled", "Skipped — disabled"),
+                            ("skipped_wrong_day", "Skipped — wrong day"),
+                            ("skipped_no_recipients", "Skipped — no recipients"),
+                            ("skipped_quota", "Skipped — Brevo daily cap"),
+                        ],
+                        default="",
+                        max_length=30,
+                        verbose_name="Last status",
+                    ),
+                ),
+                (
+                    "last_send_log",
+                    models.TextField(
+                        blank=True,
+                        default="",
+                        help_text="Truncated stdout / error from the most recent send attempt.",
+                        verbose_name="Last send log",
+                    ),
+                ),
+                ("updated_at", models.DateTimeField(auto_now=True)),
             ],
             options={
-                'verbose_name': 'Weekly Digest Configuration',
-                'verbose_name_plural': 'Weekly Digest Configuration',
+                "verbose_name": "Weekly Digest Configuration",
+                "verbose_name_plural": "Weekly Digest Configuration",
             },
         ),
     ]

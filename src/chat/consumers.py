@@ -161,6 +161,8 @@ class AskConsumer(CastorConsumerMixin, AsyncJsonWebsocketConsumer):
         from chat.models import ChatSession, Message
         from chat.services.rag_service import RAGService
         from core.llm import (
+            BYOKAuthError,
+            BYOKRateLimitError,
             LLMConfigurationError,
             LLMMasterKillError,
             TokenBudgetExceededError,
@@ -220,7 +222,13 @@ class AskConsumer(CastorConsumerMixin, AsyncJsonWebsocketConsumer):
         except CancellationError:
             logger.debug("RAG pipeline cancelled for user=%s", self.user.username)
             raise
-        except (LLMConfigurationError, LLMMasterKillError, TokenBudgetExceededError) as e:
+        except (
+            LLMConfigurationError,
+            LLMMasterKillError,
+            TokenBudgetExceededError,
+            BYOKAuthError,
+            BYOKRateLimitError,
+        ) as e:
             if isinstance(e, TokenBudgetExceededError):
                 friendly = (
                     f"You've hit your daily token cap ({e.used}/{e.cap}). "
@@ -229,6 +237,17 @@ class AskConsumer(CastorConsumerMixin, AsyncJsonWebsocketConsumer):
             elif isinstance(e, LLMMasterKillError):
                 friendly = (
                     "Castor is paused for maintenance. Cloud LLM calls are disabled right now."
+                )
+            elif isinstance(e, BYOKAuthError):
+                friendly = (
+                    f"Your {e.provider.title()} API key was rejected (401). "
+                    "Update it in Settings → Bring Your Own Key, or switch the For Ask "
+                    "dropdown back to the site default."
+                )
+            elif isinstance(e, BYOKRateLimitError):
+                friendly = (
+                    f"Your {e.provider.title()} key hit the provider's rate limit (429). "
+                    "Wait a moment and try again, or switch provider in Settings."
                 )
             else:
                 friendly = "The configured LLM provider is missing its API key. The operator has been notified."

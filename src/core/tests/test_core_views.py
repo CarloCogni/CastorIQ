@@ -24,9 +24,13 @@ def _login(client, user):
 # ── health_check ────────────────────────────────────────────────────────────
 
 
+@pytest.mark.django_db
 def test_health_check_returns_200(client):
-    """Health check endpoint is always accessible."""
-    response = client.get(reverse("core:health_check"))
+    """Health check endpoint returns 200 when DB + Ollama both report ok."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    with patch("core.views.http_requests.get", return_value=mock_resp):
+        response = client.get(reverse("core:health_check"))
     assert response.status_code == 200
     data = json.loads(response.content)
     assert data["status"] == "healthy"
@@ -41,8 +45,10 @@ def test_home_view_authenticated_redirects_to_projects(client):
     """Authenticated user on home_view redirects to projects list."""
     user = UserFactory()
     _login(client, user)
-    response = client.get(reverse("core:health_check"))
-    # Home is at / — just test health_check passes since home might not be in core urls
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    with patch("core.views.http_requests.get", return_value=mock_resp):
+        response = client.get(reverse("core:health_check"))
     assert response.status_code == 200
 
 
@@ -720,9 +726,7 @@ class TestNotesSupabaseViews:
         settings.SUPABASE_URL = "https://example.supabase.co"
         settings.SUPABASE_PUBLISHABLE_KEY = "test-key"
 
-        with patch(
-            "core.views.pull_notes_from_supabase", return_value={"imported": 2, "skipped": 1}
-        ):
+        with patch("core.views.svc_pull_notes", return_value={"imported": 2, "skipped": 1}):
             response = client.post(reverse("core:pull_notes_from_supabase"))
 
         assert response.status_code == 200

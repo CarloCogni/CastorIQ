@@ -12,7 +12,6 @@ state leaks between tests and the cap arithmetic gets wrong.
 
 from __future__ import annotations
 
-from datetime import timedelta
 from pathlib import Path
 from tempfile import gettempdir
 
@@ -199,9 +198,7 @@ def test_send_digest_dry_run_writes_file_and_skips_smtp(cfg):
     assert result.status == WeeklyDigestConfig.Status.SUCCESS
     assert mail.outbox == []
     # Stable per-day filename.
-    expected_path = (
-        Path(gettempdir()) / f"castor-digest-{timezone.now().date().isoformat()}.html"
-    )
+    expected_path = Path(gettempdir()) / f"castor-digest-{timezone.now().date().isoformat()}.html"
     assert expected_path.exists()
     body = expected_path.read_text(encoding="utf-8")
     assert "Castor weekly digest" in body
@@ -262,9 +259,7 @@ def test_send_digest_captures_smtp_exception(cfg, monkeypatch):
     def _explode(self, *a, **kw):
         raise BoomError("relay refused")
 
-    monkeypatch.setattr(
-        "django.core.mail.EmailMultiAlternatives.send", _explode, raising=True
-    )
+    monkeypatch.setattr("django.core.mail.EmailMultiAlternatives.send", _explode, raising=True)
 
     result = digest_email.send_digest()
 

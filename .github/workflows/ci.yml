@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ruff + pytest
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: castor
+          POSTGRES_USER: castor
+          POSTGRES_PASSWORD: castor
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U castor"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # local.py is the test-time settings module (DJANGO_SETTINGS_MODULE in
+      # pyproject.toml). It hardcodes the castor/castor/castor credentials and
+      # localhost:5432 that the service container above exposes.
+      DJANGO_SETTINGS_MODULE: config.settings.local
+      DJANGO_SECRET_KEY: ci-not-secret
+      DJANGO_DEBUG: "True"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Enable pgvector extension on test DB
+        env:
+          PGPASSWORD: castor
+        run: |
+          # Django creates test_castor from castor, so the vector extension
+          # needs to exist on the template (the source DB) too.
+          psql -h localhost -U castor -d castor -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+      - name: Ruff lint
+        run: uv run ruff check .
+
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
+      - name: Pytest (non-slow)
+        working-directory: src
+        run: uv run pytest -m "not slow" --tb=short

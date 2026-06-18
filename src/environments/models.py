@@ -48,12 +48,14 @@ class Project(UUIDModel):
 
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.PROTECT,
+        on_delete=models.CASCADE,
         related_name="owned_projects",
         verbose_name="Owner",
         help_text=(
             "Denormalized pointer to the user holding the OWNER membership. "
-            "Kept in sync by ProjectAccessService."
+            "Kept in sync by ProjectAccessService. When the user is deleted, "
+            "the project and its full tree (memberships, IFC files, documents, "
+            "chats, modify proposals, facility data) cascade with them."
         ),
     )
 
@@ -69,6 +71,28 @@ class Project(UUIDModel):
         db_index=True,
         verbose_name="Archived",
         help_text="Archived projects are hidden from the main list",
+    )
+
+    audit_override_map = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Audit Override Map",
+        help_text=(
+            "Confirmed section-mismatch overrides from the last Schedule Audit run. "
+            "{task_pk: ai_csi}. Persisted to DB so it survives server restarts."
+        ),
+    )
+
+    audit_name_cache = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Audit Name Cache",
+        help_text=(
+            "Per-name LLM verdict cache from the Schedule Audit. "
+            "{md5_key: llm_result_dict}. Persisted to DB so verdicts are stable "
+            "across server restarts and Django-cache expiry — prevents LLM "
+            "non-determinism from changing the confirmed set between runs."
+        ),
     )
 
     class Meta:

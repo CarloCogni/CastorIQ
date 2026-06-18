@@ -129,9 +129,7 @@ class TestIFCUploadInteraction:
         # Queue section becomes visible as soon as the file is enqueued
         expect(auth_page.locator("#queue-section")).to_be_visible(timeout=3000)
 
-    def test_filename_shown_in_queue_row(
-        self, auth_page: Page, live_server, e2e_project
-    ) -> None:
+    def test_filename_shown_in_queue_row(self, auth_page: Page, live_server, e2e_project) -> None:
         """The filename label in the queue row shows the uploaded file name."""
         auth_page.goto(f"{live_server.url}/projects/{e2e_project.pk}/upload/")
         auth_page.wait_for_load_state("networkidle")
@@ -149,9 +147,9 @@ class TestIFCUploadInteraction:
         auth_page.locator("#file-input").set_input_files(str(IFC_FIXTURE))
 
         # Each queue row renders the filename in a .fw-medium.text-truncate div
-        expect(
-            auth_page.locator("#queue-list .fw-medium").first()
-        ).to_contain_text(IFC_FIXTURE.name, timeout=3000)
+        expect(auth_page.locator("#queue-list .fw-medium").first()).to_contain_text(
+            IFC_FIXTURE.name, timeout=3000
+        )
 
 
 # -- Authentication guard ------------------------------------------------------

@@ -1,0 +1,113 @@
+<!-- ifc_insights/components/issues_help_modal.html — "How IFC Issues works" -->
+
+<div class="modal fade" id="ifcIssuesHelpModal" tabindex="-1" aria-labelledby="ifcIssuesHelpLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+
+            <div class="modal-header border-bottom px-4 py-3"
+                 style="border-color: var(--bs-border-color) !important;">
+                <h5 class="modal-title fw-semibold fs-6 mb-0" id="ifcIssuesHelpLabel">
+                    <i class="bi bi-bug me-2 text-danger"></i>How IFC Issues works
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body px-4 py-4">
+
+                <!-- 1. What is it? -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-box-seam me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    What is the IFC Issues tab?
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    IFC Issues gives you a targeted audit of data quality problems in your model.
+                    Section 0 runs 10 automated health checks against the IFC file itself.
+                    Sections 1–4 audit which elements are missing properties needed for 4D and 5D workflows,
+                    how your Activity IDs relate to the schedule, and whether your floor levels are
+                    correctly populated and matched to tasks.
+                    Sections 1–4 load independently via HTMX so slow sections never block faster ones.
+                </p>
+
+                <!-- 2. Sections -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-layout-text-sidebar me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    The five sections
+                </p>
+                <div class="d-flex flex-column gap-3 mb-4 fs-7 text-secondary">
+                    <div>
+                        <span class="fw-semibold text-body"><i class="bi bi-shield-check text-danger me-1"></i>IFC Health Checks</span> —
+                        10 automated quality checks run against the IFC file.
+                        Summary cards show total elements, total issues, and a breakdown by severity (Critical / Warning / Info).
+                        Use the filter buttons to focus on a specific severity. All three are active by default.
+                    </div>
+                    <div>
+                        <span class="fw-semibold text-body"><i class="bi bi-tag text-warning me-1"></i>Missing Activity ID</span> —
+                        Every IFC element that has no <code>Activity ID</code> property (or has an empty value).
+                        These elements cannot be linked to schedule tasks.
+                        Use <em>Copy Global ID</em> to grab the identifier, or <em>Open in 3D Viewer</em>
+                        to locate the element in the model.
+                    </div>
+                    <div>
+                        <span class="fw-semibold text-body"><i class="bi bi-currency-dollar text-warning me-1"></i>Missing Cost Data</span> —
+                        Elements with no <code>Cost</code> or <code>Unit Cost</code> property.
+                        These are excluded from 5D cost totals.
+                    </div>
+                    <div>
+                        <span class="fw-semibold text-body"><i class="bi bi-table text-primary me-1"></i>Activity ID &amp; Name Audit</span> —
+                        All Activity ID / Activity Name pairs found in element properties, grouped and counted.
+                        The <em>Linked to Task?</em> column shows whether any element in that group has a
+                        TaskEntityBinding in the schedule:
+                        <span class="text-success fw-bold">&#10003;</span> = linked,
+                        <span class="text-warning fw-bold">&#9888;</span> = Activity ID exists but no binding found.
+                    </div>
+                    <div>
+                        <span class="fw-semibold text-body"><i class="bi bi-layers text-info me-1"></i>Levels Health</span> —
+                        Every <code>IfcBuildingStorey</code> with its element count, schedule match, and a
+                        status summary:
+                        <span class="text-success">&#10003; OK</span> = has elements and matched in schedule,
+                        <span class="text-warning">&#9888; Not in schedule</span> = has elements but no task match,
+                        <span class="text-danger">&#10007; No elements</span> = storey exists but contains no entities.
+                        Use <em>Fix in Levels &rarr;</em> to jump to the Levels panel.
+                    </div>
+                </div>
+
+                <!-- 3. How to use -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-list-ol me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    Typical workflow
+                </p>
+                <ol class="text-secondary fs-7 ps-3 mb-4">
+                    <li class="mb-1">Check <strong>IFC Health Checks</strong> — resolve any Critical issues first; they indicate structural problems in the file that affect all downstream workflows.</li>
+                    <li class="mb-1">Check <strong>Missing Activity ID</strong> — export the CSV and share with your BIM team to populate the property in their authoring tool, then re-upload and re-process the IFC.</li>
+                    <li class="mb-1">Check <strong>Activity ID &amp; Name Audit</strong> — confirm every Activity ID group is linked to a schedule task. Unlinked groups (&#9888;) should be re-run through the TimeLiner auto-link.</li>
+                    <li class="mb-1">Check <strong>Levels Health</strong> — storeys with no elements indicate spatial containment gaps; storeys not in schedule need task names that reference the storey name.</li>
+                    <li class="mb-1">The red badge on the tab heading shows the combined count of missing Activity ID + missing Cost elements. Aim for zero.</li>
+                </ol>
+
+                <!-- 4. Who can do what -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-person-check me-1" style="color: var(--castor-primary, #3b82f6);"></i>
+                    Who can do what
+                </p>
+                <ul class="text-secondary fs-7 ps-3 mb-4">
+                    <li>Any project member can view all four sections and export CSVs.</li>
+                    <li>Fixing issues requires re-authoring the IFC in a BIM tool, re-uploading, and re-processing — typically done by the BIM manager.</li>
+                </ul>
+
+                <!-- 5. Caveats -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-exclamation-circle me-1" style="color: var(--castor-accent, #8b5cf6);"></i>
+                    Caveats
+                </p>
+                <div class="d-flex flex-column gap-1 fs-7 text-secondary">
+                    <span><i class="bi bi-dot"></i>Sections load in parallel on page open — large models may take a few seconds per section.</span>
+                    <span><i class="bi bi-dot"></i>Activity ID matching uses a suffix check (<code>.endswith("activity id")</code>) so custom Pset prefixes like <code>Castor_ActivityID</code> are correctly detected.</span>
+                    <span><i class="bi bi-dot"></i>Missing Cost counts <em>all</em> elements without a numeric Cost or Unit Cost — elements with a <code>Cost = 0</code> are treated as missing.</span>
+                    <span><i class="bi bi-dot"></i>The In Schedule check for Levels Health is a text-substring match — it is a hint, not a guarantee of a formal schedule link.</span>
+                    <span><i class="bi bi-dot"></i>Display is capped at 500 rows per section; use Export CSV for the full list.</span>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>

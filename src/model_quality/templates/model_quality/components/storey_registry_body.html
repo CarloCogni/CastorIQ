@@ -1,0 +1,13 @@
+<!-- ifc_insights/components/storey_registry_body.html — tbody rows for IFC storey registry -->
+<!-- Rendered by LevelSuggestView (HTMX refresh) and inline by levels.html on page load. -->
+<!-- Context: storeys (list of dicts with linked_level and in_schedule), project -->
+
+{% for storey in storeys %}
+    {% include "model_quality/components/storey_row.html" with storey=storey project=project %}
+{% empty %}
+<tr>
+    <td colspan="5" class="text-center text-secondary py-4 fs-7">
+        <i class="bi bi-info-circle me-1"></i>No IfcBuildingStorey objects found in this IFC file.
+    </td>
+</tr>
+{% endfor %}

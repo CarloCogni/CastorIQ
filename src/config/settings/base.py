@@ -47,6 +47,13 @@ INSTALLED_APPS = [
     "eastereggs",
     "facilities",
     "beta",
+    # 4D/5D BIM integration — atomic apps split from the former castor/ module.
+    # Order matters: takeoff and model_quality have no scheduling dep, and
+    # scheduling reads QTOCache from takeoff so takeoff goes first.
+    "takeoff",
+    "model_quality",
+    "scheduling",
+    "ifc_viewer",
     # Login lockout for /admin/ and /accounts/login. Must come after
     # django.contrib.auth so its signals are loaded first.
     "axes",
@@ -192,11 +199,20 @@ BETA_RATE_LIMIT = os.getenv("BETA_RATE_LIMIT", "5/h")
 BETA_DAILY_TOTAL_CAP = int(os.getenv("BETA_DAILY_TOTAL_CAP", "290"))
 BETA_DAILY_OPERATOR_CAP = int(os.getenv("BETA_DAILY_OPERATOR_CAP", "250"))
 
+# Whether to auto-provision a Sample Project for every newly created user.
+# The hook lives in `users/signals.py` (post_save on User, created=True).
+# True everywhere by default — tests flip it off via `src/conftest.py`'s
+# autouse fixture so they don't drag the IFC pipeline into every test run.
+PROVISION_SAMPLE_PROJECT_ON_USER_CREATE = (
+    os.getenv("PROVISION_SAMPLE_PROJECT_ON_USER_CREATE", "True").lower() == "true"
+)
+
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [
     BASE_DIR / "static",
+    BASE_DIR / "ifc_viewer" / "frontend",
 ]
 
 # Media files
@@ -243,6 +259,13 @@ MODIFY_MODEL = os.getenv("MODIFY_MODEL", "meta-llama/llama-4-scout-17b-16e-instr
 # Last-resort circuit-breaker. When set, the dispatcher refuses every cloud call and
 # the site renders a "paused for maintenance" banner. Local Ollama still works.
 LLM_MASTER_KILL = os.getenv("LLM_MASTER_KILL", "0") == "1"
+
+# Fernet symmetric key used to encrypt at-rest user secrets (BYOK API keys).
+# Generate once with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# When unset in DEBUG mode, core.crypto derives a key from SECRET_KEY (dev convenience,
+# logs a warning). Production MUST set this explicitly — a key change invalidates
+# all previously stored ciphertext.
+FIELD_ENCRYPTION_KEY = os.getenv("FIELD_ENCRYPTION_KEY", "")
 
 # RAG Token Budget
 RAG_RESPONSE_RESERVE = int(os.getenv("RAG_RESPONSE_RESERVE", "1500"))

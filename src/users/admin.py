@@ -16,3 +16,16 @@ from .models import User
 class UserAdmin(BaseUserAdmin):
     search_fields = ("username", "email", "first_name", "last_name")
     list_display = ("username", "email", "first_name", "last_name", "is_staff", "is_active")
+
+    # Stock UserAdmin's add form only asks for username + password, so every
+    # user created via the admin lands with email='' — which violates our
+    # unique constraint the second time around. Force email into the add form.
+    add_fieldsets = (
+        (
+            None,
+            {
+                "classes": ("wide",),
+                "fields": ("username", "email", "password1", "password2"),
+            },
+        ),
+    )

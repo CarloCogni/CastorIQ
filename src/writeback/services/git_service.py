@@ -180,17 +180,32 @@ class GitService:
         to Django's media upload directory.
 
         Returns True if rollback succeeded.
-        """
-        try:
-            # Restore file in repo
-            self.repo.git.checkout(commit_hash, "--", ifc_file.name)
 
-            # Copy restored file back to Django upload location
+        Failure recovery: ``git checkout`` mutates the repo working tree before
+        the Django-side file is updated. If ``copy2`` or the rollback commit
+        fails after the checkout staged its changes, the repo and Django media
+        directory diverge silently — the next propose cycle reads the
+        half-rolled-back state. We undo the staging with ``git reset --hard
+        HEAD`` so the next call starts from a clean state, and emit a critical
+        log if even that cleanup fails.
+        """
+        checkout_done = False
+        try:
+            self.repo.git.checkout(commit_hash, "--", ifc_file.name)
+            checkout_done = True
+
             src = self._ifc_repo_path(ifc_file)
             dst = Path(ifc_file.file.path)
             shutil.copy2(src, dst)
 
-            # Commit the rollback
+            # Truncated-write detection: shutil.copy2 can return without raising
+            # on partial writes (disk pressure, fs quota). Size match is a cheap
+            # sanity check against silent corruption of the Django-side file.
+            src_size = src.stat().st_size
+            dst_size = dst.stat().st_size
+            if src_size != dst_size:
+                raise OSError(f"Rollback copy truncated: src={src_size}B, dst={dst_size}B")
+
             self.repo.index.add([ifc_file.name])
             self.repo.index.commit(f"[ROLLBACK] Reverted {ifc_file.name} to {commit_hash[:8]}")
 
@@ -199,6 +214,18 @@ class GitService:
 
         except Exception as e:
             logger.error(f"Rollback failed for {ifc_file.name}: {e}")
+            if checkout_done:
+                try:
+                    self.repo.git.reset("--hard", "HEAD")
+                    logger.warning(
+                        f"Reset {ifc_file.name} working tree to HEAD after rollback failure"
+                    )
+                except Exception as reset_exc:
+                    logger.critical(
+                        f"Repo state inconsistent for {ifc_file.name}: rollback "
+                        f"failed and HEAD reset also failed ({reset_exc}). "
+                        f"Manual git intervention required."
+                    )
             return False
 
     # ── Queries ────────────────────────────────────────────

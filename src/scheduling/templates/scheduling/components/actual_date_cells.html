@@ -1,0 +1,26 @@
+<!-- scheduling/components/actual_date_cells.html — inline-editable actual date cells (HTMX OOB swap pair) -->
+
+<td id="actual-start-cell-{{ task.pk }}"
+    class="actual-date-cell"
+    style="font-size:0.82rem; cursor:pointer;"
+    title="Click to edit actual start"
+    onclick="openActualDateEditor('{{ task.pk }}', '{{ task.actual_start|date:'Y-m-d'|default:'' }}', '{{ task.actual_end|date:'Y-m-d'|default:'' }}')">
+    {% if task.actual_start %}
+        {{ task.actual_start|date:"M j, Y" }}
+    {% else %}
+        <span class="text-secondary">—</span>
+    {% endif %}
+</td>
+<td id="actual-end-cell-{{ task.pk }}"
+    class="actual-date-cell"
+    style="font-size:0.82rem; cursor:pointer;"
+    title="Click to edit actual end"
+    onclick="openActualDateEditor('{{ task.pk }}', '{{ task.actual_start|date:'Y-m-d'|default:'' }}', '{{ task.actual_end|date:'Y-m-d'|default:'' }}')">
+    {% if task.actual_end %}
+        {{ task.actual_end|date:"M j, Y" }}
+    {% elif task.actual_start %}
+        <span class="badge bg-success" style="font-size:0.75rem;">In Progress</span>
+    {% else %}
+        <span class="text-secondary">—</span>
+    {% endif %}
+</td>

@@ -145,6 +145,10 @@
 </div>
 
     <div class="chat-input-container flex-shrink-0 border-top bg-surface p-3">
+        <!-- Per-call routing disclosure: which provider this Ask will use. -->
+        <div class="mb-2">
+            {% include "core/components/llm_routing_badge.html" with purpose="ask" %}
+        </div>
         <form id="ask-form"
           method="post"
           hx-post="{% url 'projects:ask_session' project.pk session.pk %}"

@@ -1,0 +1,230 @@
+<!-- scheduling/tabs/link_review.html — Smart Pipeline binding review tab
+     Outer div is the HTMX outerHTML swap target for BulkAcceptView and BindingAddView. -->
+
+<div id="link-review-content">
+
+    <!-- Summary cards + bulk actions (also OOB-swapped by accept/remove row views) -->
+    <div id="lr-summary">
+        {% include "scheduling/components/link_review_summary.html" %}
+    </div>
+
+    {% if summary.total == 0 and not unlinked_tasks %}
+
+    <!-- Empty state -->
+    <div class="d-flex flex-column align-items-center justify-content-center text-secondary py-5">
+        <i class="bi bi-layers fs-1 mb-2"></i>
+        <span class="fw-semibold mb-1">No bindings yet</span>
+        <span class="small">Run Smart Pipeline in the Attach tab to generate link candidates.</span>
+    </div>
+
+    {% else %}
+
+    <!-- Filter bar — all filters load inline via HTMX, never navigate away -->
+    <ul class="nav nav-pills mb-3" style="font-size:0.82rem;">
+        <li class="nav-item">
+            <a class="nav-link py-1 px-2 {% if filter_by == 'all' %}active{% endif %}"
+               hx-get="{% url 'scheduling:review' project.pk %}?filter=all"
+               hx-target="#link-review-content"
+               hx-swap="outerHTML"
+               style="cursor:pointer;">
+                All <span class="badge bg-secondary ms-1">{{ summary.total }}</span>
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link py-1 px-2 {% if filter_by == 'needs_review' %}active{% endif %}"
+               hx-get="{% url 'scheduling:review' project.pk %}?filter=needs_review"
+               hx-target="#link-review-content"
+               hx-swap="outerHTML"
+               style="cursor:pointer;">
+                Needs Review
+                {% if summary.needs_review %}<span class="badge bg-warning text-dark ms-1">{{ summary.needs_review }}</span>{% endif %}
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link py-1 px-2 {% if filter_by == 'auto_accepted' %}active{% endif %}"
+               hx-get="{% url 'scheduling:review' project.pk %}?filter=auto_accepted"
+               hx-target="#link-review-content"
+               hx-swap="outerHTML"
+               style="cursor:pointer;">
+                Auto-accepted
+                {% if summary.auto_accepted %}<span class="badge bg-success ms-1">{{ summary.auto_accepted }}</span>{% endif %}
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link py-1 px-2 {% if filter_by == 'unlinked' %}active{% endif %}"
+               hx-get="{% url 'scheduling:review' project.pk %}?filter=unlinked"
+               hx-target="#link-review-content"
+               hx-swap="outerHTML"
+               style="cursor:pointer;">
+                Unlinked
+                {% if summary.unlinked_tasks %}<span class="badge bg-danger ms-1">{{ summary.unlinked_tasks }}</span>{% endif %}
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link py-1 px-2 {% if filter_by == 'non_physical' %}active{% endif %}"
+               hx-get="{% url 'scheduling:review' project.pk %}?filter=non_physical"
+               hx-target="#link-review-content"
+               hx-swap="outerHTML"
+               style="cursor:pointer;">
+                Non-Physical
+                {% if summary.non_physical_count %}<span class="badge bg-secondary ms-1">{{ summary.non_physical_count }}</span>{% endif %}
+            </a>
+        </li>
+    </ul>
+
+    <!-- Bindings table -->
+    {% if rows %}
+    <div class="table-responsive mb-4">
+        <table class="table table-sm table-hover align-middle" style="font-size:0.83rem;">
+            <thead class="table-dark" style="position:sticky; top:0; z-index:1;">
+                <tr>
+                    <th class="ps-2" style="width:18%;">Task</th>
+                    <th style="width:18%;">Entity</th>
+                    <th style="width:10%;">Stage</th>
+                    <th style="width:10%;">Method</th>
+                    <th class="text-center" style="width:8%;">Conf.</th>
+                    <th class="text-center" style="width:7%;" title="Other tasks also bound to this entity">Siblings</th>
+                    <th style="width:10%;">Status</th>
+                    <th style="width:19%;">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="bindings-table-body">
+                {% for row in rows %}
+                    {% include "scheduling/components/link_review_row.html" with row=row project=project %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% elif filter_by != 'unlinked' %}
+    <p class="text-secondary small py-3 text-center">No bindings match this filter.</p>
+    {% endif %}
+
+    <!-- Unlinked tasks section -->
+    {% if unlinked_tasks %}
+    <div class="border rounded p-3" style="font-size:0.83rem;">
+        <div class="fw-semibold mb-2" style="font-size:0.85rem;">
+            <i class="bi bi-x-circle text-danger me-1"></i>
+            Unlinked Tasks <span class="badge bg-danger ms-1">{{ unlinked_tasks|length }}</span>
+        </div>
+        <table class="table table-sm mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Task Name</th>
+                    <th style="width:130px;">Activity Code</th>
+                    <th style="width:80px;"></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for task in unlinked_tasks %}
+            <tr id="unlinked-row-{{ task.pk }}">
+                <td class="text-truncate" style="max-width:0;">{{ task.name }}</td>
+                <td>
+                    {% if task.activity_code %}
+                    <code class="text-info">{{ task.activity_code }}</code>
+                    {% else %}
+                    <span class="text-secondary">—</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <div class="d-flex gap-1">
+                        <button class="btn btn-sm btn-outline-primary py-0 px-2"
+                                onclick="document.getElementById('search-task-{{ task.pk }}').classList.toggle('d-none')"
+                                title="Manually link this task">
+                            <i class="bi bi-plus-circle me-1"></i>Link
+                        </button>
+                        <form hx-post="{% url 'scheduling:task_toggle_physical' project.pk task.pk %}"
+                              hx-target="#link-review-content"
+                              hx-swap="outerHTML">
+                            {% csrf_token %}
+                            <input type="hidden" name="target" value="non_physical">
+                            <button type="submit" class="btn btn-sm btn-outline-secondary py-0 px-2"
+                                    title="Exclude from matching (non-physical activity)">
+                                <i class="bi bi-slash-circle"></i>
+                            </button>
+                        </form>
+                    </div>
+                </td>
+            </tr>
+            <!-- Inline entity search row (hidden by default) -->
+            <tr id="search-task-{{ task.pk }}" class="d-none">
+                <td colspan="3" class="py-2 px-3 bg-body-secondary">
+                    <div class="d-flex gap-2 align-items-center mb-1">
+                        <i class="bi bi-search text-secondary" style="font-size:0.8rem;"></i>
+                        <input type="text"
+                               class="form-control form-control-sm"
+                               placeholder="Search IFC entities…"
+                               hx-get="{% url 'scheduling:binding_search' project.pk %}"
+                               hx-trigger="input changed delay:300ms, search"
+                               hx-target="#search-results-{{ task.pk }}"
+                               hx-vals='{"task_pk": "{{ task.pk }}"}'
+                               name="q"
+                               style="max-width:340px;">
+                        <span id="search-spinner-{{ task.pk }}" class="htmx-indicator spinner-border spinner-border-sm text-secondary"></span>
+                    </div>
+                    <div id="search-results-{{ task.pk }}"></div>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    {% endif %}
+
+    <!-- Non-physical tasks section -->
+    {% if non_physical_tasks %}
+    <div class="border rounded p-3 mt-3" style="font-size:0.83rem;">
+        <div class="fw-semibold mb-2" style="font-size:0.85rem;">
+            <i class="bi bi-slash-circle text-secondary me-1"></i>
+            Non-Physical Activities
+            <span class="badge bg-secondary ms-1">{{ non_physical_tasks|length }}</span>
+            <span class="text-muted fw-normal ms-2" style="font-size:0.78rem;">excluded from IFC matching</span>
+        </div>
+        <table class="table table-sm mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Task Name</th>
+                    <th style="width:130px;">Activity Code</th>
+                    <th style="width:80px;">Source</th>
+                    <th style="width:110px;"></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for task in non_physical_tasks %}
+            <tr>
+                <td class="text-truncate" style="max-width:0;">{{ task.name }}</td>
+                <td>
+                    {% if task.activity_code %}
+                    <code class="text-info">{{ task.activity_code }}</code>
+                    {% else %}
+                    <span class="text-secondary">—</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if task.non_physical_locked %}
+                    <span class="badge bg-secondary" title="Manually set by user">manual</span>
+                    {% else %}
+                    <span class="badge bg-light text-secondary border">auto</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <form hx-post="{% url 'scheduling:task_toggle_physical' project.pk task.pk %}"
+                          hx-target="#link-review-content"
+                          hx-swap="outerHTML">
+                        {% csrf_token %}
+                        <input type="hidden" name="target" value="physical">
+                        <button type="submit" class="btn btn-sm btn-outline-success py-0 px-2"
+                                title="Include in IFC matching">
+                            <i class="bi bi-plus-circle me-1"></i>Mark Physical
+                        </button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+</div>
