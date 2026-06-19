@@ -7,10 +7,12 @@ from django.conf import settings
 from django.contrib import admin, messages
 from django.contrib.auth import get_user_model
 from django.core.mail import EmailMultiAlternatives
+from django.db.models import Q
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.encoding import force_bytes
+from django.utils.html import format_html
 from django.utils.http import urlsafe_base64_encode
 
 from users.tokens import humanize_timeout, invite_token_generator
@@ -19,6 +21,23 @@ from .models import BetaApplication
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
+
+
+def _account_state(application: BetaApplication) -> str:
+    """Classify an applicant's onboarding state from their linked User.
+
+    The single source of truth for "did they finish setup" is the password:
+    approval creates the User with ``set_unusable_password()``, so an unusable
+    password means invited-but-pending and a usable one means they completed the
+    set-password flow.
+
+    Returns one of ``"none"`` (no account yet), ``"invited"`` (account exists,
+    password not set), or ``"active"`` (password set).
+    """
+    user = application.created_user
+    if user is None:
+        return "none"
+    return "active" if user.has_usable_password() else "invited"
 
 
 def _build_set_password_url(user) -> str:
@@ -55,6 +74,36 @@ def _send_welcome_email(application: BetaApplication, user, set_password_url: st
     msg.send(fail_silently=False)
 
 
+class AccountStateFilter(admin.SimpleListFilter):
+    """Sidebar filter on onboarding state, derived from the linked User's password.
+
+    Django stores an unusable password as an ``"!"``-prefixed marker, so a usable
+    (set) password is one that is neither empty nor ``"!"``-prefixed. Mirrors
+    ``_account_state`` at the queryset level.
+    """
+
+    title = "account"
+    parameter_name = "account"
+
+    def lookups(self, request, model_admin):
+        return [
+            ("invited", "Invited · pending"),
+            ("active", "Active"),
+            ("none", "No account"),
+        ]
+
+    def queryset(self, request, queryset):
+        value = self.value()
+        if value == "none":
+            return queryset.filter(created_user__isnull=True)
+        unusable = Q(created_user__password__startswith="!") | Q(created_user__password="")
+        if value == "invited":
+            return queryset.filter(created_user__isnull=False).filter(unusable)
+        if value == "active":
+            return queryset.filter(created_user__isnull=False).exclude(unusable)
+        return queryset
+
+
 @admin.register(BetaApplication)
 class BetaApplicationAdmin(admin.ModelAdmin):
     list_display = (
@@ -62,13 +111,27 @@ class BetaApplicationAdmin(admin.ModelAdmin):
         "name",
         "job_title",
         "status",
+        "account_status",
         "needs_provisioning_repair",
         "created_at",
         "reviewed_by",
         "reviewed_at",
     )
-    list_filter = ("status", "created_at")
+    list_filter = ("status", AccountStateFilter, "created_at")
+    list_select_related = ("created_user",)
     search_fields = ("email", "name", "job_title", "description", "notes")
+
+    @admin.display(description="Account")
+    def account_status(self, obj: BetaApplication):
+        # Onboarding state at a glance: who set a password (Active) vs. who is
+        # still sitting on an unused invite (Invited · pending).
+        labels = {
+            "none": ("—", "#9ca3af"),
+            "invited": ("Invited · pending", "#d97706"),
+            "active": ("Active", "#16a34a"),
+        }
+        text, color = labels[_account_state(obj)]
+        return format_html('<span style="color: {}; font-weight: 600;">{}</span>', color, text)
 
     @admin.display(boolean=True, description="Provisioning OK?")
     def needs_provisioning_repair(self, obj: BetaApplication) -> bool:
@@ -111,7 +174,121 @@ class BetaApplicationAdmin(admin.ModelAdmin):
         ("Internal", {"fields": ("id",), "classes": ("collapse",)}),
     )
 
-    actions = ["approve_and_invite", "mark_called", "mark_rejected"]
+    actions = [
+        "approve_and_invite",
+        "resend_welcome_email",
+        "force_reset_password_and_resend",
+        "mark_called",
+        "mark_rejected",
+    ]
+
+    @admin.action(description="Resend welcome email (skips active accounts)")
+    def resend_welcome_email(self, request, queryset):
+        """Re-send a fresh set-password link to invited-but-not-yet-active applicants.
+
+        Non-destructive: never changes a password. Skips rows with no account
+        (approve first) and rows whose user already set a password (Active) —
+        use ``force_reset_password_and_resend`` to re-onboard those. Per-row
+        errors surface as warnings and don't abort the batch.
+        """
+        sent = 0
+        skipped_no_account = 0
+        skipped_active = 0
+        for application in queryset:
+            user = application.created_user
+            if user is None:
+                skipped_no_account += 1
+                continue
+            if user.has_usable_password():
+                skipped_active += 1
+                continue
+            try:
+                set_password_url = _build_set_password_url(user)
+                _send_welcome_email(application, user, set_password_url)
+                sent += 1
+                logger.info(
+                    "Resent welcome email: email=%s user=%s operator=%s",
+                    application.email,
+                    user.username,
+                    request.user.username,
+                )
+            except Exception as exc:
+                logger.exception("Resend failed for %s: %s", application.email, exc)
+                self.message_user(
+                    request,
+                    f"Could not email {application.email}: {exc}",
+                    level=messages.WARNING,
+                )
+
+        if sent:
+            self.message_user(
+                request,
+                f"Resent the welcome email to {sent} pending applicant(s).",
+                level=messages.SUCCESS,
+            )
+        if skipped_active:
+            self.message_user(
+                request,
+                f"Skipped {skipped_active} active account(s) — use "
+                "'Force reset password + resend' to re-onboard those.",
+                level=messages.INFO,
+            )
+        if skipped_no_account:
+            self.message_user(
+                request,
+                f"Skipped {skipped_no_account} application(s) with no account — approve them first.",
+                level=messages.INFO,
+            )
+
+    @admin.action(description="Force reset password + resend (re-onboard — wipes password)")
+    def force_reset_password_and_resend(self, request, queryset):
+        """Wipe the password and re-send the set-password link, even for active users.
+
+        Destructive: an active user loses their current password and must set a
+        new one via the email link (this also invalidates any previously-sent
+        link). Does NOT delete the User or their Sample Project, and leaves the
+        application status untouched. For the rare "start someone over" case;
+        prefer ``resend_welcome_email`` for normal pending invites.
+        """
+        reset = 0
+        skipped_no_account = 0
+        for application in queryset:
+            user = application.created_user
+            if user is None:
+                skipped_no_account += 1
+                continue
+            try:
+                user.set_unusable_password()
+                user.save(update_fields=["password"])
+                set_password_url = _build_set_password_url(user)
+                _send_welcome_email(application, user, set_password_url)
+                reset += 1
+                logger.info(
+                    "Force reset password + resent welcome email: email=%s user=%s operator=%s",
+                    application.email,
+                    user.username,
+                    request.user.username,
+                )
+            except Exception as exc:
+                logger.exception("Force reset failed for %s: %s", application.email, exc)
+                self.message_user(
+                    request,
+                    f"Could not reset {application.email}: {exc}",
+                    level=messages.WARNING,
+                )
+
+        if reset:
+            self.message_user(
+                request,
+                f"Reset password + resent the welcome email for {reset} applicant(s).",
+                level=messages.SUCCESS,
+            )
+        if skipped_no_account:
+            self.message_user(
+                request,
+                f"Skipped {skipped_no_account} application(s) with no account — approve them first.",
+                level=messages.INFO,
+            )
 
     @admin.action(description="Approve → create User + send welcome email")
     def approve_and_invite(self, request, queryset):
