@@ -134,11 +134,19 @@ LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "projects:list"
 LOGOUT_REDIRECT_URL = "login"
 
-# Password reset — beta uses Django's built-in PasswordResetConfirmView as the
-# one-time set-password link in welcome emails (M3.6). Default is 7 days so a
-# reviewer can sit on an approval over the weekend without invalidating the
-# applicant's link.
+# Password reset — lifetime of the forgot-password recovery link only. Kept
+# short by default for security: a recovery link is requested and used within
+# minutes. The beta welcome / set-password invite link is a DIFFERENT flow with
+# its own, much longer lifetime (INVITE_LINK_TIMEOUT below) — the two used to
+# share this setting, which silently expired invite links after 15 min in prod.
 PASSWORD_RESET_TIMEOUT = int(os.getenv("PASSWORD_RESET_TIMEOUT", str(7 * 24 * 3600)))
+
+# Welcome / beta-invite set-password links live much longer than forgot-password
+# reset links: the operator approves an applicant, who then registers whenever
+# they next open their email — possibly days later. Decoupled from
+# PASSWORD_RESET_TIMEOUT (which stays short for security on the recovery flow)
+# via users.tokens.InviteTokenGenerator, which reads THIS setting instead.
+INVITE_LINK_TIMEOUT = int(os.getenv("INVITE_LINK_TIMEOUT", str(30 * 24 * 3600)))
 
 # Email — env-driven so dev can stay on console output and prod can swap to
 # SMTP without a code change. EMAIL_HOST being unset is the signal that no

@@ -5,7 +5,7 @@ Your Castor beta application has been approved. Welcome!
 Set your password and sign in:
 {{ set_password_url }}
 
-This link is valid for 7 days.
+This link is valid for {{ link_lifetime }}.
 
 A few things you should know about the beta:
 

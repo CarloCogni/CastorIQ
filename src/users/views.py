@@ -14,17 +14,43 @@ in place — admin still uses them internally — but no user-facing
 surface routes to them anymore.
 """
 
+from django.conf import settings
 from django.contrib.auth import views as auth_views
 from django.urls import reverse_lazy
 
 from .forms import CastorPasswordResetForm
+from .tokens import humanize_timeout, invite_token_generator
 
 
 class SetPasswordConfirmView(auth_views.PasswordResetConfirmView):
-    """Branded set-password page reached from welcome and reset emails."""
+    """Branded set-password page reached from the forgot-password reset email."""
 
     template_name = "users/set_password.html"
     success_url = reverse_lazy("users_set_password_complete")
+
+    def get_context_data(self, **kwargs):
+        """Expose the link lifetime so the expired-link copy reads from settings."""
+        context = super().get_context_data(**kwargs)
+        context["link_lifetime"] = humanize_timeout(settings.PASSWORD_RESET_TIMEOUT)
+        return context
+
+
+class InviteSetPasswordConfirmView(SetPasswordConfirmView):
+    """Welcome-email landing — same page as reset, but invite-lifetime tokens.
+
+    Overrides only the token generator so beta invite links honour
+    ``INVITE_LINK_TIMEOUT`` (30 days) instead of the short forgot-password
+    ``PASSWORD_RESET_TIMEOUT``. The forgot-password flow keeps the default
+    generator via the parent class.
+    """
+
+    token_generator = invite_token_generator
+
+    def get_context_data(self, **kwargs):
+        """Expose the (longer) invite link lifetime for the expired-link copy."""
+        context = super().get_context_data(**kwargs)
+        context["link_lifetime"] = humanize_timeout(settings.INVITE_LINK_TIMEOUT)
+        return context
 
 
 class SetPasswordCompleteView(auth_views.PasswordResetCompleteView):

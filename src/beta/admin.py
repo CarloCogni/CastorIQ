@@ -6,13 +6,14 @@ import logging
 from django.conf import settings
 from django.contrib import admin, messages
 from django.contrib.auth import get_user_model
-from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
+
+from users.tokens import humanize_timeout, invite_token_generator
 
 from .models import BetaApplication
 
@@ -21,15 +22,16 @@ User = get_user_model()
 
 
 def _build_set_password_url(user) -> str:
-    """Build an absolute URL to Django's PasswordResetConfirmView for a user.
+    """Build an absolute invite set-password URL for a freshly approved user.
 
-    Reuses the same token machinery the standard "Forgot password?" flow
-    uses, so the link expires per ``settings.PASSWORD_RESET_TIMEOUT`` (7 days
-    by default, set in M3.2) and is single-use.
+    Uses the invite-specific token generator + URL so the link honours
+    ``settings.INVITE_LINK_TIMEOUT`` (30 days by default) rather than the short
+    forgot-password ``PASSWORD_RESET_TIMEOUT`` — the applicant may not register
+    until days after approval. Single-use, like every reset-style token.
     """
     uid = urlsafe_base64_encode(force_bytes(user.pk))
-    token = default_token_generator.make_token(user)
-    path = reverse("users_set_password_confirm", kwargs={"uidb64": uid, "token": token})
+    token = invite_token_generator.make_token(user)
+    path = reverse("users_invite_confirm", kwargs={"uidb64": uid, "token": token})
     return settings.SITE_URL.rstrip("/") + path
 
 
@@ -39,6 +41,7 @@ def _send_welcome_email(application: BetaApplication, user, set_password_url: st
         "user_full_name": application.name,
         "set_password_url": set_password_url,
         "site_url": settings.SITE_URL,
+        "link_lifetime": humanize_timeout(settings.INVITE_LINK_TIMEOUT),
     }
     text_body = render_to_string("beta/email/welcome.txt", ctx)
     html_body = render_to_string("beta/email/welcome.html", ctx)
