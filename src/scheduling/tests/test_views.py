@@ -297,6 +297,168 @@ class ScheduleSaveTests(TestCase):
         self.assertIn("HX-Trigger", response)
 
 
+class ScheduleImportCpmTests(TestCase):
+    """TaskSaveView — CPM recompute, import criticality, and truthful toasts."""
+
+    def setUp(self):
+        self.user = make_user()
+        self.project = make_project(owner=self.user)
+        _login(self.client, self.user)
+        self.url = reverse("scheduling:schedule_save", kwargs={"pk": self.project.pk})
+
+    def _seed_session(self, tasks_data, deps_data=None):
+        _set_session(
+            self.client,
+            f"parsed_tasks_{self.project.pk}",
+            json.dumps(tasks_data),
+        )
+        if deps_data is not None:
+            _set_session(
+                self.client,
+                f"parsed_deps_{self.project.pk}",
+                json.dumps(deps_data),
+            )
+
+    @staticmethod
+    def _task_row(**overrides):
+        row = {
+            "name": "Foundation Work",
+            "start_date": "2025-01-01",
+            "end_date": "2025-01-10",
+            "status": "planned",
+            "source": "p6xml",
+            "activity_code": "ACT-001",
+            "color": "#3b82f6",
+            "description": "",
+        }
+        row.update(overrides)
+        return row
+
+    @staticmethod
+    def _toast(response):
+        payload = json.loads(response["HX-Trigger"])
+        return payload["castor:toast"]
+
+    def test_import_negative_float_is_critical_at_save(self):
+        """Imported total_float < 0 marks task critical before CPM overwrite."""
+        from unittest.mock import patch
+
+        from scheduling.models import Task
+
+        noop_cpm = {"critical_task_ids": [], "project_duration": 0, "task_data": {}}
+        with patch("scheduling.views.compute_critical_path", return_value=noop_cpm):
+            self._seed_session([self._task_row(total_float_days=-5)])
+            self.client.post(self.url)
+
+        task = Task.objects.get(project=self.project, activity_code="ACT-001")
+        self.assertEqual(task.total_float, -5)
+        self.assertTrue(task.is_critical)
+
+    def test_import_missing_total_float_not_false_critical(self):
+        """Missing total_float must not mark task critical at import time."""
+        from unittest.mock import patch
+
+        from scheduling.models import Task
+
+        noop_cpm = {"critical_task_ids": [], "project_duration": 0, "task_data": {}}
+        with patch("scheduling.views.compute_critical_path", return_value=noop_cpm):
+            self._seed_session([self._task_row()])
+            self.client.post(self.url)
+
+        task = Task.objects.get(project=self.project, activity_code="ACT-001")
+        self.assertIsNone(task.total_float)
+        self.assertFalse(task.is_critical)
+
+    def test_import_positive_float_not_critical(self):
+        """Imported total_float > 0 must not mark task critical at import time."""
+        from unittest.mock import patch
+
+        from scheduling.models import Task
+
+        noop_cpm = {"critical_task_ids": [], "project_duration": 0, "task_data": {}}
+        with patch("scheduling.views.compute_critical_path", return_value=noop_cpm):
+            self._seed_session([self._task_row(total_float_days=12)])
+            self.client.post(self.url)
+
+        task = Task.objects.get(project=self.project, activity_code="ACT-001")
+        self.assertEqual(task.total_float, 12)
+        self.assertFalse(task.is_critical)
+
+    def test_import_recomputes_cpm_when_p6_fields_present(self):
+        """P6 early/float fields must not skip post-import CPM."""
+        from unittest.mock import patch
+
+        cpm_result = {
+            "critical_task_ids": ["x"],
+            "project_duration": 10,
+            "task_data": {"x": {"total_float": 0, "is_critical": True}},
+        }
+        with patch("scheduling.views.compute_critical_path", return_value=cpm_result) as mock_cpm:
+            self._seed_session(
+                [
+                    self._task_row(
+                        early_start="2025-01-01",
+                        early_finish="2025-01-10",
+                        total_float_days=0,
+                    )
+                ]
+            )
+            self.client.post(self.url)
+
+        mock_cpm.assert_called_once_with(str(self.project.pk))
+
+    def test_import_toast_reports_cpm_recomputed(self):
+        """Successful import reports CPM recomputed in toast."""
+        self._seed_session([self._task_row()])
+        response = self.client.post(self.url)
+        toast = self._toast(response)
+        self.assertEqual(toast["level"], "success")
+        self.assertIn("CPM recomputed", toast["message"])
+
+    def test_import_toast_reports_cpm_failed(self):
+        """CPM failure surfaces partial-success error toast."""
+        from unittest.mock import patch
+
+        with patch("scheduling.views.compute_critical_path", side_effect=RuntimeError("boom")):
+            self._seed_session([self._task_row()])
+            response = self.client.post(self.url)
+
+        toast = self._toast(response)
+        self.assertEqual(toast["level"], "error")
+        self.assertIn("CPM recompute failed", toast["message"])
+
+    def test_import_toast_reports_cpm_skipped_for_non_physical_only(self):
+        """When no schedulable tasks exist, toast reports CPM skipped."""
+        make_task(
+            self.project,
+            name="WBS Summary",
+            activity_code="ACT-001",
+            is_non_physical=True,
+        )
+        self._seed_session([self._task_row(name="WBS Summary")])
+        response = self.client.post(self.url)
+        toast = self._toast(response)
+        self.assertIn("CPM skipped", toast["message"])
+        self.assertIn("no schedulable tasks", toast["message"])
+
+    def test_import_toast_reports_skipped_rows(self):
+        """Invalid import rows increment skipped count in toast."""
+        self._seed_session(
+            [
+                self._task_row(),
+                self._task_row(
+                    name="Bad Row",
+                    activity_code="ACT-BAD",
+                    start_date="not-a-date",
+                ),
+            ]
+        )
+        response = self.client.post(self.url)
+        toast = self._toast(response)
+        self.assertEqual(toast["level"], "info")
+        self.assertIn("1 task row skipped", toast["message"])
+
+
 # ---------------------------------------------------------------------------
 # Task actual dates
 # ---------------------------------------------------------------------------

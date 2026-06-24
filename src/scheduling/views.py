@@ -659,7 +659,13 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
         has_p6_cpm = any(
             td.get("total_float_days") is not None or td.get("early_start") for td in tasks_data
         )
+        if has_p6_cpm:
+            logger.info(
+                "P6 CPM fields present in import for project %s — will recompute after save",
+                project.pk,
+            )
 
+        skipped_count = 0
         for td in tasks_data:
             try:
                 cost_str = td.get("cost") or td.get("budgeted_cost")
@@ -692,7 +698,7 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
                     late_start=date.fromisoformat(late_start_raw) if late_start_raw else None,
                     late_finish=date.fromisoformat(late_finish_raw) if late_finish_raw else None,
                     total_float=int(total_float_val) if total_float_val is not None else None,
-                    is_critical=total_float_val is not None and int(total_float_val) == 0,
+                    is_critical=total_float_val is not None and int(total_float_val) <= 0,
                     calendar_object_id=td.get("calendar_object_id", ""),
                     constraint_type=td.get("constraint_type", ""),
                     constraint_date=date.fromisoformat(td["constraint_date"])
@@ -739,6 +745,7 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
                 if raw_preds:
                     tasks_with_preds.append((pk, raw_preds))
             except Exception as exc:
+                skipped_count += 1
                 logger.warning("Skipping task row: %s", exc)
 
         del request.session[session_key]
@@ -790,16 +797,35 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
             TaskDependency.objects.bulk_create(dep_objects, ignore_conflicts=True)
             dep_count = len(dep_objects)
             logger.info("Dependencies saved: %d for project %s", dep_count, project.pk)
-            if not has_p6_cpm:
-                try:
-                    cpm = compute_critical_path(str(project.pk))
-                    logger.info(
-                        "CPM computed: %d critical of %d tasks",
-                        len(cpm["critical_task_ids"]),
-                        len(cpm["task_data"]),
-                    )
-                except Exception as exc:
-                    logger.warning("CPM auto-run failed: %s", exc)
+
+        # Always recompute CPM after import — recomputed float/criticality drive analytics.
+        cpm_attempted = False
+        cpm_ok = False
+        cpm_skipped = False
+        try:
+            schedulable = (
+                Task.objects.filter(project=project, is_non_physical=False)
+                .exclude(start_date=None)
+                .exclude(end_date=None)
+            )
+            if schedulable.exists():
+                cpm_attempted = True
+                cpm = compute_critical_path(str(project.pk))
+                cpm_ok = True
+                logger.info(
+                    "CPM recomputed after import: %d critical of %d tasks (project %s)",
+                    len(cpm["critical_task_ids"]),
+                    len(cpm["task_data"]),
+                    project.pk,
+                )
+            elif Task.objects.filter(project=project).exists():
+                cpm_skipped = True
+                logger.info(
+                    "CPM skipped after import — no schedulable tasks (project %s)",
+                    project.pk,
+                )
+        except Exception as exc:
+            logger.warning("CPM recompute after import failed: %s", exc)
 
         all_tasks = list(
             Task.objects.filter(project=project).only("pk", "name", "stage", "sub_stage")
@@ -838,12 +864,25 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
             parts.append(f"{unchanged} unchanged")
         msg = (", ".join(parts) or "No new tasks") + "."
         if dep_count:
-            msg += (
-                f" {dep_count} dependenc{'y' if dep_count == 1 else 'ies'} imported, CPM computed."
-            )
+            msg += f" {dep_count} dependenc{'y' if dep_count == 1 else 'ies'} imported."
+            if cpm_attempted and cpm_ok:
+                msg += " CPM recomputed."
+        elif cpm_attempted and cpm_ok:
+            msg += " CPM recomputed."
+        if cpm_attempted and not cpm_ok:
+            msg += " Schedule imported, but CPM recompute failed — check logs or re-run CPM."
+        if cpm_skipped:
+            msg += " CPM skipped — no schedulable tasks."
+        if skipped_count:
+            msg += f" {skipped_count} task row{'s' if skipped_count != 1 else ''} skipped — check logs."
         if cleaned:
             msg += f" Cleaned {cleaned} duplicate task{'s' if cleaned != 1 else ''}."
-        return trigger_toast(response, msg, "success")
+        toast_level = "success"
+        if cpm_attempted and not cpm_ok:
+            toast_level = "error"
+        elif skipped_count:
+            toast_level = "info"
+        return trigger_toast(response, msg, toast_level)
 
 
 class ScheduleClearView(ProjectModifyAccessMixin, View):
