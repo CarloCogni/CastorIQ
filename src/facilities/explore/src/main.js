@@ -656,6 +656,16 @@ function selectRoom(pointId, roomGlobalId) {
     const patch = { roomId: room.globalId, globalId: room.globalId, ifcType: room.ifcType };
     if (pt && (!pt.label || /^Point \d+$/.test(pt.label))) patch.label = room.name;
     updatePoint(pointId, patch);
+    // Assigning a room auto-links the IFC elements table (filtered by the
+    // room's GlobalID) so the panel immediately lists everything placed in
+    // that room together with its parameters — no manual "add table" step.
+    // Skipped when the point already carries the table (user may have
+    // re-picked the room or configured a different filter key).
+    const catalog = tableCatalog();
+    const hasElements = pt && (pt.tables || []).some((t) => t.key === "elements");
+    if (catalog && catalog.elements && !hasElements) {
+      addPointTable(pointId, "elements", "globalId");
+    }
     toast(`Linked to ${room.name} (${room.ifcType})`);
   } else {
     updatePoint(pointId, { roomId: "" }); // custom — GlobalID/IFC become editable
@@ -1250,7 +1260,7 @@ if (btnAnnotate) {
 }
 
 // ── Boot ──
-const BUILD = "build 6.48"; // bump on each change so a stale (cached) JS is obvious in the header
+const BUILD = "build 6.49"; // bump on each change so a stale (cached) JS is obvious in the header
 initModal();
 // Restore a previously chosen standalone theme (host SET_THEME still overrides when embedded).
 try { const savedTheme = localStorage.getItem(THEME_KEY); if (savedTheme) applyTheme(savedTheme); } catch (_) { /* ignore */ }

@@ -4,8 +4,11 @@
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
+
+from django.utils import timezone
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -184,11 +187,124 @@ class FacilitiesView(ProjectTabMixin, TemplateView):
         context["facilities_open_asset_count"] = FacilityAsset.objects.filter(
             project=project, decommissioned_at__isnull=True
         ).count()
+        context.update(_dashboard_live_context(project))
 
         # M4 — Occupant Portal landing data (only fetched when needed).
         if context.get("facilities_is_occupant_mode"):
             context.update(_portal_landing_context(project, self.request.user))
         return context
+
+
+def _dashboard_live_context(project) -> dict:
+    """Live counts + a merged recent-activity feed for the Dashboard landing.
+
+    Everything here is a cheap indexed count / small slice — the dashboard
+    renders on every Facilities landing, so nothing heavier belongs in it.
+    The activity feed merges the three operational streams (work orders,
+    occupant requests, permits) into one list sorted by last update.
+    """
+    from .models.work import (  # noqa: PLC0415 — local to avoid circulars at import time
+        Permit,
+        WorkOrder,
+        WorkOrderPriority,
+    )
+
+    now = timezone.now()
+
+    open_wos = WorkOrder.objects.filter(
+        project=project, status__lt=WorkOrderStatus.COMPLETED
+    )
+    permits_expiring = Permit.objects.filter(
+        project=project,
+        status=Permit.Status.ACTIVE,
+        valid_until__isnull=False,
+        valid_until__gte=now,
+        valid_until__lte=now + timedelta(days=90),
+    )
+    requests_open = ActionRequest.objects.filter(
+        project=project, status=ActionRequest.Status.OPEN
+    )
+
+    # Merge the newest few of each stream, then keep the freshest 8 overall.
+    activity: list[dict] = []
+    for wo in (
+        WorkOrder.objects.filter(project=project)
+        .select_related("assignee_user")
+        .order_by("-updated_at")[:8]
+    ):
+        activity.append(
+            {
+                "kind": "wo",
+                "code": wo.wo_number,
+                "title": wo.title,
+                "status": wo.get_status_display(),
+                "is_critical": wo.priority == WorkOrderPriority.P1
+                and wo.status < WorkOrderStatus.COMPLETED,
+                "is_done": wo.status >= WorkOrderStatus.COMPLETED,
+                "meta": ", ".join(
+                    part
+                    for part in (
+                        wo.get_category_display(),
+                        wo.assignee_user.get_username() if wo.assignee_user_id else "",
+                    )
+                    if part
+                ),
+                "updated_at": wo.updated_at,
+                "url": reverse("facilities:work_detail", args=[project.pk, wo.pk]),
+            }
+        )
+    for ar in (
+        ActionRequest.objects.filter(project=project)
+        .select_related("submitted_by")
+        .order_by("-updated_at")[:8]
+    ):
+        activity.append(
+            {
+                "kind": "request",
+                "code": f"AR-{str(ar.pk)[:6]}",
+                "title": ar.title,
+                "status": ar.get_status_display(),
+                "is_critical": ar.severity == ActionRequest.Severity.HIGH
+                and ar.status == ActionRequest.Status.OPEN,
+                "is_done": ar.status
+                in (ActionRequest.Status.DISMISSED, ActionRequest.Status.ESCALATED),
+                "meta": ", ".join(
+                    part
+                    for part in (
+                        ar.get_severity_display(),
+                        ar.submitted_by.get_username() if ar.submitted_by_id else "kiosk",
+                    )
+                    if part
+                ),
+                "updated_at": ar.updated_at,
+                "url": reverse("facilities:ar_detail", args=[project.pk, ar.pk]),
+            }
+        )
+    for permit in Permit.objects.filter(project=project).order_by("-updated_at")[:8]:
+        activity.append(
+            {
+                "kind": "permit",
+                "code": permit.permit_number,
+                "title": permit.title,
+                "status": permit.get_status_display(),
+                "is_critical": permit.status == Permit.Status.EXPIRED,
+                "is_done": permit.status == Permit.Status.REVOKED,
+                "meta": permit.get_kind_display(),
+                "updated_at": permit.updated_at,
+                "url": reverse("facilities:permit_detail", args=[project.pk, permit.pk]),
+            }
+        )
+    activity.sort(key=lambda item: item["updated_at"], reverse=True)
+
+    return {
+        "facilities_open_wo_count": open_wos.count(),
+        "facilities_critical_wo_count": open_wos.filter(
+            priority=WorkOrderPriority.P1
+        ).count(),
+        "facilities_permits_expiring_count": permits_expiring.count(),
+        "facilities_requests_open_count": requests_open.count(),
+        "facilities_recent_activity": activity[:8],
+    }
 
 
 class RoleSwitchView(ProjectAccessMixin, View):
