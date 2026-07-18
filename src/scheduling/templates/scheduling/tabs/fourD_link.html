@@ -62,17 +62,50 @@
     color: #fff;
     border-color: var(--bs-primary);
   }
+  /* 4D Link vertical stack — large hero workspace, lower panels in document flow */
+  #fourD-root {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 0;
+    padding-bottom: 1rem;
+  }
+  #fourD-main {
+    flex-shrink: 0;
+    display: flex;
+    /* Hero: Gantt + 3D viewer dominate first viewport (nav + 4D/5D sub-tabs ≈ 160px) */
+    min-height: 560px;
+    height: clamp(560px, calc(100svh - 10rem), 900px);
+    gap: 0;
+    position: relative;
+    z-index: 1;
+  }
+  #fourD-gantt,
+  #fourD-viewer {
+    min-height: 0;
+    height: 100%;
+  }
+  .fourD-stack-section {
+    flex-shrink: 0;
+    position: relative;
+    z-index: 0;
+  }
+  #fourD-match-preview {
+    overflow: visible;
+  }
+  #fourD-link-results {
+    max-height: 220px;
+    overflow-y: auto;
+  }
+  #fourD-bottom-panels .tab-content {
+    overflow: visible;
+  }
 </style>
 
-<div id="fourD-root" style="
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  gap: 8px;
-">
+<div id="fourD-root">
 
   <!-- Main row: Gantt + Viewer + Chat -->
-  <div id="fourD-main" style="flex: 1; display: flex; min-height: 0; gap: 0;">
+  <div id="fourD-main">
 
   <!-- LEFT: Gantt Panel -->
   <div id="fourD-gantt" style="
@@ -312,7 +345,7 @@
   <!-- /fourD-main -->
 
   <!-- BOTTOM FOOTER: Controls bar -->
-  <div id="fourD-footer" style="
+  <div id="fourD-footer" class="fourD-stack-section" style="
     flex-shrink: 0;
     background: var(--bs-body-bg);
     border: 1px solid var(--bs-border-color);
@@ -361,6 +394,7 @@
           hx-swap="innerHTML"
           hx-indicator="#fd-param-spinner"
           style="display: contents;">
+      <input type="hidden" name="summary_only" value="1">
       <input type="text" name="param_name" id="fourD-param-input"
              placeholder="e.g. Activity ID"
              value="{{ ifc_param_name|default:'Activity ID' }}"
@@ -379,13 +413,13 @@
   </div><!-- /fourD-footer -->
 
   <!-- Match preview area (read-only, E1-D) -->
-  <div id="fourD-match-preview" style="flex-shrink:0; overflow-y:auto; max-height:42vh;"></div>
+  <div id="fourD-match-preview" class="fourD-stack-section"></div>
 
   <!-- Results area: Link Engine feedback (collapses when empty) -->
-  <div id="fourD-link-results" style="flex-shrink:0; overflow-y:auto; max-height:180px;"></div>
+  <div id="fourD-link-results" class="fourD-stack-section"></div>
 
   <!-- Review pane: governance (read-only) + Smart Pipeline review -->
-  <div style="flex-shrink:0; border-top:1px solid var(--bs-border-color);">
+  <div id="fourD-bottom-panels" class="fourD-stack-section" style="border-top:1px solid var(--bs-border-color);">
     <ul class="nav nav-tabs px-2 pt-1 mb-0" style="font-size:0.8rem;" role="tablist">
       <li class="nav-item" role="presentation">
         <button class="nav-link active py-1 px-2" id="fd-gov-tab" data-bs-toggle="tab"
@@ -402,7 +436,7 @@
         </button>
       </li>
     </ul>
-    <div class="tab-content" style="max-height:32vh; overflow-y:auto;">
+    <div class="tab-content">
       <div class="tab-pane fade show active p-2" id="fd-gov-pane" role="tabpanel"
            hx-get="{% url 'scheduling:link_governance_workspace' project.pk %}"
            hx-trigger="load"

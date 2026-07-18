@@ -402,3 +402,99 @@ def test_preview_query_count_bounded(client):
         response = client.get(_preview_url(project.pk))
     assert response.status_code == 200
     assert len(ctx.captured_queries) <= 12
+
+
+def _htmx_preview_url(project_pk, **params: str) -> str:
+    base = reverse("scheduling:schedule_link_preview_param", kwargs={"pk": project_pk})
+    qs = "&".join(f"{k}={v}" for k, v in params.items())
+    return f"{base}?{qs}" if qs else base
+
+
+@pytest.mark.django_db
+def test_preview_summary_already_applied_hides_approval_language(client):
+    """Compact summary shows active trusted state when write plan is all no-ops."""
+    user = UserFactory()
+    project = ProjectFactory(owner=user)
+    task = TaskFactory(project=project, activity_code="ACTIVE-001")
+    entity = IFCEntityFactory(
+        ifc_file__project=project,
+        global_id="GID-ACTIVE-001",
+        properties={"Castor.Activity ID": "ACTIVE-001"},
+    )
+    TaskEntityBinding.objects.create(
+        task=task,
+        entity_global_id=entity.global_id,
+        confidence=1.0,
+        link_method=TaskEntityBinding.LinkMethod.EXACT,
+        needs_review=False,
+    )
+    client.force_login(user)
+
+    response = client.get(
+        _htmx_preview_url(project.pk, param_name="Activity ID", summary_only="1"),
+        HTTP_HX_REQUEST="true",
+    )
+
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert "Trusted bindings active" in html
+    assert "No pending writes" in html
+    assert "Apply approved bindings" not in html
+    assert "for distribution and approval" not in html
+
+
+@pytest.mark.django_db
+def test_preview_governance_pending_writes_shows_approval_gate(client):
+    """Governance exact preview shows approval gate when inserts are pending."""
+    user = UserFactory()
+    project = ProjectFactory(owner=user)
+    TaskFactory(project=project, activity_code="PEND-001")
+    IFCEntityFactory(
+        ifc_file__project=project,
+        global_id="GID-PEND-001",
+        properties={"Castor.Activity ID": "PEND-001"},
+    )
+    client.force_login(user)
+
+    response = client.get(
+        _htmx_preview_url(project.pk, param_name="Activity ID", show_approval="1"),
+        HTTP_HX_REQUEST="true",
+    )
+
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert "param-match-approval-panel" in html
+    assert "Apply approved bindings" in html
+
+
+@pytest.mark.django_db
+def test_preview_governance_already_applied_hides_approval_gate(client):
+    """Governance exact preview hides approval when bindings are already active."""
+    user = UserFactory()
+    project = ProjectFactory(owner=user)
+    task = TaskFactory(project=project, activity_code="DONE-001")
+    entity = IFCEntityFactory(
+        ifc_file__project=project,
+        global_id="GID-DONE-001",
+        properties={"Castor.Activity ID": "DONE-001"},
+    )
+    TaskEntityBinding.objects.create(
+        task=task,
+        entity_global_id=entity.global_id,
+        confidence=1.0,
+        link_method=TaskEntityBinding.LinkMethod.EXACT,
+        needs_review=False,
+    )
+    client.force_login(user)
+
+    response = client.get(
+        _htmx_preview_url(project.pk, param_name="Activity ID", show_approval="1"),
+        HTTP_HX_REQUEST="true",
+    )
+
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert "already approved and active" in html
+    assert "param-match-approval-panel" not in html
+    assert "Apply approved bindings" not in html
+    assert "Activity distribution" in html

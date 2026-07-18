@@ -2,8 +2,16 @@
 <div class="param-match-preview border rounded p-3 mb-2" style="font-size:0.82rem;">
   <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">
     <div>
+      {% if already_applied %}
+      <span class="badge bg-success me-1">Trusted bindings active</span>
+      <strong>No pending writes</strong>
+      {% elif has_pending_writes %}
+      <span class="badge bg-secondary me-1">Read-only preview</span>
+      <strong>Pending writes — review before approval</strong>
+      {% else %}
       <span class="badge bg-secondary me-1">Read-only preview</span>
       <strong>No changes applied</strong>
+      {% endif %}
     </div>
     <div class="text-secondary">
       Generated {{ preview.generated_at|slice:":19" }} UTC
@@ -17,6 +25,69 @@
     {% endfor %}
   </div>
   {% endif %}
+
+  {% if summary_only %}
+  <!-- Compact summary for upper 4D Link area — full detail lives in Governance -->
+  {% if already_applied %}
+  <div class="alert alert-success py-2 mb-2">
+    <div class="fw-semibold">
+      {{ preview.matched_task_count }} matched activit{{ preview.matched_task_count|pluralize:"y,ies" }}
+      · {{ preview.existing_accepted_bindings }} accepted trusted binding{{ preview.existing_accepted_bindings|pluralize }}
+      · {{ preview.projected_no_ops }} no-op{{ preview.projected_no_ops|pluralize }}
+    </div>
+    <div class="text-secondary mt-1" style="font-size:0.78rem;">
+      This preview matches the current approved trusted bindings. No pending writes.
+      Property: <code>{{ preview.param_name }}</code>
+    </div>
+  </div>
+  {% else %}
+  <div class="alert alert-info py-2 mb-2">
+    <div class="fw-semibold">
+      {{ preview.matched_task_count }} matched activit{{ preview.matched_task_count|pluralize:"y,ies" }}
+      · {{ preview.projected_binding_count }} projected trusted binding{{ preview.projected_binding_count|pluralize }}
+      · {{ preview.existing_accepted_bindings }} accepted binding{{ preview.existing_accepted_bindings|pluralize }}
+    </div>
+    <div class="text-secondary mt-1" style="font-size:0.78rem;">
+      Write plan:
+      <strong>{{ preview.projected_inserts }}</strong> insert{{ preview.projected_inserts|pluralize }},
+      <strong>{{ preview.projected_updates }}</strong> update{{ preview.projected_updates|pluralize }},
+      <strong>{{ preview.projected_no_ops }}</strong> no-op{{ preview.projected_no_ops|pluralize }}.
+      Property: <code>{{ preview.param_name }}</code>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if preview.projected_binding_count >= 500 and has_pending_writes %}
+  <div class="alert alert-warning py-2 mb-2" style="font-size:0.78rem;">
+    <i class="bi bi-exclamation-triangle me-1"></i>
+    Large binding set ({{ preview.projected_binding_count }}). Review the activity distribution in Governance before applying.
+  </div>
+  {% elif preview.warnings %}
+  <div class="alert alert-warning py-2 mb-2" style="font-size:0.78rem;">
+    <i class="bi bi-exclamation-triangle me-1"></i>
+    {{ preview.warnings|length }} warning{{ preview.warnings|length|pluralize }}{% if not already_applied %} — open Governance for full details{% endif %}.
+  </div>
+  {% endif %}
+
+  {% if already_applied %}
+  <div class="border rounded p-2 bg-body-secondary text-secondary" style="font-size:0.78rem;">
+    <i class="bi bi-check-circle me-1"></i>
+    Open <strong>Governance</strong> → <em>Exact full preview</em> for read-only distribution and audit evidence.
+  </div>
+  {% elif has_pending_writes %}
+  <div class="border rounded p-2 bg-body-secondary text-secondary" style="font-size:0.78rem;">
+    <i class="bi bi-shield-check me-1"></i>
+    Open <strong>Governance</strong> → <em>Exact full preview</em> for distribution and approval.
+  </div>
+  {% else %}
+  <div class="border rounded p-2 bg-body-secondary text-secondary" style="font-size:0.78rem;">
+    <i class="bi bi-info-circle me-1"></i>
+    No projected bindings to approve. Adjust schedule or IFC data and preview again.
+  </div>
+  {% endif %}
+
+  {% else %}
+  <!-- Full preview — Governance exact preview, attach tab, and other detailed surfaces -->
 
   <!-- Key distinction banner -->
   <div class="alert alert-info py-2 mb-3">
@@ -153,7 +224,29 @@
   </details>
   {% endif %}
 
-  {% if not preview.errors and preview.projected_binding_count > 0 %}
+  {% if not preview.errors and preview.projected_binding_count > 0 and not show_approval and has_pending_writes %}
+  <div class="border rounded p-2 bg-body-secondary text-secondary mb-2" style="font-size:0.78rem;">
+    <i class="bi bi-shield-check me-1"></i>
+    <strong>{{ preview.projected_binding_count }}</strong> trusted binding{{ preview.projected_binding_count|pluralize }}
+    across <strong>{{ preview.matched_task_count }}</strong> matched activit{{ preview.matched_task_count|pluralize:"y,ies" }}
+    ready for approval. Open the <strong>Governance</strong> tab and use <em>Exact full preview</em> to review and apply.
+  </div>
+  {% endif %}
+
+  {% if not preview.errors and already_applied and show_approval %}
+  <div class="alert alert-success py-2 mb-2" style="font-size:0.78rem;">
+    <div class="fw-semibold mb-1">
+      <i class="bi bi-check-circle me-1"></i>All projected bindings are already approved and active.
+    </div>
+    <div class="text-secondary">
+      {{ preview.projected_no_ops }} binding{{ preview.projected_no_ops|pluralize }} match existing accepted trusted links (no inserts or updates).
+      Distribution below is read-only evidence.
+    </div>
+    <div class="text-secondary mt-1">
+      To approve new bindings, rerun matching after schedule or model changes.
+    </div>
+  </div>
+  {% elif not preview.errors and preview.projected_binding_count > 0 and show_approval and has_pending_writes %}
   <div class="border rounded p-3 mb-2" id="param-match-approval-panel">
     <div class="fw-semibold mb-2">
       <i class="bi bi-shield-check me-1"></i>Approve trusted bindings
@@ -167,7 +260,7 @@
 
     <form id="param-match-apply-form"
           hx-post="{% url 'scheduling:schedule_link_apply_approved_param' project.pk %}"
-          hx-target="#fourD-match-preview"
+          hx-target="{{ approval_swap_target }}"
           hx-swap="innerHTML"
           hx-indicator="#param-apply-spinner">
       {% csrf_token %}
@@ -229,7 +322,7 @@
     syncApplyBtn();
   })();
   </script>
-  {% elif not preview.errors %}
+  {% elif not preview.errors and preview.projected_binding_count == 0 %}
   <div class="border rounded p-2 bg-body-secondary text-secondary mb-2" style="font-size:0.78rem;">
     <i class="bi bi-info-circle me-1"></i>
     No projected bindings to approve. Adjust schedule or IFC data and preview again.
@@ -238,6 +331,15 @@
 
   <div class="border rounded p-2 bg-body-secondary text-secondary" style="font-size:0.78rem;">
     <i class="bi bi-eye me-1"></i>
+    {% if already_applied %}
+    Trusted bindings are active — this preview is read-only evidence.
+    {% elif show_approval and has_pending_writes %}
     Preview is read-only until you explicitly apply approved bindings above.
+    {% elif show_approval %}
+    No pending writes in this preview.
+    {% else %}
+    Preview is read-only until approved from the Governance tab.
+    {% endif %}
   </div>
+  {% endif %}
 </div>

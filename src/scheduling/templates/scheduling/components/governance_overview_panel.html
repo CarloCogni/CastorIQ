@@ -21,6 +21,43 @@
         <div class="text-secondary">{{ o.audit_boundary.pre_audit_legacy_caveat }}</div>
     </div>
 
+    <!-- At-a-glance counts -->
+    <div class="row g-2">
+        <div class="col-6 col-md-3">
+            <div class="border rounded p-2 text-center">
+                <div class="fw-bold fs-5 text-success">{{ sc.trust_state.trusted.value }}</div>
+                <div class="small text-secondary">Trusted active</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="border rounded p-2 text-center">
+                <div class="fw-bold fs-5">{{ sc.trust_state.active_review.value }}</div>
+                <div class="small text-secondary">In review</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="border rounded p-2 text-center">
+                <div class="fw-bold fs-5">
+                    {% if sc.coverage.task_coverage.percentage %}{{ sc.coverage.task_coverage.percentage }}%{% else %}—{% endif %}
+                </div>
+                <div class="small text-secondary">Task coverage</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="border rounded p-2 text-center">
+                <div class="fw-bold fs-5">
+                    {% if sc.coverage.entity_coverage.percentage %}{{ sc.coverage.entity_coverage.percentage }}%{% else %}—{% endif %}
+                </div>
+                <div class="small text-secondary">Entity coverage</div>
+            </div>
+        </div>
+    </div>
+    {% if sc.trust_state.active_review.value == 0 %}
+    <div class="alert alert-success py-2 small mb-0" role="status">
+        No review bindings pending. {{ sc.trust_state.trusted.value }} trusted binding{{ sc.trust_state.trusted.value|pluralize }} are active.
+    </div>
+    {% endif %}
+
     <!-- Trust state -->
     <div>
         <h6 class="fw-semibold">Trust state</h6>

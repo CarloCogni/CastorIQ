@@ -1042,6 +1042,24 @@ class LinkParamView(ProjectModifyAccessMixin, View):
 class MatchPreviewView(ProjectAccessMixin, View):
     """GET — read-only exact-match preview for Task.activity_code ↔ IFC property."""
 
+    @staticmethod
+    def _preview_ui_state(preview) -> dict[str, bool]:
+        """UI-only flags from write-plan counts — does not alter persistence."""
+        has_pending_writes = (
+            not preview.errors
+            and (preview.projected_inserts > 0 or preview.projected_updates > 0)
+        )
+        already_applied = (
+            not preview.errors
+            and preview.projected_binding_count > 0
+            and preview.projected_inserts == 0
+            and preview.projected_updates == 0
+        )
+        return {
+            "has_pending_writes": has_pending_writes,
+            "already_applied": already_applied,
+        }
+
     def get(self, request, **kwargs: object) -> HttpResponse:
         project = self.get_project()
         param_name = request.GET.get("param_name", "Activity ID").strip()
@@ -1059,10 +1077,29 @@ class MatchPreviewView(ProjectAccessMixin, View):
                 return JsonResponse(payload, status=400)
             return JsonResponse(payload)
 
+        show_approval = request.GET.get("show_approval", "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        summary_only = (
+            request.GET.get("summary_only", "").strip().lower() in ("1", "true", "yes")
+            and not show_approval
+        )
+        ui_state = self._preview_ui_state(preview)
         response = render(
             request,
             "scheduling/components/param_match_preview.html",
-            {"preview": preview, "project": project},
+            {
+                "preview": preview,
+                "project": project,
+                "show_approval": show_approval,
+                "summary_only": summary_only,
+                **ui_state,
+                "approval_swap_target": "#governance-exact-preview-slot"
+                if show_approval
+                else "#fourD-match-preview",
+            },
         )
         if preview.errors:
             return trigger_toast(

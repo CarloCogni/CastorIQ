@@ -83,7 +83,11 @@
     {% if queue.mode == 'review' %}
     <div class="d-flex align-items-center gap-2 flex-wrap border rounded p-2 bg-body-tertiary">
         <span class="small fw-semibold">Review decisions</span>
+        {% if sc.review_bindings == 0 %}
+        <span class="small text-secondary">No review bindings. Approved bindings are under Trusted.</span>
+        {% else %}
         <span class="small text-secondary">Select up to 100 items · explicit approval only</span>
+        {% endif %}
         {% if governance_capabilities.capabilities.can_approve_bulk %}
         <button type="button" class="btn btn-sm btn-outline-primary ms-auto"
                 hx-post="{% url 'scheduling:link_decision_bulk_preview' project.pk %}"
@@ -259,7 +263,11 @@
     {% else %}
     <div class="text-center text-secondary py-4" role="status">
         <i class="bi bi-inbox fs-3 d-block mb-2" aria-hidden="true"></i>
+        {% if queue.mode == 'review' and sc.review_bindings == 0 %}
+        No review bindings. Approved bindings are under <strong>Trusted</strong>.
+        {% else %}
         No items match this governance queue mode and filters.
+        {% endif %}
     </div>
     {% endif %}
 

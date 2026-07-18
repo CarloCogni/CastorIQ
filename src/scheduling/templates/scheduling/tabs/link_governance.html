@@ -1,6 +1,6 @@
 <!-- scheduling/tabs/link_governance.html — link governance workspace (E2-B/C/D/F) -->
 
-<div id="link-governance-workspace" class="d-flex flex-column gap-3 h-100">
+<div id="link-governance-workspace" class="d-flex flex-column gap-3">
     <div class="d-flex align-items-center gap-2 flex-wrap">
         <div class="d-flex align-items-center gap-2">
             <i class="bi bi-shield-check fs-5 text-primary"></i>
@@ -26,7 +26,7 @@
               style="font-size:0.72rem;">trusted-binding-v1</span>
         {% if governance_capabilities.capabilities.can_approve_exact_preview %}
         <a class="btn btn-sm btn-outline-primary ms-auto"
-           hx-get="{% url 'scheduling:schedule_link_preview_param' project.pk %}?param_name=Activity%20ID"
+           hx-get="{% url 'scheduling:schedule_link_preview_param' project.pk %}?param_name=Activity%20ID&amp;show_approval=1"
            hx-target="#governance-exact-preview-slot"
            hx-swap="innerHTML">
             Exact full preview

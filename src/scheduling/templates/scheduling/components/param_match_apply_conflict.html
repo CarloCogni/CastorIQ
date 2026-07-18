@@ -10,8 +10,8 @@
     Regenerate preview and approve again.
   </p>
   <button type="button" class="btn btn-sm btn-outline-primary"
-          hx-get="{% url 'scheduling:schedule_link_preview_param' project.pk %}?param_name=Activity+ID"
-          hx-target="#fourD-match-preview"
+          hx-get="{% url 'scheduling:schedule_link_preview_param' project.pk %}?param_name=Activity+ID&amp;show_approval=1"
+          hx-target="#governance-exact-preview-slot"
           hx-swap="innerHTML">
     <i class="bi bi-arrow-clockwise me-1"></i>Regenerate preview
   </button>
