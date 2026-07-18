@@ -2322,4 +2322,5 @@ class P6Calendar(UUIDModel):
         return f"{self.name} (id={self.p6_calendar_id})"
 
 
-from scheduling.governed_mapping_models import *  # noqa: F403
+from scheduling.governed_mapping_models import *  # noqa: E402, F403
+from scheduling.resource_foundation_models import *  # noqa: E402, F403

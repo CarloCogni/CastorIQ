@@ -17,6 +17,8 @@ from scheduling.models import (
     BaselineTaskState,
     BaselineVersion,
     MappingGovernanceEvent,
+    Resource,
+    ResourceAssignment,
     ScheduleActivity,
     ScheduleImportRun,
     ScheduleSourceVersion,
@@ -584,7 +586,14 @@ class AnalyticalMappingAssignmentAdmin(admin.ModelAdmin):
         "authority",
     )
     list_filter = ("target_type", "governance_status", "authority", "mapping_method")
-    raw_id_fields = ("mapping_set", "dimension_value", "task", "wbs_node", "ifc_file", "schedule_activity")
+    raw_id_fields = (
+        "mapping_set",
+        "dimension_value",
+        "task",
+        "wbs_node",
+        "ifc_file",
+        "schedule_activity",
+    )
 
     def has_add_permission(self, request):
         return False
@@ -630,3 +639,48 @@ class MappingGovernanceEventAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+@admin.register(Resource)
+class ResourceAdmin(admin.ModelAdmin):
+    """Inspect canonical resources (DF-E1) — population arrives in DF-E2."""
+
+    list_display = (
+        "name",
+        "resource_code",
+        "resource_type",
+        "status",
+        "project",
+        "source_system",
+    )
+    list_filter = ("resource_type", "status", "source_system")
+    search_fields = ("name", "resource_code", "external_id")
+    readonly_fields = ("id", "created_at", "updated_at")
+    raw_id_fields = ("project",)
+
+
+@admin.register(ResourceAssignment)
+class ResourceAssignmentAdmin(admin.ModelAdmin):
+    """Inspect canonical resource assignments (DF-E1) — not wired to EVM yet."""
+
+    list_display = (
+        "id",
+        "project",
+        "task",
+        "resource",
+        "planned_cost",
+        "actual_cost",
+        "is_pending",
+        "status",
+    )
+    list_filter = ("status", "is_pending", "source_system")
+    search_fields = ("external_id", "p6_resource_object_id", "p6_assignment_object_id")
+    readonly_fields = ("id", "created_at", "updated_at")
+    raw_id_fields = (
+        "project",
+        "task",
+        "resource",
+        "schedule_activity",
+        "source_version",
+        "schedule_source",
+    )
