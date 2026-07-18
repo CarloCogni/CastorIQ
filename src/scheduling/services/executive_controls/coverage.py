@@ -101,20 +101,44 @@ class AnalyticalCoverageService:
         with_cost = Task.objects.filter(
             project_id=self.project_id, cost__isnull=False, cost__gt=0
         ).count()
-        ra_planned = P6ResourceAssignment.objects.filter(
-            project_id=self.project_id, is_pending=False, planned_cost__gt=0
-        ).count()
-        ra_actual = P6ResourceAssignment.objects.filter(
-            project_id=self.project_id, is_pending=False, actual_cost__gt=0
-        ).count()
-        labor_units = P6ResourceAssignment.objects.filter(
-            project_id=self.project_id,
-            is_pending=False,
-            resource_type__icontains="labor",
-        ).aggregate(
-            planned=Count("pk", filter=Q(planned_units__gt=0)),
-            actual=Count("pk", filter=Q(actual_units__gt=0)),
+
+        from scheduling.models import Resource, ResourceAssignment
+        from scheduling.services.resource_foundation import (
+            COST_SOURCE_CANONICAL,
+            COST_SOURCE_P6_FALLBACK,
+            uses_canonical_resource_assignments,
         )
+
+        use_canonical = uses_canonical_resource_assignments(self.project_id)
+        if use_canonical:
+            ra_base = ResourceAssignment.objects.filter(
+                project_id=self.project_id, is_pending=False
+            )
+            ra_planned = ra_base.filter(planned_cost__gt=0).count()
+            ra_actual = ra_base.filter(actual_cost__gt=0).count()
+            labor_units = ra_base.filter(
+                resource__resource_type=Resource.ResourceType.LABOR,
+            ).aggregate(
+                planned=Count("pk", filter=Q(planned_units__gt=0)),
+                actual=Count("pk", filter=Q(actual_units__gt=0)),
+            )
+            resource_assignment_source = COST_SOURCE_CANONICAL
+        else:
+            ra_planned = P6ResourceAssignment.objects.filter(
+                project_id=self.project_id, is_pending=False, planned_cost__gt=0
+            ).count()
+            ra_actual = P6ResourceAssignment.objects.filter(
+                project_id=self.project_id, is_pending=False, actual_cost__gt=0
+            ).count()
+            labor_units = P6ResourceAssignment.objects.filter(
+                project_id=self.project_id,
+                is_pending=False,
+                resource_type__icontains="labor",
+            ).aggregate(
+                planned=Count("pk", filter=Q(planned_units__gt=0)),
+                actual=Count("pk", filter=Q(actual_units__gt=0)),
+            )
+            resource_assignment_source = COST_SOURCE_P6_FALLBACK
 
         schedule_items = self._items(
             [
@@ -249,6 +273,7 @@ class AnalyticalCoverageService:
             "methodology_version": E8_METHODOLOGY_VERSION,
             "data_date": self._data_date.isoformat(),
             "calculated_at": self._calculated_at,
+            "resource_assignment_source": resource_assignment_source,
             "denominators": {
                 "all_tasks": all_count,
                 "schedulable_tasks": schedulable_count,
@@ -266,6 +291,11 @@ class AnalyticalCoverageService:
             "caveats": [
                 "Task and entity coverage use separate denominators — never combine.",
                 "Review, property hints, and legacy M2M excluded from trusted counts.",
+                (
+                    "Resource cost/unit coverage from canonical ResourceAssignment."
+                    if use_canonical
+                    else "Resource cost/unit coverage from legacy P6ResourceAssignment fallback."
+                ),
             ],
         }
 

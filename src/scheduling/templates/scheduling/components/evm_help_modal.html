@@ -142,11 +142,15 @@
                     extrapolated date exceeds a sane horizon (3× planned duration past baseline).
                 </p>
                 <p class="text-secondary fs-7 mb-4">
-                    <strong>Actual Cost (AC) is read directly from <code>P6ResourceAssignment.actual_cost</code></strong>
-                    — real imported data only. When actual cost has not been imported, AC is absent and
+                    <strong>Actual Cost (AC) is read from canonical <code>ResourceAssignment.actual_cost</code>
+                    when available</strong>, with legacy <code>P6ResourceAssignment</code> fallback for
+                    projects not yet populated into the resource foundation. Only real imported
+                    actual cost values contribute (<code>actual_cost &gt; 0</code>). When actual cost
+                    has not been imported, AC is absent and
                     <strong>CPI, CV, EAC, and VAC are disabled</strong> with a clear notice on each KPI card;
-                    they are never estimated from a formula. Import resource assignments that include actual
-                    cost to activate these metrics.
+                    they are never estimated from a formula. On some legacy pilots, canonical rows were
+                    populated from a P6 schedule source without <code>source_version</code> —
+                    that provenance gap is labelled in capability caveats, not hidden.
                 </p>
 
                 <!-- 4b. 4D / 5D readiness card -->

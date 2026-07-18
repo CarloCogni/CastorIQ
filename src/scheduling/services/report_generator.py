@@ -557,7 +557,12 @@ def _html_cash_flow(data: dict) -> str:
 
     m = cf.get("metrics", {})
     src = cf.get("source", "")
-    src_label = "P6 resource assignments" if src == "p6_assignments" else "task costs"
+    if src == "canonical_resource_assignment":
+        src_label = "canonical ResourceAssignment"
+    elif src in ("legacy_p6_resource_assignment_fallback", "p6_assignments"):
+        src_label = "P6 resource assignments (legacy fallback)"
+    else:
+        src_label = "task costs"
     months = cf.get("months", [])
 
     def fc(v: float | None) -> str:

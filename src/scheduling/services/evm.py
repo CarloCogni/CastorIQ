@@ -392,8 +392,10 @@ def compute_evm(
 ) -> dict:
     """Compute EVM metrics and weekly S-curve series for *project_id*.
 
-    AC, CPI, CV, EAC, VAC require real actual cost from P6ResourceAssignment.
-    If absent: those metrics are None and ac_available=False.
+    AC, CPI, CV, EAC, VAC require real actual cost from resource assignments
+    (canonical ResourceAssignment preferred; P6ResourceAssignment fallback when
+    canonical rows are absent). If absent: those metrics are None and
+    ac_available=False.
 
     Returns a dict with:
         has_data           — bool

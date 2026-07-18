@@ -1,8 +1,9 @@
 # scheduling/services/resource_population.py
 """DF-E2: populate canonical Resource / ResourceAssignment from P6ResourceAssignment.
 
-Does not cut over EVM, cashflow, ML, or DCMA. ``P6ResourceAssignment`` remains
-the live AC source until DF-E3.
+Does not cut over ML or DCMA. ``P6ResourceAssignment`` remains the import-side
+store; DF-E3/E4 prefer canonical reads with P6 fallback when canonical rows
+are absent.
 
 Null-vs-zero caveat
 -------------------

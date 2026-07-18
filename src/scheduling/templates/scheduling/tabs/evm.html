@@ -3114,7 +3114,13 @@ function _esc(s) {
                 _renderChart(data.months, data.metrics);
                 const footer = document.getElementById("cf-footer");
                 if (footer) {
-                    const src = data.source === "p6_assignments" ? "P6 resource assignments" : "task costs";
+                    const src =
+                        data.source === "canonical_resource_assignment"
+                            ? "canonical ResourceAssignment"
+                            : data.source === "legacy_p6_resource_assignment_fallback"
+                              || data.source === "p6_assignments"
+                            ? "P6 resource assignments (legacy fallback)"
+                            : "task costs";
                     const burn = data.metrics.burn_rate_actual
                         ? `  ·  burn rate ${_fmtCost(data.metrics.burn_rate_actual)}/mo (actual)`
                         : "";

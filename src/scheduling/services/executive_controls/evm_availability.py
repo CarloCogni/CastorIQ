@@ -50,13 +50,18 @@ class E8EVMAvailabilityService:
     def build(self) -> dict[str, Any]:
         """Return EVM mode availability without recalculating full EVM unnecessarily."""
         from environments.models import Project
-        from scheduling.models import P6ResourceAssignment, Task
+        from scheduling.models import P6ResourceAssignment, ResourceAssignment, Task
         from scheduling.services.evm import compute_evm
         from scheduling.services.executive_controls.capability_profile import (
             PROFILE_VERSION,
             ProjectAnalyticsCapabilityProfile,
         )
         from scheduling.services.executive_controls.enums import FeatureId
+        from scheduling.services.resource_foundation import (
+            COST_SOURCE_CANONICAL,
+            COST_SOURCE_P6_FALLBACK,
+            uses_canonical_resource_assignments,
+        )
 
         project = Project.objects.get(pk=self.project_id)
         capability = ProjectAnalyticsCapabilityProfile(project).build()
@@ -125,9 +130,20 @@ class E8EVMAvailabilityService:
             for mid in ("e8.ac", "e8.cpi", "e8.etc", "e8.eac", "e8.vac", "e8.tcpi"):
                 unavailable[mid] = evm.get("ac_disabled_reason") or "Actual cost unavailable."
 
-        ra_count = P6ResourceAssignment.objects.filter(
-            project_id=self.project_id, is_pending=False, actual_cost__gt=0
-        ).count()
+        use_canonical = uses_canonical_resource_assignments(self.project_id)
+        if use_canonical:
+            ra_count = ResourceAssignment.objects.filter(
+                project_id=self.project_id, is_pending=False, actual_cost__gt=0
+            ).count()
+            ra_source = COST_SOURCE_CANONICAL
+        else:
+            ra_count = P6ResourceAssignment.objects.filter(
+                project_id=self.project_id, is_pending=False, actual_cost__gt=0
+            ).count()
+            ra_source = COST_SOURCE_P6_FALLBACK
+
+        # Prefer compute_evm ac_source when present so contracts stay aligned.
+        ac_source = evm.get("ac_source") or ra_source
 
         return {
             "project_id": self.project_id,
@@ -168,10 +184,12 @@ class E8EVMAvailabilityService:
             "quantity_authority": MetricAuthority.AUTHORITATIVE.value
             if quantity_available
             else MetricAuthority.UNAVAILABLE.value,
+            "ac_source": ac_source,
             "coverage": {
                 "cost_coverage_pct": evm.get("cost_coverage_pct"),
                 "ac_coverage_pct": evm.get("ac_coverage_pct"),
                 "resource_actual_cost_rows": ra_count,
+                "resource_actual_cost_source": ra_source,
                 "physical_pct_tasks": n_with_physical_pct,
             },
             "caveats": [

@@ -1,10 +1,14 @@
 # castor/scheduling/services/cashflow.py
 """Monthly Cash Flow Forecast.
 
-Distributes P6ResourceAssignment costs (planned / actual / remaining) into
+Distributes resource-assignment costs (planned / actual / remaining) into
 calendar-month buckets via linear time-proportional allocation, then builds
-cumulative S-curves and key financing metrics. Falls back to task.cost when no
-resource assignments exist; actual cost is never synthesised for in-progress tasks.
+cumulative S-curves and key financing metrics.
+
+DF-E4: prefers canonical ResourceAssignment when any non-pending rows exist
+for the project; falls back to P6ResourceAssignment only when canonical count
+is zero (never dual-sums). Falls back to task.cost when no assignment costs
+exist; actual cost is never synthesised for in-progress tasks.
 """
 
 from __future__ import annotations
@@ -12,6 +16,11 @@ from __future__ import annotations
 import logging
 from datetime import date, timedelta
 
+from .resource_foundation import (
+    COST_SOURCE_CANONICAL,
+    COST_SOURCE_P6_FALLBACK,
+    uses_canonical_resource_assignments,
+)
 from .utils import get_project_data_date
 
 logger = logging.getLogger(__name__)
@@ -69,12 +78,14 @@ def compute_cashflow(project_id: str) -> dict:
         has_data        — bool
         months          — list[dict] one per calendar month
         metrics         — dict with BAC, AC, remaining, peak month, burn rates
-        source          — "p6_assignments" | "task_cost"
+        source          — canonical_resource_assignment |
+                          legacy_p6_resource_assignment_fallback |
+                          task_cost
         as_of           — ISO date string
     """
     from django.db.models import Sum
 
-    from scheduling.models import P6ResourceAssignment, Task
+    from scheduling.models import P6ResourceAssignment, ResourceAssignment, Task
 
     today, _ = get_project_data_date(project_id)
 
@@ -88,28 +99,45 @@ def compute_cashflow(project_id: str) -> dict:
 
     task_map = {str(t.pk): t for t in tasks}
 
-    ra_qs = (
-        P6ResourceAssignment.objects.filter(project_id=project_id, is_pending=False)
-        .values("task_id")
-        .annotate(
-            planned=Sum("planned_cost"),
-            actual=Sum("actual_cost"),
-            remaining=Sum("remaining_cost"),
+    use_canonical = uses_canonical_resource_assignments(project_id)
+    if use_canonical:
+        ra_qs = (
+            ResourceAssignment.objects.filter(project_id=project_id, is_pending=False)
+            .values("task_id")
+            .annotate(
+                planned=Sum("planned_cost"),
+                actual=Sum("actual_cost"),
+                remaining=Sum("remaining_cost"),
+            )
         )
-    )
+        source = COST_SOURCE_CANONICAL
+    else:
+        ra_qs = (
+            P6ResourceAssignment.objects.filter(project_id=project_id, is_pending=False)
+            .values("task_id")
+            .annotate(
+                planned=Sum("planned_cost"),
+                actual=Sum("actual_cost"),
+                remaining=Sum("remaining_cost"),
+            )
+        )
+        source = COST_SOURCE_P6_FALLBACK
 
     task_costs: dict[str, dict[str, float]] = {}
     for row in ra_qs:
         pk = str(row["task_id"])
         if pk not in task_map:
             continue
+        planned = float(row["planned"] or 0)
+        actual = float(row["actual"] or 0)
+        remaining = float(row["remaining"] or 0)
+        if planned == 0 and actual == 0 and remaining == 0:
+            continue
         task_costs[pk] = {
-            "planned": float(row["planned"] or 0),
-            "actual": float(row["actual"] or 0),
-            "remaining": float(row["remaining"] or 0),
+            "planned": planned,
+            "actual": actual,
+            "remaining": remaining,
         }
-
-    source = "p6_assignments"
 
     if not task_costs:
         source = "task_cost"

@@ -1,9 +1,10 @@
 # scheduling/services/resource_foundation.py
-"""DF-E1 Resource Foundation helpers — schema readiness and DF-E3 AC reads.
+"""DF-E1 Resource Foundation helpers — schema readiness and consumer cutovers.
 
 ``sum_actual_cost_by_task`` supports DF-E2/E3 readiness checks. Live EVM AC
 loading prefers canonical ResourceAssignment via ``evm._load_actual_costs``
-(DF-E3), with P6 fallback when canonical rows are absent.
+(DF-E3). DF-E4 cashflow / workforce / coverage use
+``uses_canonical_resource_assignments`` for the same prefer-canonical rule.
 """
 
 from __future__ import annotations
@@ -20,6 +21,19 @@ from django.db.models import QuerySet, Sum
 from scheduling.resource_foundation_models import Resource, ResourceAssignment
 
 logger = logging.getLogger(__name__)
+
+# Shared with evm.py / cashflow / workforce — never dual-sum stores.
+COST_SOURCE_CANONICAL = "canonical_resource_assignment"
+COST_SOURCE_P6_FALLBACK = "legacy_p6_resource_assignment_fallback"
+COST_SOURCE_NONE = "none"
+
+
+def uses_canonical_resource_assignments(project_id: str | UUID) -> bool:
+    """True when the project has any non-pending canonical ResourceAssignment rows."""
+    return ResourceAssignment.objects.filter(
+        project_id=project_id,
+        is_pending=False,
+    ).exists()
 
 
 @dataclass(frozen=True, slots=True)
