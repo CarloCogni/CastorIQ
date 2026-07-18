@@ -1,0 +1,145 @@
+{% extends "core/base.html" %}
+<!-- scheduling/executive_controls_resources_page.html — DF-E5a Resources Readiness -->
+
+{% block title %}Resources Readiness — {{ project.name }} — Castor{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3 px-3 px-lg-4">
+    <nav aria-label="breadcrumb" class="mb-2">
+        <ol class="breadcrumb small mb-0">
+            <li class="breadcrumb-item"><a href="{% url 'projects:detail' project.pk %}">{{ project.name }}</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'scheduling:executive_controls' project.pk %}">Executive Controls</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Resources</li>
+        </ol>
+    </nav>
+
+    <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+        <h1 class="h5 fw-semibold mb-0">Resources Readiness</h1>
+        <span class="badge bg-secondary-subtle text-secondary-emphasis border">Not full E8-E</span>
+        <button type="button"
+                class="help-pill"
+                data-bs-toggle="modal"
+                data-bs-target="#resourcesReadinessHelpModal"
+                title="How Resources Readiness works"
+                aria-label="How Resources Readiness works">
+            <i class="bi bi-question-circle"></i>
+        </button>
+    </div>
+
+    {% include "scheduling/components/executive_controls_subnav.html" with exec_subtab="resources" capability_profile=capability_profile %}
+    {% include "scheduling/components/executive_capability_banner.html" %}
+
+    {% if not readiness.gate_enabled %}
+    <div class="alert alert-warning" role="status">
+        <strong>Resources readiness unavailable.</strong>
+        {{ readiness.gate_reason }}
+        Missing data is shown as Unavailable — not zero.
+    </div>
+    {% else %}
+
+    <div class="d-flex flex-wrap gap-2 mb-3">
+        <span class="badge bg-primary-subtle text-primary-emphasis border"
+              data-testid="resources-source-badge">
+            Source: {{ readiness.source }}
+        </span>
+        <span class="badge bg-secondary-subtle text-secondary-emphasis border">
+            {{ readiness.source_label }}
+        </span>
+        {% if analytical_context.data_date %}
+        <span class="badge bg-secondary-subtle text-secondary-emphasis border">
+            Data date: {{ analytical_context.data_date }}
+        </span>
+        {% endif %}
+    </div>
+
+    {% if readiness.source_version_unavailable %}
+    <div class="alert alert-info py-2 small" role="status" data-testid="resources-source-version-caveat">
+        {{ readiness.source_version_caveat }}
+    </div>
+    {% endif %}
+
+    <div class="card border mb-3">
+        <div class="card-header py-2 small fw-semibold">Readiness</div>
+        <div class="card-body">
+            <div class="row g-3 small">
+                <div class="col-md-3">
+                    <div class="text-secondary">Resources</div>
+                    <div class="fs-5" data-testid="resources-resource-count">{{ readiness.readiness.resource_count_display }}</div>
+                </div>
+                <div class="col-md-3">
+                    <div class="text-secondary">Assignments</div>
+                    <div class="fs-5" data-testid="resources-assignment-count">{{ readiness.readiness.assignment_count_display }}</div>
+                </div>
+                <div class="col-md-3">
+                    <div class="text-secondary">AC coverage</div>
+                    <div data-testid="resources-ac-coverage">{{ readiness.readiness.ac_coverage_label }}</div>
+                </div>
+                <div class="col-md-3">
+                    <div class="text-secondary">Labor coverage</div>
+                    <div data-testid="resources-labor-coverage">{{ readiness.readiness.labor_coverage_label }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-md-8">
+            <div class="card border h-100">
+                <div class="card-header py-2 small fw-semibold">Manhour KPIs</div>
+                <div class="card-body">
+                    <p class="small text-secondary mb-3">
+                        Units source: <code>{{ readiness.manhours.units_source }}</code>.
+                        Manhours are assignment units, not attendance.
+                    </p>
+                    <div class="row g-3">
+                        <div class="col-sm-4">
+                            <div class="text-secondary small">Planned</div>
+                            <div class="fs-5" data-testid="resources-planned-manhours">{{ readiness.manhours.planned.display }}</div>
+                        </div>
+                        <div class="col-sm-4">
+                            <div class="text-secondary small">Actual</div>
+                            <div class="fs-5" data-testid="resources-actual-manhours">{{ readiness.manhours.actual.display }}</div>
+                        </div>
+                        <div class="col-sm-4">
+                            <div class="text-secondary small">Remaining</div>
+                            <div class="fs-5" data-testid="resources-remaining-manhours">{{ readiness.manhours.remaining.display }}</div>
+                        </div>
+                    </div>
+                    <hr class="my-3">
+                    <div class="text-secondary small">Equivalent workforce</div>
+                    <div class="fs-5" data-testid="resources-equivalent-workforce">{{ readiness.equivalent_workforce.display }}</div>
+                    <p class="small text-secondary mb-0 mt-1">{{ readiness.equivalent_workforce.note }}</p>
+                    <p class="small text-secondary mb-0">Hours/day assumption: {{ readiness.equivalent_workforce.hours_per_day_display }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border h-100 border-warning-subtle">
+                <div class="card-header py-2 small fw-semibold">This page does not claim</div>
+                <div class="card-body small" data-testid="resources-non-claims">
+                    <ul class="mb-0 ps-3">
+                        {% for claim in readiness.non_claims %}
+                        <li>{{ claim }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border mb-3">
+        <div class="card-header py-2 small fw-semibold">Caveats</div>
+        <div class="card-body small" data-testid="resources-caveats">
+            <ul class="mb-0 ps-3">
+                {% for c in readiness.caveats %}
+                <li>{{ c }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+
+    {% endif %}
+</div>
+
+{% include "scheduling/components/executive_resources_help_modal.html" %}
+{% endblock %}

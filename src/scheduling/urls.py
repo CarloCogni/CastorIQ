@@ -664,6 +664,11 @@ urlpatterns = [
         name="executive_controls_resource_availability",
     ),
     path(
+        "projects/<uuid:pk>/executive-controls/resources/",
+        views_executive_controls.ExecutiveControlsResourcesPageView.as_view(),
+        name="executive_controls_resources",
+    ),
+    path(
         "projects/<uuid:pk>/executive-controls/foundation/",
         views_executive_controls.ExecutiveControlsFoundationView.as_view(),
         name="executive_controls_foundation",

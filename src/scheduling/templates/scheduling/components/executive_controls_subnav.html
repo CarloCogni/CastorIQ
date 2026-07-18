@@ -52,4 +52,26 @@
         </a>
         {% endif %}
     </li>
+    <li class="nav-item">
+        {% if capability_profile %}
+        {% if "resources" in capability_profile.recommended_visible_pages %}
+        <a class="nav-link py-1 px-3 {% if exec_subtab == 'resources' %}active{% endif %}"
+           href="{% url 'scheduling:executive_controls_resources' project.pk %}"
+           data-testid="resources-subnav-enabled">
+            Resources
+        </a>
+        {% else %}
+        <span class="nav-link py-1 px-3 disabled text-secondary"
+              title="{{ capability_profile.page_reasons.resources|default:'Resources readiness unavailable' }}"
+              data-testid="resources-subnav-disabled">
+            Resources
+        </span>
+        {% endif %}
+        {% else %}
+        <a class="nav-link py-1 px-3 {% if exec_subtab == 'resources' %}active{% endif %}"
+           href="{% url 'scheduling:executive_controls_resources' project.pk %}">
+            Resources
+        </a>
+        {% endif %}
+    </li>
 </ul>

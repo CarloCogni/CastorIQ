@@ -1917,6 +1917,29 @@ class ProjectAnalyticsCapabilityProfile:
             hidden.append("trades")
             reasons["trades"] = "Insufficient authoritative or proxy trade/package coverage."
 
+        from scheduling.services.executive_controls.resources_readiness import (
+            GATE_REASON_NO_SIGNAL,
+            resources_page_gate_ok,
+        )
+
+        store_present = (
+            s.canonical_resource_assignment_count > 0
+            or s.ac_assignment_rows > 0
+            or s.labor_planned_units > 0
+            or s.labor_actual_units > 0
+            or (s.ac_source_label not in ("", "none"))
+        )
+        resources_ok, resources_reason = resources_page_gate_ok(
+            has_assignment_store=store_present,
+            has_labor_signal=s.labor_planned_units > 0 or s.labor_actual_units > 0,
+            has_ac_signal=s.ac_assignment_rows > 0,
+        )
+        if resources_ok:
+            visible.append("resources")
+        else:
+            disabled.append("resources")
+            reasons["resources"] = resources_reason or GATE_REASON_NO_SIGNAL
+
         return {"visible": visible, "hidden": hidden, "disabled": disabled, "reasons": reasons}
 
     def _overview_sections(self, caps: dict[str, dict], s: _ProjectSignals) -> dict[str, bool]:

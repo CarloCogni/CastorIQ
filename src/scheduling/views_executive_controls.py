@@ -469,6 +469,30 @@ class ExecutiveControlsResourceAvailabilityView(ProjectAccessMixin, View):
         return JsonResponse({"error": "Method not allowed."}, status=405)
 
 
+class ExecutiveControlsResourcesPageView(ProjectAccessMixin, TemplateView):
+    """GET — DF-E5a Resources Readiness page (not full E8-E)."""
+
+    template_name = "scheduling/executive_controls_resources_page.html"
+
+    def get_context_data(self, **kwargs: object) -> dict:
+        from scheduling.services.executive_controls.resources_readiness import (
+            ResourcesReadinessService,
+        )
+
+        ctx = super().get_context_data(**kwargs)
+        project = self.get_project()
+        readiness = ResourcesReadinessService(str(project.pk)).build()
+        ctx["project"] = project
+        ctx["readiness"] = readiness
+        ctx["analytical_context"] = readiness["analytical_context"]
+        ctx["capability_profile"] = readiness["capability_profile"]
+        ctx["exec_subtab"] = "resources"
+        return ctx
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        return JsonResponse({"error": "Method not allowed."}, status=405)
+
+
 def _matrix_filters(request) -> Any:
     from scheduling.services.executive_controls.matrix_filters import ExecutiveMatrixFilters
 
