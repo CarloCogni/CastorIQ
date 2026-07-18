@@ -166,7 +166,11 @@ class WBSAnalyticsSession:
         cal_map = load_project_calendars(self.project_id)
         task_cals = {str(t.pk): task_cal(t, cal_map) for t in self.tasks} if cal_map else {}
         today = self.data_date
-        actual_costs = _load_actual_costs([str(t.pk) for t in self.tasks])
+        ac_load = _load_actual_costs(
+            [str(t.pk) for t in self.tasks],
+            project_id=self.project_id,
+        )
+        actual_costs = ac_load.by_task
 
         for entry in scope.matched_entries:
             task = entry.task

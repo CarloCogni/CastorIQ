@@ -2,14 +2,18 @@
 """Earned Value Management (EVM) — PV, EV, AC, SPI, CPI, S-curve series.
 
 Every metric declares required inputs; missing inputs produce explicit N/A rather
-than fabricated values. AC/CPI/EAC require real P6ResourceAssignment actual costs
-and are disabled when absent. When no cost data exists, a duration-weighted proxy
-is returned with cost_basis="task durations" and use_cost=False.
+than fabricated values. AC/CPI/EAC require real assignment actual costs and are
+disabled when absent. When no cost data exists, a duration-weighted proxy is
+returned with cost_basis="task durations" and use_cost=False.
+
+DF-E3: AC prefers canonical ResourceAssignment; falls back to P6ResourceAssignment
+only when the project has zero canonical assignment rows (never dual-sums).
 """
 
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import date, timedelta
 
 from .calendar_utils import load_project_calendars, task_cal, working_day_diff
@@ -18,26 +22,82 @@ from .utils import get_project_data_date
 
 logger = logging.getLogger(__name__)
 
+AC_SOURCE_CANONICAL = "canonical_resource_assignment"
+AC_SOURCE_P6_FALLBACK = "legacy_p6_resource_assignment_fallback"
+AC_SOURCE_NONE = "none"
 
-def _load_actual_costs(task_pks: list[str]) -> dict[str, float]:
-    """Return {str(task_pk): total_actual_cost} from P6ResourceAssignment.
 
-    Sums all resource types (labor, material, equipment, expense) per task.
-    Returns {} if no ResourceAssignment rows exist or none have actual_cost > 0.
+@dataclass(frozen=True, slots=True)
+class ActualCostLoadResult:
+    """Task-keyed AC totals plus which store supplied them."""
+
+    by_task: dict[str, float]
+    source: str
+
+
+def _load_actual_costs(
+    task_pks: list[str],
+    *,
+    project_id: str | None = None,
+) -> ActualCostLoadResult:
+    """Return per-task actual cost totals for EVM (actual_cost > 0 only).
+
+    Prefer canonical ``ResourceAssignment`` when any non-pending canonical row
+    exists for the project. Otherwise fall back to ``P6ResourceAssignment``.
+    Never combine both sources for the same project (avoids double-counting).
+
+    Returns an empty ``by_task`` map when neither store has positive actual cost.
     Never raises.
     """
-    from scheduling.models import P6ResourceAssignment
+    if not task_pks:
+        return ActualCostLoadResult(by_task={}, source=AC_SOURCE_NONE)
 
-    result: dict[str, float] = {}
     try:
-        for ra in P6ResourceAssignment.objects.filter(
-            task_id__in=task_pks, actual_cost__gt=0
-        ).values("task_id", "actual_cost"):
+        from scheduling.models import P6ResourceAssignment, ResourceAssignment, Task
+
+        resolved_project_id = project_id
+        if resolved_project_id is None:
+            resolved_project_id = (
+                Task.objects.filter(pk=task_pks[0]).values_list("project_id", flat=True).first()
+            )
+            if resolved_project_id is not None:
+                resolved_project_id = str(resolved_project_id)
+
+        use_canonical = False
+        if resolved_project_id:
+            use_canonical = ResourceAssignment.objects.filter(
+                project_id=resolved_project_id,
+                is_pending=False,
+            ).exists()
+
+        if use_canonical:
+            rows = ResourceAssignment.objects.filter(
+                project_id=resolved_project_id,
+                task_id__in=task_pks,
+                is_pending=False,
+                actual_cost__gt=0,
+            ).values("task_id", "actual_cost")
+            source = AC_SOURCE_CANONICAL
+        else:
+            rows = P6ResourceAssignment.objects.filter(
+                task_id__in=task_pks,
+                actual_cost__gt=0,
+            ).values("task_id", "actual_cost")
+            if resolved_project_id:
+                rows = rows.filter(project_id=resolved_project_id)
+            source = AC_SOURCE_P6_FALLBACK
+
+        result: dict[str, float] = {}
+        for ra in rows:
             pk = str(ra["task_id"])
             result[pk] = result.get(pk, 0.0) + float(ra["actual_cost"] or 0)
+        if not result:
+            # Preserve source label so callers know which store was consulted.
+            return ActualCostLoadResult(by_task={}, source=source)
+        return ActualCostLoadResult(by_task=result, source=source)
     except Exception as exc:
         logger.debug("_load_actual_costs: %s", exc)
-    return result
+        return ActualCostLoadResult(by_task={}, source=AC_SOURCE_NONE)
 
 
 def _qto_task_costs(project_id: str, tasks: list) -> dict[str, float]:
@@ -349,6 +409,8 @@ def compute_evm(
         ac_available       — bool
         ac_coverage_pct    — float | None (% cost-bearing tasks with actual cost)
         ac_disabled_reason — str | None
+        ac_source          — str (canonical_resource_assignment |
+                             legacy_p6_resource_assignment_fallback | none)
         as_of / project_start / project_end — ISO date strings
         series             — {pv, ev, ac}  (ac absent when not available)
     """
@@ -506,7 +568,9 @@ def compute_evm(
         }
 
     task_pks = [str(t.pk) for t in calc_tasks]
-    actual_costs = _load_actual_costs(task_pks)
+    ac_load = _load_actual_costs(task_pks, project_id=str(project_id))
+    actual_costs = ac_load.by_task
+    ac_source = ac_load.source
     ac_total = sum(actual_costs.values())
     ac_available = ac_total > 0
 
@@ -695,6 +759,7 @@ def compute_evm(
         "ac_available": ac_available,
         "ac_coverage_pct": ac_coverage_pct,
         "ac_disabled_reason": ac_disabled_reason,
+        "ac_source": ac_source,
         "overdue_linear_capped": overdue_linear_capped,
         "is_monetary_evm": mode_fields["is_monetary_evm"],
         "performance_mode": mode_fields["performance_mode"],

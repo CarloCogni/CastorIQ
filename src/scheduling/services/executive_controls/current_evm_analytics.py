@@ -289,7 +289,7 @@ class CurrentEVMAnalyticsService:
                     unit="currency",
                     available=True,
                     authority=auth_auth,
-                    formula="Σ P6ResourceAssignment.actual_cost",
+                    formula="Σ ResourceAssignment.actual_cost (canonical preferred)",
                     caveat="Authoritative when imported from resource assignments.",
                     data_date=data_date,
                     coverage=coverage,

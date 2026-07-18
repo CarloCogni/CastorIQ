@@ -1,9 +1,9 @@
 # scheduling/services/resource_foundation.py
-"""DF-E1 Resource Foundation helpers — schema readiness only.
+"""DF-E1 Resource Foundation helpers — schema readiness and DF-E3 AC reads.
 
-These helpers support tests and DF-E2/E3 cutover. They do NOT wire into EVM,
-cashflow, ML, or DCMA. ``P6ResourceAssignment`` remains the live AC/PV source
-until an explicit later package.
+``sum_actual_cost_by_task`` supports DF-E2/E3 readiness checks. Live EVM AC
+loading prefers canonical ResourceAssignment via ``evm._load_actual_costs``
+(DF-E3), with P6 fallback when canonical rows are absent.
 """
 
 from __future__ import annotations

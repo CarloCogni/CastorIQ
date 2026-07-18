@@ -192,8 +192,8 @@ def test_sum_helpers_ignore_null_and_sum_values():
 
 
 @pytest.mark.django_db
-def test_canonical_assignments_do_not_enable_evm_ac():
-    """DF-E1 canonical rows must not change EVM AC (still P6-only)."""
+def test_canonical_assignments_enable_evm_ac():
+    """DF-E3: canonical ResourceAssignment actual_cost > 0 enables EVM AC."""
     import datetime
 
     project = ProjectFactory()
@@ -202,6 +202,9 @@ def test_canonical_assignments_do_not_enable_evm_ac():
         cost=Decimal("1000.00"),
         start_date=datetime.date(2025, 1, 1),
         end_date=datetime.date(2025, 1, 31),
+        status="complete",
+        actual_start=datetime.date(2025, 1, 1),
+        actual_end=datetime.date(2025, 1, 20),
     )
     resource = ResourceFactory(project=project)
     ResourceAssignmentFactory(
@@ -216,5 +219,6 @@ def test_canonical_assignments_do_not_enable_evm_ac():
 
     result = compute_evm(str(project.pk))
 
-    assert result.get("ac_available") is False
-    assert result.get("ac") is None
+    assert result.get("ac_available") is True
+    assert result.get("ac") == 500.0
+    assert result.get("ac_source") == "canonical_resource_assignment"

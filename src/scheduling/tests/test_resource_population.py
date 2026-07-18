@@ -205,7 +205,7 @@ def test_source_version_attached_when_provided():
 
 @pytest.mark.django_db
 def test_evm_unchanged_after_canonical_population():
-    """Canonical population must not enable EVM AC (still P6-path only)."""
+    """DF-E3: after population, AC stays numerically identical via canonical path."""
     import datetime
 
     project = ProjectFactory()
@@ -215,7 +215,6 @@ def test_evm_unchanged_after_canonical_population():
         start_date=datetime.date(2025, 1, 1),
         end_date=datetime.date(2025, 1, 31),
     )
-    # Confirmed P6 row with actual cost — this DOES enable AC via legacy path.
     _p6_ra(project, task, actual_cost=Decimal("200.00"))
 
     before = compute_evm(str(project.pk))
@@ -225,6 +224,7 @@ def test_evm_unchanged_after_canonical_population():
     assert before.get("ac_available") is True
     assert after.get("ac_available") is True
     assert after.get("ac") == before.get("ac")
+    assert after.get("ac_source") == "canonical_resource_assignment"
     assert ResourceAssignment.objects.filter(project=project).count() == 1
 
 

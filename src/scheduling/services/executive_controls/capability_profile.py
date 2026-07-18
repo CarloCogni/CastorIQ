@@ -67,6 +67,8 @@ class _ProjectSignals:
     labor_actual_units: float
     ac_assignment_rows: int
     ac_task_count: int
+    ac_source_label: str
+    canonical_resource_assignment_count: int
     has_ifc: bool
     indexed_entities: int
     trusted_tasks: int
@@ -225,7 +227,6 @@ class ProjectAnalyticsCapabilityProfile:
             }
 
         has_schema = True
-        has_completed = signals.completed_snapshot_count > 0
         has_results = signals.snapshot_result_count > 0
         has_historical = (
             signals.snapshot_result_count >= 2 and signals.snapshot_result_distinct_dates >= 2
@@ -623,14 +624,18 @@ class ProjectAnalyticsCapabilityProfile:
             "trade_mapping": _entry(
                 trade_governed,
                 CapabilityState.AVAILABLE if trade_governed else CapabilityState.UNAVAILABLE,
-                caveats=("Governed trade schema present — E8 defaults to proxy until governed_ready.",)
+                caveats=(
+                    "Governed trade schema present — E8 defaults to proxy until governed_ready.",
+                )
                 if trade_governed
                 else ("No governed trade mapping.",),
             ),
             "package_mapping": _entry(
                 package_governed,
                 CapabilityState.AVAILABLE if package_governed else CapabilityState.UNAVAILABLE,
-                caveats=("Governed package schema present — E8 defaults to proxy until governed_ready.",)
+                caveats=(
+                    "Governed package schema present — E8 defaults to proxy until governed_ready.",
+                )
                 if package_governed
                 else ("No governed package mapping.",),
             ),
@@ -678,9 +683,13 @@ class ProjectAnalyticsCapabilityProfile:
                 else CapabilityState.PROXY_ONLY
                 if caps_trade
                 else CapabilityState.UNAVAILABLE,
-                caveats=("Proxy/suggestion trade analytics — governed mode dimension-gated (DF-D3).",)
+                caveats=(
+                    "Proxy/suggestion trade analytics — governed mode dimension-gated (DF-D3).",
+                )
                 if not trade_governed
-                else ("Governed trade mapping present — select governed mode when governed_ready.",),
+                else (
+                    "Governed trade mapping present — select governed mode when governed_ready.",
+                ),
             ),
             "e8_package_analytics_readiness": _entry(
                 package_governed or caps_trade,
@@ -769,9 +778,7 @@ class ProjectAnalyticsCapabilityProfile:
             "snapshot_governed_mapping_analytics": _entry(
                 False,
                 CapabilityState.UNAVAILABLE,
-                caveats=(
-                    "DF-B snapshots do not persist governed dimension aggregates (DF-D3).",
-                ),
+                caveats=("DF-B snapshots do not persist governed dimension aggregates (DF-D3).",),
             ),
             "dimension_count": {"total": dim_count, "active_selected": active_dims},
             "assignment_counts": {
@@ -941,13 +948,48 @@ class ProjectAnalyticsCapabilityProfile:
             labor_actual=Sum("actual_units", filter=Q(resource_type__icontains="labor")),
             ac_rows=Count("pk", filter=Q(actual_cost__gt=0)),
         )
-        ac_task_count = (
-            ra_qs.filter(actual_cost__gt=0)
-            .exclude(task_id=None)
-            .values("task_id")
-            .distinct()
-            .count()
+
+        from scheduling.models import Resource as CanonicalResource
+        from scheduling.models import ResourceAssignment as CanonicalResourceAssignment
+
+        canonical_qs = CanonicalResourceAssignment.objects.filter(
+            project_id=self.project_id, is_pending=False
         )
+        canonical_count = canonical_qs.count()
+        if canonical_count > 0:
+            ac_rows = canonical_qs.filter(actual_cost__gt=0).count()
+            ac_task_count = (
+                canonical_qs.filter(actual_cost__gt=0)
+                .exclude(task_id=None)
+                .values("task_id")
+                .distinct()
+                .count()
+            )
+            ac_source_label = "ResourceAssignment.actual_cost"
+            labor_agg = canonical_qs.filter(
+                resource__resource_type=CanonicalResource.ResourceType.LABOR
+            ).aggregate(
+                labor_planned=Sum("planned_units"),
+                labor_actual=Sum("actual_units"),
+            )
+            labor_planned_units = float(labor_agg["labor_planned"] or 0)
+            labor_actual_units = float(labor_agg["labor_actual"] or 0)
+        else:
+            ac_rows = ra_agg["ac_rows"] or 0
+            ac_task_count = (
+                ra_qs.filter(actual_cost__gt=0)
+                .exclude(task_id=None)
+                .values("task_id")
+                .distinct()
+                .count()
+            )
+            ac_source_label = (
+                "P6ResourceAssignment.actual_cost"
+                if (ra_agg["ac_rows"] or 0) > 0 or ra_qs.exists()
+                else "none"
+            )
+            labor_planned_units = float(ra_agg["labor_planned"] or 0)
+            labor_actual_units = float(ra_agg["labor_actual"] or 0)
 
         wbs_node_count = P6WBSNode.objects.filter(
             project_id=self.project_id, is_pending=False
@@ -983,10 +1025,12 @@ class ProjectAnalyticsCapabilityProfile:
             with_calendar_id=agg["with_calendar_id"] or 0,
             dependency_count=dep_count,
             calendar_count=calendar_count,
-            labor_planned_units=float(ra_agg["labor_planned"] or 0),
-            labor_actual_units=float(ra_agg["labor_actual"] or 0),
-            ac_assignment_rows=ra_agg["ac_rows"] or 0,
+            labor_planned_units=labor_planned_units,
+            labor_actual_units=labor_actual_units,
+            ac_assignment_rows=ac_rows,
             ac_task_count=ac_task_count,
+            ac_source_label=ac_source_label,
+            canonical_resource_assignment_count=canonical_count,
             has_ifc=has_ifc,
             indexed_entities=indexed,
             trusted_tasks=len(reader.trusted_task_ids()),
@@ -1504,15 +1548,33 @@ class ProjectAnalyticsCapabilityProfile:
             FeatureId.TCPI,
         )
         if feature_id in cost_dependents:
+            ac_caveats: list[str] = []
+            if s.canonical_resource_assignment_count > 0:
+                ac_source = "ResourceAssignment.actual_cost"
+                if s.current_source_version_id is None:
+                    ac_caveats.append(
+                        "Canonical resource assignments populated from legacy P6 "
+                        "schedule source; source_version unavailable for this project."
+                    )
+            elif s.ac_source_label.startswith("P6ResourceAssignment"):
+                ac_source = "P6ResourceAssignment.actual_cost"
+                ac_caveats.append(
+                    "Using legacy P6ResourceAssignment fallback — canonical "
+                    "ResourceAssignment rows not yet populated."
+                )
+            else:
+                ac_source = s.ac_source_label or "none"
+
             if not cost_ok or not progress_ok:
                 return self._cap(
                     feature_id,
                     state=CapabilityState.UNAVAILABLE,
                     available=False,
                     authority=MetricAuthority.UNAVAILABLE,
-                    source="P6ResourceAssignment.actual_cost",
+                    source=ac_source,
                     signals=s,
                     missing_reasons=(MissingReason.NO_COST_BASELINE,),
+                    caveats=tuple(ac_caveats),
                     disabled_dependent_features=(feature_id,),
                 )
             if not ac_ok:
@@ -1521,24 +1583,26 @@ class ProjectAnalyticsCapabilityProfile:
                     state=CapabilityState.UNAVAILABLE,
                     available=False,
                     authority=MetricAuthority.UNAVAILABLE,
-                    source="P6ResourceAssignment.actual_cost",
+                    source=ac_source,
                     signals=s,
                     numerator=s.ac_task_count,
                     denominator=s.with_cost or 1,
                     missing_reasons=(MissingReason.NO_ACTUAL_COST,),
-                    caveats=("Actual cost requires P6 resource assignment import.",),
+                    caveats=tuple(ac_caveats)
+                    + ("Actual cost requires resource assignment import with actual_cost > 0.",),
                 )
             return self._cap(
                 feature_id,
                 state=CapabilityState.AVAILABLE,
                 available=True,
                 authority=MetricAuthority.AUTHORITATIVE,
-                source="P6ResourceAssignment.actual_cost",
+                source=ac_source,
                 signals=s,
                 numerator=s.ac_task_count,
                 denominator=s.with_cost,
                 present_fields=("actual_cost",),
                 supported_analytical_mode="cost_evm",
+                caveats=tuple(ac_caveats),
             )
 
         if feature_id == FeatureId.DERIVED_COST_CURVE:
@@ -1582,14 +1646,20 @@ class ProjectAnalyticsCapabilityProfile:
             )
 
         if feature_id == FeatureId.EQUIVALENT_WORKFORCE:
-            has_ra = s.labor_planned_units > 0 or s.labor_actual_units > 0
+            has_canonical_ra = s.canonical_resource_assignment_count > 0
+            has_ra = s.labor_planned_units > 0 or s.labor_actual_units > 0 or has_canonical_ra
             avail = has_ra
+            labor_source = (
+                "ResourceAssignment labor units"
+                if has_canonical_ra
+                else "P6ResourceAssignment labor units"
+            )
             return self._cap(
                 feature_id,
                 state=CapabilityState.AVAILABLE if avail else CapabilityState.UNAVAILABLE,
                 available=avail,
                 authority=MetricAuthority.AUTHORITATIVE if avail else MetricAuthority.UNAVAILABLE,
-                source="P6ResourceAssignment labor units",
+                source=labor_source,
                 signals=s,
                 numerator=int(s.labor_planned_units + s.labor_actual_units),
                 denominator=1 if avail else None,
