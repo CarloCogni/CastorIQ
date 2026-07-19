@@ -21,7 +21,9 @@
     </button>
 </div>
 <p class="small text-secondary mb-3" data-testid="legacy-evm-decision-note">
-    For detailed checks. <a href="{% url 'scheduling:executive_controls_evm' project.pk %}">Executive EVM</a> is the decision-facing view.
+    Advanced supporting diagnostics.
+    <a href="{% url 'scheduling:executive_controls_evm' project.pk %}">Executive EVM</a> is the decision-facing view;
+    this page is for detailed checks only.
 </p>
 
 <div id="evm-root" style="display:flex; flex-direction:column; gap:16px;">
@@ -78,14 +80,24 @@
         <div id="evm-trust-readiness-body" class="d-none"></div>
     </div>
 
-    <!-- Decision Summary — executive plain-language read of the project -->
+    <!-- Diagnostics summary — advanced supporting read (not decision-facing) -->
     <div id="evm-decision-section"
+         data-testid="legacy-evm-diagnostics-summary"
          style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
+
+        <div style="font-size:0.67rem; font-weight:700; text-transform:uppercase; letter-spacing:.07em;
+                    color:var(--bs-secondary-color); margin-bottom:10px;">
+            Diagnostics summary
+            <span class="badge bg-secondary-subtle text-secondary-emphasis border ms-1"
+                  style="font-size:0.62rem; font-weight:600; text-transform:none; letter-spacing:0;">
+                Advanced checks
+            </span>
+        </div>
 
         <!-- Loading -->
         <div id="evm-decision-loading" class="d-flex align-items-center gap-2"
              style="font-size:0.78rem; color:var(--bs-secondary-color);">
-            <span class="spinner-border spinner-border-sm"></span> Analysing project…
+            <span class="spinner-border spinner-border-sm"></span> Loading diagnostics…
         </div>
 
         <!-- Results -->
@@ -103,11 +115,11 @@
                 </div>
             </div>
 
-            <!-- Block 3: top-5 action list -->
+            <!-- Block 3: ranked review list -->
             <div>
                 <div style="font-size:0.67rem; font-weight:700; text-transform:uppercase; letter-spacing:.07em;
                             color:var(--bs-secondary-color); margin-bottom:6px;">
-                    Top 5 — Needs Attention
+                    Items to review
                 </div>
                 <div id="evm-decision-b3"></div>
             </div>
@@ -117,7 +129,7 @@
         <!-- Shown only when screen is in Audit-suggested mode to clarify DS uses AS-CODED -->
         <div id="evm-decision-coded-note" class="d-none"
              style="font-size:0.7rem; color:var(--bs-secondary-color); margin-top:6px;">
-            <i class="bi bi-info-circle"></i> Based on original P6 coding — the executive summary uses trade-agnostic metrics (SPI, CPI, DCMA) and is unaffected by the audit toggle.
+            <i class="bi bi-info-circle"></i> Based on original P6 coding — diagnostics use trade-agnostic metrics (SPI, CPI, DCMA) and are unaffected by the audit toggle.
         </div>
     </div>
 
@@ -4158,7 +4170,7 @@ function _esc(s) {
         }
     }());
 
-    /* ── Decision Summary ────────────────────────────────────────────────── */
+    /* ── Diagnostics summary (advanced; not decision-facing) ─────────────── */
     (function () {
         const DS_URL = "{% url 'scheduling:decision_summary' project.pk %}";
 
@@ -4203,7 +4215,7 @@ function _esc(s) {
                 data = await resp.json();
             } catch (_) {
                 if (loading) loading.innerHTML =
-                    `<span style="color:var(--bs-secondary-color);font-size:.78rem;">Decision summary unavailable.</span>`;
+                    `<span style="color:var(--bs-secondary-color);font-size:.78rem;">Diagnostics summary unavailable.</span>`;
                 return;
             }
 
@@ -4212,7 +4224,7 @@ function _esc(s) {
                 if (loading) {
                     loading.classList.remove("d-none");
                     loading.innerHTML =
-                        `<span style="font-size:.78rem;color:var(--bs-secondary-color);">No schedule data — import a schedule to see the decision summary.</span>`;
+                        `<span style="font-size:.78rem;color:var(--bs-secondary-color);">No schedule data — import a schedule to see diagnostics.</span>`;
                 }
                 return;
             }

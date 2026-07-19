@@ -1,5 +1,5 @@
 # scheduling/tests/test_packaging_ui_honesty.py
-"""Packaging Fix Package 2 — less-is-more UI honesty polish."""
+"""Packaging Fix Packages 2–4 — less-is-more UI honesty polish."""
 
 from __future__ import annotations
 
@@ -33,7 +33,13 @@ def test_legacy_evm_labelled_diagnostic_not_primary_decision(client):
     assert 'data-testid="legacy-evm-decision-note"' in html
     assert "decision-facing view" in html
     assert "Executive EVM" in html
+    assert "Advanced supporting diagnostics" in html
     assert "EVM Dashboard" not in html
+    assert "Decision Summary" not in html
+    assert "Top 5 — Needs Attention" not in html
+    assert "Diagnostics summary" in html
+    assert "Items to review" in html
+    assert 'data-testid="legacy-evm-diagnostics-summary"' in html
 
 
 @pytest.mark.django_db
@@ -68,6 +74,10 @@ def test_fourd_link_proposals_wording_not_approval(client):
     assert "Propose links" in html
     assert "Castor Link Engine" not in html
     assert "Governance" in html
+    assert "Castor AI" not in html
+    assert "Link assistant" in html
+    assert "Advisory suggestions" in html
+    assert "does not approve links" in html
 
 
 @pytest.mark.django_db
@@ -91,8 +101,12 @@ def test_link_proposals_surface_has_no_inline_approve(client):
 
     assert "binding_accept" not in html
     assert "Approve as trusted" not in html
-    assert html.count("Approve ≥95% in Governance") == 1
+    assert "Approve ≥95%" not in html
+    assert "binding_bulk_accept" not in html
+    assert 'data-testid="proposals-open-governance-cta"' in html
+    assert "Open Governance for ≥95% proposals" in html
     assert html.count("Proposed links require Governance approval") == 1
+    assert reverse("scheduling:link_governance_workspace", args=[project.pk]) in html
 
 
 @pytest.mark.django_db
@@ -118,7 +132,9 @@ def test_matrix_stage_proxy_badge_once(client):
     TaskFactory(project=project, stage="structure")
     client.force_login(project.owner)
 
-    response = client.get(reverse("scheduling:executive_controls_matrix", kwargs={"pk": project.pk}))
+    response = client.get(
+        reverse("scheduling:executive_controls_matrix", kwargs={"pk": project.pk})
+    )
     html = response.content.decode()
 
     assert response.status_code == 200
@@ -147,7 +163,7 @@ def test_trades_proxy_badge_not_duplicated(client):
 
 @pytest.mark.django_db
 def test_resources_caveats_appear_once(client):
-    """Resources readiness non-claims and source_version caveat are not duplicated."""
+    """Resources readiness non-claims once; caveats card not duplicated on-page."""
     project = ProjectFactory()
     task = TaskFactory(project=project)
     ResourceAssignmentFactory(
@@ -161,14 +177,18 @@ def test_resources_caveats_appear_once(client):
     )
     client.force_login(project.owner)
 
-    response = client.get(reverse("scheduling:executive_controls_resources", kwargs={"pk": project.pk}))
+    response = client.get(
+        reverse("scheduling:executive_controls_resources", kwargs={"pk": project.pk})
+    )
     html = response.content.decode()
 
     assert response.status_code == 200
     assert "Resources Readiness" in html
+    assert "Resources readiness" in html
     assert html.count("Not full E8-E") == 1
     assert html.count('data-testid="resources-non-claims"') == 1
     assert html.count('data-testid="resources-source-version-caveat"') == 1
+    assert 'data-testid="resources-caveats"' not in html
     assert "Not site headcount" in html
 
 
@@ -186,3 +206,17 @@ def test_bim_nav_demotes_legacy_evm_label(client):
     assert "EVM Diagnostics" in html
     assert 'data-testid="data-sources-purpose"' in html
     assert "Imported schedule and provenance" in html
+
+
+@pytest.mark.django_db
+def test_project_nav_labels_ifc_schedule_vs_4d5d(client):
+    """Project shell distinguishes IFC Schedule from 4D/5D."""
+    project = ProjectFactory()
+    client.force_login(project.owner)
+
+    response = client.get(reverse("projects:ask", kwargs={"pk": project.pk}), follow=True)
+    html = response.content.decode()
+
+    assert response.status_code == 200
+    assert "IFC Schedule" in html
+    assert "4D/5D" in html

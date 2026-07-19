@@ -9,7 +9,7 @@
         <ol class="breadcrumb small mb-0">
             <li class="breadcrumb-item"><a href="{% url 'projects:detail' project.pk %}">{{ project.name }}</a></li>
             <li class="breadcrumb-item"><a href="{% url 'scheduling:executive_controls' project.pk %}">Executive Controls</a></li>
-            <li class="breadcrumb-item active" aria-current="page">Resources</li>
+            <li class="breadcrumb-item active" aria-current="page">Resources readiness</li>
         </ol>
     </nav>
 
@@ -127,16 +127,7 @@
         </div>
     </div>
 
-    <div class="card border mb-3">
-        <div class="card-header py-2 small fw-semibold">Caveats</div>
-        <div class="card-body small" data-testid="resources-caveats">
-            <ul class="mb-0 ps-3">
-                {% for c in readiness.caveats %}
-                <li>{{ c }}</li>
-                {% endfor %}
-            </ul>
-        </div>
-    </div>
+    <!-- Caveats live in the help modal — avoid repeating non-claims themes on-page -->
 
     {% endif %}
 </div>

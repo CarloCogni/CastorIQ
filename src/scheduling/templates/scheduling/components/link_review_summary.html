@@ -45,18 +45,14 @@
 
 <div class="d-flex flex-wrap gap-2 mb-3">
     {% if summary.needs_review_high %}
-    <form hx-post="{% url 'scheduling:binding_bulk_accept' project.pk %}"
-          hx-target="#link-review-content"
-          hx-swap="outerHTML"
-          hx-indicator="#bulk-spinner">
-        {% csrf_token %}
-        <button type="submit" class="btn btn-outline-warning btn-sm"
-                title="Bulk approval requires Governance (fingerprint + confirmation)">
-            <span id="bulk-spinner" class="htmx-indicator spinner-border spinner-border-sm me-1"></span>
-            <i class="bi bi-shield-check me-1"></i>Approve ≥95% in Governance
-            <span class="badge bg-dark ms-1">{{ summary.needs_review_high }}</span>
-        </button>
-    </form>
+    <!-- Navigation only — trust creation stays in Governance -->
+    <a href="{% url 'scheduling:link_governance_workspace' project.pk %}"
+       class="btn btn-outline-warning btn-sm"
+       data-testid="proposals-open-governance-cta"
+       title="Open Governance to review high-confidence proposals (approval authority)">
+        <i class="bi bi-shield-check me-1"></i>Open Governance for ≥95% proposals
+        <span class="badge bg-dark ms-1">{{ summary.needs_review_high }}</span>
+    </a>
     {% endif %}
     <a href="{% url 'scheduling:binding_export' project.pk %}"
        class="btn btn-sm btn-outline-secondary">
