@@ -10,8 +10,6 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from django.db import transaction
-
 from .match_preview import (
     ALGORITHM_VERSION,
     DEFAULT_PARAM_NAME,
@@ -28,7 +26,6 @@ LEGACY_M2M_POLICY = "add_only"
 ALLOWED_OVERWRITE_POLICIES = frozenset({OVERWRITE_POLICY})
 ALLOWED_STALE_POLICIES = frozenset({STALE_BINDING_POLICY})
 ALLOWED_M2M_POLICIES = frozenset({LEGACY_M2M_POLICY})
-BULK_BATCH_SIZE = 500
 
 
 class ApprovalValidationError(Exception):
@@ -296,8 +293,13 @@ class ApprovedMatchPersistenceService:
         preview: MatchPreviewResult,
         warnings: list[str],
     ) -> dict[str, int]:
-        """Write bindings and legacy M2M inside a single transaction."""
+        """Write trusted bindings via centralized promotion (events + promote_fields)."""
         from scheduling.models import Task, TaskEntityBinding
+        from scheduling.services.governance.active_state import is_trusted_binding
+        from scheduling.services.governance.trust_promotion import (
+            create_trusted_bindings,
+            promote_bindings_to_trusted,
+        )
 
         pairs = sorted(
             preview.approved_pairs,
@@ -315,113 +317,99 @@ class ApprovedMatchPersistenceService:
             }
 
         task_ids = {p["task_id"] for p in pairs}
-
-        with transaction.atomic():
-            project_task_ids = set(
-                Task.objects.filter(project=self.project, pk__in=task_ids).values_list(
-                    "pk", flat=True
-                )
+        project_task_ids = {
+            str(pk)
+            for pk in Task.objects.filter(project=self.project, pk__in=task_ids).values_list(
+                "pk", flat=True
             )
-            project_task_ids = {str(pk) for pk in project_task_ids}
+        }
 
-            existing_bindings = {
-                (str(b["task_id"]), b["entity_global_id"]): b
-                for b in TaskEntityBinding.objects.filter(task__project=self.project).values(
-                    "pk",
-                    "task_id",
-                    "entity_global_id",
-                    "needs_review",
-                    "link_method",
+        existing_bindings = {
+            (str(b.task_id), b.entity_global_id): b
+            for b in TaskEntityBinding.objects.filter(task__project=self.project).select_related(
+                "task"
+            )
+        }
+
+        to_create_specs: list[dict] = []
+        promote_ids: list[str] = []
+        update_ids: list[str] = []
+        inserted = promoted = updated = noop = conflicts = 0
+
+        for pair in pairs:
+            task_id = pair["task_id"]
+            entity_gid = pair["entity_global_id"]
+
+            if task_id not in project_task_ids:
+                conflicts += 1
+                continue
+
+            key = (task_id, entity_gid)
+            binding = existing_bindings.get(key)
+
+            if binding is None:
+                to_create_specs.append(
+                    {
+                        "task_id": task_id,
+                        "entity_global_id": entity_gid,
+                        "entity_pk": pair.get("entity_pk"),
+                        "confidence": 1.0,
+                        "link_method": TaskEntityBinding.LinkMethod.EXACT,
+                    }
                 )
-            }
-
-            through_model = Task.ifc_entities.through
-            existing_m2m = {
-                (str(tid), str(eid))
-                for tid, eid in through_model.objects.filter(task_id__in=task_ids).values_list(
-                    "task_id",
-                    "ifcentity_id",
-                )
-            }
-
-            to_create: list[TaskEntityBinding] = []
-            promote_pks: list = []
-            update_pks: list = []
-            inserted = promoted = updated = noop = conflicts = 0
-            m2m_rows: list = []
-            m2m_added = m2m_noop = 0
-
-            for pair in pairs:
-                task_id = pair["task_id"]
-                entity_gid = pair["entity_global_id"]
-                entity_pk = pair["entity_pk"]
-
-                if task_id not in project_task_ids:
-                    conflicts += 1
-                    continue
-
-                key = (task_id, entity_gid)
-                binding = existing_bindings.get(key)
-
-                if binding is None:
-                    to_create.append(
-                        TaskEntityBinding(
-                            task_id=task_id,
-                            entity_global_id=entity_gid,
-                            confidence=1.0,
-                            link_method=TaskEntityBinding.LinkMethod.EXACT,
-                            needs_review=False,
-                        )
-                    )
-                    inserted += 1
-                elif binding["needs_review"]:
-                    promote_pks.append(binding["pk"])
-                    promoted += 1
-                elif (
-                    binding["link_method"] == TaskEntityBinding.LinkMethod.EXACT
-                    and not binding["needs_review"]
-                ):
+                inserted += 1
+            elif is_trusted_binding(binding):
+                if binding.link_method == TaskEntityBinding.LinkMethod.EXACT:
                     noop += 1
                 else:
-                    update_pks.append(binding["pk"])
+                    update_ids.append(str(binding.pk))
                     updated += 1
+            else:
+                promote_ids.append(str(binding.pk))
+                promoted += 1
 
-                m2m_key = (task_id, entity_pk)
-                if m2m_key in existing_m2m:
-                    m2m_noop += 1
-                else:
-                    m2m_rows.append(
-                        through_model(task_id=task_id, ifcentity_id=entity_pk),
-                    )
-                    m2m_added += 1
-                    existing_m2m.add(m2m_key)
+        fingerprint = preview.preview_fingerprint
+        m2m_added = m2m_noop = 0
 
-            if to_create:
-                TaskEntityBinding.objects.bulk_create(
-                    to_create,
-                    batch_size=BULK_BATCH_SIZE,
-                )
+        if to_create_specs:
+            created = create_trusted_bindings(
+                project=self.project,
+                user=self.user,
+                specs=to_create_specs,
+                request_source="exact_match_approval",
+                selection_fingerprint=fingerprint,
+                reason_text="Approved exact match persistence",
+            )
+            m2m_added += created.m2m_added
+            m2m_noop += created.m2m_noop
+            warnings.extend(created.warnings)
 
-            if promote_pks:
-                TaskEntityBinding.objects.filter(pk__in=promote_pks).update(
-                    confidence=1.0,
-                    link_method=TaskEntityBinding.LinkMethod.EXACT,
-                    needs_review=False,
-                )
+        if promote_ids:
+            promo = promote_bindings_to_trusted(
+                project=self.project,
+                user=self.user,
+                binding_ids=promote_ids,
+                request_source="exact_match_approval",
+                selection_fingerprint=fingerprint,
+                reason_text="Approved exact match persistence",
+                extra_field_updates={
+                    "confidence": 1.0,
+                    "link_method": TaskEntityBinding.LinkMethod.EXACT,
+                },
+            )
+            m2m_added += promo.m2m_added
+            m2m_noop += promo.m2m_noop
+            warnings.extend(promo.warnings)
 
-            if update_pks:
-                TaskEntityBinding.objects.filter(pk__in=update_pks).update(
-                    confidence=1.0,
-                    link_method=TaskEntityBinding.LinkMethod.EXACT,
-                    needs_review=False,
-                )
-
-            if m2m_rows:
-                through_model.objects.bulk_create(
-                    m2m_rows,
-                    batch_size=BULK_BATCH_SIZE,
-                    ignore_conflicts=True,
-                )
+        if update_ids:
+            # Already trusted but method/confidence refresh — still one event per binding
+            # only when fields change; reuse promote path which no-ops events for trusted.
+            # Apply field updates then record reaffirmation-free field sync without new approve
+            # events: trusted rows get method/confidence update only (idempotent packaging).
+            TaskEntityBinding.objects.filter(pk__in=update_ids).update(
+                confidence=1.0,
+                link_method=TaskEntityBinding.LinkMethod.EXACT,
+            )
 
         if preview.projected_stale_bindings:
             warnings.append(

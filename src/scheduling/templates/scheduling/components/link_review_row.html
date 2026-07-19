@@ -74,9 +74,11 @@
     <!-- Status -->
     <td>
         {% if row.binding.needs_review %}
-            <span class="badge bg-warning text-dark">Pending</span>
+            <span class="badge bg-warning text-dark">Proposed</span>
+        {% elif row.binding.governance_status == "trusted" and row.binding.is_active %}
+            <span class="badge bg-success">Trusted</span>
         {% else %}
-            <span class="badge bg-success">Accepted</span>
+            <span class="badge bg-secondary">Not trusted</span>
         {% endif %}
     </td>
 
@@ -88,7 +90,8 @@
                   hx-target="#binding-row-{{ row.binding.pk }}"
                   hx-swap="outerHTML">
                 {% csrf_token %}
-                <button type="submit" class="btn btn-success btn-sm py-0 px-2" title="Accept link">
+                <button type="submit" class="btn btn-success btn-sm py-0 px-2"
+                        title="Approve as trusted (Governance contract)">
                     <i class="bi bi-check-lg"></i>
                 </button>
             </form>

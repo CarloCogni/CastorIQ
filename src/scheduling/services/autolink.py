@@ -1,15 +1,15 @@
 # castor/scheduling/services/autolink.py
-"""4-layer schedule Task → IFC entity auto-link pipeline.
+"""4-layer schedule Task → IFC entity auto-link pipeline (propose only).
 
 Layer order (a task exits at the first layer that produces a match):
-  1. Exact property match       confidence 1.00  auto-accept
-  2. Normalized property match  confidence 0.95  auto-accept
-  3. IFC-type keyword heuristic confidence 0.70  needs review
-  4. Embedding cosine distance  ≥ 0.82 auto-accept, 0.65–0.81 needs review
+  1. Exact property match       confidence 1.00
+  2. Normalized property match  confidence 0.95
+  3. IFC-type keyword heuristic confidence 0.50–0.85
+  4. Embedding cosine distance  confidence ≥ 0.65
 
-"Auto-accept" means the entity is added to task.ifc_entities M2M immediately.
-"Needs review" means a TaskEntityBinding is created with needs_review=True
-but the M2M link is NOT written — Phase 3 Review UI handles acceptance.
+All layers create TaskEntityBinding proposals (needs_review=True,
+governance_status=active_review). Legacy M2M is not written until Governance
+(or an approval endpoint using trust promotion) promotes the binding to trusted.
 """
 
 from __future__ import annotations
@@ -459,14 +459,16 @@ def run_autolink(project, ifc_param_name: str | None = None) -> dict:
 
         matched = prop_index.get(code)
         if matched:
-            _record(task, matched, 1.0, "exact", False, new_bindings, m2m_adds)
+            _record(task, matched, 1.0, "exact", True, new_bindings, m2m_adds)
             counters["exact"] += 1
+            needs_review_count += 1
             continue
 
         matched = norm_index.get(_normalize(code))
         if matched:
-            _record(task, matched, 0.95, "normalized", False, new_bindings, m2m_adds)
+            _record(task, matched, 0.95, "normalized", True, new_bindings, m2m_adds)
             counters["normalized"] += 1
+            needs_review_count += 1
             continue
 
         remaining.append(task)
@@ -482,14 +484,13 @@ def run_autolink(project, ifc_param_name: str | None = None) -> dict:
 
     embed_remaining: list[Task] = []
     for task in remaining:
-        entities, confidence, needs_review = _run_layer3(
+        entities, confidence, _layer_review = _run_layer3(
             task, type_index, container_names, storey_elevations, context
         )
         if entities:
-            _record(task, entities, confidence, "heuristic", needs_review, new_bindings, m2m_adds)
+            _record(task, entities, confidence, "heuristic", True, new_bindings, m2m_adds)
             counters["heuristic"] += 1
-            if needs_review:
-                needs_review_count += 1
+            needs_review_count += 1
         else:
             embed_remaining.append(task)
 
@@ -535,11 +536,9 @@ def run_autolink(project, ifc_param_name: str | None = None) -> dict:
                     if confidence < _EMBED_LOW:
                         continue
                     entity = embed_entities[best_idx]
-                    review = confidence < _EMBED_HIGH
-                    _record(task, [entity], confidence, "embedding", review, new_bindings, m2m_adds)
+                    _record(task, [entity], confidence, "embedding", True, new_bindings, m2m_adds)
                     counters["embedding"] += 1
-                    if review:
-                        needs_review_count += 1
+                    needs_review_count += 1
 
     t3 = time.perf_counter()
     logger.info(
@@ -676,7 +675,14 @@ def _record(
     bindings: list[TaskEntityBinding],
     m2m: dict[str, list[IFCEntity]],
 ) -> None:
-    """Append binding objects and, if auto-accepted, queue M2M writes."""
+    """Append proposal binding objects. Autolink never writes trusted/M2M.
+
+    Product rule: Smart Pipeline / Castor Link Engine proposes only.
+    Governance (or explicit approval endpoints) promote to trusted.
+    The needs_review argument is retained for call-site compatibility but
+    proposals always persist with needs_review=True.
+    """
+    del needs_review, m2m  # proposals only — no auto-accept M2M
     for entity in entities:
         bindings.append(
             TaskEntityBinding(
@@ -684,11 +690,11 @@ def _record(
                 entity_global_id=entity.global_id,
                 confidence=confidence,
                 link_method=method,
-                needs_review=needs_review,
+                needs_review=True,
+                governance_status=TaskEntityBinding.GovernanceStatus.ACTIVE_REVIEW,
+                is_active=True,
             )
         )
-    if not needs_review:
-        m2m.setdefault(str(task.pk), []).extend(entities)
 
 
 def _infer_entity_level(entity: IFCEntity, container_names: dict[str, str]) -> str | None:
@@ -710,10 +716,10 @@ def _run_layer3(
     Resolves IFC type from built-in keywords then LLM-extracted context trades.
     Returns (entities, confidence, needs_review).
 
-    Confidence tiers:
-      0.50  type keyword match only          → needs_review=True
-      0.75  type + zone/level match          → needs_review=True
-      0.85  type + zone + trade context hit  → needs_review=False (auto-accept)
+    Confidence tiers (all remain proposals until Governance approval):
+      0.50  type keyword match only
+      0.75  type + zone/level match
+      0.85  type + zone + trade context hit
     """
     name_lower = task.name.lower()
     context_trades: dict[str, str] = (context.get("trades") or {}) if context else {}

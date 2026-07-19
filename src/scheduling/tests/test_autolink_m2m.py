@@ -46,8 +46,8 @@ def test_autolink_rerun_clears_stale_m2m_for_physical_tasks(mock_schedule_contex
 
 
 @pytest.mark.django_db
-def test_autolink_exact_match_syncs_m2m_for_accepted_bindings(mock_schedule_context):
-    """Auto-accepted exact matches still populate legacy M2M for backward compatibility."""
+def test_autolink_exact_match_creates_proposal_without_m2m(mock_schedule_context):
+    """Exact matches are proposals only — no trusted status and no legacy M2M."""
     project = ProjectFactory()
     code = "MATCH-1001"
     task = TaskFactory(project=project, activity_code=code)
@@ -60,9 +60,11 @@ def test_autolink_exact_match_syncs_m2m_for_accepted_bindings(mock_schedule_cont
     summary = run_autolink(project, ifc_param_name="Activity ID")
 
     assert summary["linked_exact"] == 1
-    assert task.ifc_entities.filter(pk=entity.pk).exists()
+    assert summary["needs_review"] == 1
+    assert not task.ifc_entities.filter(pk=entity.pk).exists()
     binding = TaskEntityBinding.objects.get(task=task, entity_global_id=entity.global_id)
-    assert binding.needs_review is False
+    assert binding.needs_review is True
+    assert binding.governance_status == TaskEntityBinding.GovernanceStatus.ACTIVE_REVIEW
 
 
 @pytest.mark.django_db

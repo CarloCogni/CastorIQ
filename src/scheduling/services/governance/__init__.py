@@ -8,6 +8,10 @@ from scheduling.services.governance.policy import TRUSTED_BINDING_POLICY_ID
 from scheduling.services.governance.reader import BindingGovernanceReader
 from scheduling.services.governance.review_queue import LinkReviewQueueService
 from scheduling.services.governance.summary import GovernanceSummaryService
+from scheduling.services.governance.trust_promotion import (
+    create_trusted_bindings,
+    promote_bindings_to_trusted,
+)
 from scheduling.services.governance.vocabulary import GovernanceCategory, QueueMode
 
 __all__ = [
@@ -20,4 +24,6 @@ __all__ = [
     "LinkReviewQueueService",
     "QueueMode",
     "TRUSTED_BINDING_POLICY_ID",
+    "create_trusted_bindings",
+    "promote_bindings_to_trusted",
 ]

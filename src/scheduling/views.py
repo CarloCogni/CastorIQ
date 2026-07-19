@@ -1045,9 +1045,8 @@ class MatchPreviewView(ProjectAccessMixin, View):
     @staticmethod
     def _preview_ui_state(preview) -> dict[str, bool]:
         """UI-only flags from write-plan counts — does not alter persistence."""
-        has_pending_writes = (
-            not preview.errors
-            and (preview.projected_inserts > 0 or preview.projected_updates > 0)
+        has_pending_writes = not preview.errors and (
+            preview.projected_inserts > 0 or preview.projected_updates > 0
         )
         already_applied = (
             not preview.errors
@@ -3190,6 +3189,8 @@ def _get_ifc_files(project):
 
 
 def _build_review_summary(project) -> dict:
+    from scheduling.services.governance.active_state import trusted_filter
+
     qs = TaskEntityBinding.objects.filter(task__project=project)
 
     physical_pks = set(
@@ -3199,22 +3200,20 @@ def _build_review_summary(project) -> dict:
         Task.objects.filter(project=project, is_non_physical=True).values_list("pk", flat=True)
     )
 
-    # Unique task PKs that have at least one accepted binding
-    accepted_task_pks = set(
-        qs.filter(needs_review=False).values_list("task_id", flat=True).distinct()
-    )
+    # Unique task PKs that have at least one trusted binding
+    trusted_task_pks = set(qs.filter(trusted_filter()).values_list("task_id", flat=True).distinct())
     # Unique task PKs with any binding at all
     bound_task_pks = set(qs.values_list("task_id", flat=True).distinct())
 
-    # Needs Review: tasks that have bindings but none are accepted yet
-    needs_review_task_pks = bound_task_pks - accepted_task_pks
+    # Needs Review: tasks that have bindings but none are trusted yet
+    needs_review_task_pks = bound_task_pks - trusted_task_pks
 
-    # For backwards-compat with the standalone review template
+    # High-confidence proposals still awaiting Governance approval
     needs_review_high = qs.filter(needs_review=True, confidence__gte=0.95).count()
 
     return {
         "total": len(physical_pks),
-        "auto_accepted": len(accepted_task_pks & physical_pks),
+        "auto_accepted": len(trusted_task_pks & physical_pks),
         "needs_review": len(needs_review_task_pks & physical_pks),
         "needs_review_high": needs_review_high,
         "unlinked_tasks": len(physical_pks - bound_task_pks),
@@ -3253,7 +3252,9 @@ def _render_link_review(
     if filter_by == "needs_review":
         bindings_qs = bindings_qs.filter(needs_review=True)
     elif filter_by in ("auto_accepted", "linked"):
-        bindings_qs = bindings_qs.filter(needs_review=False)
+        from scheduling.services.governance.active_state import trusted_filter
+
+        bindings_qs = bindings_qs.filter(trusted_filter())
     elif filter_by in ("exact", "normalized", "heuristic", "embedding", "manual"):
         bindings_qs = bindings_qs.filter(link_method=filter_by)
 
@@ -3340,25 +3341,56 @@ class LinkReviewView(ProjectAccessMixin, View):
 
 
 class BindingAcceptView(ProjectModifyAccessMixin, View):
-    """HTMX POST — accept one binding, write M2M, return updated row + OOB summary."""
+    """HTMX POST — promote one proposed binding to trusted via governance contract."""
 
     def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.authority import (
+            GovernanceAuthorityError,
+            GovernanceAuthorityPolicy,
+            GovernanceCapability,
+        )
+        from scheduling.services.governance.link_decision import (
+            DecisionValidationError,
+            LinkDecisionService,
+            StaleDecisionError,
+        )
+
         project = self.get_project()
         binding = get_object_or_404(
             TaskEntityBinding, pk=kwargs["binding_pk"], task__project=project
         )
         ifc_files = _get_ifc_files(project)
 
-        binding.needs_review = False
-        binding.save(update_fields=["needs_review"])
-
         try:
-            entity = IFCEntity.objects.get(
-                ifc_file__in=ifc_files, global_id=binding.entity_global_id
+            GovernanceAuthorityPolicy(project, request.user).require(
+                GovernanceCapability.APPROVE_INDIVIDUAL
             )
-            binding.task.ifc_entities.add(entity)
-        except IFCEntity.DoesNotExist:
-            pass
+            svc = LinkDecisionService(project, request.user)
+            preview = svc.preview_one(str(binding.pk))
+            if preview.hard_blocked_count:
+                return toast_response(
+                    "This link is blocked — resolve conflicts in Governance before approving.",
+                    "error",
+                    status=400,
+                )
+            if preview.conflict_warning_count:
+                return toast_response(
+                    "Conflict warnings require Governance acknowledgment before approval.",
+                    "error",
+                    status=400,
+                )
+            if preview.eligible_count == 0:
+                binding.refresh_from_db()
+            else:
+                svc.approve_one(
+                    str(binding.pk),
+                    selection_fingerprint=preview.selection_fingerprint,
+                )
+                binding.refresh_from_db()
+        except GovernanceAuthorityError as exc:
+            return toast_response(exc.result.reason, "error", status=403)
+        except (StaleDecisionError, DecisionValidationError) as exc:
+            return toast_response(str(exc), "error", status=400)
 
         row = _make_row(binding, ifc_files)
         summary = _build_review_summary(project)
@@ -3410,32 +3442,26 @@ class BindingRemoveView(ProjectModifyAccessMixin, View):
 
 
 class BulkAcceptView(ProjectModifyAccessMixin, View):
-    """HTMX POST — accept all bindings with confidence ≥ 0.95, re-render full tab."""
+    """HTMX POST — bulk promote is Governance-only (Pipeline proposes).
+
+    Does not flip needs_review or create trusted bindings. Directs the user to
+    the Governance review queue so fingerprint / APPROVE SELECTED policy applies.
+    """
 
     def post(self, request, **kwargs: object) -> HttpResponse:
         project = self.get_project()
-        ifc_files = _get_ifc_files(project)
-
-        pending = list(
-            TaskEntityBinding.objects.filter(
-                task__project=project, needs_review=True, confidence__gte=0.95
-            ).select_related("task")
+        pending_count = TaskEntityBinding.objects.filter(
+            task__project=project, needs_review=True, confidence__gte=0.95
+        ).count()
+        response = _render_link_review(request, project, "needs_review")
+        return trigger_toast(
+            response,
+            (
+                f"{pending_count} high-confidence proposal(s) remain proposed. "
+                "Approve them in the Governance tab (fingerprint + confirmation required)."
+            ),
+            "info",
         )
-        accepted = 0
-        for binding in pending:
-            try:
-                entity = IFCEntity.objects.get(
-                    ifc_file__in=ifc_files, global_id=binding.entity_global_id
-                )
-                binding.task.ifc_entities.add(entity)
-                accepted += 1
-            except IFCEntity.DoesNotExist:
-                pass
-
-        TaskEntityBinding.objects.filter(pk__in=[b.pk for b in pending]).update(needs_review=False)
-
-        response = _render_link_review(request, project, "all")
-        return trigger_toast(response, f"Accepted {accepted} binding(s).", "success")
 
 
 class BindingExportView(ProjectAccessMixin, View):
@@ -3476,15 +3502,32 @@ class BindingExportView(ProjectAccessMixin, View):
 
 
 class BindingAddView(ProjectModifyAccessMixin, View):
-    """HTMX POST — manually create a binding for an unlinked task, re-render full tab."""
+    """HTMX POST — manually create a trusted binding via promotion helper."""
 
     def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.authority import (
+            GovernanceAuthorityError,
+            GovernanceAuthorityPolicy,
+            GovernanceCapability,
+        )
+        from scheduling.services.governance.trust_promotion import (
+            create_trusted_bindings,
+            promote_bindings_to_trusted,
+        )
+
         project = self.get_project()
         task_pk = request.POST.get("task_pk", "").strip()
         entity_global_id = request.POST.get("entity_global_id", "").strip()
 
         if not task_pk or not entity_global_id:
             return toast_response("Missing task or entity.", "error", status=400)
+
+        try:
+            GovernanceAuthorityPolicy(project, request.user).require(
+                GovernanceCapability.APPROVE_INDIVIDUAL
+            )
+        except GovernanceAuthorityError as exc:
+            return toast_response(exc.result.reason, "error", status=403)
 
         task = get_object_or_404(Task, pk=task_pk, project=project)
         ifc_files = _get_ifc_files(project)
@@ -3494,15 +3537,40 @@ class BindingAddView(ProjectModifyAccessMixin, View):
         except IFCEntity.DoesNotExist:
             return toast_response("Entity not found in this project.", "error", status=404)
 
-        TaskEntityBinding.objects.get_or_create(
-            task=task,
-            entity_global_id=entity_global_id,
-            defaults={"confidence": 1.0, "link_method": "exact", "needs_review": False},
-        )
-        task.ifc_entities.add(entity)
+        existing = TaskEntityBinding.objects.filter(
+            task=task, entity_global_id=entity_global_id
+        ).first()
+        if existing is None:
+            create_trusted_bindings(
+                project=project,
+                user=request.user,
+                specs=[
+                    {
+                        "task_id": str(task.pk),
+                        "entity_global_id": entity_global_id,
+                        "entity_pk": str(entity.pk),
+                        "confidence": 1.0,
+                        "link_method": TaskEntityBinding.LinkMethod.MANUAL,
+                    }
+                ],
+                request_source="pipeline_manual_link",
+                reason_text="Manual link approval",
+            )
+        else:
+            promote_bindings_to_trusted(
+                project=project,
+                user=request.user,
+                binding_ids=[str(existing.pk)],
+                request_source="pipeline_manual_link",
+                reason_text="Manual link approval",
+                extra_field_updates={
+                    "confidence": 1.0,
+                    "link_method": TaskEntityBinding.LinkMethod.MANUAL,
+                },
+            )
 
         response = _render_link_review(request, project, "all")
-        return trigger_toast(response, f"Linked '{task.name}' manually.", "success")
+        return trigger_toast(response, f"Linked '{task.name}' (trusted).", "success")
 
 
 class TaskToggleNonPhysicalView(ProjectModifyAccessMixin, View):
@@ -3679,9 +3747,19 @@ class ScheduleWritebackView(ProjectModifyAccessMixin, View):
 
 
 class LinkElementView(ProjectModifyAccessMixin, View):
-    """POST — manually link a single IFC element globalId to a task."""
+    """POST — manually link a single IFC element globalId to a task (trusted)."""
 
     def post(self, request, task_pk: str, **kwargs: object) -> JsonResponse:
+        from scheduling.services.governance.authority import (
+            GovernanceAuthorityError,
+            GovernanceAuthorityPolicy,
+            GovernanceCapability,
+        )
+        from scheduling.services.governance.trust_promotion import (
+            create_trusted_bindings,
+            promote_bindings_to_trusted,
+        )
+
         project = self.get_project()
         task = get_object_or_404(Task, pk=task_pk, project=project)
 
@@ -3694,26 +3772,44 @@ class LinkElementView(ProjectModifyAccessMixin, View):
         if not global_id:
             return JsonResponse({"error": "global_id is required"}, status=400)
 
-        binding, created = TaskEntityBinding.objects.get_or_create(
-            task=task,
-            entity_global_id=global_id,
-            defaults={
-                "confidence": 1.0,
-                "link_method": TaskEntityBinding.LinkMethod.MANUAL,
-                "needs_review": False,
-            },
-        )
-        if not created:
-            TaskEntityBinding.objects.filter(pk=binding.pk).update(
-                confidence=1.0,
-                link_method=TaskEntityBinding.LinkMethod.MANUAL,
-                needs_review=False,
+        try:
+            GovernanceAuthorityPolicy(project, request.user).require(
+                GovernanceCapability.APPROVE_INDIVIDUAL
             )
+        except GovernanceAuthorityError as exc:
+            return JsonResponse({"error": exc.result.reason}, status=403)
 
-        ifc_files = _get_ifc_files(project)
-        entities = list(IFCEntity.objects.filter(ifc_file__in=ifc_files, global_id=global_id))
-        if entities:
-            task.ifc_entities.add(*entities)
+        existing = TaskEntityBinding.objects.filter(task=task, entity_global_id=global_id).first()
+        created = existing is None
+        if created:
+            create_trusted_bindings(
+                project=project,
+                user=request.user,
+                specs=[
+                    {
+                        "task_id": str(task.pk),
+                        "entity_global_id": global_id,
+                        "confidence": 1.0,
+                        "link_method": TaskEntityBinding.LinkMethod.MANUAL,
+                    }
+                ],
+                request_source="viewer_manual_link",
+                reason_text="Manual viewer link approval",
+            )
+            binding = TaskEntityBinding.objects.get(task=task, entity_global_id=global_id)
+        else:
+            promote_bindings_to_trusted(
+                project=project,
+                user=request.user,
+                binding_ids=[str(existing.pk)],
+                request_source="viewer_manual_link",
+                reason_text="Manual viewer link approval",
+                extra_field_updates={
+                    "confidence": 1.0,
+                    "link_method": TaskEntityBinding.LinkMethod.MANUAL,
+                },
+            )
+            binding = TaskEntityBinding.objects.get(pk=existing.pk)
 
         status_code = 201 if created else 200
         return JsonResponse({"status": "linked", "binding_id": str(binding.id)}, status=status_code)
@@ -3846,11 +3942,11 @@ class TasksForLinkView(ProjectAccessMixin, View):
 
 
 class BulkLinkElementView(ProjectModifyAccessMixin, View):
-    """POST — add task bindings for one IFC element in this project.
+    """POST — add trusted task bindings for one IFC element in this project.
 
     Body: {global_id: str, task_pks: [str, ...]}
 
-    Add-only: creates bindings for any task_pks not yet linked.
+    Add-only: creates trusted bindings for any task_pks not yet linked.
     Existing links for tasks not in the selection are left untouched — the
     modal uses server-side search so the user can't see the full linked set,
     making removal via this endpoint unsafe. Use UnlinkAllElementView or
@@ -3858,6 +3954,13 @@ class BulkLinkElementView(ProjectModifyAccessMixin, View):
     """
 
     def post(self, request, **kwargs: object) -> JsonResponse:
+        from scheduling.services.governance.authority import (
+            GovernanceAuthorityError,
+            GovernanceAuthorityPolicy,
+            GovernanceCapability,
+        )
+        from scheduling.services.governance.trust_promotion import create_trusted_bindings
+
         project = self.get_project()
 
         try:
@@ -3873,6 +3976,13 @@ class BulkLinkElementView(ProjectModifyAccessMixin, View):
         if not selected_pks:
             return JsonResponse({"status": "ok", "linked": 0})
 
+        try:
+            GovernanceAuthorityPolicy(project, request.user).require(
+                GovernanceCapability.APPROVE_INDIVIDUAL
+            )
+        except GovernanceAuthorityError as exc:
+            return JsonResponse({"error": exc.result.reason}, status=403)
+
         current_pks = {
             str(pk)
             for pk in TaskEntityBinding.objects.filter(
@@ -3881,26 +3991,23 @@ class BulkLinkElementView(ProjectModifyAccessMixin, View):
         }
 
         to_add = selected_pks - current_pks
-        entities = list(IFCEntity.objects.filter(global_id=global_id))
-
         if to_add:
             tasks_to_link = list(Task.objects.filter(project=project, pk__in=to_add))
-            TaskEntityBinding.objects.bulk_create(
-                [
-                    TaskEntityBinding(
-                        task=task,
-                        entity_global_id=global_id,
-                        confidence=1.0,
-                        link_method=TaskEntityBinding.LinkMethod.MANUAL,
-                        needs_review=False,
-                    )
+            create_trusted_bindings(
+                project=project,
+                user=request.user,
+                specs=[
+                    {
+                        "task_id": str(task.pk),
+                        "entity_global_id": global_id,
+                        "confidence": 1.0,
+                        "link_method": TaskEntityBinding.LinkMethod.MANUAL,
+                    }
                     for task in tasks_to_link
                 ],
-                ignore_conflicts=True,
+                request_source="viewer_bulk_manual_link",
+                reason_text="Manual bulk viewer link approval",
             )
-            if entities:
-                for task in tasks_to_link:
-                    task.ifc_entities.add(*entities)
 
         return JsonResponse({"status": "ok", "linked": len(to_add)})
 

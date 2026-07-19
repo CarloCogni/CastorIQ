@@ -11,8 +11,6 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from django.db import transaction
-
 from scheduling.services.governance.authority import (
     GovernanceAuthorityPolicy,
     GovernanceCapability,
@@ -491,14 +489,8 @@ class LinkDecisionService:
         selection_fingerprint: str = "",
     ) -> dict[str, Any]:
         from ifc_processor.models import IFCEntity, IFCFile
-        from scheduling.models import Task, TaskEntityBinding
-        from scheduling.services.governance.active_state import promote_fields
-        from scheduling.services.governance.governance_events import (
-            build_evidence_snapshot,
-            decision_reference,
-            record_event,
-        )
-        from scheduling.services.governance.lifecycle_vocabulary import GovernanceEventType
+        from scheduling.models import TaskEntityBinding
+        from scheduling.services.governance.trust_promotion import promote_bindings_to_trusted
 
         if not binding_ids:
             return {
@@ -511,110 +503,51 @@ class LinkDecisionService:
                 "warnings": [],
             }
 
+        # Stale-guard: eligible IDs from preview must still be review bindings.
+        still_review = TaskEntityBinding.objects.filter(
+            pk__in=binding_ids,
+            task__project=self.project,
+            needs_review=True,
+        ).count()
+        if still_review != len(binding_ids):
+            raise StaleDecisionError(
+                "One or more bindings changed since preview — refresh and retry.",
+            )
+
         ifc_files = IFCFile.objects.filter(
             project=self.project,
             status=IFCFile.Status.COMPLETED,
         )
-        gid_to_entity = {
-            e.global_id: e
-            for e in IFCEntity.objects.filter(ifc_file__in=ifc_files).only(
-                "pk", "global_id", "properties"
+        gids = list(
+            TaskEntityBinding.objects.filter(pk__in=binding_ids).values_list(
+                "entity_global_id", flat=True
             )
-        }
-
-        actor_id = str(self.user.pk) if self.user and self.user.pk else None
-
-        with transaction.atomic():
-            bindings = list(
-                TaskEntityBinding.objects.filter(
-                    pk__in=binding_ids,
-                    task__project=self.project,
-                    needs_review=True,
-                ).select_related("task")
+        )
+        found_gids = set(
+            IFCEntity.objects.filter(ifc_file__in=ifc_files, global_id__in=gids).values_list(
+                "global_id", flat=True
             )
-            if len(bindings) != len(binding_ids):
-                raise StaleDecisionError(
-                    "One or more bindings changed since preview — refresh and retry.",
-                )
+        )
+        if len(found_gids) != len(set(gids)):
+            raise StaleDecisionError("Entity scope changed since preview.")
 
-            through = Task.ifc_entities.through
-            task_ids = {b.task_id for b in bindings}
-            existing_m2m = {
-                (str(tid), str(eid))
-                for tid, eid in through.objects.filter(task_id__in=task_ids).values_list(
-                    "task_id", "ifcentity_id"
-                )
-            }
-
-            promote_pks = []
-            m2m_rows = []
-            m2m_added = m2m_noop = 0
-            m2m_before_by_binding: dict[str, bool] = {}
-
-            for binding in bindings:
-                entity = gid_to_entity.get(binding.entity_global_id)
-                if entity is None:
-                    raise StaleDecisionError(
-                        "Entity scope changed since preview.",
-                    )
-                promote_pks.append(binding.pk)
-                pair = (str(binding.task_id), str(entity.pk))
-                m2m_before_by_binding[str(binding.pk)] = pair in existing_m2m
-                if pair in existing_m2m:
-                    m2m_noop += 1
-                else:
-                    m2m_rows.append(through(task_id=binding.task_id, ifcentity_id=entity.pk))
-                    m2m_added += 1
-                    existing_m2m.add(pair)
-
-            if promote_pks:
-                TaskEntityBinding.objects.filter(pk__in=promote_pks).update(**promote_fields())
-
-            if m2m_rows:
-                through.objects.bulk_create(
-                    m2m_rows,
-                    batch_size=BULK_BATCH_SIZE,
-                    ignore_conflicts=True,
-                )
-
-            for binding in bindings:
-                entity = gid_to_entity[binding.entity_global_id]
-                ref = decision_reference(
-                    project_id=str(self.project.pk),
-                    event_type=GovernanceEventType.APPROVED,
-                    binding_id=str(binding.pk),
-                    fingerprint=selection_fingerprint or str(binding.pk),
-                    actor_id=actor_id,
-                )
-                record_event(
-                    project=self.project,
-                    binding=binding,
-                    task=binding.task,
-                    entity_global_id=binding.entity_global_id,
-                    event_type=GovernanceEventType.APPROVED,
-                    previous_state=TaskEntityBinding.GovernanceStatus.ACTIVE_REVIEW,
-                    resulting_state=TaskEntityBinding.GovernanceStatus.TRUSTED,
-                    reason_code="approved",
-                    reason_text="Governance approval",
-                    actor=self.user,
-                    decision_reference_id=ref,
-                    batch_fingerprint=selection_fingerprint,
-                    trusted_before=False,
-                    trusted_after=True,
-                    m2m_before=m2m_before_by_binding.get(str(binding.pk), False),
-                    m2m_after=True,
-                    metadata={"evidence": build_evidence_snapshot(binding, entity)},
-                    request_source="governance_approval",
-                )
-
+        promoted = promote_bindings_to_trusted(
+            project=self.project,
+            user=self.user,
+            binding_ids=binding_ids,
+            request_source="governance_approval",
+            selection_fingerprint=selection_fingerprint,
+            reason_text="Governance approval",
+            sync_m2m=True,
+        )
         return {
-            "promoted": len(promote_pks),
-            "noop": 0,
-            "skipped": 0,
+            "promoted": promoted.promoted,
+            "noop": promoted.noop_already_trusted,
+            "skipped": promoted.skipped_missing,
             "invalid": 0,
-            "m2m_added": m2m_added,
-            "m2m_noop": m2m_noop,
-            "warnings": [],
+            "m2m_added": promoted.m2m_added,
+            "m2m_noop": promoted.m2m_noop,
+            "warnings": promoted.warnings,
         }
 
     def _apply_result(
