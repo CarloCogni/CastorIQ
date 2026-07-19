@@ -258,5 +258,8 @@ def compute_cashflow(project_id: str) -> dict:
             "spent_pct": round(ac_total / bac * 100, 1) if bac else 0.0,
         },
         "source": source,
+        "source_caveat": (
+            "Task-cost proxy; incomplete tasks may appear as 0." if source == "task_cost" else ""
+        ),
         "as_of": today.isoformat(),
     }

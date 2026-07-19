@@ -432,11 +432,15 @@ class ElementPropertiesView(ProjectAccessMixin, View):
             location = entity.spatial_container.entity.name or None
 
         from scheduling.models import TaskEntityBinding
+        from scheduling.services.governance.active_state import apply_trusted
 
+        # Package 6: only trusted bindings are schedule-model truth in the viewer.
         bindings = (
-            TaskEntityBinding.objects.filter(
-                entity_global_id=global_id,
-                task__project=project,
+            apply_trusted(
+                TaskEntityBinding.objects.filter(
+                    entity_global_id=global_id,
+                    task__project=project,
+                )
             )
             .select_related("task")
             .order_by("task__start_date")
@@ -452,6 +456,7 @@ class ElementPropertiesView(ProjectAccessMixin, View):
                 "actual_end": b.task.actual_end.isoformat() if b.task.actual_end else None,
                 "stage": b.task.stage,
                 "sub_stage": b.task.sub_stage,
+                "trust": "trusted",
             }
             for b in bindings
         ]

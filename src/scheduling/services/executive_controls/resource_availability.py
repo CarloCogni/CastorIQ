@@ -74,7 +74,10 @@ class EquivalentWorkforceAvailabilityService:
         )
         planned = float(agg["planned"] or 0)
         actual = float(agg["actual"] or 0)
-        remaining = max(planned - actual, 0.0)
+        # Remaining is only meaningful when planned units exist; do not invent 0.0
+        # from actual-only rows (Package 6 unavailable honesty).
+        remaining_available = planned > 0
+        remaining = max(planned - actual, 0.0) if remaining_available else None
 
         cal = (
             P6Calendar.objects.filter(project_id=self.project_id, is_pending=False)
@@ -122,7 +125,7 @@ class EquivalentWorkforceAvailabilityService:
             "labor_manhours_fields_available": manhours_available,
             "planned_manhours_available": planned > 0,
             "actual_manhours_available": actual > 0,
-            "remaining_manhours_available": manhours_available,
+            "remaining_manhours_available": remaining_available,
             "planned_manhours": planned,
             "actual_manhours": actual,
             "remaining_manhours": remaining,

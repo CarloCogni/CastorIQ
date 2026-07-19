@@ -290,11 +290,19 @@ class ExecutiveControlsOverviewService:
         snap = evm.get("evm_snapshot", {})
         cost_evm = evm.get("cost_evm_available", False)
         unavailable = evm.get("unavailable_metrics", {})
+        from scheduling.services.resource_foundation import ac_source_display_label
+
+        ac_source = evm.get("ac_source") or ""
+        ac_source_line = ac_source_display_label(ac_source)
+        value_unit = "currency" if cost_evm else "index"
 
         def _cost_card(metric_id: str, label: str, key: str, unit: str = "index") -> dict[str, Any]:
             avail = key not in unavailable and snap.get(key) is not None
             if not cost_evm and key in ("cpi", "eac", "vac", "ac"):
                 avail = False
+            caveat = unavailable.get(f"e8.{key}", "") or evm.get("performance_mode_label", "")
+            if key == "ac" and avail and ac_source_line:
+                caveat = ac_source_line
             return kpi_card(
                 metric_id=metric_id,
                 label=label,
@@ -306,7 +314,7 @@ class ExecutiveControlsOverviewService:
                     "cost_coverage_pct": evm.get("coverage", {}).get("cost_coverage_pct"),
                     "ac_coverage_pct": evm.get("coverage", {}).get("ac_coverage_pct"),
                 },
-                caveat=unavailable.get(f"e8.{key}", "") or evm.get("performance_mode_label", ""),
+                caveat=caveat,
                 unavailable_reason=unavailable.get(f"e8.{key}", unavailable.get("e8.cpi", "")),
                 data_date=data_date.isoformat(),
                 drilldown_url=reverse(
@@ -315,9 +323,17 @@ class ExecutiveControlsOverviewService:
             )
 
         cards = [
-            _cost_card("e8.pv", "Planned Value (PV)", "pv", "currency"),
             _cost_card(
-                "e8.ev", "Earned Value (EV)" if cost_evm else "Earned progress", "ev", "currency"
+                "e8.pv",
+                "Planned Value (PV)" if cost_evm else "Planned progress (PV proxy)",
+                "pv",
+                value_unit,
+            ),
+            _cost_card(
+                "e8.ev",
+                "Earned Value (EV)" if cost_evm else "Earned progress (EV proxy)",
+                "ev",
+                value_unit,
             ),
             _cost_card("e8.ac", "Actual Cost (AC)", "ac", "currency"),
             _cost_card("e8.spi", "SPI", "spi"),
@@ -326,9 +342,9 @@ class ExecutiveControlsOverviewService:
             _cost_card("e8.vac", "VAC", "vac", "currency"),
             kpi_card(
                 metric_id="e8.bac",
-                label="BAC",
+                label="BAC" if cost_evm else "Total weight (BAC proxy)",
                 value=snap.get("bac"),
-                unit="currency",
+                unit=value_unit,
                 available=snap.get("bac") is not None,
                 methodology_label=evm.get("performance_mode_label", ""),
                 data_date=data_date.isoformat(),
@@ -354,6 +370,8 @@ class ExecutiveControlsOverviewService:
             "performance_mode_label": evm.get("performance_mode_label"),
             "cost_evm_available": cost_evm,
             "capability_cost_evm": caps[FeatureId.COST_EVM.value]["available"],
+            "ac_source": ac_source,
+            "ac_source_label": ac_source_line,
             "series_contract": derived,
             "evm_detail_url": reverse(
                 "scheduling:executive_controls_evm", kwargs={"pk": self.project_id}

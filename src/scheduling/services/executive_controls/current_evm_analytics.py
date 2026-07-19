@@ -162,7 +162,9 @@ class CurrentEVMAnalyticsService:
         if baseline_evm.get("methodology_mode") == "approved_baseline_cost_evm":
             mode_label = f"Approved baseline EVM — {baseline_evm.get('baseline_name', '')}"
         elif baseline_evm.get("methodology_mode") == "reference_baseline_cost_evm":
-            mode_label = f"Imported reference baseline EVM — {baseline_evm.get('baseline_name', '')}"
+            mode_label = (
+                f"Imported reference baseline EVM — {baseline_evm.get('baseline_name', '')}"
+            )
         elif baseline_evm.get("methodology_mode") == "working_baseline_cost_evm":
             mode_label = f"Working baseline EVM — {baseline_evm.get('baseline_name', '')}"
         elif baseline_evm.get("methodology_mode") == "derived_current_schedule_evm":
@@ -281,6 +283,11 @@ class CurrentEVMAnalyticsService:
         )
 
         if cost_mode and ac_available:
+            from scheduling.services.resource_foundation import ac_source_display_label
+
+            ac_caveat = ac_source_display_label(evm.get("ac_source")) or (
+                "Authoritative when imported from resource assignments."
+            )
             add(
                 self._metric(
                     metric_id="e8.ac",
@@ -290,7 +297,7 @@ class CurrentEVMAnalyticsService:
                     available=True,
                     authority=auth_auth,
                     formula="Σ ResourceAssignment.actual_cost (canonical preferred)",
-                    caveat="Authoritative when imported from resource assignments.",
+                    caveat=ac_caveat,
                     data_date=data_date,
                     coverage=coverage,
                 )

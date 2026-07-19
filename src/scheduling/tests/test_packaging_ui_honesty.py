@@ -341,3 +341,244 @@ def test_timeliner_help_drops_navisworks_clone_wording(client):
     assert "Visual schedule" in html
     assert "Not a full simulation replacement" in html
     assert "advisory" in html.lower() or "Advisory" in html
+
+
+# ── Package 6 — KPI source / label / unavailable honesty ──────────────────
+
+
+@pytest.mark.django_db
+def test_viewer_entity_linked_tasks_trusted_only(client):
+    """Entity detail linked_tasks excludes proposed / under-review bindings."""
+    project = ProjectFactory()
+    entity = IFCEntityFactory(ifc_file__project=project, global_id="GID-VIEW-1")
+    trusted_task = TaskFactory(project=project, name="Trusted Task")
+    review_task = TaskFactory(project=project, name="Review Task")
+    TaskEntityBinding.objects.create(
+        task=trusted_task,
+        entity_global_id=entity.global_id,
+        confidence=1.0,
+        link_method=TaskEntityBinding.LinkMethod.EXACT,
+        needs_review=False,
+        governance_status=TaskEntityBinding.GovernanceStatus.TRUSTED,
+        is_active=True,
+    )
+    TaskEntityBinding.objects.create(
+        task=review_task,
+        entity_global_id=entity.global_id,
+        confidence=0.9,
+        link_method=TaskEntityBinding.LinkMethod.HEURISTIC,
+        needs_review=True,
+        governance_status=TaskEntityBinding.GovernanceStatus.ACTIVE_REVIEW,
+        is_active=True,
+    )
+    client.force_login(project.owner)
+
+    response = client.get(
+        reverse(
+            "ifc_viewer:viewer_element_props",
+            kwargs={"pk": project.pk, "global_id": entity.global_id},
+        )
+    )
+    data = response.json()
+
+    assert response.status_code == 200
+    assert data["found"] is True
+    names = {t["name"] for t in data["linked_tasks"]}
+    assert "Trusted Task" in names
+    assert "Review Task" not in names
+    assert all(t.get("trust") == "trusted" for t in data["linked_tasks"])
+
+
+@pytest.mark.django_db
+def test_link_proposals_summary_uses_task_units_not_bindings(client):
+    """Link Proposals summary labels physical-task counts, not Total bindings."""
+    project = ProjectFactory()
+    client.force_login(project.owner)
+    task = TaskFactory(project=project)
+    TaskEntityBinding.objects.create(
+        task=task,
+        entity_global_id="GID-PROP-1",
+        confidence=0.99,
+        link_method=TaskEntityBinding.LinkMethod.HEURISTIC,
+        needs_review=True,
+        governance_status=TaskEntityBinding.GovernanceStatus.ACTIVE_REVIEW,
+    )
+
+    response = client.get(reverse("scheduling:review", kwargs={"pk": project.pk}))
+    html = response.content.decode()
+
+    assert response.status_code == 200
+    assert "Physical tasks" in html
+    assert "Tasks in review" in html
+    assert "Trusted tasks" in html
+    assert "Total bindings" not in html
+
+
+@pytest.mark.django_db
+def test_overview_cost_labels_respect_schedule_performance_mode():
+    """Overview Cost uses proxy/index labels when not cost-backed."""
+    from datetime import date
+
+    from scheduling.services.executive_controls.overview_filters import OverviewFilters
+    from scheduling.services.executive_controls.overview_service import (
+        ExecutiveControlsOverviewService,
+    )
+
+    project = ProjectFactory()
+    TaskFactory(
+        project=project,
+        cost=None,
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 2, 28),
+        is_non_physical=False,
+    )
+    payload = ExecutiveControlsOverviewService(project).build_cost_section(OverviewFilters())
+
+    assert payload["cost_evm_available"] is False
+    pv = next(c for c in payload["cards"] if c["metric_id"] == "e8.pv")
+    bac = next(c for c in payload["cards"] if c["metric_id"] == "e8.bac")
+    assert "proxy" in pv["label"].lower()
+    assert pv["unit"] == "index"
+    assert "proxy" in bac["label"].lower()
+    assert bac["unit"] == "index"
+
+
+@pytest.mark.django_db
+def test_executive_evm_ac_source_line_when_ac_available():
+    """Executive EVM AC metric caveat names the AC store when available."""
+    from datetime import date
+    from decimal import Decimal
+
+    from scheduling.services.executive_controls.current_evm_analytics import (
+        CurrentEVMAnalyticsService,
+    )
+
+    project = ProjectFactory()
+    task = TaskFactory(
+        project=project,
+        cost=Decimal("200.00"),
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 31),
+        status="complete",
+        actual_start=date(2025, 1, 1),
+        actual_end=date(2025, 1, 15),
+        is_non_physical=False,
+    )
+    ResourceAssignmentFactory(
+        project=project,
+        task=task,
+        resource=ResourceFactory(project=project),
+        actual_cost=Decimal("80.00"),
+        planned_cost=Decimal("200.00"),
+        is_pending=False,
+    )
+
+    payload = CurrentEVMAnalyticsService(project).build()
+    ac = payload["metrics"].get("e8.ac")
+    assert ac is not None
+    assert ac["available"] is True
+    assert "canonical ResourceAssignment" in ac["caveat"]
+
+
+@pytest.mark.django_db
+def test_cashflow_task_cost_source_includes_proxy_caveat():
+    """Cashflow task_cost fallback exposes an incomplete→0 proxy caveat."""
+    from datetime import date
+    from decimal import Decimal
+
+    from scheduling.services.cashflow import compute_cashflow
+
+    project = ProjectFactory()
+    TaskFactory(
+        project=project,
+        cost=Decimal("1000.00"),
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 3, 31),
+        status="in_progress",
+        is_non_physical=False,
+    )
+    result = compute_cashflow(str(project.pk))
+
+    assert result.get("has_data") is True
+    assert result["source"] == "task_cost"
+    assert "incomplete" in result["source_caveat"].lower()
+    assert "0" in result["source_caveat"]
+
+
+@pytest.mark.django_db
+def test_lookahead_shows_schedule_vs_trusted_caveat(client):
+    """Look-ahead shows schedule-count vs trusted-model caveat once."""
+    project = ProjectFactory()
+    TaskFactory(project=project)
+    client.force_login(project.owner)
+
+    response = client.get(
+        reverse("scheduling:schedule", kwargs={"pk": project.pk}) + "?tab=lookahead"
+    )
+    html = response.content.decode()
+
+    assert response.status_code == 200
+    assert 'data-testid="lookahead-trusted-caveat"' in html
+    assert "Task counts follow schedule dates" in html
+    assert "trusted links" in html
+    assert html.count("Task counts follow schedule dates") == 1
+
+
+@pytest.mark.django_db
+def test_fourd_timeline_shows_trusted_only_label(client):
+    """4D timeline stats area states trusted-links-only."""
+    project = ProjectFactory()
+    client.force_login(project.owner)
+
+    response = client.get(
+        reverse("scheduling:schedule", kwargs={"pk": project.pk}) + "?tab=fourD_link"
+    )
+    html = response.content.decode()
+
+    assert response.status_code == 200
+    assert 'data-testid="fd-timeline-trusted-only"' in html
+    assert "Timeline uses trusted links only." in html
+
+
+@pytest.mark.django_db
+def test_resources_remaining_unavailable_when_only_actual_units():
+    """Remaining manhours are Unavailable when planned units are missing."""
+    from decimal import Decimal
+
+    from scheduling.services.executive_controls.resources_readiness import (
+        ResourcesReadinessService,
+    )
+
+    project = ProjectFactory()
+    task = TaskFactory(project=project)
+    ResourceAssignmentFactory(
+        project=project,
+        task=task,
+        resource=ResourceFactory(project=project),
+        planned_units=Decimal("0"),
+        actual_units=Decimal("8.0"),
+        actual_cost=Decimal("40.00"),
+        is_pending=False,
+    )
+
+    payload = ResourcesReadinessService(str(project.pk)).build()
+    remaining = payload["manhours"]["remaining"]
+
+    assert remaining["available"] is False
+    assert remaining["display"] == "Unavailable"
+    assert remaining["value"] is None
+
+
+@pytest.mark.django_db
+def test_legacy_evm_dcma_labelled_legacy_p6_diagnostic(client):
+    """DCMA section is labelled as legacy P6 diagnostic."""
+    project = ProjectFactory()
+    TaskFactory(project=project)
+    client.force_login(project.owner)
+
+    response = client.get(reverse("scheduling:schedule", kwargs={"pk": project.pk}) + "?tab=evm")
+    html = response.content.decode()
+
+    assert response.status_code == 200
+    assert 'data-testid="dcma-legacy-p6-badge"' in html
+    assert "Legacy P6 diagnostic" in html

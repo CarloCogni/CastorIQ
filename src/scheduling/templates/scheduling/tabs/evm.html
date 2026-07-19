@@ -751,6 +751,8 @@
             <i class="bi bi-clipboard2-check" style="color:#3b82f6; font-size:1rem;"></i>
             <span style="font-size:0.8rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:0.05em;">Schedule Health</span>
             <span style="font-size:0.7rem; color:var(--bs-secondary-color);">DCMA 14-Point Assessment</span>
+            <span class="badge text-bg-secondary" style="font-size:0.65rem; font-weight:500;"
+                  data-testid="dcma-legacy-p6-badge">Legacy P6 diagnostic</span>
             <button type="button"
                     class="help-pill"
                     data-bs-toggle="modal"
@@ -3142,11 +3144,18 @@ function _esc(s) {
                             : data.source === "legacy_p6_resource_assignment_fallback"
                               || data.source === "p6_assignments"
                             ? "P6 resource assignments (legacy fallback)"
+                            : data.source === "task_cost"
+                            ? "task-cost proxy"
                             : "task costs";
                     const burn = data.metrics.burn_rate_actual
                         ? `  ·  burn rate ${_fmtCost(data.metrics.burn_rate_actual)}/mo (actual)`
                         : "";
-                    footer.textContent = `${data.months.length} months  ·  source: ${src}  ·  as of ${data.as_of}${burn}`;
+                    const caveat = data.source_caveat || (data.source === "task_cost"
+                        ? "Task-cost proxy; incomplete tasks may appear as 0."
+                        : "");
+                    footer.textContent = caveat
+                        ? `${data.months.length} months  ·  source: ${src}  ·  as of ${data.as_of}${burn}  ·  ${caveat}`
+                        : `${data.months.length} months  ·  source: ${src}  ·  as of ${data.as_of}${burn}`;
                 }
             } catch (_e) {
                 if (loading) loading.classList.add("d-none");

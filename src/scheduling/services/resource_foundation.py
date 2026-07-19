@@ -26,6 +26,18 @@ logger = logging.getLogger(__name__)
 COST_SOURCE_CANONICAL = "canonical_resource_assignment"
 COST_SOURCE_P6_FALLBACK = "legacy_p6_resource_assignment_fallback"
 COST_SOURCE_NONE = "none"
+COST_SOURCE_TASK_COST = "task_cost"
+
+
+def ac_source_display_label(ac_source: str | None) -> str:
+    """User-facing AC store label for KPI honesty (display only — no calculation)."""
+    if ac_source == COST_SOURCE_CANONICAL:
+        return "Actual Cost source: canonical ResourceAssignment"
+    if ac_source in (COST_SOURCE_P6_FALLBACK, "p6_assignments"):
+        return "Actual Cost source: legacy P6 ResourceAssignment (fallback)"
+    if ac_source == COST_SOURCE_TASK_COST:
+        return "Task-cost proxy; incomplete tasks may appear as 0."
+    return ""
 
 
 def uses_canonical_resource_assignments(project_id: str | UUID) -> bool:
