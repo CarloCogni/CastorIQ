@@ -32,8 +32,9 @@
             <li class="nav-item">
                 <a class="nav-link py-1 px-3 {% if schedule_tab == 'evm' %}active{% endif %}"
                    href="{% url 'scheduling:schedule' project.pk %}?tab=evm"
-                   style="font-size:0.85rem;">
-                    <i class="bi bi-graph-up-arrow me-1"></i>EVM
+                   style="font-size:0.85rem;"
+                   title="Operational diagnostics — Executive Controls → EVM is the decision-facing view">
+                    <i class="bi bi-graph-up-arrow me-1"></i>EVM Diagnostics
                 </a>
             </li>
             <li class="nav-item">

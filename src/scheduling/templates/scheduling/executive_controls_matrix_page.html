@@ -24,7 +24,7 @@
         {% elif hierarchy_context.hierarchy_mode == "canonical_wbs_partial" %}
         <span class="badge bg-warning-subtle text-warning-emphasis">Partial Canonical WBS</span>
         {% elif hierarchy_context.hierarchy_mode == "stage_proxy" %}
-        <span class="badge bg-secondary-subtle text-secondary-emphasis">Stage Proxy</span>
+        <span class="badge bg-secondary-subtle text-secondary-emphasis" data-testid="matrix-proxy-badge">Stage proxy — not canonical WBS · diagnostic</span>
         {% else %}
         <span class="badge bg-danger-subtle text-danger-emphasis">Unavailable</span>
         {% endif %}

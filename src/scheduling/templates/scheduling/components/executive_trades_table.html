@@ -9,16 +9,23 @@
     {% else %}
 
     {% if dimension_modes %}
-    <div class="d-flex flex-wrap gap-2 mb-2">
-        <span class="badge {% if trade_mode_label == 'Governed Trade' %}bg-success{% else %}bg-secondary{% endif %}">{{ trade_mode_label|default:"Trade Proxy" }}</span>
-        <span class="badge {% if package_mode_label == 'Governed Package' %}bg-success{% else %}bg-secondary{% endif %}">{{ package_mode_label|default:"Package Proxy" }}</span>
+    <div class="d-flex flex-wrap gap-2 mb-2" data-testid="trades-proxy-badges">
+        {% if trade_mode_label == "Governed Trade" %}
+        <span class="badge bg-success">Governed Trade</span>
+        {% else %}
+        <span class="badge bg-secondary">Trade proxy — not governed · diagnostic</span>
+        {% endif %}
+        {% if package_mode_label == "Governed Package" %}
+        <span class="badge bg-success">Governed Package</span>
+        {% else %}
+        <span class="badge bg-secondary">Package proxy — not governed · diagnostic</span>
+        {% endif %}
     </div>
     {% include "scheduling/components/executive_governed_readiness_panel.html" with dimension_modes=dimension_modes snapshot_governed_mapping_analytics=snapshot_governed_mapping_analytics project=project %}
     {% endif %}
 
     {% if governed_trade_summary and governed_trade_summary.governed_values %}
     <h3 class="fs-7 fw-semibold mt-3">Governed trade aggregates</h3>
-    <p class="small text-secondary">Approved effective mappings only — proxy table below remains authoritative when Trade Proxy is active.</p>
     <div class="table-responsive mb-3">
         <table class="table table-sm">
             <thead><tr><th>Value</th><th>Tasks</th><th>Delayed</th><th>SPI</th><th>CPI</th><th>Trusted</th></tr></thead>
@@ -59,7 +66,6 @@
     {% endif %}
 
     <h3 class="fs-7 fw-semibold">Proxy trade / package performance</h3>
-    <p class="small text-secondary mb-2">Existing proxy analytics — labeled separately from governed mapping authority.</p>
 
     {% if warnings %}
     <div class="alert alert-warning py-2 small" role="note">

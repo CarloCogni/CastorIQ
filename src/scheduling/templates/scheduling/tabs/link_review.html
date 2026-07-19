@@ -1,4 +1,4 @@
-<!-- scheduling/tabs/link_review.html — Smart Pipeline binding review tab
+<!-- scheduling/tabs/link_review.html — Link Proposals review tab
      Outer div is the HTMX outerHTML swap target for BulkAcceptView and BindingAddView. -->
 
 <div id="link-review-content">
@@ -13,8 +13,8 @@
     <!-- Empty state -->
     <div class="d-flex flex-column align-items-center justify-content-center text-secondary py-5">
         <i class="bi bi-layers fs-1 mb-2"></i>
-        <span class="fw-semibold mb-1">No bindings yet</span>
-        <span class="small">Run Castor Link Engine to generate proposed link candidates. Trusted bindings require Governance approval.</span>
+        <span class="fw-semibold mb-1">No link proposals yet</span>
+        <span class="small">Run <em>Propose links</em> to generate candidates. Approve trusted bindings in Governance.</span>
     </div>
 
     {% else %}
@@ -36,7 +36,7 @@
                hx-target="#link-review-content"
                hx-swap="outerHTML"
                style="cursor:pointer;">
-                Needs Review
+                Needs Review / Proposed
                 {% if summary.needs_review %}<span class="badge bg-warning text-dark ms-1">{{ summary.needs_review }}</span>{% endif %}
             </a>
         </li>

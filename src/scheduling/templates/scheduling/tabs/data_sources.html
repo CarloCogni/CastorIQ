@@ -12,6 +12,10 @@
      data-csrf="{{ csrf_token }}"
      data-task-count="{{ task_count }}">
 
+    <p class="small text-secondary mb-2 flex-shrink-0" data-testid="data-sources-purpose">
+        Imported schedule and provenance for 4D/5D analysis.
+    </p>
+
     <!-- ── Imported sources (chips, shown when at least one import exists) ─ -->
     {% if schedule_sources %}
     <div class="d-flex align-items-center gap-2 flex-wrap mb-2" id="ds-sources-row"

@@ -82,25 +82,17 @@
         {% endif %}
     </td>
 
-    <!-- Actions -->
+    <!-- Actions: remove only — approve in Governance (single approval surface) -->
     <td>
-        <div class="d-flex gap-1">
+        <div class="d-flex gap-1 align-items-center">
             {% if row.binding.needs_review %}
-            <form hx-post="{% url 'scheduling:binding_accept' project.pk row.binding.pk %}"
-                  hx-target="#binding-row-{{ row.binding.pk }}"
-                  hx-swap="outerHTML">
-                {% csrf_token %}
-                <button type="submit" class="btn btn-success btn-sm py-0 px-2"
-                        title="Approve as trusted (Governance contract)">
-                    <i class="bi bi-check-lg"></i>
-                </button>
-            </form>
+            <span class="text-secondary" style="font-size:0.72rem;" data-testid="proposal-approve-hint">Governance</span>
             {% endif %}
             <form hx-post="{% url 'scheduling:binding_remove' project.pk row.binding.pk %}"
                   hx-target="#binding-row-{{ row.binding.pk }}"
                   hx-swap="outerHTML">
                 {% csrf_token %}
-                <button type="submit" class="btn btn-outline-danger btn-sm py-0 px-2" title="Remove binding">
+                <button type="submit" class="btn btn-outline-danger btn-sm py-0 px-2" title="Remove proposal">
                     <i class="bi bi-trash"></i>
                 </button>
             </form>

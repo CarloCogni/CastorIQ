@@ -321,8 +321,9 @@
       <div style="background: rgba(99,102,241,.1); border-radius: 8px; padding: 10px 12px; font-size: 12px;">
         <strong style="color: #818cf8;">Castor AI</strong>
         <p style="margin: 4px 0 0; color: var(--bs-body-color);">
-          Hello! Use <strong>Castor Link Engine</strong> in the toolbar below to auto-link tasks to IFC elements,
-          or switch to the <strong>Intelligence</strong> tab for full AI Q&amp;A over your schedule.
+          Hello! Use <strong>Propose links</strong> in the toolbar to generate candidates,
+          then approve trusted bindings in <strong>Governance</strong>.
+          Or switch to the <strong>Intelligence</strong> tab for full AI Q&amp;A over your schedule.
         </p>
       </div>
     </div>
@@ -356,7 +357,7 @@
     gap: 12px;
     flex-wrap: wrap;
   ">
-    <!-- Castor Link Engine -->
+    <!-- Propose links (engine) -->
     <form hx-post="{% url 'scheduling:schedule_link_smart' project.pk %}"
           hx-target="#fourD-link-results"
           hx-swap="innerHTML"
@@ -369,7 +370,7 @@
                      font-size: 12px; font-weight: 600;
                      display: inline-flex; align-items: center; gap: 6px;">
         <span id="fd-link-spinner" class="htmx-indicator spinner-border spinner-border-sm"></span>
-        <i class="bi bi-lightning-charge-fill"></i> Castor Link Engine
+        <i class="bi bi-lightning-charge-fill"></i> Propose links
       </button>
     </form>
 
@@ -418,13 +419,14 @@
   <!-- Results area: Link Engine feedback (collapses when empty) -->
   <div id="fourD-link-results" class="fourD-stack-section"></div>
 
-  <!-- Review pane: governance (read-only) + Smart Pipeline review -->
+  <!-- Review pane: Governance (approve) + Link Proposals -->
   <div id="fourD-bottom-panels" class="fourD-stack-section" style="border-top:1px solid var(--bs-border-color);">
     <ul class="nav nav-tabs px-2 pt-1 mb-0" style="font-size:0.8rem;" role="tablist">
       <li class="nav-item" role="presentation">
         <button class="nav-link active py-1 px-2" id="fd-gov-tab" data-bs-toggle="tab"
                 data-bs-target="#fd-gov-pane" type="button" role="tab"
-                aria-controls="fd-gov-pane" aria-selected="true">
+                aria-controls="fd-gov-pane" aria-selected="true"
+                title="Approval authority for trusted 4D bindings">
           <i class="bi bi-shield-check me-1"></i>Governance
         </button>
       </li>
@@ -432,8 +434,8 @@
         <button class="nav-link py-1 px-2" id="fd-pipeline-tab" data-bs-toggle="tab"
                 data-bs-target="#fourD-review-pane" type="button" role="tab"
                 aria-controls="fourD-review-pane" aria-selected="false"
-                title="Engine proposes links; Governance approves trusted bindings">
-          Smart Pipeline (propose)
+                title="Proposed links only — approve in Governance">
+          Link Proposals
         </button>
       </li>
     </ul>
@@ -448,7 +450,7 @@
            hx-get="{% url 'scheduling:review' project.pk %}?filter=all&inline=1"
            hx-trigger="revealed"
            hx-swap="innerHTML">
-        <div class="text-secondary small py-2 px-2">Open Smart Pipeline tab to load write review.</div>
+        <div class="text-secondary small py-2 px-2">Open Link Proposals to review candidates.</div>
       </div>
     </div>
   </div>

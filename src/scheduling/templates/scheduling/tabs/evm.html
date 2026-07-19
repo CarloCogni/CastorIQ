@@ -1,4 +1,4 @@
-<!-- scheduling/tabs/evm.html — EVM Dashboard: S-curve + KPI cards -->
+<!-- scheduling/tabs/evm.html — Operational EVM diagnostics (advanced) -->
 
 {% if not tasks %}
 <div class="d-flex flex-column align-items-center justify-content-center text-secondary py-5">
@@ -7,18 +7,22 @@
 </div>
 {% else %}
 
-<div class="d-flex align-items-center gap-2 mb-1">
+<div class="d-flex align-items-center gap-2 mb-1 flex-wrap">
     <i class="bi bi-graph-up-arrow fs-5" style="color:#3b82f6;"></i>
-    <h5 class="m-0">EVM Dashboard</h5>
+    <h5 class="m-0">Operational EVM diagnostics</h5>
+    <span class="badge bg-secondary-subtle text-secondary-emphasis border" style="font-size:0.7rem;">Advanced</span>
     <button type="button"
             class="help-pill"
             data-bs-toggle="modal"
             data-bs-target="#evmHelpModal"
-            title="How the EVM Dashboard works"
-            aria-label="How the EVM Dashboard works">
+            title="How Operational EVM diagnostics works"
+            aria-label="How Operational EVM diagnostics works">
         <i class="bi bi-question-circle"></i>
     </button>
 </div>
+<p class="small text-secondary mb-3" data-testid="legacy-evm-decision-note">
+    For detailed checks. <a href="{% url 'scheduling:executive_controls_evm' project.pk %}">Executive EVM</a> is the decision-facing view.
+</p>
 
 <div id="evm-root" style="display:flex; flex-direction:column; gap:16px;">
 

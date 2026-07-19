@@ -33,7 +33,7 @@
             <li class="nav-item">
                 <a class="nav-link {% if schedule_tab == 'evm' %}active{% endif %}"
                    href="{% url 'scheduling:schedule' project.pk %}?tab=evm">
-                    <i class="bi bi-graph-up-arrow me-1"></i>EVM
+                    <i class="bi bi-graph-up-arrow me-1"></i>EVM Diagnostics
                 </a>
             </li>
             <li class="nav-item">
@@ -87,12 +87,12 @@
                 <p><strong>Workflow:</strong></p>
                 <ol>
                     <li><strong>Data Sources</strong> — upload a schedule file (.xlsx, .xer, or .xml). The system parses it and uses AI to validate it looks like a real construction programme.</li>
-                    <li><strong>4D Link</strong> — the unified linking, simulation, and review workspace. Run <em>Castor Link Engine</em> (5-layer: exact → normalised → heuristic → embedding, with LLM schedule context analysis) or match by IFC property name. The 3D viewer shows the model in real time; drag the 4D timeline slider to animate the build sequence. Review Links loads every binding — accept, remove, bulk-accept at ≥ 95% confidence, or manually add links. Export the binding table as CSV from the Review panel.</li>
-                    <li><strong>EVM</strong> — Earned Value Management dashboard. Shows SPI, CPI, EAC, and VAC KPI cards plus a cumulative S-curve (PV, EV, AC). Uses task costs when available; falls back to duration weighting when no costs are in the schedule.</li>
+                    <li><strong>4D Link</strong> — generate <em>link proposals</em>, then approve <em>trusted bindings</em> in Governance. The 3D viewer and timeline animate from trusted links only.</li>
+                    <li><strong>EVM Diagnostics</strong> — operational checks (SPI/CPI, cashflow, DCMA). Decision-facing EVM lives under <em>Executive Controls → EVM Analytics</em>.</li>
                     <li><strong>Look-ahead</strong> — Rolling window showing what starts, is in progress, and finishes across the next 2–6 weeks. Critical path tasks are flagged with a CP badge. Click a week card to expand/collapse it.</li>
                     <li><strong>Intelligence</strong> — AI-powered Q&amp;A over your schedule. Ask natural-language questions such as "Which tasks are delayed?" or "Summarise MEP progress." The system embeds all tasks into a vector store and retrieves the most relevant ones as context for the LLM. Click <em>Embed Tasks</em> before asking for the first time, or after uploading a new schedule.</li>
                 </ol>
-                <p><strong>Caveats:</strong> Castor Link Engine matching is probabilistic — always review heuristic and embedding results via Review Links before relying on 4D simulation. Elements must be processed (IFC Insights complete) for best coverage. EVM actual cost (AC) comes directly from P6 resource assignments; CPI, EAC, and VAC are disabled (shown as N/A) when no actual cost has been imported — they are never estimated or synthesised. Intelligence answers are only as good as the schedule data — always verify LLM output against your programme.</p>
+                <p><strong>Caveats:</strong> Link proposals are not trusted until Governance approval. Elements must be processed for best coverage. Missing actual cost is unavailable, not fabricated. Always verify LLM output against your programme.</p>
             </div>
         </div>
     </div>

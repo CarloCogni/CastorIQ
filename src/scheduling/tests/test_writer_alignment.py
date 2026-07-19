@@ -280,8 +280,8 @@ def test_create_trusted_bindings_helper_sets_status_on_bulk_create():
 
 
 @pytest.mark.django_db
-def test_pipeline_review_page_has_single_bulk_governance_cta(client):
-    """Pipeline review renders one Governance bulk CTA — no duplicate approve buttons."""
+def test_pipeline_review_page_has_no_duplicate_approval_controls(client):
+    """Link Proposals has one Governance CTA and no inline approve buttons."""
     project = ProjectFactory()
     user = project.owner
     client.force_login(user)
@@ -299,5 +299,6 @@ def test_pipeline_review_page_has_single_bulk_governance_cta(client):
     assert (
         html.count('hx-post="' + reverse("scheduling:binding_bulk_accept", args=[project.pk])) == 1
     )
-    # Single-row approve remains once per proposed row
-    assert html.count("Approve as trusted") == 1
+    assert "binding_accept" not in html
+    assert "Approve as trusted" not in html
+    assert html.count("Proposed links require Governance approval") == 1
