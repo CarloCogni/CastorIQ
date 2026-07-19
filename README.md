@@ -11,7 +11,7 @@
 [![Python](https://img.shields.io/badge/python-3.12+-blue)](https://www.python.org/)
 [![Django](https://img.shields.io/badge/django-5.x-092e20)](https://www.djangoproject.com/)
 
-[**Try the hosted beta**](https://castoriq.io) · [**Watch the demo**](https://www.youtube.com/watch?v=dQw4w9WgXcQ) · [**Read the docs**](docs/setup.md)
+[**Try the hosted beta**](https://castoriq.io) · [**Watch the demo**](https://www.youtube.com/watch?v=5JB-yFb7k0w) · [**Read the docs**](docs/setup.md)
 
 </div>
 
@@ -19,7 +19,7 @@
 
 ## Watch the demo — 60 seconds
 
-[![CastorIQ demo](https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg)](https://www.youtube.com/watch?v=dQw4w9WgXcQ)
+[![CastorIQ demo](https://i.ytimg.com/vi/5JB-yFb7k0w/maxresdefault.jpg)](https://www.youtube.com/watch?v=5JB-yFb7k0w)
 
 <sub>Click to play on YouTube.</sub>
 

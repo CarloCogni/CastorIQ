@@ -87,12 +87,23 @@
                     </h6>
                     <pre class="rounded mb-0"
                          style="max-height: 350px; overflow: auto;"><code class="language-python">{{ p.intent_json.code }}</code></pre>
+                    <div class="form-check mt-2">
+                        <input class="form-check-input" type="checkbox"
+                               id="t3-review-ack-{{ p.id }}"
+                               {% if p.code_review_acknowledged_at %}checked{% endif %}
+                               onchange="ModifyChat.acknowledgeReview('{{ p.id }}', this)">
+                        <label class="form-check-label fs-8 text-secondary" for="t3-review-ack-{{ p.id }}">
+                            I have reviewed this code and accept responsibility for executing it.
+                        </label>
+                    </div>
                 </div>
                 {% endif %}
                 {% if p.status == 'pending' %}
                 <div id="proposal-actions-{{ p.id }}">
                     <div class="d-flex gap-2">
                         <button class="btn btn-sm {% if p.tier == 3 %}btn-danger{% else %}btn-success{% endif %} w-50"
+                                id="proposal-execute-{{ p.id }}"
+                                {% if p.tier == 3 and not p.code_review_acknowledged_at %}disabled title="Acknowledge the code review checkbox above to enable"{% endif %}
                                 onclick="ModifyChat.approve('{{ p.id }}')">
                             <i class="bi {% if p.tier == 3 %}bi-lightning-charge{% else %}bi-check-lg{% endif %} me-1"></i>
                             {% if p.tier == 3 %}Execute{% else %}Approve{% endif %}

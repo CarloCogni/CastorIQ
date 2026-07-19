@@ -87,9 +87,10 @@ urlpatterns = [
     # Public transparency pages — short, plain-language notes (not legal docs).
     path("privacy/", privacy_view, name="privacy"),
     path("terms/", terms_view, name="terms"),
-    # Password reset — used both for forgotten passwords and as the "set
-    # initial password" path the welcome email sends approved beta users to.
-    # Templates are Django defaults until polish (M6).
+    # Stock Django password-reset URLs — kept for the admin and the
+    # existing two-step-login "Forgot password?" flow. The welcome-email
+    # set-password landing is served by the branded equivalents under
+    # ``account/`` (see ``users.urls``: ``users_set_password_confirm``).
     path(
         "password_reset/",
         auth_views.PasswordResetView.as_view(),
@@ -110,6 +111,8 @@ urlpatterns = [
         auth_views.PasswordResetCompleteView.as_view(),
         name="password_reset_complete",
     ),
+    # Castor-branded account flow (first-time password set, etc.).
+    path("account/", include("users.urls")),
 ]
 
 # Serve media files in development

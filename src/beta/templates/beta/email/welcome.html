@@ -20,7 +20,7 @@
         Or paste this URL into your browser:<br>
         <a href="{{ set_password_url }}" style="color: #3b82f6; word-break: break-all;">{{ set_password_url }}</a>
         <br>
-        <em>Valid for 7 days.</em>
+        <em>Valid for {{ link_lifetime }}.</em>
     </p>
 
     <h3 style="margin-top: 24px; font-size: 1rem; font-weight: 600;">A few things to know about the beta</h3>
@@ -31,7 +31,11 @@
         <li>You'll see a sample IFC project pre-loaded on first login — use it to explore Ask and Modify before uploading your own files.</li>
     </ul>
 
-    <p>If anything looks wrong, reply to this email — it goes to a real human.</p>
+    <p>
+        If anything looks wrong, email
+        <a href="mailto:support@castoriq.io" style="color: #3b82f6;">support@castoriq.io</a>
+        — a real human reads it.
+    </p>
 
     <p style="color: #6b7076;">
         — The Castor team<br>
