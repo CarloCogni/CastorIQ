@@ -347,8 +347,11 @@
 
     <!-- WBS Performance Heatmap -->
     <div id="evm-wbs-section">
-        <div class="d-flex align-items-center gap-2 mb-2">
+        <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
             <span style="font-size:0.8rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:0.05em;">WBS Performance</span>
+            <span class="badge text-bg-secondary" style="font-size:0.65rem; font-weight:500;"
+                  data-testid="legacy-evm-wbs-proxy-badge">Stage proxy — not canonical WBS</span>
+            <span class="badge text-bg-secondary" style="font-size:0.65rem; font-weight:500;">Diagnostic only</span>
             <span style="font-size:0.7rem; color:var(--bs-secondary-color);">by stage · SPI = earned ÷ planned</span>
         </div>
         <div id="evm-wbs-grid" class="row g-2">
@@ -600,6 +603,9 @@
 
                     <div style="font-size:0.67rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px;">
                         By Trade (CSI) — downstream tasks
+                        <span class="badge text-bg-secondary ms-1" style="font-size:0.6rem; font-weight:500; text-transform:none; letter-spacing:0;"
+                              data-testid="legacy-evm-trade-proxy-badge">Trade proxy — not governed Trade</span>
+                        <span class="badge text-bg-secondary" style="font-size:0.6rem; font-weight:500; text-transform:none; letter-spacing:0;">Diagnostic only</span>
                     </div>
                     <div id="drc-trade-bars" class="mb-3"></div>
 
@@ -1178,8 +1184,8 @@
                         Schedule Analyst
                     </div>
                     <div style="color:var(--bs-body-color); line-height:1.55;">
-                        I have real-time access to your EVM metrics, critical path, and WBS risk scores.
-                        Ask me anything — delays, forecast completion, which packages are at risk, what-if analysis.
+                        Advisory diagnostics only — I can discuss loaded EVM metrics and schedule context.
+                        Answers do not approve links or change the programme. Verify against your schedule before acting.
                     </div>
                 </div>
             </div>

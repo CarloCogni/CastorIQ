@@ -1,9 +1,10 @@
-<!-- scheduling/components/autolink_summary.html — Smart Auto-Link result summary -->
-<div class="p-3 border rounded" style="background-color: var(--bs-tertiary-bg); font-size:0.85rem;">
+<!-- scheduling/components/autolink_summary.html — Link proposals result summary -->
+<div class="p-3 border rounded" style="background-color: var(--bs-tertiary-bg); font-size:0.85rem;"
+     data-testid="autolink-proposals-summary">
 
     <div class="d-flex align-items-center gap-2 mb-3">
-        <i class="bi bi-check2-all text-success"></i>
-        <span class="fw-semibold">Smart Auto-Link complete</span>
+        <i class="bi bi-layers text-primary"></i>
+        <span class="fw-semibold">Link proposals generated</span>
         <span class="badge bg-secondary ms-auto">{{ summary.total_tasks }} task{{ summary.total_tasks|pluralize }}</span>
     </div>
 
@@ -44,7 +45,7 @@
         {% endif %}
         {% if summary.needs_review %}
         <span class="text-warning">
-            <i class="bi bi-eye me-1"></i>{{ summary.needs_review }} need review
+            <i class="bi bi-eye me-1"></i>{{ summary.needs_review }} proposals needing review
         </span>
         {% endif %}
         {% if summary.excluded_non_physical %}
@@ -52,11 +53,9 @@
             <i class="bi bi-slash-circle me-1"></i>{{ summary.excluded_non_physical }} excluded (non-physical)
         </span>
         {% endif %}
-        {% if not summary.unlinked and not summary.needs_review %}
-        <span class="text-success">
-            <i class="bi bi-check-circle me-1"></i>All physical tasks linked automatically
+        <span class="text-secondary">
+            <i class="bi bi-shield-check me-1"></i>Requires Governance approval
         </span>
-        {% endif %}
         <span class="text-secondary ms-auto">
             Property: <code>{{ ifc_param_name }}</code>
         </span>

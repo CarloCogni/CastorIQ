@@ -212,13 +212,6 @@
               style="font-size:13px; padding:2px 8px; background:transparent;
                      border:1px solid var(--bs-border-color); border-radius:4px;
                      color:var(--bs-body-color); cursor:pointer;">−</button>
-      <button id="fd-chat-toggle" title="Link assistant (advisory)"
-              style="padding: 4px 10px; background: rgba(99,102,241,.2);
-                     color: #818cf8; border: 1px solid rgba(99,102,241,.3);
-                     border-radius: 6px; cursor: pointer; font-size: 12px; flex-shrink: 0;
-                     pointer-events: all; position: relative; z-index: 100;">
-        🧠
-      </button>
     </div>
 
     <!-- 3D Viewer iframe -->
@@ -295,57 +288,23 @@
       </div>
     </div>
   </div>
-  <!-- Splitter: Viewer ↔ Chat -->
-  <div class="fd-splitter" id="fd-split-2" data-left="fourD-viewer" data-right="fourD-chat"></div>
-
-  <!-- RIGHT: AI Chat Panel -->
-  <div id="fourD-chat" style="
-    width: 0px;
-    min-width: 0;
-    flex-shrink: 0;
-    background: var(--bs-body-bg);
-    border: 1px solid var(--bs-border-color);
-    border-radius: 8px;
-    overflow: hidden;
-    transition: width 0.2s ease;
-    display: flex;
-    flex-direction: column;
-  ">
-    <div style="padding: 8px 12px; border-bottom: 1px solid var(--bs-border-color);">
-      <span style="font-size: 12px; font-weight: 600;"><i class="bi bi-robot me-1"></i>Link assistant</span>
-    </div>
-    <div id="fourD-messages" style="
-      flex: 1; overflow-y: auto; padding: 12px;
-      display: flex; flex-direction: column; gap: 8px;
-    ">
-      <div style="background: rgba(99,102,241,.1); border-radius: 8px; padding: 10px 12px; font-size: 12px;"
-           data-testid="fourd-link-assistant-intro">
-        <strong style="color: #818cf8;">Advisory suggestions</strong>
-        <p style="margin: 4px 0 0; color: var(--bs-body-color);">
-          Notes only — this assistant does not approve links.
-          Use <strong>Propose links</strong> to generate candidates, then approve trusted bindings in
-          <strong>Governance</strong>.
-        </p>
-      </div>
-    </div>
-    <div style="padding: 8px; border-top: 1px solid var(--bs-border-color);">
-      <div style="display: flex; gap: 6px;">
-        <input id="fourD-chat-input" type="text"
-               placeholder="Ask about your schedule…"
-               style="flex: 1; padding: 6px 10px; font-size: 12px;
-                      background: var(--bs-body-bg);
-                      border: 1px solid var(--bs-border-color);
-                      border-radius: 6px; color: var(--bs-body-color);">
-        <button id="fourD-chat-send"
-                style="padding: 6px 12px; background: #6366f1; color: white;
-                       border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">Send</button>
-      </div>
-    </div>
-  </div>
+  <!-- Package 5: writeback chat panel removed from demo surface (no mutation controls). -->
 
   </div>
   <!-- /fourD-main -->
 
+  <!-- Static advisory only — no chat input / writeback (Package 5) -->
+  <div class="fourD-stack-section px-2 py-2 border rounded"
+       style="font-size: 0.78rem; background: var(--bs-tertiary-bg);"
+       data-testid="fourd-link-assistant-intro">
+    <strong style="color: #818cf8;"><i class="bi bi-robot me-1"></i>Link assistant</strong>
+    <span class="text-secondary ms-1">— Advisory suggestions</span>
+    <p class="mb-0 mt-1 text-secondary">
+      Notes only — this assistant does not approve links and schedule writeback is not available here.
+      Use <strong>Propose links</strong> to generate candidates, then approve trusted bindings in
+      <strong>Governance</strong>.
+    </p>
+  </div>
   <!-- BOTTOM FOOTER: Controls bar -->
   <div id="fourD-footer" class="fourD-stack-section" style="
     flex-shrink: 0;
@@ -374,18 +333,6 @@
         <i class="bi bi-lightning-charge-fill"></i> Propose links
       </button>
     </form>
-
-    <!-- Embed Tasks for AI chat -->
-    <div style="display: inline-flex; align-items: center; gap: 8px;">
-      <button id="fd-embed-btn"
-              style="padding: 5px 12px; background: #7c3aed; color: white;
-                     border: none; border-radius: 6px; cursor: pointer; font-size: 12px;
-                     display: inline-flex; align-items: center; gap: 6px;">
-        <span id="fd-embed-spinner" class="spinner-border spinner-border-sm d-none"></span>
-        🧠 Embed Tasks
-      </button>
-      <span id="fd-embed-status" style="font-size: 11px; color: var(--bs-secondary-color);"></span>
-    </div>
 
     <!-- Separator -->
     <div style="height: 24px; width: 1px; background: var(--bs-border-color);"></div>
@@ -494,12 +441,10 @@
   "use strict";
   const GANTT_URL               = "{% url 'scheduling:gantt_data' project.pk %}";
   const TIMELINE_URL            = "{% url 'ifc_viewer:viewer_timeline' project.pk %}";
-  const FD_INTELLIGENCE_ASK_URL   = "{% url 'scheduling:intelligence_ask' project.pk %}";
-  const FD_INTELLIGENCE_EMBED_URL = "{% url 'scheduling:intelligence_embed' project.pk %}";
-  const FD_WRITEBACK_URL          = "{% url 'scheduling:schedule_writeback' project.pk %}";
   const TASKS_FOR_LINK_URL      = "{% url 'scheduling:tasks_for_link' project.pk %}";
   const BULK_LINK_URL           = "{% url 'scheduling:bulk_link_element' project.pk %}";
   const FD_CSRF                 = "{{ csrf_token }}";
+  /* Package 5: schedule mutation chat UI removed from this surface. */
 
   /* ── Full Gantt (fd_ prefix) ─────────────────────────────────────── */
 
@@ -1414,141 +1359,15 @@
   });
   document.getElementById("fd-slider").addEventListener("input", (e) => _applyInterval(parseInt(e.target.value)));
 
-  /* ── AI Chat ────────────────────────────────────────────────────── */
-
-  function addFdMessage(role, html) {
-    const msgs = document.getElementById("fourD-messages");
-    const isAI = role === "ai";
-    const div  = document.createElement("div");
-    div.className = "fd-msg";
-    div.style.cssText = `background:${isAI ? "rgba(99,102,241,.1)" : "rgba(59,130,246,.08)"};`
-                      + `border-radius:8px;padding:10px 12px;font-size:12px;`
-                      + `align-self:${isAI ? "flex-start" : "flex-end"};max-width:90%;`;
-    div.innerHTML = `<strong style="color:${isAI ? "#818cf8" : "#3b82f6"};">${isAI ? "Assistant notes" : "You"}</strong>`
-                  + `<p class="fd-msg-text" style="margin:4px 0 0;color:var(--bs-body-color);">${html}</p>`;
-    msgs.appendChild(div);
-    msgs.scrollTop = msgs.scrollHeight;
-  }
-
-  /* Writeback action words — if the user message contains any of these, route
-     to the schedule writeback pipeline instead of the Q&A intelligence endpoint. */
-  const FD_ACTION_WORDS = /\b(delay|push\s+back|move|reschedule|update|change|set|mark|complete|finish|start|activate|extend|shorten|add\s+dependency|remove\s+dependency|link)\b/i;
-
-  function _fdReplaceLoading(loadingId, html) {
-    const el = document.getElementById(loadingId);
-    if (el) el.closest(".fd-msg").querySelector(".fd-msg-text").innerHTML = html;
-  }
-
-  async function _fdAskIntelligence(msg, loadingId) {
-    const resp = await fetch(FD_INTELLIGENCE_ASK_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-CSRFToken": FD_CSRF },
-      body: JSON.stringify({ question: msg }),
-    });
-    const data = await resp.json();
-    _fdReplaceLoading(loadingId, data.answer || data.error || "No response.");
-  }
-
-  async function _fdWriteback(msg, loadingId) {
-    const resp = await fetch(FD_WRITEBACK_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-CSRFToken": FD_CSRF },
-      body: JSON.stringify({ message: msg }),
-    });
-    const data = await resp.json();
-
-    if (data.type === "unclear" || data.type === "out_of_scope" || data.type === "no_matches") {
-      _fdReplaceLoading(loadingId, esc(data.message || "Could not process request."));
-      return;
-    }
-
-    if (data.type === "proposals") {
-      const proposals = data.proposals || [];
-      const warnings  = data.warnings  || [];
-
-      let html = `<strong style="color:#818cf8;">Proposed changes:</strong>`;
-      html += `<div style="margin:8px 0;display:flex;flex-direction:column;gap:6px;">`;
-      for (const p of proposals) {
-        html += `<div style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:8px 10px;font-size:11px;">`;
-        html += `<div style="font-weight:600;color:#e2e8f0;margin-bottom:4px;">${esc(p.task_name)}</div>`;
-        if (p.activity_code) html += `<div style="color:rgba(255,255,255,.4);font-size:10px;margin-bottom:4px;">${esc(p.activity_code)}</div>`;
-        for (const [fname, chg] of Object.entries(p.changes || {})) {
-          html += `<div style="color:#94a3b8;">• ${esc(fname)}: <span style="color:#f87171;">${esc(String(chg.from))}</span> → <span style="color:#86efac;">${esc(String(chg.to))}</span></div>`;
-        }
-        html += `</div>`;
-      }
-      html += `</div>`;
-      if (warnings.length) {
-        html += `<div style="color:#fbbf24;font-size:10px;margin-bottom:6px;">⚠ ${warnings.map(esc).join(" · ")}</div>`;
-      }
-      // Store proposals on the button for the confirm handler
-      const confirmId = "fd-confirm-" + Date.now();
-      html += `<div style="display:flex;gap:8px;margin-top:4px;">`;
-      html += `<button id="${confirmId}" data-proposals='${JSON.stringify(proposals).replace(/'/g, "&#39;")}'`
-            + ` style="padding:4px 12px;background:#166534;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:11px;">✅ Confirm</button>`;
-      html += `<button onclick="this.closest('.fd-msg').remove()" style="padding:4px 12px;background:#7f1d1d;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:11px;">❌ Cancel</button>`;
-      html += `</div>`;
-
-      _fdReplaceLoading(loadingId, html);
-
-      // Attach confirm handler after the DOM is updated
-      requestAnimationFrame(() => {
-        const btn = document.getElementById(confirmId);
-        if (!btn) return;
-        btn.addEventListener("click", async () => {
-          btn.disabled = true;
-          btn.textContent = "Applying…";
-          try {
-            const cResp = await fetch(FD_WRITEBACK_URL, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", "X-CSRFToken": FD_CSRF },
-              body: JSON.stringify({ confirm: true, proposals }),
-            });
-            const cData = await cResp.json();
-            const n = cData.updated || 0;
-            const msgEl = btn.closest(".fd-msg").querySelector(".fd-msg-text");
-            if (msgEl) msgEl.innerHTML = `✅ Updated ${n} task${n !== 1 ? "s" : ""}. Refreshing Gantt…`;
-            // Refresh Gantt
-            loadGantt();
-          } catch (err) {
-            btn.textContent = "Error — retry?";
-            btn.disabled = false;
-          }
-        });
-      });
-    }
-  }
-
-  document.getElementById("fourD-chat-send").addEventListener("click", async () => {
-    const input = document.getElementById("fourD-chat-input");
-    const msg   = input.value.trim();
-    if (!msg) return;
-    input.value = "";
-    addFdMessage("user", esc(msg));
-    const loadingId = "fd-loading-" + Date.now();
-    addFdMessage("ai", `<span id="${loadingId}">Thinking…</span>`);
-    try {
-      if (FD_ACTION_WORDS.test(msg)) {
-        await _fdWriteback(msg, loadingId);
-      } else {
-        await _fdAskIntelligence(msg, loadingId);
-      }
-    } catch (e) {
-      _fdReplaceLoading(loadingId, "Error connecting to AI.");
-    }
-  });
-
-  document.getElementById("fourD-chat-input").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") document.getElementById("fourD-chat-send").click();
-  });
+  /* ── AI Chat / writeback: removed from 4D Link demo surface (Package 5) ── */
 
   /* ── Resizable panels ───────────────────────────────────────────── */
 
   function initSplitters() {
     const STORAGE_KEY  = "fourD-layout";
-    const SPLITTER_PX  = 16; // 2 splitters × 8px each
-    const MIN_W = { "fourD-gantt": 220, "fourD-viewer": 400, "fourD-chat": 200 };
-    const DEFAULT_W = { "fourD-gantt": 280, "fourD-chat": 280 };
+    const SPLITTER_PX  = 8; // one splitter (gantt ↔ viewer)
+    const MIN_W = { "fourD-gantt": 220, "fourD-viewer": 400 };
+    const DEFAULT_W = { "fourD-gantt": 280 };
 
     /* Restore saved widths — clamp to valid range for current viewport */
     try {
@@ -1562,18 +1381,13 @@
         : DEFAULT_W["fourD-gantt"];
 
       document.getElementById("fourD-gantt").style.width = ganttW + "px";
-      /* chat width/visibility is owned by initChatPanel() — not restored here */
     } catch (e) { /* ignore corrupt storage */ }
 
     function saveLayout() {
       try {
-        const chatW = document.getElementById("fourD-chat").offsetWidth;
-        const data  = { gantt: document.getElementById("fourD-gantt").offsetWidth };
-        if (chatW > 0) {
-          data.chat = chatW;
-          try { localStorage.setItem("fd-chat-width", String(chatW)); } catch(e2) {}
-        }
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          gantt: document.getElementById("fourD-gantt").offsetWidth,
+        }));
       } catch (e) { /* ignore */ }
     }
 
@@ -1593,9 +1407,6 @@
         /* Freeze iframe so it can't swallow pointer events mid-drag */
         const iframeEl = document.getElementById("fd-iframe");
         if (iframeEl) iframeEl.style.pointerEvents = "none";
-        /* Suppress chat CSS transition — otherwise splitter 2 drag feels laggy */
-        const chatEl = document.getElementById("fourD-chat");
-        if (chatEl) chatEl.style.transition = "none";
 
         const leftId  = splitter.dataset.left;
         const fixedId = leftId !== "fourD-viewer" ? leftId : splitter.dataset.right;
@@ -1607,8 +1418,7 @@
           startX: e.clientX,
           startW: fixedEl.offsetWidth,
           minW:   MIN_W[fixedId] || 200,
-          /* +1: drag right grows the panel (Gantt, left of splitter).
-             -1: drag right shrinks the panel (Chat, right of splitter). */
+          /* +1: drag right grows the panel (Gantt, left of splitter). */
           sign: leftId !== "fourD-viewer" ? 1 : -1,
         };
         splitter.classList.add("fd-dragging");
@@ -1624,12 +1434,10 @@
         requestAnimationFrame(() => {
           _rafPending = false;
           if (!_drag) return;                // drag may have ended during the frame wait
-          const { fixedId, fixedEl, startX, startW, minW, sign } = _drag;
+          const { fixedEl, startX, startW, minW, sign } = _drag;
           const delta   = (clientX - startX) * sign;
           const container = document.getElementById("fourD-main");
-          const otherId = fixedId === "fourD-gantt" ? "fourD-chat" : "fourD-gantt";
-          const otherW  = document.getElementById(otherId).offsetWidth;
-          const maxW    = container.offsetWidth - otherW - SPLITTER_PX - MIN_W["fourD-viewer"];
+          const maxW    = container.offsetWidth - SPLITTER_PX - MIN_W["fourD-viewer"];
           fixedEl.style.width = Math.max(minW, Math.min(maxW, startW + delta)) + "px";
         });
       });
@@ -1642,8 +1450,6 @@
         document.body.style.userSelect = "";
         const iframeEl = document.getElementById("fd-iframe");
         if (iframeEl) iframeEl.style.pointerEvents = "";
-        const chatEl = document.getElementById("fourD-chat");
-        if (chatEl) chatEl.style.transition = "";
         saveLayout();
         _drag = null;
       });
@@ -1656,78 +1462,12 @@
         document.body.style.userSelect = "";
         const iframeEl = document.getElementById("fd-iframe");
         if (iframeEl) iframeEl.style.pointerEvents = "";
-        const chatEl = document.getElementById("fourD-chat");
-        if (chatEl) chatEl.style.transition = "";
         _drag = null;
       });
     });
   }
 
-  /* ── Chat panel toggle ──────────────────────────────────────────── */
-
-  let _chatOpen = false;
-
-  function initChatPanel() {
-    const chat = document.getElementById("fourD-chat");
-    try { _chatOpen = localStorage.getItem("fd-chat-open") === "1"; } catch(e) {}
-    if (_chatOpen) {
-      let w = 280;
-      try { w = parseInt(localStorage.getItem("fd-chat-width") || "280") || 280; } catch(e) {}
-      chat.style.width    = w + "px";
-      chat.style.minWidth = "200px";
-      chat.style.overflow = "";
-    } else {
-      chat.style.width    = "0px";
-      chat.style.minWidth = "0";
-      chat.style.overflow = "hidden";
-    }
-  }
-
-  document.getElementById("fd-chat-toggle").addEventListener("click", () => {
-    const chat = document.getElementById("fourD-chat");
-    _chatOpen = !_chatOpen;
-    if (_chatOpen) {
-      let w = 280;
-      try { w = parseInt(localStorage.getItem("fd-chat-width") || "280") || 280; } catch(e) {}
-      chat.style.width    = w + "px";
-      chat.style.minWidth = "200px";
-      chat.style.overflow = "";
-    } else {
-      try { localStorage.setItem("fd-chat-width", String(chat.offsetWidth)); } catch(e) {}
-      chat.style.width    = "0px";
-      chat.style.minWidth = "0";
-      chat.style.overflow = "hidden";
-    }
-    try { localStorage.setItem("fd-chat-open", _chatOpen ? "1" : "0"); } catch(e) {}
-  });
-
-  /* ── Embed Tasks ────────────────────────────────────────────────── */
-  document.getElementById("fd-embed-btn").addEventListener("click", async () => {
-    const btn     = document.getElementById("fd-embed-btn");
-    const spinner = document.getElementById("fd-embed-spinner");
-    const status  = document.getElementById("fd-embed-status");
-    btn.disabled = true;
-    spinner.classList.remove("d-none");
-    status.textContent = "Embedding tasks…";
-    try {
-      const resp = await fetch(FD_INTELLIGENCE_EMBED_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-CSRFToken": FD_CSRF },
-        body: JSON.stringify({ force: false }),
-      });
-      const data = await resp.json();
-      if (data.ok) {
-        status.textContent = `✅ Embedded ${data.embedded} tasks`;
-      } else {
-        status.textContent = `❌ ${data.error || "Embedding failed"}`;
-      }
-    } catch (err) {
-      status.textContent = `❌ ${err}`;
-    } finally {
-      btn.disabled = false;
-      spinner.classList.add("d-none");
-    }
-  });
+  /* ── Chat panel / embed: removed from 4D Link demo surface (Package 5) ── */
 
   /* ── Gantt row context menu ─────────────────────────────────────── */
 
@@ -1976,7 +1716,6 @@
 
   /* ── Init ────────────────────────────────────────────────────────── */
   initSplitters();
-  initChatPanel();
   loadGantt();
   loadTimeline();
 }());

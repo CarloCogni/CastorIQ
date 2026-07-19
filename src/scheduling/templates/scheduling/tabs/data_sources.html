@@ -6,7 +6,7 @@
      data-mapping-url="{% url 'scheduling:schedule_mapping_submit' project.pk %}"
      data-detect-url="{% url 'scheduling:schedule_detect_columns' project.pk %}"
      data-save-lookup-url="{% url 'scheduling:schedule_save_mapping_lookup' project.pk %}"
-     data-review-url="{% url 'scheduling:schedule' project.pk %}?tab=review"
+     data-review-url="{% url 'scheduling:review' project.pk %}"
      data-gantt-url="{% url 'scheduling:schedule' project.pk %}?tab=fourD_link"
      data-all-tasks-url="{% url 'scheduling:all_tasks_preview' project.pk %}"
      data-csrf="{{ csrf_token }}"

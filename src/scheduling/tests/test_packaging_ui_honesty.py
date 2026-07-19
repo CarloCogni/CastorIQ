@@ -220,3 +220,124 @@ def test_project_nav_labels_ifc_schedule_vs_4d5d(client):
     assert response.status_code == 200
     assert "IFC Schedule" in html
     assert "4D/5D" in html
+
+
+# ── Package 5 — dead surface / copy hygiene ───────────────────────────────
+
+
+@pytest.mark.django_db
+def test_schedule_tab_review_redirects_to_real_review(client):
+    """Dead ``?tab=review`` deep-link redirects to the real Link Proposals route."""
+    project = ProjectFactory()
+    client.force_login(project.owner)
+
+    response = client.get(reverse("scheduling:schedule", kwargs={"pk": project.pk}) + "?tab=review")
+
+    assert response.status_code == 302
+    assert response.url == reverse("scheduling:review", kwargs={"pk": project.pk})
+
+
+@pytest.mark.django_db
+def test_data_sources_review_url_points_to_real_review(client):
+    """Data Sources deep-link target is the real review route, not blank tab=review."""
+    project = ProjectFactory()
+    client.force_login(project.owner)
+
+    response = client.get(
+        reverse("scheduling:schedule", kwargs={"pk": project.pk}) + "?tab=data_sources"
+    )
+    html = response.content.decode()
+
+    assert response.status_code == 200
+    assert f'data-review-url="{reverse("scheduling:review", kwargs={"pk": project.pk})}"' in html
+    assert "?tab=review" not in html
+
+
+@pytest.mark.django_db
+def test_fourd_link_hides_writeback_mutation_controls(client):
+    """4D Link keeps advisory copy but exposes no writeback chat controls."""
+    project = ProjectFactory()
+    client.force_login(project.owner)
+
+    response = client.get(
+        reverse("scheduling:schedule", kwargs={"pk": project.pk}) + "?tab=fourD_link"
+    )
+    html = response.content.decode()
+
+    assert response.status_code == 200
+    assert "Link assistant" in html
+    assert "Advisory suggestions" in html
+    assert "does not approve links" in html
+    assert "schedule_writeback" not in html
+    assert "fourD-chat-send" not in html
+    assert "fourD-chat-input" not in html
+    assert "fd-chat-toggle" not in html
+    assert "fd-embed-btn" not in html
+
+
+@pytest.mark.django_db
+def test_autolink_summary_uses_proposal_not_authority_wording():
+    """Autolink result partial speaks proposals + Governance, not auto-accept."""
+    from django.template.loader import render_to_string
+
+    project = ProjectFactory()
+    html = render_to_string(
+        "scheduling/components/autolink_summary.html",
+        {
+            "project": project,
+            "ifc_param_name": "Activity ID",
+            "summary": {
+                "total_tasks": 3,
+                "linked_exact": 1,
+                "linked_normalized": 1,
+                "linked_heuristic": 1,
+                "linked_embedding": 0,
+                "unlinked": 0,
+                "needs_review": 2,
+                "excluded_non_physical": 0,
+            },
+        },
+    )
+
+    assert "Link proposals generated" in html
+    assert "Requires Governance approval" in html
+    assert "Smart Auto-Link complete" not in html
+    assert "linked automatically" not in html
+    assert "auto_accepted" not in html
+
+
+@pytest.mark.django_db
+def test_legacy_evm_wbs_trade_proxy_labels(client):
+    """Legacy EVM Diagnostics labels WBS/Trade as proxy / diagnostic only."""
+    project = ProjectFactory()
+    TaskFactory(project=project)
+    client.force_login(project.owner)
+
+    response = client.get(reverse("scheduling:schedule", kwargs={"pk": project.pk}) + "?tab=evm")
+    html = response.content.decode()
+
+    assert response.status_code == 200
+    assert 'data-testid="legacy-evm-wbs-proxy-badge"' in html
+    assert "Stage proxy — not canonical WBS" in html
+    assert 'data-testid="legacy-evm-trade-proxy-badge"' in html
+    assert "Trade proxy — not governed Trade" in html
+    assert html.count("Diagnostic only") >= 2
+
+
+@pytest.mark.django_db
+def test_timeliner_help_drops_navisworks_clone_wording(client):
+    """TimeLiner help is neutral visual review language, not a clone claim."""
+    project = ProjectFactory()
+    client.force_login(project.owner)
+
+    response = client.get(
+        reverse("scheduling:schedule", kwargs={"pk": project.pk}) + "?tab=data_sources"
+    )
+    html = response.content.decode()
+
+    assert response.status_code == 200
+    assert "exactly like Navisworks" not in html
+    assert "Navisworks TimeLiner" not in html
+    assert "Visual schedule" in html
+    assert "Not a full simulation replacement" in html
+    assert "advisory" in html.lower() or "Advisory" in html
