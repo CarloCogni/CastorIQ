@@ -942,29 +942,30 @@ class ProjectAnalyticsCapabilityProfile:
             project_id=self.project_id, is_pending=False
         ).count()
 
-        ra_qs = P6ResourceAssignment.objects.filter(project_id=self.project_id, is_pending=False)
-        ra_agg = ra_qs.aggregate(
-            labor_planned=Sum("planned_units", filter=Q(resource_type__icontains="labor")),
-            labor_actual=Sum("actual_units", filter=Q(resource_type__icontains="labor")),
-            ac_rows=Count("pk", filter=Q(actual_cost__gt=0)),
-        )
-
         from scheduling.models import Resource as CanonicalResource
         from scheduling.models import ResourceAssignment as CanonicalResourceAssignment
 
+        # Prefer canonical ResourceAssignment; only probe legacy P6 when empty.
+        # Zero-store path keeps a fixed two-query ceiling (count + one aggregate)
+        # so Executive Overview stays within the 55-query packaging budget.
+        ra_qs = P6ResourceAssignment.objects.filter(project_id=self.project_id, is_pending=False)
         canonical_qs = CanonicalResourceAssignment.objects.filter(
             project_id=self.project_id, is_pending=False
         )
         canonical_count = canonical_qs.count()
         if canonical_count > 0:
             ac_rows = canonical_qs.filter(actual_cost__gt=0).count()
-            ac_task_count = (
-                canonical_qs.filter(actual_cost__gt=0)
-                .exclude(task_id=None)
-                .values("task_id")
-                .distinct()
-                .count()
-            )
+            # Distinct task count is zero when no AC rows exist — skip the query.
+            if ac_rows > 0:
+                ac_task_count = (
+                    canonical_qs.filter(actual_cost__gt=0)
+                    .exclude(task_id=None)
+                    .values("task_id")
+                    .distinct()
+                    .count()
+                )
+            else:
+                ac_task_count = 0
             ac_source_label = "ResourceAssignment.actual_cost"
             labor_agg = canonical_qs.filter(
                 resource__resource_type=CanonicalResource.ResourceType.LABOR
@@ -975,17 +976,27 @@ class ProjectAnalyticsCapabilityProfile:
             labor_planned_units = float(labor_agg["labor_planned"] or 0)
             labor_actual_units = float(labor_agg["labor_actual"] or 0)
         else:
-            ac_rows = ra_agg["ac_rows"] or 0
-            ac_task_count = (
-                ra_qs.filter(actual_cost__gt=0)
-                .exclude(task_id=None)
-                .values("task_id")
-                .distinct()
-                .count()
+            ra_agg = ra_qs.aggregate(
+                labor_planned=Sum("planned_units", filter=Q(resource_type__icontains="labor")),
+                labor_actual=Sum("actual_units", filter=Q(resource_type__icontains="labor")),
+                ac_rows=Count("pk", filter=Q(actual_cost__gt=0)),
+                total_rows=Count("pk"),
             )
+            ac_rows = ra_agg["ac_rows"] or 0
+            if ac_rows > 0:
+                ac_task_count = (
+                    ra_qs.filter(actual_cost__gt=0)
+                    .exclude(task_id=None)
+                    .values("task_id")
+                    .distinct()
+                    .count()
+                )
+            else:
+                ac_task_count = 0
+            # total_rows replaces a separate exists() round-trip.
             ac_source_label = (
                 "P6ResourceAssignment.actual_cost"
-                if (ra_agg["ac_rows"] or 0) > 0 or ra_qs.exists()
+                if ac_rows > 0 or (ra_agg["total_rows"] or 0) > 0
                 else "none"
             )
             labor_planned_units = float(ra_agg["labor_planned"] or 0)

@@ -318,6 +318,12 @@ class TestCapabilityAndSnapshot:
         assert "e8_package_governed_mode" in gm
 
     def test_zero_governed_query_budget(self, client):
+        """Empty-project overview stays at the DF-B1.1 / DF-D3 ceiling of 55.
+
+        DF-E added a canonical ResourceAssignment probe on the capability path.
+        The zero-store gather path folds P6 exists()/zero-AC task counts into
+        one aggregate so this budget remains meaningful (no N+1; no raise).
+        """
         project = ProjectFactory()
         _member_client(client, project)
         url = reverse("scheduling:executive_controls", kwargs={"pk": project.pk})
