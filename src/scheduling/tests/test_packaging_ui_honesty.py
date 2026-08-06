@@ -29,17 +29,22 @@ def test_legacy_evm_labelled_diagnostic_not_primary_decision(client):
     html = response.content.decode()
 
     assert response.status_code == 200
-    assert "Operational EVM diagnostics" in html
+    assert "Schedule Health" in html
     assert 'data-testid="legacy-evm-decision-note"' in html
-    assert "decision-facing view" in html
     assert "Executive EVM" in html
-    assert "Advanced supporting diagnostics" in html
+    assert "Advanced Schedule Health" in html
     assert "EVM Dashboard" not in html
     assert "Decision Summary" not in html
     assert "Top 5 — Needs Attention" not in html
     assert "Diagnostics summary" in html
     assert "Items to review" in html
     assert 'data-testid="legacy-evm-diagnostics-summary"' in html
+    assert 'data-testid="value-cleanup-hide-monte-carlo"' in html
+    assert 'data-testid="value-cleanup-hide-ml"' in html
+    assert 'data-testid="value-cleanup-hide-cashflow"' in html
+    assert 'data-testid="value-cleanup-hide-chat"' in html
+    assert "Company actual cost" not in html
+    assert "company cashflow" not in html.lower() or "Not company cashflow" in html
 
 
 @pytest.mark.django_db
@@ -59,7 +64,7 @@ def test_executive_evm_remains_decision_facing(client):
 
 @pytest.mark.django_db
 def test_fourd_link_proposals_wording_not_approval(client):
-    """4D Link uses Link Proposals wording; Governance remains approval authority."""
+    """4D Link uses Link Proposals; Link Quality is advanced trust — not the hero."""
     project = ProjectFactory()
     client.force_login(project.owner)
 
@@ -73,11 +78,13 @@ def test_fourd_link_proposals_wording_not_approval(client):
     assert "Smart Pipeline (propose)" not in html
     assert "Propose links" in html
     assert "Castor Link Engine" not in html
-    assert "Governance" in html
+    assert "Link Quality" in html
+    assert 'data-testid="fourd-link-quality-tab"' in html
     assert "Castor AI" not in html
     assert "Link assistant" in html
     assert "Advisory suggestions" in html
     assert "does not approve links" in html
+    assert "approval authority" not in html.lower()
 
 
 @pytest.mark.django_db
@@ -104,14 +111,14 @@ def test_link_proposals_surface_has_no_inline_approve(client):
     assert "Approve ≥95%" not in html
     assert "binding_bulk_accept" not in html
     assert 'data-testid="proposals-open-governance-cta"' in html
-    assert "Open Governance for ≥95% proposals" in html
-    assert html.count("Proposed links require Governance approval") == 1
+    assert "Open Link Quality for ≥95% proposals" in html
+    assert html.count("Proposed links require Link Quality confirmation") == 1
     assert reverse("scheduling:link_governance_workspace", args=[project.pk]) in html
 
 
 @pytest.mark.django_db
 def test_governance_authority_badge_present(client):
-    """Governance workspace labels trusted-binding approval authority once."""
+    """Link Quality workspace keeps trust badge once; method badge not user-facing."""
     project = ProjectFactory()
     client.force_login(project.owner)
 
@@ -122,7 +129,9 @@ def test_governance_authority_badge_present(client):
 
     assert response.status_code == 200
     assert 'data-testid="governance-authority-badge"' in html
-    assert html.count("Trusted bindings") == 1
+    assert "Link Quality" in html
+    assert html.count("Trusted applied map") == 1
+    assert 'data-testid="governance-method-badge-advanced"' in html
 
 
 @pytest.mark.django_db
@@ -183,18 +192,20 @@ def test_resources_caveats_appear_once(client):
     html = response.content.decode()
 
     assert response.status_code == 200
-    assert "Resources Readiness" in html
-    assert "Resources readiness" in html
+    assert "Resource / Cost Data Readiness" in html
     assert html.count("Not full E8-E") == 1
     assert html.count('data-testid="resources-non-claims"') == 1
     assert html.count('data-testid="resources-source-version-caveat"') == 1
     assert 'data-testid="resources-caveats"' not in html
     assert "Not site headcount" in html
+    assert "data readiness" in html.lower()
+    assert "resource planning" in html.lower()  # in "Not resource planning" framing
+    assert 'data-testid="resources-fte-advanced-hidden"' in html
 
 
 @pytest.mark.django_db
 def test_bim_nav_demotes_legacy_evm_label(client):
-    """4D/5D nav labels legacy EVM as diagnostics."""
+    """4D/5D primary nav hides Schedule Health / legacy diagnostics."""
     project = ProjectFactory()
     client.force_login(project.owner)
 
@@ -203,7 +214,9 @@ def test_bim_nav_demotes_legacy_evm_label(client):
     )
     html = response.content.decode()
     assert response.status_code == 200
-    assert "EVM Diagnostics" in html
+    assert "EVM Diagnostics" not in html
+    assert 'data-testid="hub-schedule-health-advanced"' in html
+    assert "Apply / 4D Link" in html
     assert 'data-testid="data-sources-purpose"' in html
     assert "Imported schedule and provenance" in html
 
@@ -300,7 +313,7 @@ def test_autolink_summary_uses_proposal_not_authority_wording():
     )
 
     assert "Link proposals generated" in html
-    assert "Requires Governance approval" in html
+    assert "Requires Link Quality confirmation" in html
     assert "Smart Auto-Link complete" not in html
     assert "linked automatically" not in html
     assert "auto_accepted" not in html
@@ -477,7 +490,10 @@ def test_executive_evm_ac_source_line_when_ac_available():
     ac = payload["metrics"].get("e8.ac")
     assert ac is not None
     assert ac["available"] is True
+    assert ac["label"] == "Assignment actual cost indicator"
     assert "canonical ResourceAssignment" in ac["caveat"]
+    assert "company" in ac["caveat"].lower() or "ERP" in ac["caveat"]
+    assert "Company actual cost" not in ac["label"]
 
 
 @pytest.mark.django_db
@@ -582,3 +598,72 @@ def test_legacy_evm_dcma_labelled_legacy_p6_diagnostic(client):
     assert response.status_code == 200
     assert 'data-testid="dcma-legacy-p6-badge"' in html
     assert "Legacy P6 diagnostic" in html
+
+
+@pytest.mark.django_db
+def test_value_cleanup_no_company_cost_overclaim_in_main_surfaces(client):
+    """Main Overview/EVM/hub copy must not claim ERP/invoice/QS/company spend."""
+    project = ProjectFactory()
+    TaskFactory(project=project)
+    client.force_login(project.owner)
+
+    forbidden = (
+        "Company actual cost",
+        "ERP actual",
+        "invoice actual",
+        "QS valuation",
+        "BOQ commercial",
+        "Company cashflow",
+    )
+
+    urls = [
+        reverse("scheduling:schedule", kwargs={"pk": project.pk}) + "?tab=data_sources",
+        reverse("scheduling:schedule", kwargs={"pk": project.pk}) + "?tab=fourD_link",
+        reverse("scheduling:executive_controls", kwargs={"pk": project.pk}),
+        reverse("scheduling:executive_controls_evm", kwargs={"pk": project.pk}),
+        reverse("scheduling:executive_controls_resources", kwargs={"pk": project.pk}),
+    ]
+    for url in urls:
+        response = client.get(url)
+        assert response.status_code == 200, url
+        html = response.content.decode()
+        for phrase in forbidden:
+            assert phrase not in html, f"{phrase!r} found in {url}"
+        # Allow explicit negation "Not company cashflow" only
+        assert "company cashflow" not in html.replace("Not company cashflow", "")
+
+
+@pytest.mark.django_db
+def test_overview_cost_section_uses_assignment_cost_wording(client):
+    """Overview cost HTMX section is assignment indicators, not Cost Position."""
+    project = ProjectFactory()
+    TaskFactory(project=project)
+    client.force_login(project.owner)
+
+    response = client.get(
+        reverse("scheduling:executive_controls_overview_cost", kwargs={"pk": project.pk}),
+        HTTP_HX_REQUEST="true",
+    )
+    html = response.content.decode()
+
+    assert response.status_code == 200
+    assert "Schedule / Assignment Cost Indicators" in html
+    assert "Cost Position" not in html
+    assert 'data-testid="exec-cost-source-caveat"' in html
+    assert "not ERP, invoice, QS, or company actual spend" in html
+
+
+@pytest.mark.django_db
+def test_exec_subnav_marks_resources_matrix_trades_advanced(client):
+    """Matrix / Trades / Resources subnav items are Advanced, not primary heroes."""
+    project = ProjectFactory()
+    client.force_login(project.owner)
+
+    response = client.get(reverse("scheduling:executive_controls", kwargs={"pk": project.pk}))
+    html = response.content.decode()
+
+    assert response.status_code == 200
+    assert 'data-testid="exec-subnav-advanced-matrix"' in html
+    assert 'data-testid="exec-subnav-advanced-trades"' in html
+    assert 'data-testid="exec-subnav-advanced-resources"' in html
+    assert "Resource / Cost Data Readiness" in html

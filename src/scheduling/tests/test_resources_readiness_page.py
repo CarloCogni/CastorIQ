@@ -191,7 +191,10 @@ def test_resources_page_unavailable_state_when_gate_fails(client):
 
     assert response.status_code == 200
     body = response.content.decode("utf-8")
-    assert "Resources readiness unavailable" in body
+    assert (
+        "Resources readiness unavailable" in body
+        or "Resource / cost data readiness unavailable" in body
+    )
     assert (
         "canonical_resource_assignment" not in body or "Source:" not in body.split("unavailable")[0]
     )

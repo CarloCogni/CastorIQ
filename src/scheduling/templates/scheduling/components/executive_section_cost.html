@@ -1,23 +1,32 @@
 <!-- scheduling/components/executive_section_cost.html -->
-<section id="exec-section-cost" class="exec-section mb-4" aria-labelledby="exec-cost-heading">
+<section id="exec-section-cost" class="exec-section mb-4" aria-labelledby="exec-cost-heading"
+         data-testid="exec-assignment-cost-indicators">
     <h2 class="h6 fw-semibold mb-3" id="exec-cost-heading">
-        <i class="bi bi-cash-stack me-1 text-primary"></i> Cost Position
+        <i class="bi bi-cash-stack me-1 text-primary"></i> Schedule / Assignment Cost Indicators
         <span class="badge bg-secondary-subtle text-secondary-emphasis ms-1">{{ performance_mode_label|default:"—" }}</span>
     </h2>
+    <p class="small text-secondary mb-2" data-testid="exec-cost-source-caveat">
+        Cost indicators use schedule/resource assignment sources.
+        They are not ERP, invoice, QS, or company actual spend.
+    </p>
     {% if section_error %}
     <div class="alert alert-danger" role="alert">{{ section_error }}</div>
     {% elif section_available == False %}
     <div class="alert alert-secondary" role="status">
-        Cost position unavailable — {{ unavailable_reason|default:"Insufficient schedule or cost data." }}
+        Schedule / assignment cost indicators unavailable —
+        {{ unavailable_reason|default:"Insufficient schedule or assignment cost data." }}
     </div>
     {% else %}
     {% for w in warnings %}
     <div class="alert alert-warning py-2 small" role="status">{{ w }}</div>
     {% endfor %}
+    {% if ac_source_label %}
+    <p class="small text-secondary mb-2" data-testid="exec-ac-source-line">{{ ac_source_label }}</p>
+    {% endif %}
     {% if evm_detail_url %}
     <p class="small mb-2">
-        <a href="{{ evm_detail_url }}" class="link-primary">Open full EVM Analytics</a>
-        — derived as-of curves, period table, and methodology.
+        <a href="{{ evm_detail_url }}" class="link-primary">Open EVM Analytics</a>
+        — assignment-basis indicators, derived as-of curves, and methodology.
     </p>
     {% endif %}
     <div class="row g-3">

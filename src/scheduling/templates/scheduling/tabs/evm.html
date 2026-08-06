@@ -9,21 +9,22 @@
 
 <div class="d-flex align-items-center gap-2 mb-1 flex-wrap">
     <i class="bi bi-graph-up-arrow fs-5" style="color:#3b82f6;"></i>
-    <h5 class="m-0">Operational EVM diagnostics</h5>
+    <h5 class="m-0">Schedule Health</h5>
     <span class="badge bg-secondary-subtle text-secondary-emphasis border" style="font-size:0.7rem;">Advanced</span>
     <button type="button"
             class="help-pill"
             data-bs-toggle="modal"
             data-bs-target="#evmHelpModal"
-            title="How Operational EVM diagnostics works"
-            aria-label="How Operational EVM diagnostics works">
+            title="How Schedule Health diagnostics work"
+            aria-label="How Schedule Health diagnostics work">
         <i class="bi bi-question-circle"></i>
     </button>
 </div>
 <p class="small text-secondary mb-3" data-testid="legacy-evm-decision-note">
-    Advanced supporting diagnostics.
-    <a href="{% url 'scheduling:executive_controls_evm' project.pk %}">Executive EVM</a> is the decision-facing view;
-    this page is for detailed checks only.
+    Advanced Schedule Health / diagnostics — not the primary 4D/5D journey.
+    Prefer <a href="{% url 'scheduling:executive_controls_evm' project.pk %}">Executive EVM</a> for assignment-basis cost indicators
+    and <a href="{% url 'scheduling:executive_controls' project.pk %}">Executive Overview</a> for schedule position.
+    This page keeps DCMA and supporting checks; Monte Carlo, ML, company-style cashflow, and chat are hidden from the main product flow.
 </p>
 
 <div id="evm-root" style="display:flex; flex-direction:column; gap:16px;">
@@ -62,7 +63,7 @@
         <div class="d-flex align-items-center gap-2 mb-2">
             <span style="font-size:0.67rem; font-weight:700; text-transform:uppercase;
                          letter-spacing:.07em; color:var(--bs-secondary-color);">
-                4D / 5D Readiness
+                Data readiness
             </span>
             <button type="button"
                     class="help-pill"
@@ -345,8 +346,8 @@
         <div id="evm-basis-note" class="d-none mt-2" style="font-size:0.72rem; color:var(--bs-secondary-color); text-align:center;"></div>
     </div>
 
-    <!-- WBS Performance Heatmap -->
-    <div id="evm-wbs-section">
+    <!-- WBS Performance Heatmap — stage proxy demoted from main product flow -->
+    <div id="evm-wbs-section" class="d-none" data-testid="value-cleanup-hide-wbs-proxy">
         <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
             <span style="font-size:0.8rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:0.05em;">WBS Performance</span>
             <span class="badge text-bg-secondary" style="font-size:0.65rem; font-weight:500;"
@@ -450,8 +451,10 @@
          style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
     </div>
 
-    <!-- Probabilistic Forecast (Monte Carlo) -->
+    <!-- Probabilistic Forecast (Monte Carlo) — hidden from main product flow -->
     <div id="evm-mc-section"
+         class="d-none"
+         data-testid="value-cleanup-hide-monte-carlo"
          style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
 
         <div class="d-flex align-items-center justify-content-between mb-3">
@@ -542,8 +545,10 @@
         </div>
     </div>
 
-    <!-- Delay Root-Cause Analysis -->
+    <!-- Delay Root-Cause Analysis — heuristic clusters demoted from main flow -->
     <div id="evm-drc-section"
+         class="d-none"
+         data-testid="value-cleanup-hide-delay-rootcause"
          style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
 
         <div class="d-flex align-items-center gap-2 mb-3">
@@ -630,13 +635,16 @@
         </div>
     </div>
 
-    <!-- Cash Flow Forecast -->
+    <!-- Assignment cost phasing (not company cashflow) — hidden from main product flow -->
     <div id="evm-cf-section"
+         class="d-none"
+         data-testid="value-cleanup-hide-cashflow"
          style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
 
         <div class="d-flex align-items-center gap-2 mb-3">
             <i class="bi bi-cash-stack" style="color:#3b82f6; font-size:1rem;"></i>
-            <span style="font-size:0.8rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:0.05em;">Cash Flow Forecast</span>
+            <span style="font-size:0.8rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:0.05em;">Assignment cost phasing</span>
+            <span class="badge bg-secondary-subtle text-secondary-emphasis border" style="font-size:0.62rem;">Not company cashflow</span>
             <button type="button"
                     class="help-pill"
                     data-bs-toggle="modal"
@@ -813,8 +821,10 @@
         </div>
     </div>
 
-    <!-- Completion Probability (ML) -->
+    <!-- Completion Probability (ML) — hidden from main product flow -->
     <div id="evm-ml-section"
+         class="d-none"
+         data-testid="value-cleanup-hide-ml"
          style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
 
         <div class="d-flex align-items-center gap-2 mb-3">
@@ -873,8 +883,10 @@
         </div>
     </div>
 
-    <!-- Anomaly Detection -->
+    <!-- Anomaly Detection — advanced only -->
     <div id="evm-anomaly-section"
+         class="d-none"
+         data-testid="value-cleanup-hide-anomaly"
          style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
 
         <div class="d-flex align-items-center gap-2 mb-3">
@@ -1154,8 +1166,10 @@
         <div id="rpt-error" class="d-none mt-2 text-danger" style="font-size:0.74rem;"></div>
     </div>
 
-    <!-- Project Controls Chat -->
+    <!-- Project Controls Chat — hidden from main product flow -->
     <div id="evm-chat-section"
+         class="d-none"
+         data-testid="value-cleanup-hide-chat"
          style="border:1px solid var(--bs-border-color); border-radius:8px; background:var(--bs-body-bg); overflow:hidden;">
 
         <!-- Header / toggle -->

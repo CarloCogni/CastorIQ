@@ -303,8 +303,8 @@
     <span class="text-secondary ms-1">— Advisory suggestions</span>
     <p class="mb-0 mt-1 text-secondary">
       Notes only — this assistant does not approve links and schedule writeback is not available here.
-      Use <strong>Propose links</strong> to generate candidates, then approve trusted bindings in
-      <strong>Governance</strong>.
+      Use <strong>Propose links</strong> to generate candidates, then confirm applied map quality in
+      <strong>Link Quality</strong> (advanced trust controls).
     </p>
   </div>
   <!-- BOTTOM FOOTER: Controls bar -->
@@ -369,38 +369,40 @@
   <!-- Results area: Link Engine feedback (collapses when empty) -->
   <div id="fourD-link-results" class="fourD-stack-section"></div>
 
-  <!-- Review pane: Governance (approve) + Link Proposals -->
+  <!-- Review pane: Link Quality (advanced trust) + Link Proposals -->
   <div id="fourD-bottom-panels" class="fourD-stack-section" style="border-top:1px solid var(--bs-border-color);">
     <ul class="nav nav-tabs px-2 pt-1 mb-0" style="font-size:0.8rem;" role="tablist">
       <li class="nav-item" role="presentation">
-        <button class="nav-link active py-1 px-2" id="fd-gov-tab" data-bs-toggle="tab"
-                data-bs-target="#fd-gov-pane" type="button" role="tab"
-                aria-controls="fd-gov-pane" aria-selected="true"
-                title="Approval authority for trusted 4D bindings">
-          <i class="bi bi-shield-check me-1"></i>Governance
+        <button class="nav-link active py-1 px-2" id="fd-pipeline-tab" data-bs-toggle="tab"
+                data-bs-target="#fourD-review-pane" type="button" role="tab"
+                aria-controls="fourD-review-pane" aria-selected="true"
+                title="Proposed map — confirm trust in Link Quality">
+          Link Proposals
         </button>
       </li>
       <li class="nav-item" role="presentation">
-        <button class="nav-link py-1 px-2" id="fd-pipeline-tab" data-bs-toggle="tab"
-                data-bs-target="#fourD-review-pane" type="button" role="tab"
-                aria-controls="fourD-review-pane" aria-selected="false"
-                title="Proposed links only — approve in Governance">
-          Link Proposals
+        <button class="nav-link py-1 px-2" id="fd-gov-tab" data-bs-toggle="tab"
+                data-bs-target="#fd-gov-pane" type="button" role="tab"
+                aria-controls="fd-gov-pane" aria-selected="false"
+                title="Advanced trust controls for applied schedule-model map"
+                data-testid="fourd-link-quality-tab">
+          <i class="bi bi-shield-check me-1"></i>Link Quality
+          <span class="badge bg-secondary-subtle text-secondary-emphasis border ms-1" style="font-size:0.62rem;">Advanced</span>
         </button>
       </li>
     </ul>
     <div class="tab-content">
-      <div class="tab-pane fade show active p-2" id="fd-gov-pane" role="tabpanel"
-           hx-get="{% url 'scheduling:link_governance_workspace' project.pk %}"
-           hx-trigger="load"
+      <div class="tab-pane fade show active" id="fourD-review-pane" role="tabpanel"
+           hx-get="{% url 'scheduling:review' project.pk %}?inline=1"
+           hx-trigger="shown.bs.tab once from:#fd-pipeline-tab, load"
            hx-swap="innerHTML">
-        <div class="text-secondary small py-2"><span class="spinner-border spinner-border-sm me-1"></span>Loading governance…</div>
+        <div class="text-secondary small py-2 px-2"><span class="spinner-border spinner-border-sm me-1"></span>Loading proposals…</div>
       </div>
-      <div class="tab-pane fade" id="fourD-review-pane" role="tabpanel"
-           hx-get="{% url 'scheduling:review' project.pk %}?filter=all&inline=1"
-           hx-trigger="revealed"
+      <div class="tab-pane fade p-2" id="fd-gov-pane" role="tabpanel"
+           hx-get="{% url 'scheduling:link_governance_workspace' project.pk %}"
+           hx-trigger="shown.bs.tab once from:#fd-gov-tab"
            hx-swap="innerHTML">
-        <div class="text-secondary small py-2 px-2">Open Link Proposals to review candidates.</div>
+        <div class="text-secondary small py-2"><span class="spinner-border spinner-border-sm me-1"></span>Loading link quality…</div>
       </div>
     </div>
   </div>

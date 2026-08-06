@@ -294,12 +294,12 @@ def test_pipeline_review_page_has_no_duplicate_approval_controls(client):
     html = response.content.decode()
 
     assert response.status_code == 200
-    assert html.count("Open Governance for ≥95% proposals") == 1
+    assert html.count("Open Link Quality for ≥95% proposals") == 1
     assert "Approve ≥95%" not in html
     assert "Bulk accept ≥95%" not in html
     assert "binding_bulk_accept" not in html
     assert 'data-testid="proposals-open-governance-cta"' in html
     assert "binding_accept" not in html
     assert "Approve as trusted" not in html
-    assert html.count("Proposed links require Governance approval") == 1
+    assert html.count("Proposed links require Link Quality confirmation") == 1
     assert reverse("scheduling:link_governance_workspace", args=[project.pk]) in html

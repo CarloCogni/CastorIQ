@@ -1,7 +1,7 @@
 {% extends "core/base.html" %}
-<!-- scheduling/executive_controls_resources_page.html — DF-E5a Resources Readiness -->
+<!-- scheduling/executive_controls_resources_page.html — DF-E5a Resource/Cost Data Readiness -->
 
-{% block title %}Resources Readiness — {{ project.name }} — Castor{% endblock %}
+{% block title %}Resource / Cost Data Readiness — {{ project.name }} — Castor{% endblock %}
 
 {% block content %}
 <div class="container-fluid py-3 px-3 px-lg-4">
@@ -9,29 +9,36 @@
         <ol class="breadcrumb small mb-0">
             <li class="breadcrumb-item"><a href="{% url 'projects:detail' project.pk %}">{{ project.name }}</a></li>
             <li class="breadcrumb-item"><a href="{% url 'scheduling:executive_controls' project.pk %}">Executive Controls</a></li>
-            <li class="breadcrumb-item active" aria-current="page">Resources readiness</li>
+            <li class="breadcrumb-item active" aria-current="page">Resource / Cost Data Readiness</li>
         </ol>
     </nav>
 
     <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
-        <h1 class="h5 fw-semibold mb-0">Resources Readiness</h1>
+        <h1 class="h5 fw-semibold mb-0" data-testid="resources-page-title">Resource / Cost Data Readiness</h1>
+        <span class="badge bg-secondary-subtle text-secondary-emphasis border">Advanced</span>
         <span class="badge bg-secondary-subtle text-secondary-emphasis border">Not full E8-E</span>
         <button type="button"
                 class="help-pill"
                 data-bs-toggle="modal"
                 data-bs-target="#resourcesReadinessHelpModal"
-                title="How Resources Readiness works"
-                aria-label="How Resources Readiness works">
+                title="How Resource / Cost Data Readiness works"
+                aria-label="How Resource / Cost Data Readiness works">
             <i class="bi bi-question-circle"></i>
         </button>
     </div>
+
+    <p class="small text-secondary mb-3" data-testid="resources-framing-caveat">
+        Resource / cost <strong>data readiness</strong> from schedule assignments only.
+        Not resource planning, headcount, leveling, payroll, or site attendance.
+        Assignment costs are not company/ERP/invoice/QS spend.
+    </p>
 
     {% include "scheduling/components/executive_controls_subnav.html" with exec_subtab="resources" capability_profile=capability_profile %}
     {% include "scheduling/components/executive_capability_banner.html" %}
 
     {% if not readiness.gate_enabled %}
     <div class="alert alert-warning" role="status">
-        <strong>Resources readiness unavailable.</strong>
+        <strong>Resource / cost data readiness unavailable.</strong>
         {{ readiness.gate_reason }}
         Missing data is shown as Unavailable — not zero.
     </div>
@@ -59,11 +66,11 @@
     {% endif %}
 
     <div class="card border mb-3">
-        <div class="card-header py-2 small fw-semibold">Readiness</div>
+        <div class="card-header py-2 small fw-semibold">Assignment data readiness</div>
         <div class="card-body">
             <div class="row g-3 small">
                 <div class="col-md-3">
-                    <div class="text-secondary">Resources</div>
+                    <div class="text-secondary">Resources (schedule)</div>
                     <div class="fs-5" data-testid="resources-resource-count">{{ readiness.readiness.resource_count_display }}</div>
                 </div>
                 <div class="col-md-3">
@@ -71,11 +78,11 @@
                     <div class="fs-5" data-testid="resources-assignment-count">{{ readiness.readiness.assignment_count_display }}</div>
                 </div>
                 <div class="col-md-3">
-                    <div class="text-secondary">AC coverage</div>
+                    <div class="text-secondary">Assignment AC coverage</div>
                     <div data-testid="resources-ac-coverage">{{ readiness.readiness.ac_coverage_label }}</div>
                 </div>
                 <div class="col-md-3">
-                    <div class="text-secondary">Labor coverage</div>
+                    <div class="text-secondary">Labor assignment coverage</div>
                     <div data-testid="resources-labor-coverage">{{ readiness.readiness.labor_coverage_label }}</div>
                 </div>
             </div>
@@ -85,11 +92,11 @@
     <div class="row g-3 mb-3">
         <div class="col-md-8">
             <div class="card border h-100">
-                <div class="card-header py-2 small fw-semibold">Manhour KPIs</div>
+                <div class="card-header py-2 small fw-semibold">Assignment manhour units</div>
                 <div class="card-body">
                     <p class="small text-secondary mb-3">
                         Units source: <code>{{ readiness.manhours.units_source }}</code>.
-                        Manhours are assignment units, not attendance.
+                        Manhours are assignment units, not attendance or payroll.
                     </p>
                     <div class="row g-3">
                         <div class="col-sm-4">
@@ -97,7 +104,7 @@
                             <div class="fs-5" data-testid="resources-planned-manhours">{{ readiness.manhours.planned.display }}</div>
                         </div>
                         <div class="col-sm-4">
-                            <div class="text-secondary small">Actual</div>
+                            <div class="text-secondary small">Actual (assignment)</div>
                             <div class="fs-5" data-testid="resources-actual-manhours">{{ readiness.manhours.actual.display }}</div>
                         </div>
                         <div class="col-sm-4">
@@ -105,11 +112,14 @@
                             <div class="fs-5" data-testid="resources-remaining-manhours">{{ readiness.manhours.remaining.display }}</div>
                         </div>
                     </div>
-                    <hr class="my-3">
-                    <div class="text-secondary small">Equivalent workforce</div>
-                    <div class="fs-5" data-testid="resources-equivalent-workforce">{{ readiness.equivalent_workforce.display }}</div>
-                    <p class="small text-secondary mb-0 mt-1">{{ readiness.equivalent_workforce.note }}</p>
-                    <p class="small text-secondary mb-0">Hours/day assumption: {{ readiness.equivalent_workforce.hours_per_day_display }}</p>
+                    <!-- Equivalent workforce / FTE demoted — not headcount -->
+                    <div class="d-none mt-3" data-testid="resources-fte-advanced-hidden">
+                        <hr class="my-3">
+                        <div class="text-secondary small">Equivalent workforce (computed assignment units ÷ hours/day — not headcount)</div>
+                        <div class="fs-5" data-testid="resources-equivalent-workforce">{{ readiness.equivalent_workforce.display }}</div>
+                        <p class="small text-secondary mb-0 mt-1">{{ readiness.equivalent_workforce.note }}</p>
+                        <p class="small text-secondary mb-0">Hours/day assumption: {{ readiness.equivalent_workforce.hours_per_day_display }}</p>
+                    </div>
                 </div>
             </div>
         </div>

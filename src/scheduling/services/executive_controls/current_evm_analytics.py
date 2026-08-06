@@ -221,7 +221,9 @@ class CurrentEVMAnalyticsService:
         add(
             self._metric(
                 metric_id="e8.pv",
-                label="Planned Value (PV)" if cost_mode else "Planned progress (PV proxy)",
+                label="Planned value (schedule basis)"
+                if cost_mode
+                else "Planned progress (PV proxy)",
                 value=pv,
                 unit="currency" if cost_mode else "index",
                 available=pv_avail,
@@ -240,7 +242,7 @@ class CurrentEVMAnalyticsService:
         add(
             self._metric(
                 metric_id="e8.ev",
-                label="Earned Value (EV)" if cost_mode else "Earned progress",
+                label="Earned value (schedule basis)" if cost_mode else "Earned progress",
                 value=ev,
                 unit="currency" if cost_mode else "index",
                 available=ev_avail,
@@ -248,7 +250,7 @@ class CurrentEVMAnalyticsService:
                 formula="Σ(weight × earned_pct) at data date",
                 caveat="Not monetary Earned Value in schedule_performance mode."
                 if not cost_mode
-                else "",
+                else "Schedule/resource-assignment cost indicators — not company actual spend.",
                 data_date=data_date,
                 coverage=coverage,
             )
@@ -270,13 +272,16 @@ class CurrentEVMAnalyticsService:
         add(
             self._metric(
                 metric_id="e8.bac",
-                label="Budget at Completion (BAC)" if cost_mode else "Total weight (BAC proxy)",
+                label="Schedule BAC" if cost_mode else "Total weight (BAC proxy)",
                 value=bac,
                 unit="currency" if cost_mode else "index",
                 available=bac_avail,
                 authority=auth_derived if cost_mode else auth_proxy,
                 formula=evm.get("cost_basis", ""),
-                caveat=evm.get("cost_basis", ""),
+                caveat=(
+                    f"{evm.get('cost_basis', '')} "
+                    "Schedule/resource-assignment basis — not company budget ledger."
+                ).strip(),
                 data_date=data_date,
                 coverage=coverage,
             )
@@ -291,7 +296,7 @@ class CurrentEVMAnalyticsService:
             add(
                 self._metric(
                     metric_id="e8.ac",
-                    label="Actual Cost (AC)",
+                    label="Assignment actual cost indicator",
                     value=ac,
                     unit="currency",
                     available=True,
@@ -305,13 +310,16 @@ class CurrentEVMAnalyticsService:
             add(
                 self._metric(
                     metric_id="e8.cpi",
-                    label="Cost Performance Index (CPI)",
+                    label="CPI (assignment basis)",
                     value=cpi,
                     unit="index",
                     available=cpi is not None,
                     authority=auth_derived,
                     formula="EV / AC",
-                    caveat="Current point — compare using tolerance bands, not red/green alone.",
+                    caveat=(
+                        "Assignment-basis indicator — not company cost performance. "
+                        "Current point — compare using tolerance bands, not red/green alone."
+                    ),
                     data_date=data_date,
                     coverage=coverage,
                 )
@@ -319,28 +327,28 @@ class CurrentEVMAnalyticsService:
             add(
                 self._metric(
                     metric_id="e8.eac",
-                    label="Estimate at Completion (EAC)",
+                    label="EAC (assignment basis)",
                     value=eac,
                     unit="currency",
                     available=eac is not None and caps[FeatureId.EAC.value]["available"],
                     authority=auth_derived,
                     formula="BAC / CPI",
-                    caveat="Derived forecast — not imported history.",
+                    caveat="Derived assignment-basis forecast — not company/ERP spend forecast.",
                     data_date=data_date,
                     coverage=coverage,
-                    missing_reason="EAC unavailable — insufficient cost inputs.",
+                    missing_reason="EAC unavailable — insufficient assignment cost inputs.",
                 )
             )
             add(
                 self._metric(
                     metric_id="e8.etc",
-                    label="Estimate to Complete (ETC)",
+                    label="ETC (assignment basis)",
                     value=etc,
                     unit="currency",
                     available=etc is not None and caps[FeatureId.ETC.value]["available"],
                     authority=auth_derived,
                     formula="EAC − AC",
-                    caveat="Derived projection from current CPI.",
+                    caveat="Derived projection from assignment CPI — not company remaining spend.",
                     data_date=data_date,
                     coverage=coverage,
                 )
@@ -348,13 +356,13 @@ class CurrentEVMAnalyticsService:
             add(
                 self._metric(
                     metric_id="e8.vac",
-                    label="Variance at Completion (VAC)",
+                    label="VAC (assignment basis)",
                     value=vac,
                     unit="currency",
                     available=vac is not None and caps[FeatureId.VAC.value]["available"],
                     authority=auth_derived,
                     formula="BAC − EAC",
-                    caveat="Derived forecast variance at completion.",
+                    caveat="Derived assignment-basis variance — not contractual commercial VAC.",
                     data_date=data_date,
                     coverage=coverage,
                 )

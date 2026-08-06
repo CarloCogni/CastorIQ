@@ -45,12 +45,12 @@
 
 <div class="d-flex flex-wrap gap-2 mb-3">
     {% if summary.needs_review_high %}
-    <!-- Navigation only — trust creation stays in Governance -->
+    <!-- Navigation only — trust creation stays in Link Quality (advanced) -->
     <a href="{% url 'scheduling:link_governance_workspace' project.pk %}"
        class="btn btn-outline-warning btn-sm"
        data-testid="proposals-open-governance-cta"
-       title="Open Governance to review high-confidence proposals (approval authority)">
-        <i class="bi bi-shield-check me-1"></i>Open Governance for ≥95% proposals
+       title="Open Link Quality to review high-confidence proposals (advanced trust controls)">
+        <i class="bi bi-shield-check me-1"></i>Open Link Quality for ≥95% proposals
         <span class="badge bg-dark ms-1">{{ summary.needs_review_high }}</span>
     </a>
     {% endif %}
@@ -59,6 +59,6 @@
         <i class="bi bi-download me-1"></i>Export CSV
     </a>
 </div>
-<p class="text-secondary mb-3" style="font-size:0.78rem;">
-    Proposed links require Governance approval before they become trusted 4D truth.
+<p class="text-secondary mb-3" style="font-size:0.78rem;" data-testid="proposals-trust-note">
+    Proposed links require Link Quality confirmation before they become trusted applied-map truth.
 </p>

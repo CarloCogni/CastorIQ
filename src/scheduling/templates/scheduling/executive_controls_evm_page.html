@@ -29,9 +29,11 @@
     {% include "scheduling/components/executive_controls_subnav.html" with exec_subtab="evm" capability_profile=capability_profile %}
     {% include "scheduling/components/executive_capability_banner.html" %}
 
-    <div class="alert alert-info py-2 small mb-3" role="status">
-        Derived As-of S-Curve — reconstructed from the current schedule state.
-        This is not imported historical performance and may change after re-import.
+    <div class="alert alert-info py-2 small mb-3" role="status" data-testid="exec-evm-source-caveat">
+        Schedule / assignment cost indicators only.
+        Assignment actual cost is not ERP, invoice, QS, or company actual spend.
+        Derived As-of S-Curve is reconstructed from the current schedule state —
+        not imported historical performance and may change after re-import.
     </div>
 
     <div class="row g-2 mb-3 align-items-end">

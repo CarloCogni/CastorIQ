@@ -88,8 +88,8 @@
                         <text x="50" y="50" text-anchor="middle" dominant-baseline="central"
                               font-size="20" font-weight="bold" fill="{{ ring_5d.color }}">{{ ring_5d.pct }}%</text>
                     </svg>
-                    <h6 class="fw-semibold mb-1">5D Readiness</h6>
-                    <p class="text-secondary small mb-0">Cost data present &middot; {{ total_entities }} elements</p>
+                    <h6 class="fw-semibold mb-1">Model cost-property coverage</h6>
+                    <p class="text-secondary small mb-0">IFC Cost property presence &middot; {{ total_entities }} elements — not commercial 5D / BOQ / ERP</p>
                     {% if missing_5d > 0 %}
                     <p class="small mt-1 mb-0 fw-medium" style="color:#ef4444;">{{ missing_5d }} missing Cost data</p>
                     {% else %}

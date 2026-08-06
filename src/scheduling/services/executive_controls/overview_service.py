@@ -245,11 +245,14 @@ class ExecutiveControlsOverviewService:
             ),
             kpi_card(
                 metric_id="e8.project_finish_variance",
-                label="Project finish variance",
+                label="Project finish variance (analytical)",
                 value=finish.get("variance_days"),
                 unit="days",
                 available=finish.get("available", False),
-                caveat=finish.get("caveat", BASELINE_SEMANTICS),
+                caveat=(
+                    f"{finish.get('caveat', BASELINE_SEMANTICS)} "
+                    "Analytical schedule indicator — not a contractual delay claim."
+                ),
                 unavailable_reason=finish.get("caveat", "") if not finish.get("available") else "",
                 data_date=data_date.isoformat(),
             ),
@@ -325,24 +328,29 @@ class ExecutiveControlsOverviewService:
         cards = [
             _cost_card(
                 "e8.pv",
-                "Planned Value (PV)" if cost_evm else "Planned progress (PV proxy)",
+                "Planned value (schedule basis)" if cost_evm else "Planned progress (PV proxy)",
                 "pv",
                 value_unit,
             ),
             _cost_card(
                 "e8.ev",
-                "Earned Value (EV)" if cost_evm else "Earned progress (EV proxy)",
+                "Earned value (schedule basis)" if cost_evm else "Earned progress (EV proxy)",
                 "ev",
                 value_unit,
             ),
-            _cost_card("e8.ac", "Actual Cost (AC)", "ac", "currency"),
+            _cost_card(
+                "e8.ac",
+                "Assignment actual cost indicator",
+                "ac",
+                "currency",
+            ),
             _cost_card("e8.spi", "SPI", "spi"),
-            _cost_card("e8.cpi", "CPI", "cpi"),
-            _cost_card("e8.eac", "EAC", "eac", "currency"),
-            _cost_card("e8.vac", "VAC", "vac", "currency"),
+            _cost_card("e8.cpi", "CPI (assignment basis)", "cpi"),
+            _cost_card("e8.eac", "EAC (assignment basis)", "eac", "currency"),
+            _cost_card("e8.vac", "VAC (assignment basis)", "vac", "currency"),
             kpi_card(
                 metric_id="e8.bac",
-                label="BAC" if cost_evm else "Total weight (BAC proxy)",
+                label="Schedule BAC" if cost_evm else "Total weight (BAC proxy)",
                 value=snap.get("bac"),
                 unit=value_unit,
                 available=snap.get("bac") is not None,

@@ -24,24 +24,10 @@
             <li class="nav-item">
                 <a class="nav-link py-1 px-3 {% if schedule_tab == 'fourD_link' %}active{% endif %}"
                    href="{% url 'scheduling:schedule' project.pk %}?tab=fourD_link"
-                   style="font-size:0.85rem;">
-                    <i class="bi bi-boxes me-1"></i>4D Link
-                    {% if task_count %}<span class="badge bg-secondary ms-1" style="font-size:0.65rem;">{{ task_count }}</span>{% endif %}
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link py-1 px-3 {% if schedule_tab == 'evm' %}active{% endif %}"
-                   href="{% url 'scheduling:schedule' project.pk %}?tab=evm"
                    style="font-size:0.85rem;"
-                   title="Operational diagnostics — Executive Controls → EVM is the decision-facing view">
-                    <i class="bi bi-graph-up-arrow me-1"></i>EVM Diagnostics
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link py-1 px-3 {% if castor_subtab == 'executive_controls' %}active{% endif %}"
-                   href="{% url 'scheduling:executive_controls' project.pk %}"
-                   style="font-size:0.85rem;">
-                    <i class="bi bi-speedometer2 me-1"></i>Executive Controls
+                   data-testid="hub-apply-4d-link">
+                    <i class="bi bi-boxes me-1"></i>Apply / 4D Link
+                    {% if task_count %}<span class="badge bg-secondary ms-1" style="font-size:0.65rem;">{{ task_count }}</span>{% endif %}
                 </a>
             </li>
             <li class="nav-item">
@@ -51,7 +37,22 @@
                     <i class="bi bi-calendar-week me-1"></i>Look-ahead
                 </a>
             </li>
-            <!-- Hidden tabs — preserved for direct URL access, not shown in nav -->
+            <li class="nav-item">
+                <a class="nav-link py-1 px-3 {% if castor_subtab == 'executive_controls' %}active{% endif %}"
+                   href="{% url 'scheduling:executive_controls' project.pk %}"
+                   style="font-size:0.85rem;">
+                    <i class="bi bi-speedometer2 me-1"></i>Executive Controls
+                </a>
+            </li>
+            <!-- Hidden tabs — preserved for direct URL access, not shown in primary nav -->
+            <li class="nav-item d-none" data-testid="hub-schedule-health-advanced">
+                <a class="nav-link py-1 px-3 {% if schedule_tab == 'evm' %}active{% endif %}"
+                   href="{% url 'scheduling:schedule' project.pk %}?tab=evm"
+                   style="font-size:0.85rem;"
+                   title="Advanced Schedule Health / diagnostics — not primary product flow">
+                    <i class="bi bi-heart-pulse me-1"></i>Schedule Health
+                </a>
+            </li>
             <li class="nav-item d-none">
                 <a class="nav-link py-1 px-3 {% if castor_subtab == 'schedule' %}active{% endif %}"
                    href="{% url 'scheduling:schedule' project.pk %}"

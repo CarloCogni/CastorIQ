@@ -4,14 +4,16 @@
     <!-- Header bar -->
     <div class="d-flex align-items-center px-3 py-2 border-bottom bg-body flex-shrink-0" style="gap:0.5rem;">
         <h5 class="mb-0 me-1">
-            <i class="bi bi-calculator me-2 text-primary"></i>Quantities
+            <i class="bi bi-calculator me-2 text-primary"></i>Model Quantities
         </h5>
+        <span class="badge bg-secondary-subtle text-secondary-emphasis border" style="font-size:0.65rem;">Advanced</span>
+        <span class="badge bg-secondary-subtle text-secondary-emphasis border" style="font-size:0.65rem;" data-testid="qto-not-boq-badge">Not BOQ / commercial 5D</span>
         <button type="button"
                 class="help-pill"
                 data-bs-toggle="modal"
                 data-bs-target="#qtoHelpModal"
-                title="How Quantities works"
-                aria-label="How Quantities works">
+                title="How Model Quantities works"
+                aria-label="How Model Quantities works">
             <i class="bi bi-question-circle"></i>
         </button>
         <div class="ms-auto d-flex gap-2">
@@ -159,7 +161,10 @@
                     <i class="bi bi-box-seam me-1 text-primary"></i>What is it?
                 </p>
                 <p class="text-secondary fs-7 mb-4">
-                    The Quantities tab performs a Quantity Take-Off (QTO) against your IFC model — extracting areas, volumes, and lengths from standard <code>Qto_*BaseQuantities</code> property sets. It aggregates quantities by element type, level, and material, and supports optional unit costs for 5D cost estimation.
+                    The Model Quantities tab extracts IFC quantities (areas, volumes, lengths) from standard
+                    <code>Qto_*BaseQuantities</code> property sets and supports optional unit-cost
+                    <strong>estimates</strong>. This is a future 5D foundation — not BOQ control, ERP cost,
+                    QS valuation, or company commercial 5D.
                 </p>
 
                 <p class="fw-semibold fs-7 mb-2">
@@ -258,9 +263,11 @@
                 color: d.coverage_pct >= 80 ? "#16a34a" : "#f59e0b",
             },
             {
-                label: "Total Est. Cost",
+                label: "Optional unit-cost estimate",
                 value: hasCost ? _fmtCost(d.total_cost_estimate) : "—",
-                sub: hasCost ? "Based on set unit costs" : "Set unit costs per type to enable",
+                sub: hasCost
+                    ? "Model quantities × user unit costs — not BOQ/ERP/QS"
+                    : "Set unit costs per type for an optional estimate",
                 color: hasCost ? "var(--bs-emphasis-color)" : "var(--bs-secondary-color)",
             },
         ];

@@ -4,27 +4,29 @@
     <div class="d-flex align-items-center gap-2 flex-wrap">
         <div class="d-flex align-items-center gap-2">
             <i class="bi bi-shield-check fs-5 text-primary"></i>
-            <h5 class="m-0">Governance</h5>
-            <span class="badge bg-primary-subtle text-primary-emphasis border" style="font-size:0.7rem;" data-testid="governance-authority-badge">Trusted bindings</span>
+            <h5 class="m-0">Link Quality</h5>
+            <span class="badge bg-secondary-subtle text-secondary-emphasis border" style="font-size:0.65rem;">Advanced trust</span>
+            <span class="badge bg-primary-subtle text-primary-emphasis border" style="font-size:0.7rem;" data-testid="governance-authority-badge">Trusted applied map</span>
             <button type="button"
                     class="help-pill"
                     data-bs-toggle="modal"
                     data-bs-target="#linkGovernanceHelpModal"
-                    title="How Link Governance works"
-                    aria-label="How Link Governance works">
+                    title="How Link Quality works"
+                    aria-label="How Link Quality works">
                 <i class="bi bi-question-circle"></i>
             </button>
             <button type="button"
                     class="help-pill"
                     data-bs-toggle="modal"
                     data-bs-target="#governanceMethodologyHelpModal"
-                    title="Governance methodology and metrics"
-                    aria-label="Governance methodology and metrics">
+                    title="Link quality methodology and metrics"
+                    aria-label="Link quality methodology and metrics">
                 <i class="bi bi-calculator"></i>
             </button>
         </div>
-        <span class="badge bg-primary-subtle text-primary-emphasis border"
-              style="font-size:0.72rem;">trusted-binding-v1</span>
+        <span class="badge bg-secondary-subtle text-secondary-emphasis border d-none"
+              style="font-size:0.72rem;"
+              data-testid="governance-method-badge-advanced">trusted-binding-v1</span>
         {% if governance_capabilities.capabilities.can_approve_exact_preview %}
         <a class="btn btn-sm btn-outline-primary ms-auto"
            hx-get="{% url 'scheduling:schedule_link_preview_param' project.pk %}?param_name=Activity%20ID&amp;show_approval=1"
