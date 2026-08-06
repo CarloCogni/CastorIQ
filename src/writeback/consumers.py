@@ -30,6 +30,7 @@ import threading
 
 from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
+from django.core.exceptions import ValidationError as DjangoValidationError
 
 from core.consumers import CastorConsumerMixin, capture_consumer_errors
 
@@ -143,16 +144,19 @@ class ProposalConsumer(CastorConsumerMixin, AsyncJsonWebsocketConsumer):
         message_text: str,
         session_id: str | None,
         conflict_ids_raw: str = "",
-        failure_context: str | None = None,
+        failure_id: str | None = None,
     ):
         """
         Synchronous pipeline execution wrapped for async use.
 
         Creates the user message, runs ModificationService.propose() with a
-        WebSocketEmitter, saves the assistant message, and returns the raw result.
+        WebSocketEmitter, saves the assistant message, and returns the raw
+        result. When ``failure_id`` is given, the matching FailureRecord is
+        passed as ``retry_of`` so its structured errors feed the retried stage.
         """
         from chat.models import ChatSession, Message
         from environments.models import Project
+        from metacastor.models import FailureRecord
         from writeback.services.emitters import CancellationError, WebSocketEmitter
         from writeback.services.modification_service import ModificationError, ModificationService
 
@@ -191,6 +195,16 @@ class ProposalConsumer(CastorConsumerMixin, AsyncJsonWebsocketConsumer):
         )
         svc = ModificationService(project, user=self.user)
 
+        # Resolve the retry context BEFORE superseding anything: a stale or
+        # malformed failure_id from the client must degrade to a fresh run,
+        # not blow up after the prior proposals were already superseded.
+        retry_of = None
+        if failure_id:
+            try:
+                retry_of = FailureRecord.objects.filter(pk=failure_id).first()
+            except (DjangoValidationError, ValueError):
+                logger.warning("Ignoring malformed failure_id in retry: %r", failure_id)
+
         # Supersede any prior pending proposals in this session before
         # generating a new one — captures the abandon as a queryable status.
         superseded_ids = svc.supersede_pending(session, self.user)
@@ -201,7 +215,7 @@ class ProposalConsumer(CastorConsumerMixin, AsyncJsonWebsocketConsumer):
                 user=self.user,
                 message_obj=user_msg,
                 emitter=emitter,
-                failure_context=failure_context,
+                retry_of=retry_of,
             )
         except CancellationError:
             logger.debug("Proposal pipeline cancelled for user=%s", self.user.username)
@@ -271,14 +285,8 @@ class ProposalConsumer(CastorConsumerMixin, AsyncJsonWebsocketConsumer):
         conflict_ids_raw = content.get("conflict_ids", "")
 
         try:
-            failure_context = await self._build_retry_context(failure_id)
-        except Exception as e:
-            logger.warning("Could not load failure context for retry: %s", e)
-            failure_context = None
-
-        try:
             result, proposals, superseded_ids = await self._run_pipeline(
-                message_text, session_id, conflict_ids_raw, failure_context=failure_context
+                message_text, session_id, conflict_ids_raw, failure_id=failure_id
             )
         except Exception as e:
             from writeback.services.emitters import CancellationError
@@ -332,18 +340,6 @@ class ProposalConsumer(CastorConsumerMixin, AsyncJsonWebsocketConsumer):
         }
 
     @sync_to_async
-    def _build_retry_context(self, failure_id: str) -> str | None:
-        """Build failure_context string from a FailureRecord for retry injection."""
-        from metacastor.models import FailureRecord
-        from metacastor.services.failure_classifier import build_failure_context
-
-        try:
-            rec = FailureRecord.objects.get(pk=failure_id)
-            return build_failure_context(rec)
-        except FailureRecord.DoesNotExist:
-            return None
-
-    @sync_to_async
     def _serialize_result(self, result, proposals: list) -> dict:
         """Replicate the serialization from ModifyView._handle_propose()."""
         is_chain = isinstance(result, list)
@@ -387,6 +383,9 @@ class ProposalConsumer(CastorConsumerMixin, AsyncJsonWebsocketConsumer):
                     entry["code"] = p.intent_json["code"]
                 if "review" in p.intent_json:
                     entry["review"] = p.intent_json["review"]
+            # Drives the client-side Execute gating; the server check in
+            # views._handle_approve remains the source of truth.
+            entry["requires_code_ack"] = p.requires_code_ack
 
             serialized.append(entry)
 

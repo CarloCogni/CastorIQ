@@ -127,7 +127,12 @@ Powers natural language queries across IFC entities and documents. Both data typ
 
 Proposes IFC modifications through a Risk-Stratified Autonomous Action (RSAA) framework with three escalation tiers (GREEN → ORANGE → RED). The LLM never exercises more power than the task requires.
 
-→ **[Full documentation](writeback/overview.md)**
+Two structural decisions carry most of the safety:
+
+- **The tier is chosen deterministically.** Four narrow LLM stages (triage → slot extraction → entity resolution, then a code-free router) each do one job. No model decides how much authority it gets — a policy table does.
+- **Every tier produces the same artifact.** A `MutationJournal` — an immutable list of typed mutations pinned to a hash of the file it targets. The diff the user approves is a rendering of that journal, and execution replays exactly it onto a temp copy, swapped over the original only on complete success. A failure leaves the file byte-identical; a file that changed underneath the proposal invalidates it rather than being written to.
+
+→ **[Full documentation](writeback/overview.md)** · **[Pipeline rationale](specs/writeback/pipeline-architecture.md)**
 
 ### Real-Time Layer
 

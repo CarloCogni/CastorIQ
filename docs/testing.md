@@ -53,11 +53,12 @@ Four principles govern every test in this suite.
 | Layer | Marker | Needs DB? | Extra prerequisites | Examples |
 |---|---|---|---|---|
 | Pure logic | _(none)_ | No | — | `test_token_utils`, `test_message_normalizer`, `test_emitters`, `test_llm_model_registry` |
-| LLM-mocked | _(none)_ | No | — | `test_triage_classifier`, `test_slot_extractor`, `test_hint_generator`, `test_tier3_executor`, `test_git_service`, `test_token_budget` |
+| LLM-mocked | _(none)_ | No | — | `test_triage_classifier`, `test_slot_extractor`, `test_hint_generator`, `test_git_service`, `test_token_budget` |
 | DB-dependent | `@pytest.mark.django_db` | Yes | Docker + PostgreSQL | `test_filter_engine`, `test_tier1_validator`, `test_models` |
 | Pipeline integration smoke | `@pytest.mark.slow` | Yes | Docker + PostgreSQL | `test_modification_pipeline` |
 | IfcOpenShell integration | `@pytest.mark.slow` | No | Real `.ifc` fixture (committed) | `test_ifc_writer_integration` |
 | Playwright E2E | `@pytest.mark.slow` | Yes | Docker + PostgreSQL + Chromium | `tests/e2e/` |
+| **NL benchmark** | _(not pytest)_ | Yes | Docker + PostgreSQL + a live model | `manage.py benchmark_writeback` — see below |
 
 **Guard:** never use `@pytest.mark.django_db` on a test that does not touch the ORM. Every spurious DB marker slows down the fast suite.
 
@@ -109,8 +110,6 @@ Castor/
       test_slot_extractor.py    ← stage 2 — per-kind slot prompts + guards, mock LLM, no DB
       test_tier_router.py       ← stage 3.5 — deterministic routing, no LLM, no DB
       test_hint_generator.py    ← Tier 0 hints (Templated / Registry / LLM-fallback gating), mock LLM
-      test_tier2_planner.py     ← _validate_plan + generate_plan — mock LLM, no DB
-      test_tier3_executor.py    ← Code validation only — pure Python, no DB
       test_git_service.py       ← Patches git.Repo — no file I/O
       test_models.py            ← ModificationProposal, GitCommit __str__ and defaults
       test_views.py             ← Approve/reject/apply auth gates
@@ -165,7 +164,7 @@ assert "validate" in phases
 
 | Component | Reason |
 |---|---|
-| `Tier3Executor._run_sandboxed()` with real code | Executes arbitrary Python; covered by end-to-end only |
+| `code_sandbox.run_code_subprocess()` with real code | Spawns a child process running arbitrary Python; covered by end-to-end only |
 | `GitService.track_ifc()` / `snapshot()` with a real Git repo | Real repo in tests is slow and brittle; gated at unit level by patching `Repo` |
 | `ifc_processor.services.parser.*` | Heavy IfcOpenShell parsing; slow integration test only |
 | `EmbeddingService.embed()` internals | Wraps Ollama; always mocked at every consumer |
@@ -173,6 +172,113 @@ assert "validate" in phases
 | `GuardianService` standalone | Fully mocked in the pipeline smoke test via `monkeypatch` |
 | `ConflictScanService` | Too large a mock surface for meaningful unit tests |
 | Django admin | No custom admin logic in this project |
+
+---
+
+## Natural-Language Benchmark
+
+> This section is the operational how-to for the NL writeback benchmark. For the
+> overview of **all** Castor benchmarks — including the IFC parser performance
+> harness in `benchmarks/ifc_parser/`, which is not covered here — see
+> [docs/benchmarks.md](benchmarks.md).
+
+Every layer above mocks the LLM. That is correct for unit tests — but it means
+the suite can be entirely green while the system fails to understand a sentence
+a real user would type. `manage.py benchmark_writeback` closes that gap: real
+prompts, real model, real IFC write.
+
+It is **not** part of the pytest suite and never will be. It needs a live model
+and a processed project, it takes minutes, and its results are non-deterministic.
+Run it before shipping a pipeline change, and when choosing a model.
+
+### Two scores, deliberately separate
+
+| Score | Question | Varies by model? |
+|---|---|---|
+| **Understanding** | Did the pipeline route the request the way the corpus says? | **Yes** — this is the benchmark dimension |
+| **Fidelity** | Did the journal it produced actually land in the file? | No — should stay 100% |
+
+Fidelity is the check unit tests structurally cannot make. Both `products=` /
+`product=` signature bugs this project shipped *reported success while changing
+nothing*; only reading the file back catches that. If fidelity drops, the bug is
+in a writer or the executor, not in comprehension.
+
+**This is not hypothetical.** The first run found a request to *remove* a
+property that instead *wrote* the user's own words into it, across five walls,
+reporting success at every checkpoint — with fidelity at 5/5, because the
+journal did faithfully execute the wrong intent. Full write-up:
+[2026-08-05 — Natural-Language Write-Back Benchmark](evaluation/2026-08-05-writeback-nl-benchmark.md).
+
+### The corpus
+
+`fixtures/benchmark/pipeline-test-prompts.txt` — 92 prompts over 19 sections,
+covering every routing branch and reject category. Expectations live in the
+comments above each prompt, and the `router:` line is parsed into an assertion:
+
+```
+# router:    tier 1, SET_PROPERTY            → expect that tier + operation
+# router:    tier 0 REJECT ... "geometry"    → expect rejection containing it
+# router:    tier 1, ... or T0 ...           → advisory; never counted a failure
+```
+
+Bound literally to `fixtures/benchmark/Ifc4_SampleHouse.ifc`, which is committed
+(`.gitignore` ignores `*.ifc` and negates that path). Load it into a project and
+let the pipeline finish before benchmarking.
+
+### Running it
+
+```bash
+cd src
+
+# Fast iteration: one section, routing only, no writes.
+uv run manage.py benchmark_writeback --project <uuid> --filter 1 --no-execute
+
+# Full pass, saved as a baseline.
+uv run manage.py benchmark_writeback --project <uuid> --json ../runs/baseline.json
+
+# Did my pipeline change break anything?
+uv run manage.py benchmark_writeback --project <uuid> --baseline ../runs/baseline.json
+
+# Which model should we use?
+uv run manage.py benchmark_writeback --project <uuid> \
+    --model ollama:qwen2.5-coder --model anthropic:claude-sonnet-5
+```
+
+`--repeat N` runs each case N times and reports the worst result — the honest
+way to handle LLM non-determinism rather than averaging it away. Before trusting
+a single-run "regression", re-run against an unchanged pipeline to see the noise
+floor.
+
+Baseline `--json` snapshots go under `runs/`, which is gitignored; commit a
+known-good baseline deliberately with `git add -f` — the convention is defined
+in [docs/benchmarks.md](benchmarks.md#results-convention-runs).
+
+### Debugging one failing case
+
+The benchmark tells you *that* a prompt failed, not *where*.
+`manage.py dry_run_v2_pipeline` is the companion single-prompt debugger: it runs
+one prompt through the pipeline and dumps every stage's output (triage segments,
+extracted slots, resolved entities, routing decision) so you can see exactly
+which stage went wrong. Use it to dissect a case the benchmark surfaced; use
+`benchmark_writeback` for anything batch or scored.
+
+### Safety
+
+The project's own IFC file is never modified. Each case executes against a fresh
+copy in a `TemporaryDirectory`, so cases cannot contaminate each other either —
+which matters, because several corpus cases assert the `SET_PROPERTY` →
+`ADD_PROPERTY` fallback that only fires while `FireRating` is still absent.
+
+No proposal is persisted. `FailureRecord`s created by expected rejections (about
+a third of the corpus) are purged at the end unless `--keep-failure-records` is
+passed, so a run cannot bury real production failures.
+
+The parser and verifiers *are* unit-tested, with no LLM required:
+
+```bash
+uv run pytest src/writeback/tests/test_benchmark_corpus.py \
+              src/writeback/tests/test_benchmark_verify.py -q
+```
 
 ---
 
@@ -199,7 +305,6 @@ def mock_llm():
         patch("writeback.services.triage_classifier.get_llm", return_value=mock),
         patch("writeback.services.slot_extractor.get_llm", return_value=mock),
         patch("writeback.services.entity_resolver.get_llm", return_value=mock),
-        patch("writeback.services.tier2_planner.get_llm", return_value=mock),
         patch("writeback.services.tier3_planner.get_llm", return_value=mock),
         patch("writeback.services.tier3_reviewer.get_llm", return_value=mock),
     ):
@@ -274,7 +379,7 @@ uv run pytest -m "not slow" --ignore=src/writeback/tests/test_filter_engine.py \
 uv run pytest src/core/tests/ \
     src/writeback/tests/test_message_normalizer.py \
     src/writeback/tests/test_emitters.py \
-    src/writeback/tests/test_tier3_executor.py \
+    src/writeback/tests/test_diff_renderer.py \
     src/writeback/tests/test_git_service.py
 
 # Single test file

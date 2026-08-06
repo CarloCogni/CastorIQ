@@ -247,6 +247,8 @@ class TestModifyViewPostPropose:
         mock_proposal.verification_source = ""
         mock_proposal.intent_json = {}
         mock_proposal.message = None
+        # A Tier 1 proposal carries no generated code, so no ack is needed.
+        mock_proposal.requires_code_ack = False
 
         with patch("writeback.views.ModificationService.propose", return_value=mock_proposal):
             with patch("writeback.views.ModificationService.__init__", return_value=None):

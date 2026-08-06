@@ -13,9 +13,13 @@ from ifc_processor.models import IFCEntity
 
 from .filter_engine import FilterEngine
 from .tier1_validator import Tier1Validator
-from .tier2_planner import TIER1_OPERATIONS
 
 logger = logging.getLogger(__name__)
+
+#: Operations a Tier 2 step may delegate to the Tier 1 validator. Lived in
+#: tier2_planner until that LLM planner was deleted — the V2 pipeline
+#: assembles plans from segments instead of generating them.
+TIER1_OPERATIONS = {"SET_PROPERTY", "ADD_PROPERTY", "REMOVE_PROPERTY", "SET_ATTRIBUTE"}
 
 TIER2_ONLY_OPERATIONS = {
     "ADD_PSET",

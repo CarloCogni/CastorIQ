@@ -182,7 +182,7 @@ For every public method, test:
 - **Failure modes**: dependency raises exception, LLM returns garbage, IFC file missing
 - **Input validation**: wrong types, missing required args
 
-For LLM-dependent services (IntentClassifier, GuardianService, Tier2Planner, Tier3Executor, ConflictScanService, RAGService):
+For LLM-dependent services (TriageClassifier, SlotExtractor, EntityNameResolver, T3OpPlanner, Tier3Planner, GuardianService, ConflictScanService, RAGService):
 - Mock the LLM response, test parsing logic and downstream behavior
 - Test malformed LLM output (invalid JSON, missing fields, unexpected tier)
 - Test confidence normalization (0.0-1.0 → 0-100 conversion)

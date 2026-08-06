@@ -143,3 +143,37 @@ def test_websocket_emitter_is_cancelled_after_broken_send():
         pass
 
     assert emitter.is_cancelled() is True
+
+
+def test_stdout_emitter_writes_phase_status_and_message():
+    """StdoutEmitter renders each event as one readable line."""
+    import io
+
+    from writeback.services.emitters import StdoutEmitter
+
+    stream = io.StringIO()
+    StdoutEmitter(stream).emit("triage", "done", "2 segments identified")
+
+    assert stream.getvalue() == "  [triage/done] 2 segments identified"
+
+
+def test_stdout_emitter_appends_detail_when_present():
+    """A detail dict is appended so dry-runs show routing payloads."""
+    import io
+
+    from writeback.services.emitters import StdoutEmitter
+
+    stream = io.StringIO()
+    StdoutEmitter(stream).emit("classify", "done", "Tier 1", {"tier": 1})
+
+    assert "Tier 1" in stream.getvalue()
+    assert "'tier': 1" in stream.getvalue()
+
+
+def test_stdout_emitter_is_never_cancelled():
+    """Management commands have no client to disconnect."""
+    import io
+
+    from writeback.services.emitters import StdoutEmitter
+
+    assert StdoutEmitter(io.StringIO()).is_cancelled() is False

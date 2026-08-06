@@ -18,8 +18,9 @@ class FailureRecord(TimestampedModel):
 
     Created automatically whenever propose() or execute() raises a caught exception.
     Provides deterministic error classification, human-readable diagnosis, and
-    RETRYABLE vs NON_RETRYABLE guidance. RETRYABLE failures can feed their context
-    back into the next classify() call via build_failure_context().
+    RETRYABLE vs NON_RETRYABLE guidance. When a boundary stage fails, its
+    structured ``{code, path, hint}`` errors are stored on ``intent_json`` so a
+    retry (``propose(retry_of=...)``) can feed them back into the failed stage.
     """
 
     class FailurePhase(models.TextChoices):

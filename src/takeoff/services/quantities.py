@@ -6,6 +6,8 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 
+from ifc_processor.services.property_access import nested_view
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -13,17 +15,24 @@ logger = logging.getLogger(__name__)
 # Entries are tried in order; first numeric hit wins.
 # ---------------------------------------------------------------------------
 _QTO_SPEC: dict[str, list[tuple[str, str, str]]] = {
+    # Net→Gross fallback chains follow ifc-lite's ask recipes
+    # (ifc-lite/packages/cli/src/commands/ask.ts): authoring tools export
+    # either flavour, and a Gross value beats no value.
     "IfcWall": [
         ("Qto_WallBaseQuantities", "NetSideArea", "m²"),
+        ("Qto_WallBaseQuantities", "GrossSideArea", "m²"),
         ("Qto_WallBaseQuantities", "NetVolume", "m³"),
         ("Qto_WallBaseQuantities", "GrossVolume", "m³"),
     ],
     "IfcWallStandardCase": [
         ("Qto_WallBaseQuantities", "NetSideArea", "m²"),
+        ("Qto_WallBaseQuantities", "GrossSideArea", "m²"),
         ("Qto_WallBaseQuantities", "NetVolume", "m³"),
+        ("Qto_WallBaseQuantities", "GrossVolume", "m³"),
     ],
     "IfcSlab": [
         ("Qto_SlabBaseQuantities", "NetArea", "m²"),
+        ("Qto_SlabBaseQuantities", "GrossArea", "m²"),
         ("Qto_SlabBaseQuantities", "NetVolume", "m³"),
         ("Qto_SlabBaseQuantities", "GrossVolume", "m³"),
     ],
@@ -110,10 +119,18 @@ def _extract_quantity(ifc_type: str, props: dict) -> tuple[float | None, str, st
 
 
 def _extract_material(props: dict) -> str:
-    """Return first material value found in top-level properties, or empty string."""
-    for k, v in props.items():
-        if k.lower().endswith("material") and v:
-            return str(v).strip()
+    """Return the first material-like property value, or empty string.
+
+    Operates on the NESTED view: scans property names inside each pset dict,
+    plus bare top-level keys, for a scalar value under a *material* name.
+    """
+    for key, value in props.items():
+        if isinstance(value, dict):
+            for prop_name, prop_value in value.items():
+                if "material" in prop_name.lower() and isinstance(prop_value, str) and prop_value:
+                    return prop_value.strip()
+        elif "material" in key.lower() and isinstance(value, str) and value:
+            return value.strip()
     return ""
 
 
@@ -174,7 +191,9 @@ def compute_qto(project) -> dict:
 
     for ent in entities:
         ifc_type = ent.ifc_type or "Unknown"
-        props = ent.properties or {}
+        # The stored shape is flat dotted keys; the extractors below want
+        # pset-scoped dicts (this is also what fixes QTO source="ifc").
+        props = nested_view(ent.properties)
 
         # Level
         sc_id = str(ent.spatial_container_id) if ent.spatial_container_id else None

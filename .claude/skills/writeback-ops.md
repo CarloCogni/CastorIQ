@@ -137,10 +137,10 @@ Tier1Validator.validate()
     +-- Failure: other reason -> escalate to Tier 2
             |
             v
-        Tier2Planner.generate_plan()
+        assemble_tier2_intent(segments)   # deterministic, no LLM
             |
-            +-- Success -> Tier2Validator -> ModificationProposal(tier=2)
-            +-- Planner returns tier=3 -> escalate to Tier 3
+            +-- Success -> Tier2Validator -> JournalBuilder.build_t2()
+            |                             -> ModificationProposal(tier=2)
             +-- Failure -> escalate to Tier 3
 ```
 

@@ -249,12 +249,12 @@ The central model for the Modify pipeline. Captures the full lifecycle from inte
 | `created_by` | FK → User | |
 | `request_text` | TextField | Original natural language request |
 | `explanation` | TextField | AI-generated change summary |
-| `changes` | JSONField | Structured list of entity modifications |
-| `diff_preview` | TextField | Human-readable diff |
+| `changes` | JSONField | A serialized `MutationJournal` — the write IR every tier produces. Its `schema_version` key is what `ExecutionService` checks to confirm the proposal is executable |
+| `diff_preview` | TextField | JSON diff rows rendered from `changes`, so preview and write share one source |
 | `affected_count` | PositiveIntegerField | Number of entities impacted |
 | **Classification** | | |
 | `tier` | IntegerField (choices) | `1` GREEN · `2` ORANGE · `3` RED |
-| `operation` | CharField | e.g. `SET_PROPERTY`, `ADD_PROPERTY`, `SET_ATTRIBUTE` |
+| `operation` | CharField | T1: `SET_PROPERTY` · `REMOVE_PROPERTY` · `SET_ATTRIBUTE`. T2 is always `PLAN` (step names live inside the plan). T3 is `OPS` for typed operations or `CODE` for the generated-code fallback |
 | `intent_json` | JSONField | Full parsed intent from LLM |
 | `filter_spec` | JSONField | Entity filter used to resolve targets |
 | `confidence` | FloatField | LLM confidence score (0.0–1.0) |

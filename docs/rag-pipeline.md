@@ -58,6 +58,28 @@ PDF/DOCX ──→ Text Extraction (PyMuPDF) ──→ Chunking ──→ Embedd
 
 Both IFC entity descriptions and document chunks are embedded using the same model into the same 1024-dimensional vector space. This is the key design choice that enables cross-domain retrieval: a query about "fire-rated doors on Level 1" retrieves both the relevant IFC door entities and the corresponding paragraphs from the fire safety report.
 
+## Deterministic-First Routing
+
+Before any retrieval, quantitative questions are matched against a recipe
+table (`chat/services/deterministic_ask.py`, pattern ported from ifc-lite's
+CLI ask command) and answered by **computing from the DB index**
+(`ifc_processor/services/model_queries.py`) instead of similarity search:
+counts by type (with schema-driven subtype expansion), total wall/floor/space
+area and volume (Net→Gross Qto fallback chains), window-to-wall ratio
+(ISO 13790, external walls preferred with provenance), storey lists, duplicate
+GlobalIds, schema version.
+
+The LLM only *narrates* the verified facts ("restate, do not recompute") —
+this honours Minimal Authority for exactly the question class vector RAG is
+worst at. A pattern miss, a document-flavoured question, or a model without
+the data falls straight through to normal retrieval. Set
+`RAG_DETERMINISTIC_BYPASS_LLM=True` to skip narration and return the
+templated facts directly.
+
+Quality is measured by `manage.py benchmark_ask` — real fixture models
+(sha256-resolved from the engine_web-ifc clone), real questions, answers
+scored against ground truth computed independently with IfcOpenShell.
+
 ## Retrieval Phase
 
 ### Query Embedding
@@ -90,8 +112,10 @@ Top-k results are assembled into a structured context for the LLM. The context d
 
 ### Result Limit and Relevance
 
-- **Top-k:** configurable, default likely 5–10 results
-- **Minimum similarity threshold:** results below a configurable score are excluded to prevent irrelevant context from polluting the LLM prompt
+- **ANN index:** both vector columns carry an HNSW index (`vector_cosine_ops`, m=16, ef_construction=64). Building it on a large existing table needs `maintenance_work_mem` headroom.
+- **Soft distance threshold:** candidates beyond `RAG_DISTANCE_CEILING` (default 0.55 cosine distance) are dropped, but the closest few always survive so retrieval never returns empty on a bad-scoring day.
+- **Near-duplicate collapse:** sibling elements ("Basic Wall" × 40) embed near-identically; hits are grouped by (type, element type, container) and the best-scoring member represents the family, annotated "and N similar elements".
+- **Per-source quotas:** in auto scope ~70% of the token budget is reserved for IFC entities, the rest for document chunks, with a top-up pass for leftover budget — a doc-heavy project can no longer crowd the model out of the context (entity descriptions are ~10× shorter than chunks, so a raw distance merge is biased).
 - **Context window budget:** total context must fit within the LLM's token limit alongside the system prompt and user query
 
 ## Generation Phase

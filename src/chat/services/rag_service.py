@@ -56,23 +56,6 @@ SYSTEM_PROMPT = dedent("""\
     7. If asked about conflicts between IFC and documents, highlight both values clearly.\
 """)
 
-_IFC_INVENTORY_KEYWORDS: frozenset[str] = frozenset(
-    {
-        "what elements",
-        "element types",
-        "what types",
-        "list all",
-        "how many",
-        "what ifc",
-        "building elements",
-        "element count",
-        "inventory",
-        "all elements",
-        "types of elements",
-        "what kind of elements",
-    }
-)
-
 _DOC_SUMMARY_KEYWORDS: frozenset[str] = frozenset(
     {
         "summarize",
@@ -107,8 +90,10 @@ class RAGService:
     """
     RAG Service with Intent-Aware Retrieval.
 
-    Retrieval is routed by intent and scope:
-    - ifc_inventory + auto/ifc  → aggregate GROUP BY query (every element type represented)
+    Retrieval is routed deterministic-first, then by intent and scope:
+    - deterministic recipe hit  → computed from the DB, LLM narrates (see
+      chat/services/deterministic_ask.py — counts, areas, WWR, storeys,
+      type breakdowns, schema, duplicate GUIDs)
     - doc_summary + auto        → IFC aggregate + document head/tail chunks
     - doc_summary + docs        → document head/tail chunks only
     - specific_qa / fallback    → cosine similarity vector search
@@ -160,6 +145,24 @@ class RAGService:
 
         self._emit(emitter, "intent", "running", "Classifying intent...")
         self._check_cancelled(emitter)
+
+        # Deterministic-first: quantitative questions are computed from the DB
+        # index, never estimated by the LLM (Minimal Authority). A miss — or a
+        # model without the data — falls straight through to normal RAG.
+        deterministic = None
+        if scope in ("auto", "ifc"):
+            from chat.services import deterministic_ask
+
+            # Deterministic answers are an optimization, not a gate: any crash
+            # here (DB hiccup, schema lookup) must fall through to RAG, never
+            # take the whole Ask pipeline down with it.
+            try:
+                deterministic = deterministic_ask.match_and_execute(project, user_text)
+            except Exception:
+                logger.exception("Deterministic Ask path failed; falling back to RAG")
+        if deterministic is not None:
+            return self._answer_deterministic(deterministic, project, user_text, session, emitter)
+
         intent = self._detect_intent(user_text)
         aggregate_context_str = ""
 
@@ -172,23 +175,12 @@ class RAGService:
             self.model_name, SYSTEM_PROMPT, history_tokens=history_estimate
         )
 
-        if intent in ("ifc_inventory", "doc_summary") and scope == "ifc":
-            # User restricted scope to IFC — any summary/inventory query uses aggregate
+        if intent == "doc_summary" and scope == "ifc":
+            # User restricted scope to IFC — a summary query uses the aggregate
             aggregate_rows = self._retrieve_ifc_aggregate_context(project)
             if aggregate_rows:
                 aggregate_context_str = self._format_ifc_aggregate_context(aggregate_rows)
                 context_items: list = []
-                analysis_mode = "IFC Inventory Summary"
-            else:
-                context_items = self._retrieve_vector_context(
-                    project, user_text, scope, budget_tokens=retrieval_budget
-                )
-                analysis_mode = "Specific Q&A"
-        elif intent == "ifc_inventory" and scope == "auto":
-            aggregate_rows = self._retrieve_ifc_aggregate_context(project)
-            if aggregate_rows:
-                aggregate_context_str = self._format_ifc_aggregate_context(aggregate_rows)
-                context_items = []
                 analysis_mode = "IFC Inventory Summary"
             else:
                 context_items = self._retrieve_vector_context(
@@ -260,6 +252,48 @@ class RAGService:
 
         return answer_text, context_items, utilization_pct
 
+    def _answer_deterministic(
+        self, deterministic, project, user_text: str, session: ChatSession, emitter: Any
+    ) -> tuple[str, list, float]:
+        """Narrate a deterministically computed result (or bypass the LLM).
+
+        The facts block is injected as aggregate context with a strict
+        "restate, do not recompute" instruction. With
+        ``RAG_DETERMINISTIC_BYPASS_LLM=True`` the templated facts are returned
+        directly — zero tokens, flat tone.
+        """
+        from django.conf import settings
+
+        analysis_mode = f"Verified Computation — {deterministic.question_class}"
+        self._emit(emitter, "intent", "done", analysis_mode)
+        self._emit(emitter, "retrieve", "running", "Computing from model database...")
+        facts_block = deterministic.to_facts_block()
+        self._emit(emitter, "retrieve", "done", "Deterministic query complete")
+        self._check_cancelled(emitter)
+
+        if getattr(settings, "RAG_DETERMINISTIC_BYPASS_LLM", False):
+            result = deterministic.result
+            unit = f" {result.get('unit')}" if result.get("unit") else ""
+            answer = (
+                f"**{deterministic.question_class}**: {result.get('value')}{unit}\n\n"
+                f"_{result.get('method', '')}_\n\nSource: {result.get('provenance', '')}"
+            )
+            self._emit(emitter, "generate", "done", "Answer ready (no LLM)")
+            return answer, [], 0.0
+
+        self._emit(emitter, "generate", "running", "Generating answer...")
+        self._check_cancelled(emitter)
+        answer_text, utilization_pct = self._generate_response(
+            user_text,
+            [],
+            self._get_project_metadata(project),
+            analysis_mode,
+            session,
+            aggregate_context_str=facts_block,
+        )
+        self._emit(emitter, "generate", "done", "Answer ready")
+        return answer_text, [], utilization_pct
+
     @staticmethod
     def _check_cancelled(emitter: Any) -> None:
         """Raise CancellationError if the emitter signals cancellation."""
@@ -272,20 +306,23 @@ class RAGService:
         """
         Classify query into one of the retrieval intents.
 
-        FM asset keywords are checked first (most specific), then IFC inventory,
-        then document summary. Everything else falls through to specific Q&A.
+        FM asset keywords are checked first (most specific), then document
+        summary. Everything else falls through to specific Q&A.
+
+        Inventory/count questions are no longer classified here — the
+        deterministic recipe table (deterministic_ask) catches them upstream
+        with exact, subtype-aware computations. Keyword classification remains
+        only for the two paths a recipe cannot express: FM asset lookups and
+        document summaries.
 
         Returns:
             "fm_asset_query" — FacilityAsset register queries (7D FM)
-            "ifc_inventory"  — aggregate/count questions about IFC element types
             "doc_summary"    — high-level document overview requests
             "specific_qa"    — default for targeted questions
         """
         lowered = user_text.lower()
         if any(kw in lowered for kw in _FM_ASSET_KEYWORDS):
             return "fm_asset_query"
-        if any(kw in lowered for kw in _IFC_INVENTORY_KEYWORDS):
-            return "ifc_inventory"
         if any(kw in lowered for kw in _DOC_SUMMARY_KEYWORDS):
             return "doc_summary"
         return "specific_qa"
@@ -345,6 +382,19 @@ class RAGService:
     # Retrieval depth guardrails
     _MIN_CANDIDATES_PER_SOURCE = 8
     _MAX_CANDIDATES_PER_SOURCE = 30
+    # Soft relevance cutoff: candidates beyond this cosine distance are noise,
+    # but the top few survive it so retrieval never comes back empty-handed.
+    _MIN_KEEP_UNDER_THRESHOLD = 3
+    # Context share reserved for IFC entities when both sources compete (auto
+    # scope). Entity descriptions are ~10x shorter than doc chunks, so a raw
+    # distance merge lets one doc-heavy project shut the model out entirely.
+    _IFC_QUOTA = 0.7
+
+    @property
+    def _distance_ceiling(self) -> float:
+        from django.conf import settings
+
+        return getattr(settings, "RAG_DISTANCE_CEILING", 0.55)
 
     def _retrieve_vector_context(
         self, project, query: str, scope: str, budget_tokens: int = 0
@@ -352,9 +402,10 @@ class RAGService:
         """
         Budget-aware vector search for specific queries.
 
-        Fetches a generous ceiling of candidates from pgvector, then greedily
-        fills the token budget in relevance order. When ``budget_tokens`` is 0
-        (legacy/fallback), behaves like a fixed top-8 retrieval.
+        Pipeline: fetch per-source candidates → soft distance threshold →
+        near-duplicate collapse (entities) → quota-split greedy packing.
+        When ``budget_tokens`` is 0 (legacy/fallback), behaves like a fixed
+        top-8 retrieval.
         """
         query_vector = self.embedding_service.embed_query(query)
         if not query_vector:
@@ -378,6 +429,7 @@ class RAGService:
                 .annotate(distance=CosineDistance("embedding", query_vector))
                 .order_by("distance")[:ceiling]
             )
+            ifc_hits = self._collapse_near_duplicates(self._apply_threshold(ifc_hits))
 
         if scope in ["auto", "docs"]:
             doc_hits = list(
@@ -386,31 +438,104 @@ class RAGService:
                 .annotate(distance=CosineDistance("embedding", query_vector))
                 .order_by("distance")[:ceiling]
             )
-
-        # Merge and sort by relevance (distance)
-        candidates = ifc_hits + doc_hits
-        candidates.sort(key=lambda x: x.distance)
+            doc_hits = self._apply_threshold(doc_hits)
 
         if budget_tokens <= 0:
+            candidates = ifc_hits + doc_hits
+            candidates.sort(key=lambda x: x.distance)
             return candidates[:8]
 
-        # Greedy trim: fill budget in relevance order, skip items that don't fit
-        selected: list = []
-        used_tokens = 0
-        for item in candidates:
-            item_tokens = estimate_tokens(self._format_single_item(item))
-            if used_tokens + item_tokens <= budget_tokens:
-                selected.append(item)
-                used_tokens += item_tokens
-
+        selected, used_tokens = self._pack_with_quota(ifc_hits, doc_hits, budget_tokens)
         logger.debug(
-            "Dynamic retrieval: %d/%d candidates selected, %d/%d tokens used",
+            "Dynamic retrieval: %d candidates selected (%d ifc / %d doc pool), %d/%d tokens",
             len(selected),
-            len(candidates),
+            len(ifc_hits),
+            len(doc_hits),
             used_tokens,
             budget_tokens,
         )
         return selected
+
+    def _apply_threshold(self, hits: list) -> list:
+        """Drop candidates beyond the distance ceiling, keeping a minimum head.
+
+        The threshold is soft: when everything scores badly (tiny models,
+        short queries) the closest few still flow through so downstream can
+        answer with the best it has rather than a blanket refusal.
+        """
+        ceiling = self._distance_ceiling
+        kept = [h for h in hits if h.distance <= ceiling]
+        if len(kept) < self._MIN_KEEP_UNDER_THRESHOLD:
+            return hits[: self._MIN_KEEP_UNDER_THRESHOLD]
+        return kept
+
+    @staticmethod
+    def _collapse_near_duplicates(hits: list) -> list:
+        """Collapse same-family entity hits onto one representative.
+
+        Sibling elements ("Basic Wall" × 40) embed near-identically and would
+        otherwise monopolize the top-k. Group by (ifc_type, element_type,
+        container); the best-scoring member survives and carries a
+        ``similar_count`` for the prompt ("and N similar elements").
+        """
+        collapsed: dict[tuple, Any] = {}
+        passthrough: list = []
+        for hit in hits:  # hits arrive distance-ascending
+            if hit.element_type_id is None and hit.spatial_container_id is None:
+                # No discriminator at all (exports without type objects or
+                # containment): the key would degenerate to ifc_type alone and
+                # collapse every wall in the model onto one representative.
+                hit.similar_count = 0
+                passthrough.append(hit)
+                continue
+            key = (hit.ifc_type, hit.element_type_id, hit.spatial_container_id)
+            survivor = collapsed.get(key)
+            if survivor is None:
+                hit.similar_count = 0
+                collapsed[key] = hit
+            else:
+                survivor.similar_count += 1
+        merged = list(collapsed.values()) + passthrough
+        merged.sort(key=lambda h: h.distance)  # downstream packs in list order
+        return merged
+
+    def _pack_with_quota(
+        self, ifc_hits: list, doc_hits: list, budget_tokens: int
+    ) -> tuple[list, int]:
+        """Greedy token packing with a per-source split, then a top-up pass.
+
+        Phase 1 packs each source against its share (70/30 when both are
+        present). Phase 2 spends whatever is left on the best remaining
+        candidates from either source, so a one-sided project still uses the
+        full budget.
+        """
+        both = bool(ifc_hits) and bool(doc_hits)
+        ifc_budget = int(budget_tokens * self._IFC_QUOTA) if both else budget_tokens
+        doc_budget = budget_tokens - ifc_budget if both else budget_tokens
+
+        selected: list = []
+        used_tokens = 0
+        leftovers: list = []
+
+        for hits, source_budget in ((ifc_hits, ifc_budget), (doc_hits, doc_budget)):
+            source_used = 0
+            for item in hits:
+                item_tokens = estimate_tokens(self._format_single_item(item))
+                if source_used + item_tokens <= source_budget:
+                    selected.append(item)
+                    source_used += item_tokens
+                else:
+                    leftovers.append((item, item_tokens))
+            used_tokens += source_used
+
+        leftovers.sort(key=lambda pair: pair[0].distance)
+        for item, item_tokens in leftovers:
+            if used_tokens + item_tokens <= budget_tokens:
+                selected.append(item)
+                used_tokens += item_tokens
+
+        selected.sort(key=lambda x: x.distance)
+        return selected, used_tokens
 
     def _retrieve_summary_context(self, project) -> list[DocumentChunk]:
         """
@@ -611,6 +736,13 @@ class RAGService:
                 "Present the element types in a structured table or list. "
                 "Include element counts and representative examples where available."
             )
+        elif analysis_mode.startswith("Verified Computation"):
+            mode_instruction = (
+                "The excerpts contain VERIFIED COMPUTED FACTS calculated directly "
+                "from the model database. Restate them faithfully in a clear, "
+                "conversational answer. Never recompute, estimate, or alter the "
+                "numbers; cite the stated method and source as the evidence."
+            )
         else:
             mode_instruction = (
                 "Answer the specific question directly. Use the excerpts as evidence. "
@@ -679,9 +811,11 @@ class RAGService:
     def _format_single_item(item) -> str:
         """Format a single retrieval result (IFC entity or document chunk) as prompt text."""
         if isinstance(item, IFCEntity):
+            similar = getattr(item, "similar_count", 0)
+            similar_note = f" (and {similar} similar elements of the same type)" if similar else ""
             return (
                 f"[IFC: {item.name or 'Unnamed'} ({item.ifc_type}) — "
-                f"Storey: {_get_entity_storey_name(item) or 'N/A'}]\n"
+                f"Storey: {_get_entity_storey_name(item) or 'N/A'}]{similar_note}\n"
                 f"{item.description}"
             )
         if isinstance(item, DocumentChunk):

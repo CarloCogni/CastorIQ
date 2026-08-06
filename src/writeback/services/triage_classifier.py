@@ -22,14 +22,14 @@ needed shrinks to per-stage shape patches.
 
 from __future__ import annotations
 
-import json
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 
-from langchain_core.messages import HumanMessage
+from core.llm import get_llm
 
-from core.llm import cached_system, get_llm
-
+from .llm_boundary import BoundaryError, BoundaryValidationError, call_structured
+from .schemas import TriageOutput
 from .tier_router import VALID_KINDS
 
 logger = logging.getLogger(__name__)
@@ -148,7 +148,16 @@ _USER_TEMPLATE = 'Modification request: "{user_message}"'
 
 
 class TriageError(Exception):
-    """The triage stage produced an unusable response."""
+    """The triage stage produced an unusable response.
+
+    ``boundary_errors`` carries the structured ``{code, path, hint}`` rows
+    when the failure came from the schema-validated LLM boundary, so a
+    later retry can feed them back into the prompt.
+    """
+
+    def __init__(self, *args, boundary_errors: list[dict] | None = None) -> None:
+        super().__init__(*args)
+        self.boundary_errors: list[dict] = boundary_errors or []
 
 
 @dataclass
@@ -184,12 +193,23 @@ class TriageClassifier:
             self._llm = get_llm(user=self._user, temperature=0.0, format_json=True)
         return self._llm
 
-    def classify(self, user_message: str) -> TriageResult:
+    def classify(
+        self,
+        user_message: str,
+        prior_errors: Sequence[BoundaryError] = (),
+    ) -> TriageResult:
         """Run the triage LLM call. Raises :class:`TriageError` on hard failure.
 
-        The fallback path on a parse error is to return a single
-        ``UNCLEAR`` segment so the caller can surface the rejection
-        cleanly rather than crashing.
+        The call goes through the schema-validated boundary
+        (:func:`call_structured`): shape drift is normalised, then the
+        payload must satisfy :class:`TriageOutput`. On validation failure
+        the structured errors are injected into a single retry prompt so
+        the model can self-correct before we give up.
+
+        Args:
+            user_message: The raw modification request.
+            prior_errors: Structured errors from an earlier failed attempt
+                          (retry-of-failure flow), injected into the prompt.
         """
         if not user_message or not user_message.strip():
             return TriageResult(
@@ -204,29 +224,49 @@ class TriageClassifier:
             )
 
         try:
-            response = self.llm.invoke(
-                [
-                    cached_system(self.llm, SYSTEM_PROMPT),
-                    HumanMessage(content=_USER_TEMPLATE.format(user_message=user_message)),
-                ]
+            output = call_structured(
+                self.llm,
+                stage="triage",
+                system_prompt=SYSTEM_PROMPT,
+                user_prompt=_USER_TEMPLATE.format(user_message=user_message),
+                schema=TriageOutput,
+                normalizers=(_normalise_payload,),
+                prior_errors=prior_errors,
             )
+        except BoundaryValidationError as e:
+            logger.warning("Triage boundary validation failed: %s", e)
+            raise TriageError(str(e), boundary_errors=e.errors_as_dicts()) from e
         except Exception as e:
             logger.warning("Triage LLM call failed: %s", e)
             raise TriageError(f"Triage LLM call failed: {e}") from e
 
-        raw = getattr(response, "content", "")
-        try:
-            data = json.loads(raw)
-        except (json.JSONDecodeError, TypeError):
-            logger.warning("Triage LLM returned non-JSON: %r", raw)
-            raise TriageError("Triage LLM did not return valid JSON.")
+        return TriageResult(segments=_segments_from_output(output))
 
-        segments = _normalise_segments(data)
-        if not segments:
-            logger.warning("Triage produced no segments from %r", raw)
-            raise TriageError("Triage produced no usable segments.")
 
-        return TriageResult(segments=segments)
+def _normalise_payload(data: object) -> dict:
+    """Boundary normalizer: coerce drift shapes into ``{"segments": [...]}``."""
+    return {"segments": _normalise_segments(data)}
+
+
+def _segments_from_output(output: TriageOutput) -> list[dict]:
+    """Rebuild the canonical segment dicts from the validated payload.
+
+    Keeps the exact key shape downstream stages expect: ``reason`` only on
+    OUT_OF_SCOPE segments, ``missing`` only on UNCLEAR segments.
+    """
+    segments: list[dict] = []
+    for seg in output.segments:
+        item: dict = {
+            "kind": seg.kind,
+            "target_phrase": seg.target_phrase,
+            "value_phrase": seg.value_phrase,
+        }
+        if seg.kind == "OUT_OF_SCOPE":
+            item["reason"] = seg.reason
+        if seg.kind == "UNCLEAR":
+            item["missing"] = seg.missing
+        segments.append(item)
+    return segments
 
 
 def _normalise_segments(data: object) -> list[dict]:

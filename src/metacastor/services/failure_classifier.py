@@ -67,10 +67,27 @@ EXCEPTION_PATTERNS: list[tuple[str, str, str]] = [
     ("Tier3ExecutionError", "Code too long", "CODE_TOO_LONG"),
     ("Tier3ExecutionError", "must define a 'modify_ifc'", "CODE_MISSING_ENTRYPOINT"),
     ("Tier3ExecutionError", "forbidden pattern", "CODE_SANDBOX_VIOLATION"),
-    ("Tier3ExecutionError", "Code execution failed", "CODE_EXECUTION_ERROR"),
+    # The sandbox reports runtime failures as "Generated code failed: …";
+    # the older "Code execution failed" wording no longer exists anywhere.
+    ("Tier3ExecutionError", "Generated code failed", "CODE_EXECUTION_ERROR"),
     ("Tier3ExecutionError", "IFC file not found", "IFC_FILE_NOT_FOUND"),
     ("Tier3ExecutionError", "", "TIER3_GENERIC"),
     ("Tier3TimeoutError", "", "CODE_TIMEOUT"),
+    # ── Journal execution ────────────────────────────────────────────────────
+    # Every tier now writes through the journal executor, so its errors must
+    # classify deterministically. Without these the whole journal path falls
+    # through to the LLM fallback: an extra model call per failure and a
+    # label that can differ run to run.
+    #
+    # JournalStaleError first — it is the one genuinely retryable journal
+    # failure (the file moved under the proposal; re-proposing fixes it).
+    # Substring matching on the class name would not confuse the two, but
+    # the explicit ordering keeps the intent obvious and survives a rename.
+    ("JournalStaleError", "", "STALE_JOURNAL"),
+    ("JournalExecutionError", "Generated code failed", "CODE_EXECUTION_ERROR"),
+    ("JournalExecutionError", "budget", "CODE_TIMEOUT"),
+    ("JournalExecutionError", "No handler registered", "TIER3_GENERIC"),
+    ("JournalExecutionError", "", "IFC_WRITE_GENERIC"),
 ]
 
 CATEGORY_MAP: dict[str, str] = {
@@ -90,6 +107,9 @@ CATEGORY_MAP: dict[str, str] = {
     "PROPERTY_NOT_FOUND": "RETRYABLE",
     "PSET_NOT_FOUND": "RETRYABLE",
     "SOURCE_ENTITY_NOT_FOUND": "RETRYABLE",
+    # The IFC file changed after the proposal was built — re-proposing
+    # against the current file is exactly the fix.
+    "STALE_JOURNAL": "RETRYABLE",
     # NON_RETRYABLE — data or structural problem, retry won't help
     "REQUEST_TOO_VAGUE": "NON_RETRYABLE",
     "FILTER_EMPTY": "NON_RETRYABLE",
@@ -115,7 +135,22 @@ CATEGORY_MAP: dict[str, str] = {
     "UNKNOWN": "NON_RETRYABLE",
 }
 
+#: Router rejections carry a message the pipeline already composed for the
+#: user — reason plus a grounded hint. Passing ``{detail}`` through verbatim
+#: is the whole point: any wrapper here would talk over it.
+_REJECTION_ERROR_TYPES = (
+    "REQUEST_UNCLEAR",
+    "REQUEST_OUT_OF_SCOPE",
+    "TARGET_NOT_FOUND",
+    "DESTINATION_NOT_FOUND",
+    "PROPERTY_NOT_IN_REGISTRY",
+    "REQUEST_REJECTED",
+)
+
+CATEGORY_MAP.update(dict.fromkeys(_REJECTION_ERROR_TYPES, "NON_RETRYABLE"))
+
 DIAGNOSIS_TEMPLATES: dict[str, str] = {
+    **dict.fromkeys(_REJECTION_ERROR_TYPES, "{detail}"),
     "REQUEST_TOO_VAGUE": (
         "The request could not be mapped to a specific IFC operation. "
         "Specify the entity type, property name, and target value — "
@@ -210,6 +245,10 @@ DIAGNOSIS_TEMPLATES: dict[str, str] = {
     ),
     "ENTITY_NOT_FOUND": ("One or more entities could not be found in the IFC file: {detail}."),
     "SOURCE_ENTITY_NOT_FOUND": ("The source entity for property copy was not found: {detail}."),
+    "STALE_JOURNAL": (
+        "The IFC file changed after this proposal was created, so it was not applied: "
+        "{detail} Ask again to rebuild the proposal against the current file."
+    ),
     "CLASSIFICATION_ERROR": ("Could not apply classification to the entities: {detail}."),
     "MATERIAL_ERROR": ("Could not set material on the entities: {detail}."),
     "IFC_WRITE_GENERIC": ("An error occurred while writing to the IFC file: {detail}."),
@@ -249,6 +288,16 @@ def classify_error(exc: Exception, phase: str) -> tuple[str, str, str]:
     """
     exc_class = type(exc).__name__
     exc_msg = str(exc)
+
+    # An exception that already knows its taxonomy label wins outright.
+    # Pattern matching guesses from a message; a declared label is a fact —
+    # and guessing turned every routing rejection into "FILTER_INVALID".
+    # Only labels from OUR taxonomy count: third-party exceptions (HTTP/LLM
+    # clients) also carry an ``error_type`` attribute, and trusting those
+    # would bypass the taxonomy — or overflow the 40-char DB column.
+    declared = getattr(exc, "error_type", "")
+    if isinstance(declared, str) and declared in CATEGORY_MAP:
+        return declared, CATEGORY_MAP[declared], _render_diagnosis(declared, exc_msg)
 
     for class_substr, msg_substr, error_type in EXCEPTION_PATTERNS:
         class_match = class_substr.lower() in exc_class.lower() if class_substr else True
@@ -363,39 +412,6 @@ def create_failure_record(
     except Exception as e:
         logger.warning("Could not create FailureRecord: %s", e)
         return None
-
-
-def build_failure_context(failure_record) -> str:
-    """
-    Build a ~60-token context string the writeback pipeline can pass back
-    on retry as ``failure_context``. Only meaningful for RETRYABLE failures.
-
-    Args:
-        failure_record: A FailureRecord instance.
-
-    Returns:
-        A short plain-text string describing the failure.
-    """
-    if failure_record is None:
-        return ""
-
-    lines = [
-        f"Phase: {failure_record.failure_phase}",
-        f"Error type: {failure_record.error_type}",
-        f"Diagnosis: {failure_record.diagnosis}",
-    ]
-
-    ctx = failure_record.ifc_context or {}
-    if ctx:
-        ctx_parts = []
-        if ctx.get("operation"):
-            ctx_parts.append(f"operation={ctx['operation']}")
-        if ctx.get("pset") and ctx.get("property"):
-            ctx_parts.append(f"pset={ctx['pset']}, property={ctx['property']}")
-        if ctx_parts:
-            lines.append("Previous attempt: " + "; ".join(ctx_parts))
-
-    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------

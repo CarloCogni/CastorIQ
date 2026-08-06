@@ -238,6 +238,114 @@ in the UI, which we do.
 
 ---
 
+## 3. An intent the schema cannot express is substituted, not refused
+
+### Symptom
+
+The user asks for something the pipeline's internal representation has no
+way to describe. The model does not fail, and does not say it cannot
+comply — it resolves the request into the nearest thing the schema *can*
+hold, and the system proceeds confidently with a different operation from
+the one requested. Because every downstream stage sees a well-formed
+request, nothing reports a problem: the change validates, previews,
+approves, writes and commits as a success.
+
+### Why it matters
+
+Castor's whole safety argument is that the model is granted the smallest
+decision space the task requires (**Minimal Authority**), and that
+deterministic code owns everything else. Narrow per-stage schemas are how
+that boundary is enforced. This entry is the cost of that design: a schema
+tight enough to constrain the model is also tight enough to make some user
+intents inexpressible, and an inexpressible intent gets silently rewritten
+rather than rejected.
+
+It is also the failure mode our test strategy is structurally blind to.
+Unit tests substitute a scripted model response, so the slot payload is
+always one a developer hand-wrote — and a developer writing a payload for
+"remove X" writes a *sensible* one. The gap only appears when a real model
+is asked to fill a real schema it cannot satisfy.
+
+### Concrete example
+
+Model: `llama3.1:8b` via local Ollama, temperature 0.1. Observed
+2026-08-05 during the first automated natural-language benchmark run.
+
+Verbatim prompt:
+
+```
+remove Reference from all walls
+```
+
+Observed behaviour — the property the user asked to clear was instead
+written with a fragment of their own sentence, on every matched wall:
+
+```
+SET_PROPERTY: Pset_WallCommon.Reference = 'all walls'
+SET_PROPERTY: Pset_WallCommon.Reference = 'all walls'
+SET_PROPERTY: Pset_WallCommon.Reference = 'all walls'
+SET_PROPERTY: Pset_WallCommon.Reference = 'all walls'
+SET_PROPERTY: Pset_WallCommon.Reference = 'all walls'
+```
+
+Second instance, same run:
+
+```
+remove ExtendToStructure from wall :285330
+  -> SET_PROPERTY: Pset_WallCommon.ExtendToStructure = True
+```
+
+The slot schema for a property change carried `{pset, property, value}`
+and no operation field, so a value was mandatory. The user-facing help had
+advertised this exact operation, with a clickable worked example.
+
+### Mitigations in place
+
+- The specific gap is closed: `PropertySlots` now carries an `operation`
+  (`SET` | `REMOVE`) which `tier_router._route_tier1` honours, and the
+  finalizer discards a value on a REMOVE even when the model supplies one.
+  An omitted or unrecognised operation defaults to the *safe* member.
+- The general check is the natural-language benchmark
+  (`manage.py benchmark_writeback`), which compares each outcome against a
+  declared expectation instead of against the pipeline's own reasoning.
+  It is what surfaced this, and it is the only layer that can.
+- Verifying the written file separately from the routing decision
+  (**fidelity** vs **understanding**, see [testing.md](testing.md)) keeps
+  this class of failure legible: here execution was flawless while
+  comprehension was wrong, and a single blended score would have hidden it.
+
+### Residual risk
+
+**The class is not eliminated — only this instance is.** Every narrow
+schema in the pipeline is a candidate: triage kinds, the attribute slot
+set, the Tier 3 op set, the facilities intent schemas. Any user intent
+that falls outside one of them is liable to be rounded to the nearest
+member rather than refused, and the resulting change will look correct at
+every checkpoint.
+
+The benchmark only detects this where the corpus already contains a prompt
+expressing the intent. An intent nobody thought to write down stays
+invisible for exactly the same reason it was inexpressible in the first
+place.
+
+### What to do
+
+- When adding a capability, check the slot schema can *express* it before
+  assuming the model will convey it. If an operation exists in the writer
+  and the validator but no stage can emit it, it is unreachable — treat
+  that as a defect, not a gap.
+- Model intent as an explicit enumerated slot. Do not infer it downstream
+  from verbs in free text.
+- Make the absent case explicit in the prompt *and* enforce it in the
+  finalizer. Instructions alone are not a control.
+- When a user reports that Castor "did something else", suspect this
+  before suspecting the model: check whether the request was expressible
+  at all.
+- Add the prompt to `fixtures/benchmark/pipeline-test-prompts.txt` with
+  its expected outcome, so the next run regression-tests it.
+
+---
+
 ## How to add an entry
 
 When you observe a reproducible failure that is **inherent to the

@@ -397,6 +397,42 @@ class Tier1Validator:
             params={"pset": pset, "property": prop},
         )
 
+    @staticmethod
+    def _types_without_attribute(attribute: str, entities: list[IFCEntity]) -> set[str]:
+        """IFC classes among ``entities`` that do not declare ``attribute``.
+
+        Answered from the IFC schema itself rather than a hand-maintained
+        table, so it stays correct for every class and both schema versions.
+
+        Fail-open by design: an unknown schema or class yields no complaint.
+        Blocking a legitimate edit because introspection hiccuped would be a
+        worse failure than letting the writer's own guard catch it.
+        """
+        import ifcopenshell.ifcopenshell_wrapper as wrapper
+
+        unsupported: set[str] = set()
+        cache: dict[tuple[str, str], bool] = {}
+
+        for entity in entities:
+            ifc_type = (entity.ifc_type or "").strip()
+            schema = (getattr(entity.ifc_file, "schema_version", "") or "IFC4").strip()
+            if not ifc_type:
+                continue
+            key = (schema, ifc_type)
+            if key not in cache:
+                try:
+                    declaration = wrapper.schema_by_name(schema).declaration_by_name(ifc_type)
+                    attributes = declaration.all_attributes()
+                    names = {attributes[i].name() for i in range(len(attributes))}
+                    cache[key] = attribute in names
+                except Exception as e:  # noqa: BLE001 — introspection must not block
+                    logger.debug("Schema lookup failed for %s/%s: %s", schema, ifc_type, e)
+                    cache[key] = True
+            if not cache[key]:
+                unsupported.add(ifc_type)
+
+        return unsupported
+
     def _validate_set_attribute(self, intent: dict, entities: list[IFCEntity]) -> ValidationResult:
         attribute = intent.get("attribute", "")
         value = intent.get("new_value")
@@ -415,6 +451,22 @@ class Tier1Validator:
             )
 
         entities_list = list(entities)
+
+        # Safe-listed is not the same as present. `LongName` is a real IFC
+        # attribute, but only on spatial elements and type objects — asking for
+        # it on an IfcWindow used to route cleanly and then die at execution
+        # with a raw AttributeError, after the user had already approved.
+        unsupported = self._types_without_attribute(attribute, entities_list)
+        if unsupported:
+            return ValidationResult(
+                valid=False,
+                error=(
+                    f"'{attribute}' is not an attribute of "
+                    f"{', '.join(sorted(unsupported))}. "
+                    f"Try a property instead, or one of: "
+                    f"{', '.join(sorted(SAFE_ATTRIBUTES - {attribute}))}."
+                ),
+            )
         warnings = []
         if len(entities_list) > TIER1_LARGE_OP_THRESHOLD:
             warnings.append(

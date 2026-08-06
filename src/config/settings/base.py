@@ -278,6 +278,12 @@ FIELD_ENCRYPTION_KEY = os.getenv("FIELD_ENCRYPTION_KEY", "")
 # RAG Token Budget
 RAG_RESPONSE_RESERVE = int(os.getenv("RAG_RESPONSE_RESERVE", "1500"))
 RAG_SAFETY_RATIO = float(os.getenv("RAG_SAFETY_RATIO", "0.90"))
+# Soft cosine-distance cutoff for vector retrieval: candidates farther than
+# this are dropped (the closest few always survive — see RAGService).
+RAG_DISTANCE_CEILING = float(os.getenv("RAG_DISTANCE_CEILING", "0.55"))
+# When True, deterministic Ask answers skip the LLM entirely and return a
+# templated fact block (zero tokens, flat tone). Default: LLM narrates.
+RAG_DETERMINISTIC_BYPASS_LLM = os.getenv("RAG_DETERMINISTIC_BYPASS_LLM", "false").lower() == "true"
 
 # Vector Configuration
 PGVECTOR_DIMENSIONS = int(os.getenv("PGVECTOR_DIMENSIONS", "1024"))
@@ -365,3 +371,12 @@ LOGGING = {
 # ``writeback/services/hint_generator.py`` for the strategy contracts.
 WRITEBACK_HINT_LLM_FALLBACK = True
 WRITEBACK_HINT_LLM_CATEGORIES: tuple[str, ...] = ()
+
+# ── Writeback mutation-journal pipeline ────────────────────────────
+# Every tier proposes and executes through the MutationJournal path
+# (journal_builder → JournalExecutor). The WRITEBACK_JOURNAL_TIERS
+# strangler flag that used to gate this is gone: the legacy path was
+# deleted, so there is nothing left to fall back to.
+# Per-entity mutation cap — bulk requests above this are rejected with a
+# "narrow the filter" hint instead of producing unreviewable journals.
+WRITEBACK_JOURNAL_MAX_MUTATIONS = int(os.getenv("WRITEBACK_JOURNAL_MAX_MUTATIONS", "2000"))

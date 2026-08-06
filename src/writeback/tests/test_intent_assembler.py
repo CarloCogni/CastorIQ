@@ -6,7 +6,6 @@ from unittest.mock import MagicMock
 from writeback.services.intent_assembler import (
     assemble_tier1_intent,
     assemble_tier2_intent,
-    assemble_tier3_payload,
     derive_tier3_inputs,
 )
 from writeback.services.tier_router import RoutingResult
@@ -154,19 +153,6 @@ class TestAssembleTier2Intent:
         assert plan["plan"][0]["operation"] == "ADD_PSET"
 
 
-class TestAssembleTier3Payload:
-    def test_packages_code_with_explanation_and_confidence(self):
-        payload = assemble_tier3_payload(
-            segments=[],
-            code="def modify_ifc(model):\n    return {'summary': 'noop', 'changes': []}",
-            explanation="Test code",
-        )
-        assert payload["tier"] == 3
-        assert "modify_ifc" in payload["code"]
-        assert payload["explanation"] == "Test code"
-        assert payload["confidence"] == 70
-
-
 class TestDeriveTier3Inputs:
     def test_create_segment_extracts_class_names_parent(self):
         parent = _entity_mock("parent_guid", "Level 1", "IfcBuildingStorey")
@@ -212,14 +198,28 @@ class TestDeriveTier3Inputs:
         assert len(inputs["targets_to_delete"]) == 1
         assert inputs["targets_to_delete"][0]["name"] == "Chair-001"
 
-    def test_relationship_segment_extracts_targets(self):
+    def test_relationship_segment_separates_move_from_destination(self):
+        """A move must never be filed as a deletion — the prompt reads these."""
         target = _entity_mock("wall_guid", "Wall-01", "IfcWall")
+        storey = _entity_mock("storey_guid", "Level 2", "IfcBuildingStorey")
         seg = {
             "kind": "RELATIONSHIP",
             "resolution": _resolution_mock([target]),
+            "destination_resolution": _resolution_mock([storey]),
         }
         inputs = derive_tier3_inputs([seg])
-        assert inputs["targets_to_delete"][0]["global_id"] == "wall_guid"
+        assert inputs["move_targets"][0]["global_id"] == "wall_guid"
+        assert inputs["destination"][0]["global_id"] == "storey_guid"
+        assert inputs["targets_to_delete"] == []
+
+    def test_relationship_without_destination_resolution_is_empty(self):
+        seg = {
+            "kind": "RELATIONSHIP",
+            "resolution": _resolution_mock([_entity_mock("wall_guid", "Wall-01", "IfcWall")]),
+        }
+        inputs = derive_tier3_inputs([seg])
+        assert inputs["move_targets"][0]["global_id"] == "wall_guid"
+        assert inputs["destination"] == []
 
     def test_create_dedupes_names_across_segments(self):
         segments = [

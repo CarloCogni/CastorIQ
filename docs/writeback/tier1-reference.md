@@ -2,12 +2,21 @@
 
 ## Operations
 
-| Operation | What it does | Example prompt |
-|---|---|---|
-| `SET_PROPERTY` | Change an existing property value in a PropertySet | "Set fire rating of all walls to EI120" |
-| `ADD_PROPERTY` | Add a new property to an existing PropertySet (auto-creates standard psets) | "Add an AcousticRating of 52dB to all external walls" |
-| `REMOVE_PROPERTY` | Remove a property from a PropertySet | "Remove the Reference property from wall W-01" |
-| `SET_ATTRIBUTE` | Change a direct IFC entity attribute | "Rename door D-01 to D-01-Main-Entrance" |
+| Operation | What it does | Example prompt | Routed to directly? |
+|---|---|---|---|
+| `SET_PROPERTY` | Change a property value in a PropertySet (upsert on standard psets) | "Set fire rating of all walls to EI120" | Yes |
+| `REMOVE_PROPERTY` | Remove a property from a PropertySet | "Remove the Reference property from wall W-01" | Yes |
+| `SET_ATTRIBUTE` | Change a direct IFC entity attribute | "Rename door D-01 to D-01-Main-Entrance" | Yes |
+| `ADD_PROPERTY` | Add a property that is not yet present | "Add an AcousticRating of 52dB to all external walls" | No — the validator converts a `SET_PROPERTY` |
+
+### Why SET and REMOVE, but not ADD
+
+The slot extractor emits an `operation` of `SET` or `REMOVE` for every PROPERTY segment, and the router honours it. `ADD` is deliberately **not** a third member:
+
+- On standard psets `SET_PROPERTY` is already an upsert — missing psets are created and missing properties added. A separate ADD route would only introduce a way for "add X" to fail when X already exists.
+- A **removal** is genuinely a different operation and cannot be expressed as a set. It needs its own route.
+
+This asymmetry is load-bearing, not an oversight. Before the `operation` slot existed, every removal request routed to `SET_PROPERTY`; because a SET requires a value and none had been supplied, the model filled it from the user's own words — "remove Reference from all walls" wrote `Reference = 'all walls'` onto five walls and reported success at every checkpoint. See [the 2026-08-05 evaluation](../evaluation/2026-08-05-writeback-nl-benchmark.md).
 
 ## Safe Attributes (SET_ATTRIBUTE)
 
@@ -19,9 +28,9 @@ Enforced in `Tier1Validator.SAFE_ATTRIBUTES`:
 | `Description` | Free-text description field |
 | `ObjectType` | Type classification string |
 | `Tag` | Short identifier / reference tag |
-| `LongName` | Extended name (IfcBuilding, IfcBuildingStorey, etc.) |
+| `LongName` | Extended name — **only on spatial elements and type objects**; rejected on classes that do not declare it |
 
-**Guard:** SET_ATTRIBUTE is capped at 10 entities (`MAX_NUM_ENTITIES` in `ModificationService`). This prevents accidental mass renames.
+**Guard:** a SET_ATTRIBUTE touching more than 10 entities (`SAFE_ATTRIBUTE_BULK_LIMIT` in `tier_router`) is routed to Tier 2 instead, so a mass rename gets a full plan review rather than a one-click approval.
 
 ## Filters
 
@@ -103,24 +112,26 @@ Registry coercion runs first. If it returns the same value (no registry entry fo
 ### SET_ATTRIBUTE
 1. Requires `attribute`, `new_value`
 2. Checks attribute is in `SAFE_ATTRIBUTES`: {Name, Description, ObjectType, Tag, LongName}
-3. All matched entities are included (no property-level filtering)
+3. Checks the attribute is **declared on the matched entities' IFC class**, via schema introspection rather than a hand-maintained table (fails open if introspection errors). Safe-listed is not the same as present: `LongName` is a real IFC attribute but exists only on spatial elements and type objects, so requesting it on an `IfcWindow` is refused here rather than raising mid-execution after the user has approved.
+4. All matched entities are included (no property-level filtering)
 
 ---
 
 ## Auto-Fallback: SET_PROPERTY → ADD_PROPERTY
 
-When Tier 1 validation fails for SET_PROPERTY with "not found on any" in the error, `ModificationService` checks whether the pset.property is a known standard property via `lookup_property()`. If it is, the operation is silently converted to ADD_PROPERTY and re-validated. This handles the common case where a standard property hasn't been set on entities yet.
+When Tier 1 validation fails for SET_PROPERTY with "not found on any" in the error, the pipeline checks whether the pset.property is a known standard property via `lookup_property()`. If it is, the operation is silently converted to ADD_PROPERTY and re-validated. This handles the common case where a standard property hasn't been set on entities yet, and is why the router never needs to emit ADD_PROPERTY itself.
 
 ---
 
-## Chain Intents (Multi-Operation Requests)
+## Multi-Operation Requests
 
-When the user makes a compound request like "Set fire rating to EI120 and IsExternal to true for all walls", the classifier returns a **JSON array** of Tier 1 intents.
+A compound request like "Set fire rating to EI120 and IsExternal to true for all walls" becomes **two triage segments**, and the deterministic router sends any multi-segment request to **Tier 2** as a single plan.
 
-- Each intent in the chain is validated independently
-- Each becomes a separate `ModificationProposal` linked by a `chain_id`
-- If **any** element fails Tier 1 validation, the **entire** request escalates to Tier 2
-- All chained elements must be Tier 1 — if the classifier marks any as Tier 2/3, the chain is rejected
+- One proposal, one journal, one atomic execution — not several linked Tier 1 proposals
+- Each step is still validated independently inside `Tier2Validator`
+- The user reviews the whole plan before any of it runs
+
+There is no Tier 1 chain. The earlier design linked several proposals by a `chain_id`; that field no longer exists, and `ModificationProposal.message` is unique per row, so one chat message cannot produce multiple proposals.
 
 ---
 
@@ -131,7 +142,7 @@ When the user makes a compound request like "Set fire rating to EI120 and IsExte
 - Property name resolution is **case-insensitive** (`_resolve_property_name`)
 - `add_property` auto-creates standard psets via `ifcopenshell.api.run("pset.add_pset", ...)`
 - After all changes, `save()` must be called explicitly
-- `ModificationService` syncs changes back to the Django DB after execution
+- The writer is driven by `JournalExecutor`, which owns the temp copy and the atomic swap; `ExecutionService` then syncs the changes back to the Django DB
 
 ---
 

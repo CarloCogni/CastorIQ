@@ -14,7 +14,7 @@ That's the entire scope. Three concrete surfaces:
 
 1. **`FailureRecord` model** — one row per caught failure, with deterministic taxonomy (`error_type`, `failure_phase`, `category`), human-readable `diagnosis`, and a 1024-d query embedding when Ollama is reachable.
 2. **`failure_classifier.create_failure_record(...)`** — the factory used by `ModificationService` and the writeback consumer to capture failures.
-3. **`failure_classifier.build_failure_context(record)`** — produces a ~60-token retry hint that the writeback pipeline injects on the next attempt for `RETRYABLE` failures.
+3. **Retry feedback via `propose(retry_of=record)`** — when a boundary stage fails, its structured `{code, path, hint}` errors are stored on the record's `intent_json`; a retry feeds them back into exactly the stage that failed.
 
 MetaCastor does not touch IFC geometry, does not change the approval flow, does not run any LLM other than the optional embedding for retrieval, and does not hold deferred behaviour behind feature flags.
 
@@ -33,6 +33,6 @@ Import direction is one-way: MetaCastor imports from `writeback` and `environmen
 | Path | Purpose |
 |---|---|
 | `src/metacastor/models.py` | `FailureRecord` model |
-| `src/metacastor/services/failure_classifier.py` | `create_failure_record`, `build_failure_context`, deterministic taxonomy |
+| `src/metacastor/services/failure_classifier.py` | `create_failure_record`, `classify_error`, deterministic taxonomy |
 | `src/metacastor/admin.py` | `FailureRecord` admin (for triage) |
 | `docs/metacastor/d3-failure-memory.md` | Full FailureRecord spec — taxonomy, retry semantics |

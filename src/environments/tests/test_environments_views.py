@@ -1439,3 +1439,133 @@ class TestExploreEntityDetailPartial:
 
         response = client.get(self._url(project, ifc_file, entity))
         assert response.status_code in (302, 403)
+
+
+# ── Explore 3D deep link (?focus=) ───────────────────────────────────────────
+
+
+@pytest.mark.django_db
+class TestExploreFocusDeepLink:
+    """GET /projects/<pk>/explore/?focus=<global_id> — 3D pane deep link."""
+
+    def _url(self, project, focus):
+        return reverse("projects:explore", kwargs={"pk": project.pk}) + f"?focus={focus}"
+
+    def test_focus_param_lands_in_context(self, client):
+        """?focus= is exposed as focus_gid so the 3D pane can auto-open."""
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        ifc_file = IFCFileFactory(project=project, status="completed")
+        entity = IFCEntityFactory(ifc_file=ifc_file)
+        client.force_login(user)
+
+        response = client.get(self._url(project, entity.global_id))
+        assert response.status_code == 200
+        assert response.context["focus_gid"] == entity.global_id
+
+    def test_focus_param_resolves_selected_ifc_to_containing_file(self, client):
+        """With multiple files, the file holding the focused entity is selected."""
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        older = IFCFileFactory(project=project, status="completed")
+        IFCFileFactory(project=project, status="completed")
+        entity = IFCEntityFactory(ifc_file=older)
+        client.force_login(user)
+
+        response = client.get(self._url(project, entity.global_id))
+        assert response.context["selected_ifc"] == older
+
+    def test_focus_unknown_gid_keeps_default_selection(self, client):
+        """An unknown GlobalId falls back to the default file selection."""
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        ifc_file = IFCFileFactory(project=project, status="completed")
+        client.force_login(user)
+
+        response = client.get(self._url(project, "NO-SUCH-GID"))
+        assert response.status_code == 200
+        assert response.context["selected_ifc"] == ifc_file
+        assert response.context["focus_gid"] == "NO-SUCH-GID"
+
+
+# ── ExploreEntityDetailPartial by GlobalId ───────────────────────────────────
+
+
+@pytest.mark.django_db
+class TestExploreEntityDetailByGid:
+    """GET /projects/<pk>/explore/ifc/<ifc_id>/entity/by-gid/<global_id>/."""
+
+    def _url(self, project, ifc_file, global_id):
+        return reverse(
+            "projects:explore_entity_detail_gid",
+            kwargs={"pk": project.pk, "ifc_id": ifc_file.pk, "global_id": global_id},
+        )
+
+    def test_valid_gid_returns_200_with_entity(self, client):
+        """A GlobalId known in the file resolves to the same detail partial."""
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        ifc_file = IFCFileFactory(project=project, status="completed")
+        entity = IFCEntityFactory(ifc_file=ifc_file)
+        client.force_login(user)
+
+        response = client.get(self._url(project, ifc_file, entity.global_id))
+        assert response.status_code == 200
+        assert response.context["entity"] == entity
+
+    def test_unknown_gid_returns_404(self, client):
+        """A GlobalId not present in the file is a 404."""
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        ifc_file = IFCFileFactory(project=project, status="completed")
+        client.force_login(user)
+
+        response = client.get(self._url(project, ifc_file, "NO-SUCH-GID"))
+        assert response.status_code == 404
+
+    def test_non_member_denied(self, client):
+        """User without project access is denied."""
+        project = ProjectFactory()
+        ifc_file = IFCFileFactory(project=project, status="completed")
+        entity = IFCEntityFactory(ifc_file=ifc_file)
+        client.force_login(UserFactory())
+
+        response = client.get(self._url(project, ifc_file, entity.global_id))
+        assert response.status_code in (302, 403)
+
+
+# ── ExploreEntitiesPartial ?gids=1 JSON mode ─────────────────────────────────
+
+
+@pytest.mark.django_db
+class TestExploreEntitiesGidsJson:
+    """GET /projects/<pk>/explore/ifc/<ifc_id>/entities/?gids=1 — 3D highlight feed."""
+
+    def _url(self, project, ifc_file):
+        return reverse(
+            "projects:explore_entities", kwargs={"pk": project.pk, "ifc_id": ifc_file.pk}
+        )
+
+    def test_gids_param_returns_json_global_ids(self, client):
+        """?gids=1 returns the GlobalIds of the current filter set as JSON."""
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        ifc_file = IFCFileFactory(project=project, status="completed")
+        entities = [IFCEntityFactory(ifc_file=ifc_file) for _ in range(3)]
+        client.force_login(user)
+
+        response = client.get(self._url(project, ifc_file) + "?gids=1")
+        assert response.status_code == 200
+        assert sorted(response.json()["global_ids"]) == sorted(e.global_id for e in entities)
+
+    def test_gids_respects_type_filter(self, client):
+        """The JSON feed honors the same filters as the HTML table."""
+        user = UserFactory()
+        project = ProjectFactory(owner=user)
+        ifc_file = IFCFileFactory(project=project, status="completed")
+        wall = IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcWall")
+        IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcDoor")
+        client.force_login(user)
+
+        response = client.get(self._url(project, ifc_file) + "?gids=1&type=IfcWall")
+        assert response.json()["global_ids"] == [wall.global_id]

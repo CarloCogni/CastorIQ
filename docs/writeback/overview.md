@@ -22,7 +22,10 @@ TriageClassifier (LLM #1)          — splits into action segments
    ▼
 SlotExtractor (LLM #2 per segment) — per-kind narrow prompt fills a small
    │                                 fixed slot set; vague-value /
-   │                                 generic-name guards fire per-segment
+   │                                 generic-name guards fire per-segment.
+   │                                 PROPERTY carries `operation` (SET |
+   │                                 REMOVE); RELATIONSHIP carries a
+   │                                 `destination_phrase`
    ▼
 EntityNameResolver (LLM #3)        — mode-aware:
    │                                 EXISTING_TARGET / PARENT_TARGET /
@@ -35,13 +38,25 @@ tier_router.route()                — DETERMINISTIC, NO LLM
    │                                 CREATE / DELETE / RELATIONSHIP → T3
    │                                 OUT_OF_SCOPE / UNCLEAR / no entities → T0
    ▼
-intent_assembler                   — builds the intent dict the writers consume
-   │
+intent_assembler                   — builds the intent dict the validators
+   │                                 consume
    ▼
-T1 / T2 / T3 dispatchers
+T1 / T2 / T3 dispatchers           — validate, then build one MutationJournal
+   ▼
+MutationJournal                    — the single write IR for every tier
+   ▼
+render_diff(journal)               — the preview the user approves
+   ▼
+       ── human approval ──
+   ▼
+JournalExecutor.apply()            — temp copy → replay → atomic os.replace
+   ▼
+git commit  →  DB index sync
 ```
 
-For the full design rationale and the deterministic policy table, see [pipeline-architecture.md](../specs/writeback/pipeline-architecture.md).
+Every tier ends at the same artifact. See [The MutationJournal](#the-mutationjournal) below, and
+[pipeline-architecture.md](../specs/writeback/pipeline-architecture.md) for the full design
+rationale and the deterministic policy table.
 
 ## Three-Tier Escalation
 
@@ -49,15 +64,15 @@ For the full design rationale and the deterministic policy table, see [pipeline-
 
 The LLM stages emit structured slots. Pre-coded, tested handler functions execute the changes.
 
-- **Operations:** `SET_PROPERTY`, `ADD_PROPERTY`, `REMOVE_PROPERTY`, `SET_ATTRIBUTE`
-- **Validation:** Target pset exists, property exists (SET/REMOVE) or doesn't (ADD), type compatible, filter matches ≥1 entity. SET_PROPERTY upserts on standard psets, so the SET→ADD auto-fallback is folded into the validator.
+- **Operations the router emits:** `SET_PROPERTY`, `REMOVE_PROPERTY`, `SET_ATTRIBUTE`. `ADD_PROPERTY` exists in the writer but is never routed to directly — `SET_PROPERTY` is an upsert on standard psets, and the validator converts it when the property is absent.
+- **Validation:** Target pset exists, property exists (SET/REMOVE) or doesn't (ADD), type compatible, filter matches ≥1 entity. `SET_ATTRIBUTE` additionally checks the attribute is declared on the matched entities' IFC class, not merely safe-listed.
 - **Approval:** Diff table (entity, old → new). Single "Approve" button. Green badge.
 - **On failure:** Automatic escalation to Tier 2.
 - **Reference:** [tier1-reference.md](tier1-reference.md)
 
 ### Tier 2 — ORANGE (Operation Planner)
 
-Multi-step or PSET-family operations. Plans are assembled deterministically from segments — `Tier2Planner` LLM is bypassed.
+Multi-step or PSET-family operations. Plans are assembled deterministically from segments — there is no plan-generating LLM.
 
 - **Trigger:** Multi-segment requests, PSET ops, custom-pset properties, or Tier 1 validation failure
 - **Operations:** `ADD_PSET`, `REMOVE_PSET`, `SET_CLASSIFICATION`, `SET_MATERIAL`, plus chained `SET_PROPERTY`/`SET_ATTRIBUTE`
@@ -66,14 +81,15 @@ Multi-step or PSET-family operations. Plans are assembled deterministically from
 - **On failure:** Escalates to Tier 3.
 - **Reference:** [tier2-reference.md](tier2-reference.md)
 
-### Tier 3 — RED (Code Generation)
+### Tier 3 — RED (Entity Lifecycle)
 
-The LLM generates executable IfcOpenShell Python code, running in a sandboxed environment against a file copy.
+Tier 3 tries **typed operations first** and generates code only when it cannot express the request. The LLM chooses *which* pre-coded operation to run rather than authoring the IfcOpenShell calls.
 
 - **Trigger:** CREATE / DELETE / RELATIONSHIP segments (handled directly by the deterministic router), or Tier 2 escalation
-- **Code template:** `def modify_ifc(model): ... return {"summary": ..., "changes": [...]}`
-- **Safety:** Seven-layer defence — forbidden pattern scan (×2), restricted globals, file copy isolation, timeout, return validation, Git snapshot, human code review
-- **Approval:** Syntax-highlighted code display. Red "Execute" button. No pre-execution diff (code is the preview).
+- **Typed ops:** `CREATE_ENTITY`, `DELETE_ENTITY`, `ASSIGN_RELATIONSHIP` — schema-validated, and grounded against the DB so a hallucinated GlobalId cannot survive to execution
+- **Approval (typed):** an ordinary diff preview and a normal Approve button — there is no code to review
+- **Code fallback:** when the planner reports `cannot_express`, the reason is shown to the user and generated Python is produced instead. Seven-layer defence — forbidden pattern scan (×2), restricted globals, file copy isolation, a real subprocess timeout, return validation, Git snapshot, human code review
+- **Approval (code):** syntax-highlighted code plus a mandatory review acknowledgement. The gate follows the *presence of code*, not the tier
 - **Reference:** [tier3-reference.md](tier3-reference.md)
 
 ### Out of Scope
@@ -122,9 +138,14 @@ tier_router.route(segments)        → deterministic, NO LLM
     │
     ├── 0 entities matched ──► Tier 0 reject (HintGenerator: registry-grounded fuzzy match)
     ├── property has no pset ──► Tier 0 reject (HintGenerator: registry-grounded "did you mean...")
-    ├── tier=1 ──► _v2_dispatch_t1 ──► Tier1Validator ──► proposal
-    ├── tier=2 ──► _v2_dispatch_t2 ──► assemble_tier2_intent ──► Tier2Validator ──► proposal
-    └── tier=3 ──► _v2_dispatch_t3 ──► Tier3Planner ──► Tier3Reviewer ──► proposal
+    ├── move with no resolvable destination ──► Tier 0 reject (hint lists the model's storeys)
+    ├── tier=1 ──► _dispatch_t1 ──► Tier1Validator ──► build_t1 ──► journal
+    ├── tier=2 ──► _dispatch_t2 ──► assemble_tier2_intent ──► Tier2Validator ──► build_t2 ──► journal
+    └── tier=3 ──► _dispatch_t3 ──► T3OpPlanner ──► build_t3 ──► journal
+                       └── cannot_express ──► Tier3Planner ──► Tier3Reviewer ──► build_t3_code
+    │
+    ▼
+render_diff(journal) ──► proposal (changes = journal, diff_preview = rows)
     │
     ▼
 Guardian (RAV) check (non-blocking)
@@ -132,7 +153,7 @@ Guardian (RAV) check (non-blocking)
     ▼
 Proposal returned to user for approval
     │
-    ├── Approve ──► Git snapshot ──► Execute ──► Git commit ──► Sync DB
+    ├── Approve ──► Git snapshot ──► JournalExecutor.apply() ──► Git commit ──► Sync DB
     └── Reject ──► Proposal marked rejected
 ```
 
@@ -143,6 +164,23 @@ Proposal returned to user for approval
 - **Auto-fallback (SET_PROPERTY → ADD_PROPERTY):** If Tier 1 validation fails because a standard pset property doesn't exist on entities yet, the validator auto-converts to ADD_PROPERTY and re-validates.
 - **Multi-segment requests route to Tier 2 plan, not Tier 1 chain.** `ModificationProposal.message` is unique-per-row, so chained T1 proposals would IntegrityError. T2 plans use a single proposal with multiple steps; execution is atomic across steps.
 - **SET_ATTRIBUTE guard:** SET_ATTRIBUTE operations on more than 10 entities route to Tier 2 instead of Tier 1, to avoid accidental mass renames.
+
+---
+
+## The MutationJournal
+
+Every tier converges on one artifact. A `MutationJournal` is an immutable, serializable list of typed mutations pinned to a SHA-256 fingerprint of the file it targets, stored on `ModificationProposal.changes`.
+
+This is what makes the preview and the write the same thing: `render_diff()` renders the journal, the user approves *that* journal, and `JournalExecutor` replays exactly it. There is no second code path that reinterprets the intent at execution time.
+
+**Corruption resistance is structural, not procedural:**
+
+- **Deferred bake.** Mutations apply to a temp copy created beside the original; only a fully successful run ends in an atomic `os.replace`. Any failure — a bad GlobalId, a rejected value, a crash — leaves the original byte-identical, with no partial write to unwind.
+- **Fingerprint pinning.** If the file changed after the proposal was built, the fingerprint no longer matches and the journal is refused rather than applied to a model it was never validated against. Re-proposing is the fix, and the failure is classified `STALE_JOURNAL` / retryable.
+- **Closed op set.** Twelve typed operations. `RUN_CODE` is the escape hatch and the only one that carries arbitrary Python — which is why the code-review gate follows the presence of code rather than the tier.
+- **Old values re-read at apply time.** The journal carries a DB snapshot of each old value; the executor compares it against the model and flags drift, so a stale preview is visible rather than silent.
+
+After a successful run the executor returns what it actually did, which drives the DB index sync — including entity creation and deletion, where the GlobalId is only known once IfcOpenShell mints it.
 
 ---
 
@@ -167,8 +205,11 @@ Central service that coordinates the full propose → validate → execute → c
 | `SlotExtractor` | `writeback/services/slot_extractor.py` | Stage 2: per-kind narrow prompts fill slot dicts; groundedness + value-shape guards |
 | `EntityNameResolver` | `writeback/services/entity_resolver.py` | Stage 3: locate target entities, mode-aware (EXISTING / PARENT / NEW / NO target) |
 | `tier_router.route` | `writeback/services/tier_router.py` | Stage 3.5: deterministic policy table; no LLM. Picks the initial tier |
-| `intent_assembler` | `writeback/services/intent_assembler.py` | Builds the intent dict shape the writers consume |
+| `intent_assembler` | `writeback/services/intent_assembler.py` | Builds the intent dict shape the validators consume |
 | `HintGenerator` | `writeback/services/hint_generator.py` | Composes user-visible hints on Tier 0 rejection. Three strategies: Templated → Registry-grounded → LLM-fallback (gated, see [pipeline-architecture.md](../specs/writeback/pipeline-architecture.md)) |
+| `JournalBuilder` | `writeback/services/journal_builder.py` | Turns a validated T1 intent / T2 plan / T3 op list into one `MutationJournal`; snapshots old values and pins the file fingerprint |
+| `JournalExecutor` | `ifc_processor/services/journal_executor.py` | Replays a journal onto a temp copy and atomically swaps it over the original |
+| `render_diff` | `writeback/services/diff_renderer.py` | Renders a journal as the UI diff rows — the preview and the write share one source |
 
 ### `FilterEngine` — Entity Resolution
 
@@ -206,8 +247,11 @@ File: `writeback/services/emitters.py`
 
 ### Writers
 
+All three live in `ifc_processor/services/` — they are pure IfcOpenShell libraries with no LLM or Django coupling, so the FM export path can drive the same code.
+
 - **`Tier1Writer`:** Operates on a single IFC file via IfcOpenShell API. Uses transactions (`begin_transaction` / `undo` on error). Handles SET/ADD/REMOVE_PROPERTY and SET_ATTRIBUTE.
 - **`Tier2Writer`:** Wraps `Tier1Writer` for basic ops, adds `add_pset`, `remove_pset`, `set_classification`, `set_material`. Uses find-or-create patterns for classifications and materials.
+- **`Tier3Writer`:** Extends `Tier2Writer` with `create_entity`, `delete_entity`, `assign_container`. Delete dispatches on class (an `IfcZone` is an `IfcGroup`, not an `IfcProduct`), and both delete and move assert their post-condition by re-reading the model — several IfcOpenShell APIs return `None` on a no-op rather than raising.
 - **`Tier3Reviewer`:** LLM code review step in `tier3_reviewer.py`; evaluates safety and correctness of generated Tier 3 code before the proposal is created. Review output stored in `proposal.review`.
 
 ---
@@ -239,7 +283,7 @@ Before any modification proposal is presented for approval, the Guardian cross-r
 
 ## Implementation Notes
 
-- **LLM model:** User-selectable via Settings page (persisted in `UserLLMConfig`). Resolved at runtime by `core.llm.get_llm(user)`. All services — RAG, pipeline stages, tier planners, reviewers — use this factory. The curated model registry (`core/model_registry.py`) provides VRAM estimates and metadata for the UI. Default fallback: `settings.OLLAMA_MODEL` from `.env`.
+- **LLM model:** User-selectable via Settings page (persisted in `UserLLMConfig`). Resolved at runtime by `core.llm.get_llm(user)`. All services — RAG, pipeline stages, tier planners, reviewers — use this factory. The curated model registry (`core/llm_model_registry.py`) provides VRAM estimates and metadata for the UI. Default fallback: `settings.OLLAMA_MODEL` from `.env`.
 - **Always validate** stage output before executing — Triage, SlotExtractor, Tier1Validator, Tier2Validator, Tier3Reviewer form a layered safety net; small-model drift in any one stage degrades gracefully into a localised rejection.
 - **Request-scoped:** The modification service is instantiated per-request inside either the async WebSocket consumer (primary path, wrapped in `sync_to_async`) or the Django view (HTTP fallback). Both paths are functionally equivalent; the emitter parameter controls whether progress is streamed.
 - **DB sync:** After execution, entity properties and names are synced back to the Django ORM so queries reflect the latest state.

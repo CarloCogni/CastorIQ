@@ -14,7 +14,7 @@ from writeback.services.modification_service import ModificationError, Modificat
 @pytest.fixture
 def mock_git():
     """Patch GitService to avoid filesystem operations."""
-    with patch("writeback.services.modification_service.GitService") as MockGit:
+    with patch("writeback.services.execution_service.GitService") as MockGit:
         yield MockGit.return_value
 
 
@@ -26,7 +26,6 @@ def mock_llm():
         patch("writeback.services.triage_classifier.get_llm", return_value=mock),
         patch("writeback.services.slot_extractor.get_llm", return_value=mock),
         patch("writeback.services.entity_resolver.get_llm", return_value=mock),
-        patch("writeback.services.tier2_planner.get_llm", return_value=mock),
         patch("writeback.services.tier3_planner.get_llm", return_value=mock),
         patch("writeback.services.tier3_reviewer.get_llm", return_value=mock),
     ):
@@ -152,7 +151,7 @@ class TestRestoreVersion:
         mock_git.rollback.return_value = True
         mock_git.get_parent_hash.return_value = "newhead123456789012345678901234567890"
 
-        with patch("writeback.services.modification_service.IFCProcessingService") as MockProc:
+        with patch("writeback.services.execution_service.IFCProcessingService") as MockProc:
             instance = MockProc.return_value
             instance.run_pipeline.return_value = True
 
@@ -182,7 +181,7 @@ class TestRestoreVersion:
         mock_git.rollback.return_value = True
         mock_git.get_parent_hash.return_value = "newhash0000000000000000000000000000001"
 
-        with patch("writeback.services.modification_service.IFCProcessingService") as MockProc:
+        with patch("writeback.services.execution_service.IFCProcessingService") as MockProc:
             instance = MockProc.return_value
             instance.run_pipeline.return_value = False
 
@@ -229,7 +228,7 @@ class TestT2AutofixSetToAdd:
             "explanation": "Update U-value",
         }
 
-        result = svc.t2_validator.validate_plan(plan)
+        result = svc.pipeline.t2_validator.validate_plan(plan)
         assert result.valid is True
         assert plan["plan"][0]["operation"] == "SET_PROPERTY"
 
@@ -261,7 +260,7 @@ class TestT2AutofixSetToAdd:
             "explanation": "Set fire resistance",
         }
 
-        result = svc.t2_validator.validate_plan(plan)
+        result = svc.pipeline.t2_validator.validate_plan(plan)
         assert result.valid is False
         # Either the registry-typo guard OR a 'did you mean' hint
         combined_error = result.error + " " + (result.steps[0].error if result.steps else "")
@@ -292,10 +291,10 @@ class TestT2AutofixSetToAdd:
             "explanation": "Will fail unrelated to SET/ADD",
         }
 
-        first = svc.t2_validator.validate_plan(plan)
+        first = svc.pipeline.t2_validator.validate_plan(plan)
         assert first.valid is False
 
-        result = svc._t2_autofix_set_to_add(plan, first)
+        result = svc.pipeline._t2_autofix_set_to_add(plan, first)
 
         assert result.valid is False
         assert plan["plan"][0]["operation"] == "ADD_PSET"
@@ -348,7 +347,7 @@ class TestSyncEntityPropertiesAttributes:
             ),
         ]
 
-        svc._sync_entity_properties(changes, ifc_file)
+        svc.execution._sync_entity_properties(changes, ifc_file)
 
         refreshed = IFCEntity.objects.get(pk=target.pk)
         assert refreshed.ifc_description == "new desc from Modify"
@@ -367,7 +366,7 @@ class TestSyncEntityPropertiesAttributes:
 
         target = wall_entities[0]
         svc = ModificationService(project, user=user)
-        svc._sync_entity_properties(
+        svc.execution._sync_entity_properties(
             [
                 EntityChange(
                     global_id=target.global_id,

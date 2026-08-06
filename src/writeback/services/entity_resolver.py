@@ -19,17 +19,16 @@ tier in one shot," the resolver pre-pins the entity. Small open-weight
 models drift less when each LLM call has a single, narrow purpose.
 """
 
-import json
 import logging
 import re
 from dataclasses import dataclass
-
-from langchain_core.messages import HumanMessage, SystemMessage
 
 from core.llm import get_llm
 from ifc_processor.models import IFCEntity
 
 from .filter_engine import FilterEngine
+from .llm_boundary import BoundaryValidationError, call_structured
+from .schemas import ResolverExtraction
 
 logger = logging.getLogger(__name__)
 
@@ -582,30 +581,39 @@ class EntityNameResolver:
             diagnostic=f"matched {len(entities)} entit{'y' if len(entities) == 1 else 'ies'} by GUID",
         )
 
-    def _llm_extract(self, user_message: str) -> dict | None:
-        """Invoke the focused extraction LLM. Returns parsed dict or None."""
+    def _boundary_parse(self, user_prompt: str, stage: str) -> dict | None:
+        """Run the shared schema-validated boundary and preserve fail-soft.
+
+        Routes the extraction LLM call through :func:`call_structured`
+        (code-fence tolerant, one parse path). Any failure — LLM/network
+        error, non-JSON, bad shape — maps to ``None``, exactly the value
+        the resolver's callers already treat as "fall back to today's
+        pipeline". ``max_repair_rounds=0`` keeps this at one ``invoke`` so
+        the resolver's own trim/refine retry loops and their call-count
+        contracts are unchanged.
+        """
         try:
-            response = self.llm.invoke(
-                [
-                    SystemMessage(content=EXTRACTION_SYSTEM_PROMPT),
-                    HumanMessage(
-                        content=_EXTRACTION_USER_TEMPLATE.format(user_message=user_message)
-                    ),
-                ]
+            model = call_structured(
+                self.llm,
+                stage=stage,
+                system_prompt=EXTRACTION_SYSTEM_PROMPT,
+                user_prompt=user_prompt,
+                schema=ResolverExtraction,
+                max_repair_rounds=0,
             )
+        except BoundaryValidationError:
+            return None
         except Exception as e:
             logger.warning("Resolver LLM call failed: %s — falling back to today's pipeline", e)
             return None
+        return model.model_dump()
 
-        try:
-            data = json.loads(response.content)
-        except (json.JSONDecodeError, AttributeError, TypeError):
-            logger.warning("Resolver LLM returned non-JSON: %r", getattr(response, "content", None))
-            return None
-
-        if not isinstance(data, dict):
-            return None
-        return data
+    def _llm_extract(self, user_message: str) -> dict | None:
+        """Invoke the focused extraction LLM. Returns parsed dict or None."""
+        return self._boundary_parse(
+            _EXTRACTION_USER_TEMPLATE.format(user_message=user_message),
+            stage="resolver",
+        )
 
     def _llm_extract_with_trim_retry(self, user_message: str) -> dict | None:
         """Run :meth:`_llm_extract` with progressive-trim retry on
@@ -963,27 +971,8 @@ class EntityNameResolver:
             opt_out_reminder=opt_out_reminder,
         )
 
-        try:
-            response = self.llm.invoke(
-                [
-                    SystemMessage(content=EXTRACTION_SYSTEM_PROMPT),
-                    HumanMessage(content=user_prompt),
-                ]
-            )
-        except Exception as e:
-            logger.warning("Resolver %s LLM call failed: %s", iteration_label, e)
-            return None
-
-        try:
-            data = json.loads(response.content)
-        except (json.JSONDecodeError, AttributeError, TypeError):
-            logger.warning(
-                "Resolver %s returned non-JSON: %r",
-                iteration_label,
-                getattr(response, "content", None),
-            )
-            return None
-        if not isinstance(data, dict):
+        data = self._boundary_parse(user_prompt, stage="resolver_refine")
+        if data is None:
             return None
         if data.get("scope") == "unknown":
             logger.info(

@@ -2,7 +2,6 @@
 """IFC file parsing service using IfcOpenShell."""
 
 import logging
-import re
 from dataclasses import dataclass, field
 
 import ifcopenshell
@@ -19,6 +18,7 @@ from ifc_processor.models import (
     IFCFile,
     IFCSpatialElement,
 )
+from ifc_processor.services.description_builder import DescriptionBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -347,6 +347,8 @@ class IFCParser:
         seen_type_guids: dict[str, IFCElementType] = {}
         container_map: dict[str, str] = {}
         total_processed = 0
+        # Metadata extraction has already run, so project_units is populated.
+        description_builder = DescriptionBuilder(self.ifc_file.project_units)
 
         for ifc_type in self.RELEVANT_TYPES:
             try:
@@ -434,7 +436,12 @@ class IFCParser:
                         except Exception as e:
                             logger.debug("Could not create element type for %s: %s", gid, e)
 
-                    description = self._generate_description(element, properties)
+                    description = description_builder.build(
+                        element,
+                        properties,
+                        type_name=(element_type_record.name if element_type_record else ""),
+                        location_text=self._get_location_text(element),
+                    )
                     entity = IFCEntity(
                         ifc_file=self.ifc_file,
                         global_id=gid,
@@ -892,52 +899,6 @@ class IFCParser:
         if isinstance(value, dict):
             return {k: self._serialize_value(v) for k, v in value.items()}
         return str(value)
-
-    def _generate_description(self, element, properties: dict) -> str:
-        """Generate a rich semantic description for RAG indexing."""
-        raw_type = element.is_a()
-        clean_type = raw_type.replace("Ifc", "")
-        human_type = re.sub(r"(?<!^)(?=[A-Z])", " ", clean_type)
-
-        name = element.Name or "Unnamed"
-        parts = [f"This is a {clean_type}. It is a {human_type} element named '{name}'"]
-
-        # Location from walking the IFC hierarchy
-        location_text = self._get_location_text(element)
-        if location_text:
-            parts.append(f"Location: {location_text}")
-
-        # Key properties for RAG
-        key_props = []
-        target_keys = [
-            "firerating",
-            "fire_rating",
-            "fire rating",
-            "material",
-            "loadbearing",
-            "load_bearing",
-            "height",
-            "width",
-            "length",
-            "thickness",
-            "area",
-            "volume",
-            "u_value",
-            "u-value",
-            "acoustic",
-            "thermal",
-            "resistance",
-        ]
-
-        for key, value in properties.items():
-            if any(t in key.lower() for t in target_keys):
-                simple_key = key.split(".")[-1]
-                key_props.append(f"{simple_key}: {value}")
-
-        if key_props:
-            parts.append(f"Properties: {', '.join(key_props)}")
-
-        return ". ".join(parts) + "."
 
 
 def parse_ifc_file(ifc_file_id: str) -> bool:

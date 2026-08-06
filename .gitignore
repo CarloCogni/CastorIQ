@@ -50,6 +50,7 @@ staticfiles/
 htmlcov/
 .tox/
 .pytest_cache/
+.ruff_cache/
 
 # Docker
 docker-compose.override.yml
@@ -57,15 +58,26 @@ docker-compose.override.yml
 # OS
 .DS_Store
 Thumbs.db
+*.stackdump
 
 # Project specific
 uploads/
+# IFC models are large and usually user data, so they are ignored by default.
+# Two exceptions are tracked deliberately — both are small public samples that
+# tests and the writeback benchmark need to be reproducible from a clean clone.
+# NOTE: a mid-pattern slash anchors to the repo root, so `!tests/fixtures/*.ifc`
+# silently matched nothing; the leading `**/` is what makes it work.
 *.ifc
-!tests/fixtures/*.ifc
+!**/tests/fixtures/*.ifc
+!fixtures/benchmark/*.ifc
 
 # LLM Context Dump
 project_context.txt
 _output/
+
+# Benchmark run artifacts (manage.py benchmark_writeback --json).
+# Baselines worth keeping should be committed explicitly with `git add -f`.
+runs/
 
 # CLAUDE
 .claude/settings.local.json
@@ -78,10 +90,6 @@ settings.local.json
 
 # .castor hidden folder for local files to be compressed or extracted
 .castor/
-
-# Test Coverage
-htmlcov/ifc-lite/
-agent_orchestrator.py
 
 # Project data files — never commit raw client schedules or DB dumps
 *.xml
@@ -96,3 +104,8 @@ oracle-Documentation/
 backup_pre_rename*.dump
 
 docs-local/
+
+# Unregistered local checkouts used by benchmarks/ifc_parser (see docs/benchmarks.md).
+# NOTE: ifc-lite/ is a real git submodule (.gitmodules) and must NOT be listed here.
+engine_web-ifc/
+schema_diagrams/

@@ -36,6 +36,66 @@ class TestPropertyExtraction:
         assert result.slots["value"] == "EI120"
         assert result.warnings == []
 
+    def test_removal_carries_no_value(self):
+        """Regression: a removal must not require — or invent — a value.
+
+        Found by the NL benchmark. `PropertySlots` had no `operation`, so the
+        model had to produce a `value` for every request; "remove Reference
+        from all walls" came back as Reference='all walls' and was written to
+        five walls as a successful SET.
+        """
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = _response(
+            {"operation": "REMOVE", "pset": None, "property": "Reference", "value": None}
+        )
+        ext = SlotExtractor(llm=mock_llm)
+        result = ext.extract(_segment("PROPERTY"), "remove Reference from all walls")
+
+        assert result.slots["operation"] == "REMOVE"
+        assert result.slots["property"] == "Reference"
+        assert result.slots["value"] is None
+
+    def test_removal_discards_a_hallucinated_value(self):
+        """Even if the model fills `value` on a REMOVE, it must not survive."""
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = _response(
+            {"operation": "REMOVE", "property": "Reference", "value": "all walls"}
+        )
+        ext = SlotExtractor(llm=mock_llm)
+        result = ext.extract(_segment("PROPERTY"), "remove Reference from all walls")
+
+        assert result.slots["value"] is None
+
+    def test_missing_operation_defaults_to_set(self):
+        """An omitted operation is an ordinary edit — never inferred as REMOVE."""
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = _response(
+            {"pset": "Pset_WallCommon", "property": "FireRating", "value": "EI120"}
+        )
+        ext = SlotExtractor(llm=mock_llm)
+        result = ext.extract(_segment("PROPERTY"), "set FireRating to EI120 on all walls")
+
+        assert result.slots["operation"] == "SET"
+
+    def test_unrecognised_operation_falls_back_to_set(self):
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = _response(
+            {"operation": "OBLITERATE", "property": "FireRating", "value": "EI120"}
+        )
+        ext = SlotExtractor(llm=mock_llm)
+        result = ext.extract(_segment("PROPERTY"), "set FireRating to EI120 on all walls")
+
+        assert result.slots["operation"] == "SET"
+
+    def test_set_still_requires_a_value(self):
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = _response(
+            {"operation": "SET", "property": "FireRating", "value": None}
+        )
+        ext = SlotExtractor(llm=mock_llm)
+        with pytest.raises(SlotExtractionError, match="missing 'value'"):
+            ext.extract(_segment("PROPERTY"), "set FireRating on all walls")
+
     def test_property_without_pset(self):
         """User didn't name a pset — slot is empty string, not raised."""
         mock_llm = MagicMock()
@@ -157,13 +217,20 @@ class TestPsetExtraction:
             ext.extract(_segment("PSET"), "anything")
 
     def test_properties_must_be_object(self):
+        # A non-dict `properties` is a structural drift the boundary schema
+        # rejects (→ one self-correcting retry, then raise). The two invokes
+        # confirm the retry fired; the raised error carries the boundary's
+        # structured rows for the retry-of-failure flow.
         mock_llm = MagicMock()
         mock_llm.invoke.return_value = _response(
             {"operation": "ADD_PSET", "pset_name": "Pset_X", "properties": ["wrong shape"]}
         )
         ext = SlotExtractor(llm=mock_llm)
-        with pytest.raises(SlotExtractionError, match="must be a JSON object"):
+        with pytest.raises(SlotExtractionError, match="properties") as exc_info:
             ext.extract(_segment("PSET"), "anything")
+        assert mock_llm.invoke.call_count == 2
+        assert exc_info.value.boundary_errors
+        assert exc_info.value.boundary_errors[0]["path"] == "properties"
 
 
 class TestCreateExtraction:
@@ -214,18 +281,33 @@ class TestCreateExtraction:
             ext.extract(_segment("CREATE"), "anything")
 
 
+class TestRelationshipExtraction:
+    def test_destination_phrase_is_captured(self):
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = _response(
+            {"destination_phrase": "Level 2", "relation": "container"}
+        )
+        ext = SlotExtractor(llm=mock_llm)
+        result = ext.extract(_segment("RELATIONSHIP"), "move Wall-01 to Level 2")
+        assert result.slots["destination_phrase"] == "Level 2"
+        assert result.slots["relation"] == "container"
+
+    def test_missing_destination_raises(self):
+        """Without a destination there is nothing to resolve or move into."""
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = _response(
+            {"destination_phrase": "", "relation": "container"}
+        )
+        ext = SlotExtractor(llm=mock_llm)
+        with pytest.raises(SlotExtractionError, match="need a destination"):
+            ext.extract(_segment("RELATIONSHIP"), "move Wall-01")
+
+
 class TestNoSlotKinds:
     def test_delete_kind_returns_empty_slots_without_llm(self):
         mock_llm = MagicMock()
         ext = SlotExtractor(llm=mock_llm)
         result = ext.extract(_segment("DELETE"), "delete all chairs")
-        assert result.slots == {}
-        mock_llm.invoke.assert_not_called()
-
-    def test_relationship_kind_returns_empty_slots_without_llm(self):
-        mock_llm = MagicMock()
-        ext = SlotExtractor(llm=mock_llm)
-        result = ext.extract(_segment("RELATIONSHIP"), "move Wall-01 to Level 2")
         assert result.slots == {}
         mock_llm.invoke.assert_not_called()
 
@@ -251,3 +333,45 @@ class TestLLMErrorPaths:
         ext = SlotExtractor(llm=mock_llm)
         with pytest.raises(SlotExtractionError):
             ext.extract(_segment("PROPERTY"), "anything")
+
+
+class TestBoundaryIntegration:
+    """The slot extractor now routes through the schema-validated boundary."""
+
+    def test_malformed_first_then_valid_self_corrects(self):
+        # Non-JSON on the first attempt, valid on the retry → success, no raise.
+        mock_llm = MagicMock()
+        mock_llm.invoke.side_effect = [
+            _response("not json at all"),
+            _response({"pset": None, "property": "FireRating", "value": "EI120"}),
+        ]
+        ext = SlotExtractor(llm=mock_llm)
+        result = ext.extract(_segment("PROPERTY"), "set FireRating to EI120")
+        assert result.slots["property"] == "FireRating"
+        assert mock_llm.invoke.call_count == 2
+
+    def test_hard_failure_carries_structured_boundary_errors(self):
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = _response("still not json")
+        ext = SlotExtractor(llm=mock_llm)
+        with pytest.raises(SlotExtractionError) as exc_info:
+            ext.extract(_segment("PROPERTY"), "anything")
+        assert exc_info.value.boundary_errors
+        assert exc_info.value.boundary_errors[0]["code"] == "NOT_JSON"
+
+    def test_prior_errors_injected_into_the_slot_prompt(self):
+        from writeback.services.llm_boundary import BoundaryError
+
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = _response(
+            {"pset": None, "property": "FireRating", "value": "EI120"}
+        )
+        ext = SlotExtractor(llm=mock_llm)
+        ext.extract(
+            _segment("PROPERTY"),
+            "set FireRating to EI120",
+            prior_errors=(BoundaryError(code="MISSING_FIELD", path="value", hint="need a value"),),
+        )
+        # The retry-of-failure context reaches the model's prompt.
+        prompt = mock_llm.invoke.call_args[0][0][-1].content
+        assert "MISSING_FIELD" in prompt

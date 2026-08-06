@@ -176,14 +176,16 @@ class ModificationProposal(UUIDModel):
         max_length=255, blank=True, help_text="Citation (e.g., 'Fire Strategy.pdf, p.14')"
     )
 
-    # Tier 3 review acknowledgement — gates Execute on T3 only.
+    # Code review acknowledgement — gates Execute on proposals that run
+    # generated Python (see ``requires_code_ack``).
     code_review_acknowledged_at = models.DateTimeField(
         null=True,
         blank=True,
         verbose_name="Code Review Acknowledged At",
         help_text=(
             "Timestamp when the user ticked 'I have reviewed this code and accept "
-            "responsibility' on a Tier 3 proposal. Tier 3 approval is refused if blank."
+            "responsibility' on a proposal containing generated code. Approval of "
+            "such a proposal is refused if blank."
         ),
     )
     code_review_acknowledged_by = models.ForeignKey(
@@ -207,6 +209,26 @@ class ModificationProposal(UUIDModel):
 
     def __str__(self):
         return f"Proposal: {self.request_text[:50]}..."
+
+    @property
+    def requires_code_ack(self) -> bool:
+        """True when executing this proposal runs generated Python.
+
+        The gate follows the *code*, not the tier: a Tier 3 proposal built
+        from typed operations has a diff preview and no code to read, while
+        anything carrying code must be acknowledged regardless of tier.
+
+        Two independent signals are OR-ed so a refactor that moves the code
+        out of ``intent_json`` (as the journal path does — it lives in the
+        mutation params) cannot silently disarm the gate.
+        """
+        if (self.intent_json or {}).get("code"):
+            return True
+        changes = self.changes if isinstance(self.changes, dict) else {}
+        return any(
+            isinstance(mutation, dict) and mutation.get("op") == "RUN_CODE"
+            for mutation in (changes.get("mutations") or [])
+        )
 
 
 class GitCommit(UUIDModel):

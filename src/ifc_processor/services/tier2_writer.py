@@ -230,10 +230,13 @@ class Tier2Writer:
                 old_refs = self._get_classification_refs(element)
                 old_value = ", ".join(old_refs) if old_refs else "(none)"
 
+                # IfcOpenShell's classification.add_reference takes ``products``
+                # (a list), not a singular ``product`` — the latter silently
+                # TypeErrors on current IfcOpenShell.
                 ifcopenshell.api.run(
                     "classification.add_reference",
                     self.model,
-                    product=element,
+                    products=[element],
                     classification=classification,
                     identification=reference,
                     name=name or reference,

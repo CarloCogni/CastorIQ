@@ -51,8 +51,39 @@ logger = logging.getLogger(__name__)
 REJECT_CATEGORY_UNCLEAR = "unclear"
 REJECT_CATEGORY_OUT_OF_SCOPE = "out_of_scope"
 REJECT_CATEGORY_ENTITY_NOT_FOUND = "entity_not_found"
+REJECT_CATEGORY_DESTINATION_NOT_FOUND = "destination_not_found"
 REJECT_CATEGORY_PSET_UNKNOWN = "pset_unknown"
 REJECT_CATEGORY_INTERNAL = "internal"
+
+#: Rejection category → MetaCastor error type. A rejection is a *decision*,
+#: not a crash: the message it carries was written for the user and already
+#: names the fix. Declaring the taxonomy label here keeps the failure
+#: classifier from pattern-matching a bare ValueError and re-explaining the
+#: rejection as something it isn't (every V2 rejection used to surface as
+#: "The filter specification was invalid…").
+REJECTION_ERROR_TYPES: dict[str, str] = {
+    REJECT_CATEGORY_UNCLEAR: "REQUEST_UNCLEAR",
+    REJECT_CATEGORY_OUT_OF_SCOPE: "REQUEST_OUT_OF_SCOPE",
+    REJECT_CATEGORY_ENTITY_NOT_FOUND: "TARGET_NOT_FOUND",
+    REJECT_CATEGORY_DESTINATION_NOT_FOUND: "DESTINATION_NOT_FOUND",
+    REJECT_CATEGORY_PSET_UNKNOWN: "PROPERTY_NOT_IN_REGISTRY",
+    REJECT_CATEGORY_INTERNAL: "REQUEST_REJECTED",
+}
+
+
+class RequestRejectedError(ValueError):
+    """The router declined the request before any proposal was built.
+
+    Subclasses ``ValueError`` so existing broad handlers keep working. The
+    ``error_type`` attribute is what the failure classifier honours, so the
+    user sees the rejection reason and its hint verbatim rather than a
+    template guessing at what went wrong.
+    """
+
+    def __init__(self, message: str, *, category: str = REJECT_CATEGORY_INTERNAL) -> None:
+        super().__init__(message)
+        self.category = category
+        self.error_type = REJECTION_ERROR_TYPES.get(category, "REQUEST_REJECTED")
 
 
 # Kinds emitted by the triage classifier (Stage 1).
@@ -208,6 +239,30 @@ def route(segments: list[dict[str, Any]]) -> RoutingResult:
             rejection_payload={"target_phrase": target, "kind": kind},
         )
 
+    # A move needs somewhere to move TO. Catching this here means an
+    # impossible destination is reported before a proposal is ever built,
+    # instead of surfacing as a write failure after the user approves.
+    for seg in segments:
+        if seg.get("kind") != KIND_RELATIONSHIP:
+            continue
+        destination = seg.get("destination_resolution")
+        if destination is not None and not destination.is_empty:
+            continue
+        phrase = ((seg.get("slots") or {}).get("destination_phrase") or "").strip()
+        return RoutingResult(
+            tier=0,
+            rejection_reason=(
+                f"Could not find {phrase!r} in this project to move into."
+                if phrase
+                else "This move needs a destination — say where the entity should go."
+            ),
+            rejection_category=REJECT_CATEGORY_DESTINATION_NOT_FOUND,
+            rejection_payload={
+                "destination_phrase": phrase,
+                "target_phrase": (seg.get("target_phrase") or "").strip(),
+            },
+        )
+
     # Pre-route: deterministic pset inference for PROPERTY segments where
     # the slot extractor returned ``pset=""``. The user often writes
     # "set FireRating to EI120 on Wall-01" without naming Pset_WallCommon
@@ -306,6 +361,12 @@ def _route_tier1(segments: list[dict[str, Any]]) -> RoutingResult:
             pset,
         )
         return RoutingResult(tier=2, operation="PLAN")
+
+    # A removal is a distinct operation, not a set with a missing value.
+    # Until the slot extractor carried this, every removal request routed to
+    # SET_PROPERTY and the model invented a value to satisfy it.
+    if (slots.get("operation") or "").strip().upper() == "REMOVE":
+        return RoutingResult(tier=1, operation="REMOVE_PROPERTY")
 
     return RoutingResult(tier=1, operation="SET_PROPERTY")
 

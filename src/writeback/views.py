@@ -291,6 +291,9 @@ class ModifyView(ProjectTabMixin, TemplateView):
                 entry["code"] = proposal.intent_json["code"]
             if "review" in proposal.intent_json:
                 entry["review"] = proposal.intent_json["review"]
+        # Drives the client-side Execute gating; the server check in
+        # _handle_approve remains the source of truth.
+        entry["requires_code_ack"] = proposal.requires_code_ack
 
         return JsonResponse(
             {
@@ -336,17 +339,20 @@ class ModifyView(ProjectTabMixin, TemplateView):
                 {"status": "error", "message": "Proposal is no longer pending."}, status=409
             )
 
-        # Tier 3 review gate — Tier 3 generates IfcOpenShell code that runs in
-        # our process. The user must explicitly acknowledge they read it before
-        # the Execute action is allowed. The acknowledgement is a separate POST
-        # (action=acknowledge_review) so the timestamp is real, not coerced.
-        if proposal.tier == 3 and proposal.code_review_acknowledged_at is None:
+        # Code review gate — a proposal carrying generated IfcOpenShell code
+        # runs that code in our process, so the user must explicitly
+        # acknowledge they read it first. The acknowledgement is a separate
+        # POST (action=acknowledge_review) so the timestamp is real, not
+        # coerced. Keyed on the code itself rather than the tier: Tier 3
+        # proposals built from typed operations have a diff preview and no
+        # code, while anything with code is gated whatever its tier.
+        if proposal.requires_code_ack and proposal.code_review_acknowledged_at is None:
             return JsonResponse(
                 {
                     "status": "error",
                     "message": (
-                        "Tier 3 proposals require you to explicitly acknowledge that "
-                        "you have reviewed the generated code. Tick the review checkbox "
+                        "This proposal runs generated code, so you must explicitly "
+                        "acknowledge that you have reviewed it. Tick the review checkbox "
                         "below the code preview before clicking Execute."
                     ),
                     "needs_review_ack": True,
@@ -437,9 +443,9 @@ class ModifyView(ProjectTabMixin, TemplateView):
         except ModificationProposal.DoesNotExist:
             return toast_response("Proposal not found.", level="error", status=404)
 
-        if proposal.tier != 3:
+        if not proposal.requires_code_ack:
             return toast_response(
-                "Review acknowledgement only applies to Tier 3 proposals.",
+                "Review acknowledgement only applies to proposals containing generated code.",
                 level="error",
                 status=400,
             )

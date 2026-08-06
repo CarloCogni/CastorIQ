@@ -27,14 +27,26 @@
         </ul>
       </div>
     {% endif %}
-    <button type="button"
-            class="help-pill ms-auto"
-            data-bs-toggle="modal"
-            data-bs-target="#exploreHelpModal"
-            title="How Explore works"
-            aria-label="How Explore works">
-      <i class="bi bi-question-circle"></i>
-    </button>
+    <div class="ms-auto d-flex align-items-center gap-2">
+      {% if selected_ifc %}
+      <button type="button"
+              id="explore3d-toggle"
+              class="btn btn-sm btn-outline-secondary"
+              onclick="Explore3D.toggle()"
+              title="Toggle 3D viewer pane"
+              aria-label="Toggle 3D viewer pane">
+        <i class="bi bi-badge-3d me-1"></i>3D
+      </button>
+      {% endif %}
+      <button type="button"
+              class="help-pill"
+              data-bs-toggle="modal"
+              data-bs-target="#exploreHelpModal"
+              title="How Explore works"
+              aria-label="How Explore works">
+        <i class="bi bi-question-circle"></i>
+      </button>
+    </div>
   </div>
 
   {# ── Main content ── #}
@@ -51,7 +63,7 @@
     </div>
 
   {% else %}
-    <div class="flex-grow-1 d-flex overflow-hidden">
+    <div class="flex-grow-1 d-flex overflow-hidden" id="explore-main">
 
       {# ── Left: Spatial tree (260px) ── #}
       <div class="border-end d-flex flex-column overflow-hidden flex-shrink-0"
@@ -68,10 +80,10 @@
         </div>
       </div>
 
-      {# ── Right: Entity table ── #}
-      <div class="flex-grow-1 d-flex flex-column overflow-hidden">
+      {# ── Middle: Entity table ── #}
+      <div class="flex-grow-1 d-flex flex-column overflow-hidden" style="min-width: 320px;">
         <div class="flex-grow-1 overflow-auto" id="explore-entities">
-          <div hx-get="{% url 'projects:explore_entities' project.pk selected_ifc.pk %}"
+          <div hx-get="{% url 'projects:explore_entities' project.pk selected_ifc.pk %}{% if focus_gid %}?q={{ focus_gid|urlencode }}{% endif %}"
                hx-trigger="load"
                hx-target="#explore-entities"
                hx-swap="innerHTML">
@@ -79,6 +91,45 @@
               <div class="spinner-border spinner-border-sm me-2" role="status"></div>
               Loading entities…
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Right: 3D viewer pane (lazy-loaded, hidden by default) ── -->
+      <div id="explore3d-splitter" class="explore3d-splitter d-none" title="Drag to resize"></div>
+      <div id="explore-3d-pane" class="d-none flex-column overflow-hidden flex-shrink-0"
+           style="width: 45%; min-width: 360px;">
+        <div class="px-2 py-1 border-bottom border-start bg-body-secondary d-flex align-items-center gap-2 flex-shrink-0"
+             style="min-height: 34px;">
+          <span class="small fw-semibold text-secondary text-uppercase flex-shrink-0">
+            <i class="bi bi-badge-3d me-1"></i>3D Viewer
+          </span>
+          <span id="explore3d-chip" class="d-none align-items-center gap-1 small text-truncate">
+            <span class="badge bg-primary bg-opacity-10 text-body badge-ifc-type" id="explore3d-chip-type"></span>
+            <span class="text-truncate" id="explore3d-chip-name" style="max-width: 180px;"></span>
+            <button class="btn btn-sm btn-outline-secondary py-0 px-1" style="font-size:0.72rem;"
+                    onclick="Explore3D.chipDetails()" title="Open entity inspector">
+              <i class="bi bi-card-list"></i> Details
+            </button>
+            <button class="btn btn-sm btn-outline-secondary py-0 px-1" style="font-size:0.72rem;"
+                    onclick="Explore3D.chipFocus()" title="Zoom to element (section box)">
+              <i class="bi bi-bullseye"></i> Focus
+            </button>
+          </span>
+          <button type="button" class="btn-close ms-auto flex-shrink-0" style="font-size:0.6rem;"
+                  onclick="Explore3D.close()" aria-label="Close 3D pane"></button>
+        </div>
+        <div class="flex-grow-1 position-relative border-start" style="min-height: 0;">
+          <iframe id="explore3d-iframe"
+                  data-src="{% url 'ifc_viewer:viewer_embed' project.pk %}?mode=inspect&ifc={{ selected_ifc.pk }}&v={% now 'U' %}"
+                  style="width: 100%; height: 100%; border: none; background: #111;"
+                  allow="fullscreen"></iframe>
+          <div id="explore3d-loading"
+               style="position: absolute; inset: 0; background: #111; display: flex; flex-direction: column;
+                      align-items: center; justify-content: center; color: #94a3b8; z-index: 10; pointer-events: none;">
+            <div style="width: 34px; height: 34px; border: 3px solid #1e293b; border-top-color: #3b82f6;
+                        border-radius: 50%; animation: explore3d-spin 0.8s linear infinite; margin-bottom: 12px;"></div>
+            <span style="font-size: 0.85rem;" id="explore3d-loading-msg">Loading 3D viewer…</span>
           </div>
         </div>
       </div>
@@ -121,6 +172,37 @@
   .entity-row:hover td { background: rgba(59,130,246,0.06) !important; }
   .entity-row.selected td { background: rgba(59,130,246,0.12) !important; }
   .badge-ifc-type { font-size: 0.7rem; font-weight: 500; }
+
+  /* 3D pane splitter — pointer-capture drag, same pattern as 4D Link */
+  .explore3d-splitter {
+    width: 8px;
+    flex-shrink: 0;
+    cursor: col-resize;
+    position: relative;
+    z-index: 10;
+    background: var(--bs-border-color);
+    transition: background 0.15s;
+  }
+  .explore3d-splitter:hover,
+  .explore3d-splitter.explore3d-dragging { background: var(--bs-primary); }
+  .explore3d-splitter::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 4px;
+    height: 40px;
+    background: var(--bs-secondary-bg);
+    border-radius: 2px;
+    opacity: 0.7;
+  }
+  #explore3d-toggle.active {
+    background: var(--bs-primary);
+    color: #fff;
+    border-color: var(--bs-primary);
+  }
+  @keyframes explore3d-spin { to { transform: rotate(360deg); } }
 </style>
 
 <script>
@@ -134,6 +216,7 @@ function exploreFilter(el, url) {
   const sep = url.includes('?') ? '&' : '?';
   const finalUrl = q ? url + sep + 'q=' + encodeURIComponent(q) : url;
   htmx.ajax('GET', finalUrl, { target: '#explore-entities', swap: 'innerHTML' });
+  Explore3D.highlightFilterSet(finalUrl);
 }
 
 // ── Entity detail modal ──────────────────────────────────────────────────────
@@ -141,7 +224,7 @@ let _entityModal = null;
 
 function loadEntityDetail(rowEl, url) {
   document.querySelectorAll('.entity-row').forEach(r => r.classList.remove('selected'));
-  rowEl.classList.add('selected');
+  if (rowEl) rowEl.classList.add('selected');
 
   document.getElementById('entityDetailBody').innerHTML =
     '<div class="d-flex align-items-center justify-content-center p-5 text-secondary">' +
@@ -153,6 +236,16 @@ function loadEntityDetail(rowEl, url) {
   _entityModal.show();
 
   htmx.ajax('GET', url, { target: '#entityDetailBody', swap: 'innerHTML' });
+
+  if (rowEl && rowEl.dataset.globalId) Explore3D.highlight([rowEl.dataset.globalId]);
+}
+
+// ── "View in 3D" from the entity detail modal footer ─────────────────────────
+function viewEntityIn3D(globalId) {
+  if (_entityModal) _entityModal.hide();
+  Explore3D.open();
+  Explore3D.highlight([globalId]);
+  Explore3D.focus(globalId);
 }
 
 // ── Cross-tab helpers ────────────────────────────────────────────────────────
@@ -225,4 +318,220 @@ document.addEventListener('keydown', function(e) {
     selected.click();
   }
 });
+
+// ── 3D viewer pane ───────────────────────────────────────────────────────────
+// Lazy-loaded viewer_embed iframe (inspect mode) with two-way selection sync
+// over the castor:* postMessage protocol shared with the 4D Link tab.
+const Explore3D = (function () {
+  {% if selected_ifc %}
+  const CFG = {
+    propsUrlTmpl: "{% url 'ifc_viewer:viewer_element_props' project.pk 'GID_PH' %}?ifc={{ selected_ifc.pk }}",
+    detailGidUrlTmpl: "{% url 'projects:explore_entity_detail_gid' project.pk selected_ifc.pk 'GID_PH' %}",
+  };
+  {% else %}
+  const CFG = null;
+  {% endif %}
+  const FOCUS_GID = "{{ focus_gid|escapejs }}";
+  const KEY_OPEN = 'explore3d:open';
+  const KEY_WIDTH = 'explore3d:width';
+  const MIN_W = 360;
+
+  let _ready = false;
+  let _queue = [];
+  let _selectedGid = null;
+
+  const _el = (id) => document.getElementById(id);
+  const _iframe = () => _el('explore3d-iframe');
+
+  function isOpen() {
+    const pane = _el('explore-3d-pane');
+    return !!pane && !pane.classList.contains('d-none');
+  }
+
+  function _post(msg) {
+    const frame = _iframe();
+    if (!frame || !frame.src) return;
+    if (!_ready) { _queue.push(msg); return; }
+    frame.contentWindow.postMessage(msg, window.location.origin);
+  }
+
+  function open() {
+    if (!CFG || isOpen()) return;
+    const frame = _iframe();
+    _el('explore-3d-pane').classList.replace('d-none', 'd-flex');
+    _el('explore3d-splitter').classList.remove('d-none');
+    _el('explore3d-toggle')?.classList.add('active');
+    // Lazy load: the iframe (WASM + geometry) only loads on first open
+    if (frame && !frame.src) frame.src = frame.dataset.src;
+    try { localStorage.setItem(KEY_OPEN, '1'); } catch (e) { /* private mode */ }
+  }
+
+  function close() {
+    if (!isOpen()) return;
+    _el('explore-3d-pane').classList.replace('d-flex', 'd-none');
+    _el('explore3d-splitter').classList.add('d-none');
+    _el('explore3d-toggle')?.classList.remove('active');
+    try { localStorage.setItem(KEY_OPEN, '0'); } catch (e) { /* private mode */ }
+  }
+
+  function toggle() { isOpen() ? close() : open(); }
+
+  // highlight before focus: highlight resets viewer color/section state, so a
+  // subsequent focus-element deterministically enters focus mode.
+  function highlight(gids) {
+    if (!isOpen()) return;
+    _post({ type: 'castor:highlight', global_ids: gids });
+  }
+
+  function focus(gid) {
+    if (!isOpen()) return;
+    _post({ type: 'castor:focus-element', global_id: gid });
+  }
+
+  // Highlight every entity matched by the current tree/type/search filter.
+  function highlightFilterSet(url) {
+    if (!isOpen()) return;
+    const sep = url.includes('?') ? '&' : '?';
+    fetch(url + sep + 'gids=1')
+      .then(r => r.json())
+      .then(d => highlight(d.global_ids || []))
+      .catch(() => { /* non-fatal: viewer keeps previous highlight */ });
+  }
+
+  function chipDetails() {
+    if (!CFG || !_selectedGid) return;
+    loadEntityDetail(null, CFG.detailGidUrlTmpl.replace('GID_PH', encodeURIComponent(_selectedGid)));
+  }
+
+  function chipFocus() {
+    if (!_selectedGid) return;
+    highlight([_selectedGid]);
+    focus(_selectedGid);
+  }
+
+  function _onSelected(gid) {
+    _selectedGid = gid;
+    document.querySelectorAll('#explore-entities .entity-row').forEach(r => {
+      r.classList.toggle('selected', !!gid && r.dataset.globalId === gid);
+    });
+    const chip = _el('explore3d-chip');
+    if (!chip) return;
+    if (!gid) {
+      chip.classList.add('d-none');
+      chip.classList.remove('d-flex');
+      return;
+    }
+    chip.classList.remove('d-none');
+    chip.classList.add('d-flex');
+    _el('explore3d-chip-type').textContent = '…';
+    _el('explore3d-chip-name').textContent = gid;
+    fetch(CFG.propsUrlTmpl.replace('GID_PH', encodeURIComponent(gid)))
+      .then(r => r.json())
+      .then(d => {
+        if (_selectedGid !== gid) return; // stale response
+        _el('explore3d-chip-type').textContent = d.found ? d.ifc_type : 'Unknown';
+        _el('explore3d-chip-name').textContent = d.found ? (d.name || gid) : gid;
+      })
+      .catch(() => { /* chip keeps showing the GlobalId */ });
+  }
+
+  window.addEventListener('message', (e) => {
+    const frame = _iframe();
+    if (!frame || e.source !== frame.contentWindow) return;
+    const msg = e.data || {};
+    if (msg.type === 'castor:viewer-ready') {
+      _ready = true;
+      const loading = _el('explore3d-loading');
+      if (loading) loading.style.display = 'none';
+      _queue.forEach(m => frame.contentWindow.postMessage(m, window.location.origin));
+      _queue = [];
+    } else if (msg.type === 'castor:viewer-error') {
+      const loading = _el('explore3d-loading');
+      if (loading) {
+        loading.innerHTML = '<i class="bi bi-exclamation-triangle fs-3 mb-2" style="color:#f59e0b;"></i>' +
+          '<span style="font-size:0.85rem;"></span>';
+        loading.lastChild.textContent = msg.message || 'Viewer failed to load.';
+      }
+    } else if (msg.type === 'castor:element-selected') {
+      _onSelected(msg.global_id || null);
+    }
+  });
+
+  function _clamp(w) {
+    const container = _el('explore-main');
+    const cap = Math.floor((container ? container.offsetWidth : 1200) * 0.65);
+    return Math.max(MIN_W, Math.min(cap, w));
+  }
+
+  // Pointer-capture drag — same pattern as the 4D Link splitters: capture
+  // routes all pointer events to the splitter even outside the window, and the
+  // iframe is frozen during the drag so it can't swallow pointermove.
+  function _initSplitter() {
+    const splitter = _el('explore3d-splitter');
+    const pane = _el('explore-3d-pane');
+    if (!splitter || !pane) return;
+    try {
+      const saved = parseInt(localStorage.getItem(KEY_WIDTH) || '', 10);
+      if (saved) pane.style.width = _clamp(saved) + 'px';
+    } catch (e) { /* ignore corrupt storage */ }
+
+    let drag = null;
+    splitter.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      splitter.setPointerCapture(e.pointerId);
+      const frame = _iframe();
+      if (frame) frame.style.pointerEvents = 'none';
+      drag = { startX: e.clientX, startW: pane.offsetWidth };
+      splitter.classList.add('explore3d-dragging');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    });
+    splitter.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      pane.style.width = _clamp(drag.startW - (e.clientX - drag.startX)) + 'px';
+    });
+    const endDrag = () => {
+      if (!drag) return;
+      drag = null;
+      splitter.classList.remove('explore3d-dragging');
+      const frame = _iframe();
+      if (frame) frame.style.pointerEvents = '';
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      try { localStorage.setItem(KEY_WIDTH, String(pane.offsetWidth)); } catch (e) { /* ignore */ }
+    };
+    splitter.addEventListener('pointerup', endDrag);
+    splitter.addEventListener('pointercancel', endDrag);
+  }
+
+  function _boot() {
+    if (!CFG || !_el('explore-3d-pane')) return;
+    // Hide the pane's own overlay once the iframe document loads — from there
+    // the embed's internal loading/error UI takes over. Keeping ours on top
+    // would mask embed failures that never reach postMessage.
+    _iframe()?.addEventListener('load', () => {
+      const loading = _el('explore3d-loading');
+      if (loading) loading.style.display = 'none';
+    });
+    _initSplitter();
+    let savedOpen = false;
+    try { savedOpen = localStorage.getItem(KEY_OPEN) === '1'; } catch (e) { /* ignore */ }
+    if (FOCUS_GID) {
+      open();
+      highlight([FOCUS_GID]);
+      focus(FOCUS_GID);
+    } else if (savedOpen) {
+      open();
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _boot);
+  } else {
+    _boot();
+  }
+
+  return { open, close, toggle, highlight, focus, highlightFilterSet, chipDetails, chipFocus, isOpen };
+})();
 </script>

@@ -14,6 +14,7 @@ import re
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from core.llm import get_llm
+from ifc_processor.services.code_sandbox import FORBIDDEN_PATTERNS
 
 logger = logging.getLogger(__name__)
 
@@ -306,29 +307,12 @@ class Tier3Planner:
 
     @staticmethod
     def _check_forbidden_patterns(code: str) -> None:
-        """Reject code with obviously dangerous patterns."""
-        forbidden = [
-            (r"\bimport\s+os\b", "import os"),
-            (r"\bimport\s+sys\b", "import sys"),
-            (r"\bimport\s+subprocess\b", "import subprocess"),
-            (r"\bimport\s+shutil\b", "import shutil"),
-            (r"\bimport\s+pathlib\b", "import pathlib"),
-            (r"\bimport\s+socket\b", "import socket"),
-            (r"\bimport\s+urllib\b", "import urllib"),
-            (r"\bimport\s+http\b", "import http"),
-            (r"\bimport\s+requests\b", "import requests"),
-            (r"\b__import__\s*\(", "__import__()"),
-            (r"\bexec\s*\(", "exec()"),
-            (r"\beval\s*\(", "eval()"),
-            (r"\bcompile\s*\(", "compile()"),
-            (r"\bglobals\s*\(", "globals()"),
-            (r"\bgetattr\s*\(", "getattr()"),
-            (r"\bsetattr\s*\(", "setattr()"),
-            (r"(?<!\w)open\s*\(", "open()"),
-            (r"\bmodel\.write\b", "model.write() — saving is handled externally"),
-        ]
+        """Reject code with obviously dangerous patterns.
 
-        for pattern, label in forbidden:
+        Uses the same shared constant the executor enforces, so "what we told
+        the model not to write" and "what we refuse to run" cannot drift.
+        """
+        for pattern, label in FORBIDDEN_PATTERNS:
             if re.search(pattern, code):
                 raise CodeGenerationError(
                     f"Generated code contains forbidden pattern: {label}. "

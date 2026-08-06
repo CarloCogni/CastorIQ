@@ -213,6 +213,21 @@ def test_set_attribute_name_persists(ifc_copy: Path) -> None:
     assert changes[0].old_value == "TestWall-001"
 
 
+@pytest.mark.slow
+def test_set_attribute_absent_on_the_class_raises_cleanly(ifc_copy: Path) -> None:
+    """Regression: a raw AttributeError used to escape from here.
+
+    `LongName` exists in IFC, but not on IfcWall. The old guard used
+    ``getattr(element, attribute, None)``, which never raises for a missing
+    attribute — so the failure surfaced later out of ``edit_attributes`` as an
+    unclassified AttributeError mid-execution. Found by the NL benchmark.
+    """
+    writer = Tier1Writer(ifc_copy)
+
+    with pytest.raises(IFCWriteError, match="not an attribute of IfcWall"):
+        writer.set_attribute([WALL1_GUID], "LongName", "Some long name")
+
+
 # ── file integrity ────────────────────────────────────────────────────────────
 
 

@@ -221,7 +221,11 @@
                                 <div class="rounded-circle bg-primary-subtle text-primary fw-bold d-flex align-items-center justify-content-center flex-shrink-0" style="width:26px;height:26px;font-size:0.7rem;">4</div>
                                 <div>
                                     <div class="fw-semibold fs-8">Your Approval</div>
-                                    <div class="text-secondary fs-8">You see a <strong>diff preview</strong> (Tier 1 &amp; 2) or <strong>generated code</strong> (Tier 3) before anything is written. Nothing runs without your explicit approval.</div>
+                                    <div class="text-secondary fs-8">You see a <strong>diff preview</strong> before anything is written — including for most Tier 3 requests, which now run as pre-coded operations rather than generated code. Nothing runs without your explicit approval.</div>
+                                    <div class="text-secondary fs-8 mt-1">
+                                        <i class="bi bi-code-square me-1"></i>
+                                        <em>When a Tier 3 request is too unusual for the built-in operations, Castor falls back to <strong>generated code</strong> and tells you why — that path additionally requires you to review the code.</em>
+                                    </div>
                                     <div class="text-secondary fs-8 mt-1">
                                         <i class="bi bi-arrow-down-circle me-1"></i>
                                         <em>Sending a new request before deciding marks the prior proposal as <strong>superseded</strong> — it stops being actionable, but the record (and your iteration history) is preserved.</em>
@@ -559,7 +563,7 @@
 
                         <div class="d-flex align-items-center gap-2 mb-3">
                             <span class="badge rounded-pill text-white bg-danger">Tier 3 – RED</span>
-                            <span class="text-secondary fs-8">LLM generates IfcOpenShell Python code. 7-layer sandbox + mandatory code review.</span>
+                            <span class="text-secondary fs-8">Pre-coded operations with a diff preview where possible; generated Python — 7-layer sandbox + mandatory code review — only when a request can't be expressed as one.</span>
                         </div>
 
                         <p class="text-secondary fs-7 mb-4">
@@ -615,7 +619,11 @@
                             </div>
                             <p class="text-secondary fs-8 mt-2 mb-0">
                                 <i class="bi bi-info-circle me-1"></i>
-                                Level reassignment is the only spatial operation in scope. Geometry, shape, and placement are not modified.
+                                Level reassignment is the only spatial operation in scope. Geometry, shape, and placement are not modified — the element keeps its world position, only its parent storey changes.
+                            </p>
+                            <p class="text-secondary fs-8 mt-2 mb-0">
+                                <i class="bi bi-signpost-split me-1"></i>
+                                Name a destination that exists in the model. If it doesn't, Castor tells you straight away and lists the storeys it does have, instead of building a proposal that would fail.
                             </p>
                         </div>
 
@@ -1032,7 +1040,7 @@ const ModifyChat = {
         if (!checkboxEl.checked) {
             if (btn) {
                 btn.setAttribute('disabled', '');
-                btn.title = 'Acknowledge the code review checkbox above to enable';
+                btn.title = 'Tick the acknowledgement checkbox to enable';
             }
             return;
         }
@@ -1185,9 +1193,14 @@ const ModifyChat = {
 
         let diffRows = '';
         if (p.diff_preview && p.diff_preview.length) {
+            // target=_blank: pending proposal cards exist only client-side, so
+            // navigating this tab away would destroy them.
+            const exploreUrl = "{% url 'projects:explore' project.pk %}";
             diffRows = p.diff_preview.map(r => `
                 <tr>
-                    <td class="px-2 py-1 fs-8">${r.name}</td>
+                    <td class="px-2 py-1 fs-8">${r.global_id && !r.global_id.startsWith('(')
+                        ? `<a href="${exploreUrl}?focus=${encodeURIComponent(r.global_id)}" target="_blank" rel="noopener" class="text-decoration-none" title="View in 3D (opens a new tab)">${r.name} <i class="bi bi-box-arrow-up-right fs-9 opacity-50"></i></a>`
+                        : r.name}</td>
                     <td class="px-2 py-1 fs-8 text-secondary">${r.ifc_type}</td>
                     <td class="px-2 py-1 fs-8 font-monospace">${r.field}</td>
                     <td class="px-2 py-1 fs-8 text-danger"><del>${r.old_value}</del></td>
@@ -1261,14 +1274,6 @@ const ModifyChat = {
                                 </h6>
                                 <pre class="rounded mb-0"
                                      style="max-height: 350px; overflow: auto;"><code class="language-python hljs">${this._escapeHtml(p.code)}</code></pre>
-                                <div class="form-check mt-2">
-                                    <input class="form-check-input" type="checkbox"
-                                           id="t3-review-ack-${p.id}"
-                                           onchange="ModifyChat.acknowledgeReview('${p.id}', this)">
-                                    <label class="form-check-label fs-8 text-secondary" for="t3-review-ack-${p.id}">
-                                        I have reviewed this code and accept responsibility for executing it.
-                                    </label>
-                                </div>
                             </div>` : ''}
                         ${diffRows ? `
                         <div class="table-responsive mb-3">
@@ -1287,12 +1292,24 @@ const ModifyChat = {
                             ${p.affected_count} entit${p.affected_count === 1 ? 'y' : 'ies'} will be modified.
                         </p>
                         ${this._guardianBadgeHTML(p.guardian)}
+                        <!-- Code acknowledgement gate — kept OUTSIDE #proposal-actions-*,
+                             whose innerHTML is replaced by _markProposalCard() on approve/reject. -->
+                        ${p.requires_code_ack ? `
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox"
+                                   id="t3-review-ack-${p.id}"
+                                   ${p.code_review_acknowledged_at ? 'checked' : ''}
+                                   onchange="ModifyChat.acknowledgeReview('${p.id}', this)">
+                            <label class="form-check-label fs-8 text-secondary" for="t3-review-ack-${p.id}">
+                                I have reviewed this code and accept responsibility for executing it.
+                            </label>
+                        </div>` : ''}
                         <div class="d-flex gap-2" id="proposal-actions-${p.id}">
-                            <button class="btn btn-sm ${p.tier === 3 ? 'btn-danger' : 'btn-success'} w-50"
+                            <button class="btn btn-sm ${p.requires_code_ack ? 'btn-danger' : 'btn-success'} w-50"
                                     id="proposal-execute-${p.id}"
-                                    ${p.tier === 3 ? 'disabled title="Acknowledge the code review checkbox above to enable"' : ''}
+                                    ${p.requires_code_ack && !p.code_review_acknowledged_at ? 'disabled title="Tick the acknowledgement checkbox to enable"' : ''}
                                     onclick="ModifyChat.approve('${p.id}')">
-                                <i class="bi ${p.tier === 3 ? 'bi-lightning-charge' : 'bi-check-lg'} me-1"></i>${p.tier === 3 ? 'Execute' : 'Approve'}
+                                <i class="bi ${p.requires_code_ack ? 'bi-lightning-charge' : 'bi-check-lg'} me-1"></i>${p.requires_code_ack ? 'Execute' : 'Approve'}
                             </button>
                             <button class="btn btn-sm btn-outline-secondary w-50"
                                     onclick="ModifyChat.reject('${p.id}')">

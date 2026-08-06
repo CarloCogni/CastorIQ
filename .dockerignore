@@ -1,0 +1,57 @@
+# .dockerignore — keep the Docker build context (and the image) lean.
+#
+# The Dockerfile only needs: pyproject.toml, uv.lock, src/, fixtures/.
+# Everything below is either tooling, local checkouts, or generated output.
+# Deliberately NOT excluded: fixtures/sample-project/ (COPY'd, needed by
+# provision_sample_project + beta/checks.py) and fixtures/benchmark/ (2.3 MB,
+# keeps the NL benchmark runnable in-container).
+
+# VCS / tooling
+.git
+.gitignore
+.gitmodules
+.idea
+.vscode
+.claude
+.castor
+.venv
+.pytest_cache
+.ruff_cache
+
+# Python bytecode
+**/__pycache__
+*.py[cod]
+
+# Coverage output (src/htmlcov would otherwise land inside the image via COPY src/)
+htmlcov
+src/htmlcov
+.coverage
+
+# Docs (not needed at runtime)
+docs
+docs-local
+
+# Local benchmark checkouts and corpora (~1.1 GB combined)
+engine_web-ifc
+ifc-lite
+schema_diagrams
+benchmarks
+fixtures/parser_corpus
+runs
+
+# Tests and deploy scratch
+tests
+tmp
+
+# Runtime-generated dirs (volumes / collectstatic own these)
+media
+uploads
+staticfiles
+
+# Secrets — runtime env comes from compose env_file, build uses inline values
+.env*
+!.env.example
+
+# Misc
+*.stackdump
+*.log

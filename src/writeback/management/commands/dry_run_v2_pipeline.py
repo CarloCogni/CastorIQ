@@ -1,14 +1,20 @@
 # writeback/management/commands/dry_run_v2_pipeline.py
-"""Run the writeback V2 pipeline on a user prompt and print each stage.
+"""Run the writeback pipeline on a user prompt and print each stage.
 
 Read-only: no proposal is created, no IFC file is modified, no git
 commit is made. Stops after the tier router decides which dispatch
 path the request would take.
 
-Use this to validate the prompts against your real Ollama models —
-useful both for regression testing (run the canonical
-``pipeline-test-prompts.txt`` fixture) and ad-hoc debugging of
-single problematic requests.
+Drives ``ProposalPipeline.route_request`` — the same stage walk the real
+propose path uses — so this command can never drift from production
+behaviour.
+
+Use this for ad-hoc debugging of a single problematic request: it prints
+every stage so you can see where a prompt goes wrong.
+
+For batch runs over the corpus, use ``benchmark_writeback`` instead — it
+parses the expectations declared in ``pipeline-test-prompts.txt`` and
+scores them, rather than leaving a human to diff 92 stage dumps by eye.
 
 Usage::
 
@@ -27,24 +33,18 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 
 from environments.models import Project
-from writeback.services.entity_resolver import (
-    MODE_EXISTING_TARGET,
-    MODE_NEW_TARGET,
-    MODE_PARENT_TARGET,
-    EntityNameResolver,
-)
-from writeback.services.hint_generator import HintGenerator
-from writeback.services.slot_extractor import SlotExtractionError, SlotExtractor
-from writeback.services.tier_router import route as route_tier
-from writeback.services.triage_classifier import TriageClassifier, TriageError
+from writeback.services.emitters import StdoutEmitter
+from writeback.services.errors import ModificationError
+from writeback.services.proposal_pipeline import ProposalPipeline
 
 
 class Command(BaseCommand):
     help = (
-        "Dry-run the V2 writeback pipeline on a user prompt. "
+        "Dry-run the writeback pipeline on a user prompt. "
         "Prints triage segments, slots, resolutions, and routing — "
         "then stops without creating a proposal."
     )
@@ -78,11 +78,8 @@ class Command(BaseCommand):
             raise CommandError("Use --prompt OR --prompts-file, not both.")
 
         project = self._resolve_project(options["project"])
-
-        triage = TriageClassifier(user=None)
-        slots = SlotExtractor(user=None)
-        resolver = EntityNameResolver(project=project, user=None)
-        hint_generator = HintGenerator(project=project, user=None)
+        pipeline = ProposalPipeline(project, user=None)
+        emitter = StdoutEmitter(self.stdout)
 
         prompts = [prompt] if prompt else self._read_prompts_file(prompts_file)
 
@@ -91,14 +88,17 @@ class Command(BaseCommand):
             header = f"=== prompt {index}/{len(prompts)} ==="
             self.stdout.write(self.style.MIGRATE_HEADING(header))
             self.stdout.write(f"  {current!r}")
-            self._dry_run_one(current, triage, slots, resolver, hint_generator)
+            self._dry_run_one(current, pipeline, emitter)
 
     # ── Internals ──────────────────────────────────────────────
 
     def _resolve_project(self, ident: str) -> Project:
+        # A non-UUID string raises ValidationError (not ValueError) on the
+        # UUID field, so catch it too or the documented name lookup below
+        # is unreachable.
         try:
             return Project.objects.get(id=ident)
-        except (Project.DoesNotExist, ValueError):
+        except (Project.DoesNotExist, ValueError, ValidationError):
             pass
         try:
             return Project.objects.get(name__iexact=ident)
@@ -120,88 +120,29 @@ class Command(BaseCommand):
     def _dry_run_one(
         self,
         prompt: str,
-        triage: TriageClassifier,
-        slots: SlotExtractor,
-        resolver: EntityNameResolver,
-        hint_generator: HintGenerator,
+        pipeline: ProposalPipeline,
+        emitter: StdoutEmitter,
     ) -> None:
-        # Stage 1 — Triage.
-        self.stdout.write("\n[1] triage_classifier.classify")
+        """Walk the real pipeline stages, printing progress, then stop."""
         try:
-            triage_result = triage.classify(prompt)
-        except TriageError as e:
-            self.stderr.write(self.style.ERROR(f"  TriageError: {e}"))
+            segments, routing = pipeline.route_request(prompt, emitter=emitter)
+        except ModificationError as e:
+            # Rejections and stage failures both surface here; the emitter has
+            # already printed the failing stage and its message.
+            self.stdout.write(self.style.WARNING(f"  -> rejected: {e}"))
             return
-        segments = triage_result.segments
-        for i, seg in enumerate(segments, start=1):
-            self.stdout.write(f"  segment {i}: {self._compact_json(seg)}")
 
-        # Stage 2 — Slot extraction per segment.
-        self.stdout.write("\n[2] slot_extractor.extract")
         for i, seg in enumerate(segments, start=1):
-            kind = seg.get("kind")
-            if kind in ("OUT_OF_SCOPE", "UNCLEAR"):
-                self.stdout.write(f"  segment {i} ({kind}): no slots needed")
-                seg["slots"] = {}
-                seg.setdefault("warnings", [])
-                continue
-            try:
-                slot_result = slots.extract(seg, prompt)
-            except SlotExtractionError as e:
-                self.stderr.write(self.style.ERROR(f"  segment {i} SlotExtractionError: {e}"))
-                return
-            seg["slots"] = slot_result.slots
-            seg["warnings"] = slot_result.warnings
-            self.stdout.write(f"  segment {i} slots: {self._compact_json(slot_result.slots)}")
-            if slot_result.warnings:
-                for w in slot_result.warnings:
-                    self.stdout.write(self.style.WARNING(f"    ⚠ {w}"))
+            resolution = seg.get("resolution")
+            diagnostic = getattr(resolution, "diagnostic", "n/a")
+            self.stdout.write(
+                f"  segment {i} ({seg.get('kind')}): "
+                f"slots={self._compact_json(seg.get('slots'))} "
+                f"resolution={diagnostic}"
+            )
+            for w in seg.get("warnings") or []:
+                self.stdout.write(self.style.WARNING(f"    ⚠ {w}"))
 
-        # Stage 3 — Resolver per segment, mode-aware.
-        self.stdout.write("\n[3] entity_resolver.resolve")
-        for i, seg in enumerate(segments, start=1):
-            kind = seg.get("kind")
-            target = (seg.get("target_phrase") or "").strip()
-            if kind in ("PROPERTY", "ATTRIBUTE", "PSET", "DELETE", "RELATIONSHIP"):
-                resolution = resolver.resolve(target, mode=MODE_EXISTING_TARGET)
-                seg["resolution"] = resolution
-                self.stdout.write(
-                    f"  segment {i} ({kind}, EXISTING_TARGET on {target!r}): "
-                    f"{resolution.diagnostic}"
-                )
-            elif kind == "CREATE":
-                parent_phrase = (seg.get("slots") or {}).get("parent_phrase") or ""
-                if parent_phrase:
-                    parent = resolver.resolve(parent_phrase, mode=MODE_PARENT_TARGET)
-                    seg["parent_resolution"] = parent
-                    self.stdout.write(
-                        f"  segment {i} (CREATE, PARENT_TARGET on "
-                        f"{parent_phrase!r}): {parent.diagnostic}"
-                    )
-                else:
-                    seg["parent_resolution"] = None
-                    self.stdout.write(f"  segment {i} (CREATE, no parent_phrase)")
-                seg["resolution"] = resolver.resolve("", mode=MODE_NEW_TARGET)
-            else:
-                seg["resolution"] = None
-                self.stdout.write(f"  segment {i} ({kind}): resolver skipped")
-
-        # Stage 3.5 — Tier router (deterministic).
-        self.stdout.write("\n[4] tier_router.route")
-        routing = route_tier(segments)
-        if routing.is_rejected:
-            self.stdout.write(self.style.WARNING(f"  -> tier 0 REJECT: {routing.rejection_reason}"))
-            try:
-                hint = hint_generator.suggest(
-                    reason_category=routing.rejection_category,
-                    payload=routing.rejection_payload,
-                )
-            except Exception as e:
-                self.stderr.write(self.style.ERROR(f"  hint_generator raised: {e}"))
-                return
-            if not hint.is_empty:
-                self.stdout.write(f"  hint ({hint.source}): {hint.text}")
-            return
         self.stdout.write(
             self.style.SUCCESS(f"  -> tier {routing.tier}, operation {routing.operation}")
         )

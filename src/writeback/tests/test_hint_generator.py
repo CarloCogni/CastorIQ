@@ -14,6 +14,7 @@ from writeback.services.hint_generator import (
     HintGenerator,
 )
 from writeback.services.tier_router import (
+    REJECT_CATEGORY_DESTINATION_NOT_FOUND,
     REJECT_CATEGORY_OUT_OF_SCOPE,
     REJECT_CATEGORY_PSET_UNKNOWN,
     REJECT_CATEGORY_UNCLEAR,
@@ -111,6 +112,69 @@ class TestRegistryStrategyForProperty:
         # Global scan should still find FireRating in some standard pset.
         assert hint.source == SOURCE_REGISTRY
         assert "FireRating" in hint.text
+
+
+@pytest.mark.django_db
+class TestDestinationHint:
+    """A failed move must be answered with the storeys that actually exist."""
+
+    def _storeys(self, ifc_file, *names):
+        from ifc_processor.tests.factories import IFCEntityFactory, IFCSpatialElementFactory
+
+        return [
+            IFCSpatialElementFactory(
+                ifc_file=ifc_file,
+                entity=IFCEntityFactory(
+                    ifc_file=ifc_file,
+                    ifc_type="IfcBuildingStorey",
+                    name=name,
+                    global_id=f"GUID-STOREY-{index}",
+                ),
+                spatial_type="building_storey",
+            )
+            for index, name in enumerate(names)
+        ]
+
+    def test_enumerates_storeys_where_prefix_matching_would_find_nothing(self, project, ifc_file):
+        """Regression for the reported failure: 'Level 2' vs 'Ground Floor'.
+
+        The entity hint's 3-character prefix gate returns nothing for this
+        pair, which is why the destination hint enumerates instead.
+        """
+        self._storeys(ifc_file, "Ground Floor", "First Floor", "Roof")
+        gen = HintGenerator(project=project)
+
+        hint = gen.suggest(
+            reason_category=REJECT_CATEGORY_DESTINATION_NOT_FOUND,
+            payload={"destination_phrase": "Level 2", "target_phrase": "inner wall"},
+        )
+
+        assert hint.source == SOURCE_REGISTRY
+        assert "Ground Floor" in hint.text
+        assert "First Floor" in hint.text
+        assert "Roof" in hint.text
+
+    def test_caps_the_list_and_marks_the_overflow(self, project, ifc_file):
+        self._storeys(ifc_file, *[f"Level {i}" for i in range(15)])
+        gen = HintGenerator(project=project)
+
+        hint = gen.suggest(
+            reason_category=REJECT_CATEGORY_DESTINATION_NOT_FOUND,
+            payload={"destination_phrase": "Basement"},
+        )
+
+        assert hint.text.count("`") == 20  # 10 names, two backticks each
+        assert hint.text.endswith(", ….")
+
+    def test_no_storeys_yields_no_hint(self, project, ifc_file):
+        gen = HintGenerator(project=project)
+
+        hint = gen.suggest(
+            reason_category=REJECT_CATEGORY_DESTINATION_NOT_FOUND,
+            payload={"destination_phrase": "Level 2"},
+        )
+
+        assert hint.is_empty
 
 
 # ── Strategy 2 (entity match) requires DB — covered via Strategy 1 above ──

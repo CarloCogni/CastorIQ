@@ -85,10 +85,13 @@ html, body { width: 100%; height: 100%; background: #111; overflow: hidden; }
         <button id="sel-ctx-hide"     style="display:block;width:100%;background:none;border:none;color:#e2e8f0;text-align:left;padding:6px 12px;cursor:pointer;">Hide</button>
         <div style="border-top:1px solid #475569;margin:4px 0;"></div>
         <button id="sel-ctx-deselect" style="display:block;width:100%;background:none;border:none;color:#94a3b8;text-align:left;padding:6px 12px;cursor:pointer;">Deselect</button>
+        <!-- 4D task actions — hidden in general-purpose inspect mode -->
+        {% if not inspect_mode %}
         <div style="border-top:1px solid #475569;margin:4px 0;"></div>
         <button id="sel-ctx-link"     data-action="link"     style="display:block;width:100%;background:none;border:none;color:#e2e8f0;text-align:left;padding:6px 12px;cursor:pointer;">🔗 Link to selected task</button>
         <button id="sel-ctx-unlink"   data-action="unlink"   style="display:block;width:100%;background:none;border:none;color:#e2e8f0;text-align:left;padding:6px 12px;cursor:pointer;">✂️ Unlink from task</button>
         <button id="sel-ctx-addtask"  data-action="add-task" style="display:block;width:100%;background:none;border:none;color:#e2e8f0;text-align:left;padding:6px 12px;cursor:pointer;">➕ Add another task</button>
+        {% endif %}
     </div>
 
     <!-- Element selection — properties float panel -->
@@ -123,9 +126,10 @@ import * as THREE from "three";
 
 {% if ifc_file_url %}
 const IFC_URL      = "{{ ifc_file_url }}";
-const FRAG_URL     = "{% url 'ifc_viewer:viewer_fragments' project.pk %}";
+const FRAG_URL     = "{% url 'ifc_viewer:viewer_fragments' project.pk %}?ifc={{ viewer_ifc_file.pk }}";
 const COLORMAP_URL = "{% url 'ifc_viewer:viewer_colormap' project.pk %}";
 const CSRF_TOKEN   = "{{ csrf_token }}";
+const INSPECT_MODE = {{ inspect_mode|yesno:"true,false" }};
 
 const container = document.getElementById("embed-canvas-wrap");
 const loadingEl = document.getElementById("embed-loading");
@@ -698,6 +702,10 @@ window.addEventListener("message", async (e) => {
     if (msg.type === "castor:focus-element") {
         if (!model || !msg.global_id) return;
         if (!_sectionEnabled) {
+            /* An unresolvable GID (stale link, GID from another file) must be
+               a no-op: ghosting everything with nothing highlighted leaves the
+               model uniformly grey with no exit-focus button to recover. */
+            if (!globalIdIndex.has(msg.global_id) || !_lastHighlightIds.length) return;
             /* First click: save camera, ghost all, highlight selected, section box, zoom in */
             _saveCameraState();
             disableWireframe();
@@ -898,7 +906,7 @@ function _initSelector() {
 
 // ── 6. Context menu & Properties panel ──────────────────────────────
 
-const ELEM_PROPS_URL_TMPL = "{% url 'ifc_viewer:viewer_element_props' project.pk 'ELEM_PH' %}";
+const ELEM_PROPS_URL_TMPL = "{% url 'ifc_viewer:viewer_element_props' project.pk 'ELEM_PH' %}?ifc={{ viewer_ifc_file.pk }}";
 
 const _ctxMenuEl    = document.getElementById("sel-ctx-menu");
 const _propsPanelEl = document.getElementById("sel-props-panel");
@@ -955,7 +963,8 @@ function _renderProps(data) {
         html += `</table>`;
     }
 
-    /* ── 4D linked tasks ─────────────────────────────────────────────── */
+    /* ── 4D linked tasks — suppressed in general-purpose inspect mode ── */
+    if (INSPECT_MODE) return html;
     const _4dTasks = data.linked_tasks || [];
     const _SC = {
         complete: { icon: "✅", color: "#10B981", label: "complete" },

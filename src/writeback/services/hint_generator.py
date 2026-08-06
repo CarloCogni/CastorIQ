@@ -31,13 +31,14 @@ from django.core.cache import cache
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from core.llm import safe_invoke
-from ifc_processor.models import IFCEntity
+from ifc_processor.models import IFCEntity, IFCSpatialElement
 from ifc_processor.services.ifc_standard_psets import (
     STANDARD_PSETS,
     lookup_property,
 )
 
 from .tier_router import (
+    REJECT_CATEGORY_DESTINATION_NOT_FOUND,
     REJECT_CATEGORY_ENTITY_NOT_FOUND,
     REJECT_CATEGORY_OUT_OF_SCOPE,
     REJECT_CATEGORY_PSET_UNKNOWN,
@@ -60,6 +61,10 @@ SOURCE_NONE = ""
 # prefix-matched candidates.
 _PROPERTY_SIMILARITY_FLOOR = 0.4
 _ENTITY_SIMILARITY_FLOOR = 0.45
+
+#: Storeys listed verbatim when a move destination doesn't resolve. Models
+#: rarely have more; beyond this the list stops being readable.
+_MAX_DESTINATION_NAMES = 10
 
 
 # Pattern used to extract a Pset.Property reference from an LLM hint
@@ -201,7 +206,39 @@ class HintGenerator:
             return self._suggest_property(payload)
         if category == REJECT_CATEGORY_ENTITY_NOT_FOUND:
             return self._suggest_entity(payload)
+        if category == REJECT_CATEGORY_DESTINATION_NOT_FOUND:
+            return self._suggest_destination(payload)
         return _EMPTY_HINT
+
+    def _suggest_destination(self, payload: dict) -> Hint:
+        """For a move whose destination didn't resolve, list the real storeys.
+
+        Deliberately does NOT use :meth:`_best_match`. That path requires a
+        shared 3-character prefix, so a user asking for "Level 2" in a model
+        whose storeys are named "Ground Floor" / "First Floor" would get no
+        hint at all — the exact case this rejection exists to explain.
+        Enumerating is more useful than guessing here: the storey list is
+        short, closed, and the user simply needs to see it.
+        """
+        names = list(
+            IFCSpatialElement.objects.filter(
+                ifc_file__project=self.project,
+                ifc_file__status="completed",
+                spatial_type=IFCSpatialElement.SpatialType.BUILDING_STOREY,
+            )
+            .exclude(entity__name="")
+            .values_list("entity__name", flat=True)[: _MAX_DESTINATION_NAMES + 1]
+        )
+        if not names:
+            return _EMPTY_HINT
+
+        shown = names[:_MAX_DESTINATION_NAMES]
+        listed = ", ".join(f"`{name}`" for name in shown)
+        suffix = "" if len(names) <= _MAX_DESTINATION_NAMES else ", …"
+        return Hint(
+            text=f"This model's storeys are: {listed}{suffix}.",
+            source=SOURCE_REGISTRY,
+        )
 
     def _suggest_property(self, payload: dict) -> Hint:
         """For a property the registry doesn't know, suggest a near match.

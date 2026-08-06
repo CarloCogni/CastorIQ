@@ -9,6 +9,7 @@ import logging
 import os
 from datetime import date, timedelta
 
+from django.core.exceptions import ValidationError
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.template.loader import render_to_string
@@ -65,6 +66,26 @@ def _apply_units(props: dict) -> dict:
     return result
 
 
+def _resolve_ifc_file(project, request) -> IFCFile | None:
+    """Resolve the IFC file a viewer request targets.
+
+    Honors an optional ``?ifc=<pk>`` query param so embedders with a
+    multi-file selector (e.g. the Explore tab) can pin a specific model;
+    falls back to the latest completed file, matching the historical
+    behavior of every viewer endpoint.
+    """
+    qs = IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
+    ifc_pk = request.GET.get("ifc")
+    if ifc_pk:
+        try:
+            selected = qs.filter(pk=ifc_pk).first()
+        except (ValueError, ValidationError):
+            selected = None
+        if selected:
+            return selected
+    return qs.order_by("-created_at").first()
+
+
 class ViewerView(ProjectTabMixin, TemplateView):
     """Renders the 3D IFC viewer partial."""
 
@@ -91,25 +112,22 @@ class FragmentsCacheView(ProjectAccessMixin, View):
     GET  — returns the .frag binary if it exists, 404 otherwise.
     POST — receives the .frag binary as a raw octet-stream body and saves it.
 
-    The .frag path is derived from the latest completed IFC file path with the
-    extension swapped to .frag.  Each new IFC upload gets a UUID-named file, so
-    a new upload automatically invalidates the old cache without explicit cleanup.
+    The .frag path is derived from the targeted IFC file path (``?ifc=<pk>``,
+    else the latest completed file) with the extension swapped to .frag.  Each
+    new IFC upload gets a UUID-named file, so a new upload automatically
+    invalidates the old cache without explicit cleanup.
     """
 
-    def _frag_path(self, project) -> str | None:
+    def _frag_path(self, project, request) -> str | None:
         """Return the filesystem path for the .frag cache file, or None."""
-        ifc_file = (
-            IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
-            .order_by("-created_at")
-            .first()
-        )
+        ifc_file = _resolve_ifc_file(project, request)
         if not ifc_file or not ifc_file.file.name:
             return None
         return ifc_file.file.path.rsplit(".", 1)[0] + ".frag"
 
     def get(self, request, **kwargs: object) -> HttpResponse:
         project = self.get_project()
-        frag_path = self._frag_path(project)
+        frag_path = self._frag_path(project, request)
         if not frag_path or not os.path.exists(frag_path):
             return HttpResponse(status=404)
         with open(frag_path, "rb") as f:
@@ -117,7 +135,7 @@ class FragmentsCacheView(ProjectAccessMixin, View):
 
     def post(self, request, **kwargs: object) -> HttpResponse:
         project = self.get_project()
-        frag_path = self._frag_path(project)
+        frag_path = self._frag_path(project, request)
         if not frag_path:
             return HttpResponse("No completed IFC file found.", status=404)
         body = request.body
@@ -385,19 +403,20 @@ class ViewerEmbedView(ProjectAccessMixin, View):
     Returns X-Frame-Options: SAMEORIGIN so browsers allow it to be framed
     from the same origin.  Has no page chrome — just the WebGL canvas,
     a loading overlay, and a postMessage API for the parent tab.
+
+    ``?ifc=<pk>`` pins a specific completed IFC file (defaults to latest).
+    ``?mode=inspect`` hides the 4D-specific UI (task link/unlink actions,
+    schedule block in the properties panel) for general-purpose embedding.
     """
 
     def get(self, request, **kwargs: object) -> HttpResponse:
         project = self.get_project()
-        ifc_file = (
-            IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
-            .order_by("-created_at")
-            .first()
-        )
+        ifc_file = _resolve_ifc_file(project, request)
         ctx = {
             "project": project,
             "viewer_ifc_file": ifc_file,
             "ifc_file_url": ifc_file.file.url if ifc_file else None,
+            "inspect_mode": request.GET.get("mode") == "inspect",
         }
         response = render(request, "ifc_viewer/viewer_embed.html", ctx)
         response["X-Frame-Options"] = "SAMEORIGIN"
@@ -408,14 +427,10 @@ class ElementPropertiesView(ProjectAccessMixin, View):
     """JSON — IFC entity properties for a GlobalId clicked in the 3D viewer."""
 
     def get(self, request, global_id: str, **kwargs: object) -> HttpResponse:
-        from ifc_processor.models import IFCEntity, IFCFile
+        from ifc_processor.models import IFCEntity
 
         project = self.get_project()
-        ifc_file = (
-            IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
-            .order_by("-created_at")
-            .first()
-        )
+        ifc_file = _resolve_ifc_file(project, request)
         if not ifc_file:
             return JsonResponse({"found": False, "global_id": global_id})
 

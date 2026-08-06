@@ -295,3 +295,56 @@ class TestTier1ValidatorSetAttribute:
             wall_entities,
         )
         assert result.valid is True
+
+    def test_safe_attribute_absent_from_the_class_is_rejected(self, wall_entities):
+        """Regression: safe-listed is not the same as present on the class.
+
+        Found by the NL benchmark. `LongName` is a real IFC attribute — but
+        only on spatial elements and type objects. Requesting it on an
+        IfcWall/IfcWindow validated fine, built a journal, and then died at
+        execution with a raw AttributeError, after the user had approved.
+        """
+        validator = Tier1Validator()
+        result = validator.validate(
+            {
+                "operation": "SET_ATTRIBUTE",
+                "attribute": "LongName",
+                "new_value": "Some long name",
+            },
+            wall_entities,
+        )
+        assert result.valid is False
+        assert "LongName" in result.error
+        assert "IfcWall" in result.error
+
+    def test_attribute_check_is_schema_driven_not_a_hardcoded_table(self, ifc_file):
+        """The same attribute is legal on a class that declares it."""
+        from ifc_processor.tests.factories import IFCEntityFactory
+
+        space = IFCEntityFactory(
+            ifc_file=ifc_file, ifc_type="IfcSpace", name="Room 1", global_id="GUID-SPACE-1"
+        )
+        validator = Tier1Validator()
+        result = validator.validate(
+            {
+                "operation": "SET_ATTRIBUTE",
+                "attribute": "LongName",
+                "new_value": "Server Room",
+            },
+            [space],
+        )
+        assert result.valid is True
+
+    def test_unknown_ifc_class_fails_open(self, ifc_file):
+        """Introspection trouble must not block a legitimate edit."""
+        from ifc_processor.tests.factories import IFCEntityFactory
+
+        odd = IFCEntityFactory(
+            ifc_file=ifc_file, ifc_type="IfcNotARealClass", name="?", global_id="GUID-ODD-1"
+        )
+        validator = Tier1Validator()
+        result = validator.validate(
+            {"operation": "SET_ATTRIBUTE", "attribute": "LongName", "new_value": "x"},
+            [odd],
+        )
+        assert result.valid is True

@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from writeback.services.tier_router import (
+    REJECT_CATEGORY_DESTINATION_NOT_FOUND,
     SAFE_ATTRIBUTE_BULK_LIMIT,
     RoutingResult,
     route,
@@ -33,6 +34,14 @@ def _segment(kind, slots=None, resolution_count=1, **extra):
         seg["resolution"] = resolution
     seg.update(extra)
     return seg
+
+
+def _destination(count=1):
+    """A resolved move destination, in the shape the router checks."""
+    resolution = MagicMock()
+    resolution.entities = [MagicMock() for _ in range(count)]
+    resolution.is_empty = count == 0
+    return resolution
 
 
 class TestRejectPaths:
@@ -63,6 +72,36 @@ class TestRejectPaths:
         assert result.is_rejected
         assert "Geometric" in result.rejection_reason
 
+    def test_relationship_without_a_resolved_destination_rejects(self):
+        """The reported bug: 'move X to Level 2' when Level 2 doesn't exist.
+
+        Previously this generated Python, passed code review and only failed
+        at execution with a rollback. It must die at routing instead.
+        """
+        seg = _segment(
+            "RELATIONSHIP",
+            slots={"destination_phrase": "Level 2", "relation": "container"},
+            target_phrase="house - inner wall",
+            destination_resolution=None,
+        )
+        result = route([seg])
+
+        assert result.is_rejected
+        assert result.rejection_category == REJECT_CATEGORY_DESTINATION_NOT_FOUND
+        assert "Level 2" in result.rejection_reason
+        assert result.rejection_payload["destination_phrase"] == "Level 2"
+
+    def test_relationship_with_a_resolved_destination_is_not_rejected(self):
+        seg = _segment(
+            "RELATIONSHIP",
+            slots={"destination_phrase": "Level 0", "relation": "container"},
+            destination_resolution=_destination(),
+        )
+        result = route([seg])
+
+        assert not result.is_rejected
+        assert result.tier == 3
+
     def test_unknown_kind_rejects(self):
         seg = {"kind": "DESTROY_ALL_HUMANS"}
         result = route([seg])
@@ -79,6 +118,34 @@ class TestTier1Routing:
         result = route([seg])
         assert result.tier == 1
         assert result.operation == "SET_PROPERTY"
+
+    def test_removal_routes_t1_remove_property(self):
+        """Regression: REMOVE_PROPERTY was unreachable from the router.
+
+        Every removal request routed to SET_PROPERTY, and because a SET needs
+        a value the model supplied one — writing the target phrase into the
+        property instead of deleting it.
+        """
+        seg = _segment(
+            "PROPERTY",
+            slots={
+                "operation": "REMOVE",
+                "pset": "Pset_WallCommon",
+                "property": "Reference",
+                "value": None,
+            },
+        )
+        result = route([seg])
+        assert result.tier == 1
+        assert result.operation == "REMOVE_PROPERTY"
+
+    def test_absent_operation_still_routes_set_property(self):
+        """Back-compat: a segment without the slot behaves exactly as before."""
+        seg = _segment(
+            "PROPERTY",
+            slots={"pset": "Pset_WallCommon", "property": "FireRating", "value": "EI120"},
+        )
+        assert route([seg]).operation == "SET_PROPERTY"
 
     def test_property_with_no_pset_infers_standard_pset(self):
         """When the slot extractor returned empty pset, the router fills
@@ -300,7 +367,9 @@ class TestTier3Routing:
         assert result.tier == 3
 
     def test_relationship_segment_routes_t3(self):
-        seg = _segment("RELATIONSHIP")
+        # A move must carry a resolved destination now, or it rejects at
+        # tier 0 before routing — see TestRejectPaths.
+        seg = _segment("RELATIONSHIP", destination_resolution=_destination())
         result = route([seg])
         assert result.tier == 3
 

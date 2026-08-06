@@ -305,6 +305,40 @@ class TestExtractionDrift:
 
 
 @pytest.mark.django_db
+class TestBoundaryIntegration:
+    """The extraction now routes through the schema-validated boundary."""
+
+    def test_code_fenced_extraction_is_tolerated(self, project, ifc_file, wall_entities):
+        """A ```json-fenced reply used to fail json.loads → empty. The boundary
+        strips the fence, so a valid fenced extraction now resolves."""
+        target = wall_entities[0]  # name='Wall-000'
+        payload = json.dumps(
+            {"scope": "specific", "ifc_type": "IfcWall", "entity_name": target.name}
+        )
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = _make_llm_response(f"```json\n{payload}\n```")
+        resolver = EntityNameResolver(project, llm=mock_llm)
+
+        result = resolver.resolve(f"set fire rating on {target.name} to EI240")
+
+        assert result.is_unique
+        assert result.entities[0].pk == target.pk
+
+    def test_non_json_returns_empty_with_single_invoke(self, project, ifc_file, wall_entities):
+        """A non-JSON reply still fails soft to empty, and the boundary's
+        max_repair_rounds=0 keeps it at exactly one LLM call (no retry
+        inflation that would break the trim/refine call-count contracts)."""
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = _make_llm_response("not json at all")
+        resolver = EntityNameResolver(project, llm=mock_llm)
+
+        result = resolver.resolve("Wall-000 fire rating EI240")
+
+        assert result.is_empty
+        assert mock_llm.invoke.call_count == 1
+
+
+@pytest.mark.django_db
 class TestExtractionTrimRetry:
     """The scope=unknown trim retry mirrors the DB-level trim fallback.
 

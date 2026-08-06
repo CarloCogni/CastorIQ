@@ -43,11 +43,11 @@ The distinction drives the UI — RETRYABLE failures show a retry button, NON_RE
 
 - `metacastor/models.py` — FailureRecord model with FailurePhase and Category choices
 - `metacastor/services/failure_classifier.py` — EXCEPTION_PATTERNS, CATEGORY_MAP,
-  DIAGNOSIS_TEMPLATES, `classify_error()`, `create_failure_record()`, `build_failure_context()`
-- `writeback/services/modification_service.py` — `_raise_with_failure_record()` helper used at
-  every raise site in `propose()` and `execute()`
-- `writeback/consumers.py` — `_handle_propose_with_retry()`, `_load_failure_data()`,
-  `_build_retry_context()`
+  DIAGNOSIS_TEMPLATES, `classify_error()`, `create_failure_record()`
+- `writeback/services/proposal_pipeline.py` — `_raise_with_failure_record()` helper used at
+  every raise site; `_retry_prior_errors()` reads stored boundary errors back on
+  `propose(retry_of=...)` and feeds them only to the stage that failed
+- `writeback/consumers.py` — resolves the client's `failure_id` into a `retry_of` record
 - `writeback/templates/writeback/tabs/_modify.html` — `_appendFailureCard()`, `retryFromFailure()`
 - `writeback/templates/writeback/components/modify_message_list.html` — server-rendered failure
   card shown on page load for historical failed proposals

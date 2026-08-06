@@ -158,6 +158,13 @@
           title="Switch to Modify tab with this element pre-filled">
     <i class="bi bi-pencil me-1"></i>Modify
   </button>
+  {% if entity.global_id %}
+  <button class="btn btn-sm btn-outline-primary"
+          onclick="viewEntityIn3D('{{ entity.global_id }}')"
+          title="Focus this element in the 3D viewer pane">
+    <i class="bi bi-badge-3d me-1"></i>View in 3D
+  </button>
+  {% endif %}
   <div class="ms-auto">
     <button class="btn btn-sm btn-outline-secondary"
             onclick="copyToClipboard('{{ entity.global_id }}', this)"

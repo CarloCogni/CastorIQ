@@ -122,6 +122,8 @@ Detailed docs live in [`docs/`](docs/):
 - **[Write-back system](docs/writeback/overview.md)** — RSAA framework, tier escalation, agent architecture
 - **[RAG pipeline](docs/rag-pipeline.md)** — embedding flow, retrieval, citation rendering
 - **[BYOK setup](docs/byok-setup.md)** — bring your own Anthropic or Groq key
+- **[Testing](docs/testing.md)** — test strategy, layers, running the suite
+- **[Benchmarks & evaluation](docs/benchmarks.md)** — parser performance harness, natural-language pipeline benchmark, evaluation records
 - **[Project history](docs/history.md)** — academic origin and design decisions
 
 ---

@@ -4,6 +4,10 @@ from .base import *  # noqa: F401, F403
 
 DEBUG = True
 
+# Dev-only tooling: shell_plus/runscript/reset_db and the DBML schema export.
+# Deliberately NOT in base.py — production must not ship reset_db et al.
+INSTALLED_APPS += ["django_extensions", "django_dbml"]  # noqa: F405
+
 # Database - Local PostgreSQL via Docker
 DATABASES = {
     "default": {

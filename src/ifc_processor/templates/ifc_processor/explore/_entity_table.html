@@ -116,6 +116,7 @@
     <tbody>
       {% for entity in page_obj %}
       <tr class="entity-row"
+          data-global-id="{{ entity.global_id }}"
           onclick="loadEntityDetail(this, '{% url 'projects:explore_entity_detail' project.pk ifc_file.pk entity.pk %}')"
           title="{{ entity.global_id }}">
         <td>

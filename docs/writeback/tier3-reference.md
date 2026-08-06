@@ -1,24 +1,35 @@
-# Tier 3 (RED) — Code Generation Reference
+# Tier 3 (RED) — Reference
 
-Tier 3 handles requests that require direct IfcOpenShell Python code: entity creation, deletion, spatial reassignment, and relationship management. The LLM generates executable code that runs in a sandboxed environment against a copy of the IFC file.
+Tier 3 handles requests that go beyond property edits: entity creation, deletion, spatial reassignment, and relationship management.
+
+**Tier 3 tries typed operations first, and only generates code when it cannot.** This is the important shape change: for the operations Castor understands well, the LLM chooses *which* pre-coded operation to run rather than authoring the IfcOpenShell calls itself. A typed plan gets a real diff preview and needs no code-review checkbox, because there is no code to review.
+
+| Path | What the LLM produces | Human gate |
+|---|---|---|
+| **Typed ops** (preferred) | A list from a closed op set — `CREATE_ENTITY`, `DELETE_ENTITY`, `ASSIGN_RELATIONSHIP` — validated against a schema and grounded against the DB | Normal approval, with a per-row diff |
+| **Generated code** (fallback) | Python for anything the op set cannot express; the planner says so explicitly via `cannot_express` and the reason is shown to the user | Approval **plus** mandatory code review |
+
+Everything below the "Code Template" heading describes the fallback path.
 
 ## When Tier 3 Activates
 
-1. **Explicit classification:** The intent classifier returns `tier: 3`
-2. **Tier 2 escalation:** The Tier 2 planner determines the request needs capabilities beyond structured operations and returns `tier: 3`
-3. **Tier 1 → Tier 2 → Tier 3 chain:** A request fails Tier 1 validation, gets re-routed to Tier 2, and the Tier 2 planner escalates to Tier 3
+1. **Deterministic routing:** the tier router sees a CREATE, DELETE or RELATIONSHIP segment
+2. **Tier 2 escalation:** a plan needs capabilities beyond the structured operations
+3. **Tier 1 → Tier 2 → Tier 3 chain:** a request fails Tier 1 validation, re-routes to Tier 2, and escalates again
 
 ## Operations
 
-Tier 3 has no fixed operation set. Instead, it generates arbitrary IfcOpenShell code within a constrained template. Typical use cases:
+| Category | Examples | Path | Why not Tier 2 |
+|---|---|---|---|
+| **Entity creation** | Create IfcSpace, IfcZone, IfcMaterial, IfcClassification | Typed (`CREATE_ENTITY`) | Requires `root.create_entity` + spatial assignment |
+| **Entity deletion** | Delete a zone, remove unnamed proxies | Typed (`DELETE_ENTITY`) | Requires the right removal API per class + relationship cleanup |
+| **Spatial container moves** | Move a door from Level 1 to Level 2 | Typed (`ASSIGN_RELATIONSHIP`) | Requires `spatial.assign_container` with a resolved destination |
+| **Group / aggregate changes** | Aggregate columns under a building, group elements into an existing zone | Code | Not in the typed op set yet |
+| **Compound structural** | Create entity + assign to storey + add properties + classify | Code | Multi-domain operations that cross Tier 2 boundaries |
 
-| Category | Examples | Why not Tier 2 |
-|---|---|---|
-| **Entity creation** | Create IfcSpace, IfcZone, IfcBuildingElementProxy | Requires `root.create_entity` + spatial assignment |
-| **Entity deletion** | Delete all IfcFurnishingElement, remove unnamed proxies | Requires `root.remove_product` + relationship cleanup |
-| **Spatial operations** | Move door from Level 1 to Level 2, reassign windows between storeys | Requires `spatial.assign_container` with source/target lookup |
-| **Relationship management** | Aggregate columns under building, group elements into zones | Requires `aggregate.assign_object` or custom rel creation |
-| **Compound structural** | Create entity + assign to storey + add properties + classify | Multi-domain operations that cross Tier 2 boundaries |
+Physical geometry is out of scope on both paths: creatable classes are allow-listed to non-physical entities, and container moves are refused for spatial structure elements (a space *decomposes* its storey rather than being contained in it, so re-containing one would tear the spatial tree).
+
+A move whose destination does not resolve is rejected **before** a proposal exists, with the model's actual storey names in the hint — rather than generating code that fails at execution and rolls back.
 
 ## Code Template
 
@@ -53,7 +64,7 @@ def modify_ifc(model):
 
 **Contract:**
 - The function receives an already-opened `ifcopenshell.file` object. It must NOT call `ifcopenshell.open()`.
-- The function must NOT call `model.write()` — saving is handled externally by `Tier3Executor`.
+- The function must NOT call `model.write()` — saving is handled externally by the sandbox host.
 - Every change must be recorded in the `changes` list. This is critical for traceability and Git commit metadata.
 - For new entities, use `"NEW"` as `old_value` or describe what existed before.
 - For deleted entities, record entity info BEFORE calling the delete API.
@@ -62,7 +73,7 @@ def modify_ifc(model):
 
 ---
 
-## Pipeline: `Tier3Planner` → `Tier3Reviewer` → `Tier3Executor`
+## Fallback pipeline: `Tier3Planner` → `Tier3Reviewer` → `JournalExecutor` (RUN_CODE)
 
 ### `Tier3Planner` — Code Generation
 
@@ -88,40 +99,42 @@ After `Tier3Planner` generates code, `Tier3Reviewer` (`tier3_reviewer.py`) perfo
 - Review result (verdict + notes) is stored in `proposal.review` and displayed in the approval UI
 - Non-blocking: a failed review produces a warning annotation on the proposal, not a rejection — the human reviewer makes the final call
 
-### `Tier3Executor` — Sandboxed Execution
+### `code_sandbox` — Sandboxed Execution
 
 Executes the generated code with multiple safety layers:
 
 ```
-execute(code)
+JournalExecutor.apply(journal)      # journal holds one RUN_CODE mutation
     │
     ▼
-_validate_code()  →  forbidden pattern check (defence in depth)
+validate_code()  →  forbidden pattern check (defence in depth)
     │
     ▼
-_create_temp_copy()  →  shutil.copy2 to temp file
+temp copy of the IFC beside the original
     │
     ▼
-ifcopenshell.open(temp_copy)
+run_code_subprocess()               # a REAL child process, not a thread
+    │   child opens the temp copy, exec()s modify_ifc under restricted
+    │   globals, writes its result to a file (never stdout — ifcopenshell
+    │   chatters there and `print` is a permitted builtin)
     │
     ▼
-_run_sandboxed(code, model)
-    │   compile() → exec() with restricted globals → call modify_ifc(model)
+validate_result()  →  check return schema (summary, changes, required keys)
     │
     ▼
-_validate_result()  →  check return schema (summary, changes, required keys)
+os.replace(temp, original)  →  atomic swap, only after every step succeeded
     │
     ▼
-model.write(temp_copy)  →  save modified copy
-    │
-    ▼
-shutil.copy2(temp_copy, original_path)  →  overwrite original only on success
-    │
-    ▼
-_result_to_changes()  →  convert to EntityChange list
+result_to_changes()  →  convert to EntityChange list
 ```
 
-**On any failure:** The temp copy is discarded, the original file is untouched, and `Tier3ExecutionError` propagates up to `ModificationService.execute()` which triggers the Git auto-rollback.
+The subprocess is what makes the timeout real. An earlier in-process design
+used `SIGALRM`, which is a silent no-op on Windows — generated code could
+run unbounded. The child is killed on the wall-clock budget.
+
+**On any failure:** the temp copy is discarded, the original file is
+byte-identical, and the error propagates to `ExecutionService.execute()`,
+which triggers the Git auto-rollback.
 
 ---
 
@@ -129,7 +142,7 @@ _result_to_changes()  →  convert to EntityChange list
 
 ### Layer 1: Forbidden Pattern Scan (Planner + Executor)
 
-Both `Tier3Planner` and `Tier3Executor` independently scan the generated code for dangerous patterns. The scan is regex-based and rejects code containing:
+Both `Tier3Planner` and `code_sandbox` independently scan the generated code for dangerous patterns. The scan is regex-based and rejects code containing:
 
 | Category | Blocked patterns |
 |---|---|
@@ -210,9 +223,9 @@ execute() [after user clicks Execute]
 GitService.snapshot()  →  pre-modification commit
     │
     ▼
-_execute_tier3()
-    │   Tier3Executor(ifc_path).execute(code)
-    │       → temp copy → sandboxed exec → validate result → overwrite original
+_execute_journal()
+    │   JournalExecutor(ifc_path).apply(journal)   # journal holds one RUN_CODE op
+    │       → temp copy → sandbox subprocess → validate result → atomic swap
     │
     ▼
 proposal.affected_count updated from len(changes)
@@ -283,8 +296,10 @@ def modify_ifc(model):
     space = ifcopenshell.api.run('root.create_entity', model, ifc_class='IfcSpace')
     ifcopenshell.api.run('attribute.edit_attributes', model,
         product=space, attributes={'Name': 'Office-101'})
-    ifcopenshell.api.run('spatial.assign_container', model,
-        products=[space], relating_structure=storey)
+    # A space DECOMPOSES a storey (IfcRelAggregates) — it is not "contained
+    # in" it. Use aggregate.assign_object, not spatial.assign_container.
+    ifcopenshell.api.run('aggregate.assign_object', model,
+        products=[space], relating_object=storey)
 
     changes.append({
         'global_id': space.GlobalId, 'entity_name': 'Office-101',

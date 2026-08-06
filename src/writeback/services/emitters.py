@@ -165,6 +165,32 @@ class WebSocketEmitter:
             raise CancellationError("Pipeline cancelled by user.")
 
 
+class StdoutEmitter:
+    """Writes pipeline events to a stream. Used by management commands.
+
+    Accepts any object with a ``write`` method (Django's ``self.stdout``,
+    ``sys.stdout``, or an ``io.StringIO`` in tests).
+    """
+
+    def __init__(self, stream) -> None:
+        self.stream = stream
+
+    def emit(
+        self,
+        phase: str,
+        status: str,
+        message: str,
+        detail: dict[str, Any] | None = None,
+    ) -> None:
+        line = f"  [{phase}/{status}] {message}"
+        if detail:
+            line = f"{line} {detail}"
+        self.stream.write(line)
+
+    def is_cancelled(self) -> bool:
+        return False
+
+
 class CapturingEmitter:
     """Stores emitted events in a list. Used in tests."""
 

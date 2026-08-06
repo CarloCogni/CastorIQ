@@ -310,11 +310,14 @@ def apply_levels_to_ifc(ifc_path: str, levels: list, ifc_file) -> dict:
                     name=name,
                 )
                 if building:
+                    # IfcOpenShell's aggregate.assign_object takes ``products``
+                    # (a list); the singular ``product`` raises TypeError and
+                    # would leave the storey silently unaggregated.
                     ifcopenshell.api.run(
                         "aggregate.assign_object",
                         writer.model,
                         relating_object=building,
-                        product=new_storey,
+                        products=[new_storey],
                     )
                 ifcopenshell.api.run(
                     "geometry.edit_object_placement",
@@ -326,6 +329,9 @@ def apply_levels_to_ifc(ifc_path: str, levels: list, ifc_file) -> dict:
                 level.save(update_fields=["ifc_storey_global_id"])
                 created += 1
             except Exception as exc:
+                # Log the traceback: a swallowed IfcOpenShell signature drift is
+                # exactly what hid the products=/product= bug above.
+                logger.exception("Level Panel: failed to create storey %r", name)
                 errors.append(f"Create '{name}': {exc}")
 
     commit_hash = ""

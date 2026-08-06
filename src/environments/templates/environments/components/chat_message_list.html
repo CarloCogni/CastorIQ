@@ -153,6 +153,11 @@
                         <span class="fs-8 text-secondary font-monospace">
                             <i class="bi bi-fingerprint me-1"></i>{{ item.global_id }}
                         </span>
+                        <a class="btn btn-sm btn-outline-primary py-0 fs-8"
+                           href="{% url 'projects:explore' project.pk %}?focus={{ item.global_id|urlencode }}"
+                           title="Open this element in the Explore 3D viewer">
+                            <i class="bi bi-badge-3d me-1"></i>View in 3D
+                        </a>
                         {% endif %}
                     {% else %}
                         <span class="fs-8 text-secondary">

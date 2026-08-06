@@ -349,12 +349,13 @@ class Tier1Writer:
             for gid in global_ids:
                 element = self._get_element(gid)
 
-                try:
-                    old_value = getattr(element, attribute, None)
-                except Exception:
-                    raise IFCWriteError(
-                        f"Attribute '{attribute}' not accessible on {element.is_a()}"
-                    )
+                # `hasattr`, not `getattr(..., None)`: the defaulted form never
+                # raises for an attribute the class does not declare, so the
+                # failure surfaced later out of edit_attributes as a raw
+                # AttributeError (e.g. LongName on an IfcWindow).
+                if not hasattr(element, attribute):
+                    raise IFCWriteError(f"'{attribute}' is not an attribute of {element.is_a()}.")
+                old_value = getattr(element, attribute, None)
 
                 ifcopenshell.api.run(
                     "attribute.edit_attributes",
