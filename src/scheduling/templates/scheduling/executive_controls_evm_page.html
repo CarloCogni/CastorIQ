@@ -69,28 +69,44 @@
     <div id="exec-evm-current"
          hx-get="{% url 'scheduling:executive_controls_evm_current' project.pk %}?{{ filter_query }}"
          hx-trigger="load"
-         hx-swap="innerHTML">
+         hx-swap="innerHTML"
+         data-testid="exec-evm-current-autoload">
         <div class="text-secondary small py-3">Loading current metrics…</div>
     </div>
 
-    <div id="exec-evm-scurve" class="mt-4"
-         hx-get="{% url 'scheduling:executive_controls_evm_scurve' project.pk %}?{{ filter_query }}"
-         hx-trigger="load"
-         hx-swap="innerHTML">
-        <div class="text-secondary small py-3">Loading derived curve…</div>
+    <!-- Derived curve / periods are manual — avoid parallel compute_evm on first paint -->
+    <div id="exec-evm-scurve" class="mt-4" data-testid="exec-evm-scurve-lazy">
+        <button type="button"
+                class="btn btn-sm btn-outline-secondary"
+                hx-get="{% url 'scheduling:executive_controls_evm_scurve' project.pk %}?{{ filter_query }}"
+                hx-target="#exec-evm-scurve"
+                hx-swap="innerHTML"
+                hx-include="#evm-filter-form"
+                data-testid="exec-evm-load-scurve">
+            Load derived S-curve
+        </button>
+        <p class="text-secondary small mb-0 mt-1">
+            Reconstructed from current schedule state — not imported historical performance.
+        </p>
     </div>
 
-    <div id="exec-evm-periods" class="mt-4"
-         hx-get="{% url 'scheduling:executive_controls_evm_periods' project.pk %}?{{ filter_query }}"
-         hx-trigger="load"
-         hx-swap="innerHTML">
-        <div class="text-secondary small py-3">Loading period table…</div>
+    <div id="exec-evm-periods" class="mt-4" data-testid="exec-evm-periods-lazy">
+        <button type="button"
+                class="btn btn-sm btn-outline-secondary"
+                hx-get="{% url 'scheduling:executive_controls_evm_periods' project.pk %}?{{ filter_query }}"
+                hx-target="#exec-evm-periods"
+                hx-swap="innerHTML"
+                hx-include="#evm-filter-form"
+                data-testid="exec-evm-load-periods">
+            Load period table
+        </button>
     </div>
 
     <div id="exec-evm-methodology" class="mt-4"
          hx-get="{% url 'scheduling:executive_controls_evm_methodology' project.pk %}?{{ filter_query }}"
          hx-trigger="load"
-         hx-swap="innerHTML">
+         hx-swap="innerHTML"
+         data-testid="exec-evm-methodology-autoload">
         <div class="text-secondary small py-3">Loading methodology…</div>
     </div>
 </div>

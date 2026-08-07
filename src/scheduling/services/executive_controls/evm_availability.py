@@ -51,12 +51,14 @@ class E8EVMAvailabilityService:
         """Return EVM mode availability without recalculating full EVM unnecessarily."""
         from environments.models import Project
         from scheduling.models import P6ResourceAssignment, ResourceAssignment, Task
-        from scheduling.services.evm import compute_evm
         from scheduling.services.executive_controls.capability_profile import (
             PROFILE_VERSION,
             ProjectAnalyticsCapabilityProfile,
         )
         from scheduling.services.executive_controls.enums import FeatureId
+        from scheduling.services.executive_controls.evm_result_cache import (
+            get_or_compute_evm,
+        )
         from scheduling.services.resource_foundation import (
             COST_SOURCE_CANONICAL,
             COST_SOURCE_P6_FALLBACK,
@@ -82,7 +84,7 @@ class E8EVMAvailabilityService:
                 data_date, calculated_at, "No schedulable physical tasks."
             )
 
-        evm = compute_evm(self.project_id, as_of_date=data_date)
+        evm = get_or_compute_evm(self.project_id, as_of_date=data_date)
         if not evm.get("has_data"):
             return self._unavailable_payload(
                 data_date, calculated_at, "EVM returned has_data=False."

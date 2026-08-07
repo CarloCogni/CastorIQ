@@ -31,9 +31,11 @@ class E8EVMComputeSession:
         return self._is_p6
 
     def evm(self) -> dict[str, Any]:
-        """Return cached EVM payload from compute_evm()."""
+        """Return EVM payload — once per session, shared via short-TTL cache."""
         if self._evm is None:
-            from scheduling.services.evm import compute_evm
+            from scheduling.services.executive_controls.evm_result_cache import (
+                get_or_compute_evm,
+            )
 
-            self._evm = compute_evm(self.project_id, as_of_date=self.data_date)
+            self._evm = get_or_compute_evm(self.project_id, as_of_date=self.data_date)
         return self._evm

@@ -72,6 +72,36 @@
         </li>
     </ul>
 
+    {% if pagination and pagination.total_rows %}
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2"
+         data-testid="link-review-pagination"
+         style="font-size:0.78rem;">
+        <span class="text-secondary" data-testid="link-review-showing">
+            Showing {{ pagination.showing_from }}–{{ pagination.showing_to }}
+            of {{ pagination.total_rows }} binding{{ pagination.total_rows|pluralize }}
+            {% if pagination.truncated %}
+            <span class="ms-1">(page {{ pagination.page }} of {{ pagination.total_pages }})</span>
+            {% endif %}
+        </span>
+        <div class="d-flex gap-1">
+            {% if pagination.has_prev %}
+            <button type="button"
+                    class="btn btn-sm btn-outline-secondary py-0 px-2"
+                    hx-get="{% url 'scheduling:review' project.pk %}?filter={{ filter_by }}&page={{ pagination.prev_page }}&limit={{ pagination.page_size }}"
+                    hx-target="#link-review-content"
+                    hx-swap="outerHTML">Prev</button>
+            {% endif %}
+            {% if pagination.has_next %}
+            <button type="button"
+                    class="btn btn-sm btn-outline-secondary py-0 px-2"
+                    hx-get="{% url 'scheduling:review' project.pk %}?filter={{ filter_by }}&page={{ pagination.next_page }}&limit={{ pagination.page_size }}"
+                    hx-target="#link-review-content"
+                    hx-swap="outerHTML">Next</button>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Bindings table -->
     {% if rows %}
     <div class="table-responsive mb-4">
@@ -95,7 +125,7 @@
             </tbody>
         </table>
     </div>
-    {% elif filter_by != 'unlinked' %}
+    {% elif filter_by != 'unlinked' and filter_by != 'non_physical' %}
     <p class="text-secondary small py-3 text-center">No bindings match this filter.</p>
     {% endif %}
 
@@ -104,7 +134,15 @@
     <div class="border rounded p-3" style="font-size:0.83rem;">
         <div class="fw-semibold mb-2" style="font-size:0.85rem;">
             <i class="bi bi-x-circle text-danger me-1"></i>
-            Unlinked Tasks <span class="badge bg-danger ms-1">{{ unlinked_tasks|length }}</span>
+            Unlinked Tasks
+            <span class="badge bg-danger ms-1">
+                {% if pagination.unlinked_total %}{{ pagination.unlinked_total }}{% else %}{{ unlinked_tasks|length }}{% endif %}
+            </span>
+            {% if pagination.unlinked_total and pagination.unlinked_total > unlinked_tasks|length %}
+            <span class="text-muted fw-normal ms-2" style="font-size:0.78rem;" data-testid="link-review-unlinked-cap">
+                showing first {{ unlinked_tasks|length }}
+            </span>
+            {% endif %}
         </div>
         <table class="table table-sm mb-0">
             <thead class="table-light">
@@ -178,8 +216,15 @@
         <div class="fw-semibold mb-2" style="font-size:0.85rem;">
             <i class="bi bi-slash-circle text-secondary me-1"></i>
             Non-Physical Activities
-            <span class="badge bg-secondary ms-1">{{ non_physical_tasks|length }}</span>
+            <span class="badge bg-secondary ms-1">
+                {% if pagination.non_physical_total %}{{ pagination.non_physical_total }}{% else %}{{ non_physical_tasks|length }}{% endif %}
+            </span>
             <span class="text-muted fw-normal ms-2" style="font-size:0.78rem;">excluded from IFC matching</span>
+            {% if pagination.non_physical_total and pagination.non_physical_total > non_physical_tasks|length %}
+            <span class="text-muted fw-normal ms-2" style="font-size:0.78rem;">
+                showing first {{ non_physical_tasks|length }}
+            </span>
+            {% endif %}
         </div>
         <table class="table table-sm mb-0">
             <thead class="table-light">

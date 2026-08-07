@@ -2891,7 +2891,8 @@ function _esc(s) {
             }
         }
 
-        loadDelayRootCause();
+        /* Hidden by value-cleanup — do not auto-fetch on Schedule Health load */
+        if (_sectionAllowsAutoLoad("evm-drc-section")) loadDelayRootCause();
         if (window._evmAudit) window._evmAudit.register("delay_rootcause", loadDelayRootCause);
     }());
 
@@ -3177,7 +3178,8 @@ function _esc(s) {
             }
         }
 
-        loadCashflow();
+        /* Hidden by value-cleanup — do not auto-fetch on Schedule Health load */
+        if (_sectionAllowsAutoLoad("evm-cf-section")) loadCashflow();
         if (typeof ResizeObserver !== 'undefined') {
             const _cfWrap = document.getElementById("cf-canvas")?.parentElement;
             if (_cfWrap) {
@@ -3566,7 +3568,7 @@ function _esc(s) {
             }
         }
 
-        loadTimelocation();
+        if (_sectionAllowsAutoLoad("evm-tl-section")) loadTimelocation();
         if (window._evmAudit) window._evmAudit.register("timelocation", loadTimelocation);
         if (typeof ResizeObserver !== 'undefined') {
             const _tlWrap = document.getElementById("tl-chart-wrap");
@@ -3755,11 +3757,22 @@ function _esc(s) {
         loadDcmaCheck();
     }());
 
+    /* Reliability A″ — only auto-load visible / core Schedule Health sections.
+       Hidden value-cleanup sections (MC/ML/cashflow/WBS/trend/root-cause/anomaly/chat)
+       must not trigger network calls on initial page load. */
+    function _sectionAllowsAutoLoad(sectionId) {
+        const el = document.getElementById(sectionId);
+        if (!el) return false;
+        if (el.classList.contains("d-none")) return false;
+        if (el.matches('[data-testid^="value-cleanup-hide-"]')) return false;
+        return true;
+    }
+
     loadEvm();
     _fetchTrustInputs();
-    loadWbsHeatmap();
-    loadDelayDistribution();
-    loadTrendAnalysis();
+    if (_sectionAllowsAutoLoad("evm-wbs-section")) loadWbsHeatmap();
+    if (_sectionAllowsAutoLoad("evm-delay-section")) loadDelayDistribution();
+    if (_sectionAllowsAutoLoad("evm-trend-section")) loadTrendAnalysis();
 
     /* ── Canvas resize: re-draw S-curve + sparklines on container resize ── *
      * ResizeObserver fires on ANY size change (sidebar open/close, window
@@ -3903,7 +3916,8 @@ function _esc(s) {
             }
         }
 
-        loadML();
+        /* Hidden by value-cleanup — do not auto-fetch on Schedule Health load */
+        if (_sectionAllowsAutoLoad("evm-ml-section")) loadML();
     }());
 
     /* ── Anomaly Detection ─────────────────────────────────────────────── */
@@ -4032,7 +4046,8 @@ function _esc(s) {
             }
         }
 
-        loadAnomalies();
+        /* Hidden by value-cleanup — do not auto-fetch on Schedule Health load */
+        if (_sectionAllowsAutoLoad("evm-anomaly-section")) loadAnomalies();
         if (window._evmAudit) window._evmAudit.register("anomalies", loadAnomalies);
     }());
 
@@ -4823,7 +4838,10 @@ function _esc(s) {
             _setCritPath(data.critical_path);
         }
 
-        loadIntelligence();
+        /* Intelligence overlays WBS/MC-adjacent surfaces — skip when those stay hidden */
+        if (_sectionAllowsAutoLoad("evm-wbs-section") || _sectionAllowsAutoLoad("evm-chat-section")) {
+            loadIntelligence();
+        }
     }());
 
 }());

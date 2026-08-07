@@ -3249,7 +3249,22 @@ def _make_row(binding: TaskEntityBinding, ifc_files) -> dict:
 def _render_link_review(
     request, project, filter_by: str = "all", inline: bool = False
 ) -> HttpResponse:
+    """Render Link Proposals review — paginated rows, filter-scoped side lists."""
     ifc_files = _get_ifc_files(project)
+
+    # Default page size keeps HTML payload bounded on large pilot projects.
+    default_limit = 100
+    max_limit = 200
+    try:
+        page_size = int(request.GET.get("limit", default_limit))
+    except (TypeError, ValueError):
+        page_size = default_limit
+    page_size = max(1, min(page_size, max_limit))
+    try:
+        page = int(request.GET.get("page", 1))
+    except (TypeError, ValueError):
+        page = 1
+    page = max(1, page)
 
     bindings_qs = (
         TaskEntityBinding.objects.filter(task__project=project)
@@ -3264,8 +3279,17 @@ def _render_link_review(
         bindings_qs = bindings_qs.filter(trusted_filter())
     elif filter_by in ("exact", "normalized", "heuristic", "embedding", "manual"):
         bindings_qs = bindings_qs.filter(link_method=filter_by)
+    elif filter_by in ("unlinked", "non_physical"):
+        # Side-list filters — do not also dump the full bindings table.
+        bindings_qs = bindings_qs.none()
 
-    binding_list = list(bindings_qs)
+    total_rows = bindings_qs.count()
+    total_pages = max(1, (total_rows + page_size - 1) // page_size) if total_rows else 1
+    if page > total_pages:
+        page = total_pages
+    offset = (page - 1) * page_size
+    binding_list = list(bindings_qs[offset : offset + page_size])
+
     gids = {b.entity_global_id for b in binding_list}
     entity_name_map = (
         {
@@ -3278,12 +3302,16 @@ def _render_link_review(
         else {}
     )
 
-    # Sibling count: how many OTHER tasks share each entity_global_id in this project
-    entity_task_counts: dict[str, int] = dict(
-        TaskEntityBinding.objects.filter(task__project=project)
-        .values("entity_global_id")
-        .annotate(cnt=Count("pk"))
-        .values_list("entity_global_id", "cnt")
+    # Sibling counts only for entities on this page (not full project scan).
+    entity_task_counts: dict[str, int] = (
+        dict(
+            TaskEntityBinding.objects.filter(task__project=project, entity_global_id__in=gids)
+            .values("entity_global_id")
+            .annotate(cnt=Count("pk"))
+            .values_list("entity_global_id", "cnt")
+        )
+        if gids
+        else {}
     )
 
     rows = [
@@ -3297,25 +3325,52 @@ def _render_link_review(
         }
         for b in binding_list
     ]
-    # Group by entity so shared-entity rows are adjacent
+    # Group by entity within the page so shared-entity rows stay adjacent.
     rows.sort(key=lambda r: (r["entity_name"].lower(), r["binding"].task.name.lower()))
 
-    unlinked_tasks = []
-    if filter_by in ("all", "unlinked"):
+    # Side lists only when that filter is active — avoid dumping all unlinked
+    # tasks into the "all" HTML payload.
+    unlinked_tasks: list = []
+    unlinked_total = 0
+    if filter_by == "unlinked":
         linked_pks = TaskEntityBinding.objects.filter(task__project=project).values_list(
             "task_id", flat=True
         )
-        unlinked_tasks = list(
+        unlinked_qs = (
             Task.objects.filter(project=project, is_non_physical=False)
             .exclude(pk__in=linked_pks)
             .order_by("name")
         )
+        unlinked_total = unlinked_qs.count()
+        unlinked_tasks = list(unlinked_qs[:page_size])
 
-    non_physical_tasks = []
-    if filter_by in ("all", "non_physical"):
-        non_physical_tasks = list(
-            Task.objects.filter(project=project, is_non_physical=True).order_by("name")
+    non_physical_tasks: list = []
+    non_physical_total = 0
+    if filter_by == "non_physical":
+        non_physical_qs = Task.objects.filter(project=project, is_non_physical=True).order_by(
+            "name"
         )
+        non_physical_total = non_physical_qs.count()
+        non_physical_tasks = list(non_physical_qs[:page_size])
+
+    showing_from = offset + 1 if total_rows else 0
+    showing_to = min(offset + page_size, total_rows)
+    pagination = {
+        "page": page,
+        "page_size": page_size,
+        "total_rows": total_rows,
+        "total_pages": total_pages,
+        "showing_from": showing_from,
+        "showing_to": showing_to,
+        "truncated": total_rows > showing_to,
+        "has_prev": page > 1,
+        "has_next": page < total_pages,
+        "prev_page": page - 1 if page > 1 else None,
+        "next_page": page + 1 if page < total_pages else None,
+        "unlinked_total": unlinked_total,
+        "non_physical_total": non_physical_total,
+        "inline": inline,
+    }
 
     summary = _build_review_summary(project)
     template = (
@@ -3333,6 +3388,7 @@ def _render_link_review(
             "non_physical_tasks": non_physical_tasks,
             "summary": summary,
             "filter_by": filter_by,
+            "pagination": pagination,
         },
     )
 
