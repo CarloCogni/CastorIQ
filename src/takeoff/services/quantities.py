@@ -70,41 +70,96 @@ _QTO_SPEC: dict[str, list[tuple[str, str, str]]] = {
 _FALLBACK_UNIT = "ea"
 
 
+def _coerce_numeric(val: object) -> float | None:
+    """Return float for numeric IFC quantity values; ignore bools and garbage."""
+    if val is None or isinstance(val, bool):
+        return None
+    try:
+        return float(val)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+
+
+def _unit_for_prop_name(prop_name: str) -> str:
+    """Infer display unit from a Qto_* property name."""
+    pl = prop_name.lower()
+    if "volume" in pl:
+        return "m³"
+    if "area" in pl:
+        return "m²"
+    if "length" in pl or "width" in pl or "height" in pl or "depth" in pl:
+        return "m"
+    return _FALLBACK_UNIT
+
+
+def entity_has_ifc_quantity(props: dict | None) -> bool:
+    """True when *props* contain a recognizable numeric IFC Qto_* value.
+
+    Supports both nested ``{"Qto_WallBaseQuantities": {"NetVolume": 1.2}}``
+    and flat dotted keys ``{"Qto_WallBaseQuantities.NetVolume": 1.2}``.
+    """
+    if not props:
+        return False
+    for key, val in props.items():
+        if not isinstance(key, str) or not key.startswith("Qto_"):
+            continue
+        if isinstance(val, dict):
+            for pval in val.values():
+                if _coerce_numeric(pval) is not None:
+                    return True
+            continue
+        if "." in key and _coerce_numeric(val) is not None:
+            return True
+    return False
+
+
 def _extract_quantity(ifc_type: str, props: dict) -> tuple[float | None, str, str]:
     """Return (quantity, unit, source) for a single entity.
 
     source is 'ifc' when extracted from a Qto_* property set,
     or 'estimated' when falling back to a generic scan or count.
+
+    Accepts nested Qto_* dicts and flat dotted keys written by the IFC parser
+    (e.g. ``Qto_WallBaseQuantities.NetVolume``).
     """
     candidates = _QTO_SPEC.get(ifc_type, [])
 
-    # 1. Exact pset + property lookup
+    # 1. Exact pset + property lookup (nested dict OR flat dotted key)
     for pset_name, prop_name, unit in candidates:
         pset = props.get(pset_name)
         if isinstance(pset, dict):
-            val = pset.get(prop_name)
-            if val is not None:
-                try:
-                    return float(val), unit, "ifc"
-                except (TypeError, ValueError):
-                    pass
+            num = _coerce_numeric(pset.get(prop_name))
+            if num is not None:
+                return num, unit, "ifc"
+        flat_key = f"{pset_name}.{prop_name}"
+        num = _coerce_numeric(props.get(flat_key))
+        if num is not None:
+            return num, unit, "ifc"
 
-    # 2. Generic scan over any Qto_* pset
+    # 2. Generic scan over any Qto_* pset (nested or flat dotted)
     for key, val in props.items():
-        if not key.startswith("Qto_") or not isinstance(val, dict):
+        if not isinstance(key, str) or not key.startswith("Qto_"):
             continue
-        for pname, pval in val.items():
-            pl = pname.lower()
-            for unit, keywords in [
-                ("m³", ["volume"]),
-                ("m²", ["area"]),
-                ("m", ["length"]),
-            ]:
-                if any(kw in pl for kw in keywords):
-                    try:
-                        return float(pval), unit, "ifc"
-                    except (TypeError, ValueError):
-                        pass
+        if isinstance(val, dict):
+            for pname, pval in val.items():
+                num = _coerce_numeric(pval)
+                if num is None:
+                    continue
+                pl = str(pname).lower()
+                for unit, keywords in [
+                    ("m³", ["volume"]),
+                    ("m²", ["area"]),
+                    ("m", ["length", "width", "height"]),
+                ]:
+                    if any(kw in pl for kw in keywords):
+                        return num, unit, "ifc"
+            continue
+        if "." in key:
+            prop_part = key.split(".", 1)[1]
+            num = _coerce_numeric(val)
+            if num is None:
+                continue
+            return num, _unit_for_prop_name(prop_part), "ifc"
 
     return None, _FALLBACK_UNIT, "estimated"
 

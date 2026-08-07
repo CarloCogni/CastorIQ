@@ -11,6 +11,7 @@ import io
 import logging
 
 from django.http import HttpResponse, JsonResponse
+from django.urls import reverse
 from django.views import View
 from django.views.generic import TemplateView
 
@@ -18,8 +19,27 @@ from core.http import toast_response
 from core.mixins import ProjectAccessMixin, ProjectTabMixin
 
 from .models import QTOCache
+from .services.model_inventory import ModelInventoryService
 
 logger = logging.getLogger(__name__)
+
+
+class ModelInventoryView(ProjectTabMixin, TemplateView):
+    """Model Inventory — IFC index counts, class table, trusted link coverage."""
+
+    active_tab = "castor"
+
+    def get_context_data(self, **kwargs: object) -> dict:
+        ctx = super().get_context_data(**kwargs)
+        ctx["castor_subtab"] = "model_inventory"
+        project = ctx["project"]
+        inventory = ModelInventoryService(project).build()
+        ctx["inventory"] = inventory
+        ctx["viewer_url"] = reverse("ifc_viewer:viewer", kwargs={"pk": project.pk})
+        ctx["apply_url"] = (
+            reverse("scheduling:schedule", kwargs={"pk": project.pk}) + "?tab=fourD_link"
+        )
+        return ctx
 
 
 class QTOView(ProjectTabMixin, TemplateView):

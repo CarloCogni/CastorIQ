@@ -1,0 +1,57 @@
+<!-- takeoff/components/model_inventory_help_modal.html — How Model Inventory works -->
+
+<div class="modal fade" id="modelInventoryHelpModal" tabindex="-1"
+     aria-labelledby="modelInventoryHelpLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+
+            <div class="modal-header border-bottom px-4 py-3"
+                 style="border-color: var(--bs-border-color) !important;">
+                <h5 class="modal-title fw-semibold fs-6 mb-0" id="modelInventoryHelpLabel">
+                    <i class="bi bi-box-seam me-2 text-primary"></i>
+                    How Model Inventory Works
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body px-4 py-4">
+
+                <p class="fw-semibold fs-7 mb-2">What is it?</p>
+                <p class="text-secondary fs-7 mb-4">
+                    Model Inventory is a summary of the project’s IFC index:
+                    how many elements exist, by IFC class, how many have trusted
+                    schedule-model links, and how many expose IFC model quantities
+                    (<code>Qto_*</code>). It supports 4D apply/read readiness and
+                    future 5D foundation work.
+                </p>
+
+                <p class="fw-semibold fs-7 mb-2">How to use it</p>
+                <ul class="text-secondary fs-7 mb-4">
+                    <li>Scan Overview for total entities, classes, storeys, and coverage.</li>
+                    <li>Use By IFC Class to find large unlinked groups before Apply / 4D Link.</li>
+                    <li>Open Viewer or Apply / 4D Link from the action links when you need to act.</li>
+                </ul>
+
+                <p class="fw-semibold fs-7 mb-2">Who can do what</p>
+                <p class="text-secondary fs-7 mb-4">
+                    BIM coordinators, planners, and 4D/5D reviewers use this page read-only.
+                    Approving or rejecting links is done in Apply / 4D Link and Link Quality —
+                    not here.
+                </p>
+
+                <p class="fw-semibold fs-7 mb-2">Caveats</p>
+                <ul class="text-secondary fs-7 mb-4">
+                    <li>Link coverage uses <strong class="text-body">trusted schedule-model links only</strong>.</li>
+                    <li>Quantity availability depends on IFC <code>Qto_*</code> data in the indexed model.</li>
+                    <li>Counts come from the IFC index — not live geometry re-measure.</li>
+                </ul>
+
+                <p class="fw-semibold fs-7 mb-2">Not claimed</p>
+                <p class="text-secondary fs-7 mb-0" data-testid="model-inventory-not-claims">
+                    Not BOQ. Not QS valuation. Not ERP. Not company actual cost.
+                    Not commercial 5D / cost control. Not a Synchro replacement.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
