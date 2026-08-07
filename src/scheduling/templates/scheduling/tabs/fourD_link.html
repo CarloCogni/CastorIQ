@@ -262,7 +262,7 @@
       </div>
       <div class="d-flex align-items-center gap-3 flex-wrap" style="font-size: 0.72rem;">
         <span class="text-secondary" data-testid="fd-timeline-trusted-only"
-              style="font-size:0.7rem;">Timeline uses trusted links only.</span>
+              style="font-size:0.7rem;">Timeline uses applied / confirmed links only.</span>
         <div class="d-flex align-items-center gap-1">
           <span style="width: 8px; height: 8px; border-radius: 2px; background: #10B981; display: inline-block;"></span>
           <span id="fd-stat-complete" class="fw-semibold">0</span>
@@ -302,9 +302,9 @@
     <strong style="color: #818cf8;"><i class="bi bi-robot me-1"></i>Link assistant</strong>
     <span class="text-secondary ms-1">— Advisory suggestions</span>
     <p class="mb-0 mt-1 text-secondary">
-      Notes only — this assistant does not approve links and schedule writeback is not available here.
-      Use <strong>Propose links</strong> to generate candidates, then confirm applied map quality in
-      <strong>Link Quality</strong> (advanced trust controls).
+      Notes only — this assistant does not confirm links and schedule writeback is not available here.
+      Use <strong>Suggest Links</strong> to generate candidates, then confirm applied map quality in
+      <strong>Applied Links</strong>.
     </p>
   </div>
   <!-- BOTTOM FOOTER: Controls bar -->
@@ -319,7 +319,7 @@
     gap: 12px;
     flex-wrap: wrap;
   ">
-    <!-- Propose links (engine) -->
+    <!-- Suggest Links (engine) -->
     <form hx-post="{% url 'scheduling:schedule_link_smart' project.pk %}"
           hx-target="#fourD-link-results"
           hx-swap="innerHTML"
@@ -330,9 +330,10 @@
               style="padding: 6px 16px; background: #6366f1; color: white;
                      border: none; border-radius: 6px; cursor: pointer;
                      font-size: 12px; font-weight: 600;
-                     display: inline-flex; align-items: center; gap: 6px;">
+                     display: inline-flex; align-items: center; gap: 6px;"
+              data-testid="suggest-links-btn">
         <span id="fd-link-spinner" class="htmx-indicator spinner-border spinner-border-sm"></span>
-        <i class="bi bi-lightning-charge-fill"></i> Propose links
+        <i class="bi bi-lightning-charge-fill"></i> Suggest Links
       </button>
     </form>
 
@@ -369,14 +370,14 @@
   <!-- Results area: Link Engine feedback (collapses when empty) -->
   <div id="fourD-link-results" class="fourD-stack-section"></div>
 
-  <!-- Review pane: Link Quality (advanced trust) + Link Proposals -->
+  <!-- Review pane: Applied Links + Link Proposals -->
   <div id="fourD-bottom-panels" class="fourD-stack-section" style="border-top:1px solid var(--bs-border-color);">
     <ul class="nav nav-tabs px-2 pt-1 mb-0" style="font-size:0.8rem;" role="tablist">
       <li class="nav-item" role="presentation">
         <button class="nav-link active py-1 px-2" id="fd-pipeline-tab" data-bs-toggle="tab"
                 data-bs-target="#fourD-review-pane" type="button" role="tab"
                 aria-controls="fourD-review-pane" aria-selected="true"
-                title="Proposed map — confirm trust in Link Quality">
+                title="Suggested map — confirm links in Applied Links">
           Link Proposals
         </button>
       </li>
@@ -384,10 +385,9 @@
         <button class="nav-link py-1 px-2" id="fd-gov-tab" data-bs-toggle="tab"
                 data-bs-target="#fd-gov-pane" type="button" role="tab"
                 aria-controls="fd-gov-pane" aria-selected="false"
-                title="Advanced trust controls for applied schedule-model map"
+                title="Applied schedule-model links and link coverage"
                 data-testid="fourd-link-quality-tab">
-          <i class="bi bi-shield-check me-1"></i>Link Quality
-          <span class="badge bg-secondary-subtle text-secondary-emphasis border ms-1" style="font-size:0.62rem;">Advanced</span>
+          <i class="bi bi-shield-check me-1"></i>Applied Links
         </button>
       </li>
     </ul>
@@ -402,7 +402,7 @@
            hx-get="{% url 'scheduling:link_governance_workspace' project.pk %}"
            hx-trigger="shown.bs.tab once from:#fd-gov-tab"
            hx-swap="innerHTML">
-        <div class="text-secondary small py-2"><span class="spinner-border spinner-border-sm me-1"></span>Loading link quality…</div>
+        <div class="text-secondary small py-2"><span class="spinner-border spinner-border-sm me-1"></span>Loading applied links…</div>
       </div>
     </div>
   </div>
@@ -433,7 +433,7 @@
         <span id="fdLinkSelectedCount" class="text-secondary me-auto" style="font-size: 0.8rem;"></span>
         <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
         <button type="button" class="btn btn-sm btn-primary" id="fdLinkConfirmBtn" disabled>
-          <i class="bi bi-link-45deg me-1"></i>Link Selected
+          <i class="bi bi-link-45deg me-1"></i>Confirm Link
         </button>
       </div>
     </div>

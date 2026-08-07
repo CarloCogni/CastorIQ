@@ -1,25 +1,25 @@
-<!-- environments/components/bim_panel.html — 4D/5D BIM hub (replaces deleted castor/panel.html) -->
+<!-- environments/components/bim_panel.html — 4D/5D BIM hub (Package S1 surface) -->
 <div class="d-flex flex-column h-100 overflow-hidden">
 
-    <!-- Sub-tab navigation bar -->
+    <!-- Sub-tab navigation bar — Package S1: six primary destinations -->
     <div class="d-flex align-items-center px-3 py-2 border-bottom bg-body flex-shrink-0" style="gap: 0.5rem;">
         <span class="fw-semibold text-secondary me-2" style="font-size:0.8rem; letter-spacing:0.05em;">4D/5D</span>
 
-        <ul class="nav nav-pills" style="gap: 0.25rem;">
-            <!-- Visible tabs — Package B1 order -->
+        <ul class="nav nav-pills" style="gap: 0.25rem;" data-testid="hub-primary-nav">
             <li class="nav-item">
                 <a class="nav-link py-1 px-3 {% if schedule_tab == 'data_sources' %}active{% endif %}"
                    href="{% url 'scheduling:schedule' project.pk %}?tab=data_sources"
-                   style="font-size:0.85rem;">
-                    <i class="bi bi-upload me-1"></i>Data Sources
+                   style="font-size:0.85rem;"
+                   data-testid="hub-schedule">
+                    <i class="bi bi-calendar3 me-1"></i>Schedule
                 </a>
             </li>
             <li class="nav-item">
                 <a class="nav-link py-1 px-3 {% if schedule_tab == 'fourD_link' %}active{% endif %}"
                    href="{% url 'scheduling:schedule' project.pk %}?tab=fourD_link"
                    style="font-size:0.85rem;"
-                   data-testid="hub-apply-4d-link">
-                    <i class="bi bi-boxes me-1"></i>Apply / 4D Link
+                   data-testid="hub-links">
+                    <i class="bi bi-boxes me-1"></i>Links
                     {% if task_count %}<span class="badge bg-secondary ms-1" style="font-size:0.65rem;">{{ task_count }}</span>{% endif %}
                 </a>
             </li>
@@ -27,38 +27,48 @@
                 <a class="nav-link py-1 px-3 {% if castor_subtab == 'model_inventory' %}active{% endif %}"
                    href="{% url 'takeoff:model_inventory' project.pk %}"
                    style="font-size:0.85rem;"
-                   data-testid="hub-model-inventory">
-                    <i class="bi bi-box-seam me-1"></i>Model Inventory
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link py-1 px-3 {% if castor_subtab == 'viewer' %}active{% endif %}"
-                   href="{% url 'ifc_viewer:viewer' project.pk %}"
-                   style="font-size:0.85rem;">
-                    <i class="bi bi-cube me-1"></i>3D Viewer
+                   data-testid="hub-model">
+                    <i class="bi bi-box-seam me-1"></i>Model
                 </a>
             </li>
             <li class="nav-item">
                 <a class="nav-link py-1 px-3 {% if schedule_tab == 'lookahead' %}active{% endif %}"
                    href="{% url 'scheduling:schedule' project.pk %}?tab=lookahead"
-                   style="font-size:0.85rem;">
-                    <i class="bi bi-calendar-week me-1"></i>Look-ahead
+                   style="font-size:0.85rem;"
+                   data-testid="hub-time-view">
+                    <i class="bi bi-calendar-week me-1"></i>Time View
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link py-1 px-3 {% if castor_subtab == 'qto' %}active{% endif %}"
+                   href="{% url 'takeoff:qto' project.pk %}"
+                   style="font-size:0.85rem;"
+                   data-testid="hub-quantities">
+                    <i class="bi bi-calculator me-1"></i>Quantities
                 </a>
             </li>
             <li class="nav-item">
                 <a class="nav-link py-1 px-3 {% if castor_subtab == 'executive_controls' %}active{% endif %}"
                    href="{% url 'scheduling:executive_controls' project.pk %}"
-                   style="font-size:0.85rem;">
-                    <i class="bi bi-speedometer2 me-1"></i>Executive Controls
+                   style="font-size:0.85rem;"
+                   data-testid="hub-controls">
+                    <i class="bi bi-speedometer2 me-1"></i>Controls
                 </a>
             </li>
-            <!-- Hidden tabs — preserved for direct URL access, not shown in primary nav -->
+            <!-- Internal / compatibility routes — not primary destinations -->
             <li class="nav-item d-none" data-testid="hub-schedule-health-advanced">
                 <a class="nav-link py-1 px-3 {% if schedule_tab == 'evm' %}active{% endif %}"
                    href="{% url 'scheduling:schedule' project.pk %}?tab=evm"
                    style="font-size:0.85rem;"
-                   title="Advanced Schedule Health / diagnostics — not primary product flow">
-                    <i class="bi bi-heart-pulse me-1"></i>Schedule Health
+                   title="Schedule readiness diagnostics — internal">
+                    <i class="bi bi-heart-pulse me-1"></i>Schedule Readiness
+                </a>
+            </li>
+            <li class="nav-item d-none" data-testid="hub-viewer-compat">
+                <a class="nav-link py-1 px-3 {% if castor_subtab == 'viewer' %}active{% endif %}"
+                   href="{% url 'ifc_viewer:viewer' project.pk %}"
+                   style="font-size:0.85rem;">
+                    <i class="bi bi-cube me-1"></i>Viewer
                 </a>
             </li>
             <li class="nav-item d-none">
@@ -66,6 +76,13 @@
                    href="{% url 'scheduling:schedule' project.pk %}"
                    style="font-size:0.85rem;">
                     <i class="bi bi-calendar3-range me-1"></i>TimeLiner
+                </a>
+            </li>
+            <li class="nav-item d-none" data-testid="hub-intelligence-hidden">
+                <a class="nav-link py-1 px-3 {% if schedule_tab == 'intelligence' %}active{% endif %}"
+                   href="{% url 'scheduling:schedule' project.pk %}?tab=intelligence"
+                   style="font-size:0.85rem;">
+                    <i class="bi bi-lightbulb me-1"></i>Intelligence
                 </a>
             </li>
             <li class="nav-item d-none">
@@ -90,14 +107,6 @@
                    href="{% url 'model_quality:levels' project.pk %}"
                    style="font-size:0.85rem;">
                     <i class="bi bi-layers me-1"></i>Levels
-                </a>
-            </li>
-            <li class="nav-item d-none">
-                <a class="nav-link py-1 px-3 {% if castor_subtab == 'qto' %}active{% endif %}"
-                   href="{% url 'takeoff:qto' project.pk %}"
-                   style="font-size:0.85rem;"
-                   data-testid="hub-quantities-advanced">
-                    <i class="bi bi-calculator me-1"></i>Quantities
                 </a>
             </li>
         </ul>

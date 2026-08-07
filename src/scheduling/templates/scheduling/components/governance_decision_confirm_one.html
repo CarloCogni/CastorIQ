@@ -1,7 +1,7 @@
 <!-- scheduling/components/governance_decision_confirm_one.html — individual approval confirm -->
 
 <div id="decision-confirm-{{ binding_id }}" class="border rounded p-3 bg-body-tertiary small">
-    <div class="fw-semibold mb-2">Confirm approval</div>
+    <div class="fw-semibold mb-2">Confirm Link</div>
     {% with item=preview.items.0 %}
     <dl class="row mb-2 g-1">
         <dt class="col-sm-3">Task</dt>
@@ -12,8 +12,8 @@
         <dd class="col-sm-9">{{ item.evidence_label }} · conf {{ item.confidence|floatformat:2 }}</dd>
         <dt class="col-sm-3">Status</dt>
         <dd class="col-sm-9">
-            {% if item.status == 'eligible' %}Eligible for trusted acceptance
-            {% elif item.status == 'already_accepted' %}Already trusted (no-op)
+            {% if item.status == 'eligible' %}Eligible for confirmation
+            {% elif item.status == 'already_accepted' %}Already applied / confirmed (no-op)
             {% else %}{{ item.status }}{% endif %}
         </dd>
     </dl>
@@ -22,7 +22,7 @@
     {% endif %}
     {% endwith %}
     <p class="text-secondary mb-2">
-        Confidence is informational only — human approval is required regardless of score.
+        Confidence is informational only — human confirmation is required regardless of score.
     </p>
     <form hx-post="{% url 'scheduling:link_decision_apply_one' project.pk binding_id %}"
           hx-target="#decision-confirm-{{ binding_id }}"
@@ -41,7 +41,7 @@
         {% endif %}
         <div class="d-flex gap-2 flex-wrap">
             {% if preview.eligible_count %}
-            <button type="submit" class="btn btn-sm btn-success">Approve trusted</button>
+            <button type="submit" class="btn btn-sm btn-success">Confirm Link</button>
             {% endif %}
             <button type="button" class="btn btn-sm btn-outline-secondary"
                     onclick="this.closest('[id^=decision-confirm-]').remove()">
@@ -49,7 +49,7 @@
             </button>
         </div>
         <div class="mt-2 text-secondary" style="font-size:0.75rem;">
-            Defer closes this panel with no database change. Reject records immutable audit history (E2-E).
+            Defer closes this panel with no database change. Ignore Suggestion records immutable audit history.
         </div>
     </form>
 </div>

@@ -4,15 +4,15 @@
     <div class="d-flex align-items-center gap-2 flex-wrap">
         <div class="d-flex align-items-center gap-2">
             <i class="bi bi-shield-check fs-5 text-primary"></i>
-            <h5 class="m-0">Link Quality</h5>
-            <span class="badge bg-secondary-subtle text-secondary-emphasis border" style="font-size:0.65rem;">Advanced trust</span>
-            <span class="badge bg-primary-subtle text-primary-emphasis border" style="font-size:0.7rem;" data-testid="governance-authority-badge">Trusted applied map</span>
+            <h5 class="m-0">Applied Links</h5>
+            <span class="badge bg-secondary-subtle text-secondary-emphasis border" style="font-size:0.65rem;">Link coverage</span>
+            <span class="badge bg-primary-subtle text-primary-emphasis border" style="font-size:0.7rem;" data-testid="governance-authority-badge">Applied / Confirmed map</span>
             <button type="button"
                     class="help-pill"
                     data-bs-toggle="modal"
                     data-bs-target="#linkGovernanceHelpModal"
-                    title="How Link Quality works"
-                    aria-label="How Link Quality works">
+                    title="How Applied Links works"
+                    aria-label="How Applied Links works">
                 <i class="bi bi-question-circle"></i>
             </button>
             <button type="button"
@@ -43,14 +43,14 @@
 
     {% if governance_capabilities %}
     <div class="small text-secondary border rounded px-2 py-1">
-        Authority: {{ governance_capabilities.permission|default:"none" }}
+        Access: {{ governance_capabilities.permission|default:"none" }}
         {% if not governance_capabilities.capabilities.can_approve_individual %}
-        · Approval actions hidden (viewer)
+        · Confirm actions hidden (viewer)
         {% endif %}
     </div>
     {% endif %}
 
-    <ul class="nav nav-tabs" role="tablist" aria-label="Governance workspace tabs">
+    <ul class="nav nav-tabs" role="tablist" aria-label="Applied Links workspace tabs">
         <li class="nav-item" role="presentation">
             <button class="nav-link active" id="gq-tab-overview" data-bs-toggle="tab"
                     data-bs-target="#gq-panel-overview" type="button" role="tab"
@@ -105,7 +105,7 @@
             <div id="governance-overview-panel">
                 <div class="d-flex align-items-center justify-content-center py-4 text-secondary">
                     <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-                    Loading governance overview…
+                    Loading link coverage overview…
                 </div>
             </div>
         </div>

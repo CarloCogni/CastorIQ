@@ -24,7 +24,7 @@
             </a>
             <a href="{{ apply_url }}" class="btn btn-sm btn-outline-primary"
                data-testid="model-inventory-open-apply">
-                <i class="bi bi-boxes me-1"></i>Open Apply / 4D Link
+                <i class="bi bi-boxes me-1"></i>Open Links
             </a>
         </div>
     </div>
@@ -32,7 +32,7 @@
     <div class="flex-grow-1 overflow-auto p-3">
 
         <p class="text-secondary small mb-3" data-testid="model-inventory-source-caveat">
-            Counts come from the IFC index and trusted schedule-model links.
+            Counts come from the IFC index and applied / confirmed schedule-model links.
             Quantities shown as availability are IFC model quantities (<code>Qto_*</code>),
             not BOQ, QS valuation, ERP, or company actual cost.
         </p>
@@ -99,19 +99,19 @@
             <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                 <span class="fw-semibold" style="font-size:0.9rem;">Link coverage</span>
                 <span class="badge bg-primary-subtle text-primary-emphasis border"
-                      style="font-size:0.65rem;">Trusted only</span>
+                      style="font-size:0.65rem;">Applied / Confirmed only</span>
             </div>
             <p class="text-secondary small mb-2" data-testid="mi-link-coverage-caveat">
                 {{ inventory.link_coverage.caveat }}
             </p>
             {% if not inventory.overview.has_trusted_links %}
             <div class="alert alert-info py-2 small mb-0" data-testid="mi-no-trusted-links">
-                No trusted schedule-model links yet. Propose and confirm links in Apply / 4D Link and Link Quality.
+                No applied / confirmed schedule-model links yet. Suggest and confirm links under Links → Applied Links.
             </div>
             {% else %}
             <div class="row g-2">
                 <div class="col-4">
-                    <div class="small text-secondary">Trusted linked</div>
+                    <div class="small text-secondary">Applied / Confirmed linked</div>
                     <div class="fw-semibold" data-testid="mi-trusted-linked">
                         {{ inventory.link_coverage.trusted_linked_entities }}
                     </div>
@@ -150,9 +150,9 @@
                         <tr>
                             <th>IFC Class</th>
                             <th class="text-end">Elements</th>
-                            <th class="text-end">Trusted linked</th>
+                            <th class="text-end">Applied / Confirmed</th>
                             <th class="text-end">Unlinked</th>
-                            <th class="text-end">Qty available</th>
+                            <th class="text-end">Has IFC Qto</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -168,7 +168,7 @@
                                 <a href="{{ viewer_url }}" class="btn btn-link btn-sm py-0 px-1"
                                    title="Open Viewer">Viewer</a>
                                 <a href="{{ apply_url }}" class="btn btn-link btn-sm py-0 px-1"
-                                   title="Open Apply / 4D Link">Apply</a>
+                                   title="Open Links">Apply</a>
                             </td>
                         </tr>
                         {% endfor %}

@@ -509,7 +509,7 @@ class TestOverviewHTTP:
         url = reverse("scheduling:executive_controls", kwargs={"pk": project.pk})
         resp = client.get(url)
         assert resp.status_code == 200
-        assert b"Executive Controls" in resp.content
+        assert b"Controls" in resp.content
 
     def test_post_returns_405(self, client):
         """POST rejected on overview endpoints."""

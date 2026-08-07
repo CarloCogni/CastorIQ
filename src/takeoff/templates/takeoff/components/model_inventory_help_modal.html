@@ -1,4 +1,4 @@
-<!-- takeoff/components/model_inventory_help_modal.html — How Model Inventory works -->
+<!-- takeoff/components/model_inventory_help_modal.html — How Model works -->
 
 <div class="modal fade" id="modelInventoryHelpModal" tabindex="-1"
      aria-labelledby="modelInventoryHelpLabel" aria-hidden="true">
@@ -9,7 +9,7 @@
                  style="border-color: var(--bs-border-color) !important;">
                 <h5 class="modal-title fw-semibold fs-6 mb-0" id="modelInventoryHelpLabel">
                     <i class="bi bi-box-seam me-2 text-primary"></i>
-                    How Model Inventory Works
+                    How Model Works
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
@@ -18,30 +18,29 @@
 
                 <p class="fw-semibold fs-7 mb-2">What is it?</p>
                 <p class="text-secondary fs-7 mb-4">
-                    Model Inventory is a summary of the project’s IFC index:
-                    how many elements exist, by IFC class, how many have trusted
+                    Model is a summary of the project’s IFC index:
+                    how many elements exist, by IFC class, how many have applied / confirmed
                     schedule-model links, and how many expose IFC model quantities
-                    (<code>Qto_*</code>). It supports 4D apply/read readiness and
-                    future 5D foundation work.
+                    (<code>Qto_*</code>). It supports 4D readiness and future quantity foundation work.
                 </p>
 
                 <p class="fw-semibold fs-7 mb-2">How to use it</p>
                 <ul class="text-secondary fs-7 mb-4">
                     <li>Scan Overview for total entities, classes, storeys, and coverage.</li>
-                    <li>Use By IFC Class to find large unlinked groups before Apply / 4D Link.</li>
-                    <li>Open Viewer or Apply / 4D Link from the action links when you need to act.</li>
+                    <li>Use By IFC Class to find large unlinked groups before Links.</li>
+                    <li>Open Viewer or Links from the action links when you need to act.</li>
                 </ul>
 
                 <p class="fw-semibold fs-7 mb-2">Who can do what</p>
                 <p class="text-secondary fs-7 mb-4">
                     BIM coordinators, planners, and 4D/5D reviewers use this page read-only.
-                    Approving or rejecting links is done in Apply / 4D Link and Link Quality —
+                    Confirm Link / Ignore Suggestion happens under Links → Applied Links —
                     not here.
                 </p>
 
                 <p class="fw-semibold fs-7 mb-2">Caveats</p>
                 <ul class="text-secondary fs-7 mb-4">
-                    <li>Link coverage uses <strong class="text-body">trusted schedule-model links only</strong>.</li>
+                    <li>Link coverage uses <strong class="text-body">applied / confirmed schedule-model links only</strong>.</li>
                     <li>Quantity availability depends on IFC <code>Qto_*</code> data in the indexed model.</li>
                     <li>Counts come from the IFC index — not live geometry re-measure.</li>
                 </ul>

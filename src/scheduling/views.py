@@ -1821,10 +1821,10 @@ class LinkGovernanceReviewQueueView(ProjectAccessMixin, View):
         if request.headers.get("HX-Request"):
             queue_modes = [
                 ("review", "Review"),
-                ("trusted", "Trusted"),
+                ("trusted", "Applied / Confirmed"),
                 ("property_hints", "Property hints"),
                 ("legacy_only", "Legacy M2M"),
-                ("multiple_trusted", "Multi-trusted"),
+                ("multiple_trusted", "Multi-applied"),
                 ("possible_conflicts", "Conflicts"),
                 ("all_governance", "All"),
             ]
@@ -2023,10 +2023,10 @@ class LinkDecisionApplyOneView(ProjectModifyAccessMixin, View):
         queue = LinkReviewQueueService(str(project.pk), project_pk=project.pk).build(filters)
         queue_modes = [
             ("review", "Review"),
-            ("trusted", "Trusted"),
+            ("trusted", "Applied / Confirmed"),
             ("property_hints", "Property hints"),
             ("legacy_only", "Legacy M2M"),
-            ("multiple_trusted", "Multi-trusted"),
+            ("multiple_trusted", "Multi-applied"),
             ("possible_conflicts", "Conflicts"),
             ("all_governance", "All"),
         ]
@@ -2151,10 +2151,10 @@ class LinkDecisionBulkApplyView(GovernanceCapabilityMixin, View):
         queue = LinkReviewQueueService(str(project.pk), project_pk=project.pk).build(filters)
         queue_modes = [
             ("review", "Review"),
-            ("trusted", "Trusted"),
+            ("trusted", "Applied / Confirmed"),
             ("property_hints", "Property hints"),
             ("legacy_only", "Legacy M2M"),
-            ("multiple_trusted", "Multi-trusted"),
+            ("multiple_trusted", "Multi-applied"),
             ("possible_conflicts", "Conflicts"),
             ("all_governance", "All"),
         ]
@@ -2340,7 +2340,7 @@ class LinkLifecycleRejectApplyView(ProjectModifyAccessMixin, View):
                     "project": project,
                     "queue": queue,
                     "filters": queue_svc.filters_from_request({"mode": "review", "page": 1}),
-                    "queue_modes": [("review", "Review"), ("trusted", "Trusted")],
+                    "queue_modes": [("review", "Review"), ("trusted", "Applied / Confirmed")],
                     "governance_capabilities": _governance_capabilities_context(
                         project, request.user
                     ),

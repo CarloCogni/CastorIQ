@@ -6,8 +6,7 @@
         <h5 class="mb-0 me-1">
             <i class="bi bi-calculator me-2 text-primary"></i>Model Quantities
         </h5>
-        <span class="badge bg-secondary-subtle text-secondary-emphasis border" style="font-size:0.65rem;">Advanced</span>
-        <span class="badge bg-secondary-subtle text-secondary-emphasis border" style="font-size:0.65rem;" data-testid="qto-not-boq-badge">Not BOQ / commercial 5D</span>
+        <span class="badge bg-secondary-subtle text-secondary-emphasis border" style="font-size:0.65rem;" data-testid="qto-not-boq-badge">IFC model quantities — not BOQ</span>
         <button type="button"
                 class="help-pill"
                 data-bs-toggle="modal"
@@ -65,7 +64,7 @@
                     &nbsp;·&nbsp;
                     <i class="bi bi-chevron-expand me-1"></i>Click row to expand
                     &nbsp;·&nbsp;
-                    Enter unit cost inline to enable cost estimation
+                    Enter optional unit rate for estimated totals (not BOQ/ERP/QS)
                 </span>
             </div>
             <div class="table-responsive">
@@ -85,9 +84,9 @@
                             <th class="qto-sort-col text-end" data-col="coverage_pct" style="cursor:pointer; user-select:none;">
                                 Coverage <i class="bi bi-chevron-expand ms-1 qto-sort-icon" style="font-size:0.65rem;"></i>
                             </th>
-                            <th style="min-width:110px;">Unit Cost</th>
+                            <th style="min-width:110px;">Optional unit rate</th>
                             <th class="qto-sort-col text-end pe-3" data-col="total_cost" style="cursor:pointer; user-select:none;">
-                                Total Cost <i class="bi bi-chevron-expand ms-1 qto-sort-icon" style="font-size:0.65rem;"></i>
+                                Estimated total <i class="bi bi-chevron-expand ms-1 qto-sort-icon" style="font-size:0.65rem;"></i>
                             </th>
                         </tr>
                     </thead>
@@ -109,7 +108,7 @@
                 <div class="card border-0 h-100" style="background:var(--bs-secondary-bg);">
                     <div class="card-header bg-transparent border-bottom py-2 px-3">
                         <span style="font-size:0.8rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:var(--bs-secondary-color);">
-                            <i class="bi bi-layers me-1"></i>Cost by Level
+                            <i class="bi bi-layers me-1"></i>Estimated total by level (optional)
                         </span>
                     </div>
                     <div class="card-body p-3" id="qto-level-wrap" style="position:relative; min-height:180px; overflow:auto;">
@@ -173,7 +172,7 @@
                 <ol class="text-secondary fs-7 mb-4">
                     <li><strong>Recompute</strong> — scans the latest processed IFC file and populates the QTO cache. Run this after uploading a new IFC or when quantities look stale.</li>
                     <li><strong>Review Coverage</strong> — elements with <code>Qto_*BaseQuantities</code> pset data are marked <em>ifc</em> (reliable). Elements without any Qto pset are counted only (<em>estimated</em>). The coverage % shows what fraction has real IFC quantities.</li>
-                    <li><strong>Set Unit Costs</strong> — type a cost per unit in the Unit Cost column (e.g. currency per m² or m³). After saving, click Recompute to apply the costs and unlock the Total Cost column and EVM integration.</li>
+                    <li><strong>Optional unit rate</strong> — type a rate per unit (e.g. currency per m² or m³). After saving, click Recompute to apply estimated totals. Estimates are not BOQ, ERP, QS valuation, or commercial 5D.</li>
                     <li><strong>Export</strong> — download full QTO data to Excel: Summary by Type, By Level, and per-entity Detail sheets.</li>
                 </ol>
 
@@ -184,7 +183,7 @@
                     <li><strong>Amber rows</strong> — element types where fewer than 50% of elements have IFC quantity data. Totals for these types are incomplete.</li>
                     <li><strong>Click a row</strong> — expands to show the top 5 individual elements for that type.</li>
                     <li><strong>Click a column header</strong> — sorts the table by that column. Click again to reverse order.</li>
-                    <li><strong>Unit Cost input</strong> — type a value and press Enter (or click away) to save. Cost totals are applied on the next Recompute.</li>
+                    <li><strong>Optional unit rate input</strong> — type a value and press Enter (or click away) to save. Estimated totals apply on the next Recompute.</li>
                 </ul>
 
                 <p class="fw-semibold fs-7 mb-2">

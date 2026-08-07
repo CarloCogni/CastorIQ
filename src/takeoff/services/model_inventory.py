@@ -114,7 +114,7 @@ class ModelInventoryService:
                 "unlinked_entities": unlinked,
                 "coverage_pct": coverage_pct,
                 "trusted_only": True,
-                "caveat": "Link coverage uses trusted schedule-model links only.",
+                "caveat": "Link coverage uses applied / confirmed schedule-model links only.",
             },
             "honesty": {
                 "not_boq": True,
@@ -152,7 +152,7 @@ class ModelInventoryService:
                 "unlinked_entities": 0,
                 "coverage_pct": None,
                 "trusted_only": True,
-                "caveat": "Link coverage uses trusted schedule-model links only.",
+                "caveat": "Link coverage uses applied / confirmed schedule-model links only.",
             },
             "honesty": {
                 "not_boq": True,

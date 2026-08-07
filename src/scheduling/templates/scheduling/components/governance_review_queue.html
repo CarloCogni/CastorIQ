@@ -4,9 +4,9 @@
 <div id="governance-review-queue" class="d-flex flex-column gap-3">
 
     <!-- Summary strip -->
-    <div class="d-flex flex-wrap gap-2" role="group" aria-label="Governance summary counts">
+    <div class="d-flex flex-wrap gap-2" role="group" aria-label="Link coverage summary counts">
         <span class="badge rounded-pill bg-success-subtle text-success-emphasis border">
-            Trusted {{ sc.trusted_bindings }}
+            Applied / Confirmed {{ sc.trusted_bindings }}
         </span>
         <span class="badge rounded-pill bg-warning-subtle text-warning-emphasis border">
             Review {{ sc.review_bindings }}
@@ -18,7 +18,7 @@
             Legacy M2M {{ sc.legacy_only }}
         </span>
         <span class="badge rounded-pill bg-primary-subtle text-primary-emphasis border">
-            Multi-trusted {{ sc.multiple_trusted_entities }}
+            Multi-applied {{ sc.multiple_trusted_entities }}
         </span>
         <span class="badge rounded-pill bg-danger-subtle text-danger-emphasis border">
             Conflicts {{ sc.possible_conflicts }}
@@ -27,7 +27,7 @@
 
     <!-- Mode tabs -->
     <ul class="nav nav-pills flex-wrap gap-1" style="font-size:0.82rem;" role="tablist"
-        aria-label="Governance queue modes">
+        aria-label="Link queue modes">
         {% for mode, label in queue_modes %}
         <li class="nav-item" role="presentation">
             <a class="nav-link py-1 px-2 {% if queue.mode == mode %}active{% endif %}"
@@ -84,9 +84,9 @@
     <div class="d-flex align-items-center gap-2 flex-wrap border rounded p-2 bg-body-tertiary">
         <span class="small fw-semibold">Review decisions</span>
         {% if sc.review_bindings == 0 %}
-        <span class="small text-secondary">No review bindings. Approved bindings are under Trusted.</span>
+        <span class="small text-secondary">No review bindings. Confirmed links are under Applied / Confirmed.</span>
         {% else %}
-        <span class="small text-secondary">Select up to 100 items · explicit approval only</span>
+        <span class="small text-secondary">Select up to 100 items · explicit confirmation only</span>
         {% endif %}
         {% if governance_capabilities.capabilities.can_approve_bulk %}
         <button type="button" class="btn btn-sm btn-outline-primary ms-auto"
@@ -104,7 +104,7 @@
     <div id="governance-bulk-preview-slot"></div>
     {% elif queue.mode == 'trusted' %}
     <div class="alert alert-secondary py-2 small mb-0" role="status">
-        Trusted bindings can be reaffirmed, reversed, or superseded with audited lifecycle events (E2-E).
+        Applied / Confirmed links can be reaffirmed, reversed, or superseded with audited lifecycle events.
     </div>
     {% elif queue.mode == 'property_hints' %}
     <div class="alert alert-info py-2 small mb-0" role="status">
@@ -201,14 +201,14 @@
                                     hx-target="#decision-slot-{{ forloop.counter }}"
                                     hx-swap="innerHTML"
                                     hx-vals='{"queue_mode": "{{ queue.mode }}", "queue_page": "{{ queue.pagination.page }}"}'>
-                                Approve
+                                Confirm Link
                             </button>
                             {% if governance_capabilities.capabilities.can_reject %}
                             <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1"
                                     hx-post="{% url 'scheduling:link_lifecycle_reject_preview' project.pk item.item_id %}"
                                     hx-target="#decision-slot-{{ forloop.counter }}"
                                     hx-swap="innerHTML">
-                                Reject
+                                Ignore Suggestion
                             </button>
                             {% endif %}
                             {% endif %}
@@ -250,7 +250,7 @@
                         <div id="decision-slot-{{ forloop.counter }}" class="mt-2"></div>
                         {% if queue.mode == 'review' and item.item_type == 'binding' and item.governance.needs_review %}
                         <div class="mt-2 text-secondary" style="font-size:0.75rem;">
-                            Confidence does not grant trust. Reject creates an audited inactive state — it cannot be silently undone.
+                            Confidence does not grant confirmation. Ignore Suggestion records an audited inactive state — it cannot be silently undone.
                         </div>
                         {% endif %}
                     </td>
@@ -264,7 +264,7 @@
     <div class="text-center text-secondary py-4" role="status">
         <i class="bi bi-inbox fs-3 d-block mb-2" aria-hidden="true"></i>
         {% if queue.mode == 'review' and sc.review_bindings == 0 %}
-        No review bindings. Approved bindings are under <strong>Trusted</strong>.
+        No review bindings. Confirmed links are under <strong>Applied / Confirmed</strong>.
         {% else %}
         No items match this governance queue mode and filters.
         {% endif %}
@@ -273,7 +273,7 @@
 
     <!-- Pagination -->
     {% with p=queue.pagination %}
-    <nav aria-label="Governance queue pagination" class="d-flex align-items-center gap-2 flex-wrap">
+    <nav aria-label="Link queue pagination" class="d-flex align-items-center gap-2 flex-wrap">
         <span class="small text-secondary">
             Page {{ p.page }} of {{ p.total_pages }} · {{ p.total_items }} items
         </span>

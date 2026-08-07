@@ -8,14 +8,14 @@
     <nav aria-label="breadcrumb" class="mb-2">
         <ol class="breadcrumb small mb-0">
             <li class="breadcrumb-item"><a href="{% url 'projects:detail' project.pk %}">{{ project.name }}</a></li>
-            <li class="breadcrumb-item"><a href="{% url 'scheduling:executive_controls' project.pk %}">Executive Controls</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'scheduling:executive_controls' project.pk %}">Controls</a></li>
             <li class="breadcrumb-item active" aria-current="page">Resource / Cost Data Readiness</li>
         </ol>
     </nav>
 
     <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
         <h1 class="h5 fw-semibold mb-0" data-testid="resources-page-title">Resource / Cost Data Readiness</h1>
-        <span class="badge bg-secondary-subtle text-secondary-emphasis border">Advanced</span>
+        <span class="badge bg-secondary-subtle text-secondary-emphasis border">Readiness</span>
         <span class="badge bg-secondary-subtle text-secondary-emphasis border">Not full E8-E</span>
         <button type="button"
                 class="help-pill"

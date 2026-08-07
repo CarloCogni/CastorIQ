@@ -32,7 +32,7 @@ def test_legacy_evm_labelled_diagnostic_not_primary_decision(client):
     assert "Schedule Health" in html
     assert 'data-testid="legacy-evm-decision-note"' in html
     assert "Executive EVM" in html
-    assert "Advanced Schedule Health" in html
+    assert "Schedule Readiness diagnostics" in html
     assert "EVM Dashboard" not in html
     assert "Decision Summary" not in html
     assert "Top 5 — Needs Attention" not in html
@@ -49,7 +49,7 @@ def test_legacy_evm_labelled_diagnostic_not_primary_decision(client):
 
 @pytest.mark.django_db
 def test_executive_evm_remains_decision_facing(client):
-    """Executive EVM Analytics keeps the decision-facing badge."""
+    """Controls indicators page keeps schedule/assignment sourced badge."""
     project = ProjectFactory()
     client.force_login(project.owner)
 
@@ -57,14 +57,14 @@ def test_executive_evm_remains_decision_facing(client):
     html = response.content.decode()
 
     assert response.status_code == 200
-    assert "EVM Analytics" in html
+    assert "Schedule / Assignment Indicators" in html
     assert 'data-testid="exec-evm-decision-badge"' in html
-    assert html.count("Decision-facing") == 1
+    assert html.count("Schedule / assignment sourced") == 1
 
 
 @pytest.mark.django_db
 def test_fourd_link_proposals_wording_not_approval(client):
-    """4D Link uses Link Proposals; Link Quality is advanced trust — not the hero."""
+    """Links uses Link Proposals; Applied Links is the confirmation surface."""
     project = ProjectFactory()
     client.force_login(project.owner)
 
@@ -76,20 +76,20 @@ def test_fourd_link_proposals_wording_not_approval(client):
     assert response.status_code == 200
     assert "Link Proposals" in html
     assert "Smart Pipeline (propose)" not in html
-    assert "Propose links" in html
+    assert "Suggest Links" in html
     assert "Castor Link Engine" not in html
-    assert "Link Quality" in html
+    assert "Applied Links" in html
     assert 'data-testid="fourd-link-quality-tab"' in html
     assert "Castor AI" not in html
     assert "Link assistant" in html
     assert "Advisory suggestions" in html
-    assert "does not approve links" in html
+    assert "does not confirm links" in html
     assert "approval authority" not in html.lower()
 
 
 @pytest.mark.django_db
 def test_link_proposals_surface_has_no_inline_approve(client):
-    """Proposal review has no binding_accept control — Governance is the approve surface."""
+    """Proposal review has no binding_accept control — Applied Links is the confirm surface."""
     project = ProjectFactory()
     client.force_login(project.owner)
     task = TaskFactory(project=project)
@@ -111,14 +111,14 @@ def test_link_proposals_surface_has_no_inline_approve(client):
     assert "Approve ≥95%" not in html
     assert "binding_bulk_accept" not in html
     assert 'data-testid="proposals-open-governance-cta"' in html
-    assert "Open Link Quality for ≥95% proposals" in html
-    assert html.count("Proposed links require Link Quality confirmation") == 1
+    assert "Open Applied Links for ≥95% proposals" in html
+    assert html.count("Proposed links require Applied Links confirmation") == 1
     assert reverse("scheduling:link_governance_workspace", args=[project.pk]) in html
 
 
 @pytest.mark.django_db
 def test_governance_authority_badge_present(client):
-    """Link Quality workspace keeps trust badge once; method badge not user-facing."""
+    """Applied Links workspace keeps applied badge once; method badge not user-facing."""
     project = ProjectFactory()
     client.force_login(project.owner)
 
@@ -129,8 +129,8 @@ def test_governance_authority_badge_present(client):
 
     assert response.status_code == 200
     assert 'data-testid="governance-authority-badge"' in html
-    assert "Link Quality" in html
-    assert html.count("Trusted applied map") == 1
+    assert "Applied Links" in html
+    assert html.count("Applied / Confirmed map") == 1
     assert 'data-testid="governance-method-badge-advanced"' in html
 
 
@@ -216,7 +216,8 @@ def test_bim_nav_demotes_legacy_evm_label(client):
     assert response.status_code == 200
     assert "EVM Diagnostics" not in html
     assert 'data-testid="hub-schedule-health-advanced"' in html
-    assert "Apply / 4D Link" in html
+    assert "Links" in html
+    assert 'data-testid="hub-links"' in html
     assert 'data-testid="data-sources-purpose"' in html
     assert "Imported schedule and provenance" in html
 
@@ -280,7 +281,7 @@ def test_fourd_link_hides_writeback_mutation_controls(client):
     assert response.status_code == 200
     assert "Link assistant" in html
     assert "Advisory suggestions" in html
-    assert "does not approve links" in html
+    assert "does not confirm links" in html
     assert "schedule_writeback" not in html
     assert "fourD-chat-send" not in html
     assert "fourD-chat-input" not in html
@@ -290,7 +291,7 @@ def test_fourd_link_hides_writeback_mutation_controls(client):
 
 @pytest.mark.django_db
 def test_autolink_summary_uses_proposal_not_authority_wording():
-    """Autolink result partial speaks proposals + Governance, not auto-accept."""
+    """Autolink result partial speaks proposals + Applied Links, not auto-accept."""
     from django.template.loader import render_to_string
 
     project = ProjectFactory()
@@ -313,7 +314,7 @@ def test_autolink_summary_uses_proposal_not_authority_wording():
     )
 
     assert "Link proposals generated" in html
-    assert "Requires Link Quality confirmation" in html
+    assert "Requires Applied Links confirmation" in html
     assert "Smart Auto-Link complete" not in html
     assert "linked automatically" not in html
     assert "auto_accepted" not in html
@@ -423,7 +424,7 @@ def test_link_proposals_summary_uses_task_units_not_bindings(client):
     assert response.status_code == 200
     assert "Physical tasks" in html
     assert "Tasks in review" in html
-    assert "Trusted tasks" in html
+    assert "Applied / Confirmed tasks" in html
     assert "Total bindings" not in html
 
 
@@ -553,7 +554,7 @@ def test_fourd_timeline_shows_trusted_only_label(client):
 
     assert response.status_code == 200
     assert 'data-testid="fd-timeline-trusted-only"' in html
-    assert "Timeline uses trusted links only." in html
+    assert "Timeline uses applied / confirmed links only." in html
 
 
 @pytest.mark.django_db
@@ -655,7 +656,7 @@ def test_overview_cost_section_uses_assignment_cost_wording(client):
 
 @pytest.mark.django_db
 def test_exec_subnav_marks_resources_matrix_trades_advanced(client):
-    """Matrix / Trades / Resources subnav items are Advanced, not primary heroes."""
+    """Matrix / Trades / Resources subnav items are hidden, not primary heroes."""
     project = ProjectFactory()
     client.force_login(project.owner)
 
@@ -666,4 +667,5 @@ def test_exec_subnav_marks_resources_matrix_trades_advanced(client):
     assert 'data-testid="exec-subnav-advanced-matrix"' in html
     assert 'data-testid="exec-subnav-advanced-trades"' in html
     assert 'data-testid="exec-subnav-advanced-resources"' in html
-    assert "Resource / Cost Data Readiness" in html
+    assert 'class="nav-item d-none" data-testid="exec-subnav-advanced-matrix"' in html
+    assert ">Advanced<" not in html

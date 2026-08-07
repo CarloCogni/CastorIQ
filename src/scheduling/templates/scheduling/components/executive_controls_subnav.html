@@ -1,5 +1,5 @@
 <!-- scheduling/components/executive_controls_subnav.html -->
-<ul class="nav nav-pills exec-subnav mb-3 gap-1" role="tablist" aria-label="Executive Controls views">
+<ul class="nav nav-pills exec-subnav mb-3 gap-1" role="tablist" aria-label="Controls views">
     <li class="nav-item">
         <a class="nav-link py-1 px-3 {% if exec_subtab == 'overview' %}active{% endif %}"
            href="{% url 'scheduling:executive_controls' project.pk %}">
@@ -11,78 +11,71 @@
         {% if "evm" in capability_profile.recommended_visible_pages %}
         <a class="nav-link py-1 px-3 {% if exec_subtab == 'evm' %}active{% endif %}"
            href="{% url 'scheduling:executive_controls_evm' project.pk %}">
-            EVM Analytics
+            Schedule / Assignment Indicators
         </a>
         {% else %}
         <span class="nav-link py-1 px-3 disabled text-secondary"
-              title="{{ capability_profile.page_reasons.evm|default:'EVM analytics unavailable' }}">
-            EVM Analytics
+              title="{{ capability_profile.page_reasons.evm|default:'Schedule / assignment indicators unavailable' }}">
+            Schedule / Assignment Indicators
         </span>
         {% endif %}
         {% else %}
         <a class="nav-link py-1 px-3 {% if exec_subtab == 'evm' %}active{% endif %}"
            href="{% url 'scheduling:executive_controls_evm' project.pk %}">
-            EVM Analytics
+            Schedule / Assignment Indicators
         </a>
         {% endif %}
     </li>
-    <!-- Advanced: Matrix / Trades / Resource readiness — not primary product flow -->
-    <li class="nav-item" data-testid="exec-subnav-advanced-matrix">
+    <!-- Internal hierarchy diagnostics — not primary product flow -->
+    <li class="nav-item d-none" data-testid="exec-subnav-advanced-matrix">
         <a class="nav-link py-1 px-3 {% if exec_subtab == 'matrix' %}active{% endif %}"
            href="{% url 'scheduling:executive_controls_matrix' project.pk %}"
-           title="Advanced hierarchy diagnostics — stage proxy is not contractual WBS">
+           title="Hierarchy diagnostics — stage proxy is not contractual WBS">
             Matrix
-            <span class="badge bg-secondary-subtle text-secondary-emphasis border ms-1" style="font-size:0.62rem;">Advanced</span>
         </a>
     </li>
-    <li class="nav-item" data-testid="exec-subnav-advanced-trades">
+    <li class="nav-item d-none" data-testid="exec-subnav-advanced-trades">
         {% if capability_profile %}
         {% if "trades" in capability_profile.recommended_visible_pages %}
         <a class="nav-link py-1 px-3 {% if exec_subtab == 'trades' %}active{% endif %}"
            href="{% url 'scheduling:executive_controls_trades' project.pk %}"
-           title="Advanced — proxy trades are not contractual packages">
+           title="Proxy trades are not contractual packages">
             Trades / Packages
-            <span class="badge bg-secondary-subtle text-secondary-emphasis border ms-1" style="font-size:0.62rem;">Advanced</span>
         </a>
         {% else %}
         <span class="nav-link py-1 px-3 disabled text-secondary"
               title="{{ capability_profile.page_reasons.trades|default:'Trade analysis unavailable (proxy or not ready)' }}"
               data-testid="exec-trades-subnav-hidden-proxy">
             Trades / Packages
-            <span class="badge bg-secondary-subtle text-secondary-emphasis border ms-1" style="font-size:0.62rem;">Advanced</span>
         </span>
         {% endif %}
         {% else %}
         <a class="nav-link py-1 px-3 {% if exec_subtab == 'trades' %}active{% endif %}"
            href="{% url 'scheduling:executive_controls_trades' project.pk %}">
             Trades / Packages
-            <span class="badge bg-secondary-subtle text-secondary-emphasis border ms-1" style="font-size:0.62rem;">Advanced</span>
         </a>
         {% endif %}
     </li>
-    <li class="nav-item" data-testid="exec-subnav-advanced-resources">
+    <li class="nav-item d-none" data-testid="exec-subnav-advanced-resources">
         {% if capability_profile %}
         {% if "resources" in capability_profile.recommended_visible_pages %}
         <a class="nav-link py-1 px-3 {% if exec_subtab == 'resources' %}active{% endif %}"
            href="{% url 'scheduling:executive_controls_resources' project.pk %}"
            data-testid="resources-subnav-enabled"
-           title="Advanced — assignment data readiness only, not planning or headcount">
+           title="Assignment data readiness only, not planning or headcount">
             Resource / Cost Data Readiness
-            <span class="badge bg-secondary-subtle text-secondary-emphasis border ms-1" style="font-size:0.62rem;">Advanced</span>
         </a>
         {% else %}
         <span class="nav-link py-1 px-3 disabled text-secondary"
               title="{{ capability_profile.page_reasons.resources|default:'Resource/cost data readiness unavailable' }}"
               data-testid="resources-subnav-disabled">
             Resource / Cost Data Readiness
-            <span class="badge bg-secondary-subtle text-secondary-emphasis border ms-1" style="font-size:0.62rem;">Advanced</span>
         </span>
         {% endif %}
         {% else %}
         <a class="nav-link py-1 px-3 {% if exec_subtab == 'resources' %}active{% endif %}"
            href="{% url 'scheduling:executive_controls_resources' project.pk %}">
             Resource / Cost Data Readiness
-            <span class="badge bg-secondary-subtle text-secondary-emphasis border ms-1" style="font-size:0.62rem;">Advanced</span>
         </a>
         {% endif %}
     </li>

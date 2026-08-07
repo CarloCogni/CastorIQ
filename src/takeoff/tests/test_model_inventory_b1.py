@@ -139,7 +139,7 @@ def test_inventory_page_renders_class_table_and_caveats(client):
     assert 'data-testid="model-inventory-by-class"' in html
     assert 'data-testid="model-inventory-link-coverage"' in html
     assert "IfcColumn" in html
-    assert "Link coverage uses trusted schedule-model links only" in html
+    assert "Link coverage uses applied / confirmed schedule-model links only" in html
     assert 'data-testid="model-inventory-not-boq-badge"' in html
     assert "Not BOQ" in html
     assert "company cashflow" not in html.lower().replace("not company", "")
@@ -159,7 +159,7 @@ def test_inventory_no_trusted_links_empty_state(client):
     ).content.decode()
 
     assert 'data-testid="mi-no-trusted-links"' in html
-    assert "No trusted schedule-model links yet" in html
+    assert "No applied / confirmed schedule-model links yet" in html
 
 
 @pytest.mark.django_db
@@ -170,5 +170,5 @@ def test_hub_nav_includes_model_inventory(client):
         reverse("scheduling:schedule", kwargs={"pk": project.pk}) + "?tab=data_sources"
     ).content.decode()
 
-    assert 'data-testid="hub-model-inventory"' in html
+    assert 'data-testid="hub-model"' in html
     assert reverse("takeoff:model_inventory", kwargs={"pk": project.pk}) in html

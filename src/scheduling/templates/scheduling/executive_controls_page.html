@@ -1,14 +1,14 @@
 {% extends "core/base.html" %}
 <!-- scheduling/executive_controls_page.html — E8-B full page shell -->
 
-{% block title %}Executive Controls — {{ project.name }} — Castor{% endblock %}
+{% block title %}Controls — {{ project.name }} — Castor{% endblock %}
 
 {% block content %}
 <div class="container-fluid py-3 px-3 px-lg-4">
     <nav aria-label="breadcrumb" class="mb-2">
         <ol class="breadcrumb small mb-0">
             <li class="breadcrumb-item"><a href="{% url 'projects:detail' project.pk %}">{{ project.name }}</a></li>
-            <li class="breadcrumb-item active" aria-current="page">Executive Controls</li>
+            <li class="breadcrumb-item active" aria-current="page">Controls</li>
         </ol>
     </nav>
     {% include "scheduling/components/executive_controls_subnav.html" with exec_subtab="overview" capability_profile=capability_profile %}

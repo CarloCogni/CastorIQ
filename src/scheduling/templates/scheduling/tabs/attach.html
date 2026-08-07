@@ -9,13 +9,13 @@
                     <i class="bi bi-link-45deg me-2"></i>Linking method
                 </h6>
 
-                <!-- Propose links -->
+                <!-- Suggest Links -->
                 <div class="border rounded p-3 mb-3 {% if match_mode == 'smart' %}border-primary{% endif %}">
                     <div class="fw-semibold mb-1" style="font-size:0.9rem;">
-                        <i class="bi bi-lightning-charge-fill me-1" style="color:var(--castor-accent,#8b5cf6);"></i>Propose links
+                        <i class="bi bi-lightning-charge-fill me-1" style="color:var(--castor-accent,#8b5cf6);"></i>Suggest Links
                     </div>
                     <p class="text-secondary mb-2" style="font-size:0.82rem;">
-                        Generates link proposals (exact, normalised, heuristic, embedding). Approve trusted bindings in Governance.
+                        Generates link proposals (exact, normalised, heuristic, embedding). Confirm links in Applied Links.
                     </p>
                     <form hx-post="{% url 'scheduling:schedule_link_smart' project.pk %}"
                           hx-target="#attach-results"
@@ -25,7 +25,7 @@
                         <button type="submit" class="btn btn-sm w-100"
                                 style="background-color:var(--castor-accent,#8b5cf6); color:#fff;">
                             <span id="smart-spinner" class="htmx-indicator spinner-border spinner-border-sm me-1"></span>
-                            Propose links
+                            Suggest Links
                         </button>
                     </form>
                 </div>

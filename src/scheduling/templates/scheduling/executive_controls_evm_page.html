@@ -1,27 +1,27 @@
 {% extends "core/base.html" %}
 <!-- scheduling/executive_controls_evm_page.html — E8-D EVM analytics shell -->
 
-{% block title %}EVM Analytics — {{ project.name }} — Castor{% endblock %}
+{% block title %}Schedule / Assignment Indicators — {{ project.name }} — Castor{% endblock %}
 
 {% block content %}
 <div class="container-fluid py-3 px-3 px-lg-4 evm-analytics-scope">
     <nav aria-label="breadcrumb" class="mb-2">
         <ol class="breadcrumb small mb-0">
             <li class="breadcrumb-item"><a href="{% url 'projects:detail' project.pk %}">{{ project.name }}</a></li>
-            <li class="breadcrumb-item"><a href="{% url 'scheduling:executive_controls' project.pk %}">Executive Controls</a></li>
-            <li class="breadcrumb-item active" aria-current="page">EVM Analytics</li>
+            <li class="breadcrumb-item"><a href="{% url 'scheduling:executive_controls' project.pk %}">Controls</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Schedule / Assignment Indicators</li>
         </ol>
     </nav>
 
     <div class="d-flex align-items-center gap-2 mb-3">
-        <h1 class="h5 fw-semibold mb-0">EVM Analytics</h1>
-        <span class="badge bg-primary-subtle text-primary-emphasis border" style="font-size:0.7rem;" data-testid="exec-evm-decision-badge">Decision-facing</span>
+        <h1 class="h5 fw-semibold mb-0">Schedule / Assignment Indicators</h1>
+        <span class="badge bg-primary-subtle text-primary-emphasis border" style="font-size:0.7rem;" data-testid="exec-evm-decision-badge">Schedule / assignment sourced</span>
         <button type="button"
                 class="help-pill"
                 data-bs-toggle="modal"
                 data-bs-target="#evmAnalyticsHelpModal"
-                title="How EVM Analytics works"
-                aria-label="How EVM Analytics works">
+                title="How Schedule / Assignment Indicators work"
+                aria-label="How Schedule / Assignment Indicators work">
             <i class="bi bi-question-circle"></i>
         </button>
     </div>

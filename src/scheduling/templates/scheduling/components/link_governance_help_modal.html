@@ -1,4 +1,4 @@
-<!-- scheduling/components/link_governance_help_modal.html — "How Link Governance Work" -->
+<!-- scheduling/components/link_governance_help_modal.html — How Applied Links works -->
 
 <div class="modal fade" id="linkGovernanceHelpModal" tabindex="-1" aria-labelledby="linkGovernanceHelpLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
@@ -6,64 +6,37 @@
             <div class="modal-header border-bottom px-4 py-3">
                 <h5 class="modal-title fw-semibold fs-6 mb-0" id="linkGovernanceHelpLabel">
                     <i class="bi bi-shield-check me-2 text-primary"></i>
-                    How Link Governance Work
+                    How Applied Links Works
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body px-4 py-4">
 
-                <p class="fw-semibold fs-7 mb-2">
-                    <i class="bi bi-box-seam me-1 text-primary"></i>
-                    What is it?
-                </p>
+                <p class="fw-semibold fs-7 mb-2">What is it?</p>
                 <p class="text-secondary fs-7 mb-4">
-                    Workspace separating trusted accepted bindings, active review suggestions, property hints,
-                    legacy M2M compatibility, and deterministic possible conflicts under policies
-                    <code>trusted-binding-v1</code> and <code>governance-authority-v1</code>.
+                    Applied Links is where you confirm or ignore schedule–model link suggestions,
+                    review link coverage, and see applied / confirmed bindings used by Time View and Controls.
                 </p>
 
-                <p class="fw-semibold fs-7 mb-2">
-                    <i class="bi bi-shield-check me-1 text-primary"></i>
-                    Trusted vs review vs inactive
-                </p>
-                <p class="text-secondary fs-7 mb-4">
-                    <strong>Trusted</strong> requires <code>is_active</code>, <code>governance_status=trusted</code>,
-                    and <code>needs_review=false</code>.
-                    <strong>Active review</strong> requires <code>active_review</code> and <code>needs_review=true</code>.
-                    Rejected, reversed, and superseded bindings are inactive — excluded from Gantt, viewer, EVM, and overview trusted reads.
-                    Confidence never grants trust.
-                </p>
-
-                <p class="fw-semibold fs-7 mb-2">
-                    <i class="bi bi-check2-circle me-1 text-primary"></i>
-                    Decisions and lifecycle
-                </p>
-                <p class="text-secondary fs-7 mb-4">
-                    Approve individual (editor+), bulk approve (owner+), reject, reaffirm, reverse, supersede, and parity repair
-                    each require explicit authority and create append-only audit events after migration 0024.
-                    Pre-audit trusted rows have no retrospective events.
-                </p>
-
-                <p class="fw-semibold fs-7 mb-2">
-                    <i class="bi bi-person-check me-1 text-primary"></i>
-                    Who can do what
-                </p>
+                <p class="fw-semibold fs-7 mb-2">How to use it</p>
                 <ul class="text-secondary fs-7 mb-4">
-                    <li><strong>Viewer</strong> — overview, queue, reconciliation shell, audit read</li>
-                    <li><strong>Editor</strong> — approve one, reject, reaffirm, M2M add parity</li>
-                    <li><strong>Owner</strong> — bulk approve, exact preview, reverse, supersede, M2M remove parity</li>
+                    <li>Use <strong>Suggest Links</strong> on Links to generate candidates.</li>
+                    <li>Open Applied Links to <strong>Confirm Link</strong> or <strong>Ignore Suggestion</strong>.</li>
+                    <li>Applied / Confirmed links drive Time View highlights and link coverage.</li>
                 </ul>
 
-                <p class="fw-semibold fs-7 mb-2">
-                    <i class="bi bi-exclamation-circle me-1 text-primary"></i>
-                    Caveats
+                <p class="fw-semibold fs-7 mb-2">Who can do what</p>
+                <p class="text-secondary fs-7 mb-4">
+                    Project editors can confirm individual links. Bulk confirmation may require owner access.
+                    Viewers can inspect coverage without confirming.
                 </p>
-                <div class="d-flex flex-column gap-1 fs-8 text-secondary">
-                    <span><i class="bi bi-dot"></i>Property Activity ID is evidence only — not a trusted binding.</span>
-                    <span><i class="bi bi-dot"></i>Reconciliation is diagnostic — run explicitly; not evaluated on overview load.</span>
-                    <span><i class="bi bi-dot"></i>Task coverage denominator is all schedule activities, not physical-scope 4D completeness.</span>
-                    <span><i class="bi bi-dot"></i>Multiple trusted tasks on one entity are allowed unless overlap evidence triggers conflict acknowledgment.</span>
-                </div>
+
+                <p class="fw-semibold fs-7 mb-2">Caveats</p>
+                <ul class="text-secondary fs-7 mb-0">
+                    <li>Confidence scores do not auto-confirm links.</li>
+                    <li>Ignore Suggestion records history and keeps the suggestion out of applied reads.</li>
+                    <li>This is link management for 4D — not ERP, BOQ, or commercial 5D.</li>
+                </ul>
             </div>
         </div>
     </div>

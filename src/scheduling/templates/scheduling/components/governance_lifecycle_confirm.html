@@ -28,7 +28,7 @@
     {% endif %}
 
     <p class="text-secondary mb-2">
-        Governance history is append-only — this action is preserved and cannot be silently undone.
+        Link history is append-only — this action is preserved and cannot be silently undone.
     </p>
 
     <form hx-post="{% if operation == 'reject' %}{% url 'scheduling:link_lifecycle_reject_apply' project.pk binding_id %}{% elif operation == 'reaffirm' %}{% url 'scheduling:link_lifecycle_reaffirm_apply' project.pk binding_id %}{% elif operation == 'reverse' %}{% url 'scheduling:link_lifecycle_reverse_apply' project.pk binding_id %}{% elif operation == 'supersede' %}{% url 'scheduling:link_lifecycle_supersede_apply' project.pk binding_id %}{% elif operation == 'parity_bulk' %}{% url 'scheduling:link_lifecycle_parity_bulk_apply' project.pk %}{% else %}{% url 'scheduling:link_lifecycle_parity_apply' project.pk %}{% endif %}"
