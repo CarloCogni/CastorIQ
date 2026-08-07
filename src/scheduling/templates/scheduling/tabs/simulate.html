@@ -121,6 +121,7 @@
 <script>
 (function () {
     const TIMELINE_URL = "{% url 'ifc_viewer:viewer_timeline' project.pk %}";
+    const TIMELINE_DETAIL_URL = "{% url 'ifc_viewer:viewer_timeline_interval' project.pk %}";
 
     const iframe       = document.getElementById("sim-viewer-iframe");
     const iframeOvl    = document.getElementById("sim-iframe-loading");
@@ -134,6 +135,49 @@
     let timelineNoTask   = [];
     let timelineTimer    = null;
     let timelineSpeed    = 1;
+    const tlDetailCache = Object.create(null);
+    let tlDetailInflight = Object.create(null);
+
+    async function _ensureIntervalDetail(iv) {
+        if (!iv || !iv.date) return iv;
+        const ents = iv.entities || {};
+        const hasGids = (ents.not_started && ents.not_started.length)
+            || (ents.in_progress && ents.in_progress.length)
+            || (ents.complete && ents.complete.length)
+            || (ents.delayed && ents.delayed.length);
+        if (hasGids) return iv;
+        if (tlDetailCache[iv.date]) {
+            iv.entities = tlDetailCache[iv.date];
+            return iv;
+        }
+        if (tlDetailInflight[iv.date]) {
+            await tlDetailInflight[iv.date];
+            iv.entities = tlDetailCache[iv.date] || iv.entities;
+            return iv;
+        }
+        tlDetailInflight[iv.date] = (async () => {
+            const includeNoTask = timelineNoTask.length ? "0" : "1";
+            const resp = await fetch(
+                `${TIMELINE_DETAIL_URL}?date=${encodeURIComponent(iv.date)}&include_no_task=${includeNoTask}`
+            );
+            if (!resp.ok) throw new Error("timeline detail HTTP " + resp.status);
+            const data = await resp.json();
+            tlDetailCache[iv.date] = data.entities || {
+                not_started: [], in_progress: [], complete: [], delayed: [],
+            };
+            if (includeNoTask === "1" && Array.isArray(data.no_task)) {
+                timelineNoTask = data.no_task;
+            }
+            if (data.stats) iv.stats = data.stats;
+        })();
+        try {
+            await tlDetailInflight[iv.date];
+        } finally {
+            delete tlDetailInflight[iv.date];
+        }
+        iv.entities = tlDetailCache[iv.date] || iv.entities;
+        return iv;
+    }
 
     // ── postMessage helpers ──────────────────────────────────────────
 
@@ -230,16 +274,20 @@
 
     // ── Apply interval ───────────────────────────────────────────────
 
-    function _applyInterval(idx) {
+    async function _applyInterval(idx) {
         if (!timelineIntervals.length) return;
         const iv = timelineIntervals[Math.min(idx, timelineIntervals.length - 1)];
-        const { not_started = [], in_progress = [], complete = [] } = iv.entities || {};
+        try {
+            await _ensureIntervalDetail(iv);
+        } catch (_e) { /* stats still update */ }
+        const { not_started = [], in_progress = [], complete = [], delayed = [] } = iv.entities || {};
 
         sendToViewer({
             type: "castor:timeline-colors",
             not_started,
             in_progress,
             complete,
+            delayed,
             no_task: timelineNoTask,
         });
 

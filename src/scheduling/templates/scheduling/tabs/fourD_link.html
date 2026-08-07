@@ -445,6 +445,7 @@
   "use strict";
   const GANTT_URL               = "{% url 'scheduling:gantt_data' project.pk %}";
   const TIMELINE_URL            = "{% url 'ifc_viewer:viewer_timeline' project.pk %}";
+  const TIMELINE_DETAIL_URL     = "{% url 'ifc_viewer:viewer_timeline_interval' project.pk %}";
   const TASKS_FOR_LINK_URL      = "{% url 'scheduling:tasks_for_link' project.pk %}";
   const BULK_LINK_URL           = "{% url 'scheduling:bulk_link_element' project.pk %}";
   const FD_CSRF                 = "{{ csrf_token }}";
@@ -1180,6 +1181,49 @@
 
   let viewerReady = false, pendingMsg = null, currentMode = "timeline";
   let tlIntervals = [], tlNoTask = [], tlTimer = null, tlSpeed = 1;
+  const tlDetailCache = Object.create(null);  // date → entities
+  let tlDetailInflight = Object.create(null);
+
+  async function _ensureIntervalDetail(iv) {
+    if (!iv || !iv.date) return iv;
+    const ents = iv.entities || {};
+    const hasGids = (ents.not_started && ents.not_started.length)
+      || (ents.in_progress && ents.in_progress.length)
+      || (ents.complete && ents.complete.length)
+      || (ents.delayed && ents.delayed.length);
+    if (hasGids) return iv;
+    if (tlDetailCache[iv.date]) {
+      iv.entities = tlDetailCache[iv.date];
+      return iv;
+    }
+    if (tlDetailInflight[iv.date]) {
+      await tlDetailInflight[iv.date];
+      iv.entities = tlDetailCache[iv.date] || iv.entities;
+      return iv;
+    }
+    tlDetailInflight[iv.date] = (async () => {
+      const includeNoTask = tlNoTask.length ? "0" : "1";
+      const resp = await fetch(
+        `${TIMELINE_DETAIL_URL}?date=${encodeURIComponent(iv.date)}&include_no_task=${includeNoTask}`
+      );
+      if (!resp.ok) throw new Error("timeline detail HTTP " + resp.status);
+      const data = await resp.json();
+      tlDetailCache[iv.date] = data.entities || {
+        not_started: [], in_progress: [], complete: [], delayed: [],
+      };
+      if (includeNoTask === "1" && Array.isArray(data.no_task)) {
+        tlNoTask = data.no_task;
+      }
+      if (data.stats) iv.stats = data.stats;
+    })();
+    try {
+      await tlDetailInflight[iv.date];
+    } finally {
+      delete tlDetailInflight[iv.date];
+    }
+    iv.entities = tlDetailCache[iv.date] || iv.entities;
+    return iv;
+  }
 
   function sendToViewer(msg) {
     if (!viewerReady) { pendingMsg = msg; return; }
@@ -1282,9 +1326,11 @@
           if (new Date(t.date + "T00:00:00") <= today) iv = t;
           else break;
         }
-        const { not_started = [], in_progress = [], complete = [], delayed = [] } = iv.entities || {};
-        sendToViewer({ type: "castor:timeline-colors", not_started, in_progress, complete, delayed, no_task: tlNoTask });
-        _setColorBtn(_siteStatusBtn, true);
+        _ensureIntervalDetail(iv).then(() => {
+          const { not_started = [], in_progress = [], complete = [], delayed = [] } = iv.entities || {};
+          sendToViewer({ type: "castor:timeline-colors", not_started, in_progress, complete, delayed, no_task: tlNoTask });
+          _setColorBtn(_siteStatusBtn, true);
+        }).catch(() => { /* detail unavailable — leave viewer unchanged */ });
       } else {
         sendToViewer({ type: "castor:reset" });
       }
@@ -1310,10 +1356,13 @@
     } catch (e) { /* no timeline — slider stays disabled */ }
   }
 
-  function _applyInterval(idx) {
+  async function _applyInterval(idx) {
     if (!tlIntervals.length) return;
     if (_fdLinkFilterActive) return;
     const iv = tlIntervals[Math.min(idx, tlIntervals.length - 1)];
+    try {
+      await _ensureIntervalDetail(iv);
+    } catch (_e) { /* keep stats UI even if highlight detail fails */ }
     const { not_started = [], in_progress = [], complete = [], delayed = [] } = iv.entities || {};
     sendToViewer({ type: "castor:timeline-colors", not_started, in_progress, complete, delayed, no_task: tlNoTask });
     document.getElementById("fd-current-date").textContent = new Date(iv.date + "T00:00:00")

@@ -182,6 +182,7 @@
 (function () {
     const LA_URL_BASE   = "{% url 'scheduling:lookahead_data' project.pk %}";
     const TIMELINE_URL  = "{% url 'ifc_viewer:viewer_timeline' project.pk %}";
+    const TIMELINE_DETAIL_URL = "{% url 'ifc_viewer:viewer_timeline_interval' project.pk %}";
     const HAS_IFC       = {{ ifc_files_available|yesno:"true,false" }};
 
     const STAGE_COLORS = {
@@ -202,6 +203,49 @@
     let timelineOk   = false;
     let _linkNoteTimer = null;
     let _selectedTaskId = null;
+    const tlDetailCache = Object.create(null);
+    let tlDetailInflight = Object.create(null);
+
+    async function _ensureIntervalDetail(iv) {
+        if (!iv || !iv.date) return iv;
+        const ents = iv.entities || {};
+        const hasGids = (ents.not_started && ents.not_started.length)
+            || (ents.in_progress && ents.in_progress.length)
+            || (ents.complete && ents.complete.length)
+            || (ents.delayed && ents.delayed.length);
+        if (hasGids) return iv;
+        if (tlDetailCache[iv.date]) {
+            iv.entities = tlDetailCache[iv.date];
+            return iv;
+        }
+        if (tlDetailInflight[iv.date]) {
+            await tlDetailInflight[iv.date];
+            iv.entities = tlDetailCache[iv.date] || iv.entities;
+            return iv;
+        }
+        tlDetailInflight[iv.date] = (async () => {
+            const includeNoTask = tlNoTask.length ? "0" : "1";
+            const resp = await fetch(
+                `${TIMELINE_DETAIL_URL}?date=${encodeURIComponent(iv.date)}&include_no_task=${includeNoTask}`
+            );
+            if (!resp.ok) throw new Error("timeline detail HTTP " + resp.status);
+            const data = await resp.json();
+            tlDetailCache[iv.date] = data.entities || {
+                not_started: [], in_progress: [], complete: [], delayed: [],
+            };
+            if (includeNoTask === "1" && Array.isArray(data.no_task)) {
+                tlNoTask = data.no_task;
+            }
+            if (data.stats) iv.stats = data.stats;
+        })();
+        try {
+            await tlDetailInflight[iv.date];
+        } finally {
+            delete tlDetailInflight[iv.date];
+        }
+        iv.entities = tlDetailCache[iv.date] || iv.entities;
+        return iv;
+    }
     let _focusedWeekStart = null;
 
     const iframe    = document.getElementById("la-iframe");
@@ -253,15 +297,17 @@
         });
         const iv = _intervalForWeekStart(weekStartIso);
         if (!iv) return;
-        const { not_started = [], in_progress = [], complete = [], delayed = [] } = iv.entities || {};
-        sendToViewer({
-            type: "castor:timeline-colors",
-            not_started,
-            in_progress,
-            complete,
-            delayed,
-            no_task: tlNoTask,
-        });
+        _ensureIntervalDetail(iv).then(() => {
+            const { not_started = [], in_progress = [], complete = [], delayed = [] } = iv.entities || {};
+            sendToViewer({
+                type: "castor:timeline-colors",
+                not_started,
+                in_progress,
+                complete,
+                delayed,
+                no_task: tlNoTask,
+            });
+        }).catch(() => { /* preview stays without colors */ });
     }
 
     function _focusWeekCard(card, weekStartIso) {
