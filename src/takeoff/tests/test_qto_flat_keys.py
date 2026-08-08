@@ -64,3 +64,20 @@ def test_empty_props_estimated():
     assert source == "estimated"
     assert entity_has_ifc_quantity({}) is False
     assert entity_has_ifc_quantity(None) is False
+
+
+def test_qto_id_alone_is_not_real_quantity():
+    """Regression: Qto_*.id must not count as Has IFC Qto or primary extract."""
+    props = {"Qto_BeamBaseQuantities.id": 197394.0}
+    assert entity_has_ifc_quantity(props) is False
+    qty, unit, source = _extract_quantity("IfcBeam", props)
+    assert qty is None
+    assert source == "estimated"
+
+
+def test_linear_measure_unit_is_model_units():
+    props = {"Qto_BeamBaseQuantities.Length": 5325.0}
+    qty, unit, source = _extract_quantity("IfcBeam", props)
+    assert qty == 5325.0
+    assert unit == "model units"
+    assert source == "ifc"

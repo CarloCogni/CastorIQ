@@ -69,6 +69,52 @@ _QTO_SPEC: dict[str, list[tuple[str, str, str]]] = {
 # Default unit displayed when only a fallback count is available
 _FALLBACK_UNIT = "ea"
 
+# Recognized real quantity measure names (exclude metadata like Qto_*.id).
+REAL_MEASURE_NAMES: frozenset[str] = frozenset(
+    {
+        "NetVolume",
+        "GrossVolume",
+        "NetArea",
+        "GrossArea",
+        "NetSideArea",
+        "GrossSideArea",
+        "GrossFootprintArea",
+        "Length",
+        "Width",
+        "Height",
+        "Depth",
+        "Perimeter",
+        "Count",
+        "Area",
+        "CrossSectionArea",
+        "NetSurfaceArea",
+        "OuterSurfaceArea",
+        "GrossSurfaceArea",
+    }
+)
+
+_SKIP_PROP_NAMES: frozenset[str] = frozenset({"id"})
+
+# Linear measures: values are often model-native (e.g. mm) — do not claim metres.
+LINEAR_MEASURE_NAMES: frozenset[str] = frozenset(
+    {"Length", "Width", "Height", "Depth", "Perimeter"}
+)
+VOLUME_MEASURE_NAMES: frozenset[str] = frozenset({"NetVolume", "GrossVolume"})
+AREA_MEASURE_NAMES: frozenset[str] = frozenset(
+    {
+        "NetArea",
+        "GrossArea",
+        "NetSideArea",
+        "GrossSideArea",
+        "GrossFootprintArea",
+        "Area",
+        "CrossSectionArea",
+        "NetSurfaceArea",
+        "OuterSurfaceArea",
+        "GrossSurfaceArea",
+    }
+)
+
 
 def _coerce_numeric(val: object) -> float | None:
     """Return float for numeric IFC quantity values; ignore bools and garbage."""
@@ -80,36 +126,90 @@ def _coerce_numeric(val: object) -> float | None:
         return None
 
 
-def _unit_for_prop_name(prop_name: str) -> str:
-    """Infer display unit from a Qto_* property name."""
+def is_recognized_ifc_measure_name(prop_name: str | None) -> bool:
+    """True when *prop_name* is a real IFC quantity measure (not Qto_*.id)."""
+    if not prop_name:
+        return False
+    if prop_name.lower() in _SKIP_PROP_NAMES:
+        return False
+    if prop_name in REAL_MEASURE_NAMES:
+        return True
     pl = prop_name.lower()
-    if "volume" in pl:
+    return any(
+        kw in pl
+        for kw in (
+            "volume",
+            "area",
+            "length",
+            "width",
+            "height",
+            "depth",
+            "perimeter",
+            "count",
+        )
+    )
+
+
+def _unit_for_prop_name(prop_name: str) -> str:
+    """Infer display unit from a Qto_* property name.
+
+    Linear measures use ``model units`` — exporters often store mm without
+    converting to metres.
+    """
+    if prop_name in VOLUME_MEASURE_NAMES or "volume" in prop_name.lower():
         return "m³"
-    if "area" in pl:
+    if prop_name in AREA_MEASURE_NAMES or "area" in prop_name.lower():
         return "m²"
-    if "length" in pl or "width" in pl or "height" in pl or "depth" in pl:
-        return "m"
+    if prop_name in LINEAR_MEASURE_NAMES or any(
+        kw in prop_name.lower() for kw in ("length", "width", "height", "depth", "perimeter")
+    ):
+        return "model units"
+    if prop_name == "Count" or prop_name.lower() == "count":
+        return "ea"
     return _FALLBACK_UNIT
 
 
-def entity_has_ifc_quantity(props: dict | None) -> bool:
-    """True when *props* contain a recognizable numeric IFC Qto_* value.
+def iter_ifc_quantity_measures(props: dict | None):
+    """Yield ``(qto_set, prop_name, value)`` for recognized numeric Qto measures.
 
-    Supports both nested ``{"Qto_WallBaseQuantities": {"NetVolume": 1.2}}``
-    and flat dotted keys ``{"Qto_WallBaseQuantities.NetVolume": 1.2}``.
+    Supports nested Qto dicts and flat dotted keys. Skips ``Qto_*.id``.
     """
     if not props:
-        return False
+        return
     for key, val in props.items():
         if not isinstance(key, str) or not key.startswith("Qto_"):
             continue
         if isinstance(val, dict):
-            for pval in val.values():
-                if _coerce_numeric(pval) is not None:
-                    return True
+            for pname, pval in val.items():
+                name = str(pname)
+                if not is_recognized_ifc_measure_name(name):
+                    continue
+                num = _coerce_numeric(pval)
+                if num is None:
+                    continue
+                yield key, name, num
             continue
-        if "." in key and _coerce_numeric(val) is not None:
-            return True
+        if "." not in key:
+            continue
+        pset, pname = key.split(".", 1)
+        if not is_recognized_ifc_measure_name(pname):
+            continue
+        num = _coerce_numeric(val)
+        if num is None:
+            continue
+        yield pset, pname, num
+
+
+def entity_has_ifc_quantity(props: dict | None) -> bool:
+    """True when *props* contain a recognized numeric IFC Qto measure.
+
+    Supports both nested ``{"Qto_WallBaseQuantities": {"NetVolume": 1.2}}``
+    and flat dotted keys ``{"Qto_WallBaseQuantities.NetVolume": 1.2}``.
+
+    ``Qto_*.id`` alone does **not** count as quantity availability.
+    """
+    for _pset, _name, _num in iter_ifc_quantity_measures(props):
+        return True
     return False
 
 
@@ -136,30 +236,9 @@ def _extract_quantity(ifc_type: str, props: dict) -> tuple[float | None, str, st
         if num is not None:
             return num, unit, "ifc"
 
-    # 2. Generic scan over any Qto_* pset (nested or flat dotted)
-    for key, val in props.items():
-        if not isinstance(key, str) or not key.startswith("Qto_"):
-            continue
-        if isinstance(val, dict):
-            for pname, pval in val.items():
-                num = _coerce_numeric(pval)
-                if num is None:
-                    continue
-                pl = str(pname).lower()
-                for unit, keywords in [
-                    ("m³", ["volume"]),
-                    ("m²", ["area"]),
-                    ("m", ["length", "width", "height"]),
-                ]:
-                    if any(kw in pl for kw in keywords):
-                        return num, unit, "ifc"
-            continue
-        if "." in key:
-            prop_part = key.split(".", 1)[1]
-            num = _coerce_numeric(val)
-            if num is None:
-                continue
-            return num, _unit_for_prop_name(prop_part), "ifc"
+    # 2. Generic scan over recognized Qto measures only (skips Qto_*.id)
+    for _pset, pname, num in iter_ifc_quantity_measures(props):
+        return num, _unit_for_prop_name(pname), "ifc"
 
     return None, _FALLBACK_UNIT, "estimated"
 
