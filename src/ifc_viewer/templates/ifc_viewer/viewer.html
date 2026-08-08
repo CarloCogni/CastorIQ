@@ -86,6 +86,20 @@
                 title="Download standalone stakeholder report (HTML)"
                 style="font-size:12px;"
                 onclick="window.location.href='{% url 'ifc_viewer:export_report' project.pk %}'">📤 Export</button>
+        <div style="width:1px;height:16px;background:rgba(255,255,255,0.2);margin:0 4px;"></div>
+        <!-- Scale Figure / Site Walker — primitive reference only (V1) -->
+        <button id="scale-figure-toggle-btn" class="vctl-btn"
+                data-testid="scale-figure-toggle"
+                title="Show Scale Figure — non-human site-walker reference (~1.75 scene units)"
+                style="font-size:12px;">Show Scale Figure</button>
+        <button id="scale-figure-reset-btn" class="vctl-btn"
+                data-testid="scale-figure-reset"
+                title="Reset Scale Figure to model centre / floor"
+                style="font-size:12px;">Reset Scale Figure</button>
+        <button id="scale-figure-follow-btn" class="vctl-btn"
+                data-testid="scale-figure-follow"
+                title="Orbit Around Scale Figure — sets orbit target to the figure (off by default)"
+                style="font-size:12px;">Follow Figure</button>
         <div style="flex:1;"></div>
         <button class="vctl-btn" data-zoom="+" title="Zoom In">+</button>
         <button class="vctl-btn" data-zoom="-" title="Zoom Out">−</button>
@@ -479,6 +493,7 @@
             resetAllColors();
             _initSelector();
             _initViewControls();
+            _initScaleFigure();
             _initSelectionSidebar();
             _initVisibilityPanel();
             _initSectionBox();
@@ -892,7 +907,8 @@
             mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
             mouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
             raycaster.setFromCamera(mouse, world.camera.three);
-            const hits = raycaster.intersectObjects(world.scene.three.children, true);
+            const hits = raycaster.intersectObjects(world.scene.three.children, true)
+                .filter(h => !_isScaleFigureObject(h.object));
             if (!hits.length) {
                 if (_selectedGlobalIds.size) {
                     resetAllColors();
@@ -934,7 +950,8 @@
             mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
             mouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
             raycaster.setFromCamera(mouse, world.camera.three);
-            const hits = raycaster.intersectObjects(world.scene.three.children, true);
+            const hits = raycaster.intersectObjects(world.scene.three.children, true)
+                .filter(h => !_isScaleFigureObject(h.object));
             if (!hits.length) { if (_ctxMenuEl) _ctxMenuEl.style.display = "none"; return; }
             const globalId = _findGlobalIdFromHit(hits[0]);
             if (!globalId) return;
@@ -1213,6 +1230,180 @@
                 await world.camera.projection.toggle();
             });
         }
+    }
+
+    // ── 12b. Scale Figure / Site Walker (V1 primitive reference) ───────────
+    // Non-human mannequin proxy for judging model scale. No GLB, animation,
+    // collision, WASD, or path recording. Height ~1.75 scene units (IFC length
+    // units are not formally read — typically metres when models are in metres).
+
+    const SCALE_FIGURE_HEIGHT = 1.75;
+    let _scaleFigureRoot   = null;
+    let _scaleFigureVisible = false;
+    let _scaleFollow        = false;  // off by default — only retargets orbit
+
+    function _isScaleFigureObject(obj) {
+        let o = obj;
+        while (o) {
+            if (o.userData && o.userData.castorScaleFigure) return true;
+            o = o.parent;
+        }
+        return false;
+    }
+
+    function _tagScaleFigure(obj) {
+        obj.userData.castorScaleFigure = true;
+        obj.raycast = () => {};  // never steal selection / measure hits
+        return obj;
+    }
+
+    function _buildScaleFigure() {
+        const root = new THREE.Group();
+        root.name = "castorScaleFigure";
+        root.userData.castorScaleFigure = true;
+
+        const bodyMat = new THREE.MeshBasicMaterial({
+            color: 0x38bdf8,
+            transparent: true,
+            opacity: 0.92,
+            depthTest: true,
+        });
+        const headMat = new THREE.MeshBasicMaterial({
+            color: 0x7dd3fc,
+            transparent: true,
+            opacity: 0.95,
+            depthTest: true,
+        });
+        const ringMat = new THREE.MeshBasicMaterial({
+            color: 0x38bdf8,
+            transparent: true,
+            opacity: 0.35,
+            side: THREE.DoubleSide,
+            depthTest: true,
+        });
+
+        const headR = 0.18;
+        const bodyR = 0.22;
+        /* Capsule total height = length + 2*radius. Target body+head ≈ 1.75. */
+        const capsuleLen = Math.max(0.4, SCALE_FIGURE_HEIGHT - 2 * bodyR - 2 * headR);
+        let bodyMesh;
+        if (typeof THREE.CapsuleGeometry === "function") {
+            const geo = new THREE.CapsuleGeometry(bodyR, capsuleLen, 4, 10);
+            bodyMesh = _tagScaleFigure(new THREE.Mesh(geo, bodyMat));
+            /* Capsule is Y-centred; lift so feet sit at y=0. */
+            const capsuleH = capsuleLen + 2 * bodyR;
+            bodyMesh.position.y = capsuleH / 2;
+        } else {
+            const cylH = SCALE_FIGURE_HEIGHT - 2 * headR;
+            const geo = new THREE.CylinderGeometry(bodyR * 0.9, bodyR, cylH, 12);
+            bodyMesh = _tagScaleFigure(new THREE.Mesh(geo, bodyMat));
+            bodyMesh.position.y = cylH / 2;
+        }
+        root.add(bodyMesh);
+
+        const head = _tagScaleFigure(new THREE.Mesh(
+            new THREE.SphereGeometry(headR, 12, 12),
+            headMat,
+        ));
+        head.position.y = SCALE_FIGURE_HEIGHT - headR;
+        root.add(head);
+
+        /* Lightweight ground ring (not a shadow map). */
+        const ring = _tagScaleFigure(new THREE.Mesh(
+            new THREE.RingGeometry(0.28, 0.4, 24),
+            ringMat,
+        ));
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.y = 0.02;
+        root.add(ring);
+
+        root.visible = false;
+        return root;
+    }
+
+    function _estimateFloorY(bbox) {
+        /* Viewer top-preset looks down from +Y, so Y is treated as vertical.
+           Floor ≈ model bbox.min.y. IFC units are not formally inspected — if a
+           project is not metre-scaled, the 1.75-unit figure will look wrong. */
+        if (!bbox || bbox.isEmpty()) return 0;
+        return bbox.min.y;
+    }
+
+    function _resetScaleFigurePosition() {
+        if (!_scaleFigureRoot) return;
+        const bbox = _getSceneBBox();
+        const center = new THREE.Vector3();
+        if (!bbox.isEmpty()) bbox.getCenter(center);
+        const floorY = _estimateFloorY(bbox);
+        _scaleFigureRoot.position.set(center.x, floorY, center.z);
+        if (_scaleFollow) _applyScaleFollowTarget();
+    }
+
+    function _applyScaleFollowTarget() {
+        /* Soft follow: retarget CameraControls orbit centre to the figure so
+           orbit/pan/zoom still work. Does not lock or replace first-person. */
+        if (!_scaleFollow || !_scaleFigureRoot || !world?.camera?.controls) return;
+        const controls = world.camera.controls;
+        const p = _scaleFigureRoot.position;
+        const lookY = p.y + SCALE_FIGURE_HEIGHT * 0.55;
+        if (typeof controls.setTarget === "function") {
+            controls.setTarget(p.x, lookY, p.z, true);
+        } else if (controls.target) {
+            controls.target.set(p.x, lookY, p.z);
+            if (typeof controls.update === "function") controls.update();
+        }
+    }
+
+    function _setScaleFigureVisible(visible) {
+        _scaleFigureVisible = !!visible;
+        if (_scaleFigureRoot) _scaleFigureRoot.visible = _scaleFigureVisible;
+        const btn = document.getElementById("scale-figure-toggle-btn");
+        if (btn) {
+            btn.textContent = _scaleFigureVisible ? "Hide Scale Figure" : "Show Scale Figure";
+            btn.style.outline = _scaleFigureVisible ? "1px solid rgba(56,189,248,0.7)" : "";
+            btn.title = _scaleFigureVisible
+                ? "Hide Scale Figure"
+                : "Show Scale Figure — non-human site-walker reference (~1.75 scene units)";
+        }
+    }
+
+    function _setScaleFollow(on) {
+        _scaleFollow = !!on;
+        const btn = document.getElementById("scale-figure-follow-btn");
+        if (btn) {
+            btn.style.outline = _scaleFollow ? "1px solid rgba(56,189,248,0.7)" : "";
+            btn.title = _scaleFollow
+                ? "Follow Figure on — orbit target is the Scale Figure (click to turn off)"
+                : "Orbit Around Scale Figure — sets orbit target to the figure (off by default)";
+        }
+        if (_scaleFollow) {
+            if (!_scaleFigureVisible) {
+                _resetScaleFigurePosition();
+                _setScaleFigureVisible(true);
+            }
+            _applyScaleFollowTarget();
+        }
+    }
+
+    function _initScaleFigure() {
+        if (!world?.scene?.three) return;
+        _scaleFigureRoot = _buildScaleFigure();
+        world.scene.three.add(_scaleFigureRoot);
+        _resetScaleFigurePosition();
+        _setScaleFigureVisible(false);
+        _setScaleFollow(false);
+
+        document.getElementById("scale-figure-toggle-btn")?.addEventListener("click", () => {
+            if (!_scaleFigureVisible) _resetScaleFigurePosition();
+            _setScaleFigureVisible(!_scaleFigureVisible);
+        });
+        document.getElementById("scale-figure-reset-btn")?.addEventListener("click", () => {
+            _resetScaleFigurePosition();
+            if (!_scaleFigureVisible) _setScaleFigureVisible(true);
+        });
+        document.getElementById("scale-figure-follow-btn")?.addEventListener("click", () => {
+            _setScaleFollow(!_scaleFollow);
+        });
     }
 
     // ── 15. Section Box (clipping planes) ───────────────────────────────
@@ -2092,6 +2283,7 @@
 
             const hits = _mvRay.intersectObjects(world.scene.three.children, true);
             const hit  = hits.find(h =>
+                !_isScaleFigureObject(h.object) &&
                 !_sectionHandles.includes(h.object) &&
                 h.object !== _snapIndicator &&
                 h.object !== _axisGuideLine &&
