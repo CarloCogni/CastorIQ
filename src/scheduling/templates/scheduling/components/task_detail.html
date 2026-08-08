@@ -51,10 +51,10 @@
     </div>
 </div>
 
-<!-- Trusted linked elements -->
+<!-- Applied / confirmed linked elements -->
 <div class="mb-3">
     <div class="text-secondary mb-2" style="font-size:0.73rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em;">
-        Trusted Links ({{ trusted_count|default:entities|length }}{% if siblings_count > 0 %}&nbsp;&middot;&nbsp;<span style="color:var(--bs-warning-text-emphasis);">{{ siblings_count }} shared</span>{% endif %})
+        Applied Links ({{ trusted_count|default:entities|length }}{% if siblings_count > 0 %}&nbsp;&middot;&nbsp;<span style="color:var(--bs-warning-text-emphasis);">{{ siblings_count }} shared</span>{% endif %})
     </div>
     {% if trusted_entities %}
     <div class="d-flex flex-column gap-1" style="max-height:100px; overflow-y:auto;">

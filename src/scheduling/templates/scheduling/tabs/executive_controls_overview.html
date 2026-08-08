@@ -31,7 +31,7 @@
                 <div class="form-check mt-3">
                     <input class="form-check-input" type="checkbox" name="linked_trusted" value="1" id="exec-filter-trusted"
                            {% if filters.linked_trusted %}checked{% endif %}>
-                    <label class="form-check-label small" for="exec-filter-trusted">Trusted-linked only</label>
+                    <label class="form-check-label small" for="exec-filter-trusted">Applied / Confirmed only</label>
                 </div>
             </div>
             <div class="col-md-2">
@@ -116,7 +116,7 @@
     {% else %}
     <div class="alert alert-secondary small mb-4" role="status">
         <strong>Trusted Model Impact</strong> unavailable —
-        {% if not capability_profile.banner.ifc_available %}no indexed IFC model on this project.{% else %}no trusted bindings or IFC coverage.{% endif %}
+        {% if not capability_profile.banner.ifc_available %}no indexed IFC model on this project.{% else %}no applied / confirmed links or IFC coverage.{% endif %}
     </div>
     {% endif %}
 

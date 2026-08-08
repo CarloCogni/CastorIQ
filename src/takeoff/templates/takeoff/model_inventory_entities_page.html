@@ -1,0 +1,28 @@
+<!-- takeoff/model_inventory_entities_page.html — B2.1 full-shell IFC Elements -->
+<div class="d-flex flex-column h-100 overflow-hidden" id="mi-entities-page-root"
+     data-testid="mi-entities-full-page">
+
+    <div class="d-flex align-items-center px-3 py-2 border-bottom bg-body flex-shrink-0" style="gap:0.5rem;">
+        <h5 class="mb-0 me-1">
+            <i class="bi bi-list-ul me-2 text-primary"></i>IFC Elements
+        </h5>
+        <span class="badge bg-secondary-subtle text-secondary-emphasis border"
+              style="font-size:0.65rem;">Applied / Confirmed · Has IFC Qto</span>
+        <div class="ms-auto">
+            <a href="{{ model_inventory_url }}"
+               class="btn btn-sm btn-outline-secondary"
+               data-testid="mi-entities-back-to-model">
+                <i class="bi bi-box-seam me-1"></i>Back to Model
+            </a>
+        </div>
+    </div>
+
+    <div class="flex-grow-1 overflow-auto p-3">
+        <p class="text-secondary small mb-3">
+            Lightweight inspection list from the IFC index.
+            Link status uses applied / confirmed schedule-model links only.
+            This is not a full model browser and does not dump properties or GlobalIds.
+        </p>
+        {% include "takeoff/components/model_inventory_entities.html" %}
+    </div>
+</div>

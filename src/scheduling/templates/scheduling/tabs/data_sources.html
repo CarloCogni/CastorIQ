@@ -169,22 +169,22 @@
                 {% else %}
                 <span style="color:#dc2626; font-size:.8rem;">✗</span>
                 {% endif %}
-                <span>Planned cost —
+                <span>Planned assignment cost —
                     {% if dr.planned_cost_from_ra %}from resource assignments{% else %}from task cost field{% endif %},
                     {{ dr.planned_cost_pct }}% of tasks carry cost
                 </span>
-                <span style="color:var(--bs-secondary-color); font-size:.67rem;">(enables BAC, PV, EV, SPI on cost-bearing tasks)</span>
+                <span style="color:var(--bs-secondary-color); font-size:.67rem;">(enables schedule/assignment indicators — BAC, PV, EV, SPI on cost-bearing tasks)</span>
             </div>
 
-            <!-- Actual cost -->
+            <!-- Assignment actual cost indicator -->
             <div style="display:flex; align-items:center; gap:5px;">
                 {% if dr.actual_cost_available %}
                 <span style="color:#16a34a; font-size:.8rem;">✓</span>
-                <span>Actual cost — {{ dr.ra_actual_count }} resource assignment{{ dr.ra_actual_count|pluralize }} with actual cost</span>
-                <span style="color:var(--bs-secondary-color); font-size:.67rem;">(enables CPI, CV, EAC, VAC)</span>
+                <span>Assignment actual cost indicator — {{ dr.ra_actual_count }} resource assignment{{ dr.ra_actual_count|pluralize }} with actual cost</span>
+                <span style="color:var(--bs-secondary-color); font-size:.67rem;">(enables CPI, CV, EAC, VAC — not ERP, invoice, QS, or company actual cost)</span>
                 {% else %}
                 <span style="color:#dc2626; font-size:.8rem;">✗</span>
-                <span>Actual cost — not imported</span>
+                <span>Assignment actual cost indicator — not imported</span>
                 <span style="color:#dc2626; font-size:.67rem; font-weight:600;">(CPI, CV, EAC, VAC disabled)</span>
                 {% endif %}
             </div>

@@ -1,13 +1,13 @@
 <!-- scheduling/components/executive_section_model_impact.html -->
 <section id="exec-section-model" class="exec-section mb-4" aria-labelledby="exec-model-heading">
     <h2 class="h6 fw-semibold mb-3" id="exec-model-heading">
-        <i class="bi bi-boxes me-1 text-primary"></i> Trusted Model Impact
+        <i class="bi bi-boxes me-1 text-primary"></i> Applied / Confirmed Model Impact
     </h2>
     {% if section_error %}
     <div class="alert alert-danger" role="alert">{{ section_error }}</div>
     {% elif section_available == False %}
     <div class="alert alert-secondary" role="status">
-        Trusted model impact unavailable — {{ unavailable_reason|default:"No IFC model indexed on this project." }}
+        Applied / confirmed model impact unavailable — {{ unavailable_reason|default:"No IFC model indexed on this project." }}
     </div>
     {% else %}
     {% for c in caveats %}

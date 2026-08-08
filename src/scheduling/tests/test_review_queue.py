@@ -204,7 +204,8 @@ def test_task_detail_sections(client):
         reverse("scheduling:task_detail", kwargs={"pk": project.pk, "task_pk": task.pk})
     )
     body = resp.content.decode()
-    assert "Trusted Links" in body
+    assert "Applied Links" in body
+    assert "Trusted Links" not in body
     assert "Review Suggestions" in body
 
 

@@ -537,7 +537,8 @@ def test_lookahead_shows_schedule_vs_trusted_caveat(client):
     assert response.status_code == 200
     assert 'data-testid="lookahead-trusted-caveat"' in html
     assert "Task counts follow schedule dates" in html
-    assert "trusted links" in html
+    assert "applied / confirmed links" in html
+    assert "trusted links" not in html.lower()
     assert html.count("Task counts follow schedule dates") == 1
 
 

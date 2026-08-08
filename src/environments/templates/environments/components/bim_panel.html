@@ -24,7 +24,7 @@
                 </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link py-1 px-3 {% if castor_subtab == 'model_inventory' %}active{% endif %}"
+                <a class="nav-link py-1 px-3 {% if castor_subtab == 'model_inventory' or castor_subtab == 'model_inventory_entities' %}active{% endif %}"
                    href="{% url 'takeoff:model_inventory' project.pk %}"
                    style="font-size:0.85rem;"
                    data-testid="hub-model">
@@ -120,6 +120,8 @@
             {% include "scheduling/panel.html" %}
         {% elif castor_subtab == 'model_inventory' %}
             {% include "takeoff/model_inventory.html" %}
+        {% elif castor_subtab == 'model_inventory_entities' %}
+            {% include "takeoff/model_inventory_entities_page.html" %}
         {% elif castor_subtab == 'insights' %}
             {% include "model_quality/panel.html" %}
         {% elif castor_subtab == 'ifc_issues' %}
