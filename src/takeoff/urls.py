@@ -13,6 +13,11 @@ urlpatterns = [
         views.ModelInventoryView.as_view(),
         name="model_inventory",
     ),
+    path(
+        "projects/<uuid:pk>/inventory/entities/",
+        views.ModelInventoryEntitiesView.as_view(),
+        name="model_inventory_entities",
+    ),
     path("projects/<uuid:pk>/", views.QTOView.as_view(), name="qto"),
     path("projects/<uuid:pk>/data/", views.QTODataView.as_view(), name="qto_data"),
     path(

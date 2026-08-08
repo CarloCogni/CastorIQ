@@ -1,0 +1,67 @@
+<!-- takeoff/components/model_inventory_entities.html — B2 lazy IFC Elements page -->
+<div id="mi-entities-results" data-testid="mi-entities-results">
+
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+        <span class="text-secondary small" data-testid="mi-entities-count">
+            {% if entities.total_matched %}
+            {{ entities.total_matched }} match{{ entities.total_matched|pluralize:"es" }}
+            · page {{ entities.page }} of {{ entities.total_pages }}
+            · {{ entities.page_size }} per page
+            {% else %}
+            No IFC Elements match these filters.
+            {% endif %}
+        </span>
+        <div class="d-flex gap-1">
+            {% if entities.has_prev %}
+            <button type="button"
+                    class="btn btn-sm btn-outline-secondary"
+                    data-testid="mi-entities-prev"
+                    hx-get="{{ entities_url }}?ifc_class={{ entities.filters.ifc_class|urlencode }}&level={{ entities.filters.level|urlencode }}&linked_status={{ entities.filters.linked_status }}&has_qto={{ entities.filters.has_qto }}&page={{ entities.prev_page }}&page_size={{ entities.page_size }}"
+                    hx-target="#mi-entities-results"
+                    hx-swap="outerHTML">
+                Prev
+            </button>
+            {% endif %}
+            {% if entities.has_next %}
+            <button type="button"
+                    class="btn btn-sm btn-outline-secondary"
+                    data-testid="mi-entities-next"
+                    hx-get="{{ entities_url }}?ifc_class={{ entities.filters.ifc_class|urlencode }}&level={{ entities.filters.level|urlencode }}&linked_status={{ entities.filters.linked_status }}&has_qto={{ entities.filters.has_qto }}&page={{ entities.next_page }}&page_size={{ entities.page_size }}"
+                    hx-target="#mi-entities-results"
+                    hx-swap="outerHTML">
+                Next
+            </button>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if entities.rows %}
+    <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0" style="font-size:0.82rem;"
+               data-testid="mi-entities-table">
+            <thead class="table-dark">
+                <tr>
+                    <th>Name</th>
+                    <th>IFC Class</th>
+                    <th>Level / Storey</th>
+                    <th>Has IFC Qto</th>
+                    <th>Link status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in entities.rows %}
+                <tr data-testid="mi-entity-row">
+                    <td class="text-truncate" style="max-width:14rem;" title="{{ row.display_name }}">
+                        {{ row.display_name }}
+                    </td>
+                    <td><code>{{ row.ifc_class }}</code></td>
+                    <td>{{ row.level_label }}</td>
+                    <td>{{ row.has_ifc_qto_label }}</td>
+                    <td>{{ row.link_status_label }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>

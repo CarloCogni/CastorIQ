@@ -11,6 +11,7 @@ import io
 import logging
 
 from django.http import HttpResponse, JsonResponse
+from django.shortcuts import render
 from django.urls import reverse
 from django.views import View
 from django.views.generic import TemplateView
@@ -25,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 class ModelInventoryView(ProjectTabMixin, TemplateView):
-    """Model Inventory — IFC index counts, class table, trusted link coverage."""
+    """Model Inventory — IFC index counts, class/level tables, link coverage."""
 
     active_tab = "castor"
 
@@ -39,7 +40,34 @@ class ModelInventoryView(ProjectTabMixin, TemplateView):
         ctx["apply_url"] = (
             reverse("scheduling:schedule", kwargs={"pk": project.pk}) + "?tab=fourD_link"
         )
+        ctx["entities_url"] = reverse("takeoff:model_inventory_entities", kwargs={"pk": project.pk})
         return ctx
+
+
+class ModelInventoryEntitiesView(ProjectAccessMixin, View):
+    """Lazy HTMX partial — paginated IFC Elements list (no properties JSON)."""
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        result = ModelInventoryService(project).list_entities(
+            ifc_class=request.GET.get("ifc_class"),
+            level=request.GET.get("level"),
+            linked_status=request.GET.get("linked_status"),
+            has_qto=request.GET.get("has_qto"),
+            page=request.GET.get("page"),
+            page_size=request.GET.get("page_size"),
+        )
+        return render(
+            request,
+            "takeoff/components/model_inventory_entities.html",
+            {
+                "project": project,
+                "entities": result,
+                "entities_url": reverse(
+                    "takeoff:model_inventory_entities", kwargs={"pk": project.pk}
+                ),
+            },
+        )
 
 
 class QTOView(ProjectTabMixin, TemplateView):

@@ -18,30 +18,40 @@
 
                 <p class="fw-semibold fs-7 mb-2">What is it?</p>
                 <p class="text-secondary fs-7 mb-4">
-                    Model is a summary of the project’s IFC index:
-                    how many elements exist, by IFC class, how many have applied / confirmed
-                    schedule-model links, and how many expose IFC model quantities
-                    (<code>Qto_*</code>). It supports 4D readiness and future quantity foundation work.
+                    Model is a practical summary of the project’s IFC index:
+                    overview counts, By IFC Class, By Level / Storey, Missing Model Data,
+                    and a lazy IFC Elements list. Link coverage uses applied / confirmed
+                    schedule-model links only. Quantity availability is IFC model quantities
+                    (<code>Qto_*</code>).
+                </p>
+
+                <p class="fw-semibold fs-7 mb-2">Lifecycle</p>
+                <p class="text-secondary fs-7 mb-4">
+                    After an IFC file is indexed, this page reads the completed IFC index.
+                    Confirm Link / Ignore Suggestion still happens under Links — not here.
+                    Classification Coverage stays Unavailable until classifications are indexed.
                 </p>
 
                 <p class="fw-semibold fs-7 mb-2">How to use it</p>
                 <ul class="text-secondary fs-7 mb-4">
-                    <li>Scan Overview for total entities, classes, storeys, and coverage.</li>
-                    <li>Use By IFC Class to find large unlinked groups before Links.</li>
-                    <li>Open Viewer or Links from the action links when you need to act.</li>
+                    <li>Scan Overview and Link coverage first (summary-only first paint).</li>
+                    <li>Use By Level / Storey and Missing Model Data for placement and Qto gaps.</li>
+                    <li>Filter the IFC Elements list by IFC Class, Level / Storey, link status, or Has IFC Qto.</li>
+                    <li>Open Viewer or Open Links for navigation only — this page does not focus the viewer.</li>
                 </ul>
 
                 <p class="fw-semibold fs-7 mb-2">Who can do what</p>
                 <p class="text-secondary fs-7 mb-4">
                     BIM coordinators, planners, and 4D/5D reviewers use this page read-only.
-                    Confirm Link / Ignore Suggestion happens under Links → Applied Links —
-                    not here.
+                    Suggest Links / Confirm Link / Ignore Suggestion happens under Links → Applied Links.
                 </p>
 
                 <p class="fw-semibold fs-7 mb-2">Caveats</p>
                 <ul class="text-secondary fs-7 mb-4">
                     <li>Link coverage uses <strong class="text-body">applied / confirmed schedule-model links only</strong>.</li>
-                    <li>Quantity availability depends on IFC <code>Qto_*</code> data in the indexed model.</li>
+                    <li>Has IFC Qto depends on IFC <code>Qto_*</code> data in the indexed model.</li>
+                    <li>Classification Coverage: Unavailable (not scraped from properties).</li>
+                    <li>IFC Elements is a paginated inspection list, not a full model browser.</li>
                     <li>Counts come from the IFC index — not live geometry re-measure.</li>
                 </ul>
 

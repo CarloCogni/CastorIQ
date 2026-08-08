@@ -1,4 +1,4 @@
-<!-- takeoff/model_inventory.html — Package B1 Model Inventory spine -->
+<!-- takeoff/model_inventory.html — Package B1/B2 Model Inventory -->
 <div class="d-flex flex-column h-100 overflow-hidden" id="model-inventory-root"
      data-testid="model-inventory-page">
 
@@ -132,8 +132,71 @@
             {% endif %}
         </div>
 
+        <!-- Missing Model Data -->
+        <div class="border rounded p-3 mb-3" data-testid="model-inventory-missing-data">
+            <div class="fw-semibold mb-2" style="font-size:0.9rem;">Missing Model Data</div>
+            <div class="row g-2">
+                <div class="col-md-4">
+                    <div class="small text-secondary">Missing Level / Storey</div>
+                    <div class="fw-semibold" data-testid="mi-missing-level">
+                        {{ inventory.missing_model_data.missing_level_count }}
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="small text-secondary">Missing IFC Qto</div>
+                    <div class="fw-semibold" data-testid="mi-missing-qto">
+                        {{ inventory.missing_model_data.missing_ifc_qto_count }}
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="small text-secondary">Classification Coverage</div>
+                    <div class="fw-semibold text-secondary" data-testid="mi-classification-unavailable">
+                        Unavailable
+                    </div>
+                </div>
+            </div>
+            <p class="text-secondary small mb-0 mt-2">
+                Classification is not first-class indexed yet — shown as Unavailable, not inferred from properties.
+            </p>
+        </div>
+
+        <!-- By Level / Storey -->
+        <div class="mb-3" data-testid="model-inventory-by-level">
+            <div class="fw-semibold mb-2" style="font-size:0.9rem;">By Level / Storey</div>
+            {% if inventory.by_level %}
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle mb-0" style="font-size:0.82rem;">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Level / Storey</th>
+                            <th class="text-end">Elements</th>
+                            <th class="text-end">Applied/Confirmed Links</th>
+                            <th class="text-end">Unlinked Model Elements</th>
+                            <th class="text-end">Has IFC Qto</th>
+                            <th class="text-end">IFC Classes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in inventory.by_level %}
+                        <tr data-testid="mi-level-row">
+                            <td>{{ row.level_label }}</td>
+                            <td class="text-end">{{ row.entity_count }}</td>
+                            <td class="text-end">{{ row.linked_count }}</td>
+                            <td class="text-end">{{ row.unlinked_count }}</td>
+                            <td class="text-end">{{ row.has_ifc_qto_count }}</td>
+                            <td class="text-end">{{ row.ifc_class_count }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-secondary small mb-0" data-testid="mi-no-levels">No level / storey rows for this model.</p>
+            {% endif %}
+        </div>
+
         <!-- By IFC Class -->
-        <div data-testid="model-inventory-by-class">
+        <div class="mb-3" data-testid="model-inventory-by-class">
             <div class="d-flex align-items-center justify-content-between mb-2">
                 <span class="fw-semibold" style="font-size:0.9rem;">By IFC Class</span>
                 {% if inventory.by_class_truncated %}
@@ -168,7 +231,7 @@
                                 <a href="{{ viewer_url }}" class="btn btn-link btn-sm py-0 px-1"
                                    title="Open Viewer">Viewer</a>
                                 <a href="{{ apply_url }}" class="btn btn-link btn-sm py-0 px-1"
-                                   title="Open Links">Apply</a>
+                                   title="Open Links">Links</a>
                             </td>
                         </tr>
                         {% endfor %}
@@ -178,6 +241,76 @@
             {% else %}
             <p class="text-secondary small" data-testid="mi-no-classes">No IFC classes in the indexed model.</p>
             {% endif %}
+        </div>
+
+        <!-- IFC Elements (lazy) -->
+        <div class="border rounded p-3" data-testid="model-inventory-entities">
+            <div class="fw-semibold mb-2" style="font-size:0.9rem;">IFC Elements</div>
+            <p class="text-secondary small mb-2">
+                Lightweight inspection list. Loaded on demand — not a full model browser.
+                Open Viewer / Open Links navigate only; this list does not focus the viewer.
+            </p>
+
+            <form class="row g-2 align-items-end mb-3"
+                  data-testid="mi-entities-filters"
+                  hx-get="{{ entities_url }}"
+                  hx-target="#mi-entities-results"
+                  hx-swap="outerHTML"
+                  hx-trigger="change, submit">
+                <div class="col-6 col-md-3">
+                    <label class="form-label small mb-1" for="mi-filter-ifc-class">IFC Class</label>
+                    <select class="form-select form-select-sm" id="mi-filter-ifc-class" name="ifc_class">
+                        <option value="">All</option>
+                        {% for cls in inventory.filter_options.ifc_classes %}
+                        <option value="{{ cls }}">{{ cls }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-6 col-md-3">
+                    <label class="form-label small mb-1" for="mi-filter-level">Level / Storey</label>
+                    <select class="form-select form-select-sm" id="mi-filter-level" name="level">
+                        <option value="">All</option>
+                        {% for lvl in inventory.filter_options.levels %}
+                        <option value="{{ lvl.key }}">{{ lvl.label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label small mb-1" for="mi-filter-linked">Link status</label>
+                    <select class="form-select form-select-sm" id="mi-filter-linked" name="linked_status">
+                        <option value="all">All</option>
+                        <option value="linked">Applied/Confirmed</option>
+                        <option value="unlinked">Unlinked</option>
+                    </select>
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label small mb-1" for="mi-filter-qto">Has IFC Qto</label>
+                    <select class="form-select form-select-sm" id="mi-filter-qto" name="has_qto">
+                        <option value="all">All</option>
+                        <option value="yes">Yes</option>
+                        <option value="no">No</option>
+                    </select>
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label small mb-1" for="mi-filter-page-size">Page size</label>
+                    <select class="form-select form-select-sm" id="mi-filter-page-size" name="page_size">
+                        <option value="50" selected>50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+                <input type="hidden" name="page" value="1">
+            </form>
+
+            <div id="mi-entities-results"
+                 data-testid="mi-entities-results"
+                 hx-get="{{ entities_url }}?page_size=50"
+                 hx-trigger="load"
+                 hx-swap="outerHTML">
+                <div class="text-secondary small py-2">
+                    <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                    Loading IFC Elements…
+                </div>
+            </div>
         </div>
 
         {% endif %}
