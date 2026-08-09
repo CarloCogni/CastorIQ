@@ -64,7 +64,7 @@ def test_executive_evm_remains_decision_facing(client):
 
 @pytest.mark.django_db
 def test_fourd_link_proposals_wording_not_approval(client):
-    """Links is a practical manual linking surface — no suggestion/approval chrome."""
+    """Links is a rule-based Parameter Match surface — no suggestion/approval chrome."""
     project = ProjectFactory()
     client.force_login(project.owner)
 
@@ -78,7 +78,7 @@ def test_fourd_link_proposals_wording_not_approval(client):
     assert "Suggest Links" not in html
     assert "Suggested Links" not in html
     assert "Castor Link Engine" not in html
-    assert "Applied Links" in html
+    assert "Applied / Confirmed" in html or "Applied Links" in html
     assert "Model Context" in html
     assert "Search activities" in html
     assert "Link Proposals" not in html
@@ -86,7 +86,7 @@ def test_fourd_link_proposals_wording_not_approval(client):
     assert "More linking details" not in html
     assert "Castor AI" not in html
     assert "Links workspace" in html
-    assert "Manual schedule" in html or "Manual schedule–model linking" in html
+    assert "Parameter Match" in html or "Link Check" in html
     assert "schedule writeback is not available here" in html.lower()
     assert "approval authority" not in html.lower()
     assert 'data-testid="suggest-links-btn"' not in html

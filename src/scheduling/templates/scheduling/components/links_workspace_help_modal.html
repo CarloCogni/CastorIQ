@@ -1,0 +1,74 @@
+<!-- scheduling/components/links_workspace_help_modal.html — How Links works -->
+
+<div class="modal fade" id="linksWorkspaceHelpModal" tabindex="-1"
+     aria-labelledby="linksWorkspaceHelpLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+
+      <div class="modal-header border-bottom px-4 py-3"
+           style="border-color: var(--bs-border-color) !important;">
+        <h5 class="modal-title fw-semibold fs-6 mb-0" id="linksWorkspaceHelpLabel">
+          <i class="bi bi-boxes me-2" style="color: #3b82f6;"></i>
+          How Links Works
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body px-4 py-4">
+
+        <p class="fw-semibold fs-7 mb-2">
+          <i class="bi bi-box-seam me-1" style="color: #3b82f6;"></i>
+          What is it?
+        </p>
+        <p class="text-secondary fs-7 mb-4">
+          Links is a <strong>parameter / rule-based</strong> schedule–model linking workspace.
+          You configure a Link Rule (schedule field ↔ model parameter), run a read-only
+          <strong>Link Check</strong>, review Match Results, then apply matches only with an
+          explicit action. Model Context stays central for visual confirmation.
+        </p>
+
+        <p class="fw-semibold fs-7 mb-2">
+          <i class="bi bi-arrow-repeat me-1" style="color: #3b82f6;"></i>
+          Lifecycle
+        </p>
+        <ol class="text-secondary fs-7 mb-4">
+          <li>Set a <strong>Link Rule</strong> — schedule field (Activity Code) and model parameter name.</li>
+          <li>Run <strong>Link Check</strong> — dry-run / preview only; no links are written.</li>
+          <li>Review <strong>Match Results</strong> — Matched, Unmatched Activities, Unmatched Model Elements, Conflicts.</li>
+          <li>Use <strong>Apply Links</strong> only when you intend to persist exact preview matches.</li>
+          <li>Use <strong>Manual fallback</strong> only for individual exceptions.</li>
+        </ol>
+
+        <p class="fw-semibold fs-7 mb-2">
+          <i class="bi bi-sliders me-1" style="color: #3b82f6;"></i>
+          How to run a Link Check
+        </p>
+        <ul class="text-secondary fs-7 mb-4">
+          <li>Enter the IFC / Revit property that holds the activity code (e.g. <code>Activity ID</code>).</li>
+          <li>Match type is <strong>exact</strong> equality for this version.</li>
+          <li>Results are preview status until Apply Links (or Manual fallback) is used.</li>
+        </ul>
+
+        <p class="fw-semibold fs-7 mb-2">
+          <i class="bi bi-person-check me-1" style="color: #3b82f6;"></i>
+          Who can do what
+        </p>
+        <p class="text-secondary fs-7 mb-4">
+          Any member with schedule access can run Link Check (read-only).
+          Apply Links and Manual fallback require modify / link permission on the project.
+        </p>
+
+        <p class="fw-semibold fs-7 mb-2">
+          <i class="bi bi-exclamation-triangle me-1" style="color: #d97706;"></i>
+          Caveats
+        </p>
+        <p class="text-secondary fs-7 mb-0">
+          Matching is rule-based and deterministic only. Contains / fuzzy matching and full model
+          parameter catalogs are not available yet. Link Check never creates bindings by itself.
+          Schedule writeback is not available here.
+        </p>
+
+      </div>
+    </div>
+  </div>
+</div>

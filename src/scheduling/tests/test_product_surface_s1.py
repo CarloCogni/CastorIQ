@@ -99,7 +99,7 @@ def test_hub_hides_forbidden_product_concepts(client):
 
 @pytest.mark.django_db
 def test_links_ui_uses_manual_workspace_wording(client):
-    """Links tab is a practical manual linking surface — no Suggest/Confirm suggestion UX."""
+    """Links tab is a rule-based Parameter Match surface — no Suggest/Confirm suggestion UX."""
     project = ProjectFactory()
     client.force_login(project.owner)
 
@@ -111,10 +111,15 @@ def test_links_ui_uses_manual_workspace_wording(client):
     assert response.status_code == 200
     assert "Suggest Links" not in html
     assert "Suggested Links" not in html
-    assert "Applied Links" in html
+    assert "Applied / Confirmed" in html or "Applied Links" in html
     assert "Model Context" in html
     assert "Search activities" in html
-    assert "Manual element linking is not available in this workspace yet." in html
+    assert "Link Check" in html or "Parameter Match" in html
+    assert "Link Selected Element" in html
+    assert "Manual fallback" in html
+    assert "Manual element linking is not available in this workspace yet." not in html
+    assert 'data-testid="links-link-selected-element-btn"' in html
+    assert 'data-testid="links-run-link-check"' in html
     assert "Propose links" not in html
     assert ">Link Quality<" not in html and "Link Quality</" not in html
     assert "Advanced trust" not in html

@@ -1,5 +1,5 @@
 # scheduling/tests/test_links_workspace_v1.py
-"""Links Workspace — practical manual linking surface (no suggestion UX)."""
+"""Links Workspace — rule-based Parameter Match / Link Check surface."""
 
 from __future__ import annotations
 
@@ -31,7 +31,6 @@ _FORBIDDEN_LINKS_SURFACE = (
     "Trust state",
     "Your access:",
     "Conf min",
-    "IFC class",
     "Suggest Links",
     "Suggested Links",
     "Generating candidates",
@@ -54,7 +53,7 @@ _FORBIDDEN_ADVANCED_LANDING = (
 
 @pytest.mark.django_db
 def test_links_workspace_v1_layout_markers(client):
-    """Links tab exposes toolbar, search, model context, applied inspector."""
+    """Links tab exposes toolbar, rule setup, model context, match results."""
     project = ProjectFactory()
     TaskFactory(project=project, name="Link WS Task")
     client.force_login(project.owner)
@@ -76,11 +75,16 @@ def test_links_workspace_v1_layout_markers(client):
     assert 'data-testid="links-model-context"' in html
     assert 'data-testid="links-model-context-primary"' in html
     assert "Selected Activity" in html
-    assert "Applied Links" in html or "Applied / Confirmed" in html
+    assert "Applied / Confirmed" in html or "Applied Links" in html
     assert "Model Context" in html
     assert "Unlinked Activities" in html
     assert "Link Coverage" in html
     assert "Search activities" in html
+    assert 'data-testid="links-rule-setup"' in html
+    assert 'data-testid="links-parameter-match"' in html
+    assert 'data-testid="links-run-link-check"' in html
+    assert 'data-testid="links-match-results"' in html
+    assert 'data-testid="links-help-pill"' in html
     assert 'data-testid="links-suggested-section"' not in html
     assert 'data-testid="suggest-links-btn"' not in html
     assert 'data-testid="links-filter-suggested"' not in html
@@ -88,7 +92,6 @@ def test_links_workspace_v1_layout_markers(client):
     assert "Suggested Links" not in html
     assert "Suggest Links" not in html
     assert "Ignore Suggestion" not in html
-    # Modal keeps Link Element for viewer-driven element→task; no suggestion Confirm
     assert 'data-testid="links-confirm-link-btn"' not in html
     assert "prefers-reduced-motion" in html
     assert "lw-card-enter" in html
@@ -96,12 +99,14 @@ def test_links_workspace_v1_layout_markers(client):
         'data-testid="links-selected-activity"', 1
     )[0]
     assert 'data-testid="links-model-context"' in primary_center
+    assert 'data-testid="links-match-results"' in primary_center
     assert 'data-testid="links-suggested-section"' not in primary_center
     inspector = html.split('data-testid="links-selected-activity"', 1)[1].split(
         'id="fd-timeline-section"', 1
     )[0]
     assert 'data-testid="links-applied-section"' in inspector
     assert 'data-testid="links-center-empty"' in inspector
+    assert 'data-testid="links-manual-fallback-heading"' in inspector
     assert "max-height: 240px" not in html
     assert "height: 200px" not in html.split("lw-model-context", 1)[1].split("@media", 1)[0]
 
@@ -163,11 +168,67 @@ def test_links_workspace_v1_simple_surface_no_advanced_console(client):
     assert 'data-testid="links-suggest-status"' not in html
     assert 'id="fourD-link-results"' not in html
     assert 'data-testid="links-count-suggested"' not in html
-    assert "Manual element linking is not available in this workspace yet." in html
+    assert 'data-testid="links-manual-actions"' in html
+    assert 'data-testid="links-link-selected-element-btn"' in html
+    assert 'data-testid="links-open-link-element-tool-btn"' in html
+    assert 'data-testid="links-selected-element"' in html
+    assert "Link Selected Element" in html
+    assert "Open Link Element tool" in html
+    assert "Manual fallback" in html
+    assert "Manual element linking is not available in this workspace yet." not in html
     assert 'data-testid="links-activity-search"' in html
     assert 'data-filter="linked"' in html
     assert 'data-filter="unlinked"' in html
     assert 'data-filter="needs_review"' not in html
+    assert "link-element" in html
+    assert "unlink-element" in html
+
+
+@pytest.mark.django_db
+def test_links_rule_based_workspace_markers(client):
+    """Rule setup, dry-run Link Check, and Match Results categories are present."""
+    project = ProjectFactory()
+    client.force_login(project.owner)
+
+    response = client.get(
+        reverse("scheduling:schedule", kwargs={"pk": project.pk}) + "?tab=fourD_link"
+    )
+    html = response.content.decode()
+
+    assert response.status_code == 200
+    assert "Link Rules" in html
+    assert "Parameter Match" in html
+    assert 'data-testid="links-schedule-field"' in html
+    assert 'data-testid="links-model-param"' in html
+    assert 'data-testid="links-model-param-note"' in html
+    assert "Model parameter list is not indexed yet" in html
+    assert 'data-testid="links-run-link-check"' in html
+    assert "Run Link Check" in html
+    assert 'data-testid="links-link-check-dry-run-note"' in html
+    assert "Dry-run / preview only" in html
+    assert 'data-testid="links-match-results"' in html
+    assert 'data-testid="links-results-tab-matched"' in html
+    assert 'data-testid="links-results-tab-unmatched-activities"' in html
+    assert 'data-testid="links-results-tab-unmatched-elements"' in html
+    assert 'data-testid="links-results-tab-conflicts"' in html
+    assert "Matched" in html
+    assert "Unmatched Activities" in html
+    assert "Unmatched Model Elements" in html
+    assert "Conflicts" in html
+    assert 'data-testid="links-apply-links-btn"' in html
+    assert "Apply Links" in html
+    assert 'data-testid="links-apply-links-warning"' in html
+    assert "Applies selected preview matches only" in html
+    assert reverse("scheduling:schedule_link_preview_param", args=[project.pk]) in html
+    assert reverse("scheduling:schedule_link_apply_approved_param", args=[project.pk]) in html
+    assert reverse("scheduling:schedule_link_smart", args=[project.pk]) not in html
+    assert 'data-testid="links-manual-fallback-heading"' in html
+    left = html.split('data-testid="links-left-column"', 1)[1].split(
+        'data-testid="links-model-context-primary"', 1
+    )[0]
+    assert 'data-testid="links-rule-setup"' in left
+    assert 'data-testid="links-activities"' in left
+    assert 'data-testid="links-manual-actions"' not in left
 
 
 @pytest.mark.django_db
@@ -191,7 +252,6 @@ def test_task_detail_applied_only_no_suggestion_actions(client):
         name="Wall-Applied",
         ifc_type="IfcWall",
     )
-    # Review binding must not surface on normal Links task detail
     TaskEntityBinding.objects.create(
         task=task,
         entity_global_id="GID-REVIEW-1",
@@ -210,6 +270,8 @@ def test_task_detail_applied_only_no_suggestion_actions(client):
     assert response.status_code == 200
     assert 'data-testid="links-applied-card"' in html
     assert "Wall-Applied" in html
+    assert 'data-testid="links-remove-link-btn"' in html
+    assert "Remove Link" in html
     assert 'data-testid="links-suggestion-card"' not in html
     assert 'data-testid="links-confirm-link-btn"' not in html
     assert 'data-testid="links-ignore-suggestion-btn"' not in html
@@ -219,8 +281,8 @@ def test_task_detail_applied_only_no_suggestion_actions(client):
 
 
 @pytest.mark.django_db
-def test_task_detail_empty_applied_shows_manual_limitation(client):
-    """Unlinked activity empty state is practical and does not invent Manual Link."""
+def test_task_detail_empty_applied_shows_manual_guidance(client):
+    """Unlinked activity empty state points to Link Check + Manual fallback."""
     project = ProjectFactory()
     task = TaskFactory(project=project, name="Unlinked Task")
     client.force_login(project.owner)
@@ -234,13 +296,13 @@ def test_task_detail_empty_applied_shows_manual_limitation(client):
     assert response.status_code == 200
     assert 'data-testid="links-applied-empty"' in html
     assert "No applied model links for this activity." in html
-    assert 'data-testid="links-manual-link-limitation"' in html
-    assert "Manual element linking is not available in this workspace yet." in html
+    assert 'data-testid="links-manual-link-guidance"' in html
+    assert "Link Check" in html
+    assert "Manual fallback" in html
+    assert "Manual element linking is not available in this workspace yet." not in html
     assert "Suggest Links" not in html
     assert 'data-testid="links-suggestion-card"' not in html
-    assert re.search(r">\s*Manual Link\s*<", html) is None
-    assert re.search(r">\s*Link Element\s*<", html) is None
-    assert re.search(r">\s*Remove Link\s*<", html) is None
+    assert 'data-testid="links-remove-link-btn"' not in html
 
 
 @pytest.mark.django_db

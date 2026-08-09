@@ -1,16 +1,16 @@
-<!-- scheduling/tabs/fourD_link.html — Links Workspace Polish V1 (link-first, no simulation chrome) -->
+<!-- scheduling/tabs/fourD_link.html — Links Rule-Based Workspace V1 -->
 
 <style>
-  /* ── Links Workspace V1 layout ── */
+  /* ── Links Rule-Based Workspace V1 ── */
   #fourD-root.lw-workspace {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
     height: calc(100vh - 140px);
     min-height: 520px;
     max-height: calc(100vh - 120px);
     overflow: hidden;
-    padding: 8px 10px 10px;
+    padding: 6px 8px 8px;
   }
   #lw-toolbar {
     flex-shrink: 0;
@@ -18,7 +18,7 @@
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
-    padding: 6px 4px 8px;
+    padding: 4px 2px 6px;
     border-bottom: 1px solid var(--bs-border-color);
     background: var(--bs-body-bg);
   }
@@ -29,38 +29,62 @@
     gap: 0;
     position: relative;
   }
-  #fourD-gantt {
-    width: 280px;
-    min-width: 220px;
-    max-width: 36%;
+  #lw-left {
+    width: 300px;
+    min-width: 240px;
+    max-width: 38%;
     flex-shrink: 0;
-    background: var(--bs-body-bg);
-    border: 1px solid var(--bs-border-color);
-    border-radius: 8px;
     display: flex;
     flex-direction: column;
+    gap: 6px;
     min-height: 0;
     height: 100%;
   }
-  /* CENTER: primary Model Context zone */
+  #lw-rule-setup {
+    flex: 0 0 auto;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 6px;
+    background: var(--bs-body-bg);
+    padding: 8px 10px;
+  }
+  #lw-rule-setup .form-label {
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--bs-secondary-color);
+    margin-bottom: 2px;
+  }
+  #lw-rule-setup .form-select,
+  #lw-rule-setup .form-control { font-size: 0.76rem; }
+  #fourD-gantt {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    max-width: none;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+  }
   #lw-center {
     flex: 1 1 auto;
     min-width: 320px;
     min-height: 0;
     display: flex;
     flex-direction: column;
-    gap: 0;
-    padding: 0 8px;
+    gap: 6px;
+    padding: 0 6px;
     overflow: hidden;
   }
   #fourD-viewer.lw-model-context {
-    flex: 1 1 auto;
+    flex: 1 1 58%;
     width: 100%;
-    min-height: 0;
-    height: 100%;
+    min-height: 220px;
     background: var(--bs-body-bg);
     border: 1px solid var(--bs-border-color);
-    border-radius: 8px;
+    border-radius: 6px;
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -72,19 +96,78 @@
     flex: 1 1 auto;
     min-height: 0;
   }
-  /* RIGHT: Selected Activity + Applied / Confirmed */
+  #lw-match-results {
+    flex: 0 1 42%;
+    min-height: 160px;
+    max-height: 46%;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 6px;
+    background: var(--bs-body-bg);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  #lw-match-results .lw-results-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--bs-border-color);
+    flex-shrink: 0;
+  }
+  #lw-match-results .lw-results-tab {
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 3px 8px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--bs-secondary-color);
+    cursor: pointer;
+  }
+  #lw-match-results .lw-results-tab.active {
+    color: var(--bs-body-color);
+    border-color: var(--bs-border-color);
+    background: var(--bs-secondary-bg);
+  }
+  #lw-match-results .lw-results-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+  }
+  #lw-match-results table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.72rem;
+  }
+  #lw-match-results th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--bs-secondary-bg);
+    border-bottom: 1px solid var(--bs-border-color);
+    text-align: left;
+    padding: 4px 8px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  #lw-match-results td {
+    border-bottom: 1px solid var(--bs-border-color);
+    padding: 4px 8px;
+    vertical-align: top;
+  }
+  #lw-match-results tr:hover td { background: rgba(59, 130, 246, 0.06); }
   #lw-inspector {
-    width: 320px;
+    width: 300px;
     max-width: 38vw;
-    min-width: 260px;
+    min-width: 250px;
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
-    gap: 0;
     min-height: 0;
     height: 100%;
     border: 1px solid var(--bs-border-color);
-    border-radius: 8px;
+    border-radius: 6px;
     background: var(--bs-body-bg);
     overflow: hidden;
   }
@@ -92,29 +175,25 @@
     flex: 1 1 auto;
     min-height: 0;
     overflow: auto;
-    padding: 10px 12px;
+    padding: 8px 10px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
   }
   #lw-link-panels {
     flex: 0 0 auto;
-    min-height: 0;
     border-top: 1px solid var(--bs-border-color);
-    padding-top: 10px;
+    padding-top: 8px;
     margin-top: 2px;
   }
-  #lw-link-panels .lw-section-h { margin-top: 4px; }
-  #lw-center-empty {
-    font-size: 0.74rem;
-    line-height: 1.4;
-    margin-bottom: 6px;
+  #lw-center-empty { font-size: 0.74rem; line-height: 1.4; margin-bottom: 6px; }
+  #lw-applied-list { max-height: 22vh; overflow: auto; }
+  #lw-manual-actions {
+    border: 1px dashed var(--bs-border-color);
+    border-radius: 6px;
+    padding: 8px;
+    background: var(--bs-tertiary-bg);
   }
-  #lw-applied-list {
-    max-height: 28vh;
-    overflow: auto;
-  }
-  /* Playback / simulation chrome demoted — owned by Time View */
   #fd-timeline-section,
   #fd-play-btn,
   #fd-pause-btn,
@@ -122,9 +201,7 @@
   #fd-prev-btn,
   #fd-next-btn,
   #fd-slider,
-  #fd-speed-select {
-    display: none !important;
-  }
+  #fd-speed-select { display: none !important; }
   .lw-count {
     font-size: 0.72rem;
     font-weight: 500;
@@ -142,13 +219,9 @@
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--bs-secondary-color);
-    margin-bottom: 8px;
+    margin-bottom: 6px;
   }
-  .lw-empty {
-    font-size: 0.78rem;
-    color: var(--bs-secondary-color);
-    line-height: 1.45;
-  }
+  .lw-empty { font-size: 0.78rem; color: var(--bs-secondary-color); line-height: 1.45; }
   .lw-card {
     border: 1px solid var(--bs-border-color);
     border-radius: 6px;
@@ -171,6 +244,8 @@
   }
   .lw-badge-applied { color: #86efac; border-color: rgba(34,197,94,.35); }
   .lw-badge-unlinked { color: var(--bs-secondary-color); }
+  .lw-badge-preview { color: #93c5fd; border-color: rgba(59,130,246,.35); }
+  .lw-badge-conflict { color: #fbbf24; border-color: rgba(245,158,11,.4); }
   .fd-zoom-btn, .fd-lf-btn {
     padding: 2px 8px;
     font-size: 11px;
@@ -204,9 +279,7 @@
     0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.45); }
     100% { box-shadow: 0 0 0 8px rgba(34, 197, 94, 0); }
   }
-  .lw-card-enter {
-    animation: lw-fade-in 180ms ease-out both;
-  }
+  .lw-card-enter { animation: lw-fade-in 180ms ease-out both; }
   #fd-gantt-body [data-row-idx] {
     transition: outline-color 150ms ease, background-color 150ms ease, outline-offset 150ms ease;
   }
@@ -223,40 +296,35 @@
       transition: none !important;
     }
   }
-  /* Suggest / proposal chrome removed from normal Links surface */
   @media (max-width: 1100px) {
     #lw-body { flex-wrap: wrap; overflow: auto; }
-    #fourD-gantt { width: 100%; max-width: none; height: 240px; }
-    #lw-center {
-      width: 100%;
-      padding: 8px 0;
-      min-height: 320px;
-      order: 3;
-    }
-    #lw-inspector {
-      width: 100%;
-      max-width: none;
-      height: auto;
-      max-height: 42vh;
-      order: 2;
-    }
-    #fourD-viewer.lw-model-context {
-      min-height: 300px;
-      height: 42vh;
-    }
+    #lw-left { width: 100%; max-width: none; height: auto; }
+    #fourD-gantt { height: 220px; }
+    #lw-center { width: 100%; padding: 6px 0; min-height: 320px; order: 3; }
+    #lw-inspector { width: 100%; max-width: none; height: auto; max-height: 42vh; order: 2; }
+    #fourD-viewer.lw-model-context { min-height: 260px; height: 36vh; }
+    #lw-match-results { max-height: 280px; }
   }
 </style>
 
 <div id="fourD-root" class="lw-workspace" data-testid="links-workspace">
 
-  <!-- ── Toolbar ───────────────────────────────────────────────────── -->
   <div id="lw-toolbar" data-testid="links-workspace-toolbar">
-    <span class="fw-semibold" style="font-size:.92rem; white-space:nowrap;">
+    <span class="fw-semibold d-flex align-items-center gap-1" style="font-size:.92rem; white-space:nowrap;">
       <i class="bi bi-boxes me-1 text-primary"></i>Links
+      <button type="button"
+              class="help-pill"
+              data-bs-toggle="modal"
+              data-bs-target="#linksWorkspaceHelpModal"
+              title="How Links works"
+              aria-label="How Links works"
+              data-testid="links-help-pill">
+        <i class="bi bi-question-circle"></i>
+      </button>
     </span>
     <span class="lw-count" data-testid="links-count-applied"
           title="Activities with applied / confirmed model links">
-      Applied Links <strong id="lw-count-applied">—</strong>
+      Applied / Confirmed <strong id="lw-count-applied">—</strong>
     </span>
     <span class="lw-count" data-testid="links-count-unlinked"
           title="Activities without applied / confirmed model links">
@@ -266,64 +334,119 @@
           title="Share of activities with applied / confirmed links">
       Link Coverage <strong id="lw-count-coverage">—</strong>
     </span>
+    <span class="lw-count d-none d-lg-inline" id="lw-search-shown"
+          data-testid="links-search-shown"
+          title="Activities shown after search / filter">
+      Shown <strong id="lw-count-shown">—</strong>
+    </span>
 
     <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
-      <input type="search" id="lw-activity-search" class="form-control form-control-sm"
-             placeholder="Search activities…"
-             style="width:220px; font-size:.78rem;"
-             data-testid="links-activity-search"
-             title="Search by activity code or name"
-             autocomplete="off">
+      <div class="input-group input-group-sm" style="width:240px;">
+        <input type="search" id="lw-activity-search" class="form-control"
+               placeholder="Search activities…"
+               style="font-size:.78rem;"
+               data-testid="links-activity-search"
+               title="Search by activity code or name"
+               autocomplete="off">
+        <button type="button" class="btn btn-outline-secondary" id="lw-search-clear"
+                data-testid="links-search-clear" title="Clear search" style="font-size:.72rem;">
+          Clear
+        </button>
+      </div>
     </div>
   </div>
 
-  <!-- ── Main workspace ────────────────────────────────────────────── -->
   <div id="lw-body" data-testid="links-workspace-body">
 
-    <!-- LEFT: Activities -->
-    <div id="fourD-gantt" data-testid="links-activities">
-      <div style="padding:5px 8px; border-bottom:1px solid var(--bs-border-color);
-                  display:flex; align-items:center; justify-content:space-between; flex-shrink:0;">
-        <span style="font-size:12px; font-weight:600;">Activities</span>
-        <div class="btn-group btn-group-sm">
-          <button type="button" class="fd-zoom-btn" data-zoom="day">Day</button>
-          <button type="button" class="fd-zoom-btn" data-zoom="week">Week</button>
-          <button type="button" class="fd-zoom-btn active" data-zoom="month">Month</button>
+    <div id="lw-left" data-testid="links-left-column">
+      <section id="lw-rule-setup"
+               data-testid="links-rule-setup"
+               data-can-apply="{% if links_can_apply_param %}1{% else %}0{% endif %}">
+        <div class="lw-section-h mb-2" data-testid="links-parameter-match">
+          Link Rules · Parameter Match
         </div>
-      </div>
-      <div id="fd-link-filter" style="display:flex; gap:4px; padding:6px 8px; border-bottom:1px solid var(--bs-border-color); flex-shrink:0; flex-wrap:wrap;">
-        <button type="button" class="fd-lf-btn active" data-filter="all">All</button>
-        <button type="button" class="fd-lf-btn" data-filter="linked"><span style="color:#1D9E75;">●</span> Applied</button>
-        <button type="button" class="fd-lf-btn" data-filter="unlinked"><span style="color:#4B5563;">●</span> Unlinked</button>
-      </div>
-      <div id="fd-gantt-scroll" style="overflow:auto; flex:1; min-height:0; background:#0f172a;">
-        <div id="fd-gantt-inner">
-          <div id="fd-gantt-hdr" style="display:flex; position:sticky; top:0; z-index:10; background:#1e293b; height:46px; border-bottom:1px solid #334155;">
-            <div style="min-width:160px; max-width:160px; padding:0 8px; display:flex; align-items:center;
-                        font-size:.72rem; font-weight:600; color:rgba(255,255,255,.45);
-                        position:sticky; left:0; background:#1e293b; z-index:11; border-right:1px solid #334155;">
-              Code · Task
-            </div>
-            <div id="fd-gantt-timeline-hdr" style="display:flex; flex-shrink:0; height:100%;"></div>
-          </div>
-          <div id="fd-gantt-body">
-            <div style="padding:20px; text-align:center; color:rgba(255,255,255,.35);">
-              <div style="width:20px;height:20px;border:2px solid #1e293b;border-top-color:#3b82f6;
-                          border-radius:50%;animation:fd-spin .8s linear infinite;margin:0 auto 8px;"></div>
-              <div style="font-size:12px;">Loading activities…</div>
-            </div>
-          </div>
-          <div id="fd-gantt-empty" style="display:none; padding:1.5rem; text-align:center;
-               color:rgba(255,255,255,.35); font-size:.82rem;"></div>
+        <div class="mb-2">
+          <label class="form-label" for="lw-schedule-field">Schedule field</label>
+          <select id="lw-schedule-field" class="form-select form-select-sm"
+                  data-testid="links-schedule-field">
+            <option value="activity_code" selected>Activity Code</option>
+          </select>
         </div>
+        <div class="mb-2">
+          <label class="form-label" for="lw-model-param">Model parameter</label>
+          <input type="text" id="lw-model-param" class="form-control form-control-sm"
+                 value="Activity ID"
+                 placeholder="e.g. Activity ID"
+                 data-testid="links-model-param"
+                 autocomplete="off">
+          <div class="text-secondary mt-1" style="font-size:0.68rem;"
+               data-testid="links-model-param-note">
+            Model parameter list is not indexed yet; enter a known IFC / Revit property name.
+          </div>
+        </div>
+        <div class="mb-2">
+          <label class="form-label" for="lw-match-type">Match type</label>
+          <select id="lw-match-type" class="form-select form-select-sm"
+                  data-testid="links-match-type">
+            <option value="exact" selected>Exact</option>
+          </select>
+        </div>
+        <button type="button"
+                class="btn btn-sm btn-primary w-100"
+                id="lw-run-link-check"
+                data-testid="links-run-link-check"
+                title="Read-only dry-run / preview — does not create links">
+          <i class="bi bi-search me-1"></i>Run Link Check
+        </button>
+        <div class="text-secondary mt-1" style="font-size:0.68rem;"
+             data-testid="links-link-check-dry-run-note">
+          Dry-run / preview only — does not create or change applied links.
+        </div>
+      </section>
+
+      <div id="fourD-gantt" data-testid="links-activities">
+        <div style="padding:5px 8px; border-bottom:1px solid var(--bs-border-color);
+                    display:flex; align-items:center; justify-content:space-between; flex-shrink:0;">
+          <span style="font-size:12px; font-weight:600;">Activities</span>
+          <div class="btn-group btn-group-sm">
+            <button type="button" class="fd-zoom-btn" data-zoom="day">Day</button>
+            <button type="button" class="fd-zoom-btn" data-zoom="week">Week</button>
+            <button type="button" class="fd-zoom-btn active" data-zoom="month">Month</button>
+          </div>
+        </div>
+        <div id="fd-link-filter" style="display:flex; gap:4px; padding:6px 8px; border-bottom:1px solid var(--bs-border-color); flex-shrink:0; flex-wrap:wrap;">
+          <button type="button" class="fd-lf-btn active" data-filter="all">All</button>
+          <button type="button" class="fd-lf-btn" data-filter="linked"><span style="color:#1D9E75;">●</span> Applied</button>
+          <button type="button" class="fd-lf-btn" data-filter="unlinked"><span style="color:#4B5563;">●</span> Unlinked</button>
+        </div>
+        <div id="fd-gantt-scroll" style="overflow:auto; flex:1; min-height:0; background:#0f172a;">
+          <div id="fd-gantt-inner">
+            <div id="fd-gantt-hdr" style="display:flex; position:sticky; top:0; z-index:10; background:#1e293b; height:46px; border-bottom:1px solid #334155;">
+              <div style="min-width:160px; max-width:160px; padding:0 8px; display:flex; align-items:center;
+                          font-size:.72rem; font-weight:600; color:rgba(255,255,255,.45);
+                          position:sticky; left:0; background:#1e293b; z-index:11; border-right:1px solid #334155;">
+                Code · Task
+              </div>
+              <div id="fd-gantt-timeline-hdr" style="display:flex; flex-shrink:0; height:100%;"></div>
+            </div>
+            <div id="fd-gantt-body">
+              <div style="padding:20px; text-align:center; color:rgba(255,255,255,.35);">
+                <div style="width:20px;height:20px;border:2px solid #1e293b;border-top-color:#3b82f6;
+                            border-radius:50%;animation:fd-spin .8s linear infinite;margin:0 auto 8px;"></div>
+                <div style="font-size:12px;">Loading activities…</div>
+              </div>
+            </div>
+            <div id="fd-gantt-empty" style="display:none; padding:1.5rem; text-align:center;
+                 color:rgba(255,255,255,.35); font-size:.82rem;"></div>
+          </div>
+        </div>
+        <div id="fd-gantt-legend" style="display:flex; gap:6px; flex-wrap:wrap; padding:4px 6px;
+             font-size:.7rem; flex-shrink:0; min-height:24px; border-top:1px solid var(--bs-border-color);"></div>
       </div>
-      <div id="fd-gantt-legend" style="display:flex; gap:6px; flex-wrap:wrap; padding:4px 6px;
-           font-size:.7rem; flex-shrink:0; min-height:24px; border-top:1px solid var(--bs-border-color);"></div>
     </div>
 
-    <div class="fd-splitter" id="fd-split-1" data-left="fourD-gantt" data-right="lw-center" aria-hidden="true"></div>
+    <div class="fd-splitter" id="fd-split-1" data-left="lw-left" data-right="lw-center" aria-hidden="true"></div>
 
-    <!-- CENTER: primary Model Context / 3D viewer -->
     <div id="lw-center"
          class="lw-model-primary"
          data-testid="links-model-context-primary"
@@ -368,25 +491,92 @@
           </div>
         </div>
       </div>
+
+      <section id="lw-match-results" data-testid="links-match-results">
+        <div class="d-flex align-items-center gap-2 px-2 py-1 border-bottom flex-shrink-0">
+          <span class="lw-section-h mb-0">Match Results</span>
+          <span class="lw-badge lw-badge-preview" data-testid="links-match-preview-badge">Preview only</span>
+          <div class="ms-auto d-flex align-items-center gap-2">
+            <button type="button"
+                    class="btn btn-sm btn-outline-primary"
+                    id="lw-apply-links-btn"
+                    data-testid="links-apply-links-btn"
+                    disabled
+                    title="Applies exact preview matches only">
+              Apply Links
+            </button>
+          </div>
+        </div>
+        <div class="px-2 py-1 text-secondary border-bottom" style="font-size:0.68rem;"
+             data-testid="links-apply-links-warning">
+          Applies selected preview matches only. Link Check itself never writes links.
+        </div>
+        <div class="lw-results-tabs" role="tablist" data-testid="links-results-tabs">
+          <button type="button" class="lw-results-tab active" data-results-tab="matched"
+                  data-testid="links-results-tab-matched">Matched <span id="lw-tab-n-matched">0</span></button>
+          <button type="button" class="lw-results-tab" data-results-tab="unmatched_activities"
+                  data-testid="links-results-tab-unmatched-activities">Unmatched Activities <span id="lw-tab-n-unmatched-act">0</span></button>
+          <button type="button" class="lw-results-tab" data-results-tab="unmatched_elements"
+                  data-testid="links-results-tab-unmatched-elements">Unmatched Model Elements <span id="lw-tab-n-unmatched-el">0</span></button>
+          <button type="button" class="lw-results-tab" data-results-tab="conflicts"
+                  data-testid="links-results-tab-conflicts">Conflicts <span id="lw-tab-n-conflicts">0</span></button>
+        </div>
+        <div class="lw-results-body" id="lw-results-body" data-testid="links-results-body">
+          <div class="lw-empty p-3" data-testid="links-results-empty">
+            Choose a schedule field and model parameter to run a read-only Link Check.
+          </div>
+        </div>
+      </section>
     </div>
 
-    <!-- RIGHT: Selected Activity + Applied / Confirmed links -->
     <aside id="lw-inspector" data-testid="links-selected-activity">
       <div id="lw-inspector-panel">
         <div id="lw-inspector-empty" class="lw-empty" data-testid="links-task-empty">
           <div class="fw-semibold text-body mb-2" style="font-size:.82rem;">Selected Activity</div>
           <p class="mb-0">
-            Search or select an activity to inspect dates, link state,
-            and applied / confirmed model links.
+            Search or select an activity to inspect dates, applied / confirmed links,
+            and Manual fallback for individual exceptions.
           </p>
         </div>
         <div id="lw-inspector-body" style="display:none;" data-testid="links-task-inspector"></div>
 
+        <div id="lw-manual-actions" style="display:none;" data-testid="links-manual-actions"
+             data-can-manual-link="{% if links_can_manual_link %}1{% else %}0{% endif %}"
+             data-can-remove-link="{% if links_can_remove_link %}1{% else %}0{% endif %}">
+          <div class="lw-section-h" data-testid="links-manual-fallback-heading">Manual fallback</div>
+          <div id="lw-selected-element-chip"
+               class="lw-empty mb-2"
+               data-testid="links-selected-element"
+               style="font-size:0.74rem;">
+            Selected model element: none — click an element in Model Context.
+          </div>
+          <div class="d-flex flex-column gap-1 mb-2">
+            <button type="button"
+                    class="btn btn-sm btn-outline-primary"
+                    id="lw-link-selected-btn"
+                    data-testid="links-link-selected-element-btn"
+                    disabled
+                    title="Link the selected model element to the selected activity">
+              <i class="bi bi-link-45deg me-1"></i>Link Selected Element
+            </button>
+            <button type="button"
+                    class="btn btn-sm btn-outline-secondary"
+                    id="lw-open-link-tool-btn"
+                    data-testid="links-open-link-element-tool-btn"
+                    disabled
+                    title="Open the existing Link Element tool for the selected model element">
+              <i class="bi bi-box-arrow-up-right me-1"></i>Open Link Element tool
+            </button>
+          </div>
+          <div class="text-secondary" style="font-size:0.7rem;" data-testid="links-manual-link-hint">
+            Secondary path for individual exceptions after Link Check.
+          </div>
+        </div>
+
         <div id="lw-link-panels" data-testid="links-center-panels">
           <div class="lw-empty" id="lw-center-empty" data-testid="links-center-empty">
             No applied model links for a selected activity yet.
-            Search activities, select one, and inspect applied / confirmed links here.
-            Manual element linking is not available in this workspace yet.
+            Use Link Check for parameter-based matching, or Manual fallback for individual exceptions.
           </div>
           <div id="lw-applied-section" style="display:none;" data-testid="links-applied-section">
             <div class="lw-section-h">Applied / Confirmed Links</div>
@@ -397,7 +587,6 @@
     </aside>
   </div>
 
-  <!-- Hidden: timeline/playback owned by Time View (kept for test/compat markers, not shown) -->
   <div id="fd-timeline-section" class="d-none" aria-hidden="true" hidden>
     <span data-testid="fd-timeline-trusted-only">Timeline uses applied / confirmed links only.</span>
     <button type="button" id="fd-play-btn" tabindex="-1">Play</button>
@@ -417,16 +606,16 @@
     <span id="fd-stat-pct">0%</span>
   </div>
 
-  <!-- Compatibility blurb (packaging honesty / product wording) -->
   <p class="visually-hidden" data-testid="fourd-link-assistant-intro">
-    Links workspace — Manual schedule–model linking. Search and select activities,
-    inspect applied / confirmed model links, and use Model Context.
-    Schedule writeback is not available here.
+    Links workspace — Parameter Match and Link Check for schedule–model linking.
+    Run a dry-run Link Check, review Match Results, then apply only with an explicit action.
+    Manual fallback remains for individual exceptions. Schedule writeback is not available here.
   </p>
 
-</div><!-- /fourD-root -->
+</div>
 
-<!-- Link-to-Task modal -->
+{% include "scheduling/components/links_workspace_help_modal.html" %}
+
 <div class="modal fade" id="fdLinkModal" tabindex="-1" aria-labelledby="fdLinkModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
@@ -457,6 +646,35 @@
   </div>
 </div>
 
+<div class="modal fade" id="lwApplyLinksModal" tabindex="-1" aria-labelledby="lwApplyLinksLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title" id="lwApplyLinksLabel">Apply Links</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" style="font-size:0.82rem;">
+        <p class="mb-2">Applies selected preview matches only from the latest Link Check.</p>
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" id="lw-apply-ack"
+                 data-testid="links-apply-ack">
+          <label class="form-check-label" for="lw-apply-ack">
+            I understand this will write applied / confirmed links for exact preview matches.
+          </label>
+        </div>
+        <label class="form-label" for="lw-apply-confirm-phrase">Type APPROVE to confirm</label>
+        <input type="text" id="lw-apply-confirm-phrase" class="form-control form-control-sm"
+               data-testid="links-apply-confirm-phrase" autocomplete="off">
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-sm btn-primary" id="lw-apply-confirm-btn"
+                data-testid="links-apply-confirm-btn" disabled>Apply Links</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 (function () {
   "use strict";
@@ -465,12 +683,28 @@
   const TIMELINE_DETAIL_URL     = "{% url 'ifc_viewer:viewer_timeline_interval' project.pk %}";
   const TASKS_FOR_LINK_URL      = "{% url 'scheduling:tasks_for_link' project.pk %}";
   const BULK_LINK_URL           = "{% url 'scheduling:bulk_link_element' project.pk %}";
+  const LINK_ELEMENT_URL_TMPL   = "{% url 'scheduling:link_element' project.pk '00000000-0000-0000-0000-000000000000' %}".replace(
+    "00000000-0000-0000-0000-000000000000", "__TASK_ID__"
+  );
+  const UNLINK_ELEMENT_URL_TMPL = "{% url 'scheduling:unlink_element' project.pk '00000000-0000-0000-0000-000000000000' %}".replace(
+    "00000000-0000-0000-0000-000000000000", "__TASK_ID__"
+  );
+  const LINK_CHECK_URL          = "{% url 'scheduling:schedule_link_preview_param' project.pk %}";
+  const APPLY_APPROVED_URL      = "{% url 'scheduling:schedule_link_apply_approved_param' project.pk %}";
+  const ELEMENT_PROPS_URL_TMPL  = "{% url 'ifc_viewer:viewer_element_props' project.pk 'ELEM_PH' %}";
   const TASK_DETAIL_URL_TMPL    = "{% url 'scheduling:task_detail' project.pk '00000000-0000-0000-0000-000000000000' %}".replace(
     "00000000-0000-0000-0000-000000000000", "__TASK_ID__"
   );
   const FD_CSRF                 = "{{ csrf_token }}";
   let _lwSearchQuery = "";
   let _lwSelectedTask = null;
+  let _lwSelectedElement = null; /* { global_id, name, ifc_type } */
+  let _lwCanManualLink = document.getElementById("lw-manual-actions")?.dataset.canManualLink === "1";
+  let _lwCanRemoveLink = document.getElementById("lw-manual-actions")?.dataset.canRemoveLink === "1";
+  let _lwCanApplyParam = document.getElementById("lw-rule-setup")?.dataset.canApply === "1";
+  let _lwLinkCheckPreview = null;
+  let _lwResultsTab = "matched";
+
   /* Package 5: schedule mutation chat UI removed from this surface. */
 
   /* ── Full Gantt (fd_ prefix) ─────────────────────────────────────── */
@@ -1087,6 +1321,12 @@
       });
     }
     lwUpdateCoverageCounts(_fdLastData.tasks || []);
+    const shownEl = document.getElementById("lw-count-shown");
+    if (shownEl) {
+      const leaf = (fd_vs.tasks || []).filter(function (t) { return !t.isGroup; });
+      shownEl.textContent = String(leaf.length);
+    }
+
 
     if (!_linkCheckBtn?.classList.contains("btn-primary")) return;
     if (_fdTaskSelected) return;
@@ -1107,12 +1347,12 @@
   }
 
   async function _doLinkElement(globalId) {
-    const tasks  = fd_vs.tasks;
-    const task   = fd_selectedRowIdx >= 0 ? tasks[fd_selectedRowIdx] : null;
+    const task = _lwSelectedTask
+      || (fd_selectedRowIdx >= 0 ? fd_vs.tasks[fd_selectedRowIdx] : null);
     if (!task || task.isGroup) { _showToast("No task selected — click a task first", "error"); return; }
     const taskId = task.pk || task.id;
     if (!taskId) { _showToast("Task has no ID", "error"); return; }
-    const url = `/castor/projects/{{ project.pk }}/tasks/${taskId}/link-element/`;
+    const url = LINK_ELEMENT_URL_TMPL.replace("__TASK_ID__", String(taskId));
     try {
       const resp = await fetch(url, {
         method: "POST",
@@ -1285,8 +1525,10 @@
     }
     if (msg.type === "castor:element-selected") {
       if (msg.global_id) {
+        lwSetSelectedElement(msg.global_id);
         selectTaskByGlobalId(msg.global_id);
       } else {
+        lwSetSelectedElement(null);
         fd_selectedRowIdx = -1;
         fd_vs.dirty = true;
         fd_vsRefresh(true);
@@ -1817,7 +2059,7 @@
     if (chevron) chevron.style.transform = isExpanded ? "rotate(90deg)" : "";
   });
 
-  /* ── Links Workspace: Selected Activity inspector (manual applied links) ─ */
+  /* ── Links Workspace: Selected Activity + manual link actions ───────── */
   function lwUpdateCoverageCounts(tasks) {
     const physical = (tasks || []).filter(t => !t.is_non_physical);
     let applied = 0, unlinked = 0;
@@ -1838,16 +2080,370 @@
     return "Unlinked";
   }
 
+
+  /* ── Link Check (read-only Parameter Match preview) ─────────────── */
+
+  function lwSyncApplyButton() {
+    const btn = document.getElementById("lw-apply-links-btn");
+    if (!btn) return;
+    const p = _lwLinkCheckPreview;
+    if (!p) {
+      btn.disabled = true;
+      btn.title = !_lwCanApplyParam
+        ? "Apply Links unavailable in this session."
+        : "Run Link Check first.";
+      return;
+    }
+    const hasErrors = Array.isArray(p.errors) ? p.errors.length > 0 : !!p.errors;
+    const pending = !!(!hasErrors && ((p.projected_inserts || 0) > 0 || (p.projected_updates || 0) > 0));
+    const allow = _lwCanApplyParam && pending;
+    btn.disabled = !allow;
+    if (!_lwCanApplyParam) {
+      btn.title = "Apply Links unavailable in this session.";
+    } else if (!pending) {
+      btn.title = "No pending preview matches to apply.";
+    } else {
+      btn.title = "Applies exact preview matches only.";
+    }
+  }
+
+  function lwSetResultsTab(tab) {
+    _lwResultsTab = tab || "matched";
+    document.querySelectorAll("#lw-match-results .lw-results-tab").forEach(function (b) {
+      b.classList.toggle("active", b.dataset.resultsTab === _lwResultsTab);
+    });
+    lwRenderMatchResults();
+  }
+
+  function lwRenderMatchResults() {
+    const body = document.getElementById("lw-results-body");
+    if (!body) return;
+    const p = _lwLinkCheckPreview;
+    if (!p) {
+      body.innerHTML =
+        "<div class=\"lw-empty p-3\" data-testid=\"links-results-empty\">" +
+        "Choose a schedule field and model parameter to run a read-only Link Check.</div>";
+      ["lw-tab-n-matched","lw-tab-n-unmatched-act","lw-tab-n-unmatched-el","lw-tab-n-conflicts"].forEach(function (id) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = "0";
+      });
+      lwSyncApplyButton();
+      return;
+    }
+
+    const matched = p.task_distribution || [];
+    const unmatchedAct = p.schedule_only_id_samples || [];
+    const unmatchedEl = p.unmatched_ifc_id_samples || [];
+    const conflicts = [];
+    (p.case_insensitive_only_samples || []).forEach(function (row) {
+      conflicts.push({
+        kind: "Case differs",
+        detail: (row.schedule_activity_code || "") + " ↔ " + (row.ifc_activity_id || ""),
+      });
+    });
+    (p.malformed_samples || []).slice(0, 20).forEach(function (row) {
+      conflicts.push({
+        kind: "Malformed value",
+        detail: (row.entity_global_id || "") + " · " + (row.raw_value || ""),
+      });
+    });
+    if ((p.projected_conflicts || 0) > 0) {
+      conflicts.push({
+        kind: "Projected conflicts",
+        detail: String(p.projected_conflicts) + " conflict row(s) in write plan",
+      });
+    }
+    if ((p.duplicate_schedule_codes || 0) > 0) {
+      (p.duplicate_schedule_code_samples || []).slice(0, 10).forEach(function (code) {
+        conflicts.push({ kind: "Duplicate activity code", detail: String(code) });
+      });
+    }
+
+    const nMatched = p.matched_task_count != null ? p.matched_task_count : matched.length;
+    const nUnAct = p.schedule_only_activity_codes != null ? p.schedule_only_activity_codes : unmatchedAct.length;
+    const nUnEl = p.unmatched_ifc_activity_ids != null ? p.unmatched_ifc_activity_ids : unmatchedEl.length;
+    const setN = function (id, n) { const el = document.getElementById(id); if (el) el.textContent = String(n); };
+    setN("lw-tab-n-matched", nMatched);
+    setN("lw-tab-n-unmatched-act", nUnAct);
+    setN("lw-tab-n-unmatched-el", nUnEl);
+    setN("lw-tab-n-conflicts", conflicts.length);
+
+    const param = p.param_name || "Activity ID";
+    let html = "";
+
+    if (_lwResultsTab === "matched") {
+      if (!matched.length) {
+        html =
+          "<div class=\"lw-empty p-3\" data-testid=\"links-results-no-matches\">" +
+          "<div class=\"mb-1\">No matches found for this rule.</div>" +
+          "<div>Try another parameter, level, or class filter.</div></div>";
+      } else {
+        html = "<table data-testid=\"links-results-table-matched\"><thead><tr>" +
+          "<th>Activity code</th><th>Activity name</th><th>Model elements</th>" +
+          "<th>Matched field</th><th>Status</th></tr></thead><tbody>";
+        matched.slice(0, 200).forEach(function (row) {
+          const status = (row.projected_insert || 0) + (row.projected_update || 0) > 0
+            ? "preview only"
+            : ((row.existing_accepted_count || 0) > 0 ? "already applied" : "preview only");
+          html += "<tr data-testid=\"links-match-row\">" +
+            "<td><code>" + esc(row.activity_code || "") + "</code></td>" +
+            "<td>" + esc(row.task_name || "") + "</td>" +
+            "<td>" + esc(String(row.entity_count || 0)) + "</td>" +
+            "<td>" + esc(param) + " = " + esc(row.activity_code_trimmed || row.activity_code || "") + "</td>" +
+            "<td><span class=\"lw-badge " + (status === "already applied" ? "lw-badge-applied" : "lw-badge-preview") + "\">" +
+            esc(status) + "</span></td></tr>";
+        });
+        html += "</tbody></table>";
+        if (matched.length > 200) {
+          html += "<div class=\"lw-empty p-2\">Showing first 200 of " + matched.length + " matched activities.</div>";
+        }
+      }
+    } else if (_lwResultsTab === "unmatched_activities") {
+      if (!unmatchedAct.length) {
+        html = "<div class=\"lw-empty p-3\">No unmatched activities in this preview sample.</div>";
+      } else {
+        html = "<table data-testid=\"links-results-table-unmatched-activities\"><thead><tr>" +
+          "<th>Activity code</th><th>Reason</th></tr></thead><tbody>";
+        unmatchedAct.forEach(function (code) {
+          html += "<tr><td><code>" + esc(code) + "</code></td>" +
+            "<td>No model element with " + esc(param) + " = this code</td></tr>";
+        });
+        html += "</tbody></table>";
+        if (nUnAct > unmatchedAct.length) {
+          html += "<div class=\"lw-empty p-2\">Sample of " + unmatchedAct.length +
+            " · total unmatched activities: " + nUnAct + "</div>";
+        }
+      }
+    } else if (_lwResultsTab === "unmatched_elements") {
+      if (!unmatchedEl.length) {
+        html = "<div class=\"lw-empty p-3\">No unmatched model element values in this preview sample.</div>";
+      } else {
+        html = "<table data-testid=\"links-results-table-unmatched-elements\"><thead><tr>" +
+          "<th>Model parameter value</th><th>Reason</th></tr></thead><tbody>";
+        unmatchedEl.forEach(function (val) {
+          html += "<tr><td><code>" + esc(val) + "</code></td>" +
+            "<td>No schedule Activity Code equals this value</td></tr>";
+        });
+        html += "</tbody></table>";
+        if (nUnEl > unmatchedEl.length) {
+          html += "<div class=\"lw-empty p-2\">Sample of " + unmatchedEl.length +
+            " · total unmatched model values: " + nUnEl + "</div>";
+        }
+      }
+    } else {
+      if (!conflicts.length) {
+        html = "<div class=\"lw-empty p-3\">No conflicts detected for this rule.</div>";
+      } else {
+        html = "<table data-testid=\"links-results-table-conflicts\"><thead><tr>" +
+          "<th>Type</th><th>Detail</th></tr></thead><tbody>";
+        conflicts.forEach(function (c) {
+          html += "<tr><td><span class=\"lw-badge lw-badge-conflict\">" + esc(c.kind) +
+            "</span></td><td>" + esc(c.detail) + "</td></tr>";
+        });
+        html += "</tbody></table>";
+      }
+    }
+
+    const summary =
+      "<div class=\"px-2 py-1 border-bottom text-secondary\" style=\"font-size:0.7rem;\" data-testid=\"links-results-summary\">" +
+      "Parameter <code>" + esc(param) + "</code> · matched activities " + nMatched +
+      " · projected bindings " + (p.projected_binding_count || 0) +
+      " · inserts " + (p.projected_inserts || 0) +
+      " · updates " + (p.projected_updates || 0) +
+      " · already applied no-ops " + (p.projected_no_ops || 0) +
+      "</div>";
+    body.innerHTML = summary + html;
+    lwSyncApplyButton();
+  }
+
+  async function lwRunLinkCheck() {
+    const paramInput = document.getElementById("lw-model-param");
+    const param = ((paramInput && paramInput.value) || "").trim();
+    if (!param) {
+      _showToast("Enter a model parameter name.", "error");
+      return;
+    }
+    const btn = document.getElementById("lw-run-link-check");
+    if (btn) { btn.disabled = true; btn.innerHTML = "<span class=\"spinner-border spinner-border-sm me-1\"></span>Running…"; }
+    const body = document.getElementById("lw-results-body");
+    if (body) {
+      body.innerHTML = "<div class=\"lw-empty p-3\">Running read-only Link Check…</div>";
+    }
+    try {
+      const url = LINK_CHECK_URL + "?param_name=" + encodeURIComponent(param) + "&format=json";
+      const resp = await fetch(url, { headers: { "Accept": "application/json" } });
+      const data = await resp.json().catch(function () { return {}; });
+      if (!resp.ok) {
+        _lwLinkCheckPreview = null;
+        if (body) {
+          body.innerHTML =
+            "<div class=\"lw-empty p-3 text-danger\">Link Check failed: " +
+            esc(data.error || data.errors && data.errors[0] || ("HTTP " + resp.status)) +
+            "</div>";
+        }
+        _showToast(data.error || "Link Check failed", "error");
+        lwSyncApplyButton();
+        return;
+      }
+      _lwLinkCheckPreview = data;
+      _lwResultsTab = "matched";
+      document.querySelectorAll("#lw-match-results .lw-results-tab").forEach(function (b) {
+        b.classList.toggle("active", b.dataset.resultsTab === "matched");
+      });
+      lwRenderMatchResults();
+      _showToast("Link Check complete (preview only).", "success");
+    } catch (err) {
+      _lwLinkCheckPreview = null;
+      if (body) body.innerHTML = "<div class=\"lw-empty p-3 text-danger\">Link Check request failed.</div>";
+      _showToast("Link Check request failed", "error");
+      lwSyncApplyButton();
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = "<i class=\"bi bi-search me-1\"></i>Run Link Check";
+      }
+    }
+  }
+
+  function lwSyncApplyModalConfirm() {
+    const ack = document.getElementById("lw-apply-ack");
+    const phrase = document.getElementById("lw-apply-confirm-phrase");
+    const btn = document.getElementById("lw-apply-confirm-btn");
+    if (!btn) return;
+    const ok = !!(ack && ack.checked && phrase && phrase.value.trim() === "APPROVE" && _lwLinkCheckPreview);
+    btn.disabled = !ok;
+  }
+
+  async function lwApplyPreviewMatches() {
+    const p = _lwLinkCheckPreview;
+    if (!p || !_lwCanApplyParam) {
+      _showToast("Apply Links unavailable.", "error");
+      return;
+    }
+    const pending = ((p.projected_inserts || 0) > 0 || (p.projected_updates || 0) > 0);
+    if (!pending) {
+      _showToast("No pending preview matches to apply.", "info");
+      return;
+    }
+    const payload = {
+      preview_fingerprint: p.preview_fingerprint,
+      param_name: p.param_name,
+      expected_matched_task_count: p.matched_task_count,
+      expected_projected_binding_count: p.projected_binding_count,
+      confirmation: "APPROVE",
+      confirm_acknowledged: true,
+      format: "json",
+    };
+    const btn = document.getElementById("lw-apply-confirm-btn");
+    if (btn) btn.disabled = true;
+    try {
+      const resp = await fetch(APPLY_APPROVED_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "X-CSRFToken": FD_CSRF,
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await resp.json().catch(function () { return {}; });
+      if (resp.ok) {
+        _showToast("Applied preview matches.", "success");
+        const modalEl = document.getElementById("lwApplyLinksModal");
+        if (modalEl && window.bootstrap) {
+          const inst = bootstrap.Modal.getInstance(modalEl);
+          if (inst) inst.hide();
+        }
+        await lwRunLinkCheck();
+        await loadGantt();
+      } else {
+        _showToast(data.error || "Apply Links failed", "error");
+      }
+    } catch (err) {
+      _showToast("Apply Links request failed", "error");
+    } finally {
+      lwSyncApplyModalConfirm();
+    }
+  }
+
+
   function lwClearSelection() {
     _lwSelectedTask = null;
     const empty = document.getElementById("lw-inspector-empty");
     const body = document.getElementById("lw-inspector-body");
     const cEmpty = document.getElementById("lw-center-empty");
     const app = document.getElementById("lw-applied-section");
+    const manual = document.getElementById("lw-manual-actions");
     if (empty) empty.style.display = "";
     if (body) { body.style.display = "none"; body.innerHTML = ""; }
     if (cEmpty) cEmpty.style.display = "";
     if (app) app.style.display = "none";
+    if (manual) manual.style.display = "none";
+    lwSyncManualActionButtons();
+  }
+
+  function lwRenderSelectedElementChip() {
+    const chip = document.getElementById("lw-selected-element-chip");
+    if (!chip) return;
+    if (!_lwSelectedElement || !_lwSelectedElement.global_id) {
+      chip.textContent = "Selected model element: none — click an element in Model Context.";
+      return;
+    }
+    const name = _lwSelectedElement.name || "";
+    const typ = _lwSelectedElement.ifc_type || "";
+    const gid = _lwSelectedElement.global_id;
+    const label = [name, typ].filter(Boolean).join(" · ") || gid;
+    chip.innerHTML =
+      "Selected model element: <strong>" + esc(label) + "</strong>" +
+      (name || typ ? " <code style=\"font-size:.68rem;\">" + esc(gid) + "</code>" : "");
+  }
+
+  function lwSyncManualActionButtons() {
+    const linkBtn = document.getElementById("lw-link-selected-btn");
+    const toolBtn = document.getElementById("lw-open-link-tool-btn");
+    const hasActivity = !!(
+      _lwSelectedTask && !_lwSelectedTask.isGroup && (_lwSelectedTask.id || _lwSelectedTask.pk)
+    );
+    const hasElement = !!(!_lwSelectedElement ? false : _lwSelectedElement.global_id);
+    if (linkBtn) {
+      const allow = _lwCanManualLink && hasActivity && hasElement;
+      linkBtn.disabled = !allow;
+      linkBtn.title = !_lwCanManualLink
+        ? "Link action unavailable in this session."
+        : (!hasActivity
+          ? "Select an activity first."
+          : (!hasElement
+            ? "Select a model element to link it to this activity."
+            : "Link the selected model element to the selected activity."));
+    }
+    if (toolBtn) {
+      toolBtn.disabled = !hasElement;
+      toolBtn.title = hasElement
+        ? "Open the Link Element tool for the selected model element."
+        : "Select a model element in Model Context first.";
+    }
+  }
+
+  async function lwSetSelectedElement(globalId) {
+    if (!globalId) {
+      _lwSelectedElement = null;
+      lwRenderSelectedElementChip();
+      lwSyncManualActionButtons();
+      return;
+    }
+    _lwSelectedElement = { global_id: globalId, name: "", ifc_type: "" };
+    lwRenderSelectedElementChip();
+    lwSyncManualActionButtons();
+    try {
+      const url = ELEMENT_PROPS_URL_TMPL.replace("ELEM_PH", encodeURIComponent(globalId));
+      const resp = await fetch(url);
+      if (!resp.ok) return;
+      const data = await resp.json();
+      if (!_lwSelectedElement || _lwSelectedElement.global_id !== globalId) return;
+      _lwSelectedElement.name = data.name || "";
+      _lwSelectedElement.ifc_type = data.ifc_type || "";
+      lwRenderSelectedElementChip();
+    } catch (e) { /* chip keeps GID fallback */ }
   }
 
   function lwRenderAppliedPlaceholders(container, gids) {
@@ -1859,8 +2455,8 @@
       empty.setAttribute("data-testid", "links-applied-empty");
       empty.innerHTML =
         "<div class=\"mb-1\">No applied model links for this activity.</div>" +
-        "<div data-testid=\"links-manual-link-limitation\">" +
-        "Manual element linking is not available in this workspace yet.</div>";
+        "<div data-testid=\"links-manual-link-guidance\">" +
+        "Use <strong>Link Check</strong> for parameter-based matching, or <strong>Manual fallback</strong> for individual exceptions.</div>";
       container.appendChild(empty);
       return;
     }
@@ -1868,6 +2464,8 @@
       const card = document.createElement("div");
       card.className = "lw-card lw-card-enter lw-card-applied";
       card.style.animationDelay = Math.min(i, 8) * 30 + "ms";
+      card.setAttribute("data-testid", "links-applied-card");
+      card.setAttribute("data-global-id", gid);
       card.innerHTML =
         "<div class=\"d-flex align-items-center gap-2\">" +
         "<i class=\"bi bi-check-circle text-success\"></i>" +
@@ -1883,6 +2481,16 @@
     const detailSlot = document.getElementById("lw-inspector-detail");
     const tmp = document.createElement("div");
     tmp.innerHTML = html;
+
+    const caps = tmp.querySelector('[data-testid="links-manual-capability"]');
+    if (caps) {
+      if (caps.dataset.canManualLink != null) {
+        _lwCanManualLink = caps.dataset.canManualLink === "1";
+      }
+      if (caps.dataset.canRemoveLink != null) {
+        _lwCanRemoveLink = caps.dataset.canRemoveLink === "1";
+      }
+    }
 
     const appCards = tmp.querySelector('[data-testid="links-task-applied-cards"]');
     const hints = tmp.querySelector('[data-testid="links-task-property-hints"]');
@@ -1904,6 +2512,7 @@
       if (timeView) extra += "<div class=\"mt-2\">" + timeView.outerHTML + "</div>";
       detailSlot.innerHTML = extra || "";
     }
+    lwSyncManualActionButtons();
   }
 
   async function lwSelectActivity(t) {
@@ -1914,9 +2523,11 @@
     const cEmpty = document.getElementById("lw-center-empty");
     const appSec = document.getElementById("lw-applied-section");
     const appList = document.getElementById("lw-applied-list");
+    const manual = document.getElementById("lw-manual-actions");
     if (empty) empty.style.display = "none";
     if (cEmpty) cEmpty.style.display = "none";
     if (appSec) appSec.style.display = "";
+    if (manual) manual.style.display = "";
 
     const state = lwStateLabel(t);
     const badgeCls = state === "Applied" ? "lw-badge-applied" : "lw-badge-unlinked";
@@ -1939,6 +2550,8 @@
     }
 
     lwRenderAppliedPlaceholders(appList, t.trusted_entity_global_ids || t.entity_global_ids || []);
+    lwRenderSelectedElementChip();
+    lwSyncManualActionButtons();
 
     const taskId = t.id || t.pk;
     if (!taskId) return;
@@ -1955,12 +2568,158 @@
     }
   }
 
+  async function lwLinkSelectedElement() {
+    if (!_lwCanManualLink) {
+      _showToast("Link action unavailable in this session.", "error");
+      return;
+    }
+    const task = _lwSelectedTask;
+    const el = _lwSelectedElement;
+    if (!task || task.isGroup) {
+      _showToast("Select an activity first.", "error");
+      return;
+    }
+    if (!el || !el.global_id) {
+      _showToast("Select a model element in Model Context first.", "error");
+      return;
+    }
+    const taskId = task.id || task.pk;
+    if (!taskId) {
+      _showToast("Activity has no ID.", "error");
+      return;
+    }
+    const btn = document.getElementById("lw-link-selected-btn");
+    if (btn) btn.disabled = true;
+    const url = LINK_ELEMENT_URL_TMPL.replace("__TASK_ID__", String(taskId));
+    try {
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": FD_CSRF },
+        body: JSON.stringify({ global_id: el.global_id }),
+      });
+      const data = await resp.json().catch(function () { return {}; });
+      if (resp.ok) {
+        _showToast("Linked element to \"" + (task.name || "activity") + "\".", "success");
+        const selectedId = taskId;
+        await loadGantt();
+        if (_fdLastData) {
+          const row = (_fdLastData.tasks || []).find(function (x) {
+            return String(x.id || x.pk) === String(selectedId);
+          });
+          if (row) await lwSelectActivity(row);
+        }
+      } else {
+        _showToast(data.error || "Link failed", "error");
+      }
+    } catch (err) {
+      _showToast("Link request failed", "error");
+    } finally {
+      lwSyncManualActionButtons();
+    }
+  }
+
+  async function lwRemoveAppliedLink(taskId, globalId) {
+    if (!_lwCanRemoveLink) {
+      _showToast("Link action unavailable in this session.", "error");
+      return;
+    }
+    if (!taskId || !globalId) return;
+    if (!window.confirm("Remove this applied model link from the selected activity?")) return;
+    const url = UNLINK_ELEMENT_URL_TMPL.replace("__TASK_ID__", String(taskId));
+    try {
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": FD_CSRF },
+        body: JSON.stringify({ global_id: globalId }),
+      });
+      const data = await resp.json().catch(function () { return {}; });
+      if (resp.ok) {
+        _showToast("Applied link removed.", "success");
+        const selectedId = _lwSelectedTask && (_lwSelectedTask.id || _lwSelectedTask.pk);
+        await loadGantt();
+        if (selectedId && _fdLastData) {
+          const row = (_fdLastData.tasks || []).find(function (x) {
+            return String(x.id || x.pk) === String(selectedId);
+          });
+          if (row) await lwSelectActivity(row);
+        }
+      } else {
+        _showToast(data.error || "Remove link failed", "error");
+      }
+    } catch (err) {
+      _showToast("Remove link request failed", "error");
+    }
+  }
+
+  document.getElementById("lw-link-selected-btn")?.addEventListener("click", function () {
+    lwLinkSelectedElement();
+  });
+  document.getElementById("lw-open-link-tool-btn")?.addEventListener("click", function () {
+    if (!_lwSelectedElement || !_lwSelectedElement.global_id) {
+      _showToast("Select a model element in Model Context first.", "info");
+      return;
+    }
+    _openLinkModal(_lwSelectedElement.global_id);
+  });
+  document.getElementById("lw-applied-list")?.addEventListener("click", function (evt) {
+    const btn = evt.target && evt.target.closest
+      ? evt.target.closest('[data-testid="links-remove-link-btn"]')
+      : null;
+    if (!btn) return;
+    evt.preventDefault();
+    lwRemoveAppliedLink(btn.dataset.taskId, btn.dataset.globalId);
+  });
+
   document.getElementById("lw-activity-search")?.addEventListener("input", function (e) {
     _lwSearchQuery = (e.target.value || "").trim().toLowerCase();
     _applyLinkFilter();
   });
 
+
+  document.getElementById("lw-run-link-check")?.addEventListener("click", function () {
+    lwRunLinkCheck();
+  });
+  document.querySelectorAll("#lw-match-results .lw-results-tab").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      lwSetResultsTab(btn.dataset.resultsTab);
+    });
+  });
+  document.getElementById("lw-apply-links-btn")?.addEventListener("click", function () {
+    if (!_lwCanApplyParam) {
+      _showToast("Apply Links unavailable in this session.", "error");
+      return;
+    }
+    if (!_lwLinkCheckPreview) {
+      _showToast("Run Link Check first.", "info");
+      return;
+    }
+    const modalEl = document.getElementById("lwApplyLinksModal");
+    if (modalEl && window.bootstrap) {
+      const ack = document.getElementById("lw-apply-ack");
+      const phrase = document.getElementById("lw-apply-confirm-phrase");
+      if (ack) ack.checked = false;
+      if (phrase) phrase.value = "";
+      lwSyncApplyModalConfirm();
+      bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    }
+  });
+  document.getElementById("lw-apply-ack")?.addEventListener("change", lwSyncApplyModalConfirm);
+  document.getElementById("lw-apply-confirm-phrase")?.addEventListener("input", lwSyncApplyModalConfirm);
+  document.getElementById("lw-apply-confirm-btn")?.addEventListener("click", function () {
+    lwApplyPreviewMatches();
+  });
+  document.getElementById("lw-search-clear")?.addEventListener("click", function () {
+    const input = document.getElementById("lw-activity-search");
+    if (input) input.value = "";
+    _lwSearchQuery = "";
+    _applyLinkFilter();
+  });
+
   /* ── Init ────────────────────────────────────────────────────────── */
+  lwRenderSelectedElementChip();
+  lwSyncManualActionButtons();
+  lwRenderMatchResults();
+  lwSyncApplyButton();
   initSplitters();
   loadGantt();
   /* Playback/timeline owned by Time View — do not drive simulation UI here. */

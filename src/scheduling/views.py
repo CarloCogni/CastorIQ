@@ -149,6 +149,18 @@ class ScheduleView(ProjectTabMixin, TemplateView):
             "What work is planned to start next week?",
         ]
 
+        if ctx["schedule_tab"] == "fourD_link":
+            from environments.services.access_service import ProjectAccessService
+
+            caps = _governance_capabilities_context(project, self.request.user)
+            can_modify = ProjectAccessService.can_modify(self.request.user, project)
+            ctx["links_can_manual_link"] = bool(
+                caps.get("capabilities", {}).get("can_approve_individual")
+            )
+            ctx["links_can_remove_link"] = can_modify
+            # Exact Parameter Match apply uses ProjectModifyAccessMixin endpoint.
+            ctx["links_can_apply_param"] = can_modify
+
         if ctx["schedule_tab"] == "data_sources":
             from django.db.models import Count as _Count
 
@@ -1472,6 +1484,12 @@ class TaskDetailView(ProjectAccessMixin, View):
             else 0
         )
 
+        from environments.services.access_service import ProjectAccessService
+
+        caps = _governance_capabilities_context(project, request.user)
+        can_manual_link = bool(caps.get("capabilities", {}).get("can_approve_individual"))
+        can_remove_link = ProjectAccessService.can_modify(request.user, project)
+
         return render(
             request,
             "scheduling/components/task_detail.html",
@@ -1487,6 +1505,8 @@ class TaskDetailView(ProjectAccessMixin, View):
                 "stage_color": _STAGE_COLORS.get(task.stage or "", "#6b7280"),
                 "entity_global_ids_json": json.dumps(trusted_gids),
                 "project": project,
+                "can_manual_link": can_manual_link,
+                "can_remove_link": can_remove_link,
             },
         )
 
