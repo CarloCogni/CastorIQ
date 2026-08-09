@@ -1,53 +1,168 @@
-<!-- scheduling/tabs/fourD_link.html — unified 4D Link workspace (link + simulate + review) -->
+<!-- scheduling/tabs/fourD_link.html — Links Workspace Polish V1 (link-first, no simulation chrome) -->
 
 <style>
-  .fd-zoom-btn {
-    padding: 2px 8px;
-    font-size: 11px;
-    background: transparent;
-    border: 1px solid var(--bs-border-color);
-    border-radius: 4px;
-    color: var(--bs-body-color);
-    cursor: pointer;
+  /* ── Links Workspace V1 layout ── */
+  #fourD-root.lw-workspace {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    height: calc(100vh - 140px);
+    min-height: 520px;
+    max-height: calc(100vh - 120px);
+    overflow: hidden;
+    padding: 8px 10px 10px;
   }
-  .fd-zoom-btn.active {
-    background: var(--bs-primary);
-    color: #fff;
-    border-color: var(--bs-primary);
-  }
-  @keyframes fd-spin { to { transform: rotate(360deg); } }
-  .fd-splitter {
-    width: 8px;
+  #lw-toolbar {
     flex-shrink: 0;
-    cursor: col-resize;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 6px 4px 8px;
+    border-bottom: 1px solid var(--bs-border-color);
+    background: var(--bs-body-bg);
+  }
+  #lw-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    gap: 0;
     position: relative;
-    z-index: 10;
-    background: var(--bs-border-color);
-    transition: background 0.15s;
   }
-  .fd-splitter:hover,
-  .fd-splitter.fd-dragging {
-    background: var(--bs-primary);
+  #fourD-gantt {
+    width: 300px;
+    min-width: 220px;
+    max-width: 42%;
+    flex-shrink: 0;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
   }
-  .fd-splitter::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 4px;
-    height: 40px;
+  #lw-center {
+    flex: 1 1 auto;
+    min-width: 280px;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 0 8px;
+    overflow: hidden;
+  }
+  #lw-link-panels {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 8px;
+    background: var(--bs-body-bg);
+    padding: 10px 12px;
+  }
+  #lw-inspector {
+    width: 300px;
+    max-width: 36vw;
+    min-width: 240px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 0;
+    height: 100%;
+  }
+  #lw-inspector-panel {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 8px;
+    background: var(--bs-body-bg);
+    padding: 10px 12px;
+  }
+  #fourD-viewer.lw-model-context {
+    flex: 0 0 auto;
+    height: 200px;
+    min-height: 160px;
+    max-height: 240px;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  #fourD-viewer.lw-model-context #fd-iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  /* Playback / simulation chrome demoted — owned by Time View */
+  #fd-timeline-section,
+  #fd-play-btn,
+  #fd-pause-btn,
+  #fd-to-start-btn,
+  #fd-prev-btn,
+  #fd-next-btn,
+  #fd-slider,
+  #fd-speed-select {
+    display: none !important;
+  }
+  .lw-count {
+    font-size: 0.72rem;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--bs-border-color);
     background: var(--bs-secondary-bg);
-    border-radius: 2px;
-    opacity: 0.7;
-    transition: height 0.15s, opacity 0.15s;
+    color: var(--bs-secondary-color);
+    white-space: nowrap;
   }
-  .fd-splitter:hover::after,
-  .fd-splitter.fd-dragging::after {
-    height: 64px;
-    opacity: 1;
+  .lw-count strong { color: var(--bs-body-color); font-weight: 600; }
+  .lw-section-h {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--bs-secondary-color);
+    margin-bottom: 8px;
   }
-  .fd-lf-btn {
+  .lw-empty {
+    font-size: 0.78rem;
+    color: var(--bs-secondary-color);
+    line-height: 1.45;
+  }
+  .lw-card {
+    border: 1px solid var(--bs-border-color);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    background: var(--bs-tertiary-bg);
+    font-size: 0.76rem;
+  }
+  .lw-card.lw-card-suggested {
+    border-color: rgba(245, 158, 11, 0.35);
+    background: rgba(245, 158, 11, 0.08);
+  }
+  .lw-card.lw-card-applied {
+    border-color: rgba(34, 197, 94, 0.3);
+    background: rgba(34, 197, 94, 0.07);
+  }
+  .lw-badge {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 10px;
+    border: 1px solid var(--bs-border-color);
+  }
+  .lw-badge-applied { color: #86efac; border-color: rgba(34,197,94,.35); }
+  .lw-badge-suggested { color: #fbbf24; border-color: rgba(245,158,11,.4); }
+  .lw-badge-unlinked { color: var(--bs-secondary-color); }
+  .fd-zoom-btn, .fd-lf-btn {
     padding: 2px 8px;
     font-size: 11px;
     background: transparent;
@@ -57,355 +172,345 @@
     cursor: pointer;
     white-space: nowrap;
   }
-  .fd-lf-btn.active {
+  .fd-zoom-btn.active, .fd-lf-btn.active {
     background: var(--bs-primary);
     color: #fff;
     border-color: var(--bs-primary);
   }
-  /* 4D Link vertical stack — large hero workspace, lower panels in document flow */
-  #fourD-root {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    min-height: 0;
-    padding-bottom: 1rem;
-  }
-  #fourD-main {
+  .fd-splitter {
+    width: 6px;
     flex-shrink: 0;
-    display: flex;
-    /* Hero: Gantt + 3D viewer dominate first viewport (nav + 4D/5D sub-tabs ≈ 160px) */
-    min-height: 560px;
-    height: clamp(560px, calc(100svh - 10rem), 900px);
-    gap: 0;
+    cursor: col-resize;
     position: relative;
-    z-index: 1;
+    z-index: 10;
+    background: transparent;
   }
-  #fourD-gantt,
-  #fourD-viewer {
-    min-height: 0;
-    height: 100%;
+  .fd-splitter:hover, .fd-splitter.fd-dragging { background: var(--bs-primary); opacity: 0.35; }
+  @keyframes fd-spin { to { transform: rotate(360deg); } }
+  @keyframes lw-fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
   }
-  .fourD-stack-section {
+  @keyframes lw-pulse-ok {
+    0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.45); }
+    100% { box-shadow: 0 0 0 8px rgba(34, 197, 94, 0); }
+  }
+  .lw-card-enter {
+    animation: lw-fade-in 180ms ease-out both;
+  }
+  #fd-gantt-body [data-row-idx] {
+    transition: outline-color 150ms ease, background-color 150ms ease, outline-offset 150ms ease;
+  }
+  #fd-gantt-body [data-row-idx].lw-row-selected {
+    outline: 2px solid #3b82f6;
+    outline-offset: -2px;
+  }
+  .lw-pulse-applied { animation: lw-pulse-ok 600ms ease-out 1; }
+  @media (prefers-reduced-motion: reduce) {
+    .lw-card-enter,
+    .lw-pulse-applied,
+    #fd-gantt-body [data-row-idx] {
+      animation: none !important;
+      transition: none !important;
+    }
+  }
+  #lw-advanced {
     flex-shrink: 0;
-    position: relative;
-    z-index: 0;
+    max-height: 28vh;
+    overflow: auto;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 8px;
+    background: var(--bs-body-bg);
   }
-  #fourD-match-preview {
-    overflow: visible;
+  #lw-advanced > summary {
+    cursor: pointer;
+    padding: 8px 12px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--bs-secondary-color);
+    list-style: none;
   }
-  #fourD-link-results {
-    max-height: 220px;
-    overflow-y: auto;
+  #lw-advanced > summary::-webkit-details-marker { display: none; }
+  #lw-advanced[open] > summary {
+    border-bottom: 1px solid var(--bs-border-color);
+    color: var(--bs-body-color);
   }
-  #fourD-bottom-panels .tab-content {
-    overflow: visible;
+  #lw-advanced .lw-advanced-body { padding: 8px 10px; }
+  #fourD-link-results { max-height: 160px; overflow-y: auto; }
+  #fourD-match-preview { overflow: visible; }
+  @media (max-width: 1100px) {
+    #lw-body { flex-wrap: wrap; overflow: auto; }
+    #fourD-gantt { width: 100%; max-width: none; height: 280px; }
+    #lw-center { width: 100%; padding: 8px 0; }
+    #lw-inspector { width: 100%; max-width: none; height: auto; }
+    #fourD-viewer.lw-model-context { height: 220px; max-height: none; }
   }
 </style>
 
-<div id="fourD-root">
+<div id="fourD-root" class="lw-workspace" data-testid="links-workspace">
 
-  <!-- Main row: Gantt + Viewer + Chat -->
-  <div id="fourD-main">
+  <!-- ── Toolbar ───────────────────────────────────────────────────── -->
+  <div id="lw-toolbar" data-testid="links-workspace-toolbar">
+    <span class="fw-semibold" style="font-size:.92rem; white-space:nowrap;">
+      <i class="bi bi-boxes me-1 text-primary"></i>Links
+    </span>
+    <span class="lw-count" data-testid="links-count-applied"
+          title="Activities with applied / confirmed model links">
+      Applied Links <strong id="lw-count-applied">—</strong>
+    </span>
+    <span class="lw-count" data-testid="links-count-unlinked"
+          title="Activities without applied or suggested links">
+      Unlinked Activities <strong id="lw-count-unlinked">—</strong>
+    </span>
+    <span class="lw-count" data-testid="links-count-suggested"
+          title="Activities with suggested links awaiting confirmation">
+      Suggested Links <strong id="lw-count-suggested">—</strong>
+    </span>
+    <span class="lw-count d-none d-md-inline" data-testid="links-count-coverage"
+          title="Share of activities with applied links">
+      Link Coverage <strong id="lw-count-coverage">—</strong>
+    </span>
 
-  <!-- LEFT: Gantt Panel -->
-  <div id="fourD-gantt" style="
-    width: 280px;
-    min-width: 220px;
-    flex-shrink: 0;
-    background: var(--bs-body-bg);
-    border: 1px solid var(--bs-border-color);
-    border-radius: 8px;
-    display: flex;
-    flex-direction: column;
-  ">
-    <!-- Toolbar -->
-    <div style="padding: 5px 8px; border-bottom: 1px solid var(--bs-border-color);
-                display: flex; align-items: center; justify-content: space-between;
-                flex-shrink: 0; background: var(--bs-body-bg);">
-      <span style="font-size: 12px; font-weight: 600;">Schedule</span>
-      <div class="btn-group btn-group-sm">
-        <button class="fd-zoom-btn" data-zoom="day" style="font-size: 10px; padding: 2px 7px;">Day</button>
-        <button class="fd-zoom-btn" data-zoom="week" style="font-size: 10px; padding: 2px 7px;">Week</button>
-        <button class="fd-zoom-btn active" data-zoom="month" style="font-size: 10px; padding: 2px 7px;">Month</button>
+    <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
+      <input type="search" id="lw-activity-search" class="form-control form-control-sm"
+             placeholder="Search activities…"
+             style="width:160px; font-size:.78rem;"
+             data-testid="links-activity-search"
+             autocomplete="off">
+      <form hx-post="{% url 'scheduling:schedule_link_smart' project.pk %}"
+            hx-target="#fourD-link-results"
+            hx-swap="innerHTML"
+            hx-indicator="#fd-link-spinner"
+            class="d-inline">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-sm btn-primary"
+                style="font-size:12px; font-weight:600;"
+                data-testid="suggest-links-btn"
+                title="Generate suggested links (does not auto-confirm)">
+          <span id="fd-link-spinner" class="htmx-indicator spinner-border spinner-border-sm"></span>
+          <i class="bi bi-lightning-charge-fill me-1"></i>Suggest Links
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Main workspace ────────────────────────────────────────────── -->
+  <div id="lw-body" data-testid="links-workspace-body">
+
+    <!-- LEFT: Activities -->
+    <div id="fourD-gantt" data-testid="links-activities">
+      <div style="padding:5px 8px; border-bottom:1px solid var(--bs-border-color);
+                  display:flex; align-items:center; justify-content:space-between; flex-shrink:0;">
+        <span style="font-size:12px; font-weight:600;">Activities</span>
+        <div class="btn-group btn-group-sm">
+          <button type="button" class="fd-zoom-btn" data-zoom="day">Day</button>
+          <button type="button" class="fd-zoom-btn" data-zoom="week">Week</button>
+          <button type="button" class="fd-zoom-btn active" data-zoom="month">Month</button>
+        </div>
+      </div>
+      <div id="fd-link-filter" style="display:flex; gap:4px; padding:6px 8px; border-bottom:1px solid var(--bs-border-color); flex-shrink:0; flex-wrap:wrap;">
+        <button type="button" class="fd-lf-btn active" data-filter="all">All</button>
+        <button type="button" class="fd-lf-btn" data-filter="linked"><span style="color:#1D9E75;">●</span> Applied</button>
+        <button type="button" class="fd-lf-btn" data-filter="needs_review"><span style="color:#F59E0B;">●</span> Suggested</button>
+        <button type="button" class="fd-lf-btn" data-filter="unlinked"><span style="color:#4B5563;">●</span> Unlinked</button>
+      </div>
+      <div id="fd-gantt-scroll" style="overflow:auto; flex:1; min-height:0; background:#0f172a;">
+        <div id="fd-gantt-inner">
+          <div id="fd-gantt-hdr" style="display:flex; position:sticky; top:0; z-index:10; background:#1e293b; height:46px; border-bottom:1px solid #334155;">
+            <div style="min-width:160px; max-width:160px; padding:0 8px; display:flex; align-items:center;
+                        font-size:.72rem; font-weight:600; color:rgba(255,255,255,.45);
+                        position:sticky; left:0; background:#1e293b; z-index:11; border-right:1px solid #334155;">
+              Code · Task
+            </div>
+            <div id="fd-gantt-timeline-hdr" style="display:flex; flex-shrink:0; height:100%;"></div>
+          </div>
+          <div id="fd-gantt-body">
+            <div style="padding:20px; text-align:center; color:rgba(255,255,255,.35);">
+              <div style="width:20px;height:20px;border:2px solid #1e293b;border-top-color:#3b82f6;
+                          border-radius:50%;animation:fd-spin .8s linear infinite;margin:0 auto 8px;"></div>
+              <div style="font-size:12px;">Loading activities…</div>
+            </div>
+          </div>
+          <div id="fd-gantt-empty" style="display:none; padding:1.5rem; text-align:center;
+               color:rgba(255,255,255,.35); font-size:.82rem;"></div>
+        </div>
+      </div>
+      <div id="fd-gantt-legend" style="display:flex; gap:6px; flex-wrap:wrap; padding:4px 6px;
+           font-size:.7rem; flex-shrink:0; min-height:24px; border-top:1px solid var(--bs-border-color);"></div>
+    </div>
+
+    <div class="fd-splitter" id="fd-split-1" data-left="fourD-gantt" data-right="lw-center" aria-hidden="true"></div>
+
+    <!-- CENTER: Suggested + Applied for selection -->
+    <div id="lw-center" data-testid="links-center-panels">
+      <div id="lw-link-panels">
+        <div class="lw-empty" id="lw-center-empty" data-testid="links-center-empty">
+          Select an activity to review suggested and applied model links.
+        </div>
+        <div id="lw-suggested-section" style="display:none;" data-testid="links-suggested-section">
+          <div class="lw-section-h">Suggested Links</div>
+          <div id="lw-suggested-list"></div>
+        </div>
+        <div id="lw-applied-section" style="display:none; margin-top:14px;" data-testid="links-applied-section">
+          <div class="lw-section-h">Applied Links</div>
+          <div id="lw-applied-list"></div>
+        </div>
       </div>
     </div>
-    <!-- Link Filter Bar -->
-    <div id="fd-link-filter" style="display: flex; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--bs-border-color); flex-shrink: 0; flex-wrap: wrap;">
-      <button class="fd-lf-btn active" data-filter="all">All</button>
-      <button class="fd-lf-btn" data-filter="linked"><span style="color:#1D9E75;">●</span> Linked</button>
-      <button class="fd-lf-btn" data-filter="needs_review"><span style="color:#F59E0B;">●</span> Review</button>
-      <button class="fd-lf-btn" data-filter="unlinked"><span style="color:#4B5563;">●</span> Unlinked</button>
-    </div>
-    <!-- Dark Gantt scroll area — single scroll container; name col is position:sticky left:0 -->
-    <div id="fd-gantt-scroll" style="overflow: auto; flex: 1; min-height: 0; background: #0f172a;">
-      <div id="fd-gantt-inner">
-        <div id="fd-gantt-hdr" style="
-          display: flex; position: sticky; top: 0; z-index: 10;
-          background: #1e293b; height: 46px; border-bottom: 1px solid #334155;">
-          <div style="
-            min-width: 160px; max-width: 160px; padding: 0 8px;
-            display: flex; align-items: center;
-            font-size: .72rem; font-weight: 600; color: rgba(255,255,255,.45);
-            position: sticky; left: 0; background: #1e293b; z-index: 11;
-            border-right: 1px solid #334155;">Code · Task</div>
-          <div id="fd-gantt-timeline-hdr" style="display: flex; flex-shrink: 0; height: 100%;"></div>
+
+    <!-- RIGHT: Selected Activity + Model Context -->
+    <aside id="lw-inspector" data-testid="links-selected-activity">
+      <div id="lw-inspector-panel">
+        <div id="lw-inspector-empty" class="lw-empty" data-testid="links-task-empty">
+          <div class="fw-semibold text-body mb-2" style="font-size:.82rem;">Selected Activity</div>
+          <p class="mb-0">
+            Select an activity from the list to inspect dates, link state,
+            suggested model elements, and applied links.
+          </p>
         </div>
-        <div id="fd-gantt-body">
-          <div style="padding: 20px; text-align: center; color: rgba(255,255,255,.35);">
-            <div style="width:20px;height:20px;border:2px solid #1e293b;border-top-color:#3b82f6;
-                        border-radius:50%;animation:fd-spin .8s linear infinite;margin:0 auto 8px;"></div>
-            <div style="font-size: 12px;">Loading tasks…</div>
+        <div id="lw-inspector-body" style="display:none;" data-testid="links-task-inspector"></div>
+      </div>
+      <div id="fourD-viewer" class="lw-model-context" data-testid="links-model-context">
+        <div class="d-flex align-items-center gap-2 px-2 py-1 border-bottom flex-shrink-0" style="font-size:0.75rem;">
+          <span class="text-secondary fw-semibold">Model Context</span>
+          <div class="btn-group btn-group-sm ms-auto" id="fd-colorby-group">
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-mode="link-check"
+                    style="font-size:10px; padding:1px 6px;">
+              <i class="bi bi-link-45deg"></i> Link Check
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-mode="site-status"
+                    style="font-size:10px; padding:1px 6px;">Site</button>
+          </div>
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="fd-reset-view-btn"
+                  title="Reset colours" style="font-size:10px; padding:1px 5px;">
+            <i class="bi bi-arrow-counterclockwise"></i>
+          </button>
+          <button type="button" id="fd-focus-btn" title="Focus on selected element"
+                  style="display:none; font-size:10px; padding:1px 6px; background:transparent;
+                         border:1px solid var(--bs-border-color); border-radius:4px;">Focus</button>
+          <button type="button" id="fd-zoom-in-btn" title="Zoom in"
+                  style="font-size:12px; padding:1px 6px; background:transparent;
+                         border:1px solid var(--bs-border-color); border-radius:4px;">+</button>
+          <button type="button" id="fd-zoom-out-btn" title="Zoom out"
+                  style="font-size:12px; padding:1px 6px; background:transparent;
+                         border:1px solid var(--bs-border-color); border-radius:4px;">−</button>
+        </div>
+        <div style="flex:1; position:relative; min-height:0;">
+          <iframe id="fd-iframe"
+                  src="{% url 'ifc_viewer:viewer_embed' project.pk %}?v={% now "U" %}"
+                  style="width:100%; height:100%; border:none;"
+                  allow="fullscreen"
+                  title="Links model context"></iframe>
+          <div id="fd-iframe-loading"
+               style="position:absolute; inset:0; background:#111; display:flex; flex-direction:column;
+                      align-items:center; justify-content:center; color:#94a3b8; z-index:10; pointer-events:none;">
+            <div style="width:28px; height:28px; border:3px solid #1e293b; border-top-color:#3b82f6;
+                        border-radius:50%; animation:fd-spin 0.8s linear infinite; margin-bottom:8px;"></div>
+            <span style="font-size:0.78rem;">Loading model…</span>
           </div>
         </div>
-        <div id="fd-gantt-empty" style="display: none; padding: 1.5rem; text-align: center;
-             color: rgba(255,255,255,.35); font-size: .82rem;"></div>
       </div>
-    </div>
-    <!-- Legend -->
-    <div id="fd-gantt-legend" style="
-      display: flex; gap: 6px; flex-wrap: wrap; padding: 4px 6px;
-      font-size: .7rem; flex-shrink: 0; min-height: 24px;
-      background: var(--bs-body-bg); border-top: 1px solid var(--bs-border-color);">
-    </div>
+    </aside>
   </div>
 
-  <!-- Splitter: Gantt ↔ Viewer -->
-  <div class="fd-splitter" id="fd-split-1" data-left="fourD-gantt" data-right="fourD-viewer"></div>
+  <!-- Hidden: timeline/playback owned by Time View (kept for test/compat markers, not shown) -->
+  <div id="fd-timeline-section" class="d-none" aria-hidden="true" hidden>
+    <span data-testid="fd-timeline-trusted-only">Timeline uses applied / confirmed links only.</span>
+    <button type="button" id="fd-play-btn" tabindex="-1">Play</button>
+    <button type="button" id="fd-pause-btn" class="d-none" tabindex="-1">Pause</button>
+    <button type="button" id="fd-to-start-btn" tabindex="-1">Start</button>
+    <button type="button" id="fd-prev-btn" tabindex="-1">Prev</button>
+    <button type="button" id="fd-next-btn" tabindex="-1">Next</button>
+    <input id="fd-slider" type="range" tabindex="-1">
+    <select id="fd-speed-select" tabindex="-1"><option value="1">1</option></select>
+    <span id="fd-current-date"></span>
+    <span id="fd-min-date"></span>
+    <span id="fd-max-date"></span>
+    <span id="fd-stat-complete">0</span>
+    <span id="fd-stat-in-progress">0</span>
+    <span id="fd-stat-delayed">0</span>
+    <span id="fd-stat-not-started">0</span>
+    <span id="fd-stat-pct">0%</span>
+  </div>
 
-  <!-- MIDDLE: 3D Viewer + Timeline -->
-  <div id="fourD-viewer" style="
-    flex: 1;
-    min-width: 400px;
-    background: var(--bs-body-bg);
-    border: 1px solid var(--bs-border-color);
-    border-radius: 8px;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-  ">
-    <!-- Color scheme toolbar -->
-    <div class="d-flex align-items-center gap-2 px-2 py-1 border-bottom flex-shrink-0" style="font-size: 0.8rem;">
-      <span class="text-secondary fw-medium" style="font-size: 11px;">Color by:</span>
-      <div class="btn-group btn-group-sm" id="fd-colorby-group">
-        <button class="btn btn-outline-secondary btn-sm" data-mode="link-check" style="font-size: 11px; padding: 2px 8px;">
-          <i class="bi bi-link-45deg me-1"></i>Link Check
-        </button>
-        <button class="btn btn-outline-secondary btn-sm" data-mode="site-status" style="font-size: 11px; padding: 2px 8px;">
-          <i class="bi bi-building me-1"></i>Site Status
-        </button>
-      </div>
-      <button class="btn btn-sm btn-outline-secondary ms-auto" id="fd-reset-view-btn"
-              title="Reset colours" style="font-size: 11px; padding: 2px 6px;">
-        <i class="bi bi-arrow-counterclockwise"></i>
-      </button>
-      <button id="fd-focus-btn" title="Focus on selected element"
-              style="display:none; font-size:11px; padding:2px 8px; background:transparent;
-                     border:1px solid var(--bs-border-color); border-radius:4px;
-                     color:var(--bs-body-color); cursor:pointer;">
-        🎯 Focus
-      </button>
-      <button id="fd-zoom-in-btn" title="Zoom in"
-              style="font-size:13px; padding:2px 8px; background:transparent;
-                     border:1px solid var(--bs-border-color); border-radius:4px;
-                     color:var(--bs-body-color); cursor:pointer;">+</button>
-      <button id="fd-zoom-out-btn" title="Zoom out"
-              style="font-size:13px; padding:2px 8px; background:transparent;
-                     border:1px solid var(--bs-border-color); border-radius:4px;
-                     color:var(--bs-body-color); cursor:pointer;">−</button>
-    </div>
+  <!-- Compatibility blurb (packaging honesty) -->
+  <p class="visually-hidden" data-testid="fourd-link-assistant-intro">
+    Link assistant — Advisory suggestions. Notes only — this assistant does not confirm links
+    and schedule writeback is not available here. Use Suggest Links to generate candidates,
+    then confirm in Applied Links.
+  </p>
 
-    <!-- 3D Viewer iframe -->
-    <div style="flex: 1; position: relative; min-height: 0;">
-      <iframe
-        id="fd-iframe"
-        src="{% url 'ifc_viewer:viewer_embed' project.pk %}?v={% now "U" %}"
-        style="width: 100%; height: 100%; border: none;"
-        allow="fullscreen">
-      </iframe>
-      <div id="fd-iframe-loading"
-           style="position: absolute; inset: 0; background: #111; display: flex; flex-direction: column;
-                  align-items: center; justify-content: center; color: #94a3b8;
-                  font-family: system-ui, sans-serif; z-index: 10; pointer-events: none;">
-        <div style="width: 34px; height: 34px; border: 3px solid #1e293b; border-top-color: #3b82f6;
-                    border-radius: 50%; animation: fd-spin 0.8s linear infinite; margin-bottom: 12px;"></div>
-        <span style="font-size: 0.85rem;">Loading 3D viewer…</span>
+  <!-- Advanced: demoted proposals / deep Applied Links tools / param preview -->
+  <details id="lw-advanced" data-testid="links-advanced-tools">
+    <summary>
+      <i class="bi bi-sliders me-1"></i>More linking options
+      <span class="text-secondary fw-normal ms-1" style="font-size:.72rem;">
+        — Link Proposals, Applied Links workspace, parameter preview
+      </span>
+    </summary>
+    <div class="lw-advanced-body">
+      <p class="text-secondary mb-2" style="font-size:.72rem;" data-testid="links-action-labels">
+        Actions use <strong>Confirm Link</strong> and <strong>Ignore Suggestion</strong> labels in Applied Links tools.
+      </p>
+      <div id="fourD-footer" class="d-flex align-items-center gap-2 flex-wrap mb-2">
+        <form hx-get="{% url 'scheduling:schedule_link_preview_param' project.pk %}"
+              hx-target="#fourD-match-preview"
+              hx-swap="innerHTML"
+              hx-indicator="#fd-param-spinner"
+              class="d-flex align-items-center gap-2 flex-wrap">
+          <input type="hidden" name="summary_only" value="1">
+          <input type="text" name="param_name" id="fourD-param-input"
+                 placeholder="e.g. Activity ID"
+                 value="{{ ifc_param_name|default:'Activity ID' }}"
+                 class="form-control form-control-sm" style="width:160px; font-size:12px;">
+          <button type="submit" class="btn btn-sm btn-outline-info">
+            <span id="fd-param-spinner" class="htmx-indicator spinner-border spinner-border-sm"></span>
+            <i class="bi bi-eye me-1"></i>Preview Match
+          </button>
+        </form>
       </div>
-    </div>
+      <div id="fourD-match-preview"></div>
+      <div id="fourD-link-results"></div>
 
-    <!-- 4D Timeline controls -->
-    <div id="fd-timeline-section" class="flex-shrink-0 border-top px-3 py-2"
-         style="font-size: 0.82rem; background: var(--bs-body-bg);">
-      <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
-        <button id="fd-to-start-btn" class="btn btn-sm btn-outline-secondary" title="Jump to start"
-                style="padding: 2px 6px;"><i class="bi bi-skip-start-fill"></i></button>
-        <button id="fd-prev-btn" class="btn btn-sm btn-outline-secondary" title="Previous week"
-                style="padding: 2px 6px;"><i class="bi bi-skip-backward-fill"></i></button>
-        <button id="fd-play-btn" class="btn btn-sm btn-primary" title="Play"
-                style="padding: 2px 6px;"><i class="bi bi-play-fill"></i></button>
-        <button id="fd-pause-btn" class="btn btn-sm btn-outline-secondary d-none" title="Pause"
-                style="padding: 2px 6px;"><i class="bi bi-pause-fill"></i></button>
-        <button id="fd-next-btn" class="btn btn-sm btn-outline-secondary" title="Next week"
-                style="padding: 2px 6px;"><i class="bi bi-skip-forward-fill"></i></button>
-        <select id="fd-speed-select" class="form-select form-select-sm"
-                style="width: auto; font-size: 0.78rem; padding: 2px 20px 2px 6px;">
-          <option value="0.5">0.5×</option>
-          <option value="1" selected>1×</option>
-          <option value="2">2×</option>
-          <option value="4">4×</option>
-        </select>
-        <span id="fd-current-date" class="fw-bold ms-1" style="min-width: 110px; font-size: 0.85rem;"></span>
-      </div>
-      <div class="d-flex align-items-center gap-2 mb-1">
-        <span id="fd-min-date" class="text-secondary" style="font-size: 0.72rem; white-space: nowrap;"></span>
-        <input id="fd-slider" type="range" class="form-range flex-grow-1" min="0" value="0" style="min-width: 60px;">
-        <span id="fd-max-date" class="text-secondary" style="font-size: 0.72rem; white-space: nowrap;"></span>
-      </div>
-      <div class="d-flex align-items-center gap-3 flex-wrap" style="font-size: 0.72rem;">
-        <span class="text-secondary" data-testid="fd-timeline-trusted-only"
-              style="font-size:0.7rem;">Timeline uses applied / confirmed links only.</span>
-        <div class="d-flex align-items-center gap-1">
-          <span style="width: 8px; height: 8px; border-radius: 2px; background: #10B981; display: inline-block;"></span>
-          <span id="fd-stat-complete" class="fw-semibold">0</span>
-          <span class="text-secondary">Complete</span>
-        </div>
-        <div class="d-flex align-items-center gap-1">
-          <span style="width: 8px; height: 8px; border-radius: 2px; background: #F59E0B; display: inline-block;"></span>
-          <span id="fd-stat-in-progress" class="fw-semibold">0</span>
-          <span class="text-secondary">In Progress</span>
-        </div>
-        <div class="d-flex align-items-center gap-1">
-          <span style="width: 8px; height: 8px; border-radius: 2px; background: #EF4444; display: inline-block;"></span>
-          <span id="fd-stat-delayed" class="fw-semibold">0</span>
-          <span class="text-secondary">Delayed</span>
-        </div>
-        <div class="d-flex align-items-center gap-1">
-          <span style="width: 8px; height: 8px; border-radius: 2px; background: #9CA3AF; display: inline-block;"></span>
-          <span id="fd-stat-not-started" class="fw-semibold">0</span>
-          <span class="text-secondary">Not Started</span>
-        </div>
-        <div class="d-flex align-items-center gap-1 ms-2">
-          <span id="fd-stat-pct" class="fw-bold text-success">0%</span>
-          <span class="text-secondary">complete</span>
+      <div id="fourD-bottom-panels" style="border-top:1px solid var(--bs-border-color); margin-top:8px;">
+        <ul class="nav nav-tabs px-1 pt-1 mb-0" style="font-size:0.8rem;" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link active py-1 px-2" id="fd-pipeline-tab" data-bs-toggle="tab"
+                    data-bs-target="#fourD-review-pane" type="button" role="tab"
+                    aria-controls="fourD-review-pane" aria-selected="true"
+                    title="Suggested map — confirm links in Applied Links">
+              Link Proposals
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link py-1 px-2" id="fd-gov-tab" data-bs-toggle="tab"
+                    data-bs-target="#fd-gov-pane" type="button" role="tab"
+                    aria-controls="fd-gov-pane" aria-selected="false"
+                    title="Applied schedule-model links and link coverage"
+                    data-testid="fourd-link-quality-tab">
+              Applied Links
+            </button>
+          </li>
+        </ul>
+        <div class="tab-content">
+          <div class="tab-pane fade show active" id="fourD-review-pane" role="tabpanel"
+               hx-get="{% url 'scheduling:review' project.pk %}?inline=1"
+               hx-trigger="shown.bs.tab once from:#fd-pipeline-tab"
+               hx-swap="innerHTML">
+            <div class="text-secondary small py-2 px-2">
+              Open this tab to load Link Proposals.
+            </div>
+          </div>
+          <div class="tab-pane fade p-2" id="fd-gov-pane" role="tabpanel"
+               hx-get="{% url 'scheduling:link_governance_workspace' project.pk %}"
+               hx-trigger="shown.bs.tab once from:#fd-gov-tab"
+               hx-swap="innerHTML">
+            <div class="text-secondary small py-2">Open this tab to load Applied Links tools.</div>
+          </div>
         </div>
       </div>
     </div>
-  </div>
-  <!-- Package 5: writeback chat panel removed from demo surface (no mutation controls). -->
-
-  </div>
-  <!-- /fourD-main -->
-
-  <!-- Static advisory only — no chat input / writeback (Package 5) -->
-  <div class="fourD-stack-section px-2 py-2 border rounded"
-       style="font-size: 0.78rem; background: var(--bs-tertiary-bg);"
-       data-testid="fourd-link-assistant-intro">
-    <strong style="color: #818cf8;"><i class="bi bi-robot me-1"></i>Link assistant</strong>
-    <span class="text-secondary ms-1">— Advisory suggestions</span>
-    <p class="mb-0 mt-1 text-secondary">
-      Notes only — this assistant does not confirm links and schedule writeback is not available here.
-      Use <strong>Suggest Links</strong> to generate candidates, then confirm applied map quality in
-      <strong>Applied Links</strong>.
-    </p>
-  </div>
-  <!-- BOTTOM FOOTER: Controls bar -->
-  <div id="fourD-footer" class="fourD-stack-section" style="
-    flex-shrink: 0;
-    background: var(--bs-body-bg);
-    border: 1px solid var(--bs-border-color);
-    border-radius: 8px;
-    padding: 8px 16px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-  ">
-    <!-- Suggest Links (engine) -->
-    <form hx-post="{% url 'scheduling:schedule_link_smart' project.pk %}"
-          hx-target="#fourD-link-results"
-          hx-swap="innerHTML"
-          hx-indicator="#fd-link-spinner"
-          style="display: contents;">
-      {% csrf_token %}
-      <button type="submit"
-              style="padding: 6px 16px; background: #6366f1; color: white;
-                     border: none; border-radius: 6px; cursor: pointer;
-                     font-size: 12px; font-weight: 600;
-                     display: inline-flex; align-items: center; gap: 6px;"
-              data-testid="suggest-links-btn">
-        <span id="fd-link-spinner" class="htmx-indicator spinner-border spinner-border-sm"></span>
-        <i class="bi bi-lightning-charge-fill"></i> Suggest Links
-      </button>
-    </form>
-
-    <!-- Separator -->
-    <div style="height: 24px; width: 1px; background: var(--bs-border-color);"></div>
-
-    <!-- Parameter Match — read-only preview (E1-D) -->
-    <form hx-get="{% url 'scheduling:schedule_link_preview_param' project.pk %}"
-          hx-target="#fourD-match-preview"
-          hx-swap="innerHTML"
-          hx-indicator="#fd-param-spinner"
-          style="display: contents;">
-      <input type="hidden" name="summary_only" value="1">
-      <input type="text" name="param_name" id="fourD-param-input"
-             placeholder="e.g. Activity ID"
-             value="{{ ifc_param_name|default:'Activity ID' }}"
-             style="padding: 5px 10px; font-size: 12px; width: 160px;
-                    background: var(--bs-body-bg);
-                    border: 1px solid var(--bs-border-color);
-                    border-radius: 6px; color: var(--bs-body-color);">
-      <button type="submit"
-              style="padding: 5px 12px; background: #0ea5e9; color: white;
-                     border: none; border-radius: 6px; cursor: pointer; font-size: 12px;
-                     display: inline-flex; align-items: center; gap: 4px;">
-        <span id="fd-param-spinner" class="htmx-indicator spinner-border spinner-border-sm"></span>
-        <i class="bi bi-eye"></i> Preview Match
-      </button>
-    </form>
-  </div><!-- /fourD-footer -->
-
-  <!-- Match preview area (read-only, E1-D) -->
-  <div id="fourD-match-preview" class="fourD-stack-section"></div>
-
-  <!-- Results area: Link Engine feedback (collapses when empty) -->
-  <div id="fourD-link-results" class="fourD-stack-section"></div>
-
-  <!-- Review pane: Applied Links + Link Proposals -->
-  <div id="fourD-bottom-panels" class="fourD-stack-section" style="border-top:1px solid var(--bs-border-color);">
-    <ul class="nav nav-tabs px-2 pt-1 mb-0" style="font-size:0.8rem;" role="tablist">
-      <li class="nav-item" role="presentation">
-        <button class="nav-link active py-1 px-2" id="fd-pipeline-tab" data-bs-toggle="tab"
-                data-bs-target="#fourD-review-pane" type="button" role="tab"
-                aria-controls="fourD-review-pane" aria-selected="true"
-                title="Suggested map — confirm links in Applied Links">
-          Link Proposals
-        </button>
-      </li>
-      <li class="nav-item" role="presentation">
-        <button class="nav-link py-1 px-2" id="fd-gov-tab" data-bs-toggle="tab"
-                data-bs-target="#fd-gov-pane" type="button" role="tab"
-                aria-controls="fd-gov-pane" aria-selected="false"
-                title="Applied schedule-model links and link coverage"
-                data-testid="fourd-link-quality-tab">
-          <i class="bi bi-shield-check me-1"></i>Applied Links
-        </button>
-      </li>
-    </ul>
-    <div class="tab-content">
-      <div class="tab-pane fade show active" id="fourD-review-pane" role="tabpanel"
-           hx-get="{% url 'scheduling:review' project.pk %}?inline=1"
-           hx-trigger="shown.bs.tab once from:#fd-pipeline-tab, load"
-           hx-swap="innerHTML">
-        <div class="text-secondary small py-2 px-2"><span class="spinner-border spinner-border-sm me-1"></span>Loading proposals…</div>
-      </div>
-      <div class="tab-pane fade p-2" id="fd-gov-pane" role="tabpanel"
-           hx-get="{% url 'scheduling:link_governance_workspace' project.pk %}"
-           hx-trigger="shown.bs.tab once from:#fd-gov-tab"
-           hx-swap="innerHTML">
-        <div class="text-secondary small py-2"><span class="spinner-border spinner-border-sm me-1"></span>Loading applied links…</div>
-      </div>
-    </div>
-  </div>
+  </details>
 
 </div><!-- /fourD-root -->
 
@@ -423,14 +528,14 @@
         <input type="text" id="fdLinkSearch" class="form-control form-control-sm mb-3"
                placeholder="Search by task name or activity code (min. 2 chars)…"
                autocomplete="off">
-        <div id="fdLinkResults" style="max-height: 340px; overflow-y: auto; border: 1px solid var(--bs-border-color); border-radius: 6px;">
-          <div class="text-secondary text-center py-4" style="font-size: 0.82rem;">
+        <div id="fdLinkResults" style="max-height:340px; overflow-y:auto; border:1px solid var(--bs-border-color); border-radius:6px;">
+          <div class="text-secondary text-center py-4" style="font-size:0.82rem;">
             Start typing to search tasks…
           </div>
         </div>
       </div>
       <div class="modal-footer py-2">
-        <span id="fdLinkSelectedCount" class="text-secondary me-auto" style="font-size: 0.8rem;"></span>
+        <span id="fdLinkSelectedCount" class="text-secondary me-auto" style="font-size:0.8rem;"></span>
         <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
         <button type="button" class="btn btn-sm btn-primary" id="fdLinkConfirmBtn" disabled>
           <i class="bi bi-link-45deg me-1"></i>Confirm Link
@@ -448,7 +553,12 @@
   const TIMELINE_DETAIL_URL     = "{% url 'ifc_viewer:viewer_timeline_interval' project.pk %}";
   const TASKS_FOR_LINK_URL      = "{% url 'scheduling:tasks_for_link' project.pk %}";
   const BULK_LINK_URL           = "{% url 'scheduling:bulk_link_element' project.pk %}";
+  const TASK_DETAIL_URL_TMPL    = "{% url 'scheduling:task_detail' project.pk '00000000-0000-0000-0000-000000000000' %}".replace(
+    "00000000-0000-0000-0000-000000000000", "__TASK_ID__"
+  );
   const FD_CSRF                 = "{{ csrf_token }}";
+  let _lwSearchQuery = "";
+  let _lwSelectedTask = null;
   /* Package 5: schedule mutation chat UI removed from this surface. */
 
   /* ── Full Gantt (fd_ prefix) ─────────────────────────────────────── */
@@ -700,6 +810,9 @@
 
       const rowEl = document.createElement("div");
       rowEl.dataset.rowIdx = i;
+      if (t.id) rowEl.dataset.taskId = String(t.id);
+      rowEl.classList.add("lw-task-row");
+      if (i === fd_selectedRowIdx) rowEl.classList.add("lw-row-selected");
       rowEl.style.cssText = `display:flex;height:${FD_ROW_H}px;background:${bg};min-width:${rowMinW}px;cursor:pointer;${outlineStyle}`;
 
       const nameDiv = document.createElement("div");
@@ -970,6 +1083,7 @@
             _fdFocusGlobalId = null;
             _fdTaskSelected  = false;
             _updateFocusBtn();
+            lwClearSelection();
             _applyLinkFilter();
             return;
           }
@@ -981,6 +1095,7 @@
           _fdFocusGlobalId = ids.length ? ids[0] : null;
           _fdTaskSelected  = ids.length > 0;
           _updateFocusBtn();
+          lwSelectActivity(t);
         });
       }
     }
@@ -1038,15 +1153,23 @@
 
     _fdLinkFilterActive = _fdLinkFilter !== "all";
 
-    if (_fdLinkFilter === "all") {
-      fd_renderGantt(_fdLastData);
-    } else {
-      const filtered = {
-        ..._fdLastData,
-        tasks: (_fdLastData.tasks || []).filter(t => t.link_status === _fdLinkFilter),
-      };
-      fd_renderGantt(filtered);
+    let tasks = _fdLastData.tasks || [];
+    if (_lwSearchQuery) {
+      const q = _lwSearchQuery;
+      tasks = tasks.filter(t => {
+        const hay = ((t.activity_code || "") + " " + (t.name || "")).toLowerCase();
+        return hay.includes(q);
+      });
     }
+    if (_fdLinkFilter === "all") {
+      fd_renderGantt({ ..._fdLastData, tasks });
+    } else {
+      fd_renderGantt({
+        ..._fdLastData,
+        tasks: tasks.filter(t => t.link_status === _fdLinkFilter),
+      });
+    }
+    lwUpdateCoverageCounts(_fdLastData.tasks || []);
 
     if (!_linkCheckBtn?.classList.contains("btn-primary")) return;
     if (_fdTaskSelected) return;
@@ -1337,7 +1460,7 @@
     });
   }
 
-  document.getElementById("fd-reset-view-btn").addEventListener("click", () => sendToViewer({ type: "castor:reset" }));
+  document.getElementById("fd-reset-view-btn")?.addEventListener("click", () => sendToViewer({ type: "castor:reset" }));
 
   async function loadTimeline() {
     try {
@@ -1391,26 +1514,28 @@
     }, 1500 / tlSpeed);
   }
 
-  document.getElementById("fd-play-btn").addEventListener("click", () => {
-    document.getElementById("fd-play-btn").classList.add("d-none");
-    document.getElementById("fd-pause-btn").classList.remove("d-none");
+  document.getElementById("fd-play-btn")?.addEventListener("click", () => {
+    document.getElementById("fd-play-btn")?.classList.add("d-none");
+    document.getElementById("fd-pause-btn")?.classList.remove("d-none");
     _playTimeline();
   });
-  document.getElementById("fd-pause-btn").addEventListener("click", _pauseTimeline);
-  document.getElementById("fd-prev-btn").addEventListener("click", () => {
+  document.getElementById("fd-pause-btn")?.addEventListener("click", _pauseTimeline);
+  document.getElementById("fd-prev-btn")?.addEventListener("click", () => {
     const s = document.getElementById("fd-slider");
+    if (!s) return;
     _applyInterval(Math.max(0, parseInt(s.value) - 1));
   });
-  document.getElementById("fd-next-btn").addEventListener("click", () => {
+  document.getElementById("fd-next-btn")?.addEventListener("click", () => {
     const s = document.getElementById("fd-slider");
+    if (!s) return;
     _applyInterval(Math.min(parseInt(s.max), parseInt(s.value) + 1));
   });
-  document.getElementById("fd-to-start-btn").addEventListener("click", () => { _pauseTimeline(); _applyInterval(0); });
-  document.getElementById("fd-speed-select").addEventListener("change", (e) => {
+  document.getElementById("fd-to-start-btn")?.addEventListener("click", () => { _pauseTimeline(); _applyInterval(0); });
+  document.getElementById("fd-speed-select")?.addEventListener("change", (e) => {
     tlSpeed = parseFloat(e.target.value);
     if (tlTimer) { _pauseTimeline(); _playTimeline(); }
   });
-  document.getElementById("fd-slider").addEventListener("input", (e) => _applyInterval(parseInt(e.target.value)));
+  document.getElementById("fd-slider")?.addEventListener("input", (e) => _applyInterval(parseInt(e.target.value)));
 
   /* ── AI Chat / writeback: removed from 4D Link demo surface (Package 5) ── */
 
@@ -1419,13 +1544,13 @@
   function initSplitters() {
     const STORAGE_KEY  = "fourD-layout";
     const SPLITTER_PX  = 8; // one splitter (gantt ↔ viewer)
-    const MIN_W = { "fourD-gantt": 220, "fourD-viewer": 400 };
+    const MIN_W = { "fourD-gantt": 220, "fourD-viewer": 200, "lw-center": 280 };
     const DEFAULT_W = { "fourD-gantt": 280 };
 
     /* Restore saved widths — clamp to valid range for current viewport */
     try {
       const saved   = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
-      const panelsW = document.getElementById("fourD-main").offsetWidth || 1200;
+      const panelsW = document.getElementById("lw-body").offsetWidth || 1200;
       /* Each side panel can take at most 45% of the row (leaves room for the viewer) */
       const cap = Math.floor(panelsW * 0.45);
 
@@ -1489,8 +1614,8 @@
           if (!_drag) return;                // drag may have ended during the frame wait
           const { fixedEl, startX, startW, minW, sign } = _drag;
           const delta   = (clientX - startX) * sign;
-          const container = document.getElementById("fourD-main");
-          const maxW    = container.offsetWidth - SPLITTER_PX - MIN_W["fourD-viewer"];
+          const container = document.getElementById("lw-body");
+          const maxW    = container.offsetWidth - SPLITTER_PX - (MIN_W["lw-center"] || 280);
           fixedEl.style.width = Math.max(minW, Math.min(maxW, startW + delta)) + "px";
         });
       });
@@ -1586,7 +1711,7 @@
     return { show, hide: _hide };
   })();
 
-  document.getElementById("fd-gantt-body").addEventListener("contextmenu", (e) => {
+  document.getElementById("fd-gantt-body")?.addEventListener("contextmenu", (e) => {
     const rowEl = e.target.closest("[data-row-idx]");
     if (!rowEl) return;
     e.preventDefault();
@@ -1767,9 +1892,167 @@
     if (chevron) chevron.style.transform = isExpanded ? "rotate(90deg)" : "";
   });
 
+  /* ── Links Workspace V1: Selected Activity inspector ─────────────── */
+  function lwUpdateCoverageCounts(tasks) {
+    const physical = (tasks || []).filter(t => !t.is_non_physical);
+    let applied = 0, suggested = 0, unlinked = 0;
+    physical.forEach(t => {
+      if (t.link_status === "linked") applied++;
+      else if (t.link_status === "needs_review") suggested++;
+      else unlinked++;
+    });
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = String(v); };
+    set("lw-count-applied", applied);
+    set("lw-count-suggested", suggested);
+    set("lw-count-unlinked", unlinked);
+    const cov = physical.length ? Math.round((applied / physical.length) * 100) + "%" : "—";
+    set("lw-count-coverage", cov);
+  }
+
+  function lwStateLabel(t) {
+    if (!t) return "Unlinked";
+    if (t.link_status === "linked") return "Applied";
+    if (t.link_status === "needs_review") return "Suggested";
+    return "Unlinked";
+  }
+
+  function lwClearSelection() {
+    _lwSelectedTask = null;
+    const empty = document.getElementById("lw-inspector-empty");
+    const body = document.getElementById("lw-inspector-body");
+    const cEmpty = document.getElementById("lw-center-empty");
+    const sug = document.getElementById("lw-suggested-section");
+    const app = document.getElementById("lw-applied-section");
+    if (empty) empty.style.display = "";
+    if (body) { body.style.display = "none"; body.innerHTML = ""; }
+    if (cEmpty) cEmpty.style.display = "";
+    if (sug) sug.style.display = "none";
+    if (app) app.style.display = "none";
+  }
+
+  function lwRenderGidCards(container, gids, kind) {
+    if (!container) return;
+    container.innerHTML = "";
+    if (!gids || !gids.length) {
+      const empty = document.createElement("div");
+      empty.className = "lw-empty";
+      empty.textContent = kind === "suggested"
+        ? "No suggested links for this selected activity yet."
+        : "No applied links for this activity.";
+      container.appendChild(empty);
+      return;
+    }
+    gids.forEach(function (gid, i) {
+      const card = document.createElement("div");
+      card.className = "lw-card lw-card-enter " + (kind === "suggested" ? "lw-card-suggested" : "lw-card-applied");
+      card.style.animationDelay = Math.min(i, 8) * 30 + "ms";
+      card.innerHTML =
+        "<div class=\"d-flex align-items-center gap-2\">" +
+        "<i class=\"bi " + (kind === "suggested" ? "bi-lightbulb" : "bi-check-circle text-success") + "\"></i>" +
+        "<code style=\"font-size:.72rem;\">" + esc(gid) + "</code>" +
+        "<span class=\"lw-badge " + (kind === "suggested" ? "lw-badge-suggested" : "lw-badge-applied") + " ms-auto\">" +
+        (kind === "suggested" ? "Suggested" : "Applied") + "</span></div>" +
+        "<div class=\"text-secondary mt-1\" style=\"font-size:.7rem;\">Model Element</div>";
+      container.appendChild(card);
+    });
+  }
+
+  async function lwSelectActivity(t) {
+    if (!t || t.isGroup) return;
+    _lwSelectedTask = t;
+    const empty = document.getElementById("lw-inspector-empty");
+    const body = document.getElementById("lw-inspector-body");
+    const cEmpty = document.getElementById("lw-center-empty");
+    const sugSec = document.getElementById("lw-suggested-section");
+    const appSec = document.getElementById("lw-applied-section");
+    const sugList = document.getElementById("lw-suggested-list");
+    const appList = document.getElementById("lw-applied-list");
+    if (empty) empty.style.display = "none";
+    if (cEmpty) cEmpty.style.display = "none";
+    if (sugSec) sugSec.style.display = "";
+    if (appSec) appSec.style.display = "";
+
+    const state = lwStateLabel(t);
+    const badgeCls = state === "Applied" ? "lw-badge-applied"
+      : (state === "Suggested" ? "lw-badge-suggested" : "lw-badge-unlinked");
+    const appliedN = (t.trusted_entity_global_ids || t.entity_global_ids || []).length;
+    const suggestedN = (t.review_entity_global_ids || []).length;
+
+    if (body) {
+      body.style.display = "";
+      body.innerHTML =
+        "<div class=\"lw-section-h\">Selected Activity</div>" +
+        (t.activity_code ? "<div class=\"font-monospace text-secondary\" style=\"font-size:.68rem;\">" + esc(t.activity_code) + "</div>" : "") +
+        "<div class=\"fw-semibold mb-2\" style=\"font-size:.88rem; line-height:1.3;\">" + esc(t.name || "Activity") + "</div>" +
+        "<div class=\"mb-2\"><span class=\"lw-badge " + badgeCls + "\">" + esc(state) + "</span></div>" +
+        "<div class=\"row g-2 mb-2\" style=\"font-size:.76rem;\">" +
+        "<div class=\"col-6\"><div class=\"text-secondary\">Planned Start</div><div>" + esc(t.start || "—") + "</div></div>" +
+        "<div class=\"col-6\"><div class=\"text-secondary\">Planned Finish</div><div>" + esc(t.end || "—") + "</div></div>" +
+        "<div class=\"col-6\"><div class=\"text-secondary\">Status</div><div>" + esc(t.status || "—") + "</div></div>" +
+        "<div class=\"col-6\"><div class=\"text-secondary\">Model Elements</div><div>Applied " + appliedN + " · Suggested " + suggestedN + "</div></div>" +
+        "</div>" +
+        "<div id=\"lw-inspector-detail\" class=\"text-secondary\" style=\"font-size:.72rem;\">Loading model element details…</div>";
+    }
+
+    lwRenderGidCards(sugList, t.review_entity_global_ids || [], "suggested");
+    lwRenderGidCards(appList, t.trusted_entity_global_ids || t.entity_global_ids || [], "applied");
+
+    const taskId = t.id || t.pk;
+    const detailSlot = document.getElementById("lw-inspector-detail");
+    if (!taskId || !detailSlot) return;
+    try {
+      const url = TASK_DETAIL_URL_TMPL.replace("__TASK_ID__", String(taskId));
+      const resp = await fetch(url, { headers: { "HX-Request": "true" } });
+      if (!resp.ok) throw new Error(String(resp.status));
+      const html = await resp.text();
+      const tmp = document.createElement("div");
+      tmp.innerHTML = html;
+      const appliedNames = [...tmp.querySelectorAll(".bi-check-circle")].map(function (icon) {
+        const span = icon.parentElement && icon.parentElement.querySelector(".text-truncate");
+        return span ? span.textContent.trim() : "";
+      }).filter(Boolean);
+      const suggestedNames = [...tmp.querySelectorAll(".bi-exclamation-circle")].map(function (icon) {
+        const span = icon.parentElement && icon.parentElement.querySelector(".text-truncate");
+        return span ? span.textContent.trim() : "";
+      }).filter(Boolean);
+      if (appliedNames.length && appList) {
+        appList.innerHTML = "";
+        appliedNames.forEach(function (name, i) {
+          const gid = (t.trusted_entity_global_ids || t.entity_global_ids || [])[i] || "";
+          const card = document.createElement("div");
+          card.className = "lw-card lw-card-applied lw-card-enter";
+          card.innerHTML = "<div class=\"fw-semibold\">" + esc(name) + "</div>" +
+            (gid ? "<code style=\"font-size:.68rem;\">" + esc(gid) + "</code>" : "") +
+            "<div><span class=\"lw-badge lw-badge-applied\">Applied</span></div>";
+          appList.appendChild(card);
+        });
+      }
+      if (suggestedNames.length && sugList) {
+        sugList.innerHTML = "";
+        suggestedNames.forEach(function (name, i) {
+          const gid = (t.review_entity_global_ids || [])[i] || "";
+          const card = document.createElement("div");
+          card.className = "lw-card lw-card-suggested lw-card-enter";
+          card.innerHTML = "<div class=\"fw-semibold\">" + esc(name) + "</div>" +
+            (gid ? "<code style=\"font-size:.68rem;\">" + esc(gid) + "</code>" : "") +
+            "<div class=\"mt-1\"><span class=\"lw-badge lw-badge-suggested\">Suggested</span></div>";
+          sugList.appendChild(card);
+        });
+      }
+      detailSlot.innerHTML = "<div class=\"border-top pt-2 mt-1\">" + html + "</div>";
+    } catch (e) {
+      if (detailSlot) detailSlot.textContent = "Model element details unavailable for this activity.";
+    }
+  }
+
+  document.getElementById("lw-activity-search")?.addEventListener("input", function (e) {
+    _lwSearchQuery = (e.target.value || "").trim().toLowerCase();
+    _applyLinkFilter();
+  });
+
   /* ── Init ────────────────────────────────────────────────────────── */
   initSplitters();
   loadGantt();
-  loadTimeline();
+  /* Playback/timeline owned by Time View — do not drive simulation UI here. */
 }());
 </script>

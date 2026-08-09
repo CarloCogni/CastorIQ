@@ -544,7 +544,7 @@ def test_lookahead_shows_schedule_vs_trusted_caveat(client):
 
 @pytest.mark.django_db
 def test_fourd_timeline_shows_trusted_only_label(client):
-    """4D timeline stats area states trusted-links-only."""
+    """Links keeps trusted-only timeline marker; playback UI is demoted to Time View."""
     project = ProjectFactory()
     client.force_login(project.owner)
 
@@ -556,6 +556,10 @@ def test_fourd_timeline_shows_trusted_only_label(client):
     assert response.status_code == 200
     assert 'data-testid="fd-timeline-trusted-only"' in html
     assert "Timeline uses applied / confirmed links only." in html
+    # Playback is not primary Links chrome (owned by Time View)
+    assert 'data-testid="links-workspace-toolbar"' in html
+    toolbar = html.split('data-testid="links-workspace-toolbar"', 1)[1].split("id=", 1)[0]
+    assert ">Play<" not in toolbar
 
 
 @pytest.mark.django_db

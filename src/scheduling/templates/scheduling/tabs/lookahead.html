@@ -28,6 +28,53 @@
         Task counts follow schedule dates; model highlights use applied / confirmed links.
     </p>
 
+    <!-- Playback ownership: Time View (reuses trusted timeline intervals → viewer colors) -->
+    <div id="la-playback-toolbar"
+         class="border rounded px-3 py-2"
+         style="font-size:0.82rem; background:var(--bs-body-bg);"
+         data-testid="time-view-playback-toolbar">
+        <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+            <span class="fw-semibold text-secondary" style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.04em;">
+                Playback
+            </span>
+            <button type="button" id="la-to-start-btn" class="btn btn-sm btn-outline-secondary" title="Reset to start" disabled>
+                <i class="bi bi-skip-start-fill"></i><span class="ms-1 d-none d-sm-inline">Start</span>
+            </button>
+            <button type="button" id="la-prev-btn" class="btn btn-sm btn-outline-secondary" title="Previous interval" disabled>
+                <i class="bi bi-skip-backward-fill"></i>
+            </button>
+            <button type="button" id="la-play-btn" class="btn btn-sm btn-primary" title="Play" disabled
+                    data-testid="time-view-play-btn">
+                <i class="bi bi-play-fill"></i><span class="ms-1">Play</span>
+            </button>
+            <button type="button" id="la-pause-btn" class="btn btn-sm btn-outline-secondary d-none" title="Pause" disabled
+                    data-testid="time-view-pause-btn">
+                <i class="bi bi-pause-fill"></i><span class="ms-1">Pause</span>
+            </button>
+            <button type="button" id="la-next-btn" class="btn btn-sm btn-outline-secondary" title="Next interval" disabled>
+                <i class="bi bi-skip-forward-fill"></i>
+            </button>
+            <select id="la-speed-select" class="form-select form-select-sm" style="width:auto; font-size:0.78rem;" disabled
+                    aria-label="Playback speed">
+                <option value="0.5">0.5×</option>
+                <option value="1" selected>1×</option>
+                <option value="2">2×</option>
+                <option value="4">4×</option>
+            </select>
+            <span id="la-current-date" class="fw-bold ms-1" style="min-width:120px; font-size:0.88rem;">—</span>
+        </div>
+        <div class="d-flex align-items-center gap-2 mb-1">
+            <span id="la-min-date" class="text-secondary" style="font-size:0.72rem; white-space:nowrap;">—</span>
+            <input id="la-slider" type="range" class="form-range flex-grow-1" min="0" value="0" disabled
+                   data-testid="time-view-scrubber" aria-label="Timeline scrubber">
+            <span id="la-max-date" class="text-secondary" style="font-size:0.72rem; white-space:nowrap;">—</span>
+        </div>
+        <p id="la-playback-note" class="text-secondary mb-0" style="font-size:0.72rem;"
+           data-testid="time-view-playback-note">
+            Playback controls are available when applied schedule-model links provide a timeline.
+        </p>
+    </div>
+
     <div id="lookahead-split" style="display:flex; flex:1; gap:12px; min-height:420px; flex-wrap:wrap;">
 
         <!-- Left: week list -->
@@ -201,6 +248,9 @@
     let tlIntervals  = [];
     let tlNoTask     = [];
     let timelineOk   = false;
+    let tlTimer      = null;
+    let tlSpeed      = 1;
+    let tlIdx        = 0;
     let _linkNoteTimer = null;
     let _selectedTaskId = null;
     const tlDetailCache = Object.create(null);
@@ -270,7 +320,7 @@
     function _showUnlinkedNote() {
         const el = document.getElementById("la-link-note");
         if (!el) return;
-        el.textContent = "No linked model elements for this task. Link it from 4D Link.";
+        el.textContent = "No linked model elements for this task. Create links in the Links tab.";
         el.classList.remove("d-none");
         clearTimeout(_linkNoteTimer);
         _linkNoteTimer = setTimeout(() => el.classList.add("d-none"), 5000);
@@ -288,6 +338,65 @@
         return best;
     }
 
+    function _setPlaybackEnabled(enabled) {
+        ["la-play-btn", "la-pause-btn", "la-to-start-btn", "la-prev-btn", "la-next-btn", "la-speed-select", "la-slider"]
+            .forEach((id) => {
+                const el = document.getElementById(id);
+                if (el) el.disabled = !enabled;
+            });
+        const note = document.getElementById("la-playback-note");
+        if (!note) return;
+        note.textContent = enabled
+            ? "Scrub or play the timeline — model colors follow applied / confirmed links."
+            : "Playback controls are available when applied schedule-model links provide a timeline.";
+    }
+
+    function _pauseTimeline() {
+        clearInterval(tlTimer);
+        tlTimer = null;
+        document.getElementById("la-pause-btn")?.classList.add("d-none");
+        document.getElementById("la-play-btn")?.classList.remove("d-none");
+    }
+
+    function _playTimeline() {
+        const slider = document.getElementById("la-slider");
+        if (!slider || !tlIntervals.length) return;
+        tlTimer = setInterval(() => {
+            const next = parseInt(slider.value, 10) + 1;
+            if (next > parseInt(slider.max, 10)) {
+                _pauseTimeline();
+                return;
+            }
+            _applyInterval(next);
+        }, 1500 / tlSpeed);
+    }
+
+    async function _applyInterval(idx) {
+        if (!tlIntervals.length) return;
+        tlIdx = Math.max(0, Math.min(idx, tlIntervals.length - 1));
+        const iv = tlIntervals[tlIdx];
+        try {
+            await _ensureIntervalDetail(iv);
+        } catch (_e) { /* keep UI even if detail fails */ }
+        const { not_started = [], in_progress = [], complete = [], delayed = [] } = iv.entities || {};
+        sendToViewer({
+            type: "castor:timeline-colors",
+            not_started,
+            in_progress,
+            complete,
+            delayed,
+            no_task: tlNoTask,
+        });
+        const slider = document.getElementById("la-slider");
+        if (slider) slider.value = String(tlIdx);
+        const dateEl = document.getElementById("la-current-date");
+        if (dateEl) {
+            dateEl.textContent = new Date(iv.date + "T00:00:00").toLocaleDateString(undefined, {
+                year: "numeric", month: "short", day: "numeric",
+            });
+        }
+    }
+
     function _applyWeekColors(weekStartIso) {
         if (!timelineOk || !weekStartIso) return;
         _focusedWeekStart = weekStartIso;
@@ -297,6 +406,12 @@
         });
         const iv = _intervalForWeekStart(weekStartIso);
         if (!iv) return;
+        const idx = tlIntervals.indexOf(iv);
+        if (idx >= 0) {
+            _pauseTimeline();
+            _applyInterval(idx);
+            return;
+        }
         _ensureIntervalDetail(iv).then(() => {
             const { not_started = [], in_progress = [], complete = [], delayed = [] } = iv.entities || {};
             sendToViewer({
@@ -335,7 +450,11 @@
     }
 
     async function loadTimeline() {
-        if (!HAS_IFC) return;
+        _setPlaybackEnabled(false);
+        if (!HAS_IFC) {
+            _showPreviewWarn("Upload and process an IFC to enable 3D playback preview.");
+            return;
+        }
         try {
             const resp = await fetch(TIMELINE_URL);
             if (!resp.ok) throw new Error("HTTP " + resp.status);
@@ -347,11 +466,51 @@
             tlIntervals = data.intervals || [];
             tlNoTask    = data.no_task || [];
             timelineOk  = tlIntervals.length > 0;
+            const minEl = document.getElementById("la-min-date");
+            const maxEl = document.getElementById("la-max-date");
+            if (minEl) minEl.textContent = data.project_start || tlIntervals[0].date || "—";
+            if (maxEl) maxEl.textContent = data.project_end || tlIntervals[tlIntervals.length - 1].date || "—";
+            const slider = document.getElementById("la-slider");
+            if (slider) {
+                slider.max = String(Math.max(0, tlIntervals.length - 1));
+                slider.value = "0";
+            }
+            _setPlaybackEnabled(timelineOk);
             if (_focusedWeekStart) _applyWeekColors(_focusedWeekStart);
+            else if (timelineOk) _applyInterval(0);
         } catch (_) {
             _showPreviewWarn("4D preview unavailable — timeline could not be loaded.");
+            _setPlaybackEnabled(false);
         }
     }
+
+    document.getElementById("la-play-btn")?.addEventListener("click", () => {
+        if (!timelineOk) return;
+        document.getElementById("la-play-btn")?.classList.add("d-none");
+        document.getElementById("la-pause-btn")?.classList.remove("d-none");
+        _playTimeline();
+    });
+    document.getElementById("la-pause-btn")?.addEventListener("click", _pauseTimeline);
+    document.getElementById("la-to-start-btn")?.addEventListener("click", () => {
+        _pauseTimeline();
+        _applyInterval(0);
+    });
+    document.getElementById("la-prev-btn")?.addEventListener("click", () => {
+        _pauseTimeline();
+        _applyInterval(Math.max(0, tlIdx - 1));
+    });
+    document.getElementById("la-next-btn")?.addEventListener("click", () => {
+        _pauseTimeline();
+        _applyInterval(Math.min(tlIntervals.length - 1, tlIdx + 1));
+    });
+    document.getElementById("la-speed-select")?.addEventListener("change", (e) => {
+        tlSpeed = parseFloat(e.target.value) || 1;
+        if (tlTimer) { _pauseTimeline(); _playTimeline(); }
+    });
+    document.getElementById("la-slider")?.addEventListener("input", (e) => {
+        _pauseTimeline();
+        _applyInterval(parseInt(e.target.value, 10));
+    });
 
     if (HAS_IFC && iframe) {
         window.addEventListener("message", (e) => {

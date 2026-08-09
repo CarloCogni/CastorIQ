@@ -70,14 +70,14 @@
         {% endfor %}
     </div>
     {% else %}
-    <div class="text-secondary" style="font-size:0.75rem;">No accepted bindings for this task.</div>
+    <div class="text-secondary" style="font-size:0.75rem;">No applied links for this activity.</div>
     {% endif %}
 </div>
 
 <!-- Review suggestions -->
 <div class="mb-3">
     <div class="text-secondary mb-2" style="font-size:0.73rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em;">
-        Review Suggestions ({{ review_count|default:0 }})
+        Suggested Links ({{ review_count|default:0 }})
     </div>
     {% if review_entities %}
     <div class="d-flex flex-column gap-1" style="max-height:80px; overflow-y:auto;">
@@ -89,9 +89,9 @@
         </div>
         {% endfor %}
     </div>
-    <div class="text-secondary mt-1" style="font-size:0.68rem;">Not trusted until accepted · E2-C</div>
+    <div class="text-secondary mt-1" style="font-size:0.68rem;">Suggested</div>
     {% else %}
-    <div class="text-secondary" style="font-size:0.75rem;">No review suggestions.</div>
+    <div class="text-secondary" style="font-size:0.75rem;">No suggested links for this selected activity yet.</div>
     {% endif %}
 </div>
 
@@ -111,12 +111,13 @@
 </div>
 {% endif %}
 
-<!-- View in Simulator (trusted IDs only) -->
+<!-- Time View owns playback — keep a quiet navigation hint only -->
 {% if trusted_entities %}
 <hr class="my-2">
-<button class="btn btn-sm btn-primary w-100"
-        style="font-size:0.78rem;"
-        onclick="window.jumpToSimulator('{{ task.start_date|date:'Y-m-d' }}', {{ entity_global_ids_json }})">
-    <i class="bi bi-play-fill me-1"></i>View in Simulator
-</button>
+<a class="btn btn-sm btn-outline-secondary w-100"
+   style="font-size:0.78rem;"
+   href="{% url 'scheduling:schedule' project.pk %}?tab=lookahead"
+   data-testid="links-open-time-view">
+    <i class="bi bi-calendar-week me-1"></i>Open Time View
+</a>
 {% endif %}

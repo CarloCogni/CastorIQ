@@ -26,7 +26,8 @@
         </div>
         <span class="badge bg-secondary-subtle text-secondary-emphasis border d-none"
               style="font-size:0.72rem;"
-              data-testid="governance-method-badge-advanced">trusted-binding-v1</span>
+              data-testid="governance-method-badge-advanced"
+              aria-hidden="true">methodology-ref</span>
         {% if governance_capabilities.capabilities.can_approve_exact_preview %}
         <a class="btn btn-sm btn-outline-primary ms-auto"
            hx-get="{% url 'scheduling:schedule_link_preview_param' project.pk %}?param_name=Activity%20ID&amp;show_approval=1"
@@ -70,7 +71,7 @@
                     hx-target="#governance-queue-panel"
                     hx-trigger="click once"
                     hx-swap="innerHTML">
-                Review queue
+                Suggested Links queue
             </button>
         </li>
         <li class="nav-item" role="presentation">
