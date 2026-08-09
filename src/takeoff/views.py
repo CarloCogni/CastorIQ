@@ -52,7 +52,8 @@ class ModelInventoryEntitiesView(ProjectTabMixin, TemplateView):
 
     def get(self, request, *args, **kwargs):  # type: ignore[override]
         project = self.get_project()
-        self._entities_result = ModelInventoryService(project).list_entities(
+        svc = ModelInventoryService(project)
+        self._entities_result = svc.list_entities(
             ifc_class=request.GET.get("ifc_class"),
             level=request.GET.get("level"),
             linked_status=request.GET.get("linked_status"),
@@ -71,14 +72,22 @@ class ModelInventoryEntitiesView(ProjectTabMixin, TemplateView):
                     "entities_url": self._entities_url,
                 },
             )
+        # Full-page shell needs existing filter option labels (read-only inventory summary).
+        inventory = svc.build()
+        self._filter_options = inventory.get("filter_options") or {
+            "ifc_classes": [],
+            "levels": [],
+        }
+        self._inventory_source_name = inventory.get("ifc_file_name") or ""
         return super().get(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs: object) -> dict:
         ctx = super().get_context_data(**kwargs)
         ctx["castor_subtab"] = "model_inventory_entities"
         project = ctx["project"]
+        svc = ModelInventoryService(project)
         if getattr(self, "_entities_result", None) is None:
-            self._entities_result = ModelInventoryService(project).list_entities(
+            self._entities_result = svc.list_entities(
                 ifc_class=self.request.GET.get("ifc_class"),
                 level=self.request.GET.get("level"),
                 linked_status=self.request.GET.get("linked_status"),
@@ -89,11 +98,20 @@ class ModelInventoryEntitiesView(ProjectTabMixin, TemplateView):
             self._entities_url = reverse(
                 "takeoff:model_inventory_entities", kwargs={"pk": project.pk}
             )
+        if getattr(self, "_filter_options", None) is None:
+            inventory = svc.build()
+            self._filter_options = inventory.get("filter_options") or {
+                "ifc_classes": [],
+                "levels": [],
+            }
+            self._inventory_source_name = inventory.get("ifc_file_name") or ""
         ctx["entities"] = self._entities_result
         ctx["entities_url"] = getattr(self, "_entities_url", None) or reverse(
             "takeoff:model_inventory_entities", kwargs={"pk": project.pk}
         )
         ctx["model_inventory_url"] = reverse("takeoff:model_inventory", kwargs={"pk": project.pk})
+        ctx["filter_options"] = self._filter_options
+        ctx["inventory_source_name"] = getattr(self, "_inventory_source_name", "") or ""
         return ctx
 
 

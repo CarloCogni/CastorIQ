@@ -1,320 +1,590 @@
-<!-- takeoff/model_inventory.html — Package B1/B2 Model Inventory -->
-<div class="d-flex flex-column h-100 overflow-hidden" id="model-inventory-root"
+<!-- takeoff/model_inventory.html — Model Workspace Reference V2 + interactions -->
+{% include "takeoff/components/model_inventory_grid_styles.html" %}
+
+<div class="d-flex flex-column h-100 overflow-hidden mi-ws" id="model-inventory-root"
      data-testid="model-inventory-page">
 
-    <div class="d-flex align-items-center px-3 py-2 border-bottom bg-body flex-shrink-0" style="gap:0.5rem;">
-        <h5 class="mb-0 me-1">
-            <i class="bi bi-box-seam me-2 text-primary"></i>Model Inventory
-        </h5>
-        <button type="button"
-                class="help-pill"
-                data-bs-toggle="modal"
-                data-bs-target="#modelInventoryHelpModal"
-                title="How Model Inventory works"
-                aria-label="How Model Inventory works">
-            <i class="bi bi-question-circle"></i>
-        </button>
-        <span class="badge bg-secondary-subtle text-secondary-emphasis border"
-              style="font-size:0.65rem;"
-              data-testid="model-inventory-not-boq-badge">Not BOQ</span>
-        <div class="ms-auto d-flex gap-2">
-            <a href="{{ viewer_url }}" class="btn btn-sm btn-outline-secondary"
-               data-testid="model-inventory-open-viewer">
-                <i class="bi bi-cube me-1"></i>Open Viewer
-            </a>
-            <a href="{{ apply_url }}" class="btn btn-sm btn-outline-primary"
-               data-testid="model-inventory-open-apply">
-                <i class="bi bi-boxes me-1"></i>Open Links
-            </a>
-        </div>
+  <div class="mi-cmd" data-testid="model-workspace-toolbar">
+    <div class="d-flex align-items-baseline gap-2" style="min-width:0;">
+      <h5 data-testid="model-workspace-title">
+        <i class="bi bi-box-seam me-1" style="opacity:.7;"></i>Model Inventory
+      </h5>
+      <span class="mi-sub d-none d-md-inline" data-testid="model-workspace-subtitle">Model</span>
     </div>
+    <button type="button"
+            class="help-pill"
+            data-bs-toggle="modal"
+            data-bs-target="#modelInventoryHelpModal"
+            title="How Model works"
+            aria-label="How Model works">
+      <i class="bi bi-question-circle"></i>
+    </button>
+    {% if inventory.ifc_file_name %}
+    <span class="mi-source" title="{{ inventory.ifc_file_name }}" data-testid="model-workspace-source">
+      {{ inventory.ifc_file_name }}
+    </span>
+    {% endif %}
+    <span class="mi-badge-quiet" data-testid="model-inventory-not-boq-badge"
+          title="IFC model quantities only — not commercial BOQ">Not BOQ</span>
+    <div class="ms-auto d-flex gap-1 flex-wrap">
+      <a href="{{ entities_url }}" class="btn btn-sm btn-primary"
+         data-testid="model-open-ifc-elements">IFC Elements</a>
+      <a href="{{ viewer_url }}" class="btn btn-sm btn-outline-secondary"
+         data-testid="model-inventory-open-viewer">Viewer</a>
+      <a href="{{ apply_url }}" class="btn btn-sm btn-outline-secondary"
+         data-testid="model-inventory-open-apply">Links</a>
+    </div>
+  </div>
 
-    <div class="flex-grow-1 overflow-auto p-3">
+  {% if not inventory.has_ifc %}
+  <div class="p-3">
+    <div class="alert alert-secondary py-3 mb-0" data-testid="model-inventory-empty-no-ifc">
+      <i class="bi bi-info-circle me-1"></i>
+      No IFC model indexed yet. Upload and process an IFC file under Data Sources / Explore first.
+    </div>
+  </div>
+  {% else %}
 
-        <p class="text-secondary small mb-3" data-testid="model-inventory-source-caveat">
-            Counts come from the IFC index and applied / confirmed schedule-model links.
-            Quantities shown as availability are IFC model quantities (<code>Qto_*</code>),
-            not BOQ, QS valuation, ERP, or company actual cost.
-        </p>
+  <div class="mi-stats" data-testid="model-inventory-overview">
+    <div class="mi-stat" data-testid="mi-kpi-elements">
+      <span class="mi-stat-k">Elements</span>
+      <span class="mi-stat-v" data-testid="mi-total-entities">{{ inventory.overview.total_entities|default:0 }}</span>
+    </div>
+    <div class="mi-stat" data-testid="mi-kpi-classes">
+      <span class="mi-stat-k">Classes</span>
+      <span class="mi-stat-v">{{ inventory.overview.ifc_class_count|default:0 }}</span>
+    </div>
+    <div class="mi-stat" data-testid="mi-kpi-levels">
+      <span class="mi-stat-k">Levels</span>
+      {% if inventory.overview.has_storeys %}
+      <span class="mi-stat-v">{{ inventory.overview.storey_count }}</span>
+      {% else %}
+      <span class="mi-stat-v is-muted" data-testid="mi-no-storeys">Unavailable</span>
+      {% endif %}
+    </div>
+    <div class="mi-stat" data-testid="mi-kpi-coverage">
+      <span class="mi-stat-k">Coverage</span>
+      {% if inventory.overview.has_trusted_links %}
+      <span class="mi-stat-v" data-testid="mi-coverage-pct">{{ inventory.link_coverage.coverage_pct }}%</span>
+      {% else %}
+      <span class="mi-stat-v is-muted">—</span>
+      {% endif %}
+    </div>
+    <div class="mi-stat" data-testid="mi-kpi-missing">
+      <span class="mi-stat-k">Missing</span>
+      <span class="mi-stat-v">
+        {{ inventory.missing_model_data.missing_level_count|add:inventory.missing_model_data.missing_ifc_qto_count }}
+      </span>
+    </div>
+    <div class="mi-stat" data-testid="mi-kpi-classification">
+      <span class="mi-stat-k">Classification</span>
+      <span class="mi-stat-v is-muted" data-testid="mi-classification-unavailable">Unavailable</span>
+    </div>
+  </div>
 
-        {% if not inventory.has_ifc %}
-        <div class="alert alert-secondary py-3" data-testid="model-inventory-empty-no-ifc">
-            <i class="bi bi-info-circle me-1"></i>
-            No IFC model indexed yet. Upload and process an IFC file under Data Sources / Explore first.
-        </div>
-        {% else %}
+  <div class="mi-shell" data-testid="model-workspace-main">
 
-        <!-- Overview cards -->
-        <div class="row g-2 mb-3" data-testid="model-inventory-overview">
-            <div class="col-6 col-md-3">
-                <div class="border rounded p-2 bg-body-secondary h-100">
-                    <div class="text-secondary" style="font-size:0.72rem;">IFC entities</div>
-                    <div class="fs-5 fw-semibold" data-testid="mi-total-entities">
-                        {{ inventory.overview.total_entities|default:0 }}
-                    </div>
-                    {% if inventory.ifc_file_name %}
-                    <div class="text-secondary text-truncate" style="font-size:0.68rem;" title="{{ inventory.ifc_file_name }}">
-                        {{ inventory.ifc_file_name }}
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
-            <div class="col-6 col-md-3">
-                <div class="border rounded p-2 bg-body-secondary h-100">
-                    <div class="text-secondary" style="font-size:0.72rem;">IFC classes</div>
-                    <div class="fs-5 fw-semibold">{{ inventory.overview.ifc_class_count|default:0 }}</div>
-                </div>
-            </div>
-            <div class="col-6 col-md-3">
-                <div class="border rounded p-2 bg-body-secondary h-100">
-                    <div class="text-secondary" style="font-size:0.72rem;">Storeys / levels</div>
-                    {% if inventory.overview.has_storeys %}
-                    <div class="fs-5 fw-semibold">{{ inventory.overview.storey_count }}</div>
-                    {% else %}
-                    <div class="fs-6 text-secondary" data-testid="mi-no-storeys">Unavailable</div>
-                    {% endif %}
-                </div>
-            </div>
-            <div class="col-6 col-md-3">
-                <div class="border rounded p-2 bg-body-secondary h-100">
-                    <div class="text-secondary" style="font-size:0.72rem;">IFC model quantities</div>
-                    {% if inventory.overview.has_quantities %}
-                    <div class="fs-5 fw-semibold" data-testid="mi-qty-available">
-                        {{ inventory.overview.entities_with_quantity }}
-                        <span class="fs-6 fw-normal text-secondary">
-                            ({{ inventory.overview.quantity_availability_pct }}%)
-                        </span>
-                    </div>
-                    {% else %}
-                    <div class="fs-6 text-secondary" data-testid="mi-no-quantities">
-                        No IFC model quantities detected
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
+    <aside class="mi-rail" data-testid="model-breakdown-rail">
+      <div class="mi-zone-h"><span class="mi-zone-title">Model Breakdown</span></div>
+      <div class="mi-zone-body">
 
-        <!-- Link coverage summary -->
-        <div class="border rounded p-3 mb-3" data-testid="model-inventory-link-coverage">
-            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-                <span class="fw-semibold" style="font-size:0.9rem;">Link coverage</span>
-                <span class="badge bg-primary-subtle text-primary-emphasis border"
-                      style="font-size:0.65rem;">Applied / Confirmed only</span>
-            </div>
-            <p class="text-secondary small mb-2" data-testid="mi-link-coverage-caveat">
-                {{ inventory.link_coverage.caveat }}
-            </p>
-            {% if not inventory.overview.has_trusted_links %}
-            <div class="alert alert-info py-2 small mb-0" data-testid="mi-no-trusted-links">
-                No applied / confirmed schedule-model links yet. Suggest and confirm links under Links → Applied Links.
-            </div>
-            {% else %}
-            <div class="row g-2">
-                <div class="col-4">
-                    <div class="small text-secondary">Applied / Confirmed linked</div>
-                    <div class="fw-semibold" data-testid="mi-trusted-linked">
-                        {{ inventory.link_coverage.trusted_linked_entities }}
-                    </div>
-                </div>
-                <div class="col-4">
-                    <div class="small text-secondary">Unlinked</div>
-                    <div class="fw-semibold" data-testid="mi-unlinked">
-                        {{ inventory.link_coverage.unlinked_entities }}
-                    </div>
-                </div>
-                <div class="col-4">
-                    <div class="small text-secondary">Coverage</div>
-                    <div class="fw-semibold" data-testid="mi-coverage-pct">
-                        {{ inventory.link_coverage.coverage_pct }}%
-                    </div>
-                </div>
-            </div>
+        <div class="mi-nav-section" data-testid="model-inventory-by-class" data-mi-collapse="class">
+          <button type="button" class="mi-nav-section-h" data-testid="mi-collapse-class"
+                  aria-expanded="true" aria-controls="mi-class-nav-body">
+            <span class="mi-chevron" aria-hidden="true">▼</span>
+            <span>By IFC Class</span>
+          </button>
+          <div class="mi-nav-body" id="mi-class-nav-body">
+            <ul class="mi-nav-list" data-testid="mi-class-nav">
+              {% for row in inventory.by_class %}
+              {% if row.element_count %}
+                {% widthratio row.trusted_linked row.element_count 100 as nav_cov %}
+              {% else %}
+                {% widthratio 0 1 100 as nav_cov %}
+              {% endif %}
+              <li class="mi-nav-item" data-testid="mi-class-nav-item"
+                  data-mi-focus="class"
+                  data-mi-key="{{ row.ifc_type }}"
+                  data-mi-name="{{ row.ifc_type }}"
+                  data-mi-elements="{{ row.element_count }}"
+                  data-mi-linked="{{ row.trusted_linked }}"
+                  data-mi-unlinked="{{ row.unlinked }}"
+                  data-mi-qto="{{ row.quantity_available }}"
+                  data-mi-coverage="{{ nav_cov }}">
+                <span class="mi-nav-label" title="{{ row.ifc_type }}">{{ row.ifc_type }}</span>
+                <span class="mi-nav-count">{{ row.element_count }}</span>
+              </li>
+              {% empty %}
+              <li class="mi-nav-item text-secondary" data-testid="mi-no-classes">No classes</li>
+              {% endfor %}
+            </ul>
+            {% if inventory.by_class_truncated %}
+            <div class="px-2 py-1 mi-footnote">Top {{ inventory.by_class|length }} of {{ inventory.by_class_total_types }}</div>
             {% endif %}
+          </div>
         </div>
 
-        <!-- Missing Model Data -->
-        <div class="border rounded p-3 mb-3" data-testid="model-inventory-missing-data">
-            <div class="fw-semibold mb-2" style="font-size:0.9rem;">Missing Model Data</div>
-            <div class="row g-2">
-                <div class="col-md-4">
-                    <div class="small text-secondary">Missing Level / Storey</div>
-                    <div class="fw-semibold" data-testid="mi-missing-level">
-                        {{ inventory.missing_model_data.missing_level_count }}
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="small text-secondary">Missing IFC Qto</div>
-                    <div class="fw-semibold" data-testid="mi-missing-qto">
-                        {{ inventory.missing_model_data.missing_ifc_qto_count }}
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="small text-secondary">Classification Coverage</div>
-                    <div class="fw-semibold text-secondary" data-testid="mi-classification-unavailable">
-                        Unavailable
-                    </div>
-                </div>
-            </div>
-            <p class="text-secondary small mb-0 mt-2">
-                Classification is not first-class indexed yet — shown as Unavailable, not inferred from properties.
-            </p>
+        <div class="mi-nav-section" data-testid="model-inventory-by-level" data-mi-collapse="level">
+          <button type="button" class="mi-nav-section-h" data-testid="mi-collapse-level"
+                  aria-expanded="true" aria-controls="mi-level-nav-body">
+            <span class="mi-chevron" aria-hidden="true">▼</span>
+            <span>By Level / Storey</span>
+          </button>
+          <div class="mi-nav-body" id="mi-level-nav-body">
+            <ul class="mi-nav-list" data-testid="mi-level-nav">
+              {% for row in inventory.by_level %}
+              {% if row.entity_count %}
+                {% widthratio row.linked_count row.entity_count 100 as lvl_nav_cov %}
+              {% else %}
+                {% widthratio 0 1 100 as lvl_nav_cov %}
+              {% endif %}
+              <li class="mi-nav-item" data-testid="mi-level-nav-item"
+                  data-mi-focus="level"
+                  data-mi-key="{{ row.level_key }}"
+                  data-mi-name="{{ row.level_label }}"
+                  data-mi-elements="{{ row.entity_count }}"
+                  data-mi-linked="{{ row.linked_count }}"
+                  data-mi-unlinked="{{ row.unlinked_count }}"
+                  data-mi-qto="{{ row.has_ifc_qto_count }}"
+                  data-mi-coverage="{{ lvl_nav_cov }}"
+                  data-mi-classes="{{ row.ifc_class_count }}">
+                <span class="mi-nav-label" title="{{ row.level_label }}">{{ row.level_label }}</span>
+                <span class="mi-nav-count">{{ row.entity_count }}</span>
+              </li>
+              {% empty %}
+              <li class="mi-nav-item text-secondary" data-testid="mi-no-levels">No levels</li>
+              {% endfor %}
+            </ul>
+          </div>
         </div>
 
-        <!-- By Level / Storey -->
-        <div class="mb-3" data-testid="model-inventory-by-level">
-            <div class="fw-semibold mb-2" style="font-size:0.9rem;">By Level / Storey</div>
-            {% if inventory.by_level %}
-            <div class="table-responsive">
-                <table class="table table-sm table-hover align-middle mb-0" style="font-size:0.82rem;">
-                    <thead class="table-dark">
-                        <tr>
-                            <th>Level / Storey</th>
-                            <th class="text-end">Elements</th>
-                            <th class="text-end">Applied/Confirmed Links</th>
-                            <th class="text-end">Unlinked Model Elements</th>
-                            <th class="text-end">Has IFC Qto</th>
-                            <th class="text-end">IFC Classes</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for row in inventory.by_level %}
-                        <tr data-testid="mi-level-row">
-                            <td>{{ row.level_label }}</td>
-                            <td class="text-end">{{ row.entity_count }}</td>
-                            <td class="text-end">{{ row.linked_count }}</td>
-                            <td class="text-end">{{ row.unlinked_count }}</td>
-                            <td class="text-end">{{ row.has_ifc_qto_count }}</td>
-                            <td class="text-end">{{ row.ifc_class_count }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+        <div class="mi-nav-section" data-testid="model-inventory-missing-data" data-mi-collapse="missing">
+          <button type="button" class="mi-nav-section-h" data-testid="mi-collapse-missing"
+                  aria-expanded="true" aria-controls="mi-missing-body">
+            <span class="mi-chevron" aria-hidden="true">▼</span>
+            <span>Missing Model Data</span>
+          </button>
+          <div class="mi-nav-body" id="mi-missing-body">
+            <div class="mi-missing-mini">
+              <span class="k">Missing Level / Storey</span>
+              <span class="v" data-testid="mi-missing-level">{{ inventory.missing_model_data.missing_level_count }}</span>
+              <span class="k">Missing IFC Qto</span>
+              <span class="v" data-testid="mi-missing-qto">{{ inventory.missing_model_data.missing_ifc_qto_count }}</span>
+              <span class="k">Classification Coverage</span>
+              <span class="v text-secondary">Unavailable</span>
             </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <section class="mi-center" data-testid="model-main-grid">
+      <div class="mi-zone-h">
+        <span class="mi-zone-title">By IFC Class</span>
+        <a href="{{ entities_url }}" class="btn btn-sm btn-outline-secondary"
+           data-testid="model-open-full-grid" style="text-transform:none; letter-spacing:0; font-weight:500;">
+          Open Full Grid
+        </a>
+      </div>
+
+      <div class="mi-grid-tools" data-testid="mi-quick-filter-bar">
+        <span class="mi-tools-label">Filter visible rows</span>
+        <input type="search" id="mi-quick-filter" class="form-control form-control-sm"
+               placeholder="Filter class / level…"
+               data-testid="mi-quick-filter"
+               autocomplete="off">
+      </div>
+
+      <div class="mi-grid-wrap" data-testid="mi-class-grid" style="flex:1 1 55%;">
+        <table class="mi-grid" data-testid="mi-class-table" id="mi-class-table">
+          <thead>
+            <tr>
+              <th class="mi-sortable" data-mi-sort="name" data-testid="mi-sort-class-name">IFC Class</th>
+              <th class="mi-num mi-sortable" data-mi-sort="elements" data-testid="mi-sort-class-elements">Elements</th>
+              <th class="mi-num mi-sortable" data-mi-sort="linked" data-testid="mi-sort-class-linked">Applied / Confirmed</th>
+              <th class="mi-num mi-sortable" data-mi-sort="unlinked">Unlinked</th>
+              <th class="mi-num mi-sortable" data-mi-sort="qto">Has IFC Qto</th>
+              <th class="mi-num mi-sortable" data-mi-sort="coverage">Link Coverage %</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in inventory.by_class %}
+            {% if row.element_count %}
+              {% widthratio row.trusted_linked row.element_count 100 as cov_pct %}
             {% else %}
-            <p class="text-secondary small mb-0" data-testid="mi-no-levels">No level / storey rows for this model.</p>
+              {% widthratio 0 1 100 as cov_pct %}
             {% endif %}
-        </div>
-
-        <!-- By IFC Class -->
-        <div class="mb-3" data-testid="model-inventory-by-class">
-            <div class="d-flex align-items-center justify-content-between mb-2">
-                <span class="fw-semibold" style="font-size:0.9rem;">By IFC Class</span>
-                {% if inventory.by_class_truncated %}
-                <span class="text-secondary small">
-                    Showing top {{ inventory.by_class|length }} of {{ inventory.by_class_total_types }} classes
+            <tr data-testid="mi-class-row" tabindex="0"
+                data-mi-focus="class"
+                data-mi-key="{{ row.ifc_type }}"
+                data-mi-name="{{ row.ifc_type }}"
+                data-mi-elements="{{ row.element_count }}"
+                data-mi-linked="{{ row.trusted_linked }}"
+                data-mi-unlinked="{{ row.unlinked }}"
+                data-mi-qto="{{ row.quantity_available }}"
+                data-mi-coverage="{{ cov_pct }}">
+              <td><span class="mi-class-chip">{{ row.ifc_type }}</span></td>
+              <td class="mi-num">{{ row.element_count }}</td>
+              <td class="mi-num">{{ row.trusted_linked }}</td>
+              <td class="mi-num">
+                {{ row.unlinked }}
+                {% if row.unlinked > 0 %}<span class="mi-chip mi-chip-warn ms-1">Unlinked</span>{% endif %}
+              </td>
+              <td class="mi-num">{{ row.quantity_available }}</td>
+              <td class="mi-num">
+                <span class="mi-bar">
+                  <span class="mi-bar-track" aria-hidden="true"><span class="mi-bar-fill" style="width:{{ cov_pct }}%;"></span></span>
+                  <span class="mi-bar-pct">{{ cov_pct }}%</span>
                 </span>
-                {% endif %}
-            </div>
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="6" class="mi-empty-cell">No IFC classes in the indexed model.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
 
-            {% if inventory.by_class %}
-            <div class="table-responsive">
-                <table class="table table-sm table-hover align-middle mb-0" style="font-size:0.82rem;">
-                    <thead class="table-dark">
-                        <tr>
-                            <th>IFC Class</th>
-                            <th class="text-end">Elements</th>
-                            <th class="text-end">Applied / Confirmed</th>
-                            <th class="text-end">Unlinked</th>
-                            <th class="text-end">Has IFC Qto</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for row in inventory.by_class %}
-                        <tr>
-                            <td><code>{{ row.ifc_type }}</code></td>
-                            <td class="text-end">{{ row.element_count }}</td>
-                            <td class="text-end">{{ row.trusted_linked }}</td>
-                            <td class="text-end">{{ row.unlinked }}</td>
-                            <td class="text-end">{{ row.quantity_available }}</td>
-                            <td class="text-end text-nowrap">
-                                <a href="{{ viewer_url }}" class="btn btn-link btn-sm py-0 px-1"
-                                   title="Open Viewer">Viewer</a>
-                                <a href="{{ apply_url }}" class="btn btn-link btn-sm py-0 px-1"
-                                   title="Open Links">Links</a>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
+      <div class="mi-zone-h" style="border-top:1px solid var(--mi-border);">
+        <span class="mi-zone-title">By Level / Storey</span>
+      </div>
+      <div class="mi-grid-wrap" data-testid="mi-level-grid" style="flex:0 0 28%; min-height:90px;">
+        <table class="mi-grid" data-testid="mi-level-table" id="mi-level-table">
+          <thead>
+            <tr>
+              <th>Level / Storey</th>
+              <th class="mi-num">Elements</th>
+              <th class="mi-num">Applied / Confirmed</th>
+              <th class="mi-num">Unlinked Model Elements</th>
+              <th class="mi-num">Has IFC Qto</th>
+              <th class="mi-num">IFC Classes</th>
+              <th class="mi-num">Coverage %</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in inventory.by_level %}
+            {% if row.entity_count %}
+              {% widthratio row.linked_count row.entity_count 100 as lvl_cov %}
             {% else %}
-            <p class="text-secondary small" data-testid="mi-no-classes">No IFC classes in the indexed model.</p>
+              {% widthratio 0 1 100 as lvl_cov %}
             {% endif %}
+            <tr data-testid="mi-level-row" tabindex="0"
+                data-mi-focus="level"
+                data-mi-key="{{ row.level_key }}"
+                data-mi-name="{{ row.level_label }}"
+                data-mi-elements="{{ row.entity_count }}"
+                data-mi-linked="{{ row.linked_count }}"
+                data-mi-unlinked="{{ row.unlinked_count }}"
+                data-mi-qto="{{ row.has_ifc_qto_count }}"
+                data-mi-coverage="{{ lvl_cov }}"
+                data-mi-classes="{{ row.ifc_class_count }}">
+              <td>{{ row.level_label }}</td>
+              <td class="mi-num">{{ row.entity_count }}</td>
+              <td class="mi-num">{{ row.linked_count }}</td>
+              <td class="mi-num">
+                {{ row.unlinked_count }}
+                {% if row.unlinked_count > 0 %}<span class="mi-chip mi-chip-warn ms-1">Unlinked</span>{% endif %}
+              </td>
+              <td class="mi-num">{{ row.has_ifc_qto_count }}</td>
+              <td class="mi-num">{{ row.ifc_class_count }}</td>
+              <td class="mi-num">
+                <span class="mi-bar">
+                  <span class="mi-bar-track" aria-hidden="true"><span class="mi-bar-fill" style="width:{{ lvl_cov }}%;"></span></span>
+                  <span class="mi-bar-pct">{{ lvl_cov }}%</span>
+                </span>
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="7" class="mi-empty-cell">No level / storey rows for this model.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="border-top" style="border-color:var(--mi-border)!important; flex:0 0 auto; max-height:26%; min-height:110px; display:flex; flex-direction:column;"
+           data-testid="model-inventory-entities">
+        <div class="mi-zone-h">
+          <span class="mi-zone-title">IFC Elements</span>
+          <a href="{{ entities_url }}" class="btn btn-sm btn-outline-secondary"
+             style="text-transform:none; letter-spacing:0; font-weight:500;">Full list</a>
+        </div>
+        <form class="mi-filter-bar"
+              data-testid="mi-entities-filters"
+              hx-get="{{ entities_url }}"
+              hx-target="#mi-entities-results"
+              hx-swap="outerHTML"
+              hx-trigger="change, submit">
+          <div>
+            <label for="mi-filter-ifc-class">IFC Class</label>
+            <select class="form-select form-select-sm" id="mi-filter-ifc-class" name="ifc_class">
+              <option value="">All</option>
+              {% for cls in inventory.filter_options.ifc_classes %}
+              <option value="{{ cls }}">{{ cls }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label for="mi-filter-level">Level / Storey</label>
+            <select class="form-select form-select-sm" id="mi-filter-level" name="level">
+              <option value="">All</option>
+              {% for lvl in inventory.filter_options.levels %}
+              <option value="{{ lvl.key }}">{{ lvl.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label for="mi-filter-linked">Link status</label>
+            <select class="form-select form-select-sm" id="mi-filter-linked" name="linked_status">
+              <option value="all">All</option>
+              <option value="linked">Applied/Confirmed</option>
+              <option value="unlinked">Unlinked</option>
+            </select>
+          </div>
+          <div>
+            <label for="mi-filter-qto">Has IFC Qto</label>
+            <select class="form-select form-select-sm" id="mi-filter-qto" name="has_qto">
+              <option value="all">All</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+            </select>
+          </div>
+          <div>
+            <label for="mi-filter-page-size">Page size</label>
+            <select class="form-select form-select-sm" id="mi-filter-page-size" name="page_size">
+              <option value="50" selected>50</option>
+              <option value="100">100</option>
+            </select>
+          </div>
+          <input type="hidden" name="page" value="1">
+        </form>
+        <div id="mi-entities-results"
+             data-testid="mi-entities-results"
+             style="flex:1; min-height:0; overflow:hidden; display:flex; flex-direction:column;"
+             hx-get="{{ entities_url }}?page_size=50"
+             hx-trigger="load"
+             hx-swap="outerHTML">
+          <div class="text-secondary small py-2 px-2">
+            <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+            Loading IFC Elements…
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="mi-inspector" data-testid="model-readiness-inspector">
+      <div class="mi-zone-h"><span class="mi-zone-title">Model Readiness</span></div>
+      <div class="mi-zone-body">
+        <div class="mi-prop" id="mi-selection-inspector" data-testid="mi-selection-inspector"
+             data-mi-selection-ready="1">
+          <span class="mi-prop-k">Selection</span>
+          <div class="mi-prop-v" style="font-weight:500;" id="mi-selection-label"
+               data-testid="mi-selection-label">None — select a class or level row</div>
+          <div class="mi-sel-grid" id="mi-selection-fields" data-testid="mi-selection-fields" hidden>
+            <span class="k">Type</span><span class="v" id="mi-sel-type" data-testid="mi-sel-type">—</span>
+            <span class="k">Name</span><span class="v" id="mi-sel-name" data-testid="mi-sel-name">—</span>
+            <span class="k">Elements</span><span class="v" id="mi-sel-elements" data-testid="mi-sel-elements">—</span>
+            <span class="k">Applied / Confirmed</span><span class="v" id="mi-sel-linked" data-testid="mi-sel-linked">—</span>
+            <span class="k">Unlinked</span><span class="v" id="mi-sel-unlinked" data-testid="mi-sel-unlinked">—</span>
+            <span class="k">Has IFC Qto</span><span class="v" id="mi-sel-qto" data-testid="mi-sel-qto">—</span>
+            <span class="k">Link Coverage %</span><span class="v" id="mi-sel-coverage" data-testid="mi-sel-coverage">—</span>
+          </div>
+          <p class="mi-prop-note" id="mi-selection-detail" data-testid="mi-selection-detail"></p>
         </div>
 
-        <!-- IFC Elements (lazy) -->
-        <div class="border rounded p-3" data-testid="model-inventory-entities">
-            <div class="fw-semibold mb-2" style="font-size:0.9rem;">IFC Elements</div>
-            <p class="text-secondary small mb-2">
-                Lightweight inspection list. Loaded on demand — not a full model browser.
-                Open Viewer / Open Links navigate only; this list does not focus the viewer.
-            </p>
-
-            <form class="row g-2 align-items-end mb-3"
-                  data-testid="mi-entities-filters"
-                  hx-get="{{ entities_url }}"
-                  hx-target="#mi-entities-results"
-                  hx-swap="outerHTML"
-                  hx-trigger="change, submit">
-                <div class="col-6 col-md-3">
-                    <label class="form-label small mb-1" for="mi-filter-ifc-class">IFC Class</label>
-                    <select class="form-select form-select-sm" id="mi-filter-ifc-class" name="ifc_class">
-                        <option value="">All</option>
-                        {% for cls in inventory.filter_options.ifc_classes %}
-                        <option value="{{ cls }}">{{ cls }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div class="col-6 col-md-3">
-                    <label class="form-label small mb-1" for="mi-filter-level">Level / Storey</label>
-                    <select class="form-select form-select-sm" id="mi-filter-level" name="level">
-                        <option value="">All</option>
-                        {% for lvl in inventory.filter_options.levels %}
-                        <option value="{{ lvl.key }}">{{ lvl.label }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div class="col-6 col-md-2">
-                    <label class="form-label small mb-1" for="mi-filter-linked">Link status</label>
-                    <select class="form-select form-select-sm" id="mi-filter-linked" name="linked_status">
-                        <option value="all">All</option>
-                        <option value="linked">Applied/Confirmed</option>
-                        <option value="unlinked">Unlinked</option>
-                    </select>
-                </div>
-                <div class="col-6 col-md-2">
-                    <label class="form-label small mb-1" for="mi-filter-qto">Has IFC Qto</label>
-                    <select class="form-select form-select-sm" id="mi-filter-qto" name="has_qto">
-                        <option value="all">All</option>
-                        <option value="yes">Yes</option>
-                        <option value="no">No</option>
-                    </select>
-                </div>
-                <div class="col-6 col-md-2">
-                    <label class="form-label small mb-1" for="mi-filter-page-size">Page size</label>
-                    <select class="form-select form-select-sm" id="mi-filter-page-size" name="page_size">
-                        <option value="50" selected>50</option>
-                        <option value="100">100</option>
-                    </select>
-                </div>
-                <input type="hidden" name="page" value="1">
-            </form>
-
-            <div id="mi-entities-results"
-                 data-testid="mi-entities-results"
-                 hx-get="{{ entities_url }}?page_size=50"
-                 hx-trigger="load"
-                 hx-swap="outerHTML">
-                <div class="text-secondary small py-2">
-                    <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-                    Loading IFC Elements…
-                </div>
-            </div>
+        <div data-testid="model-inventory-link-coverage">
+          <div class="mi-prop">
+            <span class="mi-prop-k">Link Coverage</span>
+            <span class="mi-chip mi-chip-muted">Applied / Confirmed only</span>
+            <p class="mi-prop-note" data-testid="mi-link-coverage-caveat">{{ inventory.link_coverage.caveat }}</p>
+          </div>
+          {% if not inventory.overview.has_trusted_links %}
+          <div class="mi-prop" data-testid="mi-no-trusted-links">
+            <span class="mi-prop-k">Status</span>
+            <div class="mi-prop-v" style="font-weight:500;">No applied / confirmed schedule-model links yet.</div>
+            <p class="mi-prop-note">Suggest and confirm links under Links.</p>
+          </div>
+          {% else %}
+          <div class="mi-prop">
+            <span class="mi-prop-k">Applied / Confirmed linked</span>
+            <div class="mi-prop-v" data-testid="mi-trusted-linked">{{ inventory.link_coverage.trusted_linked_entities }}</div>
+          </div>
+          <div class="mi-prop">
+            <span class="mi-prop-k">Unlinked Model Elements</span>
+            <div class="mi-prop-v" data-testid="mi-unlinked">{{ inventory.link_coverage.unlinked_entities }}</div>
+          </div>
+          <div class="mi-prop">
+            <span class="mi-prop-k">Coverage</span>
+            <div class="mi-prop-v">{{ inventory.link_coverage.coverage_pct }}%</div>
+          </div>
+          {% endif %}
         </div>
 
-        {% endif %}
-    </div>
+        <div class="mi-prop">
+          <span class="mi-prop-k">Classification</span>
+          <div class="mi-prop-v text-secondary">Unavailable</div>
+          <p class="mi-prop-note">Classification is not indexed yet — not inferred from properties.</p>
+        </div>
+
+        <div class="mi-prop">
+          <span class="mi-prop-k">Quantity readiness</span>
+          {% if inventory.overview.has_quantities %}
+          <div class="mi-prop-v" data-testid="mi-qty-available">
+            {{ inventory.overview.entities_with_quantity }}
+            <span style="font-weight:500; color:var(--mi-muted);">({{ inventory.overview.quantity_availability_pct }}%)</span>
+          </div>
+          {% else %}
+          <div class="mi-prop-v text-secondary" data-testid="mi-no-quantities">No IFC model quantities detected</div>
+          {% endif %}
+          <p class="mi-prop-note" data-testid="model-inventory-source-caveat">
+            IFC model quantities (<code>Qto_*</code>) only — not BOQ, QS valuation, ERP, or company actual cost.
+          </p>
+        </div>
+      </div>
+    </aside>
+  </div>
+  {% endif %}
 </div>
 
 {% include "takeoff/components/model_inventory_help_modal.html" %}
+
+<script>
+(function () {
+  var root = document.getElementById("model-inventory-root");
+  if (!root) return;
+
+  function escAttr(v) {
+    if (window.CSS && typeof CSS.escape === "function") return CSS.escape(v);
+    return String(v).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  }
+
+  function clearSelected() {
+    root.querySelectorAll(".mi-row-selected, .mi-nav-item.is-active").forEach(function (el) {
+      el.classList.remove("mi-row-selected", "is-active");
+    });
+  }
+
+  function applySelection(el) {
+    if (!el) return;
+    clearSelected();
+    el.classList.add(el.tagName === "TR" ? "mi-row-selected" : "is-active");
+
+    var focus = el.getAttribute("data-mi-focus") || "class";
+    var name = el.getAttribute("data-mi-name") || el.getAttribute("data-mi-key") || "—";
+    var key = el.getAttribute("data-mi-key") || "";
+    var elements = el.getAttribute("data-mi-elements") || "—";
+    var linked = el.getAttribute("data-mi-linked") || "—";
+    var unlinked = el.getAttribute("data-mi-unlinked") || "—";
+    var qto = el.getAttribute("data-mi-qto") || "—";
+    var coverage = el.getAttribute("data-mi-coverage");
+    var typeLabel = focus === "level" ? "Level / Storey" : "IFC Class";
+
+    var label = document.getElementById("mi-selection-label");
+    var fields = document.getElementById("mi-selection-fields");
+    var detail = document.getElementById("mi-selection-detail");
+    if (label) label.textContent = typeLabel + ": " + name;
+    if (fields) fields.hidden = false;
+    var set = function (id, val) {
+      var n = document.getElementById(id);
+      if (n) n.textContent = val;
+    };
+    set("mi-sel-type", typeLabel);
+    set("mi-sel-name", name);
+    set("mi-sel-elements", elements);
+    set("mi-sel-linked", linked);
+    set("mi-sel-unlinked", unlinked);
+    set("mi-sel-qto", qto);
+    set("mi-sel-coverage", coverage != null && coverage !== "" ? coverage + "%" : "—");
+    if (detail) {
+      var note = "Values from indexed Model Inventory (Applied / Confirmed links only).";
+      if (parseInt(unlinked, 10) > 0) {
+        note += " Unlinked elements remain for this selection.";
+      }
+      detail.textContent = note;
+    }
+
+    // Sync highlight across nav + class/level tables
+    if (focus === "class" && key) {
+      var nav = root.querySelector('.mi-nav-item[data-mi-focus="class"][data-mi-key="' + escAttr(key) + '"]');
+      if (nav) nav.classList.add("is-active");
+      var row = root.querySelector('tr[data-testid="mi-class-row"][data-mi-key="' + escAttr(key) + '"]');
+      if (row) row.classList.add("mi-row-selected");
+    }
+    if (focus === "level" && key) {
+      var navL = root.querySelector('.mi-nav-item[data-mi-focus="level"][data-mi-key="' + escAttr(key) + '"]');
+      if (navL) navL.classList.add("is-active");
+      var rowL = root.querySelector('tr[data-testid="mi-level-row"][data-mi-key="' + escAttr(key) + '"]');
+      if (rowL) rowL.classList.add("mi-row-selected");
+    }
+  }
+
+  // Collapse groups
+  root.querySelectorAll("[data-mi-collapse]").forEach(function (section) {
+    var btn = section.querySelector(".mi-nav-section-h");
+    if (!btn) return;
+    btn.addEventListener("click", function () {
+      var collapsed = section.classList.toggle("is-collapsed");
+      btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    });
+  });
+
+  // Selection
+  root.addEventListener("click", function (e) {
+    var hit = e.target.closest(
+      'tr[data-testid="mi-class-row"], tr[data-testid="mi-level-row"], .mi-nav-item[data-mi-key]'
+    );
+    if (!hit || !root.contains(hit)) return;
+    if (e.target.closest(".mi-nav-section-h")) return;
+    applySelection(hit);
+  });
+
+  // Quick filter (visible rows in class + level grids)
+  var filterInput = document.getElementById("mi-quick-filter");
+  if (filterInput) {
+    filterInput.addEventListener("input", function () {
+      var q = (filterInput.value || "").trim().toLowerCase();
+      root.querySelectorAll(
+        'tr[data-testid="mi-class-row"], tr[data-testid="mi-level-row"]'
+      ).forEach(function (row) {
+        var name = (row.getAttribute("data-mi-name") || row.getAttribute("data-mi-key") || "").toLowerCase();
+        var text = (row.innerText || "").toLowerCase();
+        var show = !q || name.indexOf(q) !== -1 || text.indexOf(q) !== -1;
+        row.classList.toggle("mi-row-hidden", !show);
+      });
+    });
+  }
+
+  // Client-side sort for By IFC Class grid
+  var classTable = document.getElementById("mi-class-table");
+  var sortState = { key: null, dir: 1 };
+  if (classTable) {
+    classTable.querySelectorAll("th.mi-sortable").forEach(function (th) {
+      th.addEventListener("click", function () {
+        var key = th.getAttribute("data-mi-sort");
+        if (!key) return;
+        if (sortState.key === key) sortState.dir *= -1;
+        else { sortState.key = key; sortState.dir = key === "name" ? 1 : -1; }
+        classTable.querySelectorAll("th.mi-sortable").forEach(function (h) {
+          h.classList.remove("mi-sort-asc", "mi-sort-desc");
+        });
+        th.classList.add(sortState.dir === 1 ? "mi-sort-asc" : "mi-sort-desc");
+        var tbody = classTable.tBodies[0];
+        if (!tbody) return;
+        var rows = Array.prototype.slice.call(
+          tbody.querySelectorAll('tr[data-testid="mi-class-row"]')
+        );
+        rows.sort(function (a, b) {
+          var av = a.getAttribute("data-mi-" + (key === "name" ? "name" : key)) || "";
+          var bv = b.getAttribute("data-mi-" + (key === "name" ? "name" : key)) || "";
+          if (key === "name") {
+            return av.localeCompare(bv) * sortState.dir;
+          }
+          var an = parseFloat(av) || 0;
+          var bn = parseFloat(bv) || 0;
+          return (an - bn) * sortState.dir;
+        });
+        rows.forEach(function (r) { tbody.appendChild(r); });
+      });
+    });
+  }
+}());
+</script>
