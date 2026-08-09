@@ -1,38 +1,20 @@
-<!-- scheduling/components/governance_overview_panel.html — E2-F scorecard overview -->
+<!-- scheduling/components/governance_overview_panel.html — link coverage / lifecycle diagnostics -->
 
 {% with o=overview sc=o.scorecard auth=o.authority %}
-<div id="governance-overview-panel" class="d-flex flex-column gap-3">
+<div id="governance-overview-panel" class="d-flex flex-column gap-3" data-testid="link-diagnostics-panel">
 
-    <!-- Policy and authority banner -->
-    <div class="border rounded p-3 bg-body-tertiary small">
-        <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
-            <span class="badge bg-primary-subtle text-primary-emphasis border">{{ o.policy_id }}</span>
-            <span class="badge bg-secondary-subtle text-secondary-emphasis border">{{ o.authority_policy_id }}</span>
-            <span class="text-secondary">Methodology {{ o.methodology_version }}</span>
-        </div>
-        <div class="mb-1">
-            <strong>Your access:</strong> {{ auth.permission|default:"none" }}
-            {% if auth.capabilities.can_reverse or auth.capabilities.can_supersede %}
-            <span class="badge bg-danger-subtle text-danger-emphasis ms-1">Destructive ops available</span>
-            {% else %}
-            <span class="badge bg-secondary-subtle text-secondary-emphasis ms-1">Destructive ops require owner</span>
-            {% endif %}
-        </div>
-        <div class="text-secondary">{{ o.audit_boundary.pre_audit_legacy_caveat }}</div>
-    </div>
-
-    <!-- At-a-glance counts -->
+    <!-- Compact link coverage summary (neutral product copy) -->
     <div class="row g-2">
         <div class="col-6 col-md-3">
             <div class="border rounded p-2 text-center">
                 <div class="fw-bold fs-5 text-success">{{ sc.trust_state.trusted.value }}</div>
-                <div class="small text-secondary">Trusted active</div>
+                <div class="small text-secondary">Applied / Confirmed</div>
             </div>
         </div>
         <div class="col-6 col-md-3">
             <div class="border rounded p-2 text-center">
                 <div class="fw-bold fs-5">{{ sc.trust_state.active_review.value }}</div>
-                <div class="small text-secondary">In review</div>
+                <div class="small text-secondary">Suggested</div>
             </div>
         </div>
         <div class="col-6 col-md-3">
@@ -40,7 +22,7 @@
                 <div class="fw-bold fs-5">
                     {% if sc.coverage.task_coverage.percentage %}{{ sc.coverage.task_coverage.percentage }}%{% else %}—{% endif %}
                 </div>
-                <div class="small text-secondary">Task coverage</div>
+                <div class="small text-secondary">Task Link Coverage</div>
             </div>
         </div>
         <div class="col-6 col-md-3">
@@ -48,58 +30,47 @@
                 <div class="fw-bold fs-5">
                     {% if sc.coverage.entity_coverage.percentage %}{{ sc.coverage.entity_coverage.percentage }}%{% else %}—{% endif %}
                 </div>
-                <div class="small text-secondary">Entity coverage</div>
+                <div class="small text-secondary">Entity Link Coverage</div>
             </div>
         </div>
     </div>
     {% if sc.trust_state.active_review.value == 0 %}
     <div class="alert alert-success py-2 small mb-0" role="status">
-        No review bindings pending. {{ sc.trust_state.trusted.value }} trusted binding{{ sc.trust_state.trusted.value|pluralize }} are active.
+        No suggested links pending review.
+        {{ sc.trust_state.trusted.value }} applied / confirmed link{{ sc.trust_state.trusted.value|pluralize }} active.
     </div>
     {% endif %}
 
-    <!-- Trust state -->
+    <!-- Link lifecycle (product labels) -->
     <div>
-        <h6 class="fw-semibold">Trust state</h6>
+        <h6 class="fw-semibold">Link lifecycle</h6>
         <div class="row g-2">
-            <div class="col-6 col-md-4 col-lg-2">
+            <div class="col-6 col-md-4 col-lg-3">
                 <div class="border rounded p-2 text-center">
                     <div class="fw-semibold">{{ sc.trust_state.trusted.value }}</div>
-                    <div class="small text-secondary">Trusted</div>
+                    <div class="small text-secondary">Applied / Confirmed</div>
                     <a class="small" hx-get="{% url 'scheduling:link_governance_review_queue' project.pk %}?mode=trusted&page=1"
-                       hx-target="#governance-queue-panel" hx-swap="innerHTML" href="#">Drill down</a>
+                       hx-target="#governance-queue-panel" hx-swap="innerHTML" href="#">View list</a>
                 </div>
             </div>
-            <div class="col-6 col-md-4 col-lg-2">
+            <div class="col-6 col-md-4 col-lg-3">
                 <div class="border rounded p-2 text-center bg-warning-subtle">
                     <div class="fw-semibold">{{ sc.trust_state.active_review.value }}</div>
-                    <div class="small text-secondary">Review</div>
+                    <div class="small text-secondary">Suggested</div>
                 </div>
             </div>
-            <div class="col-6 col-md-4 col-lg-2">
-                <div class="border rounded p-2 text-center">
-                    <div class="fw-semibold">{{ sc.trust_state.rejected.value }}</div>
-                    <div class="small text-secondary">Rejected</div>
-                </div>
-            </div>
-            <div class="col-6 col-md-4 col-lg-2">
-                <div class="border rounded p-2 text-center">
-                    <div class="fw-semibold">{{ sc.trust_state.reversed.value }}</div>
-                    <div class="small text-secondary">Reversed</div>
-                </div>
-            </div>
-            <div class="col-6 col-md-4 col-lg-2">
-                <div class="border rounded p-2 text-center">
-                    <div class="fw-semibold">{{ sc.trust_state.superseded.value }}</div>
-                    <div class="small text-secondary">Superseded</div>
+            <div class="col-6 col-md-4 col-lg-3">
+                <div class="border rounded p-2 text-center text-secondary">
+                    <div class="small mb-0">Inactive statuses</div>
+                    <div class="small">See Advanced link details</div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Coverage -->
+    <!-- Link Coverage detail -->
     <div>
-        <h6 class="fw-semibold">Coverage</h6>
+        <h6 class="fw-semibold">Link Coverage</h6>
         <div class="row g-2">
             <div class="col-md-6">
                 <div class="border rounded p-2">
@@ -107,7 +78,7 @@
                         {{ sc.coverage.task_coverage.numerator }} / {{ sc.coverage.task_coverage.denominator }}
                         {% if sc.coverage.task_coverage.percentage %}({{ sc.coverage.task_coverage.percentage }}%){% endif %}
                     </div>
-                    <div class="small">Trusted-linked tasks / all schedule activities</div>
+                    <div class="small">Applied / Confirmed linked tasks / all schedule activities</div>
                     <div class="small text-secondary">{{ sc.coverage.task_coverage.caveat }}</div>
                 </div>
             </div>
@@ -117,67 +88,113 @@
                         {{ sc.coverage.entity_coverage.numerator }} / {{ sc.coverage.entity_coverage.denominator }}
                         {% if sc.coverage.entity_coverage.percentage %}({{ sc.coverage.entity_coverage.percentage }}%){% endif %}
                     </div>
-                    <div class="small">Trusted entities / indexed IFC entities</div>
+                    <div class="small">Applied / Confirmed entities / indexed IFC entities</div>
                     <div class="small text-secondary">{{ sc.coverage.entity_coverage.caveat }}</div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Evidence mix -->
-    <div>
-        <h6 class="fw-semibold">Evidence / source mix (trusted)</h6>
-        <div class="d-flex flex-wrap gap-2">
-            {% for method, count in sc.evidence_quality.trusted_by_method.items %}
-            <span class="badge bg-light text-dark border">{{ method }}: {{ count }}</span>
-            {% empty %}
-            <span class="text-secondary small">No trusted bindings.</span>
-            {% endfor %}
-        </div>
-        <div class="small text-secondary mt-1">{{ sc.evidence_quality.caveat }}</div>
-    </div>
+    <!-- Deeper diagnostics: permissions, inactive statuses, methodology, policy refs -->
+    <details class="small border rounded p-2" data-testid="link-diagnostics-extra">
+        <summary class="fw-semibold">Advanced link details</summary>
+        <div class="d-flex flex-column gap-3 mt-2">
+            <div class="border rounded p-2 bg-body-tertiary">
+                <div class="mb-1">
+                    <strong>Link access:</strong> {{ auth.permission|default:"unavailable" }}
+                    {% if auth.capabilities.can_reverse or auth.capabilities.can_supersede %}
+                    <span class="badge bg-secondary-subtle text-secondary-emphasis ms-1">Lifecycle edits available</span>
+                    {% else %}
+                    <span class="badge bg-secondary-subtle text-secondary-emphasis ms-1">Some link lifecycle actions are unavailable for this session</span>
+                    {% endif %}
+                </div>
+                <div class="text-secondary">{{ o.audit_boundary.pre_audit_legacy_caveat }}</div>
+            </div>
 
-    <!-- Governance risk (lightweight) -->
-    <div>
-        <h6 class="fw-semibold">Link coverage risk</h6>
-        <div class="alert alert-secondary py-2 small mb-0">
-            {{ sc.reconciliation_risk.message }}
-        </div>
-        <div class="small mt-1">
-            Property hints: {{ sc.coverage.property_hints.value }} ·
-            Legacy M2M: {{ sc.coverage.legacy_m2m.value }}
-        </div>
-    </div>
+            <div>
+                <h6 class="fw-semibold mb-2">Inactive lifecycle statuses</h6>
+                <div class="row g-2">
+                    <div class="col-4">
+                        <div class="border rounded p-2 text-center">
+                            <div class="fw-semibold">{{ sc.trust_state.rejected.value }}</div>
+                            <div class="small text-secondary">Rejected</div>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="border rounded p-2 text-center">
+                            <div class="fw-semibold">{{ sc.trust_state.reversed.value }}</div>
+                            <div class="small text-secondary">Reversed</div>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="border rounded p-2 text-center">
+                            <div class="fw-semibold">{{ sc.trust_state.superseded.value }}</div>
+                            <div class="small text-secondary">Superseded</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
-    <!-- Decision activity -->
-    <div>
-        <h6 class="fw-semibold">Decision activity (prospective audit)</h6>
-        <div class="small">
-            Events recorded: {{ sc.decision_activity.total_events.value }}
-            · {{ sc.decision_activity.caveat }}
-        </div>
-    </div>
+            <div>
+                <h6 class="fw-semibold">Evidence / source mix (applied)</h6>
+                <div class="d-flex flex-wrap gap-2">
+                    {% for method, count in sc.evidence_quality.trusted_by_method.items %}
+                    <span class="badge bg-light text-dark border">{{ method }}: {{ count }}</span>
+                    {% empty %}
+                    <span class="text-secondary small">No applied / confirmed links.</span>
+                    {% endfor %}
+                </div>
+                <div class="small text-secondary mt-1">{{ sc.evidence_quality.caveat }}</div>
+            </div>
 
-    <!-- Review workload -->
-    <div>
-        <h6 class="fw-semibold">Reviewer workload</h6>
-        <div class="small">
-            Active review: {{ sc.review_workload.active_review_count }}
-            {% if sc.review_workload.age_bands %}
-            · &lt;7d: {{ sc.review_workload.age_bands.under_7d }}
-            · 7–30d: {{ sc.review_workload.age_bands.7_30d }}
-            · &gt;30d: {{ sc.review_workload.age_bands.over_30d }}
-            {% endif %}
-        </div>
-    </div>
+            <div>
+                <h6 class="fw-semibold">Link coverage risk</h6>
+                <div class="alert alert-secondary py-2 small mb-0">
+                    {{ sc.reconciliation_risk.message }}
+                </div>
+                <div class="small mt-1">
+                    Property hints: {{ sc.coverage.property_hints.value }} ·
+                    Legacy M2M: {{ sc.coverage.legacy_m2m.value }}
+                </div>
+            </div>
 
-    <details class="small">
-        <summary class="fw-semibold">Methodology definitions</summary>
-        <ul class="mt-2 mb-0">
-            {% for m in o.methodology %}
-            <li><strong>{{ m.label }}</strong> — {{ m.description }} (source: {{ m.source }})</li>
-            {% endfor %}
-        </ul>
+            <div>
+                <h6 class="fw-semibold">Decision activity</h6>
+                <div class="small">
+                    Events recorded: {{ sc.decision_activity.total_events.value }}
+                    · {{ sc.decision_activity.caveat }}
+                </div>
+            </div>
+
+            <div>
+                <h6 class="fw-semibold">Suggested-links workload</h6>
+                <div class="small">
+                    Active suggested: {{ sc.review_workload.active_review_count }}
+                    {% if sc.review_workload.age_bands %}
+                    · &lt;7d: {{ sc.review_workload.age_bands.under_7d }}
+                    · 7–30d: {{ sc.review_workload.age_bands.7_30d }}
+                    · &gt;30d: {{ sc.review_workload.age_bands.over_30d }}
+                    {% endif %}
+                </div>
+            </div>
+
+            <details class="small">
+                <summary class="fw-semibold">Methodology definitions</summary>
+                <ul class="mt-2 mb-0">
+                    {% for m in o.methodology %}
+                    <li><strong>{{ m.label }}</strong> — {{ m.description }} (source: {{ m.source }})</li>
+                    {% endfor %}
+                </ul>
+            </details>
+
+            <!-- Policy ids kept for packaging/debug honesty, not primary chrome -->
+            <div class="text-secondary" style="font-size:0.7rem;" data-testid="link-diagnostics-policy-refs">
+                Technical refs:
+                <span class="font-monospace">{{ o.policy_id }}</span> ·
+                <span class="font-monospace">{{ o.authority_policy_id }}</span> ·
+                methodology {{ o.methodology_version }}
+            </div>
+        </div>
     </details>
 </div>
 {% endwith %}

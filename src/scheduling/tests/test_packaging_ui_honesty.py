@@ -61,9 +61,10 @@ def test_executive_evm_remains_decision_facing(client):
     assert 'data-testid="exec-evm-decision-badge"' in html
     assert html.count("Schedule / progress sourced") == 1
 
+
 @pytest.mark.django_db
 def test_fourd_link_proposals_wording_not_approval(client):
-    """Links uses Link Proposals; Applied Links is the confirmation surface."""
+    """Links is a simple linking surface — no approval/engine/advanced console chrome."""
     project = ProjectFactory()
     client.force_login(project.owner)
 
@@ -73,12 +74,15 @@ def test_fourd_link_proposals_wording_not_approval(client):
     html = response.content.decode()
 
     assert response.status_code == 200
-    assert "Link Proposals" in html
     assert "Smart Pipeline (propose)" not in html
     assert "Suggest Links" in html
     assert "Castor Link Engine" not in html
     assert "Applied Links" in html
-    assert 'data-testid="fourd-link-quality-tab"' in html
+    assert "Suggested Links" in html
+    assert "Model Context" in html
+    assert "Link Proposals" not in html
+    assert 'data-testid="fourd-link-quality-tab"' not in html
+    assert "More linking details" not in html
     assert "Castor AI" not in html
     assert "Link assistant" in html
     assert "Advisory suggestions" in html
@@ -495,6 +499,7 @@ def test_executive_evm_company_cost_unavailable_when_assignment_ac_present():
     assert "Company actual cost" not in ac["label"]
     assert "authoritative" not in (ac.get("authority") or "").lower()
 
+
 @pytest.mark.django_db
 def test_cashflow_task_cost_source_includes_proxy_caveat():
     """Cashflow task_cost fallback exposes an incomplete→0 proxy caveat."""
@@ -656,6 +661,7 @@ def test_overview_cost_section_uses_assignment_cost_wording(client):
     assert 'data-testid="exec-cost-source-caveat"' in html
     assert "not ERP, invoice, QS, or company actual spend" in html
     assert "Unavailable — requires a company cost source" in html
+
 
 @pytest.mark.django_db
 def test_exec_subnav_marks_resources_matrix_trades_advanced(client):

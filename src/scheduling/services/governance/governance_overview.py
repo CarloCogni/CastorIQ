@@ -31,8 +31,9 @@ logger = logging.getLogger(__name__)
 
 AUDIT_BOUNDARY_MIGRATION = "0024_binding_governance_events"
 PRE_AUDIT_CAVEAT = (
-    "Trusted bindings created before E2-E may have no governance events — "
-    "they are pre-audit legacy baseline, not evidence of zero human review."
+    "Applied / Confirmed links created before link-history recording may have "
+    "no lifecycle events — they are a pre-audit legacy baseline, not evidence "
+    "of zero human review."
 )
 
 

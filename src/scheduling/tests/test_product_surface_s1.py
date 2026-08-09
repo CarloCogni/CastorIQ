@@ -141,6 +141,10 @@ def test_applied_links_workspace_avoids_governance_product_words(client):
     assert "Link Quality" not in html
     assert "Authority:" not in html
     assert "Advanced trust" not in html
+    assert "Trust state" not in html
+    assert "Destructive ops require owner" not in html
+    assert 'data-testid="link-diagnostics"' in html
+    assert 'data-testid="links-advanced-landing"' in html
 
 
 @pytest.mark.django_db
@@ -191,6 +195,7 @@ def test_controls_labels_remain_source_honest(client):
     assert "Decision-facing" not in html
     assert ">Cost EVM<" not in html
     assert "Monetary EVM" not in html
+
 
 @pytest.mark.django_db
 def test_exec_subnav_hides_matrix_trades_resources(client):

@@ -30,9 +30,9 @@
     position: relative;
   }
   #fourD-gantt {
-    width: 300px;
+    width: 280px;
     min-width: 220px;
-    max-width: 42%;
+    max-width: 36%;
     flex-shrink: 0;
     background: var(--bs-body-bg);
     border: 1px solid var(--bs-border-color);
@@ -42,50 +42,22 @@
     min-height: 0;
     height: 100%;
   }
+  /* CENTER: primary Model Context zone */
   #lw-center {
     flex: 1 1 auto;
-    min-width: 280px;
+    min-width: 320px;
     min-height: 0;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 0;
     padding: 0 8px;
     overflow: hidden;
   }
-  #lw-link-panels {
+  #fourD-viewer.lw-model-context {
     flex: 1 1 auto;
-    min-height: 0;
-    overflow: auto;
-    border: 1px solid var(--bs-border-color);
-    border-radius: 8px;
-    background: var(--bs-body-bg);
-    padding: 10px 12px;
-  }
-  #lw-inspector {
-    width: 300px;
-    max-width: 36vw;
-    min-width: 240px;
-    flex-shrink: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+    width: 100%;
     min-height: 0;
     height: 100%;
-  }
-  #lw-inspector-panel {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow: auto;
-    border: 1px solid var(--bs-border-color);
-    border-radius: 8px;
-    background: var(--bs-body-bg);
-    padding: 10px 12px;
-  }
-  #fourD-viewer.lw-model-context {
-    flex: 0 0 auto;
-    height: 200px;
-    min-height: 160px;
-    max-height: 240px;
     background: var(--bs-body-bg);
     border: 1px solid var(--bs-border-color);
     border-radius: 8px;
@@ -99,6 +71,49 @@
     border: none;
     flex: 1 1 auto;
     min-height: 0;
+  }
+  /* RIGHT: Selected Activity + compact Suggested / Applied */
+  #lw-inspector {
+    width: 320px;
+    max-width: 38vw;
+    min-width: 260px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    min-height: 0;
+    height: 100%;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 8px;
+    background: var(--bs-body-bg);
+    overflow: hidden;
+  }
+  #lw-inspector-panel {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  #lw-link-panels {
+    flex: 0 0 auto;
+    min-height: 0;
+    border-top: 1px solid var(--bs-border-color);
+    padding-top: 10px;
+    margin-top: 2px;
+  }
+  #lw-link-panels .lw-section-h { margin-top: 4px; }
+  #lw-center-empty {
+    font-size: 0.74rem;
+    line-height: 1.4;
+    margin-bottom: 6px;
+  }
+  #lw-suggested-list,
+  #lw-applied-list {
+    max-height: 28vh;
+    overflow: auto;
   }
   /* Playback / simulation chrome demoted — owned by Time View */
   #fd-timeline-section,
@@ -214,36 +229,38 @@
       transition: none !important;
     }
   }
-  #lw-advanced {
-    flex-shrink: 0;
-    max-height: 28vh;
-    overflow: auto;
-    border: 1px solid var(--bs-border-color);
-    border-radius: 8px;
-    background: var(--bs-body-bg);
+  /* Suggest Links HTMX target — not shown on the simple Links surface */
+  #fourD-link-results.visually-hidden {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
   }
-  #lw-advanced > summary {
-    cursor: pointer;
-    padding: 8px 12px;
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: var(--bs-secondary-color);
-    list-style: none;
-  }
-  #lw-advanced > summary::-webkit-details-marker { display: none; }
-  #lw-advanced[open] > summary {
-    border-bottom: 1px solid var(--bs-border-color);
-    color: var(--bs-body-color);
-  }
-  #lw-advanced .lw-advanced-body { padding: 8px 10px; }
-  #fourD-link-results { max-height: 160px; overflow-y: auto; }
-  #fourD-match-preview { overflow: visible; }
   @media (max-width: 1100px) {
     #lw-body { flex-wrap: wrap; overflow: auto; }
-    #fourD-gantt { width: 100%; max-width: none; height: 280px; }
-    #lw-center { width: 100%; padding: 8px 0; }
-    #lw-inspector { width: 100%; max-width: none; height: auto; }
-    #fourD-viewer.lw-model-context { height: 220px; max-height: none; }
+    #fourD-gantt { width: 100%; max-width: none; height: 240px; }
+    #lw-center {
+      width: 100%;
+      padding: 8px 0;
+      min-height: 320px;
+      order: 3;
+    }
+    #lw-inspector {
+      width: 100%;
+      max-width: none;
+      height: auto;
+      max-height: 42vh;
+      order: 2;
+    }
+    #fourD-viewer.lw-model-context {
+      min-height: 300px;
+      height: 42vh;
+    }
   }
 </style>
 
@@ -341,35 +358,11 @@
 
     <div class="fd-splitter" id="fd-split-1" data-left="fourD-gantt" data-right="lw-center" aria-hidden="true"></div>
 
-    <!-- CENTER: Suggested + Applied for selection -->
-    <div id="lw-center" data-testid="links-center-panels">
-      <div id="lw-link-panels">
-        <div class="lw-empty" id="lw-center-empty" data-testid="links-center-empty">
-          Select an activity to review suggested and applied model links.
-        </div>
-        <div id="lw-suggested-section" style="display:none;" data-testid="links-suggested-section">
-          <div class="lw-section-h">Suggested Links</div>
-          <div id="lw-suggested-list"></div>
-        </div>
-        <div id="lw-applied-section" style="display:none; margin-top:14px;" data-testid="links-applied-section">
-          <div class="lw-section-h">Applied Links</div>
-          <div id="lw-applied-list"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- RIGHT: Selected Activity + Model Context -->
-    <aside id="lw-inspector" data-testid="links-selected-activity">
-      <div id="lw-inspector-panel">
-        <div id="lw-inspector-empty" class="lw-empty" data-testid="links-task-empty">
-          <div class="fw-semibold text-body mb-2" style="font-size:.82rem;">Selected Activity</div>
-          <p class="mb-0">
-            Select an activity from the list to inspect dates, link state,
-            suggested model elements, and applied links.
-          </p>
-        </div>
-        <div id="lw-inspector-body" style="display:none;" data-testid="links-task-inspector"></div>
-      </div>
+    <!-- CENTER: primary Model Context / 3D viewer -->
+    <div id="lw-center"
+         class="lw-model-primary"
+         data-testid="links-model-context-primary"
+         aria-label="Model Context">
       <div id="fourD-viewer" class="lw-model-context" data-testid="links-model-context">
         <div class="d-flex align-items-center gap-2 px-2 py-1 border-bottom flex-shrink-0" style="font-size:0.75rem;">
           <span class="text-secondary fw-semibold">Model Context</span>
@@ -410,6 +403,36 @@
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- RIGHT: Selected Activity + compact Suggested / Applied -->
+    <aside id="lw-inspector" data-testid="links-selected-activity">
+      <div id="lw-inspector-panel">
+        <div id="lw-inspector-empty" class="lw-empty" data-testid="links-task-empty">
+          <div class="fw-semibold text-body mb-2" style="font-size:.82rem;">Selected Activity</div>
+          <p class="mb-0">
+            Select an activity from the list to inspect dates, link state,
+            suggested model elements, and applied links.
+          </p>
+        </div>
+        <div id="lw-inspector-body" style="display:none;" data-testid="links-task-inspector"></div>
+
+        <div id="lw-link-panels" data-testid="links-center-panels">
+          <div class="lw-empty" id="lw-center-empty" data-testid="links-center-empty">
+            No suggested or applied links for a selected activity yet.
+            Select an activity, then use Suggest Links to generate candidates when ready —
+            Suggest Links does not confirm links.
+          </div>
+          <div id="lw-suggested-section" style="display:none;" data-testid="links-suggested-section">
+            <div class="lw-section-h">Suggested Links</div>
+            <div id="lw-suggested-list"></div>
+          </div>
+          <div id="lw-applied-section" style="display:none; margin-top:10px;" data-testid="links-applied-section">
+            <div class="lw-section-h">Applied Links</div>
+            <div id="lw-applied-list"></div>
+          </div>
+        </div>
+      </div>
     </aside>
   </div>
 
@@ -433,84 +456,17 @@
     <span id="fd-stat-pct">0%</span>
   </div>
 
-  <!-- Compatibility blurb (packaging honesty) -->
+  <!-- Compatibility blurb (packaging honesty / product wording) -->
   <p class="visually-hidden" data-testid="fourd-link-assistant-intro">
     Link assistant — Advisory suggestions. Notes only — this assistant does not confirm links
     and schedule writeback is not available here. Use Suggest Links to generate candidates,
-    then confirm in Applied Links.
+    then confirm in Applied Links. Product actions use Confirm Link and Ignore Suggestion
+    labels for selected suggestions.
   </p>
 
-  <!-- Advanced: demoted proposals / deep Applied Links tools / param preview -->
-  <details id="lw-advanced" data-testid="links-advanced-tools">
-    <summary>
-      <i class="bi bi-sliders me-1"></i>More linking options
-      <span class="text-secondary fw-normal ms-1" style="font-size:.72rem;">
-        — Link Proposals, Applied Links workspace, parameter preview
-      </span>
-    </summary>
-    <div class="lw-advanced-body">
-      <p class="text-secondary mb-2" style="font-size:.72rem;" data-testid="links-action-labels">
-        Actions use <strong>Confirm Link</strong> and <strong>Ignore Suggestion</strong> labels in Applied Links tools.
-      </p>
-      <div id="fourD-footer" class="d-flex align-items-center gap-2 flex-wrap mb-2">
-        <form hx-get="{% url 'scheduling:schedule_link_preview_param' project.pk %}"
-              hx-target="#fourD-match-preview"
-              hx-swap="innerHTML"
-              hx-indicator="#fd-param-spinner"
-              class="d-flex align-items-center gap-2 flex-wrap">
-          <input type="hidden" name="summary_only" value="1">
-          <input type="text" name="param_name" id="fourD-param-input"
-                 placeholder="e.g. Activity ID"
-                 value="{{ ifc_param_name|default:'Activity ID' }}"
-                 class="form-control form-control-sm" style="width:160px; font-size:12px;">
-          <button type="submit" class="btn btn-sm btn-outline-info">
-            <span id="fd-param-spinner" class="htmx-indicator spinner-border spinner-border-sm"></span>
-            <i class="bi bi-eye me-1"></i>Preview Match
-          </button>
-        </form>
-      </div>
-      <div id="fourD-match-preview"></div>
-      <div id="fourD-link-results"></div>
-
-      <div id="fourD-bottom-panels" style="border-top:1px solid var(--bs-border-color); margin-top:8px;">
-        <ul class="nav nav-tabs px-1 pt-1 mb-0" style="font-size:0.8rem;" role="tablist">
-          <li class="nav-item" role="presentation">
-            <button class="nav-link active py-1 px-2" id="fd-pipeline-tab" data-bs-toggle="tab"
-                    data-bs-target="#fourD-review-pane" type="button" role="tab"
-                    aria-controls="fourD-review-pane" aria-selected="true"
-                    title="Suggested map — confirm links in Applied Links">
-              Link Proposals
-            </button>
-          </li>
-          <li class="nav-item" role="presentation">
-            <button class="nav-link py-1 px-2" id="fd-gov-tab" data-bs-toggle="tab"
-                    data-bs-target="#fd-gov-pane" type="button" role="tab"
-                    aria-controls="fd-gov-pane" aria-selected="false"
-                    title="Applied schedule-model links and link coverage"
-                    data-testid="fourd-link-quality-tab">
-              Applied Links
-            </button>
-          </li>
-        </ul>
-        <div class="tab-content">
-          <div class="tab-pane fade show active" id="fourD-review-pane" role="tabpanel"
-               hx-get="{% url 'scheduling:review' project.pk %}?inline=1"
-               hx-trigger="shown.bs.tab once from:#fd-pipeline-tab"
-               hx-swap="innerHTML">
-            <div class="text-secondary small py-2 px-2">
-              Open this tab to load Link Proposals.
-            </div>
-          </div>
-          <div class="tab-pane fade p-2" id="fd-gov-pane" role="tabpanel"
-               hx-get="{% url 'scheduling:link_governance_workspace' project.pk %}"
-               hx-trigger="shown.bs.tab once from:#fd-gov-tab"
-               hx-swap="innerHTML">
-            <div class="text-secondary small py-2">Open this tab to load Applied Links tools.</div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </details>
+  <!-- Suggest Links HTMX swap target (hidden — not part of the simple Links surface) -->
+  <div id="fourD-link-results" class="visually-hidden" aria-hidden="true"
+       data-testid="links-suggest-results-slot"></div>
 
 </div><!-- /fourD-root -->
 
@@ -1544,15 +1500,19 @@
   function initSplitters() {
     const STORAGE_KEY  = "fourD-layout";
     const SPLITTER_PX  = 8; // one splitter (gantt ↔ viewer)
-    const MIN_W = { "fourD-gantt": 220, "fourD-viewer": 200, "lw-center": 280 };
+    const MIN_W = { "fourD-gantt": 220, "fourD-viewer": 280, "lw-center": 320 };
     const DEFAULT_W = { "fourD-gantt": 280 };
 
     /* Restore saved widths — clamp to valid range for current viewport */
     try {
       const saved   = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
       const panelsW = document.getElementById("lw-body").offsetWidth || 1200;
-      /* Each side panel can take at most 45% of the row (leaves room for the viewer) */
-      const cap = Math.floor(panelsW * 0.45);
+      const inspW = (document.getElementById("lw-inspector") || {}).offsetWidth || 300;
+      /* Gantt can take at most ~36% — leave room for primary Model Context + inspector */
+      const cap = Math.min(
+        Math.floor(panelsW * 0.36),
+        panelsW - SPLITTER_PX - (MIN_W["lw-center"] || 320) - inspW
+      );
 
       const ganttW = saved.gantt
         ? Math.max(MIN_W["fourD-gantt"], Math.min(cap, saved.gantt))
@@ -1615,7 +1575,11 @@
           const { fixedEl, startX, startW, minW, sign } = _drag;
           const delta   = (clientX - startX) * sign;
           const container = document.getElementById("lw-body");
-          const maxW    = container.offsetWidth - SPLITTER_PX - (MIN_W["lw-center"] || 280);
+          const inspW = (document.getElementById("lw-inspector") || {}).offsetWidth || 300;
+          const maxW = container.offsetWidth
+            - SPLITTER_PX
+            - (MIN_W["lw-center"] || 320)
+            - inspW;
           fixedEl.style.width = Math.max(minW, Math.min(maxW, startW + delta)) + "px";
         });
       });
@@ -1937,7 +1901,7 @@
       const empty = document.createElement("div");
       empty.className = "lw-empty";
       empty.textContent = kind === "suggested"
-        ? "No suggested links for this selected activity yet."
+        ? "No suggested links for this activity. Use Suggest Links to generate candidates when ready — it does not confirm links."
         : "No applied links for this activity.";
       container.appendChild(empty);
       return;
