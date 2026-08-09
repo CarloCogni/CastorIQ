@@ -14,11 +14,10 @@
         {% else %}
         <span class="badge bg-warning-subtle text-warning-emphasis border">Data date estimated</span>
         {% endif %}
-        {% if b.cost_evm_available %}
-        <span class="badge bg-success-subtle text-success-emphasis border">Cost EVM</span>
-        {% elif b.schedule_performance_available %}
-        <span class="badge bg-info-subtle text-info-emphasis border">Schedule performance</span>
+        {% if b.schedule_performance_available or b.cost_evm_available %}
+        <span class="badge bg-info-subtle text-info-emphasis border" data-testid="exec-badge-schedule-performance">Schedule performance</span>
         {% endif %}
+        <span class="badge bg-secondary-subtle text-secondary-emphasis border" data-testid="exec-badge-company-cost-unavailable">Company cost source unavailable</span>
         {% if b.calendar_available %}
         <span class="badge bg-success-subtle text-success-emphasis border">Calendar-aware delays</span>
         {% else %}

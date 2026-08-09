@@ -1,5 +1,9 @@
 # scheduling/services/executive_controls/current_evm_analytics.py
-"""E8-D current-point EVM analytics — capability-gated, no historical claims."""
+"""E8-D current-point schedule performance analytics — capability-gated.
+
+Product surface never presents assignment actual cost as company cost EVM.
+CPI / AC / EAC / ETC / VAC / TCPI stay Unavailable without a company cost source.
+"""
 
 from __future__ import annotations
 
@@ -15,10 +19,17 @@ from scheduling.services.executive_controls.evm_contracts import (
     CurrentMetricResult,
 )
 from scheduling.services.executive_controls.methodology import E8_METHODOLOGY_VERSION
+from scheduling.services.executive_controls.product_surface_gate import (
+    COMPANY_ACTUAL_COST_UNAVAILABLE,
+    COMPANY_COST_SOURCE_ABSENT_NOTE,
+    PRODUCT_MODE_LABEL,
+    company_actual_cost_source_available,
+    gate_company_cost_metrics_unavailable,
+)
 
 logger = logging.getLogger(__name__)
 
-CURRENCY_ASSUMPTION = "Schedule currency units — no FX conversion applied."
+CURRENCY_ASSUMPTION = "Schedule progress indicators — not commercial cost ledgers."
 DERIVED_BANNER = (
     "Derived As-of S-Curve — reconstructed from the current schedule state. "
     "This is not imported historical performance and may change after re-import."
@@ -37,25 +48,14 @@ def _format_value(value: float | None, unit: str) -> str:
     return str(value)
 
 
-def _compute_tcpi(*, bac: float, ev: float, ac: float) -> tuple[float | None, str]:
-    budget_remaining = bac - ac
-    if budget_remaining <= 0:
-        return None, "TCPI undefined — BAC exhausted or exceeded by actual cost."
-    return round((bac - ev) / budget_remaining, 3), ""
-
-
-def _compute_etc(
-    *, eac: float | None, ac: float | None, bac: float, ev: float, cpi: float | None
-) -> float | None:
-    if eac is not None and ac is not None:
-        return round(eac - ac, 2)
-    if cpi and cpi > 0:
-        return round((bac - ev) / cpi, 2)
-    return None
+def _progress_pct(part: float | None, whole: float | None) -> float | None:
+    if part is None or whole is None or whole <= 0:
+        return None
+    return round(part / whole * 100.0, 1)
 
 
 class CurrentEVMAnalyticsService:
-    """Current-point PV/EV/AC/SPI/CPI and forecasts — one compute_evm() per session."""
+    """Current-point schedule performance payload for Controls product UI."""
 
     def __init__(
         self,
@@ -78,23 +78,15 @@ class CurrentEVMAnalyticsService:
             self._capability_payload = ProjectAnalyticsCapabilityProfile(self.project).build()
         return self._capability_payload
 
-    def _resolve_mode(
-        self, evm: dict[str, Any], caps: dict[str, dict], requested: str
-    ) -> tuple[str, str]:
-        cost_ok = caps[FeatureId.COST_EVM.value]["available"] and evm.get("use_cost")
+    def _resolve_product_mode(self, evm: dict[str, Any], caps: dict[str, dict]) -> tuple[str, str]:
+        """Product surface never selects Cost EVM / Monetary EVM as the mode."""
         sched_ok = (
             caps[FeatureId.CURRENT_SPI.value]["available"]
             or caps[FeatureId.SCHEDULE_PERFORMANCE.value]["available"]
+            or bool(evm.get("has_data"))
         )
-
-        if requested == "cost_evm" and cost_ok:
-            return "cost_evm", evm.get("performance_mode_label", "Cost EVM")
-        if requested == "schedule_performance" and sched_ok:
-            return "schedule_performance", "Schedule Performance (duration-weighted proxy)"
-        if cost_ok and evm.get("performance_mode") == "cost_evm":
-            return "cost_evm", evm.get("performance_mode_label", "Cost EVM")
         if sched_ok and evm.get("has_data"):
-            return "schedule_performance", evm.get("performance_mode_label", "Schedule Performance")
+            return "schedule_performance", PRODUCT_MODE_LABEL
         return "unavailable", "Unavailable"
 
     def _metric(
@@ -130,7 +122,12 @@ class CurrentEVMAnalyticsService:
         )
 
     def build(self, *, mode: str = "auto") -> dict[str, Any]:
-        """Return current-point EVM payload."""
+        """Return current-point product-surface schedule performance payload.
+
+        ``mode`` is accepted for API compatibility but Cost EVM is never
+        returned as the product mode — assignment cost is not company cost.
+        """
+        _ = mode  # Product surface ignores cost_evm requests.
         capability = self._capability()
         caps = capability["capabilities"]
         evm = self._session.evm()
@@ -153,33 +150,19 @@ class CurrentEVMAnalyticsService:
                 unavailable_metrics={"all": "No schedulable physical tasks."},
                 series_contracts=capability.get("series_contracts", {}),
                 coverage={},
-                caveats=["No EVM data for this project."],
+                caveats=["No schedule performance data for this project."],
             )
             return payload.to_dict()
 
-        resolved_mode, mode_label = self._resolve_mode(evm, caps, mode)
+        resolved_mode, mode_label = self._resolve_product_mode(evm, caps)
         baseline_evm = evm.get("baseline_evm") or {}
-        if baseline_evm.get("methodology_mode") == "approved_baseline_cost_evm":
-            mode_label = f"Approved baseline EVM — {baseline_evm.get('baseline_name', '')}"
-        elif baseline_evm.get("methodology_mode") == "reference_baseline_cost_evm":
-            mode_label = (
-                f"Imported reference baseline EVM — {baseline_evm.get('baseline_name', '')}"
-            )
-        elif baseline_evm.get("methodology_mode") == "working_baseline_cost_evm":
-            mode_label = f"Working baseline EVM — {baseline_evm.get('baseline_name', '')}"
-        elif baseline_evm.get("methodology_mode") == "derived_current_schedule_evm":
-            mode_label = "Derived current schedule EVM"
-
-        cost_mode = resolved_mode == "cost_evm"
-        ac_available = (
-            bool(evm.get("ac_available")) and caps[FeatureId.CURRENT_CPI.value]["available"]
-        )
 
         coverage = {
             "cost_coverage_pct": evm.get("cost_coverage_pct"),
             "ac_coverage_pct": evm.get("ac_coverage_pct"),
             "schedulable_tasks": evm.get("cost_coverage_pct"),
             "baseline_evm": baseline_evm,
+            "company_actual_cost_source": company_actual_cost_source_available(),
         }
         if baseline_evm.get("coverage"):
             coverage.update(baseline_evm["coverage"])
@@ -187,31 +170,19 @@ class CurrentEVMAnalyticsService:
         bac = evm.get("bac")
         pv = evm.get("pv")
         ev = evm.get("ev")
-        ac = evm.get("ac")
         spi = evm.get("spi")
-        cpi = evm.get("cpi") if ac_available else None
-        eac = evm.get("eac") if ac_available else None
-        vac = evm.get("vac") if ac_available else None
-        etc = _compute_etc(eac=eac, ac=ac, bac=bac, ev=ev, cpi=cpi) if ac_available else None
-        tcpi_val, tcpi_reason = (
-            _compute_tcpi(bac=bac, ev=ev, ac=ac) if ac_available and ac is not None else (None, "")
-        )
+        planned_pct = _progress_pct(pv, bac)
+        earned_pct = _progress_pct(ev, bac)
 
-        auth_derived = MetricAuthority.DERIVED.value
-        auth_auth = (
-            MetricAuthority.AUTHORITATIVE.value
-            if ac_available
-            else MetricAuthority.UNAVAILABLE.value
-        )
         auth_proxy = MetricAuthority.PROXY.value
+        auth_derived = MetricAuthority.DERIVED.value
+        auth_unavail = MetricAuthority.UNAVAILABLE.value
 
         spi_avail = caps[FeatureId.CURRENT_SPI.value]["available"] and spi is not None
-        pv_avail = spi_avail and pv is not None
-        ev_avail = spi_avail and ev is not None
-        bac_avail = bac is not None
+        progress_avail = spi_avail and planned_pct is not None and earned_pct is not None
 
         metrics: dict[str, dict[str, Any]] = {}
-        unavailable: dict[str, str] = {}
+        unavailable: dict[str, str] = gate_company_cost_metrics_unavailable()
 
         def add(m: CurrentMetricResult) -> None:
             metrics[m.metric_id] = m.to_dict()
@@ -220,16 +191,14 @@ class CurrentEVMAnalyticsService:
 
         add(
             self._metric(
-                metric_id="e8.pv",
-                label="Planned value (schedule basis)"
-                if cost_mode
-                else "Planned progress (PV proxy)",
-                value=pv,
-                unit="currency" if cost_mode else "index",
-                available=pv_avail,
-                authority=auth_derived if cost_mode else auth_proxy,
-                formula="Σ(weight × planned_pct) at data date",
-                caveat=evm.get("performance_mode_label", ""),
+                metric_id="e8.spi",
+                label="Schedule Performance Indicator",
+                value=spi,
+                unit="index",
+                available=spi_avail,
+                authority=auth_derived if spi_avail else auth_unavail,
+                formula="EV / PV (schedule/progress weighted)",
+                caveat="Based on schedule/progress inputs. Not financial cost EVM.",
                 data_date=data_date,
                 coverage=coverage,
                 missing_reason=caps[FeatureId.CURRENT_SPI.value].get(
@@ -241,165 +210,75 @@ class CurrentEVMAnalyticsService:
         )
         add(
             self._metric(
+                metric_id="e8.pv",
+                label="Planned schedule progress",
+                value=planned_pct,
+                unit="percent",
+                available=progress_avail,
+                authority=auth_proxy,
+                formula="PV / BAC × 100 at data date",
+                caveat="Schedule/progress indicator — not commercial Planned Value.",
+                data_date=data_date,
+                coverage=coverage,
+                missing_reason="Planned schedule progress unavailable."
+                if not progress_avail
+                else "",
+            )
+        )
+        add(
+            self._metric(
                 metric_id="e8.ev",
-                label="Earned value (schedule basis)" if cost_mode else "Earned progress",
-                value=ev,
-                unit="currency" if cost_mode else "index",
-                available=ev_avail,
-                authority=auth_derived if cost_mode else auth_proxy,
-                formula="Σ(weight × earned_pct) at data date",
-                caveat="Not monetary Earned Value in schedule_performance mode."
-                if not cost_mode
-                else "Schedule/resource-assignment cost indicators — not company actual spend.",
+                label="Earned schedule progress",
+                value=earned_pct,
+                unit="percent",
+                available=progress_avail,
+                authority=auth_proxy,
+                formula="EV / BAC × 100 at data date",
+                caveat="Schedule/progress indicator — not commercial Earned Value.",
                 data_date=data_date,
                 coverage=coverage,
-            )
-        )
-        add(
-            self._metric(
-                metric_id="e8.spi",
-                label="Schedule Performance Index (SPI)",
-                value=spi,
-                unit="index",
-                available=spi_avail,
-                authority=auth_derived if cost_mode else auth_proxy,
-                formula="EV / PV",
-                caveat="Current point only — not a historical trend.",
-                data_date=data_date,
-                coverage=coverage,
-            )
-        )
-        add(
-            self._metric(
-                metric_id="e8.bac",
-                label="Schedule BAC" if cost_mode else "Total weight (BAC proxy)",
-                value=bac,
-                unit="currency" if cost_mode else "index",
-                available=bac_avail,
-                authority=auth_derived if cost_mode else auth_proxy,
-                formula=evm.get("cost_basis", ""),
-                caveat=(
-                    f"{evm.get('cost_basis', '')} "
-                    "Schedule/resource-assignment basis — not company budget ledger."
-                ).strip(),
-                data_date=data_date,
-                coverage=coverage,
+                missing_reason="Earned schedule progress unavailable."
+                if not progress_avail
+                else "",
             )
         )
 
-        if cost_mode and ac_available:
-            from scheduling.services.resource_foundation import ac_source_display_label
-
-            ac_caveat = ac_source_display_label(evm.get("ac_source")) or (
-                "Authoritative when imported from resource assignments."
-            )
+        # Explicit unavailable company-cost metrics (not shown as available KPIs).
+        for mid, reason in gate_company_cost_metrics_unavailable().items():
+            label_map = {
+                "e8.ac": "Actual Cost",
+                "e8.cpi": "CPI",
+                "e8.eac": "EAC",
+                "e8.etc": "ETC",
+                "e8.vac": "VAC",
+                "e8.tcpi": "TCPI",
+            }
             add(
                 self._metric(
-                    metric_id="e8.ac",
-                    label="Assignment actual cost indicator",
-                    value=ac,
-                    unit="currency",
-                    available=True,
-                    authority=auth_auth,
-                    formula="Σ ResourceAssignment.actual_cost (canonical preferred)",
-                    caveat=ac_caveat,
-                    data_date=data_date,
-                    coverage=coverage,
-                )
-            )
-            add(
-                self._metric(
-                    metric_id="e8.cpi",
-                    label="CPI (assignment basis)",
-                    value=cpi,
+                    metric_id=mid,
+                    label=label_map[mid],
+                    value=None,
                     unit="index",
-                    available=cpi is not None,
-                    authority=auth_derived,
-                    formula="EV / AC",
-                    caveat=(
-                        "Assignment-basis indicator — not company cost performance. "
-                        "Current point — compare using tolerance bands, not red/green alone."
-                    ),
+                    available=False,
+                    authority=auth_unavail,
+                    formula="",
+                    caveat=COMPANY_COST_SOURCE_ABSENT_NOTE,
                     data_date=data_date,
                     coverage=coverage,
+                    missing_reason=reason,
                 )
             )
-            add(
-                self._metric(
-                    metric_id="e8.eac",
-                    label="EAC (assignment basis)",
-                    value=eac,
-                    unit="currency",
-                    available=eac is not None and caps[FeatureId.EAC.value]["available"],
-                    authority=auth_derived,
-                    formula="BAC / CPI",
-                    caveat="Derived assignment-basis forecast — not company/ERP spend forecast.",
-                    data_date=data_date,
-                    coverage=coverage,
-                    missing_reason="EAC unavailable — insufficient assignment cost inputs.",
-                )
-            )
-            add(
-                self._metric(
-                    metric_id="e8.etc",
-                    label="ETC (assignment basis)",
-                    value=etc,
-                    unit="currency",
-                    available=etc is not None and caps[FeatureId.ETC.value]["available"],
-                    authority=auth_derived,
-                    formula="EAC − AC",
-                    caveat="Derived projection from assignment CPI — not company remaining spend.",
-                    data_date=data_date,
-                    coverage=coverage,
-                )
-            )
-            add(
-                self._metric(
-                    metric_id="e8.vac",
-                    label="VAC (assignment basis)",
-                    value=vac,
-                    unit="currency",
-                    available=vac is not None and caps[FeatureId.VAC.value]["available"],
-                    authority=auth_derived,
-                    formula="BAC − EAC",
-                    caveat="Derived assignment-basis variance — not contractual commercial VAC.",
-                    data_date=data_date,
-                    coverage=coverage,
-                )
-            )
-            add(
-                self._metric(
-                    metric_id="e8.tcpi",
-                    label="To-Complete Performance Index (TCPI)",
-                    value=tcpi_val,
-                    unit="index",
-                    available=tcpi_val is not None and caps[FeatureId.TCPI.value]["available"],
-                    authority=auth_derived,
-                    formula="(BAC − EV) / (BAC − AC)",
-                    caveat=tcpi_reason or "Efficiency required on remaining work to meet BAC.",
-                    data_date=data_date,
-                    coverage=coverage,
-                    missing_reason=tcpi_reason,
-                )
-            )
-        else:
-            for mid, reason in (
-                ("e8.ac", evm.get("ac_disabled_reason", "Actual cost unavailable.")),
-                ("e8.cpi", "CPI requires authoritative actual cost."),
-                ("e8.eac", "EAC requires actual cost and CPI."),
-                ("e8.etc", "ETC requires actual cost."),
-                ("e8.vac", "VAC requires actual cost."),
-                ("e8.tcpi", "TCPI requires actual cost below BAC."),
-            ):
-                unavailable[mid] = reason
 
-        caveats = [DERIVED_BANNER]
+        caveats = [
+            DERIVED_BANNER,
+            COMPANY_COST_SOURCE_ABSENT_NOTE,
+            COMPANY_ACTUAL_COST_UNAVAILABLE,
+        ]
         caveats.extend(baseline_evm.get("caveats") or [])
-        if not cost_mode:
-            caveats.append("Schedule Performance mode — not Cost EVM.")
         if evm.get("overdue_linear_capped", 0) > 0:
             caveats.append(
-                f"{evm['overdue_linear_capped']} in-progress tasks use linear EV fallback — SPI may be overstated."
+                f"{evm['overdue_linear_capped']} in-progress tasks use linear EV fallback — "
+                "Schedule Performance Indicator may be overstated."
             )
         series = capability.get("series_contracts", {})
         if series.get("imported_historical", {}).get("caveat"):
@@ -415,11 +294,15 @@ class CurrentEVMAnalyticsService:
             data_date_authoritative=capability.get("data_date_authoritative", False),
             calculated_at=calculated_at,
             currency_assumption=CURRENCY_ASSUMPTION,
-            cost_basis=evm.get("cost_basis", ""),
+            cost_basis="",
             metrics=metrics,
             unavailable_metrics=unavailable,
             series_contracts=series,
             coverage=coverage,
             caveats=caveats,
         )
-        return payload.to_dict()
+        out = payload.to_dict()
+        # Product surface never claims cost EVM availability.
+        out["cost_evm_available"] = False
+        out["company_actual_cost_source_available"] = company_actual_cost_source_available()
+        return out

@@ -175,7 +175,7 @@ def test_review_queue_confirm_ignore_labels(client):
 
 @pytest.mark.django_db
 def test_controls_labels_remain_source_honest(client):
-    """Controls EVM page uses schedule/assignment wording."""
+    """Controls EVM page uses schedule performance wording — not financial Cost EVM."""
     project = ProjectFactory()
     client.force_login(project.owner)
 
@@ -183,13 +183,14 @@ def test_controls_labels_remain_source_honest(client):
     html = response.content.decode()
 
     assert response.status_code == 200
-    assert "Schedule / Assignment Indicators" in html
+    assert "Schedule Performance" in html
     assert 'data-testid="exec-evm-decision-badge"' in html
-    assert "Schedule / assignment sourced" in html
-    assert "not ERP, invoice, QS, or company actual spend" in html
+    assert "Schedule / progress sourced" in html
+    assert "ERP" in html and "invoice" in html and "QS" in html
     assert "EVM Analytics" not in html
     assert "Decision-facing" not in html
-
+    assert ">Cost EVM<" not in html
+    assert "Monetary EVM" not in html
 
 @pytest.mark.django_db
 def test_exec_subnav_hides_matrix_trades_resources(client):

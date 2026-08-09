@@ -1,7 +1,7 @@
 {% extends "core/base.html" %}
-<!-- scheduling/executive_controls_evm_page.html — E8-D EVM analytics shell -->
+<!-- scheduling/executive_controls_evm_page.html — Schedule Performance & Readiness -->
 
-{% block title %}Schedule / Assignment Indicators — {{ project.name }} — Castor{% endblock %}
+{% block title %}Schedule Performance &amp; Readiness — {{ project.name }} — Castor{% endblock %}
 
 {% block content %}
 <div class="container-fluid py-3 px-3 px-lg-4 evm-analytics-scope">
@@ -9,19 +9,19 @@
         <ol class="breadcrumb small mb-0">
             <li class="breadcrumb-item"><a href="{% url 'projects:detail' project.pk %}">{{ project.name }}</a></li>
             <li class="breadcrumb-item"><a href="{% url 'scheduling:executive_controls' project.pk %}">Controls</a></li>
-            <li class="breadcrumb-item active" aria-current="page">Schedule / Assignment Indicators</li>
+            <li class="breadcrumb-item active" aria-current="page">Schedule Performance &amp; Readiness</li>
         </ol>
     </nav>
 
     <div class="d-flex align-items-center gap-2 mb-3">
-        <h1 class="h5 fw-semibold mb-0">Schedule / Assignment Indicators</h1>
-        <span class="badge bg-primary-subtle text-primary-emphasis border" style="font-size:0.7rem;" data-testid="exec-evm-decision-badge">Schedule / assignment sourced</span>
+        <h1 class="h5 fw-semibold mb-0" data-testid="exec-evm-page-title">Schedule Performance &amp; Readiness</h1>
+        <span class="badge bg-primary-subtle text-primary-emphasis border" style="font-size:0.7rem;" data-testid="exec-evm-decision-badge">Schedule / progress sourced</span>
         <button type="button"
                 class="help-pill"
                 data-bs-toggle="modal"
                 data-bs-target="#evmAnalyticsHelpModal"
-                title="How Schedule / Assignment Indicators work"
-                aria-label="How Schedule / Assignment Indicators work">
+                title="How Schedule Performance & Readiness works"
+                aria-label="How Schedule Performance & Readiness works">
             <i class="bi bi-question-circle"></i>
         </button>
     </div>
@@ -30,11 +30,16 @@
     {% include "scheduling/components/executive_capability_banner.html" %}
 
     <div class="alert alert-info py-2 small mb-3" role="status" data-testid="exec-evm-source-caveat">
-        Schedule / assignment cost indicators only.
-        Assignment actual cost is not ERP, invoice, QS, or company actual spend.
+        Schedule and progress indicators only — not financial Cost EVM.
+        Company cost metrics (CPI, Actual Cost, EAC, ETC, VAC, TCPI) are unavailable —
+        Castor has no ERP, invoice, QS, payroll, procurement, or company cost ledger integration.
+        ResourceAssignment.actual_cost is not company spend.
         Derived As-of S-Curve is reconstructed from the current schedule state —
         not imported historical performance and may change after re-import.
     </div>
+    <p class="small text-secondary mb-3" data-testid="exec-company-cost-unavailable">
+        Unavailable — requires a company cost source (ERP / invoice / QS / payroll / procurement).
+    </p>
 
     <div class="row g-2 mb-3 align-items-end">
         <div class="col-auto">
@@ -54,9 +59,9 @@
                     hx-get="{% url 'scheduling:executive_controls_evm_current' project.pk %}"
                     hx-target="#exec-evm-current"
                     hx-include="#evm-filter-form"
-                    name="mode">
+                    name="mode"
+                    data-testid="exec-evm-mode-select">
                 <option value="auto" {% if filters.mode == 'auto' %}selected{% endif %}>Auto</option>
-                <option value="cost_evm" {% if filters.mode == 'cost_evm' %}selected{% endif %}>Cost EVM</option>
                 <option value="schedule_performance" {% if filters.mode == 'schedule_performance' %}selected{% endif %}>Schedule Performance</option>
             </select>
         </div>
@@ -71,7 +76,7 @@
          hx-trigger="load"
          hx-swap="innerHTML"
          data-testid="exec-evm-current-autoload">
-        <div class="text-secondary small py-3">Loading current metrics…</div>
+        <div class="text-secondary small py-3">Loading schedule performance…</div>
     </div>
 
     <!-- Derived curve / periods are manual — avoid parallel compute_evm on first paint -->

@@ -220,7 +220,7 @@ class TestCostSection:
         assert payload.get("performance_mode_label")
 
     def test_cpi_unavailable_without_ac(self):
-        """CPI card unavailable when AC missing."""
+        """CPI card unavailable — company cost source never present on product UI."""
         project = ProjectFactory()
         TaskFactory(
             project=project,
@@ -231,11 +231,11 @@ class TestCostSection:
         )
         payload = ExecutiveControlsOverviewService(project).build_cost_section(OverviewFilters())
         cpi = next(c for c in payload["cards"] if c["metric_id"] == "e8.cpi")
-        if not cpi["available"]:
-            assert cpi["unavailable_reason"] or cpi["display_value"] == "N/A"
+        assert cpi["available"] is False
+        assert cpi["unavailable_reason"] or cpi["display_value"] == "N/A"
 
     def test_proxy_not_labelled_cost_evm(self):
-        """Duration-only project uses schedule performance label."""
+        """Product cost section never claims Cost EVM availability."""
         project = ProjectFactory()
         TaskFactory(
             project=project,
@@ -246,8 +246,8 @@ class TestCostSection:
         )
         payload = ExecutiveControlsOverviewService(project).build_cost_section(OverviewFilters())
         assert payload["cost_evm_available"] is False
-        assert any("Schedule Performance" in w for w in payload.get("warnings", []))
-
+        assert "Schedule Performance" in payload["performance_mode_label"]
+        assert any("Schedule Performance" in w or "company actual" in w.lower() for w in payload.get("warnings", []))
     def test_coverage_visible(self):
         """Cost cards include coverage metadata when available."""
         project = ProjectFactory()

@@ -28,7 +28,7 @@
     <h3 class="fs-7 fw-semibold mt-3">Governed trade aggregates</h3>
     <div class="table-responsive mb-3">
         <table class="table table-sm">
-            <thead><tr><th>Value</th><th>Tasks</th><th>Delayed</th><th>SPI</th><th>CPI</th><th>Trusted</th></tr></thead>
+            <thead><tr><th>Value</th><th>Tasks</th><th>Delayed</th><th>SPI</th><th>Trusted</th></tr></thead>
             <tbody>
             {% for row in governed_trade_summary.governed_values %}
             <tr>
@@ -36,7 +36,6 @@
                 <td>{{ row.task_count }}</td>
                 <td>{{ row.delay.primary_late_count|default:0 }}</td>
                 <td>{{ row.evm.spi|default:"—" }}</td>
-                <td>{{ row.evm.cpi|default:"—" }}</td>
                 <td>{{ row.model_scope.trusted_task_count|default:0 }}</td>
             </tr>
             {% endfor %}
@@ -49,7 +48,7 @@
     <h3 class="fs-7 fw-semibold mt-3">Governed package aggregates</h3>
     <div class="table-responsive mb-3">
         <table class="table table-sm">
-            <thead><tr><th>Value</th><th>Tasks</th><th>Delayed</th><th>SPI</th><th>CPI</th></tr></thead>
+            <thead><tr><th>Value</th><th>Tasks</th><th>Delayed</th><th>SPI</th></tr></thead>
             <tbody>
             {% for row in governed_package_summary.governed_values %}
             <tr>
@@ -57,7 +56,6 @@
                 <td>{{ row.task_count }}</td>
                 <td>{{ row.delay.primary_late_count|default:0 }}</td>
                 <td>{{ row.evm.spi|default:"—" }}</td>
-                <td>{{ row.evm.cpi|default:"—" }}</td>
             </tr>
             {% endfor %}
             </tbody>

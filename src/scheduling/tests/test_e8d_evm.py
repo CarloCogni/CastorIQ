@@ -67,9 +67,11 @@ class TestSeriesAuthority:
 @pytest.mark.django_db
 class TestCurrentMetrics:
     def test_cost_evm_mode(self):
+        """Product surface never returns Cost EVM mode — schedule performance only."""
         payload = CurrentEVMAnalyticsService(build_p6xml_full_project()).build()
-        assert payload["mode"] == "cost_evm"
+        assert payload["mode"] == "schedule_performance"
         assert payload["metrics"]["e8.spi"]["available"] is True
+        assert payload["metrics"]["e8.cpi"]["available"] is False
 
     def test_schedule_performance_mode(self):
         assert (

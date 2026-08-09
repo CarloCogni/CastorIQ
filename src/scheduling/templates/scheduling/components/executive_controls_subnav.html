@@ -11,18 +11,18 @@
         {% if "evm" in capability_profile.recommended_visible_pages %}
         <a class="nav-link py-1 px-3 {% if exec_subtab == 'evm' %}active{% endif %}"
            href="{% url 'scheduling:executive_controls_evm' project.pk %}">
-            Schedule / Assignment Indicators
+            Schedule Performance &amp; Readiness
         </a>
         {% else %}
         <span class="nav-link py-1 px-3 disabled text-secondary"
-              title="{{ capability_profile.page_reasons.evm|default:'Schedule / assignment indicators unavailable' }}">
-            Schedule / Assignment Indicators
+              title="{{ capability_profile.page_reasons.evm|default:'Schedule performance unavailable' }}">
+            Schedule Performance &amp; Readiness
         </span>
         {% endif %}
         {% else %}
         <a class="nav-link py-1 px-3 {% if exec_subtab == 'evm' %}active{% endif %}"
            href="{% url 'scheduling:executive_controls_evm' project.pk %}">
-            Schedule / Assignment Indicators
+            Schedule Performance &amp; Readiness
         </a>
         {% endif %}
     </li>

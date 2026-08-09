@@ -270,7 +270,7 @@ class ExecutiveControlsOverviewService:
         }
 
     def build_cost_section(self, filters: OverviewFilters) -> dict[str, Any]:
-        """Cost position — single compute_evm via availability service."""
+        """Schedule / readiness indicators — company-cost EVM gated off product UI."""
         capability = self.capability_profile()
         caps = capability["capabilities"]
         if not caps[FeatureId.SCHEDULE_OVERVIEW.value]["available"]:
@@ -291,81 +291,134 @@ class ExecutiveControlsOverviewService:
         data_date, _ = get_project_data_date(self.project_id)
         evm = self._cache.evm_availability()
         snap = evm.get("evm_snapshot", {})
-        cost_evm = evm.get("cost_evm_available", False)
-        unavailable = evm.get("unavailable_metrics", {})
-        from scheduling.services.resource_foundation import ac_source_display_label
+        from scheduling.services.executive_controls.product_surface_gate import (
+            COMPANY_ACTUAL_COST_UNAVAILABLE,
+            COMPANY_COST_SOURCE_ABSENT_NOTE,
+            PRODUCT_MODE_LABEL,
+            company_actual_cost_source_available,
+        )
 
-        ac_source = evm.get("ac_source") or ""
-        ac_source_line = ac_source_display_label(ac_source)
-        value_unit = "currency" if cost_evm else "index"
+        bac = snap.get("bac")
+        pv = snap.get("pv")
+        ev_val = snap.get("ev")
+        spi = snap.get("spi")
 
-        def _cost_card(metric_id: str, label: str, key: str, unit: str = "index") -> dict[str, Any]:
-            avail = key not in unavailable and snap.get(key) is not None
-            if not cost_evm and key in ("cpi", "eac", "vac", "ac"):
-                avail = False
-            caveat = unavailable.get(f"e8.{key}", "") or evm.get("performance_mode_label", "")
-            if key == "ac" and avail and ac_source_line:
-                caveat = ac_source_line
-            return kpi_card(
-                metric_id=metric_id,
-                label=label,
-                value=snap.get(key) if avail else None,
-                unit=unit,
-                available=avail,
-                methodology_label="Cost EVM" if cost_evm else "Schedule Performance",
-                coverage={
-                    "cost_coverage_pct": evm.get("coverage", {}).get("cost_coverage_pct"),
-                    "ac_coverage_pct": evm.get("coverage", {}).get("ac_coverage_pct"),
-                },
-                caveat=caveat,
-                unavailable_reason=unavailable.get(f"e8.{key}", unavailable.get("e8.cpi", "")),
+        def _pct(part: float | None, whole: float | None) -> float | None:
+            if part is None or whole is None or whole <= 0:
+                return None
+            return round(float(part) / float(whole) * 100.0, 1)
+
+        planned_pct = _pct(pv, bac)
+        earned_pct = _pct(ev_val, bac)
+        spi_avail = spi is not None
+        progress_avail = planned_pct is not None and earned_pct is not None
+
+        coverage = {
+            "cost_coverage_pct": evm.get("coverage", {}).get("cost_coverage_pct"),
+            "ac_coverage_pct": evm.get("coverage", {}).get("ac_coverage_pct"),
+        }
+
+        cards = [
+            kpi_card(
+                metric_id="e8.spi",
+                label="Schedule Performance Indicator",
+                value=spi if spi_avail else None,
+                unit="index",
+                available=spi_avail,
+                methodology_label=PRODUCT_MODE_LABEL,
+                coverage=coverage,
+                caveat="Based on schedule/progress inputs. Not financial cost EVM.",
+                unavailable_reason=""
+                if spi_avail
+                else "Schedule Performance Indicator unavailable.",
                 data_date=data_date.isoformat(),
                 drilldown_url=reverse(
                     "scheduling:executive_controls_evm", kwargs={"pk": self.project_id}
                 ),
-            )
-
-        cards = [
-            _cost_card(
-                "e8.pv",
-                "Planned value (schedule basis)" if cost_evm else "Planned progress (PV proxy)",
-                "pv",
-                value_unit,
             ),
-            _cost_card(
-                "e8.ev",
-                "Earned value (schedule basis)" if cost_evm else "Earned progress (EV proxy)",
-                "ev",
-                value_unit,
-            ),
-            _cost_card(
-                "e8.ac",
-                "Assignment actual cost indicator",
-                "ac",
-                "currency",
-            ),
-            _cost_card("e8.spi", "SPI", "spi"),
-            _cost_card("e8.cpi", "CPI (assignment basis)", "cpi"),
-            _cost_card("e8.eac", "EAC (assignment basis)", "eac", "currency"),
-            _cost_card("e8.vac", "VAC (assignment basis)", "vac", "currency"),
             kpi_card(
-                metric_id="e8.bac",
-                label="Schedule BAC" if cost_evm else "Total weight (BAC proxy)",
-                value=snap.get("bac"),
-                unit=value_unit,
-                available=snap.get("bac") is not None,
-                methodology_label=evm.get("performance_mode_label", ""),
+                metric_id="e8.pv",
+                label="Planned schedule progress",
+                value=planned_pct if progress_avail else None,
+                unit="percent",
+                available=progress_avail,
+                methodology_label=PRODUCT_MODE_LABEL,
+                coverage=coverage,
+                caveat="Schedule/progress indicator — not commercial Planned Value.",
+                unavailable_reason=""
+                if progress_avail
+                else "Planned schedule progress unavailable.",
+                data_date=data_date.isoformat(),
+            ),
+            kpi_card(
+                metric_id="e8.ev",
+                label="Earned schedule progress",
+                value=earned_pct if progress_avail else None,
+                unit="percent",
+                available=progress_avail,
+                methodology_label=PRODUCT_MODE_LABEL,
+                coverage=coverage,
+                caveat="Schedule/progress indicator — not commercial Earned Value.",
+                unavailable_reason=""
+                if progress_avail
+                else "Earned schedule progress unavailable.",
+                data_date=data_date.isoformat(),
+            ),
+            kpi_card(
+                metric_id="e8.cpi",
+                label="CPI",
+                value=None,
+                unit="index",
+                available=False,
+                methodology_label=PRODUCT_MODE_LABEL,
+                coverage=coverage,
+                caveat=COMPANY_COST_SOURCE_ABSENT_NOTE,
+                unavailable_reason=COMPANY_ACTUAL_COST_UNAVAILABLE,
+                data_date=data_date.isoformat(),
+            ),
+            kpi_card(
+                metric_id="e8.ac",
+                label="Actual Cost",
+                value=None,
+                unit="currency",
+                available=False,
+                methodology_label=PRODUCT_MODE_LABEL,
+                coverage=coverage,
+                caveat=COMPANY_COST_SOURCE_ABSENT_NOTE,
+                unavailable_reason=COMPANY_ACTUAL_COST_UNAVAILABLE,
+                data_date=data_date.isoformat(),
+            ),
+            kpi_card(
+                metric_id="e8.eac",
+                label="EAC",
+                value=None,
+                unit="currency",
+                available=False,
+                methodology_label=PRODUCT_MODE_LABEL,
+                coverage=coverage,
+                caveat=COMPANY_COST_SOURCE_ABSENT_NOTE,
+                unavailable_reason=COMPANY_ACTUAL_COST_UNAVAILABLE,
+                data_date=data_date.isoformat(),
+            ),
+            kpi_card(
+                metric_id="e8.vac",
+                label="VAC",
+                value=None,
+                unit="currency",
+                available=False,
+                methodology_label=PRODUCT_MODE_LABEL,
+                coverage=coverage,
+                caveat=COMPANY_COST_SOURCE_ABSENT_NOTE,
+                unavailable_reason=COMPANY_ACTUAL_COST_UNAVAILABLE,
                 data_date=data_date.isoformat(),
             ),
         ]
 
-        warnings: list[str] = []
-        if not cost_evm:
-            warnings.append(
-                "Schedule Performance is not Cost EVM — duration/progress proxy may apply."
-            )
-        if unavailable.get("e8.cpi"):
-            warnings.append(str(unavailable["e8.cpi"]))
+        warnings: list[str] = [
+            COMPANY_COST_SOURCE_ABSENT_NOTE,
+            COMPANY_ACTUAL_COST_UNAVAILABLE,
+            "Schedule Performance Indicator is not Cost EVM or company cost performance.",
+        ]
         derived = capability.get("series_contracts", {}).get("derived_as_of_curve", {})
         if derived.get("caveat"):
             warnings.append(str(derived["caveat"]))
@@ -374,12 +427,13 @@ class ExecutiveControlsOverviewService:
             "section": "cost",
             "section_available": True,
             "project_id": self.project_id,
-            "performance_mode": evm.get("performance_mode"),
-            "performance_mode_label": evm.get("performance_mode_label"),
-            "cost_evm_available": cost_evm,
-            "capability_cost_evm": caps[FeatureId.COST_EVM.value]["available"],
-            "ac_source": ac_source,
-            "ac_source_label": ac_source_line,
+            "performance_mode": "schedule_performance",
+            "performance_mode_label": PRODUCT_MODE_LABEL,
+            "cost_evm_available": False,
+            "capability_cost_evm": False,
+            "company_actual_cost_source_available": company_actual_cost_source_available(),
+            "ac_source": "",
+            "ac_source_label": "",
             "series_contract": derived,
             "evm_detail_url": reverse(
                 "scheduling:executive_controls_evm", kwargs={"pk": self.project_id}

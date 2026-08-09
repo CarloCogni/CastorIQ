@@ -49,7 +49,7 @@ def test_legacy_evm_labelled_diagnostic_not_primary_decision(client):
 
 @pytest.mark.django_db
 def test_executive_evm_remains_decision_facing(client):
-    """Controls indicators page keeps schedule/assignment sourced badge."""
+    """Controls indicators page keeps schedule/progress sourced badge."""
     project = ProjectFactory()
     client.force_login(project.owner)
 
@@ -57,10 +57,9 @@ def test_executive_evm_remains_decision_facing(client):
     html = response.content.decode()
 
     assert response.status_code == 200
-    assert "Schedule / Assignment Indicators" in html
+    assert "Schedule Performance" in html
     assert 'data-testid="exec-evm-decision-badge"' in html
-    assert html.count("Schedule / assignment sourced") == 1
-
+    assert html.count("Schedule / progress sourced") == 1
 
 @pytest.mark.django_db
 def test_fourd_link_proposals_wording_not_approval(client):
@@ -450,21 +449,21 @@ def test_overview_cost_labels_respect_schedule_performance_mode():
 
     assert payload["cost_evm_available"] is False
     pv = next(c for c in payload["cards"] if c["metric_id"] == "e8.pv")
-    bac = next(c for c in payload["cards"] if c["metric_id"] == "e8.bac")
-    assert "proxy" in pv["label"].lower()
-    assert pv["unit"] == "index"
-    assert "proxy" in bac["label"].lower()
-    assert bac["unit"] == "index"
+    assert "schedule progress" in pv["label"].lower()
+    assert pv["unit"] == "percent"
 
 
 @pytest.mark.django_db
-def test_executive_evm_ac_source_line_when_ac_available():
-    """Executive EVM AC metric caveat names the AC store when available."""
+def test_executive_evm_company_cost_unavailable_when_assignment_ac_present():
+    """Assignment AC does not enable product Actual Cost / CPI KPIs."""
     from datetime import date
     from decimal import Decimal
 
     from scheduling.services.executive_controls.current_evm_analytics import (
         CurrentEVMAnalyticsService,
+    )
+    from scheduling.services.executive_controls.product_surface_gate import (
+        COMPANY_ACTUAL_COST_UNAVAILABLE,
     )
 
     project = ProjectFactory()
@@ -490,12 +489,11 @@ def test_executive_evm_ac_source_line_when_ac_available():
     payload = CurrentEVMAnalyticsService(project).build()
     ac = payload["metrics"].get("e8.ac")
     assert ac is not None
-    assert ac["available"] is True
-    assert ac["label"] == "Assignment actual cost indicator"
-    assert "canonical ResourceAssignment" in ac["caveat"]
-    assert "company" in ac["caveat"].lower() or "ERP" in ac["caveat"]
+    assert ac["available"] is False
+    assert COMPANY_ACTUAL_COST_UNAVAILABLE in (ac["missing_reason"] or "")
+    assert payload["metrics"]["e8.cpi"]["available"] is False
     assert "Company actual cost" not in ac["label"]
-
+    assert "authoritative" not in (ac.get("authority") or "").lower()
 
 @pytest.mark.django_db
 def test_cashflow_task_cost_source_includes_proxy_caveat():
@@ -653,11 +651,11 @@ def test_overview_cost_section_uses_assignment_cost_wording(client):
     html = response.content.decode()
 
     assert response.status_code == 200
-    assert "Schedule / Assignment Cost Indicators" in html
+    assert "Schedule Performance" in html
     assert "Cost Position" not in html
     assert 'data-testid="exec-cost-source-caveat"' in html
     assert "not ERP, invoice, QS, or company actual spend" in html
-
+    assert "Unavailable — requires a company cost source" in html
 
 @pytest.mark.django_db
 def test_exec_subnav_marks_resources_matrix_trades_advanced(client):

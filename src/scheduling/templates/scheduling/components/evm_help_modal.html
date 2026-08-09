@@ -8,45 +8,45 @@
                  style="border-color: var(--bs-border-color) !important;">
                 <h5 class="modal-title fw-semibold fs-6 mb-0" id="evmHelpLabel">
                     <i class="bi bi-graph-up-arrow me-2" style="color: #3b82f6;"></i>
-                    How Operational EVM diagnostics works
+                    How Operational schedule diagnostics works
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
 
             <div class="modal-body px-4 py-4">
 
-                <!-- 1. What is EVM? -->
+                <!-- 1. Scope -->
                 <p class="fw-semibold fs-7 mb-2">
                     <i class="bi bi-box-seam me-1" style="color: #3b82f6;"></i>
-                    What is Earned Value Management?
+                    What this diagnostic shows
                 </p>
                 <p class="text-secondary fs-7 mb-4">
-                    EVM is the industry-standard method for measuring project performance. It compares
-                    <strong>what was planned</strong> (Planned Value), <strong>what was actually earned</strong>
-                    (Earned Value), and <strong>what was spent</strong> (Actual Cost) at any point in time.
-                    The ratios — SPI and CPI — give an objective answer to "are we on track?".
+                    This legacy operational view is a <strong>schedule diagnostic</strong>, not a commercial
+                    Cost EVM product. Castor does <strong>not</strong> integrate ERP, invoice, QS, payroll,
+                    procurement, or company cost ledgers. CPI / Actual Cost / EAC / ETC / VAC stay
+                    <strong>Unavailable — requires a company cost source</strong>.
+                    Use Controls → Schedule Performance &amp; Readiness for the product surface.
                 </p>
 
                 <!-- 2. KPI reference -->
                 <p class="fw-semibold fs-7 mb-2">
                     <i class="bi bi-speedometer2 me-1" style="color: #3b82f6;"></i>
-                    Key Performance Indicators
+                    Schedule indicators vs unavailable cost metrics
                 </p>
                 <table class="table table-sm table-borderless fs-8 mb-4" style="color: var(--bs-body-color);">
                     <thead style="color: var(--bs-secondary-color);">
                         <tr>
                             <th style="width:70px;">KPI</th>
                             <th style="width:160px;">Formula</th>
-                            <th>Meaning</th>
-                            <th style="width:90px;">Green / Red</th>
+                            <th>Product status</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr><td><strong>SPI</strong></td><td>EV ÷ PV</td><td>Schedule efficiency — how much work earned vs planned</td><td>≥ 1.0 / &lt; 1.0</td></tr>
-                        <tr><td><strong>CPI</strong></td><td>EV ÷ AC</td><td>Cost efficiency — earned vs actual spend</td><td>≥ 1.0 / &lt; 1.0</td></tr>
-                        <tr><td><strong>EAC</strong></td><td>BAC ÷ CPI</td><td>Estimate at Completion — projected final cost</td><td>≤ BAC / &gt; BAC</td></tr>
-                        <tr><td><strong>VAC</strong></td><td>BAC − EAC</td><td>Variance at Completion — over/under budget forecast</td><td>≥ 0 / &lt; 0</td></tr>
-                        <tr><td><strong>TCPI</strong></td><td>(BAC−EV) ÷ (BAC−AC)</td><td>Efficiency needed for remaining work to hit budget</td><td>≤ 1.0 / &gt; 1.10</td></tr>
+                        <tr><td><strong>SPI</strong></td><td>EV ÷ PV</td><td>Schedule Performance Indicator — schedule/progress based when shown</td></tr>
+                        <tr><td><strong>CPI</strong></td><td>EV ÷ AC</td><td>Unavailable — requires a company cost source</td></tr>
+                        <tr><td><strong>EAC</strong></td><td>BAC ÷ CPI</td><td>Unavailable — requires a company cost source</td></tr>
+                        <tr><td><strong>VAC</strong></td><td>BAC − EAC</td><td>Unavailable — requires a company cost source</td></tr>
+                        <tr><td><strong>TCPI</strong></td><td>(BAC−EV) ÷ (BAC−AC)</td><td>Unavailable — requires a company cost source</td></tr>
                     </tbody>
                 </table>
 
@@ -142,15 +142,11 @@
                     extrapolated date exceeds a sane horizon (3× planned duration past baseline).
                 </p>
                 <p class="text-secondary fs-7 mb-4">
-                    <strong>Actual Cost (AC) is read from canonical <code>ResourceAssignment.actual_cost</code>
-                    when available</strong>, with legacy <code>P6ResourceAssignment</code> fallback for
-                    projects not yet populated into the resource foundation. Only real imported
-                    actual cost values contribute (<code>actual_cost &gt; 0</code>). When actual cost
-                    has not been imported, AC is absent and
-                    <strong>CPI, CV, EAC, and VAC are disabled</strong> with a clear notice on each KPI card;
-                    they are never estimated from a formula. On some legacy pilots, canonical rows were
-                    populated from a P6 schedule source without <code>source_version</code> —
-                    that provenance gap is labelled in capability caveats, not hidden.
+                    <strong>Company cost ledgers are not available in Castor.</strong>
+                    Schedule <code>ResourceAssignment.actual_cost</code> is assignment diagnostic data only —
+                    not ERP, invoice, QS, payroll, procurement, or company spend.
+                    On the product Controls surface, CPI / AC / EAC / ETC / VAC / TCPI remain
+                    <strong>Unavailable — requires a company cost source</strong>.
                 </p>
 
                 <!-- 4b. 4D / 5D readiness card -->
@@ -173,7 +169,7 @@
                 </p>
                 <div class="d-flex flex-column gap-1 fs-8 text-secondary">
                     <span><i class="bi bi-dot"></i>SPI trend convergence: point SPI tends toward 1.0 near project end regardless of performance — treat trend forecasts cautiously beyond 75% completion.</span>
-                    <span><i class="bi bi-dot"></i>CPI, CV, EAC, and VAC are disabled entirely — not estimated — when P6 actual cost has not been imported. The KPI cards show a notice rather than a placeholder value.</span>
+                    <span><i class="bi bi-dot"></i>CPI, AC, EAC, ETC, VAC, and TCPI stay Unavailable on the product Controls surface — assignment actual cost is not company spend.</span>
                     <span><i class="bi bi-dot"></i>TCPI requires at least some AC &lt; BAC; if AC has exceeded BAC the denominator is zero and TCPI is undefined.</span>
                     <span><i class="bi bi-dot"></i>Constraint / deadline data (TCPI, MFO flags) requires a P6 XML re-import after the constraint fields were added — older imports have no constraint data.</span>
                     <span><i class="bi bi-dot"></i>Trend regression uses a 12-week window. Fewer than 3 weeks of history will show "insufficient data" — this resolves automatically as the project progresses.</span>

@@ -3,21 +3,36 @@
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
-                <h2 class="modal-title h5" id="evmAnalyticsHelpLabel">How Schedule / Assignment Indicators work</h2>
+                <h2 class="modal-title h5" id="evmAnalyticsHelpLabel">How Schedule Performance &amp; Readiness works</h2>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body small">
                 <h3 class="h6">What is it?</h3>
-                <p>Current-point schedule and cost performance from the live schedule snapshot — SPI, CPI, PV, EV, AC, and derived as-of S-curves.</p>
+                <p>
+                    Schedule Performance &amp; Readiness shows schedule/progress indicators
+                    (Schedule Performance Indicator, planned vs earned schedule progress)
+                    from the live schedule snapshot. It is <strong>not</strong> a financial
+                    Cost EVM or company cost-performance dashboard.
+                </p>
+                <h3 class="h6 mt-3">Company cost source</h3>
+                <p>
+                    CPI, Actual Cost, EAC, ETC, VAC, and TCPI stay
+                    <strong>Unavailable — requires a company cost source</strong>.
+                    Castor has no ERP, invoice, QS, payroll, procurement, or company cost
+                    ledger integration. ResourceAssignment.actual_cost is schedule assignment
+                    data only — not company spend.
+                </p>
                 <h3 class="h6 mt-3">Derived vs historical</h3>
-                <p>Curves are <strong>Derived As-of S-Curves</strong> — mathematically reconstructed from current task rows. They are not imported historical performance and may change after re-import.</p>
-                <h3 class="h6 mt-3">Cost EVM vs Schedule Performance</h3>
-                <p>Cost EVM requires authoritative actual cost. When unavailable, Schedule Performance uses duration-weighted progress — never labelled as monetary EVM.</p>
+                <p>
+                    Curves are <strong>Derived As-of S-Curves</strong> — reconstructed from
+                    current task rows. They are not imported historical performance and may
+                    change after re-import.
+                </p>
                 <h3 class="h6 mt-3">Caveats</h3>
                 <ul>
-                    <li>Missing metrics show as Unavailable — not zero.</li>
-                    <li>CPI near 1.0 should be read with tolerance context.</li>
-                    <li>Historical SPI/CPI trends require AnalyticalSnapshot (not yet available).</li>
+                    <li>Missing company-cost metrics show as Unavailable — not zero.</li>
+                    <li>Schedule Performance Indicator is based on schedule/progress inputs only.</li>
+                    <li>Historical SPI trends require AnalyticalSnapshot (not yet available).</li>
                 </ul>
             </div>
         </div>

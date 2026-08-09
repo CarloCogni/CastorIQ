@@ -1,14 +1,14 @@
 <!-- scheduling/components/executive_evm_current.html -->
 <section id="exec-evm-current-section" aria-labelledby="exec-evm-current-heading">
     <h2 class="h6 fw-semibold mb-3" id="exec-evm-current-heading">
-        <i class="bi bi-speedometer2 me-1 text-primary"></i> Current-Point Metrics
+        <i class="bi bi-speedometer2 me-1 text-primary"></i> Schedule Performance Indicators
         <span class="badge bg-secondary-subtle text-secondary-emphasis ms-1">{{ mode_label|default:"—" }}</span>
     </h2>
     {% if section_error %}
     <div class="alert alert-danger" role="alert">{{ section_error }}</div>
     {% elif mode == 'unavailable' %}
     <div class="alert alert-secondary" role="status">
-        EVM analytics unavailable — {{ unavailable_metrics.all|default:"Insufficient data." }}
+        Schedule performance unavailable — {{ unavailable_metrics.all|default:"Insufficient data." }}
     </div>
     {% else %}
     {% for c in caveats %}
@@ -21,8 +21,10 @@
     </p>
     <div class="row g-3">
         {% for mid, m in metrics.items %}
+        {% if m.available or mid == "e8.spi" or mid == "e8.pv" or mid == "e8.ev" %}
         <div class="col-12 col-sm-6 col-lg-4 col-xl-3">
-            <article class="exec-kpi-card border rounded p-3 h-100 {% if not m.available %}exec-kpi-unavailable{% endif %}">
+            <article class="exec-kpi-card border rounded p-3 h-100 {% if not m.available %}exec-kpi-unavailable{% endif %}"
+                     data-testid="exec-metric-{{ mid }}">
                 <h3 class="fs-7 fw-semibold">{{ m.label }}</h3>
                 <p class="exec-kpi-value mb-1">
                     {% if m.available %}{{ m.display_value }}{% else %}<span class="text-secondary">Unavailable</span>{% endif %}
@@ -35,11 +37,12 @@
                 <span class="badge bg-body-secondary text-body">{{ m.authority }}</span>
             </article>
         </div>
+        {% endif %}
         {% endfor %}
     </div>
     {% if unavailable_metrics %}
-    <details class="mt-3 small">
-        <summary class="text-secondary">Unavailable metrics</summary>
+    <details class="mt-3 small" data-testid="exec-company-cost-metrics-hidden">
+        <summary class="text-secondary">Company-cost metrics (unavailable)</summary>
         <ul class="mb-0 mt-1">
             {% for k, v in unavailable_metrics.items %}
             {% if k != 'all' %}<li><strong>{{ k }}</strong>: {{ v }}</li>{% endif %}
