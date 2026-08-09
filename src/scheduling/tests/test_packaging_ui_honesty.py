@@ -64,7 +64,7 @@ def test_executive_evm_remains_decision_facing(client):
 
 @pytest.mark.django_db
 def test_fourd_link_proposals_wording_not_approval(client):
-    """Links is a simple linking surface — no approval/engine/advanced console chrome."""
+    """Links is a practical manual linking surface — no suggestion/approval chrome."""
     project = ProjectFactory()
     client.force_login(project.owner)
 
@@ -75,19 +75,22 @@ def test_fourd_link_proposals_wording_not_approval(client):
 
     assert response.status_code == 200
     assert "Smart Pipeline (propose)" not in html
-    assert "Suggest Links" in html
+    assert "Suggest Links" not in html
+    assert "Suggested Links" not in html
     assert "Castor Link Engine" not in html
     assert "Applied Links" in html
-    assert "Suggested Links" in html
     assert "Model Context" in html
+    assert "Search activities" in html
     assert "Link Proposals" not in html
     assert 'data-testid="fourd-link-quality-tab"' not in html
     assert "More linking details" not in html
     assert "Castor AI" not in html
-    assert "Link assistant" in html
-    assert "Advisory suggestions" in html
-    assert "does not confirm links" in html
+    assert "Links workspace" in html
+    assert "Manual schedule" in html or "Manual schedule–model linking" in html
+    assert "schedule writeback is not available here" in html.lower()
     assert "approval authority" not in html.lower()
+    assert 'data-testid="suggest-links-btn"' not in html
+    assert "Ignore Suggestion" not in html
 
 
 @pytest.mark.django_db
@@ -272,7 +275,7 @@ def test_data_sources_review_url_points_to_real_review(client):
 
 @pytest.mark.django_db
 def test_fourd_link_hides_writeback_mutation_controls(client):
-    """4D Link keeps advisory copy but exposes no writeback chat controls."""
+    """4D Link keeps manual-workspace copy but exposes no writeback chat controls."""
     project = ProjectFactory()
     client.force_login(project.owner)
 
@@ -282,19 +285,20 @@ def test_fourd_link_hides_writeback_mutation_controls(client):
     html = response.content.decode()
 
     assert response.status_code == 200
-    assert "Link assistant" in html
-    assert "Advisory suggestions" in html
-    assert "does not confirm links" in html
+    assert "Links workspace" in html
+    assert "schedule writeback is not available here" in html.lower()
     assert "schedule_writeback" not in html
     assert "fourD-chat-send" not in html
     assert "fourD-chat-input" not in html
     assert "fd-chat-toggle" not in html
     assert "fd-embed-btn" not in html
+    assert "Suggest Links" not in html
+    assert "Advisory suggestions" not in html
 
 
 @pytest.mark.django_db
 def test_autolink_summary_uses_proposal_not_authority_wording():
-    """Autolink result partial speaks proposals + Applied Links, not auto-accept."""
+    """Autolink result partial speaks candidates only, not auto-accept."""
     from django.template.loader import render_to_string
 
     project = ProjectFactory()
@@ -316,11 +320,13 @@ def test_autolink_summary_uses_proposal_not_authority_wording():
         },
     )
 
-    assert "Link proposals generated" in html
-    assert "Requires Applied Links confirmation" in html
+    assert "Candidates generated" in html
+    assert "Candidates only" in html
+    assert "Suggested" in html
     assert "Smart Auto-Link complete" not in html
     assert "linked automatically" not in html
     assert "auto_accepted" not in html
+    assert "fourD-review-pane" not in html
 
 
 @pytest.mark.django_db

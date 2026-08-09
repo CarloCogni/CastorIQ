@@ -1360,7 +1360,7 @@ class GanttDataView(ProjectAccessMixin, View):
 
 
 class TaskDetailView(ProjectAccessMixin, View):
-    """HTMX GET — task detail side panel for the Gantt chart."""
+    """HTMX GET — task detail side panel for the Gantt chart / Links inspector."""
 
     def get(self, request, **kwargs: object) -> HttpResponse:
         from scheduling.services.governance.reader import BindingGovernanceReader
@@ -1368,33 +1368,82 @@ class TaskDetailView(ProjectAccessMixin, View):
         project = self.get_project()
         task = get_object_or_404(Task, pk=kwargs["task_pk"], project=project)
         reader = BindingGovernanceReader(project.pk)
-        trusted_gids = reader.trusted_entity_gids_for_task(task.pk)
-        review_gids = reader.review_entity_gids_for_task(task.pk)
+        trusted_bindings = list(
+            reader.trusted_bindings_qs()
+            .filter(task_id=task.pk)
+            .order_by("-confidence", "created_at")[:50]
+        )
+        trusted_gids = [b.entity_global_id for b in trusted_bindings]
         ifc_files = IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
-        trusted_entities = list(
-            IFCEntity.objects.filter(ifc_file__in=ifc_files, global_id__in=trusted_gids).only(
-                "global_id", "name", "ifc_type", "properties"
+        entity_by_gid = {
+            e.global_id: e
+            for e in IFCEntity.objects.filter(
+                ifc_file__in=ifc_files,
+                global_id__in=set(trusted_gids),
             )
-        )
-        review_entities = list(
-            IFCEntity.objects.filter(ifc_file__in=ifc_files, global_id__in=review_gids).only(
-                "global_id", "name", "ifc_type", "properties"
+            .select_related("spatial_container", "spatial_container__entity")
+            .only(
+                "global_id",
+                "name",
+                "ifc_type",
+                "properties",
+                "spatial_container_id",
+                "spatial_container__spatial_type",
+                "spatial_container__entity_id",
+                "spatial_container__entity__name",
             )
-        )
-        property_hints = []
-        for entity in (
-            IFCEntity.objects.filter(ifc_file__in=ifc_files)
-            .only("global_id", "name", "ifc_type", "properties")
-            .iterator(chunk_size=200)
-        ):
-            if entity.global_id in trusted_gids or entity.global_id in review_gids:
-                continue
-            act_id = None
-            for key, value in (entity.properties or {}).items():
-                if value and key.lower().endswith("activity id"):
-                    act_id = str(value).strip()
-                    break
-            if act_id:
+        }
+
+        def _storey(entity) -> str:
+            if entity is None:
+                return ""
+            container = getattr(entity, "spatial_container", None)
+            if container is None:
+                return ""
+            linked = getattr(container, "entity", None)
+            return (linked.name if linked and linked.name else "") or ""
+
+        def _rows(bindings: list) -> list[dict]:
+            rows: list[dict] = []
+            for binding in bindings:
+                entity = entity_by_gid.get(binding.entity_global_id)
+                rows.append(
+                    {
+                        "binding_id": str(binding.pk),
+                        "global_id": binding.entity_global_id,
+                        "name": (entity.name if entity and entity.name else "")
+                        or binding.entity_global_id,
+                        "ifc_type": (entity.ifc_type if entity else "") or "",
+                        "storey": _storey(entity),
+                        "confidence": binding.confidence,
+                        "link_method": binding.link_method or "",
+                        "activity_hint": "",
+                    }
+                )
+            return rows
+
+        applied_links = _rows(trusted_bindings)
+
+        # Property hints tied to this activity code only (metadata, not proposals)
+        property_hints: list[dict] = []
+        activity_code = (task.activity_code or "").strip().lower()
+        if activity_code:
+            for entity in (
+                IFCEntity.objects.filter(ifc_file__in=ifc_files)
+                .only("global_id", "name", "ifc_type", "properties")
+                .iterator(chunk_size=200)
+            ):
+                if entity.global_id in trusted_gids:
+                    continue
+                act_id = None
+                for key, value in (entity.properties or {}).items():
+                    if value and key.lower().endswith("activity id"):
+                        act_id = str(value).strip()
+                        break
+                if not act_id:
+                    continue
+                if act_id.lower() != activity_code and activity_code not in act_id.lower():
+                    continue
                 property_hints.append(
                     {
                         "global_id": entity.global_id,
@@ -1428,12 +1477,11 @@ class TaskDetailView(ProjectAccessMixin, View):
             "scheduling/components/task_detail.html",
             {
                 "task": task,
-                "entities": trusted_entities,
-                "trusted_entities": trusted_entities,
-                "review_entities": review_entities,
+                "entities": [entity_by_gid[g] for g in trusted_gids if g in entity_by_gid],
+                "trusted_entities": [entity_by_gid[g] for g in trusted_gids if g in entity_by_gid],
+                "applied_links": applied_links,
                 "property_hints": property_hints,
                 "trusted_count": len(trusted_gids),
-                "review_count": len(review_gids),
                 "progress": progress,
                 "siblings_count": siblings_count,
                 "stage_color": _STAGE_COLORS.get(task.stage or "", "#6b7280"),

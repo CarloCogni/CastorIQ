@@ -72,7 +72,7 @@
     flex: 1 1 auto;
     min-height: 0;
   }
-  /* RIGHT: Selected Activity + compact Suggested / Applied */
+  /* RIGHT: Selected Activity + Applied / Confirmed */
   #lw-inspector {
     width: 320px;
     max-width: 38vw;
@@ -110,7 +110,6 @@
     line-height: 1.4;
     margin-bottom: 6px;
   }
-  #lw-suggested-list,
   #lw-applied-list {
     max-height: 28vh;
     overflow: auto;
@@ -158,10 +157,6 @@
     background: var(--bs-tertiary-bg);
     font-size: 0.76rem;
   }
-  .lw-card.lw-card-suggested {
-    border-color: rgba(245, 158, 11, 0.35);
-    background: rgba(245, 158, 11, 0.08);
-  }
   .lw-card.lw-card-applied {
     border-color: rgba(34, 197, 94, 0.3);
     background: rgba(34, 197, 94, 0.07);
@@ -175,7 +170,6 @@
     border: 1px solid var(--bs-border-color);
   }
   .lw-badge-applied { color: #86efac; border-color: rgba(34,197,94,.35); }
-  .lw-badge-suggested { color: #fbbf24; border-color: rgba(245,158,11,.4); }
   .lw-badge-unlinked { color: var(--bs-secondary-color); }
   .fd-zoom-btn, .fd-lf-btn {
     padding: 2px 8px;
@@ -229,18 +223,7 @@
       transition: none !important;
     }
   }
-  /* Suggest Links HTMX target — not shown on the simple Links surface */
-  #fourD-link-results.visually-hidden {
-    position: absolute !important;
-    width: 1px !important;
-    height: 1px !important;
-    padding: 0 !important;
-    margin: -1px !important;
-    overflow: hidden !important;
-    clip: rect(0, 0, 0, 0) !important;
-    white-space: nowrap !important;
-    border: 0 !important;
-  }
+  /* Suggest / proposal chrome removed from normal Links surface */
   @media (max-width: 1100px) {
     #lw-body { flex-wrap: wrap; overflow: auto; }
     #fourD-gantt { width: 100%; max-width: none; height: 240px; }
@@ -276,38 +259,21 @@
       Applied Links <strong id="lw-count-applied">—</strong>
     </span>
     <span class="lw-count" data-testid="links-count-unlinked"
-          title="Activities without applied or suggested links">
+          title="Activities without applied / confirmed model links">
       Unlinked Activities <strong id="lw-count-unlinked">—</strong>
     </span>
-    <span class="lw-count" data-testid="links-count-suggested"
-          title="Activities with suggested links awaiting confirmation">
-      Suggested Links <strong id="lw-count-suggested">—</strong>
-    </span>
     <span class="lw-count d-none d-md-inline" data-testid="links-count-coverage"
-          title="Share of activities with applied links">
+          title="Share of activities with applied / confirmed links">
       Link Coverage <strong id="lw-count-coverage">—</strong>
     </span>
 
     <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
       <input type="search" id="lw-activity-search" class="form-control form-control-sm"
              placeholder="Search activities…"
-             style="width:160px; font-size:.78rem;"
+             style="width:220px; font-size:.78rem;"
              data-testid="links-activity-search"
+             title="Search by activity code or name"
              autocomplete="off">
-      <form hx-post="{% url 'scheduling:schedule_link_smart' project.pk %}"
-            hx-target="#fourD-link-results"
-            hx-swap="innerHTML"
-            hx-indicator="#fd-link-spinner"
-            class="d-inline">
-        {% csrf_token %}
-        <button type="submit" class="btn btn-sm btn-primary"
-                style="font-size:12px; font-weight:600;"
-                data-testid="suggest-links-btn"
-                title="Generate suggested links (does not auto-confirm)">
-          <span id="fd-link-spinner" class="htmx-indicator spinner-border spinner-border-sm"></span>
-          <i class="bi bi-lightning-charge-fill me-1"></i>Suggest Links
-        </button>
-      </form>
     </div>
   </div>
 
@@ -328,7 +294,6 @@
       <div id="fd-link-filter" style="display:flex; gap:4px; padding:6px 8px; border-bottom:1px solid var(--bs-border-color); flex-shrink:0; flex-wrap:wrap;">
         <button type="button" class="fd-lf-btn active" data-filter="all">All</button>
         <button type="button" class="fd-lf-btn" data-filter="linked"><span style="color:#1D9E75;">●</span> Applied</button>
-        <button type="button" class="fd-lf-btn" data-filter="needs_review"><span style="color:#F59E0B;">●</span> Suggested</button>
         <button type="button" class="fd-lf-btn" data-filter="unlinked"><span style="color:#4B5563;">●</span> Unlinked</button>
       </div>
       <div id="fd-gantt-scroll" style="overflow:auto; flex:1; min-height:0; background:#0f172a;">
@@ -405,30 +370,26 @@
       </div>
     </div>
 
-    <!-- RIGHT: Selected Activity + compact Suggested / Applied -->
+    <!-- RIGHT: Selected Activity + Applied / Confirmed links -->
     <aside id="lw-inspector" data-testid="links-selected-activity">
       <div id="lw-inspector-panel">
         <div id="lw-inspector-empty" class="lw-empty" data-testid="links-task-empty">
           <div class="fw-semibold text-body mb-2" style="font-size:.82rem;">Selected Activity</div>
           <p class="mb-0">
-            Select an activity from the list to inspect dates, link state,
-            suggested model elements, and applied links.
+            Search or select an activity to inspect dates, link state,
+            and applied / confirmed model links.
           </p>
         </div>
         <div id="lw-inspector-body" style="display:none;" data-testid="links-task-inspector"></div>
 
         <div id="lw-link-panels" data-testid="links-center-panels">
           <div class="lw-empty" id="lw-center-empty" data-testid="links-center-empty">
-            No suggested or applied links for a selected activity yet.
-            Select an activity, then use Suggest Links to generate candidates when ready —
-            Suggest Links does not confirm links.
+            No applied model links for a selected activity yet.
+            Search activities, select one, and inspect applied / confirmed links here.
+            Manual element linking is not available in this workspace yet.
           </div>
-          <div id="lw-suggested-section" style="display:none;" data-testid="links-suggested-section">
-            <div class="lw-section-h">Suggested Links</div>
-            <div id="lw-suggested-list"></div>
-          </div>
-          <div id="lw-applied-section" style="display:none; margin-top:10px;" data-testid="links-applied-section">
-            <div class="lw-section-h">Applied Links</div>
+          <div id="lw-applied-section" style="display:none;" data-testid="links-applied-section">
+            <div class="lw-section-h">Applied / Confirmed Links</div>
             <div id="lw-applied-list"></div>
           </div>
         </div>
@@ -458,15 +419,10 @@
 
   <!-- Compatibility blurb (packaging honesty / product wording) -->
   <p class="visually-hidden" data-testid="fourd-link-assistant-intro">
-    Link assistant — Advisory suggestions. Notes only — this assistant does not confirm links
-    and schedule writeback is not available here. Use Suggest Links to generate candidates,
-    then confirm in Applied Links. Product actions use Confirm Link and Ignore Suggestion
-    labels for selected suggestions.
+    Links workspace — Manual schedule–model linking. Search and select activities,
+    inspect applied / confirmed model links, and use Model Context.
+    Schedule writeback is not available here.
   </p>
-
-  <!-- Suggest Links HTMX swap target (hidden — not part of the simple Links surface) -->
-  <div id="fourD-link-results" class="visually-hidden" aria-hidden="true"
-       data-testid="links-suggest-results-slot"></div>
 
 </div><!-- /fourD-root -->
 
@@ -494,7 +450,7 @@
         <span id="fdLinkSelectedCount" class="text-secondary me-auto" style="font-size:0.8rem;"></span>
         <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
         <button type="button" class="btn btn-sm btn-primary" id="fdLinkConfirmBtn" disabled>
-          <i class="bi bi-link-45deg me-1"></i>Confirm Link
+          <i class="bi bi-link-45deg me-1"></i>Link Element
         </button>
       </div>
     </div>
@@ -1119,6 +1075,11 @@
     }
     if (_fdLinkFilter === "all") {
       fd_renderGantt({ ..._fdLastData, tasks });
+    } else if (_fdLinkFilter === "unlinked") {
+      fd_renderGantt({
+        ..._fdLastData,
+        tasks: tasks.filter(t => t.link_status !== "linked"),
+      });
     } else {
       fd_renderGantt({
         ..._fdLastData,
@@ -1856,18 +1817,16 @@
     if (chevron) chevron.style.transform = isExpanded ? "rotate(90deg)" : "";
   });
 
-  /* ── Links Workspace V1: Selected Activity inspector ─────────────── */
+  /* ── Links Workspace: Selected Activity inspector (manual applied links) ─ */
   function lwUpdateCoverageCounts(tasks) {
     const physical = (tasks || []).filter(t => !t.is_non_physical);
-    let applied = 0, suggested = 0, unlinked = 0;
+    let applied = 0, unlinked = 0;
     physical.forEach(t => {
       if (t.link_status === "linked") applied++;
-      else if (t.link_status === "needs_review") suggested++;
       else unlinked++;
     });
     const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = String(v); };
     set("lw-count-applied", applied);
-    set("lw-count-suggested", suggested);
     set("lw-count-unlinked", unlinked);
     const cov = physical.length ? Math.round((applied / physical.length) * 100) + "%" : "—";
     set("lw-count-coverage", cov);
@@ -1876,7 +1835,6 @@
   function lwStateLabel(t) {
     if (!t) return "Unlinked";
     if (t.link_status === "linked") return "Applied";
-    if (t.link_status === "needs_review") return "Suggested";
     return "Unlinked";
   }
 
@@ -1885,40 +1843,67 @@
     const empty = document.getElementById("lw-inspector-empty");
     const body = document.getElementById("lw-inspector-body");
     const cEmpty = document.getElementById("lw-center-empty");
-    const sug = document.getElementById("lw-suggested-section");
     const app = document.getElementById("lw-applied-section");
     if (empty) empty.style.display = "";
     if (body) { body.style.display = "none"; body.innerHTML = ""; }
     if (cEmpty) cEmpty.style.display = "";
-    if (sug) sug.style.display = "none";
     if (app) app.style.display = "none";
   }
 
-  function lwRenderGidCards(container, gids, kind) {
+  function lwRenderAppliedPlaceholders(container, gids) {
     if (!container) return;
     container.innerHTML = "";
     if (!gids || !gids.length) {
       const empty = document.createElement("div");
       empty.className = "lw-empty";
-      empty.textContent = kind === "suggested"
-        ? "No suggested links for this activity. Use Suggest Links to generate candidates when ready — it does not confirm links."
-        : "No applied links for this activity.";
+      empty.setAttribute("data-testid", "links-applied-empty");
+      empty.innerHTML =
+        "<div class=\"mb-1\">No applied model links for this activity.</div>" +
+        "<div data-testid=\"links-manual-link-limitation\">" +
+        "Manual element linking is not available in this workspace yet.</div>";
       container.appendChild(empty);
       return;
     }
     gids.forEach(function (gid, i) {
       const card = document.createElement("div");
-      card.className = "lw-card lw-card-enter " + (kind === "suggested" ? "lw-card-suggested" : "lw-card-applied");
+      card.className = "lw-card lw-card-enter lw-card-applied";
       card.style.animationDelay = Math.min(i, 8) * 30 + "ms";
       card.innerHTML =
         "<div class=\"d-flex align-items-center gap-2\">" +
-        "<i class=\"bi " + (kind === "suggested" ? "bi-lightbulb" : "bi-check-circle text-success") + "\"></i>" +
+        "<i class=\"bi bi-check-circle text-success\"></i>" +
         "<code style=\"font-size:.72rem;\">" + esc(gid) + "</code>" +
-        "<span class=\"lw-badge " + (kind === "suggested" ? "lw-badge-suggested" : "lw-badge-applied") + " ms-auto\">" +
-        (kind === "suggested" ? "Suggested" : "Applied") + "</span></div>" +
-        "<div class=\"text-secondary mt-1\" style=\"font-size:.7rem;\">Model Element</div>";
+        "<span class=\"lw-badge lw-badge-applied ms-auto\">Applied</span></div>" +
+        "<div class=\"text-secondary mt-1\" style=\"font-size:.7rem;\">Loading element details…</div>";
       container.appendChild(card);
     });
+  }
+
+  function lwMountTaskDetailPanels(html, t) {
+    const appList = document.getElementById("lw-applied-list");
+    const detailSlot = document.getElementById("lw-inspector-detail");
+    const tmp = document.createElement("div");
+    tmp.innerHTML = html;
+
+    const appCards = tmp.querySelector('[data-testid="links-task-applied-cards"]');
+    const hints = tmp.querySelector('[data-testid="links-task-property-hints"]');
+    const timeView = tmp.querySelector('[data-testid="links-open-time-view"]');
+
+    if (appList && appCards) {
+      appList.innerHTML = appCards.innerHTML;
+      if (window.htmx) window.htmx.process(appList);
+    } else if (appList) {
+      lwRenderAppliedPlaceholders(
+        appList,
+        (t && (t.trusted_entity_global_ids || t.entity_global_ids)) || []
+      );
+    }
+
+    if (detailSlot) {
+      let extra = "";
+      if (hints) extra += hints.outerHTML;
+      if (timeView) extra += "<div class=\"mt-2\">" + timeView.outerHTML + "</div>";
+      detailSlot.innerHTML = extra || "";
+    }
   }
 
   async function lwSelectActivity(t) {
@@ -1927,20 +1912,15 @@
     const empty = document.getElementById("lw-inspector-empty");
     const body = document.getElementById("lw-inspector-body");
     const cEmpty = document.getElementById("lw-center-empty");
-    const sugSec = document.getElementById("lw-suggested-section");
     const appSec = document.getElementById("lw-applied-section");
-    const sugList = document.getElementById("lw-suggested-list");
     const appList = document.getElementById("lw-applied-list");
     if (empty) empty.style.display = "none";
     if (cEmpty) cEmpty.style.display = "none";
-    if (sugSec) sugSec.style.display = "";
     if (appSec) appSec.style.display = "";
 
     const state = lwStateLabel(t);
-    const badgeCls = state === "Applied" ? "lw-badge-applied"
-      : (state === "Suggested" ? "lw-badge-suggested" : "lw-badge-unlinked");
+    const badgeCls = state === "Applied" ? "lw-badge-applied" : "lw-badge-unlinked";
     const appliedN = (t.trusted_entity_global_ids || t.entity_global_ids || []).length;
-    const suggestedN = (t.review_entity_global_ids || []).length;
 
     if (body) {
       body.style.display = "";
@@ -1953,58 +1933,24 @@
         "<div class=\"col-6\"><div class=\"text-secondary\">Planned Start</div><div>" + esc(t.start || "—") + "</div></div>" +
         "<div class=\"col-6\"><div class=\"text-secondary\">Planned Finish</div><div>" + esc(t.end || "—") + "</div></div>" +
         "<div class=\"col-6\"><div class=\"text-secondary\">Status</div><div>" + esc(t.status || "—") + "</div></div>" +
-        "<div class=\"col-6\"><div class=\"text-secondary\">Model Elements</div><div>Applied " + appliedN + " · Suggested " + suggestedN + "</div></div>" +
+        "<div class=\"col-6\"><div class=\"text-secondary\">Applied Model Links</div><div>" + appliedN + "</div></div>" +
         "</div>" +
         "<div id=\"lw-inspector-detail\" class=\"text-secondary\" style=\"font-size:.72rem;\">Loading model element details…</div>";
     }
 
-    lwRenderGidCards(sugList, t.review_entity_global_ids || [], "suggested");
-    lwRenderGidCards(appList, t.trusted_entity_global_ids || t.entity_global_ids || [], "applied");
+    lwRenderAppliedPlaceholders(appList, t.trusted_entity_global_ids || t.entity_global_ids || []);
 
     const taskId = t.id || t.pk;
-    const detailSlot = document.getElementById("lw-inspector-detail");
-    if (!taskId || !detailSlot) return;
+    if (!taskId) return;
     try {
       const url = TASK_DETAIL_URL_TMPL.replace("__TASK_ID__", String(taskId));
       const resp = await fetch(url, { headers: { "HX-Request": "true" } });
       if (!resp.ok) throw new Error(String(resp.status));
       const html = await resp.text();
-      const tmp = document.createElement("div");
-      tmp.innerHTML = html;
-      const appliedNames = [...tmp.querySelectorAll(".bi-check-circle")].map(function (icon) {
-        const span = icon.parentElement && icon.parentElement.querySelector(".text-truncate");
-        return span ? span.textContent.trim() : "";
-      }).filter(Boolean);
-      const suggestedNames = [...tmp.querySelectorAll(".bi-exclamation-circle")].map(function (icon) {
-        const span = icon.parentElement && icon.parentElement.querySelector(".text-truncate");
-        return span ? span.textContent.trim() : "";
-      }).filter(Boolean);
-      if (appliedNames.length && appList) {
-        appList.innerHTML = "";
-        appliedNames.forEach(function (name, i) {
-          const gid = (t.trusted_entity_global_ids || t.entity_global_ids || [])[i] || "";
-          const card = document.createElement("div");
-          card.className = "lw-card lw-card-applied lw-card-enter";
-          card.innerHTML = "<div class=\"fw-semibold\">" + esc(name) + "</div>" +
-            (gid ? "<code style=\"font-size:.68rem;\">" + esc(gid) + "</code>" : "") +
-            "<div><span class=\"lw-badge lw-badge-applied\">Applied</span></div>";
-          appList.appendChild(card);
-        });
-      }
-      if (suggestedNames.length && sugList) {
-        sugList.innerHTML = "";
-        suggestedNames.forEach(function (name, i) {
-          const gid = (t.review_entity_global_ids || [])[i] || "";
-          const card = document.createElement("div");
-          card.className = "lw-card lw-card-suggested lw-card-enter";
-          card.innerHTML = "<div class=\"fw-semibold\">" + esc(name) + "</div>" +
-            (gid ? "<code style=\"font-size:.68rem;\">" + esc(gid) + "</code>" : "") +
-            "<div class=\"mt-1\"><span class=\"lw-badge lw-badge-suggested\">Suggested</span></div>";
-          sugList.appendChild(card);
-        });
-      }
-      detailSlot.innerHTML = "<div class=\"border-top pt-2 mt-1\">" + html + "</div>";
+      if (_lwSelectedTask !== t) return;
+      lwMountTaskDetailPanels(html, t);
     } catch (e) {
+      const detailSlot = document.getElementById("lw-inspector-detail");
       if (detailSlot) detailSlot.textContent = "Model element details unavailable for this activity.";
     }
   }

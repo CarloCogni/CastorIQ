@@ -204,9 +204,17 @@ def test_task_detail_sections(client):
         reverse("scheduling:task_detail", kwargs={"pk": project.pk, "task_pk": task.pk})
     )
     body = resp.content.decode()
-    assert "Applied Links" in body
+    assert "Applied Links" in body or "Applied / Confirmed" in body
     assert "Trusted Links" not in body
-    assert "Review Suggestions" in body
+    assert "Suggested Links" not in body
+    assert 'data-testid="links-suggestion-card"' not in body
+    assert "Confirm Link" not in body
+    assert "Ignore Suggestion" not in body
+    assert "Review Suggestions" not in body
+    assert "Destructive ops" not in body
+    assert "governance-authority-v1" not in body
+    assert "Trust state" not in body
+    assert 'data-testid="links-applied-card"' in body or "No applied model links" in body
 
 
 @pytest.mark.django_db

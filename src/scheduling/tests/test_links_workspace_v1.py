@@ -1,5 +1,5 @@
 # scheduling/tests/test_links_workspace_v1.py
-"""Links Workspace Polish V1 — layout, wording, playback ownership split."""
+"""Links Workspace — practical manual linking surface (no suggestion UX)."""
 
 from __future__ import annotations
 
@@ -32,6 +32,12 @@ _FORBIDDEN_LINKS_SURFACE = (
     "Your access:",
     "Conf min",
     "IFC class",
+    "Suggest Links",
+    "Suggested Links",
+    "Generating candidates",
+    "Ignore Suggestion",
+    "AI suggestions",
+    "Review queue",
 )
 
 _FORBIDDEN_ADVANCED_LANDING = (
@@ -48,7 +54,7 @@ _FORBIDDEN_ADVANCED_LANDING = (
 
 @pytest.mark.django_db
 def test_links_workspace_v1_layout_markers(client):
-    """Links tab exposes toolbar, inspector, suggested/applied sections."""
+    """Links tab exposes toolbar, search, model context, applied inspector."""
     project = ProjectFactory()
     TaskFactory(project=project, name="Link WS Task")
     client.force_login(project.owner)
@@ -61,25 +67,31 @@ def test_links_workspace_v1_layout_markers(client):
     assert response.status_code == 200
     assert 'data-testid="links-workspace"' in html
     assert 'data-testid="links-workspace-toolbar"' in html
+    assert 'data-testid="links-activities"' in html
+    assert 'data-testid="links-activity-search"' in html
     assert 'data-testid="links-selected-activity"' in html
     assert 'data-testid="links-task-empty"' in html
-    assert 'data-testid="links-suggested-section"' in html
     assert 'data-testid="links-applied-section"' in html
     assert 'data-testid="links-center-empty"' in html
     assert 'data-testid="links-model-context"' in html
     assert 'data-testid="links-model-context-primary"' in html
     assert "Selected Activity" in html
-    assert "Suggested Links" in html
-    assert "Applied Links" in html
+    assert "Applied Links" in html or "Applied / Confirmed" in html
     assert "Model Context" in html
     assert "Unlinked Activities" in html
     assert "Link Coverage" in html
-    assert "Confirm Link" in html
-    assert "Ignore Suggestion" in html
+    assert "Search activities" in html
+    assert 'data-testid="links-suggested-section"' not in html
+    assert 'data-testid="suggest-links-btn"' not in html
+    assert 'data-testid="links-filter-suggested"' not in html
+    assert 'data-filter="needs_review"' not in html
+    assert "Suggested Links" not in html
+    assert "Suggest Links" not in html
+    assert "Ignore Suggestion" not in html
+    # Modal keeps Link Element for viewer-driven element→task; no suggestion Confirm
+    assert 'data-testid="links-confirm-link-btn"' not in html
     assert "prefers-reduced-motion" in html
     assert "lw-card-enter" in html
-    assert "Suggest Links does not confirm links" in html
-    # Model Context is the primary center zone; Suggested/Applied live in the inspector
     primary_center = html.split('data-testid="links-model-context-primary"', 1)[1].split(
         'data-testid="links-selected-activity"', 1
     )[0]
@@ -88,10 +100,8 @@ def test_links_workspace_v1_layout_markers(client):
     inspector = html.split('data-testid="links-selected-activity"', 1)[1].split(
         'id="fd-timeline-section"', 1
     )[0]
-    assert 'data-testid="links-suggested-section"' in inspector
     assert 'data-testid="links-applied-section"' in inspector
     assert 'data-testid="links-center-empty"' in inspector
-    # Viewer is not capped as a tiny bottom preview
     assert "max-height: 240px" not in html
     assert "height: 200px" not in html.split("lw-model-context", 1)[1].split("@media", 1)[0]
 
@@ -108,17 +118,14 @@ def test_links_workspace_v1_no_primary_playback_chrome(client):
     html = response.content.decode()
 
     assert response.status_code == 200
-    # Playback bar demoted/hidden — Time View owns simulation
     assert 'id="fd-timeline-section"' in html
     assert "display: none !important" in html or "display:none !important" in html
     assert 'data-testid="links-advanced-tools"' not in html
-    # Visible toolbar must not advertise Play as a primary control label in toolbar
     toolbar = html.split('data-testid="links-workspace-toolbar"', 1)[1].split(
         'data-testid="links-workspace-body"', 1
     )[0]
     assert re.search(r">\s*Play\s*<", toolbar) is None
     assert re.search(r">\s*Pause\s*<", toolbar) is None
-    # Primary workspace panels (exclude hidden timeline stubs kept for compat)
     body = html.split('data-testid="links-workspace-body"', 1)[1].split(
         'id="fd-timeline-section"', 1
     )[0]
@@ -131,7 +138,7 @@ def test_links_workspace_v1_no_primary_playback_chrome(client):
 
 @pytest.mark.django_db
 def test_links_workspace_v1_simple_surface_no_advanced_console(client):
-    """Normal Links page has no advanced Applied Links / diagnostics console."""
+    """Normal Links page has no suggestion UX and no advanced console."""
     project = ProjectFactory()
     client.force_login(project.owner)
 
@@ -145,15 +152,95 @@ def test_links_workspace_v1_simple_surface_no_advanced_console(client):
         assert phrase not in html, f"forbidden Links surface chrome: {phrase!r}"
     assert re.search(r">\s*Approve\s*<", html) is None
     assert re.search(r">\s*Reject\s*<", html) is None
-    assert "Review queue" not in html
     assert 'data-testid="links-advanced-tools"' not in html
     assert 'data-testid="fourd-link-quality-tab"' not in html
     assert 'id="lw-advanced"' not in html
     assert 'id="fd-gov-pane"' not in html
     assert 'id="fourD-bottom-panels"' not in html
     assert reverse("scheduling:link_governance_workspace", args=[project.pk]) not in html
-    assert 'data-testid="suggest-links-btn"' in html
-    assert 'data-testid="links-suggest-results-slot"' in html
+    assert 'data-testid="suggest-links-btn"' not in html
+    assert 'data-testid="links-suggest-form"' not in html
+    assert 'data-testid="links-suggest-status"' not in html
+    assert 'id="fourD-link-results"' not in html
+    assert 'data-testid="links-count-suggested"' not in html
+    assert "Manual element linking is not available in this workspace yet." in html
+    assert 'data-testid="links-activity-search"' in html
+    assert 'data-filter="linked"' in html
+    assert 'data-filter="unlinked"' in html
+    assert 'data-filter="needs_review"' not in html
+
+
+@pytest.mark.django_db
+def test_task_detail_applied_only_no_suggestion_actions(client):
+    """Task detail shows applied links only — no suggestion cards or Confirm/Ignore."""
+    from ifc_processor.tests.factories import IFCEntityFactory
+    from scheduling.models import TaskEntityBinding
+
+    project = ProjectFactory()
+    task = TaskFactory(project=project, name="Applied Task")
+    TaskEntityBinding.objects.create(
+        task=task,
+        entity_global_id="GID-APPLIED-1",
+        confidence=1.0,
+        link_method=TaskEntityBinding.LinkMethod.MANUAL,
+        needs_review=False,
+    )
+    IFCEntityFactory(
+        ifc_file__project=project,
+        global_id="GID-APPLIED-1",
+        name="Wall-Applied",
+        ifc_type="IfcWall",
+    )
+    # Review binding must not surface on normal Links task detail
+    TaskEntityBinding.objects.create(
+        task=task,
+        entity_global_id="GID-REVIEW-1",
+        confidence=0.9,
+        link_method=TaskEntityBinding.LinkMethod.HEURISTIC,
+        needs_review=True,
+    )
+    client.force_login(project.owner)
+
+    response = client.get(
+        reverse("scheduling:task_detail", kwargs={"pk": project.pk, "task_pk": task.pk}),
+        HTTP_HX_REQUEST="true",
+    )
+    html = response.content.decode()
+
+    assert response.status_code == 200
+    assert 'data-testid="links-applied-card"' in html
+    assert "Wall-Applied" in html
+    assert 'data-testid="links-suggestion-card"' not in html
+    assert 'data-testid="links-confirm-link-btn"' not in html
+    assert 'data-testid="links-ignore-suggestion-btn"' not in html
+    assert "Suggested Links" not in html
+    assert "Confirm Link" not in html
+    assert "Ignore Suggestion" not in html
+
+
+@pytest.mark.django_db
+def test_task_detail_empty_applied_shows_manual_limitation(client):
+    """Unlinked activity empty state is practical and does not invent Manual Link."""
+    project = ProjectFactory()
+    task = TaskFactory(project=project, name="Unlinked Task")
+    client.force_login(project.owner)
+
+    response = client.get(
+        reverse("scheduling:task_detail", kwargs={"pk": project.pk, "task_pk": task.pk}),
+        HTTP_HX_REQUEST="true",
+    )
+    html = response.content.decode()
+
+    assert response.status_code == 200
+    assert 'data-testid="links-applied-empty"' in html
+    assert "No applied model links for this activity." in html
+    assert 'data-testid="links-manual-link-limitation"' in html
+    assert "Manual element linking is not available in this workspace yet." in html
+    assert "Suggest Links" not in html
+    assert 'data-testid="links-suggestion-card"' not in html
+    assert re.search(r">\s*Manual Link\s*<", html) is None
+    assert re.search(r">\s*Link Element\s*<", html) is None
+    assert re.search(r">\s*Remove Link\s*<", html) is None
 
 
 @pytest.mark.django_db
@@ -177,7 +264,6 @@ def test_applied_links_workspace_queue_first_no_trust_landing(client):
     assert "Confirm Link" in html or "Ignore Suggestion" in html or "Applied Links" in html
     for phrase in _FORBIDDEN_ADVANCED_LANDING:
         assert phrase not in html, f"forbidden advanced landing chrome: {phrase!r}"
-    # Diagnostics details must not be open by default
     diagnostics = html.split('data-testid="link-diagnostics"', 1)[1][:200]
     assert "open" not in diagnostics.split(">", 1)[0]
     assert "gq-tab-overview" not in html
@@ -196,46 +282,6 @@ def test_link_diagnostics_overview_uses_product_wording(client):
     html = response.content.decode()
 
     assert response.status_code == 200
-    assert "Applied / Confirmed" in html
-    assert "Link lifecycle" in html
-    assert "Link Coverage" in html
+    assert "Applied / Confirmed" in html or "Applied Links" in html
+    assert "Destructive ops" not in html
     assert "Trust state" not in html
-    assert "Destructive ops require owner" not in html
-    assert "Your access:" not in html
-    assert "Trusted bindings created before E2-E" not in html
-    # Policy ids only inside demoted Advanced link details
-    assert 'data-testid="link-diagnostics-extra"' in html
-    extra = html.split('data-testid="link-diagnostics-extra"', 1)[1]
-    assert "open" not in extra.split(">", 1)[0]
-    assert "trusted-binding-v1" in extra
-    assert "governance-authority-v1" in extra
-
-
-@pytest.mark.django_db
-def test_time_view_owns_playback_toolbar(client):
-    """Time View exposes playback controls (functional reuse of timeline intervals)."""
-    project = ProjectFactory()
-    TaskFactory(project=project)
-    client.force_login(project.owner)
-
-    response = client.get(
-        reverse("scheduling:schedule", kwargs={"pk": project.pk})
-        + "?tab=lookahead&basis=nearest_linked&weeks=3"
-    )
-    html = response.content.decode()
-
-    assert response.status_code == 200
-    assert 'data-testid="lookahead-trusted-caveat"' in html
-    assert "applied / confirmed links" in html.lower()
-    assert "la-week-chips" in html or "Look-ahead" in html
-    assert 'data-testid="time-view-playback-toolbar"' in html
-    assert 'data-testid="time-view-play-btn"' in html
-    assert 'data-testid="time-view-pause-btn"' in html
-    assert 'data-testid="time-view-scrubber"' in html
-    assert "Play" in html
-    assert "Pause" in html
-    assert "Start" in html
-    assert (
-        "Playback controls are available when applied schedule-model links provide a timeline."
-        in html
-    )

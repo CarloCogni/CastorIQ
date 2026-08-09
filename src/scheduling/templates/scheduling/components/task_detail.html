@@ -1,7 +1,7 @@
 <!-- scheduling/components/task_detail.html — Task detail side panel (HTMX partial) -->
 
 <!-- Header: code + name -->
-<div class="mb-3">
+<div class="mb-3" data-testid="links-task-header">
     {% if task.activity_code %}
     <div style="font-size:0.68rem; color:var(--bs-secondary-color); font-family:monospace; letter-spacing:0.03em;">{{ task.activity_code }}</div>
     {% endif %}
@@ -52,59 +52,58 @@
 </div>
 
 <!-- Applied / confirmed linked elements -->
-<div class="mb-3">
+<div class="mb-3" data-testid="links-task-applied-block">
     <div class="text-secondary mb-2" style="font-size:0.73rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em;">
-        Applied Links ({{ trusted_count|default:entities|length }}{% if siblings_count > 0 %}&nbsp;&middot;&nbsp;<span style="color:var(--bs-warning-text-emphasis);">{{ siblings_count }} shared</span>{% endif %})
+        Applied / Confirmed Links ({{ trusted_count|default:applied_links|length }}{% if siblings_count > 0 %}&nbsp;&middot;&nbsp;<span style="color:var(--bs-warning-text-emphasis);">{{ siblings_count }} shared</span>{% endif %})
     </div>
-    {% if trusted_entities %}
-    <div class="d-flex flex-column gap-1" style="max-height:100px; overflow-y:auto;">
-        {% for entity in trusted_entities %}
-        <a href="{% url 'ifc_viewer:viewer' project.pk %}?highlight={{ entity.global_id }}"
-           class="d-flex align-items-center gap-2 rounded text-decoration-none px-2 py-1"
-           style="font-size:0.75rem; background:var(--bs-tertiary-bg); color:var(--bs-body-color);"
-           title="{{ entity.global_id }}"
-           target="_self">
-            <i class="bi bi-check-circle text-success" style="font-size:0.7rem; flex-shrink:0;"></i>
-            <span class="text-truncate">{{ entity.name|default:entity.global_id|truncatechars:30 }}</span>
-        </a>
-        {% endfor %}
-    </div>
-    {% else %}
-    <div class="text-secondary" style="font-size:0.75rem;">No applied links for this activity.</div>
-    {% endif %}
-</div>
-
-<!-- Review suggestions -->
-<div class="mb-3">
-    <div class="text-secondary mb-2" style="font-size:0.73rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em;">
-        Suggested Links ({{ review_count|default:0 }})
-    </div>
-    {% if review_entities %}
-    <div class="d-flex flex-column gap-1" style="max-height:80px; overflow-y:auto;">
-        {% for entity in review_entities %}
-        <div class="d-flex align-items-center gap-2 rounded px-2 py-1"
-             style="font-size:0.75rem; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.25);">
-            <i class="bi bi-exclamation-circle text-warning" style="font-size:0.7rem; flex-shrink:0;"></i>
-            <span class="text-truncate">{{ entity.name|default:entity.global_id|truncatechars:30 }}</span>
+    <div data-testid="links-task-applied-cards">
+    {% if applied_links %}
+        {% for link in applied_links %}
+        <div class="border rounded p-2 mb-2"
+             style="font-size:0.76rem; border-color:rgba(34,197,94,0.3)!important; background:rgba(34,197,94,0.07);"
+             data-testid="links-applied-card"
+             data-binding-id="{{ link.binding_id }}" data-global-id="{{ link.global_id }}">
+            <div class="d-flex align-items-start gap-2">
+                <i class="bi bi-check-circle text-success mt-1" style="font-size:0.75rem;"></i>
+                <div class="flex-grow-1 min-w-0">
+                    <div class="fw-semibold text-truncate" style="font-size:0.78rem;">{{ link.name }}</div>
+                    <div class="text-secondary" style="font-size:0.68rem;">
+                        {% if link.ifc_type %}{{ link.ifc_type }}{% endif %}
+                        {% if link.storey %} · {{ link.storey }}{% endif %}
+                    </div>
+                    <code style="font-size:0.65rem;">{{ link.global_id }}</code>
+                    <div class="mt-1">
+                        <span class="badge border text-success" style="font-size:0.65rem;">Applied / Confirmed</span>
+                        {% if link.link_method %}
+                        <span class="text-secondary ms-1" style="font-size:0.65rem;">{{ link.link_method }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
         </div>
         {% endfor %}
-    </div>
-    <div class="text-secondary mt-1" style="font-size:0.68rem;">Suggested</div>
     {% else %}
-    <div class="text-secondary" style="font-size:0.75rem;">No suggested links for this selected activity yet.</div>
+        <div class="text-secondary" style="font-size:0.75rem;" data-testid="links-applied-empty">
+            <div class="mb-1">No applied model links for this activity.</div>
+            <div data-testid="links-manual-link-limitation">
+                Manual element linking is not available in this workspace yet.
+            </div>
+        </div>
     {% endif %}
+    </div>
 </div>
 
 <!-- Property hints -->
 {% if property_hints %}
-<div class="mb-3">
+<div class="mb-3" data-testid="links-task-property-hints">
     <div class="text-secondary mb-2" style="font-size:0.73rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em;">
-        Property Hints (metadata only)
+        Property Hints
     </div>
     <div class="d-flex flex-column gap-1" style="max-height:70px; overflow-y:auto;">
         {% for hint in property_hints %}
         <div class="small px-2 py-1 rounded bg-body-secondary">
             <code>{{ hint.activity_id }}</code> · {{ hint.name|truncatechars:24 }}
+            {% if hint.ifc_type %}<span class="text-secondary"> · {{ hint.ifc_type }}</span>{% endif %}
         </div>
         {% endfor %}
     </div>
@@ -112,7 +111,7 @@
 {% endif %}
 
 <!-- Time View owns playback — keep a quiet navigation hint only -->
-{% if trusted_entities %}
+{% if applied_links %}
 <hr class="my-2">
 <a class="btn btn-sm btn-outline-secondary w-100"
    style="font-size:0.78rem;"

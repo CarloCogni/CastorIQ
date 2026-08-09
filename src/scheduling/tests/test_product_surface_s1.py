@@ -98,8 +98,8 @@ def test_hub_hides_forbidden_product_concepts(client):
 
 
 @pytest.mark.django_db
-def test_links_ui_uses_confirm_ignore_suggest_wording(client):
-    """Links tab uses Confirm Link / Suggest Links / Applied Links language."""
+def test_links_ui_uses_manual_workspace_wording(client):
+    """Links tab is a practical manual linking surface — no Suggest/Confirm suggestion UX."""
     project = ProjectFactory()
     client.force_login(project.owner)
 
@@ -109,16 +109,20 @@ def test_links_ui_uses_confirm_ignore_suggest_wording(client):
     html = response.content.decode()
 
     assert response.status_code == 200
-    assert "Suggest Links" in html
+    assert "Suggest Links" not in html
+    assert "Suggested Links" not in html
     assert "Applied Links" in html
-    assert "Confirm Link" in html
-    assert "does not confirm links" in html
+    assert "Model Context" in html
+    assert "Search activities" in html
+    assert "Manual element linking is not available in this workspace yet." in html
     assert "Propose links" not in html
     assert ">Link Quality<" not in html and "Link Quality</" not in html
     assert "Advanced trust" not in html
     assert "Quality Gate" not in html
     assert "Review Gate" not in html
-    # Product buttons must not say Approve/Reject as visible labels
+    assert 'data-testid="suggest-links-btn"' not in html
+    assert 'data-testid="links-confirm-link-btn"' not in html
+    assert "Ignore Suggestion" not in html
     assert re.search(r">\s*Approve\s*<", html) is None
     assert re.search(r">\s*Reject\s*<", html) is None
     assert "Authority:" not in html
