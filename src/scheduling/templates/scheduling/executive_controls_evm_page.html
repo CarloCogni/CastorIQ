@@ -27,19 +27,23 @@
     </div>
 
     {% include "scheduling/components/executive_controls_subnav.html" with exec_subtab="evm" capability_profile=capability_profile %}
-    {% include "scheduling/components/executive_capability_banner.html" %}
 
-    <div class="alert alert-info py-2 small mb-3" role="status" data-testid="exec-evm-source-caveat">
+    <p class="small text-secondary mb-2" data-testid="exec-evm-source-caveat">
         Schedule and progress indicators only — not financial Cost EVM.
-        Company cost metrics (CPI, Actual Cost, EAC, ETC, VAC, TCPI) are unavailable —
-        Castor has no ERP, invoice, QS, payroll, procurement, or company cost ledger integration.
-        ResourceAssignment.actual_cost is not company spend.
         Derived As-of S-Curve is reconstructed from the current schedule state —
         not imported historical performance and may change after re-import.
-    </div>
+    </p>
     <p class="small text-secondary mb-3" data-testid="exec-company-cost-unavailable">
         Unavailable — requires a company cost source (ERP / invoice / QS / payroll / procurement).
+        Castor has no ERP, invoice, QS, payroll, procurement, or company cost ledger integration.
+        ResourceAssignment.actual_cost is not company spend.
     </p>
+    <details class="mb-3" data-testid="exec-evm-capability-details">
+        <summary class="small text-secondary">Capability diagnostics</summary>
+        <div class="mt-2">
+            {% include "scheduling/components/executive_capability_banner.html" %}
+        </div>
+    </details>
 
     <div class="row g-2 mb-3 align-items-end">
         <div class="col-auto">

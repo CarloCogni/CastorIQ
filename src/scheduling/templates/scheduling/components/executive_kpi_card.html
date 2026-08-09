@@ -28,7 +28,15 @@
     {% endif %}
 
     <p class="small mb-1">
-        <span class="badge bg-body-secondary text-body exec-authority-badge">{{ card.authority }}</span>
+        <span class="badge bg-body-secondary text-body exec-authority-badge">
+            {% if card.authority == "authoritative" %}schedule source
+            {% elif card.authority == "governed" %}Applied / Confirmed
+            {% elif card.authority == "derived" %}derived from schedule inputs
+            {% elif card.authority == "proxy" %}derived (proxy)
+            {% elif card.authority == "suggestion" %}suggestion
+            {% elif card.authority == "unavailable" %}Unavailable
+            {% else %}{{ card.authority }}{% endif %}
+        </span>
     </p>
 
     {% if card.caveat %}

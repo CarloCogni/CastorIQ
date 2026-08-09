@@ -1,7 +1,8 @@
 <!-- scheduling/components/executive_section_coverage.html -->
-<section id="exec-section-coverage" class="exec-section mb-4" aria-labelledby="exec-coverage-heading">
+<section id="exec-section-coverage" class="exec-section mb-4" aria-labelledby="exec-coverage-heading"
+         data-testid="controls-methodology-coverage">
     <h2 class="h6 fw-semibold mb-3" id="exec-coverage-heading">
-        <i class="bi bi-shield-check me-1 text-primary"></i> Data and Methodology Coverage
+        <i class="bi bi-list-check me-1 text-primary"></i> Methodology details
     </h2>
     {% if section_error %}
     <div class="alert alert-danger" role="alert">{{ section_error }}</div>
@@ -25,7 +26,13 @@
                     <td>{{ row.numerator }}</td>
                     <td>{% if row.denominator is not None %}{{ row.denominator }}{% else %}—{% endif %}</td>
                     <td>{% if row.percentage is not None %}{{ row.percentage }}%{% else %}—{% endif %}</td>
-                    <td><span class="badge bg-body-secondary">{{ row.authority }}</span></td>
+                    <td><span class="badge bg-body-secondary">
+                        {% if row.authority == "authoritative" %}schedule source
+                        {% elif row.authority == "governed" %}Applied / Confirmed
+                        {% elif row.authority == "derived" %}derived from schedule inputs
+                        {% elif row.authority == "proxy" %}derived (proxy)
+                        {% else %}{{ row.authority }}{% endif %}
+                    </span></td>
                     <td class="small text-secondary">{{ row.caveat|truncatewords:12 }}</td>
                 </tr>
                 {% empty %}
@@ -34,6 +41,6 @@
             </tbody>
         </table>
     </div>
-    <p class="small mb-0"><a href="{{ methodology_url }}">Full e8-v1 methodology registry (JSON)</a></p>
+    <p class="small mb-0"><a href="{{ methodology_url }}">Full methodology registry (JSON)</a></p>
     {% endif %}
 </section>

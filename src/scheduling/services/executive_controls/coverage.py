@@ -169,7 +169,7 @@ class AnalyticalCoverageService:
             [
                 (
                     "e8.scope_classification_coverage",
-                    "Authoritative scope",
+                    "Classified scope",
                     authoritative_scope,
                     all_count,
                 ),
@@ -186,7 +186,7 @@ class AnalyticalCoverageService:
                 available=all_count > 0,
                 authority=MetricAuthority.SUGGESTION.value,
                 source="ScopeClassificationResolver",
-                caveat="Excluded from authoritative scope denominators.",
+                caveat="Excluded from classified scope denominators.",
                 drilldown_filter={"scope_authoritative": "false"},
             ).to_dict()
         )
@@ -215,13 +215,13 @@ class AnalyticalCoverageService:
             [
                 (
                     "e8.trusted_task_link_coverage",
-                    "Trusted-linked tasks",
+                    "Link Coverage (tasks)",
                     len(trusted_task_ids),
                     all_count,
                 ),
                 (
                     "e8.trusted_entity_link_coverage",
-                    "Trusted-linked entities",
+                    "Link Coverage (entities)",
                     len(trusted_entity_gids),
                     indexed_entity_count,
                 ),

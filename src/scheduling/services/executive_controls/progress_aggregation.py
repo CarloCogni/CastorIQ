@@ -78,12 +78,12 @@ class ScheduleProgressAggregationService:
         if requested == WEIGHTING_COST and n_cost / n >= COST_COVERAGE_THRESHOLD:
             return (
                 WEIGHTING_COST,
-                "Cost-weighted schedule progress",
+                "Schedule-weighted progress",
                 MetricAuthority.DERIVED.value,
             )
 
         if n_cost / n >= COST_COVERAGE_THRESHOLD:
-            return WEIGHTING_COST, "Cost-weighted schedule progress", MetricAuthority.DERIVED.value
+            return WEIGHTING_COST, "Schedule-weighted progress", MetricAuthority.DERIVED.value
         if n_qty / n >= QUANTITY_COVERAGE_THRESHOLD:
             return (
                 WEIGHTING_QUANTITY,

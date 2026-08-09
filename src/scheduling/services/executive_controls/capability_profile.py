@@ -1926,7 +1926,7 @@ class ProjectAnalyticsCapabilityProfile:
             visible.append("trades")
         else:
             hidden.append("trades")
-            reasons["trades"] = "Insufficient authoritative or proxy trade/package coverage."
+            reasons["trades"] = "Insufficient classified or proxy trade/package coverage."
 
         from scheduling.services.executive_controls.resources_readiness import (
             GATE_REASON_NO_SIGNAL,

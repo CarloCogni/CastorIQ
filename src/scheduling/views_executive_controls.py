@@ -67,17 +67,26 @@ class ExecutiveControlsOverviewPageView(ProjectAccessMixin, TemplateView):
 
     def get_context_data(self, **kwargs: object) -> dict:
         from scheduling.services.executive_controls.context import AnalyticalContextService
+        from scheduling.services.executive_controls.controls_workspace import (
+            build_controls_workspace,
+        )
         from scheduling.services.executive_controls.overview_filters import OverviewFilters
 
         ctx = super().get_context_data(**kwargs)
         project = self.get_project()
         filters = OverviewFilters.from_params(self.request.GET.dict())
         capability = _capability_profile(project)
+        analytical = AnalyticalContextService(project).build(capability)
         ctx["project"] = project
-        ctx["analytical_context"] = AnalyticalContextService(project).build(capability)
+        ctx["analytical_context"] = analytical
         ctx["capability_profile"] = capability
         ctx["filters"] = filters
         ctx["filter_query"] = filters.query_string()
+        ctx["workspace"] = build_controls_workspace(
+            project,
+            analytical_context=analytical,
+            capability_profile=capability,
+        )
         return ctx
 
     def post(self, request, **kwargs: object) -> JsonResponse:
