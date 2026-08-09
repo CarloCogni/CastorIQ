@@ -584,8 +584,9 @@ def compute_evm(
     else:
         ac_coverage_pct = None
         ac_disabled_reason = (
-            "Actual cost not imported — CPI, CV, EAC, VAC disabled. "
-            "Import resource assignments with actual cost to enable cost-performance metrics."
+            "Assignment actual cost not imported — diagnostic only. "
+            "Company-cost metrics remain unavailable without ERP / invoice / QS / "
+            "payroll / procurement source."
         )
 
     if use_baseline_planned and pv_slices:

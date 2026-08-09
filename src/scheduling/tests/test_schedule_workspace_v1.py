@@ -70,6 +70,15 @@ def test_schedule_workspace_v1_layout_with_tasks(client):
     assert "Data Readiness" in html
     assert "Planned assignment cost" in html
     assert "Assignment actual cost indicator" in html
+    assert "enables CPI" not in html
+    assert "enables CV" not in html
+    assert "enables EAC" not in html
+    assert "enables VAC" not in html
+    assert "enables ETC" not in html
+    assert "enables TCPI" not in html
+    assert "CPI, CV, EAC, VAC disabled" not in html
+    assert "diagnostic only" in html
+    assert "company-cost metrics remain unavailable" in html
     assert "Select an activity from the Gantt or Table to inspect dates, progress" in html
     assert "and schedule details" in html
     assert 'data-testid="schedule-task-empty"' in html

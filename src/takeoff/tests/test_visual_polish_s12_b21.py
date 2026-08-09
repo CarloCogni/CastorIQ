@@ -97,3 +97,9 @@ def test_schedule_readiness_assignment_cost_labels(client):
     assert "Planned cost —" not in html
     assert "Actual cost — not imported" not in html
     assert "Assignment actual cost indicator — not imported" in html
+    assert "enables CPI" not in html
+    assert "enables EAC" not in html
+    assert "CPI, CV, EAC, VAC disabled" not in html
+    assert "diagnostic only" in html
+    assert "company-cost metrics remain unavailable" in html
+    assert "Company actual cost" not in html

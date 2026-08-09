@@ -460,12 +460,12 @@
                             {% if dr.actual_cost_available %}
                             <span style="color:#16a34a; font-size:.8rem;">✓</span>
                             <span>Assignment actual cost indicator — {{ dr.ra_actual_count }} resource assignment{{ dr.ra_actual_count|pluralize }} with actual cost
-                                <span class="text-secondary" style="font-size:.67rem;">(enables CPI, CV, EAC, VAC — not ERP, invoice, QS, or company actual cost)</span>
+                                <span class="text-secondary" style="font-size:.67rem;">(diagnostic only; company-cost metrics remain unavailable without ERP / invoice / QS / payroll / procurement source)</span>
                             </span>
                             {% else %}
                             <span style="color:#dc2626; font-size:.8rem;">✗</span>
                             <span>Assignment actual cost indicator — not imported
-                                <span style="color:#dc2626; font-size:.67rem; font-weight:600;">(CPI, CV, EAC, VAC disabled)</span>
+                                <span class="text-secondary" style="font-size:.67rem;">(diagnostic only; company-cost metrics remain unavailable)</span>
                             </span>
                             {% endif %}
                         </div>
