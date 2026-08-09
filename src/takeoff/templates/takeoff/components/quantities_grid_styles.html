@@ -1,0 +1,40 @@
+<!-- takeoff/components/quantities_grid_styles.html — Quantities Workspace V1 (dense BIM grid) -->
+<!-- Reuses Model V2 grid primitives; scoped under .qty-ws -->
+{% include "takeoff/components/model_inventory_grid_styles.html" %}
+<style>
+  .qty-ws .qty-advanced {
+    flex-shrink: 0;
+    border-top: 1px solid var(--mi-border);
+    background: var(--mi-header);
+    padding: 0.35rem 0.65rem;
+  }
+  .qty-ws .qty-advanced summary {
+    font-size: 0.68rem;
+    color: var(--mi-muted);
+    cursor: pointer;
+    list-style: none;
+  }
+  .qty-ws .qty-advanced summary::-webkit-details-marker { display: none; }
+  .qty-ws .qty-advanced[open] {
+    max-height: 140px;
+    overflow: auto;
+  }
+  .qty-ws .qty-advanced .qty-advanced-body {
+    margin-top: 0.4rem;
+    font-size: 0.7rem;
+    color: var(--mi-muted);
+  }
+  .qty-ws .qty-measure-note {
+    font-size: 0.66rem;
+    color: var(--mi-muted);
+    line-height: 1.35;
+    margin: 0;
+  }
+  .qty-ws .qty-center-split {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+</style>

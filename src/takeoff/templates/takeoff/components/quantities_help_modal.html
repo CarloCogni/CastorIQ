@@ -18,40 +18,44 @@
 
                 <p class="fw-semibold fs-7 mb-2">What is it?</p>
                 <p class="text-secondary fs-7 mb-4">
-                    Quantities summarizes IFC model quantities from the indexed model
-                    (<code>Qto_*</code> properties: quantity availability, totals by IFC Class
-                    and Level / Storey, and Missing Quantities. This is model quantity takeoff
-                    foundation — not BOQ, QS valuation, ERP, invoice, procurement, payment,
-                    company actual cost, or commercial 5D.
+                    Quantities is the IFC Model Quantities workspace. It summarizes quantity
+                    availability and named measures from indexed model <code>Qto_*</code>
+                    properties: Quantity Coverage, Missing IFC Qto, and totals by IFC Class,
+                    Level / Storey, and Type when available. This is model quantity readiness
+                    for future 5D workflows — not BOQ, QS valuation, ERP, invoice, procurement,
+                    payment, company actual cost, or commercial 5D.
                 </p>
 
                 <p class="fw-semibold fs-7 mb-2">Lifecycle</p>
                 <p class="text-secondary fs-7 mb-4">
                     After an IFC file is indexed, this page reads entity properties at runtime
-                    (summary-first). Classification Coverage stays Unavailable until classifications
-                    are indexed. Optional unit-rate cache tools are advanced and not the main product.
+                    (summary-first). Classification stays Unavailable until classifications are
+                    indexed. Optional advanced cache / export tools are demoted and are not the
+                    primary product.
                 </p>
 
                 <p class="fw-semibold fs-7 mb-2">How to use it</p>
                 <ul class="text-secondary fs-7 mb-4">
-                    <li>Check Quantity Readiness for coverage and missing counts.</li>
-                    <li>Use Quantity by IFC Class / Level / Storey for named measure totals.</li>
-                    <li>Open Missing Quantities → Inspect IFC Elements to filter entities without real Qto.</li>
+                    <li>Use the stats strip for Quantity Coverage and Missing IFC Qto.</li>
+                    <li>Select an IFC Class, Level / Storey, or Type row to inspect measures.</li>
+                    <li>Filter or sort the visible By IFC Class grid without changing source data.</li>
+                    <li>Open Missing IFC Qto → Inspect IFC Elements to review entities without real Qto.</li>
                     <li>Treat Length / Width / Height / Perimeter as model units, not metres.</li>
                 </ul>
 
                 <p class="fw-semibold fs-7 mb-2">Who can do what</p>
                 <p class="text-secondary fs-7 mb-4">
                     BIM coordinators and 5D reviewers use this page read-only for model quantity insight.
-                    Schedule link confirm / ignore stays under Links.
+                    Schedule link confirm / ignore stays under Links. Model structure stays under Model.
                 </p>
 
                 <p class="fw-semibold fs-7 mb-2">Caveats</p>
                 <ul class="text-secondary fs-7 mb-4">
                     <li><code>Qto_*.id</code> alone does not count as Has IFC Qto.</li>
-                    <li>Classification Coverage: Unavailable (not scraped from properties).</li>
+                    <li>Classification: Unavailable (not scraped from properties).</li>
                     <li>Totals sum explicit named measures (e.g. NetVolume, NetArea) — not mixed primary picks.</li>
                     <li>Linear totals use model units as stored in the IFC index.</li>
+                    <li>Hub <code>?tab=quantities</code> on scheduling does not render this page — use the Quantities hub link.</li>
                 </ul>
 
                 <p class="fw-semibold fs-7 mb-2">Not claimed</p>
