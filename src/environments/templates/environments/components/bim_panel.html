@@ -113,7 +113,11 @@
     </div>
 
     <!-- Sub-tab content -->
+    {% if schedule_tab == 'fourD_link' %}
+    <div class="flex-grow-1 overflow-hidden d-flex flex-column" style="min-height:0;">
+    {% else %}
     <div class="flex-grow-1 overflow-auto">
+    {% endif %}
         {% if castor_subtab == 'viewer' %}
             {% include "ifc_viewer/viewer.html" %}
         {% elif castor_subtab == 'schedule' %}

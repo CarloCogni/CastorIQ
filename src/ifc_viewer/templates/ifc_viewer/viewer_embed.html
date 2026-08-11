@@ -204,6 +204,8 @@ async function init() {
 
         loadingEl.style.display = "none";
         _initSelector();
+        _captureHomeCamera();
+        window.__castorCameraPose = _cameraPose;
         window.parent.postMessage({ type: "castor:viewer-ready" }, "*");
 
     } catch (err) {
@@ -366,6 +368,75 @@ function _saveCameraState() {
     _savedCameraTarget = (controls.target ?? new THREE.Vector3()).clone();
 }
 
+function _captureHomeCamera() {
+    const controls = world?.camera?.controls;
+    if (!controls || !world?.camera?.three) return;
+    _homeCameraPos = world.camera.three.position.clone();
+    _homeCameraTarget = (controls.target ?? new THREE.Vector3()).clone();
+}
+
+function _cameraPose() {
+    const cam = world?.camera?.three;
+    if (!cam) return null;
+    const target = world.camera.controls?.target;
+    return {
+        x: cam.position.x,
+        y: cam.position.y,
+        z: cam.position.z,
+        dist: target ? cam.position.distanceTo(target) : null,
+    };
+}
+
+function _applyViewerZoom(direction) {
+    const cam = world?.camera?.three;
+    const controls = world?.camera?.controls;
+    if (!cam) return;
+    const look = (controls && controls.target)
+        ? new THREE.Vector3(controls.target.x, controls.target.y, controls.target.z)
+        : new THREE.Vector3(0, 0, 0);
+    const offset = cam.position.clone().sub(look);
+    if (offset.lengthSq() < 1e-8) offset.set(10, 10, 10);
+    offset.multiplyScalar(direction === "in" ? 0.75 : 1.33);
+    const next = look.clone().add(offset);
+    if (controls && typeof controls.setLookAt === "function") {
+        controls.setLookAt(next.x, next.y, next.z, look.x, look.y, look.z, true);
+        return;
+    }
+    cam.position.copy(next);
+    cam.lookAt(look);
+}
+
+function _resetCameraView() {
+    const controls = world?.camera?.controls;
+    if (!controls) return;
+    _disableSectionBox();
+    if (model) {
+        for (const fragment of model.items) {
+            fragment.setVisibility(true);
+        }
+    }
+    if (_lastHighlightIds && _lastHighlightIds.length) {
+        enableWireframe(_lastHighlightIds);
+        _applyLastHighlightColors();
+    }
+    if (_homeCameraPos && _homeCameraTarget) {
+        controls.setLookAt(
+            _homeCameraPos.x, _homeCameraPos.y, _homeCameraPos.z,
+            _homeCameraTarget.x, _homeCameraTarget.y, _homeCameraTarget.z,
+            true
+        );
+        return;
+    }
+    if (model && typeof controls.fitToBox === "function") {
+        const box = new THREE.Box3().setFromObject(model);
+        if (!box.isEmpty()) {
+            controls.fitToBox(box, true);
+            return;
+        }
+    }
+    controls.setLookAt(10, 10, 10, 0, 0, 0, true);
+}
+
 function _restoreCameraState() {
     const controls = world?.camera?.controls;
     if (!controls || !_savedCameraPos || !_savedCameraTarget) return;
@@ -383,6 +454,7 @@ function resetAllColors() {
     _savedCameraPos    = null;
     _savedCameraTarget = null;
     _lastHighlightIds  = [];
+    _lastHighlightColorMap = null;
     for (const fragment of model.items) {
         fragment.resetColor();
         fragment.setVisibility(true);
@@ -430,7 +502,53 @@ function makeColor(hex) {
     return new THREE.Color(hex);
 }
 
+function _applyHighlightColors(ids, colorMap) {
+    if (!ids || !ids.length) return;
+    if (colorMap && typeof colorMap === "object") {
+        const byHex = {};
+        ids.forEach(function (gid) {
+            const hex = colorMap[gid];
+            if (!hex) return;
+            (byHex[hex] = byHex[hex] || []).push(gid);
+        });
+        const hexes = Object.keys(byHex);
+        if (hexes.length) {
+            hexes.forEach(function (hex) {
+                colorByGlobalIds(byHex[hex], new THREE.Color(hex));
+            });
+            return;
+        }
+    }
+    colorByGlobalIds(ids, new THREE.Color('#f59e0b'));
+}
+
+function _applyLastHighlightColors() {
+    _applyHighlightColors(_lastHighlightIds, _lastHighlightColorMap);
+}
+
 // ── 3b. Focus helpers ────────────────────────────────────────────────
+
+function _isolateHighlighted(globalId) {
+    if (!model) return;
+    if (!_sectionEnabled) {
+        _saveCameraState();
+        disableWireframe();
+        for (const fragment of model.items) {
+            fragment.resetColor();
+            fragment.setVisibility(true);
+        }
+        colorByGlobalIds([...globalIdIndex.keys()], C.tl_no_task);
+        _applyLastHighlightColors();
+        _enableSectionBoxAroundElements(_lastHighlightIds);
+        if (globalId) focusOnGlobalId(globalId);
+    } else {
+        _disableSectionBox();
+        _restoreCameraState();
+        enableWireframe(_lastHighlightIds);
+        _applyLastHighlightColors();
+    }
+    _syncFocusBtn();
+}
 
 function focusOnGlobalId(gid) {
     if (!gid || !model) return;
@@ -644,9 +762,12 @@ window.addEventListener("message", async (e) => {
         _selectedGlobalId = null;
         const ids = msg.global_ids || [];
         _lastHighlightIds = ids;
+        _lastHighlightColorMap = (msg.color_map && typeof msg.color_map === "object")
+            ? msg.color_map
+            : null;
         if (ids.length) {
             enableWireframe(ids);
-            colorByGlobalIds(ids, new THREE.Color('#f59e0b'));
+            _applyHighlightColors(ids, _lastHighlightColorMap);
             _selectedGlobalId = ids[0];
         }
         _syncFocusBtn();
@@ -695,36 +816,32 @@ window.addEventListener("message", async (e) => {
         return;
     }
 
+    if (msg.type === "castor:isolate") {
+        if (!model) return;
+        const gid = msg.global_id || (_lastHighlightIds && _lastHighlightIds[0]);
+        _isolateHighlighted(gid);
+        return;
+    }
+
     if (msg.type === "castor:focus-element") {
         if (!model || !msg.global_id) return;
-        if (!_sectionEnabled) {
-            /* First click: save camera, ghost all, highlight selected, section box, zoom in */
-            _saveCameraState();
-            disableWireframe();
-            for (const fragment of model.items) {
-                fragment.resetColor();
-                fragment.setVisibility(true);
-            }
-            colorByGlobalIds([...globalIdIndex.keys()], C.tl_no_task);
-            colorByGlobalIds(_lastHighlightIds, new THREE.Color('#f59e0b'));
-            _enableSectionBoxAroundElements(_lastHighlightIds);
-            focusOnGlobalId(msg.global_id);
-        } else {
-            /* Second click: exit focus mode, restore camera, re-apply wireframe */
-            _disableSectionBox();
-            _restoreCameraState();
-            enableWireframe(_lastHighlightIds);
-            colorByGlobalIds(_lastHighlightIds, new THREE.Color('#f59e0b'));
+        if (msg.isolate === true) {
+            _isolateHighlighted(msg.global_id);
+            return;
         }
+        /* Camera focus only — do not hide or dim unrelated geometry. */
+        focusOnGlobalId(msg.global_id);
         _syncFocusBtn();
         return;
     }
 
-    if (msg.type === "castor:zoom") {
-        const controls = world?.camera?.controls;
-        if (!controls) return;
-        if (msg.direction === "in")       controls.dollyIn(0.5,  true);
-        else if (msg.direction === "out") controls.dollyOut(0.5, true);
+    if (msg.type === "castor:reset-view") {
+        _resetCameraView();
+        return;
+    }
+
+    if (msg.type === "castor:zoom" || msg.type === "castor:viewer-zoom") {
+        _applyViewerZoom(msg.direction);
         return;
     }
 
@@ -763,7 +880,10 @@ let _sectionEnabled    = false;
 let _sectionPlanes     = null;
 let _savedCameraPos    = null;
 let _savedCameraTarget = null;
+let _homeCameraPos     = null;
+let _homeCameraTarget  = null;
 let _lastHighlightIds  = [];
+let _lastHighlightColorMap = null;
 const _SEL_COLOR = new THREE.Color('#00BCD4');
 let _multiSelectedIds  = [];
 let _linkModeActive    = false;
@@ -819,7 +939,7 @@ function _initSelector() {
             if (!_wireframeActive) {
                 resetAllColors();
             } else {
-                colorByGlobalIds(_lastHighlightIds, new THREE.Color('#f59e0b'));
+                _applyLastHighlightColors();
             }
             _multiSelectedIds = idsToColor;
             if (_multiSelectedIds.length) {
@@ -834,7 +954,7 @@ function _initSelector() {
                 if (!_wireframeActive) {
                     resetAllColors();
                 } else {
-                    colorByGlobalIds(_lastHighlightIds, new THREE.Color('#f59e0b'));
+                    _applyLastHighlightColors();
                 }
                 _selectedGlobalId = null;
                 window.parent.postMessage({ type: "castor:element-selected", global_id: null }, "*");
@@ -848,7 +968,7 @@ function _initSelector() {
             if (!_wireframeActive) {
                 resetAllColors();
             } else {
-                colorByGlobalIds(_lastHighlightIds, new THREE.Color('#f59e0b'));
+                _applyLastHighlightColors();
             }
             _selectedGlobalId = null;
             window.parent.postMessage({ type: "castor:element-selected", global_id: null }, "*");
@@ -859,7 +979,7 @@ function _initSelector() {
             if (!_wireframeActive) {
                 resetAllColors();
             } else {
-                colorByGlobalIds(_lastHighlightIds, new THREE.Color('#f59e0b'));
+                _applyLastHighlightColors();
             }
         }
         _selectedGlobalId = globalId;
@@ -1054,7 +1174,7 @@ document.getElementById("embed-focus-btn")?.addEventListener("click", () => {
 document.getElementById("embed-wireframe-btn")?.addEventListener("click", () => {
     if (_wireframeActive) disableWireframe();
     else                  enableWireframe(_lastHighlightIds);
-    colorByGlobalIds(_lastHighlightIds, new THREE.Color('#f59e0b'));
+    _applyLastHighlightColors();
 });
 
 document.addEventListener("click", (e) => {
