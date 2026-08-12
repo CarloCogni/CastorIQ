@@ -37,6 +37,8 @@ def test_viewer_page_includes_scale_figure_controls(client):
     assert "Show Scale Figure" in html
     assert "Reset Scale Figure" in html
     assert "Hide Scale Figure" in html  # label used when toggled (in JS)
+    assert "Castor Viewer" in html
+    assert "Castor Simulator" not in html
     assert "_initScaleFigure" in html
     assert "castorScaleFigure" in html
     assert "SCALE_FIGURE_HEIGHT" in html
@@ -103,4 +105,6 @@ def test_viewer_route_still_renders_without_ifc(client):
     html = resp.content.decode()
     assert "No processed IFC file" in html
     assert 'data-testid="scale-figure-help"' in html
+    assert "Castor Simulator" not in html
+    assert "Castor Viewer" in html
     assert "Follow Figure" not in html

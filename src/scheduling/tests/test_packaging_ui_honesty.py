@@ -533,7 +533,7 @@ def test_cashflow_task_cost_source_includes_proxy_caveat():
 
 @pytest.mark.django_db
 def test_lookahead_shows_schedule_vs_trusted_caveat(client):
-    """Look-ahead shows schedule-count vs trusted-model caveat once."""
+    """Time View shows applied/confirmed model-colour caveat once."""
     project = ProjectFactory()
     TaskFactory(project=project)
     client.force_login(project.owner)
@@ -545,10 +545,10 @@ def test_lookahead_shows_schedule_vs_trusted_caveat(client):
 
     assert response.status_code == 200
     assert 'data-testid="lookahead-trusted-caveat"' in html
-    assert "Task counts follow schedule dates" in html
     assert "applied / confirmed links" in html
     assert "trusted links" not in html.lower()
-    assert html.count("Task counts follow schedule dates") == 1
+    assert "Use the timeline to review linked model status over time" in html
+    assert html.count("applied / confirmed links") >= 1
 
 
 @pytest.mark.django_db

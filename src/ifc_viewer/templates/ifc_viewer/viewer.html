@@ -1,4 +1,4 @@
-<!-- ifc_viewer/viewer.html — Castor Simulator: 3D viewer + 4D/5D controls -->
+<!-- ifc_viewer/viewer.html — Castor Viewer: 3D model inspection -->
 {% load static %}
 <div class="d-flex flex-column h-100 position-relative" id="ifc-viewer-root">
 
@@ -16,7 +16,7 @@
     <div class="d-flex align-items-center px-3 py-2 border-bottom bg-body flex-shrink-0 flex-wrap gap-2"
          style="font-size:0.82rem;">
 
-        <span class="fw-semibold me-1">Castor Simulator</span>
+        <span class="fw-semibold me-1">Castor Viewer</span>
         <span class="text-secondary text-truncate" style="font-size:0.78rem; max-width:200px;">{{ viewer_ifc_file.name }}</span>
 
         <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
@@ -43,8 +43,8 @@
                     class="help-pill"
                     data-bs-toggle="modal"
                     data-bs-target="#simulatorHelpModal"
-                    title="How Castor Simulator works"
-                    aria-label="How Castor Simulator works">
+                    title="How Castor Viewer works"
+                    aria-label="How Castor Viewer works">
                 <i class="bi bi-question-circle"></i>
             </button>
 
@@ -371,7 +371,7 @@
          class="border-top bg-body flex-shrink-0 px-3 py-2 d-none text-secondary"
          style="display:none!important; font-size:0.8rem;">
         <i class="bi bi-info-circle me-1"></i>
-        No schedule linked — import a schedule in 4D/5D Controls &gt; TimeLiner to enable the timeline.
+        No schedule linked — import a schedule in 4D/5D Schedule, then open Time View for programme playback.
     </div>
 
     <style>
