@@ -239,24 +239,30 @@ class TimelinePayloadService:
         actual_end: date | None,
         snapshot: date,
     ) -> str:
-        if (
-            actual_start is not None
-            and actual_end is not None
-            and actual_end > end_date
-            and snapshot >= actual_start
-        ):
-            return "delayed"
-        if (
-            actual_start is not None
-            and actual_end is None
-            and snapshot >= actual_start
-            and snapshot > actual_start + (end_date - start_date) * 1.2
-        ):
-            return "delayed"
-        if actual_end is not None and actual_end <= end_date:
+        """Classify a task relative to the playback snapshot date.
+
+        Actual finish must be compared to ``snapshot``. Returning complete
+        solely because ``actual_end`` is populated made programme playback
+        paint nearly the whole model green on every date.
+        """
+        # Finished as-of snapshot (actual).
+        if actual_end is not None and snapshot >= actual_end:
+            if actual_end > end_date:
+                return "delayed"
             return "complete"
-        if actual_start is not None and actual_start <= snapshot and actual_end is None:
+
+        # Started but not finished as-of snapshot (actual).
+        if actual_start is not None and snapshot >= actual_start:
+            planned_span = end_date - start_date
+            overtime = snapshot > actual_start + planned_span * 1.2
+            past_planned_end = snapshot > end_date
+            if actual_end is None and (overtime or past_planned_end):
+                return "delayed"
+            if past_planned_end:
+                return "delayed"
             return "in_progress"
+
+        # Planned dates only (no actual progress yet).
         if end_date <= snapshot:
             return "complete"
         if start_date <= snapshot < end_date:

@@ -62,6 +62,8 @@
                 <button type="button" id="la-legend-toggle" class="tv-legend-toggle"
                         data-testid="time-view-legend-toggle"
                         title="Toggle legend" aria-expanded="true">Legend · Schedule state</button>
+                <div id="la-applied-status" class="tv-applied-status"
+                     data-testid="time-view-applied-status">Waiting for model colours…</div>
                 <div id="la-legend-body" class="tv-legend-body" data-testid="time-view-legend-body"></div>
             </div>
             <div id="la-preview-warn" class="d-none tv-overlay-banner" data-testid="time-view-preview-warn"></div>
@@ -142,17 +144,8 @@
                             Colour basis: schedule state on the playback date
                             (complete / in progress / delayed / not started / no task).
                         </p>
-                        <div class="tv-future-modes mb-2" data-testid="time-view-future-modes">
-                            <div class="tv-field-label">Not available yet</div>
-                            <ul class="mb-0 ps-3 text-secondary" style="font-size:0.68rem;">
-                                <li>IFC class / type during playback</li>
-                                <li>Level / storey during playback</li>
-                                <li>Custom colour sets</li>
-                                <li>Planned vs actual compare</li>
-                            </ul>
-                        </div>
 
-                        <div class="tv-field-label">Visibility</div>
+                        <div class="tv-field-label">Schedule visibility</div>
                         <p class="text-secondary mb-1" style="font-size:0.68rem;">
                             Controls which schedule-state buckets colour the model and appear in the legend.
                         </p>
@@ -182,6 +175,22 @@
                                        data-testid="time-view-vis-no-task" data-bucket="no_task">
                                 <span class="form-check-label">No-task wireframe</span>
                             </label>
+                        </div>
+
+                        <div class="tv-future-modes mt-2" data-testid="time-view-task-legend-groups-future">
+                            <div class="tv-field-label">Task Legend Groups</div>
+                            <p class="text-secondary mb-1" style="font-size:0.68rem;"
+                               data-testid="time-view-task-legend-groups-note">
+                                Planned: user-defined activity groups with colours (for example Substructure,
+                                Superstructure, MEP First Fix). Linked model elements would inherit colour from
+                                their schedule activity group during playback — not from IFC class.
+                                Not available in this release (needs a saved appearance profile).
+                            </p>
+                            <ul class="mb-0 ps-3 text-secondary" style="font-size:0.68rem;">
+                                <li>IFC class categories are not the 4D legend builder</li>
+                                <li>Level / storey appearance profile</li>
+                                <li>Planned vs actual compare</li>
+                            </ul>
                         </div>
 
                         <div class="tv-field-label mt-2">Legend preview</div>
@@ -416,6 +425,16 @@
     pointer-events: none;
 }
 .tv-overlay-legend.is-collapsed .tv-legend-body { display: none; }
+.tv-overlay-legend.is-collapsed .tv-applied-status { display: none; }
+.tv-applied-status {
+    margin-top: 4px;
+    font-size: 0.65rem;
+    color: #cbd5e1;
+    line-height: 1.25;
+}
+.tv-applied-status.is-empty {
+    color: #fbbf24;
+}
 .tv-overlay-legend i,
 .tv-legend-panel i {
     display: inline-block;
@@ -632,7 +651,7 @@
     const tlDetailCache = Object.create(null);
     let tlDetailInflight = Object.create(null);
 
-    /* Appearance profile: Schedule state only (honest V1). */
+    /* Appearance profile: Schedule state (Task Legend Groups are future). */
     const APPEARANCE_BUCKETS = [
         { key: "complete", label: "Complete", color: "#10B981", visId: "la-vis-complete", border: false },
         { key: "in_progress", label: "In progress", color: "#F59E0B", visId: "la-vis-in-progress", border: false },
@@ -747,6 +766,38 @@
         if (settings) settings.innerHTML = html;
         const toggle = document.getElementById("la-legend-toggle");
         if (toggle) toggle.textContent = "Legend · Schedule state";
+        _updateAppliedStatusFromPayload();
+    }
+
+    function _payloadLinkedCount(payload) {
+        if (!payload) return 0;
+        const n = (arr) => Array.isArray(arr) ? arr.length : 0;
+        return n(payload.complete) + n(payload.in_progress) + n(payload.delayed);
+    }
+
+    function _updateAppliedStatusFromPayload(ack) {
+        const el = document.getElementById("la-applied-status");
+        if (!el) return;
+        const payload = window.__tvLastColourPayload;
+        const linked = ack && ack.linkedColoured != null
+            ? ack.linkedColoured
+            : _payloadLinkedCount(payload);
+        const hidden = ack && ack.hiddenMapped != null
+            ? ack.hiddenMapped
+            : (payload && Array.isArray(payload.not_started) ? payload.not_started.length : 0);
+        if (!payload) {
+            el.textContent = "Waiting for model colours…";
+            el.classList.remove("is-empty");
+            return;
+        }
+        if (linked <= 0) {
+            el.textContent = "No linked elements coloured for this date.";
+            el.classList.add("is-empty");
+            return;
+        }
+        el.textContent = `${linked.toLocaleString()} elements coloured`
+            + (hidden ? ` · ${hidden.toLocaleString()} not started hidden` : "");
+        el.classList.remove("is-empty");
     }
 
     function _stepDelayMs() {
@@ -1112,6 +1163,9 @@
                 } else if (timelineOk) {
                     _applyInterval(tlIdx);
                 }
+            }
+            if (msg.type === "castor:timeline-applied") {
+                _updateAppliedStatusFromPayload(msg);
             }
             if (msg.type === "castor:viewer-error") {
                 if (iframeOvl) {

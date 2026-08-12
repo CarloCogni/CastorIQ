@@ -150,6 +150,35 @@ def test_timeline_interval_detail_empty_project(client):
 
 
 @pytest.mark.django_db
+def test_task_state_respects_snapshot_for_actual_end():
+    """Actual finish must not paint complete on dates before actual_end."""
+    project = ProjectFactory()
+    ifc = IFCFileFactory(project=project, status="completed")
+    ent = IFCEntityFactory(ifc_file=ifc, global_id="GID-SNAP")
+    task = TaskFactory(
+        project=project,
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 31),
+        actual_start=date(2025, 1, 1),
+        actual_end=date(2025, 1, 20),
+        is_non_physical=False,
+    )
+    _trusted_binding(task, ent.global_id)
+    svc = TimelinePayloadService(project)
+
+    before = svc.build_interval_detail(date(2024, 6, 1))
+    assert ent.global_id in before["entities"]["not_started"]
+    assert ent.global_id not in before["entities"]["complete"]
+
+    mid = svc.build_interval_detail(date(2025, 1, 10))
+    assert ent.global_id in mid["entities"]["in_progress"]
+    assert ent.global_id not in mid["entities"]["complete"]
+
+    after = svc.build_interval_detail(date(2025, 1, 25))
+    assert ent.global_id in after["entities"]["complete"]
+
+
+@pytest.mark.django_db
 def test_timeline_summary_service_stats_match_detail_counts():
     """Summary counts align with detail bucket lengths for the same snapshot."""
     project = ProjectFactory()

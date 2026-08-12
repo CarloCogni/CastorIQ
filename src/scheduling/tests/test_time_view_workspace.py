@@ -34,6 +34,11 @@ _FORBIDDEN_WORKSPACE = (
     "Export animation",
     "Planned vs Actual",
     "Day/Week/Month",
+    "Construction sets",
+    "time-view-mode-construction",
+    "time-view-legend-builder",
+    "castor:appearance-colors",
+    "CONSTRUCTION_SETS_URL",
 )
 
 
@@ -92,26 +97,28 @@ def test_time_view_workspace_honesty_and_controls(client):
     assert 'id="la-speed-select"' not in html
     assert 'id="la-settings-speed"' not in html
 
-    # Appearance — schedule state only; no fake active modes
+    # Appearance — Schedule state only; Task Legend Groups future; no IFC construction sets
     assert 'data-testid="time-view-appearance-setup"' in html
     assert 'data-testid="time-view-appearance-profile"' in html
-    profile_snip = html.split('data-testid="time-view-appearance-profile"', 1)[1][:120]
-    assert "Schedule state" in profile_snip
+    assert "Schedule state" in html.split('data-testid="time-view-appearance-profile"', 1)[1][:120]
+    assert 'data-testid="time-view-mode-construction"' not in html
+    assert 'data-testid="time-view-legend-builder"' not in html
+    assert "castor:appearance-colors" not in html
+    assert "CONSTRUCTION_SETS_URL" not in html
     assert 'data-testid="time-view-colour-basis"' in html
     assert (
         "schedule state" in html.split('data-testid="time-view-colour-basis"', 1)[1][:200].lower()
     )
-    assert 'data-testid="time-view-future-modes"' in html
-    assert "Not available yet" in html
-    assert "IFC class" in html.split('data-testid="time-view-future-modes"', 1)[1][:400]
-    assert 'id="la-colour-mode"' not in html
-    assert 'data-testid="time-view-colour-mode"' not in html
+    assert 'data-testid="time-view-task-legend-groups-future"' in html
+    assert "Task Legend Groups" in html
+    assert "Not available in this release" in html
+    assert "not from IFC class" in html.lower() or "not from IFC class" in html
     assert 'data-testid="time-view-visibility"' in html
     assert 'data-testid="time-view-vis-complete"' in html
     assert 'data-bucket="complete"' in html
     assert "Reset playback colours" in html
 
-    # Legend generated from JS appearance profile (empty shell + renderer)
+    # Legend generated from schedule-state appearance profile
     assert 'data-testid="time-view-legend"' in html
     assert 'data-testid="time-view-legend-body"' in html
     assert 'data-testid="time-view-settings-legend"' in html
@@ -120,6 +127,9 @@ def test_time_view_workspace_honesty_and_controls(client):
     assert "APPEARANCE_BUCKETS" in html
     assert "_stepDelayMs" in html
     assert "TL_MIN_STEP_MS" in html
+    assert 'data-testid="time-view-applied-status"' in html
+    assert "No linked elements coloured for this date." in html
+    assert "castor:timeline-applied" in html
     assert 'data-testid="time-view-play-btn"' in html
     assert 'data-testid="time-view-dock-play-btn"' in html
     assert 'aria-label="Play"' in html
@@ -156,6 +166,8 @@ def test_time_view_workspace_honesty_and_controls(client):
     assert "Playback Setup" in help_html
     assert "Appearance" in help_html
     assert "Schedule state" in help_html
+    assert "Task Legend Groups" in help_html
+    assert "Construction sets" not in help_html
     for phrase in _FORBIDDEN_WORKSPACE:
         assert phrase not in workspace, phrase
         assert phrase not in help_html, phrase
