@@ -7,9 +7,11 @@
   <div class="mi-cmd" data-testid="model-workspace-toolbar">
     <div class="d-flex align-items-baseline gap-2" style="min-width:0;">
       <h5 data-testid="model-workspace-title">
-        <i class="bi bi-box-seam me-1" style="opacity:.7;"></i>Model Inventory
+        <i class="bi bi-box-seam me-1" style="opacity:.7;"></i>Model Readiness
       </h5>
-      <span class="mi-sub d-none d-md-inline" data-testid="model-workspace-subtitle">Model</span>
+      <span class="mi-sub d-none d-md-inline" data-testid="model-workspace-subtitle">
+        IFC inventory, linkability, and QTO readiness for 4D/5D
+      </span>
     </div>
     <button type="button"
             class="help-pill"
@@ -27,14 +29,21 @@
     <span class="mi-badge-quiet" data-testid="model-inventory-not-boq-badge"
           title="IFC model quantities only — not commercial BOQ">Not BOQ</span>
     <div class="ms-auto d-flex gap-1 flex-wrap">
-      <a href="{{ entities_url }}" class="btn btn-sm btn-primary"
+      <a href="{{ apply_url }}" class="btn btn-sm btn-primary"
+         data-testid="model-inventory-open-apply">Links</a>
+      <a href="{{ time_view_url }}" class="btn btn-sm btn-outline-secondary"
+         data-testid="model-inventory-open-time-view">Time View</a>
+      <a href="{{ quantities_url }}" class="btn btn-sm btn-outline-secondary"
+         data-testid="model-inventory-open-quantities">Quantities</a>
+      <a href="{{ entities_url }}" class="btn btn-sm btn-outline-secondary"
          data-testid="model-open-ifc-elements">IFC Elements</a>
       <a href="{{ viewer_url }}" class="btn btn-sm btn-outline-secondary"
          data-testid="model-inventory-open-viewer">Viewer</a>
-      <a href="{{ apply_url }}" class="btn btn-sm btn-outline-secondary"
-         data-testid="model-inventory-open-apply">Links</a>
     </div>
   </div>
+
+  <div class="mi-dash" data-testid="model-readiness-band">
+  {% include "takeoff/components/model_readiness_cards.html" %}
 
   {% if not inventory.has_ifc %}
   <div class="p-3">
@@ -45,42 +54,11 @@
   </div>
   {% else %}
 
-  <div class="mi-stats" data-testid="model-inventory-overview">
-    <div class="mi-stat" data-testid="mi-kpi-elements">
-      <span class="mi-stat-k">Elements</span>
-      <span class="mi-stat-v" data-testid="mi-total-entities">{{ inventory.overview.total_entities|default:0 }}</span>
+  <div class="mi-evidence-wrap" data-testid="model-inventory-evidence">
+    <div class="mi-evidence-intro">
+      <h6>Inventory evidence</h6>
+      <p>Use these tables to investigate readiness findings.</p>
     </div>
-    <div class="mi-stat" data-testid="mi-kpi-classes">
-      <span class="mi-stat-k">Classes</span>
-      <span class="mi-stat-v">{{ inventory.overview.ifc_class_count|default:0 }}</span>
-    </div>
-    <div class="mi-stat" data-testid="mi-kpi-levels">
-      <span class="mi-stat-k">Levels</span>
-      {% if inventory.overview.has_storeys %}
-      <span class="mi-stat-v">{{ inventory.overview.storey_count }}</span>
-      {% else %}
-      <span class="mi-stat-v is-muted" data-testid="mi-no-storeys">Unavailable</span>
-      {% endif %}
-    </div>
-    <div class="mi-stat" data-testid="mi-kpi-coverage">
-      <span class="mi-stat-k">Coverage</span>
-      {% if inventory.overview.has_trusted_links %}
-      <span class="mi-stat-v" data-testid="mi-coverage-pct">{{ inventory.link_coverage.coverage_pct }}%</span>
-      {% else %}
-      <span class="mi-stat-v is-muted">—</span>
-      {% endif %}
-    </div>
-    <div class="mi-stat" data-testid="mi-kpi-missing">
-      <span class="mi-stat-k">Missing</span>
-      <span class="mi-stat-v">
-        {{ inventory.missing_model_data.missing_level_count|add:inventory.missing_model_data.missing_ifc_qto_count }}
-      </span>
-    </div>
-    <div class="mi-stat" data-testid="mi-kpi-classification">
-      <span class="mi-stat-k">Classification</span>
-      <span class="mi-stat-v is-muted" data-testid="mi-classification-unavailable">Unavailable</span>
-    </div>
-  </div>
 
   <div class="mi-shell" data-testid="model-workspace-main">
 
@@ -166,11 +144,11 @@
           </button>
           <div class="mi-nav-body" id="mi-missing-body">
             <div class="mi-missing-mini">
-              <span class="k">Missing Level / Storey</span>
+              <span class="k">Spatial gaps</span>
               <span class="v" data-testid="mi-missing-level">{{ inventory.missing_model_data.missing_level_count }}</span>
-              <span class="k">Missing IFC Qto</span>
+              <span class="k">QTO gaps</span>
               <span class="v" data-testid="mi-missing-qto">{{ inventory.missing_model_data.missing_ifc_qto_count }}</span>
-              <span class="k">Classification Coverage</span>
+              <span class="k">Classification breakdown</span>
               <span class="v text-secondary">Unavailable</span>
             </div>
           </div>
@@ -179,7 +157,7 @@
     </aside>
 
     <section class="mi-center" data-testid="model-main-grid">
-      <div class="mi-zone-h">
+      <div class="mi-zone-h" data-testid="model-inventory-drilldown">
         <span class="mi-zone-title">By IFC Class</span>
         <a href="{{ entities_url }}" class="btn btn-sm btn-outline-secondary"
            data-testid="model-open-full-grid" style="text-transform:none; letter-spacing:0; font-weight:500;">
@@ -204,7 +182,7 @@
               <th class="mi-num mi-sortable" data-mi-sort="linked" data-testid="mi-sort-class-linked">Applied / Confirmed</th>
               <th class="mi-num mi-sortable" data-mi-sort="unlinked">Unlinked</th>
               <th class="mi-num mi-sortable" data-mi-sort="qto">Has IFC Qto</th>
-              <th class="mi-num mi-sortable" data-mi-sort="coverage">Link Coverage %</th>
+              <th class="mi-num mi-sortable" data-mi-sort="coverage">Element link coverage %</th>
             </tr>
           </thead>
           <tbody>
@@ -258,7 +236,7 @@
               <th class="mi-num">Unlinked Model Elements</th>
               <th class="mi-num">Has IFC Qto</th>
               <th class="mi-num">IFC Classes</th>
-              <th class="mi-num">Coverage %</th>
+              <th class="mi-num">Element link coverage %</th>
             </tr>
           </thead>
           <tbody>
@@ -372,7 +350,7 @@
     </section>
 
     <aside class="mi-inspector" data-testid="model-readiness-inspector">
-      <div class="mi-zone-h"><span class="mi-zone-title">Model Readiness</span></div>
+      <div class="mi-zone-h"><span class="mi-zone-title">Readiness inspector</span></div>
       <div class="mi-zone-body">
         <div class="mi-prop" id="mi-selection-inspector" data-testid="mi-selection-inspector"
              data-mi-selection-ready="1">
@@ -386,63 +364,17 @@
             <span class="k">Applied / Confirmed</span><span class="v" id="mi-sel-linked" data-testid="mi-sel-linked">—</span>
             <span class="k">Unlinked</span><span class="v" id="mi-sel-unlinked" data-testid="mi-sel-unlinked">—</span>
             <span class="k">Has IFC Qto</span><span class="v" id="mi-sel-qto" data-testid="mi-sel-qto">—</span>
-            <span class="k">Link Coverage %</span><span class="v" id="mi-sel-coverage" data-testid="mi-sel-coverage">—</span>
+            <span class="k">Element link coverage %</span><span class="v" id="mi-sel-coverage" data-testid="mi-sel-coverage">—</span>
           </div>
           <p class="mi-prop-note" id="mi-selection-detail" data-testid="mi-selection-detail"></p>
         </div>
-
-        <div data-testid="model-inventory-link-coverage">
-          <div class="mi-prop">
-            <span class="mi-prop-k">Link Coverage</span>
-            <span class="mi-chip mi-chip-muted">Applied / Confirmed only</span>
-            <p class="mi-prop-note" data-testid="mi-link-coverage-caveat">{{ inventory.link_coverage.caveat }}</p>
-          </div>
-          {% if not inventory.overview.has_trusted_links %}
-          <div class="mi-prop" data-testid="mi-no-trusted-links">
-            <span class="mi-prop-k">Status</span>
-            <div class="mi-prop-v" style="font-weight:500;">No applied / confirmed schedule-model links yet.</div>
-            <p class="mi-prop-note">Suggest and confirm links under Links.</p>
-          </div>
-          {% else %}
-          <div class="mi-prop">
-            <span class="mi-prop-k">Applied / Confirmed linked</span>
-            <div class="mi-prop-v" data-testid="mi-trusted-linked">{{ inventory.link_coverage.trusted_linked_entities }}</div>
-          </div>
-          <div class="mi-prop">
-            <span class="mi-prop-k">Unlinked Model Elements</span>
-            <div class="mi-prop-v" data-testid="mi-unlinked">{{ inventory.link_coverage.unlinked_entities }}</div>
-          </div>
-          <div class="mi-prop">
-            <span class="mi-prop-k">Coverage</span>
-            <div class="mi-prop-v">{{ inventory.link_coverage.coverage_pct }}%</div>
-          </div>
-          {% endif %}
-        </div>
-
-        <div class="mi-prop">
-          <span class="mi-prop-k">Classification</span>
-          <div class="mi-prop-v text-secondary">Unavailable</div>
-          <p class="mi-prop-note">Classification is not indexed yet — not inferred from properties.</p>
-        </div>
-
-        <div class="mi-prop">
-          <span class="mi-prop-k">Quantity readiness</span>
-          {% if inventory.overview.has_quantities %}
-          <div class="mi-prop-v" data-testid="mi-qty-available">
-            {{ inventory.overview.entities_with_quantity }}
-            <span style="font-weight:500; color:var(--mi-muted);">({{ inventory.overview.quantity_availability_pct }}%)</span>
-          </div>
-          {% else %}
-          <div class="mi-prop-v text-secondary" data-testid="mi-no-quantities">No IFC model quantities detected</div>
-          {% endif %}
-          <p class="mi-prop-note" data-testid="model-inventory-source-caveat">
-            IFC model quantities (<code>Qto_*</code>) only — not BOQ, QS valuation, ERP, or company actual cost.
-          </p>
-        </div>
+        <p class="mi-prop-note px-2 pb-2">Global totals are in the charts above. This panel shows the selected class or level only.</p>
       </div>
     </aside>
   </div>
+  </div>
   {% endif %}
+  </div>
 </div>
 
 {% include "takeoff/components/model_inventory_help_modal.html" %}
@@ -495,7 +427,7 @@
     set("mi-sel-qto", qto);
     set("mi-sel-coverage", coverage != null && coverage !== "" ? coverage + "%" : "—");
     if (detail) {
-      var note = "Values from indexed Model Inventory (Applied / Confirmed links only).";
+      var note = "Values from indexed Model Readiness (Applied / Confirmed links only).";
       if (parseInt(unlinked, 10) > 0) {
         note += " Unlinked elements remain for this selection.";
       }
@@ -585,6 +517,127 @@
         rows.forEach(function (r) { tbody.appendChild(r); });
       });
     });
+  }
+
+  // Dashboard filters: class/level update element+QTO charts; tables; entities GET.
+  // Task, spatial, granularity, playback charts stay project-wide.
+  var dashForm = document.getElementById("mi-dash-filters");
+  var dashDataEl = document.getElementById("mi-dash-data");
+  var dashData = null;
+  if (dashDataEl) {
+    try { dashData = JSON.parse(dashDataEl.textContent || "{}"); } catch (err) { dashData = null; }
+  }
+
+  function pct(part, total) {
+    if (!total) return 0;
+    return Math.round((1000 * part) / total) / 10;
+  }
+
+  function setBar(okId, gapId, okN, gapN, total) {
+    var okEl = document.getElementById(okId);
+    var gapEl = document.getElementById(gapId);
+    if (okEl) okEl.style.width = pct(okN, total) + "%";
+    if (gapEl) gapEl.style.width = pct(gapN, total) + "%";
+  }
+
+  function applyDashFilters() {
+    if (!dashForm) return;
+    var cls = (document.getElementById("mi-dash-class") || {}).value || "";
+    var lvl = (document.getElementById("mi-dash-level") || {}).value || "";
+    var linked = (document.getElementById("mi-dash-linked") || {}).value || "all";
+    var qto = (document.getElementById("mi-dash-qto") || {}).value || "all";
+    var issue = (document.getElementById("mi-dash-issue") || {}).value || "all";
+
+    root.querySelectorAll('tr[data-testid="mi-class-row"]').forEach(function (row) {
+      var show = !cls || row.getAttribute("data-mi-key") === cls;
+      row.classList.toggle("mi-row-hidden", !show);
+    });
+    root.querySelectorAll('tr[data-testid="mi-level-row"]').forEach(function (row) {
+      var show = !lvl || row.getAttribute("data-mi-key") === lvl;
+      row.classList.toggle("mi-row-hidden", !show);
+    });
+
+    root.querySelectorAll("[data-issue-type]").forEach(function (card) {
+      var t = card.getAttribute("data-issue-type") || "";
+      card.classList.toggle("is-hidden", issue !== "all" && t !== issue);
+    });
+    root.querySelectorAll("[data-chart]").forEach(function (chart) {
+      var t = chart.getAttribute("data-chart") || "";
+      chart.classList.toggle("is-dim", issue !== "all" && t !== issue);
+    });
+
+    var slice = dashData && dashData.project ? dashData.project : null;
+    var scopeLabel = "Project-wide";
+    if (dashData && cls) {
+      var classRow = (dashData.by_class || []).find(function (r) { return r.key === cls; });
+      if (classRow) {
+        slice = {
+          elements_total: classRow.elements,
+          elements_linked: classRow.linked,
+          elements_unlinked: classRow.unlinked,
+          qto_yes: classRow.qto,
+          qto_no: Math.max(0, classRow.elements - classRow.qto)
+        };
+        scopeLabel = "Selected class";
+      }
+    } else if (dashData && lvl) {
+      var levelRow = (dashData.by_level || []).find(function (r) { return r.key === lvl; });
+      if (levelRow) {
+        slice = {
+          elements_total: levelRow.elements,
+          elements_linked: levelRow.linked,
+          elements_unlinked: levelRow.unlinked,
+          qto_yes: levelRow.qto,
+          qto_no: Math.max(0, levelRow.elements - levelRow.qto)
+        };
+        scopeLabel = "Selected level";
+      }
+    }
+    if (cls && lvl) scopeLabel = "Selected class (level also filters the element list)";
+    if (!cls && !lvl) scopeLabel = "Project-wide";
+
+    if (slice) {
+      var total = slice.elements_total || 0;
+      var linkedN = slice.elements_linked || 0;
+      var unlinkedN = slice.elements_unlinked || 0;
+      var qYes = slice.qto_yes || 0;
+      var qNo = slice.qto_no || 0;
+      var em = document.getElementById("mi-chart-element-metric");
+      if (em) em.textContent = total ? pct(linkedN, total) + "%" : "—";
+      setBar("mi-chart-element-ok", "mi-chart-element-gap", linkedN, unlinkedN, total);
+      var elL = document.getElementById("mi-chart-element-linked");
+      var elU = document.getElementById("mi-chart-element-unlinked");
+      if (elL) elL.textContent = "Linked " + linkedN;
+      if (elU) elU.textContent = "Unlinked " + unlinkedN;
+      var qm = document.getElementById("mi-chart-qto-metric");
+      if (qm) qm.textContent = total ? pct(qYes, total) + "%" : "—";
+      setBar("mi-chart-qto-ok", "mi-chart-qto-gap", qYes, qNo, total);
+      var qY = document.getElementById("mi-chart-qto-yes");
+      var qN = document.getElementById("mi-chart-qto-no");
+      if (qY) qY.textContent = "Has QTO " + qYes;
+      if (qN) qN.textContent = "QTO gaps " + qNo;
+      var sc = document.getElementById("mi-chart-element-scope");
+      var sq = document.getElementById("mi-chart-qto-scope");
+      if (sc) sc.textContent = scopeLabel;
+      if (sq) sq.textContent = scopeLabel;
+    }
+
+    var entClass = document.getElementById("mi-filter-ifc-class");
+    var entLevel = document.getElementById("mi-filter-level");
+    var entLinked = document.getElementById("mi-filter-linked");
+    var entQto = document.getElementById("mi-filter-qto");
+    if (entClass) entClass.value = cls;
+    if (entLevel) entLevel.value = lvl;
+    if (entLinked) entLinked.value = linked;
+    if (entQto) entQto.value = qto;
+    var entForm = root.querySelector('[data-testid="mi-entities-filters"]');
+    if (entForm && window.htmx) {
+      window.htmx.trigger(entForm, "change");
+    }
+  }
+
+  if (dashForm) {
+    dashForm.addEventListener("change", applyDashFilters);
   }
 }());
 </script>

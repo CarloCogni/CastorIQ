@@ -39,7 +39,8 @@ def test_model_workspace_reference_v2_layout_markers(client):
     assert response.status_code == 200
     assert 'data-testid="model-inventory-page"' in html
     assert 'data-testid="model-workspace-toolbar"' in html
-    assert "Model Inventory" in html
+    assert "Model Readiness" in html
+    assert "IFC inventory, linkability, and QTO readiness for 4D/5D" in html
     assert 'data-testid="model-open-ifc-elements"' in html
     assert "IFC Elements" in html
     assert 'data-testid="model-inventory-overview"' in html
@@ -62,7 +63,7 @@ def test_model_workspace_reference_v2_layout_markers(client):
     assert "Not BOQ" in html
     assert 'class="mi-grid"' in html
     assert "prefers-reduced-motion" in html
-    assert "Link Coverage %" in html
+    assert "Element link coverage %" in html
     assert html.index('data-testid="model-inventory-not-boq-badge"') < html.index(
         'data-testid="model-inventory-source-caveat"'
     )

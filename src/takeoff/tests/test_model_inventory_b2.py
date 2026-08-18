@@ -121,7 +121,7 @@ def test_by_level_summary_linked_unlinked_and_unassigned():
 
 @pytest.mark.django_db
 def test_missing_model_data_and_classification_unavailable(client):
-    """Missing level/Qto counts render; Classification Coverage is Unavailable."""
+    """Missing level/Qto counts render; Classification breakdown is Unavailable."""
     project, *_ = _project_with_levels()
     client.force_login(project.owner)
 
@@ -138,7 +138,7 @@ def test_missing_model_data_and_classification_unavailable(client):
     assert 'data-testid="mi-missing-qto"' in html
     assert 'data-testid="mi-classification-unavailable"' in html
     assert "Unavailable" in html
-    assert "Classification Coverage" in html
+    assert "Classification breakdown" in html
     # First paint: no entity GlobalIds / property dumps
     assert "GID-W1" not in html
     assert "Qto_WallBaseQuantities" not in html

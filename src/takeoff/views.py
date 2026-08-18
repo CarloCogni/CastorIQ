@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 class ModelInventoryView(ProjectTabMixin, TemplateView):
-    """Model Inventory — IFC index counts, class/level tables, link coverage."""
+    """Model Readiness — semantic 4D/5D cards with inventory drill-down."""
 
     active_tab = "castor"
 
@@ -38,9 +38,11 @@ class ModelInventoryView(ProjectTabMixin, TemplateView):
         inventory = ModelInventoryService(project).build()
         ctx["inventory"] = inventory
         ctx["viewer_url"] = reverse("ifc_viewer:viewer", kwargs={"pk": project.pk})
-        ctx["apply_url"] = (
-            reverse("scheduling:schedule", kwargs={"pk": project.pk}) + "?tab=fourD_link"
-        )
+        schedule_url = reverse("scheduling:schedule", kwargs={"pk": project.pk})
+        ctx["apply_url"] = f"{schedule_url}?tab=fourD_link"
+        ctx["time_view_url"] = f"{schedule_url}?tab=lookahead"
+        ctx["schedule_url"] = f"{schedule_url}?tab=data_sources"
+        ctx["quantities_url"] = reverse("takeoff:qto", kwargs={"pk": project.pk})
         ctx["entities_url"] = reverse("takeoff:model_inventory_entities", kwargs={"pk": project.pk})
         return ctx
 
