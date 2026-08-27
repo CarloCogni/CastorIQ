@@ -1,8 +1,14 @@
 #!/usr/bin/env python
 """Django command-line utility for administrative tasks."""
 
+import asyncio
 import os
 import sys
+
+# Daphne/Twisted deadlocks on Windows with the default ProactorEventLoop
+# (Python 3.12+). Force SelectorEventLoop so sync_to_async works correctly.
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
 def main():

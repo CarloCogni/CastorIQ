@@ -5,7 +5,7 @@ description = "Bi-Directional LLM Assistant for IFC Models and Technical Reporti
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "django>=5.0",
+    "django>=5.0,<6.0",
     "djangorestframework>=3.14",
     "psycopg[binary]>=3.1",
     "pgvector>=0.2",
