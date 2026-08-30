@@ -13,6 +13,7 @@ from django.core.exceptions import ValidationError
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.template.loader import render_to_string
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views import View
 from django.views.generic import TemplateView
 
@@ -103,6 +104,27 @@ class ViewerView(ProjectTabMixin, TemplateView):
         )
         ctx["viewer_ifc_file"] = ifc_file
         ctx["ifc_file_url"] = ifc_file.file.url if ifc_file else None
+
+        # Deep-link "Back" affordance: callers (e.g. an asset's "View in 3D" or a
+        # Spaces pin's "Focus in 3D") pass ?return=<same-site path>&from=<label>.
+        # The viewer lives under 4D/5D, so without this the user has no one-click
+        # way back to the Facilities card they came from. Validate the return path
+        # against the current host to avoid an open redirect; ignore anything else.
+        back = (self.request.GET.get("return") or "").strip()
+        if back and url_has_allowed_host_and_scheme(
+            back,
+            allowed_hosts={self.request.get_host()},
+            require_https=self.request.is_secure(),
+        ):
+            frm = (self.request.GET.get("from") or "").strip().lower()
+            ctx["back_url"] = back
+            ctx["back_label"] = {
+                "asset": "Asset",
+                "spaces": "Spaces",
+                "work": "Work order",
+                "permit": "Permit",
+                "request": "Request",
+            }.get(frm, "Facilities")
         return ctx
 
 

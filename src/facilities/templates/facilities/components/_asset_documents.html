@@ -1,0 +1,114 @@
+<!-- facilities/components/_asset_documents.html — user-named document folders
+     on one asset. Folders LINK documents already uploaded to the project
+     (sidebar → Documents / upload page); nothing is uploaded here, so a
+     document can live under many assets without duplication.
+
+     Every action posts via HTMX and swaps this whole card back in place
+     (#asset-documents-mount), so the page never reloads. -->
+
+<div id="asset-documents-mount">
+<div class="p-3 rounded border mt-3"
+     style="background-color: var(--bs-body-bg); border-color: var(--bs-border-color) !important;">
+
+    <div class="d-flex align-items-center gap-2 mb-2">
+        <span class="fs-8 text-secondary text-uppercase fw-semibold">
+            <i class="bi bi-folder2-open"></i> Documents
+        </span>
+        <span class="fs-8 text-secondary ms-auto">
+            linked from project uploads —
+            <a href="{% url 'projects:upload' project.pk %}" class="text-decoration-none">upload new</a>
+        </span>
+    </div>
+
+    {% if document_folders %}
+        {% for folder in document_folders %}
+        <div class="rounded border mb-2 overflow-hidden" style="border-color: var(--bs-border-color) !important;">
+            <div class="px-3 py-2 d-flex align-items-center gap-2"
+                 style="background-color: var(--bs-tertiary-bg);">
+                <i class="bi bi-folder" style="color: var(--castor-facilities, #3b82f6);"></i>
+                <span class="fw-semibold fs-7">{{ folder.name }}</span>
+                <span class="fs-8 text-secondary">{{ folder.documents.count }} file{{ folder.documents.count|pluralize }}</span>
+                {% if user_permission == "owner" or user_permission == "editor" %}
+                <form hx-post="{% url 'facilities:asset_folder_delete' project.pk asset.pk folder.pk %}"
+                      hx-target="#asset-documents-mount" hx-swap="outerHTML"
+                      hx-confirm="Delete folder '{{ folder.name }}'? Linked documents stay in the project."
+                      class="ms-auto m-0">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-link text-danger p-0" title="Delete folder">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+
+            {% for doc in folder.documents.all %}
+            <div class="px-3 py-2 d-flex align-items-center gap-2 border-top"
+                 style="border-color: var(--bs-border-color) !important;">
+                <i class="bi bi-file-earmark-text text-secondary"></i>
+                <a href="{{ doc.file.url }}" target="_blank" rel="noopener"
+                   class="text-decoration-none text-truncate fs-7" style="color: inherit;">
+                    {{ doc.name }}
+                </a>
+                <span class="fs-8 text-secondary text-uppercase">{{ doc.document_type }}</span>
+                {% if user_permission == "owner" or user_permission == "editor" %}
+                <form hx-post="{% url 'facilities:asset_folder_doc_unlink' project.pk asset.pk folder.pk %}"
+                      hx-target="#asset-documents-mount" hx-swap="outerHTML"
+                      class="ms-auto m-0">
+                    {% csrf_token %}
+                    <input type="hidden" name="document_id" value="{{ doc.pk }}">
+                    <button type="submit" class="btn btn-sm btn-link text-secondary p-0"
+                            title="Remove from folder (document stays in the project)">
+                        <i class="bi bi-x-lg" style="font-size: 0.75rem;"></i>
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+            {% empty %}
+            <div class="px-3 py-2 fs-8 text-secondary border-top"
+                 style="border-color: var(--bs-border-color) !important;">
+                Empty folder.
+            </div>
+            {% endfor %}
+
+            {% if user_permission == "owner" or user_permission == "editor" %}
+            <form hx-post="{% url 'facilities:asset_folder_doc_link' project.pk asset.pk folder.pk %}"
+                  hx-target="#asset-documents-mount" hx-swap="outerHTML"
+                  class="px-3 py-2 d-flex gap-2 border-top m-0"
+                  style="border-color: var(--bs-border-color) !important; background-color: var(--bs-tertiary-bg);">
+                {% csrf_token %}
+                <select name="document_id" class="form-select form-select-sm" required>
+                    <option value="">Add a project document…</option>
+                    {% for doc in project_documents %}
+                        {% if doc not in folder.documents.all %}
+                        <option value="{{ doc.pk }}">{{ doc.name|truncatechars:60 }}</option>
+                        {% endif %}
+                    {% endfor %}
+                </select>
+                <button type="submit" class="btn btn-sm text-nowrap"
+                        style="background-color: var(--castor-facilities, #3b82f6); color: white; border: none;">
+                    <i class="bi bi-link-45deg"></i> Add
+                </button>
+            </form>
+            {% endif %}
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="fs-8 text-secondary mb-2">
+            No folders yet. Create one below — e.g. "Manuals", "Certificates", "Service reports".
+        </div>
+    {% endif %}
+
+    {% if user_permission == "owner" or user_permission == "editor" %}
+    <form hx-post="{% url 'facilities:asset_folder_create' project.pk asset.pk %}"
+          hx-target="#asset-documents-mount" hx-swap="outerHTML"
+          class="d-flex gap-2 m-0 mt-2">
+        {% csrf_token %}
+        <input type="text" name="name" class="form-control form-control-sm"
+               placeholder="New folder name…" maxlength="120" required>
+        <button type="submit" class="btn btn-sm btn-outline-secondary text-nowrap">
+            <i class="bi bi-folder-plus"></i> New folder
+        </button>
+    </form>
+    {% endif %}
+</div>
+</div>

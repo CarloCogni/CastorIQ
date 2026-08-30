@@ -10,7 +10,7 @@
     <nav class="d-flex align-items-center gap-1 px-4 overflow-x-auto"
          aria-label="Facilities sub-navigation">
         <span class="d-inline-flex align-items-center gap-2 px-3 py-2 fs-8 fw-semibold flex-shrink-0"
-              style="color: var(--castor-facilities, #14b8a6); border-bottom: 2px solid var(--castor-facilities, #14b8a6);">
+              style="color: var(--castor-facilities, #3b82f6); border-bottom: 2px solid var(--castor-facilities, #3b82f6);">
             <i class="bi bi-house-door"></i>
             <span>Portal</span>
         </span>
@@ -24,55 +24,61 @@
 
         <a href="{% url 'facilities:tab' project.pk %}"
            class="d-inline-flex align-items-center gap-2 px-3 py-2 fs-8 text-decoration-none flex-shrink-0 {% if active_sub_tab == 'dashboard' or not active_sub_tab %}fw-semibold{% else %}text-secondary{% endif %}"
-           style="{% if active_sub_tab == 'dashboard' or not active_sub_tab %}color: var(--castor-facilities, #14b8a6); border-bottom: 2px solid var(--castor-facilities, #14b8a6);{% else %}border-bottom: 2px solid transparent;{% endif %}">
+           style="{% if active_sub_tab == 'dashboard' or not active_sub_tab %}color: var(--castor-facilities, #3b82f6); border-bottom: 2px solid var(--castor-facilities, #3b82f6);{% else %}border-bottom: 2px solid transparent;{% endif %}">
             <i class="bi bi-speedometer2"></i>
             <span>Dashboard</span>
         </a>
 
         <a href="{% url 'facilities:assets_list' project.pk %}"
            class="d-inline-flex align-items-center gap-2 px-3 py-2 fs-8 text-decoration-none flex-shrink-0 {% if active_sub_tab == 'assets' %}fw-semibold{% else %}text-secondary{% endif %}"
-           style="{% if active_sub_tab == 'assets' %}color: var(--castor-facilities, #14b8a6); border-bottom: 2px solid var(--castor-facilities, #14b8a6);{% else %}border-bottom: 2px solid transparent;{% endif %}">
+           style="{% if active_sub_tab == 'assets' %}color: var(--castor-facilities, #3b82f6); border-bottom: 2px solid var(--castor-facilities, #3b82f6);{% else %}border-bottom: 2px solid transparent;{% endif %}">
             <i class="bi bi-grid-3x3-gap"></i>
             <span>Assets</span>
         </a>
 
         <a href="{% url 'facilities:work_list' project.pk %}"
            class="d-inline-flex align-items-center gap-2 px-3 py-2 fs-8 text-decoration-none flex-shrink-0 {% if active_sub_tab == 'work' %}fw-semibold{% else %}text-secondary{% endif %}"
-           style="{% if active_sub_tab == 'work' %}color: var(--castor-facilities, #14b8a6); border-bottom: 2px solid var(--castor-facilities, #14b8a6);{% else %}border-bottom: 2px solid transparent;{% endif %}">
+           style="{% if active_sub_tab == 'work' %}color: var(--castor-facilities, #3b82f6); border-bottom: 2px solid var(--castor-facilities, #3b82f6);{% else %}border-bottom: 2px solid transparent;{% endif %}">
             <i class="bi bi-clipboard2-check"></i>
             <span>Work</span>
         </a>
 
         <a href="{% url 'facilities:permit_list' project.pk %}"
            class="d-inline-flex align-items-center gap-2 px-3 py-2 fs-8 text-decoration-none flex-shrink-0 {% if active_sub_tab == 'permits' %}fw-semibold{% else %}text-secondary{% endif %}"
-           style="{% if active_sub_tab == 'permits' %}color: var(--castor-facilities, #14b8a6); border-bottom: 2px solid var(--castor-facilities, #14b8a6);{% else %}border-bottom: 2px solid transparent;{% endif %}">
+           style="{% if active_sub_tab == 'permits' %}color: var(--castor-facilities, #3b82f6); border-bottom: 2px solid var(--castor-facilities, #3b82f6);{% else %}border-bottom: 2px solid transparent;{% endif %}">
             <i class="bi bi-shield-check"></i>
             <span>Permits</span>
         </a>
 
         <a href="{% url 'facilities:ar_list' project.pk %}"
            class="d-inline-flex align-items-center gap-2 px-3 py-2 fs-8 text-decoration-none flex-shrink-0 {% if active_sub_tab == 'action_requests' %}fw-semibold{% else %}text-secondary{% endif %}"
-           style="{% if active_sub_tab == 'action_requests' %}color: var(--castor-facilities, #14b8a6); border-bottom: 2px solid var(--castor-facilities, #14b8a6);{% else %}border-bottom: 2px solid transparent;{% endif %}">
+           style="{% if active_sub_tab == 'action_requests' %}color: var(--castor-facilities, #3b82f6); border-bottom: 2px solid var(--castor-facilities, #3b82f6);{% else %}border-bottom: 2px solid transparent;{% endif %}">
             <i class="bi bi-megaphone"></i>
             <span>Requests</span>
         </a>
 
         <a href="{% url 'facilities:explore' project.pk %}"
            class="d-inline-flex align-items-center gap-2 px-3 py-2 fs-8 text-decoration-none flex-shrink-0 {% if active_sub_tab == 'explore' %}fw-semibold{% else %}text-secondary{% endif %}"
-           style="{% if active_sub_tab == 'explore' %}color: var(--castor-facilities, #14b8a6); border-bottom: 2px solid var(--castor-facilities, #14b8a6);{% else %}border-bottom: 2px solid transparent;{% endif %}">
+           style="{% if active_sub_tab == 'explore' %}color: var(--castor-facilities, #3b82f6); border-bottom: 2px solid var(--castor-facilities, #3b82f6);{% else %}border-bottom: 2px solid transparent;{% endif %}">
             <i class="bi bi-map"></i>
             <span>Spaces</span>
         </a>
 
-        <!-- Deferred sub-tabs — surfaced as disabled placeholders so the information architecture is visible. -->
-        <span class="d-inline-flex align-items-center gap-2 px-3 py-2 fs-8 text-muted flex-shrink-0" style="border-bottom: 2px solid transparent; opacity: 0.55; cursor: not-allowed;" title="Properties — coming soon"><i class="bi bi-lock"></i><span>Properties</span></span>
-        <span class="d-inline-flex align-items-center gap-2 px-3 py-2 fs-8 text-muted flex-shrink-0" style="border-bottom: 2px solid transparent; opacity: 0.55; cursor: not-allowed;" title="Maintenance — M5"><i class="bi bi-lock"></i><span>Maintenance</span></span>
-        <span class="d-inline-flex align-items-center gap-2 px-3 py-2 fs-8 text-muted flex-shrink-0" style="border-bottom: 2px solid transparent; opacity: 0.55; cursor: not-allowed;" title="Systems — Phase 2"><i class="bi bi-lock"></i><span>Systems</span></span>
-        <span class="d-inline-flex align-items-center gap-2 px-3 py-2 fs-8 text-muted flex-shrink-0" style="border-bottom: 2px solid transparent; opacity: 0.55; cursor: not-allowed;" title="Sensors — Phase 3"><i class="bi bi-lock"></i><span>Sensors</span></span>
-        <span class="d-inline-flex align-items-center gap-2 px-3 py-2 fs-8 text-muted flex-shrink-0" style="border-bottom: 2px solid transparent; opacity: 0.55; cursor: not-allowed;" title="Documents — M6"><i class="bi bi-lock"></i><span>Documents</span></span>
-        <span class="d-inline-flex align-items-center gap-2 px-3 py-2 fs-8 text-muted flex-shrink-0" style="border-bottom: 2px solid transparent; opacity: 0.55; cursor: not-allowed;" title="People — Phase 2"><i class="bi bi-lock"></i><span>People</span></span>
-        <span class="d-inline-flex align-items-center gap-2 px-3 py-2 fs-8 text-muted flex-shrink-0" style="border-bottom: 2px solid transparent; opacity: 0.55; cursor: not-allowed;" title="Costs — M8"><i class="bi bi-lock"></i><span>Costs</span></span>
-        <span class="d-inline-flex align-items-center gap-2 px-3 py-2 fs-8 text-muted flex-shrink-0" style="border-bottom: 2px solid transparent; opacity: 0.55; cursor: not-allowed;" title="Reports — M7"><i class="bi bi-lock"></i><span>Reports</span></span>
+        <a href="{% url 'facilities:documents_list' project.pk %}"
+           class="d-inline-flex align-items-center gap-2 px-3 py-2 fs-8 text-decoration-none flex-shrink-0 {% if active_sub_tab == 'documents' %}fw-semibold{% else %}text-secondary{% endif %}"
+           style="{% if active_sub_tab == 'documents' %}color: var(--castor-facilities, #3b82f6); border-bottom: 2px solid var(--castor-facilities, #3b82f6);{% else %}border-bottom: 2px solid transparent;{% endif %}">
+            <i class="bi bi-folder2-open"></i>
+            <span>Documents</span>
+        </a>
+
+        <!--
+          Consolidated IA (was 14 tabs). Properties / Systems / Maintenance fold
+          into Assets, Work and Spaces as sub-views; People moves to project
+          settings; Costs + Reports merge into Insights. Documents is a live library
+          tab; Sensors (live BMS/IoT + camera feeds) and Insights stay as concepts.
+        -->
+        <span class="d-inline-flex align-items-center gap-2 px-3 py-2 fs-8 text-muted flex-shrink-0" style="border-bottom: 2px solid transparent; opacity: 0.55; cursor: not-allowed;" title="Sensors &amp; cameras — live BMS / IoT readings and camera feeds, tied to the model (coming soon)"><i class="bi bi-broadcast"></i><span>Sensors</span></span>
+        <span class="d-inline-flex align-items-center gap-2 px-3 py-2 fs-8 text-muted flex-shrink-0" style="border-bottom: 2px solid transparent; opacity: 0.55; cursor: not-allowed;" title="Insights — reporting, KPIs, cost / TCO and AI narrative (coming soon)"><i class="bi bi-bar-chart-line"></i><span>Insights</span></span>
     </nav>
 </div>
 {% endif %}

@@ -667,6 +667,64 @@ class AssetService:
             created_by=self.user,
         )
 
+    # ---- CSV export --------------------------------------------------------
+
+    def export_csv(self) -> str:
+        """Serialise the register to CSV in the exact :data:`CSV_COLUMNS` shape.
+
+        Round-trip guarantee: the output re-imports through
+        :meth:`import_csv` without loss — raw DB values are written (not
+        display fallbacks), so a linked asset with a blank name override
+        exports a blank ``name`` and re-imports to the same state. Only the
+        first classification is exported; the import schema carries one
+        ``(system, code)`` pair per row.
+        """
+        buffer = io.StringIO()
+        writer = csv.DictWriter(buffer, fieldnames=list(CSV_COLUMNS))
+        writer.writeheader()
+
+        qs = (
+            FacilityAsset.objects.filter(project=self.project)
+            .select_related(
+                "ifc_entity",
+                "spatial_container",
+                "spatial_container__entity",
+            )
+            .prefetch_related("classifications__classification")
+            .order_by("asset_tag", "name")
+        )
+        for asset in qs:
+            first_ref = next(iter(asset.classifications.all()), None)
+            spatial_entity = (
+                asset.spatial_container.entity
+                if asset.spatial_container_id and asset.spatial_container.entity_id
+                else None
+            )
+            writer.writerow(
+                {
+                    "global_id": asset.ifc_entity.global_id if asset.ifc_entity_id else "",
+                    "name": asset.name,
+                    "ifc_type": asset.ifc_type,
+                    "spatial_global_id": spatial_entity.global_id if spatial_entity else "",
+                    "location": asset.location_text,
+                    "asset_tag": asset.asset_tag,
+                    "manufacturer": asset.manufacturer,
+                    "model_number": asset.model_number,
+                    "serial_number": asset.serial_number,
+                    "commissioning_date": (
+                        asset.commissioning_date.isoformat() if asset.commissioning_date else ""
+                    ),
+                    "warranty_end": (
+                        asset.warranty_end.isoformat() if asset.warranty_end else ""
+                    ),
+                    "classification_system": (
+                        first_ref.classification.name if first_ref else ""
+                    ),
+                    "classification_code": first_ref.code if first_ref else "",
+                }
+            )
+        return buffer.getvalue()
+
     # ---- CSV import --------------------------------------------------------
 
     def import_csv(self, *, file, dry_run: bool = True) -> dict[str, Any]:

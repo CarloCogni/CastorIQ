@@ -16,6 +16,12 @@
     <div class="d-flex align-items-center px-3 py-2 border-bottom bg-body flex-shrink-0 flex-wrap gap-2"
          style="font-size:0.82rem;">
 
+        {% if back_url %}
+        <a href="{{ back_url }}" class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1 me-1"
+           title="Back to {{ back_label }}">
+            <i class="bi bi-arrow-left"></i> Back to {{ back_label }}
+        </a>
+        {% endif %}
         <span class="fw-semibold me-1">Castor Simulator</span>
         <span class="text-secondary text-truncate" style="font-size:0.78rem; max-width:200px;">{{ viewer_ifc_file.name }}</span>
 
@@ -373,16 +379,17 @@
     <script type="importmap">
     {
       "imports": {
-        "three":               "{% static 'vendor/three/build/three.module.js' %}",
-        "@thatopen/fragments": "{% static 'vendor/thatopen-fragments/dist/index.min.mjs' %}",
-        "web-ifc":             "{% static 'vendor/web-ifc/web-ifc-api.js' %}?v=2"
+        "three":                "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+        "@thatopen/components": "https://cdn.jsdelivr.net/npm/@thatopen/components@2.4.11/+esm",
+        "@thatopen/fragments":  "https://cdn.jsdelivr.net/npm/@thatopen/fragments@2.4.0/+esm",
+        "web-ifc":              "{% static 'vendor/web-ifc/web-ifc-api.js' %}?v=2"
       }
     }
     </script>
 
     <!-- ── Module script ─────────────────────────────────────────────────── -->
     <script type="module">
-    import * as OBC   from "{% static 'vendor/thatopen-components/dist/index.min.mjs' %}";
+    import * as OBC   from "@thatopen/components";
     import * as THREE from "three";
 
     const IFC_URL           = "{{ ifc_file_url }}";
@@ -435,8 +442,10 @@
             components.init();
             world.scene.setup();
 
-            loadMsg.textContent = "Checking geometry cache…";
-            const fragResp = await fetch(FRAG_URL);
+            // Geometry cache disabled (see viewer_embed): the current
+            // @thatopen/fragments build does not round-trip a saved .frag, so we
+            // always parse the IFC below.
+            const fragResp = { ok: false };
 
             if (fragResp.ok) {
                 loadMsg.textContent = "Loading cached model…";
@@ -471,7 +480,7 @@
                 const data = new Uint8Array(await resp.arrayBuffer());
                 model = await ifcLoader.load(data);
                 world.scene.three.add(model);
-                _saveFragments(components, model);
+                // Cache save disabled — see the note where the cache read is skipped.
                 buildIndex();
             }
 
@@ -484,6 +493,16 @@
             _initSectionBox();
             _initMeasureTool();
             _initSpatialTree();
+
+            // Deep-link focus: /viewer/projects/<pk>/?focus=<GlobalID> highlights and
+            // zooms to that element. ?room=<GlobalID> instead drops the camera INTO
+            // the centre of that IfcSpace (interior view — used by the Spaces tab).
+            // Delayed so they run after the initial camera fit.
+            const _qs         = new URLSearchParams(location.search);
+            const _focusParam = _qs.get("focus");
+            const _roomParam  = _qs.get("room");
+            if (_roomParam)       setTimeout(() => _focusRoom(_roomParam), 900);
+            else if (_focusParam) setTimeout(() => _focusGid(_focusParam), 700);
 
         } catch (err) {
             console.error("IFC viewer init failed:", err);
@@ -528,6 +547,83 @@
             }
         } catch (e) {
             console.warn("[simulator] GlobalId index build failed:", e);
+        }
+    }
+
+    // ── 2b. Deep-link focus (highlight + zoom to one element) ────────────
+
+    function _bboxForGid(gid) {
+        const box = new THREE.Box3();
+        if (!model) return box;
+        const eid = globalIdIndex.get(gid);
+        if (eid === undefined) return box;
+        const frag = fragmentIndex.get(eid);
+        if (!frag || !frag.mesh) return box;
+        // Whole-fragment bbox (same approach as the embed viewer's focusOnGlobalId).
+        frag.mesh.updateMatrixWorld(true);
+        box.setFromObject(frag.mesh);
+        return box;
+    }
+
+    function _focusGid(gid) {
+        if (!gid || !model || !globalIdIndex.has(gid)) return;
+        try {
+            resetAllColors();
+            colorByGlobalIds([gid], C.highlight);
+            const controls = world?.camera?.controls;
+            const box = _bboxForGid(gid);
+            if (controls && typeof controls.fitToBox === "function" && !box.isEmpty()) {
+                controls.fitToBox(box, true);
+            }
+        } catch (e) { console.warn("[simulator] focus failed:", e); }
+    }
+
+    // ── 2c. Deep-link room focus (interior view — camera at the room centre) ──
+    //    The Spaces tab links pins to IfcSpaces. Rather than framing a space's
+    //    bounding box from the outside, drop the camera INTO the centre of the
+    //    room at eye height and look horizontally across it, so the view opens
+    //    "standing inside" the room. The space solid itself is hidden (and kept
+    //    hidden through later colour/selection resets) so the camera isn't
+    //    trapped inside a coloured volume; the walls / floor / doors remain.
+    async function _focusRoom(gid) {
+        if (!gid || !model || !globalIdIndex.has(gid)) return _focusGid(gid);
+        try {
+            const controls = world?.camera?.controls;
+            const box = _bboxForGid(gid);
+            // No usable space geometry → fall back to framing the element.
+            if (!controls || typeof controls.setLookAt !== "function" || box.isEmpty()) {
+                return _focusGid(gid);
+            }
+            // Perspective projection reads far more naturally from inside a room.
+            try {
+                if (world.camera.projection && world.camera.projection.current === "Orthographic") {
+                    await world.camera.projection.set("Perspective");
+                }
+            } catch (_) { /* projection API optional */ }
+
+            // Hide the room's own space solid so we can see out of it, and keep
+            // it hidden across future resets.
+            resetAllColors();
+            _hiddenGlobalIds.add(gid);
+            hideGlobalIds([gid]);
+
+            const center = box.getCenter(new THREE.Vector3());
+            const size   = box.getSize(new THREE.Vector3());
+            // Eye at the room centre, near standing height above the floor.
+            const eyeY   = box.min.y + Math.min(1.6, Math.max(0.1, size.y * 0.5));
+            // Look horizontally along the room's longer floor axis.
+            const alongX = size.x >= size.z;
+            world.camera.three.up.set(0, 1, 0);
+            controls.setLookAt(
+                center.x, eyeY, center.z,                               // eye: room centre
+                center.x + (alongX ? size.x * 0.5 + 0.01 : 0),          // target: far wall
+                eyeY,
+                center.z + (alongX ? 0 : size.z * 0.5 + 0.01),
+                true,
+            );
+        } catch (e) {
+            console.warn("[simulator] room focus failed:", e);
+            return _focusGid(gid);
         }
     }
 

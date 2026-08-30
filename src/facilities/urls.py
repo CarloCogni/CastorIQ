@@ -42,6 +42,11 @@ urlpatterns = [
         name="assets_import",
     ),
     path(
+        "<uuid:pk>/facilities/assets/export.csv",
+        views.AssetCSVExportView.as_view(),
+        name="assets_export_csv",
+    ),
+    path(
         "<uuid:pk>/facilities/assets/qr/",
         views.AssetQRLabelsView.as_view(),
         name="assets_qr_labels",
@@ -55,6 +60,28 @@ urlpatterns = [
         "<uuid:pk>/facilities/assets/<uuid:asset_pk>/update/",
         views.AssetUpdateView.as_view(),
         name="assets_update",
+    ),
+    # Asset document folders — user-named groupings linking uploaded project
+    # documents onto an asset.
+    path(
+        "<uuid:pk>/facilities/assets/<uuid:asset_pk>/folders/create/",
+        views.AssetFolderCreateView.as_view(),
+        name="asset_folder_create",
+    ),
+    path(
+        "<uuid:pk>/facilities/assets/<uuid:asset_pk>/folders/<uuid:folder_pk>/delete/",
+        views.AssetFolderDeleteView.as_view(),
+        name="asset_folder_delete",
+    ),
+    path(
+        "<uuid:pk>/facilities/assets/<uuid:asset_pk>/folders/<uuid:folder_pk>/docs/link/",
+        views.AssetFolderDocumentLinkView.as_view(),
+        name="asset_folder_doc_link",
+    ),
+    path(
+        "<uuid:pk>/facilities/assets/<uuid:asset_pk>/folders/<uuid:folder_pk>/docs/unlink/",
+        views.AssetFolderDocumentUnlinkView.as_view(),
+        name="asset_folder_doc_unlink",
     ),
     # Export Reconciliation (M2).
     path(
@@ -123,6 +150,32 @@ urlpatterns = [
         views.WorkOrderPermitUnlinkView.as_view(),
         name="work_permit_unlink",
     ),
+    # Documents — FM document library + central folder management.
+    path(
+        "<uuid:pk>/facilities/documents/",
+        views.FacilityDocumentsView.as_view(),
+        name="documents_list",
+    ),
+    path(
+        "<uuid:pk>/facilities/documents/folders/create/",
+        views.DocumentFolderCreateView.as_view(),
+        name="documents_folder_create",
+    ),
+    path(
+        "<uuid:pk>/facilities/documents/folders/<uuid:folder_pk>/delete/",
+        views.DocumentFolderDeleteView.as_view(),
+        name="documents_folder_delete",
+    ),
+    path(
+        "<uuid:pk>/facilities/documents/folders/<uuid:folder_pk>/docs/link/",
+        views.DocumentFolderDocLinkView.as_view(),
+        name="documents_folder_doc_link",
+    ),
+    path(
+        "<uuid:pk>/facilities/documents/folders/<uuid:folder_pk>/docs/unlink/",
+        views.DocumentFolderDocUnlinkView.as_view(),
+        name="documents_folder_doc_unlink",
+    ),
     # Permits (M3).
     path(
         "<uuid:pk>/facilities/permits/",
@@ -148,6 +201,16 @@ urlpatterns = [
         "<uuid:pk>/facilities/permits/<uuid:permit_pk>/revoke/",
         views.PermitRevokeView.as_view(),
         name="permit_revoke",
+    ),
+    path(
+        "<uuid:pk>/facilities/permits/<uuid:permit_pk>/assets/link/",
+        views.PermitAssetLinkView.as_view(),
+        name="permit_asset_link",
+    ),
+    path(
+        "<uuid:pk>/facilities/permits/<uuid:permit_pk>/assets/unlink/",
+        views.PermitAssetUnlinkView.as_view(),
+        name="permit_asset_unlink",
     ),
     # Action Requests (M3).
     path(

@@ -31,7 +31,7 @@
         {% if asset.classifications.all %}
             <div class="d-flex flex-wrap gap-1">
                 {% for reference in asset.classifications.all %}
-                <span class="badge rounded-pill fs-8" style="background-color: rgba(20,184,166,0.10); color: var(--castor-facilities, #14b8a6); border: 1px solid rgba(20,184,166,0.30);">
+                <span class="badge rounded-pill fs-8" style="background-color: rgba(59, 130, 246,0.10); color: var(--castor-facilities, #3b82f6); border: 1px solid rgba(59, 130, 246,0.30);">
                     {{ reference.classification.name }}:{{ reference.code }}
                 </span>
                 {% endfor %}
@@ -41,11 +41,40 @@
         {% endif %}
     </div>
 
-    <!-- Placeholder panels (M3 work orders, M5 PM plans, M8 replace-vs-maintain) -->
+    <!-- Permits covering this asset (linked from the permit detail page) -->
+    <div class="p-3 rounded border" style="background-color: var(--bs-body-bg); border-color: var(--bs-border-color) !important;">
+        <div class="fs-8 text-secondary text-uppercase fw-semibold mb-2">
+            <i class="bi bi-shield-check"></i> Permits
+        </div>
+        {% if asset_permits %}
+            <ul class="list-unstyled mb-0">
+                {% for permit in asset_permits %}
+                <li class="py-1 {% if not forloop.last %}border-bottom{% endif %} d-flex align-items-center gap-2">
+                    <a href="{% url 'facilities:permit_detail' project.pk permit.pk %}"
+                       class="text-decoration-none text-truncate fs-7" style="color: inherit;">
+                        <span class="fw-semibold">{{ permit.permit_number }}</span>
+                        <span class="text-secondary">— {{ permit.title|truncatechars:30 }}</span>
+                    </a>
+                    <span class="badge rounded-pill fs-8 ms-auto flex-shrink-0"
+                          style="{% if permit.status == 'active' %}background-color: rgba(59, 130, 246,0.12); color: var(--castor-facilities, #3b82f6); border: 1px solid rgba(59, 130, 246,0.3);
+                                 {% elif permit.status == 'expired' or permit.status == 'revoked' %}background-color: rgba(239,68,68,0.12); color: #dc2626; border: 1px solid rgba(239,68,68,0.3);
+                                 {% else %}background-color: var(--bs-tertiary-bg); color: var(--bs-secondary-color); border: 1px solid var(--bs-border-color);{% endif %}">
+                        {{ permit.get_status_display }}
+                    </span>
+                </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <div class="fs-7 text-secondary">
+                No permits cover this asset. Link one from a permit's detail page.
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Placeholder panels (M5 PM plans, M8 replace-vs-maintain) -->
     <div class="p-3 rounded border" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color) !important;">
-        <div class="fs-8 text-secondary text-uppercase fw-semibold mb-2">Recent activity</div>
+        <div class="fs-8 text-secondary text-uppercase fw-semibold mb-2">Coming next</div>
         <div class="fs-7 text-secondary">
-            <div class="mb-1"><i class="bi bi-clipboard2-check"></i> Work orders — M3</div>
             <div class="mb-1"><i class="bi bi-calendar-event"></i> Next PM — M5</div>
             <div><i class="bi bi-currency-euro"></i> Replace-vs-maintain — M8</div>
         </div>

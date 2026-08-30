@@ -12,6 +12,7 @@
 .mh-spacer{flex:1;}
 .vmode{display:flex;gap:4px;}
 .numbering{display:flex;align-items:center;gap:6px;}
+.pinsize{display:flex;align-items:center;gap:6px;}
 .num-lbl{font-family:var(--font-mono);font-size:12px;color:var(--t3);}
 
 /* ── Shell ── */

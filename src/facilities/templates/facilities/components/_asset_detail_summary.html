@@ -9,7 +9,7 @@
      {% if oob %}hx-swap-oob="outerHTML"{% endif %}
      style="background-color: var(--bs-body-bg); border-color: var(--bs-border-color) !important;">
     <div class="d-flex align-items-start gap-3 mb-3">
-        <i class="bi bi-box-seam fs-1" style="color: var(--castor-facilities, #14b8a6);"></i>
+        <i class="bi bi-box-seam fs-1" style="color: var(--castor-facilities, #3b82f6);"></i>
         <div class="flex-grow-1">
             <h3 class="m-0 d-flex align-items-center gap-2 flex-wrap">
                 <span>{{ asset.asset_tag|default:asset.display_name|default:"Untitled asset" }}</span>
@@ -31,11 +31,21 @@
             </div>
         </div>
         {% if entity %}
-        <a href="{% url 'projects:explore' project.pk %}?entity={{ entity.pk }}"
-           class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-2"
-           title="Open in Explore tab">
-            <i class="bi bi-diagram-3"></i> View in IFC
-        </a>
+        <div class="d-flex flex-column gap-2">
+            {% if entity.global_id %}
+            {% url 'facilities:assets_detail' project.pk asset.pk as _asset_back_url %}
+            <a href="{% url 'ifc_viewer:viewer' project.pk %}?focus={{ entity.global_id|urlencode }}&return={{ _asset_back_url|urlencode }}&from=asset"
+               class="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-2"
+               title="Open this element in the 3D model, zoomed in">
+                <i class="bi bi-box"></i> View in 3D
+            </a>
+            {% endif %}
+            <a href="{% url 'projects:explore' project.pk %}?entity={{ entity.pk }}"
+               class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-2"
+               title="Open in Explore tab">
+                <i class="bi bi-diagram-3"></i> View in IFC
+            </a>
+        </div>
         {% endif %}
     </div>
 

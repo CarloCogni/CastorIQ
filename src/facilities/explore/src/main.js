@@ -12,7 +12,7 @@ import {
   setIdProps, availableProps,
   addPoint, selectPoint, deselect, movePoint, updatePoint, deletePoint, setPlacing,
   setAttachPhase, setSelectedMedia, setMediaMeta, setArchiveType, setTimelineView, setSortKey, toggleSortDir, setNumbering, setNumberingPad, setPointPhase, addMedia, removeMedia, restoreMedia,
-  addPhase, renamePhase, deletePhase, setPhaseColor, deleteFloor, moveFloor, phaseColor, effectivePhase, addPointTable, removePointTable, setPointTableFilter,
+  addPhase, renamePhase, deletePhase, setPhaseColor, deleteFloor, moveFloor, phaseColor, effectivePhase, addPointTable, removePointTable, setPointTableFilter, setPinScale, addPointElementTable, setElementTableProps,
   onStateChange, exportFullState, importFullState, clearSession,
   POINT_KINDS, CUSTOM_SYMBOLS, pointKind, pointGlyph, pointGlyphHtml, pointKindLabel, setPlaceKind, setKindFilter, setPointKind, setPlaceCustomName, setPointKindLabel,
 } from "./state.js";
@@ -33,6 +33,8 @@ const els = {
   viewer: document.getElementById("viewer"),
   pinLayer: document.getElementById("pinLayer"),
   planImg: document.getElementById("planImg"),
+  planStage: document.getElementById("planStage"),
+  planEmpty: document.getElementById("planEmpty"),
   floorSwitcher: document.getElementById("floorSwitcher"),
   legend: document.getElementById("legend"),
   numbering: document.getElementById("numbering"),
@@ -123,8 +125,13 @@ export function toast(msg, action) {
 function render() {
   const floor = activeFloor();
 
-  // Swap plan image only when it changes (avoids reload flicker)
-  if (floor && els.planImg.getAttribute("src") !== floor.plan) {
+  // Swap plan image only when it changes (avoids reload flicker). When the active
+  // storey has no plan yet, hide the (otherwise broken) <img> and show the empty
+  // state that guides the user to generate plans from the IFC, one per floor.
+  const hasPlan = !!(floor && floor.plan);
+  if (els.planStage) els.planStage.hidden = !hasPlan;
+  if (els.planEmpty) els.planEmpty.hidden = hasPlan;
+  if (hasPlan && els.planImg.getAttribute("src") !== floor.plan) {
     els.planImg.setAttribute("src", floor.plan);
   }
 
@@ -157,6 +164,15 @@ function render() {
   }
 
   renderFloorSwitcher(els.floorSwitcher, state.floors, state.activeFloorId, (id) => setActiveFloor(id), openFloorManager);
+
+  // Global pin size: state.pinScale (1–5) → CSS multiplier on the pin layer.
+  // All pin dimensions in components.css derive from --pin-scale.
+  const PIN_SCALE_STEPS = { 1: 0.45, 2: 0.7, 3: 1, 4: 1.3, 5: 1.6 };
+  els.pinLayer.style.setProperty("--pin-scale", PIN_SCALE_STEPS[state.pinScale] || 1);
+  const pinSizeSel = document.getElementById("pinSizeSel");
+  if (pinSizeSel && Number(pinSizeSel.value) !== state.pinScale) {
+    pinSizeSel.value = String(state.pinScale);
+  }
 
   const allPts = pointsForActiveFloor();
   // Header "kind" filter (photo / camera / sensor / custom) hides non-matching pins.
@@ -196,11 +212,13 @@ function render() {
       onCamera: (id, type) => { attachTargetId = id; attachTargetType = type; els.photoCamera.click(); },
       onRemoveMedia: (pid, mid) => removeMediaWithUndo(pid, mid),
       onViewMedia: (pid, mid) => openMedia(pid, mid),
-      onFocus3D: (id) => { emitHotspotClicked(id); toast("Sent FOCUS to Castor → 3D bridge"); },
+      onFocus3D: (id) => { emitHotspotClicked(id, true); toast("Opening in 3D…"); },
       onSetPointPhase: (id, phase) => setPointPhase(id, phase),
       onAddPointPhase: (id) => openAddPhase((name) => setPointPhase(id, name)),
       onSelectRoom: selectRoom,
       onAddTable: (id, key) => { addPointTable(id, key, "globalId"); },
+      onAddElementTable: (id, elementId, elementName) => { addPointElementTable(id, elementId, elementName); },
+      onSetElementTableProps: (id, key, props) => { setElementTableProps(id, key, props); },
       onRemoveTable: (id, key) => { removePointTable(id, key); },
       onSetTableFilter: (id, key, filterBy) => { setPointTableFilter(id, key, filterBy); },
       onConfigIdProps: openIdPropsConfig,
@@ -656,6 +674,16 @@ function selectRoom(pointId, roomGlobalId) {
     const patch = { roomId: room.globalId, globalId: room.globalId, ifcType: room.ifcType };
     if (pt && (!pt.label || /^Point \d+$/.test(pt.label))) patch.label = room.name;
     updatePoint(pointId, patch);
+    // Assigning a room auto-links the IFC elements table (filtered by the
+    // room's GlobalID) so the panel immediately lists everything placed in
+    // that room together with its parameters — no manual "add table" step.
+    // Skipped when the point already carries the table (user may have
+    // re-picked the room or configured a different filter key).
+    const catalog = tableCatalog();
+    const hasElements = pt && (pt.tables || []).some((t) => t.key === "elements");
+    if (catalog && catalog.elements && !hasElements) {
+      addPointTable(pointId, "elements", "globalId");
+    }
     toast(`Linked to ${room.name} (${room.ifcType})`);
   } else {
     updatePoint(pointId, { roomId: "" }); // custom — GlobalID/IFC become editable
@@ -1062,7 +1090,10 @@ function openAddPhase(onAdded) {
 }
 
 // ── Bridge: outbound HOTSPOT_CLICKED + inbound FOCUS_ELEMENT ──
-function emitHotspotClicked(pointId) {
+// focus=true means the user hit "Focus in 3D" (an explicit request to open the
+// 3D model zoomed to this element); a plain pin select emits focus=false so the
+// host can just note the selection without hijacking every click into 3D.
+function emitHotspotClicked(pointId, focus) {
   const p = state.points.find((p) => p.id === pointId);
   if (!p) return;
   emit(MSG.HOTSPOT_CLICKED, {
@@ -1071,6 +1102,7 @@ function emitHotspotClicked(pointId) {
     pointId: p.id,
     floorId: p.floorId,
     label: p.label,
+    focus: !!focus,
   });
 }
 
@@ -1216,24 +1248,38 @@ async function applyFloorKnockout(floorId, on) {
 
 // Toolbar "Floors" button: embedded → ask Castor to open its Floor-plans manager;
 // standalone → open the module's own floor manager.
-els.btnFloors.addEventListener("click", () => {
+// Open the Floor plans (levels) manager — where each storey has "Upload plan"
+// and "Generate from IFC". Standalone falls back to the in-iframe floor manager.
+function openLevels() {
   if (isEmbedded) emit(MSG.OPEN_LEVELS, {});
   else openFloorManager();
-});
+}
+els.btnFloors.addEventListener("click", openLevels);
 
 // Header "Plans" gear: ask Castor to open a file-browser-style modal listing
 // every uploaded / generated plan per storey (with per-image delete + "show
 // this" toggle). Standalone mode has no such manager, so a click there only
 // emits a no-op postMessage (no listener picks it up) and toasts a hint.
+function openPlansManager() {
+  if (isEmbedded) {
+    emit(MSG.OPEN_PLANS_MANAGER, {});
+  } else {
+    toast("Plans Manager is available only inside Castor.");
+  }
+}
 const btnPlansManager = document.getElementById("btnPlansManager");
-if (btnPlansManager) {
-  btnPlansManager.addEventListener("click", () => {
-    if (isEmbedded) {
-      emit(MSG.OPEN_PLANS_MANAGER, {});
-    } else {
-      toast("Plans Manager is available only inside Castor.");
-    }
-  });
+if (btnPlansManager) btnPlansManager.addEventListener("click", openPlansManager);
+
+// Empty-state CTA (shown when a storey has no plan): opens the Floor plans
+// manager (levels), where each storey has an "Generate from IFC" button — not
+// the read-only Plans Manager.
+const planEmptyGen = document.getElementById("planEmptyGen");
+if (planEmptyGen) planEmptyGen.addEventListener("click", openLevels);
+
+// Header pin-size select: five global size bands for every pin on the plan.
+const pinSizeSelBoot = document.getElementById("pinSizeSel");
+if (pinSizeSelBoot) {
+  pinSizeSelBoot.addEventListener("change", () => setPinScale(pinSizeSelBoot.value));
 }
 
 // Header "Draw" toggle: expand / collapse the Paint-style annotation toolbar
@@ -1250,7 +1296,7 @@ if (btnAnnotate) {
 }
 
 // ── Boot ──
-const BUILD = "build 6.48"; // bump on each change so a stale (cached) JS is obvious in the header
+const BUILD = "build 6.53"; // bump on each change so a stale (cached) JS is obvious in the header
 initModal();
 // Restore a previously chosen standalone theme (host SET_THEME still overrides when embedded).
 try { const savedTheme = localStorage.getItem(THEME_KEY); if (savedTheme) applyTheme(savedTheme); } catch (_) { /* ignore */ }
@@ -1262,6 +1308,18 @@ initAnnotations();
 // Pan + zoom controls (left-bottom overlay). Drives a CSS-variable transform
 // on .plan-stage so image, annotations and pins all scale together.
 initZoom();
+// Embedded inside Castor? The host appends ?embed=1 to the iframe src. Detected
+// synchronously so the first paint skips the bundled demo floor plan and shows a
+// neutral empty state until the host pushes the project's real IFC / user-supplied
+// plans via SET_FLOORS — otherwise the sample house flashes for a moment first.
+const EMBED_HOST = new URLSearchParams(location.search).get("embed") === "1";
+if (EMBED_HOST) {
+  try {
+    state.floors.splice(0);
+    state.points.splice(0);
+    state.activeFloorId = null;
+  } catch (_) { /* non-fatal — worst case the demo shows briefly */ }
+}
 render();
 toast("Explore ready · " + BUILD);
 // eslint-disable-next-line no-console
