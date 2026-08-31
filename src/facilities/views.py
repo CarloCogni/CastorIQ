@@ -4,14 +4,17 @@
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
+
+from django.utils import timezone
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.http import (
     Http404,
     HttpResponse,
@@ -19,7 +22,7 @@ from django.http import (
     HttpResponseRedirect,
     JsonResponse,
 )
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.decorators import method_decorator
 from django.views import View
@@ -33,12 +36,14 @@ from core.mixins import (
     ProjectModifyAccessMixin,
     ProjectTabMixin,
 )
+from documents.models import Document
 from environments.models import Project, ProjectRole
 from environments.services import ProjectAccessService
 from ifc_processor.models import IFCSpatialElement
 
 from .models import (
     ActionRequest,
+    AssetDocumentFolder,
     ClassificationReference,
     ExploreFloorPlan,
     ExploreFloorSettings,
@@ -46,6 +51,7 @@ from .models import (
     FacilityAsset,
     FMIntentProposal,
     Permit,
+    WorkOrder,
     WorkOrderStatus,
 )
 from .services.action_request_service import (
@@ -184,11 +190,129 @@ class FacilitiesView(ProjectTabMixin, TemplateView):
         context["facilities_open_asset_count"] = FacilityAsset.objects.filter(
             project=project, decommissioned_at__isnull=True
         ).count()
+        context.update(_dashboard_live_context(project))
 
         # M4 — Occupant Portal landing data (only fetched when needed).
         if context.get("facilities_is_occupant_mode"):
             context.update(_portal_landing_context(project, self.request.user))
         return context
+
+
+def _dashboard_live_context(project) -> dict:
+    """Live counts + a merged recent-activity feed for the Dashboard landing.
+
+    Everything here is a cheap indexed count / small slice — the dashboard
+    renders on every Facilities landing, so nothing heavier belongs in it.
+    The activity feed merges the three operational streams (work orders,
+    occupant requests, permits) into one list sorted by last update.
+    """
+    from .models.work import (  # noqa: PLC0415 — local to avoid circulars at import time
+        Permit,
+        WorkOrder,
+        WorkOrderPriority,
+    )
+
+    now = timezone.now()
+
+    open_wos = WorkOrder.objects.filter(
+        project=project, status__lt=WorkOrderStatus.COMPLETED
+    )
+    # "Needs renewal attention" — ACTIVE permits whose validity ends within
+    # the next 90 days *or already ended* (an expired-but-still-ACTIVE permit
+    # is the most urgent case of all, so no lower bound on valid_until).
+    permits_expiring = Permit.objects.filter(
+        project=project,
+        status=Permit.Status.ACTIVE,
+        valid_until__isnull=False,
+        valid_until__lte=now + timedelta(days=90),
+    )
+    # "Awaiting action" — OPEN (not yet triaged) plus TRIAGED (accepted but
+    # not yet escalated to a WO or dismissed). ESCALATED / DISMISSED are done.
+    requests_open = ActionRequest.objects.filter(
+        project=project,
+        status__in=(ActionRequest.Status.OPEN, ActionRequest.Status.TRIAGED),
+    )
+
+    # Merge the newest few of each stream, then keep the freshest 8 overall.
+    activity: list[dict] = []
+    for wo in (
+        WorkOrder.objects.filter(project=project)
+        .select_related("assignee_user")
+        .order_by("-updated_at")[:8]
+    ):
+        activity.append(
+            {
+                "kind": "wo",
+                "code": wo.wo_number,
+                "title": wo.title,
+                "status": wo.get_status_display(),
+                "is_critical": wo.priority == WorkOrderPriority.P1
+                and wo.status < WorkOrderStatus.COMPLETED,
+                "is_done": wo.status >= WorkOrderStatus.COMPLETED,
+                "meta": ", ".join(
+                    part
+                    for part in (
+                        wo.get_category_display(),
+                        wo.assignee_user.get_username() if wo.assignee_user_id else "",
+                    )
+                    if part
+                ),
+                "updated_at": wo.updated_at,
+                "url": reverse("facilities:work_detail", args=[project.pk, wo.pk]),
+            }
+        )
+    for ar in (
+        ActionRequest.objects.filter(project=project)
+        .select_related("submitted_by")
+        .order_by("-updated_at")[:8]
+    ):
+        activity.append(
+            {
+                "kind": "request",
+                "code": f"AR-{str(ar.pk)[:6]}",
+                "title": ar.title,
+                "status": ar.get_status_display(),
+                "is_critical": ar.severity == ActionRequest.Severity.HIGH
+                and ar.status == ActionRequest.Status.OPEN,
+                "is_done": ar.status
+                in (ActionRequest.Status.DISMISSED, ActionRequest.Status.ESCALATED),
+                "meta": ", ".join(
+                    part
+                    for part in (
+                        ar.get_severity_display(),
+                        ar.submitted_by.get_username() if ar.submitted_by_id else "kiosk",
+                    )
+                    if part
+                ),
+                "updated_at": ar.updated_at,
+                "url": reverse("facilities:ar_detail", args=[project.pk, ar.pk]),
+            }
+        )
+    for permit in Permit.objects.filter(project=project).order_by("-updated_at")[:8]:
+        activity.append(
+            {
+                "kind": "permit",
+                "code": permit.permit_number,
+                "title": permit.title,
+                "status": permit.get_status_display(),
+                "is_critical": permit.status == Permit.Status.EXPIRED,
+                "is_done": permit.status == Permit.Status.REVOKED,
+                "meta": permit.get_kind_display(),
+                "updated_at": permit.updated_at,
+                "url": reverse("facilities:permit_detail", args=[project.pk, permit.pk]),
+            }
+        )
+    activity.sort(key=lambda item: item["updated_at"], reverse=True)
+
+    return {
+        "facilities_open_wo_count": open_wos.count(),
+        "facilities_critical_wo_count": open_wos.filter(
+            priority=WorkOrderPriority.P1
+        ).count(),
+        "facilities_permits_expiring_count": permits_expiring.count(),
+        "facilities_requests_open_count": requests_open.count(),
+        "facilities_recent_activity": activity[:8],
+    }
 
 
 class RoleSwitchView(ProjectAccessMixin, View):
@@ -254,6 +378,16 @@ class AssetListView(ProjectTabMixin, TemplateView):
             spatial_id=spatial_id,
             responsible_party_id=responsible_party_id,
             classification_ref_ids=classification_ref_ids,
+        )
+
+        # Live open-WO count per asset card (M10 §2.6 — the card's WO badge is
+        # real data, not the M3 placeholder anymore). COMPLETED and above are
+        # done; CANCELLED is above COMPLETED so it's excluded too.
+        queryset = queryset.annotate(
+            open_wo_count=Count(
+                "work_orders",
+                filter=Q(work_orders__status__lt=WorkOrderStatus.COMPLETED),
+            )
         )
 
         paginator = Paginator(queryset, ASSETS_PAGE_SIZE)
@@ -342,6 +476,11 @@ class AssetDetailView(ProjectTabMixin, TemplateView):
         context["classification_references"] = ClassificationReference.objects.filter(
             classification__project=project
         ).select_related("classification")
+        # Document folders + the pool of uploaded project documents (for the
+        # add-to-folder picker), and permits linked to this asset.
+        context["document_folders"] = asset.document_folders.prefetch_related("documents")
+        context["project_documents"] = project.documents.order_by("name")
+        context["asset_permits"] = asset.permits.order_by("-valid_until")
         context["facilities_body_template"] = "facilities/tabs/_facilities_asset_detail.html"
         return context
 
@@ -517,12 +656,15 @@ class AssetUpdateView(ProjectModifyAccessMixin, View):
         # ProjectTabMixin.get_context_data — kept in sync with core/mixins.py.
         from facilities.models import FMDelta
 
+        refreshed = service.get_asset(asset_pk)
         response = render(
             request,
             "facilities/components/asset_detail_saved_oob.html",
             {
-                "asset": service.get_asset(asset_pk),
+                "asset": refreshed,
                 "project": project,
+                # The OOB sidebar re-renders the Permits card too.
+                "asset_permits": refreshed.permits.order_by("-valid_until"),
                 "user_permission": ProjectAccessService.user_permission(request.user, project),
                 "pending_fm_delta_count": FMDelta.objects.filter(
                     project=project,
@@ -538,6 +680,201 @@ class AssetUpdateView(ProjectModifyAccessMixin, View):
             },
         )
         return trigger_toast(response, "Asset saved")
+
+
+def _asset_documents_response(request, project, asset):
+    """Render the asset-documents card (HTMX partial) after a folder action."""
+    return render(
+        request,
+        "facilities/components/_asset_documents.html",
+        {
+            "project": project,
+            "asset": asset,
+            "document_folders": asset.document_folders.prefetch_related("documents"),
+            "project_documents": project.documents.order_by("name"),
+            "user_permission": "editor",
+        },
+    )
+
+
+class AssetFolderCreateView(ProjectModifyAccessMixin, View):
+    """Create a named document folder on an asset."""
+
+    def post(self, request, pk, asset_pk):
+        project = self.get_project()
+        try:
+            asset = AssetService(project, request.user).get_asset(asset_pk)
+        except AssetNotFoundError as exc:
+            return toast_response(str(exc), "error", status=404)
+        name = (request.POST.get("name") or "").strip()[:120]
+        if not name:
+            return toast_response("Folder name is required.", "error", status=400)
+        folder, created = AssetDocumentFolder.objects.get_or_create(
+            asset=asset,
+            name=name,
+            defaults={"created_by": request.user, "project": project},
+        )
+        if not created:
+            return toast_response(f'Folder "{name}" already exists.', "info")
+        return _asset_documents_response(request, project, asset)
+
+
+class AssetFolderDeleteView(ProjectModifyAccessMixin, View):
+    """Delete a folder. Linked documents stay in the project — only the
+    folder (the grouping) is removed."""
+
+    def post(self, request, pk, asset_pk, folder_pk):
+        project = self.get_project()
+        folder = get_object_or_404(
+            AssetDocumentFolder,
+            pk=folder_pk,
+            asset__pk=asset_pk,
+            asset__project=project,
+        )
+        asset = folder.asset
+        folder.delete()
+        return _asset_documents_response(request, project, asset)
+
+
+class AssetFolderDocumentLinkView(ProjectModifyAccessMixin, View):
+    """Link an already-uploaded project document into a folder."""
+
+    def post(self, request, pk, asset_pk, folder_pk):
+        project = self.get_project()
+        folder = get_object_or_404(
+            AssetDocumentFolder,
+            pk=folder_pk,
+            asset__pk=asset_pk,
+            asset__project=project,
+        )
+        document = get_object_or_404(
+            project.documents, pk=request.POST.get("document_id")
+        )
+        folder.documents.add(document)
+        return _asset_documents_response(request, project, folder.asset)
+
+
+class AssetFolderDocumentUnlinkView(ProjectModifyAccessMixin, View):
+    """Remove a document from a folder (the document itself is untouched)."""
+
+    def post(self, request, pk, asset_pk, folder_pk):
+        project = self.get_project()
+        folder = get_object_or_404(
+            AssetDocumentFolder,
+            pk=folder_pk,
+            asset__pk=asset_pk,
+            asset__project=project,
+        )
+        document = get_object_or_404(
+            project.documents, pk=request.POST.get("document_id")
+        )
+        folder.documents.remove(document)
+        return _asset_documents_response(request, project, folder.asset)
+
+
+# ── Central folder management (Documents tab) — folders on any card ──────────
+
+class DocumentFolderCreateView(ProjectModifyAccessMixin, View):
+    """Create a document folder attached to any Facilities card (asset, work
+    order, permit or request), from the central Documents tab."""
+
+    def post(self, request, pk):
+        project = self.get_project()
+        name = (request.POST.get("name") or "").strip()[:120]
+        kind = (request.POST.get("card_kind") or "").strip()
+        card_id = (request.POST.get("card_id") or "").strip()
+        if not name or not kind or not card_id:
+            return toast_response("Pick a card and enter a folder name.", "error", status=400)
+        folder = AssetDocumentFolder(project=project, name=name, created_by=request.user)
+        try:
+            if kind == "asset":
+                folder.asset = FacilityAsset.objects.get(pk=card_id, project=project)
+            elif kind == "work":
+                folder.work_order = WorkOrder.objects.get(pk=card_id, project=project)
+            elif kind == "permit":
+                folder.permit = Permit.objects.get(pk=card_id, project=project)
+            elif kind == "request":
+                folder.action_request = ActionRequest.objects.get(pk=card_id, project=project)
+            else:
+                return toast_response("Unknown card type.", "error", status=400)
+        except (FacilityAsset.DoesNotExist, WorkOrder.DoesNotExist,
+                Permit.DoesNotExist, ActionRequest.DoesNotExist):
+            return toast_response("Card not found.", "error", status=404)
+        folder.save()
+        messages.success(request, f'Folder "{name}" created')
+        return redirect("facilities:documents_list", pk=project.pk)
+
+
+class DocumentFolderDeleteView(ProjectModifyAccessMixin, View):
+    """Delete a folder (linked documents stay in the project)."""
+
+    def post(self, request, pk, folder_pk):
+        project = self.get_project()
+        AssetDocumentFolder.objects.filter(pk=folder_pk, project=project).delete()
+        return redirect("facilities:documents_list", pk=project.pk)
+
+
+class DocumentFolderDocLinkView(ProjectModifyAccessMixin, View):
+    """Add a project document to a folder."""
+
+    def post(self, request, pk, folder_pk):
+        project = self.get_project()
+        folder = get_object_or_404(AssetDocumentFolder, pk=folder_pk, project=project)
+        doc = Document.objects.filter(pk=request.POST.get("document_id"), project=project).first()
+        if doc:
+            folder.documents.add(doc)
+        return redirect("facilities:documents_list", pk=project.pk)
+
+
+class DocumentFolderDocUnlinkView(ProjectModifyAccessMixin, View):
+    """Remove a document from a folder (the document itself is untouched)."""
+
+    def post(self, request, pk, folder_pk):
+        project = self.get_project()
+        folder = get_object_or_404(AssetDocumentFolder, pk=folder_pk, project=project)
+        doc = Document.objects.filter(pk=request.POST.get("document_id"), project=project).first()
+        if doc:
+            folder.documents.remove(doc)
+        return redirect("facilities:documents_list", pk=project.pk)
+
+
+class PermitAssetLinkView(ProjectModifyAccessMixin, View):
+    """Link an asset to a permit — the permit then shows on the asset page."""
+
+    def post(self, request, pk, permit_pk):
+        project = self.get_project()
+        permit_svc = PermitService(project, request.user)
+        try:
+            permit = permit_svc.get_permit(permit_pk)
+            asset = AssetService(project, request.user).get_asset(
+                request.POST.get("asset_id")
+            )
+        except (PermitNotFoundError, AssetNotFoundError) as exc:
+            return toast_response(str(exc), "error", status=404)
+        permit.assets.add(asset)
+        messages.success(request, f"Linked asset {asset}")
+        return HttpResponseRedirect(
+            reverse("facilities:permit_detail", args=[project.pk, permit.pk])
+        )
+
+
+class PermitAssetUnlinkView(ProjectModifyAccessMixin, View):
+    """Detach an asset from a permit."""
+
+    def post(self, request, pk, permit_pk):
+        project = self.get_project()
+        permit_svc = PermitService(project, request.user)
+        try:
+            permit = permit_svc.get_permit(permit_pk)
+            asset = AssetService(project, request.user).get_asset(
+                request.POST.get("asset_id")
+            )
+        except (PermitNotFoundError, AssetNotFoundError) as exc:
+            return toast_response(str(exc), "error", status=404)
+        permit.assets.remove(asset)
+        return HttpResponseRedirect(
+            reverse("facilities:permit_detail", args=[project.pk, permit.pk])
+        )
 
 
 class AssetBulkView(ProjectModifyAccessMixin, View):
@@ -588,6 +925,25 @@ class AssetBulkView(ProjectModifyAccessMixin, View):
         )
         messages.success(request, message)
         return _redirect_to_asset_list(project, params={"message": message})
+
+
+class AssetCSVExportView(ProjectAccessMixin, View):
+    """CSV export of the asset register — round-trip compatible with import.
+
+    Emits the exact :data:`asset_service.CSV_COLUMNS` schema so the file can
+    be edited in a spreadsheet and re-imported through the dry-run diff flow.
+    Read-only, so viewer-level access suffices.
+    """
+
+    def get(self, request, pk):
+        project = self.get_project()
+        service = AssetService(project, request.user)
+        content = service.export_csv()
+        response = HttpResponse(content, content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = (
+            f'attachment; filename="assets-{project.pk}.csv"'
+        )
+        return response
 
 
 class AssetCSVImportView(ProjectModifyAccessMixin, View):
@@ -966,6 +1322,16 @@ class WorkOrderDetailView(ProjectTabMixin, TemplateView):
         return context
 
 
+def _wo_drawer_anchor_context(project) -> dict:
+    """Asset + spatial pickers for the WO / AR create drawers."""
+    return {
+        "wo_assets": FacilityAsset.objects.filter(
+            project=project, decommissioned_at__isnull=True
+        ).order_by("asset_tag", "name"),
+        "spatial_elements": _project_spatial_elements(project),
+    }
+
+
 class WorkOrderCreateView(ProjectModifyAccessMixin, View):
     """Create-WO drawer — GET renders the form, POST persists in DRAFT."""
 
@@ -979,6 +1345,7 @@ class WorkOrderCreateView(ProjectModifyAccessMixin, View):
                 "form_values": {},
                 "form_error": None,
                 "wo": None,
+                **_wo_drawer_anchor_context(project),
             },
         )
 
@@ -998,6 +1365,7 @@ class WorkOrderCreateView(ProjectModifyAccessMixin, View):
                     "form_values": raw["form_values"],
                     "form_error": str(exc),
                     "wo": None,
+                    **_wo_drawer_anchor_context(project),
                 },
                 status=400,
             )
@@ -1203,6 +1571,72 @@ class WorkOrderPermitUnlinkView(ProjectModifyAccessMixin, View):
 PERMIT_PAGE_SIZE = 24
 
 
+class FacilityDocumentsView(ProjectTabMixin, TemplateView):
+    """Documents — the project's FM document library. Lists every uploaded
+    project document with its type, OCR status and the assets it is filed
+    against (via :class:`AssetDocumentFolder`), each asset a click-through back
+    into the register."""
+
+    active_tab = "facilities"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        project = self.get_project()
+        context.update(_role_context(project, self.request.user, self.request.session))
+        context["active_sub_tab"] = "documents"
+        context["facilities_body_template"] = "facilities/tabs/_facilities_documents.html"
+
+        q = self.request.GET.get("q", "").strip()
+        doc_type = self.request.GET.get("doc_type", "").strip()
+        docs = (
+            Document.objects.filter(project=project)
+            .prefetch_related("asset_folders__asset")
+            .order_by("-created_at")
+        )
+        if q:
+            docs = docs.filter(name__icontains=q)
+        if doc_type:
+            docs = docs.filter(document_type=doc_type)
+
+        docs = list(docs)
+        for d in docs:
+            # de-duplicate the assets this document is filed against (folders on
+            # other card types are skipped here — they show in the Folders panel)
+            assets = {}
+            for folder in d.asset_folders.all():
+                if folder.asset_id and folder.asset_id not in assets:
+                    assets[folder.asset_id] = folder.asset
+            d.linked_assets = list(assets.values())
+
+        folders = (
+            AssetDocumentFolder.objects.filter(project=project)
+            .select_related("asset", "work_order", "permit", "action_request")
+            .prefetch_related("documents")
+            .order_by("name")
+        )
+
+        context.update(
+            {
+                "documents": docs,
+                "doc_count": len(docs),
+                "linked_count": sum(1 for d in docs if d.linked_assets),
+                "active_q": q,
+                "active_doc_type": doc_type,
+                "document_types": Document.DocumentType.choices,
+                "folders": list(folders),
+                "folder_count": folders.count(),
+                # Card pickers for the "New folder" form (attach to any card).
+                "pick_assets": FacilityAsset.objects.filter(project=project).order_by("asset_tag", "name"),
+                "pick_work_orders": WorkOrder.objects.filter(project=project).order_by("-wo_number"),
+                "pick_permits": Permit.objects.filter(project=project).order_by("-permit_number"),
+                "pick_requests": ActionRequest.objects.filter(project=project).order_by("-created_at"),
+                # All project documents for the "add document to folder" picker.
+                "all_documents": Document.objects.filter(project=project).order_by("name"),
+            }
+        )
+        return context
+
+
 class PermitListView(ProjectTabMixin, TemplateView):
     """Permit register — full CRUD landing for M3."""
 
@@ -1259,6 +1693,12 @@ class PermitDetailView(ProjectTabMixin, TemplateView):
         context["permit"] = permit
         context["permit_kinds"] = Permit.Kind.choices
         context["permit_statuses"] = Permit.Status.choices
+        # Assets available for the link picker (project assets not yet linked).
+        context["linkable_assets"] = (
+            FacilityAsset.objects.filter(project=project, decommissioned_at__isnull=True)
+            .exclude(pk__in=permit.assets.values_list("pk", flat=True))
+            .order_by("asset_tag", "name")
+        )
         return context
 
 
@@ -1413,6 +1853,7 @@ class ActionRequestCreateView(ProjectModifyAccessMixin, View):
                 "form_values": {},
                 "form_error": None,
                 "ar_severities": ActionRequest.Severity.choices,
+                **_wo_drawer_anchor_context(project),
             },
         )
 
@@ -1431,6 +1872,7 @@ class ActionRequestCreateView(ProjectModifyAccessMixin, View):
                     "form_values": raw,
                     "form_error": str(exc),
                     "ar_severities": ActionRequest.Severity.choices,
+                    **_wo_drawer_anchor_context(project),
                 },
                 status=400,
             )
@@ -2006,10 +2448,15 @@ class ExploreView(ProjectTabMixin, TemplateView):
         context["active_sub_tab"] = "explore"
         context["facilities_body_template"] = "facilities/tabs/_facilities_explore.html"
         context["explore_urls"] = {
+            # ?embed=1 lets the iframe module detect the Castor host synchronously
+            # on boot, so its first paint skips the bundled demo floor plan and
+            # waits for the real IFC / user-supplied plans (SET_FLOORS) — no flash
+            # of the sample house before the correct plan loads.
             "embed": reverse(
                 "facilities:explore_embed",
                 args=[project.pk, "index.html"],
-            ),
+            )
+            + "?embed=1",
             "floors": reverse("facilities:explore_floors", args=[project.pk]),
             "rooms_base": reverse("facilities:explore_rooms", args=[project.pk, uuid4()]).rsplit(
                 "/", 2

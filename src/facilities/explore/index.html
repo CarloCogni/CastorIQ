@@ -42,6 +42,18 @@
       <span class="mh-build" id="mhBuild" title="Build marker — if this looks old, you're on a cached JS: run python serve.py + Ctrl+Shift+R"></span>
       <div class="numbering" id="numbering"></div>
       <div class="kindfilter" id="kindFilter"></div>
+      <!-- Global pin size — five bands so dense plans with small rooms can
+           shrink every pin at once (band 3 = original size). -->
+      <div class="pinsize" id="pinSize" title="Pin size on the plan">
+        <span class="num-lbl">◉</span>
+        <select class="phase-sel" id="pinSizeSel">
+          <option value="1">XS</option>
+          <option value="2">S</option>
+          <option value="3" selected>M</option>
+          <option value="4">L</option>
+          <option value="5">XL</option>
+        </select>
+      </div>
       <div class="mh-spacer"></div>
       <button class="btn" id="btnImport">⤓ Import plans</button>
       <input type="file" id="fileInput" accept="image/png,image/jpeg,image/webp,application/pdf" multiple hidden />
@@ -121,14 +133,30 @@
       </div>
 
         <div class="exp-viewer" id="viewer">
-          <div class="plan-stage" id="planStage">
-            <img class="plan-img" id="planImg" src="./assets/plans/floor-4.svg" alt="Floor plan" draggable="false" />
+          <!-- plan-stage starts hidden: the module's first render() decides whether
+               to show a plan (standalone demo / host-pushed IFC plan) or the empty
+               state. No hard-coded demo src, so the embedded host never flashes the
+               sample plan before the project's real plan loads. -->
+          <div class="plan-stage" id="planStage" hidden>
+            <img class="plan-img" id="planImg" alt="Floor plan" draggable="false" />
             <!-- Annotation canvas: transparent overlay sized to match the
                  plan image box. Drawing tools draw here; pins (next sibling)
                  stay on top so they remain clickable. pointer-events flips
                  between "auto" (Draw mode) and "none" (View mode) via JS. -->
             <canvas class="annot-canvas" id="annotCanvas" style="position:absolute;inset:0;pointer-events:none;"></canvas>
             <div class="pin-layer" id="pinLayer"></div>
+          </div>
+          <!-- Empty state — shown when the active storey has no plan image yet.
+               Instead of a broken <img>, guide the user to generate plans from the IFC. -->
+          <div class="plan-empty" id="planEmpty" hidden>
+            <svg class="pe-ico" viewBox="0 0 64 64" width="74" height="74" aria-hidden="true">
+              <rect x="7" y="9" width="50" height="46" rx="3" fill="none" stroke="currentColor" stroke-width="2.6"/>
+              <path d="M29 9 V33 M29 33 H57 M7 41 H29" fill="none" stroke="currentColor" stroke-width="2"/>
+              <circle cx="43" cy="24" r="2.3" fill="currentColor"/>
+            </svg>
+            <div class="pe-title">No floor plan for this storey yet</div>
+            <div class="pe-sub">Generate it from the IFC model — one plan per floor.</div>
+            <button type="button" class="btn btn-p pe-btn" id="planEmptyGen">🗂 Open Floor plans → generate</button>
           </div>
           <div class="v-label"><span class="v-ld"></span><span id="vLabel">Floor plan</span></div>
           <div class="floor-switcher" id="floorSwitcher"></div>

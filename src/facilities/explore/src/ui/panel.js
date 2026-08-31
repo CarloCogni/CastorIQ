@@ -79,16 +79,32 @@ export function renderPanel(els, point, handlers = {}, ui = {}) {
   body.querySelectorAll('[data-act="camera"]').forEach((b) =>
     b.addEventListener("click", () => handlers.onCamera && handlers.onCamera(point.id, b.dataset.type)));
 
-  // Linked data: add-table picker + remove buttons + per-table filter key
+  // Linked data: add-table picker + element picker + remove buttons
   const addTbl = body.querySelector("[data-addtable]");
   if (addTbl) addTbl.addEventListener("change", () => {
     if (addTbl.value) { handlers.onAddTable && handlers.onAddTable(point.id, addTbl.value); }
   });
+  const addEl = body.querySelector("[data-addelement]");
+  if (addEl) addEl.addEventListener("change", () => {
+    if (addEl.value) {
+      const opt = addEl.options[addEl.selectedIndex];
+      const label = (opt && opt.textContent ? opt.textContent.split(" — ")[0] : "").trim();
+      handlers.onAddElementTable && handlers.onAddElementTable(point.id, addEl.value, label);
+    }
+  });
   body.querySelectorAll("[data-rmtable]").forEach((b) => {
     b.addEventListener("click", () => handlers.onRemoveTable && handlers.onRemoveTable(point.id, b.dataset.rmtable));
   });
-  body.querySelectorAll("[data-tblfilter]").forEach((sel) => {
-    sel.addEventListener("change", () => handlers.onSetTableFilter && handlers.onSetTableFilter(point.id, sel.dataset.tblfilter, sel.value));
+  // Element-table property checkboxes (inside the ⚙ <details>). Collect all
+  // checked keys for that table and push them into state.
+  body.querySelectorAll("[data-elprop]").forEach((cb) => {
+    cb.addEventListener("change", () => {
+      const key = cb.dataset.tblkey;
+      const checked = Array.from(
+        body.querySelectorAll(`[data-elprop][data-tblkey="${key}"]:checked`)
+      ).map((c) => c.value);
+      handlers.onSetElementTableProps && handlers.onSetElementTableProps(point.id, key, checked);
+    });
   });
   // Per-table text filter: hide rows that don't contain the term (matches any
   // cell incl. the dynamic "Parameters" column). Pure DOM — no re-render.
@@ -152,10 +168,45 @@ function fmtDate(d) {
 }
 
 // Linked Facility/Schedule tables (read-only) for the point's room.
-// point.tables = [{ key, filterBy }]; rows come from getRows(key, filterBy).
+// point.tables = [{ key, filterBy }] for catalog tables, or
+// { key: "element:<id>", elementId, elementName, props } for per-element
+// property tables. Rows for catalog tables come from getRows(key, filterBy);
+// element tables read the element's structured props off catalog.elements.
 function linkedDataBlock(point, catalog, filterKeys, getRows, roomName) {
   const tables = point.tables || [];
-  const tablesHtml = tables.map(({ key, filterBy }) => {
+  const elementRows = (catalog.elements && catalog.elements.rows) || [];
+
+  const tablesHtml = tables.map((entry) => {
+    const { key, filterBy } = entry;
+
+    // ── Per-element property table ──
+    if (entry.elementId) {
+      const el = elementRows.find((r) => r.id === entry.elementId);
+      const allProps = (el && el.props && typeof el.props === "object") ? el.props : {};
+      const allKeys = Object.keys(allProps);
+      const chosen = (entry.props && entry.props.length) ? entry.props.filter((k) => k in allProps) : allKeys;
+      const title = entry.elementName || (el ? el.name : "(element)");
+      const bodyRows = chosen.length
+        ? chosen.map((k) => `<tr><td>${escapeAttr(k)}</td><td>${escapeAttr(String(allProps[k]))}</td></tr>`).join("")
+        : `<tr><td colspan="2"><span class="dp-empty-sm">${el ? "No properties selected" : "Element not found in catalog"}</span></td></tr>`;
+      // ⚙ config: native <details> keeps open/close state without JS.
+      const cfg = allKeys.length
+        ? `<details class="dp-elprops"><summary title="Choose which properties to show">⚙</summary>` +
+          `<div class="dp-elprops-list">` +
+          allKeys.map((k) =>
+            `<label><input type="checkbox" data-elprop data-tblkey="${escapeAttr(key)}" value="${escapeAttr(k)}" ${(!entry.props || !entry.props.length || entry.props.includes(k)) ? "checked" : ""}/> ${escapeAttr(k)}</label>`).join("") +
+          `</div></details>`
+        : "";
+      const search = `<input class="dp-tblsearch" data-tblsearch="${escapeAttr(key)}" placeholder="filter…" title="Filter properties" />`;
+      return (
+        `<div class="dp-tblwrap">` +
+        `<div class="dp-tblhead"><span class="dp-tbllabel">${escapeAttr(title)}${el && el.ifc_type ? ` <span class="dp-roomtag">${escapeAttr(el.ifc_type)}</span>` : ""}</span>${search}${cfg}<button class="dp-tblx" data-rmtable="${escapeAttr(key)}" title="Remove">✕</button></div>` +
+        `<table class="dp-tbl"><thead><tr><th>Property</th><th>Value</th></tr></thead><tbody data-tblbody="${escapeAttr(key)}">${bodyRows}</tbody></table>` +
+        `</div>`
+      );
+    }
+
+    // ── Catalog table (assets / work / permits / requests / elements) ──
     const def = catalog[key];
     if (!def) return "";
     const { columns, rows } = getRows(key, filterBy);
@@ -167,14 +218,12 @@ function linkedDataBlock(point, catalog, filterKeys, getRows, roomName) {
               ? `<td>${r._status ? `<span class="st-dot st-${r._status}"></span>` : ""}${escapeAttr(r[c.field])}</td>`
               : `<td>${escapeAttr(r[c.field])}</td>`)).join("") + `</tr>`).join("")
       : `<tr><td colspan="${columns.length}"><span class="dp-empty-sm">No matching records</span></td></tr>`;
-    const filterSel =
-      `<select class="dp-tblfilter" data-tblfilter="${key}" title="Match rooms by">` +
-      Object.keys(filterKeys).map((fk) => `<option value="${fk}" ${fk === filterBy ? "selected" : ""}>${escapeAttr(filterKeys[fk].label)}</option>`).join("") +
-      `</select>`;
+    // Room matching is implicit (GlobalID of the point's room) — the old
+    // per-table join-key dropdown is gone; the text filter stays.
     const search = `<input class="dp-tblsearch" data-tblsearch="${key}" placeholder="filter…" title="Filter rows by any value / parameter" />`;
     return (
       `<div class="dp-tblwrap">` +
-      `<div class="dp-tblhead"><span class="dp-tbllabel">${escapeAttr(def.label)}</span>${search}${filterSel}<button class="dp-tblx" data-rmtable="${key}" title="Remove">✕</button></div>` +
+      `<div class="dp-tblhead"><span class="dp-tbllabel">${escapeAttr(def.label)}</span>${search}<button class="dp-tblx" data-rmtable="${key}" title="Remove">✕</button></div>` +
       `<table class="dp-tbl"><thead>${head}</thead><tbody data-tblbody="${key}">${bodyRows}</tbody></table>` +
       `</div>`
     );
@@ -191,11 +240,22 @@ function linkedDataBlock(point, catalog, filterKeys, getRows, roomName) {
     .map((g) => `<optgroup label="${escapeAttr(g)}">` + groups[g].map((k) => `<option value="${k}">${escapeAttr(catalog[k].label)}</option>`).join("") + `</optgroup>`)
     .join("");
 
+  // Element picker: elements the IFC places in the point's room, minus ones
+  // already added. Lets the user pin down ONE element and watch its chosen
+  // properties.
+  const roomElements = point.roomId
+    ? elementRows.filter((r) => r.globalId === point.roomId && !used.has(`element:${r.id}`))
+    : [];
+  const elementOpts = roomElements
+    .map((r) => `<option value="${escapeAttr(r.id)}">${escapeAttr(r.name || "(unnamed)")} — ${escapeAttr(r.ifc_type)}</option>`)
+    .join("");
+
   return (
     `<div class="dp-sec">` +
     `<div class="dp-sec-lbl">Linked data ${roomName ? `<span class="dp-roomtag">${escapeAttr(roomName)}</span>` : ""}</div>` +
     tablesHtml +
     (optgroups ? `<select class="phase-sel dp-addtbl" data-addtable><option value="">＋ Add table…</option>${optgroups}</select>` : `<div class="dp-empty-sm">All catalog tables added</div>`) +
+    (elementOpts ? `<select class="phase-sel dp-addtbl" data-addelement><option value="">＋ Element table (in this room)…</option>${elementOpts}</select>` : "") +
     `</div>`
   );
 }

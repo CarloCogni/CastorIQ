@@ -9,7 +9,7 @@
                 {% csrf_token %}
                 <div class="modal-header">
                     <h5 class="modal-title">
-                        <i class="bi bi-megaphone" style="color: var(--castor-facilities, #14b8a6);"></i>
+                        <i class="bi bi-megaphone" style="color: var(--castor-facilities, #3b82f6);"></i>
                         Report an issue
                     </h5>
                     <button type="button" class="btn-close" onclick="this.closest('.modal').remove()"></button>
@@ -39,10 +39,33 @@
                             {% endfor %}
                         </select>
                     </div>
+
+                    <!-- Where / what — either anchor makes the request show
+                         up in room-joined tables and on the asset's page. -->
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-6">
+                            <label class="form-label fs-8">Room / floor (where)</label>
+                            <select name="affected_spatial_id" class="form-select">
+                                <option value="">— not sure —</option>
+                                {% for s in spatial_elements %}
+                                <option value="{{ s.pk }}">{{ s.get_spatial_type_display }} · {{ s.entity.name|default:"(unnamed)" }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fs-8">Asset (what, optional)</label>
+                            <select name="affected_asset_id" class="form-select">
+                                <option value="">— none —</option>
+                                {% for a in wo_assets %}
+                                <option value="{{ a.pk }}">{{ a.asset_tag|default:a.display_name|truncatechars:48 }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-sm btn-outline-secondary" onclick="this.closest('.modal').remove()">Cancel</button>
-                    <button type="submit" class="btn btn-sm" style="background-color: var(--castor-facilities, #14b8a6); color: white; border: none;">
+                    <button type="submit" class="btn btn-sm" style="background-color: var(--castor-facilities, #3b82f6); color: white; border: none;">
                         <i class="bi bi-send"></i> Submit
                     </button>
                 </div>

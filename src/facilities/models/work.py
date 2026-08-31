@@ -219,11 +219,19 @@ class WorkOrderStatus(models.IntegerChoices):
 
 
 class WorkOrderCategory(models.TextChoices):
-    """High-level work-order classification."""
+    """High-level work-order classification.
+
+    The six categories named in the platform spec (corrective, preventive,
+    inspection, safety, cleaning, modification) plus installation and
+    decommission, which predate the spec and remain in live data.
+    """
 
     CORRECTIVE = "corrective", "Corrective"
     PREVENTIVE = "preventive", "Preventive"
     INSPECTION = "inspection", "Inspection"
+    SAFETY = "safety", "Safety"
+    CLEANING = "cleaning", "Cleaning"
+    MODIFICATION = "modification", "Modification"
     INSTALLATION = "installation", "Installation"
     DECOMMISSION = "decommission", "Decommission"
 
@@ -671,6 +679,16 @@ class Permit(UUIDModel):
         blank=True,
         related_name="permits",
         verbose_name="Work Orders",
+    )
+    assets = models.ManyToManyField(
+        FacilityAsset,
+        blank=True,
+        related_name="permits",
+        verbose_name="Assets",
+        help_text=(
+            "IFC-anchored (or orphan) assets this permit covers. Linking a "
+            "permit here surfaces it on the asset detail page and vice versa."
+        ),
     )
 
     class Meta:

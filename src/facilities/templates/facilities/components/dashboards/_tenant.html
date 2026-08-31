@@ -4,7 +4,7 @@
 
 <div class="d-flex align-items-center gap-2 mb-3">
     <h5 class="m-0">
-        <i class="bi bi-house-door me-1" style="color: var(--castor-facilities, #14b8a6);"></i>
+        <i class="bi bi-house-door me-1" style="color: var(--castor-facilities, #3b82f6);"></i>
         Your portal
     </h5>
     <button type="button"
@@ -68,7 +68,7 @@
         <div class="card h-100 shadow-sm">
             <div class="card-body">
                 <p class="text-secondary text-uppercase fs-8 fw-semibold mb-2">
-                    <i class="bi bi-house-door me-1" style="color: var(--castor-facilities, #14b8a6);"></i>Your space
+                    <i class="bi bi-house-door me-1" style="color: var(--castor-facilities, #3b82f6);"></i>Your space
                 </p>
                 {% if portal_assigned_space and portal_assigned_space.entity %}
                     <p class="fs-5 fw-semibold mb-1">{{ portal_assigned_space.entity.name|default:"(unnamed)" }}</p>
@@ -89,17 +89,17 @@
 
     <!-- Submit a new request — primary CTA -->
     <div class="col-12 col-md-6 col-lg-4">
-        <div class="card h-100 shadow-sm border" style="border-color: rgba(20,184,166,0.35) !important;">
+        <div class="card h-100 shadow-sm border" style="border-color: rgba(59, 130, 246,0.35) !important;">
             <div class="card-body d-flex flex-column">
                 <p class="text-secondary text-uppercase fs-8 fw-semibold mb-2">
-                    <i class="bi bi-megaphone me-1" style="color: var(--castor-facilities, #14b8a6);"></i>Submit a new request
+                    <i class="bi bi-megaphone me-1" style="color: var(--castor-facilities, #3b82f6);"></i>Submit a new request
                 </p>
                 <p class="fs-7 mb-3">
                     Type what you need. We'll route it to the right team.
                 </p>
                 <button type="button"
                         class="btn btn-sm mt-auto align-self-start"
-                        style="background-color: var(--castor-facilities, #14b8a6); color: white; min-height: 44px; padding: 0.5rem 1rem;"
+                        style="background-color: var(--castor-facilities, #3b82f6); color: white; min-height: 44px; padding: 0.5rem 1rem;"
                         aria-label="Open the new-request box"
                         hx-get="{% url 'facilities:portal_intake' project.pk %}"
                         hx-target="#portal-intake-mount"
@@ -115,7 +115,7 @@
         <div class="card h-100 shadow-sm">
             <div class="card-body">
                 <p class="text-secondary text-uppercase fs-8 fw-semibold mb-2">
-                    <i class="bi bi-list-check me-1" style="color: var(--castor-facilities, #14b8a6);"></i>Your recent requests
+                    <i class="bi bi-list-check me-1" style="color: var(--castor-facilities, #3b82f6);"></i>Your recent requests
                 </p>
                 {% if portal_recent_ars %}
                     <div class="d-flex flex-column gap-1" id="portal-recent-list">

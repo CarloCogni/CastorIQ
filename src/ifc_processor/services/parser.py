@@ -289,6 +289,14 @@ class IFCParser:
                 # Phase B: Build the spatial tree (IFCSpatialElement records)
                 spatial_cache = self._build_spatial_tree()
 
+                # Phase B.5: Refine containers via space boundaries. Doors,
+                # windows and walls are usually *contained* in a storey, but
+                # IfcRelSpaceBoundary ties them to the IfcSpace (room) they
+                # bound — a far more useful container for FM (asset pages
+                # show the room, Explore's elements-in-room table picks them
+                # up). Only overlays entries whose space exists in the tree.
+                self._overlay_space_boundaries(container_map, spatial_cache)
+
                 # Phase C: Assign spatial_container FK on entities
                 self._assign_spatial_containers(container_map, spatial_cache)
 
@@ -650,6 +658,49 @@ class IFCParser:
     # ------------------------------------------------------------------
     # Phase C: Assign spatial containers
     # ------------------------------------------------------------------
+
+    def _overlay_space_boundaries(
+        self,
+        container_map: dict[str, str],
+        spatial_cache: dict[str, IFCSpatialElement],
+    ) -> None:
+        """Map boundary elements (doors, windows, walls…) to their IfcSpace.
+
+        ``IfcRelSpaceBoundary`` links a space to each element on its
+        boundary. When present, the space is a more precise container than
+        the storey the element is *contained* in, so it wins in
+        ``container_map``. An element bounding several spaces keeps the
+        first one seen — good enough for "which room is this door in".
+        """
+        try:
+            boundaries = self.ifc_model.by_type("IfcRelSpaceBoundary")
+        except Exception:  # noqa: BLE001 — schema without the type
+            return
+        overlaid = 0
+        for rel in boundaries:
+            space = getattr(rel, "RelatingSpace", None)
+            element = getattr(rel, "RelatedBuildingElement", None)
+            if space is None or element is None:
+                continue
+            space_gid = getattr(space, "GlobalId", None)
+            element_gid = getattr(element, "GlobalId", None)
+            if not space_gid or not element_gid:
+                continue
+            if space_gid not in spatial_cache:
+                continue
+            current = container_map.get(element_gid)
+            # Overlay only when the current container is not already a space
+            # (keeps authoring-tool space containment intact).
+            if current and spatial_cache.get(current) is not None:
+                current_node = spatial_cache[current]
+                if current_node.spatial_type == IFCSpatialElement.SpatialType.SPACE:
+                    continue
+            container_map[element_gid] = space_gid
+            overlaid += 1
+        if overlaid:
+            logger.info(
+                "Space boundaries refined %d element containers to rooms", overlaid
+            )
 
     def _assign_spatial_containers(
         self,
