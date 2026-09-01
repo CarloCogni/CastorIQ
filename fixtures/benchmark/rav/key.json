@@ -1,0 +1,44 @@
+{
+  "ifc": "fixtures/benchmark/Ifc4_SampleHouse.ifc",
+  "description": "Ground truth for the RAV (conflict scan) benchmark. Every requirement stated in the three documents under docs/, labelled with the entities it targets and whether the IFC satisfies it. Expected 'conflict' rows are planted mismatches; 'no_conflict' rows are aligned requirements the scanner must NOT flag.",
+  "entities": {
+    "external_walls": ["3cUkl32yn9qRSPvBJVyWw5", "3cUkl32yn9qRSPvBJVyWx4", "3cUkl32yn9qRSPvBJVyWy4"],
+    "partitions": ["3cUkl32yn9qRSPvBJVyWXt", "3cUkl32yn9qRSPvBJVyWY1"],
+    "external_door": ["3cUkl32yn9qRSPvBJVyWYp"],
+    "internal_doors": ["3cUkl32yn9qRSPvBJVyWaG", "3cUkl32yn9qRSPvBJVyWax"],
+    "windows": ["3cUkl32yn9qRSPvBJVyWcE", "3cUkl32yn9qRSPvBJVyWdx", "3cUkl32yn9qRSPvBJVyWe9", "3cUkl32yn9qRSPvBJVyZTO"],
+    "ground_slab": ["3cUkl32yn9qRSPvBJVyWgQ"],
+    "roof_deck_slab": ["3ntFzSulnDNeQ4nJrMgcOt"],
+    "roof": ["3cUkl32yn9qRSPvBJVyWh4"]
+  },
+  "cases": [
+    {"id": "FS-01", "document": "fire-safety-strategy", "section": "3.1", "entities": "external_walls", "ifc_type": "IfcWall", "pset": "Pset_WallCommon", "property": "FireRating", "ifc_value": null, "document_value": "EI 30", "expected": "conflict", "severity": "missing"},
+    {"id": "FS-02", "document": "fire-safety-strategy", "section": "3.2", "entities": "partitions", "ifc_type": "IfcWall", "pset": "Pset_WallCommon", "property": "FireRating", "ifc_value": null, "document_value": "EI 30", "expected": "conflict", "severity": "missing"},
+    {"id": "FS-03", "document": "fire-safety-strategy", "section": "3.3", "entities": "internal_doors", "ifc_type": "IfcDoor", "pset": "Pset_DoorCommon", "property": "FireRating", "ifc_value": null, "document_value": "EI 30-Sa", "expected": "conflict", "severity": "missing"},
+    {"id": "FS-04", "document": "fire-safety-strategy", "section": "3.5", "entities": "ground_slab", "ifc_type": "IfcSlab", "pset": "Pset_SlabCommon", "property": "FireRating", "ifc_value": null, "document_value": "REI 30", "expected": "conflict", "severity": "missing"},
+    {"id": "FS-05", "document": "fire-safety-strategy", "section": "3.1", "entities": "external_walls", "ifc_type": "IfcWall", "pset": "Pset_WallCommon", "property": "LoadBearing", "ifc_value": false, "document_value": "non-load-bearing", "expected": "no_conflict", "severity": "none"},
+    {"id": "FS-06", "document": "fire-safety-strategy", "section": "3.2", "entities": "partitions", "ifc_type": "IfcWall", "pset": "Pset_WallCommon", "property": "ExtendToStructure", "ifc_value": true, "document_value": "extends to underside of slab", "expected": "no_conflict", "severity": "none"},
+    {"id": "FS-07", "document": "fire-safety-strategy", "section": "3.4", "entities": "external_door", "ifc_type": "IfcDoor", "pset": "Pset_DoorCommon", "property": "IsExternal", "ifc_value": true, "document_value": "external element", "expected": "no_conflict", "severity": "none"},
+    {"id": "FS-08", "document": "fire-safety-strategy", "section": "3.5", "entities": "ground_slab", "ifc_type": "IfcSlab", "pset": "Pset_SlabCommon", "property": "LoadBearing", "ifc_value": true, "document_value": "load-bearing", "expected": "no_conflict", "severity": "none"},
+
+    {"id": "TH-01", "document": "thermal-specification", "section": "3.1", "entities": "external_walls", "ifc_type": "IfcWall", "pset": "Pset_WallCommon", "property": "ThermalTransmittance", "ifc_value": 0.2359, "document_value": "<= 0.18 W/m2K", "expected": "conflict", "severity": "clear"},
+    {"id": "TH-02", "document": "thermal-specification", "section": "3.2", "entities": "windows", "ifc_type": "IfcWindow", "pset": "Pset_WindowCommon", "property": "ThermalTransmittance", "ifc_value": 5.5617, "document_value": "<= 1.2 W/m2K", "expected": "conflict", "severity": "clear"},
+    {"id": "TH-03", "document": "thermal-specification", "section": "3.3", "entities": "roof", "ifc_type": "IfcRoof", "pset": "Pset_RoofCommon", "property": "ThermalTransmittance", "ifc_value": 7.8057, "document_value": "<= 0.13 W/m2K", "expected": "conflict", "severity": "clear"},
+    {"id": "TH-04", "document": "thermal-specification", "section": "3.4", "entities": "ground_slab", "ifc_type": "IfcSlab", "pset": "Pset_SlabCommon", "property": "ThermalTransmittance", "ifc_value": 0.1174, "document_value": "<= 0.10 W/m2K", "expected": "conflict", "severity": "marginal"},
+    {"id": "TH-05", "document": "thermal-specification", "section": "3.5", "entities": "external_door", "ifc_type": "IfcDoor", "pset": "Pset_DoorCommon", "property": "ThermalTransmittance", "ifc_value": null, "document_value": "<= 1.2 W/m2K", "expected": "conflict", "severity": "missing"},
+    {"id": "TH-06", "document": "thermal-specification", "section": "3.6", "entities": "internal_doors", "ifc_type": "IfcDoor", "pset": "Pset_DoorCommon", "property": "ThermalTransmittance", "ifc_value": 3.7021, "document_value": "3.7 as designed", "expected": "no_conflict", "severity": "none"},
+    {"id": "TH-07", "document": "thermal-specification", "section": "3.6", "entities": "partitions", "ifc_type": "IfcWall", "pset": "Pset_WallCommon", "property": "ThermalTransmittance", "ifc_value": 0.351, "document_value": "0.35 as designed", "expected": "no_conflict", "severity": "none"},
+    {"id": "TH-08", "document": "thermal-specification", "section": "3.6", "entities": "roof_deck_slab", "ifc_type": "IfcSlab", "pset": "Pset_SlabCommon", "property": "ThermalTransmittance", "ifc_value": 6.3394, "document_value": "no requirement", "expected": "no_conflict", "severity": "none"},
+
+    {"id": "AC-01", "document": "acoustic-and-structural-notes", "section": "2.1", "entities": "partitions", "ifc_type": "IfcWall", "pset": "Pset_WallCommon", "property": "AcousticRating", "ifc_value": null, "document_value": "R'w >= 44 dB", "expected": "conflict", "severity": "missing"},
+    {"id": "AC-02", "document": "acoustic-and-structural-notes", "section": "2.2", "entities": "internal_doors", "ifc_type": "IfcDoor", "pset": "Pset_DoorCommon", "property": "AcousticRating", "ifc_value": null, "document_value": "Rw >= 30 dB", "expected": "conflict", "severity": "missing"},
+    {"id": "AC-03", "document": "acoustic-and-structural-notes", "section": "2.3", "entities": "windows", "ifc_type": "IfcWindow", "pset": "Pset_WindowCommon", "property": "AcousticRating", "ifc_value": null, "document_value": "no requirement", "expected": "no_conflict", "severity": "none"},
+    {"id": "AC-04", "document": "acoustic-and-structural-notes", "section": "2.3", "entities": "external_walls", "ifc_type": "IfcWall", "pset": "Pset_WallCommon", "property": "AcousticRating", "ifc_value": null, "document_value": "no requirement", "expected": "no_conflict", "severity": "none"},
+    {"id": "ST-01", "document": "acoustic-and-structural-notes", "section": "3.1", "entities": "external_walls", "ifc_type": "IfcWall", "pset": "Pset_WallCommon", "property": "LoadBearing", "ifc_value": false, "document_value": "load-bearing", "expected": "conflict", "severity": "clear"},
+    {"id": "ST-02", "document": "acoustic-and-structural-notes", "section": "3.2", "entities": "partitions", "ifc_type": "IfcWall", "pset": "Pset_WallCommon", "property": "LoadBearing", "ifc_value": false, "document_value": "non-load-bearing", "expected": "no_conflict", "severity": "none"},
+    {"id": "ST-03", "document": "acoustic-and-structural-notes", "section": "3.2", "entities": "partitions", "ifc_type": "IfcWall", "pset": "Pset_WallCommon", "property": "ExtendToStructure", "ifc_value": true, "document_value": "extends to structure", "expected": "no_conflict", "severity": "none"},
+    {"id": "ST-04", "document": "acoustic-and-structural-notes", "section": "3.3", "entities": "ground_slab", "ifc_type": "IfcSlab", "pset": "Pset_SlabCommon", "property": "LoadBearing", "ifc_value": true, "document_value": "load-bearing", "expected": "no_conflict", "severity": "none"},
+    {"id": "ST-05", "document": "acoustic-and-structural-notes", "section": "3.3", "entities": "roof_deck_slab", "ifc_type": "IfcSlab", "pset": "Pset_SlabCommon", "property": "LoadBearing", "ifc_value": true, "document_value": "load-bearing", "expected": "no_conflict", "severity": "none"},
+    {"id": "ST-06", "document": "acoustic-and-structural-notes", "section": "3.3", "entities": "ground_slab", "ifc_type": "IfcSlab", "pset": "Pset_SlabCommon", "property": "IsExternal", "ifc_value": false, "document_value": "internal, not external", "expected": "no_conflict", "severity": "none"}
+  ]
+}

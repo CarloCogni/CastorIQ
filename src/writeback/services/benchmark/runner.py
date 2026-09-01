@@ -30,7 +30,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from ifc_processor.services.journal import MutationJournal
+from ifc_processor.services.ifc_diff import IfcSnapshot, diff_snapshots
+from ifc_processor.services.journal import MutationJournal, MutationOp
 from ifc_processor.services.journal_executor import JournalExecutor
 
 from ..emitters import CapturingEmitter
@@ -70,6 +71,10 @@ class CaseResult:
     fidelity_ok: bool | None = None
     fidelity_detail: str = ""
 
+    # Integrity — did anything *outside* the journal change in the file?
+    integrity_ok: bool | None = None
+    integrity_detail: str = ""
+
     duration_seconds: float = 0.0
     error: str = ""
 
@@ -78,7 +83,7 @@ class CaseResult:
         """Advisory cases never fail; otherwise both scores must hold."""
         if self.advisory:
             return True
-        return self.understood and self.fidelity_ok is not False
+        return self.understood and self.fidelity_ok is not False and self.integrity_ok is not False
 
     def as_dict(self) -> dict:
         return {
@@ -99,6 +104,8 @@ class CaseResult:
             "fidelity_ok": self.fidelity_ok,
             "fidelity_detail": self.fidelity_detail,
             "fidelity_checks": [c.as_dict() for c in self.fidelity_checks],
+            "integrity_ok": self.integrity_ok,
+            "integrity_detail": self.integrity_detail,
             "duration_seconds": round(self.duration_seconds, 3),
             "error": self.error,
         }
@@ -121,6 +128,9 @@ class BenchmarkRunner:
         self.user = user
         self.execute = execute
         self.pipeline = ProposalPipeline(project, user=user)
+        # The source file never changes during a run, so its snapshot is taken
+        # once and reused as the "before" side of every integrity diff.
+        self._baseline: IfcSnapshot | None = None
 
     def run_case(self, case: BenchmarkCase) -> CaseResult:
         """Run one case end to end and score it."""
@@ -280,6 +290,7 @@ class BenchmarkRunner:
 
             result.executed = True
             result.fidelity_checks = verify_journal(applied, str(scratch))
+            self._check_integrity(journal, scratch, result)
 
         scored = [c for c in result.fidelity_checks if not c.advisory]
         if not scored:
@@ -293,6 +304,43 @@ class BenchmarkRunner:
             if not failures
             else "; ".join(f"{c.op}: {c.detail}" for c in failures[:3])
         )
+
+    # ── Integrity ──────────────────────────────────────────
+
+    def _check_integrity(self, journal: MutationJournal, scratch: Path, result: CaseResult) -> None:
+        """Diff the written file against the untouched source.
+
+        Anything the journal did not declare — geometry drift, a lost entity, a
+        property changed on a bystander — is an integrity failure. Population
+        changes are tolerated only when the journal contains an op that creates
+        or deletes entities.
+        """
+        try:
+            if self._baseline is None:
+                self._baseline = IfcSnapshot.from_file(self.ifc_file.file.path)
+            diff = diff_snapshots(self._baseline, IfcSnapshot.from_file(scratch))
+        except Exception as e:  # noqa: BLE001
+            result.integrity_ok = False
+            result.integrity_detail = f"snapshot failed: {type(e).__name__}: {e}"
+            return
+
+        ops = {m.op for m in journal.mutations}
+        problems = diff.unexpected(
+            allowed=journal.affected_global_ids,
+            allow_population_change=bool(ops & _POPULATION_OPS),
+        )
+        result.integrity_ok = not problems
+        result.integrity_detail = (
+            f"{len(diff.property_changes) + len(diff.attribute_changes)} change(s), "
+            "all within journal"
+            if not problems
+            else "; ".join(problems[:3])
+        )
+
+
+_POPULATION_OPS = frozenset(
+    {MutationOp.CREATE_ENTITY, MutationOp.DELETE_ENTITY, MutationOp.RUN_CODE}
+)
 
 
 def _lookup_intent(intent: dict, key: str):

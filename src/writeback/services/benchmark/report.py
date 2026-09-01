@@ -55,6 +55,14 @@ class BenchmarkReport:
         return sum(1 for r in self.fidelity_scored if r.fidelity_ok)
 
     @property
+    def integrity_scored(self) -> list[CaseResult]:
+        return [r for r in self.scored if r.integrity_ok is not None]
+
+    @property
+    def integrity_passed(self) -> int:
+        return sum(1 for r in self.integrity_scored if r.integrity_ok)
+
+    @property
     def failures(self) -> list[CaseResult]:
         return [r for r in self.scored if not r.passed]
 
@@ -85,6 +93,8 @@ class BenchmarkReport:
                 "understanding_passed": self.understanding_passed,
                 "fidelity_scored": len(self.fidelity_scored),
                 "fidelity_passed": self.fidelity_passed,
+                "integrity_scored": len(self.integrity_scored),
+                "integrity_passed": self.integrity_passed,
                 "errored": len(self.errored),
                 "latency_median_s": round(median, 3),
                 "latency_p90_s": round(p90, 3),
@@ -131,6 +141,8 @@ def _render_failures(report: BenchmarkReport, *, verbose: bool) -> list[str]:
         lines.append(f"              {result.understanding_detail or result.fidelity_detail}")
         if result.fidelity_ok is False and result.understood:
             lines.append(f"              fidelity: {result.fidelity_detail}")
+        if result.integrity_ok is False:
+            lines.append(f"              integrity: {result.integrity_detail}")
 
     for result in report.errored:
         lines.append(f"  ERROR{result.case_id:>6}  {result.error}")
@@ -168,6 +180,15 @@ def _render_summary(reports: list[BenchmarkReport]) -> list[str]:
             ],
         )
     )
+    lines.append(
+        row(
+            "integrity",
+            [
+                f"{r.integrity_passed}/{len(r.integrity_scored)}" if r.integrity_scored else "n/a"
+                for r in reports
+            ],
+        )
+    )
     lines.append(row("errors", [str(len(r.errored)) for r in reports]))
     lines.append(row("latency median", [f"{r.latency()[0]:.1f}s" for r in reports]))
     lines.append(row("latency p90", [f"{r.latency()[1]:.1f}s" for r in reports]))
@@ -196,7 +217,11 @@ def diff_runs(baseline: dict, current: BenchmarkReport) -> str:
         before = previous.get(case_id)
         if before is None:
             continue
-        was_ok = before.get("understood") and before.get("fidelity_ok") is not False
+        was_ok = (
+            before.get("understood")
+            and before.get("fidelity_ok") is not False
+            and before.get("integrity_ok") is not False
+        )
         if was_ok and not result.passed:
             regressed.append((case_id, before, result))
         elif not was_ok and result.passed:

@@ -4,6 +4,10 @@ services:
   db:
     image: pgvector/pgvector:pg16
     container_name: castor-dev-db
+    # Survive host reboots so the dev DB is up whenever the IDE run
+    # configuration starts Django. Without this the container stays down
+    # after a restart and Django fails with connection refused.
+    restart: unless-stopped
     environment:
       POSTGRES_USER: castor
       POSTGRES_PASSWORD: castor
@@ -26,6 +30,7 @@ services:
   pgadmin:
     image: dpage/pgadmin4:latest
     container_name: castor-dev-pgadmin
+    restart: unless-stopped
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@castor.com
       PGADMIN_DEFAULT_PASSWORD: admin

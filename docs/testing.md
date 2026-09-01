@@ -197,11 +197,25 @@ Run it before shipping a pipeline change, and when choosing a model.
 |---|---|---|
 | **Understanding** | Did the pipeline route the request the way the corpus says? | **Yes** — this is the benchmark dimension |
 | **Fidelity** | Did the journal it produced actually land in the file? | No — should stay 100% |
+| **Integrity** | Did the file change *only* where the journal said? | No — should stay 100% |
 
 Fidelity is the check unit tests structurally cannot make. Both `products=` /
 `product=` signature bugs this project shipped *reported success while changing
 nothing*; only reading the file back catches that. If fidelity drops, the bug is
 in a writer or the executor, not in comprehension.
+
+Integrity is the mirror image: fidelity proves the requested change is present,
+integrity proves nothing *else* moved. Every executed case is snapshotted
+(`ifc_processor/services/ifc_diff.py`) and diffed against the untouched source
+across three dimensions — entity population (per-class counts and the set of
+`GlobalId`s), a per-product geometry hash over the placement and representation
+tree, and every bystander's property sets. A property change on an entity the
+journal did not name, any geometry drift, or a lost entity is an integrity
+failure, and the case fails even if understanding and fidelity passed.
+Population changes are tolerated only for journals containing `CREATE_ENTITY`,
+`DELETE_ENTITY` or `RUN_CODE`. The same module backs the standalone round-trip
+suite `ifc_processor/tests/test_ifc_round_trip.py` (load → save → diff is empty,
+on both the two-wall fixture and the 2.3 MB sample house).
 
 **This is not hypothetical.** The first run found a request to *remove* a
 property that instead *wrote* the user's own words into it, across five walls,
