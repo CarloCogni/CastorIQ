@@ -277,6 +277,18 @@ def _downgrade_unquantified_all_of_type(extracted: dict, user_message: str) -> d
          3+-digit number) — this is what distinguishes ``Wall-Imaginary-Does-
          Not-Exist`` (specific) from ``external walls`` (legitimate filter).
 
+    Exemption: ``scope='all_of_type'`` with a non-empty ``entity_name`` is
+    never downgraded, regardless of conditions 2/3. ``_db_resolve`` already
+    routes that combination through the name-pattern matcher (the same
+    path ``scope='specific'`` uses), so it handles both a real
+    type-qualified category ("all walls of type X") and this guard's
+    original concern (a hallucinated specific name still gets tried as a
+    name pattern and matches only itself, or nothing) — without ever
+    falling into a blanket ifc_type match either way. Downgrading here
+    would instead discard the correctly-narrowed extraction in favour of
+    matching the entire raw sentence as a name, which never matches
+    anything.
+
     On trigger, rewrite ``scope='specific'`` with the message itself as
     the entity_name so the DB layer attempts a name match. The trim
     cascade and empty-resolution router check propagate cleanly from
@@ -286,6 +298,9 @@ def _downgrade_unquantified_all_of_type(extracted: dict, user_message: str) -> d
     """
     scope = extracted.get("scope")
     if scope not in ("all_of_type", "filtered"):
+        return extracted
+    entity_name = extracted.get("entity_name")
+    if scope == "all_of_type" and isinstance(entity_name, str) and entity_name.strip():
         return extracted
     msg = (user_message or "").lower()
     if any(q in msg for q in _ALL_OF_TYPE_QUANTIFIERS):

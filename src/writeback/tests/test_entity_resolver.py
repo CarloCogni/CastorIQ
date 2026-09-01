@@ -305,6 +305,60 @@ class TestResolveFiltered:
         assert result.scope == "filtered"
 
 
+class TestDowngradeUnquantifiedAllOfType:
+    """Fix 3: the unquantified-category guard must not fight Fix 1's
+    entity_name-narrowing path for all_of_type."""
+
+    def test_downgrades_all_of_type_with_no_entity_name_and_specific_markers(self):
+        """Original guard behavior preserved: with no entity_name for Fix 1
+        to route on, a category-shaped extraction that also looks like it
+        names one specific thing (a hyphen, no quantifier word) is still
+        downgraded to scope=specific."""
+        extracted = {"scope": "all_of_type", "ifc_type": "IfcWall"}
+        message = "Set FireRating to EI120 on Wall-Imaginary-Does-Not-Exist"
+
+        result = resolver_module._downgrade_unquantified_all_of_type(extracted, message)
+
+        assert result["scope"] == "specific"
+        assert result["entity_name"] == message.strip()
+
+    def test_does_not_downgrade_all_of_type_with_entity_name_present(self):
+        """New behavior: entity_name is set alongside all_of_type, so Fix 1
+        will route this through the name matcher — the guard must leave it
+        untouched even though the message has no quantifier word and does
+        contain a specific-name marker (a 3+-digit citation number)."""
+        extracted = {
+            "scope": "all_of_type",
+            "ifc_type": "IfcWall",
+            "entity_name": "elevator shaft",
+        }
+        message = (
+            "Set the FireRating property to 2 HR on the four elevator shaft walls per IBC 713.4."
+        )
+
+        result = resolver_module._downgrade_unquantified_all_of_type(extracted, message)
+
+        assert result["scope"] == "all_of_type"
+        assert result["entity_name"] == "elevator shaft"
+
+    def test_filtered_scope_still_downgraded_even_with_entity_name(self):
+        """The exemption is scoped to all_of_type only. scope=filtered stays
+        subject to the original guard regardless of entity_name, since
+        Fix 1 never routes the filtered branch through the name matcher."""
+        extracted = {
+            "scope": "filtered",
+            "ifc_type": "IfcWall",
+            "entity_name": "something",
+            "filter_hints": {"Pset_WallCommon.IsExternal": True},
+        }
+        message = "Set FireRating to EI120 on Wall-Imaginary-Does-Not-Exist"
+
+        result = resolver_module._downgrade_unquantified_all_of_type(extracted, message)
+
+        assert result["scope"] == "specific"
+        assert "filter_hints" not in result
+
+
 @pytest.mark.django_db
 class TestExtractionDrift:
     """Pass 2 fail-soft: drift / unknown / non-JSON → empty result, no crash."""
