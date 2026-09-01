@@ -279,6 +279,49 @@ class TestResolveAllOfType:
         pks = {e.pk for e in result.entities}
         assert pks == {w.pk for w in partition_walls}
 
+    def test_counted_category_with_citation_clause_narrows_by_type(
+        self, project, ifc_file, wall_entities
+    ):
+        """Regression test for the "the four elevator shaft walls per IBC
+        713.4" case: a counted category with no proper name, plus a trailing
+        code-citation clause. Per the updated EXTRACTION_SYSTEM_PROMPT this
+        should extract as all_of_type + a descriptive entity_name, not
+        scope="unknown" — and (via the all_of_type/entity_name fix, plus the
+        guard exemption) narrow to just the matching walls, not the whole
+        project.
+
+        This mocks the LLM to return the extraction the updated prompt is
+        meant to produce; it verifies the code correctly acts on that shape.
+        It does NOT prove the real model (see Case 3 in plan.md) actually
+        produces this extraction — that is confirmed separately via the
+        live-UI verification step.
+        """
+        shaft_walls = [
+            IFCEntityFactory(
+                ifc_file=ifc_file,
+                ifc_type="IfcWall",
+                name=f"Basic Wall:Interior Elevator Shaft Wall:{123568 + i}",
+                global_id=f"GUID-SHAFT-{i:06d}",
+            )
+            for i in range(4)
+        ]
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = _make_llm_response(
+            json.dumps(
+                {"scope": "all_of_type", "ifc_type": "IfcWall", "entity_name": "elevator shaft"}
+            )
+        )
+        resolver = EntityNameResolver(project, llm=mock_llm)
+
+        result = resolver.resolve(
+            "Set the FireRating property to 2 HR on the four elevator shaft walls per IBC 713.4."
+        )
+
+        # Only the 4 elevator shaft walls, not the 5 generic wall_entities too.
+        assert len(result.entities) == 4
+        pks = {e.pk for e in result.entities}
+        assert pks == {w.pk for w in shaft_walls}
+
 
 @pytest.mark.django_db
 class TestResolveFiltered:

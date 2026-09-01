@@ -98,6 +98,13 @@ Rules:
                      If you see "and", "&", or commas between entity references, the
                      scope is specific_multi and the list must contain ALL of them.
 - "all_of_type":     user targets ALL entities of a type ("all walls"). Set ifc_type, leave entity_name null.
+                     A counted category with no proper name ("the four elevator shaft
+                     walls", "the six perimeter doors") is STILL all_of_type — set
+                     entity_name to the descriptive noun phrase (e.g. "elevator shaft")
+                     so it narrows within ifc_type. Ignore trailing citation clauses
+                     ("per IBC 713.4", "per NFPA 101", "per the fire safety report
+                     section 5.1") — they are not part of entity targeting and must
+                     never cause scope="unknown".
 - "filtered":        user gives a property predicate ("all external walls", "non-load-bearing
                      beams"). Set ifc_type and filter_hints. Negation phrases
                      ("non-X", "non-load-bearing", "internal", "interior") map to
@@ -153,6 +160,9 @@ Output: {"scope": "specific_multi", "entity_names": [":285330", ":286105"]}
 
 User: "change ThermalTransmittance to 0.20 on all walls with ThermalTransmittance 0.24"
 Output: {"scope": "filtered", "ifc_type": "IfcWall", "filter_hints": {"Pset_WallCommon.ThermalTransmittance": 0.24}}
+
+User: "Set the FireRating property to 2 HR on the four elevator shaft walls per IBC 713.4."
+Output: {"scope": "all_of_type", "ifc_type": "IfcWall", "entity_name": "elevator shaft"}
 
 User: "update the model"
 Output: {"scope": "unknown"}
