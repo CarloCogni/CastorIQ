@@ -243,10 +243,43 @@ class ConflictScanService:
     # the user kept hitting on entity 6) impossible.
     SCAN_MAX_OUTPUT_TOKENS = 1024
 
-    def __init__(self, project, user, skip_low_value: bool = True):
+    def __init__(
+        self,
+        project,
+        user,
+        skip_low_value: bool = True,
+        *,
+        confidence_threshold: float = CONFIDENCE_THRESHOLD,
+        type_gate: bool = True,
+        keyword_filter: bool = True,
+        entity_relevance_threshold: float | None = None,
+        entity_top_k: int | None = None,
+    ):
+        """
+        Args:
+            skip_low_value: Exclude LOW_VALUE_IFC_TYPES from the entity search.
+            confidence_threshold: Minimum LLM confidence to keep a finding.
+            type_gate: Drop findings whose ``applies_to_element`` does not match
+                the entity's IFC class (see ``_finding_applies_to_entity``).
+            keyword_filter: Restrict candidate chunks to those containing an
+                AEC requirement keyword. Off means every embedded chunk is a
+                candidate — many more LLM calls.
+            entity_relevance_threshold / entity_top_k: Override the vector
+                search cutoffs. ``None`` keeps the class defaults.
+
+        The keyword-only knobs exist so the RAV benchmark can ablate each
+        mitigation independently; production callers leave them at defaults.
+        """
         self.project = project
         self.user = user
         self.skip_low_value = skip_low_value
+        self.confidence_threshold = confidence_threshold
+        self.type_gate = type_gate
+        self.keyword_filter = keyword_filter
+        if entity_relevance_threshold is not None:
+            self.ENTITY_RELEVANCE_THRESHOLD = entity_relevance_threshold
+        if entity_top_k is not None:
+            self.ENTITY_TOP_K = entity_top_k
         # `client_kwargs={"timeout": …}` is httpx's per-read timeout — it
         # only fires when the socket goes silent for that long. Ollama can
         # stream tokens slowly enough to keep the timer alive forever, so
@@ -464,19 +497,19 @@ class ConflictScanService:
         Filters by keyword presence to focus only on specification requirements,
         avoiding irrelevant descriptive text.
         """
-        q = Q()
-        for kw in REQUIREMENT_KEYWORDS:
-            q |= Q(content__icontains=kw)
+        chunks = DocumentChunk.objects.filter(
+            document__project=self.project,
+            document__status="completed",
+            embedding__isnull=False,
+        ).select_related("document")
 
-        return list(
-            DocumentChunk.objects.filter(
-                document__project=self.project,
-                document__status="completed",
-                embedding__isnull=False,
-            )
-            .filter(q)
-            .select_related("document")
-        )
+        if self.keyword_filter:
+            q = Q()
+            for kw in REQUIREMENT_KEYWORDS:
+                q |= Q(content__icontains=kw)
+            chunks = chunks.filter(q)
+
+        return list(chunks)
 
     def _build_entity_chunk_map(
         self, req_chunks: list[DocumentChunk]
@@ -576,7 +609,7 @@ class ConflictScanService:
             )
             return []
 
-        confident = [f for f in findings if f.get("confidence", 0) >= CONFIDENCE_THRESHOLD]
+        confident = [f for f in findings if f.get("confidence", 0) >= self.confidence_threshold]
         low_conf_skipped = len(findings) - len(confident)
         if low_conf_skipped:
             logger.debug(
@@ -585,7 +618,9 @@ class ConflictScanService:
                 entity.id,
             )
 
-        applicable = [f for f in confident if self._finding_applies_to_entity(f, entity)]
+        applicable = [
+            f for f in confident if not self.type_gate or self._finding_applies_to_entity(f, entity)
+        ]
         type_skipped = len(confident) - len(applicable)
         if type_skipped:
             logger.info(

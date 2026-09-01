@@ -46,6 +46,8 @@ All constants live in `writeback/services/conflict_scan_service.py`:
 | Constant | Value | Meaning |
 |----------|-------|---------|
 | `CONFIDENCE_THRESHOLD` | `0.7` | Minimum confidence to persist a finding |
+
+All of these (plus the element-type gate and the requirement-keyword filter) are overridable per-instance via keyword-only constructor arguments — production callers use the defaults; `manage.py benchmark_rav --ablate` switches each mitigation off in turn to measure what it buys (see `docs/benchmarks.md` §Harness D).
 | `ENTITY_RELEVANCE_THRESHOLD` | `0.45` | Cosine distance cutoff for entity–chunk pairing |
 | `ENTITY_TOP_K` | `5` | Max entities per requirement chunk |
 
