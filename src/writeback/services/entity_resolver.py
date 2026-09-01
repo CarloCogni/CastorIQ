@@ -490,7 +490,6 @@ class EntityNameResolver:
         # the model can't strip), retry with the leading token dropped.
         # Mirrors the DB-level trim fallback in `_resolve_specific`.
         extracted = self._llm_extract_with_trim_retry(user_message)
-        logger.info("DIAG raw_extraction message=%r extracted=%r", user_message, extracted)
         if extracted is None:
             return _EMPTY
         # Deterministic safety net: if the user mentioned ``:NNNNN`` step IDs
@@ -502,14 +501,7 @@ class EntityNameResolver:
         # because the prefix matches a known IFC class. Downgrade when the
         # message contains no quantifier word — the user named ONE thing.
         extracted = _downgrade_unquantified_all_of_type(extracted, user_message)
-        logger.info("DIAG final_extraction_iter0 extracted=%r", extracted)
         result = self._db_resolve(extracted)
-        logger.info(
-            "DIAG resolved_iter0 scope=%s count=%d entities=%r",
-            result.scope,
-            len(result.entities),
-            [e.name for e in result.entities[:10]],
-        )
         if result.is_unique:
             return result
 
@@ -530,12 +522,6 @@ class EntityNameResolver:
         if extracted_1 is not None:
             extracted_1 = _downgrade_unquantified_all_of_type(extracted_1, user_message)
             result_1 = self._db_resolve(extracted_1)
-            logger.info(
-                "DIAG resolved_iter1 extracted=%r scope=%s count=%d",
-                extracted_1,
-                result_1.scope,
-                len(result_1.entities),
-            )
             if result_1.is_unique:
                 return result_1
             # If iteration 1 reconsidered the scope to a non-specific category
@@ -559,19 +545,12 @@ class EntityNameResolver:
         if extracted_2 is not None:
             extracted_2 = _downgrade_unquantified_all_of_type(extracted_2, user_message)
             result_2 = self._db_resolve(extracted_2)
-            logger.info(
-                "DIAG resolved_iter2 extracted=%r scope=%s count=%d",
-                extracted_2,
-                result_2.scope,
-                len(result_2.entities),
-            )
             if result_2.is_unique:
                 return result_2
             # Same scope-reconsideration acceptance as iteration 1.
             if extracted_2.get("scope") != "specific":
                 return result_2
 
-        logger.info("DIAG final_fallback empty=True")
         logger.info("Resolver: iterations exhausted; falling back to today's pipeline")
         return _EMPTY
 
@@ -722,6 +701,12 @@ class EntityNameResolver:
                 return self._resolve_specific_multi(ifc_type, cleaned)
 
         if scope == "all_of_type" and isinstance(ifc_type, str) and ifc_type.strip():
+            # A type-qualified category ("all walls of type X") carries an
+            # entity_name alongside all_of_type. Route through the name
+            # matcher so the type qualifier narrows the result instead of
+            # being silently dropped in favour of every entity of ifc_type.
+            if isinstance(entity_name, str) and entity_name.strip():
+                return self._resolve_specific(ifc_type.strip(), entity_name.strip())
             return self._resolve_all_of_type(ifc_type.strip())
 
         if scope == "filtered" and isinstance(filter_hints, dict) and filter_hints:

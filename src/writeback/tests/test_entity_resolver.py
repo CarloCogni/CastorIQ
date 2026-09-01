@@ -13,6 +13,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from ifc_processor.tests.factories import IFCEntityFactory
 from writeback.services import entity_resolver as resolver_module
 from writeback.services.entity_resolver import (
     MODE_EXISTING_TARGET,
@@ -238,6 +239,45 @@ class TestResolveAllOfType:
         assert result.scope == "all_of_type"
         # Not "unique" — multiple matches by design.
         assert not result.is_unique
+
+    def test_all_of_type_with_entity_name_narrows_to_type(self, project, ifc_file, wall_entities):
+        """LLM emits scope=all_of_type WITH entity_name set (a type-qualified
+        category, e.g. "all walls of type X"). The type qualifier must narrow
+        the match, not be discarded in favour of every wall in the project.
+
+        Regression test for the bug where ``_resolve_all_of_type`` ignored
+        ``entity_name`` entirely and matched all entities of ``ifc_type``.
+        """
+        partition_walls = [
+            IFCEntityFactory(
+                ifc_file=ifc_file,
+                ifc_type="IfcWall",
+                name=f"Interior 6 1/8 Partition (2-hr):{124994 + i}",
+                global_id=f"GUID-PARTITION-{i:06d}",
+            )
+            for i in range(3)
+        ]
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = _make_llm_response(
+            json.dumps(
+                {
+                    "scope": "all_of_type",
+                    "ifc_type": "IfcWall",
+                    "entity_name": "Interior 6 1/8 Partition (2-hr)",
+                }
+            )
+        )
+        resolver = EntityNameResolver(project, llm=mock_llm)
+
+        result = resolver.resolve(
+            "Set the FireRating property to 2 HR on all walls of type "
+            "Interior 6 1/8 Partition (2-hr)."
+        )
+
+        # Only the 3 type-matching walls, not the 5 generic wall_entities too.
+        assert len(result.entities) == 3
+        pks = {e.pk for e in result.entities}
+        assert pks == {w.pk for w in partition_walls}
 
 
 @pytest.mark.django_db
