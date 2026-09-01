@@ -86,6 +86,7 @@ export const state = {
   attachPhase: "",       // phase chosen for the next attached media
   phases: loadPhases(),  // user-extendable list of phases
   numbering: { mode: "placement", phase: "", pad: "auto" }, // pin numbering
+  pinScale: 3, // global pin size band 1–5 (1 = smallest); 3 = the original 20 px look
   idProps: ["number", "department"], // IFC room props shown as identification + usable as table filter keys
   archiveType: "photo",   // which photo archive the bottom timeline shows: 'photo' | '360'
   timelineView: "thumbs", // timeline layout: 'thumbs' | 'details'
@@ -199,6 +200,7 @@ function exportSession() {
     phaseColors: state.phaseColors,
     idProps: state.idProps,
     numbering: state.numbering,
+    pinScale: state.pinScale,
     archiveType: state.archiveType,
     timelineView: state.timelineView,
     sort: state.sort,
@@ -227,6 +229,7 @@ function loadSession() {
       phaseColors: (s.phaseColors && typeof s.phaseColors === "object") ? s.phaseColors : {},
       idProps: Array.isArray(s.idProps) ? s.idProps : ["number", "department"],
       numbering: s.numbering || { mode: "placement", phase: "", pad: "auto" },
+      pinScale: Math.min(5, Math.max(1, Math.round(Number(s.pinScale) || 3))),
       archiveType: s.archiveType === "360" ? "360" : "photo",
       timelineView: s.timelineView === "details" ? "details" : "thumbs",
       sort: s.sort || { key: "date", dir: "desc" },
@@ -608,6 +611,12 @@ export function setNumbering(mode, phase) {
   state.numbering = { mode: mode === "phase" ? "phase" : "placement", phase: phase || "", pad: state.numbering.pad };
   emit();
 }
+export function setPinScale(band) {
+  // Clamp to the five supported size bands; 3 is the original look.
+  const n = Math.min(5, Math.max(1, Math.round(Number(band) || 3)));
+  state.pinScale = n;
+  emit();
+}
 export function setNumberingPad(pad) {
   state.numbering = { ...state.numbering, pad: pad === "auto" ? "auto" : Number(pad) };
   emit();
@@ -691,6 +700,26 @@ export function setPointTableFilter(pointId, key, filterBy) {
   if (!p || !p.tables) return;
   const t = p.tables.find((t) => t.key === key);
   if (t) { t.filterBy = filterBy; emit(); }
+}
+// ── Per-element property tables ──
+// A table entry { key: "element:<rowId>", elementId, elementName, props: [] }
+// shows the chosen properties of ONE concrete IFC element in the point's
+// room. Empty props = show everything; the ⚙ config narrows the list.
+export function addPointElementTable(pointId, elementId, elementName) {
+  const p = state.points.find((p) => p.id === pointId);
+  if (!p) return;
+  if (!p.tables) p.tables = [];
+  const key = `element:${elementId}`;
+  if (!p.tables.some((t) => t.key === key)) {
+    p.tables.push({ key, elementId, elementName: elementName || "", props: [] });
+  }
+  emit();
+}
+export function setElementTableProps(pointId, key, props) {
+  const p = state.points.find((p) => p.id === pointId);
+  if (!p || !p.tables) return;
+  const t = p.tables.find((t) => t.key === key);
+  if (t) { t.props = Array.isArray(props) ? props : []; emit(); }
 }
 
 // ── id + helpers ──

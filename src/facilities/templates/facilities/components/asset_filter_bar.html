@@ -5,7 +5,7 @@
       hx-get="{% url 'facilities:assets_list' project.pk %}"
       hx-target="#asset-grid-mount"
       hx-swap="innerHTML"
-      hx-trigger="change from:find select, keyup changed delay:300ms from:find input[type='search']"
+      hx-trigger="change, keyup changed delay:300ms from:find input[type='search']"
       hx-push-url="true"
       class="d-flex flex-column gap-2">
 
@@ -43,7 +43,7 @@
         <span class="fs-8 text-secondary text-uppercase fw-semibold">Classifications:</span>
         {% for reference in classification_references %}
         <label class="d-inline-flex align-items-center gap-1 fs-8 px-2 py-1 rounded border"
-               style="cursor: pointer; {% if reference.id|stringformat:'s' in active_classification_ref_ids %}background-color: rgba(20,184,166,0.12); border-color: var(--castor-facilities, #14b8a6); color: var(--castor-facilities, #14b8a6);{% endif %}">
+               style="cursor: pointer; {% if reference.id|stringformat:'s' in active_classification_ref_ids %}background-color: rgba(59, 130, 246,0.12); border-color: var(--castor-facilities, #3b82f6); color: var(--castor-facilities, #3b82f6);{% endif %}">
             <input type="checkbox"
                    name="classification_ref"
                    value="{{ reference.id }}"

@@ -17,7 +17,7 @@
     <!-- Top bar: title + help pill + "Floor plans" (levels) trigger -->
     <div class="d-flex align-items-center gap-3 flex-wrap flex-shrink-0">
         <div class="d-flex align-items-center gap-2">
-            <i class="bi bi-map fs-5" style="color: var(--castor-facilities, #14b8a6);"></i>
+            <i class="bi bi-map fs-5" style="color: var(--castor-facilities, #3b82f6);"></i>
             <h5 class="m-0">Spaces</h5>
             <button type="button"
                     class="help-pill"
@@ -59,7 +59,7 @@
         <div class="modal-content">
           <div class="modal-header">
             <h5 class="modal-title d-flex align-items-center gap-2" id="exploreLevelsModalLabel">
-                <i class="bi bi-layers" style="color: var(--castor-facilities, #14b8a6);"></i>
+                <i class="bi bi-layers" style="color: var(--castor-facilities, #3b82f6);"></i>
                 Floor plans
                 <span class="fs-8 fw-normal text-secondary">
                     {{ explore_storeys|length }} storey{{ explore_storeys|length|pluralize:"s" }} detected from IFC
@@ -288,7 +288,26 @@
                 if (data.requestId === "host-persist") handleStateReply(data);
                 break;
             case "HOTSPOT_CLICKED":
-                fireToast("Hotspot: " + (data.label || data.globalId || "point"), "info");
+                // "Focus in 3D" on a pin (focus:true) opens the full 3D model in a
+                // new tab, zoomed to that element's GlobalID. A top-level page loads
+                // reliably; a nested iframe can hang in a modal. A plain pin select
+                // (focus:false) is left silent — no click hijack into 3D.
+                if (data.focus && data.globalId) {
+                    // Navigate the Castor tab to the full 3D viewer. A pin linked to
+                    // an IfcSpace opens the interior "centre of the room" view
+                    // (?room=); any other element is framed in place (?focus=).
+                    // A top-level page loads reliably; the sub-nav and browser Back
+                    // get the user straight back to Spaces.
+                    var _isSpace = /space/i.test(data.ifcType || "");
+                    var _param   = _isSpace ? "room" : "focus";
+                    // Return target = this Spaces page, so the 3D viewer shows a
+                    // one-click "Back to Spaces" (the viewer lives under 4D/5D).
+                    var _ret = "&return=" + encodeURIComponent(window.location.pathname) + "&from=spaces";
+                    var _v3d = "{% url 'ifc_viewer:viewer' project.pk %}?" + _param + "=" + encodeURIComponent(data.globalId) + _ret;
+                    window.location.href = _v3d;
+                } else if (data.focus) {
+                    fireToast("This pin has no GlobalID to focus in 3D", "info");
+                }
                 break;
             case "ERROR":
                 console.warn("[explore-host] iframe reported error", data);

@@ -10,7 +10,7 @@
                 <div class="d-flex align-items-center gap-2 mb-1">
                     <a href="{% url 'facilities:work_detail' project.pk wo.pk %}"
                        class="fs-7 fw-semibold text-decoration-none"
-                       style="color: var(--castor-facilities, #14b8a6);">{{ wo.wo_number }}</a>
+                       style="color: var(--castor-facilities, #3b82f6);">{{ wo.wo_number }}</a>
                     <span class="badge text-bg-light border fs-9">{{ status_label }}</span>
                     <span class="badge text-bg-light border fs-9" title="Priority">P{{ wo.priority }}</span>
                     {% if wo.is_overdue %}

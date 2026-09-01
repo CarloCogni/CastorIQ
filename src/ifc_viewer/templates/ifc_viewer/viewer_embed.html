@@ -113,15 +113,16 @@ html, body { width: 100%; height: 100%; background: #111; overflow: hidden; }
 <script type="importmap">
 {
   "imports": {
-    "three":               "{% static 'vendor/three/build/three.module.js' %}",
-    "@thatopen/fragments": "{% static 'vendor/thatopen-fragments/dist/index.min.mjs' %}",
-    "web-ifc":             "{% static 'vendor/web-ifc/web-ifc-api.js' %}?v=2"
+    "three":                "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+    "@thatopen/components": "https://cdn.jsdelivr.net/npm/@thatopen/components@2.4.11/+esm",
+    "@thatopen/fragments":  "https://cdn.jsdelivr.net/npm/@thatopen/fragments@2.4.0/+esm",
+    "web-ifc":              "{% static 'vendor/web-ifc/web-ifc-api.js' %}?v=2"
   }
 }
 </script>
 
 <script type="module">
-import * as OBC   from "{% static 'vendor/thatopen-components/dist/index.min.mjs' %}";
+import * as OBC   from "@thatopen/components";
 import * as THREE from "three";
 
 {% if ifc_file_url %}
@@ -167,18 +168,30 @@ async function init() {
         components.init();
         world.scene.setup();
 
-        loadMsg.textContent = "Checking geometry cache…";
-        const fragResp = await fetch(FRAG_URL);
+        // Geometry cache disabled: the current @thatopen/fragments build does not
+        // reliably round-trip a saved .frag (load hangs/throws), so we always parse
+        // the IFC below. Correctness over the cache speed-up until versions are pinned.
+        const fragResp = { ok: false };
 
         if (fragResp.ok) {
-            loadMsg.textContent = "Loading cached model…";
-            const fragData = new Uint8Array(await fragResp.arrayBuffer());
-            const fragmentsManager = components.get(OBC.FragmentsManager);
-            model = fragmentsManager.load(fragData);
-            world.scene.three.add(model);
-            buildIndex();
-            if (globalIdIndex.size === 0) {
-                world.scene.three.remove(model);
+            // A stale or version-incompatible cache must not brick the viewer:
+            // any failure here clears the model so the IFC-parse path below runs.
+            try {
+                loadMsg.textContent = "Loading cached model…";
+                const fragData = new Uint8Array(await fragResp.arrayBuffer());
+                const fragmentsManager = components.get(OBC.FragmentsManager);
+                model = fragmentsManager.load(fragData);
+                world.scene.three.add(model);
+                buildIndex();
+                if (globalIdIndex.size === 0) {
+                    world.scene.three.remove(model);
+                    globalIdIndex.clear();
+                    fragmentIndex.clear();
+                    model = null;
+                }
+            } catch (fragErr) {
+                console.warn("[embed] Cached fragments failed — falling back to IFC parse:", fragErr);
+                try { if (model) world.scene.three.remove(model); } catch (_) { /* ignore */ }
                 globalIdIndex.clear();
                 fragmentIndex.clear();
                 model = null;
@@ -202,13 +215,29 @@ async function init() {
             const data = new Uint8Array(await resp.arrayBuffer());
             model = await ifcLoader.load(data);
             world.scene.three.add(model);
-            _saveFragments(components, model);
+            // Cache save disabled — see the note where the cache read is skipped.
             buildIndex();
         }
 
         loadingEl.style.display = "none";
         _initSelector();
         window.parent.postMessage({ type: "castor:viewer-ready" }, "*");
+
+        // Standalone deep-link: /embed/?focus=<GlobalID> highlights + zooms the
+        // element on load. Used by "View in 3D" / "Focus in 3D", which open this
+        // page in a new tab (a top-level page loads reliably — a nested iframe
+        // can hang/throttle in a modal).
+        try {
+            const _focusGid = new URLSearchParams(location.search).get("focus");
+            if (_focusGid && globalIdIndex.has(_focusGid)) {
+                _lastHighlightIds = [_focusGid];
+                resetAllColors();
+                colorByGlobalIds([_focusGid], new THREE.Color("#f59e0b"));
+                _selectedGlobalId = _focusGid;
+                _syncFocusBtn();
+                focusOnGlobalId(_focusGid);
+            }
+        } catch (e) { console.warn("[embed] focus-on-load failed:", e); }
 
     } catch (err) {
         console.error("[embed] IFC init failed:", err);

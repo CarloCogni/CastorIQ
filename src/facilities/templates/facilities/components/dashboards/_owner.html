@@ -4,8 +4,10 @@
 
 <div class="row g-3">
     {% include "facilities/components/dashboards/_asset_count_card.html" %}
+    {% include "facilities/components/dashboards/_wo_count_card.html" %}
+    {% include "facilities/components/dashboards/_permit_expiring_card.html" %}
+    {% include "facilities/components/dashboards/_request_count_card.html" %}
     {% include "facilities/components/dashboards/_placeholder_card.html" with icon="cash-stack" title="OpEx this period" hint="M8 · Cost Tracking" %}
     {% include "facilities/components/dashboards/_placeholder_card.html" with icon="graph-up-arrow" title="Capex budget vs actuals" hint="M8 · Cost Tracking" %}
-    {% include "facilities/components/dashboards/_placeholder_card.html" with icon="calendar2-check" title="Replace-vs-maintain alerts" hint="M8 · AI insight" %}
-    {% include "facilities/components/dashboards/_placeholder_card.html" with icon="file-earmark-text" title="Fiscal period close" hint="Phase 3" %}
+    {% include "facilities/components/dashboards/_activity_feed.html" %}
 </div>

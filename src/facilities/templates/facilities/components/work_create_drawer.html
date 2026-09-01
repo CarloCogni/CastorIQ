@@ -9,7 +9,7 @@
                 {% csrf_token %}
                 <div class="modal-header">
                     <h5 class="modal-title">
-                        <i class="bi bi-plus-lg" style="color: var(--castor-facilities, #14b8a6);"></i>
+                        <i class="bi bi-plus-lg" style="color: var(--castor-facilities, #3b82f6);"></i>
                         New work order
                     </h5>
                     <button type="button" class="btn-close" onclick="this.closest('.modal').remove()" aria-label="Close"></button>
@@ -37,6 +37,9 @@
                                 <option value="corrective">Corrective</option>
                                 <option value="preventive">Preventive</option>
                                 <option value="inspection">Inspection</option>
+                                <option value="safety">Safety</option>
+                                <option value="cleaning">Cleaning</option>
+                                <option value="modification">Modification</option>
                                 <option value="installation">Installation</option>
                                 <option value="decommission">Decommission</option>
                             </select>
@@ -60,6 +63,36 @@
 
                     <hr class="my-3">
 
+                    <!-- Anchor: what and where. Filling either one makes the
+                         WO show up in room-joined tables (Spaces panel) and
+                         on the asset's own page. -->
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <label class="form-label fs-8">Affected asset</label>
+                            <select name="affected_asset_id" class="form-select">
+                                <option value="">— none —</option>
+                                {% for a in wo_assets %}
+                                <option value="{{ a.pk }}" {% if form_values.asset_id == a.pk|stringformat:"s" %}selected{% endif %}>
+                                    {{ a.asset_tag|default:a.display_name|truncatechars:48 }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fs-8">Affected space (room / floor)</label>
+                            <select name="affected_spatial_id" class="form-select">
+                                <option value="">— none —</option>
+                                {% for s in spatial_elements %}
+                                <option value="{{ s.pk }}" {% if form_values.spatial_id == s.pk|stringformat:"s" %}selected{% endif %}>
+                                    {{ s.get_spatial_type_display }} · {{ s.entity.name|default:"(unnamed)" }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <hr class="my-3">
+
                     <div class="row g-2">
                         <div class="col-md-6">
                             <label class="form-label fs-8">Vendor (free text)</label>
@@ -77,7 +110,7 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-sm btn-outline-secondary" onclick="this.closest('.modal').remove()">Cancel</button>
                     <button type="submit" class="btn btn-sm"
-                            style="background-color: var(--castor-facilities, #14b8a6); color: white; border: none;">
+                            style="background-color: var(--castor-facilities, #3b82f6); color: white; border: none;">
                         <i class="bi bi-check-lg"></i> Create
                     </button>
                 </div>
