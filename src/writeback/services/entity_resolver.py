@@ -329,6 +329,119 @@ def _downgrade_unquantified_all_of_type(extracted: dict, user_message: str) -> d
     return extracted
 
 
+# Fix 4 — phrasing markers for "the user named a TYPE, but the extractor
+# didn't capture it." Deliberately restrictive: each pattern targets how a
+# type descriptor is actually written ("of type X", a trailing "type X"
+# noun phrase, or a quoted string after type/named/called), not the bare
+# word "type" anywhere in the message — a property VALUE can also contain
+# "type" (e.g. "set classification to type A"), and that must not trigger
+# fail-closed.
+_OF_TYPE_PATTERN = re.compile(r"\bof\s+type\s+\S", re.IGNORECASE)
+_QUOTED_TYPE_PATTERN = re.compile(r'\b(?:type|named|called)\b\s*[:\-]?\s*["“]', re.IGNORECASE)
+_TRAILING_CITATION_PATTERN = re.compile(r",?\s*per\s+.+$", re.IGNORECASE)
+_CONTINUATION_WORDS = re.compile(r"\b(?:on|for|in|of|to)\b", re.IGNORECASE)
+_TRAILING_TYPE_PATTERN = re.compile(r"\btype\s+(.+)$", re.IGNORECASE)
+
+
+def _has_trailing_type_phrase(message: str) -> bool:
+    """True when a bare (no "of") "type X" phrase runs to the true end of
+    the message, after stripping a trailing citation clause ("per IBC
+    713.4"). Excludes matches whose tail still contains a continuation
+    preposition ("on", "for", ...) — that shape means "type" introduced a
+    property VALUE and the sentence keeps going to name the real target
+    afterward (e.g. "...to type A on all interior walls"), not a type
+    descriptor for the target itself.
+    """
+    stripped = _TRAILING_CITATION_PATTERN.sub("", message).strip(" .,\"'")
+    match = _TRAILING_TYPE_PATTERN.search(stripped)
+    if not match:
+        return False
+    tail = match.group(1).strip(" .,\"'")
+    if not tail:
+        return False
+    return not _CONTINUATION_WORDS.search(tail)
+
+
+def _looks_like_type_qualified_phrasing(message: str) -> bool:
+    """True when the raw message names a TYPE the way a user actually
+    writes one: "of type X", a quoted string after type/named/called, or
+    a bare trailing "type X" noun phrase. Used only to decide whether a
+    null ``entity_name`` alongside ``scope=all_of_type`` is a dropped
+    extraction (fail closed) or a genuine "all of them" request (pass
+    through unchanged).
+    """
+    if not message:
+        return False
+    if _OF_TYPE_PATTERN.search(message):
+        return True
+    if _QUOTED_TYPE_PATTERN.search(message):
+        return True
+    return _has_trailing_type_phrase(message)
+
+
+def _fail_closed_on_unresolved_type_phrasing(
+    extracted: dict, user_message: str
+) -> ResolutionResult | None:
+    """Fail closed when the message named a TYPE but ``entity_name`` came
+    back empty, instead of letting ``_db_resolve`` fall through to
+    ``_resolve_all_of_type`` and blast-match every entity of ``ifc_type``.
+
+    Fix 1 (``_db_resolve``, ~line 733) already narrows ``all_of_type`` to
+    the entity_name-matched subset whenever ``entity_name`` is populated.
+    The gap this closes: a small model (observed: qwen3:1.7b) sometimes
+    drops ``entity_name`` entirely for "walls of type X" phrasing, so Fix
+    1's branch never fires and the request silently escalates to every
+    entity of ``ifc_type`` — the exact blast-radius bug Fix 1 was meant to
+    close, reopened by a missing field instead of a routing bug.
+
+    Trigger conditions (ALL must hold):
+      1. ``scope == "all_of_type"``.
+      2. ``entity_name`` is ``None``/empty — if it's populated, Fix 1
+         already routes this correctly; nothing to do here.
+      3. The raw message actually names a type ("of type X", trailing
+         "type X", or a quoted string after type/named/called) — see
+         :func:`_looks_like_type_qualified_phrasing`. A plain "all walls"
+         request with no type qualifier is a legitimate all_of_type match
+         and must pass through unchanged.
+
+    Returns a fail-closed empty :class:`ResolutionResult` when triggered,
+    ``None`` otherwise (caller proceeds to ``_db_resolve`` as normal).
+
+    Known limitation, accepted for this fix: even when a message correctly
+    populates ``entity_name`` instead of triggering this guard, the phrase
+    may not share a contiguous, punctuation-identical substring with the
+    real DB name (e.g. "Interior 6 1/8 Partition 2-hr" vs the DB's
+    'Interior - 6 1/8" Partition (2-hr)') — that still resolves to 0
+    matches downstream in ``_resolve_specific``, same fail-closed outcome,
+    different code path. Punctuation-insensitive name matching is a
+    separate, out-of-scope change (see plan.md).
+    """
+    if extracted.get("scope") != "all_of_type":
+        return None
+    entity_name = extracted.get("entity_name")
+    if isinstance(entity_name, str) and entity_name.strip():
+        return None
+    if not _looks_like_type_qualified_phrasing(user_message or ""):
+        return None
+    logger.info(
+        "Resolver: failing closed — type-qualified phrasing detected but no "
+        "entity_name extracted (message=%r); refusing blast-radius "
+        "all_of_type match",
+        user_message,
+    )
+    ifc_type = extracted.get("ifc_type")
+    return ResolutionResult(
+        entities=[],
+        ifc_type_hint=ifc_type if isinstance(ifc_type, str) else None,
+        scope="empty",
+        diagnostic=(
+            "could not identify the specific type named in the request — "
+            "the wording names a type (e.g. 'of type X') but no type name "
+            "could be extracted; please name the type more precisely"
+        ),
+    )
+
+
 def _hint_from_entities(provided: str | None, entities: list[IFCEntity]) -> str | None:
     """Derive a single ifc_type hint when the extractor didn't supply one.
 
@@ -526,6 +639,12 @@ class EntityNameResolver:
         # because the prefix matches a known IFC class. Downgrade when the
         # message contains no quantifier word — the user named ONE thing.
         extracted = _downgrade_unquantified_all_of_type(extracted, user_message)
+        # Fix 4: fail closed when "of type X" phrasing was used but the
+        # extractor dropped entity_name, instead of silently blast-matching
+        # every entity of ifc_type. See _fail_closed_on_unresolved_type_phrasing.
+        guard_result = _fail_closed_on_unresolved_type_phrasing(extracted, user_message)
+        if guard_result is not None:
+            return guard_result
         result = self._db_resolve(extracted)
         if result.is_unique:
             return result
@@ -546,6 +665,9 @@ class EntityNameResolver:
         )
         if extracted_1 is not None:
             extracted_1 = _downgrade_unquantified_all_of_type(extracted_1, user_message)
+            guard_result_1 = _fail_closed_on_unresolved_type_phrasing(extracted_1, user_message)
+            if guard_result_1 is not None:
+                return guard_result_1
             result_1 = self._db_resolve(extracted_1)
             if result_1.is_unique:
                 return result_1
@@ -569,6 +691,9 @@ class EntityNameResolver:
         )
         if extracted_2 is not None:
             extracted_2 = _downgrade_unquantified_all_of_type(extracted_2, user_message)
+            guard_result_2 = _fail_closed_on_unresolved_type_phrasing(extracted_2, user_message)
+            if guard_result_2 is not None:
+                return guard_result_2
             result_2 = self._db_resolve(extracted_2)
             if result_2.is_unique:
                 return result_2

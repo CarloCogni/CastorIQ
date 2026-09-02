@@ -322,6 +322,32 @@ class TestResolveAllOfType:
         pks = {e.pk for e in result.entities}
         assert pks == {w.pk for w in shaft_walls}
 
+    def test_of_type_phrasing_with_dropped_entity_name_fails_closed_end_to_end(
+        self, project, ifc_file, wall_entities
+    ):
+        """Fix 4, end-to-end. Reproduces the exact Verification 2 finding
+        (plan.md): on qwen3:1.7b, the extraction LLM emits scope=all_of_type
+        with entity_name=None for "all walls of type X" phrasing. Fix 1's
+        entity_name-narrowing path never fires when entity_name is null, so
+        without Fix 4 this falls through to _resolve_all_of_type and returns
+        every wall in the project. Fix 4 must fail closed instead."""
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = _make_llm_response(
+            json.dumps({"scope": "all_of_type", "ifc_type": "IfcWall"})
+        )
+        resolver = EntityNameResolver(project, llm=mock_llm)
+
+        result = resolver.resolve(
+            "Set the FireRating property to 2 HR on all walls of type "
+            "Interior 6 1/8 Partition 2-hr, per the fire safety report section 5.1."
+        )
+
+        assert result.is_empty
+        # One extraction call, no retries — scope wasn't "unknown" so the
+        # trim-retry loop stops immediately; the guard fires before any
+        # refinement iteration would otherwise kick in.
+        assert mock_llm.invoke.call_count == 1
+
 
 @pytest.mark.django_db
 class TestResolveFiltered:
@@ -400,6 +426,97 @@ class TestDowngradeUnquantifiedAllOfType:
 
         assert result["scope"] == "specific"
         assert "filter_hints" not in result
+
+
+class TestFailClosedOnUnresolvedTypePhrasing:
+    """Fix 4: fail closed when "of type X" phrasing was used but the
+    extractor dropped entity_name, instead of letting the blast-radius
+    all_of_type match through. Reproduces the Verification 2 finding
+    (plan.md): qwen3:1.7b returns scope=all_of_type with entity_name=None
+    for "walls of type X" phrasing, so Fix 1's entity_name-narrowing path
+    never fires."""
+
+    def test_returns_none_when_entity_name_is_populated(self):
+        """entity_name present alongside all_of_type — Fix 1 already routes
+        this correctly through the name matcher; the guard must do nothing."""
+        extracted = {
+            "scope": "all_of_type",
+            "ifc_type": "IfcWall",
+            "entity_name": "Interior 6 1/8 Partition 2-hr",
+        }
+        message = (
+            "Set the FireRating property to 2 HR on all walls of type "
+            "Interior 6 1/8 Partition 2-hr, per the fire safety report section 5.1."
+        )
+
+        result = resolver_module._fail_closed_on_unresolved_type_phrasing(extracted, message)
+
+        assert result is None
+
+    def test_fails_closed_on_of_type_phrasing_with_no_entity_name(self):
+        """Reproduces the reported qwen3:1.7b failure: scope=all_of_type
+        with entity_name dropped entirely for "of type X" phrasing. Without
+        this guard, _db_resolve falls through to _resolve_all_of_type and
+        blast-matches every IfcWall in the project (the 200-wall bug)."""
+        extracted = {"scope": "all_of_type", "ifc_type": "IfcWall", "entity_name": None}
+        message = (
+            "Set the FireRating property to 2 HR on all walls of type "
+            "Interior 6 1/8 Partition 2-hr, per the fire safety report section 5.1."
+        )
+
+        result = resolver_module._fail_closed_on_unresolved_type_phrasing(extracted, message)
+
+        assert result is not None
+        assert result.is_empty
+        assert "type" in result.diagnostic.lower()
+
+    def test_quoted_type_name_with_no_entity_name_fails_closed(self):
+        """A quoted type name after "of type" is also a type descriptor —
+        same fail-closed treatment as the unquoted case."""
+        extracted = {"scope": "all_of_type", "ifc_type": "IfcWall", "entity_name": None}
+        message = (
+            'Set FireRating to 2 HR on all walls of type "Basic Wall:Interior Elevator Shaft Wall"'
+        )
+
+        result = resolver_module._fail_closed_on_unresolved_type_phrasing(extracted, message)
+
+        assert result is not None
+        assert result.is_empty
+
+    def test_plain_all_of_type_with_no_type_qualifier_passes_through(self):
+        """A genuine "all walls" request (no type descriptor at all) has
+        nothing for the extractor to have dropped — original behavior
+        preserved, the guard must not fire just because entity_name is
+        empty."""
+        extracted = {"scope": "all_of_type", "ifc_type": "IfcWall"}
+        message = "set fire rating on all walls to EI120"
+
+        result = resolver_module._fail_closed_on_unresolved_type_phrasing(extracted, message)
+
+        assert result is None
+
+    def test_value_phrase_containing_type_does_not_trigger(self):
+        """ "type" appearing in a property VALUE phrase, not a type
+        descriptor for the target, must not fail closed. The sentence
+        keeps going after "type A" ("on all interior walls") — that's the
+        signal this is a value, not a dropped type-descriptor extraction."""
+        extracted = {"scope": "all_of_type", "ifc_type": "IfcWall"}
+        message = "Change the FireRating classification to type A on all interior walls."
+
+        result = resolver_module._fail_closed_on_unresolved_type_phrasing(extracted, message)
+
+        assert result is None
+
+    def test_scope_other_than_all_of_type_is_untouched(self):
+        """The guard is scoped to all_of_type only — scope=specific with no
+        entity_name is a different, pre-existing failure mode, not this
+        guard's concern."""
+        extracted = {"scope": "specific", "ifc_type": "IfcWall", "entity_name": None}
+        message = "Set FireRating to 2 HR on all walls of type Interior Partition"
+
+        result = resolver_module._fail_closed_on_unresolved_type_phrasing(extracted, message)
+
+        assert result is None
 
 
 @pytest.mark.django_db
