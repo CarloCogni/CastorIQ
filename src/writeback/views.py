@@ -9,7 +9,7 @@ from urllib.parse import quote
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
-from django.http import HttpResponseRedirect, JsonResponse
+from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -27,7 +27,7 @@ from core.llm import (
     LLMMasterKillError,
     TokenBudgetExceededError,
 )
-from core.mixins import ProjectTabMixin
+from core.mixins import ProjectAccessMixin, ProjectTabMixin
 from environments.models import Project
 from environments.services import ProjectAccessService
 from ifc_processor.models import IFCDataIssue
@@ -915,3 +915,108 @@ class RestoreCommitView(LoginRequiredMixin, View):
             messages.error(request, f"Restore failed: {e}")
 
         return redirect("writeback:history", pk=pk)
+
+
+class ExportConflictsExcelView(ProjectAccessMixin, View):
+    """GET — download semantic conflicts (Conflict, not IFCDataIssue) as an Excel workbook.
+
+    Single-sheet export. Header styling matches
+    :class:`environments.views.ScheduleExcelExportView` so every xlsx download
+    in Castor looks the same.
+    """
+
+    def get(self, request, pk: str, **kwargs: object) -> HttpResponse:
+        import openpyxl
+        from openpyxl.styles import Alignment, Font, PatternFill
+
+        project = self.get_project()
+
+        status = request.GET.get("status", "open")
+        valid_statuses = {choice.value for choice in Conflict.Status}
+        if status != "all" and status not in valid_statuses:
+            status = "open"
+
+        conflicts = Conflict.objects.filter(project=project).select_related(
+            "ifc_entity",
+            "document_chunk",
+            "document_chunk__document",
+            "scan_run",
+            "resolved_by",
+        )
+        if status != "all":
+            conflicts = conflicts.filter(status=status)
+
+        scan_run_id = request.GET.get("scan_run")
+        if scan_run_id:
+            conflicts = conflicts.filter(scan_run_id=scan_run_id)
+
+        conflicts = conflicts.order_by("-severity", "-created_at")
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Semantic Conflicts"
+
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill("solid", fgColor="1F4E79")
+        center = Alignment(horizontal="center")
+
+        headers = [
+            "Severity",
+            "Status",
+            "Title",
+            "Property name",
+            "IFC entity type",
+            "IFC entity name",
+            "GlobalId",
+            "IFC value",
+            "Document value",
+            "Source document",
+            "Page",
+            "Confidence %",
+            "Detected at",
+            "Scan run id",
+        ]
+        ws.append(headers)
+        for col_idx in range(1, len(headers) + 1):
+            cell = ws.cell(row=1, column=col_idx)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = center
+
+        for conflict in conflicts:
+            entity = conflict.ifc_entity
+            chunk = conflict.document_chunk
+            document = chunk.document if chunk else None
+            ws.append(
+                [
+                    conflict.get_severity_display(),
+                    conflict.get_status_display(),
+                    conflict.title,
+                    conflict.property_name,
+                    entity.ifc_type if entity else "",
+                    (entity.name or entity.global_id) if entity else "",
+                    entity.global_id if entity else "",
+                    conflict.ifc_value,
+                    conflict.document_value,
+                    document.name if document else "",
+                    chunk.page_number if chunk else "",
+                    round(conflict.confidence * 100),
+                    conflict.created_at.strftime("%Y-%m-%d %H:%M"),
+                    str(conflict.scan_run_id)[:8] if conflict.scan_run_id else "",
+                ]
+            )
+
+        ws.freeze_panes = "A2"
+        for col in ws.columns:
+            max_len = max((len(str(cell.value or "")) for cell in col), default=10)
+            ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 50)
+
+        response = HttpResponse(
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        ts = timezone.now().strftime("%Y%m%d_%H%M")
+        response["Content-Disposition"] = (
+            f'attachment; filename="castor_conflicts_{project.pk}_{ts}.xlsx"'
+        )
+        wb.save(response)
+        return response

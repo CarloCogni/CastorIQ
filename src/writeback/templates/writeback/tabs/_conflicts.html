@@ -215,6 +215,13 @@
                 {% if last_scan_run.llm_model_used %}· {{ last_scan_run.llm_model_used }}{% endif %}
             </span>
             {% endif %}
+            {% if has_any_conflicts %}
+            <a href="{% url 'writeback:export_conflicts_xlsx' project.pk %}?status=open"
+               class="btn btn-sm btn-outline-secondary rounded-pill"
+               title="Download current conflicts as Excel">
+                <i class="bi bi-file-earmark-excel me-1"></i>Export Excel
+            </a>
+            {% endif %}
         </div>
     </div>
 
