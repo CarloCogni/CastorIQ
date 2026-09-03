@@ -154,7 +154,7 @@
     <i class="bi bi-chat-dots me-1"></i>Ask about this
   </button>
   <button class="btn btn-sm btn-outline-warning"
-          onclick="modifyEntity('{{ entity.global_id }}', '{{ entity.ifc_type }}', '{{ entity.name|escapejs }}')"
+          onclick="modifyEntity('{{ entity.name|escapejs }}', '{{ entity.global_id }}', '{{ entity.ifc_type }}')"
           title="Switch to Modify tab with this element pre-filled">
     <i class="bi bi-pencil me-1"></i>Modify
   </button>

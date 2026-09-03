@@ -1511,6 +1511,20 @@ ModifyChat.initWebSocket();
     }
 })();
 
+// Prefill handed off from the Explore tab's "Modify" button
+// (sessionStorage survives the .tab-modify navigation; setTimeout would not).
+(function () {
+    const modifyPrefill = sessionStorage.getItem('castor.prefill.modify');
+    if (modifyPrefill && ModifyChat.inputEl) {
+        ModifyChat.inputEl.value = modifyPrefill;
+        if (typeof autoGrow === 'function') autoGrow(ModifyChat.inputEl);
+        ModifyChat.inputEl.focus();
+        const len = ModifyChat.inputEl.value.length;
+        ModifyChat.inputEl.setSelectionRange(len, len);
+        sessionStorage.removeItem('castor.prefill.modify');
+    }
+})();
+
 // Click-to-paste for example prompts
 document.querySelectorAll('.tier1-example').forEach(btn => {
     btn.addEventListener('click', () => {
