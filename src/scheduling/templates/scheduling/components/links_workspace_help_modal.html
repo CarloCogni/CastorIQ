@@ -1,0 +1,83 @@
+<!-- scheduling/components/links_workspace_help_modal.html — How Links works -->
+
+<div class="modal fade" id="linksWorkspaceHelpModal" tabindex="-1"
+     aria-labelledby="linksWorkspaceHelpLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+
+      <div class="modal-header border-bottom px-4 py-3"
+           style="border-color: var(--bs-border-color) !important;">
+        <h5 class="modal-title fw-semibold fs-6 mb-0" id="linksWorkspaceHelpLabel">
+          <i class="bi bi-boxes me-2" style="color: #3b82f6;"></i>
+          How Links Works
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body px-4 py-4">
+
+        <p class="fw-semibold fs-7 mb-2">
+          <i class="bi bi-box-seam me-1" style="color: #3b82f6;"></i>
+          What is it?
+        </p>
+        <p class="text-secondary fs-7 mb-4">
+          Links is a <strong>parameter / rule-based</strong> schedule–model linking workspace.
+          You configure a Link Rule (schedule field ↔ model parameter), run a read-only
+          <strong>Link Check</strong>, review Match Results, then apply matches only with an
+          explicit action. Model Context stays central for visual confirmation.
+        </p>
+
+        <p class="fw-semibold fs-7 mb-2">
+          <i class="bi bi-arrow-repeat me-1" style="color: #3b82f6;"></i>
+          Lifecycle
+        </p>
+        <ol class="text-secondary fs-7 mb-4">
+          <li>Open <strong>Rules</strong> and pick a preset (Activity Code ↔ Activity ID) or a custom parameter.</li>
+          <li>Click toolbar <strong>Run Link Check</strong> — dry-run / preview only; no links are written.</li>
+          <li>Review <strong>Match Results</strong> — Matched, Unmatched Activities, Unmatched Model Elements, Conflicts.</li>
+          <li>Use <strong>Highlight Mode</strong> to select several activities and highlight their applied model links together.</li>
+          <li>Use <strong>Apply Preview Matches</strong> in the Results drawer only when you intend to persist the latest preview set.</li>
+          <li>Select an activity and use <strong>Manual fallback</strong> only for individual exceptions.</li>
+        </ol>
+
+        <p class="fw-semibold fs-7 mb-2">
+          <i class="bi bi-sliders me-1" style="color: #3b82f6;"></i>
+          How to run a Link Check
+        </p>
+        <ul class="text-secondary fs-7 mb-4">
+          <li><strong>Run Link Check</strong> stays on the toolbar and is always visible.</li>
+          <li>Enter the IFC / Revit property that holds the activity code (e.g. <code>Activity ID</code>) in the Rules drawer.</li>
+          <li>Match type is <strong>exact</strong> equality for this version.</li>
+          <li>Match Results opens as an overlay drawer after Link Check — Model Context stays full height behind it.</li>
+          <li>The left panel is an activity list (not a Gantt timeline). Schedule owns the timeline.</li>
+          <li>Collapse the inspector to give Model Context more width. It stays collapsed until you reopen it from the slim rail or Inspector toggle. Selecting an activity does not reopen it.</li>
+          <li>Highlight Mode shows checkboxes on activity rows. Choose a <strong>Highlight color</strong>, then <strong>Highlight Selected</strong> to paint those activities. Later checks can use a different color; re-highlighting reassigns color. This is read-only and does not write links. Selecting an activity outside Highlight Mode does not change the model.</li>
+          <li><strong>Focus Highlighted</strong> zooms the camera. <strong>Isolate Highlighted</strong> dims the rest of the model. They are different actions.</li>
+          <li>Select a model element in Model Context to enable <strong>Link Selected Element</strong>.</li>
+          <li>Model Context camera controls: <strong>Zoom In</strong>, <strong>Zoom Out</strong>, <strong>Reset View</strong> (camera only — does not clear highlights), and <strong>Focus</strong> when an element is selected. <strong>Link Check</strong> colors applied vs unlinked elements. There is no Site control.</li>
+        </ul>
+
+        <p class="fw-semibold fs-7 mb-2">
+          <i class="bi bi-person-check me-1" style="color: #3b82f6;"></i>
+          Who can do what
+        </p>
+        <p class="text-secondary fs-7 mb-4">
+          Any member with schedule access can run Link Check (read-only).
+          Apply Links and Manual fallback require modify / link permission on the project.
+        </p>
+
+        <p class="fw-semibold fs-7 mb-2">
+          <i class="bi bi-exclamation-triangle me-1" style="color: #d97706;"></i>
+          Caveats
+        </p>
+        <p class="text-secondary fs-7 mb-0">
+          Matching is rule-based and deterministic only. Contains / fuzzy matching, WBS, Level + Type,
+          and applying a selected subset of preview rows are not available yet.
+          Link Check never creates bindings by itself. Apply Preview Matches writes the latest preview set.
+          Schedule writeback is not available here.
+        </p>
+
+      </div>
+    </div>
+  </div>
+</div>

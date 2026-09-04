@@ -1,7 +1,7 @@
 <!-- scheduling/components/task_detail.html — Task detail side panel (HTMX partial) -->
 
 <!-- Header: code + name -->
-<div class="mb-3">
+<div class="mb-3" data-testid="links-task-header">
     {% if task.activity_code %}
     <div style="font-size:0.68rem; color:var(--bs-secondary-color); font-family:monospace; letter-spacing:0.03em;">{{ task.activity_code }}</div>
     {% endif %}
@@ -51,35 +51,97 @@
     </div>
 </div>
 
-<!-- Linked elements -->
-<div class="mb-3">
+<!-- Manual link markers for Links JS (capabilities + task id) -->
+<div class="d-none"
+     data-testid="links-manual-capability"
+     data-task-id="{{ task.pk }}"
+     data-can-manual-link="{% if can_manual_link %}1{% else %}0{% endif %}"
+     data-can-remove-link="{% if can_remove_link %}1{% else %}0{% endif %}"></div>
+
+<!-- Applied / confirmed linked elements -->
+<div class="mb-3" data-testid="links-task-applied-block">
     <div class="text-secondary mb-2" style="font-size:0.73rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em;">
-        Linked Elements ({{ entities|length }}{% if siblings_count > 0 %}&nbsp;&middot;&nbsp;<span style="color:var(--bs-warning-text-emphasis);">{{ siblings_count }} shared</span>{% endif %})
+        Applied / Confirmed Links ({{ trusted_count|default:applied_links|length }}{% if siblings_count > 0 %}&nbsp;&middot;&nbsp;<span style="color:var(--bs-warning-text-emphasis);">{{ siblings_count }} shared</span>{% endif %})
     </div>
-    {% if entities %}
-    <div class="d-flex flex-column gap-1" style="max-height:130px; overflow-y:auto;">
-        {% for entity in entities %}
-        <a href="{% url 'projects:explore' project.pk %}?focus={{ entity.global_id|urlencode }}"
-           class="d-flex align-items-center gap-2 rounded text-decoration-none px-2 py-1"
-           style="font-size:0.75rem; background:var(--bs-tertiary-bg); color:var(--bs-body-color);"
-           title="{{ entity.global_id }}"
-           target="_self">
-            <i class="bi bi-box" style="font-size:0.7rem; flex-shrink:0; color:var(--bs-primary);"></i>
-            <span class="text-truncate">{{ entity.name|default:entity.global_id|truncatechars:30 }}</span>
-        </a>
+    <div data-testid="links-task-applied-cards">
+    {% if applied_links %}
+        {% for link in applied_links %}
+        <div class="border rounded p-2 mb-2"
+             style="font-size:0.76rem; border-color:rgba(34,197,94,0.3)!important; background:rgba(34,197,94,0.07);"
+             data-testid="links-applied-card"
+             data-binding-id="{{ link.binding_id }}" data-global-id="{{ link.global_id }}">
+            <div class="d-flex align-items-start gap-2">
+                <i class="bi bi-check-circle text-success mt-1" style="font-size:0.75rem;"></i>
+                <div class="flex-grow-1 min-w-0">
+                    <div class="fw-semibold text-truncate" style="font-size:0.78rem;">{{ link.name }}</div>
+                    <div class="text-secondary" style="font-size:0.68rem;">
+                        {% if link.ifc_type %}{{ link.ifc_type }}{% endif %}
+                        {% if link.storey %} · {{ link.storey }}{% endif %}
+                    </div>
+                    <code style="font-size:0.65rem;">{{ link.global_id }}</code>
+                    <div class="mt-1">
+                        <span class="badge border text-success" style="font-size:0.65rem;">Applied / Confirmed</span>
+                        {% if link.link_method %}
+                        <span class="text-secondary ms-1" style="font-size:0.65rem;">{{ link.link_method }}</span>
+                        {% endif %}
+                    </div>
+                    {% if can_remove_link and link.global_id %}
+                    <div class="mt-2">
+                        <button type="button"
+                                class="btn btn-sm btn-outline-secondary py-0 px-2"
+                                style="font-size:0.72rem;"
+                                data-testid="links-remove-link-btn"
+                                data-global-id="{{ link.global_id }}"
+                                data-task-id="{{ task.pk }}">
+                            Remove Link
+                        </button>
+                    </div>
+                    {% elif not can_remove_link %}
+                    <div class="mt-1 text-secondary" style="font-size:0.68rem;"
+                         data-testid="links-remove-unavailable">
+                        Link action unavailable in this session.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
         {% endfor %}
-    </div>
     {% else %}
-    <div class="text-secondary" style="font-size:0.75rem;">No elements linked to this task.</div>
+        <div class="text-secondary" style="font-size:0.75rem;" data-testid="links-applied-empty">
+            <div class="mb-1">No applied model links for this activity.</div>
+            <div data-testid="links-manual-link-guidance">
+                Use <strong>Link Check</strong> for parameter-based matching,
+                or <strong>Manual fallback</strong> for individual exceptions.
+            </div>
+        </div>
     {% endif %}
+    </div>
 </div>
 
-<!-- View in Simulator (dispatches event; Feature 2 will handle it) -->
-{% if entities %}
+<!-- Property hints -->
+{% if property_hints %}
+<div class="mb-3" data-testid="links-task-property-hints">
+    <div class="text-secondary mb-2" style="font-size:0.73rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em;">
+        Property Hints
+    </div>
+    <div class="d-flex flex-column gap-1" style="max-height:70px; overflow-y:auto;">
+        {% for hint in property_hints %}
+        <div class="small px-2 py-1 rounded bg-body-secondary">
+            <code>{{ hint.activity_id }}</code> · {{ hint.name|truncatechars:24 }}
+            {% if hint.ifc_type %}<span class="text-secondary"> · {{ hint.ifc_type }}</span>{% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Time View owns playback — keep a quiet navigation hint only -->
+{% if applied_links %}
 <hr class="my-2">
-<button class="btn btn-sm btn-primary w-100"
-        style="font-size:0.78rem;"
-        onclick="window.jumpToSimulator('{{ task.start_date|date:'Y-m-d' }}', {{ entity_global_ids_json }})">
-    <i class="bi bi-play-fill me-1"></i>View in Simulator
-</button>
+<a class="btn btn-sm btn-outline-secondary w-100"
+   style="font-size:0.78rem;"
+   href="{% url 'scheduling:schedule' project.pk %}?tab=lookahead"
+   data-testid="links-open-time-view">
+    <i class="bi bi-calendar-week me-1"></i>Open Time View
+</a>
 {% endif %}

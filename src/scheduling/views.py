@@ -43,7 +43,6 @@ from .services.column_mapper import (
 )
 from .services.critical_path import compute_critical_path
 from .services.evm import compute_evm
-from .services.linker import apply_matches, param_match_tasks
 from .services.msp_parser import parse_msp
 from .services.p6_save import finalise_p6_data, save_p6_pending_data
 from .services.pct_normalize import normalize_pct_complete
@@ -1075,43 +1074,155 @@ class TaskActualDateView(ProjectModifyAccessMixin, View):
         return trigger_toast(response, "Actual dates updated.", "success")
 
 
-class LinkParamView(ProjectModifyAccessMixin, View):
-    """HTMX POST — parameter mapping of tasks to IFC entities."""
+class MatchPreviewView(ProjectAccessMixin, View):
+    """GET — read-only exact-match preview for Task.activity_code ↔ IFC property."""
+
+    @staticmethod
+    def _preview_ui_state(preview) -> dict[str, bool]:
+        """UI-only flags from write-plan counts — does not alter persistence."""
+        has_pending_writes = not preview.errors and (
+            preview.projected_inserts > 0 or preview.projected_updates > 0
+        )
+        already_applied = (
+            not preview.errors
+            and preview.projected_binding_count > 0
+            and preview.projected_inserts == 0
+            and preview.projected_updates == 0
+        )
+        return {
+            "has_pending_writes": has_pending_writes,
+            "already_applied": already_applied,
+        }
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.match_preview import MatchPreviewService
+
+        project = self.get_project()
+        param_name = request.GET.get("param_name", "Activity ID").strip()
+        if not param_name:
+            return JsonResponse({"error": "param_name is required."}, status=400)
+
+        preview = MatchPreviewService(project).preview(param_name)
+        payload = preview.to_dict()
+
+        wants_json = request.GET.get(
+            "format"
+        ) == "json" or "application/json" in request.headers.get("Accept", "")
+        if wants_json and not request.headers.get("HX-Request"):
+            if preview.errors:
+                return JsonResponse(payload, status=400)
+            return JsonResponse(payload)
+
+        show_approval = request.GET.get("show_approval", "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        summary_only = (
+            request.GET.get("summary_only", "").strip().lower() in ("1", "true", "yes")
+            and not show_approval
+        )
+        ui_state = self._preview_ui_state(preview)
+        response = render(
+            request,
+            "scheduling/components/param_match_preview.html",
+            {
+                "preview": preview,
+                "project": project,
+                "show_approval": show_approval,
+                "summary_only": summary_only,
+                **ui_state,
+                "approval_swap_target": "#fourD-match-preview",
+            },
+        )
+        if preview.errors:
+            return trigger_toast(response, preview.errors[0], "error")
+        return response
+
+
+class ApplyApprovedMatchView(ProjectModifyAccessMixin, View):
+    """POST — persist accepted bindings after fingerprint-validated approval."""
 
     def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.approved_match_main import (
+            ApprovalValidationError,
+            ApprovedMatchPersistenceService,
+            MatchApprovalRequest,
+            StalePreviewError,
+        )
+
         project = self.get_project()
+
+        if request.content_type and request.content_type.startswith("application/json"):
+            try:
+                payload = json.loads(request.body.decode() or "{}")
+            except json.JSONDecodeError:
+                return JsonResponse({"error": "Invalid JSON body."}, status=400)
+        else:
+            payload = request.POST.dict()
+            payload["confirm_acknowledged"] = request.POST.get("confirm_acknowledged")
+
+        try:
+            approval = MatchApprovalRequest.from_payload(payload)
+            result = ApprovedMatchPersistenceService(project, request.user).persist(approval)
+        except StalePreviewError as exc:
+            if request.headers.get("HX-Request"):
+                response = render(
+                    request,
+                    "scheduling/components/param_match_apply_conflict.html",
+                    {"error": exc.message, "details": exc.details, "project": project},
+                    status=409,
+                )
+                return trigger_toast(
+                    response,
+                    "Preview is stale — regenerate preview before applying.",
+                    "error",
+                )
+            return JsonResponse({"error": exc.message, **exc.details}, status=409)
+        except ApprovalValidationError as exc:
+            if request.headers.get("HX-Request"):
+                return toast_response(exc.message, "error", status=400)
+            return JsonResponse({"error": exc.message, **exc.details}, status=400)
+
+        result_dict = result.to_dict()
+        wants_json = (
+            request.GET.get("format") == "json"
+            or payload.get("format") == "json"
+            or (
+                "application/json" in request.headers.get("Accept", "")
+                and not request.headers.get("HX-Request")
+            )
+        )
+        if wants_json:
+            return JsonResponse(result_dict)
+
+        response = render(
+            request,
+            "scheduling/components/param_match_apply_result.html",
+            {"result": result, "project": project},
+        )
+        msg = (
+            f"Persisted {result.inserted_accepted_bindings} new, "
+            f"{result.promoted_review_bindings} promoted, "
+            f"{result.noop_existing_accepted_bindings} unchanged."
+        )
+        return trigger_toast(response, msg, "success")
+
+
+class LinkParamView(ProjectModifyAccessMixin, View):
+    """HTMX POST — parameter mapping (persistence blocked until preview approval)."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        self.get_project()
         param_name = request.POST.get("param_name", "").strip()
         if not param_name:
             return toast_response("Enter a property name to match on.", "error", status=400)
 
-        tasks = list(Task.objects.filter(project=project))
-        ifc_files = IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
-        entities = list(IFCEntity.objects.filter(ifc_file__in=ifc_files))
-
-        if not tasks:
-            return toast_response(
-                "No tasks to link — import a schedule first.", "error", status=400
-            )
-
-        matches = param_match_tasks(tasks, entities, param_name)
-        if matches:
-            apply_matches(Task, matches)
-
-        tasks_qs = Task.objects.filter(project=project).prefetch_related("ifc_entities")
-        response = render(
-            request,
-            "scheduling/components/attach_results.html",
-            {
-                "tasks": tasks_qs,
-                "matches": matches,
-                "project": project,
-                "match_mode": "param",
-                "param_name": param_name,
-            },
-        )
-        linked = sum(1 for m in matches if m["entity_ids"])
-        return trigger_toast(
-            response, f"Parameter '{param_name}' matched {linked} tasks.", "success"
+        return toast_response(
+            "Parameter Match persistence is disabled until you preview and approve. "
+            "Use Link Check / Preview Match on the Links tab first.",
+            "info",
+            status=400,
         )
 
 
@@ -1216,10 +1327,8 @@ class GanttDataView(ProjectAccessMixin, View):
 
     def get(self, request, **kwargs: object) -> JsonResponse:
         project = self.get_project()
-        qs = (
-            Task.objects.filter(project=project, is_non_physical=False)
-            .prefetch_related("ifc_entities")
-            .order_by("start_date", "activity_code")
+        qs = Task.objects.filter(project=project, is_non_physical=False).order_by(
+            "start_date", "activity_code"
         )
 
         page_str = request.GET.get("page")
@@ -1242,7 +1351,7 @@ class GanttDataView(ProjectAccessMixin, View):
             total_count = qs.count()
             total_pages = max(1, math.ceil(total_count / page_size))
             offset = (page - 1) * page_size
-            tasks = qs[offset : offset + page_size]
+            tasks = list(qs[offset : offset + page_size])
             pagination = {
                 "total_count": total_count,
                 "total_pages": total_pages,
@@ -1250,15 +1359,34 @@ class GanttDataView(ProjectAccessMixin, View):
                 "has_more": page < total_pages,
             }
         else:
-            tasks = qs
+            tasks = list(qs)
             pagination = None
+
+        task_ids = [t.pk for t in tasks]
+        trusted_by_task: dict[str, list[str]] = {}
+        review_by_task: dict[str, list[str]] = {}
+        if task_ids:
+            for task_id, gid, needs_review in TaskEntityBinding.objects.filter(
+                task_id__in=task_ids
+            ).values_list("task_id", "entity_global_id", "needs_review"):
+                key = str(task_id)
+                if needs_review:
+                    review_by_task.setdefault(key, []).append(gid)
+                else:
+                    trusted_by_task.setdefault(key, []).append(gid)
 
         data = []
         for task in tasks:
-            gids = [e["global_id"] for e in task.ifc_entities.values("global_id")]
+            tid = str(task.pk)
+            trusted_gids = trusted_by_task.get(tid, [])
+            review_gids = review_by_task.get(tid, [])
+            # Prefer accepted bindings; fall back to M2M for legacy links.
+            if not trusted_gids:
+                trusted_gids = list(task.ifc_entities.values_list("global_id", flat=True))
+            link_status = "linked" if trusted_gids else "unlinked"
             data.append(
                 {
-                    "id": str(task.pk),
+                    "id": tid,
                     "name": task.name,
                     "start": task.start_date.isoformat(),
                     "end": task.end_date.isoformat(),
@@ -1270,8 +1398,12 @@ class GanttDataView(ProjectAccessMixin, View):
                     "total_float": task.total_float,
                     "activity_code": task.activity_code or "",
                     "status": task.status,
-                    "link_status": task.link_status,
-                    "entity_global_ids": gids,
+                    "link_status": link_status,
+                    "entity_global_ids": trusted_gids,
+                    "trusted_entity_global_ids": trusted_gids,
+                    "review_entity_global_ids": review_gids,
+                    "trusted_entity_count": len(trusted_gids),
+                    "review_entity_count": len(review_gids),
                 }
             )
 
@@ -1282,24 +1414,86 @@ class GanttDataView(ProjectAccessMixin, View):
 
 
 class TaskDetailView(ProjectAccessMixin, View):
-    """HTMX GET — task detail side panel for the Gantt chart."""
+    """HTMX GET — task detail side panel for Links / Gantt inspector."""
 
     def get(self, request, **kwargs: object) -> HttpResponse:
         project = self.get_project()
         task = get_object_or_404(Task, pk=kwargs["task_pk"], project=project)
-        entities = list(task.ifc_entities.only("global_id", "name", "ifc_type"))
         today = date.today()
         progress = _compute_progress(task, today)
 
-        gids = [e.global_id for e in entities]
+        trusted_bindings = list(
+            TaskEntityBinding.objects.filter(task=task, needs_review=False).order_by(
+                "-confidence", "created_at"
+            )[:50]
+        )
+        trusted_gids = [b.entity_global_id for b in trusted_bindings]
+        ifc_files = IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
+        entity_by_gid = {
+            e.global_id: e
+            for e in IFCEntity.objects.filter(
+                ifc_file__in=ifc_files,
+                global_id__in=set(trusted_gids),
+            ).only("global_id", "name", "ifc_type")
+        }
+
+        # Fallback: legacy M2M when no accepted bindings yet.
+        if not trusted_bindings:
+            m2m_entities = list(task.ifc_entities.only("global_id", "name", "ifc_type"))
+            applied_links = [
+                {
+                    "binding_id": "",
+                    "global_id": e.global_id,
+                    "name": e.name or e.global_id,
+                    "ifc_type": e.ifc_type or "",
+                    "storey": "",
+                    "confidence": None,
+                    "link_method": "",
+                    "activity_hint": "",
+                }
+                for e in m2m_entities
+            ]
+            trusted_gids = [e.global_id for e in m2m_entities]
+        else:
+            applied_links = [
+                {
+                    "binding_id": str(b.pk),
+                    "global_id": b.entity_global_id,
+                    "name": (
+                        (
+                            entity_by_gid[b.entity_global_id].name
+                            if b.entity_global_id in entity_by_gid
+                            else ""
+                        )
+                        or b.entity_global_id
+                    ),
+                    "ifc_type": (
+                        entity_by_gid[b.entity_global_id].ifc_type
+                        if b.entity_global_id in entity_by_gid
+                        else ""
+                    )
+                    or "",
+                    "storey": "",
+                    "confidence": b.confidence,
+                    "link_method": b.link_method or "",
+                    "activity_hint": "",
+                }
+                for b in trusted_bindings
+            ]
+
         siblings_count = (
             (
-                Task.objects.filter(project=project, ifc_entities__global_id__in=gids)
-                .exclude(pk=task.pk)
+                TaskEntityBinding.objects.filter(
+                    task__project=project,
+                    entity_global_id__in=trusted_gids,
+                    needs_review=False,
+                )
+                .exclude(task_id=task.pk)
+                .values("task_id")
                 .distinct()
                 .count()
             )
-            if gids
+            if trusted_gids
             else 0
         )
 
@@ -1308,12 +1502,17 @@ class TaskDetailView(ProjectAccessMixin, View):
             "scheduling/components/task_detail.html",
             {
                 "task": task,
-                "entities": entities,
+                "entities": list(entity_by_gid.values()) if entity_by_gid else [],
+                "applied_links": applied_links,
+                "trusted_count": len(applied_links),
                 "progress": progress,
                 "siblings_count": siblings_count,
                 "stage_color": _STAGE_COLORS.get(task.stage or "", "#6b7280"),
-                "entity_global_ids_json": json.dumps(gids),
+                "entity_global_ids_json": json.dumps(trusted_gids),
                 "project": project,
+                "can_manual_link": True,
+                "can_remove_link": True,
+                "property_hints": [],
             },
         )
 

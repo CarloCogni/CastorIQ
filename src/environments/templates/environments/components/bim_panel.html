@@ -106,7 +106,7 @@
     </div>
 
     <!-- Sub-tab content -->
-    <div class="flex-grow-1 overflow-auto">
+    <div class="flex-grow-1 {% if schedule_tab == 'fourD_link' or schedule_tab == 'lookahead' %}overflow-hidden{% else %}overflow-auto{% endif %}">
         {% if castor_subtab == 'viewer' %}
             {% include "ifc_viewer/viewer.html" %}
         {% elif castor_subtab == 'schedule' %}

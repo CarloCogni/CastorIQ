@@ -221,6 +221,7 @@ async function init() {
 
         loadingEl.style.display = "none";
         _initSelector();
+        _captureHomeCamera();
         window.parent.postMessage({ type: "castor:viewer-ready" }, "*");
 
         // Standalone deep-link: /embed/?focus=<GlobalID> highlights + zooms the
@@ -399,6 +400,13 @@ function _saveCameraState() {
     _savedCameraTarget = (controls.target ?? new THREE.Vector3()).clone();
 }
 
+function _captureHomeCamera() {
+    const controls = world?.camera?.controls;
+    if (!controls || !world?.camera?.three) return;
+    _homeCameraPos = world.camera.three.position.clone();
+    _homeCameraTarget = (controls.target ?? new THREE.Vector3()).clone();
+}
+
 function _restoreCameraState() {
     const controls = world?.camera?.controls;
     if (!controls || !_savedCameraPos || !_savedCameraTarget) return;
@@ -416,6 +424,7 @@ function resetAllColors() {
     _savedCameraPos    = null;
     _savedCameraTarget = null;
     _lastHighlightIds  = [];
+    _lastHighlightColorMap = null;
     for (const fragment of model.items) {
         fragment.resetColor();
         fragment.setVisibility(true);
@@ -461,6 +470,81 @@ function wireframeNoTaskFragments(noTaskIds, solidIds) {
 
 function makeColor(hex) {
     return new THREE.Color(hex);
+}
+
+function _applyHighlightColors(ids, colorMap) {
+    if (!ids || !ids.length) return;
+    if (colorMap && typeof colorMap === "object") {
+        const byHex = {};
+        ids.forEach(function (gid) {
+            const hex = colorMap[gid];
+            if (!hex) return;
+            (byHex[hex] = byHex[hex] || []).push(gid);
+        });
+        const hexes = Object.keys(byHex);
+        if (hexes.length) {
+            hexes.forEach(function (hex) {
+                colorByGlobalIds(byHex[hex], new THREE.Color(hex));
+            });
+            return;
+        }
+    }
+    colorByGlobalIds(ids, new THREE.Color('#f59e0b'));
+}
+
+function _applyLastHighlightColors() {
+    _applyHighlightColors(_lastHighlightIds, _lastHighlightColorMap);
+}
+
+function _isolateHighlighted(globalId) {
+    if (!model) return;
+    if (!_sectionEnabled) {
+        _saveCameraState();
+        disableWireframe();
+        for (const fragment of model.items) {
+            fragment.resetColor();
+            fragment.setVisibility(true);
+        }
+        colorByGlobalIds([...globalIdIndex.keys()], C.tl_no_task);
+        _applyLastHighlightColors();
+        _enableSectionBoxAroundElements(_lastHighlightIds);
+        if (globalId) focusOnGlobalId(globalId);
+    } else {
+        _disableSectionBox();
+        _restoreCameraState();
+        enableWireframe(_lastHighlightIds);
+        _applyLastHighlightColors();
+    }
+    _syncFocusBtn();
+}
+
+function _applyViewerZoom(direction) {
+    const controls = world?.camera?.controls;
+    if (!controls) return;
+    if (direction === "in") controls.dollyIn(0.5, true);
+    else if (direction === "out") controls.dollyOut(0.5, true);
+}
+
+function _resetCameraView() {
+    const controls = world?.camera?.controls;
+    if (!controls) return;
+    _disableSectionBox();
+    if (model) {
+        for (const fragment of model.items) {
+            fragment.setVisibility(true);
+        }
+    }
+    if (_lastHighlightIds && _lastHighlightIds.length) {
+        enableWireframe(_lastHighlightIds);
+        _applyLastHighlightColors();
+    }
+    if (_homeCameraPos && _homeCameraTarget) {
+        controls.setLookAt(
+            _homeCameraPos.x, _homeCameraPos.y, _homeCameraPos.z,
+            _homeCameraTarget.x, _homeCameraTarget.y, _homeCameraTarget.z,
+            true
+        );
+    }
 }
 
 // ── 3b. Focus helpers ────────────────────────────────────────────────
@@ -677,9 +761,12 @@ window.addEventListener("message", async (e) => {
         _selectedGlobalId = null;
         const ids = msg.global_ids || [];
         _lastHighlightIds = ids;
+        _lastHighlightColorMap = (msg.color_map && typeof msg.color_map === "object")
+            ? msg.color_map
+            : null;
         if (ids.length) {
             enableWireframe(ids);
-            colorByGlobalIds(ids, new THREE.Color('#f59e0b'));
+            _applyHighlightColors(ids, _lastHighlightColorMap);
             _selectedGlobalId = ids[0];
         }
         _syncFocusBtn();
@@ -728,8 +815,26 @@ window.addEventListener("message", async (e) => {
         return;
     }
 
+    if (msg.type === "castor:isolate") {
+        if (!model) return;
+        const gid = msg.global_id || (_lastHighlightIds && _lastHighlightIds[0]);
+        _isolateHighlighted(gid);
+        return;
+    }
+
     if (msg.type === "castor:focus-element") {
         if (!model || !msg.global_id) return;
+        /* Links Focus Highlighted: camera only when isolate is explicitly false. */
+        if (msg.isolate === false) {
+            focusOnGlobalId(msg.global_id);
+            _syncFocusBtn();
+            return;
+        }
+        if (msg.isolate === true) {
+            _isolateHighlighted(msg.global_id);
+            return;
+        }
+        /* Default (Explore/FM): toggle section isolate when isolate omitted. */
         if (!_sectionEnabled) {
             /* An unresolvable GID (stale link, GID from another file) must be
                a no-op: ghosting everything with nothing highlighted leaves the
@@ -743,7 +848,7 @@ window.addEventListener("message", async (e) => {
                 fragment.setVisibility(true);
             }
             colorByGlobalIds([...globalIdIndex.keys()], C.tl_no_task);
-            colorByGlobalIds(_lastHighlightIds, new THREE.Color('#f59e0b'));
+            _applyLastHighlightColors();
             _enableSectionBoxAroundElements(_lastHighlightIds);
             focusOnGlobalId(msg.global_id);
         } else {
@@ -751,17 +856,19 @@ window.addEventListener("message", async (e) => {
             _disableSectionBox();
             _restoreCameraState();
             enableWireframe(_lastHighlightIds);
-            colorByGlobalIds(_lastHighlightIds, new THREE.Color('#f59e0b'));
+            _applyLastHighlightColors();
         }
         _syncFocusBtn();
         return;
     }
 
-    if (msg.type === "castor:zoom") {
-        const controls = world?.camera?.controls;
-        if (!controls) return;
-        if (msg.direction === "in")       controls.dollyIn(0.5,  true);
-        else if (msg.direction === "out") controls.dollyOut(0.5, true);
+    if (msg.type === "castor:reset-view") {
+        _resetCameraView();
+        return;
+    }
+
+    if (msg.type === "castor:zoom" || msg.type === "castor:viewer-zoom") {
+        _applyViewerZoom(msg.direction);
         return;
     }
 
@@ -800,7 +907,10 @@ let _sectionEnabled    = false;
 let _sectionPlanes     = null;
 let _savedCameraPos    = null;
 let _savedCameraTarget = null;
+let _homeCameraPos     = null;
+let _homeCameraTarget  = null;
 let _lastHighlightIds  = [];
+let _lastHighlightColorMap = null;
 const _SEL_COLOR = new THREE.Color('#00BCD4');
 let _multiSelectedIds  = [];
 let _linkModeActive    = false;

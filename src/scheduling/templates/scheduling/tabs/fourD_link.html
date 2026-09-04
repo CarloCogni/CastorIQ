@@ -1,53 +1,347 @@
-<!-- scheduling/tabs/fourD_link.html — unified 4D Link workspace (link + simulate + review) -->
+<!-- scheduling/tabs/fourD_link.html — Links Option B 3-panel workspace -->
 
 <style>
-  .fd-zoom-btn {
-    padding: 2px 8px;
-    font-size: 11px;
-    background: transparent;
+  /* ── Links Option B: toolbar + activity list + model + inspector ── */
+  #fourD-root.lw-workspace {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1 1 auto;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    padding: 6px 8px 8px;
+  }
+  #lw-toolbar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+    overflow: hidden;
+    padding: 4px 2px 6px;
+    min-height: 40px;
+    border-bottom: 1px solid var(--bs-border-color);
+    background: var(--bs-body-bg);
+  }
+  #lw-toolbar .input-group { width: 140px; min-width: 110px; flex: 0 1 140px; }
+  #lw-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    gap: 0;
+    position: relative;
+    overflow: hidden;
+    z-index: 1;
+  }
+  #lw-left {
+    width: 280px;
+    min-width: 220px;
+    max-width: 36%;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+  }
+  #lw-rule-setup {
+    display: none;
+    position: absolute;
+    top: 52px;
+    left: 12px;
+    width: 340px;
+    max-width: calc(100% - 24px);
+    max-height: calc(100% - 68px);
+    overflow: auto;
+    z-index: 30;
     border: 1px solid var(--bs-border-color);
+    border-radius: 8px;
+    background: var(--bs-body-bg);
+    padding: 10px 12px 12px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+  }
+  #fourD-root.lw-rules-open #lw-rule-setup { display: block; }
+  #lw-rule-setup .form-label {
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--bs-secondary-color);
+    margin-bottom: 2px;
+  }
+  #lw-rule-setup .form-select,
+  #lw-rule-setup .form-control { font-size: 0.76rem; }
+  #fourD-gantt {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    max-width: none;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  #fd-gantt-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    background: var(--bs-body-bg);
+  }
+  #fd-gantt-inner { min-height: 0; }
+  #fd-gantt-body { min-height: 0; }
+  .lw-act-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 6px 10px;
+    height: 52px;
+    box-sizing: border-box;
+    cursor: pointer;
+    border-bottom: 1px solid var(--bs-border-color);
+    overflow: hidden;
+  }
+  .lw-act-row:hover { background: var(--bs-secondary-bg); }
+  .lw-act-row.lw-row-selected {
+    background: color-mix(in srgb, var(--bs-primary) 12%, var(--bs-body-bg));
+    box-shadow: inset 3px 0 0 var(--bs-primary);
+  }
+  .lw-act-group {
+    display: flex;
+    align-items: center;
+    height: 52px;
+    box-sizing: border-box;
+    padding: 6px 10px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--bs-secondary-color);
+    background: var(--bs-secondary-bg);
+    border-bottom: 1px solid var(--bs-border-color);
+  }
+  .lw-act-main { min-width: 0; flex: 1 1 auto; }
+  .lw-act-code {
+    font-size: 0.72rem;
+    font-weight: 600;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .lw-act-name {
+    font-size: 0.78rem;
+    line-height: 1.25;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .lw-act-meta {
+    font-size: 0.68rem;
+    color: var(--bs-secondary-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #lw-center {
+    flex: 1 1 auto;
+    min-width: 320px;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 0 6px;
+    overflow: hidden;
+  }
+  #fourD-viewer.lw-model-context {
+    flex: 1 1 auto;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: 6px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  #fourD-viewer.lw-model-context #fd-iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  #lw-drawer-scrim {
+    display: none;
+    position: absolute;
+    inset: 0;
+    z-index: 25;
+    background: rgba(15, 23, 42, 0.45);
+  }
+  #fourD-root.lw-rules-open #lw-drawer-scrim,
+  #fourD-root.lw-results-open #lw-drawer-scrim { display: block; }
+  #lw-match-results {
+    display: none;
+    position: absolute;
+    top: 52px;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    z-index: 31;
+    min-height: 0;
+    max-height: none;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 8px;
+    background: var(--bs-body-bg);
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.32);
+  }
+  #fourD-root.lw-results-open #lw-match-results { display: flex; }
+  #lw-match-results .lw-results-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--bs-border-color);
+    flex-shrink: 0;
+  }
+  #lw-match-results .lw-results-tab {
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 3px 8px;
+    border: 1px solid transparent;
     border-radius: 4px;
-    color: var(--bs-body-color);
+    background: transparent;
+    color: var(--bs-secondary-color);
     cursor: pointer;
   }
-  .fd-zoom-btn.active {
-    background: var(--bs-primary);
-    color: #fff;
-    border-color: var(--bs-primary);
-  }
-  @keyframes fd-spin { to { transform: rotate(360deg); } }
-  .fd-splitter {
-    width: 8px;
-    flex-shrink: 0;
-    cursor: col-resize;
-    position: relative;
-    z-index: 10;
-    background: var(--bs-border-color);
-    transition: background 0.15s;
-  }
-  .fd-splitter:hover,
-  .fd-splitter.fd-dragging {
-    background: var(--bs-primary);
-  }
-  .fd-splitter::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 4px;
-    height: 40px;
+  #lw-match-results .lw-results-tab.active {
+    color: var(--bs-body-color);
+    border-color: var(--bs-border-color);
     background: var(--bs-secondary-bg);
-    border-radius: 2px;
-    opacity: 0.7;
-    transition: height 0.15s, opacity 0.15s;
   }
-  .fd-splitter:hover::after,
-  .fd-splitter.fd-dragging::after {
-    height: 64px;
-    opacity: 1;
+  #lw-match-results .lw-results-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
   }
-  .fd-lf-btn {
+  #lw-match-results table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.72rem;
+  }
+  #lw-match-results th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--bs-secondary-bg);
+    border-bottom: 1px solid var(--bs-border-color);
+    text-align: left;
+    padding: 4px 8px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  #lw-match-results td {
+    border-bottom: 1px solid var(--bs-border-color);
+    padding: 4px 8px;
+    vertical-align: top;
+  }
+  #lw-match-results tr:hover td { background: rgba(59, 130, 246, 0.06); }
+  #lw-inspector {
+    width: 280px;
+    max-width: 34vw;
+    min-width: 250px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 6px;
+    background: var(--bs-body-bg);
+  }
+  #lw-inspector-panel {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  #lw-link-panels {
+    flex: 0 0 auto;
+    border-top: 1px solid var(--bs-border-color);
+    padding-top: 8px;
+    margin-top: 2px;
+  }
+  #lw-center-empty { font-size: 0.74rem; line-height: 1.4; margin-bottom: 6px; }
+  #lw-applied-list { max-height: 22vh; overflow: auto; }
+  #lw-manual-actions {
+    border: 1px dashed var(--bs-border-color);
+    border-radius: 6px;
+    padding: 8px;
+    background: var(--bs-tertiary-bg);
+  }
+  #fd-timeline-section,
+  #fd-play-btn,
+  #fd-pause-btn,
+  #fd-to-start-btn,
+  #fd-prev-btn,
+  #fd-next-btn,
+  #fd-slider,
+  #fd-speed-select { display: none !important; }
+  .lw-count {
+    font-size: 0.72rem;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--bs-border-color);
+    background: var(--bs-secondary-bg);
+    color: var(--bs-secondary-color);
+    white-space: nowrap;
+  }
+  .lw-count strong { color: var(--bs-body-color); font-weight: 600; }
+  .lw-section-h {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--bs-secondary-color);
+    margin-bottom: 6px;
+  }
+  .lw-empty { font-size: 0.78rem; color: var(--bs-secondary-color); line-height: 1.45; }
+  .lw-card {
+    border: 1px solid var(--bs-border-color);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    background: var(--bs-tertiary-bg);
+    font-size: 0.76rem;
+  }
+  .lw-card.lw-card-applied {
+    border-color: rgba(34, 197, 94, 0.3);
+    background: rgba(34, 197, 94, 0.07);
+  }
+  .lw-badge {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 10px;
+    border: 1px solid var(--bs-border-color);
+  }
+  .lw-badge-applied { color: #86efac; border-color: rgba(34,197,94,.35); }
+  .lw-badge-unlinked { color: var(--bs-secondary-color); }
+  .lw-badge-preview { color: #93c5fd; border-color: rgba(59,130,246,.35); }
+  .lw-badge-conflict { color: #fbbf24; border-color: rgba(245,158,11,.4); }
+  .fd-zoom-btn, .fd-lf-btn {
     padding: 2px 8px;
     font-size: 11px;
     background: transparent;
@@ -57,346 +351,685 @@
     cursor: pointer;
     white-space: nowrap;
   }
-  .fd-lf-btn.active {
+  .fd-zoom-btn.active, .fd-lf-btn.active {
     background: var(--bs-primary);
     color: #fff;
     border-color: var(--bs-primary);
   }
-</style>
-
-<div id="fourD-root" style="
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  gap: 8px;
-">
-
-  <!-- Main row: Gantt + Viewer + Chat -->
-  <div id="fourD-main" style="flex: 1; display: flex; min-height: 0; gap: 0;">
-
-  <!-- LEFT: Gantt Panel -->
-  <div id="fourD-gantt" style="
-    width: 280px;
-    min-width: 220px;
+  .fd-splitter {
+    width: 6px;
     flex-shrink: 0;
-    background: var(--bs-body-bg);
+    cursor: col-resize;
+    position: relative;
+    z-index: 10;
+    background: transparent;
+  }
+  .fd-splitter:hover, .fd-splitter.fd-dragging { background: var(--bs-primary); opacity: 0.35; }
+  @keyframes fd-spin { to { transform: rotate(360deg); } }
+  @keyframes lw-fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes lw-pulse-ok {
+    0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.45); }
+    100% { box-shadow: 0 0 0 8px rgba(34, 197, 94, 0); }
+  }
+  .lw-card-enter { animation: lw-fade-in 180ms ease-out both; }
+  #fd-gantt-body [data-row-idx] {
+    transition: outline-color 150ms ease, background-color 150ms ease, outline-offset 150ms ease;
+  }
+  #fd-gantt-body [data-row-idx].lw-row-selected {
+    outline: 2px solid #3b82f6;
+    outline-offset: -2px;
+  }
+  .lw-pulse-applied { animation: lw-pulse-ok 600ms ease-out 1; }
+  .lw-panel-toggle {
+    font-size: 0.72rem;
+    padding: 2px 8px;
+    background: transparent;
     border: 1px solid var(--bs-border-color);
-    border-radius: 8px;
-    display: flex;
-    flex-direction: column;
-  ">
-    <!-- Toolbar -->
-    <div style="padding: 5px 8px; border-bottom: 1px solid var(--bs-border-color);
-                display: flex; align-items: center; justify-content: space-between;
-                flex-shrink: 0; background: var(--bs-body-bg);">
-      <span style="font-size: 12px; font-weight: 600;">Schedule</span>
-      <div class="btn-group btn-group-sm">
-        <button class="fd-zoom-btn" data-zoom="day" style="font-size: 10px; padding: 2px 7px;">Day</button>
-        <button class="fd-zoom-btn" data-zoom="week" style="font-size: 10px; padding: 2px 7px;">Week</button>
-        <button class="fd-zoom-btn active" data-zoom="month" style="font-size: 10px; padding: 2px 7px;">Month</button>
-      </div>
-    </div>
-    <!-- Link Filter Bar -->
-    <div id="fd-link-filter" style="display: flex; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--bs-border-color); flex-shrink: 0; flex-wrap: wrap;">
-      <button class="fd-lf-btn active" data-filter="all">All</button>
-      <button class="fd-lf-btn" data-filter="linked"><span style="color:#1D9E75;">●</span> Linked</button>
-      <button class="fd-lf-btn" data-filter="unlinked"><span style="color:#4B5563;">●</span> Unlinked</button>
-    </div>
-    <!-- Dark Gantt scroll area — single scroll container; name col is position:sticky left:0 -->
-    <div id="fd-gantt-scroll" style="overflow: auto; flex: 1; min-height: 0; background: #0f172a;">
-      <div id="fd-gantt-inner">
-        <div id="fd-gantt-hdr" style="
-          display: flex; position: sticky; top: 0; z-index: 10;
-          background: #1e293b; height: 46px; border-bottom: 1px solid #334155;">
-          <div style="
-            min-width: 160px; max-width: 160px; padding: 0 8px;
-            display: flex; align-items: center;
-            font-size: .72rem; font-weight: 600; color: rgba(255,255,255,.45);
-            position: sticky; left: 0; background: #1e293b; z-index: 11;
-            border-right: 1px solid #334155;">Code · Task</div>
-          <div id="fd-gantt-timeline-hdr" style="display: flex; flex-shrink: 0; height: 100%;"></div>
-        </div>
-        <div id="fd-gantt-body">
-          <div style="padding: 20px; text-align: center; color: rgba(255,255,255,.35);">
-            <div style="width:20px;height:20px;border:2px solid #1e293b;border-top-color:#3b82f6;
-                        border-radius:50%;animation:fd-spin .8s linear infinite;margin:0 auto 8px;"></div>
-            <div style="font-size: 12px;">Loading tasks…</div>
-          </div>
-        </div>
-        <div id="fd-gantt-empty" style="display: none; padding: 1.5rem; text-align: center;
-             color: rgba(255,255,255,.35); font-size: .82rem;"></div>
-      </div>
-    </div>
-    <!-- Legend -->
-    <div id="fd-gantt-legend" style="
-      display: flex; gap: 6px; flex-wrap: wrap; padding: 4px 6px;
-      font-size: .7rem; flex-shrink: 0; min-height: 24px;
-      background: var(--bs-body-bg); border-top: 1px solid var(--bs-border-color);">
-    </div>
-  </div>
-
-  <!-- Splitter: Gantt ↔ Viewer -->
-  <div class="fd-splitter" id="fd-split-1" data-left="fourD-gantt" data-right="fourD-viewer"></div>
-
-  <!-- MIDDLE: 3D Viewer + Timeline -->
-  <div id="fourD-viewer" style="
-    flex: 1;
-    min-width: 400px;
-    background: var(--bs-body-bg);
-    border: 1px solid var(--bs-border-color);
-    border-radius: 8px;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-  ">
-    <!-- Color scheme toolbar -->
-    <div class="d-flex align-items-center gap-2 px-2 py-1 border-bottom flex-shrink-0" style="font-size: 0.8rem;">
-      <span class="text-secondary fw-medium" style="font-size: 11px;">Color by:</span>
-      <div class="btn-group btn-group-sm" id="fd-colorby-group">
-        <button class="btn btn-outline-secondary btn-sm" data-mode="link-check" style="font-size: 11px; padding: 2px 8px;">
-          <i class="bi bi-link-45deg me-1"></i>Link Check
-        </button>
-        <button class="btn btn-outline-secondary btn-sm" data-mode="site-status" style="font-size: 11px; padding: 2px 8px;">
-          <i class="bi bi-building me-1"></i>Site Status
-        </button>
-      </div>
-      <button class="btn btn-sm btn-outline-secondary ms-auto" id="fd-reset-view-btn"
-              title="Reset colours" style="font-size: 11px; padding: 2px 6px;">
-        <i class="bi bi-arrow-counterclockwise"></i>
-      </button>
-      <button id="fd-focus-btn" title="Focus on selected element"
-              style="display:none; font-size:11px; padding:2px 8px; background:transparent;
-                     border:1px solid var(--bs-border-color); border-radius:4px;
-                     color:var(--bs-body-color); cursor:pointer;">
-        🎯 Focus
-      </button>
-      <button id="fd-zoom-in-btn" title="Zoom in"
-              style="font-size:13px; padding:2px 8px; background:transparent;
-                     border:1px solid var(--bs-border-color); border-radius:4px;
-                     color:var(--bs-body-color); cursor:pointer;">+</button>
-      <button id="fd-zoom-out-btn" title="Zoom out"
-              style="font-size:13px; padding:2px 8px; background:transparent;
-                     border:1px solid var(--bs-border-color); border-radius:4px;
-                     color:var(--bs-body-color); cursor:pointer;">−</button>
-      <button id="fd-chat-toggle" title="AI Assistant"
-              style="padding: 4px 10px; background: rgba(99,102,241,.2);
-                     color: #818cf8; border: 1px solid rgba(99,102,241,.3);
-                     border-radius: 6px; cursor: pointer; font-size: 12px; flex-shrink: 0;
-                     pointer-events: all; position: relative; z-index: 100;">
-        🧠
-      </button>
-    </div>
-
-    <!-- 3D Viewer iframe -->
-    <div style="flex: 1; position: relative; min-height: 0;">
-      <iframe
-        id="fd-iframe"
-        src="{% url 'ifc_viewer:viewer_embed' project.pk %}?v={% now "U" %}"
-        style="width: 100%; height: 100%; border: none;"
-        allow="fullscreen">
-      </iframe>
-      <div id="fd-iframe-loading"
-           style="position: absolute; inset: 0; background: #111; display: flex; flex-direction: column;
-                  align-items: center; justify-content: center; color: #94a3b8;
-                  font-family: system-ui, sans-serif; z-index: 10; pointer-events: none;">
-        <div style="width: 34px; height: 34px; border: 3px solid #1e293b; border-top-color: #3b82f6;
-                    border-radius: 50%; animation: fd-spin 0.8s linear infinite; margin-bottom: 12px;"></div>
-        <span style="font-size: 0.85rem;">Loading 3D viewer…</span>
-      </div>
-    </div>
-
-    <!-- 4D Timeline controls -->
-    <div id="fd-timeline-section" class="flex-shrink-0 border-top px-3 py-2"
-         style="font-size: 0.82rem; background: var(--bs-body-bg);">
-      <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
-        <button id="fd-to-start-btn" class="btn btn-sm btn-outline-secondary" title="Jump to start"
-                style="padding: 2px 6px;"><i class="bi bi-skip-start-fill"></i></button>
-        <button id="fd-prev-btn" class="btn btn-sm btn-outline-secondary" title="Previous week"
-                style="padding: 2px 6px;"><i class="bi bi-skip-backward-fill"></i></button>
-        <button id="fd-play-btn" class="btn btn-sm btn-primary" title="Play"
-                style="padding: 2px 6px;"><i class="bi bi-play-fill"></i></button>
-        <button id="fd-pause-btn" class="btn btn-sm btn-outline-secondary d-none" title="Pause"
-                style="padding: 2px 6px;"><i class="bi bi-pause-fill"></i></button>
-        <button id="fd-next-btn" class="btn btn-sm btn-outline-secondary" title="Next week"
-                style="padding: 2px 6px;"><i class="bi bi-skip-forward-fill"></i></button>
-        <select id="fd-speed-select" class="form-select form-select-sm"
-                style="width: auto; font-size: 0.78rem; padding: 2px 20px 2px 6px;">
-          <option value="0.5">0.5×</option>
-          <option value="1" selected>1×</option>
-          <option value="2">2×</option>
-          <option value="4">4×</option>
-        </select>
-        <span id="fd-current-date" class="fw-bold ms-1" style="min-width: 110px; font-size: 0.85rem;"></span>
-      </div>
-      <div class="d-flex align-items-center gap-2 mb-1">
-        <span id="fd-min-date" class="text-secondary" style="font-size: 0.72rem; white-space: nowrap;"></span>
-        <input id="fd-slider" type="range" class="form-range flex-grow-1" min="0" value="0" style="min-width: 60px;">
-        <span id="fd-max-date" class="text-secondary" style="font-size: 0.72rem; white-space: nowrap;"></span>
-      </div>
-      <div class="d-flex align-items-center gap-3 flex-wrap" style="font-size: 0.72rem;">
-        <div class="d-flex align-items-center gap-1">
-          <span style="width: 8px; height: 8px; border-radius: 2px; background: #10B981; display: inline-block;"></span>
-          <span id="fd-stat-complete" class="fw-semibold">0</span>
-          <span class="text-secondary">Complete</span>
-        </div>
-        <div class="d-flex align-items-center gap-1">
-          <span style="width: 8px; height: 8px; border-radius: 2px; background: #F59E0B; display: inline-block;"></span>
-          <span id="fd-stat-in-progress" class="fw-semibold">0</span>
-          <span class="text-secondary">In Progress</span>
-        </div>
-        <div class="d-flex align-items-center gap-1">
-          <span style="width: 8px; height: 8px; border-radius: 2px; background: #EF4444; display: inline-block;"></span>
-          <span id="fd-stat-delayed" class="fw-semibold">0</span>
-          <span class="text-secondary">Delayed</span>
-        </div>
-        <div class="d-flex align-items-center gap-1">
-          <span style="width: 8px; height: 8px; border-radius: 2px; background: #9CA3AF; display: inline-block;"></span>
-          <span id="fd-stat-not-started" class="fw-semibold">0</span>
-          <span class="text-secondary">Not Started</span>
-        </div>
-        <div class="d-flex align-items-center gap-1 ms-2">
-          <span id="fd-stat-pct" class="fw-bold text-success">0%</span>
-          <span class="text-secondary">complete</span>
-        </div>
-      </div>
-    </div>
-  </div>
-  <!-- Splitter: Viewer ↔ Chat -->
-  <div class="fd-splitter" id="fd-split-2" data-left="fourD-viewer" data-right="fourD-chat"></div>
-
-  <!-- RIGHT: AI Chat Panel -->
-  <div id="fourD-chat" style="
-    width: 0px;
-    min-width: 0;
+    border-radius: 4px;
+    color: var(--bs-body-color);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .lw-panel-toggle.active {
+    background: var(--bs-primary);
+    color: #fff;
+    border-color: var(--bs-primary);
+  }
+  #lw-rule-summary {
+    font-size: 0.7rem;
+    color: var(--bs-secondary-color);
+    margin-top: 4px;
+  }
+  #lw-toolbar #lw-run-link-check { white-space: nowrap; }
+  #lw-inspector-rail {
+    display: none;
+    flex: 1 1 auto;
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    border: 0;
+    background: var(--bs-secondary-bg);
+    color: var(--bs-body-color);
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+    padding: 8px 0;
+  }
+  #fourD-root.lw-inspector-collapsed #lw-inspector {
+    width: 40px;
+    min-width: 40px;
+    max-width: 40px;
+  }
+  #fourD-root.lw-inspector-collapsed #lw-inspector-header,
+  #fourD-root.lw-inspector-collapsed #lw-inspector-panel {
+    display: none;
+  }
+  #fourD-root.lw-inspector-collapsed #lw-inspector-rail { display: flex; }
+  #lw-highlight-bar {
+    display: none;
     flex-shrink: 0;
-    background: var(--bs-body-bg);
-    border: 1px solid var(--bs-border-color);
-    border-radius: 8px;
-    overflow: hidden;
-    transition: width 0.2s ease;
-    display: flex;
-    flex-direction: column;
-  ">
-    <div style="padding: 8px 12px; border-bottom: 1px solid var(--bs-border-color);">
-      <span style="font-size: 12px; font-weight: 600;"><i class="bi bi-robot me-1"></i>AI Assistant</span>
-    </div>
-    <div id="fourD-messages" style="
-      flex: 1; overflow-y: auto; padding: 12px;
-      display: flex; flex-direction: column; gap: 8px;
-    ">
-      <div style="background: rgba(99,102,241,.1); border-radius: 8px; padding: 10px 12px; font-size: 12px;">
-        <strong style="color: #818cf8;">Castor AI</strong>
-        <p style="margin: 4px 0 0; color: var(--bs-body-color);">
-          Hello! Use <strong>Castor Link Engine</strong> in the toolbar below to auto-link tasks to IFC elements,
-          or switch to the <strong>Intelligence</strong> tab for full AI Q&amp;A over your schedule.
-        </p>
-      </div>
-    </div>
-    <div style="padding: 8px; border-top: 1px solid var(--bs-border-color);">
-      <div style="display: flex; gap: 6px;">
-        <input id="fourD-chat-input" type="text"
-               placeholder="Ask about your schedule…"
-               style="flex: 1; padding: 6px 10px; font-size: 12px;
-                      background: var(--bs-body-bg);
-                      border: 1px solid var(--bs-border-color);
-                      border-radius: 6px; color: var(--bs-body-color);">
-        <button id="fourD-chat-send"
-                style="padding: 6px 12px; background: #6366f1; color: white;
-                       border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">Send</button>
-      </div>
-    </div>
-  </div>
-
-  </div>
-  <!-- /fourD-main -->
-
-  <!-- BOTTOM FOOTER: Controls bar -->
-  <div id="fourD-footer" style="
-    flex-shrink: 0;
-    background: var(--bs-body-bg);
-    border: 1px solid var(--bs-border-color);
-    border-radius: 8px;
-    padding: 8px 16px;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 4px 8px;
+    min-height: 32px;
+    border-bottom: 1px solid var(--bs-border-color);
+    background: var(--bs-tertiary-bg);
+    font-size: 0.72rem;
+  }
+  #fourD-root.lw-highlight-mode #lw-highlight-bar { display: flex; flex-wrap: nowrap; overflow-x: auto; }
+  #lw-hl-color-picker {
     display: flex;
     align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-  ">
-    <!-- Castor Link Engine -->
-    <form hx-post="{% url 'scheduling:schedule_link_smart' project.pk %}"
-          hx-target="#fourD-link-results"
-          hx-swap="innerHTML"
-          hx-indicator="#fd-link-spinner"
-          style="display: contents;">
-      {% csrf_token %}
-      <button type="submit"
-              style="padding: 6px 16px; background: #6366f1; color: white;
-                     border: none; border-radius: 6px; cursor: pointer;
-                     font-size: 12px; font-weight: 600;
-                     display: inline-flex; align-items: center; gap: 6px;">
-        <span id="fd-link-spinner" class="htmx-indicator spinner-border spinner-border-sm"></span>
-        <i class="bi bi-lightning-charge-fill"></i> Castor Link Engine
+    gap: 6px;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .lw-hl-swatch {
+    width: 14px;
+    height: 14px;
+    padding: 0;
+    border: 2px solid transparent;
+    border-radius: 3px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .lw-hl-swatch.active {
+    border-color: var(--bs-body-color);
+    box-shadow: 0 0 0 1px var(--bs-body-bg);
+  }
+  #lw-hl-custom-color {
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+  }
+  .lw-act-check {
+    display: none;
+    flex-shrink: 0;
+    margin-top: 4px;
+    cursor: pointer;
+  }
+  #fourD-root.lw-highlight-mode .lw-act-check { display: inline-block; }
+  .lw-act-row.lw-hl-checked {
+    background: color-mix(in srgb, #f59e0b 10%, var(--bs-body-bg));
+  }
+  #lw-highlight-legend {
+    display: none;
+    position: absolute;
+    left: 8px;
+    bottom: 8px;
+    z-index: 12;
+    max-width: min(360px, 72%);
+    max-height: 42%;
+    overflow: auto;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--bs-border-color);
+    background: color-mix(in srgb, var(--bs-body-bg) 92%, transparent);
+    font-size: 0.7rem;
+  }
+  #lw-highlight-legend.lw-legend-visible { display: block; }
+  #lw-highlight-legend.lw-legend-minimized {
+    max-width: min(280px, 60%);
+    max-height: none;
+    padding: 4px 8px;
+    cursor: pointer;
+  }
+  #lw-highlight-legend.lw-legend-minimized .lw-legend-body { display: none; }
+  #lw-highlight-legend.lw-legend-minimized #lw-legend-minimize { display: none; }
+  #lw-legend-minimize {
+    border: 0;
+    background: transparent;
+    color: var(--bs-secondary-color);
+    font-size: 1rem;
+    line-height: 1;
+    padding: 0 4px;
+    cursor: pointer;
+  }
+  .lw-preset-btn { font-size: 0.72rem; text-align: left; }
+  .lw-preset-btn.active {
+    border-color: var(--bs-primary);
+    background: color-mix(in srgb, var(--bs-primary) 12%, var(--bs-body-bg));
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .lw-card-enter,
+    .lw-pulse-applied,
+    #fd-gantt-body [data-row-idx] {
+      animation: none !important;
+      transition: none !important;
+    }
+  }
+  @media (max-width: 1100px) {
+    #lw-left { width: 240px; min-width: 200px; }
+    #lw-inspector { width: 240px; min-width: 220px; }
+    #lw-match-results { left: 8px; right: 8px; top: 48px; bottom: 8px; }
+  }
+</style>
+
+<div id="fourD-root"
+     class="lw-workspace lw-rules-collapsed lw-inspector-open lw-results-collapsed"
+     data-testid="links-workspace"
+     data-lw-rules="collapsed"
+     data-lw-inspector="open"
+     data-lw-results="collapsed">
+
+  <div id="lw-toolbar" data-testid="links-workspace-toolbar">
+    <span class="fw-semibold d-flex align-items-center gap-1" style="font-size:.92rem; white-space:nowrap;">
+      <i class="bi bi-boxes me-1 text-primary"></i>Links
+      <button type="button"
+              class="help-pill"
+              data-bs-toggle="modal"
+              data-bs-target="#linksWorkspaceHelpModal"
+              title="How Links works"
+              aria-label="How Links works"
+              data-testid="links-help-pill">
+        <i class="bi bi-question-circle"></i>
       </button>
-    </form>
+    </span>
+    <span class="lw-count" data-testid="links-count-applied"
+          title="Activities with applied / confirmed model links">
+      Applied / Confirmed <strong id="lw-count-applied">—</strong>
+    </span>
+    <span class="lw-count" data-testid="links-count-unlinked"
+          title="Activities without applied / confirmed model links">
+      Unlinked Activities <strong id="lw-count-unlinked">—</strong>
+    </span>
+    <span class="lw-count d-none d-md-inline" data-testid="links-count-coverage"
+          title="Share of activities with applied / confirmed links">
+      Link Coverage <strong id="lw-count-coverage">—</strong>
+    </span>
+    <span class="lw-count d-none d-lg-inline" id="lw-search-shown"
+          data-testid="links-search-shown"
+          title="Activities shown after search / filter">
+      Shown <strong id="lw-count-shown">—</strong>
+    </span>
 
-    <!-- Embed Tasks for AI chat -->
-    <div style="display: inline-flex; align-items: center; gap: 8px;">
-      <button id="fd-embed-btn"
-              style="padding: 5px 12px; background: #7c3aed; color: white;
-                     border: none; border-radius: 6px; cursor: pointer; font-size: 12px;
-                     display: inline-flex; align-items: center; gap: 6px;">
-        <span id="fd-embed-spinner" class="spinner-border spinner-border-sm d-none"></span>
-        🧠 Embed Tasks
-      </button>
-      <span id="fd-embed-status" style="font-size: 11px; color: var(--bs-secondary-color);"></span>
-    </div>
-
-    <!-- Separator -->
-    <div style="height: 24px; width: 1px; background: var(--bs-border-color);"></div>
-
-    <!-- Parameter Match -->
-    <form hx-post="{% url 'scheduling:schedule_link_param' project.pk %}"
-          hx-target="#fourD-link-results"
-          hx-swap="innerHTML"
-          hx-indicator="#fd-param-spinner"
-          style="display: contents;">
-      {% csrf_token %}
-      <input type="text" name="param_name" id="fourD-param-input"
-             placeholder="e.g. ActivityCode"
-             value="{{ ifc_param_name|default:'' }}"
-             style="padding: 5px 10px; font-size: 12px; width: 160px;
-                    background: var(--bs-body-bg);
-                    border: 1px solid var(--bs-border-color);
-                    border-radius: 6px; color: var(--bs-body-color);">
-      <button type="submit"
-              style="padding: 5px 12px; background: #0ea5e9; color: white;
-                     border: none; border-radius: 6px; cursor: pointer; font-size: 12px;
-                     display: inline-flex; align-items: center; gap: 4px;">
-        <span id="fd-param-spinner" class="htmx-indicator spinner-border spinner-border-sm"></span>
-        Match
-      </button>
-    </form>
-  </div><!-- /fourD-footer -->
-
-  <!-- Results area: Link Engine / param match feedback (collapses when empty) -->
-  <div id="fourD-link-results" style="flex-shrink:0; overflow-y:auto; max-height:180px;"></div>
-
-  <!-- Review pane: always visible, auto-loads on page render -->
-  <div id="fourD-review-pane"
-       style="flex-shrink:0; overflow-y:auto; max-height:32vh; padding:8px 12px;
-              border-top:1px solid var(--bs-border-color);"
-       hx-get="{% url 'scheduling:review' project.pk %}?filter=all&inline=1"
-       hx-trigger="load"
-       hx-swap="innerHTML">
-      <div class="d-flex align-items-center justify-content-center py-3 text-secondary"
-           style="font-size:0.82rem;">
-          <span class="spinner-border spinner-border-sm me-2"></span>Loading review…
+    <div class="ms-auto d-flex align-items-center gap-2 flex-nowrap">
+      <div class="input-group input-group-sm">
+        <input type="search" id="lw-activity-search" class="form-control"
+               placeholder="Search activities…"
+               style="font-size:.78rem;"
+               data-testid="links-activity-search"
+               title="Search by activity code or name"
+               autocomplete="off">
+        <button type="button" class="btn btn-outline-secondary" id="lw-search-clear"
+                data-testid="links-search-clear" title="Clear search" style="font-size:.72rem;">
+          Clear
+        </button>
       </div>
+      <button type="button"
+              class="btn btn-sm btn-primary"
+              id="lw-run-link-check"
+              data-testid="links-run-link-check"
+              title="Read-only dry-run / preview — does not create links">
+        <i class="bi bi-search me-1"></i>Run Link Check
+      </button>
+      <div class="btn-group btn-group-sm" data-testid="links-panel-toggles" role="group" aria-label="Workspace panels">
+        <button type="button" class="lw-panel-toggle" id="lw-toggle-rules"
+                data-testid="links-toggle-rules"
+                aria-expanded="false" aria-controls="lw-rule-setup"
+                title="Open Link Rules">Rules</button>
+        <button type="button" class="lw-panel-toggle" id="lw-toggle-results"
+                data-testid="links-toggle-results"
+                aria-expanded="false" aria-controls="lw-match-results"
+                title="Open Match Results">Results</button>
+        <button type="button" class="lw-panel-toggle" id="lw-toggle-highlight-mode"
+                data-testid="links-highlight-mode"
+                aria-pressed="false"
+                title="Select multiple activities and highlight their applied model links">Highlight Mode</button>
+        <button type="button" class="lw-panel-toggle" id="lw-toggle-inspector"
+                data-testid="links-toggle-inspector"
+                aria-expanded="true" aria-controls="lw-inspector"
+                title="Show or hide Selected Activity inspector">Inspector</button>
+      </div>
+      <button type="button"
+              class="btn btn-sm btn-outline-secondary"
+              id="lw-clear-highlight"
+              data-testid="links-clear-highlight"
+              title="Clear model highlight. Selected activity checkboxes are kept."
+              style="display:none; font-size:0.72rem; white-space:nowrap;">
+        Clear Highlight
+      </button>
+    </div>
   </div>
 
-</div><!-- /fourD-root -->
+  <div id="lw-highlight-bar" data-testid="links-highlight-bar">
+    <span class="lw-count" data-testid="links-highlight-selected-count">
+      <strong id="lw-hl-selected-count">0</strong> selected
+    </span>
+    <div id="lw-hl-color-picker"
+         data-testid="links-highlight-color"
+         data-selected-color="#f59e0b"
+         role="group"
+         aria-label="Highlight color">
+      <span class="text-secondary" style="font-size:0.68rem;">Highlight color</span>
+      <button type="button" class="lw-hl-swatch active" data-color="#f59e0b" data-color-name="Amber"
+              title="Amber" data-testid="links-highlight-color-amber" style="background:#f59e0b;"></button>
+      <button type="button" class="lw-hl-swatch" data-color="#06b6d4" data-color-name="Cyan"
+              title="Cyan" data-testid="links-highlight-color-cyan" style="background:#06b6d4;"></button>
+      <button type="button" class="lw-hl-swatch" data-color="#22c55e" data-color-name="Green"
+              title="Green" data-testid="links-highlight-color-green" style="background:#22c55e;"></button>
+      <button type="button" class="lw-hl-swatch" data-color="#a855f7" data-color-name="Purple"
+              title="Purple" data-testid="links-highlight-color-purple" style="background:#a855f7;"></button>
+      <button type="button" class="lw-hl-swatch" data-color="#ef4444" data-color-name="Red"
+              title="Red" data-testid="links-highlight-color-red" style="background:#ef4444;"></button>
+      <button type="button" class="lw-hl-swatch" data-color="#3b82f6" data-color-name="Blue"
+              title="Blue" data-testid="links-highlight-color-blue" style="background:#3b82f6;"></button>
+      <button type="button" class="lw-hl-swatch" data-color="#84cc16" data-color-name="Lime"
+              title="Lime" data-testid="links-highlight-color-lime" style="background:#84cc16;"></button>
+      <button type="button" class="lw-hl-swatch" data-color="#ec4899" data-color-name="Pink"
+              title="Pink" data-testid="links-highlight-color-pink" style="background:#ec4899;"></button>
+      <input type="color" id="lw-hl-custom-color" value="#f59e0b"
+             data-testid="links-highlight-color-custom"
+             title="Custom highlight color">
+    </div>
+    <button type="button" class="btn btn-sm btn-outline-primary" id="lw-highlight-selected"
+            data-testid="links-highlight-selected"
+            title="Apply the selected Highlight color to checked activities. Previous highlights stay unless reassigned.">
+      Highlight Selected
+    </button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="lw-highlight-clear-selection"
+            data-testid="links-highlight-clear-selection"
+            title="Clear checked activities. Highlighted model colors stay.">
+      Clear Selection
+    </button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="lw-focus-highlighted"
+            data-testid="links-focus-highlighted"
+            title="Camera focus on highlighted elements. Does not hide the rest of the model.">
+      Focus Highlighted
+    </button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="lw-isolate-highlighted"
+            data-testid="links-isolate-highlighted"
+            title="Dim other geometry and section around highlighted elements.">
+      Isolate Highlighted
+    </button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="lw-highlight-show-all"
+            data-testid="links-highlight-show-all"
+            title="Show all and clear highlight">
+      Show All
+    </button>
+    <span id="lw-hl-hint" class="lw-empty mb-0" data-testid="links-highlight-empty">
+      Check activities, choose a Highlight color, then Highlight Selected.
+    </span>
+  </div>
 
-<!-- Link-to-Task modal -->
+  <div id="lw-body" data-testid="links-workspace-body">
+
+    <div id="lw-left" data-testid="links-left-column">
+      <div id="fourD-gantt" data-testid="links-activities">
+        <div style="padding:6px 10px; border-bottom:1px solid var(--bs-border-color);
+                    display:flex; align-items:center; justify-content:space-between; flex-shrink:0;">
+          <span class="lw-section-h mb-0" data-testid="links-activity-list-heading">Activities</span>
+        </div>
+        <div id="fd-link-filter" style="display:flex; gap:4px; padding:6px 8px; border-bottom:1px solid var(--bs-border-color); flex-shrink:0; flex-wrap:wrap;">
+          <button type="button" class="fd-lf-btn active" data-filter="all">All</button>
+          <button type="button" class="fd-lf-btn" data-filter="linked"><span style="color:#1D9E75;">●</span> Applied</button>
+          <button type="button" class="fd-lf-btn" data-filter="unlinked"><span style="color:#4B5563;">●</span> Unlinked</button>
+        </div>
+        <div id="fd-gantt-scroll" data-testid="links-activity-list">
+          <div id="fd-gantt-inner">
+            <div id="fd-gantt-body">
+              <div class="lw-empty p-3 text-center">
+                <div style="width:20px;height:20px;border:2px solid var(--bs-border-color);border-top-color:#3b82f6;
+                            border-radius:50%;animation:fd-spin .8s linear infinite;margin:0 auto 8px;"></div>
+                <div>Loading activities…</div>
+              </div>
+            </div>
+            <div id="fd-gantt-empty" style="display:none;" class="lw-empty p-3 text-center"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="fd-splitter" id="fd-split-1" data-left="lw-left" data-right="lw-center" aria-hidden="true"></div>
+
+    <div id="lw-center"
+         class="lw-model-primary"
+         data-testid="links-model-context-primary"
+         aria-label="Model Context">
+      <div id="fourD-viewer" class="lw-model-context" data-testid="links-model-context">
+        <div class="d-flex align-items-center gap-2 px-2 py-1 border-bottom flex-shrink-0" style="font-size:0.75rem;">
+          <span class="text-secondary fw-semibold">Model Context</span>
+          <div class="btn-group btn-group-sm ms-auto" id="fd-colorby-group">
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-mode="link-check"
+                    id="fd-link-check-btn"
+                    data-testid="links-model-link-check"
+                    title="Color applied vs unlinked elements"
+                    aria-label="Link Check"
+                    style="font-size:10px; padding:1px 6px;">
+              <i class="bi bi-link-45deg"></i> Link Check
+            </button>
+          </div>
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="fd-reset-view-btn"
+                  data-testid="links-model-reset-view"
+                  title="Reset camera view. Does not clear highlights."
+                  aria-label="Reset View"
+                  style="font-size:10px; padding:1px 5px; white-space:nowrap;">
+            <i class="bi bi-arrow-counterclockwise"></i> Reset View
+          </button>
+          <button type="button" id="fd-focus-btn"
+                  data-testid="links-model-focus"
+                  title="Camera focus on the selected or highlighted element"
+                  aria-label="Focus"
+                  style="display:none; font-size:10px; padding:1px 6px; background:transparent;
+                         border:1px solid var(--bs-border-color); border-radius:4px;">Focus</button>
+          <button type="button" id="fd-zoom-in-btn"
+                  data-testid="links-model-zoom-in"
+                  title="Zoom in"
+                  aria-label="Zoom In"
+                  style="font-size:12px; padding:1px 6px; background:transparent;
+                         border:1px solid var(--bs-border-color); border-radius:4px;">+</button>
+          <button type="button" id="fd-zoom-out-btn"
+                  data-testid="links-model-zoom-out"
+                  title="Zoom out"
+                  aria-label="Zoom Out"
+                  style="font-size:12px; padding:1px 6px; background:transparent;
+                         border:1px solid var(--bs-border-color); border-radius:4px;">−</button>
+        </div>
+        <div style="flex:1; position:relative; min-height:0;">
+          <iframe id="fd-iframe"
+                  src="{% url 'ifc_viewer:viewer_embed' project.pk %}?v={% now "U" %}"
+                  style="width:100%; height:100%; border:none;"
+                  allow="fullscreen"
+                  title="Links model context"></iframe>
+          <div id="fd-iframe-loading"
+               style="position:absolute; inset:0; background:#111; display:flex; flex-direction:column;
+                      align-items:center; justify-content:center; color:#94a3b8; z-index:10; pointer-events:none;">
+            <div style="width:28px; height:28px; border:3px solid #1e293b; border-top-color:#3b82f6;
+                        border-radius:50%; animation:fd-spin 0.8s linear infinite; margin-bottom:8px;"></div>
+            <span style="font-size:0.78rem;">Loading model…</span>
+          </div>
+          <div id="lw-highlight-legend" data-testid="links-highlight-legend" aria-live="polite"></div>
+        </div>
+      </div>
+    </div>
+
+    <aside id="lw-inspector" data-testid="links-selected-activity">
+      <div id="lw-inspector-header"
+           class="d-flex align-items-center gap-2 px-2 py-1 border-bottom flex-shrink-0"
+           data-testid="links-inspector-header">
+        <span class="lw-section-h mb-0">Selected Activity</span>
+        <button type="button"
+                class="btn btn-sm btn-outline-secondary ms-auto"
+                id="lw-inspector-collapse"
+                data-testid="links-inspector-collapse"
+                title="Collapse inspector"
+                style="font-size:10px; padding:1px 6px;">
+          Collapse
+        </button>
+      </div>
+      <button type="button"
+              id="lw-inspector-rail"
+              data-testid="links-inspector-rail"
+              title="Open Selected Activity inspector">
+        <span id="lw-inspector-rail-label">Inspector</span>
+      </button>
+      <div id="lw-inspector-panel">
+        <div id="lw-inspector-empty" class="lw-empty" data-testid="links-task-empty">
+          <div class="fw-semibold text-body mb-2" style="font-size:.82rem;">Selected Activity</div>
+          <p class="mb-0">Select an activity or run Link Check.</p>
+        </div>
+        <div id="lw-inspector-body" style="display:none;" data-testid="links-task-inspector"></div>
+
+        <div id="lw-manual-actions" style="display:none;" data-testid="links-manual-actions"
+             data-can-manual-link="{% if links_can_manual_link %}1{% else %}0{% endif %}"
+             data-can-remove-link="{% if links_can_remove_link %}1{% else %}0{% endif %}">
+          <div class="lw-section-h" data-testid="links-manual-fallback-heading">Manual fallback</div>
+          <div id="lw-selected-element-chip"
+               class="lw-empty mb-2"
+               data-testid="links-selected-element"
+               style="font-size:0.74rem;">
+            Select a model element to enable Link Selected Element.
+          </div>
+          <div class="d-flex flex-column gap-1 mb-2">
+            <button type="button"
+                    class="btn btn-sm btn-outline-primary"
+                    id="lw-link-selected-btn"
+                    data-testid="links-link-selected-element-btn"
+                    disabled
+                    title="Link the selected model element to the selected activity">
+              <i class="bi bi-link-45deg me-1"></i>Link Selected Element
+            </button>
+            <button type="button"
+                    class="btn btn-sm btn-outline-secondary"
+                    id="lw-open-link-tool-btn"
+                    data-testid="links-open-link-element-tool-btn"
+                    disabled
+                    title="Open the existing Link Element tool for the selected model element">
+              <i class="bi bi-box-arrow-up-right me-1"></i>Open Link Element tool
+            </button>
+          </div>
+          <div class="text-secondary" style="font-size:0.7rem;" data-testid="links-manual-link-hint">
+            Select a model element to enable Link Selected Element.
+            Secondary path for individual exceptions after Link Check.
+          </div>
+        </div>
+
+        <div id="lw-link-panels" data-testid="links-center-panels">
+          <div class="lw-empty" id="lw-center-empty" data-testid="links-center-empty">
+            Select an activity or run Link Check.
+          </div>
+          <div id="lw-applied-section" style="display:none;" data-testid="links-applied-section">
+            <div class="lw-section-h">Applied / Confirmed Links</div>
+            <div id="lw-applied-list"></div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <div id="lw-drawer-scrim" data-testid="links-drawer-scrim" aria-hidden="true"></div>
+
+  <section id="lw-rule-setup"
+           data-testid="links-rule-setup"
+           data-can-apply="{% if links_can_apply_param %}1{% else %}0{% endif %}"
+           role="dialog"
+           aria-label="Link Rules">
+    <div class="d-flex align-items-center gap-2 mb-1">
+      <div class="lw-section-h mb-0" data-testid="links-parameter-match">
+        Link Rules · Parameter Match
+      </div>
+      <button type="button"
+              class="btn btn-sm btn-outline-secondary ms-auto"
+              id="lw-rules-close"
+              data-testid="links-rules-close"
+              title="Close Link Rules"
+              style="font-size:10px; padding:1px 6px;">
+        Close
+      </button>
+    </div>
+    <div id="lw-rule-summary" data-testid="links-rule-summary">
+      Activity Code → Activity ID · Exact
+    </div>
+    <div id="lw-rule-body" data-testid="links-rule-body">
+      <div class="mb-2 mt-2" data-testid="links-rule-presets">
+        <div class="form-label">Presets</div>
+        <div class="d-flex flex-column gap-1">
+          <button type="button" class="btn btn-sm btn-outline-primary lw-preset-btn active"
+                  data-preset="activity-id" data-testid="links-preset-activity-id">
+            Activity Code ↔ Activity ID
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-secondary lw-preset-btn" disabled
+                  data-preset="task-code" data-testid="links-preset-task-code"
+                  title="Not available yet">
+            Activity Code ↔ Task Code
+            <span class="text-secondary" style="font-size:0.65rem;"> · not available yet</span>
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-secondary lw-preset-btn" disabled
+                  data-preset="wbs" data-testid="links-preset-wbs"
+                  title="Not available yet">
+            WBS ↔ WBS
+            <span class="text-secondary" style="font-size:0.65rem;"> · not available yet</span>
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-secondary lw-preset-btn" disabled
+                  data-preset="level-type" data-testid="links-preset-level-type"
+                  title="Not available yet">
+            Level + Type ↔ Storey + IFC Class
+            <span class="text-secondary" style="font-size:0.65rem;"> · not available yet</span>
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-secondary lw-preset-btn"
+                  data-preset="custom" data-testid="links-preset-custom">
+            Custom parameter
+          </button>
+        </div>
+      </div>
+      <div class="mb-2 mt-2">
+        <label class="form-label" for="lw-schedule-field">Schedule field</label>
+        <select id="lw-schedule-field" class="form-select form-select-sm"
+                data-testid="links-schedule-field">
+          <option value="activity_code" selected>Activity Code</option>
+        </select>
+      </div>
+      <div class="mb-2">
+        <label class="form-label" for="lw-model-param">Model parameter</label>
+        <input type="text" id="lw-model-param" class="form-control form-control-sm"
+               value="Activity ID"
+               placeholder="e.g. Activity ID"
+               data-testid="links-model-param"
+               autocomplete="off">
+        <div class="text-secondary mt-1" style="font-size:0.68rem;"
+             data-testid="links-model-param-note">
+          Model parameter list is not indexed yet; enter a known IFC / Revit property name.
+        </div>
+      </div>
+      <div class="mb-2">
+        <label class="form-label" for="lw-match-type">Match type</label>
+        <select id="lw-match-type" class="form-select form-select-sm"
+                data-testid="links-match-type">
+          <option value="exact" selected>Exact</option>
+        </select>
+      </div>
+      <div class="text-secondary" style="font-size:0.68rem;"
+           data-testid="links-link-check-dry-run-note">
+        Dry-run / preview only — does not create or change applied links.
+        Use <strong>Run Link Check</strong> on the toolbar.
+      </div>
+    </div>
+  </section>
+
+  <section id="lw-match-results" data-testid="links-match-results" role="dialog" aria-label="Match Results">
+    <div class="d-flex align-items-center gap-2 px-2 py-1 border-bottom flex-shrink-0">
+      <span class="lw-section-h mb-0">Match Results</span>
+      <span class="lw-badge lw-badge-preview" data-testid="links-match-preview-badge">Preview only</span>
+      <span class="lw-count" data-testid="links-results-count-matched">Matched <strong id="lw-hdr-n-matched">0</strong></span>
+      <span class="lw-count d-none d-md-inline" data-testid="links-results-count-unmatched-act">Unmatched Activities <strong id="lw-hdr-n-unmatched-act">0</strong></span>
+      <span class="lw-count d-none d-lg-inline" data-testid="links-results-count-unmatched-el">Unmatched Model Elements <strong id="lw-hdr-n-unmatched-el">0</strong></span>
+      <span class="lw-count" data-testid="links-results-count-conflicts">Conflicts <strong id="lw-hdr-n-conflicts">0</strong></span>
+      <div class="ms-auto d-flex align-items-center gap-2">
+        <button type="button"
+                class="btn btn-sm btn-outline-secondary"
+                id="lw-results-select-all"
+                data-testid="links-results-select-all"
+                title="Select all matched rows for review">
+          Select all matched
+        </button>
+        <button type="button"
+                class="btn btn-sm btn-outline-secondary"
+                id="lw-results-clear-sel"
+                data-testid="links-results-clear-selection"
+                title="Clear matched row selection">
+          Clear selection
+        </button>
+        <button type="button"
+                class="btn btn-sm btn-outline-primary"
+                id="lw-apply-links-btn"
+                data-testid="links-apply-links-btn"
+                disabled
+                title="Applies the latest preview set">
+          Apply Preview Matches
+        </button>
+        <button type="button"
+                class="btn btn-sm btn-outline-secondary"
+                id="lw-results-collapse"
+                data-testid="links-results-collapse"
+                title="Close Match Results"
+                style="font-size:10px; padding:1px 6px;">
+          Close
+        </button>
+      </div>
+    </div>
+    <div class="px-2 py-1 text-secondary border-bottom" style="font-size:0.68rem;"
+         data-testid="links-apply-links-warning">
+      Applies the latest preview set. Row checkboxes are for review;
+      applying a selected subset is not available yet. Link Check itself never writes links.
+    </div>
+    <div class="lw-results-tabs" role="tablist" data-testid="links-results-tabs">
+      <button type="button" class="lw-results-tab active" data-results-tab="matched"
+              data-testid="links-results-tab-matched">Matched <span id="lw-tab-n-matched">0</span></button>
+      <button type="button" class="lw-results-tab" data-results-tab="unmatched_activities"
+              data-testid="links-results-tab-unmatched-activities">Unmatched Activities <span id="lw-tab-n-unmatched-act">0</span></button>
+      <button type="button" class="lw-results-tab" data-results-tab="unmatched_elements"
+              data-testid="links-results-tab-unmatched-elements">Unmatched Model Elements <span id="lw-tab-n-unmatched-el">0</span></button>
+      <button type="button" class="lw-results-tab" data-results-tab="conflicts"
+              data-testid="links-results-tab-conflicts">Conflicts <span id="lw-tab-n-conflicts">0</span></button>
+    </div>
+    <div class="lw-results-body" id="lw-results-body" data-testid="links-results-body">
+      <div class="lw-empty p-3" data-testid="links-results-empty">
+        Run Link Check to compare schedule activities with model parameters.
+      </div>
+    </div>
+  </section>
+
+  <div id="fd-timeline-section" class="d-none" aria-hidden="true" hidden>
+    <span data-testid="fd-timeline-trusted-only">Timeline uses applied / confirmed links only.</span>
+    <button type="button" id="fd-play-btn" tabindex="-1">Play</button>
+    <button type="button" id="fd-pause-btn" class="d-none" tabindex="-1">Pause</button>
+    <button type="button" id="fd-to-start-btn" tabindex="-1">Start</button>
+    <button type="button" id="fd-prev-btn" tabindex="-1">Prev</button>
+    <button type="button" id="fd-next-btn" tabindex="-1">Next</button>
+    <input id="fd-slider" type="range" tabindex="-1">
+    <select id="fd-speed-select" tabindex="-1"><option value="1">1</option></select>
+    <span id="fd-current-date"></span>
+    <span id="fd-min-date"></span>
+    <span id="fd-max-date"></span>
+    <span id="fd-stat-complete">0</span>
+    <span id="fd-stat-in-progress">0</span>
+    <span id="fd-stat-delayed">0</span>
+    <span id="fd-stat-not-started">0</span>
+    <span id="fd-stat-pct">0%</span>
+  </div>
+
+  <p class="visually-hidden" data-testid="fourd-link-assistant-intro">
+    Links workspace — Parameter Match and Link Check for schedule–model linking.
+    Run a dry-run Link Check, review Match Results, then apply only with an explicit action.
+    Manual fallback remains for individual exceptions. Schedule writeback is not available here.
+  </p>
+
+</div>
+
+{% include "scheduling/components/links_workspace_help_modal.html" %}
+
 <div class="modal fade" id="fdLinkModal" tabindex="-1" aria-labelledby="fdLinkModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
@@ -410,18 +1043,47 @@
         <input type="text" id="fdLinkSearch" class="form-control form-control-sm mb-3"
                placeholder="Search by task name or activity code (min. 2 chars)…"
                autocomplete="off">
-        <div id="fdLinkResults" style="max-height: 340px; overflow-y: auto; border: 1px solid var(--bs-border-color); border-radius: 6px;">
-          <div class="text-secondary text-center py-4" style="font-size: 0.82rem;">
+        <div id="fdLinkResults" style="max-height:340px; overflow-y:auto; border:1px solid var(--bs-border-color); border-radius:6px;">
+          <div class="text-secondary text-center py-4" style="font-size:0.82rem;">
             Start typing to search tasks…
           </div>
         </div>
       </div>
       <div class="modal-footer py-2">
-        <span id="fdLinkSelectedCount" class="text-secondary me-auto" style="font-size: 0.8rem;"></span>
+        <span id="fdLinkSelectedCount" class="text-secondary me-auto" style="font-size:0.8rem;"></span>
         <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
         <button type="button" class="btn btn-sm btn-primary" id="fdLinkConfirmBtn" disabled>
-          <i class="bi bi-link-45deg me-1"></i>Link Selected
+          <i class="bi bi-link-45deg me-1"></i>Link Element
         </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="lwApplyLinksModal" tabindex="-1" aria-labelledby="lwApplyLinksLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title" id="lwApplyLinksLabel">Apply Links</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" style="font-size:0.82rem;">
+        <p class="mb-2">Apply selected preview matches from the latest Link Check?</p>
+        <p class="text-secondary mb-2">
+          This will create applied / confirmed schedule-model links. Link Check itself is preview-only.
+        </p>
+        <p class="text-secondary mb-0" data-testid="links-apply-latest-set-note">
+          Applies the latest preview set.
+        </p>
+        <input type="hidden" id="lw-apply-ack" name="confirm_acknowledged" value="true"
+               data-testid="links-apply-ack">
+        <input type="hidden" id="lw-apply-confirm-phrase" name="confirmation" value="APPROVE"
+               data-testid="links-apply-confirm-phrase">
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-sm btn-primary" id="lw-apply-confirm-btn"
+                data-testid="links-apply-confirm-btn" disabled>Confirm</button>
       </div>
     </div>
   </div>
@@ -432,12 +1094,432 @@
   "use strict";
   const GANTT_URL               = "{% url 'scheduling:gantt_data' project.pk %}";
   const TIMELINE_URL            = "{% url 'ifc_viewer:viewer_timeline' project.pk %}";
-  const FD_INTELLIGENCE_ASK_URL   = "{% url 'scheduling:intelligence_ask' project.pk %}";
-  const FD_INTELLIGENCE_EMBED_URL = "{% url 'scheduling:intelligence_embed' project.pk %}";
-  const FD_WRITEBACK_URL          = "{% url 'scheduling:schedule_writeback' project.pk %}";
+  const TIMELINE_DETAIL_URL     = ""; /* Time View interval API — Phase 5 */
   const TASKS_FOR_LINK_URL      = "{% url 'scheduling:tasks_for_link' project.pk %}";
   const BULK_LINK_URL           = "{% url 'scheduling:bulk_link_element' project.pk %}";
+  const LINK_ELEMENT_URL_TMPL   = "{% url 'scheduling:link_element' project.pk '00000000-0000-0000-0000-000000000000' %}".replace(
+    "00000000-0000-0000-0000-000000000000", "__TASK_ID__"
+  );
+  const UNLINK_ELEMENT_URL_TMPL = "{% url 'scheduling:unlink_element' project.pk '00000000-0000-0000-0000-000000000000' %}".replace(
+    "00000000-0000-0000-0000-000000000000", "__TASK_ID__"
+  );
+  const LINK_CHECK_URL          = "{% url 'scheduling:schedule_link_preview_param' project.pk %}";
+  const APPLY_APPROVED_URL      = "{% url 'scheduling:schedule_link_apply_approved_param' project.pk %}";
+  const ELEMENT_PROPS_URL_TMPL  = "{% url 'ifc_viewer:viewer_element_props' project.pk 'ELEM_PH' %}";
+  const TASK_DETAIL_URL_TMPL    = "{% url 'scheduling:task_detail' project.pk '00000000-0000-0000-0000-000000000000' %}".replace(
+    "00000000-0000-0000-0000-000000000000", "__TASK_ID__"
+  );
   const FD_CSRF                 = "{{ csrf_token }}";
+  let _lwSearchQuery = "";
+  let _lwSelectedTask = null;
+  let _lwSelectedElement = null; /* { global_id, name, ifc_type, location } */
+  let _lwCanManualLink = document.getElementById("lw-manual-actions")?.dataset.canManualLink === "1";
+  let _lwCanRemoveLink = document.getElementById("lw-manual-actions")?.dataset.canRemoveLink === "1";
+  let _lwCanApplyParam = document.getElementById("lw-rule-setup")?.dataset.canApply === "1";
+  let _lwLinkCheckPreview = null;
+  let _lwResultsTab = "matched";
+  let _lwHighlightMode = false;
+  let _lwHighlightKeys = new Set();
+  let _lwHighlightTasks = {};
+  let _lwHighlightedByKey = {};
+  let _lwHighlightAssignOrder = [];
+  let _lwHighlightActive = false;
+  let _lwHighlightIds = [];
+  let _lwHighlightColorMap = {};
+  let _lwLegendEntries = [];
+  let _lwLegendMinimized = false;
+  let _lwSelectedHighlightColor = "#f59e0b";
+  let _lwResultsSelectedCodes = new Set();
+  const LW_HL_PALETTE = [
+    "#f59e0b", "#06b6d4", "#22c55e", "#a855f7",
+    "#ef4444", "#3b82f6", "#84cc16", "#ec4899",
+  ];
+  const LW_LAYOUT_KEY = "castor-links-layout-v3";
+
+  function lwLayoutRoot() {
+    return document.getElementById("fourD-root");
+  }
+
+  function lwIsPanelOpen(name) {
+    const root = lwLayoutRoot();
+    return !!(root && root.classList.contains("lw-" + name + "-open"));
+  }
+
+  function lwSyncRuleSummary() {
+    const chip = document.getElementById("lw-rule-summary");
+    if (!chip) return;
+    const field = document.getElementById("lw-schedule-field");
+    const param = document.getElementById("lw-model-param");
+    const match = document.getElementById("lw-match-type");
+    const fieldLabel = (field && field.options[field.selectedIndex])
+      ? field.options[field.selectedIndex].text
+      : "Activity Code";
+    const paramLabel = ((param && param.value) || "Activity ID").trim() || "Activity ID";
+    const matchLabel = (match && match.options[match.selectedIndex])
+      ? match.options[match.selectedIndex].text
+      : "Exact";
+    chip.textContent = fieldLabel + " → " + paramLabel + " · " + matchLabel;
+  }
+
+  function lwPersistLayout() {
+    try {
+      localStorage.setItem(LW_LAYOUT_KEY, JSON.stringify({
+        rules: lwIsPanelOpen("rules"),
+        results: false,
+        inspector: lwIsPanelOpen("inspector"),
+      }));
+    } catch (e) { /* ignore */ }
+  }
+
+  function lwSetPanel(name, open) {
+    const root = lwLayoutRoot();
+    if (!root) return;
+    if (name === "inspector") {
+      root.classList.toggle("lw-inspector-open", open);
+      root.classList.toggle("lw-inspector-collapsed", !open);
+      root.setAttribute("data-lw-inspector", open ? "open" : "collapsed");
+      const btn = document.getElementById("lw-toggle-inspector");
+      if (btn) {
+        btn.classList.toggle("active", open);
+        btn.setAttribute("aria-expanded", open ? "true" : "false");
+      }
+      lwPersistLayout();
+      lwSyncInspectorRail();
+      return;
+    }
+    if (open && name === "rules") lwSetPanel("results", false);
+    if (open && name === "results") lwSetPanel("rules", false);
+    root.classList.toggle("lw-" + name + "-open", open);
+    root.classList.toggle("lw-" + name + "-collapsed", !open);
+    root.setAttribute("data-lw-" + name, open ? "open" : "collapsed");
+    const btnId = name === "rules" ? "lw-toggle-rules" : "lw-toggle-results";
+    const btn = document.getElementById(btnId);
+    if (btn) {
+      btn.classList.toggle("active", open);
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+    lwPersistLayout();
+  }
+
+  function lwTogglePanel(name) {
+    lwSetPanel(name, !lwIsPanelOpen(name));
+  }
+
+  function lwInitLayout() {
+    lwSyncRuleSummary();
+    lwSetPanel("results", false);
+    let saved = null;
+    try {
+      saved = JSON.parse(localStorage.getItem(LW_LAYOUT_KEY) || "null");
+    } catch (e) { saved = null; }
+    const inspectorOpen = !(saved && typeof saved === "object" && saved.inspector === false);
+    lwSetPanel("inspector", inspectorOpen);
+    if (saved && typeof saved === "object" && saved.rules === true) {
+      lwSetPanel("rules", true);
+    } else {
+      lwSetPanel("rules", false);
+    }
+  }
+
+  function lwTaskKey(t) {
+    return String((t && (t.pk || t.id)) || "");
+  }
+
+  function lwTaskAppliedIds(t) {
+    return (t && (t.trusted_entity_global_ids || t.entity_global_ids)) || [];
+  }
+
+  function lwShortGid(gid) {
+    const s = String(gid || "");
+    if (s.length <= 12) return s;
+    return s.slice(0, 8) + "…";
+  }
+
+  function lwApplyPreset(preset) {
+    const field = document.getElementById("lw-schedule-field");
+    const param = document.getElementById("lw-model-param");
+    const match = document.getElementById("lw-match-type");
+    document.querySelectorAll(".lw-preset-btn:not([disabled])").forEach(function (b) {
+      b.classList.toggle("active", b.dataset.preset === preset);
+    });
+    if (preset === "activity-id") {
+      if (field) field.value = "activity_code";
+      if (param) param.value = "Activity ID";
+      if (match) match.value = "exact";
+    } else if (preset === "custom" && param) {
+      param.focus();
+    }
+    lwSyncRuleSummary();
+  }
+
+  function lwSetHighlightMode(on) {
+    _lwHighlightMode = !!on;
+    const root = lwLayoutRoot();
+    if (root) root.classList.toggle("lw-highlight-mode", _lwHighlightMode);
+    const btn = document.getElementById("lw-toggle-highlight-mode");
+    if (btn) {
+      btn.classList.toggle("active", _lwHighlightMode);
+      btn.setAttribute("aria-pressed", _lwHighlightMode ? "true" : "false");
+    }
+    lwSyncHighlightBar();
+    fd_vs.dirty = true;
+    if (typeof fd_vsRefresh === "function") fd_vsRefresh(true);
+  }
+
+  function lwToggleHighlightKey(t, checked) {
+    const key = lwTaskKey(t);
+    if (!key) return;
+    if (checked) {
+      _lwHighlightKeys.add(key);
+      _lwHighlightTasks[key] = t;
+    } else {
+      _lwHighlightKeys.delete(key);
+      delete _lwHighlightTasks[key];
+    }
+    lwSyncHighlightBar();
+  }
+
+  function lwSyncHighlightBar() {
+    const nEl = document.getElementById("lw-hl-selected-count");
+    if (nEl) nEl.textContent = String(_lwHighlightKeys.size);
+    const hint = document.getElementById("lw-hl-hint");
+    if (hint) {
+      hint.style.display = _lwHighlightKeys.size === 0 ? "" : "none";
+    }
+    const clearBtn = document.getElementById("lw-clear-highlight");
+    if (clearBtn) clearBtn.style.display = _lwHighlightActive ? "" : "none";
+  }
+
+  function lwSetHighlightColor(hex) {
+    const color = String(hex || "").trim() || "#f59e0b";
+    _lwSelectedHighlightColor = color;
+    const picker = document.getElementById("lw-hl-color-picker");
+    if (picker) picker.setAttribute("data-selected-color", color);
+    const root = lwLayoutRoot();
+    if (root) root.setAttribute("data-lw-highlight-color", color);
+    document.querySelectorAll(".lw-hl-swatch").forEach(function (btn) {
+      btn.classList.toggle("active", (btn.dataset.color || "").toLowerCase() === color.toLowerCase());
+    });
+    const custom = document.getElementById("lw-hl-custom-color");
+    if (custom && custom.value.toLowerCase() !== color.toLowerCase()) custom.value = color;
+  }
+
+  function lwRebuildHighlightPayload() {
+    const ids = [];
+    const colorMap = {};
+    const groups = [];
+    const entries = [];
+    _lwHighlightAssignOrder.forEach(function (key) {
+      const row = _lwHighlightedByKey[key];
+      if (!row) return;
+      entries.push({
+        code: row.code || "",
+        name: row.name || "Activity",
+        count: row.count || 0,
+        color: row.color,
+      });
+      if (row.gids && row.gids.length) {
+        groups.push({
+          code: row.code || "",
+          name: row.name || "Activity",
+          color: row.color,
+          global_ids: row.gids.slice(),
+        });
+        row.gids.forEach(function (gid) {
+          if (!gid) return;
+          colorMap[gid] = row.color;
+          if (ids.indexOf(gid) < 0) ids.push(gid);
+        });
+      }
+    });
+    return { ids: ids, colorMap: colorMap, groups: groups, entries: entries };
+  }
+
+  function lwSyncInspectorRail() {
+    const el = document.getElementById("lw-inspector-rail-label");
+    if (!el) return;
+    const code = _lwSelectedTask && _lwSelectedTask.activity_code;
+    el.textContent = code ? ("Selected · " + code) : "Inspector";
+  }
+
+  function lwLegendCounts(entries) {
+    const list = entries || [];
+    const tasks = list.length;
+    let elements = 0;
+    list.forEach(function (row) { elements += row.count || 0; });
+    return { tasks: tasks, elements: elements };
+  }
+
+  function lwSetLegendMinimized(minimized) {
+    _lwLegendMinimized = !!minimized;
+    lwRenderHighlightLegend(_lwLegendEntries);
+  }
+
+  function lwRenderHighlightLegend(entries) {
+    const el = document.getElementById("lw-highlight-legend");
+    if (!el) return;
+    _lwLegendEntries = entries || [];
+    if (!_lwLegendEntries.length) {
+      el.classList.remove("lw-legend-visible");
+      el.classList.remove("lw-legend-minimized");
+      el.innerHTML = "";
+      return;
+    }
+    const counts = lwLegendCounts(_lwLegendEntries);
+    const strip =
+      "Highlight: " + counts.tasks + " task" + (counts.tasks === 1 ? "" : "s") +
+      " · " + counts.elements + " element" + (counts.elements === 1 ? "" : "s");
+    let html =
+      "<div class=\"d-flex align-items-center gap-1 mb-0\" data-testid=\"links-highlight-legend-header\">" +
+      "<span class=\"fw-semibold text-truncate\" id=\"lw-legend-title\">" +
+      (_lwLegendMinimized ? esc(strip) : "Highlight legend") + "</span>" +
+      "<button type=\"button\" id=\"lw-legend-minimize\" data-testid=\"links-legend-minimize\"" +
+      " title=\"Minimize legend\" aria-label=\"Minimize legend\">−</button></div>";
+    html += "<div class=\"lw-legend-body mt-1\">";
+    _lwLegendEntries.forEach(function (row) {
+      const swatch = row.count ? row.color : "#6b7280";
+      const extra = row.count ? (row.count + " linked") : "No applied links";
+      const label = row.code ? (row.code + " · " + row.name) : row.name;
+      html += "<div class=\"d-flex align-items-center gap-2 mb-1\" data-testid=\"links-legend-row\">" +
+        "<span class=\"lw-legend-swatch\" data-testid=\"links-legend-swatch\" style=\"width:10px;height:10px;border-radius:2px;background:" +
+        swatch + ";flex-shrink:0;\"></span>" +
+        "<span class=\"text-truncate\">" + esc(label) + "</span>" +
+        "<span class=\"text-secondary ms-auto\" style=\"white-space:nowrap;\">" + extra + "</span></div>";
+    });
+    html += "</div>";
+    html += "<div class=\"visually-hidden\" data-testid=\"links-legend-strip\">" + esc(strip) + "</div>";
+    el.innerHTML = html;
+    el.classList.add("lw-legend-visible");
+    el.classList.toggle("lw-legend-minimized", _lwLegendMinimized);
+    el.setAttribute("data-testid", "links-highlight-legend");
+    if (_lwLegendMinimized) {
+      el.setAttribute("title", "Expand highlight legend");
+    } else {
+      el.removeAttribute("title");
+    }
+  }
+
+  function lwHighlightSelected() {
+    if (_lwHighlightKeys.size === 0) {
+      _showToast("Check activities, choose a Highlight color, then Highlight Selected.", "info");
+      return;
+    }
+    const color = _lwSelectedHighlightColor || "#f59e0b";
+    _lwHighlightKeys.forEach(function (key) {
+      let t = _lwHighlightTasks[key];
+      if (!t) {
+        t = (fd_vs.tasks || []).find(function (x) {
+          return !x.isGroup && lwTaskKey(x) === key;
+        });
+      }
+      if (!t) return;
+      const gids = lwTaskAppliedIds(t);
+      _lwHighlightedByKey[key] = {
+        color: color,
+        gids: gids.slice(),
+        code: t.activity_code || "",
+        name: t.name || "Activity",
+        count: gids.length,
+      };
+      const idx = _lwHighlightAssignOrder.indexOf(key);
+      if (idx >= 0) _lwHighlightAssignOrder.splice(idx, 1);
+      _lwHighlightAssignOrder.push(key);
+    });
+    const payload = lwRebuildHighlightPayload();
+    _lwLegendMinimized = false;
+    lwRenderHighlightLegend(payload.entries);
+    if (!payload.ids.length) {
+      _showToast("No applied links available for selected activities.", "info");
+      if (!payload.entries.length) {
+        _lwHighlightActive = false;
+        _lwHighlightIds = [];
+        _lwHighlightColorMap = {};
+      }
+      lwSyncHighlightBar();
+      return;
+    }
+    _lwHighlightIds = payload.ids;
+    _lwHighlightColorMap = payload.colorMap;
+    _lwHighlightActive = true;
+    sendToViewer({
+      type: "castor:highlight",
+      global_ids: payload.ids,
+      color_map: payload.colorMap,
+      groups: payload.groups,
+      selected_color: color,
+    });
+    _fdFocusGlobalId = payload.ids[0];
+    if (typeof _updateFocusBtn === "function") _updateFocusBtn();
+    lwSyncHighlightBar();
+  }
+
+  function lwClearHighlight() {
+    _lwHighlightActive = false;
+    _lwHighlightIds = [];
+    _lwHighlightColorMap = {};
+    _lwHighlightedByKey = {};
+    _lwHighlightAssignOrder = [];
+    _lwLegendMinimized = false;
+    sendToViewer({ type: "castor:reset" });
+    lwRenderHighlightLegend(null);
+    lwSyncHighlightBar();
+  }
+
+  function lwClearHighlightSelection() {
+    _lwHighlightKeys = new Set();
+    _lwHighlightTasks = {};
+    fd_vs.dirty = true;
+    if (typeof fd_vsRefresh === "function") fd_vsRefresh(true);
+    lwSyncHighlightBar();
+  }
+
+  function lwFocusHighlighted() {
+    if (!_lwHighlightIds.length) {
+      _showToast("Highlight selected activities first.", "info");
+      return;
+    }
+    sendToViewer({
+      type: "castor:focus-element",
+      global_id: _lwHighlightIds[0],
+      isolate: false,
+    });
+  }
+
+  function lwIsolateHighlighted() {
+    if (!_lwHighlightIds.length) {
+      _showToast("Highlight selected activities first.", "info");
+      return;
+    }
+    sendToViewer({
+      type: "castor:isolate",
+      global_id: _lwHighlightIds[0],
+      global_ids: _lwHighlightIds,
+      color_map: _lwHighlightColorMap,
+    });
+  }
+
+  function lwPreviewStateForTask(t) {
+    if (!_lwLinkCheckPreview) return null;
+    const code = String(t.activity_code || "").trim();
+    if (!code) return null;
+    const caseRows = _lwLinkCheckPreview.case_insensitive_only_samples || [];
+    const dupes = _lwLinkCheckPreview.duplicate_schedule_code_samples || [];
+    if (caseRows.some(function (row) { return String(row.schedule_activity_code || "").trim() === code; }) ||
+        dupes.some(function (c) { return String(c).trim() === code; })) {
+      return { cls: "lw-badge-conflict", label: "Conflict" };
+    }
+    const matched = (_lwLinkCheckPreview.task_distribution || []).some(function (row) {
+      return String(row.activity_code || "").trim() === code;
+    });
+    if (matched) return { cls: "lw-badge-preview", label: "Matched Preview" };
+    const unmatched = (_lwLinkCheckPreview.schedule_only_id_samples || []).some(function (c) {
+      return String(c).trim() === code;
+    });
+    if (unmatched) return { cls: "lw-badge-unlinked", label: "Unmatched" };
+    return null;
+  }
+
+  /* Package 5: schedule mutation chat UI removed from this surface. */
 
   /* ── Full Gantt (fd_ prefix) ─────────────────────────────────────── */
 
@@ -448,14 +1530,8 @@
   }
 
   /* Constants */
-  const FD_ROW_H       = 36;
-  const FD_BAR_H       = 8;
-  const FD_BAR_T       = 10;
-  const FD_ACT_H       = 4;
-  const FD_ACT_T       = 22;
-  const FD_HDR_H       = 46;
+  const FD_ROW_H       = 52;
   const FD_VS_OVERSCAN = 8;
-  const FD_NAME_W      = 160;
 
   const FD_PX_PER_DAY = { day: 20, week: 10, month: 2 };
 
@@ -594,193 +1670,92 @@
     return flat;
   }
 
-  function fd_renderGanttHeader(hdrEl, projStart, ivs, ppd, today, todayX, showToday) {
-    hdrEl.innerHTML = "";
-    hdrEl.style.position = "relative";
-    let offsetDays = 0, prevSuper = null;
-    for (const iv of ivs) {
-      const w       = iv.days * ppd;
-      const ivStart = fd_addDays(projStart, offsetDays);
-      const ivEnd   = fd_addDays(projStart, offsetDays + iv.days - 1);
-      const hi      = today >= ivStart && today <= ivEnd;
-      const div = document.createElement("div");
-      div.style.cssText = `width:${w}px;min-width:${w}px;height:100%;display:flex;flex-direction:column;`
-        + `align-items:center;justify-content:space-evenly;font-size:.65rem;font-weight:600;padding:2px;`
-        + `border-right:1px solid #334155;box-sizing:border-box;overflow:hidden;`
-        + `color:${hi ? "#f87171" : "rgba(255,255,255,.45)"};${hi ? "border-bottom:2px solid #ef4444;" : ""}`;
-      const superEl = document.createElement("span");
-      superEl.style.cssText = "font-size:.58rem;font-weight:500;opacity:.55;white-space:nowrap;overflow:hidden;max-width:100%;text-align:center;";
-      if (iv.superLabel !== prevSuper && w >= 30) superEl.textContent = iv.superLabel;
-      prevSuper = iv.superLabel;
-      const mainEl = document.createElement("span");
-      mainEl.style.cssText = "white-space:nowrap;overflow:hidden;max-width:100%;text-align:center;";
-      if (w >= 22) mainEl.textContent = iv.label;
-      else if (w >= 8) mainEl.textContent = iv.label.substring(0, 3);
-      div.appendChild(superEl);
-      div.appendChild(mainEl);
-      hdrEl.appendChild(div);
-      offsetDays += iv.days;
-    }
-    if (showToday && todayX >= 0) {
-      const pin = document.createElement("div");
-      pin.style.cssText = `position:absolute;left:${todayX}px;top:0;bottom:0;width:2px;background:#ef4444;pointer-events:none;z-index:1;`;
-      const lbl = document.createElement("span");
-      lbl.textContent = "TODAY";
-      lbl.style.cssText = "position:absolute;top:2px;left:50%;transform:translateX(-50%);background:#ef4444;color:#fff;font-size:9px;font-weight:700;padding:1px 3px;border-radius:2px;white-space:nowrap;";
-      pin.appendChild(lbl);
-      hdrEl.appendChild(pin);
-    }
-  }
-
-  function fd_renderRows(containerEl, tasks, fromIdx, toIdx, taskIdxStart, rowMinW, projStart, ppd, totalW, todayX, showToday) {
-    let taskIdx = taskIdxStart;
+  function fd_renderRows(containerEl, tasks, fromIdx, toIdx) {
     for (let i = fromIdx; i < toIdx; i++) {
       const t = tasks[i];
-
-      /* Stage group header */
       if (t.isGroup) {
         const groupEl = document.createElement("div");
-        groupEl.style.cssText = `display:flex;height:${FD_ROW_H}px;background:#1e293b;border-top:1px solid #334155;border-bottom:1px solid #243344;min-width:${rowMinW}px;align-items:center;`;
-        const nameDiv = document.createElement("div");
-        nameDiv.style.cssText = `min-width:${FD_NAME_W}px;max-width:${FD_NAME_W}px;padding:0 8px;display:flex;align-items:center;gap:5px;`
-          + `font-size:.68rem;font-weight:700;color:rgba(255,255,255,.65);`
-          + `position:sticky;left:0;z-index:5;background:#1e293b;border-right:1px solid #334155;`
-          + `overflow:hidden;white-space:nowrap;letter-spacing:.04em;height:100%;`;
-        nameDiv.innerHTML = `<span style="opacity:.45;font-size:.8em;">&#9656;</span>${esc(t.stageLabel)}`
-          + ` <span style="font-weight:400;opacity:.45;font-size:.85em;">(${t.count})</span>`;
-        nameDiv.title = t.stageLabel;
-        const barArea = document.createElement("div");
-        barArea.style.cssText = `width:${totalW}px;min-width:${totalW}px;height:${FD_ROW_H}px;background:#1e293b;flex-shrink:0;`;
-        groupEl.appendChild(nameDiv);
-        groupEl.appendChild(barArea);
+        groupEl.className = "lw-act-group";
+        groupEl.textContent = t.stageLabel + " (" + t.count + ")";
         containerEl.appendChild(groupEl);
         continue;
       }
 
-      /* Task row */
-      const startDate = fd_parseDate(t.start);
-      const endDate   = fd_parseDate(t.end);
-      if (!startDate || !endDate) { taskIdx++; continue; }
-
-      const actStartDate = fd_parseDate(t.actual_start);
-      const actEndDate   = fd_parseDate(t.actual_end);
-      const isMilestone  = fd_dateDiff(startDate, endDate) === 0 || (t.stage || "").toLowerCase().includes("milestone");
-
-      const barLeft  = Math.max(0, fd_dateDiff(projStart, startDate)) * ppd;
-      const barDays  = Math.max(1, fd_dateDiff(startDate, endDate) + 1);
-      const barW     = Math.max(3, barDays * ppd);
-      const clr      = fd_getTaskColor(t);
-      const bg       = taskIdx % 2 === 0 ? "#0f172a" : "#111827";
-      taskIdx++;
-
-      const isCrit     = fd_hasCpm && t.is_critical;
-      const opacity    = fd_hasCpm && !t.is_critical ? 0.42 : 0.88;
-      const shadow     = isCrit ? "box-shadow:0 0 0 1.5px #ef4444;" : "";
-      const totalFloat = t.total_float != null ? Math.round(t.total_float) : null;
-      const floatHint  = fd_hasCpm && totalFloat !== null
-        ? "\nFloat: " + totalFloat + " day" + (totalFloat === 1 ? "" : "s") + (isCrit ? " ⚠ Critical" : "")
-        : "";
-      const isSelected      = i === fd_selectedRowIdx;
-      const isMultiSelected = _fdMultiSelectedSet.has(t.pk || t.id);
-      const outlineStyle    = isSelected      ? "outline:2px solid #3b82f6;outline-offset:-2px;"
-                            : isMultiSelected ? "outline:2px solid #00BCD4;outline-offset:-2px;"
-                            : "";
-
+      const applied = t.link_status === "linked";
+      const taskKey = lwTaskKey(t);
       const rowEl = document.createElement("div");
-      rowEl.dataset.rowIdx = i;
-      rowEl.style.cssText = `display:flex;height:${FD_ROW_H}px;background:${bg};min-width:${rowMinW}px;cursor:pointer;${outlineStyle}`;
+      rowEl.dataset.rowIdx = String(i);
+      if (t.id) rowEl.dataset.taskId = String(t.id);
+      rowEl.className = "lw-act-row lw-task-row";
+      if (i === fd_selectedRowIdx) rowEl.classList.add("lw-row-selected");
+      if (_lwHighlightKeys.has(taskKey)) rowEl.classList.add("lw-hl-checked");
 
-      const nameDiv = document.createElement("div");
-      nameDiv.style.cssText = `min-width:${FD_NAME_W}px;max-width:${FD_NAME_W}px;padding:0 8px;`
-        + `display:flex;flex-direction:column;justify-content:center;`
-        + `position:sticky;left:0;z-index:5;background:${bg};`
-        + `border-right:1px solid #1e293b;overflow:hidden;height:100%;`;
-      if (t.activity_code) {
-        const codeEl = document.createElement("div");
-        codeEl.style.cssText = "font-size:12px;font-weight:600;color:var(--bs-body-color);font-family:monospace;margin-bottom:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
-        codeEl.textContent = t.activity_code;
-        nameDiv.appendChild(codeEl);
-      }
+      const check = document.createElement("input");
+      check.type = "checkbox";
+      check.className = "lw-act-check form-check-input";
+      check.setAttribute("data-testid", "links-activity-highlight-check");
+      check.checked = _lwHighlightKeys.has(taskKey);
+      check.title = "Select for model highlight";
+      check.addEventListener("click", function (ev) { ev.stopPropagation(); });
+      check.addEventListener("change", function (ev) {
+        ev.stopPropagation();
+        lwToggleHighlightKey(t, check.checked);
+        rowEl.classList.toggle("lw-hl-checked", check.checked);
+      });
+
+      const dot = document.createElement("span");
+      dot.style.cssText = "flex-shrink:0;width:8px;height:8px;margin-top:5px;border-radius:50%;background:"
+        + (applied ? "#1D9E75" : "#6b7280") + ";";
+      dot.title = applied ? "Applied" : "Unlinked";
+
+      const main = document.createElement("div");
+      main.className = "lw-act-main";
+      const codeEl = document.createElement("div");
+      codeEl.className = "lw-act-code";
+      codeEl.textContent = t.activity_code || "";
       const nameEl = document.createElement("div");
-      nameEl.style.cssText = "font-size:10px;color:var(--bs-secondary-color);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px;";
-      const _lnkClr = { linked: "#1D9E75", unlinked: "#4B5563" };
-      const dotClr = !t.is_non_physical && t.link_status ? _lnkClr[t.link_status] : null;
-      if (dotClr) {
-        const dot = document.createElement("span");
-        dot.style.cssText = `flex-shrink:0;width:6px;height:6px;border-radius:50%;background:${dotClr};`;
-        dot.title = t.link_status;
-        nameEl.appendChild(dot);
-      }
-      const nameText = document.createElement("span");
-      nameText.style.cssText = "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;";
-      nameText.textContent = t.name;
-      nameEl.appendChild(nameText);
-      nameDiv.appendChild(nameEl);
-      nameDiv.title = (t.activity_code ? t.activity_code + " · " : "") + t.name + (t.link_status ? " [" + t.link_status + "]" : "");
+      nameEl.className = "lw-act-name";
+      nameEl.textContent = t.name || "Activity";
+      const metaEl = document.createElement("div");
+      metaEl.className = "lw-act-meta";
+      const startLbl = t.start || "";
+      const endLbl = t.end || "";
+      const statusLbl = t.status || "";
+      metaEl.textContent = [startLbl && endLbl ? (startLbl + " → " + endLbl) : (startLbl || endLbl), statusLbl]
+        .filter(Boolean).join(" · ");
+      main.appendChild(codeEl);
+      main.appendChild(nameEl);
+      if (metaEl.textContent) main.appendChild(metaEl);
 
-      const barArea = document.createElement("div");
-      barArea.style.cssText = `width:${totalW}px;min-width:${totalW}px;height:${FD_ROW_H}px;position:relative;flex-shrink:0;`;
-
-      if (isMilestone) {
-        const s = 8, cx = barLeft + ppd / 2;
-        const diamond = document.createElement("div");
-        diamond.style.cssText = `position:absolute;left:${cx - s}px;top:${FD_ROW_H / 2 - s}px;width:${s * 2}px;height:${s * 2}px;`
-          + `background:${clr};opacity:${opacity};${shadow}transform:rotate(45deg);border-radius:1px;`;
-        diamond.title = "◆ " + t.name + "\n" + fd_fmtDate(startDate) + floatHint;
-        barArea.appendChild(diamond);
-      } else {
-        /* Planned bar */
-        const bar = document.createElement("div");
-        bar.style.cssText = `position:absolute;left:${barLeft}px;top:${FD_BAR_T}px;width:${barW}px;height:${FD_BAR_H}px;`
-          + `background:${clr};border-radius:3px;opacity:${opacity};${shadow}`;
-        bar.title = t.name + "\nPlanned: " + fd_fmtDate(startDate) + " → " + fd_fmtDate(endDate) + floatHint;
-        barArea.appendChild(bar);
-
-        /* Float extension dashed bar */
-        if (fd_hasCpm && totalFloat !== null && totalFloat > 0) {
-          const floatW = Math.min(totalFloat * ppd, totalW - barLeft - barW);
-          if (floatW >= 2) {
-            const fb = document.createElement("div");
-            fb.style.cssText = `position:absolute;left:${barLeft + barW}px;top:${FD_BAR_T + 1}px;width:${floatW}px;height:${FD_BAR_H - 2}px;`
-              + `border:1px dashed rgba(255,255,255,.22);border-left:none;border-radius:0 3px 3px 0;pointer-events:none;`;
-            fb.title = "Float: " + totalFloat + " days";
-            barArea.appendChild(fb);
-          }
-        }
-
-        /* Actual bar */
-        if (actStartDate) {
-          const actLeft = Math.max(0, fd_dateDiff(projStart, actStartDate)) * ppd;
-          const actEnd  = actEndDate || new Date();
-          const actDays = Math.max(1, fd_dateDiff(actStartDate, actEnd) + 1);
-          const actW    = Math.max(3, actDays * ppd);
-          const actBar  = document.createElement("div");
-          actBar.style.cssText = `position:absolute;left:${actLeft}px;top:${FD_ACT_T}px;width:${actW}px;height:${FD_ACT_H}px;`
-            + `background:rgba(34,197,94,.75);border-radius:2px;`;
-          actBar.title = t.name + "\nActual: " + fd_fmtDate(actStartDate) + " → " + (actEndDate ? fd_fmtDate(actEndDate) : "ongoing");
-          barArea.appendChild(actBar);
-        }
+      const badgeWrap = document.createElement("div");
+      badgeWrap.className = "d-flex flex-column align-items-end gap-1";
+      const badge = document.createElement("span");
+      badge.className = "lw-badge " + (applied ? "lw-badge-applied" : "lw-badge-unlinked");
+      badge.textContent = applied ? "Applied" : "Unlinked";
+      badgeWrap.appendChild(badge);
+      const preview = lwPreviewStateForTask(t);
+      if (preview) {
+        const pb = document.createElement("span");
+        pb.className = "lw-badge " + preview.cls;
+        pb.setAttribute("data-testid", "links-activity-preview-badge");
+        pb.textContent = preview.label;
+        badgeWrap.appendChild(pb);
       }
 
-      /* Today line */
-      if (showToday) {
-        const line = document.createElement("div");
-        line.style.cssText = `position:absolute;left:${todayX}px;top:0;width:2px;height:100%;background:#ef4444;pointer-events:none;`;
-        barArea.appendChild(line);
-      }
-
-      rowEl.appendChild(nameDiv);
-      rowEl.appendChild(barArea);
+      rowEl.appendChild(check);
+      rowEl.appendChild(dot);
+      rowEl.appendChild(main);
+      rowEl.appendChild(badgeWrap);
+      rowEl.title = (t.activity_code ? t.activity_code + " · " : "") + (t.name || "");
       containerEl.appendChild(rowEl);
     }
   }
 
-  function fd_renderGanttRows(bodyEl, tasks, projStart, ppd, totalW, todayX, showToday) {
-    fd_vs.tasks = tasks; fd_vs.projStart = projStart; fd_vs.ppd = ppd;
-    fd_vs.totalW = totalW; fd_vs.todayX = todayX; fd_vs.showToday = showToday;
+  function fd_renderGanttRows(bodyEl, tasks) {
+    fd_vs.tasks = tasks;
+    fd_vs.totalW = 0;
 
     bodyEl.innerHTML = "";
-    const rowMinW   = FD_NAME_W + totalW;
     const scrollEl  = document.getElementById("fd-gantt-scroll");
     const scrollTop = scrollEl ? scrollEl.scrollTop : 0;
     const viewH     = scrollEl ? (scrollEl.clientHeight || 400) : 400;
@@ -789,19 +1764,16 @@
     const endIdx   = Math.min(tasks.length, Math.ceil((scrollTop + viewH) / FD_ROW_H) + FD_VS_OVERSCAN);
     fd_vs.startIdx = startIdx; fd_vs.endIdx = endIdx; fd_vs.dirty = false;
 
-    /* Spacers carry min-width so horizontal scroll range never collapses */
     const padTop = document.createElement("div");
     padTop.id = "fd-vs-pad-top";
-    padTop.style.cssText = `height:${startIdx * FD_ROW_H}px; min-width:${rowMinW}px;`;
+    padTop.style.cssText = "height:" + (startIdx * FD_ROW_H) + "px;";
     bodyEl.appendChild(padTop);
 
-    let taskIdxStart = 0;
-    for (let i = 0; i < startIdx; i++) { if (!tasks[i].isGroup) taskIdxStart++; }
-    fd_renderRows(bodyEl, tasks, startIdx, endIdx, taskIdxStart, rowMinW, projStart, ppd, totalW, todayX, showToday);
+    fd_renderRows(bodyEl, tasks, startIdx, endIdx);
 
     const padBot = document.createElement("div");
     padBot.id = "fd-vs-pad-bot";
-    padBot.style.cssText = `height:${(tasks.length - endIdx) * FD_ROW_H}px; min-width:${rowMinW}px;`;
+    padBot.style.cssText = "height:" + ((tasks.length - endIdx) * FD_ROW_H) + "px;";
     bodyEl.appendChild(padBot);
   }
 
@@ -822,26 +1794,19 @@
     const padTop = document.getElementById("fd-vs-pad-top");
     const padBot = document.getElementById("fd-vs-pad-bot");
     if (!padTop || !padBot) return;
-    const rowMinW = FD_NAME_W + fd_vs.totalW;
     padTop.style.height = (startIdx * FD_ROW_H) + "px";
-    padTop.style.minWidth = rowMinW + "px";
     padBot.style.height = ((tasks.length - endIdx) * FD_ROW_H) + "px";
-    padBot.style.minWidth = rowMinW + "px";
 
     Array.from(bodyEl.children).forEach(child => {
       if (child.id !== "fd-vs-pad-top" && child.id !== "fd-vs-pad-bot") child.remove();
     });
 
-    let taskIdxStart = 0;
-    for (let i = 0; i < startIdx; i++) { if (!tasks[i].isGroup) taskIdxStart++; }
-
     const frag = document.createDocumentFragment();
-    fd_renderRows(frag, tasks, startIdx, endIdx, taskIdxStart, rowMinW,
-                  fd_vs.projStart, fd_vs.ppd, fd_vs.totalW, fd_vs.todayX, fd_vs.showToday);
+    fd_renderRows(frag, tasks, startIdx, endIdx);
     padTop.after(frag);
   }
 
-  function fd_renderLegend(showToday) {
+  function fd_renderLegend() {
     const leg = document.getElementById("fd-gantt-legend");
     if (!leg) return;
     const items = [
@@ -876,43 +1841,20 @@
     fd_rawData = data;
     const emptyEl = document.getElementById("fd-gantt-empty");
     const bodyEl  = document.getElementById("fd-gantt-body");
-    const hdrEl   = document.getElementById("fd-gantt-timeline-hdr");
     const rawTasks = data.tasks || [];
 
     if (!rawTasks.length) {
       if (bodyEl) bodyEl.innerHTML = "";
+      fd_vs.tasks = [];
       if (emptyEl) { emptyEl.textContent = "No tasks — import a schedule in Data Sources."; emptyEl.style.display = ""; }
       return;
     }
     if (emptyEl) emptyEl.style.display = "none";
 
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    fd_hasCpm   = rawTasks.some(t => t.total_float != null);
+    fd_hasCpm = rawTasks.some(t => t.total_float != null);
     fd_selectedRowIdx = -1;
-
-    /* Filter to tasks with parseable dates */
-    const parsedTasks = rawTasks.filter(t => fd_parseDate(t.start) && fd_parseDate(t.end));
-    if (!parsedTasks.length) {
-      if (emptyEl) { emptyEl.textContent = "No parseable task dates."; emptyEl.style.display = ""; }
-      return;
-    }
-
-    const projStart = new Date(Math.min(...parsedTasks.map(t => fd_parseDate(t.start).getTime())));
-    const projEnd   = new Date(Math.max(...parsedTasks.map(t => fd_parseDate(t.end).getTime())));
-    projStart.setHours(0, 0, 0, 0); projEnd.setHours(0, 0, 0, 0);
-
-    const ppd       = FD_PX_PER_DAY[fd_zoom] || 2;
-    const totalDays = fd_dateDiff(projStart, projEnd) + 1;
-    const ivs       = fd_getIntervals(projStart, totalDays, fd_zoom);
-    const totalW    = ivs.reduce((s, iv) => s + iv.days * ppd, 0);
-    const todayX    = fd_dateDiff(projStart, today) * ppd;
-    const showToday = todayX >= 0 && todayX <= totalW;
-
-    const flatRows = fd_buildFlatRows(parsedTasks);
-
-    fd_renderGanttHeader(hdrEl, projStart, ivs, ppd, today, todayX, showToday);
-    fd_renderGanttRows(bodyEl, flatRows, projStart, ppd, totalW, todayX, showToday);
-    fd_renderLegend(showToday);
+    const flatRows = fd_buildFlatRows(rawTasks);
+    fd_renderGanttRows(bodyEl, flatRows);
 
     /* Attach scroll + click listeners once */
     if (!fd_listenersAttached) {
@@ -928,25 +1870,18 @@
 
       if (bodyEl) {
         bodyEl.addEventListener("click", function (e) {
+          if (e.target.closest(".lw-act-check")) return;
           const rowEl = e.target.closest("[data-row-idx]");
           if (!rowEl) return;
           const rowIdx = parseInt(rowEl.dataset.rowIdx);
           const t = fd_vs.tasks[rowIdx];
           if (!t || t.isGroup) return;
 
-          if (e.shiftKey) {
-            const taskKey = t.pk || t.id;
-            if (_fdMultiSelectedSet.has(taskKey)) {
-              _fdMultiSelectedSet.delete(taskKey);
-              _fdMultiSelectedTasks = _fdMultiSelectedTasks.filter(x => (x.pk || x.id) !== taskKey);
-            } else {
-              _fdMultiSelectedSet.add(taskKey);
-              _fdMultiSelectedTasks.push(t);
-            }
+          if (_lwHighlightMode && e.shiftKey) {
+            const key = lwTaskKey(t);
+            lwToggleHighlightKey(t, !_lwHighlightKeys.has(key));
             fd_vs.dirty = true;
             fd_vsRefresh(true);
-            const allIds = _fdMultiSelectedTasks.flatMap(x => x.entity_global_ids || []);
-            if (allIds.length) sendToViewer({ type: "castor:highlight", global_ids: allIds });
             return;
           }
 
@@ -954,21 +1889,21 @@
             fd_selectedRowIdx = -1;
             fd_vs.dirty = true;
             fd_vsRefresh(true);
-            sendToViewer({ type: "castor:reset" });
             _fdFocusGlobalId = null;
             _fdTaskSelected  = false;
             _updateFocusBtn();
+            lwClearSelection();
             _applyLinkFilter();
             return;
           }
           fd_selectedRowIdx = rowIdx;
           fd_vs.dirty = true;
           fd_vsRefresh(true);
-          const ids = t.entity_global_ids || [];
-          if (ids.length) sendToViewer({ type: "castor:highlight", global_ids: ids });
+          const ids = t.trusted_entity_global_ids || t.entity_global_ids || [];
           _fdFocusGlobalId = ids.length ? ids[0] : null;
-          _fdTaskSelected  = ids.length > 0;
+          _fdTaskSelected  = true;
           _updateFocusBtn();
+          lwSelectActivity(t);
         });
       }
     }
@@ -979,13 +1914,13 @@
     const tasks = fd_vs.tasks;
     for (let i = 0; i < tasks.length; i++) {
       if (tasks[i].isGroup) continue;
-      if ((tasks[i].entity_global_ids || []).includes(gid)) {
+      if ((tasks[i].trusted_entity_global_ids || tasks[i].entity_global_ids || []).includes(gid)) {
         fd_selectedRowIdx = i;
         fd_vs.dirty = true;
         fd_vsRefresh(true);
         const scrollEl = document.getElementById("fd-gantt-scroll");
         if (scrollEl) {
-          scrollEl.scrollTop = Math.max(0, i * FD_ROW_H + FD_HDR_H - scrollEl.clientHeight / 3);
+          scrollEl.scrollTop = Math.max(0, i * FD_ROW_H - scrollEl.clientHeight / 3);
         }
         return;
       }
@@ -1008,40 +1943,48 @@
     }
   }
 
-  /* Zoom buttons: sync HTML active state to fd_zoom, re-render on click */
-  document.querySelectorAll(".fd-zoom-btn").forEach(btn => {
-    btn.classList.toggle("active", btn.dataset.zoom === fd_zoom);
-    btn.addEventListener("click", () => {
-      fd_zoom = btn.dataset.zoom;
-      try { localStorage.setItem("fd-gantt-zoom", fd_zoom); } catch {}
-      document.querySelectorAll(".fd-zoom-btn").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      if (_fdLastData) _applyLinkFilter();
-    });
-  });
-
   /* Link filter buttons */
   function _applyLinkFilter() {
     if (!_fdLastData) return;
 
     _fdLinkFilterActive = _fdLinkFilter !== "all";
 
-    if (_fdLinkFilter === "all") {
-      fd_renderGantt(_fdLastData);
-    } else {
-      const filtered = {
-        ..._fdLastData,
-        tasks: (_fdLastData.tasks || []).filter(t => t.link_status === _fdLinkFilter),
-      };
-      fd_renderGantt(filtered);
+    let tasks = _fdLastData.tasks || [];
+    if (_lwSearchQuery) {
+      const q = _lwSearchQuery;
+      tasks = tasks.filter(t => {
+        const hay = ((t.activity_code || "") + " " + (t.name || "")).toLowerCase();
+        return hay.includes(q);
+      });
     }
+    if (_fdLinkFilter === "all") {
+      fd_renderGantt({ ..._fdLastData, tasks });
+    } else if (_fdLinkFilter === "unlinked") {
+      fd_renderGantt({
+        ..._fdLastData,
+        tasks: tasks.filter(t => t.link_status !== "linked"),
+      });
+    } else {
+      fd_renderGantt({
+        ..._fdLastData,
+        tasks: tasks.filter(t => t.link_status === _fdLinkFilter),
+      });
+    }
+    lwUpdateCoverageCounts(_fdLastData.tasks || []);
+    const shownEl = document.getElementById("lw-count-shown");
+    if (shownEl) {
+      const leaf = (fd_vs.tasks || []).filter(function (t) { return !t.isGroup; });
+      shownEl.textContent = String(leaf.length);
+    }
+
 
     if (!_linkCheckBtn?.classList.contains("btn-primary")) return;
     if (_fdTaskSelected) return;
+    if (_lwHighlightActive) return;
 
     const linked = [], unlinked = [];
     for (const t of (_fdLastData.tasks || [])) {
-      const ids = t.entity_global_ids || [];
+      const ids = t.trusted_entity_global_ids || t.entity_global_ids || [];
       if (!ids.length) continue;
       if (t.link_status === "linked")        linked.push(...ids);
       else if (t.link_status === "unlinked") unlinked.push(...ids);
@@ -1055,12 +1998,12 @@
   }
 
   async function _doLinkElement(globalId) {
-    const tasks  = fd_vs.tasks;
-    const task   = fd_selectedRowIdx >= 0 ? tasks[fd_selectedRowIdx] : null;
+    const task = _lwSelectedTask
+      || (fd_selectedRowIdx >= 0 ? fd_vs.tasks[fd_selectedRowIdx] : null);
     if (!task || task.isGroup) { _showToast("No task selected — click a task first", "error"); return; }
     const taskId = task.pk || task.id;
     if (!taskId) { _showToast("Task has no ID", "error"); return; }
-    const url = `/castor/projects/{{ project.pk }}/tasks/${taskId}/link-element/`;
+    const url = LINK_ELEMENT_URL_TMPL.replace("__TASK_ID__", String(taskId));
     try {
       const resp = await fetch(url, {
         method: "POST",
@@ -1084,11 +2027,16 @@
     let patched = 0;
     for (const t of _fdLastData.tasks) {
       if (t.isGroup) continue;
-      const ids = t.entity_global_ids;
+      const ids = t.trusted_entity_global_ids || t.entity_global_ids;
       if (!ids) continue;
       const idx = ids.indexOf(globalId);
       if (idx === -1) continue;
       ids.splice(idx, 1);
+      if (t.trusted_entity_global_ids) {
+        const ridx = (t.review_entity_global_ids || []).indexOf(globalId);
+        if (ridx >= 0) t.review_entity_global_ids.splice(ridx, 1);
+      }
+      t.entity_global_ids = t.trusted_entity_global_ids || ids;
       if (ids.length === 0) t.link_status = "unlinked";
       patched++;
     }
@@ -1096,7 +2044,7 @@
   }
 
   async function _doUnlinkElement(globalId) {
-    const url = `/castor/projects/{{ project.pk }}/elements/unlink-all/`;
+    const url = "{% url 'scheduling:unlink_all_element' project.pk %}";
     try {
       const resp = await fetch(url, {
         method: "POST",
@@ -1127,14 +2075,16 @@
   }
 
   document.getElementById("fd-focus-btn")?.addEventListener("click", () => {
-    if (_fdFocusGlobalId) sendToViewer({ type: "castor:focus-element", global_id: _fdFocusGlobalId });
+    if (_fdFocusGlobalId) {
+      sendToViewer({ type: "castor:focus-element", global_id: _fdFocusGlobalId, isolate: false });
+    }
   });
 
   document.getElementById("fd-zoom-in-btn")?.addEventListener("click", () => {
-    sendToViewer({ type: "castor:zoom", direction: "in" });
+    sendToViewer({ type: "castor:viewer-zoom", direction: "in" });
   });
   document.getElementById("fd-zoom-out-btn")?.addEventListener("click", () => {
-    sendToViewer({ type: "castor:zoom", direction: "out" });
+    sendToViewer({ type: "castor:viewer-zoom", direction: "out" });
   });
 
   document.querySelectorAll(".fd-lf-btn").forEach(btn => {
@@ -1164,6 +2114,49 @@
 
   let viewerReady = false, pendingMsg = null, currentMode = "timeline";
   let tlIntervals = [], tlNoTask = [], tlTimer = null, tlSpeed = 1;
+  const tlDetailCache = Object.create(null);  // date → entities
+  let tlDetailInflight = Object.create(null);
+
+  async function _ensureIntervalDetail(iv) {
+    if (!iv || !iv.date) return iv;
+    const ents = iv.entities || {};
+    const hasGids = (ents.not_started && ents.not_started.length)
+      || (ents.in_progress && ents.in_progress.length)
+      || (ents.complete && ents.complete.length)
+      || (ents.delayed && ents.delayed.length);
+    if (hasGids) return iv;
+    if (tlDetailCache[iv.date]) {
+      iv.entities = tlDetailCache[iv.date];
+      return iv;
+    }
+    if (tlDetailInflight[iv.date]) {
+      await tlDetailInflight[iv.date];
+      iv.entities = tlDetailCache[iv.date] || iv.entities;
+      return iv;
+    }
+    tlDetailInflight[iv.date] = (async () => {
+      const includeNoTask = tlNoTask.length ? "0" : "1";
+      const resp = await fetch(
+        `${TIMELINE_DETAIL_URL}?date=${encodeURIComponent(iv.date)}&include_no_task=${includeNoTask}`
+      );
+      if (!resp.ok) throw new Error("timeline detail HTTP " + resp.status);
+      const data = await resp.json();
+      tlDetailCache[iv.date] = data.entities || {
+        not_started: [], in_progress: [], complete: [], delayed: [],
+      };
+      if (includeNoTask === "1" && Array.isArray(data.no_task)) {
+        tlNoTask = data.no_task;
+      }
+      if (data.stats) iv.stats = data.stats;
+    })();
+    try {
+      await tlDetailInflight[iv.date];
+    } finally {
+      delete tlDetailInflight[iv.date];
+    }
+    iv.entities = tlDetailCache[iv.date] || iv.entities;
+    return iv;
+  }
 
   function sendToViewer(msg) {
     if (!viewerReady) { pendingMsg = msg; return; }
@@ -1185,8 +2178,10 @@
     }
     if (msg.type === "castor:element-selected") {
       if (msg.global_id) {
+        lwSetSelectedElement(msg.global_id);
         selectTaskByGlobalId(msg.global_id);
       } else {
+        lwSetSelectedElement(null);
         fd_selectedRowIdx = -1;
         fd_vs.dirty = true;
         fd_vsRefresh(true);
@@ -1209,7 +2204,7 @@
       _fdMultiSelectedSet.clear();
       for (const t of fd_vs.tasks) {
         if (t.isGroup) continue;
-        if ((t.entity_global_ids || []).some(id => ids.includes(id))) {
+        if ((t.trusted_entity_global_ids || t.entity_global_ids || []).some(id => ids.includes(id))) {
           _fdMultiSelectedTasks.push(t);
           _fdMultiSelectedSet.add(t.pk || t.id);
         }
@@ -1219,8 +2214,7 @@
     }
   });
 
-  const _linkCheckBtn  = document.querySelector("#fd-colorby-group button[data-mode='link-check']");
-  const _siteStatusBtn = document.querySelector("#fd-colorby-group button[data-mode='site-status']");
+  const _linkCheckBtn = document.querySelector("#fd-colorby-group button[data-mode='link-check']");
 
   function _setColorBtn(btn, active) {
     if (active) {
@@ -1232,15 +2226,14 @@
     }
   }
 
-  function _deactivateBothColorBtns() {
-    if (_linkCheckBtn)  _setColorBtn(_linkCheckBtn,  false);
-    if (_siteStatusBtn) _setColorBtn(_siteStatusBtn, false);
+  function _deactivateLinkCheckBtn() {
+    if (_linkCheckBtn) _setColorBtn(_linkCheckBtn, false);
   }
 
   if (_linkCheckBtn) {
     _linkCheckBtn.addEventListener("click", () => {
       const wasActive = _linkCheckBtn.classList.contains("btn-primary");
-      _deactivateBothColorBtns();
+      _deactivateLinkCheckBtn();
       if (!wasActive) {
         _setColorBtn(_linkCheckBtn, true);
         _applyLinkFilter();
@@ -1250,32 +2243,9 @@
     });
   }
 
-  if (_siteStatusBtn) {
-    _siteStatusBtn.addEventListener("click", () => {
-      const wasActive = _siteStatusBtn.classList.contains("btn-primary");
-      _deactivateBothColorBtns();
-      if (!wasActive) {
-        if (!tlIntervals.length) {
-          _showToast("Timeline data not yet loaded — try again shortly", "info");
-          return;
-        }
-        /* Find the last weekly interval whose date is on or before today */
-        const today = new Date(); today.setHours(0, 0, 0, 0);
-        let iv = tlIntervals[0];
-        for (const t of tlIntervals) {
-          if (new Date(t.date + "T00:00:00") <= today) iv = t;
-          else break;
-        }
-        const { not_started = [], in_progress = [], complete = [], delayed = [] } = iv.entities || {};
-        sendToViewer({ type: "castor:timeline-colors", not_started, in_progress, complete, delayed, no_task: tlNoTask });
-        _setColorBtn(_siteStatusBtn, true);
-      } else {
-        sendToViewer({ type: "castor:reset" });
-      }
-    });
-  }
-
-  document.getElementById("fd-reset-view-btn").addEventListener("click", () => sendToViewer({ type: "castor:reset" }));
+  document.getElementById("fd-reset-view-btn")?.addEventListener("click", function () {
+    sendToViewer({ type: "castor:reset-view" });
+  });
 
   async function loadTimeline() {
     try {
@@ -1294,10 +2264,13 @@
     } catch (e) { /* no timeline — slider stays disabled */ }
   }
 
-  function _applyInterval(idx) {
+  async function _applyInterval(idx) {
     if (!tlIntervals.length) return;
     if (_fdLinkFilterActive) return;
     const iv = tlIntervals[Math.min(idx, tlIntervals.length - 1)];
+    try {
+      await _ensureIntervalDetail(iv);
+    } catch (_e) { /* keep stats UI even if highlight detail fails */ }
     const { not_started = [], in_progress = [], complete = [], delayed = [] } = iv.entities || {};
     sendToViewer({ type: "castor:timeline-colors", not_started, in_progress, complete, delayed, no_task: tlNoTask });
     document.getElementById("fd-current-date").textContent = new Date(iv.date + "T00:00:00")
@@ -1326,187 +2299,62 @@
     }, 1500 / tlSpeed);
   }
 
-  document.getElementById("fd-play-btn").addEventListener("click", () => {
-    document.getElementById("fd-play-btn").classList.add("d-none");
-    document.getElementById("fd-pause-btn").classList.remove("d-none");
+  document.getElementById("fd-play-btn")?.addEventListener("click", () => {
+    document.getElementById("fd-play-btn")?.classList.add("d-none");
+    document.getElementById("fd-pause-btn")?.classList.remove("d-none");
     _playTimeline();
   });
-  document.getElementById("fd-pause-btn").addEventListener("click", _pauseTimeline);
-  document.getElementById("fd-prev-btn").addEventListener("click", () => {
+  document.getElementById("fd-pause-btn")?.addEventListener("click", _pauseTimeline);
+  document.getElementById("fd-prev-btn")?.addEventListener("click", () => {
     const s = document.getElementById("fd-slider");
+    if (!s) return;
     _applyInterval(Math.max(0, parseInt(s.value) - 1));
   });
-  document.getElementById("fd-next-btn").addEventListener("click", () => {
+  document.getElementById("fd-next-btn")?.addEventListener("click", () => {
     const s = document.getElementById("fd-slider");
+    if (!s) return;
     _applyInterval(Math.min(parseInt(s.max), parseInt(s.value) + 1));
   });
-  document.getElementById("fd-to-start-btn").addEventListener("click", () => { _pauseTimeline(); _applyInterval(0); });
-  document.getElementById("fd-speed-select").addEventListener("change", (e) => {
+  document.getElementById("fd-to-start-btn")?.addEventListener("click", () => { _pauseTimeline(); _applyInterval(0); });
+  document.getElementById("fd-speed-select")?.addEventListener("change", (e) => {
     tlSpeed = parseFloat(e.target.value);
     if (tlTimer) { _pauseTimeline(); _playTimeline(); }
   });
-  document.getElementById("fd-slider").addEventListener("input", (e) => _applyInterval(parseInt(e.target.value)));
+  document.getElementById("fd-slider")?.addEventListener("input", (e) => _applyInterval(parseInt(e.target.value)));
 
-  /* ── AI Chat ────────────────────────────────────────────────────── */
-
-  function addFdMessage(role, html) {
-    const msgs = document.getElementById("fourD-messages");
-    const isAI = role === "ai";
-    const div  = document.createElement("div");
-    div.className = "fd-msg";
-    div.style.cssText = `background:${isAI ? "rgba(99,102,241,.1)" : "rgba(59,130,246,.08)"};`
-                      + `border-radius:8px;padding:10px 12px;font-size:12px;`
-                      + `align-self:${isAI ? "flex-start" : "flex-end"};max-width:90%;`;
-    div.innerHTML = `<strong style="color:${isAI ? "#818cf8" : "#3b82f6"};">${isAI ? "Castor AI" : "You"}</strong>`
-                  + `<p class="fd-msg-text" style="margin:4px 0 0;color:var(--bs-body-color);">${html}</p>`;
-    msgs.appendChild(div);
-    msgs.scrollTop = msgs.scrollHeight;
-  }
-
-  /* Writeback action words — if the user message contains any of these, route
-     to the schedule writeback pipeline instead of the Q&A intelligence endpoint. */
-  const FD_ACTION_WORDS = /\b(delay|push\s+back|move|reschedule|update|change|set|mark|complete|finish|start|activate|extend|shorten|add\s+dependency|remove\s+dependency|link)\b/i;
-
-  function _fdReplaceLoading(loadingId, html) {
-    const el = document.getElementById(loadingId);
-    if (el) el.closest(".fd-msg").querySelector(".fd-msg-text").innerHTML = html;
-  }
-
-  async function _fdAskIntelligence(msg, loadingId) {
-    const resp = await fetch(FD_INTELLIGENCE_ASK_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-CSRFToken": FD_CSRF },
-      body: JSON.stringify({ question: msg }),
-    });
-    const data = await resp.json();
-    _fdReplaceLoading(loadingId, data.answer || data.error || "No response.");
-  }
-
-  async function _fdWriteback(msg, loadingId) {
-    const resp = await fetch(FD_WRITEBACK_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-CSRFToken": FD_CSRF },
-      body: JSON.stringify({ message: msg }),
-    });
-    const data = await resp.json();
-
-    if (data.type === "unclear" || data.type === "out_of_scope" || data.type === "no_matches") {
-      _fdReplaceLoading(loadingId, esc(data.message || "Could not process request."));
-      return;
-    }
-
-    if (data.type === "proposals") {
-      const proposals = data.proposals || [];
-      const warnings  = data.warnings  || [];
-
-      let html = `<strong style="color:#818cf8;">Proposed changes:</strong>`;
-      html += `<div style="margin:8px 0;display:flex;flex-direction:column;gap:6px;">`;
-      for (const p of proposals) {
-        html += `<div style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:8px 10px;font-size:11px;">`;
-        html += `<div style="font-weight:600;color:#e2e8f0;margin-bottom:4px;">${esc(p.task_name)}</div>`;
-        if (p.activity_code) html += `<div style="color:rgba(255,255,255,.4);font-size:10px;margin-bottom:4px;">${esc(p.activity_code)}</div>`;
-        for (const [fname, chg] of Object.entries(p.changes || {})) {
-          html += `<div style="color:#94a3b8;">• ${esc(fname)}: <span style="color:#f87171;">${esc(String(chg.from))}</span> → <span style="color:#86efac;">${esc(String(chg.to))}</span></div>`;
-        }
-        html += `</div>`;
-      }
-      html += `</div>`;
-      if (warnings.length) {
-        html += `<div style="color:#fbbf24;font-size:10px;margin-bottom:6px;">⚠ ${warnings.map(esc).join(" · ")}</div>`;
-      }
-      // Store proposals on the button for the confirm handler
-      const confirmId = "fd-confirm-" + Date.now();
-      html += `<div style="display:flex;gap:8px;margin-top:4px;">`;
-      html += `<button id="${confirmId}" data-proposals='${JSON.stringify(proposals).replace(/'/g, "&#39;")}'`
-            + ` style="padding:4px 12px;background:#166534;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:11px;">✅ Confirm</button>`;
-      html += `<button onclick="this.closest('.fd-msg').remove()" style="padding:4px 12px;background:#7f1d1d;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:11px;">❌ Cancel</button>`;
-      html += `</div>`;
-
-      _fdReplaceLoading(loadingId, html);
-
-      // Attach confirm handler after the DOM is updated
-      requestAnimationFrame(() => {
-        const btn = document.getElementById(confirmId);
-        if (!btn) return;
-        btn.addEventListener("click", async () => {
-          btn.disabled = true;
-          btn.textContent = "Applying…";
-          try {
-            const cResp = await fetch(FD_WRITEBACK_URL, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", "X-CSRFToken": FD_CSRF },
-              body: JSON.stringify({ confirm: true, proposals }),
-            });
-            const cData = await cResp.json();
-            const n = cData.updated || 0;
-            const msgEl = btn.closest(".fd-msg").querySelector(".fd-msg-text");
-            if (msgEl) msgEl.innerHTML = `✅ Updated ${n} task${n !== 1 ? "s" : ""}. Refreshing Gantt…`;
-            // Refresh Gantt
-            loadGantt();
-          } catch (err) {
-            btn.textContent = "Error — retry?";
-            btn.disabled = false;
-          }
-        });
-      });
-    }
-  }
-
-  document.getElementById("fourD-chat-send").addEventListener("click", async () => {
-    const input = document.getElementById("fourD-chat-input");
-    const msg   = input.value.trim();
-    if (!msg) return;
-    input.value = "";
-    addFdMessage("user", esc(msg));
-    const loadingId = "fd-loading-" + Date.now();
-    addFdMessage("ai", `<span id="${loadingId}">Thinking…</span>`);
-    try {
-      if (FD_ACTION_WORDS.test(msg)) {
-        await _fdWriteback(msg, loadingId);
-      } else {
-        await _fdAskIntelligence(msg, loadingId);
-      }
-    } catch (e) {
-      _fdReplaceLoading(loadingId, "Error connecting to AI.");
-    }
-  });
-
-  document.getElementById("fourD-chat-input").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") document.getElementById("fourD-chat-send").click();
-  });
+  /* ── AI Chat / writeback: removed from 4D Link demo surface (Package 5) ── */
 
   /* ── Resizable panels ───────────────────────────────────────────── */
 
   function initSplitters() {
-    const STORAGE_KEY  = "fourD-layout";
-    const SPLITTER_PX  = 16; // 2 splitters × 8px each
-    const MIN_W = { "fourD-gantt": 220, "fourD-viewer": 400, "fourD-chat": 200 };
-    const DEFAULT_W = { "fourD-gantt": 280, "fourD-chat": 280 };
+    const STORAGE_KEY  = "fourD-layout-b";
+    const SPLITTER_PX  = 8;
+    const MIN_W = { "lw-left": 220, "fourD-gantt": 220, "fourD-viewer": 280, "lw-center": 320 };
+    const DEFAULT_W = { "lw-left": 280 };
 
-    /* Restore saved widths — clamp to valid range for current viewport */
     try {
       const saved   = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
-      const panelsW = document.getElementById("fourD-main").offsetWidth || 1200;
-      /* Each side panel can take at most 45% of the row (leaves room for the viewer) */
-      const cap = Math.floor(panelsW * 0.45);
+      const panelsW = document.getElementById("lw-body").offsetWidth || 1200;
+      const inspW = (document.getElementById("lw-inspector") || {}).offsetWidth || 280;
+      const cap = Math.min(
+        Math.floor(panelsW * 0.36),
+        panelsW - SPLITTER_PX - (MIN_W["lw-center"] || 320) - inspW
+      );
 
-      const ganttW = saved.gantt
-        ? Math.max(MIN_W["fourD-gantt"], Math.min(cap, saved.gantt))
-        : DEFAULT_W["fourD-gantt"];
+      const leftW = saved.left
+        ? Math.max(MIN_W["lw-left"], Math.min(cap, saved.left))
+        : DEFAULT_W["lw-left"];
 
-      document.getElementById("fourD-gantt").style.width = ganttW + "px";
-      /* chat width/visibility is owned by initChatPanel() — not restored here */
+      const leftEl = document.getElementById("lw-left");
+      if (leftEl) leftEl.style.width = leftW + "px";
     } catch (e) { /* ignore corrupt storage */ }
 
     function saveLayout() {
       try {
-        const chatW = document.getElementById("fourD-chat").offsetWidth;
-        const data  = { gantt: document.getElementById("fourD-gantt").offsetWidth };
-        if (chatW > 0) {
-          data.chat = chatW;
-          try { localStorage.setItem("fd-chat-width", String(chatW)); } catch(e2) {}
-        }
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        const leftEl = document.getElementById("lw-left");
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          left: leftEl ? leftEl.offsetWidth : DEFAULT_W["lw-left"],
+        }));
       } catch (e) { /* ignore */ }
     }
 
@@ -1526,9 +2374,6 @@
         /* Freeze iframe so it can't swallow pointer events mid-drag */
         const iframeEl = document.getElementById("fd-iframe");
         if (iframeEl) iframeEl.style.pointerEvents = "none";
-        /* Suppress chat CSS transition — otherwise splitter 2 drag feels laggy */
-        const chatEl = document.getElementById("fourD-chat");
-        if (chatEl) chatEl.style.transition = "none";
 
         const leftId  = splitter.dataset.left;
         const fixedId = leftId !== "fourD-viewer" ? leftId : splitter.dataset.right;
@@ -1540,8 +2385,7 @@
           startX: e.clientX,
           startW: fixedEl.offsetWidth,
           minW:   MIN_W[fixedId] || 200,
-          /* +1: drag right grows the panel (Gantt, left of splitter).
-             -1: drag right shrinks the panel (Chat, right of splitter). */
+          /* +1: drag right grows the panel (Gantt, left of splitter). */
           sign: leftId !== "fourD-viewer" ? 1 : -1,
         };
         splitter.classList.add("fd-dragging");
@@ -1557,12 +2401,14 @@
         requestAnimationFrame(() => {
           _rafPending = false;
           if (!_drag) return;                // drag may have ended during the frame wait
-          const { fixedId, fixedEl, startX, startW, minW, sign } = _drag;
+          const { fixedEl, startX, startW, minW, sign } = _drag;
           const delta   = (clientX - startX) * sign;
-          const container = document.getElementById("fourD-main");
-          const otherId = fixedId === "fourD-gantt" ? "fourD-chat" : "fourD-gantt";
-          const otherW  = document.getElementById(otherId).offsetWidth;
-          const maxW    = container.offsetWidth - otherW - SPLITTER_PX - MIN_W["fourD-viewer"];
+          const container = document.getElementById("lw-body");
+          const inspW = (document.getElementById("lw-inspector") || {}).offsetWidth || 300;
+          const maxW = container.offsetWidth
+            - SPLITTER_PX
+            - (MIN_W["lw-center"] || 320)
+            - inspW;
           fixedEl.style.width = Math.max(minW, Math.min(maxW, startW + delta)) + "px";
         });
       });
@@ -1575,8 +2421,6 @@
         document.body.style.userSelect = "";
         const iframeEl = document.getElementById("fd-iframe");
         if (iframeEl) iframeEl.style.pointerEvents = "";
-        const chatEl = document.getElementById("fourD-chat");
-        if (chatEl) chatEl.style.transition = "";
         saveLayout();
         _drag = null;
       });
@@ -1589,78 +2433,12 @@
         document.body.style.userSelect = "";
         const iframeEl = document.getElementById("fd-iframe");
         if (iframeEl) iframeEl.style.pointerEvents = "";
-        const chatEl = document.getElementById("fourD-chat");
-        if (chatEl) chatEl.style.transition = "";
         _drag = null;
       });
     });
   }
 
-  /* ── Chat panel toggle ──────────────────────────────────────────── */
-
-  let _chatOpen = false;
-
-  function initChatPanel() {
-    const chat = document.getElementById("fourD-chat");
-    try { _chatOpen = localStorage.getItem("fd-chat-open") === "1"; } catch(e) {}
-    if (_chatOpen) {
-      let w = 280;
-      try { w = parseInt(localStorage.getItem("fd-chat-width") || "280") || 280; } catch(e) {}
-      chat.style.width    = w + "px";
-      chat.style.minWidth = "200px";
-      chat.style.overflow = "";
-    } else {
-      chat.style.width    = "0px";
-      chat.style.minWidth = "0";
-      chat.style.overflow = "hidden";
-    }
-  }
-
-  document.getElementById("fd-chat-toggle").addEventListener("click", () => {
-    const chat = document.getElementById("fourD-chat");
-    _chatOpen = !_chatOpen;
-    if (_chatOpen) {
-      let w = 280;
-      try { w = parseInt(localStorage.getItem("fd-chat-width") || "280") || 280; } catch(e) {}
-      chat.style.width    = w + "px";
-      chat.style.minWidth = "200px";
-      chat.style.overflow = "";
-    } else {
-      try { localStorage.setItem("fd-chat-width", String(chat.offsetWidth)); } catch(e) {}
-      chat.style.width    = "0px";
-      chat.style.minWidth = "0";
-      chat.style.overflow = "hidden";
-    }
-    try { localStorage.setItem("fd-chat-open", _chatOpen ? "1" : "0"); } catch(e) {}
-  });
-
-  /* ── Embed Tasks ────────────────────────────────────────────────── */
-  document.getElementById("fd-embed-btn").addEventListener("click", async () => {
-    const btn     = document.getElementById("fd-embed-btn");
-    const spinner = document.getElementById("fd-embed-spinner");
-    const status  = document.getElementById("fd-embed-status");
-    btn.disabled = true;
-    spinner.classList.remove("d-none");
-    status.textContent = "Embedding tasks…";
-    try {
-      const resp = await fetch(FD_INTELLIGENCE_EMBED_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-CSRFToken": FD_CSRF },
-        body: JSON.stringify({ force: false }),
-      });
-      const data = await resp.json();
-      if (data.ok) {
-        status.textContent = `✅ Embedded ${data.embedded} tasks`;
-      } else {
-        status.textContent = `❌ ${data.error || "Embedding failed"}`;
-      }
-    } catch (err) {
-      status.textContent = `❌ ${err}`;
-    } finally {
-      btn.disabled = false;
-      spinner.classList.add("d-none");
-    }
-  });
+  /* ── Chat panel / embed: removed from 4D Link demo surface (Package 5) ── */
 
   /* ── Gantt row context menu ─────────────────────────────────────── */
 
@@ -1726,7 +2504,7 @@
     return { show, hide: _hide };
   })();
 
-  document.getElementById("fd-gantt-body").addEventListener("contextmenu", (e) => {
+  document.getElementById("fd-gantt-body")?.addEventListener("contextmenu", (e) => {
     const rowEl = e.target.closest("[data-row-idx]");
     if (!rowEl) return;
     e.preventDefault();
@@ -1848,8 +2626,9 @@
       if (t.isGroup) continue;
       if (!pkSet.has(t.pk || t.id)) continue;
       t.link_status = "linked";
-      if (!t.entity_global_ids) t.entity_global_ids = [];
-      if (!t.entity_global_ids.includes(globalId)) t.entity_global_ids.push(globalId);
+      if (!t.trusted_entity_global_ids) t.trusted_entity_global_ids = [];
+      if (!t.trusted_entity_global_ids.includes(globalId)) t.trusted_entity_global_ids.push(globalId);
+      t.entity_global_ids = t.trusted_entity_global_ids;
     }
   }
 
@@ -1906,10 +2685,776 @@
     if (chevron) chevron.style.transform = isExpanded ? "rotate(90deg)" : "";
   });
 
+  /* ── Links Workspace: Selected Activity + manual link actions ───────── */
+  function lwUpdateCoverageCounts(tasks) {
+    const physical = (tasks || []).filter(t => !t.is_non_physical);
+    let applied = 0, unlinked = 0;
+    physical.forEach(t => {
+      if (t.link_status === "linked") applied++;
+      else unlinked++;
+    });
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = String(v); };
+    set("lw-count-applied", applied);
+    set("lw-count-unlinked", unlinked);
+    const cov = physical.length ? Math.round((applied / physical.length) * 100) + "%" : "—";
+    set("lw-count-coverage", cov);
+  }
+
+  function lwStateLabel(t) {
+    if (!t) return "Unlinked";
+    if (t.link_status === "linked") return "Applied";
+    return "Unlinked";
+  }
+
+
+  /* ── Link Check (read-only Parameter Match preview) ─────────────── */
+
+  function lwSyncApplyButton() {
+    const btn = document.getElementById("lw-apply-links-btn");
+    if (!btn) return;
+    const p = _lwLinkCheckPreview;
+    if (!p) {
+      btn.disabled = true;
+      btn.title = !_lwCanApplyParam
+        ? "Apply Preview Matches unavailable in this session."
+        : "Run Link Check first.";
+      return;
+    }
+    const hasErrors = Array.isArray(p.errors) ? p.errors.length > 0 : !!p.errors;
+    const pending = !!(!hasErrors && ((p.projected_inserts || 0) > 0 || (p.projected_updates || 0) > 0));
+    const allow = _lwCanApplyParam && pending;
+    btn.disabled = !allow;
+    if (!_lwCanApplyParam) {
+      btn.title = "Apply Preview Matches unavailable in this session.";
+    } else if (!pending) {
+      btn.title = "No pending preview matches to apply.";
+    } else {
+      btn.title = "Applies the latest preview set.";
+    }
+  }
+
+  function lwSetResultsTab(tab) {
+    _lwResultsTab = tab || "matched";
+    document.querySelectorAll("#lw-match-results .lw-results-tab").forEach(function (b) {
+      b.classList.toggle("active", b.dataset.resultsTab === _lwResultsTab);
+    });
+    lwRenderMatchResults();
+  }
+
+  function lwRenderMatchResults() {
+    const body = document.getElementById("lw-results-body");
+    if (!body) return;
+    const p = _lwLinkCheckPreview;
+    if (!p) {
+      body.innerHTML =
+        "<div class=\"lw-empty p-3\" data-testid=\"links-results-empty\">" +
+        "Run Link Check to compare schedule activities with model parameters.</div>";
+      ["lw-tab-n-matched","lw-tab-n-unmatched-act","lw-tab-n-unmatched-el","lw-tab-n-conflicts",
+       "lw-hdr-n-matched","lw-hdr-n-unmatched-act","lw-hdr-n-unmatched-el","lw-hdr-n-conflicts"].forEach(function (id) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = "0";
+      });
+      lwSyncApplyButton();
+      return;
+    }
+
+    const matched = p.task_distribution || [];
+    const unmatchedAct = p.schedule_only_id_samples || [];
+    const unmatchedEl = p.unmatched_ifc_id_samples || [];
+    const conflicts = [];
+    (p.case_insensitive_only_samples || []).forEach(function (row) {
+      conflicts.push({
+        kind: "Case differs",
+        detail: (row.schedule_activity_code || "") + " ↔ " + (row.ifc_activity_id || ""),
+      });
+    });
+    (p.malformed_samples || []).slice(0, 20).forEach(function (row) {
+      conflicts.push({
+        kind: "Malformed value",
+        detail: (row.entity_global_id || "") + " · " + (row.raw_value || ""),
+      });
+    });
+    if ((p.projected_conflicts || 0) > 0) {
+      conflicts.push({
+        kind: "Projected conflicts",
+        detail: String(p.projected_conflicts) + " conflict row(s) in write plan",
+      });
+    }
+    if ((p.duplicate_schedule_codes || 0) > 0) {
+      (p.duplicate_schedule_code_samples || []).slice(0, 10).forEach(function (code) {
+        conflicts.push({ kind: "Duplicate activity code", detail: String(code) });
+      });
+    }
+
+    const nMatched = p.matched_task_count != null ? p.matched_task_count : matched.length;
+    const nUnAct = p.schedule_only_activity_codes != null ? p.schedule_only_activity_codes : unmatchedAct.length;
+    const nUnEl = p.unmatched_ifc_activity_ids != null ? p.unmatched_ifc_activity_ids : unmatchedEl.length;
+    const setN = function (id, n) { const el = document.getElementById(id); if (el) el.textContent = String(n); };
+    setN("lw-tab-n-matched", nMatched);
+    setN("lw-tab-n-unmatched-act", nUnAct);
+    setN("lw-tab-n-unmatched-el", nUnEl);
+    setN("lw-tab-n-conflicts", conflicts.length);
+    setN("lw-hdr-n-matched", nMatched);
+    setN("lw-hdr-n-unmatched-act", nUnAct);
+    setN("lw-hdr-n-unmatched-el", nUnEl);
+    setN("lw-hdr-n-conflicts", conflicts.length);
+
+    const param = p.param_name || "Activity ID";
+    let html = "";
+
+    if (_lwResultsTab === "matched") {
+      if (!matched.length) {
+        html =
+          "<div class=\"lw-empty p-3\" data-testid=\"links-results-no-matches\">" +
+          "<div class=\"mb-1\">No matches found for this rule.</div>" +
+          "<div>Try another parameter, level, or class filter.</div></div>";
+      } else {
+        html = "<table data-testid=\"links-results-table-matched\"><thead><tr>" +
+          "<th></th><th>Activity code</th><th>Activity name</th>" +
+          "<th>Model element</th><th>IFC class</th><th>Level / storey</th>" +
+          "<th>Matched field</th><th>Status</th></tr></thead><tbody>";
+        matched.slice(0, 200).forEach(function (row) {
+          const code = row.activity_code || "";
+          const checked = _lwResultsSelectedCodes.has(code) ? " checked" : "";
+          const status = (row.projected_insert || 0) + (row.projected_update || 0) > 0
+            ? "preview"
+            : ((row.existing_accepted_count || 0) > 0 ? "already applied" : "preview");
+          const nEl = row.entity_count || 0;
+          const elFallback = nEl === 1 ? "1 element" : (String(nEl) + " elements");
+          html += "<tr data-testid=\"links-match-row\" data-activity-code=\"" + esc(code) + "\">" +
+            "<td><input type=\"checkbox\" class=\"form-check-input lw-match-check\"" +
+            " data-testid=\"links-match-row-check\" data-activity-code=\"" + esc(code) + "\"" + checked + "></td>" +
+            "<td><code>" + esc(code) + "</code></td>" +
+            "<td>" + esc(row.task_name || "") + "</td>" +
+            "<td>" + esc(elFallback) + "</td>" +
+            "<td>—</td>" +
+            "<td>—</td>" +
+            "<td>" + esc(param) + " = " + esc(row.activity_code_trimmed || code) + "</td>" +
+            "<td><span class=\"lw-badge " + (status === "already applied" ? "lw-badge-applied" : "lw-badge-preview") + "\">" +
+            esc(status) + "</span></td></tr>";
+        });
+        html += "</tbody></table>";
+        if (matched.length > 200) {
+          html += "<div class=\"lw-empty p-2\">Showing first 200 of " + matched.length + " matched activities.</div>";
+        }
+      }
+    } else if (_lwResultsTab === "unmatched_activities") {
+      if (!unmatchedAct.length) {
+        html = "<div class=\"lw-empty p-3\">No unmatched activities in this preview sample.</div>";
+      } else {
+        html = "<table data-testid=\"links-results-table-unmatched-activities\"><thead><tr>" +
+          "<th>Activity code</th><th>Reason</th></tr></thead><tbody>";
+        unmatchedAct.forEach(function (code) {
+          html += "<tr><td><code>" + esc(code) + "</code></td>" +
+            "<td>No model element with " + esc(param) + " = this code</td></tr>";
+        });
+        html += "</tbody></table>";
+        if (nUnAct > unmatchedAct.length) {
+          html += "<div class=\"lw-empty p-2\">Sample of " + unmatchedAct.length +
+            " · total unmatched activities: " + nUnAct + "</div>";
+        }
+      }
+    } else if (_lwResultsTab === "unmatched_elements") {
+      if (!unmatchedEl.length) {
+        html = "<div class=\"lw-empty p-3\">No unmatched model element values in this preview sample.</div>";
+      } else {
+        html = "<table data-testid=\"links-results-table-unmatched-elements\"><thead><tr>" +
+          "<th>Model parameter value</th><th>Reason</th></tr></thead><tbody>";
+        unmatchedEl.forEach(function (val) {
+          html += "<tr><td><code>" + esc(val) + "</code></td>" +
+            "<td>No schedule Activity Code equals this value</td></tr>";
+        });
+        html += "</tbody></table>";
+        if (nUnEl > unmatchedEl.length) {
+          html += "<div class=\"lw-empty p-2\">Sample of " + unmatchedEl.length +
+            " · total unmatched model values: " + nUnEl + "</div>";
+        }
+      }
+    } else {
+      if (!conflicts.length) {
+        html = "<div class=\"lw-empty p-3\">No conflicts detected for this rule.</div>";
+      } else {
+        html = "<table data-testid=\"links-results-table-conflicts\"><thead><tr>" +
+          "<th>Type</th><th>Detail</th></tr></thead><tbody>";
+        conflicts.forEach(function (c) {
+          html += "<tr><td><span class=\"lw-badge lw-badge-conflict\">" + esc(c.kind) +
+            "</span></td><td>" + esc(c.detail) + "</td></tr>";
+        });
+        html += "</tbody></table>";
+      }
+    }
+
+    const summary =
+      "<div class=\"px-2 py-1 border-bottom text-secondary\" style=\"font-size:0.7rem;\" data-testid=\"links-results-summary\">" +
+      "Parameter <code>" + esc(param) + "</code> · matched activities " + nMatched +
+      " · projected bindings " + (p.projected_binding_count || 0) +
+      " · inserts " + (p.projected_inserts || 0) +
+      " · updates " + (p.projected_updates || 0) +
+      " · already applied no-ops " + (p.projected_no_ops || 0) +
+      "</div>";
+    body.innerHTML = summary + html;
+    body.querySelectorAll(".lw-match-check").forEach(function (cb) {
+      cb.addEventListener("change", function () {
+        const code = cb.getAttribute("data-activity-code") || "";
+        if (!code) return;
+        if (cb.checked) _lwResultsSelectedCodes.add(code);
+        else _lwResultsSelectedCodes.delete(code);
+      });
+    });
+    lwSyncApplyButton();
+  }
+
+  async function lwRunLinkCheck() {
+    const paramInput = document.getElementById("lw-model-param");
+    const param = ((paramInput && paramInput.value) || "").trim();
+    if (!param) {
+      _showToast("Enter a model parameter name.", "error");
+      return;
+    }
+    const btn = document.getElementById("lw-run-link-check");
+    if (btn) { btn.disabled = true; btn.innerHTML = "<span class=\"spinner-border spinner-border-sm me-1\"></span>Running…"; }
+    const body = document.getElementById("lw-results-body");
+    if (body) {
+      body.innerHTML = "<div class=\"lw-empty p-3\">Running read-only Link Check…</div>";
+    }
+    try {
+      const url = LINK_CHECK_URL + "?param_name=" + encodeURIComponent(param) + "&format=json";
+      const resp = await fetch(url, { headers: { "Accept": "application/json" } });
+      const data = await resp.json().catch(function () { return {}; });
+      if (!resp.ok) {
+        _lwLinkCheckPreview = null;
+        if (body) {
+          body.innerHTML =
+            "<div class=\"lw-empty p-3 text-danger\">Link Check failed: " +
+            esc(data.error || data.errors && data.errors[0] || ("HTTP " + resp.status)) +
+            "</div>";
+        }
+        _showToast(data.error || "Link Check failed", "error");
+        lwSyncApplyButton();
+        return;
+      }
+      _lwLinkCheckPreview = data;
+      _lwResultsTab = "matched";
+      document.querySelectorAll("#lw-match-results .lw-results-tab").forEach(function (b) {
+        b.classList.toggle("active", b.dataset.resultsTab === "matched");
+      });
+      lwRenderMatchResults();
+      lwSetPanel("results", true);
+      fd_vs.dirty = true;
+      if (typeof fd_vsRefresh === "function") fd_vsRefresh(true);
+      _showToast("Link Check complete (preview only).", "success");
+    } catch (err) {
+      _lwLinkCheckPreview = null;
+      if (body) body.innerHTML = "<div class=\"lw-empty p-3 text-danger\">Link Check request failed.</div>";
+      _showToast("Link Check request failed", "error");
+      lwSyncApplyButton();
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = "<i class=\"bi bi-search me-1\"></i>Run Link Check";
+      }
+    }
+  }
+
+  function lwSyncApplyModalConfirm() {
+    const btn = document.getElementById("lw-apply-confirm-btn");
+    if (!btn) return;
+    const p = _lwLinkCheckPreview;
+    const pending = !!(p && ((p.projected_inserts || 0) > 0 || (p.projected_updates || 0) > 0));
+    btn.disabled = !(_lwCanApplyParam && pending);
+  }
+
+  async function lwApplyPreviewMatches() {
+    const p = _lwLinkCheckPreview;
+    if (!p || !_lwCanApplyParam) {
+      _showToast("Apply Links unavailable.", "error");
+      return;
+    }
+    const pending = ((p.projected_inserts || 0) > 0 || (p.projected_updates || 0) > 0);
+    if (!pending) {
+      _showToast("No pending preview matches to apply.", "info");
+      return;
+    }
+    const payload = {
+      preview_fingerprint: p.preview_fingerprint,
+      param_name: p.param_name,
+      expected_matched_task_count: p.matched_task_count,
+      expected_projected_binding_count: p.projected_binding_count,
+      confirmation: "APPROVE",
+      confirm_acknowledged: true,
+      format: "json",
+    };
+    const btn = document.getElementById("lw-apply-confirm-btn");
+    if (btn) btn.disabled = true;
+    try {
+      const resp = await fetch(APPLY_APPROVED_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "X-CSRFToken": FD_CSRF,
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await resp.json().catch(function () { return {}; });
+      if (resp.ok) {
+        _showToast("Applied preview matches.", "success");
+        const modalEl = document.getElementById("lwApplyLinksModal");
+        if (modalEl && window.bootstrap) {
+          const inst = bootstrap.Modal.getInstance(modalEl);
+          if (inst) inst.hide();
+        }
+        await lwRunLinkCheck();
+        await loadGantt();
+      } else {
+        _showToast(data.error || "Apply Links failed", "error");
+      }
+    } catch (err) {
+      _showToast("Apply Links request failed", "error");
+    } finally {
+      lwSyncApplyModalConfirm();
+    }
+  }
+
+
+  function lwClearSelection() {
+    _lwSelectedTask = null;
+    const empty = document.getElementById("lw-inspector-empty");
+    const body = document.getElementById("lw-inspector-body");
+    const cEmpty = document.getElementById("lw-center-empty");
+    const app = document.getElementById("lw-applied-section");
+    const manual = document.getElementById("lw-manual-actions");
+    if (empty) empty.style.display = "";
+    if (body) { body.style.display = "none"; body.innerHTML = ""; }
+    if (cEmpty) cEmpty.style.display = "";
+    if (app) app.style.display = "none";
+    if (manual) manual.style.display = "none";
+    lwSyncManualActionButtons();
+    lwSyncInspectorRail();
+  }
+
+  function lwRenderSelectedElementChip() {
+    const chip = document.getElementById("lw-selected-element-chip");
+    if (!chip) return;
+    if (!_lwSelectedElement || !_lwSelectedElement.global_id) {
+      chip.removeAttribute("title");
+      chip.textContent = "Select a model element to enable Link Selected Element.";
+      return;
+    }
+    const name = _lwSelectedElement.name || "";
+    const typ = _lwSelectedElement.ifc_type || "";
+    const loc = _lwSelectedElement.location || "";
+    const gid = _lwSelectedElement.global_id;
+    const shortG = lwShortGid(gid);
+    chip.title = gid;
+    if (name || typ || loc) {
+      chip.innerHTML =
+        "<div><strong>" + esc(name || "Selected model element") + "</strong></div>" +
+        "<div class=\"text-secondary\">" + esc([typ, loc].filter(Boolean).join(" · ")) + "</div>" +
+        "<div class=\"text-secondary\" style=\"font-size:.68rem;\">" + esc(shortG) + "</div>";
+    } else {
+      chip.innerHTML = "Selected model element: <strong>" + esc(shortG) + "</strong>";
+    }
+  }
+
+  function lwSyncManualActionButtons() {
+    const linkBtn = document.getElementById("lw-link-selected-btn");
+    const toolBtn = document.getElementById("lw-open-link-tool-btn");
+    const hasActivity = !!(
+      _lwSelectedTask && !_lwSelectedTask.isGroup && (_lwSelectedTask.id || _lwSelectedTask.pk)
+    );
+    const hasElement = !!(!_lwSelectedElement ? false : _lwSelectedElement.global_id);
+    if (linkBtn) {
+      const allow = _lwCanManualLink && hasActivity && hasElement;
+      linkBtn.disabled = !allow;
+      linkBtn.title = !_lwCanManualLink
+        ? "Link action unavailable in this session."
+        : (!hasActivity
+          ? "Select an activity first."
+          : (!hasElement
+            ? "Select a model element to link it to this activity."
+            : "Link the selected model element to the selected activity."));
+    }
+    if (toolBtn) {
+      toolBtn.disabled = !hasElement;
+      toolBtn.title = hasElement
+        ? "Open the Link Element tool for the selected model element."
+        : "Select a model element in Model Context first.";
+    }
+  }
+
+  async function lwSetSelectedElement(globalId) {
+    if (!globalId) {
+      _lwSelectedElement = null;
+      lwRenderSelectedElementChip();
+      lwSyncManualActionButtons();
+      return;
+    }
+    _lwSelectedElement = { global_id: globalId, name: "", ifc_type: "", location: "" };
+    lwRenderSelectedElementChip();
+    lwSyncManualActionButtons();
+    try {
+      const url = ELEMENT_PROPS_URL_TMPL.replace("ELEM_PH", encodeURIComponent(globalId));
+      const resp = await fetch(url);
+      if (!resp.ok) return;
+      const data = await resp.json();
+      if (!_lwSelectedElement || _lwSelectedElement.global_id !== globalId) return;
+      _lwSelectedElement.name = data.name || "";
+      _lwSelectedElement.ifc_type = data.ifc_type || "";
+      _lwSelectedElement.location = data.location || "";
+      lwRenderSelectedElementChip();
+    } catch (e) { /* chip keeps GID fallback */ }
+  }
+
+  function lwRenderAppliedPlaceholders(container, gids) {
+    if (!container) return;
+    container.innerHTML = "";
+    if (!gids || !gids.length) {
+      const empty = document.createElement("div");
+      empty.className = "lw-empty";
+      empty.setAttribute("data-testid", "links-applied-empty");
+      empty.innerHTML =
+        "<div class=\"mb-1\">No applied model links for this activity.</div>" +
+        "<div data-testid=\"links-manual-link-guidance\">" +
+        "Use <strong>Link Check</strong> for parameter-based matching, or <strong>Manual fallback</strong> for individual exceptions.</div>";
+      container.appendChild(empty);
+      return;
+    }
+    gids.forEach(function (gid, i) {
+      const card = document.createElement("div");
+      card.className = "lw-card lw-card-enter lw-card-applied";
+      card.style.animationDelay = Math.min(i, 8) * 30 + "ms";
+      card.setAttribute("data-testid", "links-applied-card");
+      card.setAttribute("data-global-id", gid);
+      card.innerHTML =
+        "<div class=\"d-flex align-items-center gap-2\">" +
+        "<i class=\"bi bi-check-circle text-success\"></i>" +
+        "<code style=\"font-size:.72rem;\">" + esc(gid) + "</code>" +
+        "<span class=\"lw-badge lw-badge-applied ms-auto\">Applied</span></div>" +
+        "<div class=\"text-secondary mt-1\" style=\"font-size:.7rem;\">Loading element details…</div>";
+      container.appendChild(card);
+    });
+  }
+
+  function lwMountTaskDetailPanels(html, t) {
+    const appList = document.getElementById("lw-applied-list");
+    const detailSlot = document.getElementById("lw-inspector-detail");
+    const tmp = document.createElement("div");
+    tmp.innerHTML = html;
+
+    const caps = tmp.querySelector('[data-testid="links-manual-capability"]');
+    if (caps) {
+      if (caps.dataset.canManualLink != null) {
+        _lwCanManualLink = caps.dataset.canManualLink === "1";
+      }
+      if (caps.dataset.canRemoveLink != null) {
+        _lwCanRemoveLink = caps.dataset.canRemoveLink === "1";
+      }
+    }
+
+    const appCards = tmp.querySelector('[data-testid="links-task-applied-cards"]');
+    const hints = tmp.querySelector('[data-testid="links-task-property-hints"]');
+    const timeView = tmp.querySelector('[data-testid="links-open-time-view"]');
+
+    if (appList && appCards) {
+      appList.innerHTML = appCards.innerHTML;
+      if (window.htmx) window.htmx.process(appList);
+    } else if (appList) {
+      lwRenderAppliedPlaceholders(
+        appList,
+        (t && (t.trusted_entity_global_ids || t.entity_global_ids)) || []
+      );
+    }
+
+    if (detailSlot) {
+      let extra = "";
+      if (hints) extra += hints.outerHTML;
+      if (timeView) extra += "<div class=\"mt-2\">" + timeView.outerHTML + "</div>";
+      detailSlot.innerHTML = extra || "";
+    }
+    lwSyncManualActionButtons();
+  }
+
+  async function lwSelectActivity(t) {
+    if (!t || t.isGroup) return;
+    _lwSelectedTask = t;
+    lwSyncInspectorRail();
+    const empty = document.getElementById("lw-inspector-empty");
+    const body = document.getElementById("lw-inspector-body");
+    const cEmpty = document.getElementById("lw-center-empty");
+    const appSec = document.getElementById("lw-applied-section");
+    const appList = document.getElementById("lw-applied-list");
+    const manual = document.getElementById("lw-manual-actions");
+    if (empty) empty.style.display = "none";
+    if (cEmpty) cEmpty.style.display = "none";
+    if (appSec) appSec.style.display = "";
+    if (manual) manual.style.display = "";
+
+    const state = lwStateLabel(t);
+    const badgeCls = state === "Applied" ? "lw-badge-applied" : "lw-badge-unlinked";
+    const appliedN = (t.trusted_entity_global_ids || t.entity_global_ids || []).length;
+
+    if (body) {
+      body.style.display = "";
+      body.innerHTML =
+        "<div class=\"lw-section-h\">Selected Activity</div>" +
+        (t.activity_code ? "<div class=\"font-monospace text-secondary\" style=\"font-size:.68rem;\">" + esc(t.activity_code) + "</div>" : "") +
+        "<div class=\"fw-semibold mb-2\" style=\"font-size:.88rem; line-height:1.3;\">" + esc(t.name || "Activity") + "</div>" +
+        "<div class=\"mb-2\"><span class=\"lw-badge " + badgeCls + "\">" + esc(state) + "</span></div>" +
+        "<div class=\"row g-2 mb-2\" style=\"font-size:.76rem;\">" +
+        "<div class=\"col-6\"><div class=\"text-secondary\">Planned Start</div><div>" + esc(t.start || "—") + "</div></div>" +
+        "<div class=\"col-6\"><div class=\"text-secondary\">Planned Finish</div><div>" + esc(t.end || "—") + "</div></div>" +
+        "<div class=\"col-6\"><div class=\"text-secondary\">Status</div><div>" + esc(t.status || "—") + "</div></div>" +
+        "<div class=\"col-6\"><div class=\"text-secondary\">Applied Model Links</div><div>" + appliedN + "</div></div>" +
+        "</div>" +
+        "<div id=\"lw-inspector-detail\" class=\"text-secondary\" style=\"font-size:.72rem;\">Loading model element details…</div>";
+    }
+
+    lwRenderAppliedPlaceholders(appList, t.trusted_entity_global_ids || t.entity_global_ids || []);
+    lwRenderSelectedElementChip();
+    lwSyncManualActionButtons();
+
+    const taskId = t.id || t.pk;
+    if (!taskId) return;
+    try {
+      const url = TASK_DETAIL_URL_TMPL.replace("__TASK_ID__", String(taskId));
+      const resp = await fetch(url, { headers: { "HX-Request": "true" } });
+      if (!resp.ok) throw new Error(String(resp.status));
+      const html = await resp.text();
+      if (_lwSelectedTask !== t) return;
+      lwMountTaskDetailPanels(html, t);
+    } catch (e) {
+      const detailSlot = document.getElementById("lw-inspector-detail");
+      if (detailSlot) detailSlot.textContent = "Model element details unavailable for this activity.";
+    }
+  }
+
+  async function lwLinkSelectedElement() {
+    if (!_lwCanManualLink) {
+      _showToast("Link action unavailable in this session.", "error");
+      return;
+    }
+    const task = _lwSelectedTask;
+    const el = _lwSelectedElement;
+    if (!task || task.isGroup) {
+      _showToast("Select an activity first.", "error");
+      return;
+    }
+    if (!el || !el.global_id) {
+      _showToast("Select a model element in Model Context first.", "error");
+      return;
+    }
+    const taskId = task.id || task.pk;
+    if (!taskId) {
+      _showToast("Activity has no ID.", "error");
+      return;
+    }
+    const btn = document.getElementById("lw-link-selected-btn");
+    if (btn) btn.disabled = true;
+    const url = LINK_ELEMENT_URL_TMPL.replace("__TASK_ID__", String(taskId));
+    try {
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": FD_CSRF },
+        body: JSON.stringify({ global_id: el.global_id }),
+      });
+      const data = await resp.json().catch(function () { return {}; });
+      if (resp.ok) {
+        _showToast("Linked element to \"" + (task.name || "activity") + "\".", "success");
+        const selectedId = taskId;
+        await loadGantt();
+        if (_fdLastData) {
+          const row = (_fdLastData.tasks || []).find(function (x) {
+            return String(x.id || x.pk) === String(selectedId);
+          });
+          if (row) await lwSelectActivity(row);
+        }
+      } else {
+        _showToast(data.error || "Link failed", "error");
+      }
+    } catch (err) {
+      _showToast("Link request failed", "error");
+    } finally {
+      lwSyncManualActionButtons();
+    }
+  }
+
+  async function lwRemoveAppliedLink(taskId, globalId) {
+    if (!_lwCanRemoveLink) {
+      _showToast("Link action unavailable in this session.", "error");
+      return;
+    }
+    if (!taskId || !globalId) return;
+    if (!window.confirm("Remove this applied model link from the selected activity?")) return;
+    const url = UNLINK_ELEMENT_URL_TMPL.replace("__TASK_ID__", String(taskId));
+    try {
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": FD_CSRF },
+        body: JSON.stringify({ global_id: globalId }),
+      });
+      const data = await resp.json().catch(function () { return {}; });
+      if (resp.ok) {
+        _showToast("Applied link removed.", "success");
+        const selectedId = _lwSelectedTask && (_lwSelectedTask.id || _lwSelectedTask.pk);
+        await loadGantt();
+        if (selectedId && _fdLastData) {
+          const row = (_fdLastData.tasks || []).find(function (x) {
+            return String(x.id || x.pk) === String(selectedId);
+          });
+          if (row) await lwSelectActivity(row);
+        }
+      } else {
+        _showToast(data.error || "Remove link failed", "error");
+      }
+    } catch (err) {
+      _showToast("Remove link request failed", "error");
+    }
+  }
+
+  document.getElementById("lw-link-selected-btn")?.addEventListener("click", function () {
+    lwLinkSelectedElement();
+  });
+  document.getElementById("lw-open-link-tool-btn")?.addEventListener("click", function () {
+    if (!_lwSelectedElement || !_lwSelectedElement.global_id) {
+      _showToast("Select a model element in Model Context first.", "info");
+      return;
+    }
+    _openLinkModal(_lwSelectedElement.global_id);
+  });
+  document.getElementById("lw-applied-list")?.addEventListener("click", function (evt) {
+    const btn = evt.target && evt.target.closest
+      ? evt.target.closest('[data-testid="links-remove-link-btn"]')
+      : null;
+    if (!btn) return;
+    evt.preventDefault();
+    lwRemoveAppliedLink(btn.dataset.taskId, btn.dataset.globalId);
+  });
+
+  document.getElementById("lw-activity-search")?.addEventListener("input", function (e) {
+    _lwSearchQuery = (e.target.value || "").trim().toLowerCase();
+    _applyLinkFilter();
+  });
+
+
+  document.getElementById("lw-run-link-check")?.addEventListener("click", function () {
+    lwRunLinkCheck();
+  });
+  document.querySelectorAll("#lw-match-results .lw-results-tab").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      lwSetResultsTab(btn.dataset.resultsTab);
+    });
+  });
+  document.getElementById("lw-apply-links-btn")?.addEventListener("click", function () {
+    if (!_lwCanApplyParam) {
+      _showToast("Apply Preview Matches unavailable in this session.", "error");
+      return;
+    }
+    if (!_lwLinkCheckPreview) {
+      _showToast("Run Link Check first.", "info");
+      return;
+    }
+    const modalEl = document.getElementById("lwApplyLinksModal");
+    if (modalEl && window.bootstrap) {
+      const ack = document.getElementById("lw-apply-ack");
+      const phrase = document.getElementById("lw-apply-confirm-phrase");
+      if (ack) ack.value = "true";
+      if (phrase) phrase.value = "APPROVE";
+      lwSyncApplyModalConfirm();
+      bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    }
+  });
+  document.getElementById("lw-apply-confirm-btn")?.addEventListener("click", function () {
+    lwApplyPreviewMatches();
+  });
+  document.getElementById("lw-results-select-all")?.addEventListener("click", function () {
+    const rows = (_lwLinkCheckPreview && _lwLinkCheckPreview.task_distribution) || [];
+    rows.forEach(function (row) {
+      if (row.activity_code) _lwResultsSelectedCodes.add(row.activity_code);
+    });
+    lwRenderMatchResults();
+  });
+  document.getElementById("lw-results-clear-sel")?.addEventListener("click", function () {
+    _lwResultsSelectedCodes = new Set();
+    lwRenderMatchResults();
+  });
+  document.getElementById("lw-search-clear")?.addEventListener("click", function () {
+    const input = document.getElementById("lw-activity-search");
+    if (input) input.value = "";
+    _lwSearchQuery = "";
+    _applyLinkFilter();
+  });
+  document.getElementById("lw-toggle-rules")?.addEventListener("click", function () {
+    lwTogglePanel("rules");
+  });
+  document.getElementById("lw-toggle-results")?.addEventListener("click", function () {
+    lwTogglePanel("results");
+  });
+  document.getElementById("lw-toggle-inspector")?.addEventListener("click", function () {
+    lwTogglePanel("inspector");
+  });
+  document.getElementById("lw-inspector-collapse")?.addEventListener("click", function () {
+    lwSetPanel("inspector", false);
+  });
+  document.getElementById("lw-inspector-rail")?.addEventListener("click", function () {
+    lwSetPanel("inspector", true);
+  });
+  document.getElementById("lw-toggle-highlight-mode")?.addEventListener("click", function () {
+    lwSetHighlightMode(!_lwHighlightMode);
+  });
+  document.getElementById("lw-highlight-selected")?.addEventListener("click", lwHighlightSelected);
+  document.querySelectorAll(".lw-hl-swatch").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      lwSetHighlightColor(btn.dataset.color);
+    });
+  });
+  document.getElementById("lw-hl-custom-color")?.addEventListener("input", function (e) {
+    lwSetHighlightColor(e.target.value);
+  });
+  document.getElementById("lw-highlight-clear-selection")?.addEventListener("click", lwClearHighlightSelection);
+  document.getElementById("lw-clear-highlight")?.addEventListener("click", lwClearHighlight);
+  document.getElementById("lw-focus-highlighted")?.addEventListener("click", lwFocusHighlighted);
+  document.getElementById("lw-isolate-highlighted")?.addEventListener("click", lwIsolateHighlighted);
+  document.getElementById("lw-highlight-show-all")?.addEventListener("click", lwClearHighlight);
+  document.getElementById("lw-highlight-legend")?.addEventListener("click", function (e) {
+    if (e.target.closest("[data-testid=\"links-legend-minimize\"]")) {
+      e.stopPropagation();
+      lwSetLegendMinimized(true);
+      return;
+    }
+    if (_lwLegendMinimized) lwSetLegendMinimized(false);
+  });
+  document.getElementById("lw-rules-close")?.addEventListener("click", function () {
+    lwSetPanel("rules", false);
+  });
+  document.getElementById("lw-results-collapse")?.addEventListener("click", function () {
+    lwSetPanel("results", false);
+  });
+  document.getElementById("lw-drawer-scrim")?.addEventListener("click", function () {
+    lwSetPanel("rules", false);
+    lwSetPanel("results", false);
+  });
+  document.querySelectorAll(".lw-preset-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      if (btn.disabled) return;
+      lwApplyPreset(btn.dataset.preset);
+    });
+  });
+  document.getElementById("lw-schedule-field")?.addEventListener("change", lwSyncRuleSummary);
+  document.getElementById("lw-model-param")?.addEventListener("input", lwSyncRuleSummary);
+  document.getElementById("lw-match-type")?.addEventListener("change", lwSyncRuleSummary);
+
   /* ── Init ────────────────────────────────────────────────────────── */
+  lwInitLayout();
+  lwRenderSelectedElementChip();
+  lwSyncManualActionButtons();
+  lwRenderMatchResults();
+  lwSyncApplyButton();
+  lwSyncApplyModalConfirm();
+  lwSyncHighlightBar();
+  lwSetHighlightColor(_lwSelectedHighlightColor);
   initSplitters();
-  initChatPanel();
   loadGantt();
-  loadTimeline();
+  /* Playback/timeline owned by Time View — do not drive simulation UI here. */
 }());
 </script>
