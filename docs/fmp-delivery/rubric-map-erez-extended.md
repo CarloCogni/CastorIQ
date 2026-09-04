@@ -22,9 +22,13 @@ harness gating seven material classes.
 - ✅ Rollback #1, #2 and #3 all forward-reverts, no history rewritten,
   bit-exact restoration verified with the material-gated harness
   (2026-09-01).
-- ⬜ Extended harness returns FAIL on commit `f1cea365`, confirming it
+- ✅ Extended harness returns FAIL on commit `f1cea365`, confirming it
   discriminates. Material classes now gated rather than informational
   (2026-09-01).
+
+Round-trip integrity is complete: Tier 1, Tier 2 and three rollbacks, all
+PASS, verified with IfcOpenShell against the public Duplex sample. Commits
+`c2264d31`, `f3bfa8a`, `a46a6b5e`. Fingerprints in the log.
 
 ## 2. RAG chunker: whitelist root cause
 
@@ -194,16 +198,23 @@ minute.
 
 ## 12. Viewer & WebGL
 
+Erez ran the tests in this section. The May 2026 fixes were implemented by
+Carlo, and the 1 Sep 2026 run contradicts the earlier `Solved` status for
+memory-leak stabilisation.
+
 - ⬜ 3D Viewer stuck on `Loading IFC model...` beyond 10 minutes. Identical
   behaviour on AC20 (790 items, 2026-07-09) and on Duplex (241 items,
   2026-09-01). Size and memory hypothesis refuted, general viewer defect
   rather than regression on one model. 3D excluded from live demonstration.
-- ✅ WebGL memory-leak stabilisation (2026-05-18): explicit garbage
-  collection and GPU resource disposal on component unmount.
-- ✅ `postMessage` bridge with AbortController prevents race conditions
-  (2026-05-18).
-- ✅ Time-slicing on the main render loop maintains stable FPS during heavy
-  geometry indexing (2026-05-18).
+- ⬜ WebGL memory-leak stabilisation (Carlo, 2026-05-18: explicit garbage
+  collection and GPU resource disposal on component unmount) contradicted by
+  the 2026-09-01 run on a 241-element model. Reopen.
+- 🔶 `postMessage` bridge with AbortController (Carlo, 2026-05-18):
+  implemented to prevent race conditions. Not re-tested by Erez under load
+  since.
+- 🔶 Time-slicing on the main render loop (Carlo, 2026-05-18): implemented
+  to maintain stable FPS during heavy geometry indexing. Not re-tested by
+  Erez under load since.
 
 ## 13. Ollama runtime & model handling
 
