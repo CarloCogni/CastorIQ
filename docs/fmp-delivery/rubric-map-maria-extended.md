@@ -10,12 +10,12 @@ reference for every test IFC.
 **Evidence:** Solibri Model Checker adopted as the independent reference for
 every test IFC (row: Ground-truth methodology). Fire safety test plan applied
 to `Grethes-House-bldg-2` with `PBS-FR-001` and to the Åkersgata 51 floor 9
-drawing. Round-trip integrity protocol designed. External blind review
-protocol designed with Petru Conduraru of BIM Voice.
+drawing. Round-trip integrity protocol designed. External blind review pipeline
+designed, reviewer sourcing in progress.
 
 - ✅ Solibri cross-check in use throughout the log.
 - 🔶 Round-trip integrity protocol (Solibri) — designed, execution in progress.
-- 🔶 External blind review — protocol designed, reviewer engaged.
+- 🔶 External blind review pipeline — designed, reviewer sourcing in progress.
 
 ## 2. Modify pipeline (writeback)
 
