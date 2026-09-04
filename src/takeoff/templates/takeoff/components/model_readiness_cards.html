@@ -1,0 +1,320 @@
+<!-- takeoff/components/model_readiness_cards.html — visual Model Readiness dashboard -->
+{% with r=inventory.readiness s=inventory.readiness.summary c=inventory.readiness.charts %}
+{{ r.chart_data|json_script:"mi-dash-data" }}
+<div id="model-dash-root">
+
+  <section class="mi-summary" data-testid="model-readiness-summary" aria-label="Overall model readiness">
+    <div class="mi-summary-status">
+      <span class="mi-summary-kicker">Model readiness</span>
+      <span class="mi-summary-badge is-{{ s.status|default:'unavailable' }}"
+            data-testid="model-readiness-overall-status">
+        {{ s.status_label|default:"Unavailable" }}
+      </span>
+      <p class="mi-summary-sentence" data-testid="model-readiness-overall-sentence">
+        {{ s.sentence|default:"No IFC model is indexed yet, so 4D/5D readiness cannot be scored." }}
+      </p>
+      <p class="mi-denom mb-0 mt-2" data-testid="model-readiness-denominator">
+        Element link coverage uses indexed IFC elements.
+        Task link coverage uses programme tasks.
+        Classification not indexed.
+      </p>
+    </div>
+    <div class="mi-headlines mi-stats" data-testid="model-inventory-overview">
+      <div class="mi-headline" data-testid="mi-kpi-coverage">
+        <span class="mi-headline-k">Element link coverage</span>
+        <span class="mi-headline-v" data-testid="mi-coverage-pct">
+          {% if s.element_pct != None %}{{ s.element_pct }}%{% else %}—{% endif %}
+        </span>
+        <span class="mi-headline-d" data-testid="model-inventory-link-coverage">
+          {{ c.element.linked|default:0 }} linked of {{ c.element.total|default:0 }} elements
+        </span>
+      </div>
+      <div class="mi-headline" data-testid="mi-kpi-task-coverage">
+        <span class="mi-headline-k">Task link coverage</span>
+        <span class="mi-headline-v">
+          {% if s.task_pct != None %}{{ s.task_pct }}%{% else %}—{% endif %}
+        </span>
+        <span class="mi-headline-d">
+          {{ s.linked_tasks|default:0 }} linked of {{ s.tasks_total|default:0 }} tasks
+        </span>
+      </div>
+      <div class="mi-headline" data-testid="mi-kpi-qto-gaps">
+        <span class="mi-headline-k">QTO readiness, not BOQ</span>
+        <span class="mi-headline-v">
+          {% if s.qto_pct != None %}{{ s.qto_pct }}%{% else %}—{% endif %}
+        </span>
+        <span class="mi-headline-d">{{ c.qto.missing|default:0 }} missing IFC QTO</span>
+      </div>
+      <div class="mi-headline" data-testid="mi-kpi-spatial-gaps">
+        <span class="mi-headline-k">Floor/zone sequencing</span>
+        <span class="mi-headline-v is-{{ s.spatial_status|default:'unavailable' }}">
+          {{ s.spatial_status_label|default:"Unavailable" }}
+        </span>
+        <span class="mi-headline-d">
+          {% if c.spatial.dominant_pct != None %}{{ c.spatial.dominant_pct }}% on one storey{% else %}No storeys indexed{% endif %}
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <form class="mi-dash-filters" data-testid="model-readiness-filters" id="mi-dash-filters">
+    <div>
+      <label for="mi-dash-class">IFC Class</label>
+      <select class="form-select form-select-sm" id="mi-dash-class" name="ifc_class"
+              data-testid="model-readiness-filter-class">
+        <option value="">All</option>
+        {% for cls in inventory.filter_options.ifc_classes %}
+        <option value="{{ cls }}">{{ cls }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="mi-dash-level">Level / Storey</label>
+      <select class="form-select form-select-sm" id="mi-dash-level" name="level"
+              data-testid="model-readiness-filter-level">
+        <option value="">All</option>
+        {% for lvl in inventory.filter_options.levels %}
+        <option value="{{ lvl.key }}">{{ lvl.label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="mi-dash-linked">Link Status</label>
+      <select class="form-select form-select-sm" id="mi-dash-linked" name="linked_status"
+              data-testid="model-readiness-filter-linked">
+        <option value="all">All</option>
+        <option value="linked">Linked</option>
+        <option value="unlinked">Unlinked</option>
+      </select>
+    </div>
+    <div>
+      <label for="mi-dash-qto">QTO</label>
+      <select class="form-select form-select-sm" id="mi-dash-qto" name="has_qto"
+              data-testid="model-readiness-filter-qto">
+        <option value="all">All</option>
+        <option value="yes">Has QTO</option>
+        <option value="no">Missing QTO</option>
+      </select>
+    </div>
+    <div>
+      <label for="mi-dash-issue">Issue Type</label>
+      <select class="form-select form-select-sm" id="mi-dash-issue" name="issue_type"
+              data-testid="model-readiness-filter-issue">
+        <option value="all">All</option>
+        <option value="linkability">Linkability</option>
+        <option value="spatial">Spatial</option>
+        <option value="qto">QTO</option>
+        <option value="granularity">Granularity</option>
+        <option value="playback">Playback</option>
+        <option value="classification">Classification</option>
+      </select>
+    </div>
+    <p class="mi-filter-note">
+      Class and level update the element and QTO charts plus tables.
+      Link status and QTO update the IFC Elements list.
+      Task, spatial, granularity, and playback charts stay project-wide.
+    </p>
+  </form>
+
+  <div class="mi-charts" data-testid="model-readiness-charts">
+    <article class="mi-chart" data-testid="model-readiness-chart-element" data-chart="linkability">
+      <div class="mi-chart-h">
+        <h6 class="mi-chart-title">Element link coverage</h6>
+        <span class="mi-scope" data-testid="mi-chart-element-scope">Project-wide</span>
+      </div>
+      <p class="mi-chart-metric" id="mi-chart-element-metric">
+        {% if c.element.pct != None %}{{ c.element.pct }}%{% else %}—{% endif %}
+      </p>
+      <div class="mi-stack" role="img" aria-label="Element link coverage">
+        <span class="mi-stack-ok" id="mi-chart-element-ok" style="width:{{ c.element.linked_bar_pct|default:0 }}%;"></span>
+        <span class="mi-stack-gap" id="mi-chart-element-gap" style="width:{{ c.element.unlinked_bar_pct|default:0 }}%;"></span>
+      </div>
+      <div class="mi-stack-legend">
+        <span id="mi-chart-element-linked">Linked {{ c.element.linked|default:0 }}</span>
+        <span id="mi-chart-element-unlinked">Unlinked {{ c.element.unlinked|default:0 }}</span>
+      </div>
+      <p class="mi-chart-note">
+        Indexed elements with applied/confirmed links. Not task coverage.
+        Link coverage uses applied / confirmed schedule-model links only.
+      </p>
+      <p class="mi-chart-next">
+        <a href="{{ entities_url }}?linked_status=unlinked">Open IFC Elements</a>
+        · <a href="{{ apply_url }}" data-testid="model-readiness-next-linkability">Open Links</a>
+      </p>
+    </article>
+
+    <article class="mi-chart" data-testid="model-readiness-chart-task" data-chart="linkability">
+      <div class="mi-chart-h">
+        <h6 class="mi-chart-title">Task link coverage</h6>
+        <span class="mi-scope">Project-wide</span>
+      </div>
+      <p class="mi-chart-metric">
+        {% if c.task.pct != None %}{{ c.task.pct }}%{% else %}—{% endif %}
+      </p>
+      <div class="mi-stack" role="img" aria-label="Task link coverage">
+        <span class="mi-stack-ok" style="width:{{ c.task.linked_bar_pct|default:0 }}%;"></span>
+        <span class="mi-stack-gap" style="width:{{ c.task.unlinked_bar_pct|default:0 }}%;"></span>
+      </div>
+      <div class="mi-stack-legend">
+        <span>Linked {{ c.task.linked|default:0 }}</span>
+        <span>Unlinked {{ c.task.unlinked|default:0 }}</span>
+      </div>
+      <p class="mi-chart-note">Programme tasks with at least one applied/confirmed model link.</p>
+      <p class="mi-chart-next">
+        <a href="{{ apply_url }}">Open Links</a>
+        · <a href="{{ schedule_url }}" data-testid="model-readiness-next-granularity">Open Schedule</a>
+      </p>
+    </article>
+
+    <article class="mi-chart" data-testid="model-readiness-chart-spatial" data-chart="spatial">
+      <div class="mi-chart-h">
+        <h6 class="mi-chart-title">Floor/zone sequencing</h6>
+        <span class="mi-scope">Project-wide</span>
+      </div>
+      <p class="mi-chart-metric">{{ s.spatial_status_label|default:"Unavailable" }}</p>
+      <div class="mi-stack" role="img" aria-label="Floor sequencing dominance">
+        <span class="mi-stack-warn" style="width:{{ c.spatial.dominant_pct|default:0 }}%;"></span>
+        <span class="mi-stack-muted" style="width:calc(100% - {{ c.spatial.dominant_pct|default:0 }}%);"></span>
+      </div>
+      <div class="mi-stack-legend">
+        <span>Spatial gaps {{ c.spatial.missing_level|default:0 }}</span>
+        <span>{% if c.spatial.space_count %}{{ c.spatial.space_count }} spaces{% else %}No spaces/zones{% endif %}</span>
+      </div>
+      <p class="mi-chart-note">
+        {% if c.spatial.dominant_label %}{{ c.spatial.dominant_pct }}% on {{ c.spatial.dominant_label }}.{% endif %}
+        Zone sequencing is unavailable without spaces.
+      </p>
+      <p class="mi-chart-next">Model authoring required</p>
+    </article>
+
+    <article class="mi-chart" data-testid="model-readiness-chart-qto" data-chart="qto">
+      <div class="mi-chart-h">
+        <h6 class="mi-chart-title">QTO readiness, not BOQ</h6>
+        <span class="mi-scope" id="mi-chart-qto-scope">Project-wide</span>
+      </div>
+      <p class="mi-chart-metric" id="mi-chart-qto-metric">
+        {% if c.qto.pct != None %}{{ c.qto.pct }}%{% else %}—{% endif %}
+      </p>
+      <div class="mi-stack" role="img" aria-label="QTO readiness">
+        <span class="mi-stack-ok" id="mi-chart-qto-ok" style="width:{{ c.qto.with_bar_pct|default:0 }}%;"></span>
+        <span class="mi-stack-gap" id="mi-chart-qto-gap" style="width:{{ c.qto.missing_bar_pct|default:0 }}%;"></span>
+      </div>
+      <div class="mi-stack-legend">
+        <span id="mi-chart-qto-yes">Has QTO {{ c.qto.with_qto|default:0 }}</span>
+        <span id="mi-chart-qto-no">QTO gaps {{ c.qto.missing|default:0 }}</span>
+      </div>
+      {% if c.qto.weak_classes %}
+      <ul class="mi-weak-list">
+        {% for name in c.qto.weak_classes %}
+        <li>{{ name }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      <p class="mi-chart-note" data-testid="model-inventory-source-caveat">
+        IFC model quantities (<code>Qto_*</code>) only — not BOQ, QS valuation, ERP, or company actual cost.
+      </p>
+      <p class="mi-chart-next">
+        <a href="{{ quantities_url }}" data-testid="model-readiness-next-qto">Open Quantities</a>
+        · <a href="{{ entities_url }}?has_qto=no">Open missing QTO</a>
+      </p>
+    </article>
+
+    <article class="mi-chart" data-testid="model-readiness-chart-granularity" data-chart="granularity">
+      <div class="mi-chart-h">
+        <h6 class="mi-chart-title">Schedule–model granularity</h6>
+        <span class="mi-scope">Project-wide</span>
+      </div>
+      <p class="mi-chart-metric">Max {{ c.granularity.max_fanout|default:0 }} elements / task</p>
+      <div class="mi-hist" data-testid="model-readiness-granularity-hist">
+        {% for row in c.granularity.histogram %}
+        <div class="mi-hist-row">
+          <span>{{ row.label }}</span>
+          <div class="mi-hist-track"><div class="mi-hist-fill" style="width:{{ row.bar_pct }}%;"></div></div>
+          <span>{{ row.n }}</span>
+        </div>
+        {% empty %}
+        <p class="mi-chart-note">No linked tasks to plot.</p>
+        {% endfor %}
+      </div>
+      <div class="mi-stack-legend">
+        <span>Median {{ c.granularity.median_fanout|default:0 }}</span>
+        <span>p90 {{ c.granularity.p90_fanout|default:0 }}</span>
+        <span>Multi-task GIDs {{ c.granularity.multi_gid|default:0 }}</span>
+      </div>
+      <p class="mi-chart-note">Mixed IFC class on one activity is information, not a defect.</p>
+      <p class="mi-chart-next">
+        <a href="{{ apply_url }}">Open Links</a> · <a href="{{ schedule_url }}">Open Schedule</a>
+      </p>
+    </article>
+
+    <article class="mi-chart" data-testid="model-readiness-chart-playback" data-chart="playback">
+      <div class="mi-chart-h">
+        <h6 class="mi-chart-title">Playback readiness</h6>
+        <span class="mi-scope">Project-wide</span>
+      </div>
+      <p class="mi-chart-metric">
+        {% if c.playback.first_linked_start %}First colour {{ c.playback.first_linked_start }}{% else %}No linked dates{% endif %}
+      </p>
+      <div class="mi-timeline" role="img" aria-label="Playback lead-in versus colour window">
+        <span class="mi-timeline-empty" style="width:{{ c.playback.empty_lead_pct|default:0 }}%;"></span>
+        <span class="mi-timeline-colour" style="width:{{ c.playback.colour_pct|default:0 }}%;"></span>
+      </div>
+      <div class="mi-timeline-dates">
+        <span>{{ c.playback.programme_start|default:"—" }}</span>
+        <span>{{ c.playback.programme_end|default:"—" }}</span>
+      </div>
+      <p class="mi-chart-note">
+        {{ c.playback.empty_colour_intervals|default:0 }} empty lead-in intervals of
+        {{ c.playback.interval_count|default:0 }}. Estimated from linked-task dates — not a Time View embed.
+      </p>
+      <p class="mi-chart-next">
+        <a href="{{ time_view_url }}" data-testid="model-readiness-next-playback">Open Time View</a>
+      </p>
+    </article>
+  </div>
+
+  <div class="px-3 pt-1">
+    <p class="mi-findings-h mb-2">What to do next</p>
+  </div>
+  <div class="mi-findings-grid" data-testid="model-readiness-findings">
+    {% for finding in r.findings %}
+    <article class="mi-finding-card"
+             data-testid="model-readiness-finding-{{ finding.id }}"
+             data-issue-type="{{ finding.issue_type }}">
+      <div class="mi-finding-h">
+        <h6 class="mi-finding-title">{{ finding.title }}</h6>
+        <span class="mi-ready-status is-{{ finding.severity }}">{{ finding.severity_label }}</span>
+      </div>
+      <span class="mi-finding-count">{{ finding.count }}</span>
+      <p class="mi-finding-why">{{ finding.why }}</p>
+      <p class="mi-chart-next">
+        {% if finding.action_id == "links" %}
+        <a href="{{ apply_url }}">{{ finding.action_label }}</a>
+        {% elif finding.action_id == "quantities" %}
+        <a href="{{ quantities_url }}">{{ finding.action_label }}</a>
+        {% elif finding.action_id == "time_view" %}
+        <a href="{{ time_view_url }}">{{ finding.action_label }}</a>
+        {% elif finding.action_id == "elements" %}
+        <a href="{{ entities_url }}">{{ finding.action_label }}</a>
+        {% elif finding.action_id == "schedule" %}
+        <a href="{{ schedule_url }}">{{ finding.action_label }}</a>
+        {% else %}
+        <span class="mi-findings-action is-static">{{ finding.action_label }}</span>
+        {% endif %}
+      </p>
+    </article>
+    {% empty %}
+    <article class="mi-finding-card" data-testid="model-readiness-finding-none">
+      <h6 class="mi-finding-title">No outstanding readiness findings</h6>
+    </article>
+    {% endfor %}
+  </div>
+
+  <span class="d-none" data-testid="mi-classification-unavailable">Unavailable</span>
+  <span class="d-none" data-testid="mi-trusted-linked">{{ inventory.link_coverage.trusted_linked_entities }}</span>
+  <span class="d-none" data-testid="mi-unlinked">{{ inventory.link_coverage.unlinked_entities }}</span>
+  {% if not inventory.overview.has_trusted_links %}
+  <span class="d-none" data-testid="mi-no-trusted-links">No applied / confirmed schedule-model links yet.</span>
+  {% endif %}
+</div>
+{% endwith %}

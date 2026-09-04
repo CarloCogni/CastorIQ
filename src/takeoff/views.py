@@ -11,6 +11,8 @@ import io
 import logging
 
 from django.http import HttpResponse, JsonResponse
+from django.shortcuts import render
+from django.urls import reverse
 from django.views import View
 from django.views.generic import TemplateView
 
@@ -18,8 +20,99 @@ from core.http import toast_response
 from core.mixins import ProjectAccessMixin, ProjectTabMixin
 
 from .models import QTOCache
+from .services.model_inventory import ModelInventoryService
 
 logger = logging.getLogger(__name__)
+
+
+class ModelInventoryView(ProjectTabMixin, TemplateView):
+    """Model Readiness — visual 4D/5D readiness dashboard with inventory evidence."""
+
+    active_tab = "castor"
+
+    def get_context_data(self, **kwargs: object) -> dict:
+        ctx = super().get_context_data(**kwargs)
+        ctx["castor_subtab"] = "model_inventory"
+        project = ctx["project"]
+        inventory = ModelInventoryService(project).build()
+        ctx["inventory"] = inventory
+        ctx["viewer_url"] = reverse("ifc_viewer:viewer", kwargs={"pk": project.pk})
+        schedule_url = reverse("scheduling:schedule", kwargs={"pk": project.pk})
+        ctx["apply_url"] = f"{schedule_url}?tab=fourD_link"
+        ctx["time_view_url"] = f"{schedule_url}?tab=lookahead"
+        ctx["schedule_url"] = f"{schedule_url}?tab=data_sources"
+        ctx["quantities_url"] = reverse("takeoff:qto", kwargs={"pk": project.pk})
+        ctx["entities_url"] = reverse("takeoff:model_inventory_entities", kwargs={"pk": project.pk})
+        return ctx
+
+
+class ModelInventoryEntitiesView(ProjectTabMixin, TemplateView):
+    """IFC Elements list — HTMX partial on Model page; full shell for browser GET."""
+
+    active_tab = "castor"
+
+    def get(self, request, *args, **kwargs):  # type: ignore[override]
+        project = self.get_project()
+        svc = ModelInventoryService(project)
+        self._entities_result = svc.list_entities(
+            ifc_class=request.GET.get("ifc_class"),
+            level=request.GET.get("level"),
+            linked_status=request.GET.get("linked_status"),
+            has_qto=request.GET.get("has_qto"),
+            page=request.GET.get("page"),
+            page_size=request.GET.get("page_size"),
+        )
+        self._entities_url = reverse("takeoff:model_inventory_entities", kwargs={"pk": project.pk})
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "takeoff/components/model_inventory_entities.html",
+                {
+                    "project": project,
+                    "entities": self._entities_result,
+                    "entities_url": self._entities_url,
+                },
+            )
+        inventory = svc.build()
+        self._filter_options = inventory.get("filter_options") or {
+            "ifc_classes": [],
+            "levels": [],
+        }
+        self._inventory_source_name = inventory.get("ifc_file_name") or ""
+        return super().get(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs: object) -> dict:
+        ctx = super().get_context_data(**kwargs)
+        ctx["castor_subtab"] = "model_inventory_entities"
+        project = ctx["project"]
+        svc = ModelInventoryService(project)
+        if getattr(self, "_entities_result", None) is None:
+            self._entities_result = svc.list_entities(
+                ifc_class=self.request.GET.get("ifc_class"),
+                level=self.request.GET.get("level"),
+                linked_status=self.request.GET.get("linked_status"),
+                has_qto=self.request.GET.get("has_qto"),
+                page=self.request.GET.get("page"),
+                page_size=self.request.GET.get("page_size"),
+            )
+            self._entities_url = reverse(
+                "takeoff:model_inventory_entities", kwargs={"pk": project.pk}
+            )
+        if getattr(self, "_filter_options", None) is None:
+            inventory = svc.build()
+            self._filter_options = inventory.get("filter_options") or {
+                "ifc_classes": [],
+                "levels": [],
+            }
+            self._inventory_source_name = inventory.get("ifc_file_name") or ""
+        ctx["entities"] = self._entities_result
+        ctx["entities_url"] = getattr(self, "_entities_url", None) or reverse(
+            "takeoff:model_inventory_entities", kwargs={"pk": project.pk}
+        )
+        ctx["model_inventory_url"] = reverse("takeoff:model_inventory", kwargs={"pk": project.pk})
+        ctx["filter_options"] = self._filter_options
+        ctx["inventory_source_name"] = getattr(self, "_inventory_source_name", "") or ""
+        return ctx
 
 
 class QTOView(ProjectTabMixin, TemplateView):
