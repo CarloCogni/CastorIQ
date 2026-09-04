@@ -920,6 +920,51 @@ class TestIFCReparseView:
         assert response.status_code == 403
 
 
+@pytest.mark.django_db
+class TestIFCReparseSidebarGating:
+    """Sidebar must not expose a clickable Reparse href to non-owners."""
+
+    def test_owner_sees_reparse_action_href(self, client):
+        owner = UserFactory()
+        project = ProjectFactory(owner=owner)
+        ifc_file = IFCFileFactory(project=project)
+        _login(client, owner)
+
+        html = client.get(
+            reverse("scheduling:schedule", kwargs={"pk": project.pk}) + "?tab=data_sources"
+        ).content.decode()
+
+        href = reverse("projects:ifc_reparse", kwargs={"pk": ifc_file.pk})
+        assert href in html
+        assert 'data-testid="ifc-reparse-action"' in html
+        assert 'data-testid="ifc-reparse-owner-only"' not in html
+
+    def test_editor_sees_disabled_owner_only_reparse(self, client):
+        from environments.models import ProjectMembership
+        from environments.tests.factories import ProjectMembershipFactory
+
+        owner = UserFactory()
+        editor = UserFactory()
+        project = ProjectFactory(owner=owner)
+        ProjectMembershipFactory(
+            project=project,
+            user=editor,
+            permission=ProjectMembership.Permission.EDITOR,
+        )
+        ifc_file = IFCFileFactory(project=project)
+        _login(client, editor)
+
+        html = client.get(
+            reverse("scheduling:schedule", kwargs={"pk": project.pk}) + "?tab=data_sources"
+        ).content.decode()
+
+        href = reverse("projects:ifc_reparse", kwargs={"pk": ifc_file.pk})
+        assert href not in html
+        assert 'data-testid="ifc-reparse-action"' not in html
+        assert 'data-testid="ifc-reparse-owner-only"' in html
+        assert "owner only" in html.lower()
+
+
 # ── DocumentUpdateView ───────────────────────────────────────────────────────
 
 
