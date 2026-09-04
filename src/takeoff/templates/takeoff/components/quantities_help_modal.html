@@ -1,0 +1,69 @@
+<!-- takeoff/components/quantities_help_modal.html — How Quantities works -->
+
+<div class="modal fade" id="qtoHelpModal" tabindex="-1"
+     aria-labelledby="qtoHelpLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+
+            <div class="modal-header border-bottom px-4 py-3"
+                 style="border-color: var(--bs-border-color) !important;">
+                <h5 class="modal-title fw-semibold fs-6 mb-0" id="qtoHelpLabel">
+                    <i class="bi bi-calculator me-2 text-primary"></i>
+                    How Quantities Works
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body px-4 py-4">
+
+                <p class="fw-semibold fs-7 mb-2">What is it?</p>
+                <p class="text-secondary fs-7 mb-4">
+                    Quantities is the IFC Model Quantities workspace. It summarizes quantity
+                    availability and named measures from indexed model <code>Qto_*</code>
+                    properties: Quantity Coverage, Missing IFC Qto, and totals by IFC Class,
+                    Level / Storey, and Type when available. This is model quantity readiness
+                    for future 5D workflows — not BOQ, QS valuation, ERP, invoice, procurement,
+                    payment, company actual cost, or commercial 5D.
+                </p>
+
+                <p class="fw-semibold fs-7 mb-2">Lifecycle</p>
+                <p class="text-secondary fs-7 mb-4">
+                    After an IFC file is indexed, this page reads entity properties at runtime
+                    (summary-first). Classification stays Unavailable until classifications are
+                    indexed. Optional advanced cache / export tools are demoted and are not the
+                    primary product.
+                </p>
+
+                <p class="fw-semibold fs-7 mb-2">How to use it</p>
+                <ul class="text-secondary fs-7 mb-4">
+                    <li>Use the stats strip for Quantity Coverage and Missing IFC Qto.</li>
+                    <li>Select an IFC Class, Level / Storey, or Type row to inspect measures.</li>
+                    <li>Filter or sort the visible By IFC Class grid without changing source data.</li>
+                    <li>Open Missing IFC Qto → Inspect IFC Elements to review entities without real Qto.</li>
+                    <li>Treat Length / Width / Height / Perimeter as model units, not metres.</li>
+                </ul>
+
+                <p class="fw-semibold fs-7 mb-2">Who can do what</p>
+                <p class="text-secondary fs-7 mb-4">
+                    BIM coordinators and 5D reviewers use this page read-only for model quantity insight.
+                    Schedule link confirm / ignore stays under Links. Model structure stays under Model.
+                </p>
+
+                <p class="fw-semibold fs-7 mb-2">Caveats</p>
+                <ul class="text-secondary fs-7 mb-4">
+                    <li><code>Qto_*.id</code> alone does not count as Has IFC Qto.</li>
+                    <li>Classification: Unavailable (not scraped from properties).</li>
+                    <li>Totals sum explicit named measures (e.g. NetVolume, NetArea) — not mixed primary picks.</li>
+                    <li>Linear totals use model units as stored in the IFC index.</li>
+                    <li>Hub <code>?tab=quantities</code> on scheduling does not render this page — use the Quantities hub link.</li>
+                </ul>
+
+                <p class="fw-semibold fs-7 mb-2">Not claimed</p>
+                <p class="text-secondary fs-7 mb-0" data-testid="quantities-not-claims">
+                    Not BOQ. Not QS valuation. Not ERP. Not invoice or procurement.
+                    Not payment valuation. Not company actual cost. Not commercial 5D.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>

@@ -21,6 +21,7 @@ from core.mixins import ProjectAccessMixin, ProjectTabMixin
 
 from .models import QTOCache
 from .services.model_inventory import ModelInventoryService
+from .services.model_quantities import ModelQuantitiesService
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +117,7 @@ class ModelInventoryEntitiesView(ProjectTabMixin, TemplateView):
 
 
 class QTOView(ProjectTabMixin, TemplateView):
-    """QTO tab — Quantity Take-Off dashboard."""
+    """Quantities tab — IFC model quantity readiness and breakdowns (not BOQ)."""
 
     active_tab = "castor"
 
@@ -124,6 +125,31 @@ class QTOView(ProjectTabMixin, TemplateView):
         ctx = super().get_context_data(**kwargs)
         ctx["castor_subtab"] = "qto"
         project = ctx["project"]
+        # First paint: read-only aggregates from IFCEntity.properties (no QTOCache write).
+        quantities = ModelQuantitiesService(project).build()
+        ctx["quantities"] = quantities
+        ctx["missing_qto_entities_url"] = (
+            reverse("takeoff:model_inventory_entities", kwargs={"pk": project.pk}) + "?has_qto=no"
+        )
+        ctx["model_inventory_url"] = reverse("takeoff:model_inventory", kwargs={"pk": project.pk})
+        ctx["entities_url"] = reverse("takeoff:model_inventory_entities", kwargs={"pk": project.pk})
+        # Presentation-only flags from existing summary rows (no re-aggregation).
+        class_rows = quantities.get("by_ifc_class") or []
+        ctx["quantity_classes_with_qto"] = sum(
+            1 for row in class_rows if (row.get("has_ifc_qto") or 0) > 0
+        )
+        ctx["quantity_measure_families"] = {
+            "volume": any(
+                row.get("net_volume") is not None or row.get("gross_volume") is not None
+                for row in class_rows
+            ),
+            "area": any(
+                row.get("net_area") is not None or row.get("net_side_area") is not None
+                for row in class_rows
+            ),
+            "length": any(row.get("length") is not None for row in class_rows),
+        }
+        # Legacy cache kept only for demoted optional tooling on main.
         ctx["qto_cache"] = QTOCache.objects.filter(project=project).first()
         return ctx
 
