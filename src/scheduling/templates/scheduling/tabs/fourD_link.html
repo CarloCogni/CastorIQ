@@ -1094,7 +1094,7 @@
   "use strict";
   const GANTT_URL               = "{% url 'scheduling:gantt_data' project.pk %}";
   const TIMELINE_URL            = "{% url 'ifc_viewer:viewer_timeline' project.pk %}";
-  const TIMELINE_DETAIL_URL     = ""; /* Time View interval API — Phase 5 */
+  const TIMELINE_DETAIL_URL     = "{% url 'ifc_viewer:viewer_timeline_interval' project.pk %}";
   const TASKS_FOR_LINK_URL      = "{% url 'scheduling:tasks_for_link' project.pk %}";
   const BULK_LINK_URL           = "{% url 'scheduling:bulk_link_element' project.pk %}";
   const LINK_ELEMENT_URL_TMPL   = "{% url 'scheduling:link_element' project.pk '00000000-0000-0000-0000-000000000000' %}".replace(

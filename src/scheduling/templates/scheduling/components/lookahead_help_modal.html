@@ -1,0 +1,85 @@
+<!-- scheduling/components/lookahead_help_modal.html — How Time View works -->
+
+<div class="modal fade" id="lookaheadHelpModal" tabindex="-1" aria-labelledby="lookaheadHelpLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+
+            <div class="modal-header border-bottom px-4 py-3"
+                 style="border-color: var(--bs-border-color) !important;">
+                <h5 class="modal-title fw-semibold fs-6 mb-0" id="lookaheadHelpLabel">
+                    <i class="bi bi-calendar3 me-2" style="color: #3b82f6;"></i>
+                    How Time View Works
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body px-4 py-4">
+
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-box-seam me-1" style="color: #3b82f6;"></i>
+                    What is it?
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    Time View is <strong>programme playback</strong> for the linked model timeline.
+                    Scrub or play programme dates to colour the 3D model by schedule state.
+                    Model colours use <strong>applied / confirmed links</strong> only.
+                    This is not a walkthrough or construction simulation.
+                </p>
+
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-play-circle me-1" style="color: #3b82f6;"></i>
+                    Programme playback
+                </p>
+                <ul class="text-secondary fs-7 mb-4">
+                    <li>The bottom dock holds Start / Previous / Play / Pause / Next and the scrubber.</li>
+                    <li><strong>Playback Setup</strong> sets presentation duration (30&nbsp;sec / 1&nbsp;min / 3&nbsp;min / 5&nbsp;min). Step delay is duration ÷ weekly intervals.</li>
+                    <li>Programme range and weekly step are read-only in this release.</li>
+                    <li>Playback defaults near today’s as-of date when timeline intervals exist.</li>
+                    <li>Details (closed by default) show interval linked-element counts for the current playback date.</li>
+                </ul>
+
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-palette me-1" style="color: #3b82f6;"></i>
+                    Appearance
+                </p>
+                <ul class="text-secondary fs-7 mb-4">
+                    <li>Active appearance profile: <strong>Schedule state</strong> (complete / in progress / delayed / not started).</li>
+                    <li>The on-model legend is generated from that profile and visibility toggles.</li>
+                    <li>An applied-count chip reports how many linked elements were coloured for the playback date.</li>
+                    <li><strong>Task Legend Groups</strong> (user-defined activity tags with colours) are planned — not IFC class categories. Not available in this release.</li>
+                </ul>
+
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-cube me-1" style="color: #3b82f6;"></i>
+                    Model colours
+                </p>
+                <ul class="text-secondary fs-7 mb-4">
+                    <li>Uses the latest processed IFC for this project.</li>
+                    <li>Only applied / confirmed schedule-model links colour the model.</li>
+                    <li>Unlinked schedule activities do not appear in model colours.</li>
+                    <li>Create or check links in the <strong>Links</strong> tab. Walkthrough / camera-path playback is not available in this release.</li>
+                </ul>
+
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-person-check me-1" style="color: #3b82f6;"></i>
+                    Who can do what
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    Any project member with schedule access can view Time View and programme playback.
+                    Creating or editing task-to-model links requires modify access on Links.
+                </p>
+
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-exclamation-triangle me-1" style="color: #d97706;"></i>
+                    Caveats
+                </p>
+                <p class="text-secondary fs-7 mb-0">
+                    This is a read-only playback view — no links are created here.
+                    Colouring depends on schedule dates, applied / confirmed links, and a processed IFC file.
+                    Missing links are not inferred. Interval step is weekly in this release.
+                </p>
+
+            </div>
+        </div>
+    </div>
+</div>

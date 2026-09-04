@@ -1,242 +1,1065 @@
-<!-- scheduling/tabs/lookahead.html — Look-ahead window: per-week collapsible task cards -->
+<!-- scheduling/tabs/lookahead.html — Time View: 3D hero + bottom playback dock -->
 
 {% if not tasks %}
 <div class="d-flex flex-column align-items-center justify-content-center text-secondary py-5">
-    <i class="bi bi-calendar-week fs-1 mb-2"></i>
-    <span>No tasks to display — import a schedule in the Data Sources tab.</span>
+    <i class="bi bi-calendar3 fs-1 mb-2"></i>
+    <span>No schedule to play — import a schedule in the Data Sources tab.</span>
 </div>
 {% else %}
 
-<div id="lookahead-root" style="display:flex; flex-direction:column; gap:12px;">
+<div id="lookahead-root"
+     class="tv-workspace tv-settings-collapsed tv-is-dock-collapsed"
+     data-testid="time-view-workspace">
 
-    <!-- Toolbar: week-count chips -->
-    <div style="flex-shrink:0; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-        <span style="font-size:0.78rem; color:var(--bs-secondary-color);">Window:</span>
-        <div class="d-flex gap-2" id="la-week-chips">
-            <button type="button" class="la-chip" data-weeks="2">2 weeks</button>
-            <button type="button" class="la-chip active" data-weeks="3">3 weeks</button>
-            <button type="button" class="la-chip" data-weeks="4">4 weeks</button>
-            <button type="button" class="la-chip" data-weeks="6">6 weeks</button>
+    <div class="tv-header" data-testid="time-view-header">
+        <div class="d-flex align-items-center gap-2 flex-nowrap" style="min-height:28px;">
+            <i class="bi bi-calendar3" style="color:#3b82f6;"></i>
+            <h5 class="m-0" style="font-size:0.95rem;" data-testid="time-view-title">Time View</h5>
+            <button type="button"
+                    class="help-pill"
+                    data-bs-toggle="modal"
+                    data-bs-target="#lookaheadHelpModal"
+                    title="How Time View works. Not a walkthrough or construction simulation."
+                    aria-label="How Time View works">
+                <i class="bi bi-question-circle"></i>
+            </button>
+            <span class="tv-chip text-truncate" style="max-width:280px;"
+                  data-testid="time-view-subtitle"
+                  title="Programme playback for applied / confirmed schedule-model links">
+                Applied / Confirmed programme playback
+            </span>
+            <span id="la-as-of" class="tv-chip" data-testid="time-view-as-of">As of —</span>
+            <span class="visually-hidden"
+                  data-testid="lookahead-trusted-caveat">
+                Use the timeline to review linked model status over time.
+                This is not a walkthrough or construction simulation.
+                Model colours use applied / confirmed links only.
+            </span>
+            <div class="ms-auto d-flex align-items-center gap-1 flex-shrink-0">
+                <button type="button" id="la-toggle-settings" class="btn btn-sm btn-outline-secondary py-0 px-2"
+                        style="font-size:0.72rem;"
+                        data-testid="time-view-settings-toggle"
+                        title="Playback settings" aria-expanded="false" aria-controls="la-settings-panel">
+                    <i class="bi bi-sliders"></i><span class="ms-1 d-none d-lg-inline">Settings</span>
+                </button>
+                <button type="button" id="la-toggle-details" class="btn btn-sm btn-outline-secondary py-0 px-2"
+                        style="font-size:0.72rem;"
+                        data-testid="time-view-details-toggle"
+                        title="Playback details" aria-expanded="false" aria-controls="la-details-drawer">
+                    <i class="bi bi-info-circle"></i><span class="ms-1 d-none d-lg-inline">Details</span>
+                </button>
+            </div>
         </div>
-        <span id="la-as-of" style="margin-left:auto; font-size:0.72rem; color:var(--bs-secondary-color);"></span>
     </div>
 
-    <!-- Week cards body -->
-    <div id="la-body">
-        <div class="d-flex align-items-center justify-content-center text-secondary py-4" style="font-size:0.82rem;">
-            <span class="spinner-border spinner-border-sm me-2"></span>Loading…
+    <div class="tv-body" data-testid="time-view-body">
+        <div id="la-preview-col" class="tv-stage" data-testid="time-view-preview">
+            <div class="tv-overlay-chip" data-testid="time-view-preview-title">
+                Model timeline · <span data-testid="time-view-preview-basis">Applied / Confirmed only</span>
+                · <span id="la-overlay-date" data-testid="time-view-overlay-date">—</span>
+            </div>
+            <div class="tv-overlay-legend" data-testid="time-view-legend">
+                <button type="button" id="la-legend-toggle" class="tv-legend-toggle"
+                        data-testid="time-view-legend-toggle"
+                        title="Toggle legend" aria-expanded="true">Legend · Schedule state</button>
+                <div id="la-applied-status" class="tv-applied-status"
+                     data-testid="time-view-applied-status">Waiting for model colours…</div>
+                <div id="la-legend-body" class="tv-legend-body" data-testid="time-view-legend-body"></div>
+            </div>
+            <div id="la-preview-warn" class="d-none tv-overlay-banner" data-testid="time-view-preview-warn"></div>
+            <div id="la-status-banner" class="d-none tv-overlay-banner" data-testid="time-view-status-banner"></div>
+
+            {% if ifc_files_available %}
+            <div id="la-preview-frame-wrap" class="tv-iframe-wrap" data-testid="time-view-viewport">
+                <iframe
+                    id="la-iframe"
+                    src="{% url 'ifc_viewer:viewer_embed' project.pk %}?v={% now 'U' %}"
+                    style="width:100%; height:100%; border:none;"
+                    allow="fullscreen"
+                    title="Time View model timeline">
+                </iframe>
+                <div id="la-iframe-loading" class="tv-iframe-loading">
+                    <div class="tv-spinner"></div>
+                    <span style="font-size:0.85rem;">Loading 3D viewer…</span>
+                </div>
+            </div>
+            {% else %}
+            <div class="d-flex flex-column align-items-center justify-content-center text-secondary flex-grow-1 p-4"
+                 style="font-size:0.82rem; text-align:center; min-height:0;"
+                 data-testid="time-view-viewport">
+                <i class="bi bi-cube fs-2 mb-2" style="opacity:0.5;"></i>
+                <span>Upload and process an IFC to enable programme playback.</span>
+            </div>
+            {% endif %}
+
+            <aside id="la-settings-panel" class="tv-settings" data-testid="time-view-settings" hidden>
+                <div class="tv-settings-head">
+                    <span class="tv-kicker" data-testid="time-view-settings-label">Playback settings</span>
+                    <button type="button" id="la-settings-close" class="btn btn-sm btn-outline-secondary py-0 px-2"
+                            style="font-size:0.7rem;" aria-label="Close playback settings">Close</button>
+                </div>
+                <div class="tv-settings-body">
+                    <p class="tv-settings-note" data-testid="time-view-settings-honesty">
+                        Programme playback colours the model over schedule time.
+                        Only applied / confirmed linked elements can be coloured.
+                        Unlinked schedule activities do not appear in model colours.
+                        This is not a walkthrough or construction simulation.
+                    </p>
+
+                    <div class="tv-settings-section" data-testid="time-view-playback-setup">
+                        <div class="tv-section-title">Playback Setup</div>
+                        <label class="tv-field-label" for="la-playback-duration">Playback duration</label>
+                        <select id="la-playback-duration" class="form-select form-select-sm mb-1"
+                                data-testid="time-view-playback-duration"
+                                aria-label="Playback presentation duration">
+                            <option value="30000">30 sec</option>
+                            <option value="60000" selected>1 min</option>
+                            <option value="180000">3 min</option>
+                            <option value="300000">5 min</option>
+                        </select>
+                        <p class="text-secondary mb-2" style="font-size:0.68rem;"
+                           data-testid="time-view-duration-hint">
+                            How long a full programme play-through should take.
+                            Step delay is derived from duration ÷ weekly intervals (minimum 100&nbsp;ms).
+                        </p>
+                        <div id="la-step-estimate" class="tv-static-value mb-2"
+                             data-testid="time-view-step-estimate">Step delay: —</div>
+
+                        <div class="tv-field-label">Programme range</div>
+                        <div class="small text-secondary mb-2" data-testid="time-view-settings-range">
+                            <span id="la-settings-range-text">—</span>
+                        </div>
+                        <div class="tv-field-label">Playback step</div>
+                        <div class="tv-static-value mb-2" data-testid="time-view-playback-step">Weekly</div>
+                    </div>
+
+                    <div class="tv-settings-section" data-testid="time-view-appearance-setup">
+                        <div class="tv-section-title">Appearance</div>
+                        <div class="tv-field-label">Appearance profile</div>
+                        <div class="tv-static-value mb-1" data-testid="time-view-appearance-profile">
+                            Schedule state
+                        </div>
+                        <p class="text-secondary mb-2" style="font-size:0.68rem;"
+                           data-testid="time-view-colour-basis">
+                            Colour basis: schedule state on the playback date
+                            (complete / in progress / delayed / not started / no task).
+                        </p>
+
+                        <div class="tv-field-label">Schedule visibility</div>
+                        <p class="text-secondary mb-1" style="font-size:0.68rem;">
+                            Controls which schedule-state buckets colour the model and appear in the legend.
+                        </p>
+                        <div class="tv-checks" data-testid="time-view-visibility">
+                            <label class="form-check">
+                                <input class="form-check-input" type="checkbox" id="la-vis-complete" checked
+                                       data-testid="time-view-vis-complete" data-bucket="complete">
+                                <span class="form-check-label">Complete</span>
+                            </label>
+                            <label class="form-check">
+                                <input class="form-check-input" type="checkbox" id="la-vis-in-progress" checked
+                                       data-testid="time-view-vis-in-progress" data-bucket="in_progress">
+                                <span class="form-check-label">In progress</span>
+                            </label>
+                            <label class="form-check">
+                                <input class="form-check-input" type="checkbox" id="la-vis-delayed" checked
+                                       data-testid="time-view-vis-delayed" data-bucket="delayed">
+                                <span class="form-check-label">Delayed</span>
+                            </label>
+                            <label class="form-check">
+                                <input class="form-check-input" type="checkbox" id="la-vis-not-started" checked
+                                       data-testid="time-view-vis-not-started" data-bucket="not_started">
+                                <span class="form-check-label">Not started (hidden)</span>
+                            </label>
+                            <label class="form-check">
+                                <input class="form-check-input" type="checkbox" id="la-vis-no-task" checked
+                                       data-testid="time-view-vis-no-task" data-bucket="no_task">
+                                <span class="form-check-label">No-task wireframe</span>
+                            </label>
+                        </div>
+
+                        <div class="tv-future-modes mt-2" data-testid="time-view-task-legend-groups-future">
+                            <div class="tv-field-label">Task Legend Groups</div>
+                            <p class="text-secondary mb-1" style="font-size:0.68rem;"
+                               data-testid="time-view-task-legend-groups-note">
+                                Planned: user-defined activity groups with colours (for example Substructure,
+                                Superstructure, MEP First Fix). Linked model elements would inherit colour from
+                                their schedule activity group during playback — not from IFC class.
+                                Not available in this release (needs a saved appearance profile).
+                            </p>
+                            <ul class="mb-0 ps-3 text-secondary" style="font-size:0.68rem;">
+                                <li>IFC class categories are not the 4D legend builder</li>
+                                <li>Level / storey appearance profile</li>
+                                <li>Planned vs actual compare</li>
+                            </ul>
+                        </div>
+
+                        <div class="tv-field-label mt-2">Legend preview</div>
+                        <div class="tv-legend-panel" id="la-settings-legend"
+                             data-testid="time-view-settings-legend"></div>
+                    </div>
+
+                    <button type="button" id="la-settings-reset" class="btn btn-sm btn-outline-secondary w-100 mt-2"
+                            data-testid="time-view-settings-reset"
+                            title="Re-apply playback colours for the current playback date">
+                        Reset playback colours
+                    </button>
+                </div>
+            </aside>
+
+            <div id="la-details-drawer" class="tv-details d-none" data-testid="time-view-details-drawer" hidden>
+                <div class="tv-details-head">
+                    <span class="tv-kicker">Playback details</span>
+                    <button type="button" id="la-details-close" class="btn btn-sm btn-outline-secondary py-0 px-2"
+                            style="font-size:0.7rem;" aria-label="Close playback details">Close</button>
+                </div>
+                <div id="la-details-body" class="tv-details-body" data-testid="time-view-details-body">
+                    <p class="text-secondary mb-0" style="font-size:0.78rem;" data-testid="time-view-details-empty">
+                        Interval stats for the current playback date appear here when timeline data loads.
+                        Activity lists are not available in this release — use Links for link coverage.
+                    </p>
+                </div>
+            </div>
         </div>
     </div>
 
+    <div id="la-playback-dock"
+         class="tv-dock"
+         data-testid="time-view-playback-dock">
+
+        <div class="tv-dock-collapsed" data-testid="time-view-dock-collapsed">
+            <span class="tv-kicker mb-0">Playback</span>
+            <span id="la-dock-date" class="fw-semibold" style="font-size:0.82rem;"
+                  data-testid="time-view-dock-date">—</span>
+            <button type="button" id="la-dock-play-btn" class="btn btn-sm btn-primary py-0 px-2"
+                    style="font-size:0.75rem;" title="Play programme dates" aria-label="Play" disabled
+                    data-testid="time-view-dock-play-btn">
+                <i class="bi bi-play-fill"></i><span class="ms-1">Play</span>
+            </button>
+            <button type="button" id="la-dock-pause-btn" class="btn btn-sm btn-outline-secondary py-0 px-2 d-none"
+                    style="font-size:0.75rem;" title="Pause playback" aria-label="Pause" disabled
+                    data-testid="time-view-dock-pause-btn">
+                <i class="bi bi-pause-fill"></i><span class="ms-1">Pause</span>
+            </button>
+            <span id="la-dock-loading" class="text-secondary d-none" style="font-size:0.7rem;"
+                  data-testid="time-view-dock-loading">Loading…</span>
+            <button type="button" id="la-dock-expand" class="btn btn-sm btn-outline-secondary py-0 px-2 ms-auto"
+                    style="font-size:0.72rem;"
+                    data-testid="time-view-dock-expand"
+                    title="Expand programme playback" aria-label="Expand playback dock">
+                <i class="bi bi-chevron-up"></i><span class="ms-1">Expand</span>
+            </button>
+        </div>
+
+        <div class="tv-dock-expanded" data-testid="time-view-dock-expanded" hidden>
+            <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+                <span class="fw-semibold text-secondary tv-kicker mb-0" data-testid="time-view-playback-label">
+                    Programme playback
+                </span>
+                <button type="button" id="la-to-start-btn" class="btn btn-sm btn-outline-secondary py-0 px-2"
+                        title="Jump to the first programme interval" aria-label="Start" disabled>
+                    <i class="bi bi-skip-start-fill"></i><span class="ms-1 d-none d-sm-inline">Start</span>
+                </button>
+                <button type="button" id="la-prev-btn" class="btn btn-sm btn-outline-secondary py-0 px-2"
+                        title="Previous programme interval" aria-label="Previous" disabled>
+                    <i class="bi bi-skip-backward-fill"></i>
+                </button>
+                <button type="button" id="la-play-btn" class="btn btn-sm btn-primary py-0 px-2"
+                        title="Play programme dates" aria-label="Play" disabled
+                        data-testid="time-view-play-btn">
+                    <i class="bi bi-play-fill"></i><span class="ms-1">Play</span>
+                </button>
+                <button type="button" id="la-pause-btn" class="btn btn-sm btn-outline-secondary py-0 px-2 d-none"
+                        title="Pause playback" aria-label="Pause" disabled
+                        data-testid="time-view-pause-btn">
+                    <i class="bi bi-pause-fill"></i><span class="ms-1">Pause</span>
+                </button>
+                <button type="button" id="la-next-btn" class="btn btn-sm btn-outline-secondary py-0 px-2"
+                        title="Next programme interval" aria-label="Next" disabled>
+                    <i class="bi bi-skip-forward-fill"></i>
+                </button>
+                <span class="tv-chip" id="la-dock-duration" data-testid="time-view-dock-duration"
+                      title="Presentation duration for a full programme play-through">1 min</span>
+                <span class="text-secondary" style="font-size:0.7rem;">Playback date</span>
+                <span id="la-current-date" class="fw-bold" style="min-width:100px; font-size:0.82rem;"
+                      data-testid="time-view-playback-date">—</span>
+                <span id="la-loading" class="text-secondary d-none" style="font-size:0.7rem;"
+                      data-testid="time-view-loading">Loading model state…</span>
+                <button type="button" id="la-dock-collapse" class="btn btn-sm btn-outline-secondary py-0 px-2 ms-auto"
+                        style="font-size:0.72rem;"
+                        data-testid="time-view-dock-collapse"
+                        title="Collapse playback dock" aria-label="Collapse playback dock">
+                    <i class="bi bi-chevron-down"></i><span class="ms-1">Minimize</span>
+                </button>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <span id="la-min-date" class="text-secondary" style="font-size:0.7rem; white-space:nowrap;"
+                      data-testid="time-view-range-min">—</span>
+                <input id="la-slider" type="range" class="form-range flex-grow-1" min="0" value="0" disabled
+                       data-testid="time-view-scrubber" aria-label="Programme playback date">
+                <span id="la-max-date" class="text-secondary" style="font-size:0.7rem; white-space:nowrap;"
+                      data-testid="time-view-range-max">—</span>
+            </div>
+            <p id="la-playback-note" class="text-secondary mb-0 mt-1" style="font-size:0.68rem;"
+               data-testid="time-view-playback-note">
+                Playback colours the model by schedule state on the selected programme date.
+            </p>
+        </div>
+    </div>
 </div>
 
+{% include "scheduling/components/lookahead_help_modal.html" %}
+
 <style>
-.la-chip {
-    font-size: 0.73rem;
-    padding: 2px 12px;
-    border-radius: 20px;
+.tv-workspace {
+    display: flex !important;
+    flex-direction: column;
+    flex: 1 1 auto;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    padding: 4px 8px 4px;
+    gap: 4px;
+}
+.tv-header { flex-shrink: 0; }
+.tv-chip {
+    font-size: 0.7rem;
+    color: var(--bs-secondary-color);
     border: 1px solid var(--bs-border-color);
+    border-radius: 999px;
+    padding: 1px 8px;
     background: var(--bs-secondary-bg);
-    color: var(--bs-body-color);
-    cursor: pointer;
     white-space: nowrap;
-    transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
-.la-chip.active {
-    background: var(--bs-primary);
-    border-color: var(--bs-primary);
-    color: #fff;
+.tv-kicker {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
 }
-.la-chip:not(.active):hover {
-    border-color: var(--bs-primary);
-    color: var(--bs-primary);
+.tv-body {
+    position: relative;
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
 }
-.la-week-card {
+.tv-stage {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
     border: 1px solid var(--bs-border-color);
     border-radius: 8px;
     overflow: hidden;
+    background: #111;
 }
-.la-week-header {
+.tv-iframe-wrap {
+    flex: 1 1 auto;
+    position: relative;
+    min-height: 0;
+}
+.tv-iframe-loading {
+    position: absolute;
+    inset: 0;
+    background: #111;
     display: flex;
+    flex-direction: column;
     align-items: center;
-    padding: 10px 14px;
-    cursor: pointer;
-    background: var(--bs-secondary-bg);
-    user-select: none;
-    gap: 10px;
+    justify-content: center;
+    color: #94a3b8;
+    z-index: 10;
+    pointer-events: none;
 }
-.la-week-header:hover { background: var(--bs-tertiary-bg); }
-.la-week-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; }
-.la-section-title {
-    font-size: 0.7rem;
+.tv-spinner {
+    width: 34px;
+    height: 34px;
+    border: 3px solid #1e293b;
+    border-top-color: #3b82f6;
+    border-radius: 50%;
+    animation: la-spin 0.8s linear infinite;
+    margin-bottom: 12px;
+}
+@keyframes la-spin { to { transform: rotate(360deg); } }
+.tv-overlay-chip {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 12;
+    font-size: 0.68rem;
+    color: #e2e8f0;
+    background: rgba(15, 23, 42, 0.78);
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    border-radius: 6px;
+    padding: 3px 8px;
+    pointer-events: none;
+}
+.tv-overlay-legend {
+    position: absolute;
+    top: 34px;
+    left: 8px;
+    z-index: 12;
+    max-width: min(420px, 55%);
+    font-size: 0.65rem;
+    color: #cbd5e1;
+    background: rgba(15, 23, 42, 0.78);
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    border-radius: 6px;
+    padding: 4px 8px;
+}
+.tv-legend-toggle {
+    background: transparent;
+    border: none;
+    color: #e2e8f0;
+    font-size: 0.65rem;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--bs-secondary-color);
-    margin-bottom: 6px;
+    letter-spacing: 0.04em;
+    padding: 0;
+    cursor: pointer;
 }
-.la-task-row {
+.tv-legend-body {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    margin-top: 4px;
+    pointer-events: none;
+}
+.tv-overlay-legend.is-collapsed .tv-legend-body { display: none; }
+.tv-overlay-legend.is-collapsed .tv-applied-status { display: none; }
+.tv-applied-status {
+    margin-top: 4px;
+    font-size: 0.65rem;
+    color: #cbd5e1;
+    line-height: 1.25;
+}
+.tv-applied-status.is-empty {
+    color: #fbbf24;
+}
+.tv-overlay-legend i,
+.tv-legend-panel i {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    margin-right: 3px;
+    vertical-align: middle;
+}
+.tv-static-value {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--bs-body-color);
+    padding: 4px 8px;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 6px;
+    background: var(--bs-secondary-bg);
+}
+.tv-overlay-banner {
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 13;
+    max-width: 70%;
+    padding: 4px 10px;
+    font-size: 0.7rem;
+    color: #e2e8f0;
+    background: rgba(15, 23, 42, 0.9);
+    border: 1px solid rgba(148, 163, 184, 0.4);
+    border-radius: 6px;
+}
+.tv-settings {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    bottom: 8px;
+    width: min(280px, 42%);
+    z-index: 20;
+    display: none;
+    flex-direction: column;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 8px;
+    background: var(--bs-body-bg);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+    overflow: hidden;
+}
+.tv-workspace:not(.tv-settings-collapsed) .tv-settings {
+    display: flex;
+}
+.tv-workspace:not(.tv-settings-collapsed) .tv-settings[hidden] {
+    display: flex;
+}
+.tv-settings-head {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
-    gap: 10px;
-    font-size: 0.78rem;
-    padding: 5px 8px;
-    border-radius: 5px;
-    background: var(--bs-body-bg);
-    border: 1px solid var(--bs-border-color);
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--bs-border-color);
+    background: var(--bs-secondary-bg);
 }
-.la-task-row:hover { background: var(--bs-tertiary-bg); }
-.la-stage-dot {
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    flex-shrink: 0;
+.tv-settings-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 10px;
 }
-.la-empty {
-    font-size: 0.75rem;
+.tv-settings-note {
+    font-size: 0.72rem;
     color: var(--bs-secondary-color);
-    font-style: italic;
-    padding: 2px 0;
+    margin-bottom: 10px;
 }
+.tv-field-label {
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--bs-secondary-color);
+    margin-bottom: 4px;
+}
+.tv-settings-section {
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--bs-border-color);
+}
+.tv-settings-section:last-of-type {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+.tv-section-title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+    color: var(--bs-body-color);
+}
+.tv-future-modes {
+    padding: 6px 8px;
+    border: 1px dashed var(--bs-border-color);
+    border-radius: 6px;
+    background: var(--bs-secondary-bg);
+}
+.tv-checks .form-check {
+    margin-bottom: 4px;
+    font-size: 0.78rem;
+}
+.tv-legend-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.72rem;
+    color: var(--bs-secondary-color);
+}
+.tv-legend-item.is-hidden,
+.tv-legend-panel .tv-legend-item.is-hidden {
+    opacity: 0.4;
+    text-decoration: line-through;
+}
+.tv-details {
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    max-height: 180px;
+    z-index: 19;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 8px;
+    background: var(--bs-body-bg);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.tv-details-head {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--bs-border-color);
+    background: var(--bs-secondary-bg);
+}
+.tv-details-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 8px 10px;
+    font-size: 0.78rem;
+}
+.tv-stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 6px;
+}
+.tv-stat {
+    border: 1px solid var(--bs-border-color);
+    border-radius: 6px;
+    padding: 6px 8px;
+    background: var(--bs-secondary-bg);
+}
+.tv-stat strong {
+    display: block;
+    font-size: 0.95rem;
+}
+.tv-dock {
+    flex-shrink: 0;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 8px;
+    background: var(--bs-body-bg);
+    font-size: 0.8rem;
+}
+.tv-dock-collapsed {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 10px;
+    min-height: 34px;
+}
+.tv-dock-expanded {
+    display: none;
+    padding: 6px 10px;
+}
+.tv-workspace.tv-is-dock-collapsed .tv-dock-collapsed { display: flex; }
+.tv-workspace.tv-is-dock-collapsed .tv-dock-expanded { display: none !important; }
+.tv-workspace:not(.tv-is-dock-collapsed) .tv-dock-collapsed { display: none; }
+.tv-workspace:not(.tv-is-dock-collapsed) .tv-dock-expanded { display: block; }
+.tv-workspace:not(.tv-is-dock-collapsed) .tv-dock-expanded[hidden] { display: block; }
 </style>
 
 <script>
 (function () {
-    const LA_URL_BASE = "{% url 'scheduling:lookahead_data' project.pk %}";
+    const TIMELINE_URL  = "{% url 'ifc_viewer:viewer_timeline' project.pk %}";
+    const TIMELINE_DETAIL_URL = "{% url 'ifc_viewer:viewer_timeline_interval' project.pk %}";
+    const HAS_IFC       = {{ ifc_files_available|yesno:"true,false" }};
 
-    const STAGE_COLORS = {
-        substructure: "#78350f",
-        structure:    "#dc2626",
-        envelope:     "#d97706",
-        mep:          "#2563eb",
-        finishes:     "#16a34a",
-        external:     "#0891b2",
-        "":           "#6b7280",
+    let viewerReady  = false;
+    let pendingMsg   = null;
+    let tlIntervals  = [];
+    let tlNoTask     = [];
+    let tlNoTaskCount = 0;
+    let tlLinkedCount = 0;
+    let timelineOk   = false;
+    let tlTimer      = null;
+    let tlPlaying    = false;
+    let tlDurationMs = 60000;
+    const TL_MIN_STEP_MS = 100;
+    let tlIdx        = 0;
+    let _applyingInterval = false;
+    let _asOfIso = new Date().toISOString().slice(0, 10);
+    let _statusTimer = null;
+    const tlDetailCache = Object.create(null);
+    let tlDetailInflight = Object.create(null);
+
+    /* Appearance profile: Schedule state (Task Legend Groups are future). */
+    const APPEARANCE_BUCKETS = [
+        { key: "complete", label: "Complete", color: "#10B981", visId: "la-vis-complete", border: false },
+        { key: "in_progress", label: "In progress", color: "#F59E0B", visId: "la-vis-in-progress", border: false },
+        { key: "delayed", label: "Delayed", color: "#EF4444", visId: "la-vis-delayed", border: false },
+        { key: "not_started", label: "Not started (hidden)", color: "#333333", visId: "la-vis-not-started", border: true },
+        { key: "no_task", label: "No task (wireframe)", color: "#1B1B1B", visId: "la-vis-no-task", border: true },
+    ];
+    const DURATION_LABELS = {
+        "30000": "30 sec",
+        "60000": "1 min",
+        "180000": "3 min",
+        "300000": "5 min",
     };
 
-    let currentWeeks = 3;
+    const iframe    = document.getElementById("la-iframe");
+    const iframeOvl = document.getElementById("la-iframe-loading");
+    const previewWarn = document.getElementById("la-preview-warn");
+    const root = document.getElementById("lookahead-root");
 
-    async function load(weeks) {
-        currentWeeks = weeks;
-        const body = document.getElementById("la-body");
-        body.innerHTML = '<div class="d-flex align-items-center justify-content-center text-secondary py-4" style="font-size:0.82rem;"><span class="spinner-border spinner-border-sm me-2"></span>Loading…</div>';
-
-        let data;
-        try {
-            const resp = await fetch(`${LA_URL_BASE}?weeks=${weeks}`);
-            data = await resp.json();
-        } catch (_) {
-            body.innerHTML = '<div class="text-danger p-3" style="font-size:0.82rem;">Failed to load look-ahead data.</div>';
+    function sendToViewer(msg) {
+        if (!HAS_IFC || !iframe?.contentWindow) return;
+        if (!viewerReady) {
+            pendingMsg = msg;
             return;
         }
-
-        if (!data.has_data) {
-            body.innerHTML = '<div class="text-secondary p-3" style="font-size:0.82rem;">No tasks in the schedule.</div>';
-            return;
-        }
-
-        const asOf = document.getElementById("la-as-of");
-        if (asOf) asOf.textContent = `As of ${_fmtDate(data.as_of)}`;
-
-        body.innerHTML = "";
-        data.weeks.forEach((week, idx) => {
-            body.appendChild(_buildWeekCard(week, idx === 0));
-        });
+        iframe.contentWindow.postMessage(msg, "*");
     }
 
-    /* ── Week card ────────────────────────────────────────────────────── */
-    function _buildWeekCard(week, expanded) {
-        const totalCount = week.starting.length + week.in_progress.length + week.finishing.length;
+    function _setLoading(on) {
+        document.getElementById("la-loading")?.classList.toggle("d-none", !on);
+        document.getElementById("la-dock-loading")?.classList.toggle("d-none", !on);
+    }
 
-        const card = document.createElement("div");
-        card.className = "la-week-card";
+    function _showPreviewWarn(text) {
+        if (!previewWarn) return;
+        previewWarn.textContent = text;
+        previewWarn.classList.remove("d-none");
+    }
 
-        /* Header */
-        const hdr = document.createElement("div");
-        hdr.className = "la-week-header";
-        hdr.innerHTML = `
-            <i class="bi bi-chevron-${expanded ? "down" : "right"}" style="font-size:0.75rem; color:var(--bs-secondary-color); flex-shrink:0;"></i>
-            <span style="font-weight:600; font-size:0.85rem;">${_esc(week.label)}</span>
-            <span style="font-size:0.75rem; color:var(--bs-secondary-color);">
-                ${_fmtDate(week.start)} – ${_fmtDate(week.end)}
-            </span>
-            <span style="margin-left:auto; font-size:0.72rem; color:var(--bs-secondary-color);">
-                ${totalCount} task${totalCount !== 1 ? "s" : ""}
-            </span>
-        `;
+    function _showStatus(text) {
+        const el = document.getElementById("la-status-banner");
+        if (!el) return;
+        el.textContent = text;
+        el.classList.remove("d-none");
+        clearTimeout(_statusTimer);
+        _statusTimer = setTimeout(() => el.classList.add("d-none"), 6000);
+    }
 
-        /* Body */
-        const bdy = document.createElement("div");
-        bdy.className = "la-week-body";
-        if (!expanded) bdy.style.display = "none";
+    function _vis(id) {
+        const el = document.getElementById(id);
+        return !el || el.checked;
+    }
 
-        _addSection(bdy, "Starting", week.starting, "#16a34a");
-        _addSection(bdy, "In Progress", week.in_progress, "#f59e0b");
-        _addSection(bdy, "Finishing", week.finishing, "#6366f1");
+    function _idxForDate(iso) {
+        if (!tlIntervals.length) return 0;
+        const target = new Date((iso || "") + "T00:00:00");
+        if (isNaN(target.getTime())) return 0;
+        let best = 0;
+        for (let i = 0; i < tlIntervals.length; i++) {
+            const d = new Date(tlIntervals[i].date + "T00:00:00");
+            if (d <= target) best = i;
+            else break;
+        }
+        return best;
+    }
 
-        /* Collapse toggle */
-        hdr.addEventListener("click", () => {
-            const icon = hdr.querySelector(".bi");
-            if (bdy.style.display === "none") {
-                bdy.style.display = "flex";
-                icon.className = "bi bi-chevron-down";
-                icon.style.cssText = "font-size:0.75rem; color:var(--bs-secondary-color); flex-shrink:0;";
-            } else {
-                bdy.style.display = "none";
-                icon.className = "bi bi-chevron-right";
-                icon.style.cssText = "font-size:0.75rem; color:var(--bs-secondary-color); flex-shrink:0;";
+    function _setPlayPauseVisible(playing) {
+        const playIds = ["la-play-btn", "la-dock-play-btn"];
+        const pauseIds = ["la-pause-btn", "la-dock-pause-btn"];
+        playIds.forEach((id) => document.getElementById(id)?.classList.toggle("d-none", playing));
+        pauseIds.forEach((id) => document.getElementById(id)?.classList.toggle("d-none", !playing));
+    }
+
+    function _setPlaybackEnabled(enabled) {
+        ["la-play-btn", "la-pause-btn", "la-dock-play-btn", "la-dock-pause-btn",
+         "la-to-start-btn", "la-prev-btn", "la-next-btn", "la-playback-duration", "la-slider"]
+            .forEach((id) => {
+                const el = document.getElementById(id);
+                if (el) el.disabled = !enabled;
+            });
+        const note = document.getElementById("la-playback-note");
+        if (!note) return;
+        note.textContent = enabled
+            ? "Playback colours the model by schedule state over the selected playback duration."
+            : "Playback controls are available when applied / confirmed links provide a programme timeline.";
+    }
+
+    function _legendItems() {
+        return APPEARANCE_BUCKETS.map((b) => ({
+            key: b.key,
+            label: b.label,
+            color: b.color,
+            border: b.border,
+            visible: _vis(b.visId),
+        }));
+    }
+
+    function _renderLegendItem(item) {
+        const border = item.border ? " border:1px solid #555;" : "";
+        const hiddenCls = item.visible ? "" : " is-hidden";
+        const state = item.visible ? "" : " (off)";
+        return `<span class="tv-legend-item${hiddenCls}" data-legend-key="${_esc(item.key)}" data-visible="${item.visible ? "1" : "0"}">`
+            + `<i style="background:${_esc(item.color)};${border}"></i>${_esc(item.label)}${state}</span>`;
+    }
+
+    function _renderLegend() {
+        const items = _legendItems();
+        const html = items.map(_renderLegendItem).join("");
+        const body = document.getElementById("la-legend-body");
+        const settings = document.getElementById("la-settings-legend");
+        if (body) body.innerHTML = html;
+        if (settings) settings.innerHTML = html;
+        const toggle = document.getElementById("la-legend-toggle");
+        if (toggle) toggle.textContent = "Legend · Schedule state";
+        _updateAppliedStatusFromPayload();
+    }
+
+    function _payloadLinkedCount(payload) {
+        if (!payload) return 0;
+        const n = (arr) => Array.isArray(arr) ? arr.length : 0;
+        return n(payload.complete) + n(payload.in_progress) + n(payload.delayed);
+    }
+
+    function _updateAppliedStatusFromPayload(ack) {
+        const el = document.getElementById("la-applied-status");
+        if (!el) return;
+        const payload = window.__tvLastColourPayload;
+        const linked = ack && ack.linkedColoured != null
+            ? ack.linkedColoured
+            : _payloadLinkedCount(payload);
+        const hidden = ack && ack.hiddenMapped != null
+            ? ack.hiddenMapped
+            : (payload && Array.isArray(payload.not_started) ? payload.not_started.length : 0);
+        if (!payload) {
+            el.textContent = "Waiting for model colours…";
+            el.classList.remove("is-empty");
+            return;
+        }
+        if (linked <= 0) {
+            el.textContent = "No linked elements coloured for this date.";
+            el.classList.add("is-empty");
+            return;
+        }
+        el.textContent = `${linked.toLocaleString()} elements coloured`
+            + (hidden ? ` · ${hidden.toLocaleString()} not started hidden` : "");
+        el.classList.remove("is-empty");
+    }
+
+    function _stepDelayMs() {
+        const steps = Math.max(1, tlIntervals.length - 1);
+        return Math.max(TL_MIN_STEP_MS, Math.floor(tlDurationMs / steps));
+    }
+
+    function _syncDurationControls(value) {
+        const ms = parseInt(value, 10);
+        tlDurationMs = Number.isFinite(ms) && ms > 0 ? ms : 60000;
+        const sel = document.getElementById("la-playback-duration");
+        if (sel && sel.value !== String(tlDurationMs)) sel.value = String(tlDurationMs);
+        const dock = document.getElementById("la-dock-duration");
+        if (dock) dock.textContent = DURATION_LABELS[String(tlDurationMs)] || "1 min";
+        _updateStepEstimate();
+    }
+
+    function _updateStepEstimate() {
+        const el = document.getElementById("la-step-estimate");
+        if (!el) return;
+        if (!tlIntervals.length) {
+            el.textContent = "Step delay: — (no programme intervals)";
+            return;
+        }
+        const delay = _stepDelayMs();
+        el.textContent = `Step delay: ~${delay} ms · ${tlIntervals.length} weekly steps`;
+        el.dataset.stepMs = String(delay);
+        el.dataset.intervalCount = String(tlIntervals.length);
+        el.dataset.durationMs = String(tlDurationMs);
+    }
+
+    function _updateProgrammeRange(minIso, maxIso) {
+        const el = document.getElementById("la-settings-range-text");
+        if (!el) return;
+        const n = tlIntervals.length;
+        if (!n) {
+            el.textContent = "Programme range: —";
+            return;
+        }
+        el.textContent = `Programme range: ${_fmtShort(minIso)} → ${_fmtShort(maxIso)} · ${n} weekly steps`;
+    }
+
+    function _pauseTimeline() {
+        tlPlaying = false;
+        if (tlTimer) {
+            clearTimeout(tlTimer);
+            tlTimer = null;
+        }
+        _setPlayPauseVisible(false);
+    }
+
+    function _startPlay() {
+        if (!timelineOk) return;
+        _setPlayPauseVisible(true);
+        _playTimeline();
+    }
+
+    async function _ensureIntervalDetail(iv) {
+        if (!iv || !iv.date) return iv;
+        const ents = iv.entities || {};
+        const hasGids = (ents.not_started && ents.not_started.length)
+            || (ents.in_progress && ents.in_progress.length)
+            || (ents.complete && ents.complete.length)
+            || (ents.delayed && ents.delayed.length);
+        if (hasGids) return iv;
+        if (tlDetailCache[iv.date]) {
+            iv.entities = tlDetailCache[iv.date];
+            return iv;
+        }
+        if (tlDetailInflight[iv.date]) {
+            await tlDetailInflight[iv.date];
+            iv.entities = tlDetailCache[iv.date] || iv.entities;
+            return iv;
+        }
+        tlDetailInflight[iv.date] = (async () => {
+            const includeNoTask = tlNoTask.length ? "0" : "1";
+            const resp = await fetch(
+                `${TIMELINE_DETAIL_URL}?date=${encodeURIComponent(iv.date)}&include_no_task=${includeNoTask}`
+            );
+            if (!resp.ok) throw new Error("timeline detail HTTP " + resp.status);
+            const data = await resp.json();
+            tlDetailCache[iv.date] = data.entities || {
+                not_started: [], in_progress: [], complete: [], delayed: [],
+            };
+            if (includeNoTask === "1" && Array.isArray(data.no_task)) {
+                tlNoTask = data.no_task;
             }
-        });
-
-        card.append(hdr, bdy);
-        return card;
-    }
-
-    /* ── Section (Starting / In Progress / Finishing) ─────────────────── */
-    function _addSection(parent, label, tasks, accentColor) {
-        const wrap = document.createElement("div");
-
-        const title = document.createElement("div");
-        title.className = "la-section-title";
-        title.innerHTML = `<span style="color:${accentColor}; margin-right:4px;">●</span>${label} <span style="font-weight:400;">(${tasks.length})</span>`;
-        wrap.appendChild(title);
-
-        if (!tasks.length) {
-            const empty = document.createElement("div");
-            empty.className = "la-empty";
-            empty.textContent = "None";
-            wrap.appendChild(empty);
-        } else {
-            tasks.forEach(t => wrap.appendChild(_buildTaskRow(t)));
+            if (data.no_task_count != null) tlNoTaskCount = data.no_task_count;
+            if (data.linked_entity_count != null) tlLinkedCount = data.linked_entity_count;
+            if (data.stats) iv.stats = data.stats;
+        })();
+        try {
+            await tlDetailInflight[iv.date];
+        } finally {
+            delete tlDetailInflight[iv.date];
         }
-
-        parent.appendChild(wrap);
+        iv.entities = tlDetailCache[iv.date] || iv.entities;
+        return iv;
     }
 
-    /* ── Task row ──────────────────────────────────────────────────────── */
-    function _buildTaskRow(task) {
-        const row = document.createElement("div");
-        row.className = "la-task-row";
-
-        const stageColor = STAGE_COLORS[task.stage] || STAGE_COLORS[""];
-        const critBadge  = task.is_critical
-            ? `<span style="font-size:0.65rem; background:#fee2e2; color:#dc2626; border-radius:3px; padding:1px 5px; flex-shrink:0;">CP</span>`
-            : "";
-
-        row.innerHTML = `
-            <div class="la-stage-dot" style="background:${stageColor};" title="${_esc(task.stage || 'Unassigned')}"></div>
-            <div class="text-truncate" style="flex:1;" title="${_esc(task.name)}">${_esc(task.name)}</div>
-            ${critBadge}
-            <div style="font-size:0.7rem; color:var(--bs-secondary-color); white-space:nowrap; flex-shrink:0;">
-                ${_fmtDate(task.start)} – ${_fmtDate(task.end)}
+    function _updateDetails(iv) {
+        const body = document.getElementById("la-details-body");
+        if (!body || !iv) return;
+        const stats = iv.stats || {};
+        const ents = iv.entities || {};
+        const n = (arr) => Array.isArray(arr) ? arr.length : 0;
+        const complete = stats.complete != null ? stats.complete : n(ents.complete);
+        const inProg = stats.in_progress != null ? stats.in_progress : n(ents.in_progress);
+        const delayed = stats.delayed != null ? stats.delayed : n(ents.delayed);
+        const notStartedLinked = n(ents.not_started);
+        const notStartedShown = stats.not_started != null ? stats.not_started : (notStartedLinked + tlNoTaskCount);
+        const noTask = tlNoTaskCount || tlNoTask.length || 0;
+        const linkedColoured = complete + inProg + delayed;
+        const linkedTotal = tlLinkedCount || (complete + inProg + delayed + notStartedLinked);
+        body.innerHTML = `
+            <div class="mb-2" data-testid="time-view-details-date">
+                <strong>Playback date</strong>: ${_esc(_fmtLong(iv.date))}
             </div>
+            <div class="tv-stat-grid" data-testid="time-view-details-stats">
+                <div class="tv-stat"><span class="text-secondary">Complete</span><strong>${complete}</strong></div>
+                <div class="tv-stat"><span class="text-secondary">In progress</span><strong>${inProg}</strong></div>
+                <div class="tv-stat"><span class="text-secondary">Delayed</span><strong>${delayed}</strong></div>
+                <div class="tv-stat"><span class="text-secondary">Not started (hidden)</span><strong>${notStartedShown}</strong></div>
+                <div class="tv-stat"><span class="text-secondary">No-task wireframe</span><strong>${noTask}</strong></div>
+                <div class="tv-stat"><span class="text-secondary">Linked coloured</span><strong>${linkedColoured}</strong></div>
+                <div class="tv-stat"><span class="text-secondary">Linked total</span><strong>${linkedTotal}</strong></div>
+            </div>
+            <p class="text-secondary mb-0 mt-2" style="font-size:0.72rem;">
+                Counts are interval stats for applied / confirmed linked elements.
+                Visibility filters change what is sent to the model; they do not invent links.
+                Activity lists are not available here — use Links for coverage.
+            </p>
         `;
-        return row;
     }
 
-    /* ── Utilities ─────────────────────────────────────────────────────── */
-    function _fmtDate(iso) {
+    function _playTimeline() {
+        const max = tlIntervals.length - 1;
+        if (tlIdx >= max) {
+            _showStatus("Already at last programme date. Move the scrubber or press Start to replay.");
+            _setPlayPauseVisible(false);
+            return;
+        }
+        tlPlaying = true;
+        const tick = async () => {
+            if (!tlPlaying) return;
+            if (tlIdx >= max) {
+                _pauseTimeline();
+                return;
+            }
+            await _applyInterval(tlIdx + 1);
+            if (!tlPlaying) return;
+            if (tlIdx >= max) {
+                _pauseTimeline();
+                return;
+            }
+            const next = tlIntervals[tlIdx + 1];
+            if (next) _ensureIntervalDetail(next).catch(() => {});
+            tlTimer = setTimeout(tick, _stepDelayMs());
+        };
+        tick();
+    }
+
+    async function _applyInterval(idx) {
+        if (!tlIntervals.length) return;
+        while (_applyingInterval) {
+            await new Promise((resolve) => setTimeout(resolve, 30));
+        }
+        _applyingInterval = true;
+        _setLoading(true);
+        try {
+            tlIdx = Math.max(0, Math.min(idx, tlIntervals.length - 1));
+            const iv = tlIntervals[tlIdx];
+            try {
+                await _ensureIntervalDetail(iv);
+            } catch (_e) { /* keep UI even if detail fails */ }
+            const ents = iv.entities || {};
+            const payload = {
+                type: "castor:timeline-colors",
+                not_started: _vis("la-vis-not-started") ? (ents.not_started || []) : [],
+                in_progress: _vis("la-vis-in-progress") ? (ents.in_progress || []) : [],
+                complete: _vis("la-vis-complete") ? (ents.complete || []) : [],
+                delayed: _vis("la-vis-delayed") ? (ents.delayed || []) : [],
+                no_task: _vis("la-vis-no-task") ? tlNoTask : [],
+            };
+            window.__tvLastColourPayload = payload;
+            sendToViewer(payload);
+            _renderLegend();
+            const slider = document.getElementById("la-slider");
+            if (slider) slider.value = String(tlIdx);
+            const label = _fmtLong(iv.date);
+            const dateEl = document.getElementById("la-current-date");
+            const dockDate = document.getElementById("la-dock-date");
+            const overlayDate = document.getElementById("la-overlay-date");
+            if (dateEl) dateEl.textContent = label;
+            if (dockDate) dockDate.textContent = label;
+            if (overlayDate) overlayDate.textContent = label;
+            _updateDetails(iv);
+        } finally {
+            _applyingInterval = false;
+            _setLoading(false);
+        }
+    }
+
+    async function loadTimeline() {
+        _setPlaybackEnabled(false);
+        const asOfEl = document.getElementById("la-as-of");
+        if (asOfEl) asOfEl.textContent = `As of ${_fmtShort(_asOfIso)}`;
+        if (!HAS_IFC) {
+            _showPreviewWarn("Upload and process an IFC to enable programme playback.");
+            return;
+        }
+        try {
+            const resp = await fetch(TIMELINE_URL);
+            if (!resp.ok) throw new Error("HTTP " + resp.status);
+            const data = await resp.json();
+            if (!data.has_tasks || !(data.intervals || []).length) {
+                _showPreviewWarn("Programme playback unavailable — no applied / confirmed timeline data.");
+                return;
+            }
+            tlIntervals = data.intervals || [];
+            tlNoTask    = data.no_task || [];
+            tlNoTaskCount = data.no_task_count != null ? data.no_task_count : tlNoTask.length;
+            tlLinkedCount = data.linked_entity_count != null ? data.linked_entity_count : 0;
+            timelineOk  = tlIntervals.length > 0;
+            const minIso = data.project_start || (tlIntervals[0] && tlIntervals[0].date) || "—";
+            const maxIso = data.project_end
+                || (tlIntervals.length && tlIntervals[tlIntervals.length - 1].date)
+                || "—";
+            const minEl = document.getElementById("la-min-date");
+            const maxEl = document.getElementById("la-max-date");
+            if (minEl) minEl.textContent = minIso;
+            if (maxEl) maxEl.textContent = maxIso;
+            _updateProgrammeRange(minIso, maxIso);
+            _updateStepEstimate();
+            _renderLegend();
+            const slider = document.getElementById("la-slider");
+            if (slider) slider.max = String(Math.max(0, tlIntervals.length - 1));
+            _setPlaybackEnabled(timelineOk);
+            if (timelineOk) {
+                const idx = _idxForDate(_asOfIso);
+                const nearest = tlIntervals[idx];
+                if (nearest && nearest.date !== _asOfIso) {
+                    _showStatus(`Playback starts at nearest programme interval (${_fmtLong(nearest.date)}) to as-of.`);
+                }
+                await _applyInterval(idx);
+            }
+        } catch (_) {
+            _showPreviewWarn("Programme playback unavailable — timeline could not be loaded.");
+            _setPlaybackEnabled(false);
+        }
+    }
+
+    function _fmtShort(iso) {
         const d = new Date(iso + "T00:00:00");
+        if (isNaN(d.getTime())) return iso || "—";
         return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+    }
+
+    function _fmtLong(iso) {
+        const d = new Date(iso + "T00:00:00");
+        if (isNaN(d.getTime())) return iso || "—";
+        return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
     }
 
     function _esc(str) {
@@ -245,16 +1068,114 @@
             .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     }
 
-    /* ── Week chips ────────────────────────────────────────────────────── */
-    document.getElementById("la-week-chips")?.addEventListener("click", (e) => {
-        const chip = e.target.closest(".la-chip");
-        if (!chip) return;
-        document.querySelectorAll(".la-chip").forEach(c => c.classList.remove("active"));
-        chip.classList.add("active");
-        load(parseInt(chip.dataset.weeks, 10));
+    function _setDetailsOpen(open) {
+        const drawer = document.getElementById("la-details-drawer");
+        const btn = document.getElementById("la-toggle-details");
+        if (!drawer) return;
+        drawer.classList.toggle("d-none", !open);
+        drawer.hidden = !open;
+        if (btn) btn.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+
+    function _setSettingsOpen(open) {
+        if (!root) return;
+        root.classList.toggle("tv-settings-collapsed", !open);
+        const panel = document.getElementById("la-settings-panel");
+        if (panel) panel.hidden = !open;
+        const btn = document.getElementById("la-toggle-settings");
+        if (btn) btn.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+
+    function _setDockCollapsed(collapsed) {
+        if (!root) return;
+        root.classList.toggle("tv-is-dock-collapsed", collapsed);
+        const expanded = document.querySelector(".tv-dock-expanded");
+        if (expanded) expanded.hidden = collapsed;
+    }
+
+    document.getElementById("la-play-btn")?.addEventListener("click", _startPlay);
+    document.getElementById("la-dock-play-btn")?.addEventListener("click", _startPlay);
+    document.getElementById("la-pause-btn")?.addEventListener("click", _pauseTimeline);
+    document.getElementById("la-dock-pause-btn")?.addEventListener("click", _pauseTimeline);
+    document.getElementById("la-to-start-btn")?.addEventListener("click", () => {
+        _pauseTimeline();
+        _applyInterval(0);
+    });
+    document.getElementById("la-prev-btn")?.addEventListener("click", () => {
+        _pauseTimeline();
+        _applyInterval(Math.max(0, tlIdx - 1));
+    });
+    document.getElementById("la-next-btn")?.addEventListener("click", () => {
+        _pauseTimeline();
+        _applyInterval(Math.min(tlIntervals.length - 1, tlIdx + 1));
+    });
+    document.getElementById("la-playback-duration")?.addEventListener("change", (e) => {
+        _syncDurationControls(e.target.value);
+        if (tlPlaying) { _pauseTimeline(); _startPlay(); }
+    });
+    document.getElementById("la-slider")?.addEventListener("input", (e) => {
+        _pauseTimeline();
+        _applyInterval(parseInt(e.target.value, 10));
+    });
+    document.getElementById("la-settings-reset")?.addEventListener("click", () => {
+        _pauseTimeline();
+        _applyInterval(tlIdx);
+    });
+    document.querySelectorAll("#la-vis-complete, #la-vis-in-progress, #la-vis-delayed, #la-vis-not-started, #la-vis-no-task")
+        .forEach((el) => el.addEventListener("change", () => {
+            _renderLegend();
+            _applyInterval(tlIdx);
+        }));
+    _syncDurationControls(document.getElementById("la-playback-duration")?.value || "60000");
+    _renderLegend();
+
+    document.getElementById("la-toggle-settings")?.addEventListener("click", () => {
+        const open = root?.classList.contains("tv-settings-collapsed");
+        _setSettingsOpen(!!open);
+    });
+    document.getElementById("la-settings-close")?.addEventListener("click", () => _setSettingsOpen(false));
+    document.getElementById("la-toggle-details")?.addEventListener("click", () => {
+        const drawer = document.getElementById("la-details-drawer");
+        _setDetailsOpen(!!drawer?.classList.contains("d-none"));
+    });
+    document.getElementById("la-details-close")?.addEventListener("click", () => _setDetailsOpen(false));
+    document.getElementById("la-dock-expand")?.addEventListener("click", () => _setDockCollapsed(false));
+    document.getElementById("la-dock-collapse")?.addEventListener("click", () => _setDockCollapsed(true));
+    document.getElementById("la-legend-toggle")?.addEventListener("click", () => {
+        const wrap = document.querySelector(".tv-overlay-legend");
+        const btn = document.getElementById("la-legend-toggle");
+        if (!wrap) return;
+        const collapsed = wrap.classList.toggle("is-collapsed");
+        if (btn) btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
     });
 
-    load(currentWeeks);
+    if (HAS_IFC && iframe) {
+        window.addEventListener("message", (e) => {
+            if (e.source !== iframe.contentWindow) return;
+            const msg = e.data;
+            if (!msg?.type) return;
+            if (msg.type === "castor:viewer-ready") {
+                viewerReady = true;
+                if (iframeOvl) iframeOvl.style.display = "none";
+                if (pendingMsg) {
+                    iframe.contentWindow.postMessage(pendingMsg, "*");
+                    pendingMsg = null;
+                } else if (timelineOk) {
+                    _applyInterval(tlIdx);
+                }
+            }
+            if (msg.type === "castor:timeline-applied") {
+                _updateAppliedStatusFromPayload(msg);
+            }
+            if (msg.type === "castor:viewer-error") {
+                if (iframeOvl) {
+                    iframeOvl.style.display = "flex";
+                    iframeOvl.innerHTML = `<span style="color:#ef4444;">&#9888; ${msg.message || "Viewer error"}</span>`;
+                }
+            }
+        });
+    }
+    loadTimeline();
 }());
 </script>
 
