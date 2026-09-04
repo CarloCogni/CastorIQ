@@ -1,0 +1,16 @@
+<!-- scheduling/components/executive_controls_subnav.html — Phase 3 slim Controls nav -->
+<ul class="nav nav-pills exec-subnav mb-3 gap-1" role="tablist" aria-label="Controls views">
+    <li class="nav-item">
+        <a class="nav-link py-1 px-3 {% if exec_subtab == 'overview' %}active{% endif %}"
+           href="{% url 'scheduling:executive_controls' project.pk %}">
+            Overview
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link py-1 px-3 {% if exec_subtab == 'evm' %}active{% endif %}"
+           href="{% url 'scheduling:executive_controls_evm' project.pk %}"
+           data-testid="exec-subnav-schedule-performance">
+            Schedule Performance &amp; Readiness
+        </a>
+    </li>
+</ul>

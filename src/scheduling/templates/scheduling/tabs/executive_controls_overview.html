@@ -1,0 +1,454 @@
+<!-- scheduling/tabs/executive_controls_overview.html — Controls Workspace Polish V1 -->
+{% include "scheduling/components/controls_workspace_styles.html" %}
+
+<div class="executive-controls-scope" id="executive-controls-root"
+     data-testid="controls-workspace-page">
+
+  <div class="cw-ws mi-ws" data-testid="controls-workspace-shell">
+
+    <!-- A. Command bar -->
+    <div class="mi-cmd" data-testid="controls-command-bar">
+      <div class="d-flex align-items-baseline gap-2" style="min-width:0;">
+        <h5 data-testid="controls-workspace-title">
+          <i class="bi bi-sliders me-1" style="opacity:.7;"></i>Controls
+        </h5>
+        <span class="mi-sub d-none d-md-inline" data-testid="controls-workspace-subtitle">
+          Schedule / Model / Quantity Readiness
+        </span>
+      </div>
+      <button type="button"
+              class="help-pill"
+              data-bs-toggle="modal"
+              data-bs-target="#executiveControlsHelpModal"
+              title="How Controls works"
+              aria-label="How Controls works">
+        <i class="bi bi-question-circle"></i>
+      </button>
+      <span class="mi-source" data-testid="controls-workspace-source"
+            title="Data date {{ workspace.data_date }}{% if workspace.data_date_note %} ({{ workspace.data_date_note }}){% endif %} · {{ workspace.schedule_source_label }}">
+        Data date {{ workspace.data_date }}{% if workspace.data_date_note %} ({{ workspace.data_date_note }}){% endif %}
+        · {{ workspace.schedule_source_label }}
+      </span>
+      {% for chip in workspace.chips %}
+      <span class="cw-chip {% if chip.tone == 'ok' %}is-ok{% elif chip.tone == 'warn' %}is-warn{% endif %}"
+            data-testid="controls-chip-{{ chip.id }}"
+            title="{{ chip.title }}">{{ chip.label }}</span>
+      {% endfor %}
+      <div class="ms-auto d-flex gap-1 flex-wrap">
+        <a href="{{ workspace.nav.schedule }}" class="btn btn-sm btn-outline-secondary"
+           data-testid="controls-open-schedule">Open Schedule</a>
+        <a href="{{ workspace.nav.links }}" class="btn btn-sm btn-outline-secondary"
+           data-testid="controls-open-links">Open Links</a>
+        <a href="{{ workspace.nav.model }}" class="btn btn-sm btn-outline-secondary"
+           data-testid="controls-open-model">Open Model</a>
+        <a href="{{ workspace.nav.quantities }}" class="btn btn-sm btn-outline-secondary"
+           data-testid="controls-open-quantities">Open Quantities</a>
+        <a href="{{ workspace.nav.schedule_performance }}" class="btn btn-sm btn-primary"
+           data-testid="controls-open-schedule-performance">Schedule Performance</a>
+      </div>
+    </div>
+
+    <!-- B. Stats strip -->
+    <div class="mi-stats" data-testid="controls-stats-strip">
+      {% for stat in workspace.stats %}
+      <div class="mi-stat" data-testid="controls-stat-{{ stat.id }}" title="{{ stat.title }}">
+        <span class="mi-stat-k">{{ stat.label }}</span>
+        <span class="mi-stat-v {% if stat.muted %}is-muted{% endif %}">{{ stat.value }}</span>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- C. Main workspace -->
+    <div class="mi-shell" data-testid="controls-workspace-main">
+
+      <aside class="mi-rail" data-testid="controls-left-rail">
+        <div class="mi-zone-h"><span class="mi-zone-title">Controls Navigator</span></div>
+        <div class="mi-zone-body">
+          {% for group in workspace.groups %}
+          <div class="mi-nav-section" data-testid="controls-nav-{{ group.id }}" data-cw-collapse="{{ group.id }}">
+            <button type="button" class="mi-nav-section-h" data-cw-collapse-btn="{{ group.id }}"
+                    aria-expanded="true">
+              <span class="mi-chevron" aria-hidden="true">▼</span>
+              <span>{{ group.label }}</span>
+            </button>
+            <div class="mi-nav-body">
+              <ul class="mi-nav-list">
+                {% for row in workspace.rows %}
+                {% if row.group == group.id %}
+                <li class="mi-nav-item" data-testid="controls-nav-item-{{ row.id }}"
+                    data-cw-row="{{ row.id }}" role="button" tabindex="0">
+                  <span class="mi-nav-label" title="{{ row.item }}">{{ row.item }}</span>
+                  <span class="mi-nav-count">{{ row.status }}</span>
+                </li>
+                {% endif %}
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </aside>
+
+      <section class="mi-center" data-testid="controls-readiness-grid">
+        <div class="mi-zone-h">
+          <span class="mi-zone-title">Readiness Grid</span>
+        </div>
+        <div class="mi-grid-tools" data-testid="controls-quick-filter-bar">
+          <span class="mi-tools-label">Filter visible rows</span>
+          <input type="search" id="cw-quick-filter" class="form-control form-control-sm"
+                 placeholder="Filter control item…"
+                 data-testid="controls-quick-filter"
+                 autocomplete="off">
+        </div>
+        <div class="mi-grid-wrap" style="flex:1 1 auto;">
+          <table class="mi-grid" data-testid="controls-readiness-table" id="cw-readiness-table">
+            <thead>
+              <tr>
+                <th scope="col">Control Item</th>
+                <th scope="col">Status</th>
+                <th scope="col">Current Value</th>
+                <th scope="col">Required Input</th>
+                <th scope="col">Next Action</th>
+                <th scope="col">Source</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in workspace.rows %}
+              <tr class="cw-row"
+                  data-testid="controls-row-{{ row.id }}"
+                  data-cw-row="{{ row.id }}"
+                  data-cw-group="{{ row.group }}"
+                  data-cw-item="{{ row.item }}"
+                  data-cw-status="{{ row.status }}"
+                  data-cw-value="{{ row.value }}"
+                  data-cw-required="{{ row.required_input }}"
+                  data-cw-action="{{ row.next_action }}"
+                  data-cw-source="{{ row.source }}"
+                  data-cw-caveat="{{ row.caveat }}"
+                  data-cw-href="{{ row.href }}">
+                <td>{{ row.item }}</td>
+                <td>
+                  <span class="mi-status-pill {% if row.status == 'Ready' or row.status == 'Available' %}is-ready{% elif row.status == 'Unavailable' %}is-muted{% else %}is-warn{% endif %}">
+                    {{ row.status }}
+                  </span>
+                </td>
+                <td>{{ row.value }}</td>
+                <td class="text-secondary">{{ row.required_input }}</td>
+                <td>
+                  {% if row.href %}
+                  <a href="{{ row.href }}" class="link-primary" style="font-size:.72rem;">{{ row.next_action }}</a>
+                  {% else %}
+                  <span class="text-secondary">{{ row.next_action }}</span>
+                  {% endif %}
+                </td>
+                <td class="text-secondary">{{ row.source }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <p class="mi-prop-note px-2 py-1 mb-0" data-testid="controls-company-cost-unavailable">
+          {{ workspace.company_cost_unavailable }}
+          ResourceAssignment.actual_cost is not company spend.
+        </p>
+      </section>
+
+      <aside class="mi-inspector" data-testid="controls-selected-inspector">
+        <div class="mi-zone-h"><span class="mi-zone-title">Selected Control</span></div>
+        <div class="mi-zone-body" id="cw-inspector-body">
+          <div class="mi-prop">
+            <span class="mi-prop-k">Item</span>
+            <span class="mi-prop-v" data-cw-insp="item">{{ workspace.default_inspector.item }}</span>
+          </div>
+          <div class="mi-prop">
+            <span class="mi-prop-k">Status</span>
+            <span class="mi-prop-v" data-cw-insp="status">{{ workspace.default_inspector.status }}</span>
+          </div>
+          <div class="mi-prop">
+            <span class="mi-prop-k">Current value</span>
+            <span class="mi-prop-v" data-cw-insp="value">{{ workspace.default_inspector.value }}</span>
+          </div>
+          <div class="mi-prop">
+            <span class="mi-prop-k">Required input</span>
+            <span class="mi-prop-v" data-cw-insp="required">{{ workspace.default_inspector.required_input }}</span>
+          </div>
+          <div class="mi-prop">
+            <span class="mi-prop-k">Next action</span>
+            <span class="mi-prop-v" data-cw-insp="action">{{ workspace.default_inspector.next_action }}</span>
+          </div>
+          <div class="mi-prop">
+            <span class="mi-prop-k">Source</span>
+            <span class="mi-prop-v" data-cw-insp="source">{{ workspace.default_inspector.source }}</span>
+          </div>
+          <div class="mi-prop">
+            <span class="mi-prop-k">Note</span>
+            <p class="mi-prop-note mb-0" data-cw-insp="caveat">{{ workspace.default_inspector.caveat }}</p>
+          </div>
+          <div class="mi-prop">
+            <p class="mi-prop-note mb-0" data-testid="controls-inspector-company-cost">
+              {{ workspace.company_cost_note }}
+            </p>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- Demoted filters + progressive detail sections -->
+  <details class="cw-details mt-3" data-testid="controls-advanced-details">
+    <summary>Detail sections &amp; filters</summary>
+    <div class="cw-details-body">
+      <form class="exec-filters cw-filter-compact border rounded p-2 mb-3 bg-body" method="get"
+            id="exec-filter-form" aria-label="Overview filters">
+        <div class="row g-2 align-items-end">
+          <div class="col-md-2">
+            <label class="form-label small mb-0" for="exec-filter-stage">Stage</label>
+            <input type="text" class="form-control form-control-sm" id="exec-filter-stage" name="stage"
+                   value="{{ filters.stage|default:'' }}" placeholder="All stages">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label small mb-0" for="exec-filter-status">Status</label>
+            <select class="form-select form-select-sm" id="exec-filter-status" name="status">
+              <option value="">All</option>
+              <option value="planned" {% if filters.status == 'planned' %}selected{% endif %}>Planned</option>
+              <option value="active" {% if filters.status == 'active' %}selected{% endif %}>Active</option>
+              <option value="complete" {% if filters.status == 'complete' %}selected{% endif %}>Complete</option>
+              <option value="delayed" {% if filters.status == 'delayed' %}selected{% endif %}>Delayed</option>
+            </select>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label small mb-0" for="exec-filter-day">Day type</label>
+            <select class="form-select form-select-sm" id="exec-filter-day" name="day_type">
+              <option value="working" {% if filters.day_type == 'working' %}selected{% endif %}>Working days</option>
+              <option value="calendar" {% if filters.day_type == 'calendar' %}selected{% endif %}>Calendar days</option>
+            </select>
+          </div>
+          <div class="col-md-2">
+            <div class="form-check mt-3">
+              <input class="form-check-input" type="checkbox" name="linked_trusted" value="1" id="exec-filter-trusted"
+                     {% if filters.linked_trusted %}checked{% endif %}>
+              <label class="form-check-label small" for="exec-filter-trusted">Applied / Confirmed only</label>
+            </div>
+          </div>
+          <div class="col-md-2">
+            <button type="submit" class="btn btn-sm btn-primary">Apply filters</button>
+          </div>
+        </div>
+        <p class="small text-secondary mt-2 mb-0">
+          Data date: <strong>{{ analytical_context.data_date }}</strong> ·
+          Denominator: all schedule activities unless section notes otherwise.
+        </p>
+      </form>
+
+      <style>
+        .executive-controls-scope { --exec-accent: var(--castor-primary, #3b82f6); }
+        .exec-kpi-card { display: flex; flex-direction: column; background: var(--bs-body-bg); }
+        .exec-kpi-value { font-size: 1rem; font-weight: 600; line-height: 1.2; }
+        .exec-kpi-unavailable { opacity: 0.85; border-style: dashed !important; }
+        .exec-section-loading { min-height: 80px; }
+        .exec-methodology-badge { font-size: 0.65rem; max-width: 8rem; overflow: hidden; text-overflow: ellipsis; }
+      </style>
+
+      {% with sections=capability_profile.banner.overview_sections %}
+      {% if sections.schedule %}
+      <div id="exec-section-schedule-slot"
+           class="exec-section-loading"
+           hx-get="{% url 'scheduling:executive_controls_overview_schedule' project.pk %}?{{ filter_query }}"
+           hx-trigger="revealed once"
+           hx-swap="innerHTML"
+           aria-busy="true"
+           aria-live="polite">
+        <div class="d-flex align-items-center gap-2 text-secondary py-3">
+          <div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading schedule…</span></div>
+          Loading schedule position…
+        </div>
+      </div>
+      {% endif %}
+
+      {% if sections.cost %}
+      <div id="exec-section-cost-slot"
+           class="exec-section-loading"
+           hx-get="{% url 'scheduling:executive_controls_overview_cost' project.pk %}?{{ filter_query }}"
+           hx-trigger="revealed once"
+           hx-swap="innerHTML"
+           aria-busy="true"
+           aria-live="polite">
+        <div class="d-flex align-items-center gap-2 text-secondary py-3">
+          <div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading schedule and readiness indicators…</span></div>
+          Loading schedule and readiness indicators…
+        </div>
+      </div>
+      {% endif %}
+
+      {% if sections.delays %}
+      <div id="exec-section-delays-slot"
+           class="exec-section-loading"
+           hx-get="{% url 'scheduling:executive_controls_overview_delays' project.pk %}?{{ filter_query }}"
+           hx-trigger="revealed once"
+           hx-swap="innerHTML"
+           aria-busy="true"
+           aria-live="polite">
+        <div class="d-flex align-items-center gap-2 text-secondary py-3">
+          <div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading delays…</span></div>
+          Loading delay exposure…
+        </div>
+      </div>
+      {% endif %}
+
+      {% if sections.model_impact %}
+      <div id="exec-section-model-slot"
+           class="exec-section-loading"
+           hx-get="{% url 'scheduling:executive_controls_overview_model' project.pk %}?{{ filter_query }}"
+           hx-trigger="revealed once"
+           hx-swap="innerHTML"
+           aria-busy="true"
+           aria-live="polite">
+        <div class="d-flex align-items-center gap-2 text-secondary py-3">
+          <div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading model readiness…</span></div>
+          Loading model readiness…
+        </div>
+      </div>
+      {% else %}
+      <div class="alert alert-secondary small mb-3" role="status">
+        <strong>Model impact</strong> unavailable —
+        {% if not capability_profile.banner.ifc_available %}no indexed IFC model on this project.{% else %}no applied / confirmed links or IFC coverage.{% endif %}
+      </div>
+      {% endif %}
+
+      {% if sections.coverage %}
+      <details class="mb-3" data-testid="controls-methodology-details">
+        <summary class="small text-secondary">Methodology details</summary>
+        <div id="exec-section-coverage-slot"
+             class="exec-section-loading mt-2"
+             hx-get="{% url 'scheduling:executive_controls_overview_coverage' project.pk %}?{{ filter_query }}"
+             hx-trigger="revealed once"
+             hx-swap="innerHTML"
+             aria-busy="true"
+             aria-live="polite">
+          <div class="d-flex align-items-center gap-2 text-secondary py-3">
+            <div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading coverage…</span></div>
+            Loading methodology details…
+          </div>
+        </div>
+      </details>
+      {% endif %}
+      {% endwith %}
+
+      <details class="mb-2" data-testid="controls-capability-details">
+        <summary class="small text-secondary">Capability diagnostics</summary>
+        <div class="mt-2">
+          {% include "scheduling/components/executive_capability_banner.html" %}
+        </div>
+      </details>
+    </div>
+  </details>
+
+  {% include "scheduling/components/executive_controls_help_modal.html" %}
+</div>
+
+<script>
+(function () {
+  const root = document.getElementById("executive-controls-root");
+  if (!root) return;
+
+  function setInspector(data) {
+    const map = {
+      item: data.item || "—",
+      status: data.status || "—",
+      value: data.value || "—",
+      required: data.required || "—",
+      action: data.action || "—",
+      source: data.source || "—",
+      caveat: data.caveat || "",
+    };
+    Object.keys(map).forEach(function (key) {
+      const el = root.querySelector('[data-cw-insp="' + key + '"]');
+      if (el) el.textContent = map[key];
+    });
+  }
+
+  function selectRow(rowId) {
+    const row = root.querySelector('tr.cw-row[data-cw-row="' + rowId + '"]');
+    if (!row) return;
+    root.querySelectorAll("tr.cw-row.is-selected").forEach(function (el) {
+      el.classList.remove("is-selected");
+    });
+    root.querySelectorAll(".mi-nav-item.is-active").forEach(function (el) {
+      el.classList.remove("is-active");
+    });
+    row.classList.add("is-selected");
+    const nav = root.querySelector('.mi-nav-item[data-cw-row="' + rowId + '"]');
+    if (nav) nav.classList.add("is-active");
+    setInspector({
+      item: row.getAttribute("data-cw-item"),
+      status: row.getAttribute("data-cw-status"),
+      value: row.getAttribute("data-cw-value"),
+      required: row.getAttribute("data-cw-required"),
+      action: row.getAttribute("data-cw-action"),
+      source: row.getAttribute("data-cw-source"),
+      caveat: row.getAttribute("data-cw-caveat"),
+    });
+    row.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+
+  root.querySelectorAll("tr.cw-row").forEach(function (row) {
+    row.addEventListener("click", function (e) {
+      if (e.target && e.target.closest("a")) return;
+      selectRow(row.getAttribute("data-cw-row"));
+    });
+  });
+
+  root.querySelectorAll(".mi-nav-item[data-cw-row]").forEach(function (item) {
+    item.addEventListener("click", function () {
+      selectRow(item.getAttribute("data-cw-row"));
+    });
+    item.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        selectRow(item.getAttribute("data-cw-row"));
+      }
+    });
+  });
+
+  root.querySelectorAll("[data-cw-collapse-btn]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      const section = btn.closest(".mi-nav-section");
+      if (!section) return;
+      const collapsed = section.classList.toggle("is-collapsed");
+      btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    });
+  });
+
+  const filterInput = document.getElementById("cw-quick-filter");
+  if (filterInput) {
+    filterInput.addEventListener("input", function () {
+      const q = (filterInput.value || "").trim().toLowerCase();
+      root.querySelectorAll("tr.cw-row").forEach(function (row) {
+        const blob = (
+          (row.getAttribute("data-cw-item") || "") + " " +
+          (row.getAttribute("data-cw-status") || "") + " " +
+          (row.getAttribute("data-cw-source") || "")
+        ).toLowerCase();
+        row.style.display = !q || blob.indexOf(q) !== -1 ? "" : "none";
+      });
+    });
+  }
+
+  document.getElementById("exec-filter-form")?.addEventListener("submit", function (e) {
+    e.preventDefault();
+    const qs = new URLSearchParams(new FormData(this)).toString();
+    const base = window.location.pathname;
+    window.history.pushState({}, "", qs ? base + "?" + qs : base);
+    ["schedule", "cost", "delays", "model", "coverage"].forEach(function (name) {
+      const slot = document.getElementById("exec-section-" + name + "-slot");
+      if (slot && typeof htmx !== "undefined") {
+        const url = slot.getAttribute("hx-get").split("?")[0] + (qs ? "?" + qs : "");
+        htmx.ajax("GET", url, { target: slot, swap: "innerHTML" });
+      }
+    });
+  });
+  window.addEventListener("popstate", function () {
+    window.location.reload();
+  });
+})();
+</script>

@@ -1,376 +1,591 @@
-<!-- scheduling/tabs/data_sources.html — dynamic preview table + mapping pills -->
+<!-- scheduling/tabs/data_sources.html — Schedule workspace (Gantt primary) -->
 <div id="ds-root"
+     class="ds-workspace"
      style="display:flex; flex-direction:column; height:calc(100vh - 120px); overflow:hidden;"
      data-preview-url="{% url 'scheduling:schedule_preview' project.pk %}"
      data-save-url="{% url 'scheduling:schedule_save' project.pk %}"
      data-mapping-url="{% url 'scheduling:schedule_mapping_submit' project.pk %}"
      data-detect-url="{% url 'scheduling:schedule_detect_columns' project.pk %}"
      data-save-lookup-url="{% url 'scheduling:schedule_save_mapping_lookup' project.pk %}"
-     data-review-url="{% url 'scheduling:schedule' project.pk %}?tab=review"
+     data-review-url="{% url 'scheduling:review' project.pk %}"
      data-gantt-url="{% url 'scheduling:schedule' project.pk %}?tab=fourD_link"
+     data-links-url="{% url 'scheduling:schedule' project.pk %}?tab=fourD_link"
+     data-time-view-url="{% url 'scheduling:schedule' project.pk %}?tab=lookahead"
      data-all-tasks-url="{% url 'scheduling:all_tasks_preview' project.pk %}"
      data-csrf="{{ csrf_token }}"
-     data-task-count="{{ task_count }}">
+     data-task-count="{{ task_count }}"
+     data-default-view="gantt">
 
-    <!-- ── Imported sources (chips, shown when at least one import exists) ─ -->
-    {% if schedule_sources %}
-    <div class="d-flex align-items-center gap-2 flex-wrap mb-2" id="ds-sources-row"
-         data-autoload-url="{% url 'scheduling:schedule_source_preview' project.pk schedule_sources.0.pk %}"
-         data-autoload-name="{{ schedule_sources.0.filename|default:'source' }}"
-         style="flex-shrink:0;">
-        <span class="text-secondary" style="font-size:.75rem; font-weight:600; white-space:nowrap;">
-            <i class="bi bi-folder2-open me-1"></i>Imported:
-        </span>
-        {% for src in schedule_sources %}
-        <span class="badge d-inline-flex align-items-center gap-1 px-2 py-1 ds-source-chip"
-              id="ds-source-chip-{{ src.pk }}"
-              data-source-preview-url="{% url 'scheduling:schedule_source_preview' project.pk src.pk %}"
-              data-source-filename="{{ src.filename|default:'source' }}"
-              style="background:var(--bs-secondary-bg); color:var(--bs-body-color);
-                     border:1px solid var(--bs-border-color); border-radius:20px;
-                     font-size:.72rem; font-weight:400; cursor:pointer;"
-              title="Click to preview · {{ src.imported_at|date:'d M Y H:i' }}">
-            <i class="bi bi-file-earmark-text" style="font-size:.78rem; opacity:.6;"></i>
-            <span style="max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-                {{ src.filename|default:"(unknown)" }}
+    <p class="visually-hidden" data-testid="data-sources-purpose">
+        Imported schedule and provenance for 4D/5D analysis.
+    </p>
+
+    <!-- ── Toolbar ───────────────────────────────────────────────────── -->
+    <div id="ds-toolbar"
+         class="ds-toolbar flex-shrink-0 d-flex align-items-center gap-2 flex-wrap px-1 py-2 mb-1"
+         data-testid="schedule-workspace-toolbar"
+         style="border-bottom:1px solid var(--bs-border-color);">
+        <div class="d-flex align-items-center gap-2 flex-wrap me-auto" style="min-width:0;">
+            <span class="fw-semibold" style="font-size:.92rem; white-space:nowrap;">
+                <i class="bi bi-calendar3-range me-1 text-primary"></i>Schedule
             </span>
-            <span class="badge bg-secondary ms-1" style="font-size:.65rem;">{{ src.source_format|upper }}</span>
-            <span class="text-secondary ms-1" style="font-size:.68rem;">{{ src.task_count }} tasks</span>
-            <button type="button"
-                    class="ds-source-delete-btn btn-close btn-close-sm ms-1"
-                    data-delete-url="{% url 'scheduling:schedule_source_delete' project.pk src.pk %}"
-                    data-chip-id="ds-source-chip-{{ src.pk }}"
-                    data-filename="{{ src.filename|default:'this source' }}"
-                    style="font-size:.55rem; opacity:.5;"
-                    title="Delete this source and its tasks"
-                    aria-label="Delete source"></button>
-        </span>
-        {% endfor %}
-    </div>
-    {% endif %}
-
-    <!-- ── Project calendar card ─────────────────────────────────────── -->
-    {% if project_calendars %}
-    <div class="d-flex align-items-start gap-2 flex-wrap mb-2 px-1 py-1"
-         style="background:var(--bs-secondary-bg); border:1px solid var(--bs-border-color);
-                border-radius:8px; font-size:0.72rem;">
-        <span style="font-weight:600; color:var(--bs-secondary-color); white-space:nowrap; padding:2px 4px;">
-            <i class="bi bi-calendar-week me-1"></i>Project calendar{{ project_calendars|length|pluralize }}:
-        </span>
-        {% for cal in project_calendars %}
-        <span style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px;
-                     background:var(--bs-body-bg); border:1px solid var(--bs-border-color);
-                     border-radius:12px; white-space:nowrap;"
-              title="Calendar ID {{ cal.cal_id }} · {{ cal.n_holidays }} holiday{{ cal.n_holidays|pluralize }}{% if cal.holiday_sample %}: {{ cal.holiday_sample|join:', ' }}{% endif %}">
-            <i class="bi bi-calendar3" style="opacity:.55; font-size:.65rem;"></i>
-            <strong>{{ cal.week_str }}</strong>
-            <span style="color:var(--bs-secondary-color);">{{ cal.task_count }} tasks</span>
-            {% if cal.n_holidays %}
-            <span style="color:#d97706;">{{ cal.n_holidays }} holiday{{ cal.n_holidays|pluralize }}</span>
+            {% if schedule_sources %}
+            <span class="text-secondary text-truncate" style="font-size:.78rem; max-width:220px;"
+                  title="{{ schedule_sources.0.filename|default:'' }}">
+                <i class="bi bi-file-earmark-text me-1"></i>{{ schedule_sources.0.filename|default:"(unknown)" }}
+            </span>
             {% endif %}
-        </span>
-        {% endfor %}
-        <span style="color:var(--bs-secondary-color); padding:2px 4px; font-style:italic;">
-            Delays computed in working days.
-        </span>
-    </div>
-    {% elif task_count %}
-    <div class="mb-2 px-2 py-1" style="font-size:0.72rem; color:var(--bs-secondary-color);
-         background:var(--bs-secondary-bg); border:1px solid var(--bs-border-color); border-radius:8px;">
-        <i class="bi bi-exclamation-triangle me-1" style="color:#d97706;"></i>
-        No P6 calendar found — delays computed in calendar days (import a P6 XML/XER to enable working-day arithmetic).
-    </div>
-    {% endif %}
-
-    <!-- ── Data Readiness panel ─────────────────────────────────────── -->
-    {% if data_readiness %}
-    {% with dr=data_readiness %}
-
-    <!-- Data-freshness notice — prominent, shown when P6 data date is known and stale -->
-    {% if dr.p6_data_date and dr.data_freshness_days and dr.data_freshness_days > 7 %}
-    <div class="mb-2"
-         style="border-left:4px solid #d97706; background:rgba(217,119,6,.09);
-                border-radius:0 6px 6px 0; padding:10px 14px; font-size:0.78rem;">
-        <div style="display:flex; align-items:flex-start; gap:8px;">
-            <i class="bi bi-clock-history" style="color:#d97706; font-size:1rem; flex-shrink:0; margin-top:1px;"></i>
-            <div>
-                <strong style="color:#d97706;">
-                    Data as of {{ dr.p6_data_date|date:"j M Y" }}
-                    — {{ dr.data_freshness_months }} months old.
-                </strong>
-                <span style="color:var(--bs-secondary-color);">
-                    All EVM metrics (PV, EV, SPI, forecast) reflect the last P6 update,
-                    <strong>not today's status</strong>.
-                    For a current decision, re-import an updated XML.
-                </span>
-            </div>
-        </div>
-    </div>
-    {% endif %}
-
-    <div class="mb-2" style="border:1px solid var(--bs-border-color); border-radius:8px;
-         background:var(--bs-body-bg); padding:8px 12px; font-size:0.72rem;">
-        <div style="font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase;
-                    letter-spacing:.05em; font-size:0.67rem; margin-bottom:6px;">
-            <i class="bi bi-clipboard2-check me-1"></i>Data Readiness
-        </div>
-        <div class="d-flex flex-wrap gap-3">
-
-            <!-- Baseline dates -->
-            <div style="display:flex; align-items:center; gap:5px;">
-                <span style="color:#16a34a; font-size:.8rem;">✓</span>
-                <span>Baseline dates — 100% of tasks</span>
-                <span style="color:var(--bs-secondary-color); font-size:.67rem;">(enables PV, SPI, SV)</span>
-            </div>
-
-            <!-- Actual progress -->
-            <div style="display:flex; align-items:center; gap:5px;">
-                {% if dr.actuals_pct >= 1 %}
-                <span style="color:#16a34a; font-size:.8rem;">✓</span>
-                {% else %}
-                <span style="color:#dc2626; font-size:.8rem;">✗</span>
+            <span class="badge bg-secondary-subtle text-secondary-emphasis border"
+                  style="font-size:.72rem; font-weight:500;">
+                {{ task_count }} task{{ task_count|pluralize }}
+            </span>
+            {% if data_readiness and data_readiness.p6_data_date %}
+            <span class="badge {% if data_readiness.data_freshness_days and data_readiness.data_freshness_days > 7 %}bg-warning-subtle text-warning-emphasis{% else %}bg-secondary-subtle text-secondary-emphasis{% endif %} border"
+                  style="font-size:.72rem; font-weight:500;"
+                  title="P6 data date">
+                Data date {{ data_readiness.p6_data_date|date:"j M Y" }}
+                {% if data_readiness.data_freshness_days and data_readiness.data_freshness_days > 7 %}
+                · {{ data_readiness.data_freshness_months }} mo old
                 {% endif %}
-                <span>Actual progress — {{ dr.actuals_pct }}% of tasks have actual start</span>
-                <span style="color:var(--bs-secondary-color); font-size:.67rem;">(enables EV, SPI)</span>
-            </div>
-
-            <!-- EV % complete source -->
-            {% if dr.n_active %}
-            <div style="display:flex; align-items:center; gap:5px;">
-                {% if dr.ev_real_pct_coverage >= 80 %}
-                <span style="color:#16a34a; font-size:.8rem;">✓</span>
-                {% elif dr.ev_real_pct_coverage >= 1 %}
-                <span style="color:#d97706; font-size:.8rem;">⚠</span>
-                {% else %}
-                <span style="color:#dc2626; font-size:.8rem;">✗</span>
-                {% endif %}
-                <span>EV source —
-                    {% if dr.ev_real_pct_coverage >= 1 %}
-                        {{ dr.n_ev_real_pct }} of {{ dr.n_active }} in-progress tasks
-                        ({{ dr.ev_real_pct_coverage }}%) use P6 %-complete;
-                        remainder estimated linearly
-                    {% else %}
-                        no P6 %-complete data — all in-progress EV estimated linearly
-                    {% endif %}
-                </span>
-            </div>
+            </span>
             {% endif %}
-
-            <!-- Planned cost -->
-            <div style="display:flex; align-items:center; gap:5px;">
-                {% if dr.planned_cost_pct >= 1 %}
-                <span style="color:{% if dr.planned_cost_pct >= 100 %}#16a34a{% else %}#d97706{% endif %}; font-size:.8rem;">
-                    {% if dr.planned_cost_pct >= 100 %}✓{% else %}⚠{% endif %}
-                </span>
-                {% else %}
-                <span style="color:#dc2626; font-size:.8rem;">✗</span>
-                {% endif %}
-                <span>Planned cost —
-                    {% if dr.planned_cost_from_ra %}from resource assignments{% else %}from task cost field{% endif %},
-                    {{ dr.planned_cost_pct }}% of tasks carry cost
-                </span>
-                <span style="color:var(--bs-secondary-color); font-size:.67rem;">(enables BAC, PV, EV, SPI on cost-bearing tasks)</span>
-            </div>
-
-            <!-- Actual cost -->
-            <div style="display:flex; align-items:center; gap:5px;">
-                {% if dr.actual_cost_available %}
-                <span style="color:#16a34a; font-size:.8rem;">✓</span>
-                <span>Actual cost — {{ dr.ra_actual_count }} resource assignment{{ dr.ra_actual_count|pluralize }} with actual cost</span>
-                <span style="color:var(--bs-secondary-color); font-size:.67rem;">(enables CPI, CV, EAC, VAC)</span>
-                {% else %}
-                <span style="color:#dc2626; font-size:.8rem;">✗</span>
-                <span>Actual cost — not imported</span>
-                <span style="color:#dc2626; font-size:.67rem; font-weight:600;">(CPI, CV, EAC, VAC disabled)</span>
-                {% endif %}
-            </div>
-
-            <!-- Calendar -->
-            <div style="display:flex; align-items:center; gap:5px;">
-                {% if dr.has_calendar %}
-                <span style="color:#16a34a; font-size:.8rem;">✓</span>
-                <span>Project calendar — P6 calendar imported</span>
-                <span style="color:var(--bs-secondary-color); font-size:.67rem;">(delays in working days)</span>
-                {% else %}
-                <span style="color:#d97706; font-size:.8rem;">⚠</span>
-                <span>Project calendar — not imported, fallback used</span>
-                <span style="color:#d97706; font-size:.67rem;">(delays in calendar days)</span>
-                {% endif %}
-            </div>
-
         </div>
 
-        <!-- ── Honesty notices — metric limitations that survive good data ── -->
-        <div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--bs-border-color);
-                    display:flex; flex-direction:column; gap:4px; font-size:0.69rem;
-                    color:var(--bs-secondary-color);">
-
-            <div style="font-weight:600; font-size:0.65rem; text-transform:uppercase;
-                        letter-spacing:.05em; margin-bottom:2px;">Gaps &amp; Limitations</div>
-
-            <!-- A3 / A17: SPI = 1.0 when PV = 0 -->
-            <div style="display:flex; align-items:flex-start; gap:5px;">
-                <span style="color:#d97706; flex-shrink:0; margin-top:1px;">ℹ</span>
-                <span>
-                    <strong>SPI defaults to 1.0 when planned value is zero</strong> —
-                    a defined fallback, not a measured result; occurs before any tasks are scheduled to begin
-                </span>
-            </div>
-
-            <!-- A5 / A15: zero-cost tasks excluded from cost-weighted metrics -->
-            {% if dr.planned_cost_pct < 100 %}
-            <div style="display:flex; align-items:flex-start; gap:5px;">
-                <span style="color:#d97706; flex-shrink:0; margin-top:1px;">ℹ</span>
-                <span>
-                    <strong>{{ dr.planned_cost_pct }}% cost coverage</strong> —
-                    BAC, PV, EV, and SPI are computed on cost-bearing tasks only;
-                    tasks with no cost carry no weight in these metrics
-                </span>
-            </div>
-            {% endif %}
-
-            {% if not dr.planned_cost_from_ra %}
-            <div style="display:flex; align-items:flex-start; gap:5px;">
-                <span style="color:#d97706; flex-shrink:0; margin-top:1px;">ℹ</span>
-                <span>
-                    <strong>Cash Flow actual = 0 for in-progress tasks</strong> —
-                    using task.cost fallback (no P6 resource assignments imported);
-                    actual spend for active tasks is zero, not estimated from elapsed time
-                </span>
-            </div>
-            {% endif %}
-
+        <div class="btn-group btn-group-sm" role="group" aria-label="Schedule view"
+             data-testid="schedule-view-toggle">
+            <button type="button" class="btn btn-primary" id="ds-view-gantt-btn"
+                    data-workspace-view="gantt" aria-pressed="true">
+                <i class="bi bi-bar-chart-steps me-1"></i>Gantt
+            </button>
+            <button type="button" class="btn btn-outline-secondary" id="ds-view-table-btn"
+                    data-workspace-view="table" aria-pressed="false"
+                    data-testid="schedule-table-mode-btn">
+                <i class="bi bi-table me-1"></i>Table
+            </button>
         </div>
 
-    </div>
-    {% endwith %}
-    {% endif %}
-
-    <!-- ── Upload bar ──────────────────────────────────────────────── -->
-    <div class="d-flex align-items-center gap-3 flex-wrap mb-2" id="ds-upload-bar">
-        <div>
-            <label class="form-label small fw-semibold mb-1 d-block">
-                <i class="bi bi-cloud-upload me-1"></i>Import Schedule
-            </label>
-            <input type="file" id="ds-file-input"
-                   class="form-control form-control-sm"
-                   style="width:320px;"
-                   accept=".xlsx,.xls,.csv,.xer,.xml">
-            <div class="form-text">Excel · CSV · Primavera XER · MS Project XML</div>
+        <div class="dropdown" id="ds-columns-dropdown" data-testid="schedule-columns-btn">
+            <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle"
+                    id="ds-columns-btn" data-bs-toggle="dropdown" aria-expanded="false"
+                    title="Show or hide schedule table columns">
+                <i class="bi bi-layout-three-columns me-1"></i>Columns
+            </button>
+            <div class="dropdown-menu dropdown-menu-end p-2" id="ds-columns-menu"
+                 style="min-width:200px; font-size:.78rem;"
+                 onclick="event.stopPropagation();">
+                <div class="text-secondary px-1 mb-1" style="font-size:.68rem;">Table columns</div>
+                <div id="ds-columns-menu-body"></div>
+            </div>
         </div>
-        <div id="ds-status" class="small mt-3"></div>
+
         {% if task_count %}
-        <div class="badge bg-secondary-subtle text-secondary-emphasis ms-auto px-2 py-2"
-             style="font-size:.78rem; font-weight:400; white-space:normal; text-align:left; border:1px solid var(--bs-border-color); border-radius:6px;">
-            <i class="bi bi-database me-1"></i>
-            <strong>{{ task_count }}</strong> task{{ task_count|pluralize }} already imported.
-            Re-importing will <strong>replace</strong> all existing tasks by default.
-            Use <em>Add to existing</em> to append instead.
-        </div>
+        <button type="button" class="btn btn-sm btn-outline-primary" id="ds-import-open-btn"
+                data-bs-toggle="modal" data-bs-target="#dsImportModal"
+                data-testid="schedule-import-demoted-btn">
+            <i class="bi bi-cloud-upload me-1"></i>Import / Replace Schedule
+        </button>
         {% endif %}
+
+        <button type="button" class="btn btn-sm btn-outline-secondary active" id="ds-info-btn"
+                data-testid="schedule-info-toggle" aria-pressed="true" title="Schedule Info panel">
+            <i class="bi bi-info-circle me-1"></i>Info
+        </button>
     </div>
 
-    <!-- ── AI Column Detection panel (Excel/CSV only) ──────────────── -->
-    <div id="ds-ai-panel"
-         style="display:none;"
-         class="rounded border mb-2 px-3 py-2"
-         data-bs-theme="">
-        <!-- Detecting state -->
-        <div id="ds-ai-detecting"
-             class="d-flex align-items-center gap-2 text-secondary small py-1">
-            <span class="spinner-border spinner-border-sm" style="width:.85rem;height:.85rem;"></span>
-            AI is detecting column mapping…
-        </div>
-        <!-- Result state -->
-        <div id="ds-ai-result" style="display:none;">
-            <div class="d-flex align-items-center justify-content-between flex-wrap gap-1 mb-2">
-                <span class="small fw-semibold">
-                    <i class="bi bi-cpu me-1 text-primary"></i>Auto-detected mapping
-                    <span id="ds-ai-confidence" class="badge ms-1"></span>
+    {% if data_readiness and data_readiness.p6_data_date and data_readiness.data_freshness_days and data_readiness.data_freshness_days > 7 %}
+    <div class="flex-shrink-0 mb-1 px-2 py-1"
+         data-testid="schedule-stale-data-banner"
+         style="border-left:3px solid #d97706; background:rgba(217,119,6,.09);
+                border-radius:0 4px 4px 0; font-size:0.72rem;">
+        <strong style="color:#d97706;">
+            Data as of {{ data_readiness.p6_data_date|date:"j M Y" }}
+            — {{ data_readiness.data_freshness_months }} months old.
+        </strong>
+        <span class="text-secondary">
+            All EVM metrics (PV, EV, SPI, forecast) reflect the last P6 update,
+            <strong>not today's status</strong>.
+            For a current decision, re-import an updated XML.
+        </span>
+    </div>
+    {% endif %}
+
+    <!-- ── Body: main workspace + side panel ─────────────────────────── -->
+    <div id="ds-workspace-body" class="d-flex flex-grow-1 min-h-0" style="min-height:0; gap:0;">
+
+        <div id="ds-main" class="d-flex flex-column flex-grow-1 min-w-0" style="min-width:0; min-height:0;">
+
+            {% if schedule_sources %}
+            <div class="d-flex align-items-center gap-2 flex-wrap" id="ds-sources-row"
+                 data-autoload-url="{% url 'scheduling:schedule_source_preview' project.pk schedule_sources.0.pk %}"
+                 data-autoload-name="{{ schedule_sources.0.filename|default:'source' }}"
+                 style="flex-shrink:0; padding-bottom:2px;">
+                <span class="text-secondary" style="font-size:.72rem; font-weight:600; white-space:nowrap;">
+                    <i class="bi bi-folder2-open me-1"></i>Sources
                 </span>
-                <span id="ds-ai-notes" class="text-secondary" style="font-size:.72rem;"></span>
+                {% for src in schedule_sources %}
+                <span class="badge d-inline-flex align-items-center gap-1 px-2 py-1 ds-source-chip"
+                      id="ds-source-chip-{{ src.pk }}"
+                      data-source-preview-url="{% url 'scheduling:schedule_source_preview' project.pk src.pk %}"
+                      data-source-filename="{{ src.filename|default:'source' }}"
+                      style="background:var(--bs-secondary-bg); color:var(--bs-body-color);
+                             border:1px solid var(--bs-border-color); border-radius:20px;
+                             font-size:.72rem; font-weight:400; cursor:pointer;"
+                      title="Click to preview · {{ src.imported_at|date:'d M Y H:i' }}">
+                    <i class="bi bi-file-earmark-text" style="font-size:.78rem; opacity:.6;"></i>
+                    <span style="max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                        {{ src.filename|default:"(unknown)" }}
+                    </span>
+                    <span class="badge bg-secondary ms-1" style="font-size:.65rem;">{{ src.source_format|upper }}</span>
+                    <span class="text-secondary ms-1" style="font-size:.68rem;">{{ src.task_count }} tasks</span>
+                    <button type="button"
+                            class="ds-source-delete-btn btn-close btn-close-sm ms-1"
+                            data-delete-url="{% url 'scheduling:schedule_source_delete' project.pk src.pk %}"
+                            data-chip-id="ds-source-chip-{{ src.pk }}"
+                            data-filename="{{ src.filename|default:'this source' }}"
+                            style="font-size:.55rem; opacity:.5;"
+                            title="Delete this source and its tasks"
+                            aria-label="Delete source"></button>
+                </span>
+                {% endfor %}
             </div>
-            <div id="ds-ai-mapping-list" class="d-flex flex-wrap gap-1 mb-1"></div>
-            <!-- Unmapped columns — grey dashed pills -->
-            <div id="ds-ai-unmapped-list" class="d-flex flex-wrap gap-1 mb-1" style="display:none;"></div>
-            <div id="ds-ai-unmapped-note" class="small text-secondary mb-2" style="display:none;"></div>
-            <div id="ds-ai-missing-warn" class="small text-warning mb-2" style="display:none;">
-                <i class="bi bi-exclamation-triangle me-1"></i>
-                <span id="ds-ai-missing-msg"></span>
-            </div>
-            <div class="d-flex gap-2 mt-1">
-                <button id="ds-ai-confirm-btn" type="button" class="btn btn-sm btn-primary">
-                    <i class="bi bi-check-circle me-1"></i>Confirm &amp; Import
-                </button>
-                <button id="ds-ai-edit-btn" type="button" class="btn btn-sm btn-outline-secondary">
-                    <i class="bi bi-pencil me-1"></i>Edit Mapping
-                </button>
-            </div>
-        </div>
-        <!-- Error state -->
-        <div id="ds-ai-error" style="display:none;" class="small text-warning py-1">
-            <i class="bi bi-exclamation-triangle me-1"></i>
-            <span id="ds-ai-error-msg"></span>
-        </div>
-    </div>
-
-    <!-- ── Dynamic table (hidden until file loaded) ─────────────────── -->
-    <div id="ds-table-section" style="display:none;">
-        <div id="ds-table-wrapper"
-             style="max-height:40vh; overflow:auto; border:1px solid var(--bs-border-color); border-radius:4px;">
-            <table id="ds-table"
-                   class="table table-sm table-bordered mb-0"
-                   style="min-width:max-content; table-layout:auto;">
-                <thead>
-                    <tr id="ds-mapping-row"></tr>
-                    <tr id="ds-source-row"></tr>
-                </thead>
-                <tbody id="ds-tbody"></tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- ── Splitter ──────────────────────────────────────────────────── -->
-    <div id="ds-splitter"
-         style="display:none; height:6px; cursor:ns-resize;
-                background:var(--bs-border-color); align-items:center;
-                justify-content:center; user-select:none; margin:4px 0; border-radius:3px;">
-        <div style="width:32px; height:2px; background:var(--bs-secondary-color,#6c757d);
-                    border-radius:1px; pointer-events:none;"></div>
-    </div>
-
-    <!-- ── Gantt section ─────────────────────────────────────────────── -->
-    <div id="ds-gantt-section" style="display:none;"></div>
-
-    <!-- ── Summary bar (hidden until file loaded) ───────────────────── -->
-    <div id="ds-summary-bar"
-         style="display:none;"
-         class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-2 px-2 py-2 bg-body-secondary rounded">
-        <div id="ds-summary-left" class="small"></div>
-        <div class="d-flex align-items-center gap-2 flex-wrap">
-            <button id="ds-reset-btn" type="button" class="btn btn-outline-secondary btn-sm">
-                <i class="bi bi-arrow-counterclockwise me-1"></i>Reset
-            </button>
-            {% if task_count %}
-            <button id="ds-clear-btn" type="button" class="btn btn-outline-danger btn-sm"
-                    data-clear-url="{% url 'scheduling:schedule_clear' project.pk %}"
-                    title="Delete all tasks for this project">
-                <span class="spinner-border spinner-border-sm me-1 d-none" id="ds-clear-spin"></span>
-                <i class="bi bi-trash3 me-1"></i>Clear
-            </button>
             {% endif %}
-            <button id="ds-replace-btn" type="button" class="btn btn-outline-danger btn-sm d-none">
-                <i class="bi bi-arrow-repeat me-1"></i>Replace all
-            </button>
-            <button id="ds-import-btn" type="button" class="btn btn-primary btn-sm" disabled>
-                <span class="spinner-border spinner-border-sm me-1 d-none" id="ds-spin"></span>
-                <span id="ds-import-lbl">Import →</span>
-            </button>
+
+            {% if not task_count %}
+            <!-- Empty state: import prominent -->
+            <div class="d-flex align-items-center gap-3 flex-wrap mb-2" id="ds-upload-bar"
+                 data-testid="schedule-import-prominent">
+                <div>
+                    <label class="form-label small fw-semibold mb-1 d-block">
+                        <i class="bi bi-cloud-upload me-1"></i>Import Schedule
+                    </label>
+                    <input type="file" id="ds-file-input"
+                           class="form-control form-control-sm"
+                           style="width:320px;"
+                           accept=".xlsx,.xls,.csv,.xer,.xml">
+                    <div class="form-text">Excel · CSV · Primavera XER · MS Project XML</div>
+                </div>
+                <div id="ds-status" class="small mt-3"></div>
+            </div>
+            {% endif %}
+
+            <!-- AI Column Detection panel (Excel/CSV only) -->
+            <div id="ds-ai-panel"
+                 style="display:none;"
+                 class="rounded border mb-2 px-3 py-2 flex-shrink-0"
+                 data-bs-theme="">
+                <div id="ds-ai-detecting"
+                     class="d-flex align-items-center gap-2 text-secondary small py-1">
+                    <span class="spinner-border spinner-border-sm" style="width:.85rem;height:.85rem;"></span>
+                    AI is detecting column mapping…
+                </div>
+                <div id="ds-ai-result" style="display:none;">
+                    <div class="d-flex align-items-center justify-content-between flex-wrap gap-1 mb-2">
+                        <span class="small fw-semibold">
+                            <i class="bi bi-cpu me-1 text-primary"></i>Auto-detected mapping
+                            <span id="ds-ai-confidence" class="badge ms-1"></span>
+                        </span>
+                        <span id="ds-ai-notes" class="text-secondary" style="font-size:.72rem;"></span>
+                    </div>
+                    <div id="ds-ai-mapping-list" class="d-flex flex-wrap gap-1 mb-1"></div>
+                    <div id="ds-ai-unmapped-list" class="d-flex flex-wrap gap-1 mb-1" style="display:none;"></div>
+                    <div id="ds-ai-unmapped-note" class="small text-secondary mb-2" style="display:none;"></div>
+                    <div id="ds-ai-missing-warn" class="small text-warning mb-2" style="display:none;">
+                        <i class="bi bi-exclamation-triangle me-1"></i>
+                        <span id="ds-ai-missing-msg"></span>
+                    </div>
+                    <div class="d-flex gap-2 mt-1">
+                        <button id="ds-ai-confirm-btn" type="button" class="btn btn-sm btn-primary">
+                            <i class="bi bi-check-circle me-1"></i>Confirm &amp; Import
+                        </button>
+                        <button id="ds-ai-edit-btn" type="button" class="btn btn-sm btn-outline-secondary">
+                            <i class="bi bi-pencil me-1"></i>Edit Mapping
+                        </button>
+                    </div>
+                </div>
+                <div id="ds-ai-error" style="display:none;" class="small text-warning py-1">
+                    <i class="bi bi-exclamation-triangle me-1"></i>
+                    <span id="ds-ai-error-msg"></span>
+                </div>
+            </div>
+
+            <!-- Gantt view (default primary) — mutually exclusive with Table -->
+            <div id="ds-view-gantt-wrap"
+                 class="ds-view-pane ds-view-active d-flex flex-column flex-grow-1 min-h-0"
+                 data-testid="schedule-gantt-view"
+                 data-active-view="gantt"
+                 style="min-height:0;">
+                <div id="ds-gantt-loading" class="ds-gantt-loading flex-grow-1 align-items-center justify-content-center gap-2 text-secondary"
+                     style="display:{% if task_count %}flex{% else %}none{% endif %}; font-size:.82rem;"
+                     data-testid="schedule-gantt-loading">
+                    <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                    Loading schedule…
+                </div>
+                <div id="ds-gantt-section" style="display:none; flex:1; min-height:0;"></div>
+                <div id="ds-gantt-error" class="text-danger small p-3" style="display:none;"
+                     data-testid="schedule-gantt-error"></div>
+                {% if not task_count %}
+                <div id="ds-gantt-empty-hint" class="text-secondary small p-3"
+                     style="border:1px dashed var(--bs-border-color); border-radius:6px;">
+                    Import a schedule to open the Gantt workspace.
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Table view (alternate) — imported task rows, not import mapping -->
+            <div id="ds-view-table-wrap"
+                 class="ds-view-pane ds-view-hidden d-flex flex-column flex-grow-1 min-h-0"
+                 data-testid="schedule-table-view"
+                 data-active-view="table"
+                 style="display:none; min-height:0;">
+                <!-- Schedule task table (Table mode primary surface) -->
+                <div id="ds-schedule-task-panel"
+                     class="ds-schedule-task-panel flex-column flex-grow-1 min-h-0"
+                     data-testid="schedule-task-table"
+                     style="min-height:0;">
+                    <div id="ds-schedule-task-scroll"
+                         class="ds-schedule-task-scroll flex-grow-1 min-h-0">
+                        <table id="ds-schedule-task-table"
+                               class="table table-sm table-hover mb-0"
+                               style="font-size:.78rem;">
+                            <thead class="ds-schedule-task-head sticky-top">
+                                <tr id="ds-schedule-task-head"></tr>
+                            </thead>
+                            <tbody id="ds-schedule-task-body"></tbody>
+                        </table>
+                    </div>
+                    <div id="ds-schedule-task-meta" class="small text-secondary mt-1 flex-shrink-0"></div>
+                </div>
+                <!-- Import mapping table — only during an active import/mapping session -->
+                <div id="ds-table-section" style="display:none; flex:1; min-height:0; overflow:auto;">
+                    <div id="ds-table-wrapper"
+                         style="max-height:100%; overflow:auto; border:1px solid var(--bs-border-color); border-radius:4px;">
+                        <table id="ds-table"
+                               class="table table-sm table-bordered mb-0"
+                               style="min-width:max-content; table-layout:auto;">
+                            <thead>
+                                <tr id="ds-mapping-row"></tr>
+                                <tr id="ds-source-row"></tr>
+                            </thead>
+                            <tbody id="ds-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="ds-table-loading" class="text-secondary small p-3" style="display:none;"
+                     data-testid="schedule-table-loading">
+                    <span class="spinner-border spinner-border-sm me-1"></span>Loading tasks…
+                </div>
+                <div id="ds-table-empty-hint" class="text-secondary small p-3"
+                     style="display:none; border:1px dashed var(--bs-border-color); border-radius:6px;"
+                     data-testid="schedule-table-empty">
+                    No table data yet. Import a schedule or switch back to Gantt.
+                </div>
+            </div>
+
+            <!-- Splitter kept for JS compat; hidden in workspace layout -->
+            <div id="ds-splitter"
+                 style="display:none !important; height:0; overflow:hidden;"
+                 aria-hidden="true"></div>
+
+            <!-- Summary bar (import session only — hidden unless .ds-summary-visible) -->
+            <div id="ds-summary-bar"
+                 class="ds-summary-bar align-items-center justify-content-between flex-wrap gap-2 mt-2 px-2 py-2 bg-body-secondary rounded flex-shrink-0"
+                 data-testid="schedule-import-summary"
+                 aria-hidden="true">
+                <div id="ds-summary-left" class="small"></div>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <button id="ds-reset-btn" type="button" class="btn btn-outline-secondary btn-sm">
+                        <i class="bi bi-arrow-counterclockwise me-1"></i>Reset
+                    </button>
+                    {% if task_count %}
+                    <button id="ds-clear-btn" type="button" class="btn btn-outline-danger btn-sm"
+                            data-clear-url="{% url 'scheduling:schedule_clear' project.pk %}"
+                            title="Delete all tasks for this project">
+                        <span class="spinner-border spinner-border-sm me-1 d-none" id="ds-clear-spin"></span>
+                        <i class="bi bi-trash3 me-1"></i>Clear
+                    </button>
+                    {% endif %}
+                    <button id="ds-replace-btn" type="button" class="btn btn-outline-danger btn-sm d-none">
+                        <i class="bi bi-arrow-repeat me-1"></i>Replace all
+                    </button>
+                    <button id="ds-import-btn" type="button" class="btn btn-primary btn-sm" disabled>
+                        <span class="spinner-border spinner-border-sm me-1 d-none" id="ds-spin"></span>
+                        <span id="ds-import-lbl">Import →</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Import result (task_list); demoted — not a default stacked hero -->
+            <div id="task-preview-area" class="mt-2 flex-shrink-0"
+                 style="display:none; max-height:22vh; overflow:auto;"
+                 data-testid="schedule-import-result"></div>
+        </div><!-- #ds-main -->
+
+        <!-- ── Side panel: Schedule Info / Selected Task ─────────────── -->
+        <aside id="ds-side-panel"
+               class="ds-side-panel flex-shrink-0 d-flex flex-column"
+               data-testid="schedule-side-panel"
+               style="width:300px; max-width:36vw; border-left:1px solid var(--bs-border-color);
+                      background:var(--bs-body-bg); min-height:0;">
+            <div class="d-flex border-bottom flex-shrink-0" role="tablist">
+                <button type="button" class="btn btn-sm flex-fill rounded-0 border-0 active"
+                        id="ds-side-tab-info" data-side-tab="info"
+                        style="font-size:.75rem;">Schedule Info</button>
+                <button type="button" class="btn btn-sm flex-fill rounded-0 border-0"
+                        id="ds-side-tab-task" data-side-tab="task"
+                        style="font-size:.75rem;">Selected Task</button>
+            </div>
+
+            <div id="ds-side-info" class="flex-grow-1 overflow-auto p-2"
+                 data-testid="schedule-info-panel" style="font-size:0.72rem;">
+                <div class="mb-2">
+                    <div class="text-secondary text-uppercase mb-1"
+                         style="font-size:0.65rem; letter-spacing:.05em; font-weight:600;">Source</div>
+                    {% if schedule_sources %}
+                    <div>{{ schedule_sources.0.filename|default:"(unknown)" }}
+                        <span class="badge bg-secondary ms-1" style="font-size:.62rem;">{{ schedule_sources.0.source_format|upper }}</span>
+                    </div>
+                    {% else %}
+                    <div class="text-secondary">No schedule imported yet.</div>
+                    {% endif %}
+                </div>
+                <div class="mb-2">
+                    <div class="text-secondary text-uppercase mb-1"
+                         style="font-size:0.65rem; letter-spacing:.05em; font-weight:600;">Tasks</div>
+                    <div><strong>{{ task_count }}</strong> task{{ task_count|pluralize }}</div>
+                </div>
+                {% if data_readiness and data_readiness.p6_data_date %}
+                <div class="mb-2">
+                    <div class="text-secondary text-uppercase mb-1"
+                         style="font-size:0.65rem; letter-spacing:.05em; font-weight:600;">Data date</div>
+                    <div>{{ data_readiness.p6_data_date|date:"j M Y" }}
+                        {% if data_readiness.data_freshness_days and data_readiness.data_freshness_days > 7 %}
+                        <span class="text-warning">· {{ data_readiness.data_freshness_months }} months old</span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Calendar status (compact) -->
+                <div class="mb-2">
+                    <div class="text-secondary text-uppercase mb-1"
+                         style="font-size:0.65rem; letter-spacing:.05em; font-weight:600;">Calendar</div>
+                    {% if project_calendars %}
+                    {% for cal in project_calendars %}
+                    <div class="mb-1" title="Calendar ID {{ cal.cal_id }}">
+                        <strong>{{ cal.week_str }}</strong>
+                        <span class="text-secondary">· {{ cal.task_count }} tasks</span>
+                        {% if cal.n_holidays %}
+                        <span style="color:#d97706;">· {{ cal.n_holidays }} holiday{{ cal.n_holidays|pluralize }}</span>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                    <div class="text-secondary" style="font-style:italic;">Delays computed in working days.</div>
+                    {% elif task_count %}
+                    <div>
+                        <i class="bi bi-exclamation-triangle me-1" style="color:#d97706;"></i>
+                        No P6 calendar found — delays computed in calendar days (import a P6 XML/XER to enable working-day arithmetic).
+                    </div>
+                    {% else %}
+                    <div class="text-secondary">—</div>
+                    {% endif %}
+                </div>
+
+                {% if data_readiness %}
+                {% with dr=data_readiness %}
+                <div class="mb-2" data-testid="schedule-readiness-block"
+                     style="border:1px solid var(--bs-border-color); border-radius:6px; padding:8px 10px;">
+                    <div style="font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase;
+                                letter-spacing:.05em; font-size:0.65rem; margin-bottom:6px;">
+                        <i class="bi bi-clipboard2-check me-1"></i>Schedule Readiness
+                    </div>
+                    <!-- Keep "Data Readiness" string for packaging honesty scrapers -->
+                    <span class="visually-hidden">Data Readiness</span>
+                    <div class="d-flex flex-column gap-2">
+
+                        <div style="display:flex; align-items:flex-start; gap:5px;">
+                            <span style="color:#16a34a; font-size:.8rem;">✓</span>
+                            <span>Baseline dates — 100% of tasks
+                                <span class="text-secondary" style="font-size:.67rem;">(enables PV, SPI, SV)</span>
+                            </span>
+                        </div>
+
+                        <div style="display:flex; align-items:flex-start; gap:5px;">
+                            {% if dr.actuals_pct >= 1 %}
+                            <span style="color:#16a34a; font-size:.8rem;">✓</span>
+                            {% else %}
+                            <span style="color:#dc2626; font-size:.8rem;">✗</span>
+                            {% endif %}
+                            <span>Actual progress — {{ dr.actuals_pct }}% of tasks have actual start
+                                <span class="text-secondary" style="font-size:.67rem;">(enables EV, SPI)</span>
+                            </span>
+                        </div>
+
+                        {% if dr.n_active %}
+                        <div style="display:flex; align-items:flex-start; gap:5px;">
+                            {% if dr.ev_real_pct_coverage >= 80 %}
+                            <span style="color:#16a34a; font-size:.8rem;">✓</span>
+                            {% elif dr.ev_real_pct_coverage >= 1 %}
+                            <span style="color:#d97706; font-size:.8rem;">⚠</span>
+                            {% else %}
+                            <span style="color:#dc2626; font-size:.8rem;">✗</span>
+                            {% endif %}
+                            <span>EV source —
+                                {% if dr.ev_real_pct_coverage >= 1 %}
+                                    {{ dr.n_ev_real_pct }} of {{ dr.n_active }} in-progress tasks
+                                    ({{ dr.ev_real_pct_coverage }}%) use P6 %-complete;
+                                    remainder estimated linearly
+                                {% else %}
+                                    no P6 %-complete data — all in-progress EV estimated linearly
+                                {% endif %}
+                            </span>
+                        </div>
+                        {% endif %}
+
+                        <div style="display:flex; align-items:flex-start; gap:5px;">
+                            {% if dr.planned_cost_pct >= 1 %}
+                            <span style="color:{% if dr.planned_cost_pct >= 100 %}#16a34a{% else %}#d97706{% endif %}; font-size:.8rem;">
+                                {% if dr.planned_cost_pct >= 100 %}✓{% else %}⚠{% endif %}
+                            </span>
+                            {% else %}
+                            <span style="color:#dc2626; font-size:.8rem;">✗</span>
+                            {% endif %}
+                            <span>Planned assignment cost —
+                                {% if dr.planned_cost_from_ra %}from resource assignments{% else %}from task cost field{% endif %},
+                                {{ dr.planned_cost_pct }}% of tasks carry cost
+                                <span class="text-secondary" style="font-size:.67rem;">(enables schedule/assignment indicators — BAC, PV, EV, SPI on cost-bearing tasks)</span>
+                            </span>
+                        </div>
+
+                        <div style="display:flex; align-items:flex-start; gap:5px;">
+                            {% if dr.actual_cost_available %}
+                            <span style="color:#16a34a; font-size:.8rem;">✓</span>
+                            <span>Assignment actual cost indicator — {{ dr.ra_actual_count }} resource assignment{{ dr.ra_actual_count|pluralize }} with actual cost
+                                <span class="text-secondary" style="font-size:.67rem;">(diagnostic only; company-cost metrics remain unavailable without ERP / invoice / QS / payroll / procurement source)</span>
+                            </span>
+                            {% else %}
+                            <span style="color:#dc2626; font-size:.8rem;">✗</span>
+                            <span>Assignment actual cost indicator — not imported
+                                <span class="text-secondary" style="font-size:.67rem;">(diagnostic only; company-cost metrics remain unavailable)</span>
+                            </span>
+                            {% endif %}
+                        </div>
+
+                        <div style="display:flex; align-items:flex-start; gap:5px;">
+                            {% if dr.has_calendar %}
+                            <span style="color:#16a34a; font-size:.8rem;">✓</span>
+                            <span>Project calendar — P6 calendar imported
+                                <span class="text-secondary" style="font-size:.67rem;">(delays in working days)</span>
+                            </span>
+                            {% else %}
+                            <span style="color:#d97706; font-size:.8rem;">⚠</span>
+                            <span>Project calendar — not imported, fallback used
+                                <span style="color:#d97706; font-size:.67rem;">(delays in calendar days)</span>
+                            </span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <details class="mt-2" style="border-top:1px solid var(--bs-border-color); padding-top:6px;">
+                        <summary class="text-secondary" style="cursor:pointer; font-size:0.65rem; font-weight:600;
+                                   text-transform:uppercase; letter-spacing:.05em;">
+                            Gaps &amp; Limitations
+                        </summary>
+                        <div style="display:flex; flex-direction:column; gap:4px; margin-top:6px;
+                                    font-size:0.69rem; color:var(--bs-secondary-color);">
+                            <div style="display:flex; align-items:flex-start; gap:5px;">
+                                <span style="color:#d97706; flex-shrink:0; margin-top:1px;">ℹ</span>
+                                <span>
+                                    <strong>SPI defaults to 1.0 when planned value is zero</strong> —
+                                    a defined fallback, not a measured result; occurs before any tasks are scheduled to begin
+                                </span>
+                            </div>
+                            {% if dr.planned_cost_pct < 100 %}
+                            <div style="display:flex; align-items:flex-start; gap:5px;">
+                                <span style="color:#d97706; flex-shrink:0; margin-top:1px;">ℹ</span>
+                                <span>
+                                    <strong>{{ dr.planned_cost_pct }}% cost coverage</strong> —
+                                    BAC, PV, EV, and SPI are computed on cost-bearing tasks only;
+                                    tasks with no cost carry no weight in these metrics
+                                </span>
+                            </div>
+                            {% endif %}
+                            {% if not dr.planned_cost_from_ra %}
+                            <div style="display:flex; align-items:flex-start; gap:5px;">
+                                <span style="color:#d97706; flex-shrink:0; margin-top:1px;">ℹ</span>
+                                <span>
+                                    <strong>Cash Flow actual = 0 for in-progress tasks</strong> —
+                                    using task.cost fallback (no P6 resource assignments imported);
+                                    actual spend for active tasks is zero, not estimated from elapsed time
+                                </span>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </details>
+                </div>
+                {% endwith %}
+                {% endif %}
+            </div>
+
+            <div id="ds-side-task" class="flex-grow-1 overflow-auto p-2"
+                 data-testid="schedule-selected-task" style="display:none; font-size:0.78rem;">
+                <div id="ds-task-empty" class="text-secondary py-3 px-1"
+                     data-testid="schedule-task-empty">
+                    <div class="fw-semibold text-body mb-2" style="font-size:.82rem;">Selected Task</div>
+                    <p class="mb-2" style="font-size:.75rem; line-height:1.45;">
+                        Select an activity from the Gantt or Table to inspect dates, progress,
+                        and schedule details.
+                    </p>
+                    <ul class="mb-0 ps-3" style="font-size:.72rem; line-height:1.5;">
+                        <li>Planned and actual dates</li>
+                        <li>Progress and status</li>
+                        <li>WBS, float, and milestone signals when present</li>
+                    </ul>
+                </div>
+                <div id="ds-task-detail" style="display:none;"
+                     data-testid="schedule-task-inspector"></div>
+            </div>
+        </aside>
+    </div><!-- #ds-workspace-body -->
+
+    {% if task_count %}
+    <!-- Demoted import controls (modal) — same element IDs for JS -->
+    <div class="modal fade" id="dsImportModal" tabindex="-1" aria-labelledby="dsImportModalLabel" aria-hidden="true"
+         data-testid="schedule-import-modal">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="dsImportModalLabel" style="font-size:.95rem;">
+                        <i class="bi bi-cloud-upload me-1"></i>Import / Replace Schedule
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="d-flex align-items-start gap-3 flex-wrap" id="ds-upload-bar">
+                        <div>
+                            <label class="form-label small fw-semibold mb-1 d-block">
+                                Import Schedule
+                            </label>
+                            <input type="file" id="ds-file-input"
+                                   class="form-control form-control-sm"
+                                   style="width:100%; max-width:320px;"
+                                   accept=".xlsx,.xls,.csv,.xer,.xml">
+                            <div class="form-text">Excel · CSV · Primavera XER · MS Project XML</div>
+                        </div>
+                        <div id="ds-status" class="small"></div>
+                    </div>
+                    <div class="badge bg-secondary-subtle text-secondary-emphasis mt-3 px-2 py-2 w-100"
+                         style="font-size:.78rem; font-weight:400; white-space:normal; text-align:left;
+                                border:1px solid var(--bs-border-color); border-radius:6px;">
+                        <i class="bi bi-database me-1"></i>
+                        <strong>{{ task_count }}</strong> task{{ task_count|pluralize }} already imported.
+                        Re-importing will <strong>replace</strong> all existing tasks by default.
+                        Use <em>Add to existing</em> to append instead.
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
-
-    <!-- ── Import result (task_list renders here after save) ────────── -->
-    <div id="task-preview-area" class="mt-3"></div>
+    {% endif %}
 
     <!-- ── Floating mapping dropdown ────────────────────────────────── -->
     <div id="ds-map-dd"
@@ -390,15 +605,161 @@
 
 </div><!-- #ds-root -->
 
+
 <!-- ── Styles ──────────────────────────────────────────────────────── -->
 <style>
-/* ── Layout: flex column so summary bar is always pinned at bottom ── */
+/* ── Schedule workspace layout (V1 fix) ── */
+.ds-workspace { gap: 0; }
+.ds-toolbar { background: var(--bs-body-bg); }
+#ds-main {
+    min-height: 0;
+    background: var(--bs-body-bg);
+}
 #ds-upload-bar   { flex-shrink: 0; }
-#ds-table-section { flex-shrink: 0; overflow: auto; }
-#ds-splitter     { flex-shrink: 0; }
-#ds-gantt-section { flex: 1; min-height: 180px; overflow: hidden; }
-#ds-summary-bar  { flex-shrink: 0; background: var(--color-background-secondary); }
-#task-preview-area { flex-shrink: 0; overflow: auto; max-height: 30vh; }
+#ds-table-section { flex: 1; min-height: 0; overflow: auto; }
+#ds-splitter     { display: none !important; }
+#ds-gantt-section {
+    flex: 1 1 auto; min-height: 180px; overflow: hidden;
+    flex-direction: column;
+}
+/* Flush Sources → main pane: no margin gap that reads as a leftover strip */
+#ds-sources-row { margin-bottom: 0 !important; }
+#task-preview-area { flex-shrink: 0; overflow: auto; max-height: 22vh; }
+/* Mutual exclusion: only one main pane visible — neutralize sticky Gantt layers */
+.ds-view-pane.ds-view-hidden {
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    height: 0 !important;
+    max-height: 0 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    flex: 0 0 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+}
+.ds-view-pane.ds-view-hidden #ds-gantt-scroll,
+.ds-view-pane.ds-view-hidden #ds-gantt-hdr,
+.ds-view-pane.ds-view-hidden #ds-gantt-mode-bar,
+.ds-view-pane.ds-view-hidden #ds-gantt-section {
+    display: none !important;
+    visibility: hidden !important;
+    position: static !important;
+    z-index: auto !important;
+}
+.ds-view-pane.ds-view-active {
+    display: flex !important;
+    visibility: visible !important;
+    flex: 1 1 auto;
+    min-height: 0;
+    position: relative;
+    z-index: 1;
+    isolation: isolate;
+    background: var(--bs-body-bg);
+}
+/* Import summary: Bootstrap d-flex must not override hidden default */
+#ds-summary-bar {
+    display: none !important;
+    flex-shrink: 0;
+    background: var(--color-background-secondary);
+}
+#ds-summary-bar.ds-summary-visible {
+    display: flex !important;
+}
+.ds-side-panel { z-index: 2; }
+.ds-side-panel.ds-side-collapsed { display: none !important; }
+#ds-side-tab-info.active, #ds-side-tab-task.active {
+    background: var(--bs-primary); color: #fff;
+}
+.ds-gantt-row-selected { outline: 1px solid #3b82f6; outline-offset: -1px; }
+/* Table mode: clean schedule table (not Gantt timeline chrome) */
+#ds-view-table-wrap.ds-view-active {
+    background: var(--bs-body-bg);
+}
+/* Avoid Bootstrap .d-flex !important fighting display:none */
+#ds-schedule-task-panel {
+    display: none !important;
+    min-height: 0;
+}
+#ds-schedule-task-panel.ds-task-panel-visible {
+    display: flex !important;
+}
+.ds-schedule-task-scroll {
+    overflow: auto;
+    min-height: 0;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 4px;
+    background: var(--bs-body-bg);
+    /* Keep top edge continuous with Sources — avoid a second dark chrome band */
+    border-top-color: var(--bs-border-color);
+}
+#ds-schedule-task-table {
+    --bs-table-bg: transparent;
+    --bs-table-color: var(--bs-body-color);
+    background: transparent;
+}
+#ds-schedule-task-table thead.ds-schedule-task-head th,
+#ds-schedule-task-table thead th {
+    white-space: nowrap;
+    font-size: .72rem;
+    font-weight: 600;
+    color: var(--bs-secondary-color);
+    background: var(--bs-secondary-bg) !important;
+    border-bottom: 1px solid var(--bs-border-color);
+    box-shadow: none;
+}
+#ds-schedule-task-table thead.sticky-top {
+    z-index: 3;
+}
+#ds-schedule-task-table tbody tr { cursor: pointer; }
+#ds-schedule-task-table tbody tr.ds-task-row-selected {
+    background: rgba(59, 130, 246, 0.18);
+}
+/* Columns dropdown above sticky table head; no permanent layout strip */
+#ds-columns-dropdown { position: relative; z-index: 5; }
+#ds-columns-menu {
+    z-index: 1080;
+    max-height: min(60vh, 360px);
+    overflow-y: auto;
+}
+/* Selected Task inspector */
+.ds-insp-section { margin-bottom: 12px; }
+.ds-insp-h {
+    font-size: 0.65rem; font-weight: 600; text-transform: uppercase;
+    letter-spacing: .05em; color: var(--bs-secondary-color); margin-bottom: 6px;
+}
+.ds-insp-kv {
+    display: grid; grid-template-columns: 42% 1fr; gap: 4px 8px;
+    font-size: 0.74rem; align-items: start;
+}
+.ds-insp-k { color: var(--bs-secondary-color); }
+.ds-insp-v { word-break: break-word; }
+.ds-insp-muted { color: var(--bs-secondary-color); font-style: italic; }
+.ds-insp-actions {
+    display: flex; flex-direction: column; gap: 6px;
+    padding-top: 8px; border-top: 1px solid var(--bs-border-color);
+}
+.ds-insp-actions .btn { font-size: 0.72rem; }
+.ds-insp-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.ds-insp-badge {
+    font-size: 0.65rem; font-weight: 600; padding: 2px 7px; border-radius: 10px;
+    border: 1px solid var(--bs-border-color); background: var(--bs-secondary-bg);
+}
+.ds-insp-badge-ok { color: #86efac; border-color: rgba(34,197,94,.35); }
+.ds-insp-badge-warn { color: #fbbf24; border-color: rgba(245,158,11,.35); }
+.ds-insp-badge-info { color: #93c5fd; border-color: rgba(59,130,246,.35); }
+.ds-insp-note {
+    font-size: 0.7rem; color: var(--bs-secondary-color); line-height: 1.4;
+}
+@media (max-width: 992px) {
+  .ds-side-panel { width: 260px !important; max-width: 42vw !important; }
+}
+@media (max-width: 768px) {
+  #ds-workspace-body { flex-direction: column; }
+  .ds-side-panel { width: 100% !important; max-width: none !important; max-height: 40vh;
+                   border-left: none !important; border-top: 1px solid var(--bs-border-color); }
+}
 
 /* ── Skeleton shimmer ─────────────────────────────────────────────── */
 @keyframes ds-shimmer {
@@ -507,6 +868,545 @@
     const mapDd        = document.getElementById('ds-map-dd');
     const addDd        = document.getElementById('ds-add-dd');
     const splitterEl   = document.getElementById('ds-splitter');
+    const LINKS_URL    = root.dataset.linksUrl || GANTT_URL || '';
+    const TIME_VIEW_URL = root.dataset.timeViewUrl || '';
+    const ganttWrap    = document.getElementById('ds-view-gantt-wrap');
+    const tableWrap    = document.getElementById('ds-view-table-wrap');
+    const sidePanel    = document.getElementById('ds-side-panel');
+    const infoBtn      = document.getElementById('ds-info-btn');
+
+    const WS = {
+        view: 'gantt',
+        sideOpen: true,
+        sideTab: 'info',
+        importing: false,
+        tasksLoading: false,
+        taskVisible: ['activity_code', 'name', 'start_date', 'end_date', 'status', 'activity_type'],
+        selected: null,
+    };
+
+    const TASK_COL_LABELS = {
+        activity_code: 'Code',
+        name: 'Name',
+        start_date: 'Start',
+        end_date: 'Finish',
+        status: 'Status',
+        activity_type: 'Type',
+        wbs_name: 'WBS',
+        actual_start: 'Actual Start',
+        actual_end: 'Actual End',
+        total_float_days: 'Float (d)',
+    };
+
+    function closeImportModal() {
+        const modalEl = document.getElementById('dsImportModal');
+        if (!modalEl || typeof bootstrap === 'undefined') return;
+        const inst = bootstrap.Modal.getInstance(modalEl);
+        if (inst) inst.hide();
+    }
+
+    function setSideTab(tab) {
+        WS.sideTab = tab === 'task' ? 'task' : 'info';
+        const info = document.getElementById('ds-side-info');
+        const task = document.getElementById('ds-side-task');
+        const tInfo = document.getElementById('ds-side-tab-info');
+        const tTask = document.getElementById('ds-side-tab-task');
+        if (info) info.style.display = WS.sideTab === 'info' ? '' : 'none';
+        if (task) task.style.display = WS.sideTab === 'task' ? '' : 'none';
+        if (tInfo) tInfo.classList.toggle('active', WS.sideTab === 'info');
+        if (tTask) tTask.classList.toggle('active', WS.sideTab === 'task');
+    }
+
+    function setSideOpen(open) {
+        WS.sideOpen = !!open;
+        if (sidePanel) sidePanel.classList.toggle('ds-side-collapsed', !WS.sideOpen);
+        if (infoBtn) {
+            infoBtn.classList.toggle('active', WS.sideOpen);
+            infoBtn.setAttribute('aria-pressed', WS.sideOpen ? 'true' : 'false');
+        }
+    }
+
+    function setSummaryBarVisible(on) {
+        if (!summaryBar) return;
+        summaryBar.classList.toggle('ds-summary-visible', !!on);
+        summaryBar.setAttribute('aria-hidden', on ? 'false' : 'true');
+    }
+
+    function applyViewExclusive() {
+        /* Exactly one main pane — CSS class + inline display (belt and braces). */
+        if (ganttWrap) {
+            const on = WS.view === 'gantt';
+            ganttWrap.classList.toggle('ds-view-active', on);
+            ganttWrap.classList.toggle('ds-view-hidden', !on);
+            ganttWrap.style.display = on ? 'flex' : 'none';
+            ganttWrap.setAttribute('data-view-state', on ? 'active' : 'inactive');
+            ganttWrap.setAttribute('aria-hidden', on ? 'false' : 'true');
+            const gScroll = document.getElementById('ds-gantt-scroll');
+            const gHdr = document.getElementById('ds-gantt-hdr');
+            if (!on) {
+                /* Neutralize sticky Gantt layers so they cannot paint over Table */
+                if (gScroll) gScroll.style.display = 'none';
+                if (gHdr) {
+                    gHdr.style.display = 'none';
+                    gHdr.style.position = 'static';
+                }
+                if (ganttSection) ganttSection.style.display = 'none';
+            } else {
+                if (gScroll) gScroll.style.display = '';
+                if (gHdr) {
+                    gHdr.style.display = 'flex';
+                    gHdr.style.position = 'sticky';
+                }
+            }
+        }
+        if (tableWrap) {
+            const on = WS.view === 'table';
+            tableWrap.classList.toggle('ds-view-active', on);
+            tableWrap.classList.toggle('ds-view-hidden', !on);
+            tableWrap.style.display = on ? 'flex' : 'none';
+            tableWrap.setAttribute('data-view-state', on ? 'active' : 'inactive');
+            tableWrap.setAttribute('aria-hidden', on ? 'false' : 'true');
+        }
+        if (splitterEl) splitterEl.style.display = 'none';
+        /* Import summary must not linger as a dark strip outside import sessions */
+        if (!WS.importing) setSummaryBarVisible(false);
+        if (root) root.setAttribute('data-workspace-view', WS.view);
+    }
+
+    function setGanttLoading(on) {
+        WS.tasksLoading = !!on;
+        const el = document.getElementById('ds-gantt-loading');
+        if (el) el.style.display = on && WS.view === 'gantt' ? 'flex' : 'none';
+    }
+
+    function setGanttError(msg) {
+        const el = document.getElementById('ds-gantt-error');
+        if (!el) return;
+        if (msg) {
+            el.style.display = '';
+            el.textContent = msg;
+        } else {
+            el.style.display = 'none';
+            el.textContent = '';
+        }
+    }
+
+    function syncToolbarButtons() {
+        const gBtn = document.getElementById('ds-view-gantt-btn');
+        const tBtn = document.getElementById('ds-view-table-btn');
+        if (gBtn) {
+            gBtn.classList.toggle('btn-primary', WS.view === 'gantt');
+            gBtn.classList.toggle('btn-outline-secondary', WS.view !== 'gantt');
+            gBtn.setAttribute('aria-pressed', WS.view === 'gantt' ? 'true' : 'false');
+        }
+        if (tBtn) {
+            tBtn.classList.toggle('btn-primary', WS.view === 'table');
+            tBtn.classList.toggle('btn-outline-secondary', WS.view !== 'table');
+            tBtn.setAttribute('aria-pressed', WS.view === 'table' ? 'true' : 'false');
+        }
+    }
+
+    function colIndex(cols, key) {
+        return cols.indexOf(key);
+    }
+
+    function renderScheduleTaskTable() {
+        const panel = document.getElementById('ds-schedule-task-panel');
+        const head = document.getElementById('ds-schedule-task-head');
+        const body = document.getElementById('ds-schedule-task-body');
+        const meta = document.getElementById('ds-schedule-task-meta');
+        const emptyHint = document.getElementById('ds-table-empty-hint');
+        const tableLoading = document.getElementById('ds-table-loading');
+        if (!panel || !head || !body) return;
+
+        if (WS.importing) {
+            panel.classList.remove('ds-task-panel-visible');
+            panel.style.display = 'none';
+            return;
+        }
+
+        const cols = (G.cols && G.cols.length) ? G.cols : (S.allCols || []);
+        const rows = (G.rows && G.rows.length) ? G.rows : (S.rows || []);
+        const visible = WS.taskVisible.filter(function (c) { return cols.indexOf(c) >= 0; });
+        const useCols = visible.length ? visible : cols.slice(0, 6);
+
+        if (tableLoading) tableLoading.style.display = 'none';
+
+        if (!rows.length) {
+            panel.classList.remove('ds-task-panel-visible');
+            panel.style.display = 'none';
+            if (emptyHint) {
+                emptyHint.style.display = (_TASK_COUNT > 0 || WS.tasksLoading) ? 'none' : '';
+                if (_TASK_COUNT === 0) {
+                    emptyHint.textContent = 'No table data yet. Import a schedule or switch back to Gantt.';
+                }
+            }
+            return;
+        }
+
+        if (emptyHint) emptyHint.style.display = 'none';
+        if (tableSection) tableSection.style.display = 'none';
+        panel.classList.add('ds-task-panel-visible');
+        panel.style.display = 'flex';
+
+        head.innerHTML = useCols.map(function (c) {
+            return '<th scope="col">' + esc(TASK_COL_LABELS[c] || c) + '</th>';
+        }).join('');
+
+        /* Cap DOM rows for responsiveness; meta shows full count */
+        const MAX_DOM = 500;
+        const slice = rows.slice(0, MAX_DOM);
+        const idxs = useCols.map(function (c) { return colIndex(cols, c); });
+        body.innerHTML = '';
+        slice.forEach(function (row, ri) {
+            const tr = document.createElement('tr');
+            tr.dataset.rowIndex = String(ri);
+            idxs.forEach(function (ci) {
+                const td = document.createElement('td');
+                const val = (ci >= 0 && row[ci] != null) ? String(row[ci]) : '';
+                td.textContent = val;
+                td.title = val;
+                tr.appendChild(td);
+            });
+            tr.addEventListener('click', function () {
+                body.querySelectorAll('tr.ds-task-row-selected').forEach(function (el) {
+                    el.classList.remove('ds-task-row-selected');
+                });
+                tr.classList.add('ds-task-row-selected');
+                const nameIdx = colIndex(cols, 'name');
+                const startIdx = colIndex(cols, 'start_date');
+                const endIdx = colIndex(cols, 'end_date');
+                const codeIdx = colIndex(cols, 'activity_code');
+                const statusIdx = colIndex(cols, 'status');
+                const aStartIdx = colIndex(cols, 'actual_start');
+                const aEndIdx = colIndex(cols, 'actual_end');
+                selectWorkspaceTask({
+                    name: nameIdx >= 0 ? row[nameIdx] : '',
+                    start: startIdx >= 0 && row[startIdx] ? new Date(row[startIdx]) : null,
+                    end: endIdx >= 0 && row[endIdx] ? new Date(row[endIdx]) : null,
+                    actualStart: aStartIdx >= 0 && row[aStartIdx] ? new Date(row[aStartIdx]) : null,
+                    actualEnd: aEndIdx >= 0 && row[aEndIdx] ? new Date(row[aEndIdx]) : null,
+                    row: row,
+                });
+            });
+            body.appendChild(tr);
+        });
+
+        if (meta) {
+            meta.textContent = rows.length > MAX_DOM
+                ? ('Showing first ' + MAX_DOM.toLocaleString() + ' of ' + rows.length.toLocaleString() + ' tasks')
+                : (rows.length.toLocaleString() + ' tasks');
+        }
+        rebuildColumnsMenu(cols);
+    }
+
+    function rebuildColumnsMenu(cols) {
+        const body = document.getElementById('ds-columns-menu-body');
+        if (!body) return;
+        const all = cols && cols.length ? cols : Object.keys(TASK_COL_LABELS);
+        body.innerHTML = all.map(function (c) {
+            const checked = WS.taskVisible.indexOf(c) >= 0 ? ' checked' : '';
+            const label = TASK_COL_LABELS[c] || c;
+            return '<label class="dropdown-item d-flex align-items-center gap-2 py-1">' +
+                '<input type="checkbox" class="form-check-input ds-col-toggle m-0" data-col="' + esc(c) + '"' + checked + '>' +
+                '<span>' + esc(label) + '</span></label>';
+        }).join('');
+    }
+
+    async function ensureTasksLoaded() {
+        if (G.rows && G.rows.length) return true;
+        if (_TASK_COUNT <= 0) return false;
+        await loadAllTasksGantt({ preserveView: true });
+        return !!(G.rows && G.rows.length);
+    }
+
+    async function setWorkspaceView(view) {
+        WS.view = view === 'table' ? 'table' : 'gantt';
+        syncToolbarButtons();
+        applyViewExclusive();
+
+        if (WS.view === 'gantt') {
+            if (tableSection && !WS.importing) tableSection.style.display = 'none';
+            const panel = document.getElementById('ds-schedule-task-panel');
+            if (panel) {
+                panel.classList.remove('ds-task-panel-visible');
+                panel.style.display = 'none';
+            }
+            if (_ganttBuilt && ganttSection) {
+                ganttSection.style.display = 'flex';
+                setGanttLoading(false);
+            } else if (_TASK_COUNT > 0 && !(G.rows && G.rows.length)) {
+                setGanttLoading(true);
+            } else if (G.rows && G.rows.length) {
+                buildGanttShell();
+                if (ganttSection) {
+                    ganttSection.style.display = 'flex';
+                    ganttSection.style.flex = '1';
+                    ganttSection.style.height = '100%';
+                }
+                renderGantt();
+                setGanttLoading(false);
+            }
+        } else {
+            /* Table mode: schedule task table, not mapping preview */
+            if (ganttSection) ganttSection.style.display = 'none';
+            setGanttLoading(false);
+            const emptyHint = document.getElementById('ds-table-empty-hint');
+            const tableLoading = document.getElementById('ds-table-loading');
+            if (WS.importing) {
+                if (tableSection) tableSection.style.display = '';
+                const panel = document.getElementById('ds-schedule-task-panel');
+                if (panel) {
+                    panel.classList.remove('ds-task-panel-visible');
+                    panel.style.display = 'none';
+                }
+                if (emptyHint) emptyHint.style.display = 'none';
+                if (WS.selected && WS.selected.row) selectWorkspaceTask(WS.selected);
+                return;
+            }
+            if (!(G.rows && G.rows.length) && _TASK_COUNT > 0) {
+                if (tableLoading) tableLoading.style.display = '';
+                if (emptyHint) emptyHint.style.display = 'none';
+                await ensureTasksLoaded();
+                if (tableLoading) tableLoading.style.display = 'none';
+            }
+            if (!(G.rows && G.rows.length) && !(S.rows && S.rows.length)) {
+                const panel = document.getElementById('ds-schedule-task-panel');
+                if (panel) {
+                    panel.classList.remove('ds-task-panel-visible');
+                    panel.style.display = 'none';
+                }
+                if (tableSection) tableSection.style.display = 'none';
+                if (emptyHint) {
+                    emptyHint.style.display = '';
+                    emptyHint.textContent = _TASK_COUNT > 0
+                        ? 'Could not load schedule tasks. Switch to Gantt or retry.'
+                        : 'No table data yet. Import a schedule or switch back to Gantt.';
+                }
+                if (WS.selected && WS.selected.row) selectWorkspaceTask(WS.selected);
+                return;
+            }
+            /* Prefer imported all-tasks rows for Table mode */
+            if (G.rows && G.rows.length && (!_sourceS.rows.length || GS.mode === 'all')) {
+                GS.mode = 'all';
+                S.rows = G.rows;
+                S.allCols = G.cols.slice();
+                S.mapping = Object.fromEntries(G.cols.map(function (c) { return [c, c]; }));
+                S.visible = WS.taskVisible.filter(function (c) { return G.cols.indexOf(c) >= 0; });
+                S.totalRows = G.totalRows;
+                S.deps = G.deps.slice();
+            }
+            renderScheduleTaskTable();
+        }
+        /* Keep inspector selection across Gantt ↔ Table when possible */
+        if (WS.selected && WS.selected.row) {
+            selectWorkspaceTask(WS.selected);
+        }
+    }
+
+    function showImportResultArea() {
+        if (!resultEl) return;
+        resultEl.style.display = resultEl.innerHTML.trim() ? '' : 'none';
+    }
+
+    function inspectorRowField(taskObj, key) {
+        if (!taskObj || !taskObj.row) return '';
+        try {
+            const v = getVal(taskObj.row, key);
+            if (v != null && String(v).trim() !== '') return String(v).trim();
+        } catch (_) { /* mapping may not be ready */ }
+        const cols = (G.cols && G.cols.length) ? G.cols : (S.allCols || []);
+        const i = cols.indexOf(key);
+        if (i >= 0 && taskObj.row[i] != null && String(taskObj.row[i]).trim() !== '') {
+            return String(taskObj.row[i]).trim();
+        }
+        return '';
+    }
+
+    function inspectorFmtDate(d) {
+        if (!d) return '';
+        if (Object.prototype.toString.call(d) === '[object Date]' && !isNaN(d)) {
+            try { return fmtDate(d); } catch (_) { /* fall through */ }
+        }
+        const s = String(d).trim();
+        if (!s) return '';
+        const parsed = new Date(s);
+        if (!isNaN(parsed)) {
+            try { return fmtDate(parsed); } catch (_) { return s; }
+        }
+        return s;
+    }
+
+    function inspectorDurationDays(start, end) {
+        if (!start || !end) return null;
+        const a = new Date(start instanceof Date ? start.getTime() : start);
+        const b = new Date(end instanceof Date ? end.getTime() : end);
+        if (isNaN(a) || isNaN(b)) return null;
+        a.setHours(0, 0, 0, 0);
+        b.setHours(0, 0, 0, 0);
+        const ms = b.getTime() - a.getTime();
+        if (ms < 0) return null;
+        return Math.floor(ms / 86400000) + 1;
+    }
+
+    function inspectorKv(label, value, unavailable) {
+        const v = (value != null && String(value).trim() !== '')
+            ? esc(String(value))
+            : (unavailable
+                ? '<span class="ds-insp-muted">Unavailable</span>'
+                : '<span class="ds-insp-muted">—</span>');
+        return '<div class="ds-insp-k">' + esc(label) + '</div><div class="ds-insp-v">' + v + '</div>';
+    }
+
+    function selectWorkspaceTask(taskObj) {
+        const empty = document.getElementById('ds-task-empty');
+        const detail = document.getElementById('ds-task-detail');
+        if (!detail) return;
+        setSideOpen(true);
+        setSideTab('task');
+        if (!taskObj) {
+            WS.selected = null;
+            if (empty) empty.style.display = '';
+            detail.style.display = 'none';
+            detail.innerHTML = '';
+            return;
+        }
+        WS.selected = taskObj;
+        if (empty) empty.style.display = 'none';
+        detail.style.display = '';
+
+        const name = taskObj.name || inspectorRowField(taskObj, 'name') || 'Task';
+        const code = inspectorRowField(taskObj, 'activity_code');
+        const status = inspectorRowField(taskObj, 'status');
+        const actType = inspectorRowField(taskObj, 'activity_type');
+        const wbs = inspectorRowField(taskObj, 'wbs_name');
+        const floatRaw = inspectorRowField(taskObj, 'total_float_days');
+        const floatVal = (taskObj.totalFloat != null && taskObj.totalFloat !== '')
+            ? String(taskObj.totalFloat)
+            : floatRaw;
+
+        const plannedStart = taskObj.start
+            ? inspectorFmtDate(taskObj.start)
+            : inspectorFmtDate(inspectorRowField(taskObj, 'start_date'));
+        const plannedFinish = taskObj.end
+            ? inspectorFmtDate(taskObj.end)
+            : inspectorFmtDate(inspectorRowField(taskObj, 'end_date'));
+        const actualStart = taskObj.actualStart
+            ? inspectorFmtDate(taskObj.actualStart)
+            : inspectorFmtDate(inspectorRowField(taskObj, 'actual_start'));
+        const actualFinish = taskObj.actualEnd
+            ? inspectorFmtDate(taskObj.actualEnd)
+            : inspectorFmtDate(inspectorRowField(taskObj, 'actual_end'));
+
+        const dur = inspectorDurationDays(
+            taskObj.start || inspectorRowField(taskObj, 'start_date'),
+            taskObj.end || inspectorRowField(taskObj, 'end_date')
+        );
+
+        const statusL = (status || '').toLowerCase();
+        const typeL = (actType || '').toLowerCase();
+        const isComplete = statusL === 'complete' || statusL === 'completed' || !!actualFinish;
+        const isActive = !isComplete && (!!actualStart || statusL === 'active'
+            || statusL === 'in_progress' || statusL === 'in progress');
+        let progressLabel = 'Unavailable';
+        if (isComplete) progressLabel = 'Complete';
+        else if (isActive) progressLabel = 'In Progress';
+        else if (statusL === 'planned' || statusL === 'not started' || (!actualStart && !status)) {
+            progressLabel = 'Not Started';
+        } else if (status) {
+            progressLabel = status;
+        }
+
+        const isMilestone = !!taskObj.isMilestone
+            || typeL.indexOf('milestone') >= 0;
+        const isCritical = taskObj.critical === true
+            || (floatVal !== '' && !isNaN(Number(floatVal)) && Number(floatVal) <= 0);
+
+        let badges = '';
+        if (status) {
+            badges += '<span class="ds-insp-badge ' +
+                (isComplete ? 'ds-insp-badge-ok' : (isActive ? 'ds-insp-badge-info' : '')) +
+                '">' + esc(status) + '</span>';
+        }
+        if (actType) {
+            badges += '<span class="ds-insp-badge">' + esc(actType) + '</span>';
+        }
+        if (isMilestone) {
+            badges += '<span class="ds-insp-badge ds-insp-badge-warn">Milestone</span>';
+        }
+        if (isCritical) {
+            badges += '<span class="ds-insp-badge ds-insp-badge-warn">Critical</span>';
+        }
+
+        const sourceName = GS.currentSourceName
+            || (document.querySelector('.ds-source-chip')?.dataset?.sourceFilename || '')
+            || '';
+
+        detail.innerHTML =
+            '<div class="ds-insp-section" data-testid="schedule-insp-header">' +
+            '<div class="ds-insp-h">Task Identity</div>' +
+            (code ? '<div class="font-monospace text-secondary" style="font-size:.68rem;">' + esc(code) + '</div>' : '') +
+            '<div class="fw-semibold text-body" style="font-size:.88rem; line-height:1.3;">' + esc(name) + '</div>' +
+            (badges ? '<div class="ds-insp-badges">' + badges + '</div>' : '') +
+            '</div>' +
+
+            '<div class="ds-insp-section" data-testid="schedule-insp-dates">' +
+            '<div class="ds-insp-h">Dates</div>' +
+            '<div class="ds-insp-kv">' +
+            inspectorKv('Planned Start', plannedStart, true) +
+            inspectorKv('Planned Finish', plannedFinish, true) +
+            inspectorKv('Duration', dur != null ? (dur + ' day' + (dur === 1 ? '' : 's')) : '', true) +
+            inspectorKv('Actual Start', actualStart, true) +
+            inspectorKv('Actual Finish', actualFinish, true) +
+            '</div>' +
+            '<div class="ds-insp-note mt-1">Dates reflect the imported schedule, not live field status.</div>' +
+            '</div>' +
+
+            '<div class="ds-insp-section" data-testid="schedule-insp-progress">' +
+            '<div class="ds-insp-h">Progress</div>' +
+            '<div class="ds-insp-kv">' +
+            inspectorKv('Status', status || progressLabel, false) +
+            '</div>' +
+            '<div class="ds-insp-note mt-1">Progress detail unavailable.</div>' +
+            '</div>' +
+
+            '<div class="ds-insp-section" data-testid="schedule-insp-classification">' +
+            '<div class="ds-insp-h">Schedule Details</div>' +
+            '<div class="ds-insp-kv">' +
+            inspectorKv('WBS', wbs, true) +
+            inspectorKv('Activity Type', actType, true) +
+            inspectorKv('Calendar', '', true) +
+            inspectorKv('Float (days)', floatVal, true) +
+            inspectorKv('Critical path', isCritical ? 'Yes' : (taskObj.critical === false ? 'No' : ''), true) +
+            inspectorKv('Milestone', isMilestone ? 'Yes' : (actType ? 'No' : ''), true) +
+            inspectorKv('Source file', sourceName, true) +
+            '</div>' +
+            '</div>';
+    }
+
+    document.getElementById('ds-view-gantt-btn')?.addEventListener('click', function () { setWorkspaceView('gantt'); });
+    document.getElementById('ds-view-table-btn')?.addEventListener('click', function () { setWorkspaceView('table'); });
+    infoBtn?.addEventListener('click', function () { setSideOpen(!WS.sideOpen); });
+    document.getElementById('ds-side-tab-info')?.addEventListener('click', function () { setSideTab('info'); });
+    document.getElementById('ds-side-tab-task')?.addEventListener('click', function () { setSideTab('task'); });
+    document.getElementById('ds-columns-menu-body')?.addEventListener('change', function (e) {
+        const cb = e.target.closest('.ds-col-toggle');
+        if (!cb) return;
+        const col = cb.dataset.col;
+        if (!col) return;
+        if (cb.checked) {
+            if (WS.taskVisible.indexOf(col) < 0) WS.taskVisible.push(col);
+        } else {
+            if (WS.taskVisible.length <= 1) { cb.checked = true; return; }
+            WS.taskVisible = WS.taskVisible.filter(function (c) { return c !== col; });
+        }
+        if (WS.view !== 'table') setWorkspaceView('table');
+        else renderScheduleTaskTable();
+    });
+    document.getElementById('ds-columns-btn')?.addEventListener('click', function () {
+        /* Opening Columns switches to Table so the picker has a surface to affect */
+        if (WS.view !== 'table') setWorkspaceView('table');
+    });
 
     /* ── Canonical field definitions ────────────────────────────────── */
     const FIELDS = [
@@ -740,7 +1640,8 @@
         document.getElementById('ds-source-row').innerHTML  =
             Array.from({length: 6}, () => '<th class="ds-th-src"><div class="ds-skeleton-cell" style="width:60%;opacity:.4;"></div></th>').join('');
         document.getElementById('ds-tbody').innerHTML = bodyRows;
-        tableSection.style.display = '';
+        if (WS.importing) setWorkspaceView('table');
+        if (tableSection) tableSection.style.display = WS.view === 'table' ? '' : 'none';
 
         /* Gantt skeleton: wipe shell so buildGanttShell() rebuilds after load */
         _ganttBuilt = false;
@@ -758,17 +1659,21 @@
                 </div>`;
             }).join('') +
         '</div>';
-        ganttSection.style.display = '';
+        ganttSection.style.display = WS.view === 'gantt' ? 'flex' : 'none';
+        const emptyHint = document.getElementById('ds-gantt-empty-hint');
+        if (emptyHint) emptyHint.style.display = 'none';
     }
 
     /* ── File upload ────────────────────────────────────────────────── */
-    fileInput.addEventListener('change', async function () {
+    fileInput?.addEventListener('change', async function () {
         const file = this.files[0];
         if (!file) return;
 
-        statusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Parsing…';
-        summaryBar.style.display = 'none';
+        WS.importing = true;
+        if (statusEl) statusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Parsing…';
+        setSummaryBarVisible(false);
         resultEl.innerHTML = '';
+        showImportResultArea();
         _aiPanelReset();
         showSkeleton();
 
@@ -841,20 +1746,37 @@
         }
 
         renderSummary();
-        tableSection.style.display = '';
-        summaryBar.style.display   = '';
+        /* Summary bar only during a live import/mapping session — not source browse */
+        setSummaryBarVisible(!!WS.importing);
         buildGanttShell();
-        splitterEl.style.display = 'flex';
-        initSplitterPos();
+        if (splitterEl) splitterEl.style.display = 'none';
         switchMode('source'); /* syncs both table and Gantt to the loaded source */
+        if (WS.importing) {
+            /* Keep importing true while switching so Table shows mapping surface */
+            closeImportModal();
+            setWorkspaceView('table');
+            if (tableSection) tableSection.style.display = '';
+            const panel = document.getElementById('ds-schedule-task-panel');
+            if (panel) {
+                panel.classList.remove('ds-task-panel-visible');
+                panel.style.display = 'none';
+            }
+            setSummaryBarVisible(true);
+            WS.importing = false;
+        } else {
+            WS.importing = false;
+            setSummaryBarVisible(false);
+            setWorkspaceView('gantt');
+            if (tableSection) tableSection.style.display = 'none';
+        }
     }
 
     /* ── Source chip preview ─────────────────────────────────────────── */
     async function loadSourcePreview(url, filename) {
         console.log('[SOURCE] fetching:', url);
+        WS.importing = false;
         showSkeleton();
-        tableSection.style.display = '';
-        statusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Loading…';
+        if (statusEl) statusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Loading…';
 
         let data;
         try {
@@ -942,12 +1864,20 @@
         updateGanttModeBar();
     }
 
-    /* ── Load all project tasks for the Gantt ────────────────────────── */
-    async function loadAllTasksGantt() {
+    /* ── Load all project tasks for the Gantt / Table ────────────────── */
+    async function loadAllTasksGantt(opts) {
+        opts = opts || {};
         if (!ALL_TASKS_URL) return;
+        const preserveView = !!opts.preserveView;
+        if (_TASK_COUNT > 0 && WS.view === 'gantt') setGanttLoading(true);
+        setGanttError('');
         try {
             const r = await fetch(ALL_TASKS_URL);
-            if (!r.ok) return;
+            if (!r.ok) {
+                setGanttLoading(false);
+                setGanttError('Failed to load schedule tasks (' + r.status + ').');
+                return;
+            }
             const data = await r.json();
             G.rows      = data.rows || [];
             G.deps      = data.deps || [];
@@ -957,13 +1887,17 @@
                 'name','start_date','end_date','wbs_name','status',
                 'activity_code','actual_start','actual_end','activity_type','total_float_days',
             ];
-            if (!G.rows.length) return;
+            if (!G.rows.length) {
+                setGanttLoading(false);
+                if (_TASK_COUNT > 0) setGanttError('No dated tasks available to chart.');
+                return;
+            }
 
             /* Bootstrap S.allCols / S.mapping so getColIdx() works before any source loads */
             if (!S.allCols.length) {
                 S.allCols  = [...G.cols];
                 S.mapping  = Object.fromEntries(G.cols.map(c => [c, c]));
-                S.visible  = ['name','start_date','end_date','status','activity_code','activity_type'];
+                S.visible  = WS.taskVisible.filter(c => G.cols.indexOf(c) >= 0);
                 S.dateRange = G.dateRange;
                 S.deps     = [...G.deps];
             }
@@ -971,12 +1905,50 @@
             /* Only default to 'all' mode on initial load — if a source loaded first, respect it */
             if (!_sourceS.rows.length) GS.mode = 'all';
             buildGanttShell();
-            splitterEl.style.display = 'flex';
-            initSplitterPos();
-            renderGantt();
+            if (splitterEl) splitterEl.style.display = 'none';
+            const emptyHint = document.getElementById('ds-gantt-empty-hint');
+            if (emptyHint) emptyHint.style.display = 'none';
+            if (!_sourceS.rows.length) {
+                S.rows = G.rows;
+                S.totalRows = G.totalRows;
+                S.allCols = G.cols.slice();
+                S.deps = G.deps.slice();
+            }
+            if (!preserveView) {
+                WS.view = 'gantt';
+            }
+            syncToolbarButtons();
+            applyViewExclusive();
+            if (WS.view === 'gantt') {
+                ganttSection.style.display = 'flex';
+                ganttSection.style.flex = '1';
+                ganttSection.style.height = '100%';
+                const gScroll = document.getElementById('ds-gantt-scroll');
+                const gHdr = document.getElementById('ds-gantt-hdr');
+                if (gScroll) gScroll.style.display = '';
+                if (gHdr) {
+                    gHdr.style.display = 'flex';
+                    gHdr.style.position = 'sticky';
+                }
+                renderGantt();
+            } else {
+                ganttSection.style.display = 'none';
+                const gScroll = document.getElementById('ds-gantt-scroll');
+                const gHdr = document.getElementById('ds-gantt-hdr');
+                if (gScroll) gScroll.style.display = 'none';
+                if (gHdr) {
+                    gHdr.style.display = 'none';
+                    gHdr.style.position = 'static';
+                }
+                renderScheduleTaskTable();
+            }
             updateGanttModeBar();
+            setGanttLoading(false);
+            rebuildColumnsMenu(G.cols);
         } catch (e) {
             console.warn('[DS] all-tasks-preview failed:', e.message);
+            setGanttLoading(false);
+            setGanttError('Failed to load schedule tasks: ' + e.message);
         }
     }
 
@@ -992,14 +1964,23 @@
             if (url) loadSourcePreview(url, name);
         });
 
-        /* Auto-load most recent source on tab open */
+        /* Auto-load source preview only when empty; existing schedules use Gantt. */
         const autoUrl  = sourcesRow.dataset.autoloadUrl;
         const autoName = sourcesRow.dataset.autoloadName || 'source';
-        if (autoUrl) loadSourcePreview(autoUrl, autoName);
+        if (autoUrl && _TASK_COUNT === 0) loadSourcePreview(autoUrl, autoName);
     }
 
     /* Show all-project tasks in Gantt on page open (independent of source auto-load) */
-    if (_TASK_COUNT > 0) loadAllTasksGantt();
+    setSideTab('info');
+    WS.view = 'gantt';
+    syncToolbarButtons();
+    applyViewExclusive();
+    if (_TASK_COUNT > 0) {
+        setGanttLoading(true);
+        loadAllTasksGantt({ preserveView: true });
+    } else {
+        setGanttLoading(false);
+    }
 
     /* ── Column width helpers ────────────────────────────────────────── */
     function getColWidth(col) {
@@ -1208,12 +2189,14 @@
             } catch (e) {
                 console.error('[CASTOR DEBUG] mapping step failed:', e.message, e.stack);
                 _importReset();
+                resultEl.style.display = '';
                 resultEl.innerHTML = `<div class="alert alert-danger small mt-2">Import failed — ${esc(e.message)} — check console for details.</div>`;
                 return;
             }
             if (!r1.ok) {
                 _importReset();
                 resultEl.innerHTML = await r1.text();
+            showImportResultArea();
                 htmx.process(resultEl);
                 summaryLeft.insertAdjacentHTML('beforeend',
                     ` <span class="text-danger" style="font-size:.76rem;">⚠ ${replace ? 'Replace' : 'Import'} failed (${r1.status})</span>`
@@ -1234,7 +2217,8 @@
         } catch (e) {
             console.error('[CASTOR DEBUG]', e.message, e.stack);
             _importReset();
-            resultEl.innerHTML = `<div class="alert alert-danger small mt-2">Import failed — ${esc(e.message)} — check console for details.</div>`;
+            resultEl.style.display = '';
+                resultEl.innerHTML = `<div class="alert alert-danger small mt-2">Import failed — ${esc(e.message)} — check console for details.</div>`;
             return;
         }
 
@@ -1253,6 +2237,7 @@
         if (!r.ok) {
             _importReset();
             resultEl.innerHTML = html;
+            showImportResultArea();
             htmx.process(resultEl);
             summaryLeft.insertAdjacentHTML('beforeend',
                 ` <span class="text-danger" style="font-size:.76rem;">⚠ ${replace ? 'Replace' : 'Import'} failed (${r.status})</span>`
@@ -1479,7 +2464,8 @@
         _aiEditBtn.onclick = () => {
             S.mapping = inverted;
             _aiPanelReset();
-            tableSection.style.display = '';
+            setWorkspaceView('table');
+            if (tableSection) tableSection.style.display = '';
             renderTable();
             renderSummary();
         };
@@ -1499,7 +2485,8 @@
     /* ── Reset button ───────────────────────────────────────────────── */
     resetBtn.addEventListener('click', function () {
         _aiPanelReset();
-        tableSection.style.display = '';
+        setWorkspaceView('table');
+        if (tableSection) tableSection.style.display = '';
         S.mapping = {};
         for (const [field, col] of Object.entries(S.suggested)) {
             S.mapping[col] = field;
@@ -1860,9 +2847,11 @@
     function buildGanttShell() {
         if (_ganttBuilt) return;
         _ganttBuilt = true;
-        /* Set up flex-column layout — height controlled by splitter */
+        /* Fill main workspace — splitter demoted in Schedule Workspace V1 */
         ganttSection.style.flexDirection = 'column';
-        if (!ganttSection.style.height) ganttSection.style.height = GANTT_DEF_H + 'px';
+        ganttSection.style.flex = '1';
+        ganttSection.style.height = '100%';
+        ganttSection.style.minHeight = '180px';
         ganttSection.innerHTML = `
             <div id="ds-gantt-mode-bar" class="d-flex align-items-center gap-2 flex-wrap mb-1" style="flex-shrink:0; min-height:24px;">
                 <span id="ds-gantt-mode-label" class="small" style="font-size:.75rem;"></span>
@@ -2180,7 +3169,15 @@
             taskIdx++;
 
             const rowEl = document.createElement('div');
-            rowEl.style.cssText = `display:flex; height:${ROW_H}px; background:${bg}; min-width:${rowMinW}px;`;
+            rowEl.style.cssText = `display:flex; height:${ROW_H}px; background:${bg}; min-width:${rowMinW}px; cursor:pointer;`;
+            rowEl.classList.add('ds-gantt-task-row');
+            rowEl.addEventListener('click', function () {
+                document.querySelectorAll('.ds-gantt-row-selected').forEach(function (el) {
+                    el.classList.remove('ds-gantt-row-selected');
+                });
+                rowEl.classList.add('ds-gantt-row-selected');
+                selectWorkspaceTask(t);
+            });
 
             const nameDiv = document.createElement('div');
             nameDiv.className = 'ds-gantt-name-cell';

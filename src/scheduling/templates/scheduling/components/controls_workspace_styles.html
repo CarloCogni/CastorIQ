@@ -1,0 +1,87 @@
+<!-- scheduling/components/controls_workspace_styles.html — Controls Workspace V1 -->
+{% include "takeoff/components/model_inventory_grid_styles.html" %}
+<style>
+  .cw-ws {
+    min-height: calc(100vh - 9rem);
+    border: 1px solid var(--mi-border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .cw-ws .mi-shell {
+    min-height: 22rem;
+  }
+  .cw-chip {
+    font-size: 0.6rem;
+    font-weight: 600;
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+    border: 1px solid var(--mi-border);
+    color: var(--mi-muted);
+    background: transparent;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .cw-chip.is-ok {
+    color: var(--mi-ok);
+    border-color: #2f4f3f;
+  }
+  .cw-chip.is-warn {
+    color: var(--mi-warn);
+    border-color: #4a4030;
+  }
+  .cw-details {
+    margin-top: 0.75rem;
+    border: 1px solid var(--mi-border, #2a3444);
+    border-radius: 4px;
+    background: var(--mi-surface-2, #151b24);
+    color: var(--mi-text, #d6dce6);
+  }
+  .cw-details > summary {
+    cursor: pointer;
+    padding: 0.45rem 0.75rem;
+    font-size: 0.72rem;
+    color: var(--mi-muted, #8b95a5);
+    list-style: none;
+  }
+  .cw-details > summary::-webkit-details-marker { display: none; }
+  .cw-details[open] > summary {
+    border-bottom: 1px solid var(--mi-border, #2a3444);
+  }
+  .cw-details-body {
+    padding: 0.75rem;
+  }
+  .cw-details .exec-section {
+    margin-bottom: 1rem;
+  }
+  .cw-details .exec-kpi-value {
+    font-size: 1rem;
+    font-weight: 600;
+  }
+  .cw-filter-compact .form-label {
+    font-size: 0.62rem;
+    color: var(--mi-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .mi-grid tbody tr.cw-row {
+    cursor: pointer;
+  }
+  .mi-grid tbody tr.cw-row.is-selected {
+    background: var(--mi-row-sel);
+    box-shadow: inset 2px 0 0 var(--mi-accent);
+  }
+  .mi-status-pill {
+    font-size: 0.62rem;
+    font-weight: 600;
+    padding: 0.08rem 0.35rem;
+    border: 1px solid var(--mi-border);
+    border-radius: 3px;
+    color: var(--mi-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+  }
+  .mi-status-pill.is-ready { color: var(--mi-ok); border-color: #2f4f3f; }
+  .mi-status-pill.is-warn { color: var(--mi-warn); border-color: #4a4030; }
+  .mi-status-pill.is-muted { color: var(--mi-muted); }
+</style>

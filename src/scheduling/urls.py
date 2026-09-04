@@ -5,13 +5,24 @@ intelligence, writeback, and manual element linking.
 
 from django.urls import path
 
-from . import views
+from . import views, views_executive_controls
 
 app_name = "scheduling"
 
 urlpatterns = [
     # Main entry point
     path("projects/<uuid:pk>/", views.ScheduleView.as_view(), name="schedule"),
+    # Controls — readiness / schedule performance (not company-cost EVM)
+    path(
+        "projects/<uuid:pk>/executive-controls/",
+        views_executive_controls.ExecutiveControlsOverviewPageView.as_view(),
+        name="executive_controls",
+    ),
+    path(
+        "projects/<uuid:pk>/executive-controls/evm/",
+        views_executive_controls.ExecutiveControlsEVMPageView.as_view(),
+        name="executive_controls_evm",
+    ),
     # Data sources / parsers
     path(
         "projects/<uuid:pk>/preview/",

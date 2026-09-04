@@ -1,0 +1,71 @@
+{% extends "core/base.html" %}
+<!-- scheduling/executive_controls_evm_page.html — Schedule Performance & Readiness -->
+
+{% block title %}Schedule Performance &amp; Readiness — {{ project.name }} — Castor{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3 px-3 px-lg-4 evm-analytics-scope">
+    <nav aria-label="breadcrumb" class="mb-2">
+        <ol class="breadcrumb small mb-0">
+            <li class="breadcrumb-item"><a href="{% url 'projects:detail' project.pk %}">{{ project.name }}</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'scheduling:executive_controls' project.pk %}">Controls</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Schedule Performance &amp; Readiness</li>
+        </ol>
+    </nav>
+
+    <div class="d-flex align-items-center gap-2 mb-3">
+        <h1 class="h5 fw-semibold mb-0" data-testid="exec-evm-page-title">Schedule Performance &amp; Readiness</h1>
+        <span class="badge bg-primary-subtle text-primary-emphasis border" style="font-size:0.7rem;" data-testid="exec-evm-decision-badge">Schedule / progress sourced</span>
+        <button type="button"
+                class="help-pill"
+                data-bs-toggle="modal"
+                data-bs-target="#executiveControlsHelpModal"
+                title="How Schedule Performance & Readiness works"
+                aria-label="How Schedule Performance & Readiness works">
+            <i class="bi bi-question-circle"></i>
+        </button>
+    </div>
+
+    {% include "scheduling/components/executive_controls_subnav.html" with exec_subtab="evm" capability_profile=capability_profile %}
+
+    <p class="small text-secondary mb-2" data-testid="exec-evm-source-caveat">
+        Schedule and progress indicators only — not financial Cost EVM.
+        SPI is a planned-vs-earned schedule performance signal, not monetary EVM.
+    </p>
+    <p class="small text-secondary mb-3" data-testid="exec-company-cost-unavailable">
+        {{ company_cost_unavailable }}
+        {{ company_cost_note }}
+        ResourceAssignment.actual_cost is not company spend.
+    </p>
+
+    <div class="row g-3 mb-3">
+        <div class="col-md-4">
+            <div class="border rounded p-3 h-100" data-testid="exec-spi-card">
+                <div class="small text-secondary mb-1">SPI (Schedule Performance Indicator)</div>
+                {% if spi_available %}
+                <div class="fs-4 fw-semibold" data-testid="exec-spi-value">{{ spi_value|floatformat:2 }}</div>
+                <div class="small text-secondary mt-1">Schedule / progress sourced — not company cost CPI.</div>
+                {% else %}
+                <div class="fs-5 text-secondary" data-testid="exec-spi-unavailable">Unavailable</div>
+                <div class="small text-secondary mt-1">Needs schedule dates and progress updates.</div>
+                {% endif %}
+            </div>
+        </div>
+        <div class="col-md-8">
+            <div class="border rounded p-3 h-100 border-dashed" data-testid="exec-company-cost-kpis-unavailable">
+                <div class="small text-secondary mb-2">Company-cost EVM metrics</div>
+                <p class="mb-2 small">
+                    CPI, AC, EAC, ETC, VAC, TCPI, and cost variance are
+                    <strong>Unavailable</strong> — not zero.
+                </p>
+                <p class="mb-0 small text-secondary">
+                    Castor has no ERP / invoice / QS / payroll / procurement company cost source.
+                    P6 assignment actual_cost is schedule assignment data only.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    {% include "scheduling/components/executive_controls_help_modal.html" %}
+</div>
+{% endblock %}

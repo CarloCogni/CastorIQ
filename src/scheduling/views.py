@@ -12,8 +12,9 @@ from datetime import date
 
 from django.db.models import Count, Q
 from django.http import HttpResponse, JsonResponse
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
+from django.urls import reverse
 from django.views import View
 from django.views.generic import TemplateView
 
@@ -56,6 +57,12 @@ class ScheduleView(ProjectTabMixin, TemplateView):
     """Main TimeLiner panel — entry point for all scheduling sub-tabs."""
 
     active_tab = "castor"
+
+    def get(self, request, *args: object, **kwargs: object):
+        """Normalize dead ``?tab=review`` deep-link to the real review route."""
+        if request.GET.get("tab") == "review":
+            return redirect(reverse("scheduling:review", kwargs={"pk": kwargs["pk"]}))
+        return super().get(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs: object) -> dict:
         ctx = super().get_context_data(**kwargs)

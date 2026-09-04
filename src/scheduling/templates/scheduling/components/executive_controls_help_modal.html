@@ -1,0 +1,62 @@
+<!-- scheduling/components/executive_controls_help_modal.html -->
+<div class="modal fade" id="executiveControlsHelpModal" tabindex="-1" aria-labelledby="executiveControlsHelpLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+            <div class="modal-header border-bottom px-4 py-3">
+                <h2 class="modal-title fw-semibold fs-6 mb-0" id="executiveControlsHelpLabel">
+                    <i class="bi bi-sliders me-2 text-primary"></i>
+                    How Controls works
+                </h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body px-4 py-4 small">
+                <p class="fw-semibold fs-7 mb-2"><i class="bi bi-info-circle me-1 text-primary"></i> What is it?</p>
+                <p class="text-secondary mb-4">
+                    Controls is Castor’s schedule / model / quantity readiness workspace.
+                    It helps you see schedule performance readiness, baseline and progress availability,
+                    link coverage, model readiness, and quantity readiness — not a company cost dashboard.
+                </p>
+
+                <p class="fw-semibold fs-7 mb-2"><i class="bi bi-layout-sidebar me-1 text-primary"></i> Workspace layout</p>
+                <p class="text-secondary mb-4">
+                    Use the command bar and stats strip for a quick readiness read,
+                    the left navigator to jump categories, the center readiness grid for status and next actions,
+                    and the right inspector for the selected control.
+                </p>
+
+                <p class="fw-semibold fs-7 mb-2"><i class="bi bi-graph-up me-1 text-primary"></i> Schedule Performance Indicator</p>
+                <p class="text-secondary mb-4">
+                    When available, Schedule Performance Indicator (SPI) and planned / earned schedule progress
+                    come from schedule and progress inputs. Open Schedule Performance for the detail view.
+                    This is not financial Cost EVM.
+                </p>
+
+                <p class="fw-semibold fs-7 mb-2"><i class="bi bi-link-45deg me-1 text-primary"></i> Link Coverage / 4D readiness</p>
+                <p class="text-secondary mb-4">
+                    Link Coverage counts Applied / Confirmed activity–model links.
+                    Task coverage and entity coverage use different denominators and are not contradictory.
+                </p>
+
+                <p class="fw-semibold fs-7 mb-2"><i class="bi bi-box-seam me-1 text-primary"></i> Model &amp; Quantities</p>
+                <p class="text-secondary mb-4">
+                    Model readiness reflects the indexed IFC inventory.
+                    Quantity readiness points to IFC model quantities — not commercial BOQ.
+                </p>
+
+                <p class="fw-semibold fs-7 mb-2"><i class="bi bi-currency-dollar me-1 text-primary"></i> Company cost source</p>
+                <p class="text-secondary mb-4">
+                    Company-cost metrics (CPI, Actual Cost, EAC, ETC, VAC, TCPI) stay unavailable.
+                    Castor has no ERP, invoice, QS, payroll, procurement, or company cost ledger integration.
+                    ResourceAssignment.actual_cost is schedule assignment data only — not company spend.
+                </p>
+
+                <p class="fw-semibold fs-7 mb-2"><i class="bi bi-exclamation-circle me-1 text-primary"></i> Caveats</p>
+                <div class="d-flex flex-column gap-1 text-secondary">
+                    <span><i class="bi bi-dot"></i>Baseline fields from import are not a contractual baseline claim.</span>
+                    <span><i class="bi bi-dot"></i>Delay / critical indicators are analytical, not contractual claims.</span>
+                    <span><i class="bi bi-dot"></i>Detail sections below the workspace remain available for deeper review.</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
