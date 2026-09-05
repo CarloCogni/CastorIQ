@@ -1,0 +1,73 @@
+<!-- takeoff/components/link_analysis_help_modal.html -->
+<div class="modal fade" id="linkAnalysisHelpModal" tabindex="-1"
+     aria-labelledby="linkAnalysisHelpLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+      <div class="modal-header border-bottom px-4 py-3"
+           style="border-color: var(--bs-border-color) !important;">
+        <h5 class="modal-title fw-semibold fs-6 mb-0" id="linkAnalysisHelpLabel">
+          <i class="bi bi-diagram-3 me-2 text-primary"></i>
+          How 4D Link Analysis works
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body px-4 py-4">
+        <p class="fw-semibold fs-7 mb-2">What is it?</p>
+        <p class="text-secondary fs-7 mb-4">
+          4D Link Analysis is a read-only workspace for schedule task ↔ model element links.
+          It focuses on 4D linking coverage, attention signals, and Time View readiness.
+          Model quantity readiness belongs under Quantities as a separate surface —
+          not on this screen.
+        </p>
+
+        <p class="fw-semibold fs-7 mb-2">Lifecycle</p>
+        <p class="text-secondary fs-7 mb-4">
+          After IFC indexing and link apply under Links, this page reads
+          applied/confirmed bindings and the IFC index. Reload the page to see
+          updated aggregates — this screen does not apply, approve, or remove links.
+        </p>
+
+        <p class="fw-semibold fs-7 mb-2">How to use it</p>
+        <ul class="text-secondary fs-7 mb-4">
+          <li>Schedule Link Coverage — how much of the schedule connects to model elements.</li>
+          <li>Model Link Coverage — how much of the model is used in current 4D links.</li>
+          <li>Actionable Link Review — Pending review / Broad / Partial only (not unlinked/non-model).</li>
+          <li>Time View Readiness — linked tasks that have schedule dates for playback review.</li>
+          <li>Review Task / Element / Grouped rows; expand a task for linked element previews.</li>
+          <li>Open Links or Time View for editing or playback — not from destructive actions here.</li>
+        </ul>
+
+        <p class="fw-semibold fs-7 mb-2" id="attention-help-heading">Attention / Actionable Link Review</p>
+        <p class="text-secondary fs-7 mb-2">
+          Attention is derived from link-analysis counts only.
+          Actionable Link Review counts tasks that need follow-up (excludes Unlinked/non-model):
+        </p>
+        <ul class="text-secondary fs-7 mb-2">
+          <li><strong>Pending review:</strong> 0 confirmed links and pending review links exist</li>
+          <li><strong>Broad link:</strong> confirmed linked elements ≥ 100</li>
+          <li><strong>Partial:</strong> confirmed links exist and pending review links also exist</li>
+        </ul>
+        <p class="text-secondary fs-7 mb-4">
+          Unlinked/non-model tasks are shown for context in Schedule Coverage and Task Review Breakdown,
+          but are excluded from Actionable Link Review.
+          This is not an issue tracker risk model, schedule criticality, or QA/QC status —
+          only a task-model link attention signal.
+        </p>
+
+        <p class="fw-semibold fs-7 mb-2">Who can do what</p>
+        <p class="text-secondary fs-7 mb-4">
+          BIM coordinators and planners use this page read-only. Link apply/remove stays on Links
+          with confirmation. Playback stays on Time View.
+        </p>
+
+        <p class="fw-semibold fs-7 mb-2">Caveats</p>
+        <ul class="text-secondary fs-7 mb-0">
+          <li>Schedule link coverage and model link coverage use different denominators.</li>
+          <li>Only applied/confirmed links (<code>needs_review=False</code>) count as linked.</li>
+          <li>Time View readiness requires confirmed links plus both start and finish dates.</li>
+          <li>This screen is 4D link analysis only — not a takeoff workspace.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>

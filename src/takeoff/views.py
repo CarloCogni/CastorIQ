@@ -11,23 +11,28 @@ import io
 import logging
 
 from django.http import HttpResponse, JsonResponse
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils.decorators import method_decorator
 from django.views import View
+from django.views.decorators.http import require_POST
 from django.views.generic import TemplateView
 
-from core.http import toast_response
+from core.http import toast_response, trigger_toast
 from core.mixins import ProjectAccessMixin, ProjectTabMixin
 
 from .models import QTOCache
+from .services.link_analysis import LinkAnalysisService
 from .services.model_inventory import ModelInventoryService
 from .services.model_quantities import ModelQuantitiesService
 
 logger = logging.getLogger(__name__)
 
+_LINK_ANALYSIS_SESSION_KEY = "link_analysis_last_diagnostic_run"
+
 
 class ModelInventoryView(ProjectTabMixin, TemplateView):
-    """Model Readiness — visual 4D/5D readiness dashboard with inventory evidence."""
+    """4D Link Analysis — schedule task ↔ model element link diagnostics (Model hub)."""
 
     active_tab = "castor"
 
@@ -35,8 +40,24 @@ class ModelInventoryView(ProjectTabMixin, TemplateView):
         ctx = super().get_context_data(**kwargs)
         ctx["castor_subtab"] = "model_inventory"
         project = ctx["project"]
-        inventory = ModelInventoryService(project).build()
-        ctx["inventory"] = inventory
+        last_run = self.request.session.get(_LINK_ANALYSIS_SESSION_KEY)
+        try:
+            task_page = int(self.request.GET.get("task_page") or 1)
+        except (TypeError, ValueError):
+            task_page = 1
+        try:
+            element_page = int(self.request.GET.get("element_page") or 1)
+        except (TypeError, ValueError):
+            element_page = 1
+        analysis = LinkAnalysisService(project).build(
+            task_page=task_page,
+            element_page=element_page,
+            search=self.request.GET.get("q") or "",
+            last_diagnostic_run=last_run,
+        )
+        ctx["analysis"] = analysis
+        # Legacy alias kept for any template that still expects inventory.
+        ctx["inventory"] = analysis
         ctx["viewer_url"] = reverse("ifc_viewer:viewer", kwargs={"pk": project.pk})
         schedule_url = reverse("scheduling:schedule", kwargs={"pk": project.pk})
         ctx["apply_url"] = f"{schedule_url}?tab=fourD_link"
@@ -44,7 +65,27 @@ class ModelInventoryView(ProjectTabMixin, TemplateView):
         ctx["schedule_url"] = f"{schedule_url}?tab=data_sources"
         ctx["quantities_url"] = reverse("takeoff:qto", kwargs={"pk": project.pk})
         ctx["entities_url"] = reverse("takeoff:model_inventory_entities", kwargs={"pk": project.pk})
+        ctx["refresh_url"] = reverse("takeoff:link_analysis_refresh", kwargs={"pk": project.pk})
         return ctx
+
+
+@method_decorator(require_POST, name="dispatch")
+class LinkAnalysisRefreshView(ProjectAccessMixin, View):
+    """Refresh analysis aggregates only — no apply/approve/unlink mutations."""
+
+    def post(self, request, pk):  # type: ignore[override]
+        project = self.get_project()
+        result = LinkAnalysisService(project).run_diagnostics()
+        request.session[_LINK_ANALYSIS_SESSION_KEY] = result["last_run"]
+        response = redirect("takeoff:model_inventory", pk=project.pk)
+        kpis = result.get("kpis") or {}
+        checked = int(kpis.get("tasks_total") or result.get("tasks_total") or 0)
+        linked = int(kpis.get("linked_tasks") or 0)
+        return trigger_toast(
+            response,
+            f"Analysis refreshed — {checked} tasks checked · {linked} linked",
+            level="success",
+        )
 
 
 class ModelInventoryEntitiesView(ProjectTabMixin, TemplateView):

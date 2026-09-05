@@ -14,6 +14,11 @@ urlpatterns = [
         name="model_inventory",
     ),
     path(
+        "projects/<uuid:pk>/inventory/refresh/",
+        views.LinkAnalysisRefreshView.as_view(),
+        name="link_analysis_refresh",
+    ),
+    path(
         "projects/<uuid:pk>/inventory/entities/",
         views.ModelInventoryEntitiesView.as_view(),
         name="model_inventory_entities",

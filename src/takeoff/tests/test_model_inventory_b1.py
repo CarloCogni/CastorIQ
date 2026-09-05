@@ -94,29 +94,15 @@ def test_inventory_empty_no_ifc(client):
     html = response.content.decode()
 
     assert response.status_code == 200
-    assert 'data-testid="model-inventory-empty-no-ifc"' in html
+    assert 'data-testid="link-analysis-empty-no-ifc"' in html
     assert "No IFC model indexed yet" in html
-    # Allow explicit negation ("not … QS valuation") — forbid overclaim heroes.
     assert "BOQ control" not in html
     assert "Commercial 5D" not in html
     assert "Company actual cost" not in html
-    assert "Procurement ledger" not in html
-    assert "Invoice actuals" not in html
-    cleaned = (
-        html.replace("not BOQ, QS valuation, ERP, or company actual cost", "")
-        .replace("Not QS valuation", "")
-        .replace("Not ERP", "")
-        .replace("Not company actual cost", "")
-        .replace("Not BOQ", "")
-        .replace("Not commercial 5D", "")
-    )
-    assert "QS valuation" not in cleaned
-    assert "Commercial 5D" not in cleaned
-    assert "Company actual cost" not in cleaned
 
 
 @pytest.mark.django_db
-def test_inventory_page_renders_class_table_and_caveats(client):
+def test_inventory_page_renders_link_analysis(client):
     project = ProjectFactory()
     ifc = IFCFileFactory(project=project, status="completed")
     IFCEntityFactory(
@@ -131,20 +117,16 @@ def test_inventory_page_renders_class_table_and_caveats(client):
     html = response.content.decode()
 
     assert response.status_code == 200
-    assert 'data-testid="model-inventory-page"' in html
-    assert 'data-testid="model-inventory-by-class"' in html
-    assert 'data-testid="model-inventory-link-coverage"' in html
-    assert "IfcColumn" in html
-    assert "Link coverage uses applied / confirmed schedule-model links only" in html
-    assert 'data-testid="model-inventory-not-boq-badge"' in html
-    assert "Not BOQ" in html
-    assert "company cashflow" not in html.lower().replace("not company", "")
-    assert "Procurement ledger" not in html
+    assert 'data-testid="link-analysis-page"' in html
+    assert "4D Link Analysis" in html
+    assert "IfcColumn" in html or "Linked Elements by IFC Class" in html
+    assert "NetVolume" not in html
+    assert "Unlink All" not in html
     assert len(response.content) < 500_000
 
 
 @pytest.mark.django_db
-def test_inventory_no_trusted_links_empty_state(client):
+def test_inventory_no_trusted_links_shows_zero_coverage(client):
     project = ProjectFactory()
     ifc = IFCFileFactory(project=project, status="completed")
     IFCEntityFactory(ifc_file=ifc, ifc_type="IfcWall", global_id="GID-U1", properties={})
@@ -154,8 +136,10 @@ def test_inventory_no_trusted_links_empty_state(client):
         reverse("takeoff:model_inventory", kwargs={"pk": project.pk})
     ).content.decode()
 
-    assert 'data-testid="mi-no-trusted-links"' in html
-    assert "No applied / confirmed schedule-model links yet" in html
+    assert 'data-testid="la-kpi-model-coverage"' in html
+    assert "0 / 1" in html or ">0<" in html
+    assert "Model Link Coverage" in html
+    assert "Unlinked Model Elements" not in html
 
 
 @pytest.mark.django_db

@@ -117,7 +117,7 @@ def test_by_level_summary_linked_unlinked_and_unassigned():
 
 @pytest.mark.django_db
 def test_missing_model_data_and_classification_unavailable(client):
-    """Missing level/Qto counts render; Classification breakdown is Unavailable."""
+    """Link Analysis page renders without readiness QTO chrome; GIDs stay off first paint."""
     project, *_ = _project_with_levels()
     client.force_login(project.owner)
 
@@ -125,20 +125,11 @@ def test_missing_model_data_and_classification_unavailable(client):
     html = response.content.decode()
 
     assert response.status_code == 200
-    assert 'data-testid="model-inventory-by-level"' in html
-    assert 'data-testid="mi-level-row"' in html
-    assert "Roof 01" in html
-    assert "Unassigned" in html
-    assert 'data-testid="model-inventory-missing-data"' in html
-    assert 'data-testid="mi-missing-level"' in html
-    assert 'data-testid="mi-missing-qto"' in html
-    assert 'data-testid="mi-classification-unavailable"' in html
-    assert "Unavailable" in html
-    assert "Classification breakdown" in html
-    # First paint: no entity GlobalIds / property dumps
-    assert "GID-W1" not in html
+    assert 'data-testid="link-analysis-page"' in html
+    assert "4D Link Analysis" in html
+    # Property dumps stay off; element IDs may appear inside expandable link detail.
     assert "Qto_WallBaseQuantities" not in html
-    assert "properties" not in html.lower() or "Has IFC Qto" in html
+    assert "NetVolume" not in html
 
 
 @pytest.mark.django_db
@@ -244,19 +235,18 @@ def test_entity_list_payload_excludes_properties_and_gids(client):
 
 @pytest.mark.django_db
 def test_model_page_wording_honesty(client):
-    """No BOQ/ERP/commercial 5D/approval/governance/authority/trusted labels."""
+    """No BOQ/ERP/commercial 5D/approval/governance/authority labels on Link Analysis."""
     project, *_ = _project_with_levels()
     client.force_login(project.owner)
     html = client.get(
         reverse("takeoff:model_inventory", kwargs={"pk": project.pk})
     ).content.decode()
 
-    assert "IFC Elements" in html
-    assert "Missing Model Data" in html
-    assert "By Level / Storey" in html
-    assert "Has IFC Qto" in html
-    assert "Applied/Confirmed Links" in html or "Applied / Confirmed" in html
-    assert "Unlinked Model Elements" in html
+    assert "Model Link Coverage" in html
+    assert "Schedule Link Coverage" in html
+    assert "Link Review Table" in html
+    assert "Unlinked Model Elements" not in html
+    assert "Task Link Coverage" not in html
 
     forbidden_positive = [
         "QS valuation",
@@ -268,35 +258,28 @@ def test_model_page_wording_honesty(client):
         "approval workflow",
         "governance",
         "authority",
+        "BOQ",
+        "QTO",
+        "NetVolume",
     ]
-    cleaned = (
-        html.replace("not BOQ, QS valuation, ERP, or company actual cost", "")
-        .replace("Not QS valuation", "")
-        .replace("Not ERP", "")
-        .replace("Not company actual cost", "")
-        .replace("Not BOQ", "")
-        .replace("Not commercial 5D", "")
-        .replace("Not commercial 5D / cost control", "")
-    )
     for phrase in forbidden_positive:
-        assert phrase not in cleaned, phrase
-    # No user-facing "trusted" label (B1 data-testid leftovers are ok).
+        assert phrase not in html, phrase
     assert "Trusted link" not in html
-    assert "trusted links" not in cleaned.lower()
     assert ">Trusted<" not in html
-    assert "BOQ control" not in html
+    assert "Unlink All" not in html
 
 
 @pytest.mark.django_db
 def test_first_paint_has_no_entity_rows(client):
-    """Inventory first paint stays summary-first; entity rows load via HTMX."""
+    """Link Analysis first paint uses review table; no inventory HTMX entity block."""
     project, *_ = _project_with_levels()
     client.force_login(project.owner)
     html = client.get(
         reverse("takeoff:model_inventory", kwargs={"pk": project.pk})
     ).content.decode()
 
-    assert 'data-testid="model-inventory-entities"' in html
-    assert 'hx-get="' in html and "inventory/entities/" in html
+    assert 'data-testid="link-analysis-table"' in html
+    assert 'data-testid="model-inventory-entities"' not in html
+    assert "inventory/entities/" not in html
     assert 'data-testid="mi-entity-row"' not in html
     assert len(html.encode("utf-8")) < 500_000
