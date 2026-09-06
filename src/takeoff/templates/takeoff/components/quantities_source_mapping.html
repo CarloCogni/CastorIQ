@@ -1,8 +1,8 @@
-<!-- takeoff/components/quantities_source_mapping.html — Source Mapping (Slice 2a) -->
+<!-- takeoff/components/quantities_source_mapping.html — Source Mapping -->
 <section class="qty-builder-section" data-testid="quantities-source-mapping">
   <div class="qty-builder-h">
     <h6 class="mb-0">Source Mapping</h6>
-    <span class="mi-footnote">Where each schema field gets its value</span>
+    <span class="mi-footnote">Session defaults — not fully editable in this slice</span>
   </div>
   <p class="qty-builder-note mb-2">
     Map preparation fields to allowed sources only:
@@ -22,8 +22,8 @@
       <tbody>
         {% for row in qty_prep.source_mappings %}
         <tr data-testid="qty-source-mapping-row">
-          <td>{{ row.field }}</td>
-          <td><span class="mi-chip mi-chip-muted">{{ row.source }}</span></td>
+          <td class="qty-col-primary">{{ row.field }}</td>
+          <td><span class="qty-pill qty-pill-source">{{ row.source }}</span></td>
           <td class="text-secondary">{{ row.detail }}</td>
         </tr>
         {% endfor %}

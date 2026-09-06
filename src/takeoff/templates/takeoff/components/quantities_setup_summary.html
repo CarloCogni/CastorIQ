@@ -1,0 +1,36 @@
+<!-- takeoff/components/quantities_setup_summary.html — compact setup overview -->
+<section class="qty-builder-section qty-setup-summary" data-testid="quantities-setup-summary">
+  <div class="qty-builder-h">
+    <h6 class="mb-0">Preparation Setup Summary</h6>
+    <span class="mi-footnote">Counts only — session defaults</span>
+  </div>
+  <p class="qty-builder-note mb-2">
+    Quick overview of the current preparation configuration before the detailed tables.
+  </p>
+  <div class="qty-setup-grid" data-testid="qty-setup-summary-grid">
+    <div class="qty-setup-card" data-testid="qty-setup-schema-fields">
+      <span class="k">Schema fields</span>
+      <span class="v">{{ qty_prep.setup_summary.schema_fields }}</span>
+    </div>
+    <div class="qty-setup-card" data-testid="qty-setup-required-fields">
+      <span class="k">Required fields</span>
+      <span class="v">{{ qty_prep.setup_summary.required_fields }}</span>
+    </div>
+    <div class="qty-setup-card" data-testid="qty-setup-measurement-rules">
+      <span class="k">User-defined measurement rules</span>
+      <span class="v">{{ qty_prep.setup_summary.measurement_rules }}</span>
+    </div>
+    <div class="qty-setup-card" data-testid="qty-setup-generated-rows">
+      <span class="k">Generated rows</span>
+      <span class="v">{{ qty_prep.setup_summary.generated_rows }}</span>
+    </div>
+    <div class="qty-setup-card" data-testid="qty-setup-unresolved-basis">
+      <span class="k">Rows with unresolved basis</span>
+      <span class="v">{{ qty_prep.setup_summary.rows_with_unresolved_basis }}</span>
+    </div>
+    <div class="qty-setup-card" data-testid="qty-setup-eligible-handoff">
+      <span class="k">Rows eligible for Modify handoff</span>
+      <span class="v">{{ qty_prep.setup_summary.rows_eligible_for_modify_handoff }}</span>
+    </div>
+  </div>
+</section>

@@ -69,6 +69,8 @@ def test_quantities_workspace_v1_layout_markers(client):
     assert "Open IFC Elements" in html
 
     # Slice 2a
+    assert 'data-testid="quantities-setup-summary"' in html
+    assert "Preparation Setup Summary" in html
     assert 'data-testid="quantities-schema-builder"' in html
     assert "Schema Builder" in html
     assert 'data-testid="quantities-source-mapping"' in html
@@ -80,6 +82,12 @@ def test_quantities_workspace_v1_layout_markers(client):
     assert "Generated Preparation Table" not in html
     assert 'data-testid="quantities-unresolved-register"' in html
     assert "Unresolved Data Register" in html
+    assert "Rows eligible for Modify handoff" in html
+    assert "Rows ready for Modify handoff" not in html
+    assert "Rows not eligible for handoff" in html
+    assert "Rows not ready for handoff" not in html
+    assert 'data-testid="qty-select-basis-IfcWall"' in html
+    assert "Select basis" in html
     assert 'data-testid="quantities-modify-handoff"' in html
     assert 'data-testid="qty-send-unresolved-to-modify"' in html
     assert "Send unresolved rows to Castor Modify" in html
@@ -90,6 +98,8 @@ def test_quantities_workspace_v1_layout_markers(client):
     )
     assert 'data-testid="quantities-model-reference"' in html
     assert "Raw Indexed Quantity Inventory" in html
+    assert 'data-testid="qty-raw-inventory-details"' in html
+    assert 'data-testid="qty-raw-inventory-compact"' in html
 
     # Reference inventory (relocated readiness UI, relabeled)
     assert 'data-testid="quantities-stats-strip"' in html

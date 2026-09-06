@@ -6,6 +6,7 @@
   </div>
   <p class="qty-builder-note mb-2">
     Counts only — not readiness scores. Package / BOQ Mapping is a schema field name; this screen does not generate BOQ.
+    “Eligible” means enough target context for a later Modify handoff — not that the row is complete.
   </p>
   <div class="qty-missing-grid" data-testid="qty-unresolved-register-grid">
     <div class="qty-missing-card" data-testid="qty-reg-missing-basis">
@@ -30,13 +31,13 @@
       <span class="k">Rows missing work package</span>
       <span class="v">{{ qty_prep.unresolved_register.missing_work_package }}</span>
     </div>
-    <div class="qty-missing-card" data-testid="qty-reg-ready-handoff">
-      <span class="k">Rows ready for Modify handoff</span>
-      <span class="v">{{ qty_prep.unresolved_register.ready_for_modify_handoff }}</span>
+    <div class="qty-missing-card" data-testid="qty-reg-eligible-handoff">
+      <span class="k">Rows eligible for Modify handoff</span>
+      <span class="v">{{ qty_prep.unresolved_register.eligible_for_modify_handoff }}</span>
     </div>
-    <div class="qty-missing-card" data-testid="qty-reg-not-ready-handoff">
-      <span class="k">Rows not ready for handoff</span>
-      <span class="v">{{ qty_prep.unresolved_register.not_ready_for_handoff }}</span>
+    <div class="qty-missing-card" data-testid="qty-reg-not-eligible-handoff">
+      <span class="k">Rows not eligible for handoff</span>
+      <span class="v">{{ qty_prep.unresolved_register.not_eligible_for_handoff }}</span>
     </div>
   </div>
 </section>

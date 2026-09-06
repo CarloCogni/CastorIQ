@@ -11,44 +11,77 @@
     {{ qty_prep.prep_helper_note }}
   </p>
   <div class="table-responsive qty-prep-scroll">
-    <table class="table table-sm qty-config-table mb-0" data-testid="qty-prep-table">
+    <table class="table table-sm qty-config-table qty-prep-table mb-0" data-testid="qty-prep-table">
       <thead>
         <tr>
-          <th>Model Group</th>
-          <th>IFC Class</th>
-          <th>Type Name</th>
-          <th>Selected Quantity Source</th>
-          <th>Selected Quantity Basis</th>
+          <th class="qty-col-key">Model Group</th>
+          <th class="qty-col-key">IFC Class</th>
+          <th class="qty-col-key">Type Name</th>
+          <th class="qty-col-key">Selected Quantity Source</th>
+          <th class="qty-col-key">Selected Quantity Basis</th>
           <th>Unit Basis</th>
-          <th class="text-end">Total Quantity</th>
+          <th class="text-end qty-col-key">Total Quantity</th>
           <th>Classification Code</th>
           <th>Package / BOQ Mapping</th>
           <th>Work Package</th>
-          <th>Review Status</th>
-          <th>Handoff Status</th>
+          <th class="qty-col-key">Review Status</th>
+          <th class="qty-col-key">Handoff Status</th>
         </tr>
       </thead>
       <tbody>
         {% for row in qty_prep.prep_rows %}
         <tr data-testid="qty-prep-row"
             data-qty-basis-unresolved="{% if row.basis_unresolved %}1{% else %}0{% endif %}"
-            data-qty-ifc-class="{{ row.ifc_class }}">
-          <td>{{ row.model_group|default:"—" }}</td>
-          <td>{{ row.ifc_class|default:"—" }}</td>
-          <td class="text-truncate" style="max-width:10rem;" title="{{ row.type_name }}">
+            data-qty-ifc-class="{{ row.ifc_class }}"
+            class="{% if row.basis_unresolved %}qty-row-unresolved{% endif %}">
+          <td class="qty-col-primary">{{ row.model_group|default:"—" }}</td>
+          <td class="qty-col-primary">{{ row.ifc_class|default:"—" }}</td>
+          <td class="text-truncate qty-col-type" title="{{ row.type_name }}">
             {% if row.type_name %}{{ row.type_name }}{% else %}—{% endif %}
           </td>
-          <td>{% if row.quantity_source %}{{ row.quantity_source }}{% else %}Unresolved{% endif %}</td>
-          <td>{% if row.quantity_basis %}{{ row.quantity_basis }}{% else %}Unresolved{% endif %}</td>
+          <td>
+            {% if row.quantity_source %}
+            {{ row.quantity_source }}
+            {% else %}
+            <span class="qty-pill qty-pill-unresolved">Unresolved</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if row.quantity_basis %}
+            {{ row.quantity_basis }}
+            {% else %}
+            <span class="qty-pill qty-pill-unresolved">Unresolved</span>
+            {% endif %}
+          </td>
           <td class="text-secondary">{% if row.unit_basis %}{{ row.unit_basis }}{% else %}—{% endif %}</td>
-          <td class="text-end">
-            {% if row.basis_unresolved %}Unresolved{% elif row.total != None and row.total != "" %}{{ row.total }}{% else %}—{% endif %}
+          <td class="text-end qty-col-total">
+            {% if row.basis_unresolved %}
+            <span class="qty-pill qty-pill-unresolved">Unresolved</span>
+            {% elif row.total != None and row.total != "" %}
+            <span class="qty-total-value">{{ row.total }}</span>
+            {% else %}
+            —
+            {% endif %}
           </td>
           <td class="text-secondary">—</td>
           <td class="text-secondary">—</td>
           <td class="text-secondary">—</td>
-          <td>{{ row.review_status }}</td>
-          <td>{{ row.handoff_status }}</td>
+          <td>
+            {% if row.review_status == "Resolved" %}
+            <span class="qty-pill qty-pill-ok">{{ row.review_status }}</span>
+            {% elif "Missing" in row.review_status %}
+            <span class="qty-pill qty-pill-review">{{ row.review_status }}</span>
+            {% else %}
+            <span class="qty-pill qty-pill-muted">{{ row.review_status }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if row.eligible_for_handoff or "Eligible" in row.handoff_status %}
+            <span class="qty-pill qty-pill-eligible">{{ row.handoff_status }}</span>
+            {% else %}
+            <span class="qty-pill qty-pill-muted">{{ row.handoff_status }}</span>
+            {% endif %}
+          </td>
         </tr>
         {% empty %}
         <tr>

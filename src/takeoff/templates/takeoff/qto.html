@@ -1,17 +1,17 @@
-<!-- takeoff/qto.html — Quantities Slice 2a (Quantity Preparation Data Model) -->
+<!-- takeoff/qto.html — Quantities Data Model Builder (Slice 2a/2b + UX polish) -->
 {% include "takeoff/components/quantities_grid_styles.html" %}
 
 <div class="d-flex flex-column h-100 qty-ws qty-builder" id="qto-root"
      data-testid="quantities-page">
 
-  <div class="mi-cmd" data-testid="quantities-workspace-toolbar">
-    <div class="d-flex align-items-baseline gap-2" style="min-width:0;">
-      <h5 data-testid="quantities-workspace-title">
+  <div class="mi-cmd qty-builder-cmd" data-testid="quantities-workspace-toolbar">
+    <div class="qty-builder-title-block" style="min-width:0;">
+      <div class="qty-module-label" data-testid="quantities-workspace-title">
         <i class="bi bi-calculator me-1" style="opacity:.7;"></i>Quantities
-      </h5>
-      <span class="mi-sub d-none d-md-inline" data-testid="quantities-workspace-subtitle">
+      </div>
+      <h5 class="qty-working-title mb-0" data-testid="quantities-workspace-subtitle">
         Build Quantity Preparation Data Model
-      </span>
+      </h5>
     </div>
     <button type="button"
             class="help-pill"
@@ -43,8 +43,7 @@
     </div>
   </div>
 
-  <p class="px-3 pt-2 mb-0 qty-boundary-copy" data-testid="quantities-boundary-copy"
-     style="font-size:0.72rem; color: var(--mi-muted, #9eb0c4);">
+  <p class="px-3 pt-2 mb-0 qty-boundary-copy" data-testid="quantities-boundary-copy">
     Deterministic Quantity Preparation Data Model from indexed IFC.
     Not Ask, not Modify, not BOQ, not cost, not verified QS measurement.
   </p>
@@ -60,6 +59,7 @@
 
   <div class="qty-builder-body">
 
+    {% include "takeoff/components/quantities_setup_summary.html" %}
     {% include "takeoff/components/quantities_column_config.html" %}
     {% include "takeoff/components/quantities_source_mapping.html" %}
     {% include "takeoff/components/quantities_basis_rules.html" %}

@@ -1,12 +1,12 @@
-<!-- takeoff/components/quantities_column_config.html — Schema Builder (Slice 2a) -->
+<!-- takeoff/components/quantities_column_config.html — Schema Builder -->
 <section class="qty-builder-section" data-testid="quantities-schema-builder">
   <div class="qty-builder-h">
     <h6 class="mb-0">Schema Builder</h6>
-    <span class="mi-footnote">Output fields for the preparation data model — session defaults</span>
+    <span class="mi-footnote">Output fields — session defaults (schema only)</span>
   </div>
   <p class="qty-builder-note mb-2">
     Define which fields the Generated Preparation Data Model must carry.
-    This is schema only — not Ask, not Modify, and not BOQ generation.
+    This is schema only — not Ask, not Modify, and not BOQ generation. Not saved in this slice.
   </p>
   <div class="table-responsive">
     <table class="table table-sm qty-config-table mb-0" data-testid="qty-schema-builder-table">
@@ -20,9 +20,17 @@
       <tbody>
         {% for col in qty_prep.schema_fields %}
         <tr data-testid="qty-schema-field-row">
-          <td>{{ col.label }}</td>
-          <td>{{ col.required }}</td>
-          <td><span class="mi-chip mi-chip-muted">{{ col.availability }}</span></td>
+          <td class="qty-col-primary">{{ col.label }}</td>
+          <td>
+            {% if col.required == "Required" %}
+            <span class="qty-pill qty-pill-required">Required</span>
+            {% else %}
+            <span class="qty-pill qty-pill-optional">Optional</span>
+            {% endif %}
+          </td>
+          <td>
+            <span class="qty-pill qty-pill-avail">{{ col.availability }}</span>
+          </td>
         </tr>
         {% endfor %}
       </tbody>

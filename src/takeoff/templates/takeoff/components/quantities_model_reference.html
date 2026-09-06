@@ -1,12 +1,23 @@
 ﻿<!-- takeoff/components/quantities_model_reference.html — Raw Indexed Quantity Inventory (secondary) -->
 <section class="qty-builder-section qty-model-reference" data-testid="quantities-model-reference">
-  <div class="qty-builder-h">
-    <h6 class="mb-0">Raw Indexed Quantity Inventory</h6>
-    <span class="mi-footnote">Secondary reference only</span>
-  </div>
-  <p class="qty-builder-note mb-2" data-testid="qty-raw-inventory-subtitle">
-    Reference only. These are raw indexed IFC quantity values. They do not indicate BOQ, 5D, QS takeoff, or measurement readiness.
-  </p>
+  <details class="qty-raw-inventory-details" data-testid="qty-raw-inventory-details">
+    <summary class="qty-raw-inventory-summary" data-testid="qty-raw-inventory-summary">
+      <div class="qty-builder-h mb-1">
+        <h6 class="mb-0">Raw Indexed Quantity Inventory</h6>
+        <span class="mi-footnote">Secondary reference only · expand for detail</span>
+      </div>
+      <p class="qty-builder-note mb-2" data-testid="qty-raw-inventory-subtitle">
+        Reference only. These are raw indexed IFC quantity values. They do not indicate BOQ, 5D, QS takeoff, or measurement readiness.
+      </p>
+      <div class="qty-raw-compact" data-testid="qty-raw-inventory-compact">
+        <span><strong>{{ quantities.readiness.entities_with_quantity }}</strong> with indexed values</span>
+        <span><strong>{{ quantities.readiness.missing_quantity_count }}</strong> without</span>
+        <span><strong>{{ quantities.readiness.total_entities }}</strong> elements</span>
+        <span><strong>{{ quantity_classes_with_qto }}</strong> classes with indexed values</span>
+      </div>
+    </summary>
+
+  <div class="qty-raw-inventory-body">
   <div class="mi-stats" data-testid="quantities-stats-strip">
     <div class="mi-stat" data-testid="qty-stat-with-qto">
       <span class="mi-stat-k">Elements with indexed quantity values</span>
@@ -490,4 +501,6 @@
       </div>
     </aside>
   </div>
+  </div>
+  </details>
 </section>

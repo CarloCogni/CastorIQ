@@ -18,6 +18,9 @@
         {% endif %}
       </div>
       <p class="qty-insight-body mb-0">{{ card.body }}</p>
+      {% if card.next %}
+      <p class="qty-insight-next mb-0">{{ card.next }}</p>
+      {% endif %}
     </article>
     {% endfor %}
   </div>

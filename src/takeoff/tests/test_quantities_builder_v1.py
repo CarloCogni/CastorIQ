@@ -73,6 +73,9 @@ def test_wall_and_slab_unresolved_by_default():
     rules = {r["model_group"]: r for r in ui["basis_rules"]}
     assert rules["IfcWall"]["quantity_basis"] == "Unresolved"
     assert rules["IfcSlab"]["quantity_basis"] == "Unresolved"
+    assert rules["IfcWall"]["needs_basis_action"] is True
+    assert rules["IfcSlab"]["needs_basis_action"] is True
+    assert "Select basis" in rules["IfcWall"]["note"]
 
 
 @pytest.mark.django_db
@@ -98,6 +101,12 @@ def test_builder_page_markers_and_disabled_modify_handoff(client):
     assert "Build Quantity Preparation Data Model" in html
     assert "Schema Builder" in html
     assert 'data-testid="quantities-schema-builder"' in html
+    assert 'data-testid="quantities-setup-summary"' in html
+    assert "Preparation Setup Summary" in html
+    assert "Rows eligible for Modify handoff" in html
+    assert "Rows ready for Modify handoff" not in html
+    assert 'data-testid="qty-select-basis-IfcWall"' in html
+    assert "Select basis" in html
     assert "Source Mapping" in html
     assert 'data-testid="quantities-source-mapping"' in html
     assert "User-defined Measurement Rules" in html
@@ -108,6 +117,7 @@ def test_builder_page_markers_and_disabled_modify_handoff(client):
     assert 'data-testid="qty-send-unresolved-to-modify"' in html
     assert "disabled" in html
     assert "Raw Indexed Quantity Inventory" in html
+    assert 'data-testid="qty-raw-inventory-details"' in html
 
     # Wall unresolved total in prep table
     assert 'data-qty-ifc-class="IfcWall"' in html

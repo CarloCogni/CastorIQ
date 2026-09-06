@@ -180,7 +180,7 @@ def default_source_mappings() -> list[dict[str, str]]:
         {
             "field": "Handoff Status",
             "source": "Future Modify handoff",
-            "detail": "Ready / Not ready for Castor Modify",
+            "detail": "Eligible / Not eligible for Castor Modify",
         },
     ]
 
@@ -221,14 +221,16 @@ def user_defined_measurement_rules() -> list[dict[str, str]]:
             "quantity_source": "Unresolved",
             "quantity_basis": "Unresolved",
             "unit_basis": "—",
-            "note": "Unresolved until user selects basis",
+            "note": "Select basis — not editable in this slice",
+            "needs_basis_action": True,
         },
         {
             "model_group": "IfcSlab",
             "quantity_source": "Unresolved",
             "quantity_basis": "Unresolved",
             "unit_basis": "—",
-            "note": "Unresolved until user selects basis",
+            "note": "Select basis — not editable in this slice",
+            "needs_basis_action": True,
         },
     ]
 
@@ -318,8 +320,8 @@ def _has_unresolved_schema_field(row: dict[str, Any]) -> bool:
 
 def _handoff_status(row: dict[str, Any]) -> str:
     if _has_target_context(row) and _has_unresolved_schema_field(row):
-        return "Ready for Modify handoff"
-    return "Not ready"
+        return "Eligible for Modify handoff"
+    return "Not eligible"
 
 
 def build_prep_rows(quantities: dict[str, Any]) -> list[dict[str, Any]]:
@@ -363,13 +365,18 @@ def build_prep_rows(quantities: dict[str, Any]) -> list[dict[str, Any]]:
         }
         row["review_status"] = _review_status(row)
         row["handoff_status"] = _handoff_status(row)
-        row["ready_for_handoff"] = row["handoff_status"] == "Ready for Modify handoff"
+        row["eligible_for_handoff"] = row["handoff_status"] == "Eligible for Modify handoff"
+        # Back-compat alias used by earlier Slice 2a/2b tests and register keys.
+        row["ready_for_handoff"] = row["eligible_for_handoff"]
         rows_out.append(row)
     return rows_out
 
 
 def build_unresolved_register(prep_rows: list[dict[str, Any]]) -> dict[str, int]:
     """Counts derived only from the Generated Preparation Data Model."""
+    eligible = sum(
+        1 for r in prep_rows if r.get("eligible_for_handoff") or r.get("ready_for_handoff")
+    )
     return {
         "missing_quantity_basis_rule": sum(1 for r in prep_rows if r.get("basis_unresolved")),
         "missing_selected_quantity_source": sum(
@@ -378,8 +385,11 @@ def build_unresolved_register(prep_rows: list[dict[str, Any]]) -> dict[str, int]
         "missing_classification": sum(1 for r in prep_rows if r.get("missing_classification")),
         "missing_package_boq_mapping": sum(1 for r in prep_rows if r.get("missing_package")),
         "missing_work_package": sum(1 for r in prep_rows if r.get("missing_work_package")),
-        "ready_for_modify_handoff": sum(1 for r in prep_rows if r.get("ready_for_handoff")),
-        "not_ready_for_handoff": sum(1 for r in prep_rows if not r.get("ready_for_handoff")),
+        "eligible_for_modify_handoff": eligible,
+        "not_eligible_for_handoff": len(prep_rows) - eligible,
+        # Back-compat aliases
+        "ready_for_modify_handoff": eligible,
+        "not_ready_for_handoff": len(prep_rows) - eligible,
         "row_count": len(prep_rows),
     }
 
@@ -467,10 +477,16 @@ def build_visual_summary(
         ),
         "modify_handoff_status": _count_bar_items(
             {
-                "Ready for Modify handoff": int(
-                    unresolved_register.get("ready_for_modify_handoff") or 0
+                "Eligible for Modify handoff": int(
+                    unresolved_register.get("eligible_for_modify_handoff")
+                    or unresolved_register.get("ready_for_modify_handoff")
+                    or 0
                 ),
-                "Not ready for handoff": int(unresolved_register.get("not_ready_for_handoff") or 0),
+                "Not eligible for handoff": int(
+                    unresolved_register.get("not_eligible_for_handoff")
+                    or unresolved_register.get("not_ready_for_handoff")
+                    or 0
+                ),
             }
         ),
         "top_unresolved_model_groups": _top_unresolved_model_groups(prep_rows),
@@ -488,21 +504,14 @@ def build_preparation_insights(
     missing_classification = int(unresolved_register.get("missing_classification") or 0)
     missing_package = int(unresolved_register.get("missing_package_boq_mapping") or 0)
     missing_work_package = int(unresolved_register.get("missing_work_package") or 0)
-    ready_handoff = int(unresolved_register.get("ready_for_modify_handoff") or 0)
-    not_ready = int(unresolved_register.get("not_ready_for_handoff") or 0)
+    eligible = int(
+        unresolved_register.get("eligible_for_modify_handoff")
+        or unresolved_register.get("ready_for_modify_handoff")
+        or 0
+    )
 
-    wall_unresolved = sum(
-        1 for r in prep_rows if r.get("ifc_class") == "IfcWall" and r.get("basis_unresolved")
-    )
-    slab_unresolved = sum(
-        1 for r in prep_rows if r.get("ifc_class") == "IfcSlab" and r.get("basis_unresolved")
-    )
     top_groups = _top_unresolved_model_groups(prep_rows, limit=5)
-    top_group_text = (
-        ", ".join(f"{item['label']} ({item['count']})" for item in top_groups)
-        if top_groups
-        else "None — no unresolved rows in the current preparation set."
-    )
+    top_names = ", ".join(item["label"] for item in top_groups) if top_groups else "None"
 
     return [
         {
@@ -510,67 +519,87 @@ def build_preparation_insights(
             "title": "Measurement rules needed",
             "count": missing_basis,
             "body": (
-                f"IfcWall ({wall_unresolved}) and IfcSlab ({slab_unresolved}) remain unresolved "
-                "until the user selects a measurement basis. "
-                f"{missing_basis} generated row(s) are missing a quantity basis rule."
+                f"{missing_basis} rows need a selected basis. Start with IfcWall and IfcSlab."
             ),
+            "next": "Next: select a user-owned measurement basis for ambiguous groups.",
         },
         {
             "id": "selected_source_gaps",
             "title": "Selected source gaps",
             "count": missing_source,
             "body": (
-                f"{missing_source} generated row(s) are missing the selected quantity source "
-                "required by the current rules."
+                f"{missing_source} rows are missing the selected quantity source for the "
+                "current rules."
             ),
+            "next": "Next: map source after basis is chosen.",
         },
         {
             "id": "mapping_gaps",
             "title": "Mapping gaps",
             "count": missing_classification + missing_package + missing_work_package,
-            "body": (
-                "Classification, Package / BOQ Mapping, and Work Package remain unmapped for "
-                f"generated rows "
-                f"(classification {missing_classification}, package/BOQ {missing_package}, "
-                f"work package {missing_work_package})."
-            ),
+            "body": ("Classification, Package / BOQ Mapping, and Work Package are still unmapped."),
+            "next": "Next: complete mapping fields or send eligible rows to Modify later.",
         },
         {
             "id": "modify_handoff_candidates",
             "title": "Modify handoff candidates",
-            "count": ready_handoff,
+            "count": eligible,
             "body": (
-                f"{ready_handoff} row(s) have enough target context for a later Castor Modify "
-                f"handoff; {not_ready} row(s) are not ready. Only rows with enough target context "
-                "should be sent to Castor Modify later."
+                f"{eligible} rows are eligible for Modify handoff because they have enough "
+                "target context."
             ),
+            "next": "Next: handoff stays disabled in this slice.",
         },
         {
             "id": "raw_quantity_warning",
-            "title": "Raw quantity warning",
+            "title": "Raw quantities are evidence only",
             "count": None,
-            "body": (
-                "Raw indexed quantities do not become selected measurement outputs until source "
-                "and basis rules are defined."
-            ),
+            "body": "Define source + basis before using totals.",
+            "next": "Next: treat Raw Indexed Quantity Inventory as reference only.",
         },
         {
             "id": "top_unresolved_model_groups",
-            "title": "Top unresolved model groups",
+            "title": "Top unresolved groups",
             "count": top_groups[0]["count"] if top_groups else 0,
-            "body": f"Model groups causing the most unresolved rows: {top_group_text}",
+            "body": f"{top_names} drive most unresolved rows.",
+            "next": "Next: prioritize user-defined rules for those groups.",
         },
     ]
 
 
+def build_setup_summary(
+    schema_fields: list[dict[str, str]],
+    basis_rules: list[dict[str, str]],
+    prep_rows: list[dict[str, Any]],
+    unresolved_register: dict[str, int],
+) -> dict[str, int]:
+    """Compact Preparation Setup Summary counts (UI-only overview)."""
+    return {
+        "schema_fields": len(schema_fields),
+        "required_fields": sum(1 for f in schema_fields if f.get("required") == "Required"),
+        "measurement_rules": len(basis_rules),
+        "generated_rows": len(prep_rows),
+        "rows_with_unresolved_basis": int(
+            unresolved_register.get("missing_quantity_basis_rule") or 0
+        ),
+        "rows_eligible_for_modify_handoff": int(
+            unresolved_register.get("eligible_for_modify_handoff")
+            or unresolved_register.get("ready_for_modify_handoff")
+            or 0
+        ),
+    }
+
+
 def build_preparation_ui(quantities: dict[str, Any]) -> dict[str, Any]:
     """Assemble Quantities preparation UI (Slice 2a + 2b summary/insights)."""
+    schema_fields = default_schema_fields()
+    basis_rules = user_defined_measurement_rules()
     prep_rows = build_prep_rows(quantities) if quantities.get("has_ifc") else []
     unresolved_register = build_unresolved_register(prep_rows)
     return {
-        "schema_fields": default_schema_fields(),
+        "schema_fields": schema_fields,
         "source_mappings": default_source_mappings(),
-        "basis_rules": user_defined_measurement_rules(),
+        "basis_rules": basis_rules,
         "basis_rules_banner": (
             "No rule = unresolved. No selected basis = no measurement claim. "
             "Raw IFC quantity values do not mean correct BOQ, 5D, or QS measurement."
@@ -586,11 +615,14 @@ def build_preparation_ui(quantities: dict[str, Any]) -> dict[str, Any]:
         "unresolved_register": unresolved_register,
         # Back-compat alias for any leftover template references during Slice 2a.
         "missing_summary": unresolved_register,
-        "column_config": default_schema_fields(),
+        "column_config": schema_fields,
         "prep_helper_note": (
             "Rows are generated only from the selected schema, source mappings, "
             "and user-defined measurement rules. If quantity basis is unresolved, "
             "Total Quantity shows Unresolved — not a raw IFC number."
+        ),
+        "setup_summary": build_setup_summary(
+            schema_fields, basis_rules, prep_rows, unresolved_register
         ),
         "visual_summary": build_visual_summary(prep_rows, unresolved_register),
         "preparation_insights": build_preparation_insights(prep_rows, unresolved_register),

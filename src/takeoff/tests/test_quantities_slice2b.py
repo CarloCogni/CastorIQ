@@ -46,10 +46,14 @@ def test_visual_summary_from_prep_rows_not_raw_inventory():
     assert any(i["label"] == "NetVolume" for i in viz["quantity_basis_distribution"])
     assert viz["unresolved_by_field"]
     assert viz["modify_handoff_status"]
+    assert any(i["label"] == "Eligible for Modify handoff" for i in viz["modify_handoff_status"])
+    assert any(i["label"] == "Not eligible for handoff" for i in viz["modify_handoff_status"])
     assert viz["top_unresolved_model_groups"]
     # Must not key off raw inventory fields
     assert "entities_with_quantity" not in viz
     assert "quantity_coverage_pct" not in viz
+    assert ui["setup_summary"]["schema_fields"] >= 1
+    assert "rows_eligible_for_modify_handoff" in ui["setup_summary"]
 
 
 @pytest.mark.django_db
@@ -70,10 +74,13 @@ def test_preparation_insights_are_deterministic_counts():
     assert insights["selected_source_gaps"]["count"] >= 1
     assert "Classification" in insights["mapping_gaps"]["body"]
     assert "target context" in insights["modify_handoff_candidates"]["body"]
-    assert "Raw indexed quantities" in insights["raw_quantity_warning"]["body"]
+    assert "eligible for Modify handoff" in insights["modify_handoff_candidates"]["body"]
+    assert "Define source + basis" in insights["raw_quantity_warning"]["body"]
+    assert insights["raw_quantity_warning"]["title"] == "Raw quantities are evidence only"
     assert insights["raw_quantity_warning"]["count"] is None
+    assert insights["measurement_rules_needed"]["next"].startswith("Next:")
     assert insights["top_unresolved_model_groups"]["body"]
-    blob = " ".join(c["body"].lower() for c in insights.values())
+    blob = " ".join(f"{c['body']} {c.get('next') or ''}".lower() for c in insights.values())
     assert "machine learning" not in blob
     assert "auto-select" not in blob
     assert "artificial intelligence" not in blob
@@ -131,4 +138,14 @@ def test_slice2b_page_section_order_and_honesty(client):
     # Slice 2a still intact
     assert "Build Quantity Preparation Data Model" in html
     assert "Schema Builder" in html
+    assert 'data-testid="quantities-setup-summary"' in html
+    assert "Preparation Setup Summary" in html
+    assert "Rows eligible for Modify handoff" in html
+    assert "Rows ready for Modify handoff" not in html
+    assert "Rows not eligible for handoff" in html
+    assert "Rows not ready for handoff" not in html
+    assert 'data-testid="qty-select-basis-IfcWall"' in html
+    assert 'data-testid="qty-select-basis-IfcSlab"' in html
+    assert "Select basis" in html
+    assert "not editable in this slice" in html
     assert 'data-qty-basis-unresolved="1"' in html
