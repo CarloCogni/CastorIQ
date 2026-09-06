@@ -21,10 +21,14 @@ from django.views.generic import TemplateView
 from core.http import toast_response, trigger_toast
 from core.mixins import ProjectAccessMixin, ProjectTabMixin
 
-from .models import QTOCache
+from .models import QTOCache, QuantityPreparationConfig
 from .services.link_analysis import LinkAnalysisService
 from .services.model_inventory import ModelInventoryService
 from .services.model_quantities import ModelQuantitiesService
+from .services.quantity_prep_config import (
+    PREP_CONFIG_QUERY_PARAM,
+    QuantityPrepConfigService,
+)
 from .services.quantity_preparation_ui import (
     build_preparation_ui,
     parse_basis_overrides_from_query,
@@ -172,12 +176,40 @@ class QTOView(ProjectTabMixin, TemplateView):
         ctx = super().get_context_data(**kwargs)
         ctx["castor_subtab"] = "qto"
         project = ctx["project"]
-        # Slice 3a/3c-1/3c-2a: basis_*, field_*, source_* GET params are session/UI only.
+        # Slice 3a/3c/4a: basis_*, field_*, source_* GET + optional prep_config draft.
         quantities = ModelQuantitiesService(project).build()
         ctx["quantities"] = quantities
-        basis_overrides = parse_basis_overrides_from_query(self.request.GET)
-        schema_includes = parse_schema_includes_from_query(self.request.GET)
-        source_mappings = parse_source_mappings_from_query(self.request.GET)
+
+        config_svc = QuantityPrepConfigService(project, self.request.user)
+        ctx["qty_prep_config_drafts"] = config_svc.list_drafts()
+        ctx["qty_prep_config_save_url"] = reverse(
+            "takeoff:qty_prep_config_save", kwargs={"pk": project.pk}
+        )
+        ctx["qty_prep_loaded_config"] = None
+        ctx["qty_prep_config_load_error"] = None
+
+        query = self.request.GET
+        if QuantityPrepConfigService.query_has_session_overrides(query):
+            basis_overrides = parse_basis_overrides_from_query(query)
+            schema_includes = parse_schema_includes_from_query(query)
+            source_mappings = parse_source_mappings_from_query(query)
+        elif query.get(PREP_CONFIG_QUERY_PARAM):
+            loaded = config_svc.load_runtime(query.get(PREP_CONFIG_QUERY_PARAM))
+            if loaded.get("error"):
+                ctx["qty_prep_config_load_error"] = loaded["error"]
+                basis_overrides = parse_basis_overrides_from_query({})
+                schema_includes = parse_schema_includes_from_query({})
+                source_mappings = parse_source_mappings_from_query({})
+            else:
+                ctx["qty_prep_loaded_config"] = loaded.get("result")
+                basis_overrides = loaded["basis_overrides"]
+                schema_includes = loaded["schema_includes"]
+                source_mappings = loaded["source_mappings"]
+        else:
+            basis_overrides = parse_basis_overrides_from_query(query)
+            schema_includes = parse_schema_includes_from_query(query)
+            source_mappings = parse_source_mappings_from_query(query)
+
         ctx["qty_prep"] = build_preparation_ui(
             quantities,
             basis_overrides=basis_overrides,
@@ -208,6 +240,35 @@ class QTOView(ProjectTabMixin, TemplateView):
         # Legacy cache kept only for demoted optional tooling on main.
         ctx["qto_cache"] = QTOCache.objects.filter(project=project).first()
         return ctx
+
+
+class QuantityPrepConfigSaveView(ProjectAccessMixin, View):
+    """POST — save current session preparation settings as a named draft (Slice 4a)."""
+
+    def post(self, request, pk):  # noqa: ANN001
+        project = self.get_project()
+        name = (request.POST.get("name") or "").strip()
+        description = (request.POST.get("description") or "").strip()
+        result = QuantityPrepConfigService(project, request.user).save_draft(
+            name=name,
+            description=description,
+            query=request.POST,
+        )
+        if result.get("error"):
+            return toast_response(result["error"], level="error", status=400)
+        config = result["result"]
+        assert isinstance(config, QuantityPreparationConfig)
+        load_url = (
+            reverse("takeoff:qto", kwargs={"pk": project.pk})
+            + f"?{PREP_CONFIG_QUERY_PARAM}={config.id}"
+        )
+        response = HttpResponse(status=204)
+        response["HX-Redirect"] = load_url
+        return trigger_toast(
+            response,
+            f"Saved preparation configuration draft “{config.name}”. "
+            "Settings only — not generated quantities.",
+        )
 
 
 class QTODataView(ProjectAccessMixin, View):

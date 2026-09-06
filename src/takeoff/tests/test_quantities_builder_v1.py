@@ -112,8 +112,9 @@ def test_builder_page_markers_and_disabled_modify_handoff(client):
     assert 'data-testid="qty-select-basis-IfcWall"' in html
     assert 'data-testid="qty-generate-prep-model"' in html
     assert "Generate Preparation Data Model" in html
-    assert "Session-only — not saved to project" in html
-    assert "not editable in this slice" not in html
+    assert "preparation configuration draft" in html.lower() or "Session GET until saved" in html
+    assert "Configuration is session-only and not saved" not in html
+    assert "Session-only — not saved to project" not in html
     assert "Source Mapping" in html
     assert 'data-testid="quantities-source-mapping"' in html
     assert "User-defined Measurement Rules" in html

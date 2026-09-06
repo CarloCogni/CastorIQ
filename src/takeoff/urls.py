@@ -24,6 +24,11 @@ urlpatterns = [
         name="model_inventory_entities",
     ),
     path("projects/<uuid:pk>/", views.QTOView.as_view(), name="qto"),
+    path(
+        "projects/<uuid:pk>/prep-configs/save/",
+        views.QuantityPrepConfigSaveView.as_view(),
+        name="qty_prep_config_save",
+    ),
     path("projects/<uuid:pk>/data/", views.QTODataView.as_view(), name="qto_data"),
     path(
         "projects/<uuid:pk>/recompute/",

@@ -1,6 +1,7 @@
 # takeoff/models.py
-"""Quantity Take-Off cache model — denormalized 5D cost aggregates."""
+"""Takeoff models — QTO cache plus Quantity Preparation configuration drafts."""
 
+from django.conf import settings
 from django.db import models
 
 from core.models import UUIDModel
@@ -77,3 +78,77 @@ class QTOCache(UUIDModel):
 
     def __str__(self) -> str:
         return f"QTO – {self.project.name} ({self.coverage_pct:.0f}% coverage)"
+
+
+class QuantityPreparationConfig(UUIDModel):
+    """Named draft of Quantity Preparation settings (Slice 4a).
+
+    Stores basis rules, schema includes, and source-mapping intents only.
+    Does not store generated preparation rows, register counts, or totals.
+    Not BOQ, not verified takeoff, not Modify/writeback.
+    """
+
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+
+    CONTRACT_VERSION_V1 = "qty-prep-config-v1"
+
+    project = models.ForeignKey(
+        "environments.Project",
+        on_delete=models.CASCADE,
+        related_name="quantity_preparation_configs",
+        verbose_name="Project",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="quantity_preparation_configs_created",
+        verbose_name="Created by",
+    )
+    name = models.CharField(max_length=120, verbose_name="Name")
+    description = models.TextField(blank=True, default="", verbose_name="Description")
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.DRAFT,
+        verbose_name="Status",
+    )
+    contract_version = models.CharField(
+        max_length=64,
+        default=CONTRACT_VERSION_V1,
+        verbose_name="Contract version",
+    )
+    basis_rules = models.JSONField(
+        default=dict,
+        verbose_name="Basis rules",
+        help_text="Map of IFC class → Quantity Basis enum (session measurement rules).",
+    )
+    schema_fields = models.JSONField(
+        default=dict,
+        verbose_name="Schema fields",
+        help_text="Map of editable schema field key → included bool.",
+    )
+    source_mappings = models.JSONField(
+        default=dict,
+        verbose_name="Source mappings",
+        help_text="Map of editable mapping field key → source-type intent enum.",
+    )
+    last_used_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Last used at",
+    )
+
+    class Meta:
+        verbose_name = "Quantity Preparation Config"
+        verbose_name_plural = "Quantity Preparation Configs"
+        ordering = ["-updated_at"]
+        indexes = [
+            models.Index(fields=["project", "-updated_at"]),
+            models.Index(fields=["project", "status"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.project_id})"

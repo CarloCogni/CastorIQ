@@ -2,14 +2,15 @@
 <section class="qty-builder-section" data-testid="quantities-schema-builder">
   <div class="qty-builder-h">
     <h6 class="mb-0">Schema Builder</h6>
-    <span class="mi-footnote">Output fields — session-only include/exclude</span>
+    <span class="mi-footnote">Output fields — include/exclude until saved as draft</span>
   </div>
   <p class="qty-builder-note mb-2" data-testid="qty-schema-session-note">
     {{ qty_prep.schema_session_note }}
   </p>
   <p class="qty-builder-note mb-2">
     Define which fields the Generated Preparation Data Model must carry.
-    This is schema only — not Ask, not Modify, and not BOQ generation. Not saved in this slice.
+    This is schema only — not Ask, not Modify, and not BOQ generation.
+    Current include/exclude edits are session-only until saved as a preparation configuration draft.
   </p>
   <div class="table-responsive">
     <table class="table table-sm qty-config-table mb-0" data-testid="qty-schema-builder-table">

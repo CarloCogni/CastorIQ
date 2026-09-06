@@ -1,4 +1,4 @@
-<!-- takeoff/components/quantities_help_modal.html — How Quantities works (Slice 3c-2a) -->
+<!-- takeoff/components/quantities_help_modal.html — How Quantities works (Slice 4a) -->
 
 <div class="modal fade" id="qtoHelpModal" tabindex="-1"
      aria-labelledby="qtoHelpLabel" aria-hidden="true">
@@ -20,9 +20,10 @@
                 <p class="text-secondary fs-7 mb-4">
                     Quantities builds a deterministic Quantity Preparation Data Model from indexed IFC.
                     Start with the Preparation Setup Summary, then use Schema Builder, Source Mapping,
-                    and User-defined Measurement Rules to generate preparation rows. Review the Unresolved
-                    Data Register, Visual Summary, and Quantity Preparation Insights. Rows eligible for
-                    Modify handoff have enough target context — they are not necessarily complete.
+                    and User-defined Measurement Rules to generate preparation rows. Optionally save
+                    or load a preparation configuration draft. Review the Unresolved Data Register,
+                    Visual Summary, and Quantity Preparation Insights. Rows eligible for Modify handoff
+                    have enough target context — they are not necessarily complete.
                     Raw Indexed Quantity Inventory is secondary reference only.
                     Not Ask, not Modify, not BOQ, not cost, not verified QS measurement.
                 </p>
@@ -30,23 +31,31 @@
                 <p class="fw-semibold fs-7 mb-2">Lifecycle</p>
                 <p class="text-secondary fs-7 mb-4">
                     After an IFC file is indexed, this page reads entity properties at runtime.
-                    Schema include/exclude, source-type mapping intent, and measurement rules are
-                    session-only (GET query params) and not saved to the project.
-                    Refresh without parameters restores defaults.
+                    Current edits to schema include/exclude, source-type mapping intent, and
+                    measurement rules are session-only (GET query params) until you save a named
+                    preparation configuration draft. A saved draft stores settings only:
+                    basis rules, schema includes, and source mapping intent — not generated
+                    quantity rows, totals, register counts, or visuals as authoritative quantities.
+                    It does not approve, certify, write back, or create BOQ/cost.
+                    Refresh without parameters restores defaults unless a prep_config draft is loaded.
+                    Generate may continue as session GET params after a draft is loaded.
                     Required/core fields are locked. Excluded optional fields are omitted from the
                     generated table and are not counted as unresolved schema gaps.
                     Source Mapping edits classification / package / work-package source type only —
-                    no values are created, no property picker, and no saved profiles.
+                    no values are created, no property picker.
                     Sending unresolved rows to Castor Modify is disabled here —
                     Modify owns suggest / review / approve / writeback / Git trace / re-index.
                 </p>
 
                 <p class="fw-semibold fs-7 mb-2">How to use it</p>
                 <ul class="text-secondary fs-7 mb-4">
-                    <li>Preparation Setup Summary — counts for the current session rules.</li>
+                    <li>Preparation Setup Summary — counts for the current configuration.</li>
+                    <li>Preparation Configuration Drafts — optional save/load of settings only
+                        (basis + schema + source intent). Not generated rows, not BOQ, not verified takeoff,
+                        not Modify/writeback, not cost. No active/default/approve profile in this slice.</li>
                     <li>Schema Builder — include/exclude optional fields; core fields stay locked.</li>
                     <li>Source Mapping — choose source type for Classification, Package / BOQ Mapping,
-                        and Work Package (session-only intent):
+                        and Work Package (intent until saved as a draft):
                         Future Modify handoff (counted unresolved),
                         Manual field (counted unresolved; no value entry here),
                         Not mapped (intentional blank; not counted).</li>
@@ -70,7 +79,8 @@
                 <ul class="text-secondary fs-7 mb-4">
                     <li>No rule = unresolved. No selected basis = no measurement claim.</li>
                     <li>IfcWall and IfcSlab stay Unresolved until the user selects a basis and generates.</li>
-                    <li>Schema, source-type, and basis rules are session-only and not saved.</li>
+                    <li>Current edits are session-only until saved as a preparation configuration draft.</li>
+                    <li>Saved drafts store preparation settings only — not generated quantity rows.</li>
                     <li>Excluded fields are not counted as unresolved schema gaps.</li>
                     <li>Not mapped means intentional blank — not counted as missing.</li>
                     <li>Future Modify handoff / Manual field count as unresolved mapping gaps; no values are invented.</li>

@@ -730,14 +730,14 @@ def user_defined_measurement_rules(
             status = "Needs basis"
         elif measure_missing:
             note = (
-                "User-selected for this session — selected measure is not indexed "
-                "for this model group (Missing selected quantity source)."
+                "User-selected for the current configuration — selected measure "
+                "is not indexed for this model group (Missing selected quantity source)."
             )
             status = "Missing selected quantity source"
         else:
             note = (
-                "User-selected for this session — not a Castor recommendation "
-                "of measurement method."
+                "User-selected for the current configuration — not a Castor "
+                "recommendation of measurement method."
             )
             status = "Basis selected"
         rules.append(
@@ -1149,9 +1149,11 @@ def build_preparation_ui(
         },
         "source_mappings": build_source_mappings_ui(intents),
         "source_mapping_session_note": (
-            "Source mapping controls are session-only. They define mapping intent "
-            "for the generated preparation model; they do not create values, save "
-            "profiles, or send data to Modify in this slice."
+            "Source mapping controls are session-only until saved as a preparation "
+            "configuration draft. They define mapping intent for the generated "
+            "preparation model. They do not create values, create Modify proposals, "
+            "or send data to Modify in this slice. Exact property picking and "
+            "free-text values remain out of scope."
         ),
         "source_mapping_option_note": (
             "Future Modify handoff: deferred mapping gap; counted as unresolved. "
@@ -1159,22 +1161,25 @@ def build_preparation_ui(
             "Not mapped: intentionally blank; not counted as unresolved."
         ),
         "schema_session_note": (
-            "Schema selection is session-only and not saved. "
-            "Generate rebuilds the preparation model from the selected fields "
-            "and measurement rules. Required/core fields are locked."
+            "Schema selection edits are session-only until saved as a preparation "
+            "configuration draft. Generate rebuilds the preparation model from the "
+            "selected fields and measurement rules. Required/core fields are locked. "
+            "Saving stores preparation settings only, not generated quantity rows."
         ),
         "basis_rules": basis_rules,
         "basis_options": sorted(ALLOWED_BASIS_VALUES),
         "basis_overrides": overrides,
         "session_only_note": (
-            "Configuration is session-only and not saved. "
-            "Refresh without parameters restores defaults."
+            "Current measurement-rule edits are session-only until saved as a "
+            "preparation configuration draft. Refresh without parameters restores "
+            "defaults unless a prep_config draft is loaded. Generate may continue "
+            "as session GET params after a draft is loaded."
         ),
         "basis_rules_banner": (
             "No rule = unresolved. No selected basis = no measurement claim. "
             "Quantity Basis is user-selected — not a Castor recommendation. "
             "Raw IFC quantity values do not mean correct BOQ, 5D, or QS measurement. "
-            "Session-only — not saved to project."
+            "Saving stores preparation settings only — not generated quantity rows."
         ),
         "source_vs_basis_note": (
             "Quantity Source is the IFC/Qto property used when selected. "
@@ -1190,7 +1195,7 @@ def build_preparation_ui(
             "Unit Basis is not manually edited in this slice. No SI normalization."
         ),
         "user_selected_basis_note": (
-            "Selecting a Quantity Basis is a user choice for this session. "
+            "Selecting a Quantity Basis is a user choice for the current configuration. "
             "Castor does not recommend a measurement method. Large totals can appear "
             "when an indexed measure exists for the selected basis — that is not "
             "readiness or QS verification."

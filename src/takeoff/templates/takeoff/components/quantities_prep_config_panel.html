@@ -1,0 +1,124 @@
+<!-- takeoff/components/quantities_prep_config_panel.html — Slice 4a save/load drafts -->
+<section class="qty-builder-section" data-testid="quantities-prep-config-panel">
+  <div class="qty-builder-h">
+    <h6 class="mb-0">Preparation Configuration Drafts</h6>
+    <span class="mi-footnote">Settings only — not generated quantities</span>
+  </div>
+  <p class="qty-builder-note mb-2" data-testid="qty-prep-config-boundary-note">
+    Save or load preparation settings (basis rules, schema includes, source mapping intent).
+    Does not save generated quantity rows. Not BOQ, not verified QS takeoff,
+    not Modify/writeback, not cost.
+  </p>
+
+  {% if qty_prep_config_load_error %}
+  <div class="alert alert-warning py-2 mb-2" data-testid="qty-prep-config-load-error">
+    {{ qty_prep_config_load_error }}
+  </div>
+  {% endif %}
+
+  {% if qty_prep_loaded_config %}
+  <p class="qty-builder-note mb-2" data-testid="qty-prep-config-loaded-banner">
+    Loaded draft:
+    <strong>{{ qty_prep_loaded_config.name }}</strong>
+    (settings only). Generate may replace this with session GET params.
+  </p>
+  {% endif %}
+
+  <div class="row g-2 align-items-end mb-2">
+    <div class="col-md-4">
+      <label class="form-label mb-1" for="qty-prep-config-name">Draft name</label>
+      <input type="text"
+             form="qty-prep-config-save-form"
+             id="qty-prep-config-name"
+             name="name"
+             class="form-control form-control-sm"
+             maxlength="120"
+             required
+             placeholder="e.g. Wall NetArea draft"
+             data-testid="qty-prep-config-name"
+             autocomplete="off">
+    </div>
+    <div class="col-md-5">
+      <label class="form-label mb-1" for="qty-prep-config-description">Description (optional)</label>
+      <input type="text"
+             form="qty-prep-config-save-form"
+             id="qty-prep-config-description"
+             name="description"
+             class="form-control form-control-sm"
+             maxlength="500"
+             placeholder="Optional note"
+             data-testid="qty-prep-config-description"
+             autocomplete="off">
+    </div>
+    <div class="col-md-3">
+      <button type="submit"
+              form="qty-prep-config-save-form"
+              class="btn btn-sm btn-outline-primary w-100"
+              data-testid="qty-prep-config-save">
+        Save preparation configuration
+      </button>
+    </div>
+  </div>
+
+  <form id="qty-prep-config-save-form"
+        method="post"
+        action="{{ qty_prep_config_save_url }}"
+        hx-post="{{ qty_prep_config_save_url }}"
+        hx-include="#qty-prep-config-form"
+        hx-swap="none"
+        data-testid="qty-prep-config-save-form">
+    {% csrf_token %}
+  </form>
+
+  <div class="row g-2 align-items-end">
+    <div class="col-md-9">
+      <label class="form-label mb-1" for="qty-prep-config-load-select">Saved drafts</label>
+      <select id="qty-prep-config-load-select"
+              class="form-select form-select-sm"
+              data-testid="qty-prep-config-load-select">
+        <option value="">Select a draft…</option>
+        {% for draft in qty_prep_config_drafts %}
+        <option value="{{ draft.id }}"
+                {% if qty_prep_loaded_config and qty_prep_loaded_config.id == draft.id %}selected{% endif %}>
+          {{ draft.name }}
+          {% if draft.updated_at %}· {{ draft.updated_at|date:"Y-m-d H:i" }}{% endif %}
+        </option>
+        {% empty %}
+        <option value="" disabled>No drafts saved yet</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3">
+      <a href="#"
+         class="btn btn-sm btn-outline-secondary w-100 disabled"
+         id="qty-prep-config-load-btn"
+         data-testid="qty-prep-config-load"
+         data-qty-base-url="{% url 'takeoff:qto' project.pk %}"
+         aria-disabled="true">
+        Load draft
+      </a>
+    </div>
+  </div>
+</section>
+<script>
+(function () {
+  var select = document.getElementById("qty-prep-config-load-select");
+  var btn = document.getElementById("qty-prep-config-load-btn");
+  if (!select || !btn) return;
+  function syncLoad() {
+    var id = select.value || "";
+    var base = btn.getAttribute("data-qty-base-url") || "";
+    if (!id) {
+      btn.classList.add("disabled");
+      btn.setAttribute("aria-disabled", "true");
+      btn.setAttribute("href", "#");
+      return;
+    }
+    btn.classList.remove("disabled");
+    btn.setAttribute("aria-disabled", "false");
+    btn.setAttribute("href", base + "?prep_config=" + encodeURIComponent(id));
+  }
+  select.addEventListener("change", syncLoad);
+  syncLoad();
+})();
+</script>

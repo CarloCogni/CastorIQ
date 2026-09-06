@@ -165,7 +165,11 @@ def test_schema_builder_controls_and_source_mapping_interactive(client):
     assert 'data-testid="qty-schema-include-classification_code"' in html
     assert 'data-testid="qty-schema-locked-ifc_class"' in html
     assert 'data-testid="qty-schema-session-note"' in html
-    assert "session-only and not saved" in html.lower()
+    assert (
+        "session-only until saved" in html.lower()
+        or "preparation configuration draft" in html.lower()
+    )
+    assert "configuration is session-only and not saved" not in html.lower()
     assert 'data-testid="qty-source-select-classification_code"' in html
     assert 'data-testid="qty-source-select-package_boq_mapping"' in html
     assert 'data-testid="qty-source-select-work_package"' in html
