@@ -266,7 +266,85 @@
     color: var(--qty-text);
   }
   .qty-ws .qty-col-type {
-    max-width: 9rem;
+    max-width: 11rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .qty-ws .qty-available-measures {
+    font-size: 0.64rem;
+    color: var(--qty-muted);
+    max-width: 14rem;
+    line-height: 1.35;
+  }
+  .qty-ws .qty-rules-table th,
+  .qty-ws .qty-rules-table td {
+    white-space: normal;
+  }
+  .qty-ws .qty-prep-scroll-wrap {
+    position: relative;
+  }
+  .qty-ws .qty-prep-scroll {
+    max-height: 26rem;
+    overflow: auto;
+    border: 1px solid var(--qty-border);
+    border-radius: 0.3rem;
+    background:
+      linear-gradient(90deg, var(--qty-surface) 30%, transparent),
+      linear-gradient(90deg, transparent, var(--qty-surface) 70%) 100% 0,
+      radial-gradient(farthest-side at 0 50%, rgba(0,0,0,.18), transparent),
+      radial-gradient(farthest-side at 100% 50%, rgba(0,0,0,.18), transparent) 100% 0;
+    background-repeat: no-repeat;
+    background-size: 2.5rem 100%, 2.5rem 100%, 0.75rem 100%, 0.75rem 100%;
+    background-attachment: local, local, scroll, scroll;
+  }
+  .qty-ws .qty-prep-scroll-hint {
+    font-size: 0.62rem;
+    color: var(--qty-muted);
+    margin-top: 0.35rem;
+  }
+  .qty-ws .qty-prep-table-compact {
+    min-width: 68rem;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+  .qty-ws .qty-prep-table-compact th,
+  .qty-ws .qty-prep-table-compact td {
+    white-space: nowrap;
+  }
+  .qty-ws .qty-prep-table-compact .qty-col-type {
+    white-space: nowrap;
+  }
+  .qty-ws .qty-prep-table-compact .qty-col-secondary {
+    color: var(--qty-muted);
+    font-weight: 450;
+    background: var(--qty-overlay);
+  }
+  .qty-ws .qty-prep-table-compact th.qty-col-secondary {
+    font-weight: 550;
+  }
+  .qty-ws .qty-prep-table-compact .qty-sticky {
+    position: sticky;
+    z-index: 2;
+    background: var(--qty-surface);
+    box-shadow: 1px 0 0 var(--qty-border);
+  }
+  .qty-ws .qty-prep-table-compact thead .qty-sticky {
+    z-index: 3;
+    top: 0;
+  }
+  .qty-ws .qty-prep-table-compact .qty-sticky-1 { left: 0; min-width: 6.5rem; }
+  .qty-ws .qty-prep-table-compact .qty-sticky-2 { left: 6.5rem; min-width: 9rem; }
+  .qty-ws .qty-prep-table-compact .qty-sticky-3 { left: 15.5rem; min-width: 8.5rem; }
+  .qty-ws .qty-prep-table-compact .qty-sticky-4 { left: 24rem; min-width: 8rem; }
+  .qty-ws .qty-prep-table-compact .qty-sticky-5 {
+    left: 32rem;
+    min-width: 7rem;
+    box-shadow: 2px 0 0 var(--qty-accent, var(--bs-primary, #3b82f6));
+  }
+  .qty-ws .qty-prep-table-compact .qty-col-total {
+    font-variant-numeric: tabular-nums;
+    font-weight: 650;
   }
   .qty-ws .qty-pill {
     display: inline-block;
@@ -498,10 +576,6 @@
     margin-top: 0.35rem;
     line-height: 1.35;
     font-weight: 550;
-  }
-  .qty-ws .qty-prep-scroll {
-    max-height: 22rem;
-    overflow: auto;
   }
   .qty-ws .qty-raw-inventory-details {
     border: 0;

@@ -367,31 +367,103 @@ def _handoff_status(row: dict[str, Any]) -> str:
     return "Not eligible"
 
 
+def available_indexed_measures_by_class(
+    quantities: Mapping[str, Any] | None,
+) -> dict[str, set[str]]:
+    """Return indexed measure names present per IFC class from aggregates.
+
+    Used only to label availability — never as a recommended basis.
+    Count is available whenever the class has at least one indexed element.
+    """
+    if not quantities:
+        return {}
+    found: dict[str, set[str]] = {}
+    for raw in list(quantities.get("by_ifc_class") or []) + list(quantities.get("by_type") or []):
+        ifc_class = str(raw.get("ifc_class") or raw.get("ifc_type") or "").strip()
+        if not ifc_class:
+            continue
+        measures = found.setdefault(ifc_class, set())
+        if raw.get("net_volume") is not None:
+            measures.add("NetVolume")
+        if raw.get("net_area") is not None:
+            measures.add("NetArea")
+        if raw.get("length") is not None:
+            measures.add("Length")
+        if raw.get("element_count") is not None:
+            measures.add("Count")
+    return found
+
+
+def _basis_option_entries(*, available: set[str]) -> list[dict[str, Any]]:
+    """Build select options with availability labels (all remain selectable).
+
+    Unavailable measures stay enabled so users can still declare a basis and see
+    Missing selected quantity source. Disabling would block that preparation gap
+    workflow (e.g. choosing NetArea when only NetVolume is indexed).
+    """
+    entries: list[dict[str, Any]] = []
+    for value in ("Unresolved", "NetVolume", "NetArea", "Length", "Count"):
+        if value == "Unresolved":
+            available_here = True
+        else:
+            available_here = value in available
+        label = value if available_here or value == "Unresolved" else f"{value} (not indexed)"
+        entries.append(
+            {
+                "value": value,
+                "label": label,
+                "available": available_here,
+                "disabled": False,
+            }
+        )
+    return entries
+
+
 def user_defined_measurement_rules(
     basis_overrides: Mapping[str, str] | None = None,
+    quantities: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Return measurement rules for the six starter groups (session-only UI)."""
     overrides = basis_overrides or {}
-    options = sorted(ALLOWED_BASIS_VALUES)
+    availability = available_indexed_measures_by_class(quantities)
     rules: list[dict[str, Any]] = []
     for group in RULE_MODEL_GROUPS:
         label = overrides.get(group) or default_basis_label_for_group(group)
         if label not in ALLOWED_BASIS_VALUES:
             label = "Unresolved"
         unresolved = label == "Unresolved"
+        available = availability.get(group, set())
+        available_sorted = sorted(available)
+        measure_missing = (not unresolved) and label not in available
+        if unresolved:
+            note = "Select a basis, then Generate"
+            status = "Needs basis"
+        elif measure_missing:
+            note = (
+                "User-selected for this session — selected measure is not indexed "
+                "for this model group (Missing selected quantity source)."
+            )
+            status = "Missing selected quantity source"
+        else:
+            note = (
+                "User-selected for this session — not a Castor recommendation "
+                "of measurement method."
+            )
+            status = "Basis selected"
         rules.append(
             {
                 "model_group": group,
                 "quantity_source": "Unresolved" if unresolved else label,
                 "quantity_basis": "Unresolved" if unresolved else label,
                 "unit_basis": unit_basis_for(label),
-                "note": (
-                    "Select a basis, then Generate"
-                    if unresolved
-                    else "User-selected for this session"
-                ),
+                "note": note,
+                "status": status,
                 "needs_basis_action": unresolved,
-                "basis_options": options,
+                "available_indexed_measures": available_sorted,
+                "available_measures_label": (
+                    " / ".join(available_sorted) if available_sorted else "None indexed"
+                ),
+                "basis_options": _basis_option_entries(available=available),
                 "param_name": f"{BASIS_QUERY_PREFIX}{group}",
             }
         )
@@ -687,7 +759,7 @@ def build_preparation_ui(
     """Assemble Quantities preparation UI (Slice 2a/2b + Slice 3a overrides)."""
     overrides = dict(basis_overrides or {})
     schema_fields = default_schema_fields()
-    basis_rules = user_defined_measurement_rules(overrides)
+    basis_rules = user_defined_measurement_rules(overrides, quantities)
     prep_rows = build_prep_rows(quantities, overrides) if quantities.get("has_ifc") else []
     unresolved_register = build_unresolved_register(prep_rows)
     return {
@@ -702,12 +774,28 @@ def build_preparation_ui(
         ),
         "basis_rules_banner": (
             "No rule = unresolved. No selected basis = no measurement claim. "
+            "Quantity Basis is user-selected — not a Castor recommendation. "
             "Raw IFC quantity values do not mean correct BOQ, 5D, or QS measurement. "
             "Session-only — not saved to project."
         ),
         "source_vs_basis_note": (
             "Quantity Source is the IFC/Qto property used when selected. "
             "Quantity Basis is the user-selected measurement method for the model group."
+        ),
+        "unit_basis_derivation_note": (
+            "Unit Basis is derived from the selected Quantity Basis: "
+            "NetVolume → model volume units; "
+            "NetArea → model area units; "
+            "Length → model length units; "
+            "Count → count; "
+            "Unresolved → —. "
+            "Unit Basis is not manually edited in this slice. No SI normalization."
+        ),
+        "user_selected_basis_note": (
+            "Selecting a Quantity Basis is a user choice for this session. "
+            "Castor does not recommend a measurement method. Large totals can appear "
+            "when an indexed measure exists for the selected basis — that is not "
+            "readiness or QS verification."
         ),
         "prep_rows": prep_rows,
         "prep_row_grain": (
@@ -720,7 +808,14 @@ def build_preparation_ui(
         "prep_helper_note": (
             "Rows are generated only from the selected schema, source mappings, "
             "and user-defined measurement rules. If quantity basis is unresolved, "
-            "Total Quantity shows Unresolved — not a raw IFC number."
+            "Total Quantity shows Unresolved — not a raw IFC number. "
+            "Unit Basis is derived from selected Quantity Basis; it is not manually "
+            "edited in this slice. Totals reflect the user-selected basis, not a "
+            "Castor recommendation."
+        ),
+        "prep_unit_basis_note": (
+            "Unit Basis is derived from selected Quantity Basis; "
+            "it is not manually edited in this slice."
         ),
         "setup_summary": build_setup_summary(
             schema_fields, basis_rules, prep_rows, unresolved_register

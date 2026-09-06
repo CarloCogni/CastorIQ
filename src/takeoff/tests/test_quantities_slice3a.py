@@ -244,3 +244,109 @@ def test_page_get_overrides_and_boundaries(client):
     handoff_tag = handoff_btn[handoff_open:]
     assert "disabled" in handoff_tag
     assert "href=" not in handoff_tag
+
+
+@pytest.mark.django_db
+def test_unit_basis_derivation_copy_and_available_measures(client):
+    """Unit Basis copy, derived units, and available indexed measures are shown."""
+    project = _wall_slab_project()
+    quantities = ModelQuantitiesService(project).build()
+    ui = build_preparation_ui(quantities)
+    assert (
+        "Unit Basis is derived from the selected Quantity Basis" in ui["unit_basis_derivation_note"]
+    )
+    assert "not manually edited" in ui["unit_basis_derivation_note"]
+    assert "not a Castor recommendation" in ui["user_selected_basis_note"].lower() or (
+        "not a Castor recommendation" in ui["basis_rules_banner"]
+    )
+    assert "not manually edited" in ui["prep_unit_basis_note"]
+
+    rules = {r["model_group"]: r for r in ui["basis_rules"]}
+    beam = rules["IfcBeam"]
+    assert beam["unit_basis"] == "model volume units"
+    assert "NetVolume" in beam["available_indexed_measures"]
+    assert "Count" in beam["available_indexed_measures"]
+    length_opt = next(o for o in beam["basis_options"] if o["value"] == "Length")
+    assert length_opt["available"] is False
+    assert length_opt["disabled"] is False
+    assert "not indexed" in length_opt["label"]
+
+    wall_ui = build_preparation_ui(quantities, basis_overrides={"IfcWall": "NetArea"})
+    wall_rule = next(r for r in wall_ui["basis_rules"] if r["model_group"] == "IfcWall")
+    assert wall_rule["unit_basis"] == "model area units"
+    assert wall_rule["quantity_basis"] == "NetArea"
+
+    client.force_login(project.owner)
+    html = client.get(reverse("takeoff:qto", kwargs={"pk": project.pk})).content.decode()
+    assert 'data-testid="qty-unit-basis-derivation-note"' in html
+    assert "Unit Basis is derived from the selected Quantity Basis" in html
+    assert 'data-testid="qty-prep-unit-basis-note"' in html
+    assert "not manually edited in this slice" in html
+    assert "Available indexed measures:" in html
+    assert 'data-testid="qty-available-measures-IfcBeam"' in html
+    assert 'data-testid="qty-prep-scroll-hint"' in html
+    assert "qty-prep-table-compact" in html
+    assert "qty-sticky" in html
+    page_l = html.lower()
+    assert "recommended basis" not in page_l
+    assert "castor recommends" not in page_l
+    assert "auto-selected" not in page_l
+    assert "auto-select" not in page_l
+
+
+@pytest.mark.django_db
+def test_unavailable_basis_option_labeled_not_disabled():
+    """Unavailable Length on Beam stays selectable with not-indexed label + missing status."""
+    project = _wall_slab_project()
+    quantities = ModelQuantitiesService(project).build()
+    default = build_preparation_ui(quantities)
+    beam = next(r for r in default["basis_rules"] if r["model_group"] == "IfcBeam")
+    length = next(o for o in beam["basis_options"] if o["value"] == "Length")
+    assert length["available"] is False
+    assert length["disabled"] is False
+    assert "not indexed" in length["label"]
+
+    forced = build_preparation_ui(quantities, basis_overrides={"IfcBeam": "Length"})
+    beam2 = next(r for r in forced["basis_rules"] if r["model_group"] == "IfcBeam")
+    assert beam2["status"] == "Missing selected quantity source"
+    prep = next(r for r in forced["prep_rows"] if r["ifc_class"] == "IfcBeam")
+    assert prep["review_status"] == "Missing selected quantity source"
+    assert prep["total_display"] == "—"
+
+
+@pytest.mark.django_db
+def test_user_selected_length_with_value_is_not_recommendation(client):
+    """When Length exists, totals may show but copy forbids recommendation claims."""
+    project = ProjectFactory()
+    ifc = IFCFileFactory(project=project, status="completed")
+    IFCEntityFactory(
+        ifc_file=ifc,
+        ifc_type="IfcPipeSegment",
+        global_id="GID-P-LEN",
+        properties={"Qto_PipeSegmentBaseQuantities.Length": 42.0},
+    )
+    ui = build_preparation_ui(
+        ModelQuantitiesService(project).build(),
+        basis_overrides={"IfcPipeSegment": "Length"},
+    )
+    pipe = next(r for r in ui["prep_rows"] if r["ifc_class"] == "IfcPipeSegment")
+    assert pipe["total"] == 42.0
+    assert pipe["unit_basis"] == "model length units"
+    blob = " ".join(
+        [
+            ui["basis_rules_banner"],
+            ui["user_selected_basis_note"],
+            ui["prep_helper_note"],
+        ]
+    ).lower()
+    assert "user-selected" in blob or "user selected" in blob
+    assert "castor recommendation" in blob or "does not recommend" in blob
+    assert "recommended basis" not in blob
+
+    client.force_login(project.owner)
+    html = client.get(
+        reverse("takeoff:qto", kwargs={"pk": project.pk}),
+        {"basis_IfcPipeSegment": "Length"},
+    ).content.decode()
+    assert "recommended basis" not in html.lower()
+    assert "Castor recommends" not in html

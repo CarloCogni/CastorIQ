@@ -77,7 +77,8 @@ def test_wall_and_slab_unresolved_by_default():
     assert rules["IfcSlab"]["needs_basis_action"] is True
     assert "Select a basis" in rules["IfcWall"]["note"]
     assert rules["IfcWall"]["param_name"] == "basis_IfcWall"
-    assert "NetArea" in rules["IfcWall"]["basis_options"]
+    assert any(opt["value"] == "NetArea" for opt in rules["IfcWall"]["basis_options"])
+    assert isinstance(rules["IfcWall"]["available_indexed_measures"], list)
 
 
 @pytest.mark.django_db

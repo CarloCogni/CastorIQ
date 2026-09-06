@@ -10,6 +10,12 @@
   <p class="qty-builder-note mb-2" data-testid="qty-source-vs-basis-note">
     {{ qty_prep.source_vs_basis_note }}
   </p>
+  <p class="qty-builder-note mb-2" data-testid="qty-unit-basis-derivation-note">
+    {{ qty_prep.unit_basis_derivation_note }}
+  </p>
+  <p class="qty-builder-note mb-2" data-testid="qty-user-selected-basis-note">
+    {{ qty_prep.user_selected_basis_note }}
+  </p>
   <p class="qty-builder-note mb-2" data-testid="qty-session-only-note">
     {{ qty_prep.session_only_note }}
   </p>
@@ -19,36 +25,51 @@
         class="qty-basis-rules-form"
         data-testid="qty-basis-rules-form">
     <div class="table-responsive">
-      <table class="table table-sm qty-config-table mb-0" data-testid="qty-basis-rules-table">
+      <table class="table table-sm qty-config-table qty-rules-table mb-0" data-testid="qty-basis-rules-table">
         <thead>
           <tr>
             <th>Model group</th>
-            <th>Quantity Source</th>
-            <th>Quantity Basis</th>
-            <th>Unit basis</th>
+            <th>Selected basis</th>
+            <th>Derived unit basis</th>
+            <th>Available indexed measures</th>
+            <th>Status</th>
             <th>Select basis</th>
           </tr>
         </thead>
         <tbody>
           {% for rule in qty_prep.basis_rules %}
           <tr data-testid="qty-basis-rule-row"
-              data-qty-needs-basis="{% if rule.needs_basis_action %}1{% else %}0{% endif %}">
+              data-qty-needs-basis="{% if rule.needs_basis_action %}1{% else %}0{% endif %}"
+              data-qty-model-group="{{ rule.model_group }}">
             <td class="qty-col-primary">{{ rule.model_group }}</td>
             <td>
               {% if rule.quantity_basis == "Unresolved" %}
               <span class="qty-pill qty-pill-unresolved">Unresolved</span>
               {% else %}
-              {{ rule.quantity_source }}
+              <span class="qty-pill qty-pill-source">{{ rule.quantity_basis }}</span>
+              {% endif %}
+            </td>
+            <td class="text-secondary" data-testid="qty-rule-unit-{{ rule.model_group }}">
+              {{ rule.unit_basis }}
+            </td>
+            <td class="qty-available-measures"
+                data-testid="qty-available-measures-{{ rule.model_group }}">
+              Available indexed measures:
+              {% if rule.available_indexed_measures %}
+              {{ rule.available_measures_label }}
+              {% else %}
+              None indexed
               {% endif %}
             </td>
             <td>
-              {% if rule.quantity_basis == "Unresolved" %}
-              <span class="qty-pill qty-pill-unresolved">Unresolved</span>
+              {% if rule.needs_basis_action %}
+              <span class="qty-pill qty-pill-unresolved">{{ rule.status }}</span>
+              {% elif "Missing" in rule.status %}
+              <span class="qty-pill qty-pill-review">{{ rule.status }}</span>
               {% else %}
-              {{ rule.quantity_basis }}
+              <span class="qty-pill qty-pill-muted">{{ rule.status }}</span>
               {% endif %}
             </td>
-            <td class="text-secondary">{{ rule.unit_basis }}</td>
             <td>
               <label class="visually-hidden" for="{{ rule.param_name }}">
                 Basis for {{ rule.model_group }}
@@ -58,9 +79,10 @@
                       class="form-select form-select-sm qty-basis-select"
                       data-testid="qty-select-basis-{{ rule.model_group }}">
                 {% for opt in rule.basis_options %}
-                <option value="{{ opt }}"
-                        {% if rule.quantity_basis == opt %}selected{% endif %}>
-                  {{ opt }}
+                <option value="{{ opt.value }}"
+                        {% if rule.quantity_basis == opt.value %}selected{% endif %}
+                        {% if opt.disabled %}disabled{% endif %}>
+                  {{ opt.label }}
                 </option>
                 {% endfor %}
               </select>
