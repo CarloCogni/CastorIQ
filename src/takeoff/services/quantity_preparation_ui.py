@@ -1,5 +1,5 @@
 # takeoff/services/quantity_preparation_ui.py
-"""UI-only Quantity Preparation Data Model (Slice 2a/2b + 3a + 3c-1).
+"""UI-only Quantity Preparation Data Model (Slice 2a/2b + 3a + 3c-1 + 3c-2a).
 
 No persistence, no writeback, no cost, no Ask/Modify integration.
 Builds presentation payloads from ModelQuantitiesService output plus
@@ -7,6 +7,7 @@ session/UI schema includes, source mappings, and user-defined measurement rules.
 
 Slice 3a: basis_* GET overrides regenerate prep/register/summary/insights.
 Slice 3c-1: field_* GET includes/excludes optional schema fields (session-only).
+Slice 3c-2a: source_* GET source-type intent for classification/package/work.
 """
 
 from __future__ import annotations
@@ -32,6 +33,32 @@ RULE_MODEL_GROUPS: tuple[str, ...] = (
 
 BASIS_QUERY_PREFIX = "basis_"
 FIELD_QUERY_PREFIX = "field_"
+SOURCE_QUERY_PREFIX = "source_"
+
+# Slice 3c-2a: source-type intent for optional mapping fields (no values created).
+EDITABLE_SOURCE_MAPPING_KEYS: tuple[str, ...] = (
+    "classification_code",
+    "package_boq_mapping",
+    "work_package",
+)
+ALLOWED_SOURCE_MAPPING_VALUES: frozenset[str] = frozenset(
+    {"future_modify_handoff", "manual_field", "not_mapped"}
+)
+# Sources that count as unresolved mapping gaps when the field is included.
+COUNTING_SOURCE_MAPPING_VALUES: frozenset[str] = frozenset(
+    {"future_modify_handoff", "manual_field"}
+)
+SOURCE_MAPPING_OPTION_LABELS: dict[str, str] = {
+    "future_modify_handoff": "Future Modify handoff",
+    "manual_field": "Manual field",
+    "not_mapped": "Not mapped",
+}
+SOURCE_MAPPING_CELL_HINTS: dict[str, str] = {
+    "future_modify_handoff": "Deferred to Modify",
+    "manual_field": "Manual value not entered",
+    "not_mapped": "Not mapped by session config",
+}
+DEFAULT_EDITABLE_SOURCE_MAPPING = "future_modify_handoff"
 
 # Explicit user-owned defaults only. Wall/Slab stay unresolved (no auto basis).
 # Unknown classes also stay unresolved — never invent a basis from raw Qto.
@@ -255,75 +282,221 @@ def default_schema_fields() -> list[dict[str, Any]]:
     return build_schema_fields_ui(default_schema_includes())
 
 
-def default_source_mappings() -> list[dict[str, str]]:
-    """Return Source Mapping rows (session defaults, not persisted)."""
-    return [
+def default_source_mapping_intents() -> dict[str, str]:
+    """Default source-type intents for editable mapping fields (baseline-preserving)."""
+    return {key: DEFAULT_EDITABLE_SOURCE_MAPPING for key in EDITABLE_SOURCE_MAPPING_KEYS}
+
+
+def parse_source_mappings_from_query(query: Mapping[str, Any]) -> dict[str, str]:
+    """Parse source_<key>=enum for editable mapping fields; invalid ignored."""
+    intents = default_source_mapping_intents()
+    for key in EDITABLE_SOURCE_MAPPING_KEYS:
+        param = f"{SOURCE_QUERY_PREFIX}{key}"
+        if param not in query:
+            continue
+        raw = query.get(param)
+        if isinstance(raw, (list, tuple)):
+            raw = raw[0] if raw else ""
+        value = str(raw or "").strip().lower()
+        if value in ALLOWED_SOURCE_MAPPING_VALUES:
+            intents[key] = value
+    return intents
+
+
+def _source_counts_as_gap(source: str) -> bool:
+    """True when source intent should count as an unresolved mapping gap."""
+    return source in COUNTING_SOURCE_MAPPING_VALUES
+
+
+def _mapping_cell_hint(source: str) -> str:
+    """Session display hint for empty mapping cells (no values invented)."""
+    return SOURCE_MAPPING_CELL_HINTS.get(source, SOURCE_MAPPING_CELL_HINTS["not_mapped"])
+
+
+def build_source_mappings_ui(
+    source_intents: Mapping[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    """Return Source Mapping rows; only classification/package/work are editable."""
+    intents = dict(source_intents or default_source_mapping_intents())
+    for key in EDITABLE_SOURCE_MAPPING_KEYS:
+        if intents.get(key) not in ALLOWED_SOURCE_MAPPING_VALUES:
+            intents[key] = DEFAULT_EDITABLE_SOURCE_MAPPING
+
+    option_rows = [
+        {"value": value, "label": SOURCE_MAPPING_OPTION_LABELS[value]}
+        for value in (
+            "future_modify_handoff",
+            "manual_field",
+            "not_mapped",
+        )
+    ]
+
+    def editable_row(key: str, label: str, note: str) -> dict[str, Any]:
+        source = intents[key]
+        return {
+            "key": key,
+            "field": label,
+            "label": label,
+            "editable": True,
+            "source": source,
+            "source_label": SOURCE_MAPPING_OPTION_LABELS[source],
+            "detail": note,
+            "param_name": f"{SOURCE_QUERY_PREFIX}{key}",
+            "options": option_rows,
+        }
+
+    locked_rows: list[dict[str, Any]] = [
         {
+            "key": "level_storey",
             "field": "Level / Storey",
-            "source": "Spatial container",
-            "detail": "spatial_container",
+            "label": "Level / Storey",
+            "editable": False,
+            "source": "spatial_container",
+            "source_label": "Spatial container",
+            "detail": "Spatial container — Level source controls deferred.",
+            "param_name": "",
+            "options": [],
         },
         {
+            "key": "zone",
             "field": "Zone",
-            "source": "Not mapped",
-            "detail": "Not indexed",
+            "label": "Zone",
+            "editable": False,
+            "source": "not_mapped",
+            "source_label": "Not mapped",
+            "detail": "Not indexed — Zone source controls deferred.",
+            "param_name": "",
+            "options": [],
         },
         {
+            "key": "ifc_class",
             "field": "IFC Class",
-            "source": "IFC property",
-            "detail": "ifc_type",
+            "label": "IFC Class",
+            "editable": False,
+            "source": "ifc_property",
+            "source_label": "IFC property",
+            "detail": "Core locked — ifc_type",
+            "param_name": "",
+            "options": [],
         },
         {
+            "key": "type_name",
             "field": "Type Name",
-            "source": "Castor indexed field",
-            "detail": "element_type.name",
+            "label": "Type Name",
+            "editable": False,
+            "source": "castor_indexed_field",
+            "source_label": "Castor indexed field",
+            "detail": "Core indexed — element_type.name (source type locked here)",
+            "param_name": "",
+            "options": [],
         },
         {
+            "key": "quantity_source",
             "field": "Quantity Source",
-            "source": "Qto property",
-            "detail": "Named Qto measure when rule selected",
+            "label": "Quantity Source",
+            "editable": False,
+            "source": "qto_property",
+            "source_label": "Qto property",
+            "detail": "Core locked — named Qto measure when rule selected",
+            "param_name": "",
+            "options": [],
         },
         {
+            "key": "quantity_basis",
             "field": "Quantity Basis",
-            "source": "Manual field",
-            "detail": "User-defined measurement rule",
+            "label": "Quantity Basis",
+            "editable": False,
+            "source": "manual_field",
+            "source_label": "Manual field",
+            "detail": "Core locked — user-defined measurement rule (basis_*)",
+            "param_name": "",
+            "options": [],
         },
         {
+            "key": "unit_basis",
             "field": "Unit Basis",
-            "source": "Castor indexed field",
-            "detail": "model volume / area / length units or count",
+            "label": "Unit Basis",
+            "editable": False,
+            "source": "castor_indexed_field",
+            "source_label": "Castor indexed field",
+            "detail": "Core locked — derived from Quantity Basis",
+            "param_name": "",
+            "options": [],
         },
         {
+            "key": "total_quantity",
             "field": "Total Quantity",
-            "source": "Castor indexed field",
-            "detail": "Derived only when source + basis selected",
-        },
-        {
-            "field": "Classification Code",
-            "source": "Not mapped",
-            "detail": "Unavailable — Future Modify handoff",
-        },
-        {
-            "field": "Package / BOQ Mapping",
-            "source": "Not mapped",
-            "detail": "Schema field only — not BOQ generation",
-        },
-        {
-            "field": "Work Package",
-            "source": "Not mapped",
-            "detail": "Future Modify handoff",
-        },
-        {
-            "field": "Review Status",
-            "source": "Castor indexed field",
-            "detail": "Computed from preparation row",
-        },
-        {
-            "field": "Handoff Status",
-            "source": "Future Modify handoff",
-            "detail": "Eligible / Not eligible for Castor Modify",
+            "label": "Total Quantity",
+            "editable": False,
+            "source": "castor_indexed_field",
+            "source_label": "Castor indexed field",
+            "detail": "Core locked — derived only when source + basis selected",
+            "param_name": "",
+            "options": [],
         },
     ]
+
+    mapping_rows = [
+        editable_row(
+            "classification_code",
+            "Classification Code",
+            "Mapping intent only — no classification value created in this slice.",
+        ),
+        editable_row(
+            "package_boq_mapping",
+            "Package / BOQ Mapping",
+            "Schema field only — not BOQ generation. Mapping intent only.",
+        ),
+        editable_row(
+            "work_package",
+            "Work Package",
+            "Mapping intent only — Modify handoff remains disabled.",
+        ),
+    ]
+
+    trailing_locked: list[dict[str, Any]] = [
+        {
+            "key": "review_status",
+            "field": "Review Status",
+            "label": "Review Status",
+            "editable": False,
+            "source": "castor_indexed_field",
+            "source_label": "Castor indexed field",
+            "detail": "Core locked — computed from preparation row",
+            "param_name": "",
+            "options": [],
+        },
+        {
+            "key": "handoff_status",
+            "field": "Handoff Status",
+            "label": "Handoff Status",
+            "editable": False,
+            "source": "future_modify_handoff",
+            "source_label": "Future Modify handoff",
+            "detail": "Core locked — Eligible / Not eligible (send remains disabled)",
+            "param_name": "",
+            "options": [],
+        },
+    ]
+
+    # Preserve prior display order: spatial → type/core measures → mapping → status.
+    return [
+        locked_rows[0],  # level
+        locked_rows[1],  # zone
+        locked_rows[2],  # ifc_class
+        locked_rows[3],  # type_name
+        locked_rows[4],  # quantity_source
+        locked_rows[5],  # quantity_basis
+        locked_rows[6],  # unit_basis
+        locked_rows[7],  # total_quantity
+        *mapping_rows,
+        *trailing_locked,
+    ]
+
+
+def default_source_mappings() -> list[dict[str, Any]]:
+    """Return Source Mapping rows for default intents (back-compat)."""
+    return build_source_mappings_ui(default_source_mapping_intents())
 
 
 def unit_basis_for(basis: str) -> str:
@@ -591,11 +764,21 @@ def build_prep_rows(
     quantities: dict[str, Any],
     basis_overrides: Mapping[str, str] | None = None,
     schema_includes: Mapping[str, bool] | None = None,
+    source_mappings: Mapping[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """Build Generated Preparation Data Model rows from indexed aggregates."""
     includes = dict(schema_includes or default_schema_includes())
     for key in LOCKED_SCHEMA_KEYS:
         includes[key] = True
+    intents = dict(source_mappings or default_source_mapping_intents())
+    for key in EDITABLE_SOURCE_MAPPING_KEYS:
+        if intents.get(key) not in ALLOWED_SOURCE_MAPPING_VALUES:
+            intents[key] = DEFAULT_EDITABLE_SOURCE_MAPPING
+
+    class_src = intents["classification_code"]
+    package_src = intents["package_boq_mapping"]
+    work_src = intents["work_package"]
+
     rows_out: list[dict[str, Any]] = []
     use_types = bool(quantities.get("by_type_shown")) and bool(quantities.get("by_type"))
     source_rows: list[dict[str, Any]] = (
@@ -627,10 +810,13 @@ def build_prep_rows(
             missing_source = total is None
             total_display = "—" if missing_source else total
 
-        # Unresolved mapping gaps only when the schema field is included.
+        # Mapping gaps only when field included AND source intent counts as unresolved.
         include_classification = bool(includes.get("classification_code"))
         include_package = bool(includes.get("package_boq_mapping"))
         include_work = bool(includes.get("work_package"))
+        missing_classification = include_classification and _source_counts_as_gap(class_src)
+        missing_package = include_package and _source_counts_as_gap(package_src)
+        missing_work = include_work and _source_counts_as_gap(work_src)
 
         row: dict[str, Any] = {
             "model_group": model_group,
@@ -647,11 +833,21 @@ def build_prep_rows(
             "classification_code": "",
             "package_boq_mapping": "",
             "work_package": "",
+            "classification_source": class_src if include_classification else "",
+            "package_boq_mapping_source": package_src if include_package else "",
+            "work_package_source": work_src if include_work else "",
+            "classification_hint": (
+                _mapping_cell_hint(class_src) if include_classification else ""
+            ),
+            "package_boq_mapping_hint": (
+                _mapping_cell_hint(package_src) if include_package else ""
+            ),
+            "work_package_hint": _mapping_cell_hint(work_src) if include_work else "",
             "element_count": raw.get("element_count"),
             "missing_quantity_source": missing_source,
-            "missing_classification": include_classification,
-            "missing_package": include_package,
-            "missing_work_package": include_work,
+            "missing_classification": missing_classification,
+            "missing_package": missing_package,
+            "missing_work_package": missing_work,
         }
         row["review_status"] = _review_status(row)
         row["handoff_status"] = _handoff_status(row)
@@ -913,21 +1109,29 @@ def build_preparation_ui(
     quantities: dict[str, Any],
     basis_overrides: Mapping[str, str] | None = None,
     schema_includes: Mapping[str, bool] | None = None,
+    source_mappings: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
-    """Assemble Quantities preparation UI (Slice 2–3a + 3c-1 schema includes)."""
+    """Assemble Quantities preparation UI (Slice 2–3a + 3c-1 + 3c-2a)."""
     overrides = dict(basis_overrides or {})
     includes = dict(schema_includes or default_schema_includes())
     for key in LOCKED_SCHEMA_KEYS:
         includes[key] = True
+    intents = dict(source_mappings or default_source_mapping_intents())
+    for key in EDITABLE_SOURCE_MAPPING_KEYS:
+        if intents.get(key) not in ALLOWED_SOURCE_MAPPING_VALUES:
+            intents[key] = DEFAULT_EDITABLE_SOURCE_MAPPING
     schema_fields = build_schema_fields_ui(includes)
     basis_rules = user_defined_measurement_rules(overrides, quantities)
     prep_rows = (
-        build_prep_rows(quantities, overrides, includes) if quantities.get("has_ifc") else []
+        build_prep_rows(quantities, overrides, includes, intents)
+        if quantities.get("has_ifc")
+        else []
     )
     unresolved_register = build_unresolved_register(prep_rows)
     return {
         "schema_fields": schema_fields,
         "schema_includes": includes,
+        "source_mapping_intents": intents,
         "show": {
             "level_storey": bool(includes.get("level_storey")),
             "zone": bool(includes.get("zone")),
@@ -943,10 +1147,16 @@ def build_preparation_ui(
             "review_status": True,
             "handoff_status": True,
         },
-        "source_mappings": default_source_mappings(),
-        "source_mapping_readonly_note": (
-            "Source Mapping remains read-only in this slice. "
-            "Source controls are planned for a later slice."
+        "source_mappings": build_source_mappings_ui(intents),
+        "source_mapping_session_note": (
+            "Source mapping controls are session-only. They define mapping intent "
+            "for the generated preparation model; they do not create values, save "
+            "profiles, or send data to Modify in this slice."
+        ),
+        "source_mapping_option_note": (
+            "Future Modify handoff: deferred mapping gap; counted as unresolved. "
+            "Manual field: manual value expected later; counted as unresolved. "
+            "Not mapped: intentionally blank; not counted as unresolved."
         ),
         "schema_session_note": (
             "Schema selection is session-only and not saved. "
@@ -994,13 +1204,14 @@ def build_preparation_ui(
         "missing_summary": unresolved_register,
         "column_config": schema_fields,
         "prep_helper_note": (
-            "Rows are generated only from the selected schema, source mappings, "
+            "Rows are generated only from the selected schema, source mapping intents, "
             "and user-defined measurement rules. If quantity basis is unresolved, "
             "Total Quantity shows Unresolved — not a raw IFC number. "
             "Unit Basis is derived from selected Quantity Basis; it is not manually "
             "edited in this slice. Totals reflect the user-selected basis, not a "
             "Castor recommendation. Excluded schema fields are omitted from the table "
-            "and are not counted as unresolved schema gaps."
+            "and are not counted as unresolved schema gaps. "
+            "Mapping cells show intent hints only — no values are invented."
         ),
         "prep_unit_basis_note": (
             "Unit Basis is derived from selected Quantity Basis; "

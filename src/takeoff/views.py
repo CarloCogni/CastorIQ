@@ -29,6 +29,7 @@ from .services.quantity_preparation_ui import (
     build_preparation_ui,
     parse_basis_overrides_from_query,
     parse_schema_includes_from_query,
+    parse_source_mappings_from_query,
 )
 
 logger = logging.getLogger(__name__)
@@ -171,15 +172,17 @@ class QTOView(ProjectTabMixin, TemplateView):
         ctx = super().get_context_data(**kwargs)
         ctx["castor_subtab"] = "qto"
         project = ctx["project"]
-        # Slice 3a/3c-1: basis_* and field_* GET params are session/UI state only.
+        # Slice 3a/3c-1/3c-2a: basis_*, field_*, source_* GET params are session/UI only.
         quantities = ModelQuantitiesService(project).build()
         ctx["quantities"] = quantities
         basis_overrides = parse_basis_overrides_from_query(self.request.GET)
         schema_includes = parse_schema_includes_from_query(self.request.GET)
+        source_mappings = parse_source_mappings_from_query(self.request.GET)
         ctx["qty_prep"] = build_preparation_ui(
             quantities,
             basis_overrides=basis_overrides,
             schema_includes=schema_includes,
+            source_mappings=source_mappings,
         )
         ctx["missing_qto_entities_url"] = (
             reverse("takeoff:model_inventory_entities", kwargs={"pk": project.pk}) + "?has_qto=no"

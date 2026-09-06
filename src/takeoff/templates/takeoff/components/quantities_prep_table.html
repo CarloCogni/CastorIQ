@@ -119,13 +119,37 @@
             <td class="qty-col-secondary text-secondary">—</td>
             {% endif %}
             {% if qty_prep.show.classification_code %}
-            <td class="qty-col-secondary text-secondary">—</td>
+            <td class="qty-col-secondary text-secondary"
+                data-testid="qty-prep-classification-cell"
+                data-qty-mapping-source="{{ row.classification_source }}"
+                title="{{ row.classification_hint }}">
+              —
+              {% if row.classification_hint %}
+              <span class="qty-mapping-hint d-block">{{ row.classification_hint }}</span>
+              {% endif %}
+            </td>
             {% endif %}
             {% if qty_prep.show.package_boq_mapping %}
-            <td class="qty-col-secondary text-secondary">—</td>
+            <td class="qty-col-secondary text-secondary"
+                data-testid="qty-prep-package-cell"
+                data-qty-mapping-source="{{ row.package_boq_mapping_source }}"
+                title="{{ row.package_boq_mapping_hint }}">
+              —
+              {% if row.package_boq_mapping_hint %}
+              <span class="qty-mapping-hint d-block">{{ row.package_boq_mapping_hint }}</span>
+              {% endif %}
+            </td>
             {% endif %}
             {% if qty_prep.show.work_package %}
-            <td class="qty-col-secondary text-secondary">—</td>
+            <td class="qty-col-secondary text-secondary"
+                data-testid="qty-prep-work-package-cell"
+                data-qty-mapping-source="{{ row.work_package_source }}"
+                title="{{ row.work_package_hint }}">
+              —
+              {% if row.work_package_hint %}
+              <span class="qty-mapping-hint d-block">{{ row.work_package_hint }}</span>
+              {% endif %}
+            </td>
             {% endif %}
           </tr>
           {% empty %}

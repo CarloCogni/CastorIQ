@@ -18,21 +18,21 @@
       <span class="k">Rows missing selected quantity source</span>
       <span class="v">{{ qty_prep.unresolved_register.missing_selected_quantity_source }}</span>
     </div>
-    {% if qty_prep.show.classification_code %}
+    {% if qty_prep.show.classification_code and qty_prep.unresolved_register.missing_classification %}
     <div class="qty-missing-card" data-testid="qty-reg-missing-classification">
       <span class="k">Rows missing classification</span>
       <span class="v">{{ qty_prep.unresolved_register.missing_classification }}</span>
-      <span class="s">Not indexed</span>
+      <span class="s">Mapping intent gap</span>
     </div>
     {% endif %}
-    {% if qty_prep.show.package_boq_mapping %}
+    {% if qty_prep.show.package_boq_mapping and qty_prep.unresolved_register.missing_package_boq_mapping %}
     <div class="qty-missing-card" data-testid="qty-reg-missing-package">
       <span class="k">Rows missing package / BOQ mapping</span>
       <span class="v">{{ qty_prep.unresolved_register.missing_package_boq_mapping }}</span>
       <span class="s">Schema field only — not BOQ</span>
     </div>
     {% endif %}
-    {% if qty_prep.show.work_package %}
+    {% if qty_prep.show.work_package and qty_prep.unresolved_register.missing_work_package %}
     <div class="qty-missing-card" data-testid="qty-reg-missing-work-package">
       <span class="k">Rows missing work package</span>
       <span class="v">{{ qty_prep.unresolved_register.missing_work_package }}</span>

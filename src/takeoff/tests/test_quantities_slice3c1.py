@@ -157,8 +157,8 @@ def test_basis_params_compose_with_schema_params(client):
 
 
 @pytest.mark.django_db
-def test_schema_builder_controls_and_source_mapping_readonly(client):
-    """Editable includes appear; locked fields locked; source mapping read-only note."""
+def test_schema_builder_controls_and_source_mapping_interactive(client):
+    """Editable includes appear; locked fields locked; source selects for 3c-2a fields."""
     project = _pilot_like_project()
     client.force_login(project.owner)
     html = client.get(reverse("takeoff:qto", kwargs={"pk": project.pk})).content.decode()
@@ -166,9 +166,13 @@ def test_schema_builder_controls_and_source_mapping_readonly(client):
     assert 'data-testid="qty-schema-locked-ifc_class"' in html
     assert 'data-testid="qty-schema-session-note"' in html
     assert "session-only and not saved" in html.lower()
-    assert 'data-testid="qty-source-mapping-readonly-note"' in html
-    assert "Source Mapping remains read-only" in html
+    assert 'data-testid="qty-source-select-classification_code"' in html
+    assert 'data-testid="qty-source-select-package_boq_mapping"' in html
+    assert 'data-testid="qty-source-select-work_package"' in html
+    assert 'data-testid="qty-source-select-level_storey"' not in html
+    assert 'data-testid="qty-source-locked-ifc_class"' in html
     assert 'data-testid="qty-prep-config-form"' in html
+    assert "Source Mapping remains read-only" not in html
     page = html.split('data-testid="quantities-page"', 1)[1].split(
         'data-testid="quantities-not-claims"', 1
     )[0]
