@@ -1,7 +1,7 @@
-<!-- takeoff/components/quantities_prep_table.html — Generated Preparation Table -->
+<!-- takeoff/components/quantities_prep_table.html — Generated Preparation Data Model -->
 <section class="qty-builder-section" data-testid="quantities-prep-table" id="qty-prep-table-section">
   <div class="qty-builder-h">
-    <h6 class="mb-0" data-testid="quantities-prep-table-title">Generated Preparation Table</h6>
+    <h6 class="mb-0" data-testid="quantities-prep-table-title">Generated Preparation Data Model</h6>
     <span class="mi-footnote">
       {% if qty_prep.prep_row_grain == "type" %}By Type (capped){% else %}By IFC Class{% endif %}
       · {{ qty_prep.prep_rows|length }} row{{ qty_prep.prep_rows|length|pluralize }}
@@ -14,42 +14,46 @@
     <table class="table table-sm qty-config-table mb-0" data-testid="qty-prep-table">
       <thead>
         <tr>
-          <th>Level</th>
-          <th>Zone</th>
+          <th>Model Group</th>
           <th>IFC Class</th>
           <th>Type Name</th>
-          <th>Quantity Source</th>
-          <th class="text-end">Total</th>
-          <th>Quantity Basis</th>
+          <th>Selected Quantity Source</th>
+          <th>Selected Quantity Basis</th>
           <th>Unit Basis</th>
+          <th class="text-end">Total Quantity</th>
           <th>Classification Code</th>
-          <th>Package / BOQ Code</th>
+          <th>Package / BOQ Mapping</th>
           <th>Work Package</th>
+          <th>Review Status</th>
+          <th>Handoff Status</th>
         </tr>
       </thead>
       <tbody>
         {% for row in qty_prep.prep_rows %}
-        <tr data-testid="qty-prep-row">
-          <td class="text-secondary">{% if row.level %}{{ row.level }}{% else %}—{% endif %}</td>
-          <td class="text-secondary">{% if row.zone %}{{ row.zone }}{% else %}—{% endif %}</td>
+        <tr data-testid="qty-prep-row"
+            data-qty-basis-unresolved="{% if row.basis_unresolved %}1{% else %}0{% endif %}"
+            data-qty-ifc-class="{{ row.ifc_class }}">
+          <td>{{ row.model_group|default:"—" }}</td>
           <td>{{ row.ifc_class|default:"—" }}</td>
-          <td class="text-truncate" style="max-width:12rem;" title="{{ row.type_name }}">
+          <td class="text-truncate" style="max-width:10rem;" title="{{ row.type_name }}">
             {% if row.type_name %}{{ row.type_name }}{% else %}—{% endif %}
           </td>
-          <td>{% if row.quantity_source %}{{ row.quantity_source }}{% else %}—{% endif %}</td>
-          <td class="text-end">
-            {% if row.total != None and row.total != "" %}{{ row.total }}{% else %}—{% endif %}
-          </td>
-          <td>{% if row.quantity_basis %}{{ row.quantity_basis }}{% else %}—{% endif %}</td>
+          <td>{% if row.quantity_source %}{{ row.quantity_source }}{% else %}Unresolved{% endif %}</td>
+          <td>{% if row.quantity_basis %}{{ row.quantity_basis }}{% else %}Unresolved{% endif %}</td>
           <td class="text-secondary">{% if row.unit_basis %}{{ row.unit_basis }}{% else %}—{% endif %}</td>
+          <td class="text-end">
+            {% if row.basis_unresolved %}Unresolved{% elif row.total != None and row.total != "" %}{{ row.total }}{% else %}—{% endif %}
+          </td>
           <td class="text-secondary">—</td>
           <td class="text-secondary">—</td>
           <td class="text-secondary">—</td>
+          <td>{{ row.review_status }}</td>
+          <td>{{ row.handoff_status }}</td>
         </tr>
         {% empty %}
         <tr>
-          <td colspan="11" class="text-secondary">
-            No preparation rows yet. Index an IFC model with quantity properties first.
+          <td colspan="12" class="text-secondary">
+            No preparation rows yet. Index an IFC model first.
           </td>
         </tr>
         {% endfor %}

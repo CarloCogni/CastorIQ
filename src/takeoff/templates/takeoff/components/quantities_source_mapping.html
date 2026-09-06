@@ -1,0 +1,33 @@
+<!-- takeoff/components/quantities_source_mapping.html — Source Mapping (Slice 2a) -->
+<section class="qty-builder-section" data-testid="quantities-source-mapping">
+  <div class="qty-builder-h">
+    <h6 class="mb-0">Source Mapping</h6>
+    <span class="mi-footnote">Where each schema field gets its value</span>
+  </div>
+  <p class="qty-builder-note mb-2">
+    Map preparation fields to allowed sources only:
+    IFC property, Qto property, Spatial container, Manual field,
+    Castor indexed field, Not mapped, Future Modify handoff.
+    Document extraction, Ask, RAG, and ML suggestions are not part of this screen.
+  </p>
+  <div class="table-responsive">
+    <table class="table table-sm qty-config-table mb-0" data-testid="qty-source-mapping-table">
+      <thead>
+        <tr>
+          <th>Schema field</th>
+          <th>Source</th>
+          <th>Detail</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in qty_prep.source_mappings %}
+        <tr data-testid="qty-source-mapping-row">
+          <td>{{ row.field }}</td>
+          <td><span class="mi-chip mi-chip-muted">{{ row.source }}</span></td>
+          <td class="text-secondary">{{ row.detail }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>

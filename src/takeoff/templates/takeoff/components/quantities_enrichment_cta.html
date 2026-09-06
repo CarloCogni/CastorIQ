@@ -1,28 +1,34 @@
-<!-- takeoff/components/quantities_enrichment_cta.html — Disabled Modify bridge CTA -->
-<section class="qty-builder-section" data-testid="quantities-enrichment-cta">
+<!-- takeoff/components/quantities_enrichment_cta.html — Modify handoff (disabled) -->
+<section class="qty-builder-section" data-testid="quantities-modify-handoff">
   <div class="qty-builder-h">
-    <h6 class="mb-0">Controlled IFC Enrichment</h6>
-    <span class="mi-footnote">Via Castor Modify — not available from this screen yet</span>
+    <h6 class="mb-0">Send unresolved rows to Castor Modify</h6>
+    <span class="mi-footnote">Disabled in this slice</span>
   </div>
-  <p class="qty-builder-note mb-2" data-testid="quantities-enrichment-copy">
-    Creates controlled IFC modification proposals through Castor Modify.
-    No IFC writeback happens directly from this screen.
-    The proposal continues through Castor Modify for review, approval, writeback, Git trace, and re-index.
+  <p class="qty-builder-note mb-2" data-testid="quantities-handoff-copy">
+    Quantities only prepares unresolved rows. Castor Modify handles suggestions, review,
+    approval, writeback, Git trace, and re-index.
   </p>
-  <div class="qty-enrich-flow mb-2" data-testid="quantities-enrichment-flow" aria-hidden="true">
-    <span>Proposal</span><span class="sep">→</span>
-    <span>Review</span><span class="sep">→</span>
-    <span>Approve</span><span class="sep">→</span>
-    <span>Writeback</span><span class="sep">→</span>
-    <span>Git Trace</span><span class="sep">→</span>
-    <span>Re-index</span>
+  <p class="qty-builder-note mb-2" data-testid="quantities-handoff-detail">
+    Quantities does not create IFC modification proposals directly. Selected unresolved rows
+    can later be sent to Castor Modify, where suggestions, review, approval, writeback,
+    Git trace, and re-index are handled.
+  </p>
+  <div class="qty-enrich-flow mb-2" data-testid="quantities-handoff-flow" aria-hidden="true">
+    <span>Generated Data Model</span><span class="sep">→</span>
+    <span>Select unresolved rows</span><span class="sep">→</span>
+    <span>Send to Castor Modify</span><span class="sep">→</span>
+    <span class="qty-flow-modify">Handled in Castor Modify: Suggest / Review</span><span class="sep">→</span>
+    <span class="qty-flow-modify">Approve</span><span class="sep">→</span>
+    <span class="qty-flow-modify">Writeback</span><span class="sep">→</span>
+    <span class="qty-flow-modify">Git Trace</span><span class="sep">→</span>
+    <span class="qty-flow-modify">Re-index</span>
   </div>
   <button type="button"
           class="btn btn-sm btn-outline-secondary"
           disabled
           aria-disabled="true"
-          title="Coming later — proposals will open in Castor Modify"
-          data-testid="qty-prepare-enrichment-proposal">
-    Prepare Enrichment Proposal
+          title="Disabled — handoff to Castor Modify comes later"
+          data-testid="qty-send-unresolved-to-modify">
+    Send unresolved rows to Castor Modify
   </button>
 </section>

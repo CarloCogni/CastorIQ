@@ -1,5 +1,5 @@
 # takeoff/tests/test_quantities_workspace_v1.py
-"""Quantities Workspace — builder layout, honesty, and reference markers."""
+"""Quantities Workspace — Slice 2a layout, honesty, and inventory markers."""
 
 from __future__ import annotations
 
@@ -27,12 +27,20 @@ _FORBIDDEN_PRIMARY = (
     "Optional unit-cost estimate",
     "Estimated total by level",
     "Generated 5D Table",
+    "Generated Preparation Table",
+    "Prepare Enrichment Proposal",
+    "Column Configuration",
+    "With IFC Qto",
+    "Missing IFC Qto",
+    "Quantity Coverage",
+    "Model Quantity Readiness",
+    "Model Quantity Reference",
 )
 
 
 @pytest.mark.django_db
 def test_quantities_workspace_v1_layout_markers(client):
-    """Builder sections + reference grids + hardened chrome."""
+    """Builder sections + raw inventory + hardened chrome."""
     project = ProjectFactory()
     ifc = IFCFileFactory(project=project, status="completed", name="pilot-qty.ifc")
     IFCEntityFactory(
@@ -52,36 +60,49 @@ def test_quantities_workspace_v1_layout_markers(client):
     assert 'data-testid="quantities-workspace-title"' in html
     assert "Quantities" in html
     assert 'data-testid="quantities-workspace-subtitle"' in html
-    assert "IFC Model Quantities" in html
+    assert "Build Quantity Preparation Data Model" in html
     assert 'data-testid="quantities-not-boq-badge"' in html
     assert "Not BOQ" in html
+    assert "Model quantities only" in html
     assert 'data-testid="quantities-open-model"' in html
     assert 'data-testid="quantities-open-ifc-elements"' in html
     assert "Open IFC Elements" in html
 
-    # Builder Slice 1
-    assert 'data-testid="quantities-workspaces-mode"' in html
-    assert 'data-testid="quantities-column-config"' in html
-    assert 'data-testid="quantities-basis-rules"' in html
-    assert "Starter rules — review before using for enrichment" in html
-    assert 'data-testid="quantities-generate-prep"' in html
+    # Slice 2a
+    assert 'data-testid="quantities-schema-builder"' in html
+    assert "Schema Builder" in html
+    assert 'data-testid="quantities-source-mapping"' in html
+    assert "Source Mapping" in html
+    assert 'data-testid="quantities-measurement-rules"' in html
+    assert "User-defined Measurement Rules" in html
     assert 'data-testid="quantities-prep-table"' in html
-    assert "Generated Preparation Table" in html
-    assert "Generated 5D Table" not in html
-    assert 'data-testid="quantities-missing-summary"' in html
-    assert 'data-testid="quantities-enrichment-cta"' in html
-    assert 'data-testid="qty-prepare-enrichment-proposal"' in html
+    assert "Generated Preparation Data Model" in html
+    assert "Generated Preparation Table" not in html
+    assert 'data-testid="quantities-unresolved-register"' in html
+    assert "Unresolved Data Register" in html
+    assert 'data-testid="quantities-modify-handoff"' in html
+    assert 'data-testid="qty-send-unresolved-to-modify"' in html
+    assert "Send unresolved rows to Castor Modify" in html
     assert "disabled" in html
-    assert "No IFC writeback happens directly from this screen" in html
+    assert (
+        "No IFC modification proposals directly" in html
+        or "does not create IFC modification" in html
+    )
     assert 'data-testid="quantities-model-reference"' in html
+    assert "Raw Indexed Quantity Inventory" in html
 
-    # Reference (relocated readiness UI)
+    # Reference inventory (relocated readiness UI, relabeled)
     assert 'data-testid="quantities-stats-strip"' in html
     assert "mi-stats" in html
-    assert 'data-testid="qty-stat-with-qto"' in html
-    assert 'data-testid="qty-stat-missing"' in html
-    assert "Missing IFC Qto" in html
-    assert "Quantity Coverage" in html
+    assert "Elements with indexed quantity values" in html
+    assert "Elements without indexed quantity values" in html
+    assert "Raw indexed quantity availability" in html
+    assert "With IFC Qto" not in html
+    assert "Missing IFC Qto" not in html
+    assert "with IFC Qto" not in html
+    assert "Quantity Coverage" not in html
+    assert "Model Quantity Readiness" not in html
+    assert "elements with indexed quantity values" in html.lower()
     assert 'data-testid="quantity-breakdown-rail"' in html
     assert 'data-testid="quantity-main-grid"' in html
     assert 'data-testid="quantity-readiness-inspector"' in html
@@ -105,13 +126,16 @@ def test_quantities_workspace_v1_layout_markers(client):
     )
     assert "qty-advanced-recompute" in html
     assert "Recompute optional cache" in html
-    assert "Export model quantities" in html
+    assert "Export preparation data model" in html or "Export indexed quantities" in html
     assert "Export Excel" not in html
+    # No Slice 2b
+    assert "Visual Summary" not in html
+    assert "Quantity Preparation Insights" not in html
 
 
 @pytest.mark.django_db
 def test_quantities_workspace_interaction_markers(client):
-    """Selection / collapse / filter / sort markers remain on Model Quantity Reference."""
+    """Selection / collapse / filter / sort markers remain on raw inventory."""
     project = ProjectFactory()
     ifc = IFCFileFactory(project=project, status="completed")
     storey_ent = IFCEntityFactory(
@@ -158,6 +182,7 @@ def test_quantities_workspace_interaction_markers(client):
     assert "mi-sortable" in html
     assert 'data-testid="qty-type-row"' in html or 'data-testid="quantity-by-type"' in html
     assert 'data-testid="qty-prep-row"' in html
+    assert 'data-qty-basis-unresolved="1"' in html
 
 
 @pytest.mark.django_db
@@ -184,11 +209,13 @@ def test_quantities_workspace_avoids_forbidden_primary_chrome(client):
     assert "Qto_BeamBaseQuantities" not in html
     assert "total_cost_estimate" not in html
     assert "unit_cost" not in primary
+    assert "EVM" not in primary
+    assert "rates" not in primary.lower() or "not commercial" in primary.lower()
 
 
 @pytest.mark.django_db
 def test_quantities_workspace_missing_inspect_link(client):
-    """Missing IFC Qto still links to IFC Elements with has_qto=no."""
+    """Elements without indexed quantities still link to IFC Elements with has_qto=no."""
     project = ProjectFactory()
     ifc = IFCFileFactory(project=project, status="completed")
     IFCEntityFactory(ifc_file=ifc, ifc_type="IfcColumn", global_id="GID-QC-1", properties={})

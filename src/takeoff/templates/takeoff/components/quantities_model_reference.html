@@ -1,27 +1,27 @@
-﻿<!-- takeoff/components/quantities_model_reference.html — Existing quantity breakdowns (lower reference) -->
+﻿<!-- takeoff/components/quantities_model_reference.html — Raw Indexed Quantity Inventory (secondary) -->
 <section class="qty-builder-section qty-model-reference" data-testid="quantities-model-reference">
   <div class="qty-builder-h">
-    <h6 class="mb-0">Model Quantity Reference</h6>
-    <span class="mi-footnote">Indexed IFC Qto availability and breakdowns</span>
+    <h6 class="mb-0">Raw Indexed Quantity Inventory</h6>
+    <span class="mi-footnote">Secondary reference only</span>
   </div>
-  <p class="qty-builder-note mb-2">
-    Reference view of model quantity coverage. This is not the preparation table above.
+  <p class="qty-builder-note mb-2" data-testid="qty-raw-inventory-subtitle">
+    Reference only. These are raw indexed IFC quantity values. They do not indicate BOQ, 5D, QS takeoff, or measurement readiness.
   </p>
   <div class="mi-stats" data-testid="quantities-stats-strip">
     <div class="mi-stat" data-testid="qty-stat-with-qto">
-      <span class="mi-stat-k">With IFC Qto</span>
+      <span class="mi-stat-k">Elements with indexed quantity values</span>
       <span class="mi-stat-v" data-testid="qty-with-qto">
         {{ quantities.readiness.entities_with_quantity }}
       </span>
     </div>
     <div class="mi-stat" data-testid="qty-stat-missing">
-      <span class="mi-stat-k">Missing IFC Qto</span>
+      <span class="mi-stat-k">Elements without indexed quantity values</span>
       <span class="mi-stat-v" data-testid="qty-missing">
         {{ quantities.readiness.missing_quantity_count }}
       </span>
     </div>
     <div class="mi-stat" data-testid="qty-stat-coverage">
-      <span class="mi-stat-k">Quantity Coverage</span>
+      <span class="mi-stat-k">Raw indexed quantity availability</span>
       {% if quantities.readiness.quantity_coverage_pct != None %}
       <span class="mi-stat-v" data-testid="qty-coverage-pct">
         {{ quantities.readiness.quantity_coverage_pct }}%
@@ -31,7 +31,7 @@
       {% endif %}
     </div>
     <div class="mi-stat" data-testid="qty-stat-classes">
-      <span class="mi-stat-k">Classes with Qto</span>
+      <span class="mi-stat-k">Classes with indexed values</span>
       <span class="mi-stat-v" data-testid="qty-classes-with-qto">
         {{ quantity_classes_with_qto }}
       </span>
@@ -64,12 +64,12 @@
 
   <!-- Compatibility readiness marker for B3 tests (stats are the live surface) -->
   <div class="visually-hidden" data-testid="quantity-readiness"
-       aria-hidden="true">Quantity Readiness</div>
+       aria-hidden="true">Raw indexed quantity inventory</div>
 
   <div class="mi-shell" data-testid="quantities-workspace-main">
 
     <aside class="mi-rail" data-testid="quantity-breakdown-rail">
-      <div class="mi-zone-h"><span class="mi-zone-title">Quantity Breakdown</span></div>
+      <div class="mi-zone-h"><span class="mi-zone-title">Indexed quantity breakdown</span></div>
       <div class="mi-zone-body">
 
         <div class="mi-nav-section" data-testid="quantity-by-ifc-class-nav" data-qty-collapse="class">
@@ -153,11 +153,11 @@
           <button type="button" class="mi-nav-section-h" data-testid="qty-collapse-missing"
                   aria-expanded="true" aria-controls="qty-missing-body">
             <span class="mi-chevron" aria-hidden="true">▼</span>
-            <span>Missing IFC Qto</span>
+            <span>Elements without indexed quantity values</span>
           </button>
           <div class="mi-nav-body" id="qty-missing-body">
             <div class="mi-missing-mini">
-              <span class="k">Missing IFC Qto</span>
+              <span class="k">Elements without indexed quantity values</span>
               <span class="v">{{ quantities.missing_quantities.total_missing }}</span>
               <span class="k">Classification</span>
               <span class="v text-secondary" data-testid="qty-classification-unavailable">Unavailable</span>
@@ -177,7 +177,7 @@
                  class="btn btn-sm btn-outline-secondary w-100"
                  data-testid="qty-missing-open-entities"
                  style="font-size:0.68rem;">
-                Inspect IFC Elements (Has IFC Qto: No)
+                Inspect IFC Elements (indexed quantity: No)
               </a>
             </div>
           </div>
@@ -249,9 +249,9 @@
               <tr>
                 <th class="mi-sortable" data-qty-sort="name" data-testid="qty-sort-class-name">IFC Class</th>
                 <th class="mi-num mi-sortable" data-qty-sort="elements" data-testid="qty-sort-class-elements">Elements</th>
-                <th class="mi-num mi-sortable" data-qty-sort="has">Has IFC Qto</th>
-                <th class="mi-num mi-sortable" data-qty-sort="missing">Missing IFC Qto</th>
-                <th class="mi-num mi-sortable" data-qty-sort="coverage">Coverage %</th>
+                <th class="mi-num mi-sortable" data-qty-sort="has">With indexed values</th>
+                <th class="mi-num mi-sortable" data-qty-sort="missing">Elements without indexed quantity values</th>
+                <th class="mi-num mi-sortable" data-qty-sort="coverage">Indexed avail. %</th>
                 <th class="mi-num mi-sortable" data-qty-sort="net-volume">Net Volume (model volume units)</th>
                 <th class="mi-num mi-sortable" data-qty-sort="net-area">Net Area (model area units)</th>
                 <th class="mi-num mi-sortable" data-qty-sort="net-side-area">Net Side Area (model area units)</th>
@@ -311,9 +311,9 @@
               <tr>
                 <th>Level / Storey</th>
                 <th class="mi-num">Elements</th>
-                <th class="mi-num">Has IFC Qto</th>
-                <th class="mi-num">Missing IFC Qto</th>
-                <th class="mi-num">Coverage %</th>
+                <th class="mi-num">With indexed values</th>
+                <th class="mi-num">Elements without indexed quantity values</th>
+                <th class="mi-num">Indexed avail. %</th>
                 <th class="mi-num">Net Volume (model volume units)</th>
                 <th class="mi-num">Net Area (model area units)</th>
                 <th class="mi-num">Length (model length units)</th>
@@ -372,8 +372,8 @@
               <tr>
                 <th>Type</th>
                 <th class="mi-num">Elements</th>
-                <th class="mi-num">Has IFC Qto</th>
-                <th class="mi-num">Missing IFC Qto</th>
+                <th class="mi-num">With indexed values</th>
+                <th class="mi-num">Elements without indexed quantity values</th>
                 <th class="mi-num">Net Volume (model volume units)</th>
                 <th class="mi-num">Net Area / Net Side Area (model area units)</th>
               </tr>
@@ -416,7 +416,7 @@
     </section>
 
     <aside class="mi-inspector" data-testid="quantity-readiness-inspector">
-      <div class="mi-zone-h"><span class="mi-zone-title">Model Quantity Readiness</span></div>
+      <div class="mi-zone-h"><span class="mi-zone-title">Inventory selection</span></div>
       <div class="mi-zone-body">
 
         <div class="mi-prop" id="qty-selection-inspector" data-testid="qty-selection-inspector"
@@ -428,9 +428,9 @@
             <span class="k">Type</span><span class="v" id="qty-sel-type" data-testid="qty-sel-type">—</span>
             <span class="k">Name</span><span class="v" id="qty-sel-name" data-testid="qty-sel-name">—</span>
             <span class="k">Elements</span><span class="v" id="qty-sel-elements" data-testid="qty-sel-elements">—</span>
-            <span class="k">Has IFC Qto</span><span class="v" id="qty-sel-has" data-testid="qty-sel-has">—</span>
-            <span class="k">Missing IFC Qto</span><span class="v" id="qty-sel-missing" data-testid="qty-sel-missing">—</span>
-            <span class="k">Quantity Coverage %</span><span class="v" id="qty-sel-coverage" data-testid="qty-sel-coverage">—</span>
+            <span class="k">With indexed values</span><span class="v" id="qty-sel-has" data-testid="qty-sel-has">—</span>
+            <span class="k">Elements without indexed quantity values</span><span class="v" id="qty-sel-missing" data-testid="qty-sel-missing">—</span>
+            <span class="k">Raw indexed availability %</span><span class="v" id="qty-sel-coverage" data-testid="qty-sel-coverage">—</span>
             <span class="k">Net Volume (model volume units)</span><span class="v" id="qty-sel-net-volume" data-testid="qty-sel-net-volume">—</span>
             <span class="k">Net Area (model area units)</span><span class="v" id="qty-sel-net-area" data-testid="qty-sel-net-area">—</span>
             <span class="k">Net Side Area (model area units)</span><span class="v" id="qty-sel-net-side-area" data-testid="qty-sel-net-side-area">—</span>
@@ -440,15 +440,15 @@
         </div>
 
         <div class="mi-prop" data-testid="qty-overall-readiness">
-          <span class="mi-prop-k">Quantity Coverage</span>
+          <span class="mi-prop-k">Raw indexed quantity availability</span>
           {% if quantities.readiness.quantity_coverage_pct != None %}
           <div class="mi-prop-v">{{ quantities.readiness.quantity_coverage_pct }}%</div>
           {% else %}
           <div class="mi-prop-v text-secondary">—</div>
           {% endif %}
           <p class="mi-prop-note">
-            {{ quantities.readiness.entities_with_quantity }} with IFC Qto ·
-            {{ quantities.readiness.missing_quantity_count }} missing
+            {{ quantities.readiness.entities_with_quantity }} elements with indexed quantity values ·
+            {{ quantities.readiness.missing_quantity_count }} elements without indexed quantity values
           </p>
         </div>
 

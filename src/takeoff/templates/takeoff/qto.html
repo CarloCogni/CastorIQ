@@ -1,4 +1,4 @@
-<!-- takeoff/qto.html — Quantities builder Slice 1 (IFC Model Quantities) -->
+<!-- takeoff/qto.html — Quantities Slice 2a (Quantity Preparation Data Model) -->
 {% include "takeoff/components/quantities_grid_styles.html" %}
 
 <div class="d-flex flex-column h-100 qty-ws qty-builder" id="qto-root"
@@ -10,7 +10,7 @@
         <i class="bi bi-calculator me-1" style="opacity:.7;"></i>Quantities
       </h5>
       <span class="mi-sub d-none d-md-inline" data-testid="quantities-workspace-subtitle">
-        IFC Model Quantities
+        Build Quantity Preparation Data Model
       </span>
     </div>
     <button type="button"
@@ -45,8 +45,8 @@
 
   <p class="px-3 pt-2 mb-0 qty-boundary-copy" data-testid="quantities-boundary-copy"
      style="font-size:0.72rem; color: var(--mi-muted, #9eb0c4);">
-    Read-only IFC quantity availability and model quantity breakdowns from indexed IFC properties.
-    This is not BOQ, cost, or verified QS measurement.
+    Deterministic Quantity Preparation Data Model from indexed IFC.
+    Not Ask, not Modify, not BOQ, not cost, not verified QS measurement.
   </p>
 
   {% if not quantities.has_ifc %}
@@ -60,40 +60,9 @@
 
   <div class="qty-builder-body">
 
-    <section class="qty-builder-section" data-testid="quantities-workspaces-mode">
-      <div class="qty-builder-h">
-        <h6 class="mb-0">Workspaces</h6>
-        <span class="mi-footnote">Preparation mode</span>
-      </div>
-      <div class="qty-mode-bar" role="group" aria-label="Quantities workspaces">
-        <button type="button" class="btn btn-sm btn-primary" data-testid="qty-mode-mapping"
-                aria-pressed="true">Quantity Mapping</button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" disabled
-                aria-disabled="true" title="Not available in this release"
-                data-testid="qty-mode-reference-only">Reference only</button>
-      </div>
-    </section>
-
     {% include "takeoff/components/quantities_column_config.html" %}
+    {% include "takeoff/components/quantities_source_mapping.html" %}
     {% include "takeoff/components/quantities_basis_rules.html" %}
-
-    <section class="qty-builder-section" data-testid="quantities-generate-prep">
-      <div class="qty-builder-h">
-        <h6 class="mb-0">Generate Preparation Table</h6>
-        <span class="mi-footnote">Built from current column + basis defaults</span>
-      </div>
-      <p class="qty-builder-note mb-2">
-        Generates a read-only preparation table from indexed IFC class/type aggregates and starter
-        basis rules. Does not write to IFC or create Modify proposals.
-      </p>
-      <button type="button"
-              class="btn btn-sm btn-outline-primary"
-              data-testid="qty-generate-prep-btn"
-              data-qty-scroll-target="qty-prep-table-section">
-        Generate Preparation Table
-      </button>
-    </section>
-
     {% include "takeoff/components/quantities_prep_table.html" %}
     {% include "takeoff/components/quantities_missing_summary.html" %}
     {% include "takeoff/components/quantities_enrichment_cta.html" %}
@@ -102,17 +71,17 @@
   </div>
 
   <details class="qty-advanced" data-testid="quantities-optional-estimate">
-    <summary>Advanced tools (optional cache / export) — not Quantities primary workspace</summary>
+    <summary>Advanced tools (optional) — not Quantities primary workspace</summary>
     <div class="qty-advanced-body">
       <p class="mb-2">
-        Optional cache and Excel export are legacy helpers for model quantity dumps.
+        Optional cache and export for preparation / indexed quantity dumps.
         They are not commercial takeoff, rates, or cost control.
       </p>
       <div class="d-flex flex-wrap gap-2">
         <a href="{% url 'takeoff:qto_export' project.pk %}"
            class="btn btn-sm btn-outline-secondary"
            data-testid="qty-advanced-export">
-          <i class="bi bi-file-earmark-excel me-1"></i>Export model quantities
+          <i class="bi bi-file-earmark-excel me-1"></i>Export preparation data model
         </a>
         <button type="button"
                 class="btn btn-sm btn-outline-secondary"
@@ -134,21 +103,6 @@
 (function () {
   var root = document.getElementById("qto-root");
   if (!root) return;
-
-  var genBtn = root.querySelector('[data-testid="qty-generate-prep-btn"]');
-  if (genBtn) {
-    genBtn.addEventListener("click", function () {
-      var targetId = genBtn.getAttribute("data-qty-scroll-target");
-      var target = targetId ? document.getElementById(targetId) : null;
-      if (target) {
-        target.scrollIntoView({ behavior: "smooth", block: "start" });
-        target.classList.add("qty-prep-flash");
-        window.setTimeout(function () {
-          target.classList.remove("qty-prep-flash");
-        }, 1200);
-      }
-    });
-  }
 
   function escAttr(v) {
     if (window.CSS && typeof CSS.escape === "function") return CSS.escape(v);
@@ -204,7 +158,7 @@
 
     if (detail) {
       detail.textContent =
-        "Named IFC measures from the indexed model only. Totals use IFC-reported model units — not normalized SI.";
+        "Raw indexed IFC quantity values only. Input evidence — not selected measurement, BOQ, 5D, or QS takeoff.";
     }
 
     if (key) {

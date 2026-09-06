@@ -202,6 +202,16 @@ def test_quantities_page_sections_and_honesty(client):
         .replace("not BOQ / not commercial cost", "")
         .replace("must not be treated as commercial cost control", "")
         .replace("This is not BOQ, cost, or verified QS measurement.", "")
+        .replace(
+            "Deterministic Quantity Preparation Data Model from indexed IFC. "
+            "Not Ask, not Modify, not BOQ, not cost, not verified QS measurement.",
+            "",
+        )
+        .replace(
+            "not indicate BOQ, 5D, QS takeoff, or measurement readiness.",
+            "",
+        )
+        .replace("not indicate BOQ, commercial 5D, QS takeoff, or selected measurement.", "")
     )
     for phrase in (
         "Bill of Quantities",

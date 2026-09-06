@@ -1,30 +1,28 @@
-<!-- takeoff/components/quantities_column_config.html — Slice 1 column profile (UI-only) -->
-<section class="qty-builder-section" data-testid="quantities-column-config">
+<!-- takeoff/components/quantities_column_config.html — Schema Builder (Slice 2a) -->
+<section class="qty-builder-section" data-testid="quantities-schema-builder">
   <div class="qty-builder-h">
-    <h6 class="mb-0">Column Configuration</h6>
-    <span class="mi-footnote">Session defaults — not saved to the project yet</span>
+    <h6 class="mb-0">Schema Builder</h6>
+    <span class="mi-footnote">Output fields for the preparation data model — session defaults</span>
   </div>
   <p class="qty-builder-note mb-2">
-    Define which fields appear in the Generated Preparation Table.
-    Source types describe where each column is expected to come from.
+    Define which fields the Generated Preparation Data Model must carry.
+    This is schema only — not Ask, not Modify, and not BOQ generation.
   </p>
   <div class="table-responsive">
-    <table class="table table-sm qty-config-table mb-0" data-testid="qty-column-config-table">
+    <table class="table table-sm qty-config-table mb-0" data-testid="qty-schema-builder-table">
       <thead>
         <tr>
-          <th>Column</th>
-          <th>Source type</th>
-          <th>Source property</th>
+          <th>Field</th>
           <th>Required</th>
+          <th>Source availability</th>
         </tr>
       </thead>
       <tbody>
-        {% for col in qty_prep.column_config %}
-        <tr data-testid="qty-column-config-row">
+        {% for col in qty_prep.schema_fields %}
+        <tr data-testid="qty-schema-field-row">
           <td>{{ col.label }}</td>
-          <td><span class="mi-chip mi-chip-muted">{{ col.source_type }}</span></td>
-          <td class="text-secondary">{{ col.source_property }}</td>
           <td>{{ col.required }}</td>
+          <td><span class="mi-chip mi-chip-muted">{{ col.availability }}</span></td>
         </tr>
         {% endfor %}
       </tbody>

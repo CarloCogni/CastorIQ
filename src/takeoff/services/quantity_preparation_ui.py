@@ -1,8 +1,9 @@
 # takeoff/services/quantity_preparation_ui.py
-"""UI-only Quantity Mapping / Preparation defaults for Quantities Slice 1.
+"""UI-only Quantity Preparation Data Model defaults (Slice 2a).
 
-No persistence, no writeback, no cost. Builds presentation payloads from
-ModelQuantitiesService output plus starter column/basis profiles.
+No persistence, no writeback, no cost, no Ask/Modify integration.
+Builds presentation payloads from ModelQuantitiesService output plus
+session/UI default schema, source mappings, and user-defined measurement rules.
 """
 
 from __future__ import annotations
@@ -14,13 +15,9 @@ logger = logging.getLogger(__name__)
 
 MAX_PREP_ROWS = 50
 
-# Starter / example basis only — not project-detected material logic.
-_STARTER_BASIS_BY_CLASS: dict[str, dict[str, str]] = {
-    "IfcWall": {
-        "quantity_source": "NetVolume",
-        "quantity_basis": "NetVolume",
-        "unit_basis": "model volume units",
-    },
+# Explicit user-owned defaults only. Wall/Slab stay unresolved (no auto basis).
+# Unknown classes also stay unresolved — never invent a basis from raw Qto.
+_USER_DEFINED_BASIS_BY_CLASS: dict[str, dict[str, str]] = {
     "IfcBeam": {
         "quantity_source": "NetVolume",
         "quantity_basis": "NetVolume",
@@ -31,17 +28,7 @@ _STARTER_BASIS_BY_CLASS: dict[str, dict[str, str]] = {
         "quantity_basis": "NetVolume",
         "unit_basis": "model volume units",
     },
-    "IfcSlab": {
-        "quantity_source": "NetArea",
-        "quantity_basis": "NetArea",
-        "unit_basis": "model area units",
-    },
     "IfcDoor": {
-        "quantity_source": "Count",
-        "quantity_basis": "Count",
-        "unit_basis": "count",
-    },
-    "IfcWindow": {
         "quantity_source": "Count",
         "quantity_basis": "Count",
         "unit_basis": "count",
@@ -53,123 +40,228 @@ _STARTER_BASIS_BY_CLASS: dict[str, dict[str, str]] = {
     },
 }
 
+_UNRESOLVED_BY_DEFAULT = frozenset({"IfcWall", "IfcSlab"})
 
-def default_column_config() -> list[dict[str, str]]:
-    """Return starter column configuration rows (not persisted)."""
+
+def default_schema_fields() -> list[dict[str, str]]:
+    """Return Schema Builder fields (not persisted)."""
     return [
         {
             "label": "Level / Storey",
-            "source_type": "Spatial container",
-            "source_property": "spatial_container",
             "required": "Optional",
+            "availability": "Spatial source",
         },
         {
             "label": "Zone",
-            "source_type": "Manual field",
-            "source_property": "— (not indexed)",
             "required": "Optional",
+            "availability": "Not indexed",
         },
         {
             "label": "IFC Class",
-            "source_type": "Castor field",
-            "source_property": "ifc_type",
             "required": "Required",
+            "availability": "Available from IFC",
         },
         {
             "label": "Type Name",
-            "source_type": "Castor field",
-            "source_property": "element_type.name",
             "required": "Optional",
+            "availability": "Castor indexed field",
         },
         {
             "label": "Quantity Source",
-            "source_type": "Qto property",
-            "source_property": "named Qto measure (e.g. NetVolume)",
             "required": "Required",
+            "availability": "Available from Qto",
         },
         {
-            "label": "Quantity Total",
-            "source_type": "Castor field",
-            "source_property": "aggregated named measure",
+            "label": "Quantity Basis",
+            "required": "Required",
+            "availability": "Manual",
+        },
+        {
+            "label": "Unit Basis",
             "required": "Optional",
+            "availability": "Castor indexed field",
+        },
+        {
+            "label": "Total Quantity",
+            "required": "Optional",
+            "availability": "Castor indexed field",
         },
         {
             "label": "Classification Code",
-            "source_type": "Manual field",
-            "source_property": "— (Unavailable)",
             "required": "Optional",
+            "availability": "Not indexed",
         },
         {
-            "label": "Package / BOQ Code",
-            "source_type": "Manual field",
-            "source_property": "— (not mapped)",
+            "label": "Package / BOQ Mapping",
             "required": "Optional",
+            "availability": "Not indexed",
         },
         {
             "label": "Work Package",
-            "source_type": "Manual field",
-            "source_property": "— (not mapped)",
             "required": "Optional",
+            "availability": "Not indexed",
+        },
+        {
+            "label": "Review Status",
+            "required": "Optional",
+            "availability": "Castor indexed field",
+        },
+        {
+            "label": "Handoff Status",
+            "required": "Optional",
+            "availability": "Future Modify handoff",
         },
     ]
 
 
-def starter_basis_rules() -> list[dict[str, str]]:
-    """Return illustrative quantity basis rules (not material-detected)."""
+def default_source_mappings() -> list[dict[str, str]]:
+    """Return Source Mapping rows (session defaults, not persisted)."""
     return [
         {
-            "model_group": "IfcWall (example: concrete-style)",
-            "quantity_source": "NetVolume",
-            "quantity_basis": "NetVolume",
-            "unit_basis": "model volume units",
-            "note": "Example only — material not auto-detected",
+            "field": "Level / Storey",
+            "source": "Spatial container",
+            "detail": "spatial_container",
         },
         {
-            "model_group": "IfcWall (example: block-style)",
-            "quantity_source": "NetArea",
-            "quantity_basis": "NetArea",
-            "unit_basis": "model area units",
-            "note": "Example only — material not auto-detected",
+            "field": "Zone",
+            "source": "Not mapped",
+            "detail": "Not indexed",
         },
+        {
+            "field": "IFC Class",
+            "source": "IFC property",
+            "detail": "ifc_type",
+        },
+        {
+            "field": "Type Name",
+            "source": "Castor indexed field",
+            "detail": "element_type.name",
+        },
+        {
+            "field": "Quantity Source",
+            "source": "Qto property",
+            "detail": "Named Qto measure when rule selected",
+        },
+        {
+            "field": "Quantity Basis",
+            "source": "Manual field",
+            "detail": "User-defined measurement rule",
+        },
+        {
+            "field": "Unit Basis",
+            "source": "Castor indexed field",
+            "detail": "model volume / area / length units or count",
+        },
+        {
+            "field": "Total Quantity",
+            "source": "Castor indexed field",
+            "detail": "Derived only when source + basis selected",
+        },
+        {
+            "field": "Classification Code",
+            "source": "Not mapped",
+            "detail": "Unavailable — Future Modify handoff",
+        },
+        {
+            "field": "Package / BOQ Mapping",
+            "source": "Not mapped",
+            "detail": "Schema field only — not BOQ generation",
+        },
+        {
+            "field": "Work Package",
+            "source": "Not mapped",
+            "detail": "Future Modify handoff",
+        },
+        {
+            "field": "Review Status",
+            "source": "Castor indexed field",
+            "detail": "Computed from preparation row",
+        },
+        {
+            "field": "Handoff Status",
+            "source": "Future Modify handoff",
+            "detail": "Ready / Not ready for Castor Modify",
+        },
+    ]
+
+
+def user_defined_measurement_rules() -> list[dict[str, str]]:
+    """Return user-owned measurement rule defaults (not material-detected)."""
+    return [
         {
             "model_group": "IfcBeam",
             "quantity_source": "NetVolume",
             "quantity_basis": "NetVolume",
             "unit_basis": "model volume units",
-            "note": "Starter default",
+            "note": "User-defined starter default",
+        },
+        {
+            "model_group": "IfcColumn",
+            "quantity_source": "NetVolume",
+            "quantity_basis": "NetVolume",
+            "unit_basis": "model volume units",
+            "note": "User-defined starter default",
         },
         {
             "model_group": "IfcDoor",
             "quantity_source": "Count",
             "quantity_basis": "Count",
             "unit_basis": "count",
-            "note": "Starter default",
+            "note": "User-defined starter default",
         },
         {
             "model_group": "IfcPipeSegment",
             "quantity_source": "Length",
             "quantity_basis": "Length",
             "unit_basis": "model length units",
-            "note": "Starter default",
+            "note": "User-defined starter default",
+        },
+        {
+            "model_group": "IfcWall",
+            "quantity_source": "Unresolved",
+            "quantity_basis": "Unresolved",
+            "unit_basis": "—",
+            "note": "Unresolved until user selects basis",
+        },
+        {
+            "model_group": "IfcSlab",
+            "quantity_source": "Unresolved",
+            "quantity_basis": "Unresolved",
+            "unit_basis": "—",
+            "note": "Unresolved until user selects basis",
         },
     ]
 
 
 def _basis_for_class(ifc_class: str) -> dict[str, str]:
-    return dict(
-        _STARTER_BASIS_BY_CLASS.get(
-            ifc_class,
-            {
-                "quantity_source": "",
-                "quantity_basis": "",
-                "unit_basis": "",
-            },
-        )
-    )
+    """Return selected basis for a class, or empty unresolved dict."""
+    if ifc_class in _UNRESOLVED_BY_DEFAULT:
+        return {
+            "quantity_source": "",
+            "quantity_basis": "",
+            "unit_basis": "",
+            "basis_unresolved": True,
+        }
+    selected = _USER_DEFINED_BASIS_BY_CLASS.get(ifc_class)
+    if selected is None:
+        return {
+            "quantity_source": "",
+            "quantity_basis": "",
+            "unit_basis": "",
+            "basis_unresolved": True,
+        }
+    out = dict(selected)
+    out["basis_unresolved"] = False
+    return out
 
 
-def _total_for_basis(row: dict[str, Any], basis: dict[str, str]) -> float | int | None:
+def _total_for_basis(row: dict[str, Any], basis: dict[str, Any]) -> float | int | None:
+    """Return derived total only when a basis/source is selected; else None."""
+    if basis.get("basis_unresolved"):
+        return None
     source = (basis.get("quantity_source") or "").strip()
+    if not source:
+        return None
     if source == "Count":
         return int(row.get("element_count") or 0)
     if source == "NetVolume":
@@ -182,52 +274,56 @@ def _total_for_basis(row: dict[str, Any], basis: dict[str, str]) -> float | int 
         return row.get("net_side_area")
     if source == "Length":
         return row.get("length")
-    # Fallback: first available named measure.
-    for key in ("net_volume", "net_area", "net_side_area", "length"):
-        if row.get(key) is not None:
-            return row.get(key)
     return None
 
 
-def _pick_source_if_blank(row: dict[str, Any], basis: dict[str, str]) -> dict[str, str]:
-    """Fill quantity source/basis from available measures when no class default."""
-    if basis.get("quantity_source"):
-        return basis
-    if row.get("net_volume") is not None:
-        return {
-            "quantity_source": "NetVolume",
-            "quantity_basis": "NetVolume",
-            "unit_basis": "model volume units",
-        }
-    if row.get("net_area") is not None:
-        return {
-            "quantity_source": "NetArea",
-            "quantity_basis": "NetArea",
-            "unit_basis": "model area units",
-        }
-    if row.get("net_side_area") is not None:
-        return {
-            "quantity_source": "NetSideArea",
-            "quantity_basis": "NetSideArea",
-            "unit_basis": "model area units",
-        }
-    if row.get("length") is not None:
-        return {
-            "quantity_source": "Length",
-            "quantity_basis": "Length",
-            "unit_basis": "model length units",
-        }
-    if (row.get("has_ifc_qto") or 0) == 0 and (row.get("element_count") or 0) > 0:
-        return {
-            "quantity_source": "",
-            "quantity_basis": "",
-            "unit_basis": "",
-        }
-    return basis
+def _review_status(row: dict[str, Any]) -> str:
+    if row.get("basis_unresolved"):
+        return "Missing basis rule"
+    if row.get("missing_quantity_source"):
+        return "Missing source"
+    if (
+        row.get("missing_classification")
+        or row.get("missing_package")
+        or row.get("missing_work_package")
+    ):
+        return (
+            "Missing classification"
+            if row.get("missing_classification")
+            else (
+                "Missing package mapping" if row.get("missing_package") else "Missing work package"
+            )
+        )
+    return "Resolved"
+
+
+def _has_target_context(row: dict[str, Any]) -> bool:
+    ifc_class = (row.get("ifc_class") or "").strip()
+    if not ifc_class:
+        return False
+    type_name = (row.get("type_name") or "").strip()
+    model_group = (row.get("model_group") or "").strip()
+    return bool(type_name or model_group or ifc_class)
+
+
+def _has_unresolved_schema_field(row: dict[str, Any]) -> bool:
+    return bool(
+        row.get("basis_unresolved")
+        or row.get("missing_quantity_source")
+        or row.get("missing_classification")
+        or row.get("missing_package")
+        or row.get("missing_work_package")
+    )
+
+
+def _handoff_status(row: dict[str, Any]) -> str:
+    if _has_target_context(row) and _has_unresolved_schema_field(row):
+        return "Ready for Modify handoff"
+    return "Not ready"
 
 
 def build_prep_rows(quantities: dict[str, Any]) -> list[dict[str, Any]]:
-    """Build Generated Preparation Table rows from indexed aggregates."""
+    """Build Generated Preparation Data Model rows from indexed aggregates."""
     rows_out: list[dict[str, Any]] = []
     use_types = bool(quantities.get("by_type_shown")) and bool(quantities.get("by_type"))
     source_rows: list[dict[str, Any]] = (
@@ -239,75 +335,81 @@ def build_prep_rows(quantities: dict[str, Any]) -> list[dict[str, Any]]:
     for raw in source_rows[:MAX_PREP_ROWS]:
         ifc_class = str(raw.get("ifc_class") or raw.get("ifc_type") or "")
         type_name = str(raw.get("type_name") or "") if use_types else ""
-        basis = _pick_source_if_blank(raw, _basis_for_class(ifc_class))
+        model_group = ifc_class or "Unknown"
+        basis = _basis_for_class(ifc_class)
+        basis_unresolved = bool(basis.get("basis_unresolved"))
+        source = (basis.get("quantity_source") or "").strip()
+        missing_source = basis_unresolved or not source
         total = _total_for_basis(raw, basis)
-        missing_source = not bool(basis.get("quantity_source"))
-        rows_out.append(
-            {
-                "level": "",  # type/class grain is not a single storey
-                "zone": "",
-                "ifc_class": ifc_class,
-                "type_name": type_name,
-                "quantity_source": basis.get("quantity_source") or "",
-                "total": total,
-                "quantity_basis": basis.get("quantity_basis") or "",
-                "unit_basis": basis.get("unit_basis") or "",
-                "classification_code": "",
-                "package_boq_code": "",
-                "work_package": "",
-                "element_count": raw.get("element_count"),
-                "missing_quantity_source": missing_source,
-                "missing_classification": True,
-                "missing_package": True,
-                "missing_work_package": True,
-            }
-        )
+
+        row: dict[str, Any] = {
+            "model_group": model_group,
+            "ifc_class": ifc_class,
+            "type_name": type_name,
+            "quantity_source": "" if basis_unresolved else source,
+            "quantity_basis": "" if basis_unresolved else (basis.get("quantity_basis") or ""),
+            "unit_basis": "" if basis_unresolved else (basis.get("unit_basis") or ""),
+            "total": total,
+            "total_display": "Unresolved" if basis_unresolved else total,
+            "basis_unresolved": basis_unresolved,
+            "classification_code": "",
+            "package_boq_mapping": "",
+            "work_package": "",
+            "element_count": raw.get("element_count"),
+            "missing_quantity_source": missing_source,
+            "missing_classification": True,
+            "missing_package": True,
+            "missing_work_package": True,
+        }
+        row["review_status"] = _review_status(row)
+        row["handoff_status"] = _handoff_status(row)
+        row["ready_for_handoff"] = row["handoff_status"] == "Ready for Modify handoff"
+        rows_out.append(row)
     return rows_out
 
 
-def build_missing_summary(prep_rows: list[dict[str, Any]]) -> dict[str, int]:
-    """Count blank / unmapped fields in the generated preparation rows."""
+def build_unresolved_register(prep_rows: list[dict[str, Any]]) -> dict[str, int]:
+    """Counts derived only from the Generated Preparation Data Model."""
     return {
-        "missing_quantity_source": sum(1 for r in prep_rows if r.get("missing_quantity_source")),
-        "missing_classification_code": sum(1 for r in prep_rows if r.get("missing_classification")),
-        "missing_package_boq": sum(1 for r in prep_rows if r.get("missing_package")),
-        "missing_work_package": sum(1 for r in prep_rows if r.get("missing_work_package")),
-        "unmapped_source_fields": sum(
-            1
-            for r in prep_rows
-            if not r.get("zone")
-            or not r.get("classification_code")
-            or not r.get("package_boq_code")
-            or not r.get("work_package")
+        "missing_quantity_basis_rule": sum(1 for r in prep_rows if r.get("basis_unresolved")),
+        "missing_selected_quantity_source": sum(
+            1 for r in prep_rows if r.get("missing_quantity_source")
         ),
+        "missing_classification": sum(1 for r in prep_rows if r.get("missing_classification")),
+        "missing_package_boq_mapping": sum(1 for r in prep_rows if r.get("missing_package")),
+        "missing_work_package": sum(1 for r in prep_rows if r.get("missing_work_package")),
+        "ready_for_modify_handoff": sum(1 for r in prep_rows if r.get("ready_for_handoff")),
+        "not_ready_for_handoff": sum(1 for r in prep_rows if not r.get("ready_for_handoff")),
         "row_count": len(prep_rows),
     }
 
 
 def build_preparation_ui(quantities: dict[str, Any]) -> dict[str, Any]:
-    """Assemble Slice 1 UI context for the Quantities builder screen."""
+    """Assemble Slice 2a UI context for the Quantities preparation screen."""
     prep_rows = build_prep_rows(quantities) if quantities.get("has_ifc") else []
     return {
-        "column_config": default_column_config(),
-        "basis_rules": starter_basis_rules(),
+        "schema_fields": default_schema_fields(),
+        "source_mappings": default_source_mappings(),
+        "basis_rules": user_defined_measurement_rules(),
         "basis_rules_banner": (
-            "Starter rules — review before using for enrichment. "
-            "Material examples (concrete / block) are illustrative only; "
-            "Castor has not detected material from the model."
+            "No rule = unresolved. No selected basis = no measurement claim. "
+            "Raw IFC quantity values do not mean correct BOQ, 5D, or QS measurement."
+        ),
+        "source_vs_basis_note": (
+            "Quantity Source is the IFC/Qto property used when selected. "
+            "Quantity Basis is the user-selected measurement method for the model group."
         ),
         "prep_rows": prep_rows,
         "prep_row_grain": (
             "type" if quantities.get("by_type_shown") and quantities.get("by_type") else "ifc_class"
         ),
-        "missing_summary": build_missing_summary(prep_rows),
-        "source_vs_basis_note": (
-            "Quantity Source is the IFC/Qto property used. "
-            "Quantity Basis is the selected measurement method for the model group."
-        ),
+        "unresolved_register": build_unresolved_register(prep_rows),
+        # Back-compat alias for any leftover template references during Slice 2a.
+        "missing_summary": build_unresolved_register(prep_rows),
+        "column_config": default_schema_fields(),
         "prep_helper_note": (
-            "Rows are generated from selected column mappings. "
-            "Missing values remain blank until mapped or enriched. "
-            "Quantity Source is the IFC/Qto property used. "
-            "Quantity Basis is the selected measurement method for the model group."
+            "Rows are generated only from the selected schema, source mappings, "
+            "and user-defined measurement rules. If quantity basis is unresolved, "
+            "Total Quantity shows Unresolved — not a raw IFC number."
         ),
     }

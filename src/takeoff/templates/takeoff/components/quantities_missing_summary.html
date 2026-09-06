@@ -1,33 +1,42 @@
-<!-- takeoff/components/quantities_missing_summary.html — Mapping gaps after prep table -->
-<section class="qty-builder-section" data-testid="quantities-missing-summary">
+<!-- takeoff/components/quantities_missing_summary.html — Unresolved Data Register -->
+<section class="qty-builder-section" data-testid="quantities-unresolved-register">
   <div class="qty-builder-h">
-    <h6 class="mb-0">Missing Data Summary</h6>
-    <span class="mi-footnote">From generated preparation rows</span>
+    <h6 class="mb-0">Unresolved Data Register</h6>
+    <span class="mi-footnote">Derived only from the Generated Preparation Data Model</span>
   </div>
-  <div class="qty-missing-grid" data-testid="qty-missing-summary-grid">
-    <div class="qty-missing-card" data-testid="qty-missing-quantity-source">
-      <span class="k">Missing quantity source</span>
-      <span class="v">{{ qty_prep.missing_summary.missing_quantity_source }}</span>
+  <p class="qty-builder-note mb-2">
+    Counts only — not readiness scores. Package / BOQ Mapping is a schema field name; this screen does not generate BOQ.
+  </p>
+  <div class="qty-missing-grid" data-testid="qty-unresolved-register-grid">
+    <div class="qty-missing-card" data-testid="qty-reg-missing-basis">
+      <span class="k">Rows missing quantity basis rule</span>
+      <span class="v">{{ qty_prep.unresolved_register.missing_quantity_basis_rule }}</span>
     </div>
-    <div class="qty-missing-card" data-testid="qty-missing-classification">
-      <span class="k">Missing classification code</span>
-      <span class="v">{{ qty_prep.missing_summary.missing_classification_code }}</span>
-      <span class="s">Unavailable — not indexed</span>
+    <div class="qty-missing-card" data-testid="qty-reg-missing-source">
+      <span class="k">Rows missing selected quantity source</span>
+      <span class="v">{{ qty_prep.unresolved_register.missing_selected_quantity_source }}</span>
     </div>
-    <div class="qty-missing-card" data-testid="qty-missing-package">
-      <span class="k">Missing package / BOQ mapping</span>
-      <span class="v">{{ qty_prep.missing_summary.missing_package_boq }}</span>
-      <span class="s">Manual — not mapped</span>
+    <div class="qty-missing-card" data-testid="qty-reg-missing-classification">
+      <span class="k">Rows missing classification</span>
+      <span class="v">{{ qty_prep.unresolved_register.missing_classification }}</span>
+      <span class="s">Not indexed</span>
     </div>
-    <div class="qty-missing-card" data-testid="qty-missing-work-package">
-      <span class="k">Missing work package</span>
-      <span class="v">{{ qty_prep.missing_summary.missing_work_package }}</span>
-      <span class="s">Manual — not mapped</span>
+    <div class="qty-missing-card" data-testid="qty-reg-missing-package">
+      <span class="k">Rows missing package / BOQ mapping</span>
+      <span class="v">{{ qty_prep.unresolved_register.missing_package_boq_mapping }}</span>
+      <span class="s">Schema field only — not BOQ</span>
     </div>
-    <div class="qty-missing-card" data-testid="qty-unmapped-source-fields">
-      <span class="k">Unmapped source fields</span>
-      <span class="v">{{ qty_prep.missing_summary.unmapped_source_fields }}</span>
-      <span class="s">Zone / classification / package / work package</span>
+    <div class="qty-missing-card" data-testid="qty-reg-missing-work-package">
+      <span class="k">Rows missing work package</span>
+      <span class="v">{{ qty_prep.unresolved_register.missing_work_package }}</span>
+    </div>
+    <div class="qty-missing-card" data-testid="qty-reg-ready-handoff">
+      <span class="k">Rows ready for Modify handoff</span>
+      <span class="v">{{ qty_prep.unresolved_register.ready_for_modify_handoff }}</span>
+    </div>
+    <div class="qty-missing-card" data-testid="qty-reg-not-ready-handoff">
+      <span class="k">Rows not ready for handoff</span>
+      <span class="v">{{ qty_prep.unresolved_register.not_ready_for_handoff }}</span>
     </div>
   </div>
 </section>
