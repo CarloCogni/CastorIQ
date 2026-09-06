@@ -1,0 +1,28 @@
+<!-- takeoff/components/quantities_enrichment_cta.html — Disabled Modify bridge CTA -->
+<section class="qty-builder-section" data-testid="quantities-enrichment-cta">
+  <div class="qty-builder-h">
+    <h6 class="mb-0">Controlled IFC Enrichment</h6>
+    <span class="mi-footnote">Via Castor Modify — not available from this screen yet</span>
+  </div>
+  <p class="qty-builder-note mb-2" data-testid="quantities-enrichment-copy">
+    Creates controlled IFC modification proposals through Castor Modify.
+    No IFC writeback happens directly from this screen.
+    The proposal continues through Castor Modify for review, approval, writeback, Git trace, and re-index.
+  </p>
+  <div class="qty-enrich-flow mb-2" data-testid="quantities-enrichment-flow" aria-hidden="true">
+    <span>Proposal</span><span class="sep">→</span>
+    <span>Review</span><span class="sep">→</span>
+    <span>Approve</span><span class="sep">→</span>
+    <span>Writeback</span><span class="sep">→</span>
+    <span>Git Trace</span><span class="sep">→</span>
+    <span>Re-index</span>
+  </div>
+  <button type="button"
+          class="btn btn-sm btn-outline-secondary"
+          disabled
+          aria-disabled="true"
+          title="Coming later — proposals will open in Castor Modify"
+          data-testid="qty-prepare-enrichment-proposal">
+    Prepare Enrichment Proposal
+  </button>
+</section>

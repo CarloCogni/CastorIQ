@@ -1,0 +1,33 @@
+<!-- takeoff/components/quantities_missing_summary.html — Mapping gaps after prep table -->
+<section class="qty-builder-section" data-testid="quantities-missing-summary">
+  <div class="qty-builder-h">
+    <h6 class="mb-0">Missing Data Summary</h6>
+    <span class="mi-footnote">From generated preparation rows</span>
+  </div>
+  <div class="qty-missing-grid" data-testid="qty-missing-summary-grid">
+    <div class="qty-missing-card" data-testid="qty-missing-quantity-source">
+      <span class="k">Missing quantity source</span>
+      <span class="v">{{ qty_prep.missing_summary.missing_quantity_source }}</span>
+    </div>
+    <div class="qty-missing-card" data-testid="qty-missing-classification">
+      <span class="k">Missing classification code</span>
+      <span class="v">{{ qty_prep.missing_summary.missing_classification_code }}</span>
+      <span class="s">Unavailable — not indexed</span>
+    </div>
+    <div class="qty-missing-card" data-testid="qty-missing-package">
+      <span class="k">Missing package / BOQ mapping</span>
+      <span class="v">{{ qty_prep.missing_summary.missing_package_boq }}</span>
+      <span class="s">Manual — not mapped</span>
+    </div>
+    <div class="qty-missing-card" data-testid="qty-missing-work-package">
+      <span class="k">Missing work package</span>
+      <span class="v">{{ qty_prep.missing_summary.missing_work_package }}</span>
+      <span class="s">Manual — not mapped</span>
+    </div>
+    <div class="qty-missing-card" data-testid="qty-unmapped-source-fields">
+      <span class="k">Unmapped source fields</span>
+      <span class="v">{{ qty_prep.missing_summary.unmapped_source_fields }}</span>
+      <span class="s">Zone / classification / package / work package</span>
+    </div>
+  </div>
+</section>

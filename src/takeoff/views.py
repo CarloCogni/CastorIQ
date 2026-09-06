@@ -25,6 +25,7 @@ from .models import QTOCache
 from .services.link_analysis import LinkAnalysisService
 from .services.model_inventory import ModelInventoryService
 from .services.model_quantities import ModelQuantitiesService
+from .services.quantity_preparation_ui import build_preparation_ui
 
 logger = logging.getLogger(__name__)
 
@@ -158,7 +159,7 @@ class ModelInventoryEntitiesView(ProjectTabMixin, TemplateView):
 
 
 class QTOView(ProjectTabMixin, TemplateView):
-    """Quantities tab — IFC model quantity readiness and breakdowns (not BOQ)."""
+    """Quantities tab — builder-led quantity preparation + model quantity reference."""
 
     active_tab = "castor"
 
@@ -169,6 +170,7 @@ class QTOView(ProjectTabMixin, TemplateView):
         # First paint: read-only aggregates from IFCEntity.properties (no QTOCache write).
         quantities = ModelQuantitiesService(project).build()
         ctx["quantities"] = quantities
+        ctx["qty_prep"] = build_preparation_ui(quantities)
         ctx["missing_qto_entities_url"] = (
             reverse("takeoff:model_inventory_entities", kwargs={"pk": project.pk}) + "?has_qto=no"
         )

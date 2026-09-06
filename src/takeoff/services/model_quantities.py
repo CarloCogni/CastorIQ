@@ -137,6 +137,7 @@ class ModelQuantitiesService:
                     tkey,
                     {
                         "type_name": tkey,
+                        "ifc_class": cls,
                         "element_count": 0,
                         "has_ifc_qto": 0,
                         "missing_qto": 0,
@@ -217,17 +218,18 @@ class ModelQuantitiesService:
                 "classification_coverage": "unavailable",
                 "classification_message": "Classification Coverage: Unavailable",
                 "source_caveat": (
-                    "IFC model quantities from indexed model properties "
-                    "(Qto_*). Not BOQ, QS valuation, ERP, invoice, procurement, "
-                    "payment, company actual cost, or commercial 5D."
+                    "Read-only IFC quantity availability and model quantity "
+                    "breakdowns from indexed IFC properties. This is not BOQ, "
+                    "cost, or verified QS measurement."
                 ),
                 "linear_unit_caveat": (
-                    "Length / Width / Height / Perimeter totals use model units "
-                    "as stored in the IFC index — do not treat them as metres."
+                    "Volume, area, and length totals use IFC-reported model "
+                    "units as stored in the index — they are not normalized "
+                    "to SI units."
                 ),
-                "volume_unit": "m³",
-                "area_unit": "m²",
-                "linear_unit": "model units",
+                "volume_unit": "model volume units",
+                "area_unit": "model area units",
+                "linear_unit": "model length units",
             },
             "by_ifc_class": class_rows,
             "by_ifc_class_truncated": len(by_class) > MAX_CLASS_ROWS,
@@ -243,11 +245,11 @@ class ModelQuantitiesService:
                 "total_missing": missing,
             },
             "measure_labels": {
-                "NetVolume": "NetVolume (m³)",
-                "GrossVolume": "GrossVolume (m³)",
-                "NetArea": "NetArea (m²)",
-                "NetSideArea": "NetSideArea (m²)",
-                "Length": "Length (model units)",
+                "NetVolume": "NetVolume (model volume units)",
+                "GrossVolume": "GrossVolume (model volume units)",
+                "NetArea": "NetArea (model area units)",
+                "NetSideArea": "NetSideArea (model area units)",
+                "Length": "Length (model length units)",
             },
         }
 
@@ -287,17 +289,18 @@ class ModelQuantitiesService:
                 "classification_coverage": "unavailable",
                 "classification_message": "Classification Coverage: Unavailable",
                 "source_caveat": (
-                    "IFC model quantities from indexed model properties "
-                    "(Qto_*). Not BOQ, QS valuation, ERP, invoice, procurement, "
-                    "payment, company actual cost, or commercial 5D."
+                    "Read-only IFC quantity availability and model quantity "
+                    "breakdowns from indexed IFC properties. This is not BOQ, "
+                    "cost, or verified QS measurement."
                 ),
                 "linear_unit_caveat": (
-                    "Length / Width / Height / Perimeter totals use model units "
-                    "as stored in the IFC index — do not treat them as metres."
+                    "Volume, area, and length totals use IFC-reported model "
+                    "units as stored in the index — they are not normalized "
+                    "to SI units."
                 ),
-                "volume_unit": "m³",
-                "area_unit": "m²",
-                "linear_unit": "model units",
+                "volume_unit": "model volume units",
+                "area_unit": "model area units",
+                "linear_unit": "model length units",
             },
             "by_ifc_class": [],
             "by_ifc_class_truncated": False,
@@ -313,10 +316,10 @@ class ModelQuantitiesService:
                 "total_missing": 0,
             },
             "measure_labels": {
-                "NetVolume": "NetVolume (m³)",
-                "GrossVolume": "GrossVolume (m³)",
-                "NetArea": "NetArea (m²)",
-                "NetSideArea": "NetSideArea (m²)",
-                "Length": "Length (model units)",
+                "NetVolume": "NetVolume (model volume units)",
+                "GrossVolume": "GrossVolume (model volume units)",
+                "NetArea": "NetArea (model area units)",
+                "NetSideArea": "NetSideArea (model area units)",
+                "Length": "Length (model length units)",
             },
         }

@@ -1,12 +1,116 @@
-<!-- takeoff/components/quantities_grid_styles.html — Quantities Workspace V1 (dense BIM grid) -->
+<!-- takeoff/components/quantities_grid_styles.html — Quantities builder + reference grid -->
 <!-- Reuses Model V2 grid primitives; scoped under .qty-ws -->
 {% include "takeoff/components/model_inventory_grid_styles.html" %}
 <style>
+  .qty-ws.qty-builder {
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+  .qty-ws .qty-builder-body {
+    padding: 0.5rem 0.75rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+  }
+  .qty-ws .qty-builder-section {
+    border: 1px solid var(--mi-border, rgba(255,255,255,0.08));
+    border-radius: 0.35rem;
+    background: var(--mi-header, rgba(0,0,0,0.2));
+    padding: 0.65rem 0.75rem;
+  }
+  .qty-ws .qty-builder-h {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.35rem;
+  }
+  .qty-ws .qty-builder-h h6 {
+    font-size: 0.82rem;
+    font-weight: 600;
+    margin: 0;
+  }
+  .qty-ws .qty-builder-note {
+    font-size: 0.7rem;
+    color: var(--mi-muted, #9eb0c4);
+    line-height: 1.4;
+    margin: 0;
+  }
+  .qty-ws .qty-config-table {
+    font-size: 0.72rem;
+    color: inherit;
+    --bs-table-bg: transparent;
+    --bs-table-color: inherit;
+    --bs-table-border-color: var(--mi-border, rgba(255,255,255,0.08));
+  }
+  .qty-ws .qty-config-table th {
+    font-weight: 600;
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: var(--mi-muted, #9eb0c4);
+    white-space: nowrap;
+  }
+  .qty-ws .qty-mode-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    align-items: center;
+  }
+  .qty-ws .qty-mode-bar .btn {
+    font-size: 0.72rem;
+  }
+  .qty-ws .qty-missing-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+    gap: 0.45rem;
+  }
+  .qty-ws .qty-missing-card {
+    border: 1px solid var(--mi-border, rgba(255,255,255,0.08));
+    border-radius: 0.3rem;
+    padding: 0.45rem 0.55rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+  .qty-ws .qty-missing-card .k {
+    font-size: 0.65rem;
+    color: var(--mi-muted, #9eb0c4);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+  }
+  .qty-ws .qty-missing-card .v {
+    font-size: 1rem;
+    font-weight: 600;
+  }
+  .qty-ws .qty-missing-card .s {
+    font-size: 0.65rem;
+    color: var(--mi-muted, #9eb0c4);
+  }
+  .qty-ws .qty-enrich-flow {
+    font-size: 0.68rem;
+    color: var(--mi-muted, #9eb0c4);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    align-items: center;
+  }
+  .qty-ws .qty-enrich-flow .sep { opacity: 0.5; }
+  .qty-ws .qty-prep-scroll {
+    max-height: 22rem;
+    overflow: auto;
+  }
+  .qty-ws .qty-model-reference .mi-shell {
+    min-height: 28rem;
+    height: 32rem;
+    max-height: 70vh;
+  }
   .qty-ws .qty-advanced {
     flex-shrink: 0;
     border-top: 1px solid var(--mi-border);
     background: var(--mi-header);
     padding: 0.35rem 0.65rem;
+    margin: 0 0.75rem 0.75rem;
   }
   .qty-ws .qty-advanced summary {
     font-size: 0.68rem;
@@ -36,5 +140,15 @@
     flex: 1;
     min-height: 0;
     overflow: hidden;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .qty-ws * {
+      scroll-behavior: auto !important;
+      transition: none !important;
+    }
+  }
+  .qty-ws .qty-prep-flash {
+    outline: 1px solid var(--bs-primary, #3b82f6);
+    outline-offset: 2px;
   }
 </style>

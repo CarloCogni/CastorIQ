@@ -1,5 +1,5 @@
 # takeoff/tests/test_quantities_workspace_v1.py
-"""Quantities Workspace Polish V1 — layout, honesty, and interaction markers."""
+"""Quantities Workspace — builder layout, honesty, and reference markers."""
 
 from __future__ import annotations
 
@@ -26,12 +26,13 @@ _FORBIDDEN_PRIMARY = (
     "ERP cost",
     "Optional unit-cost estimate",
     "Estimated total by level",
+    "Generated 5D Table",
 )
 
 
 @pytest.mark.django_db
 def test_quantities_workspace_v1_layout_markers(client):
-    """Quantities page uses command bar, stats strip, rail, grid, and inspector."""
+    """Builder sections + reference grids + hardened chrome."""
     project = ProjectFactory()
     ifc = IFCFileFactory(project=project, status="completed", name="pilot-qty.ifc")
     IFCEntityFactory(
@@ -57,6 +58,24 @@ def test_quantities_workspace_v1_layout_markers(client):
     assert 'data-testid="quantities-open-model"' in html
     assert 'data-testid="quantities-open-ifc-elements"' in html
     assert "Open IFC Elements" in html
+
+    # Builder Slice 1
+    assert 'data-testid="quantities-workspaces-mode"' in html
+    assert 'data-testid="quantities-column-config"' in html
+    assert 'data-testid="quantities-basis-rules"' in html
+    assert "Starter rules — review before using for enrichment" in html
+    assert 'data-testid="quantities-generate-prep"' in html
+    assert 'data-testid="quantities-prep-table"' in html
+    assert "Generated Preparation Table" in html
+    assert "Generated 5D Table" not in html
+    assert 'data-testid="quantities-missing-summary"' in html
+    assert 'data-testid="quantities-enrichment-cta"' in html
+    assert 'data-testid="qty-prepare-enrichment-proposal"' in html
+    assert "disabled" in html
+    assert "No IFC writeback happens directly from this screen" in html
+    assert 'data-testid="quantities-model-reference"' in html
+
+    # Reference (relocated readiness UI)
     assert 'data-testid="quantities-stats-strip"' in html
     assert "mi-stats" in html
     assert 'data-testid="qty-stat-with-qto"' in html
@@ -72,22 +91,27 @@ def test_quantities_workspace_v1_layout_markers(client):
     assert 'data-testid="quantity-readiness"' in html
     assert 'data-testid="qty-classification-unavailable"' in html
     assert "Unavailable" in html
-    assert "Length (model units)" in html
-    assert "model units" in html.lower()
+    assert "Length (model length units)" in html
+    assert "model length units" in html.lower()
+    assert "m³" not in html
+    assert "m²" not in html
     assert 'class="mi-grid"' in html
     assert "prefers-reduced-motion" in html
     assert 'data-testid="quantities-optional-estimate"' in html
-    # Advanced tools stay demoted (details), not primary chrome.
+    assert 'data-testid="quantities-boundary-copy"' in html
+    assert "verified QS measurement" in html
     assert html.index('data-testid="quantities-workspace-toolbar"') < html.index(
         'data-testid="quantities-optional-estimate"'
     )
     assert "qty-advanced-recompute" in html
     assert "Recompute optional cache" in html
+    assert "Export model quantities" in html
+    assert "Export Excel" not in html
 
 
 @pytest.mark.django_db
 def test_quantities_workspace_interaction_markers(client):
-    """Selection / collapse / filter / sort markers are present for workspace JS."""
+    """Selection / collapse / filter / sort markers remain on Model Quantity Reference."""
     project = ProjectFactory()
     ifc = IFCFileFactory(project=project, status="completed")
     storey_ent = IFCEntityFactory(
@@ -133,6 +157,7 @@ def test_quantities_workspace_interaction_markers(client):
     assert 'data-testid="qty-sort-class-name"' in html
     assert "mi-sortable" in html
     assert 'data-testid="qty-type-row"' in html or 'data-testid="quantity-by-type"' in html
+    assert 'data-testid="qty-prep-row"' in html
 
 
 @pytest.mark.django_db
@@ -149,7 +174,6 @@ def test_quantities_workspace_avoids_forbidden_primary_chrome(client):
     client.force_login(project.owner)
 
     html = client.get(reverse("takeoff:qto", kwargs={"pk": project.pk})).content.decode()
-    # Primary workspace ends before demoted advanced tools / help modal claims.
     primary = html.split('data-testid="quantities-optional-estimate"', 1)[0]
     for phrase in _FORBIDDEN_PRIMARY:
         assert phrase not in primary, phrase

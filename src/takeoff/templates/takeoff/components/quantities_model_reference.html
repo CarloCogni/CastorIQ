@@ -1,0 +1,493 @@
+﻿<!-- takeoff/components/quantities_model_reference.html — Existing quantity breakdowns (lower reference) -->
+<section class="qty-builder-section qty-model-reference" data-testid="quantities-model-reference">
+  <div class="qty-builder-h">
+    <h6 class="mb-0">Model Quantity Reference</h6>
+    <span class="mi-footnote">Indexed IFC Qto availability and breakdowns</span>
+  </div>
+  <p class="qty-builder-note mb-2">
+    Reference view of model quantity coverage. This is not the preparation table above.
+  </p>
+  <div class="mi-stats" data-testid="quantities-stats-strip">
+    <div class="mi-stat" data-testid="qty-stat-with-qto">
+      <span class="mi-stat-k">With IFC Qto</span>
+      <span class="mi-stat-v" data-testid="qty-with-qto">
+        {{ quantities.readiness.entities_with_quantity }}
+      </span>
+    </div>
+    <div class="mi-stat" data-testid="qty-stat-missing">
+      <span class="mi-stat-k">Missing IFC Qto</span>
+      <span class="mi-stat-v" data-testid="qty-missing">
+        {{ quantities.readiness.missing_quantity_count }}
+      </span>
+    </div>
+    <div class="mi-stat" data-testid="qty-stat-coverage">
+      <span class="mi-stat-k">Quantity Coverage</span>
+      {% if quantities.readiness.quantity_coverage_pct != None %}
+      <span class="mi-stat-v" data-testid="qty-coverage-pct">
+        {{ quantities.readiness.quantity_coverage_pct }}%
+      </span>
+      {% else %}
+      <span class="mi-stat-v is-muted">—</span>
+      {% endif %}
+    </div>
+    <div class="mi-stat" data-testid="qty-stat-classes">
+      <span class="mi-stat-k">Classes with Qto</span>
+      <span class="mi-stat-v" data-testid="qty-classes-with-qto">
+        {{ quantity_classes_with_qto }}
+      </span>
+    </div>
+    <div class="mi-stat" data-testid="qty-stat-elements">
+      <span class="mi-stat-k">Elements</span>
+      <span class="mi-stat-v" data-testid="qty-total-entities">
+        {{ quantities.readiness.total_entities }}
+      </span>
+    </div>
+    {% if quantity_measure_families.volume %}
+    <div class="mi-stat" data-testid="qty-stat-family-volume">
+      <span class="mi-stat-k">Volume</span>
+      <span class="mi-stat-v is-muted">model volume units</span>
+    </div>
+    {% endif %}
+    {% if quantity_measure_families.area %}
+    <div class="mi-stat" data-testid="qty-stat-family-area">
+      <span class="mi-stat-k">Area</span>
+      <span class="mi-stat-v is-muted">model area units</span>
+    </div>
+    {% endif %}
+    {% if quantity_measure_families.length %}
+    <div class="mi-stat" data-testid="qty-stat-family-length">
+      <span class="mi-stat-k">Length</span>
+      <span class="mi-stat-v is-muted">model length units</span>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Compatibility readiness marker for B3 tests (stats are the live surface) -->
+  <div class="visually-hidden" data-testid="quantity-readiness"
+       aria-hidden="true">Quantity Readiness</div>
+
+  <div class="mi-shell" data-testid="quantities-workspace-main">
+
+    <aside class="mi-rail" data-testid="quantity-breakdown-rail">
+      <div class="mi-zone-h"><span class="mi-zone-title">Quantity Breakdown</span></div>
+      <div class="mi-zone-body">
+
+        <div class="mi-nav-section" data-testid="quantity-by-ifc-class-nav" data-qty-collapse="class">
+          <button type="button" class="mi-nav-section-h" data-testid="qty-collapse-class"
+                  aria-expanded="true" aria-controls="qty-class-nav-body">
+            <span class="mi-chevron" aria-hidden="true">▼</span>
+            <span>By IFC Class</span>
+          </button>
+          <div class="mi-nav-body" id="qty-class-nav-body">
+            <ul class="mi-nav-list" data-testid="qty-class-nav">
+              {% for row in quantities.by_ifc_class %}
+              {% if row.element_count %}
+                {% widthratio row.has_ifc_qto row.element_count 100 as nav_cov %}
+              {% else %}
+                {% widthratio 0 1 100 as nav_cov %}
+              {% endif %}
+              <li class="mi-nav-item" data-testid="qty-class-nav-item"
+                  data-qty-focus="class"
+                  data-qty-key="{{ row.ifc_class }}"
+                  data-qty-name="{{ row.ifc_class }}"
+                  data-qty-elements="{{ row.element_count }}"
+                  data-qty-has="{{ row.has_ifc_qto }}"
+                  data-qty-missing="{{ row.missing_qto }}"
+                  data-qty-coverage="{{ nav_cov }}"
+                  data-qty-net-volume="{% if row.net_volume != None %}{{ row.net_volume }}{% endif %}"
+                  data-qty-net-area="{% if row.net_area != None %}{{ row.net_area }}{% endif %}"
+                  data-qty-net-side-area="{% if row.net_side_area != None %}{{ row.net_side_area }}{% endif %}"
+                  data-qty-length="{% if row.length != None %}{{ row.length }}{% endif %}">
+                <span class="mi-nav-label" title="{{ row.ifc_class }}">{{ row.ifc_class }}</span>
+                <span class="mi-nav-count">{{ row.has_ifc_qto }}/{{ row.element_count }}</span>
+              </li>
+              {% empty %}
+              <li class="mi-nav-item text-secondary">No classes</li>
+              {% endfor %}
+            </ul>
+            {% if quantities.by_ifc_class_truncated %}
+            <div class="px-2 py-1 mi-footnote">
+              Top {{ quantities.by_ifc_class|length }} of {{ quantities.by_ifc_class_total }}
+            </div>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="mi-nav-section" data-testid="quantity-by-level-nav" data-qty-collapse="level">
+          <button type="button" class="mi-nav-section-h" data-testid="qty-collapse-level"
+                  aria-expanded="true" aria-controls="qty-level-nav-body">
+            <span class="mi-chevron" aria-hidden="true">▼</span>
+            <span>By Level / Storey</span>
+          </button>
+          <div class="mi-nav-body" id="qty-level-nav-body">
+            <ul class="mi-nav-list" data-testid="qty-level-nav">
+              {% for row in quantities.by_level %}
+              {% if row.element_count %}
+                {% widthratio row.has_ifc_qto row.element_count 100 as lvl_nav_cov %}
+              {% else %}
+                {% widthratio 0 1 100 as lvl_nav_cov %}
+              {% endif %}
+              <li class="mi-nav-item" data-testid="qty-level-nav-item"
+                  data-qty-focus="level"
+                  data-qty-key="{{ row.level_label }}"
+                  data-qty-name="{{ row.level_label }}"
+                  data-qty-elements="{{ row.element_count }}"
+                  data-qty-has="{{ row.has_ifc_qto }}"
+                  data-qty-missing="{{ row.missing_qto }}"
+                  data-qty-coverage="{{ lvl_nav_cov }}"
+                  data-qty-net-volume="{% if row.net_volume != None %}{{ row.net_volume }}{% endif %}"
+                  data-qty-net-area="{% if row.net_area != None %}{{ row.net_area }}{% endif %}"
+                  data-qty-net-side-area="{% if row.net_side_area != None %}{{ row.net_side_area }}{% endif %}"
+                  data-qty-length="{% if row.length != None %}{{ row.length }}{% endif %}">
+                <span class="mi-nav-label" title="{{ row.level_label }}">{{ row.level_label }}</span>
+                <span class="mi-nav-count">{{ row.has_ifc_qto }}/{{ row.element_count }}</span>
+              </li>
+              {% empty %}
+              <li class="mi-nav-item text-secondary">No levels</li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+
+        <div class="mi-nav-section" data-testid="missing-quantities" data-qty-collapse="missing">
+          <button type="button" class="mi-nav-section-h" data-testid="qty-collapse-missing"
+                  aria-expanded="true" aria-controls="qty-missing-body">
+            <span class="mi-chevron" aria-hidden="true">▼</span>
+            <span>Missing IFC Qto</span>
+          </button>
+          <div class="mi-nav-body" id="qty-missing-body">
+            <div class="mi-missing-mini">
+              <span class="k">Missing IFC Qto</span>
+              <span class="v">{{ quantities.missing_quantities.total_missing }}</span>
+              <span class="k">Classification</span>
+              <span class="v text-secondary" data-testid="qty-classification-unavailable">Unavailable</span>
+            </div>
+            {% if quantities.missing_quantities.by_ifc_class %}
+            <ul class="mi-nav-list">
+              {% for row in quantities.missing_quantities.by_ifc_class %}
+              <li class="mi-nav-item" data-testid="qty-missing-class-row">
+                <span class="mi-nav-label" title="{{ row.ifc_class }}">{{ row.ifc_class }}</span>
+                <span class="mi-nav-count">{{ row.missing_qto }}</span>
+              </li>
+              {% endfor %}
+            </ul>
+            {% endif %}
+            <div class="px-2 py-2">
+              <a href="{{ missing_qto_entities_url }}"
+                 class="btn btn-sm btn-outline-secondary w-100"
+                 data-testid="qty-missing-open-entities"
+                 style="font-size:0.68rem;">
+                Inspect IFC Elements (Has IFC Qto: No)
+              </a>
+            </div>
+          </div>
+        </div>
+
+        {% if quantities.by_type_shown %}
+        <div class="mi-nav-section is-collapsed" data-testid="quantity-by-type-nav" data-qty-collapse="type">
+          <button type="button" class="mi-nav-section-h" data-testid="qty-collapse-type"
+                  aria-expanded="false" aria-controls="qty-type-nav-body">
+            <span class="mi-chevron" aria-hidden="true">▼</span>
+            <span>By Type</span>
+          </button>
+          <div class="mi-nav-body" id="qty-type-nav-body">
+            <ul class="mi-nav-list" data-testid="qty-type-nav">
+              {% for row in quantities.by_type %}
+              {% if row.element_count %}
+                {% widthratio row.has_ifc_qto row.element_count 100 as type_nav_cov %}
+              {% else %}
+                {% widthratio 0 1 100 as type_nav_cov %}
+              {% endif %}
+              <li class="mi-nav-item" data-testid="qty-type-nav-item"
+                  data-qty-focus="type"
+                  data-qty-key="{{ row.type_name }}"
+                  data-qty-name="{{ row.type_name }}"
+                  data-qty-elements="{{ row.element_count }}"
+                  data-qty-has="{{ row.has_ifc_qto }}"
+                  data-qty-missing="{{ row.missing_qto }}"
+                  data-qty-coverage="{{ type_nav_cov }}"
+                  data-qty-net-volume="{% if row.net_volume != None %}{{ row.net_volume }}{% endif %}"
+                  data-qty-net-area="{% if row.net_area != None %}{{ row.net_area }}{% elif row.net_side_area != None %}{{ row.net_side_area }}{% endif %}"
+                  data-qty-net-side-area="{% if row.net_side_area != None %}{{ row.net_side_area }}{% endif %}"
+                  data-qty-length="{% if row.length != None %}{{ row.length }}{% endif %}">
+                <span class="mi-nav-label" title="{{ row.type_name }}">{{ row.type_name }}</span>
+                <span class="mi-nav-count">{{ row.element_count }}</span>
+              </li>
+              {% endfor %}
+            </ul>
+            {% if quantities.by_type_capped %}
+            <div class="px-2 py-1 mi-footnote">
+              Top {{ quantities.by_type|length }} of {{ quantities.by_type_total }}
+            </div>
+            {% endif %}
+          </div>
+        </div>
+        {% endif %}
+
+      </div>
+    </aside>
+
+    <section class="mi-center" data-testid="quantity-main-grid">
+      <div class="qty-center-split">
+
+        <div class="mi-zone-h">
+          <span class="mi-zone-title">By IFC Class</span>
+          <span class="mi-footnote d-none d-md-inline">Named IFC measures only</span>
+        </div>
+
+        <div class="mi-grid-tools" data-testid="qty-quick-filter-bar">
+          <span class="mi-tools-label">Filter visible rows</span>
+          <input type="search" id="qty-quick-filter" class="form-control form-control-sm"
+                 placeholder="Filter class / level / type…"
+                 data-testid="qty-quick-filter"
+                 autocomplete="off">
+        </div>
+
+        <div class="mi-grid-wrap" data-testid="quantity-by-ifc-class" style="flex:1 1 48%;">
+          <table class="mi-grid" data-testid="qty-class-table" id="qty-class-table">
+            <thead>
+              <tr>
+                <th class="mi-sortable" data-qty-sort="name" data-testid="qty-sort-class-name">IFC Class</th>
+                <th class="mi-num mi-sortable" data-qty-sort="elements" data-testid="qty-sort-class-elements">Elements</th>
+                <th class="mi-num mi-sortable" data-qty-sort="has">Has IFC Qto</th>
+                <th class="mi-num mi-sortable" data-qty-sort="missing">Missing IFC Qto</th>
+                <th class="mi-num mi-sortable" data-qty-sort="coverage">Coverage %</th>
+                <th class="mi-num mi-sortable" data-qty-sort="net-volume">Net Volume (model volume units)</th>
+                <th class="mi-num mi-sortable" data-qty-sort="net-area">Net Area (model area units)</th>
+                <th class="mi-num mi-sortable" data-qty-sort="net-side-area">Net Side Area (model area units)</th>
+                <th class="mi-num mi-sortable" data-qty-sort="length">Length (model length units)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in quantities.by_ifc_class %}
+              {% if row.element_count %}
+                {% widthratio row.has_ifc_qto row.element_count 100 as cov_pct %}
+              {% else %}
+                {% widthratio 0 1 100 as cov_pct %}
+              {% endif %}
+              <tr data-testid="qty-class-row" tabindex="0"
+                  data-qty-focus="class"
+                  data-qty-key="{{ row.ifc_class }}"
+                  data-qty-name="{{ row.ifc_class }}"
+                  data-qty-elements="{{ row.element_count }}"
+                  data-qty-has="{{ row.has_ifc_qto }}"
+                  data-qty-missing="{{ row.missing_qto }}"
+                  data-qty-coverage="{{ cov_pct }}"
+                  data-qty-net-volume="{% if row.net_volume != None %}{{ row.net_volume }}{% endif %}"
+                  data-qty-net-area="{% if row.net_area != None %}{{ row.net_area }}{% endif %}"
+                  data-qty-net-side-area="{% if row.net_side_area != None %}{{ row.net_side_area }}{% endif %}"
+                  data-qty-length="{% if row.length != None %}{{ row.length }}{% endif %}">
+                <td><span class="mi-class-chip">{{ row.ifc_class }}</span></td>
+                <td class="mi-num">{{ row.element_count }}</td>
+                <td class="mi-num">{{ row.has_ifc_qto }}</td>
+                <td class="mi-num">
+                  {{ row.missing_qto }}
+                  {% if row.missing_qto > 0 %}<span class="mi-chip mi-chip-warn ms-1">Missing</span>{% endif %}
+                </td>
+                <td class="mi-num">
+                  <span class="mi-bar">
+                    <span class="mi-bar-track" aria-hidden="true"><span class="mi-bar-fill" style="width:{{ cov_pct }}%;"></span></span>
+                    <span class="mi-bar-pct">{{ cov_pct }}%</span>
+                  </span>
+                </td>
+                <td class="mi-num">{% if row.net_volume != None %}{{ row.net_volume }}{% else %}—{% endif %}</td>
+                <td class="mi-num">{% if row.net_area != None %}{{ row.net_area }}{% else %}—{% endif %}</td>
+                <td class="mi-num">{% if row.net_side_area != None %}{{ row.net_side_area }}{% else %}—{% endif %}</td>
+                <td class="mi-num">{% if row.length != None %}{{ row.length }}{% else %}—{% endif %}</td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="9" class="mi-empty-cell">No IFC classes with quantity data.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="mi-zone-h" style="border-top:1px solid var(--mi-border);">
+          <span class="mi-zone-title">By Level / Storey</span>
+        </div>
+        <div class="mi-grid-wrap" data-testid="quantity-by-level" style="flex:0 0 22%; min-height:80px;">
+          <table class="mi-grid" data-testid="qty-level-table" id="qty-level-table">
+            <thead>
+              <tr>
+                <th>Level / Storey</th>
+                <th class="mi-num">Elements</th>
+                <th class="mi-num">Has IFC Qto</th>
+                <th class="mi-num">Missing IFC Qto</th>
+                <th class="mi-num">Coverage %</th>
+                <th class="mi-num">Net Volume (model volume units)</th>
+                <th class="mi-num">Net Area (model area units)</th>
+                <th class="mi-num">Length (model length units)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in quantities.by_level %}
+              {% if row.element_count %}
+                {% widthratio row.has_ifc_qto row.element_count 100 as lvl_cov %}
+              {% else %}
+                {% widthratio 0 1 100 as lvl_cov %}
+              {% endif %}
+              <tr data-testid="qty-level-row" tabindex="0"
+                  data-qty-focus="level"
+                  data-qty-key="{{ row.level_label }}"
+                  data-qty-name="{{ row.level_label }}"
+                  data-qty-elements="{{ row.element_count }}"
+                  data-qty-has="{{ row.has_ifc_qto }}"
+                  data-qty-missing="{{ row.missing_qto }}"
+                  data-qty-coverage="{{ lvl_cov }}"
+                  data-qty-net-volume="{% if row.net_volume != None %}{{ row.net_volume }}{% endif %}"
+                  data-qty-net-area="{% if row.net_area != None %}{{ row.net_area }}{% endif %}"
+                  data-qty-net-side-area="{% if row.net_side_area != None %}{{ row.net_side_area }}{% endif %}"
+                  data-qty-length="{% if row.length != None %}{{ row.length }}{% endif %}">
+                <td>{{ row.level_label }}</td>
+                <td class="mi-num">{{ row.element_count }}</td>
+                <td class="mi-num">{{ row.has_ifc_qto }}</td>
+                <td class="mi-num">{{ row.missing_qto }}</td>
+                <td class="mi-num">
+                  <span class="mi-bar">
+                    <span class="mi-bar-track" aria-hidden="true"><span class="mi-bar-fill" style="width:{{ lvl_cov }}%;"></span></span>
+                    <span class="mi-bar-pct">{{ lvl_cov }}%</span>
+                  </span>
+                </td>
+                <td class="mi-num">{% if row.net_volume != None %}{{ row.net_volume }}{% else %}—{% endif %}</td>
+                <td class="mi-num">{% if row.net_area != None %}{{ row.net_area }}{% else %}—{% endif %}</td>
+                <td class="mi-num">{% if row.length != None %}{{ row.length }}{% else %}—{% endif %}</td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="8" class="mi-empty-cell">No level / storey quantity rows.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        {% if quantities.by_type_shown %}
+        <div class="mi-zone-h" style="border-top:1px solid var(--mi-border);" data-testid="quantity-by-type">
+          <span class="mi-zone-title">By Type</span>
+          {% if quantities.by_type_capped %}
+          <span class="mi-footnote">Top {{ quantities.by_type|length }} of {{ quantities.by_type_total }}</span>
+          {% endif %}
+        </div>
+        <div class="mi-grid-wrap" data-testid="qty-type-grid" style="flex:0 0 22%; min-height:80px;">
+          <table class="mi-grid" data-testid="qty-type-table" id="qty-type-table">
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th class="mi-num">Elements</th>
+                <th class="mi-num">Has IFC Qto</th>
+                <th class="mi-num">Missing IFC Qto</th>
+                <th class="mi-num">Net Volume (model volume units)</th>
+                <th class="mi-num">Net Area / Net Side Area (model area units)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in quantities.by_type %}
+              {% if row.element_count %}
+                {% widthratio row.has_ifc_qto row.element_count 100 as type_cov %}
+              {% else %}
+                {% widthratio 0 1 100 as type_cov %}
+              {% endif %}
+              <tr data-testid="qty-type-row" tabindex="0"
+                  data-qty-focus="type"
+                  data-qty-key="{{ row.type_name }}"
+                  data-qty-name="{{ row.type_name }}"
+                  data-qty-elements="{{ row.element_count }}"
+                  data-qty-has="{{ row.has_ifc_qto }}"
+                  data-qty-missing="{{ row.missing_qto }}"
+                  data-qty-coverage="{{ type_cov }}"
+                  data-qty-net-volume="{% if row.net_volume != None %}{{ row.net_volume }}{% endif %}"
+                  data-qty-net-area="{% if row.net_area != None %}{{ row.net_area }}{% elif row.net_side_area != None %}{{ row.net_side_area }}{% endif %}"
+                  data-qty-net-side-area="{% if row.net_side_area != None %}{{ row.net_side_area }}{% endif %}"
+                  data-qty-length="{% if row.length != None %}{{ row.length }}{% endif %}">
+                <td class="text-truncate" style="max-width:14rem;" title="{{ row.type_name }}">{{ row.type_name }}</td>
+                <td class="mi-num">{{ row.element_count }}</td>
+                <td class="mi-num">{{ row.has_ifc_qto }}</td>
+                <td class="mi-num">{{ row.missing_qto }}</td>
+                <td class="mi-num">{% if row.net_volume != None %}{{ row.net_volume }}{% else %}—{% endif %}</td>
+                <td class="mi-num">
+                  {% if row.net_area != None %}{{ row.net_area }}{% elif row.net_side_area != None %}{{ row.net_side_area }}{% else %}—{% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+
+      </div>
+    </section>
+
+    <aside class="mi-inspector" data-testid="quantity-readiness-inspector">
+      <div class="mi-zone-h"><span class="mi-zone-title">Model Quantity Readiness</span></div>
+      <div class="mi-zone-body">
+
+        <div class="mi-prop" id="qty-selection-inspector" data-testid="qty-selection-inspector"
+             data-qty-selection-ready="1">
+          <span class="mi-prop-k">Selection</span>
+          <div class="mi-prop-v" style="font-weight:500;" id="qty-selection-label"
+               data-testid="qty-selection-label">None — select a class, level, or type row</div>
+          <div class="mi-sel-grid" id="qty-selection-fields" data-testid="qty-selection-fields" hidden>
+            <span class="k">Type</span><span class="v" id="qty-sel-type" data-testid="qty-sel-type">—</span>
+            <span class="k">Name</span><span class="v" id="qty-sel-name" data-testid="qty-sel-name">—</span>
+            <span class="k">Elements</span><span class="v" id="qty-sel-elements" data-testid="qty-sel-elements">—</span>
+            <span class="k">Has IFC Qto</span><span class="v" id="qty-sel-has" data-testid="qty-sel-has">—</span>
+            <span class="k">Missing IFC Qto</span><span class="v" id="qty-sel-missing" data-testid="qty-sel-missing">—</span>
+            <span class="k">Quantity Coverage %</span><span class="v" id="qty-sel-coverage" data-testid="qty-sel-coverage">—</span>
+            <span class="k">Net Volume (model volume units)</span><span class="v" id="qty-sel-net-volume" data-testid="qty-sel-net-volume">—</span>
+            <span class="k">Net Area (model area units)</span><span class="v" id="qty-sel-net-area" data-testid="qty-sel-net-area">—</span>
+            <span class="k">Net Side Area (model area units)</span><span class="v" id="qty-sel-net-side-area" data-testid="qty-sel-net-side-area">—</span>
+            <span class="k">Length (model length units)</span><span class="v" id="qty-sel-length" data-testid="qty-sel-length">—</span>
+          </div>
+          <p class="mi-prop-note" id="qty-selection-detail" data-testid="qty-selection-detail"></p>
+        </div>
+
+        <div class="mi-prop" data-testid="qty-overall-readiness">
+          <span class="mi-prop-k">Quantity Coverage</span>
+          {% if quantities.readiness.quantity_coverage_pct != None %}
+          <div class="mi-prop-v">{{ quantities.readiness.quantity_coverage_pct }}%</div>
+          {% else %}
+          <div class="mi-prop-v text-secondary">—</div>
+          {% endif %}
+          <p class="mi-prop-note">
+            {{ quantities.readiness.entities_with_quantity }} with IFC Qto ·
+            {{ quantities.readiness.missing_quantity_count }} missing
+          </p>
+        </div>
+
+        <div class="mi-prop">
+          <span class="mi-prop-k">Measure availability</span>
+          <div class="d-flex flex-wrap gap-1 mt-1">
+            {% if quantity_measure_families.volume %}
+            <span class="mi-chip mi-chip-ok">Volume (model volume units)</span>
+            {% endif %}
+            {% if quantity_measure_families.area %}
+            <span class="mi-chip mi-chip-ok">Area (model area units)</span>
+            {% endif %}
+            {% if quantity_measure_families.length %}
+            <span class="mi-chip mi-chip-muted">Length (model length units)</span>
+            {% endif %}
+            {% if not quantity_measure_families.volume and not quantity_measure_families.area and not quantity_measure_families.length %}
+            <span class="mi-chip mi-chip-muted">No named measures</span>
+            {% endif %}
+          </div>
+          <p class="qty-measure-note mt-2" data-testid="qty-linear-unit-caveat">
+            {{ quantities.readiness.linear_unit_caveat }}
+          </p>
+        </div>
+
+        <div class="mi-prop">
+          <span class="mi-prop-k">Classification</span>
+          <div class="mi-prop-v text-secondary">Unavailable</div>
+          <p class="mi-prop-note">Classification is not indexed yet — not inferred from properties.</p>
+        </div>
+
+        <div class="mi-prop">
+          <span class="mi-prop-k">Boundary</span>
+          <span class="mi-chip mi-chip-muted">Model quantities only</span>
+          <p class="mi-prop-note" data-testid="quantities-source-caveat">
+            {{ quantities.readiness.source_caveat }}
+          </p>
+        </div>
+
+      </div>
+    </aside>
+  </div>
+</section>

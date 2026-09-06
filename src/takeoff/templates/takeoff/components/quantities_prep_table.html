@@ -1,0 +1,59 @@
+<!-- takeoff/components/quantities_prep_table.html — Generated Preparation Table -->
+<section class="qty-builder-section" data-testid="quantities-prep-table" id="qty-prep-table-section">
+  <div class="qty-builder-h">
+    <h6 class="mb-0" data-testid="quantities-prep-table-title">Generated Preparation Table</h6>
+    <span class="mi-footnote">
+      {% if qty_prep.prep_row_grain == "type" %}By Type (capped){% else %}By IFC Class{% endif %}
+      · {{ qty_prep.prep_rows|length }} row{{ qty_prep.prep_rows|length|pluralize }}
+    </span>
+  </div>
+  <p class="qty-builder-note mb-2" data-testid="quantities-prep-helper-note">
+    {{ qty_prep.prep_helper_note }}
+  </p>
+  <div class="table-responsive qty-prep-scroll">
+    <table class="table table-sm qty-config-table mb-0" data-testid="qty-prep-table">
+      <thead>
+        <tr>
+          <th>Level</th>
+          <th>Zone</th>
+          <th>IFC Class</th>
+          <th>Type Name</th>
+          <th>Quantity Source</th>
+          <th class="text-end">Total</th>
+          <th>Quantity Basis</th>
+          <th>Unit Basis</th>
+          <th>Classification Code</th>
+          <th>Package / BOQ Code</th>
+          <th>Work Package</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in qty_prep.prep_rows %}
+        <tr data-testid="qty-prep-row">
+          <td class="text-secondary">{% if row.level %}{{ row.level }}{% else %}—{% endif %}</td>
+          <td class="text-secondary">{% if row.zone %}{{ row.zone }}{% else %}—{% endif %}</td>
+          <td>{{ row.ifc_class|default:"—" }}</td>
+          <td class="text-truncate" style="max-width:12rem;" title="{{ row.type_name }}">
+            {% if row.type_name %}{{ row.type_name }}{% else %}—{% endif %}
+          </td>
+          <td>{% if row.quantity_source %}{{ row.quantity_source }}{% else %}—{% endif %}</td>
+          <td class="text-end">
+            {% if row.total != None and row.total != "" %}{{ row.total }}{% else %}—{% endif %}
+          </td>
+          <td>{% if row.quantity_basis %}{{ row.quantity_basis }}{% else %}—{% endif %}</td>
+          <td class="text-secondary">{% if row.unit_basis %}{{ row.unit_basis }}{% else %}—{% endif %}</td>
+          <td class="text-secondary">—</td>
+          <td class="text-secondary">—</td>
+          <td class="text-secondary">—</td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="11" class="text-secondary">
+            No preparation rows yet. Index an IFC model with quantity properties first.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>

@@ -18,50 +18,57 @@
 
                 <p class="fw-semibold fs-7 mb-2">What is it?</p>
                 <p class="text-secondary fs-7 mb-4">
-                    Quantities is the IFC Model Quantities workspace. It summarizes quantity
-                    availability and named measures from indexed model <code>Qto_*</code>
-                    properties: Quantity Coverage, Missing IFC Qto, and totals by IFC Class,
-                    Level / Storey, and Type when available. This is model quantity readiness
-                    for future 5D workflows — not BOQ, QS valuation, ERP, invoice, procurement,
-                    payment, company actual cost, or commercial 5D.
+                    Quantities is the IFC Model Quantities workspace for builder-led quantity
+                    preparation. Configure columns and quantity basis rules, review a
+                    Generated Preparation Table, and use Model Quantity Reference for indexed
+                    <code>Qto_*</code> coverage. This is model quantity foundation for future
+                    estimating workflows — not BOQ, cost, or verified QS measurement.
                 </p>
 
                 <p class="fw-semibold fs-7 mb-2">Lifecycle</p>
                 <p class="text-secondary fs-7 mb-4">
-                    After an IFC file is indexed, this page reads entity properties at runtime
-                    (summary-first). Classification stays Unavailable until classifications are
-                    indexed. Optional advanced cache / export tools are demoted and are not the
-                    primary product.
+                    After an IFC file is indexed, this page reads entity properties at runtime.
+                    Column and basis profiles are session defaults in this release (not saved).
+                    Classification stays Unavailable until classifications are indexed.
+                    Controlled IFC enrichment will later open Castor Modify proposals — no IFC
+                    writeback happens directly from this screen. Optional advanced cache / export
+                    tools remain demoted.
                 </p>
 
                 <p class="fw-semibold fs-7 mb-2">How to use it</p>
                 <ul class="text-secondary fs-7 mb-4">
-                    <li>Use the stats strip for Quantity Coverage and Missing IFC Qto.</li>
-                    <li>Select an IFC Class, Level / Storey, or Type row to inspect measures.</li>
-                    <li>Filter or sort the visible By IFC Class grid without changing source data.</li>
-                    <li>Open Missing IFC Qto → Inspect IFC Elements to review entities without real Qto.</li>
-                    <li>Treat Length / Width / Height / Perimeter as model units, not metres.</li>
+                    <li>Review Column Configuration — which fields feed the preparation table.</li>
+                    <li>Review Quantity Basis Rules — starter examples only; material is not auto-detected.</li>
+                    <li>Quantity Source = IFC/Qto property used. Quantity Basis = measurement method for the model group.</li>
+                    <li>Use Generate Preparation Table to jump to the generated rows.</li>
+                    <li>Check Missing Data Summary for blank classification / package / work package fields.</li>
+                    <li>Use Model Quantity Reference for With/Missing IFC Qto and class/level/type breakdowns.</li>
+                    <li>Treat volume, area, and length totals as IFC-reported model units — not normalized SI.</li>
                 </ul>
 
                 <p class="fw-semibold fs-7 mb-2">Who can do what</p>
                 <p class="text-secondary fs-7 mb-4">
-                    BIM coordinators and 5D reviewers use this page read-only for model quantity insight.
-                    Schedule link confirm / ignore stays under Links. Model structure stays under Model.
+                    BIM coordinators and quantity reviewers use this page for preparation and
+                    model quantity foundation insight. Schedule link confirm / ignore stays under
+                    Links. IFC property enrichment stays under Modify when enabled. Model link
+                    diagnostics stay under Model.
                 </p>
 
                 <p class="fw-semibold fs-7 mb-2">Caveats</p>
                 <ul class="text-secondary fs-7 mb-4">
                     <li><code>Qto_*.id</code> alone does not count as Has IFC Qto.</li>
                     <li>Classification: Unavailable (not scraped from properties).</li>
-                    <li>Totals sum explicit named measures (e.g. NetVolume, NetArea) — not mixed primary picks.</li>
-                    <li>Linear totals use model units as stored in the IFC index.</li>
+                    <li>Zone, Package / BOQ Code, and Work Package stay blank until mapped or enriched.</li>
+                    <li>Starter basis rules are examples — review before using for enrichment.</li>
+                    <li>Prepare Enrichment Proposal is disabled in this release.</li>
+                    <li>Volume / area / length totals use IFC-reported model units as stored — not SI-normalized.</li>
                     <li>Hub <code>?tab=quantities</code> on scheduling does not render this page — use the Quantities hub link.</li>
                 </ul>
 
                 <p class="fw-semibold fs-7 mb-2">Not claimed</p>
                 <p class="text-secondary fs-7 mb-0" data-testid="quantities-not-claims">
                     Not BOQ. Not QS valuation. Not ERP. Not invoice or procurement.
-                    Not payment valuation. Not company actual cost. Not commercial 5D.
+                    Not payment valuation. Not company actual cost. Not commercial estimating.
                 </p>
             </div>
         </div>

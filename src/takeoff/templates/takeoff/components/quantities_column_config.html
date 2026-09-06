@@ -1,0 +1,33 @@
+<!-- takeoff/components/quantities_column_config.html — Slice 1 column profile (UI-only) -->
+<section class="qty-builder-section" data-testid="quantities-column-config">
+  <div class="qty-builder-h">
+    <h6 class="mb-0">Column Configuration</h6>
+    <span class="mi-footnote">Session defaults — not saved to the project yet</span>
+  </div>
+  <p class="qty-builder-note mb-2">
+    Define which fields appear in the Generated Preparation Table.
+    Source types describe where each column is expected to come from.
+  </p>
+  <div class="table-responsive">
+    <table class="table table-sm qty-config-table mb-0" data-testid="qty-column-config-table">
+      <thead>
+        <tr>
+          <th>Column</th>
+          <th>Source type</th>
+          <th>Source property</th>
+          <th>Required</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for col in qty_prep.column_config %}
+        <tr data-testid="qty-column-config-row">
+          <td>{{ col.label }}</td>
+          <td><span class="mi-chip mi-chip-muted">{{ col.source_type }}</span></td>
+          <td class="text-secondary">{{ col.source_property }}</td>
+          <td>{{ col.required }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
