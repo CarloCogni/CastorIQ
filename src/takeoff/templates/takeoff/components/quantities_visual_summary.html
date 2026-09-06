@@ -1,0 +1,37 @@
+<!-- takeoff/components/quantities_visual_summary.html — Slice 2b visual summary -->
+<section class="qty-builder-section" data-testid="quantities-visual-summary">
+  <div class="qty-builder-h">
+    <h6 class="mb-0">Preparation Data Model Visual Summary</h6>
+    <span class="mi-footnote">Counts from generated rows only</span>
+  </div>
+  <p class="qty-builder-note mb-2" data-testid="qty-visual-summary-helper">
+    {{ qty_prep.visual_summary.helper_copy }}
+  </p>
+
+  <div class="qty-viz-grid">
+    <div class="qty-viz-card" data-testid="qty-viz-rows-by-status">
+      <div class="qty-viz-title">Rows by Status</div>
+      {% include "takeoff/components/quantities_viz_bars.html" with items=qty_prep.visual_summary.rows_by_status %}
+    </div>
+    <div class="qty-viz-card" data-testid="qty-viz-basis-distribution">
+      <div class="qty-viz-title">Quantity Basis Distribution</div>
+      {% include "takeoff/components/quantities_viz_bars.html" with items=qty_prep.visual_summary.quantity_basis_distribution %}
+    </div>
+    <div class="qty-viz-card" data-testid="qty-viz-source-completeness">
+      <div class="qty-viz-title">Source Mapping Completeness</div>
+      {% include "takeoff/components/quantities_viz_bars.html" with items=qty_prep.visual_summary.source_mapping_completeness %}
+    </div>
+    <div class="qty-viz-card" data-testid="qty-viz-unresolved-by-field">
+      <div class="qty-viz-title">Unresolved by Field</div>
+      {% include "takeoff/components/quantities_viz_bars.html" with items=qty_prep.visual_summary.unresolved_by_field %}
+    </div>
+    <div class="qty-viz-card" data-testid="qty-viz-handoff-status">
+      <div class="qty-viz-title">Modify Handoff Status</div>
+      {% include "takeoff/components/quantities_viz_bars.html" with items=qty_prep.visual_summary.modify_handoff_status %}
+    </div>
+    <div class="qty-viz-card" data-testid="qty-viz-top-unresolved-groups">
+      <div class="qty-viz-title">Top Unresolved Model Groups</div>
+      {% include "takeoff/components/quantities_viz_bars.html" with items=qty_prep.visual_summary.top_unresolved_model_groups %}
+    </div>
+  </div>
+</section>

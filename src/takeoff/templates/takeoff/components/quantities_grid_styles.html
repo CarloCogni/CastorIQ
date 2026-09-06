@@ -101,6 +101,95 @@
     font-weight: 500;
     border-bottom: 1px dashed var(--mi-muted, #9eb0c4);
   }
+  .qty-ws .qty-viz-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+    gap: 0.55rem;
+  }
+  .qty-ws .qty-viz-card {
+    border: 1px solid var(--mi-border, rgba(255,255,255,0.08));
+    border-radius: 0.3rem;
+    padding: 0.5rem 0.6rem 0.55rem;
+    background: rgba(255,255,255,0.02);
+  }
+  .qty-ws .qty-viz-title {
+    font-size: 0.72rem;
+    font-weight: 600;
+    margin-bottom: 0.4rem;
+  }
+  .qty-ws .qty-viz-bars {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+  .qty-ws .qty-viz-bar-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font-size: 0.68rem;
+  }
+  .qty-ws .qty-viz-bar-label {
+    color: var(--mi-muted, #9eb0c4);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .qty-ws .qty-viz-bar-count {
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+  .qty-ws .qty-viz-bar-track {
+    height: 0.35rem;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.06);
+    overflow: hidden;
+  }
+  .qty-ws .qty-viz-bar-fill {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--castor-primary, #3b82f6);
+    min-width: 0;
+  }
+  .qty-ws .qty-viz-bar-empty {
+    font-size: 0.68rem;
+  }
+  .qty-ws .qty-insights-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+    gap: 0.55rem;
+  }
+  .qty-ws .qty-insight-card {
+    border: 1px solid var(--mi-border, rgba(255,255,255,0.08));
+    border-radius: 0.3rem;
+    padding: 0.55rem 0.65rem;
+    background: rgba(255,255,255,0.02);
+  }
+  .qty-ws .qty-insight-h {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    align-items: baseline;
+    margin-bottom: 0.3rem;
+  }
+  .qty-ws .qty-insight-title {
+    font-size: 0.74rem;
+    font-weight: 600;
+  }
+  .qty-ws .qty-insight-count {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--castor-primary, #3b82f6);
+  }
+  .qty-ws .qty-insight-body {
+    font-size: 0.68rem;
+    color: var(--mi-muted, #9eb0c4);
+    line-height: 1.4;
+  }
   .qty-ws .qty-prep-scroll {
     max-height: 22rem;
     overflow: auto;

@@ -384,9 +384,189 @@ def build_unresolved_register(prep_rows: list[dict[str, Any]]) -> dict[str, int]
     }
 
 
+def _count_bar_items(
+    counts: dict[str, int],
+    *,
+    max_items: int | None = None,
+) -> list[dict[str, Any]]:
+    """Return count-first bar items with relative width pct (not readiness %)."""
+    ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    if max_items is not None:
+        ordered = ordered[:max_items]
+    peak = max((count for _, count in ordered), default=0) or 1
+    return [
+        {
+            "label": label,
+            "count": count,
+            "bar_pct": int(round(100 * count / peak)),
+        }
+        for label, count in ordered
+    ]
+
+
+def _top_unresolved_model_groups(
+    prep_rows: list[dict[str, Any]], *, limit: int = 8
+) -> list[dict[str, Any]]:
+    """Count prep rows with any unresolved schema field, grouped by model group."""
+    counts: dict[str, int] = {}
+    for row in prep_rows:
+        if not _has_unresolved_schema_field(row):
+            continue
+        group = (row.get("model_group") or row.get("ifc_class") or "Unknown").strip() or "Unknown"
+        counts[group] = counts.get(group, 0) + 1
+    return _count_bar_items(counts, max_items=limit)
+
+
+def build_visual_summary(
+    prep_rows: list[dict[str, Any]],
+    unresolved_register: dict[str, int],
+) -> dict[str, Any]:
+    """Slice 2b dashboard blocks from prep rows + unresolved register only."""
+    status_counts: dict[str, int] = {}
+    basis_counts: dict[str, int] = {}
+    for row in prep_rows:
+        status = (row.get("review_status") or "Unknown").strip() or "Unknown"
+        status_counts[status] = status_counts.get(status, 0) + 1
+        if row.get("basis_unresolved") or not (row.get("quantity_basis") or "").strip():
+            basis_label = "Unresolved"
+        else:
+            basis_label = str(row.get("quantity_basis")).strip()
+        basis_counts[basis_label] = basis_counts.get(basis_label, 0) + 1
+
+    source_selected = sum(1 for r in prep_rows if not r.get("missing_quantity_source"))
+    source_missing = sum(1 for r in prep_rows if r.get("missing_quantity_source"))
+
+    return {
+        "helper_copy": (
+            "Visual summary derived from the Generated Preparation Data Model and "
+            "Unresolved Data Register. Not BOQ readiness, not 5D readiness, not QS "
+            "readiness, and not measurement certification."
+        ),
+        "rows_by_status": _count_bar_items(status_counts),
+        "quantity_basis_distribution": _count_bar_items(basis_counts),
+        "source_mapping_completeness": _count_bar_items(
+            {
+                "Source selected": source_selected,
+                "Source missing": source_missing,
+            }
+        ),
+        "unresolved_by_field": _count_bar_items(
+            {
+                "Quantity basis rule": int(
+                    unresolved_register.get("missing_quantity_basis_rule") or 0
+                ),
+                "Selected quantity source": int(
+                    unresolved_register.get("missing_selected_quantity_source") or 0
+                ),
+                "Classification": int(unresolved_register.get("missing_classification") or 0),
+                "Package / BOQ mapping": int(
+                    unresolved_register.get("missing_package_boq_mapping") or 0
+                ),
+                "Work package": int(unresolved_register.get("missing_work_package") or 0),
+            }
+        ),
+        "modify_handoff_status": _count_bar_items(
+            {
+                "Ready for Modify handoff": int(
+                    unresolved_register.get("ready_for_modify_handoff") or 0
+                ),
+                "Not ready for handoff": int(unresolved_register.get("not_ready_for_handoff") or 0),
+            }
+        ),
+        "top_unresolved_model_groups": _top_unresolved_model_groups(prep_rows),
+        "row_count": len(prep_rows),
+    }
+
+
+def build_preparation_insights(
+    prep_rows: list[dict[str, Any]],
+    unresolved_register: dict[str, int],
+) -> list[dict[str, Any]]:
+    """Deterministic operational insights from the preparation data model (not AI)."""
+    missing_basis = int(unresolved_register.get("missing_quantity_basis_rule") or 0)
+    missing_source = int(unresolved_register.get("missing_selected_quantity_source") or 0)
+    missing_classification = int(unresolved_register.get("missing_classification") or 0)
+    missing_package = int(unresolved_register.get("missing_package_boq_mapping") or 0)
+    missing_work_package = int(unresolved_register.get("missing_work_package") or 0)
+    ready_handoff = int(unresolved_register.get("ready_for_modify_handoff") or 0)
+    not_ready = int(unresolved_register.get("not_ready_for_handoff") or 0)
+
+    wall_unresolved = sum(
+        1 for r in prep_rows if r.get("ifc_class") == "IfcWall" and r.get("basis_unresolved")
+    )
+    slab_unresolved = sum(
+        1 for r in prep_rows if r.get("ifc_class") == "IfcSlab" and r.get("basis_unresolved")
+    )
+    top_groups = _top_unresolved_model_groups(prep_rows, limit=5)
+    top_group_text = (
+        ", ".join(f"{item['label']} ({item['count']})" for item in top_groups)
+        if top_groups
+        else "None — no unresolved rows in the current preparation set."
+    )
+
+    return [
+        {
+            "id": "measurement_rules_needed",
+            "title": "Measurement rules needed",
+            "count": missing_basis,
+            "body": (
+                f"IfcWall ({wall_unresolved}) and IfcSlab ({slab_unresolved}) remain unresolved "
+                "until the user selects a measurement basis. "
+                f"{missing_basis} generated row(s) are missing a quantity basis rule."
+            ),
+        },
+        {
+            "id": "selected_source_gaps",
+            "title": "Selected source gaps",
+            "count": missing_source,
+            "body": (
+                f"{missing_source} generated row(s) are missing the selected quantity source "
+                "required by the current rules."
+            ),
+        },
+        {
+            "id": "mapping_gaps",
+            "title": "Mapping gaps",
+            "count": missing_classification + missing_package + missing_work_package,
+            "body": (
+                "Classification, Package / BOQ Mapping, and Work Package remain unmapped for "
+                f"generated rows "
+                f"(classification {missing_classification}, package/BOQ {missing_package}, "
+                f"work package {missing_work_package})."
+            ),
+        },
+        {
+            "id": "modify_handoff_candidates",
+            "title": "Modify handoff candidates",
+            "count": ready_handoff,
+            "body": (
+                f"{ready_handoff} row(s) have enough target context for a later Castor Modify "
+                f"handoff; {not_ready} row(s) are not ready. Only rows with enough target context "
+                "should be sent to Castor Modify later."
+            ),
+        },
+        {
+            "id": "raw_quantity_warning",
+            "title": "Raw quantity warning",
+            "count": None,
+            "body": (
+                "Raw indexed quantities do not become selected measurement outputs until source "
+                "and basis rules are defined."
+            ),
+        },
+        {
+            "id": "top_unresolved_model_groups",
+            "title": "Top unresolved model groups",
+            "count": top_groups[0]["count"] if top_groups else 0,
+            "body": f"Model groups causing the most unresolved rows: {top_group_text}",
+        },
+    ]
+
+
 def build_preparation_ui(quantities: dict[str, Any]) -> dict[str, Any]:
-    """Assemble Slice 2a UI context for the Quantities preparation screen."""
+    """Assemble Quantities preparation UI (Slice 2a + 2b summary/insights)."""
     prep_rows = build_prep_rows(quantities) if quantities.get("has_ifc") else []
+    unresolved_register = build_unresolved_register(prep_rows)
     return {
         "schema_fields": default_schema_fields(),
         "source_mappings": default_source_mappings(),
@@ -403,13 +583,15 @@ def build_preparation_ui(quantities: dict[str, Any]) -> dict[str, Any]:
         "prep_row_grain": (
             "type" if quantities.get("by_type_shown") and quantities.get("by_type") else "ifc_class"
         ),
-        "unresolved_register": build_unresolved_register(prep_rows),
+        "unresolved_register": unresolved_register,
         # Back-compat alias for any leftover template references during Slice 2a.
-        "missing_summary": build_unresolved_register(prep_rows),
+        "missing_summary": unresolved_register,
         "column_config": default_schema_fields(),
         "prep_helper_note": (
             "Rows are generated only from the selected schema, source mappings, "
             "and user-defined measurement rules. If quantity basis is unresolved, "
             "Total Quantity shows Unresolved — not a raw IFC number."
         ),
+        "visual_summary": build_visual_summary(prep_rows, unresolved_register),
+        "preparation_insights": build_preparation_insights(prep_rows, unresolved_register),
     }

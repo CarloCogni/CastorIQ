@@ -128,9 +128,27 @@ def test_quantities_workspace_v1_layout_markers(client):
     assert "Recompute optional cache" in html
     assert "Export preparation data model" in html or "Export indexed quantities" in html
     assert "Export Excel" not in html
-    # No Slice 2b
-    assert "Visual Summary" not in html
-    assert "Quantity Preparation Insights" not in html
+    # Slice 2b — after Unresolved Data Register, before Modify handoff
+    assert 'data-testid="quantities-visual-summary"' in html
+    assert "Preparation Data Model Visual Summary" in html
+    assert 'data-testid="quantities-preparation-insights"' in html
+    assert "Quantity Preparation Insights" in html
+    assert "Generated Preparation Data Model and Unresolved Data Register" in html
+    assert html.index('data-testid="quantities-unresolved-register"') < html.index(
+        'data-testid="quantities-visual-summary"'
+    )
+    assert html.index('data-testid="quantities-visual-summary"') < html.index(
+        'data-testid="quantities-preparation-insights"'
+    )
+    assert html.index('data-testid="quantities-preparation-insights"') < html.index(
+        'data-testid="quantities-modify-handoff"'
+    )
+    # Forbidden as positive claims; negation copy in Visual Summary helper is OK.
+    assert "proposal readiness" not in html.lower()
+    assert "Quantity Coverage" not in html
+    assert "Qto Coverage" not in html
+    assert "Model Quantity Readiness" not in html
+    assert "Deterministic — not AI" in html
 
 
 @pytest.mark.django_db

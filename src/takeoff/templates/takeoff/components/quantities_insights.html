@@ -1,0 +1,24 @@
+<!-- takeoff/components/quantities_insights.html — Slice 2b deterministic insights -->
+<section class="qty-builder-section" data-testid="quantities-preparation-insights">
+  <div class="qty-builder-h">
+    <h6 class="mb-0">Quantity Preparation Insights</h6>
+    <span class="mi-footnote">Deterministic — not AI</span>
+  </div>
+  <p class="qty-builder-note mb-2" data-testid="qty-insights-helper">
+    Operational insights derived from the Generated Preparation Data Model and Unresolved Data Register.
+    Not AI, not ML, and not readiness scores.
+  </p>
+  <div class="qty-insights-grid">
+    {% for card in qty_prep.preparation_insights %}
+    <article class="qty-insight-card" data-testid="qty-insight-{{ card.id }}">
+      <div class="qty-insight-h">
+        <span class="qty-insight-title">{{ card.title }}</span>
+        {% if card.count != None %}
+        <span class="qty-insight-count">{{ card.count }}</span>
+        {% endif %}
+      </div>
+      <p class="qty-insight-body mb-0">{{ card.body }}</p>
+    </article>
+    {% endfor %}
+  </div>
+</section>
