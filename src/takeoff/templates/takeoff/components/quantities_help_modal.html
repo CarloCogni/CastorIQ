@@ -1,4 +1,4 @@
-<!-- takeoff/components/quantities_help_modal.html — How Quantities works (Slice 3a) -->
+<!-- takeoff/components/quantities_help_modal.html — How Quantities works (Slice 3c-1) -->
 
 <div class="modal fade" id="qtoHelpModal" tabindex="-1"
      aria-labelledby="qtoHelpLabel" aria-hidden="true">
@@ -30,9 +30,11 @@
                 <p class="fw-semibold fs-7 mb-2">Lifecycle</p>
                 <p class="text-secondary fs-7 mb-4">
                     After an IFC file is indexed, this page reads entity properties at runtime.
-                    Measurement rules are session-only (GET query params) and not saved to the project.
-                    Refresh without parameters restores defaults. Ambiguous groups (walls, slabs) stay
-                    Unresolved until you select a basis and click Generate Preparation Data Model.
+                    Schema include/exclude and measurement rules are session-only (GET query params)
+                    and not saved to the project. Refresh without parameters restores defaults.
+                    Required/core fields are locked. Excluded optional fields are omitted from the
+                    generated table and are not counted as unresolved schema gaps.
+                    Source Mapping editing is not included yet (read-only in this slice).
                     Sending unresolved rows to Castor Modify is disabled here —
                     Modify owns suggest / review / approve / writeback / Git trace / re-index.
                 </p>
@@ -40,12 +42,12 @@
                 <p class="fw-semibold fs-7 mb-2">How to use it</p>
                 <ul class="text-secondary fs-7 mb-4">
                     <li>Preparation Setup Summary — counts for the current session rules.</li>
-                    <li>Schema Builder — fields the preparation data model must carry.</li>
-                    <li>Source Mapping — IFC / Qto / spatial / manual / Castor indexed / not mapped.</li>
-                    <li>User-defined Measurement Rules — choose a basis per model group, then Generate. Unit Basis is derived from the selected Quantity Basis (not manually edited).</li>
-                    <li>Generate Preparation Data Model — rebuilds prep rows, register, visual summary, and insights.</li>
+                    <li>Schema Builder — include/exclude optional fields; core fields stay locked.</li>
+                    <li>Source Mapping — read-only defaults in this slice (editable later).</li>
+                    <li>User-defined Measurement Rules — choose a basis per model group. Unit Basis is derived from the selected Quantity Basis.</li>
+                    <li>Generate Preparation Data Model — rebuilds prep rows, register, visual summary, and insights from selected schema + rules.</li>
                     <li>Generated Preparation Data Model — totals only when source + basis are selected and available.</li>
-                    <li>Unresolved Data Register — counts only; no fake readiness percentages.</li>
+                    <li>Unresolved Data Register — counts only included schema gaps; no fake readiness percentages.</li>
                     <li>Preparation Data Model Visual Summary — count charts from generated rows only.</li>
                     <li>Quantity Preparation Insights — deterministic operational notes (not AI).</li>
                     <li>Raw Indexed Quantity Inventory — input evidence only, at the bottom.</li>
@@ -62,7 +64,8 @@
                 <ul class="text-secondary fs-7 mb-4">
                     <li>No rule = unresolved. No selected basis = no measurement claim.</li>
                     <li>IfcWall and IfcSlab stay Unresolved until the user selects a basis and generates.</li>
-                    <li>Configuration is session-only and not saved. Invalid basis values are ignored safely.</li>
+                    <li>Schema include/exclude and basis rules are session-only and not saved.</li>
+                    <li>Excluded fields are not counted as unresolved schema gaps.</li>
                     <li>Package / BOQ Mapping is a schema field name — this screen does not generate BOQ.</li>
                     <li>Send unresolved rows to Castor Modify is disabled in this slice.</li>
                     <li>Volume / area / length use IFC-reported model units — not SI-normalized.</li>

@@ -7,6 +7,7 @@
   <p class="qty-builder-note mb-2">
     Counts only — not readiness scores. Package / BOQ Mapping is a schema field name; this screen does not generate BOQ.
     “Eligible” means enough target context for a later Modify handoff — not that the row is complete.
+    Excluded schema fields are not counted as unresolved schema gaps.
   </p>
   <div class="qty-missing-grid" data-testid="qty-unresolved-register-grid">
     <div class="qty-missing-card" data-testid="qty-reg-missing-basis">
@@ -17,20 +18,26 @@
       <span class="k">Rows missing selected quantity source</span>
       <span class="v">{{ qty_prep.unresolved_register.missing_selected_quantity_source }}</span>
     </div>
+    {% if qty_prep.show.classification_code %}
     <div class="qty-missing-card" data-testid="qty-reg-missing-classification">
       <span class="k">Rows missing classification</span>
       <span class="v">{{ qty_prep.unresolved_register.missing_classification }}</span>
       <span class="s">Not indexed</span>
     </div>
+    {% endif %}
+    {% if qty_prep.show.package_boq_mapping %}
     <div class="qty-missing-card" data-testid="qty-reg-missing-package">
       <span class="k">Rows missing package / BOQ mapping</span>
       <span class="v">{{ qty_prep.unresolved_register.missing_package_boq_mapping }}</span>
       <span class="s">Schema field only — not BOQ</span>
     </div>
+    {% endif %}
+    {% if qty_prep.show.work_package %}
     <div class="qty-missing-card" data-testid="qty-reg-missing-work-package">
       <span class="k">Rows missing work package</span>
       <span class="v">{{ qty_prep.unresolved_register.missing_work_package }}</span>
     </div>
+    {% endif %}
     <div class="qty-missing-card" data-testid="qty-reg-eligible-handoff">
       <span class="k">Rows eligible for Modify handoff</span>
       <span class="v">{{ qty_prep.unresolved_register.eligible_for_modify_handoff }}</span>

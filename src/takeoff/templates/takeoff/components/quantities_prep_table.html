@@ -15,22 +15,41 @@
   </p>
   <div class="qty-prep-scroll-wrap" data-testid="qty-prep-scroll-wrap">
     <div class="table-responsive qty-prep-scroll">
-      <table class="table table-sm qty-config-table qty-prep-table qty-prep-table-compact mb-0"
+      <table class="table table-sm qty-config-table qty-prep-table qty-prep-table-compact mb-0
+                   {% if qty_prep.show.type_name %}qty-prep-has-type{% else %}qty-prep-no-type{% endif %}"
              data-testid="qty-prep-table">
         <thead>
           <tr>
             <th class="qty-col-key qty-sticky qty-sticky-1">Model Group</th>
+            {% if qty_prep.show.type_name %}
             <th class="qty-col-key qty-sticky qty-sticky-2">Type Name</th>
+            {% endif %}
             <th class="qty-col-key qty-sticky qty-sticky-3">Selected Quantity Basis</th>
             <th class="qty-col-key qty-sticky qty-sticky-4">Unit Basis</th>
             <th class="text-end qty-col-key qty-sticky qty-sticky-5">Total Quantity</th>
             <th class="qty-col-key">Review Status</th>
             <th class="qty-col-key">Handoff Status</th>
+            {% if qty_prep.show.ifc_class %}
             <th class="qty-col-secondary">IFC Class</th>
+            {% endif %}
+            {% if qty_prep.show.quantity_source %}
             <th class="qty-col-secondary">Selected Quantity Source</th>
+            {% endif %}
+            {% if qty_prep.show.level_storey %}
+            <th class="qty-col-secondary">Level / Storey</th>
+            {% endif %}
+            {% if qty_prep.show.zone %}
+            <th class="qty-col-secondary">Zone</th>
+            {% endif %}
+            {% if qty_prep.show.classification_code %}
             <th class="qty-col-secondary">Classification Code</th>
+            {% endif %}
+            {% if qty_prep.show.package_boq_mapping %}
             <th class="qty-col-secondary">Package / BOQ Mapping</th>
+            {% endif %}
+            {% if qty_prep.show.work_package %}
             <th class="qty-col-secondary">Work Package</th>
+            {% endif %}
           </tr>
         </thead>
         <tbody>
@@ -41,9 +60,11 @@
               data-qty-missing-source="{% if row.missing_quantity_source %}1{% else %}0{% endif %}"
               class="{% if row.basis_unresolved %}qty-row-unresolved{% endif %}">
             <td class="qty-col-primary qty-sticky qty-sticky-1">{{ row.model_group|default:"—" }}</td>
+            {% if qty_prep.show.type_name %}
             <td class="qty-col-type qty-sticky qty-sticky-2" title="{{ row.type_name }}">
               {% if row.type_name %}{{ row.type_name }}{% else %}—{% endif %}
             </td>
+            {% endif %}
             <td class="qty-sticky qty-sticky-3">
               {% if row.quantity_basis %}
               <span class="qty-pill qty-pill-source">{{ row.quantity_basis }}</span>
@@ -79,7 +100,10 @@
               <span class="qty-pill qty-pill-muted">{{ row.handoff_status }}</span>
               {% endif %}
             </td>
+            {% if qty_prep.show.ifc_class %}
             <td class="qty-col-secondary">{{ row.ifc_class|default:"—" }}</td>
+            {% endif %}
+            {% if qty_prep.show.quantity_source %}
             <td class="qty-col-secondary">
               {% if row.quantity_source %}
               {{ row.quantity_source }}
@@ -87,13 +111,26 @@
               <span class="qty-pill qty-pill-unresolved">Unresolved</span>
               {% endif %}
             </td>
+            {% endif %}
+            {% if qty_prep.show.level_storey %}
             <td class="qty-col-secondary text-secondary">—</td>
+            {% endif %}
+            {% if qty_prep.show.zone %}
             <td class="qty-col-secondary text-secondary">—</td>
+            {% endif %}
+            {% if qty_prep.show.classification_code %}
             <td class="qty-col-secondary text-secondary">—</td>
+            {% endif %}
+            {% if qty_prep.show.package_boq_mapping %}
+            <td class="qty-col-secondary text-secondary">—</td>
+            {% endif %}
+            {% if qty_prep.show.work_package %}
+            <td class="qty-col-secondary text-secondary">—</td>
+            {% endif %}
           </tr>
           {% empty %}
           <tr>
-            <td colspan="12" class="text-secondary">
+            <td colspan="14" class="text-secondary">
               No preparation rows yet. Index an IFC model first.
             </td>
           </tr>
@@ -102,8 +139,8 @@
       </table>
     </div>
     <p class="qty-prep-scroll-hint mb-0" data-testid="qty-prep-scroll-hint">
-      Scroll horizontally for secondary fields (IFC Class, Source, Classification, Package, Work Package).
-      Key columns stay visible on the left.
+      Scroll horizontally for secondary fields. Key columns stay visible on the left.
+      Excluded schema fields are omitted from this table.
     </p>
   </div>
 </section>

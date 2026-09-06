@@ -108,7 +108,7 @@ def test_builder_page_markers_and_disabled_modify_handoff(client):
     assert "Preparation Setup Summary" in html
     assert "Rows eligible for Modify handoff" in html
     assert "Rows ready for Modify handoff" not in html
-    assert 'data-testid="qty-basis-rules-form"' in html
+    assert 'data-testid="qty-prep-config-form"' in html
     assert 'data-testid="qty-select-basis-IfcWall"' in html
     assert 'data-testid="qty-generate-prep-model"' in html
     assert "Generate Preparation Data Model" in html

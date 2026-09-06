@@ -1,9 +1,12 @@
-<!-- takeoff/components/quantities_column_config.html — Schema Builder -->
+<!-- takeoff/components/quantities_column_config.html — Schema Builder (Slice 3c-1) -->
 <section class="qty-builder-section" data-testid="quantities-schema-builder">
   <div class="qty-builder-h">
     <h6 class="mb-0">Schema Builder</h6>
-    <span class="mi-footnote">Output fields — session defaults (schema only)</span>
+    <span class="mi-footnote">Output fields — session-only include/exclude</span>
   </div>
+  <p class="qty-builder-note mb-2" data-testid="qty-schema-session-note">
+    {{ qty_prep.schema_session_note }}
+  </p>
   <p class="qty-builder-note mb-2">
     Define which fields the Generated Preparation Data Model must carry.
     This is schema only — not Ask, not Modify, and not BOQ generation. Not saved in this slice.
@@ -13,24 +16,46 @@
       <thead>
         <tr>
           <th>Field</th>
-          <th>Required</th>
+          <th>Included</th>
+          <th>Required / Optional / Core</th>
           <th>Source availability</th>
+          <th>Notes</th>
         </tr>
       </thead>
       <tbody>
         {% for col in qty_prep.schema_fields %}
-        <tr data-testid="qty-schema-field-row">
+        <tr data-testid="qty-schema-field-row"
+            data-qty-field-key="{{ col.key }}"
+            data-qty-field-locked="{% if col.locked %}1{% else %}0{% endif %}"
+            data-qty-field-included="{% if col.included %}1{% else %}0{% endif %}">
           <td class="qty-col-primary">{{ col.label }}</td>
           <td>
-            {% if col.required == "Required" %}
+            {% if col.locked %}
+            <span class="qty-pill qty-pill-ok" data-testid="qty-schema-locked-{{ col.key }}">Locked included</span>
+            <input type="hidden" name="{{ col.param_name }}" value="1">
+            {% else %}
+            <select name="{{ col.param_name }}"
+                    id="{{ col.param_name }}"
+                    class="form-select form-select-sm qty-schema-include-select"
+                    data-testid="qty-schema-include-{{ col.key }}">
+              <option value="1" {% if col.included %}selected{% endif %}>Include</option>
+              <option value="0" {% if not col.included %}selected{% endif %}>Exclude</option>
+            </select>
+            {% endif %}
+          </td>
+          <td>
+            {% if col.locked %}
+            <span class="qty-pill qty-pill-required">{{ col.required_label }}</span>
+            {% elif col.required_label == "Required" %}
             <span class="qty-pill qty-pill-required">Required</span>
             {% else %}
-            <span class="qty-pill qty-pill-optional">Optional</span>
+            <span class="qty-pill qty-pill-optional">{{ col.required_label }}</span>
             {% endif %}
           </td>
           <td>
             <span class="qty-pill qty-pill-avail">{{ col.availability }}</span>
           </td>
+          <td class="text-secondary qty-schema-note">{{ col.note }}</td>
         </tr>
         {% endfor %}
       </tbody>

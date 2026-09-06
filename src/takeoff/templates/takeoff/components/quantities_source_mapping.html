@@ -1,9 +1,12 @@
-<!-- takeoff/components/quantities_source_mapping.html — Source Mapping -->
+<!-- takeoff/components/quantities_source_mapping.html — Source Mapping (read-only in 3c-1) -->
 <section class="qty-builder-section" data-testid="quantities-source-mapping">
   <div class="qty-builder-h">
     <h6 class="mb-0">Source Mapping</h6>
-    <span class="mi-footnote">Session defaults — not fully editable in this slice</span>
+    <span class="mi-footnote">Read-only in this slice</span>
   </div>
+  <p class="qty-builder-note mb-2" data-testid="qty-source-mapping-readonly-note">
+    {{ qty_prep.source_mapping_readonly_note }}
+  </p>
   <p class="qty-builder-note mb-2">
     Map preparation fields to allowed sources only:
     IFC property, Qto property, Spatial container, Manual field,

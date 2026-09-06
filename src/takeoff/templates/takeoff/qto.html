@@ -59,10 +59,17 @@
 
   <div class="qty-builder-body">
 
-    {% include "takeoff/components/quantities_setup_summary.html" %}
-    {% include "takeoff/components/quantities_column_config.html" %}
-    {% include "takeoff/components/quantities_source_mapping.html" %}
-    {% include "takeoff/components/quantities_basis_rules.html" %}
+    <form method="get"
+          action=""
+          class="qty-prep-config-form"
+          data-testid="qty-prep-config-form"
+          id="qty-prep-config-form">
+      {% include "takeoff/components/quantities_setup_summary.html" %}
+      {% include "takeoff/components/quantities_column_config.html" %}
+      {% include "takeoff/components/quantities_source_mapping.html" %}
+      {% include "takeoff/components/quantities_basis_rules.html" %}
+    </form>
+
     {% include "takeoff/components/quantities_prep_table.html" %}
     {% include "takeoff/components/quantities_missing_summary.html" %}
     {% include "takeoff/components/quantities_visual_summary.html" %}

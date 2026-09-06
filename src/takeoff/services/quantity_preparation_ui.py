@@ -1,12 +1,12 @@
 # takeoff/services/quantity_preparation_ui.py
-"""UI-only Quantity Preparation Data Model (Slice 2a/2b + Slice 3a overrides).
+"""UI-only Quantity Preparation Data Model (Slice 2a/2b + 3a + 3c-1).
 
 No persistence, no writeback, no cost, no Ask/Modify integration.
 Builds presentation payloads from ModelQuantitiesService output plus
-session/UI schema, source mappings, and user-defined measurement rules.
+session/UI schema includes, source mappings, and user-defined measurement rules.
 
-Slice 3a: basis_* GET overrides regenerate prep/register/summary/insights
-without database writes.
+Slice 3a: basis_* GET overrides regenerate prep/register/summary/insights.
+Slice 3c-1: field_* GET includes/excludes optional schema fields (session-only).
 """
 
 from __future__ import annotations
@@ -31,6 +31,7 @@ RULE_MODEL_GROUPS: tuple[str, ...] = (
 )
 
 BASIS_QUERY_PREFIX = "basis_"
+FIELD_QUERY_PREFIX = "field_"
 
 # Explicit user-owned defaults only. Wall/Slab stay unresolved (no auto basis).
 # Unknown classes also stay unresolved — never invent a basis from raw Qto.
@@ -66,76 +67,192 @@ _UNIT_FOR_BASIS: dict[str, str] = {
     "Count": "count",
 }
 
+# Slice 3c-1 schema include/exclude (session-only GET field_<key>=0|1).
+# Defaults preserve approved baseline prep columns (no Level/Zone columns by default).
+SCHEMA_FIELD_SPECS: tuple[dict[str, Any], ...] = (
+    {
+        "key": "level_storey",
+        "label": "Level / Storey",
+        "required_label": "Optional",
+        "availability": "Spatial source",
+        "default_included": False,
+        "locked": False,
+        "note": "Optional spatial field — excluded by default (not in baseline prep columns).",
+    },
+    {
+        "key": "zone",
+        "label": "Zone",
+        "required_label": "Optional",
+        "availability": "Not indexed",
+        "default_included": False,
+        "locked": False,
+        "note": "Optional — excluded by default (not indexed).",
+    },
+    {
+        "key": "ifc_class",
+        "label": "IFC Class",
+        "required_label": "Required",
+        "availability": "Available from IFC",
+        "default_included": True,
+        "locked": True,
+        "note": "Core locked — required for the generated model.",
+    },
+    {
+        "key": "type_name",
+        "label": "Type Name",
+        "required_label": "Optional",
+        "availability": "Castor indexed field",
+        "default_included": True,
+        "locked": False,
+        "note": "Optional — included by default.",
+    },
+    {
+        "key": "quantity_source",
+        "label": "Quantity Source",
+        "required_label": "Required",
+        "availability": "Available from Qto",
+        "default_included": True,
+        "locked": True,
+        "note": "Core locked — required for measurement.",
+    },
+    {
+        "key": "quantity_basis",
+        "label": "Quantity Basis",
+        "required_label": "Required",
+        "availability": "Manual",
+        "default_included": True,
+        "locked": True,
+        "note": "Core locked — required for measurement.",
+    },
+    {
+        "key": "unit_basis",
+        "label": "Unit Basis",
+        "required_label": "Core output",
+        "availability": "Castor indexed field",
+        "default_included": True,
+        "locked": True,
+        "note": "Core locked — derived from Quantity Basis.",
+    },
+    {
+        "key": "total_quantity",
+        "label": "Total Quantity",
+        "required_label": "Core output",
+        "availability": "Castor indexed field",
+        "default_included": True,
+        "locked": True,
+        "note": "Core locked — measurement output column.",
+    },
+    {
+        "key": "classification_code",
+        "label": "Classification Code",
+        "required_label": "Optional",
+        "availability": "Not indexed",
+        "default_included": True,
+        "locked": False,
+        "note": "Optional mapping field — not indexed yet.",
+    },
+    {
+        "key": "package_boq_mapping",
+        "label": "Package / BOQ Mapping",
+        "required_label": "Optional",
+        "availability": "Not indexed",
+        "default_included": True,
+        "locked": False,
+        "note": "Schema field only — not BOQ generation.",
+    },
+    {
+        "key": "work_package",
+        "label": "Work Package",
+        "required_label": "Optional",
+        "availability": "Not indexed",
+        "default_included": True,
+        "locked": False,
+        "note": "Optional — Future Modify handoff candidate.",
+    },
+    {
+        "key": "review_status",
+        "label": "Review Status",
+        "required_label": "Core output",
+        "availability": "Castor indexed field",
+        "default_included": True,
+        "locked": True,
+        "note": "Core locked — safety status always visible.",
+    },
+    {
+        "key": "handoff_status",
+        "label": "Handoff Status",
+        "required_label": "Core output",
+        "availability": "Future Modify handoff",
+        "default_included": True,
+        "locked": True,
+        "note": "Core locked — safety status always visible.",
+    },
+)
 
-def default_schema_fields() -> list[dict[str, str]]:
-    """Return Schema Builder fields (not persisted)."""
-    return [
-        {
-            "label": "Level / Storey",
-            "required": "Optional",
-            "availability": "Spatial source",
-        },
-        {
-            "label": "Zone",
-            "required": "Optional",
-            "availability": "Not indexed",
-        },
-        {
-            "label": "IFC Class",
-            "required": "Required",
-            "availability": "Available from IFC",
-        },
-        {
-            "label": "Type Name",
-            "required": "Optional",
-            "availability": "Castor indexed field",
-        },
-        {
-            "label": "Quantity Source",
-            "required": "Required",
-            "availability": "Available from Qto",
-        },
-        {
-            "label": "Quantity Basis",
-            "required": "Required",
-            "availability": "Manual",
-        },
-        {
-            "label": "Unit Basis",
-            "required": "Optional",
-            "availability": "Castor indexed field",
-        },
-        {
-            "label": "Total Quantity",
-            "required": "Optional",
-            "availability": "Castor indexed field",
-        },
-        {
-            "label": "Classification Code",
-            "required": "Optional",
-            "availability": "Not indexed",
-        },
-        {
-            "label": "Package / BOQ Mapping",
-            "required": "Optional",
-            "availability": "Not indexed",
-        },
-        {
-            "label": "Work Package",
-            "required": "Optional",
-            "availability": "Not indexed",
-        },
-        {
-            "label": "Review Status",
-            "required": "Optional",
-            "availability": "Castor indexed field",
-        },
-        {
-            "label": "Handoff Status",
-            "required": "Optional",
-            "availability": "Future Modify handoff",
-        },
-    ]
+SCHEMA_FIELD_KEYS: frozenset[str] = frozenset(spec["key"] for spec in SCHEMA_FIELD_SPECS)
+LOCKED_SCHEMA_KEYS: frozenset[str] = frozenset(
+    spec["key"] for spec in SCHEMA_FIELD_SPECS if spec["locked"]
+)
+EDITABLE_SCHEMA_KEYS: frozenset[str] = frozenset(
+    spec["key"] for spec in SCHEMA_FIELD_SPECS if not spec["locked"]
+)
+
+
+def default_schema_includes() -> dict[str, bool]:
+    """Return default include map (no query params)."""
+    return {spec["key"]: bool(spec["default_included"]) for spec in SCHEMA_FIELD_SPECS}
+
+
+def parse_schema_includes_from_query(query: Mapping[str, Any]) -> dict[str, bool]:
+    """Parse field_<key>=0|1; locked keys always included; invalid ignored."""
+    includes = default_schema_includes()
+    for key in EDITABLE_SCHEMA_KEYS:
+        param = f"{FIELD_QUERY_PREFIX}{key}"
+        if param not in query:
+            continue
+        raw = query.get(param)
+        if isinstance(raw, (list, tuple)):
+            raw = raw[0] if raw else ""
+        value = str(raw or "").strip().lower()
+        if value in {"1", "true", "yes", "on", "include"}:
+            includes[key] = True
+        elif value in {"0", "false", "no", "off", "exclude"}:
+            includes[key] = False
+        else:
+            logger.info("Ignoring invalid schema include %s=%r", param, value)
+    for key in LOCKED_SCHEMA_KEYS:
+        includes[key] = True
+    return includes
+
+
+def build_schema_fields_ui(schema_includes: Mapping[str, bool]) -> list[dict[str, Any]]:
+    """Schema Builder rows with session include state (3c-1)."""
+    rows: list[dict[str, Any]] = []
+    for spec in SCHEMA_FIELD_SPECS:
+        key = str(spec["key"])
+        included = bool(schema_includes.get(key, spec["default_included"]))
+        if spec["locked"]:
+            included = True
+        rows.append(
+            {
+                "key": key,
+                "label": spec["label"],
+                "required": spec["required_label"],
+                "required_label": spec["required_label"],
+                "availability": spec["availability"],
+                "included": included,
+                "locked": bool(spec["locked"]),
+                "editable": not bool(spec["locked"]),
+                "note": spec["note"],
+                "param_name": f"{FIELD_QUERY_PREFIX}{key}",
+            }
+        )
+    return rows
+
+
+def default_schema_fields() -> list[dict[str, Any]]:
+    """Return Schema Builder fields for default includes (back-compat)."""
+    return build_schema_fields_ui(default_schema_includes())
 
 
 def default_source_mappings() -> list[dict[str, str]]:
@@ -473,8 +590,12 @@ def user_defined_measurement_rules(
 def build_prep_rows(
     quantities: dict[str, Any],
     basis_overrides: Mapping[str, str] | None = None,
+    schema_includes: Mapping[str, bool] | None = None,
 ) -> list[dict[str, Any]]:
     """Build Generated Preparation Data Model rows from indexed aggregates."""
+    includes = dict(schema_includes or default_schema_includes())
+    for key in LOCKED_SCHEMA_KEYS:
+        includes[key] = True
     rows_out: list[dict[str, Any]] = []
     use_types = bool(quantities.get("by_type_shown")) and bool(quantities.get("by_type"))
     source_rows: list[dict[str, Any]] = (
@@ -506,10 +627,17 @@ def build_prep_rows(
             missing_source = total is None
             total_display = "—" if missing_source else total
 
+        # Unresolved mapping gaps only when the schema field is included.
+        include_classification = bool(includes.get("classification_code"))
+        include_package = bool(includes.get("package_boq_mapping"))
+        include_work = bool(includes.get("work_package"))
+
         row: dict[str, Any] = {
             "model_group": model_group,
             "ifc_class": ifc_class,
             "type_name": type_name,
+            "level_storey": "",
+            "zone": "",
             "quantity_source": quantity_source,
             "quantity_basis": quantity_basis,
             "unit_basis": unit_basis,
@@ -521,9 +649,9 @@ def build_prep_rows(
             "work_package": "",
             "element_count": raw.get("element_count"),
             "missing_quantity_source": missing_source,
-            "missing_classification": True,
-            "missing_package": True,
-            "missing_work_package": True,
+            "missing_classification": include_classification,
+            "missing_package": include_package,
+            "missing_work_package": include_work,
         }
         row["review_status"] = _review_status(row)
         row["handoff_status"] = _handoff_status(row)
@@ -624,17 +752,26 @@ def build_visual_summary(
         ),
         "unresolved_by_field": _count_bar_items(
             {
-                "Quantity basis rule": int(
-                    unresolved_register.get("missing_quantity_basis_rule") or 0
-                ),
-                "Selected quantity source": int(
-                    unresolved_register.get("missing_selected_quantity_source") or 0
-                ),
-                "Classification": int(unresolved_register.get("missing_classification") or 0),
-                "Package / BOQ mapping": int(
-                    unresolved_register.get("missing_package_boq_mapping") or 0
-                ),
-                "Work package": int(unresolved_register.get("missing_work_package") or 0),
+                k: v
+                for k, v in {
+                    "Quantity basis rule": int(
+                        unresolved_register.get("missing_quantity_basis_rule") or 0
+                    ),
+                    "Selected quantity source": int(
+                        unresolved_register.get("missing_selected_quantity_source") or 0
+                    ),
+                    "Classification": int(unresolved_register.get("missing_classification") or 0),
+                    "Package / BOQ mapping": int(
+                        unresolved_register.get("missing_package_boq_mapping") or 0
+                    ),
+                    "Work package": int(unresolved_register.get("missing_work_package") or 0),
+                }.items()
+                if v > 0
+                or k
+                in {
+                    "Quantity basis rule",
+                    "Selected quantity source",
+                }
             }
         ),
         "modify_handoff_status": _count_bar_items(
@@ -675,6 +812,21 @@ def build_preparation_insights(
     top_groups = _top_unresolved_model_groups(prep_rows, limit=5)
     top_names = ", ".join(item["label"] for item in top_groups) if top_groups else "None"
 
+    mapping_parts: list[str] = []
+    if missing_classification:
+        mapping_parts.append("Classification")
+    if missing_package:
+        mapping_parts.append("Package / BOQ Mapping")
+    if missing_work_package:
+        mapping_parts.append("Work Package")
+    if mapping_parts:
+        mapping_body = f"{', '.join(mapping_parts)} still unmapped for included schema fields."
+    else:
+        mapping_body = (
+            "No included classification / package / work-package mapping gaps "
+            "(those fields may be excluded from the schema)."
+        )
+
     return [
         {
             "id": "measurement_rules_needed",
@@ -699,8 +851,8 @@ def build_preparation_insights(
             "id": "mapping_gaps",
             "title": "Mapping gaps",
             "count": missing_classification + missing_package + missing_work_package,
-            "body": ("Classification, Package / BOQ Mapping, and Work Package are still unmapped."),
-            "next": "Next: complete mapping fields or send eligible rows to Modify later.",
+            "body": mapping_body,
+            "next": "Next: complete included mapping fields or send eligible rows to Modify later.",
         },
         {
             "id": "modify_handoff_candidates",
@@ -730,7 +882,7 @@ def build_preparation_insights(
 
 
 def build_setup_summary(
-    schema_fields: list[dict[str, str]],
+    schema_fields: list[dict[str, Any]],
     basis_rules: list[dict[str, Any]],
     prep_rows: list[dict[str, Any]],
     unresolved_register: dict[str, int],
@@ -738,7 +890,12 @@ def build_setup_summary(
     """Compact Preparation Setup Summary counts (UI-only overview)."""
     return {
         "schema_fields": len(schema_fields),
-        "required_fields": sum(1 for f in schema_fields if f.get("required") == "Required"),
+        "schema_fields_included": sum(1 for f in schema_fields if f.get("included")),
+        "required_fields": sum(
+            1
+            for f in schema_fields
+            if f.get("required") == "Required" or f.get("required_label") == "Required"
+        ),
         "measurement_rules": len(basis_rules),
         "generated_rows": len(prep_rows),
         "rows_with_unresolved_basis": int(
@@ -755,16 +912,47 @@ def build_setup_summary(
 def build_preparation_ui(
     quantities: dict[str, Any],
     basis_overrides: Mapping[str, str] | None = None,
+    schema_includes: Mapping[str, bool] | None = None,
 ) -> dict[str, Any]:
-    """Assemble Quantities preparation UI (Slice 2a/2b + Slice 3a overrides)."""
+    """Assemble Quantities preparation UI (Slice 2–3a + 3c-1 schema includes)."""
     overrides = dict(basis_overrides or {})
-    schema_fields = default_schema_fields()
+    includes = dict(schema_includes or default_schema_includes())
+    for key in LOCKED_SCHEMA_KEYS:
+        includes[key] = True
+    schema_fields = build_schema_fields_ui(includes)
     basis_rules = user_defined_measurement_rules(overrides, quantities)
-    prep_rows = build_prep_rows(quantities, overrides) if quantities.get("has_ifc") else []
+    prep_rows = (
+        build_prep_rows(quantities, overrides, includes) if quantities.get("has_ifc") else []
+    )
     unresolved_register = build_unresolved_register(prep_rows)
     return {
         "schema_fields": schema_fields,
+        "schema_includes": includes,
+        "show": {
+            "level_storey": bool(includes.get("level_storey")),
+            "zone": bool(includes.get("zone")),
+            "type_name": bool(includes.get("type_name")),
+            "ifc_class": True,
+            "quantity_source": True,
+            "quantity_basis": True,
+            "unit_basis": True,
+            "total_quantity": True,
+            "classification_code": bool(includes.get("classification_code")),
+            "package_boq_mapping": bool(includes.get("package_boq_mapping")),
+            "work_package": bool(includes.get("work_package")),
+            "review_status": True,
+            "handoff_status": True,
+        },
         "source_mappings": default_source_mappings(),
+        "source_mapping_readonly_note": (
+            "Source Mapping remains read-only in this slice. "
+            "Source controls are planned for a later slice."
+        ),
+        "schema_session_note": (
+            "Schema selection is session-only and not saved. "
+            "Generate rebuilds the preparation model from the selected fields "
+            "and measurement rules. Required/core fields are locked."
+        ),
         "basis_rules": basis_rules,
         "basis_options": sorted(ALLOWED_BASIS_VALUES),
         "basis_overrides": overrides,
@@ -811,7 +999,8 @@ def build_preparation_ui(
             "Total Quantity shows Unresolved — not a raw IFC number. "
             "Unit Basis is derived from selected Quantity Basis; it is not manually "
             "edited in this slice. Totals reflect the user-selected basis, not a "
-            "Castor recommendation."
+            "Castor recommendation. Excluded schema fields are omitted from the table "
+            "and are not counted as unresolved schema gaps."
         ),
         "prep_unit_basis_note": (
             "Unit Basis is derived from selected Quantity Basis; "
