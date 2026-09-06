@@ -1,19 +1,36 @@
 # takeoff/services/quantity_preparation_ui.py
-"""UI-only Quantity Preparation Data Model defaults (Slice 2a).
+"""UI-only Quantity Preparation Data Model (Slice 2a/2b + Slice 3a overrides).
 
 No persistence, no writeback, no cost, no Ask/Modify integration.
 Builds presentation payloads from ModelQuantitiesService output plus
-session/UI default schema, source mappings, and user-defined measurement rules.
+session/UI schema, source mappings, and user-defined measurement rules.
+
+Slice 3a: basis_* GET overrides regenerate prep/register/summary/insights
+without database writes.
 """
 
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 MAX_PREP_ROWS = 50
+
+ALLOWED_BASIS_VALUES = frozenset({"Unresolved", "NetVolume", "NetArea", "Length", "Count"})
+
+RULE_MODEL_GROUPS: tuple[str, ...] = (
+    "IfcBeam",
+    "IfcColumn",
+    "IfcDoor",
+    "IfcPipeSegment",
+    "IfcWall",
+    "IfcSlab",
+)
+
+BASIS_QUERY_PREFIX = "basis_"
 
 # Explicit user-owned defaults only. Wall/Slab stay unresolved (no auto basis).
 # Unknown classes also stay unresolved — never invent a basis from raw Qto.
@@ -41,6 +58,13 @@ _USER_DEFINED_BASIS_BY_CLASS: dict[str, dict[str, str]] = {
 }
 
 _UNRESOLVED_BY_DEFAULT = frozenset({"IfcWall", "IfcSlab"})
+
+_UNIT_FOR_BASIS: dict[str, str] = {
+    "NetVolume": "model volume units",
+    "NetArea": "model area units",
+    "Length": "model length units",
+    "Count": "count",
+}
 
 
 def default_schema_fields() -> list[dict[str, str]]:
@@ -185,58 +209,71 @@ def default_source_mappings() -> list[dict[str, str]]:
     ]
 
 
-def user_defined_measurement_rules() -> list[dict[str, str]]:
-    """Return user-owned measurement rule defaults (not material-detected)."""
-    return [
-        {
-            "model_group": "IfcBeam",
-            "quantity_source": "NetVolume",
-            "quantity_basis": "NetVolume",
-            "unit_basis": "model volume units",
-            "note": "User-defined starter default",
-        },
-        {
-            "model_group": "IfcColumn",
-            "quantity_source": "NetVolume",
-            "quantity_basis": "NetVolume",
-            "unit_basis": "model volume units",
-            "note": "User-defined starter default",
-        },
-        {
-            "model_group": "IfcDoor",
-            "quantity_source": "Count",
-            "quantity_basis": "Count",
-            "unit_basis": "count",
-            "note": "User-defined starter default",
-        },
-        {
-            "model_group": "IfcPipeSegment",
-            "quantity_source": "Length",
-            "quantity_basis": "Length",
-            "unit_basis": "model length units",
-            "note": "User-defined starter default",
-        },
-        {
-            "model_group": "IfcWall",
-            "quantity_source": "Unresolved",
-            "quantity_basis": "Unresolved",
-            "unit_basis": "—",
-            "note": "Select basis — not editable in this slice",
-            "needs_basis_action": True,
-        },
-        {
-            "model_group": "IfcSlab",
-            "quantity_source": "Unresolved",
-            "quantity_basis": "Unresolved",
-            "unit_basis": "—",
-            "note": "Select basis — not editable in this slice",
-            "needs_basis_action": True,
-        },
-    ]
+def unit_basis_for(basis: str) -> str:
+    """Return display unit label for a selected basis."""
+    if basis == "Unresolved" or not basis:
+        return "—"
+    return _UNIT_FOR_BASIS.get(basis, "—")
 
 
-def _basis_for_class(ifc_class: str) -> dict[str, str]:
-    """Return selected basis for a class, or empty unresolved dict."""
+def default_basis_label_for_group(model_group: str) -> str:
+    """Return Slice 2 default basis label for a starter model group."""
+    if model_group in _UNRESOLVED_BY_DEFAULT:
+        return "Unresolved"
+    selected = _USER_DEFINED_BASIS_BY_CLASS.get(model_group)
+    if selected is None:
+        return "Unresolved"
+    return selected.get("quantity_basis") or "Unresolved"
+
+
+def parse_basis_overrides_from_query(query: Mapping[str, Any]) -> dict[str, str]:
+    """Parse basis_<IfcClass>=Value query params; ignore invalid values safely.
+
+    Missing keys are omitted (caller applies Slice 2 defaults).
+    Invalid values are omitted (treated as no override → default).
+    """
+    overrides: dict[str, str] = {}
+    for group in RULE_MODEL_GROUPS:
+        key = f"{BASIS_QUERY_PREFIX}{group}"
+        if key not in query:
+            continue
+        raw = query.get(key)
+        if isinstance(raw, (list, tuple)):
+            raw = raw[0] if raw else ""
+        value = str(raw or "").strip()
+        if value not in ALLOWED_BASIS_VALUES:
+            logger.info("Ignoring invalid basis override %s=%r", key, value)
+            continue
+        overrides[group] = value
+    return overrides
+
+
+def _basis_dict_from_label(basis_label: str) -> dict[str, Any]:
+    """Build internal basis dict from an allowed basis label."""
+    if basis_label == "Unresolved" or not basis_label:
+        return {
+            "quantity_source": "",
+            "quantity_basis": "",
+            "unit_basis": "",
+            "basis_unresolved": True,
+        }
+    return {
+        "quantity_source": basis_label,
+        "quantity_basis": basis_label,
+        "unit_basis": unit_basis_for(basis_label),
+        "basis_unresolved": False,
+    }
+
+
+def _basis_for_class(
+    ifc_class: str,
+    basis_overrides: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    """Return selected basis for a class, applying optional overrides."""
+    overrides = basis_overrides or {}
+    if ifc_class in overrides:
+        return _basis_dict_from_label(overrides[ifc_class])
+
     if ifc_class in _UNRESOLVED_BY_DEFAULT:
         return {
             "quantity_source": "",
@@ -252,19 +289,15 @@ def _basis_for_class(ifc_class: str) -> dict[str, str]:
             "unit_basis": "",
             "basis_unresolved": True,
         }
-    out = dict(selected)
+    out: dict[str, Any] = dict(selected)
     out["basis_unresolved"] = False
     return out
 
 
-def _total_for_basis(row: dict[str, Any], basis: dict[str, Any]) -> float | int | None:
-    """Return derived total only when a basis/source is selected; else None."""
-    if basis.get("basis_unresolved"):
-        return None
-    source = (basis.get("quantity_source") or "").strip()
-    if not source:
-        return None
+def _measure_value(row: dict[str, Any], source: str) -> float | int | None:
+    """Return raw aggregate measure for a selected source, or None if unavailable."""
     if source == "Count":
+        # Count is always available from element_count (may be zero).
         return int(row.get("element_count") or 0)
     if source == "NetVolume":
         return row.get("net_volume")
@@ -279,11 +312,21 @@ def _total_for_basis(row: dict[str, Any], basis: dict[str, Any]) -> float | int 
     return None
 
 
+def _total_for_basis(row: dict[str, Any], basis: dict[str, Any]) -> float | int | None:
+    """Return derived total only when a basis/source is selected and available."""
+    if basis.get("basis_unresolved"):
+        return None
+    source = (basis.get("quantity_source") or "").strip()
+    if not source:
+        return None
+    return _measure_value(row, source)
+
+
 def _review_status(row: dict[str, Any]) -> str:
     if row.get("basis_unresolved"):
         return "Missing basis rule"
     if row.get("missing_quantity_source"):
-        return "Missing source"
+        return "Missing selected quantity source"
     if (
         row.get("missing_classification")
         or row.get("missing_package")
@@ -324,7 +367,41 @@ def _handoff_status(row: dict[str, Any]) -> str:
     return "Not eligible"
 
 
-def build_prep_rows(quantities: dict[str, Any]) -> list[dict[str, Any]]:
+def user_defined_measurement_rules(
+    basis_overrides: Mapping[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    """Return measurement rules for the six starter groups (session-only UI)."""
+    overrides = basis_overrides or {}
+    options = sorted(ALLOWED_BASIS_VALUES)
+    rules: list[dict[str, Any]] = []
+    for group in RULE_MODEL_GROUPS:
+        label = overrides.get(group) or default_basis_label_for_group(group)
+        if label not in ALLOWED_BASIS_VALUES:
+            label = "Unresolved"
+        unresolved = label == "Unresolved"
+        rules.append(
+            {
+                "model_group": group,
+                "quantity_source": "Unresolved" if unresolved else label,
+                "quantity_basis": "Unresolved" if unresolved else label,
+                "unit_basis": unit_basis_for(label),
+                "note": (
+                    "Select a basis, then Generate"
+                    if unresolved
+                    else "User-selected for this session"
+                ),
+                "needs_basis_action": unresolved,
+                "basis_options": options,
+                "param_name": f"{BASIS_QUERY_PREFIX}{group}",
+            }
+        )
+    return rules
+
+
+def build_prep_rows(
+    quantities: dict[str, Any],
+    basis_overrides: Mapping[str, str] | None = None,
+) -> list[dict[str, Any]]:
     """Build Generated Preparation Data Model rows from indexed aggregates."""
     rows_out: list[dict[str, Any]] = []
     use_types = bool(quantities.get("by_type_shown")) and bool(quantities.get("by_type"))
@@ -338,21 +415,34 @@ def build_prep_rows(quantities: dict[str, Any]) -> list[dict[str, Any]]:
         ifc_class = str(raw.get("ifc_class") or raw.get("ifc_type") or "")
         type_name = str(raw.get("type_name") or "") if use_types else ""
         model_group = ifc_class or "Unknown"
-        basis = _basis_for_class(ifc_class)
+        basis = _basis_for_class(ifc_class, basis_overrides)
         basis_unresolved = bool(basis.get("basis_unresolved"))
         source = (basis.get("quantity_source") or "").strip()
-        missing_source = basis_unresolved or not source
         total = _total_for_basis(raw, basis)
+
+        if basis_unresolved:
+            missing_source = True
+            total_display: float | int | str = "Unresolved"
+            quantity_source = ""
+            quantity_basis = ""
+            unit_basis = ""
+        else:
+            # Selected basis shown even when measure is missing on the row.
+            quantity_source = source
+            quantity_basis = basis.get("quantity_basis") or source
+            unit_basis = basis.get("unit_basis") or unit_basis_for(source)
+            missing_source = total is None
+            total_display = "—" if missing_source else total
 
         row: dict[str, Any] = {
             "model_group": model_group,
             "ifc_class": ifc_class,
             "type_name": type_name,
-            "quantity_source": "" if basis_unresolved else source,
-            "quantity_basis": "" if basis_unresolved else (basis.get("quantity_basis") or ""),
-            "unit_basis": "" if basis_unresolved else (basis.get("unit_basis") or ""),
+            "quantity_source": quantity_source,
+            "quantity_basis": quantity_basis,
+            "unit_basis": unit_basis,
             "total": total,
-            "total_display": "Unresolved" if basis_unresolved else total,
+            "total_display": total_display,
             "basis_unresolved": basis_unresolved,
             "classification_code": "",
             "package_boq_mapping": "",
@@ -569,7 +659,7 @@ def build_preparation_insights(
 
 def build_setup_summary(
     schema_fields: list[dict[str, str]],
-    basis_rules: list[dict[str, str]],
+    basis_rules: list[dict[str, Any]],
     prep_rows: list[dict[str, Any]],
     unresolved_register: dict[str, int],
 ) -> dict[str, int]:
@@ -590,19 +680,30 @@ def build_setup_summary(
     }
 
 
-def build_preparation_ui(quantities: dict[str, Any]) -> dict[str, Any]:
-    """Assemble Quantities preparation UI (Slice 2a + 2b summary/insights)."""
+def build_preparation_ui(
+    quantities: dict[str, Any],
+    basis_overrides: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    """Assemble Quantities preparation UI (Slice 2a/2b + Slice 3a overrides)."""
+    overrides = dict(basis_overrides or {})
     schema_fields = default_schema_fields()
-    basis_rules = user_defined_measurement_rules()
-    prep_rows = build_prep_rows(quantities) if quantities.get("has_ifc") else []
+    basis_rules = user_defined_measurement_rules(overrides)
+    prep_rows = build_prep_rows(quantities, overrides) if quantities.get("has_ifc") else []
     unresolved_register = build_unresolved_register(prep_rows)
     return {
         "schema_fields": schema_fields,
         "source_mappings": default_source_mappings(),
         "basis_rules": basis_rules,
+        "basis_options": sorted(ALLOWED_BASIS_VALUES),
+        "basis_overrides": overrides,
+        "session_only_note": (
+            "Configuration is session-only and not saved. "
+            "Refresh without parameters restores defaults."
+        ),
         "basis_rules_banner": (
             "No rule = unresolved. No selected basis = no measurement claim. "
-            "Raw IFC quantity values do not mean correct BOQ, 5D, or QS measurement."
+            "Raw IFC quantity values do not mean correct BOQ, 5D, or QS measurement. "
+            "Session-only — not saved to project."
         ),
         "source_vs_basis_note": (
             "Quantity Source is the IFC/Qto property used when selected. "

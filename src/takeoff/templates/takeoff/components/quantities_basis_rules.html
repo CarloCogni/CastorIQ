@@ -1,4 +1,4 @@
-<!-- takeoff/components/quantities_basis_rules.html — User-defined Measurement Rules -->
+<!-- takeoff/components/quantities_basis_rules.html — User-defined Measurement Rules (Slice 3a) -->
 <section class="qty-builder-section" data-testid="quantities-measurement-rules">
   <div class="qty-builder-h">
     <h6 class="mb-0">User-defined Measurement Rules</h6>
@@ -10,55 +10,78 @@
   <p class="qty-builder-note mb-2" data-testid="qty-source-vs-basis-note">
     {{ qty_prep.source_vs_basis_note }}
   </p>
-  <div class="table-responsive">
-    <table class="table table-sm qty-config-table mb-0" data-testid="qty-basis-rules-table">
-      <thead>
-        <tr>
-          <th>Model group</th>
-          <th>Quantity Source</th>
-          <th>Quantity Basis</th>
-          <th>Unit basis</th>
-          <th>Note / action</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for rule in qty_prep.basis_rules %}
-        <tr data-testid="qty-basis-rule-row"
-            data-qty-needs-basis="{% if rule.needs_basis_action %}1{% else %}0{% endif %}">
-          <td class="qty-col-primary">{{ rule.model_group }}</td>
-          <td>
-            {% if rule.quantity_basis == "Unresolved" %}
-            <span class="qty-pill qty-pill-unresolved">Unresolved</span>
-            {% else %}
-            {{ rule.quantity_source }}
-            {% endif %}
-          </td>
-          <td>
-            {% if rule.quantity_basis == "Unresolved" %}
-            <span class="qty-pill qty-pill-unresolved">Unresolved</span>
-            {% else %}
-            {{ rule.quantity_basis }}
-            {% endif %}
-          </td>
-          <td class="text-secondary">{{ rule.unit_basis }}</td>
-          <td>
-            {% if rule.needs_basis_action %}
-            <button type="button"
-                    class="btn btn-sm btn-outline-secondary qty-select-basis-btn"
-                    disabled
-                    aria-disabled="true"
-                    title="Not editable in this slice"
-                    data-testid="qty-select-basis-{{ rule.model_group }}">
-              Select basis
-            </button>
-            <span class="qty-action-hint">not editable in this slice</span>
-            {% else %}
-            <span class="text-secondary">{{ rule.note }}</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+  <p class="qty-builder-note mb-2" data-testid="qty-session-only-note">
+    {{ qty_prep.session_only_note }}
+  </p>
+
+  <form method="get"
+        action=""
+        class="qty-basis-rules-form"
+        data-testid="qty-basis-rules-form">
+    <div class="table-responsive">
+      <table class="table table-sm qty-config-table mb-0" data-testid="qty-basis-rules-table">
+        <thead>
+          <tr>
+            <th>Model group</th>
+            <th>Quantity Source</th>
+            <th>Quantity Basis</th>
+            <th>Unit basis</th>
+            <th>Select basis</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for rule in qty_prep.basis_rules %}
+          <tr data-testid="qty-basis-rule-row"
+              data-qty-needs-basis="{% if rule.needs_basis_action %}1{% else %}0{% endif %}">
+            <td class="qty-col-primary">{{ rule.model_group }}</td>
+            <td>
+              {% if rule.quantity_basis == "Unresolved" %}
+              <span class="qty-pill qty-pill-unresolved">Unresolved</span>
+              {% else %}
+              {{ rule.quantity_source }}
+              {% endif %}
+            </td>
+            <td>
+              {% if rule.quantity_basis == "Unresolved" %}
+              <span class="qty-pill qty-pill-unresolved">Unresolved</span>
+              {% else %}
+              {{ rule.quantity_basis }}
+              {% endif %}
+            </td>
+            <td class="text-secondary">{{ rule.unit_basis }}</td>
+            <td>
+              <label class="visually-hidden" for="{{ rule.param_name }}">
+                Basis for {{ rule.model_group }}
+              </label>
+              <select name="{{ rule.param_name }}"
+                      id="{{ rule.param_name }}"
+                      class="form-select form-select-sm qty-basis-select"
+                      data-testid="qty-select-basis-{{ rule.model_group }}">
+                {% for opt in rule.basis_options %}
+                <option value="{{ opt }}"
+                        {% if rule.quantity_basis == opt %}selected{% endif %}>
+                  {{ opt }}
+                </option>
+                {% endfor %}
+              </select>
+              <span class="qty-action-hint d-block mt-1">{{ rule.note }}</span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="d-flex flex-wrap align-items-center gap-2 mt-3"
+         data-testid="qty-generate-actions">
+      <button type="submit"
+              class="btn btn-sm btn-primary"
+              data-testid="qty-generate-prep-model">
+        Generate Preparation Data Model
+      </button>
+      <span class="mi-footnote" data-testid="qty-generate-session-hint">
+        Session-only — not saved to project.
+      </span>
+    </div>
+  </form>
 </section>

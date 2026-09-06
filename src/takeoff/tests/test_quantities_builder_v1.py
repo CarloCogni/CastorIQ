@@ -75,12 +75,14 @@ def test_wall_and_slab_unresolved_by_default():
     assert rules["IfcSlab"]["quantity_basis"] == "Unresolved"
     assert rules["IfcWall"]["needs_basis_action"] is True
     assert rules["IfcSlab"]["needs_basis_action"] is True
-    assert "Select basis" in rules["IfcWall"]["note"]
+    assert "Select a basis" in rules["IfcWall"]["note"]
+    assert rules["IfcWall"]["param_name"] == "basis_IfcWall"
+    assert "NetArea" in rules["IfcWall"]["basis_options"]
 
 
 @pytest.mark.django_db
 def test_builder_page_markers_and_disabled_modify_handoff(client):
-    """Page exposes Slice 2a IA; Modify handoff disabled; no Slice 1 labels."""
+    """Page exposes Slice 2a/3a IA; Modify handoff disabled; no Slice 1 labels."""
     project = ProjectFactory()
     ifc = IFCFileFactory(project=project, status="completed")
     IFCEntityFactory(
@@ -105,8 +107,12 @@ def test_builder_page_markers_and_disabled_modify_handoff(client):
     assert "Preparation Setup Summary" in html
     assert "Rows eligible for Modify handoff" in html
     assert "Rows ready for Modify handoff" not in html
+    assert 'data-testid="qty-basis-rules-form"' in html
     assert 'data-testid="qty-select-basis-IfcWall"' in html
-    assert "Select basis" in html
+    assert 'data-testid="qty-generate-prep-model"' in html
+    assert "Generate Preparation Data Model" in html
+    assert "Session-only — not saved to project" in html
+    assert "not editable in this slice" not in html
     assert "Source Mapping" in html
     assert 'data-testid="quantities-source-mapping"' in html
     assert "User-defined Measurement Rules" in html

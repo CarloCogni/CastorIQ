@@ -87,7 +87,8 @@ def test_quantities_workspace_v1_layout_markers(client):
     assert "Rows not eligible for handoff" in html
     assert "Rows not ready for handoff" not in html
     assert 'data-testid="qty-select-basis-IfcWall"' in html
-    assert "Select basis" in html
+    assert 'data-testid="qty-generate-prep-model"' in html
+    assert "Generate Preparation Data Model" in html
     assert 'data-testid="quantities-modify-handoff"' in html
     assert 'data-testid="qty-send-unresolved-to-modify"' in html
     assert "Send unresolved rows to Castor Modify" in html

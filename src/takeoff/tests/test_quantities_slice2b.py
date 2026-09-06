@@ -146,6 +146,7 @@ def test_slice2b_page_section_order_and_honesty(client):
     assert "Rows not ready for handoff" not in html
     assert 'data-testid="qty-select-basis-IfcWall"' in html
     assert 'data-testid="qty-select-basis-IfcSlab"' in html
-    assert "Select basis" in html
-    assert "not editable in this slice" in html
+    assert 'data-testid="qty-generate-prep-model"' in html
+    assert "Generate Preparation Data Model" in html
+    assert "not editable in this slice" not in html
     assert 'data-qty-basis-unresolved="1"' in html

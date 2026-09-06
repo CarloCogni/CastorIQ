@@ -25,7 +25,10 @@ from .models import QTOCache
 from .services.link_analysis import LinkAnalysisService
 from .services.model_inventory import ModelInventoryService
 from .services.model_quantities import ModelQuantitiesService
-from .services.quantity_preparation_ui import build_preparation_ui
+from .services.quantity_preparation_ui import (
+    build_preparation_ui,
+    parse_basis_overrides_from_query,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -168,9 +171,11 @@ class QTOView(ProjectTabMixin, TemplateView):
         ctx["castor_subtab"] = "qto"
         project = ctx["project"]
         # First paint: read-only aggregates from IFCEntity.properties (no QTOCache write).
+        # Slice 3a: basis_* GET params are session/UI state only — never persisted.
         quantities = ModelQuantitiesService(project).build()
         ctx["quantities"] = quantities
-        ctx["qty_prep"] = build_preparation_ui(quantities)
+        basis_overrides = parse_basis_overrides_from_query(self.request.GET)
+        ctx["qty_prep"] = build_preparation_ui(quantities, basis_overrides=basis_overrides)
         ctx["missing_qto_entities_url"] = (
             reverse("takeoff:model_inventory_entities", kwargs={"pk": project.pk}) + "?has_qto=no"
         )
