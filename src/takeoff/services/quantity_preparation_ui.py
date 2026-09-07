@@ -818,6 +818,10 @@ def build_prep_rows(
         missing_package = include_package and _source_counts_as_gap(package_src)
         missing_work = include_work and _source_counts_as_gap(work_src)
 
+        grain = "type" if use_types else "ifc_class"
+        # Local import avoids circular dependency with row-review session helpers.
+        from takeoff.services.quantity_prep_row_review import build_row_key
+
         row: dict[str, Any] = {
             "model_group": model_group,
             "ifc_class": ifc_class,
@@ -848,8 +852,16 @@ def build_prep_rows(
             "missing_classification": missing_classification,
             "missing_package": missing_package,
             "missing_work_package": missing_work,
+            "row_key": build_row_key(
+                grain=grain,
+                ifc_class=ifc_class,
+                type_name=type_name,
+                quantity_basis=quantity_basis,
+            ),
         }
         row["review_status"] = _review_status(row)
+        row["computed_review_status"] = row["review_status"]
+        row["review_status_display"] = row["review_status"]
         row["handoff_status"] = _handoff_status(row)
         row["eligible_for_handoff"] = row["handoff_status"] == "Eligible for Modify handoff"
         # Back-compat alias used by earlier Slice 2a/2b tests and register keys.

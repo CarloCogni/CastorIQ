@@ -10,7 +10,7 @@ from __future__ import annotations
 import io
 import logging
 
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, JsonResponse, QueryDict
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils.decorators import method_decorator
@@ -28,6 +28,10 @@ from .services.model_quantities import ModelQuantitiesService
 from .services.quantity_prep_config import (
     PREP_CONFIG_QUERY_PARAM,
     QuantityPrepConfigService,
+)
+from .services.quantity_prep_row_review import (
+    QuantityPrepRowReviewService,
+    apply_session_reviews_to_ui,
 )
 from .services.quantity_preparation_ui import (
     build_preparation_ui,
@@ -210,12 +214,20 @@ class QTOView(ProjectTabMixin, TemplateView):
             schema_includes = parse_schema_includes_from_query(query)
             source_mappings = parse_source_mappings_from_query(query)
 
-        ctx["qty_prep"] = build_preparation_ui(
+        qty_prep = build_preparation_ui(
             quantities,
             basis_overrides=basis_overrides,
             schema_includes=schema_includes,
             source_mappings=source_mappings,
         )
+        # Slice 5a: overlay session-only row reviews after register/visual are baked.
+        review_svc = QuantityPrepRowReviewService(project, self.request.user, self.request.session)
+        apply_session_reviews_to_ui(qty_prep, review_svc.get_annotations())
+        ctx["qty_prep"] = qty_prep
+        ctx["qty_prep_row_review_url"] = reverse(
+            "takeoff:qty_prep_row_review", kwargs={"pk": project.pk}
+        )
+        ctx["qty_prep_return_query"] = self.request.GET.urlencode()
         ctx["missing_qto_entities_url"] = (
             reverse("takeoff:model_inventory_entities", kwargs={"pk": project.pk}) + "?has_qto=no"
         )
@@ -269,6 +281,81 @@ class QuantityPrepConfigSaveView(ProjectAccessMixin, View):
             f"Saved preparation configuration draft “{config.name}”. "
             "Settings only — not generated quantities.",
         )
+
+
+class QuantityPrepRowReviewView(ProjectAccessMixin, View):
+    """POST — apply or clear a session-only preparation row review (Slice 5a)."""
+
+    def post(self, request, pk):  # noqa: ANN001
+        project = self.get_project()
+        action = (request.POST.get("action") or "apply").strip().lower()
+        row_key = (request.POST.get("row_key") or "").strip()
+        return_query = (request.POST.get("return_query") or "").strip()
+        # Rebuild current keys so apply cannot invent reviews for unknown rows.
+        quantities = ModelQuantitiesService(project).build()
+        # Prefer return_query echo for config continuity after POST.
+        effective = QueryDict(return_query, mutable=False) if return_query else request.GET
+        if QuantityPrepConfigService.query_has_session_overrides(effective):
+            basis_overrides = parse_basis_overrides_from_query(effective)
+            schema_includes = parse_schema_includes_from_query(effective)
+            source_mappings = parse_source_mappings_from_query(effective)
+        elif effective.get(PREP_CONFIG_QUERY_PARAM):
+            loaded = QuantityPrepConfigService(project, request.user).load_runtime(
+                effective.get(PREP_CONFIG_QUERY_PARAM)
+            )
+            if loaded.get("error"):
+                basis_overrides = parse_basis_overrides_from_query({})
+                schema_includes = parse_schema_includes_from_query({})
+                source_mappings = parse_source_mappings_from_query({})
+            else:
+                basis_overrides = loaded["basis_overrides"]
+                schema_includes = loaded["schema_includes"]
+                source_mappings = loaded["source_mappings"]
+        else:
+            basis_overrides = parse_basis_overrides_from_query(effective)
+            schema_includes = parse_schema_includes_from_query(effective)
+            source_mappings = parse_source_mappings_from_query(effective)
+
+        qty_prep = build_preparation_ui(
+            quantities,
+            basis_overrides=basis_overrides,
+            schema_includes=schema_includes,
+            source_mappings=source_mappings,
+        )
+        known_keys = {
+            str(row.get("row_key") or "")
+            for row in (qty_prep.get("prep_rows") or [])
+            if row.get("row_key")
+        }
+
+        svc = QuantityPrepRowReviewService(project, request.user, request.session)
+        if action == "clear":
+            result = svc.clear_review(row_key=row_key)
+            toast_msg = "Session row review cleared."
+        else:
+            result = svc.apply_review(
+                row_key=row_key,
+                review_status=(request.POST.get("review_status") or "").strip(),
+                note=request.POST.get("note") or "",
+                known_row_keys=known_keys,
+            )
+            toast_msg = "Session row review applied — not saved to configuration drafts."
+
+        if result.get("error"):
+            return toast_response(result["error"], level="error", status=400)
+
+        redirect_url = reverse("takeoff:qto", kwargs={"pk": project.pk})
+        if return_query:
+            redirect_url = f"{redirect_url}?{return_query}"
+        # Prefer full redirect so sticky table + register stay in sync with session.
+        if request.headers.get("HX-Request"):
+            response = HttpResponse(status=204)
+            response["HX-Redirect"] = redirect_url
+            return trigger_toast(response, toast_msg)
+        from django.contrib import messages
+
+        messages.success(request, toast_msg)
+        return redirect(redirect_url)
 
 
 class QTODataView(ProjectAccessMixin, View):

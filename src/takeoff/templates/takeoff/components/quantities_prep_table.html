@@ -13,6 +13,14 @@
   <p class="qty-builder-note mb-2" data-testid="qty-prep-unit-basis-note">
     {{ qty_prep.prep_unit_basis_note }}
   </p>
+  <p class="qty-builder-note mb-2" data-testid="qty-session-review-boundary">
+    {{ qty_prep.session_review_note }}
+  </p>
+  {% if qty_prep.session_review_stale_message %}
+  <p class="qty-builder-note mb-2 text-secondary" data-testid="qty-session-review-stale">
+    {{ qty_prep.session_review_stale_message }}
+  </p>
+  {% endif %}
   <div class="qty-prep-scroll-wrap" data-testid="qty-prep-scroll-wrap">
     <div class="table-responsive qty-prep-scroll">
       <table class="table table-sm qty-config-table qty-prep-table qty-prep-table-compact mb-0
@@ -28,6 +36,7 @@
             <th class="qty-col-key qty-sticky qty-sticky-4">Unit Basis</th>
             <th class="text-end qty-col-key qty-sticky qty-sticky-5">Total Quantity</th>
             <th class="qty-col-key">Review Status</th>
+            <th class="qty-col-key">Review</th>
             <th class="qty-col-key">Handoff Status</th>
             {% if qty_prep.show.ifc_class %}
             <th class="qty-col-secondary">IFC Class</th>
@@ -55,9 +64,11 @@
         <tbody>
           {% for row in qty_prep.prep_rows %}
           <tr data-testid="qty-prep-row"
+              data-qty-row-key="{{ row.row_key }}"
               data-qty-basis-unresolved="{% if row.basis_unresolved %}1{% else %}0{% endif %}"
               data-qty-ifc-class="{{ row.ifc_class }}"
               data-qty-missing-source="{% if row.missing_quantity_source %}1{% else %}0{% endif %}"
+              data-qty-session-review="{% if row.session_review %}1{% else %}0{% endif %}"
               class="{% if row.basis_unresolved %}qty-row-unresolved{% endif %}">
             <td class="qty-col-primary qty-sticky qty-sticky-1">{{ row.model_group|default:"—" }}</td>
             {% if qty_prep.show.type_name %}
@@ -75,7 +86,8 @@
             <td class="qty-sticky qty-sticky-4 text-secondary">
               {% if row.unit_basis %}{{ row.unit_basis }}{% else %}—{% endif %}
             </td>
-            <td class="text-end qty-col-total qty-sticky qty-sticky-5">
+            <td class="text-end qty-col-total qty-sticky qty-sticky-5"
+                data-testid="qty-prep-total-cell">
               {% if row.basis_unresolved %}
               <span class="qty-pill qty-pill-unresolved">Unresolved</span>
               {% elif row.total != None and row.total != "" %}
@@ -84,14 +96,46 @@
               —
               {% endif %}
             </td>
-            <td>
-              {% if row.review_status == "Resolved" %}
-              <span class="qty-pill qty-pill-ok">{{ row.review_status }}</span>
-              {% elif "Missing" in row.review_status %}
-              <span class="qty-pill qty-pill-review">{{ row.review_status }}</span>
-              {% else %}
-              <span class="qty-pill qty-pill-muted">{{ row.review_status }}</span>
+            <td data-testid="qty-prep-review-status-cell">
+              {% if row.session_review %}
+              <span class="qty-pill qty-pill-ok"
+                    data-testid="qty-session-review-status">{{ row.review_status_display }}</span>
+              <span class="qty-mapping-hint d-block"
+                    data-testid="qty-session-review-badge">Session review</span>
+              {% if row.session_review_note %}
+              <span class="qty-mapping-hint d-block"
+                    data-testid="qty-session-review-note-indicator"
+                    title="{{ row.session_review_note }}">Note</span>
               {% endif %}
+              <span class="qty-mapping-hint d-block text-secondary"
+                    data-testid="qty-computed-review-status">
+                Gap status: {{ row.computed_review_status }}
+              </span>
+              {% else %}
+              {% if row.review_status_display == "Resolved" %}
+              <span class="qty-pill qty-pill-ok">{{ row.review_status_display }}</span>
+              {% elif "Missing" in row.review_status_display %}
+              <span class="qty-pill qty-pill-review">{{ row.review_status_display }}</span>
+              {% else %}
+              <span class="qty-pill qty-pill-muted">{{ row.review_status_display }}</span>
+              {% endif %}
+              {% endif %}
+            </td>
+            <td>
+              <button type="button"
+                      class="btn btn-sm btn-outline-secondary"
+                      data-testid="qty-review-row-btn"
+                      data-bs-toggle="offcanvas"
+                      data-bs-target="#qtyRowReviewDrawer"
+                      data-qty-row-key="{{ row.row_key }}"
+                      data-qty-model-group="{{ row.model_group }}"
+                      data-qty-type-name="{{ row.type_name }}"
+                      data-qty-basis="{{ row.quantity_basis }}"
+                      data-qty-computed-status="{{ row.computed_review_status }}"
+                      data-qty-session-status="{{ row.session_review_status }}"
+                      data-qty-session-note="{{ row.session_review_note|escape }}">
+                Review row
+              </button>
             </td>
             <td>
               {% if row.eligible_for_handoff or "Eligible" in row.handoff_status %}
@@ -154,7 +198,7 @@
           </tr>
           {% empty %}
           <tr>
-            <td colspan="14" class="text-secondary">
+            <td colspan="15" class="text-secondary">
               No preparation rows yet. Index an IFC model first.
             </td>
           </tr>
@@ -165,6 +209,8 @@
     <p class="qty-prep-scroll-hint mb-0" data-testid="qty-prep-scroll-hint">
       Scroll horizontally for secondary fields. Key columns stay visible on the left.
       Excluded schema fields are omitted from this table.
+      Quantity and mapping cells are not editable in this slice.
     </p>
   </div>
 </section>
+{% include "takeoff/components/quantities_row_review_drawer.html" %}

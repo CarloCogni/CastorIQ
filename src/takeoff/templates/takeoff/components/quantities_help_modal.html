@@ -1,4 +1,4 @@
-<!-- takeoff/components/quantities_help_modal.html — How Quantities works (Slice 4a) -->
+<!-- takeoff/components/quantities_help_modal.html — How Quantities works (Slice 5a) -->
 
 <div class="modal fade" id="qtoHelpModal" tabindex="-1"
      aria-labelledby="qtoHelpLabel" aria-hidden="true">
@@ -21,7 +21,8 @@
                     Quantities builds a deterministic Quantity Preparation Data Model from indexed IFC.
                     Start with the Preparation Setup Summary, then use Schema Builder, Source Mapping,
                     and User-defined Measurement Rules to generate preparation rows. Optionally save
-                    or load a preparation configuration draft. Review the Unresolved Data Register,
+                    or load a preparation configuration draft. Add session-only row reviews
+                    (status + note) on generated rows. Review the Unresolved Data Register,
                     Visual Summary, and Quantity Preparation Insights. Rows eligible for Modify handoff
                     have enough target context — they are not necessarily complete.
                     Raw Indexed Quantity Inventory is secondary reference only.
@@ -35,8 +36,12 @@
                     measurement rules are session-only (GET query params) until you save a named
                     preparation configuration draft. A saved draft stores settings only:
                     basis rules, schema includes, and source mapping intent — not generated
-                    quantity rows, totals, register counts, or visuals as authoritative quantities.
+                    quantity rows, totals, register counts, visuals, or row reviews.
                     It does not approve, certify, write back, or create BOQ/cost.
+                    Row reviews (status + note) are session-only in this slice — not saved into
+                    preparation configuration drafts, and they do not change generated quantities
+                    or resolve missing mapping/quantity gaps. Ending the browser session or
+                    losing the session may clear row reviews.
                     Refresh without parameters restores defaults unless a prep_config draft is loaded.
                     Generate may continue as session GET params after a draft is loaded.
                     Required/core fields are locked. Excluded optional fields are omitted from the
@@ -51,8 +56,9 @@
                 <ul class="text-secondary fs-7 mb-4">
                     <li>Preparation Setup Summary — counts for the current configuration.</li>
                     <li>Preparation Configuration Drafts — optional save/load of settings only
-                        (basis + schema + source intent). Not generated rows, not BOQ, not verified takeoff,
-                        not Modify/writeback, not cost. No active/default/approve profile in this slice.</li>
+                        (basis + schema + source intent). Not generated rows, not row reviews,
+                        not BOQ, not verified takeoff, not Modify/writeback, not cost.
+                        No active/default/approve profile in this slice.</li>
                     <li>Schema Builder — include/exclude optional fields; core fields stay locked.</li>
                     <li>Source Mapping — choose source type for Classification, Package / BOQ Mapping,
                         and Work Package (intent until saved as a draft):
@@ -61,8 +67,10 @@
                         Not mapped (intentional blank; not counted).</li>
                     <li>User-defined Measurement Rules — choose a basis per model group. Unit Basis is derived from the selected Quantity Basis.</li>
                     <li>Generate Preparation Data Model — rebuilds prep rows, register, visual summary, and insights from selected schema + source intents + rules.</li>
-                    <li>Generated Preparation Data Model — totals only when source + basis are selected and available. Mapping cells show intent hints only.</li>
-                    <li>Unresolved Data Register — counts only included schema gaps for counting source intents; no fake readiness percentages.</li>
+                    <li>Generated Preparation Data Model — totals only when source + basis are selected and available. Mapping cells show intent hints only.
+                        Use Review row for session-only preparation review status + note.</li>
+                    <li>Unresolved Data Register — counts only included schema gaps for counting source intents; no fake readiness percentages.
+                        Session row reviews do not change these counts.</li>
                     <li>Preparation Data Model Visual Summary — count charts from generated rows only.</li>
                     <li>Quantity Preparation Insights — deterministic operational notes (not AI).</li>
                     <li>Raw Indexed Quantity Inventory — input evidence only, at the bottom.</li>
@@ -79,8 +87,10 @@
                 <ul class="text-secondary fs-7 mb-4">
                     <li>No rule = unresolved. No selected basis = no measurement claim.</li>
                     <li>IfcWall and IfcSlab stay Unresolved until the user selects a basis and generates.</li>
-                    <li>Current edits are session-only until saved as a preparation configuration draft.</li>
-                    <li>Saved drafts store preparation settings only — not generated quantity rows.</li>
+                    <li>Current configuration edits are session-only until saved as a preparation configuration draft.</li>
+                    <li>Saved drafts store preparation settings only — not generated quantity rows and not row reviews.</li>
+                    <li>Session row reviews do not approve, certify, write back, or generate BOQ.</li>
+                    <li>Session row reviews do not resolve missing basis, quantity source, or mapping gaps.</li>
                     <li>Excluded fields are not counted as unresolved schema gaps.</li>
                     <li>Not mapped means intentional blank — not counted as missing.</li>
                     <li>Future Modify handoff / Manual field count as unresolved mapping gaps; no values are invented.</li>
