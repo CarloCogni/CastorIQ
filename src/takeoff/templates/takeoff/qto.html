@@ -84,15 +84,24 @@
   <details class="qty-advanced" data-testid="quantities-optional-estimate">
     <summary>Advanced tools (optional) — not Quantities primary workspace</summary>
     <div class="qty-advanced-body">
-      <p class="mb-2">
-        Optional cache and export for preparation / indexed quantity dumps.
-        They are not commercial takeoff, rates, or cost control.
+      <p class="mb-2" data-testid="qty-advanced-export-note">
+        Optional legacy QTO cache tools only — not the Quantities primary workspace.
+        They are not BOQ generation, not QS measurement certification, not cost estimating,
+        not 5D readiness, not EVM, not approval or certification workflows,
+        not Modify proposals, and not IFC writeback.
+      </p>
+      <p class="mb-2 text-secondary small" data-testid="qty-advanced-legacy-export-copy">
+        This legacy export uses the optional QTO cache and may include cost/cache fields if present.
+        It does not export the current generated preparation data model, schema configuration,
+        source intent, row reviews, or manual mapping values.
+        A dedicated preparation model export is planned for a later slice.
       </p>
       <div class="d-flex flex-wrap gap-2">
         <a href="{% url 'takeoff:qto_export' project.pk %}"
            class="btn btn-sm btn-outline-secondary"
-           data-testid="qty-advanced-export">
-          <i class="bi bi-file-earmark-excel me-1"></i>Export preparation data model
+           data-testid="qty-advanced-export"
+           title="Legacy QTO cache Excel — not the generated preparation data model">
+          <i class="bi bi-file-earmark-excel me-1"></i>Export legacy QTO cache
         </a>
         <button type="button"
                 class="btn btn-sm btn-outline-secondary"

@@ -98,6 +98,10 @@
                     <li>Future Modify handoff / Manual field count as unresolved mapping gaps; no values are invented.</li>
                     <li>Package / BOQ Mapping is a schema field name — this screen does not generate BOQ.</li>
                     <li>Send unresolved rows to Castor Modify is disabled in this slice.</li>
+                    <li>Advanced tools “Export legacy QTO cache” dumps the optional legacy QTO cache only
+                        (may include cost/cache fields if present). It does not export the generated
+                        preparation data model, schema, source intent, row reviews, or manual mapping values.
+                        A dedicated preparation model export is planned for a later slice.</li>
                     <li>Volume / area / length use IFC-reported model units — not SI-normalized.</li>
                     <li>Hub <code>?tab=quantities</code> on scheduling does not render this page — use the Quantities hub link.</li>
                 </ul>

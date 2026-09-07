@@ -137,8 +137,13 @@ def test_quantities_workspace_v1_layout_markers(client):
     )
     assert "qty-advanced-recompute" in html
     assert "Recompute optional cache" in html
-    assert "Export preparation data model" in html or "Export indexed quantities" in html
+    assert "Export legacy QTO cache" in html
+    assert "Export preparation data model" not in html
+    assert "Export indexed quantities" not in html
     assert "Export Excel" not in html
+    assert "does not export the current generated preparation data model" in html
+    assert "manual mapping values" in html
+    assert 'data-testid="qty-advanced-legacy-export-copy"' in html
     # Slice 2b — after Unresolved Data Register, before Modify handoff
     assert 'data-testid="quantities-visual-summary"' in html
     assert "Preparation Data Model Visual Summary" in html
