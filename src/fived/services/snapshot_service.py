@@ -1,0 +1,351 @@
+# fived/services/snapshot_service.py
+"""Create immutable Stage 1 preparation snapshots from Quantities prep runtime.
+
+Uses ``build_qty_prep_session_ui`` only. Does not use QTOCache, QTOExportView,
+legacy Excel export, Task.cost, EVM, or FM asset values.
+Not BOQ, not cost estimate, not rates, not writeback, not Modify.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
+from collections.abc import Mapping, MutableMapping
+from typing import Any
+
+from django.db import transaction
+
+from fived.models import (
+    CONTRACT_VERSION_F2,
+    FiveDDataModel,
+    FiveDModelRow,
+    FiveDModelVersion,
+)
+from takeoff.services.quantity_prep_export import mapping_field_origin
+from takeoff.services.quantity_prep_runtime import build_qty_prep_session_ui
+
+logger = logging.getLogger(__name__)
+
+BOUNDARY_SNAPSHOT_F2: dict[str, Any] = {
+    "title": "5D Preparation Model Snapshot",
+    "snapshot_stage": "stage_1_preparation_snapshot",
+    "contract_version": CONTRACT_VERSION_F2,
+    "not_boq": True,
+    "not_qs_certified": True,
+    "not_cost_estimate": True,
+    "not_budget": True,
+    "not_procurement": True,
+    "not_payment": True,
+    "not_evm": True,
+    "not_5d_readiness_claim": True,
+    "not_writeback": True,
+    "not_modify_proposal": True,
+    "no_rates": True,
+    "no_unit_costs": True,
+    "session_annotations_weak_provenance": True,
+    "package_mapping_is_schema_field_copy_only": True,
+}
+
+
+def _query_as_dict(query: Mapping[str, Any] | None) -> dict[str, Any]:
+    if not query:
+        return {}
+    out: dict[str, Any] = {}
+    for key, value in query.items():
+        if hasattr(value, "__iter__") and not isinstance(value, (str, bytes, dict)):
+            try:
+                out[str(key)] = list(value)  # type: ignore[arg-type]
+                continue
+            except TypeError:
+                pass
+        out[str(key)] = value
+    return out
+
+
+def _prep_config_ref(loaded_config: Any) -> dict[str, str] | None:
+    if loaded_config is None:
+        return None
+    cfg_id = str(getattr(loaded_config, "pk", "") or getattr(loaded_config, "id", "") or "")
+    name = str(getattr(loaded_config, "name", "") or "")
+    if not cfg_id and not name:
+        return None
+    return {"id": cfg_id, "name": name}
+
+
+def _unresolved_register_export(register: Mapping[str, Any], row_count: int) -> dict[str, int]:
+    return {
+        "row_count": int(register.get("row_count") or row_count),
+        "missing_quantity_basis_rule": int(register.get("missing_quantity_basis_rule") or 0),
+        "missing_selected_quantity_source": int(
+            register.get("missing_selected_quantity_source") or 0
+        ),
+        "missing_classification": int(register.get("missing_classification") or 0),
+        "missing_package_boq_mapping": int(register.get("missing_package_boq_mapping") or 0),
+        "missing_work_package": int(register.get("missing_work_package") or 0),
+    }
+
+
+def _filter_annotations(
+    annotations: Mapping[str, Any], known_keys: set[str]
+) -> dict[str, dict[str, Any]]:
+    out: dict[str, dict[str, Any]] = {}
+    for key, value in annotations.items():
+        key_s = str(key or "").strip()
+        if key_s not in known_keys or not isinstance(value, Mapping):
+            continue
+        out[key_s] = {str(k): v for k, v in value.items()}
+    return out
+
+
+def _row_structural_status(row: Mapping[str, Any]) -> str:
+    incomplete = bool(
+        row.get("basis_unresolved")
+        or row.get("missing_quantity_source")
+        or row.get("missing_classification")
+        or row.get("missing_package")
+        or row.get("missing_work_package")
+    )
+    if incomplete:
+        return FiveDModelRow.Status.INCOMPLETE
+    return FiveDModelRow.Status.STRUCTURALLY_READY
+
+
+def _normalize_total(raw: Any) -> float | None:
+    if raw is None:
+        return None
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, (int, float)):
+        return float(raw)
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _content_hash(settings: Mapping[str, Any], rows: list[dict[str, Any]]) -> str:
+    payload = {"settings": settings, "rows": rows}
+    blob = json.dumps(payload, sort_keys=True, default=str, separators=(",", ":"))
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+def _next_version_label(data_model: FiveDDataModel) -> str:
+    n = data_model.versions.count() + 1
+    return f"v{n}"
+
+
+class FiveDPrepSnapshotService:
+    """Create a frozen Stage 1 preparation snapshot from Quantities prep runtime."""
+
+    def __init__(self, project, user) -> None:  # noqa: ANN001
+        self.project = project
+        self.user = user
+
+    def create_snapshot(
+        self,
+        *,
+        session: MutableMapping[str, Any],
+        query: Mapping[str, Any] | None = None,
+        model_name: str,
+        version_label: str | None = None,
+        notes: str = "",
+        data_model: FiveDDataModel | None = None,
+    ) -> dict[str, Any]:
+        """Persist a new immutable version from the current prep session.
+
+        Returns ``{"result": {...}, "error": None}`` or ``{"result": None, "error": ...}``.
+        """
+        name = (model_name or "").strip()
+        if not name:
+            return {"result": None, "error": "model_name is required"}
+
+        query_dict = _query_as_dict(query)
+        try:
+            runtime = build_qty_prep_session_ui(
+                project=self.project,
+                user=self.user,
+                session=session,
+                query=query_dict,
+            )
+        except Exception as exc:  # noqa: BLE001 — surface as service error
+            logger.exception("fived snapshot runtime failed for project=%s", self.project.pk)
+            return {"result": None, "error": f"Quantity prep runtime failed: {exc}"}
+
+        if runtime.get("load_error"):
+            return {
+                "result": None,
+                "error": f"Quantity prep settings error: {runtime['load_error']}",
+            }
+
+        qty_prep = runtime.get("qty_prep") or {}
+        prep_rows = list(qty_prep.get("prep_rows") or [])
+        known_keys = {str(r.get("row_key") or "") for r in prep_rows if r.get("row_key")}
+
+        settings_snapshot = {
+            "basis_rules": dict(runtime.get("basis_overrides") or {}),
+            "schema_includes": dict(runtime.get("schema_includes") or {}),
+            "source_mappings": dict(runtime.get("source_mappings") or {}),
+            "prep_config": _prep_config_ref(runtime.get("loaded_config")),
+            "prep_row_grain": str(qty_prep.get("prep_row_grain") or ""),
+            "show": dict(qty_prep.get("show") or {}),
+            "contract_version": CONTRACT_VERSION_F2,
+        }
+        reviews = _filter_annotations(runtime.get("review_annotations") or {}, known_keys)
+        mappings = _filter_annotations(runtime.get("mapping_annotations") or {}, known_keys)
+        session_annotations_snapshot = {
+            "row_reviews": reviews,
+            "manual_mappings": mappings,
+            "provenance_note": (
+                "Manual session mapping values are weak provenance only — "
+                "not official classification authority."
+            ),
+        }
+        unresolved = _unresolved_register_export(
+            qty_prep.get("unresolved_register") or {}, len(prep_rows)
+        )
+
+        row_payloads: list[dict[str, Any]] = []
+        for raw in prep_rows:
+            key = str(raw.get("row_key") or "").strip()
+            if not key:
+                continue
+            row_payloads.append(self._row_dict_from_prep(raw))
+
+        hash_rows = [
+            {
+                "source_row_key": r["source_row_key"],
+                "ifc_class": r["ifc_class"],
+                "type_name": r["type_name"],
+                "quantity_basis": r["quantity_basis"],
+                "total_quantity": r["total_quantity"],
+                "classification_code": r["classification_code"],
+                "package_mapping": r["package_mapping"],
+                "work_package": r["work_package"],
+                "classification_origin": r["classification_origin"],
+                "package_mapping_origin": r["package_mapping_origin"],
+                "work_package_origin": r["work_package_origin"],
+                "session_review_status": r["session_review_status"],
+            }
+            for r in row_payloads
+        ]
+        digest = _content_hash(settings_snapshot, hash_rows)
+
+        try:
+            with transaction.atomic():
+                model = data_model
+                if model is None:
+                    model = FiveDDataModel.objects.create(
+                        project=self.project,
+                        name=name,
+                        description="",
+                        status=FiveDDataModel.Status.DRAFT,
+                        contract_version=CONTRACT_VERSION_F2,
+                        created_by=self.user if getattr(self.user, "pk", None) else None,
+                    )
+                elif model.project_id != self.project.pk:
+                    return {
+                        "result": None,
+                        "error": "data_model does not belong to project",
+                    }
+
+                label = (version_label or "").strip() or _next_version_label(model)
+                if FiveDModelVersion.objects.filter(data_model=model, version_label=label).exists():
+                    return {
+                        "result": None,
+                        "error": f"version_label already exists: {label}",
+                    }
+
+                version = FiveDModelVersion.objects.create(
+                    data_model=model,
+                    version_label=label,
+                    source=FiveDModelVersion.Source.QTY_PREP_SESSION,
+                    settings_snapshot=settings_snapshot,
+                    boundary_snapshot=dict(BOUNDARY_SNAPSHOT_F2),
+                    session_annotations_snapshot=session_annotations_snapshot,
+                    unresolved_register_snapshot=unresolved,
+                    source_query=query_dict,
+                    content_hash=digest,
+                    notes=(notes or "").strip(),
+                    status=FiveDModelVersion.Status.FROZEN,
+                    row_count=len(row_payloads),
+                    created_by=self.user if getattr(self.user, "pk", None) else None,
+                )
+                FiveDModelRow.objects.bulk_create(
+                    [FiveDModelRow(version=version, **payload) for payload in row_payloads]
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("fived snapshot persist failed for project=%s", self.project.pk)
+            return {"result": None, "error": f"Snapshot persist failed: {exc}"}
+
+        logger.info(
+            "fived snapshot created model=%s version=%s rows=%s hash=%s",
+            model.pk,
+            version.pk,
+            len(row_payloads),
+            digest[:12],
+        )
+        return {
+            "result": {
+                "data_model": model,
+                "version": version,
+                "rows_created": len(row_payloads),
+                "unresolved_register": unresolved,
+                "content_hash": digest,
+            },
+            "error": None,
+        }
+
+    def _row_dict_from_prep(self, raw: Mapping[str, Any]) -> dict[str, Any]:
+        """Map a post-overlay prep row into FiveDModelRow kwargs."""
+        class_intent = str(raw.get("classification_source") or "")
+        package_intent = str(raw.get("package_boq_mapping_source") or "")
+        work_intent = str(raw.get("work_package_source") or "")
+        class_val = str(raw.get("classification_code") or "")
+        package_val = str(raw.get("package_boq_mapping") or "")
+        work_val = str(raw.get("work_package") or "")
+
+        return {
+            "source_row_key": str(raw.get("row_key") or ""),
+            "model_group": str(raw.get("model_group") or ""),
+            "ifc_class": str(raw.get("ifc_class") or ""),
+            "type_name": str(raw.get("type_name") or ""),
+            "quantity_basis": str(raw.get("quantity_basis") or ""),
+            "quantity_source": str(raw.get("quantity_source") or ""),
+            "unit_basis": str(raw.get("unit_basis") or ""),
+            "total_quantity": _normalize_total(raw.get("total")),
+            "total_quantity_display": str(raw.get("total_display") or ""),
+            "quantity_provenance": {
+                "basis_unresolved": bool(raw.get("basis_unresolved")),
+                "missing_quantity_source": bool(raw.get("missing_quantity_source")),
+            },
+            "basis_unresolved": bool(raw.get("basis_unresolved")),
+            "missing_quantity_source": bool(raw.get("missing_quantity_source")),
+            "classification_code": class_val,
+            "classification_origin": mapping_field_origin(
+                included=True, source_intent=class_intent, value=class_val
+            ),
+            "classification_source_intent": class_intent,
+            "missing_classification": bool(raw.get("missing_classification")),
+            "package_mapping": package_val,
+            "package_mapping_origin": mapping_field_origin(
+                included=True, source_intent=package_intent, value=package_val
+            ),
+            "package_mapping_source_intent": package_intent,
+            "missing_package_mapping": bool(raw.get("missing_package")),
+            "work_package": work_val,
+            "work_package_origin": mapping_field_origin(
+                included=True, source_intent=work_intent, value=work_val
+            ),
+            "work_package_source_intent": work_intent,
+            "missing_work_package": bool(raw.get("missing_work_package")),
+            "manual_mapping_applied": bool(raw.get("manual_mapping")),
+            "manual_mapping_fields": list(raw.get("manual_mapping_fields") or []),
+            "session_review_status": str(raw.get("session_review_status") or ""),
+            "session_review_note": str(raw.get("session_review_note") or ""),
+            "computed_status": str(
+                raw.get("computed_review_status") or raw.get("review_status") or ""
+            ),
+            "status": _row_structural_status(raw),
+            "notes": "",
+        }
