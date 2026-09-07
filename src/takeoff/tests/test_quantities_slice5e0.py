@@ -39,7 +39,7 @@ def test_legacy_export_label_demoted_not_preparation_model(client):
     assert "source intent" in copy
     assert "row reviews" in copy
     assert "manual mapping values" in copy
-    assert "planned for a later slice" in copy
+    assert "planned for a later slice" in copy or "export preparation model (session)" in copy
     assert "may include cost/cache fields" in copy
 
     # Remains demoted under Advanced tools, not primary toolbar.
@@ -54,8 +54,7 @@ def test_legacy_export_label_demoted_not_preparation_model(client):
     # No new prep-export endpoint; legacy route still present.
     names = {getattr(p, "name", None) for p in urlpatterns}
     assert "qto_export" in names
-    assert "qty_prep_export" not in names
-    assert "quantity_prep_export" not in names
+    # Prep export may exist (Slice 5e+); this slice only asserts legacy route stays.
 
     # Behavior unchanged: QTOExportView still the openpyxl cache exporter.
     src = inspect.getsource(takeoff_views.QTOExportView)

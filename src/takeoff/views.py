@@ -30,16 +30,16 @@ from .services.quantity_prep_config import (
     PREP_CONFIG_QUERY_PARAM,
     QuantityPrepConfigService,
 )
+from .services.quantity_prep_export import QuantityPrepExportService
 from .services.quantity_prep_row_mapping import (
     MAPPING_FIELD_KEYS,
     QuantityPrepRowMappingService,
-    apply_session_mapping_values_to_ui,
     eligible_mapping_fields,
 )
 from .services.quantity_prep_row_review import (
     QuantityPrepRowReviewService,
-    apply_session_reviews_to_ui,
 )
+from .services.quantity_prep_runtime import build_qty_prep_session_ui
 from .services.quantity_preparation_ui import (
     build_preparation_ui,
     parse_basis_overrides_from_query,
@@ -217,8 +217,14 @@ class QTOView(ProjectTabMixin, TemplateView):
         ctx = super().get_context_data(**kwargs)
         ctx["castor_subtab"] = "qto"
         project = ctx["project"]
-        # Slice 3a/3c/4a: basis_*, field_*, source_* GET + optional prep_config draft.
-        quantities = ModelQuantitiesService(project).build()
+        query = self.request.GET
+        runtime = build_qty_prep_session_ui(
+            project=project,
+            user=self.request.user,
+            session=self.request.session,
+            query=query,
+        )
+        quantities = runtime["quantities"]
         ctx["quantities"] = quantities
 
         config_svc = QuantityPrepConfigService(project, self.request.user)
@@ -226,51 +232,16 @@ class QTOView(ProjectTabMixin, TemplateView):
         ctx["qty_prep_config_save_url"] = reverse(
             "takeoff:qty_prep_config_save", kwargs={"pk": project.pk}
         )
-        ctx["qty_prep_loaded_config"] = None
-        ctx["qty_prep_config_load_error"] = None
-
-        query = self.request.GET
-        if QuantityPrepConfigService.query_has_session_overrides(query):
-            basis_overrides = parse_basis_overrides_from_query(query)
-            schema_includes = parse_schema_includes_from_query(query)
-            source_mappings = parse_source_mappings_from_query(query)
-        elif query.get(PREP_CONFIG_QUERY_PARAM):
-            loaded = config_svc.load_runtime(query.get(PREP_CONFIG_QUERY_PARAM))
-            if loaded.get("error"):
-                ctx["qty_prep_config_load_error"] = loaded["error"]
-                basis_overrides = parse_basis_overrides_from_query({})
-                schema_includes = parse_schema_includes_from_query({})
-                source_mappings = parse_source_mappings_from_query({})
-            else:
-                ctx["qty_prep_loaded_config"] = loaded.get("result")
-                basis_overrides = loaded["basis_overrides"]
-                schema_includes = loaded["schema_includes"]
-                source_mappings = loaded["source_mappings"]
-        else:
-            basis_overrides = parse_basis_overrides_from_query(query)
-            schema_includes = parse_schema_includes_from_query(query)
-            source_mappings = parse_source_mappings_from_query(query)
-
-        qty_prep = build_preparation_ui(
-            quantities,
-            basis_overrides=basis_overrides,
-            schema_includes=schema_includes,
-            source_mappings=source_mappings,
-        )
-        # Slice 5b then 5a: mapping adjusts gaps first; reviews are display-only.
-        mapping_svc = QuantityPrepRowMappingService(
-            project, self.request.user, self.request.session
-        )
-        apply_session_mapping_values_to_ui(qty_prep, mapping_svc.get_annotations())
-        review_svc = QuantityPrepRowReviewService(project, self.request.user, self.request.session)
-        apply_session_reviews_to_ui(qty_prep, review_svc.get_annotations())
-        ctx["qty_prep"] = qty_prep
+        ctx["qty_prep_loaded_config"] = runtime.get("loaded_config")
+        ctx["qty_prep_config_load_error"] = runtime.get("load_error")
+        ctx["qty_prep"] = runtime["qty_prep"]
         ctx["qty_prep_row_review_url"] = reverse(
             "takeoff:qty_prep_row_review", kwargs={"pk": project.pk}
         )
         ctx["qty_prep_row_mapping_url"] = reverse(
             "takeoff:qty_prep_row_mapping", kwargs={"pk": project.pk}
         )
+        ctx["qty_prep_export_url"] = reverse("takeoff:qty_prep_export", kwargs={"pk": project.pk})
         ctx["qty_prep_return_query"] = self.request.GET.urlencode()
         ctx["missing_qto_entities_url"] = (
             reverse("takeoff:model_inventory_entities", kwargs={"pk": project.pk}) + "?has_qto=no"
@@ -296,6 +267,30 @@ class QTOView(ProjectTabMixin, TemplateView):
         # Legacy cache kept only for demoted optional tooling on main.
         ctx["qto_cache"] = QTOCache.objects.filter(project=project).first()
         return ctx
+
+
+class QuantityPrepExportView(ProjectAccessMixin, View):
+    """GET — download current preparation model as CSV+JSON ZIP (Slice 5e-1)."""
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        runtime = build_qty_prep_session_ui(
+            project=project,
+            user=request.user,
+            session=request.session,
+            query=request.GET,
+        )
+        built = QuantityPrepExportService(project, request.user).build_zip_from_runtime(runtime)
+        if built.get("error") or not built.get("result"):
+            return HttpResponse(
+                built.get("error") or "Preparation export failed.",
+                status=500,
+                content_type="text/plain; charset=utf-8",
+            )
+        result = built["result"]
+        response = HttpResponse(result["content"], content_type="application/zip")
+        response["Content-Disposition"] = f'attachment; filename="{result["filename"]}"'
+        return response
 
 
 class QuantityPrepConfigSaveView(ProjectAccessMixin, View):

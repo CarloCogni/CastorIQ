@@ -6,6 +6,20 @@
       {% if qty_prep.prep_row_grain == "type" %}By Type (capped){% else %}By IFC Class{% endif %}
       · {{ qty_prep.prep_rows|length }} row{{ qty_prep.prep_rows|length|pluralize }}
     </span>
+    <div class="ms-auto d-flex flex-column align-items-end gap-1">
+      <a href="{% if qty_prep_return_query %}{{ qty_prep_export_url }}?{{ qty_prep_return_query }}{% else %}{{ qty_prep_export_url }}{% endif %}"
+         class="btn btn-sm btn-outline-primary"
+         data-testid="qty-prep-export"
+         title="Session preparation model ZIP — not legacy QTO cache">
+        <i class="bi bi-download me-1"></i>Export preparation model (session)
+      </a>
+      <span class="mi-footnote text-end" style="max-width:22rem;"
+            data-testid="qty-prep-export-note">
+        Downloads a session snapshot of the current generated preparation model,
+        including current settings and session annotations.
+        Not BOQ, not cost, not certified, not writeback.
+      </span>
+    </div>
   </div>
   <p class="qty-builder-note mb-2" data-testid="quantities-prep-helper-note">
     {{ qty_prep.prep_helper_note }}

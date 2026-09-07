@@ -69,7 +69,9 @@
                     <li>Generate Preparation Data Model — rebuilds prep rows, register, visual summary, and insights from selected schema + source intents + rules.</li>
                     <li>Generated Preparation Data Model — totals only when source + basis are selected and available. Mapping cells show intent hints only,
                         or session-only Manual preparation values when a field is configured as Manual field.
-                        Use Review row for session review status/note and eligible manual mapping values.</li>
+                        Use Review row for session review status/note and eligible manual mapping values.
+                        Use Export preparation model (session) for a ZIP snapshot of the current generated model,
+                        settings, and session annotations — not BOQ, not cost, not writeback.</li>
                     <li>Unresolved Data Register — counts only included schema gaps for counting source intents; no fake readiness percentages.
                         Session row reviews do not change these counts. Session manual mapping values may clear mapping gaps for that row only.</li>
                     <li>Preparation Data Model Visual Summary — count charts from generated rows only.</li>
@@ -101,7 +103,8 @@
                     <li>Advanced tools “Export legacy QTO cache” dumps the optional legacy QTO cache only
                         (may include cost/cache fields if present). It does not export the generated
                         preparation data model, schema, source intent, row reviews, or manual mapping values.
-                        A dedicated preparation model export is planned for a later slice.</li>
+                        Prefer Export preparation model (session) on the Generated Preparation Data Model
+                        for the current preparation snapshot.</li>
                     <li>Volume / area / length use IFC-reported model units — not SI-normalized.</li>
                     <li>Hub <code>?tab=quantities</code> on scheduling does not render this page — use the Quantities hub link.</li>
                 </ul>

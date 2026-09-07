@@ -39,6 +39,11 @@ urlpatterns = [
         views.QuantityPrepRowMappingView.as_view(),
         name="qty_prep_row_mapping",
     ),
+    path(
+        "projects/<uuid:pk>/prep-export/",
+        views.QuantityPrepExportView.as_view(),
+        name="qty_prep_export",
+    ),
     path("projects/<uuid:pk>/data/", views.QTODataView.as_view(), name="qto_data"),
     path(
         "projects/<uuid:pk>/recompute/",
