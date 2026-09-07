@@ -67,10 +67,11 @@
                         Not mapped (intentional blank; not counted).</li>
                     <li>User-defined Measurement Rules — choose a basis per model group. Unit Basis is derived from the selected Quantity Basis.</li>
                     <li>Generate Preparation Data Model — rebuilds prep rows, register, visual summary, and insights from selected schema + source intents + rules.</li>
-                    <li>Generated Preparation Data Model — totals only when source + basis are selected and available. Mapping cells show intent hints only.
-                        Use Review row for session-only preparation review status + note.</li>
+                    <li>Generated Preparation Data Model — totals only when source + basis are selected and available. Mapping cells show intent hints only,
+                        or session-only Manual preparation values when a field is configured as Manual field.
+                        Use Review row for session review status/note and eligible manual mapping values.</li>
                     <li>Unresolved Data Register — counts only included schema gaps for counting source intents; no fake readiness percentages.
-                        Session row reviews do not change these counts.</li>
+                        Session row reviews do not change these counts. Session manual mapping values may clear mapping gaps for that row only.</li>
                     <li>Preparation Data Model Visual Summary — count charts from generated rows only.</li>
                     <li>Quantity Preparation Insights — deterministic operational notes (not AI).</li>
                     <li>Raw Indexed Quantity Inventory — input evidence only, at the bottom.</li>
@@ -88,8 +89,9 @@
                     <li>No rule = unresolved. No selected basis = no measurement claim.</li>
                     <li>IfcWall and IfcSlab stay Unresolved until the user selects a basis and generates.</li>
                     <li>Current configuration edits are session-only until saved as a preparation configuration draft.</li>
-                    <li>Saved drafts store preparation settings only — not generated quantity rows and not row reviews.</li>
+                    <li>Saved drafts store preparation settings only — not generated quantity rows, not row reviews, and not manual mapping values.</li>
                     <li>Session row reviews do not approve, certify, write back, or generate BOQ.</li>
+                    <li>Session manual mapping values are available only for included fields configured as Manual field — session-only, not BOQ.</li>
                     <li>Session row reviews do not resolve missing basis, quantity source, or mapping gaps.</li>
                     <li>Excluded fields are not counted as unresolved schema gaps.</li>
                     <li>Not mapped means intentional blank — not counted as missing.</li>

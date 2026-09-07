@@ -16,9 +16,19 @@
   <p class="qty-builder-note mb-2" data-testid="qty-session-review-boundary">
     {{ qty_prep.session_review_note }}
   </p>
+  {% if qty_prep.session_mapping_note %}
+  <p class="qty-builder-note mb-2" data-testid="qty-session-mapping-boundary">
+    {{ qty_prep.session_mapping_note }}
+  </p>
+  {% endif %}
   {% if qty_prep.session_review_stale_message %}
   <p class="qty-builder-note mb-2 text-secondary" data-testid="qty-session-review-stale">
     {{ qty_prep.session_review_stale_message }}
+  </p>
+  {% endif %}
+  {% if qty_prep.session_mapping_stale_message %}
+  <p class="qty-builder-note mb-2 text-secondary" data-testid="qty-session-mapping-stale">
+    {{ qty_prep.session_mapping_stale_message }}
   </p>
   {% endif %}
   <div class="qty-prep-scroll-wrap" data-testid="qty-prep-scroll-wrap">
@@ -133,7 +143,10 @@
                       data-qty-basis="{{ row.quantity_basis }}"
                       data-qty-computed-status="{{ row.computed_review_status }}"
                       data-qty-session-status="{{ row.session_review_status }}"
-                      data-qty-session-note="{{ row.session_review_note|escape }}">
+                      data-qty-session-note="{{ row.session_review_note|escape }}"
+                      data-qty-map-classification="{{ row.classification_code|escape }}"
+                      data-qty-map-package="{{ row.package_boq_mapping|escape }}"
+                      data-qty-map-work="{{ row.work_package|escape }}">
                 Review row
               </button>
             </td>
@@ -166,10 +179,17 @@
             <td class="qty-col-secondary text-secondary"
                 data-testid="qty-prep-classification-cell"
                 data-qty-mapping-source="{{ row.classification_source }}"
+                data-qty-manual-value="{% if row.classification_code %}1{% else %}0{% endif %}"
                 title="{{ row.classification_hint }}">
+              {% if row.classification_code %}
+              <span data-testid="qty-manual-mapping-value">{{ row.classification_code }}</span>
+              <span class="qty-mapping-hint d-block"
+                    data-testid="qty-manual-mapping-badge">Manual preparation value</span>
+              {% else %}
               —
               {% if row.classification_hint %}
               <span class="qty-mapping-hint d-block">{{ row.classification_hint }}</span>
+              {% endif %}
               {% endif %}
             </td>
             {% endif %}
@@ -177,10 +197,17 @@
             <td class="qty-col-secondary text-secondary"
                 data-testid="qty-prep-package-cell"
                 data-qty-mapping-source="{{ row.package_boq_mapping_source }}"
+                data-qty-manual-value="{% if row.package_boq_mapping %}1{% else %}0{% endif %}"
                 title="{{ row.package_boq_mapping_hint }}">
+              {% if row.package_boq_mapping %}
+              <span data-testid="qty-manual-mapping-value">{{ row.package_boq_mapping }}</span>
+              <span class="qty-mapping-hint d-block"
+                    data-testid="qty-manual-mapping-badge">Manual preparation value</span>
+              {% else %}
               —
               {% if row.package_boq_mapping_hint %}
               <span class="qty-mapping-hint d-block">{{ row.package_boq_mapping_hint }}</span>
+              {% endif %}
               {% endif %}
             </td>
             {% endif %}
@@ -188,10 +215,17 @@
             <td class="qty-col-secondary text-secondary"
                 data-testid="qty-prep-work-package-cell"
                 data-qty-mapping-source="{{ row.work_package_source }}"
+                data-qty-manual-value="{% if row.work_package %}1{% else %}0{% endif %}"
                 title="{{ row.work_package_hint }}">
+              {% if row.work_package %}
+              <span data-testid="qty-manual-mapping-value">{{ row.work_package }}</span>
+              <span class="qty-mapping-hint d-block"
+                    data-testid="qty-manual-mapping-badge">Manual preparation value</span>
+              {% else %}
               —
               {% if row.work_package_hint %}
               <span class="qty-mapping-hint d-block">{{ row.work_package_hint }}</span>
+              {% endif %}
               {% endif %}
             </td>
             {% endif %}

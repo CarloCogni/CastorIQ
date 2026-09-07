@@ -10,6 +10,7 @@ from __future__ import annotations
 import io
 import logging
 
+from django.contrib import messages
 from django.http import HttpResponse, JsonResponse, QueryDict
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -29,6 +30,12 @@ from .services.quantity_prep_config import (
     PREP_CONFIG_QUERY_PARAM,
     QuantityPrepConfigService,
 )
+from .services.quantity_prep_row_mapping import (
+    MAPPING_FIELD_KEYS,
+    QuantityPrepRowMappingService,
+    apply_session_mapping_values_to_ui,
+    eligible_mapping_fields,
+)
 from .services.quantity_prep_row_review import (
     QuantityPrepRowReviewService,
     apply_session_reviews_to_ui,
@@ -43,6 +50,36 @@ from .services.quantity_preparation_ui import (
 logger = logging.getLogger(__name__)
 
 _LINK_ANALYSIS_SESSION_KEY = "link_analysis_last_diagnostic_run"
+
+
+def _qty_prep_runtime_from_query(project, user, query):  # noqa: ANN001
+    """Resolve basis/schema/source from GET-like query for Quantities overlays."""
+    if QuantityPrepConfigService.query_has_session_overrides(query):
+        return (
+            parse_basis_overrides_from_query(query),
+            parse_schema_includes_from_query(query),
+            parse_source_mappings_from_query(query),
+        )
+    if query.get(PREP_CONFIG_QUERY_PARAM):
+        loaded = QuantityPrepConfigService(project, user).load_runtime(
+            query.get(PREP_CONFIG_QUERY_PARAM)
+        )
+        if loaded.get("error"):
+            return (
+                parse_basis_overrides_from_query({}),
+                parse_schema_includes_from_query({}),
+                parse_source_mappings_from_query({}),
+            )
+        return (
+            loaded["basis_overrides"],
+            loaded["schema_includes"],
+            loaded["source_mappings"],
+        )
+    return (
+        parse_basis_overrides_from_query(query),
+        parse_schema_includes_from_query(query),
+        parse_source_mappings_from_query(query),
+    )
 
 
 class ModelInventoryView(ProjectTabMixin, TemplateView):
@@ -220,12 +257,19 @@ class QTOView(ProjectTabMixin, TemplateView):
             schema_includes=schema_includes,
             source_mappings=source_mappings,
         )
-        # Slice 5a: overlay session-only row reviews after register/visual are baked.
+        # Slice 5b then 5a: mapping adjusts gaps first; reviews are display-only.
+        mapping_svc = QuantityPrepRowMappingService(
+            project, self.request.user, self.request.session
+        )
+        apply_session_mapping_values_to_ui(qty_prep, mapping_svc.get_annotations())
         review_svc = QuantityPrepRowReviewService(project, self.request.user, self.request.session)
         apply_session_reviews_to_ui(qty_prep, review_svc.get_annotations())
         ctx["qty_prep"] = qty_prep
         ctx["qty_prep_row_review_url"] = reverse(
             "takeoff:qty_prep_row_review", kwargs={"pk": project.pk}
+        )
+        ctx["qty_prep_row_mapping_url"] = reverse(
+            "takeoff:qty_prep_row_mapping", kwargs={"pk": project.pk}
         )
         ctx["qty_prep_return_query"] = self.request.GET.urlencode()
         ctx["missing_qto_entities_url"] = (
@@ -291,31 +335,11 @@ class QuantityPrepRowReviewView(ProjectAccessMixin, View):
         action = (request.POST.get("action") or "apply").strip().lower()
         row_key = (request.POST.get("row_key") or "").strip()
         return_query = (request.POST.get("return_query") or "").strip()
-        # Rebuild current keys so apply cannot invent reviews for unknown rows.
         quantities = ModelQuantitiesService(project).build()
-        # Prefer return_query echo for config continuity after POST.
         effective = QueryDict(return_query, mutable=False) if return_query else request.GET
-        if QuantityPrepConfigService.query_has_session_overrides(effective):
-            basis_overrides = parse_basis_overrides_from_query(effective)
-            schema_includes = parse_schema_includes_from_query(effective)
-            source_mappings = parse_source_mappings_from_query(effective)
-        elif effective.get(PREP_CONFIG_QUERY_PARAM):
-            loaded = QuantityPrepConfigService(project, request.user).load_runtime(
-                effective.get(PREP_CONFIG_QUERY_PARAM)
-            )
-            if loaded.get("error"):
-                basis_overrides = parse_basis_overrides_from_query({})
-                schema_includes = parse_schema_includes_from_query({})
-                source_mappings = parse_source_mappings_from_query({})
-            else:
-                basis_overrides = loaded["basis_overrides"]
-                schema_includes = loaded["schema_includes"]
-                source_mappings = loaded["source_mappings"]
-        else:
-            basis_overrides = parse_basis_overrides_from_query(effective)
-            schema_includes = parse_schema_includes_from_query(effective)
-            source_mappings = parse_source_mappings_from_query(effective)
-
+        basis_overrides, schema_includes, source_mappings = _qty_prep_runtime_from_query(
+            project, request.user, effective
+        )
         qty_prep = build_preparation_ui(
             quantities,
             basis_overrides=basis_overrides,
@@ -347,13 +371,77 @@ class QuantityPrepRowReviewView(ProjectAccessMixin, View):
         redirect_url = reverse("takeoff:qto", kwargs={"pk": project.pk})
         if return_query:
             redirect_url = f"{redirect_url}?{return_query}"
-        # Prefer full redirect so sticky table + register stay in sync with session.
         if request.headers.get("HX-Request"):
             response = HttpResponse(status=204)
             response["HX-Redirect"] = redirect_url
             return trigger_toast(response, toast_msg)
-        from django.contrib import messages
+        messages.success(request, toast_msg)
+        return redirect(redirect_url)
 
+
+class QuantityPrepRowMappingView(ProjectAccessMixin, View):
+    """POST — apply or clear session-only manual mapping values (Slice 5b)."""
+
+    def post(self, request, pk):  # noqa: ANN001
+        project = self.get_project()
+        action = (request.POST.get("action") or "apply").strip().lower()
+        row_key = (request.POST.get("row_key") or "").strip()
+        return_query = (request.POST.get("return_query") or "").strip()
+        quantities = ModelQuantitiesService(project).build()
+        effective = QueryDict(return_query, mutable=False) if return_query else request.GET
+        basis_overrides, schema_includes, source_mappings = _qty_prep_runtime_from_query(
+            project, request.user, effective
+        )
+        qty_prep = build_preparation_ui(
+            quantities,
+            basis_overrides=basis_overrides,
+            schema_includes=schema_includes,
+            source_mappings=source_mappings,
+        )
+        known_keys = {
+            str(row.get("row_key") or "")
+            for row in (qty_prep.get("prep_rows") or [])
+            if row.get("row_key")
+        }
+        eligible = {
+            item["key"]
+            for item in eligible_mapping_fields(
+                show=qty_prep.get("show") or {},
+                source_intents=qty_prep.get("source_mapping_intents") or {},
+            )
+        }
+
+        svc = QuantityPrepRowMappingService(project, request.user, request.session)
+        if action == "clear":
+            result = svc.clear_values(row_key=row_key)
+            toast_msg = "Session mapping values cleared."
+        else:
+            if not eligible:
+                return toast_response(
+                    "Manual mapping values are available only for fields "
+                    "configured as Manual field.",
+                    level="error",
+                    status=400,
+                )
+            values = {key: request.POST.get(key, "") for key in MAPPING_FIELD_KEYS}
+            result = svc.apply_values(
+                row_key=row_key,
+                values=values,
+                eligible_keys=eligible,
+                known_row_keys=known_keys,
+            )
+            toast_msg = "Session mapping values applied — not saved to configuration drafts."
+
+        if result.get("error"):
+            return toast_response(result["error"], level="error", status=400)
+
+        redirect_url = reverse("takeoff:qto", kwargs={"pk": project.pk})
+        if return_query:
+            redirect_url = f"{redirect_url}?{return_query}"
+        if request.headers.get("HX-Request"):
+            response = HttpResponse(status=204)
+            response["HX-Redirect"] = redirect_url
+            return trigger_toast(response, toast_msg)
         messages.success(request, toast_msg)
         return redirect(redirect_url)
 

@@ -1,4 +1,4 @@
-<!-- takeoff/components/quantities_row_review_drawer.html — Slice 5a session row review -->
+<!-- takeoff/components/quantities_row_review_drawer.html — Slice 5a/5b session review + mapping -->
 <div class="offcanvas offcanvas-end"
      tabindex="-1"
      id="qtyRowReviewDrawer"
@@ -23,6 +23,7 @@
       </div>
     </div>
 
+    <h6 class="fs-7 fw-semibold mb-2">Session review</h6>
     <form method="post"
           action="{{ qty_prep_row_review_url }}"
           id="qty-row-review-apply-form"
@@ -73,7 +74,8 @@
           id="qty-row-review-clear-form"
           data-testid="qty-row-review-clear-form"
           hx-post="{{ qty_prep_row_review_url }}"
-          hx-swap="none">
+          hx-swap="none"
+          class="mb-4">
       {% csrf_token %}
       <input type="hidden" name="action" value="clear">
       <input type="hidden" name="row_key" id="qty-row-review-clear-key" value="">
@@ -84,6 +86,67 @@
         Clear review for this row
       </button>
     </form>
+
+    <hr class="my-3">
+    <h6 class="fs-7 fw-semibold mb-2">Manual mapping values</h6>
+    <p class="qty-builder-note mb-2" data-testid="qty-row-mapping-boundary">
+      Manual preparation values are session-only — not saved to configuration drafts.
+      Available only for fields configured as Manual field.
+      This does not approve, certify, write back, or generate BOQ quantities.
+    </p>
+
+    {% if qty_prep.manual_mapping_eligible_fields %}
+    <form method="post"
+          action="{{ qty_prep_row_mapping_url }}"
+          id="qty-row-mapping-apply-form"
+          data-testid="qty-row-mapping-apply-form"
+          hx-post="{{ qty_prep_row_mapping_url }}"
+          hx-swap="none">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="apply">
+      <input type="hidden" name="row_key" id="qty-row-mapping-key" value="">
+      <input type="hidden" name="return_query" value="{{ qty_prep_return_query }}">
+
+      {% for field in qty_prep.manual_mapping_eligible_fields %}
+      <div class="mb-3" data-testid="qty-row-mapping-field-{{ field.key }}">
+        <label class="form-label" for="qty-map-{{ field.key }}">{{ field.label }}</label>
+        <input type="text"
+               class="form-control form-control-sm"
+               name="{{ field.key }}"
+               id="qty-map-{{ field.key }}"
+               maxlength="120"
+               autocomplete="off"
+               data-testid="qty-row-mapping-input-{{ field.key }}"
+               placeholder="Manual preparation value — session only">
+      </div>
+      {% endfor %}
+      <button type="submit"
+              class="btn btn-sm btn-primary w-100 mb-2"
+              data-testid="qty-row-mapping-apply">
+        Apply session mapping values
+      </button>
+    </form>
+    <form method="post"
+          action="{{ qty_prep_row_mapping_url }}"
+          id="qty-row-mapping-clear-form"
+          data-testid="qty-row-mapping-clear-form"
+          hx-post="{{ qty_prep_row_mapping_url }}"
+          hx-swap="none">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="clear">
+      <input type="hidden" name="row_key" id="qty-row-mapping-clear-key" value="">
+      <input type="hidden" name="return_query" value="{{ qty_prep_return_query }}">
+      <button type="submit"
+              class="btn btn-sm btn-outline-secondary w-100"
+              data-testid="qty-row-mapping-clear">
+        Clear mapping values for this row
+      </button>
+    </form>
+    {% else %}
+    <p class="text-secondary small mb-0" data-testid="qty-row-mapping-unavailable">
+      Manual mapping values are available only for fields configured as Manual field.
+    </p>
+    {% endif %}
   </div>
 </div>
 <script>
@@ -107,17 +170,27 @@
     var computedEl = document.getElementById("qty-row-review-computed-status");
     var keyEl = document.getElementById("qty-row-review-key");
     var clearKeyEl = document.getElementById("qty-row-review-clear-key");
+    var mapKeyEl = document.getElementById("qty-row-mapping-key");
+    var mapClearKeyEl = document.getElementById("qty-row-mapping-clear-key");
     var statusEl = document.getElementById("qty-row-review-status");
     var noteEl = document.getElementById("qty-row-review-note");
     if (identityEl) identityEl.textContent = identity;
     if (computedEl) computedEl.textContent = computed;
     if (keyEl) keyEl.value = key;
     if (clearKeyEl) clearKeyEl.value = key;
+    if (mapKeyEl) mapKeyEl.value = key;
+    if (mapClearKeyEl) mapClearKeyEl.value = key;
     if (statusEl) {
       statusEl.value = status || "needs_review";
       if (!statusEl.value) statusEl.value = "needs_review";
     }
     if (noteEl) noteEl.value = note;
+    var classEl = document.getElementById("qty-map-classification_code");
+    var pkgEl = document.getElementById("qty-map-package_boq_mapping");
+    var workEl = document.getElementById("qty-map-work_package");
+    if (classEl) classEl.value = btn.getAttribute("data-qty-map-classification") || "";
+    if (pkgEl) pkgEl.value = btn.getAttribute("data-qty-map-package") || "";
+    if (workEl) workEl.value = btn.getAttribute("data-qty-map-work") || "";
   });
 })();
 </script>
