@@ -3,8 +3,28 @@
 
 {% block title %}5D Schema Quantity Insight — {{ project.name }} — Castor{% endblock %}
 
+{% block extra_css %}
+<style>
+  /* Keep Schema Insight rollups scrolling inside the viewport, not the page. */
+  [data-testid="s3-schema-insight-report"] {
+    max-width: 100%;
+    overflow-x: clip;
+  }
+  [data-testid="s3-schema-insight-report"] .s3-rollup-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+  [data-testid="s3-schema-insight-report"] .s3-rollup-scroll table {
+    width: max-content;
+    min-width: 100%;
+    max-width: none;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="container-fluid py-3 px-3 px-lg-4" data-testid="s3-schema-insight-report">
+<div class="container-fluid py-3 px-3 px-lg-4" data-testid="s3-schema-insight-report" style="min-width:0; max-width:100%;">
   <nav aria-label="breadcrumb" class="mb-2">
     <ol class="breadcrumb small mb-0">
       <li class="breadcrumb-item"><a href="{{ project_url }}">{{ project.name }}</a></li>
@@ -61,7 +81,10 @@
     </div>
   </section>
 
-  <!-- Rollups -->
+  <!-- Rollups (horizontally scrollable when wide) -->
+  <p class="text-secondary small mb-2" data-testid="s3-rollup-scroll-note">
+    Wide tables can scroll horizontally.
+  </p>
   {% include "fived/components/schema_quantity_insight_rollup_table.html" with rollup_title="Classification rollup" rollup_testid="s3-classification-rollup" groups=insight.quantity_totals_by_classification %}
   {% include "fived/components/schema_quantity_insight_rollup_table.html" with rollup_title="Package rollup" rollup_testid="s3-package-rollup" groups=insight.quantity_totals_by_package %}
   {% include "fived/components/schema_quantity_insight_rollup_table.html" with rollup_title="Work package rollup" rollup_testid="s3-work-package-rollup" groups=insight.quantity_totals_by_work_package %}

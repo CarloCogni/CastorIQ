@@ -1,19 +1,22 @@
 <!-- Expects: rollup_title, rollup_testid, groups (list) -->
-<section class="mb-4" data-testid="{{ rollup_testid }}">
+<section class="mb-4 s3-rollup-section" data-testid="{{ rollup_testid }}" style="min-width:0; max-width:100%;">
   <h2 class="h6 mb-2">{{ rollup_title }}</h2>
   {% if not groups %}
   <p class="text-secondary small mb-0" data-testid="{{ rollup_testid }}-empty">No groups for this rollup.</p>
   {% else %}
-  <div class="table-responsive border rounded">
-    <table class="table table-sm table-hover align-middle mb-0 small">
+  <div class="table-responsive border rounded s3-rollup-scroll"
+       data-testid="{{ rollup_testid }}-scroll"
+       style="max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch;">
+    <table class="table table-sm table-hover align-middle mb-0 small"
+           style="width:100%;">
       <thead class="table-light">
         <tr>
-          <th scope="col">Code / label</th>
-          <th scope="col">Schema key</th>
-          <th scope="col">Origin</th>
-          <th scope="col" class="text-end">Rows</th>
-          <th scope="col">Quantity buckets</th>
-          <th scope="col">Unmapped</th>
+          <th scope="col" style="min-width:8rem;">Code / label</th>
+          <th scope="col" style="min-width:7rem;">Schema key</th>
+          <th scope="col" style="min-width:7rem;">Origin</th>
+          <th scope="col" class="text-end" style="min-width:3.5rem;">Rows</th>
+          <th scope="col" style="min-width:12rem;">Quantity buckets</th>
+          <th scope="col" style="min-width:5.5rem;">Unmapped</th>
         </tr>
       </thead>
       <tbody>
@@ -21,25 +24,44 @@
         <tr {% if g.is_unmapped %}class="table-warning"{% endif %}
             data-testid="{{ rollup_testid }}-row"
             data-group-key="{{ g.group_key }}">
-          <td>
-            <div class="fw-semibold">{{ g.code|default:"—" }}</div>
-            <div class="text-secondary">{{ g.label|default:"" }}</div>
-            <div class="text-muted font-monospace" style="font-size:0.7rem;">{{ g.group_key }}</div>
+          <td style="max-width:14rem; white-space:normal;">
+            <div class="fw-semibold text-break">{{ g.code|default:"—" }}</div>
+            <div class="text-secondary text-break">{{ g.label|default:"" }}</div>
+            <div class="text-muted font-monospace text-break"
+                 style="font-size:0.7rem; word-break:break-all;">{{ g.group_key }}</div>
           </td>
-          <td class="font-monospace">{{ g.schema_key|default:"—" }}</td>
-          <td>{{ g.origin_bucket|default:"—" }}</td>
+          <td class="font-monospace text-break"
+              style="max-width:10rem; word-break:break-all; white-space:normal;">
+            {{ g.schema_key|default:"—" }}
+          </td>
+          <td style="max-width:11rem; white-space:normal;">
+            {% if g.origin_bucket %}
+            <span class="badge text-bg-light border text-wrap text-start"
+                  style="white-space:normal; word-break:break-word; font-weight:500;">
+              {{ g.origin_bucket }}
+            </span>
+            {% else %}
+            <span class="text-secondary">—</span>
+            {% endif %}
+          </td>
           <td class="text-end">{{ g.row_count }}</td>
-          <td>
+          <td style="max-width:22rem; white-space:normal;">
             {% if g.quantity_buckets %}
             <ul class="list-unstyled mb-0">
               {% for b in g.quantity_buckets %}
-              <li class="mb-1">
-                <span class="badge text-bg-secondary">{{ b.quantity_basis|default:"(blank basis)" }}</span>
-                <span class="badge text-bg-light border">{{ b.unit_basis|default:"(blank unit)" }}</span>
-                <span class="text-secondary">{{ b.quantity_source|default:"—" }}</span>
-                · rows {{ b.row_count }}
-                · total {{ b.total_sum }}
-                · non-numeric {{ b.non_numeric_count }}
+              <li class="mb-2">
+                <div class="d-flex flex-wrap gap-1 align-items-center mb-1">
+                  <span class="badge text-bg-secondary">{{ b.quantity_basis|default:"(blank basis)" }}</span>
+                  <span class="badge text-bg-light border">{{ b.unit_basis|default:"(blank unit)" }}</span>
+                </div>
+                <div class="text-secondary text-break" style="word-break:break-word;">
+                  {{ b.quantity_source|default:"—" }}
+                </div>
+                <div class="text-secondary">
+                  rows {{ b.row_count }}
+                  · total {{ b.total_sum }}
+                  · non-numeric {{ b.non_numeric_count }}
+                </div>
               </li>
               {% endfor %}
             </ul>

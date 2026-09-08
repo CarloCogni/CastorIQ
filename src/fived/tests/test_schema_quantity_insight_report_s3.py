@@ -133,6 +133,16 @@ def test_report_route_200_with_title_contract_and_sections(client):
     assert 'data-testid="s3-classification-rollup"' in main
     assert 'data-testid="s3-package-rollup"' in main
     assert 'data-testid="s3-work-package-rollup"' in main
+    assert "Classification rollup" in main
+    assert "Package rollup" in main
+    assert "Work package rollup" in main
+    assert 'data-testid="s3-classification-rollup-scroll"' in main
+    assert 'data-testid="s3-package-rollup-scroll"' in main
+    assert 'data-testid="s3-work-package-rollup-scroll"' in main
+    assert "table-responsive" in main
+    assert "s3-rollup-scroll" in main
+    assert "Wide tables can scroll horizontally." in main
+    assert main.count("table-responsive") >= 3
     assert 'data-testid="s3-gaps-summary"' in main
     assert "Gaps" in main
     assert "Basis" in main
