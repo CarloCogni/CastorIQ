@@ -1,20 +1,29 @@
-<!-- takeoff/components/quantities_schema_insight_entry.html — 5D-S3b entry to Schema Quantity Insight -->
+<!-- takeoff/components/quantities_schema_insight_entry.html — 5D-S3b/S3c entry to Schema Quantity Insight -->
 <section class="qty-builder-section border rounded p-3 mb-3"
          data-testid="qty-schema-insight-entry">
   <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
-    <div style="min-width:0; max-width:40rem;">
+    <div style="min-width:0; max-width:42rem;">
       <h6 class="mb-1" data-testid="qty-schema-insight-title">5D Schema Quantity Insight</h6>
-      <p class="small text-secondary mb-2 mb-md-0" data-testid="qty-schema-insight-description">
+      <p class="small text-secondary mb-2" data-testid="qty-schema-insight-description">
         View schema-driven quantity rollups from a frozen 5D snapshot.
       </p>
-      <div class="d-flex flex-wrap gap-1" data-testid="qty-schema-insight-badges">
+      <div class="d-flex flex-wrap gap-1 mb-2" data-testid="qty-schema-insight-badges">
         <span class="badge text-bg-secondary">Read-only</span>
         <span class="badge text-bg-secondary">Snapshot-based</span>
         <span class="badge text-bg-secondary">Not BOQ</span>
         <span class="badge text-bg-secondary">Not cost estimate</span>
       </div>
+      <details class="small text-secondary" data-testid="qty-schema-insight-why-snapshot">
+        <summary class="fw-semibold" style="cursor:pointer;">Why a snapshot is needed</summary>
+        <ul class="mb-0 mt-2 ps-3">
+          <li>Live quantity prep is editable and session-based.</li>
+          <li>An F2 snapshot freezes the row state and mapping provenance.</li>
+          <li>Schema Insight (S2/S3) reads that frozen state — not the live table alone.</li>
+          <li>If a snapshot was created without mappings, the report may show Unmapped-only.</li>
+        </ul>
+      </details>
     </div>
-    <div class="text-end">
+    <div class="text-end" style="max-width:22rem;">
       {% if fived_schema_insight_url and fived_latest_version %}
       <a href="{{ fived_schema_insight_url }}"
          class="btn btn-sm btn-outline-primary"
@@ -25,7 +34,13 @@
       <div class="mi-footnote mt-1" data-testid="qty-schema-insight-version-meta">
         Latest snapshot: {{ fived_latest_version.data_model.name }}
         · {{ fived_latest_version.version_label }}
+        {% if fived_latest_version.created_at %}
+        · {{ fived_latest_version.created_at|date:"Y-m-d H:i" }}
+        {% endif %}
       </div>
+      <p class="mi-footnote mt-1 text-secondary mb-0" data-testid="qty-schema-insight-demo-note">
+        Review uses the frozen snapshot. Fresh mappings need a new freeze before they appear here.
+      </p>
       {% else %}
       <button type="button"
               class="btn btn-sm btn-outline-secondary"
@@ -34,10 +49,14 @@
               aria-disabled="true">
         Open latest Schema Insight
       </button>
-      <div class="mi-footnote mt-1 text-secondary" data-testid="qty-schema-insight-empty"
-           style="max-width:18rem;">
-        No 5D snapshot is available yet. Create or generate a snapshot first,
-        then open Schema Quantity Insight.
+      <div class="mi-footnote mt-2 text-secondary text-start"
+           data-testid="qty-schema-insight-empty">
+        <p class="mb-1" data-testid="qty-schema-insight-empty-lead">
+          No frozen 5D snapshot is available yet. Schema Insight is generated from a frozen 5D snapshot, not directly from the live quantity table.
+        </p>
+        <p class="mb-0" data-testid="qty-schema-insight-empty-next">
+          Prepare mappings, then freeze/create a 5D snapshot to review schema-driven quantity insights. This card does not create a snapshot and does not claim the report is ready until a freeze exists.
+        </p>
       </div>
       {% endif %}
     </div>

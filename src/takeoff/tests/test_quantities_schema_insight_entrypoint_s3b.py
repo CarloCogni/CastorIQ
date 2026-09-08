@@ -1,5 +1,5 @@
 # takeoff/tests/test_quantities_schema_insight_entrypoint_s3b.py
-"""5D-S3b Quantities entry point to Schema Quantity Insight report."""
+"""5D-S3b/S3c Quantities entry point to Schema Quantity Insight report."""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ def _project_with_ifc():
 
 @pytest.mark.django_db
 def test_quantities_shows_empty_state_without_fived_version(client):
-    """No snapshot → disabled entry + honest empty copy; prep export still present."""
+    """No snapshot → disabled entry + clear S3c empty copy; no open link."""
     project = _project_with_ifc()
     client.force_login(project.owner)
     resp = client.get(reverse("takeoff:qto", kwargs={"pk": project.pk}))
@@ -53,7 +53,11 @@ def test_quantities_shows_empty_state_without_fived_version(client):
     assert 'data-testid="qty-schema-insight-empty"' in html
     assert 'data-testid="qty-schema-insight-disabled"' in html
     assert 'data-testid="qty-schema-insight-open"' not in html
-    assert "No 5D snapshot is available yet" in html
+    assert "No frozen 5D snapshot" in html
+    assert "generated from a frozen 5D snapshot" in html
+    assert "Prepare mappings" in html
+    assert 'data-testid="qty-schema-insight-why-snapshot"' in html
+    assert "does not claim the" in html or "does not claim" in html
     assert 'data-testid="qty-prep-export"' in html
     assert reverse("takeoff:qto_export", kwargs={"pk": project.pk}) in html
     for term in FORBIDDEN:
@@ -62,7 +66,7 @@ def test_quantities_shows_empty_state_without_fived_version(client):
 
 @pytest.mark.django_db
 def test_quantities_links_to_latest_schema_insight_when_version_exists(client):
-    """Latest FiveDModelVersion yields Open link resolving to S3 report route."""
+    """Latest FiveDModelVersion yields Open link, version label/date, S3 route."""
     project = _project_with_ifc()
     older = FiveDModelVersionFactory(
         data_model__project=project,
@@ -86,12 +90,19 @@ def test_quantities_links_to_latest_schema_insight_when_version_exists(client):
     assert resp.status_code == 200
     html = resp.content.decode("utf-8")
     assert 'data-testid="qty-schema-insight-open"' in html
+    assert "Open latest Schema Insight" in html
     assert expected in html
     assert wrong not in html
     assert 'data-testid="qty-schema-insight-empty"' not in html
+    assert 'data-testid="qty-schema-insight-version-meta"' in html
+    assert "v2" in html
+    assert newer.data_model.name in html
+    assert 'data-testid="qty-schema-insight-why-snapshot"' in html
     assert "Not BOQ" in html
     assert "Not cost estimate" in html
     assert FiveDModelVersion.objects.filter(data_model__project=project).count() == 2
+    for term in FORBIDDEN:
+        assert term not in html.lower()
 
 
 @pytest.mark.django_db
