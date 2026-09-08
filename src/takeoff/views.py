@@ -21,6 +21,7 @@ from django.views.generic import TemplateView
 
 from core.http import toast_response, trigger_toast
 from core.mixins import ProjectAccessMixin, ProjectTabMixin
+from fived.models import FiveDModelVersion
 
 from .models import QTOCache, QuantityPreparationConfig
 from .services.link_analysis import LinkAnalysisService
@@ -243,6 +244,22 @@ class QTOView(ProjectTabMixin, TemplateView):
         )
         ctx["qty_prep_export_url"] = reverse("takeoff:qty_prep_export", kwargs={"pk": project.pk})
         ctx["qty_prep_return_query"] = self.request.GET.urlencode()
+        # Read-only S3b entry: latest F2 version link (never auto-creates snapshots).
+        latest_version = (
+            FiveDModelVersion.objects.filter(data_model__project_id=project.pk)
+            .select_related("data_model")
+            .order_by("-created_at")
+            .first()
+        )
+        ctx["fived_latest_version"] = latest_version
+        ctx["fived_schema_insight_url"] = (
+            reverse(
+                "fived:schema_quantity_insight_report",
+                kwargs={"pk": project.pk, "version_id": latest_version.pk},
+            )
+            if latest_version is not None
+            else None
+        )
         ctx["missing_qto_entities_url"] = (
             reverse("takeoff:model_inventory_entities", kwargs={"pk": project.pk}) + "?has_qto=no"
         )
