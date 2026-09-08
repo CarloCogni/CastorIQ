@@ -133,3 +133,34 @@ def get_mapping_selector_options(project: Any) -> dict[str, dict[str, Any]]:
         field_key: get_selector_options_for_field(project, field_key)
         for field_key in FIELD_PURPOSE_ROLES
     }
+
+
+def build_validated_session_mapping(
+    project: Any,
+    field_key: str,
+    node_id: str,
+) -> dict[str, Any] | None:
+    """Return a structured session mapping dict if node_id is valid for the field.
+
+    Validates that the node belongs to the project's primary active schema for
+    the field purpose role. Returns None when invalid (caller may free-text fallback).
+    """
+    node_id_s = str(node_id or "").strip()
+    if not node_id_s:
+        return None
+    pack = get_selector_options_for_field(project, field_key)
+    if not pack.get("schema_found"):
+        return None
+    for node in pack.get("nodes") or []:
+        if str(node.get("node_id") or "") != node_id_s:
+            continue
+        return {
+            "value": str(node.get("code") or ""),
+            "label": str(node.get("label") or ""),
+            "schema_id": str(pack.get("schema_id") or ""),
+            "schema_key": str(pack.get("schema_key") or ""),
+            "node_id": node_id_s,
+            "origin": "manual_session_schema_node",
+            "source_intent": "manual_field",
+        }
+    return None

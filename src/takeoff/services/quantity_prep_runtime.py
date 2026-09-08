@@ -101,8 +101,14 @@ def build_qty_prep_session_ui(
     mapping_annotations = mapping_svc.get_annotations()
     apply_session_mapping_values_to_ui(qty_prep, mapping_annotations)
 
-    # C3a: selector packs for later drawer UI (not rendered yet).
-    qty_prep["mapping_selectors"] = get_mapping_selector_options(project)
+    # C3a/C3b: selector packs for drawer UI + enrich eligible field descriptors.
+    selectors = get_mapping_selector_options(project)
+    qty_prep["mapping_selectors"] = selectors
+    for item in qty_prep.get("manual_mapping_eligible_fields") or []:
+        key = str(item.get("key") or "")
+        pack = selectors.get(key) or {}
+        item["selector"] = pack
+        item["has_schema_nodes"] = bool(pack.get("schema_found") and pack.get("nodes"))
 
     review_svc = QuantityPrepRowReviewService(project, user, session)
     review_annotations = review_svc.get_annotations()

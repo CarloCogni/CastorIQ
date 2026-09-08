@@ -78,7 +78,7 @@
             <th class="qty-col-secondary">Classification Code</th>
             {% endif %}
             {% if qty_prep.show.package_boq_mapping %}
-            <th class="qty-col-secondary">Package / BOQ Mapping</th>
+            <th class="qty-col-secondary">Package Mapping</th>
             {% endif %}
             {% if qty_prep.show.work_package %}
             <th class="qty-col-secondary">Work Package</th>
@@ -160,7 +160,13 @@
                       data-qty-session-note="{{ row.session_review_note|escape }}"
                       data-qty-map-classification="{{ row.classification_code|escape }}"
                       data-qty-map-package="{{ row.package_boq_mapping|escape }}"
-                      data-qty-map-work="{{ row.work_package|escape }}">
+                      data-qty-map-work="{{ row.work_package|escape }}"
+                      data-qty-map-classification-node="{{ row.classification_node_id|default:'' }}"
+                      data-qty-map-package-node="{{ row.package_mapping_node_id|default:'' }}"
+                      data-qty-map-work-node="{{ row.work_package_node_id|default:'' }}"
+                      data-qty-map-classification-backed="{% if row.classification_is_schema_backed %}1{% else %}0{% endif %}"
+                      data-qty-map-package-backed="{% if row.package_mapping_is_schema_backed %}1{% else %}0{% endif %}"
+                      data-qty-map-work-backed="{% if row.work_package_is_schema_backed %}1{% else %}0{% endif %}">
                 Review row
               </button>
             </td>
@@ -197,8 +203,17 @@
                 title="{{ row.classification_hint }}">
               {% if row.classification_code %}
               <span data-testid="qty-manual-mapping-value">{{ row.classification_code }}</span>
+              {% if row.classification_label %}
               <span class="qty-mapping-hint d-block"
-                    data-testid="qty-manual-mapping-badge">Manual preparation value</span>
+                    data-testid="qty-manual-mapping-label">{{ row.classification_label }}</span>
+              {% endif %}
+              {% if row.classification_is_schema_backed %}
+              <span class="qty-mapping-hint d-block"
+                    data-testid="qty-manual-mapping-badge">Schema node (session)</span>
+              {% else %}
+              <span class="qty-mapping-hint d-block"
+                    data-testid="qty-manual-mapping-badge">Free text (session)</span>
+              {% endif %}
               {% else %}
               —
               {% if row.classification_hint %}
@@ -215,8 +230,17 @@
                 title="{{ row.package_boq_mapping_hint }}">
               {% if row.package_boq_mapping %}
               <span data-testid="qty-manual-mapping-value">{{ row.package_boq_mapping }}</span>
+              {% if row.package_mapping_label %}
               <span class="qty-mapping-hint d-block"
-                    data-testid="qty-manual-mapping-badge">Manual preparation value</span>
+                    data-testid="qty-manual-mapping-label">{{ row.package_mapping_label }}</span>
+              {% endif %}
+              {% if row.package_mapping_is_schema_backed %}
+              <span class="qty-mapping-hint d-block"
+                    data-testid="qty-manual-mapping-badge">Schema node (session)</span>
+              {% else %}
+              <span class="qty-mapping-hint d-block"
+                    data-testid="qty-manual-mapping-badge">Free text (session)</span>
+              {% endif %}
               {% else %}
               —
               {% if row.package_boq_mapping_hint %}
@@ -233,8 +257,17 @@
                 title="{{ row.work_package_hint }}">
               {% if row.work_package %}
               <span data-testid="qty-manual-mapping-value">{{ row.work_package }}</span>
+              {% if row.work_package_label %}
               <span class="qty-mapping-hint d-block"
-                    data-testid="qty-manual-mapping-badge">Manual preparation value</span>
+                    data-testid="qty-manual-mapping-label">{{ row.work_package_label }}</span>
+              {% endif %}
+              {% if row.work_package_is_schema_backed %}
+              <span class="qty-mapping-hint d-block"
+                    data-testid="qty-manual-mapping-badge">Schema node (session)</span>
+              {% else %}
+              <span class="qty-mapping-hint d-block"
+                    data-testid="qty-manual-mapping-badge">Free text (session)</span>
+              {% endif %}
               {% else %}
               —
               {% if row.work_package_hint %}

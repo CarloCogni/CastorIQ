@@ -1,4 +1,4 @@
-<!-- takeoff/components/quantities_row_review_drawer.html — Slice 5a/5b session review + mapping -->
+<!-- takeoff/components/quantities_row_review_drawer.html — Slice 5a/5b/C3b session review + mapping -->
 <div class="offcanvas offcanvas-end"
      tabindex="-1"
      id="qtyRowReviewDrawer"
@@ -92,7 +92,8 @@
     <p class="qty-builder-note mb-2" data-testid="qty-row-mapping-boundary">
       Manual preparation values are session-only — not saved to configuration drafts.
       Available only for fields configured as Manual field.
-      This does not approve, certify, write back, or generate BOQ quantities.
+      Schema-backed selections are session annotations — not approved classifications,
+      not ClassificationAssignment records, and not IFC writeback.
     </p>
 
     {% if qty_prep.manual_mapping_eligible_fields %}
@@ -109,7 +110,40 @@
 
       {% for field in qty_prep.manual_mapping_eligible_fields %}
       <div class="mb-3" data-testid="qty-row-mapping-field-{{ field.key }}">
-        <label class="form-label" for="qty-map-{{ field.key }}">{{ field.label }}</label>
+        <label class="form-label" for="{% if field.has_schema_nodes %}qty-map-node-{{ field.key }}{% else %}qty-map-{{ field.key }}{% endif %}">
+          {{ field.label }}
+        </label>
+
+        {% if field.has_schema_nodes %}
+        <select class="form-select form-select-sm"
+                name="{{ field.key }}__node_id"
+                id="qty-map-node-{{ field.key }}"
+                data-testid="qty-row-mapping-select-{{ field.key }}">
+          <option value="">— Select schema node —</option>
+          {% for node in field.selector.nodes %}
+          <option value="{{ node.node_id }}"
+                  data-code="{{ node.code }}"
+                  data-label="{{ node.label }}">
+            {{ node.code }} — {{ node.label }}
+          </option>
+          {% endfor %}
+        </select>
+        <p class="qty-mapping-hint mt-1 mb-2" data-testid="qty-row-mapping-schema-note-{{ field.key }}">
+          Schema node is stored as a session preparation mapping.
+          It is not an approved classification or writeback.
+        </p>
+        <details class="mb-1" data-testid="qty-row-mapping-fallback-{{ field.key }}">
+          <summary class="small text-secondary">Free-text fallback</summary>
+          <input type="text"
+                 class="form-control form-control-sm mt-2"
+                 name="{{ field.key }}__free_text"
+                 id="qty-map-{{ field.key }}"
+                 maxlength="120"
+                 autocomplete="off"
+                 data-testid="qty-row-mapping-input-{{ field.key }}"
+                 placeholder="Free-text session value (manual_session)">
+        </details>
+        {% else %}
         <input type="text"
                class="form-control form-control-sm"
                name="{{ field.key }}"
@@ -118,6 +152,10 @@
                autocomplete="off"
                data-testid="qty-row-mapping-input-{{ field.key }}"
                placeholder="Manual preparation value — session only">
+        <p class="qty-mapping-hint mt-1 mb-0" data-testid="qty-row-mapping-no-schema-{{ field.key }}">
+          No project schema adopted for this mapping role. Free text remains session-only.
+        </p>
+        {% endif %}
       </div>
       {% endfor %}
       <button type="submit"
@@ -153,6 +191,23 @@
 (function () {
   var drawer = document.getElementById("qtyRowReviewDrawer");
   if (!drawer) return;
+
+  function setMappingControls(fieldKey, code, nodeId, isBacked) {
+    var selectEl = document.getElementById("qty-map-node-" + fieldKey);
+    var freeEl = document.getElementById("qty-map-" + fieldKey);
+    if (selectEl) {
+      if (isBacked && nodeId) {
+        selectEl.value = nodeId;
+        if (freeEl) freeEl.value = "";
+        return;
+      }
+      selectEl.value = "";
+      if (freeEl) freeEl.value = code || "";
+      return;
+    }
+    if (freeEl) freeEl.value = code || "";
+  }
+
   drawer.addEventListener("show.bs.offcanvas", function (event) {
     var btn = event.relatedTarget;
     if (!btn) return;
@@ -185,12 +240,24 @@
       if (!statusEl.value) statusEl.value = "needs_review";
     }
     if (noteEl) noteEl.value = note;
-    var classEl = document.getElementById("qty-map-classification_code");
-    var pkgEl = document.getElementById("qty-map-package_boq_mapping");
-    var workEl = document.getElementById("qty-map-work_package");
-    if (classEl) classEl.value = btn.getAttribute("data-qty-map-classification") || "";
-    if (pkgEl) pkgEl.value = btn.getAttribute("data-qty-map-package") || "";
-    if (workEl) workEl.value = btn.getAttribute("data-qty-map-work") || "";
+    setMappingControls(
+      "classification_code",
+      btn.getAttribute("data-qty-map-classification") || "",
+      btn.getAttribute("data-qty-map-classification-node") || "",
+      btn.getAttribute("data-qty-map-classification-backed") === "1"
+    );
+    setMappingControls(
+      "package_boq_mapping",
+      btn.getAttribute("data-qty-map-package") || "",
+      btn.getAttribute("data-qty-map-package-node") || "",
+      btn.getAttribute("data-qty-map-package-backed") === "1"
+    );
+    setMappingControls(
+      "work_package",
+      btn.getAttribute("data-qty-map-work") || "",
+      btn.getAttribute("data-qty-map-work-node") || "",
+      btn.getAttribute("data-qty-map-work-backed") === "1"
+    );
   });
 })();
 </script>

@@ -32,8 +32,8 @@ from .services.quantity_prep_config import (
 )
 from .services.quantity_prep_export import QuantityPrepExportService
 from .services.quantity_prep_row_mapping import (
-    MAPPING_FIELD_KEYS,
     QuantityPrepRowMappingService,
+    collect_posted_mapping_values,
     eligible_mapping_fields,
 )
 from .services.quantity_prep_row_review import (
@@ -418,7 +418,11 @@ class QuantityPrepRowMappingView(ProjectAccessMixin, View):
                     level="error",
                     status=400,
                 )
-            values = {key: request.POST.get(key, "") for key in MAPPING_FIELD_KEYS}
+            values = collect_posted_mapping_values(
+                project=project,
+                post=request.POST,
+                eligible_keys=eligible,
+            )
             result = svc.apply_values(
                 row_key=row_key,
                 values=values,

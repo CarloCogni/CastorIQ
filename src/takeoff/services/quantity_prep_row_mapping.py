@@ -44,7 +44,7 @@ MAPPING_FIELD_KEYS: tuple[str, ...] = EDITABLE_SOURCE_MAPPING_KEYS
 
 MAPPING_FIELD_LABELS: dict[str, str] = {
     "classification_code": "Classification Code",
-    "package_boq_mapping": "Package / BOQ Mapping",
+    "package_boq_mapping": "Package Mapping",
     "work_package": "Work Package",
 }
 
@@ -334,6 +334,48 @@ def _apply_row_field_metadata(
     row[meta["node_id"]] = str(norm.get("node_id") or "")
     row[meta["origin"]] = str(norm.get("origin") or "")
     row[meta["is_schema_backed"]] = bool(norm.get("is_schema_backed"))
+
+
+def collect_posted_mapping_values(
+    *,
+    project: Any,
+    post: Mapping[str, Any],
+    eligible_keys: set[str],
+) -> dict[str, Any]:
+    """Parse drawer POST into session mapping values (string or structured).
+
+    Preference when both schema node and free-text are posted: valid node wins.
+    Invalid node_id falls back to free-text if present; otherwise the field is
+    omitted (cleared by apply_values for eligible keys).
+    """
+    from classification.services.quantity_mapping_selectors import (
+        build_validated_session_mapping,
+    )
+
+    values: dict[str, Any] = {}
+    for field in MAPPING_FIELD_KEYS:
+        if field not in eligible_keys:
+            continue
+        node_id = str(post.get(f"{field}__node_id") or "").strip()
+        free_text = sanitize_mapping_value(
+            str(post.get(f"{field}__free_text") or post.get(field) or "")
+        )
+        if node_id:
+            structured = build_validated_session_mapping(project, field, node_id)
+            if structured is not None:
+                values[field] = structured
+                continue
+            logger.info(
+                "qty mapping ignored invalid node_id field=%s node_id=%s",
+                field,
+                node_id,
+            )
+            if free_text:
+                values[field] = free_text
+            continue
+        if free_text:
+            values[field] = free_text
+    return values
 
 
 class QuantityPrepRowMappingService:

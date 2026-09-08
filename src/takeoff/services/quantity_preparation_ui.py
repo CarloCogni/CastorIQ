@@ -180,7 +180,7 @@ SCHEMA_FIELD_SPECS: tuple[dict[str, Any], ...] = (
     },
     {
         "key": "package_boq_mapping",
-        "label": "Package / BOQ Mapping",
+        "label": "Package Mapping",
         "required_label": "Optional",
         "availability": "Not indexed",
         "default_included": True,
@@ -444,7 +444,7 @@ def build_source_mappings_ui(
         ),
         editable_row(
             "package_boq_mapping",
-            "Package / BOQ Mapping",
+            "Package Mapping",
             "Schema field only — not BOQ generation. Mapping intent only.",
         ),
         editable_row(
@@ -969,7 +969,7 @@ def build_visual_summary(
                         unresolved_register.get("missing_selected_quantity_source") or 0
                     ),
                     "Classification": int(unresolved_register.get("missing_classification") or 0),
-                    "Package / BOQ mapping": int(
+                    "Package Mapping": int(
                         unresolved_register.get("missing_package_boq_mapping") or 0
                     ),
                     "Work package": int(unresolved_register.get("missing_work_package") or 0),
@@ -1024,7 +1024,7 @@ def build_preparation_insights(
     if missing_classification:
         mapping_parts.append("Classification")
     if missing_package:
-        mapping_parts.append("Package / BOQ Mapping")
+        mapping_parts.append("Package Mapping")
     if missing_work_package:
         mapping_parts.append("Work Package")
     if mapping_parts:
