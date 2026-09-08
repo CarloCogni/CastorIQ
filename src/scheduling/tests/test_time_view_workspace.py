@@ -179,6 +179,37 @@ def test_time_view_workspace_honesty_and_controls(client):
 
 
 @pytest.mark.django_db
+def test_time_view_empty_state_when_no_tasks(client):
+    """Empty schedule shows import prompt (uses task_count, not full task list)."""
+    project = ProjectFactory()
+    client.force_login(project.owner)
+    response = client.get(
+        reverse("scheduling:schedule", kwargs={"pk": project.pk}) + "?tab=lookahead"
+    )
+    html = response.content.decode()
+    assert response.status_code == 200
+    assert "No schedule to play" in html
+    assert 'data-testid="time-view-workspace"' not in html
+
+
+@pytest.mark.django_db
+def test_time_view_lookahead_avoids_task_entity_prefetch(client, django_assert_max_num_queries):
+    """Lookahead shell must not prefetch all task↔entity links."""
+    project = ProjectFactory()
+    TaskFactory(project=project)
+    client.force_login(project.owner)
+    url = reverse("scheduling:schedule", kwargs={"pk": project.pk}) + "?tab=lookahead"
+    # Bound is generous for auth/project chrome; forbids N+1 over entity bindings.
+    with django_assert_max_num_queries(80):
+        response = client.get(url)
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert 'data-testid="time-view-title"' in html
+    # Ensure empty-state path was not taken when tasks exist
+    assert "No schedule to play" not in html
+
+
+@pytest.mark.django_db
 def test_time_view_nav_link_omits_ignored_basis(client):
     """Generated Time View href is tab=lookahead only."""
     project = ProjectFactory()

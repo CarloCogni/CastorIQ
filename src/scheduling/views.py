@@ -67,29 +67,44 @@ class ScheduleView(ProjectTabMixin, TemplateView):
         ctx = super().get_context_data(**kwargs)
         project = ctx["project"]
         ctx["castor_subtab"] = "schedule"
-        ctx["schedule_tab"] = self.request.GET.get("tab", "data_sources")
+        schedule_tab = self.request.GET.get("tab", "data_sources")
+        ctx["schedule_tab"] = schedule_tab
 
-        tasks = Task.objects.filter(project=project).prefetch_related("ifc_entities")
+        base_tasks = Task.objects.filter(project=project)
+        ctx["task_count"] = base_tasks.count()
+        ctx["ifc_files_available"] = IFCFile.objects.filter(
+            project=project, status=IFCFile.Status.COMPLETED
+        ).exists()
+        ctx["ifc_param_name"] = self.request.session.get(
+            f"ifc_param_name_{project.pk}", "Activity ID"
+        )
+
+        # Time View shell does not iterate tasks server-side; timeline colours load via
+        # viewer APIs. Skip materializing all tasks + ifc_entities on large pilots.
+        if schedule_tab == "lookahead":
+            ctx["tasks"] = Task.objects.none()
+            ctx["gantt_min_date"] = None
+            ctx["gantt_max_date"] = None
+            ctx["binding_review_count"] = 0
+            ctx["dep_count"] = 0
+            ctx["schedule_sources"] = []
+            ctx["intel_suggestions"] = []
+            return ctx
+
+        tasks = base_tasks.prefetch_related("ifc_entities")
         ctx["tasks"] = tasks
-        ctx["task_count"] = tasks.count()
-
-        ifc_files = IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
-        ctx["ifc_files_available"] = ifc_files.exists()
 
         # Gantt + simulate date range
-        if tasks.exists():
+        if base_tasks.exists():
             from django.db.models import Max, Min
 
-            agg = tasks.aggregate(min_start=Min("start_date"), max_end=Max("end_date"))
+            agg = base_tasks.aggregate(min_start=Min("start_date"), max_end=Max("end_date"))
             ctx["gantt_min_date"] = agg["min_start"]
             ctx["gantt_max_date"] = agg["max_end"]
         else:
             ctx["gantt_min_date"] = None
             ctx["gantt_max_date"] = None
 
-        ctx["ifc_param_name"] = self.request.session.get(
-            f"ifc_param_name_{project.pk}", "Activity ID"
-        )
         ctx["binding_review_count"] = TaskEntityBinding.objects.filter(
             task__project=project, needs_review=True
         ).count()
@@ -105,7 +120,7 @@ class ScheduleView(ProjectTabMixin, TemplateView):
             "What work is planned to start next week?",
         ]
 
-        if ctx["schedule_tab"] == "data_sources":
+        if schedule_tab == "data_sources":
             from django.db.models import Count as _Count
 
             from .models import P6Calendar
