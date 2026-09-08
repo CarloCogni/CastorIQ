@@ -1,11 +1,11 @@
-<!-- takeoff/components/quantities_schema_insight_entry.html — Schema Quantity Insight entry -->
+<!-- takeoff/components/quantities_schema_insight_entry.html — 5D Quantity Review entry -->
 <section class="qty-builder-section border rounded p-3 mb-3"
          data-testid="qty-schema-insight-entry">
   <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
     <div style="min-width:0; max-width:42rem;">
-      <h6 class="mb-1" data-testid="qty-schema-insight-title">5D Schema Quantity Insight</h6>
+      <h6 class="mb-1" data-testid="qty-schema-insight-title">5D Quantity Review</h6>
       <p class="small text-secondary mb-2" data-testid="qty-schema-insight-description">
-        Review schema-based quantity rollups from the latest frozen 5D snapshot.
+        Review IFC quantities grouped by the latest frozen 5D snapshot.
       </p>
       <div class="d-flex flex-wrap gap-1 mb-2" data-testid="qty-schema-insight-badges">
         <span class="badge text-bg-secondary">Read-only</span>
@@ -16,8 +16,8 @@
         <ul class="mb-0 mt-2 ps-3">
           <li>Live quantity prep is editable and session-based.</li>
           <li>A snapshot freezes the row state and mapping provenance.</li>
-          <li>Schema Insight reads that frozen state — not the live table alone.</li>
-          <li>If a snapshot was created without mappings, the report may show Unmapped-only.</li>
+          <li>5D Quantity Review reads that frozen state — not the live table alone.</li>
+          <li>If a snapshot was created without mappings, the review may show unmapped rows only.</li>
         </ul>
       </details>
     </div>
@@ -26,8 +26,8 @@
       <a href="{{ fived_schema_insight_url }}"
          class="btn btn-sm btn-outline-primary"
          data-testid="qty-schema-insight-open"
-         title="Open Schema Quantity Insight for the latest frozen snapshot">
-        <i class="bi bi-bar-chart-steps me-1"></i>Open latest Schema Insight
+         title="Open 5D Quantity Review for the latest frozen snapshot">
+        <i class="bi bi-bar-chart-steps me-1"></i>Open latest 5D Review
       </a>
       <div class="mi-footnote mt-1" data-testid="qty-schema-insight-version-meta">
         Latest snapshot: {{ fived_latest_version.data_model.name }}
@@ -37,7 +37,7 @@
         {% endif %}
       </div>
       <p class="mi-footnote mt-1 text-secondary mb-0" data-testid="qty-schema-insight-demo-note">
-        Review uses the frozen snapshot. Fresh mappings need a new freeze before they appear here.
+        Review uses the frozen snapshot. Freeze a new snapshot after mapping changes.
       </p>
       {% else %}
       <button type="button"
@@ -45,13 +45,13 @@
               disabled
               data-testid="qty-schema-insight-disabled"
               aria-disabled="true">
-        Open latest Schema Insight
+        Open latest 5D Review
       </button>
       <div class="mi-footnote mt-2 text-secondary text-start"
            data-testid="qty-schema-insight-empty">
         <p class="mb-0" data-testid="qty-schema-insight-empty-lead">
-          No frozen 5D snapshot is available yet. Prepare mappings and freeze a snapshot to view
-          schema quantity insights.
+          No frozen 5D snapshot is available yet. Prepare mappings and freeze a snapshot to open
+          5D Quantity Review.
         </p>
       </div>
       {% endif %}

@@ -46,7 +46,7 @@
               {% endif %}
             </td>
             <td class="text-secondary" data-testid="qty-rule-unit-{{ rule.model_group }}">
-              {{ rule.unit_basis }}
+              {{ rule.unit_basis_display|default:rule.unit_basis }}
             </td>
             <td class="qty-available-measures"
                 data-testid="qty-available-measures-{{ rule.model_group }}">

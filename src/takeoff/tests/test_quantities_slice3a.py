@@ -264,6 +264,7 @@ def test_unit_basis_derivation_copy_and_available_measures(client):
     rules = {r["model_group"]: r for r in ui["basis_rules"]}
     beam = rules["IfcBeam"]
     assert beam["unit_basis"] == "model volume units"
+    assert beam["unit_basis_display"] == "Unit not resolved"
     assert "NetVolume" in beam["available_indexed_measures"]
     assert "Count" in beam["available_indexed_measures"]
     length_opt = next(o for o in beam["basis_options"] if o["value"] == "Length")
@@ -274,12 +275,22 @@ def test_unit_basis_derivation_copy_and_available_measures(client):
     wall_ui = build_preparation_ui(quantities, basis_overrides={"IfcWall": "NetArea"})
     wall_rule = next(r for r in wall_ui["basis_rules"] if r["model_group"] == "IfcWall")
     assert wall_rule["unit_basis"] == "model area units"
+    assert wall_rule["unit_basis_display"] == "Area unit unresolved"
     assert wall_rule["quantity_basis"] == "NetArea"
 
     client.force_login(project.owner)
     html = client.get(reverse("takeoff:qto", kwargs={"pk": project.pk})).content.decode()
     assert 'data-testid="qty-unit-basis-derivation-note"' in html
     assert "Unit Basis is derived from the selected Quantity Basis" in html
+    assert (
+        "model volume units"
+        not in html[
+            html.find('data-testid="qty-basis-rules-table"') : html.find(
+                "</table>", html.find('data-testid="qty-basis-rules-table"')
+            )
+            + 8
+        ]
+    )
     assert 'data-testid="qty-prep-unit-basis-note"' in html
     assert "not manually edited in this slice" in html
     assert "Available indexed measures:" in html

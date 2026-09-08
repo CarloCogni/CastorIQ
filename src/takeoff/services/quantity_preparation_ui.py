@@ -16,6 +16,8 @@ import logging
 from collections.abc import Mapping
 from typing import Any
 
+from takeoff.services.quantity_unit_display import attach_unit_basis_display
+
 logger = logging.getLogger(__name__)
 
 MAX_PREP_ROWS = 50
@@ -740,23 +742,23 @@ def user_defined_measurement_rules(
                 "recommendation of measurement method."
             )
             status = "Basis selected"
-        rules.append(
-            {
-                "model_group": group,
-                "quantity_source": "Unresolved" if unresolved else label,
-                "quantity_basis": "Unresolved" if unresolved else label,
-                "unit_basis": unit_basis_for(label),
-                "note": note,
-                "status": status,
-                "needs_basis_action": unresolved,
-                "available_indexed_measures": available_sorted,
-                "available_measures_label": (
-                    " / ".join(available_sorted) if available_sorted else "None indexed"
-                ),
-                "basis_options": _basis_option_entries(available=available),
-                "param_name": f"{BASIS_QUERY_PREFIX}{group}",
-            }
-        )
+        rule = {
+            "model_group": group,
+            "quantity_source": "Unresolved" if unresolved else label,
+            "quantity_basis": "Unresolved" if unresolved else label,
+            "unit_basis": unit_basis_for(label),
+            "note": note,
+            "status": status,
+            "needs_basis_action": unresolved,
+            "available_indexed_measures": available_sorted,
+            "available_measures_label": (
+                " / ".join(available_sorted) if available_sorted else "None indexed"
+            ),
+            "basis_options": _basis_option_entries(available=available),
+            "param_name": f"{BASIS_QUERY_PREFIX}{group}",
+        }
+        attach_unit_basis_display(rule)
+        rules.append(rule)
     return rules
 
 
@@ -866,6 +868,7 @@ def build_prep_rows(
         row["eligible_for_handoff"] = row["handoff_status"] == "Eligible for Modify handoff"
         # Back-compat alias used by earlier Slice 2a/2b tests and register keys.
         row["ready_for_handoff"] = row["eligible_for_handoff"]
+        attach_unit_basis_display(row)
         rows_out.append(row)
     return rows_out
 
@@ -1199,12 +1202,13 @@ def build_preparation_ui(
         ),
         "unit_basis_derivation_note": (
             "Unit Basis is derived from the selected Quantity Basis: "
-            "NetVolume → model volume units; "
-            "NetArea → model area units; "
-            "Length → model length units; "
+            "NetVolume → Unit not resolved until model units are confirmed; "
+            "NetArea → Area unit unresolved; "
+            "Length → Length unit unresolved; "
             "Count → count; "
             "Unresolved → —. "
-            "Unit Basis is not manually edited in this slice. No SI normalization."
+            "Unit Basis is not manually edited in this slice. Confirmed SI labels "
+            "appear only when project/model unit context is known."
         ),
         "user_selected_basis_note": (
             "Selecting a Quantity Basis is a user choice for the current configuration. "

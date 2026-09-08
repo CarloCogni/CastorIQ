@@ -3,8 +3,11 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 from django.urls import reverse
+from django.utils import timezone
 
 from environments.tests.factories import ProjectFactory
 from fived.models import FiveDDataModel, FiveDModelRow, FiveDModelVersion
@@ -66,7 +69,10 @@ def test_quantities_shows_empty_state_without_fived_version(client):
     assert "freeze a snapshot" in entry
     assert 'data-testid="qty-schema-insight-why-snapshot"' in entry
     assert "View schema-based quantity rollups" not in entry
-    assert "Review schema-based quantity rollups" in entry
+    assert "Review IFC quantities grouped by the latest frozen 5D snapshot." in entry
+    assert "5D Quantity Review" in entry
+    assert "Open latest 5D Review" in entry
+    assert "Schema Insight" not in entry
     assert "Read-only" in entry
     assert "Snapshot-based" in entry
     assert "Not BOQ" not in entry
@@ -91,6 +97,13 @@ def test_quantities_links_to_latest_schema_insight_when_version_exists(client):
         data_model=older.data_model,
         version_label="v2",
     )
+    # Avoid same-second created_at ties when ordering by -created_at.
+    FiveDModelVersion.objects.filter(pk=older.pk).update(
+        created_at=timezone.now() - timedelta(minutes=5)
+    )
+    FiveDModelVersion.objects.filter(pk=newer.pk).update(created_at=timezone.now())
+    newer.refresh_from_db()
+    older.refresh_from_db()
     expected = reverse(
         "fived:schema_quantity_insight_report",
         kwargs={"pk": project.pk, "version_id": newer.pk},
@@ -105,7 +118,7 @@ def test_quantities_links_to_latest_schema_insight_when_version_exists(client):
     html = resp.content.decode("utf-8")
     entry = _entry_html(html)
     assert 'data-testid="qty-schema-insight-open"' in entry
-    assert "Open latest Schema Insight" in entry
+    assert "Open latest 5D Review" in entry
     assert expected in entry
     assert wrong not in entry
     assert 'data-testid="qty-schema-insight-empty"' not in entry
@@ -115,7 +128,8 @@ def test_quantities_links_to_latest_schema_insight_when_version_exists(client):
     assert 'data-testid="qty-schema-insight-why-snapshot"' in entry
     assert "Read-only" in entry
     assert "Snapshot-based" in entry
-    assert "Review schema-based quantity rollups" in entry
+    assert "Review IFC quantities grouped by the latest frozen 5D snapshot." in entry
+    assert "Schema Insight" not in entry
     assert "Not BOQ" not in entry
     assert "Not cost estimate" not in entry
     assert FiveDModelVersion.objects.filter(data_model__project=project).count() == 2

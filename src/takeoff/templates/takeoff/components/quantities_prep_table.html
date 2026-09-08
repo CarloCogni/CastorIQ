@@ -107,8 +107,9 @@
               <span class="qty-pill qty-pill-unresolved">Unresolved</span>
               {% endif %}
             </td>
-            <td class="qty-sticky qty-sticky-4 text-secondary">
-              {% if row.unit_basis %}{{ row.unit_basis }}{% else %}—{% endif %}
+            <td class="qty-sticky qty-sticky-4 text-secondary"
+                data-testid="qty-prep-unit-cell">
+              {% if row.unit_basis_display %}{{ row.unit_basis_display }}{% else %}—{% endif %}
             </td>
             <td class="text-end qty-col-total qty-sticky qty-sticky-5"
                 data-testid="qty-prep-total-cell">
