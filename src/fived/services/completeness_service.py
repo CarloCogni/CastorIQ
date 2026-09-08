@@ -41,10 +41,12 @@ _NON_CLAIMS: dict[str, bool] = {
     "not_modify_proposal": True,
     "not_approval": True,
     "manual_session_is_weak_provenance": True,
+    "schema_session_is_not_approved": True,
     "missing_counts_are_preparation_gaps": True,
 }
 
 _PROVENANCE_BUCKETS = (
+    "manual_session_schema_node",
     "manual_session",
     "manual_field",
     "not_mapped",
@@ -155,6 +157,8 @@ def _slot_origin_intent(row: FiveDModelRow, slot: str) -> tuple[str, str]:
 def _provenance_bucket(origin: str, intent: str) -> str:
     o = (origin or "").strip().lower()
     i = (intent or "").strip().lower()
+    if o == "manual_session_schema_node":
+        return "manual_session_schema_node"
     if o == "manual_session" or i == "manual_session":
         return "manual_session"
     if o == "manual_field" or i == "manual_field":
@@ -171,6 +175,7 @@ def _provenance_bucket(origin: str, intent: str) -> str:
 
 
 def _is_weak(origin: str, intent: str) -> bool:
+    """Free-text / intent-only session values are weak; schema-node is stronger."""
     bucket = _provenance_bucket(origin, intent)
     return bucket in {"manual_session", "manual_field"}
 

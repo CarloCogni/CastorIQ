@@ -20,7 +20,10 @@ from typing import Any
 
 from takeoff.services.quantity_prep_row_mapping import (
     MAPPING_FIELD_KEYS,
+    ORIGIN_MANUAL_SESSION,
+    ORIGIN_MANUAL_SESSION_SCHEMA_NODE,
     field_is_eligible,
+    normalize_mapping_field_value,
     sanitize_mapping_value,
 )
 from takeoff.services.quantity_prep_row_review import sanitize_note
@@ -53,7 +56,8 @@ _BOUNDARY_LINES: tuple[str, ...] = (
     "Manual mapping values and row reviews are session-only.",
     "Configuration drafts save settings only — not generated rows,",
     "row reviews, or manual mapping values.",
-    "Package / BOQ Mapping is a schema field name, not BOQ output.",
+    "Package Mapping is a schema field name, not BOQ output.",
+    "Schema-backed session mapping metadata is optional and not approved.",
     "Quantities are IFC-reported model units as indexed,",
     "not SI-normalized claims.",
     "",
@@ -77,6 +81,41 @@ _MISSING_ATTR: dict[str, str] = {
     "classification_code": "missing_classification",
     "package_boq_mapping": "missing_package",
     "work_package": "missing_work_package",
+}
+
+# Overlay origin attrs (package uses package_mapping_*; work uses work_package_mapping_*).
+_ROW_ORIGIN_ATTR: dict[str, str] = {
+    "classification_code": "classification_mapping_origin",
+    "package_boq_mapping": "package_mapping_origin",
+    "work_package": "work_package_mapping_origin",
+}
+
+_ROW_SCHEMA_BACKED_ATTR: dict[str, str] = {
+    "classification_code": "classification_is_schema_backed",
+    "package_boq_mapping": "package_mapping_is_schema_backed",
+    "work_package": "work_package_is_schema_backed",
+}
+
+# Optional additive export metadata keys → overlay row attributes.
+_SCHEMA_META_EXPORT: dict[str, tuple[tuple[str, str], ...]] = {
+    "classification_code": (
+        ("classification_schema_id", "classification_schema_id"),
+        ("classification_schema_key", "classification_schema_key"),
+        ("classification_node_id", "classification_node_id"),
+        ("classification_label", "classification_label"),
+    ),
+    "package_boq_mapping": (
+        ("package_mapping_schema_id", "package_mapping_schema_id"),
+        ("package_mapping_schema_key", "package_mapping_schema_key"),
+        ("package_mapping_node_id", "package_mapping_node_id"),
+        ("package_mapping_label", "package_mapping_label"),
+    ),
+    "work_package": (
+        ("work_package_schema_id", "work_package_schema_id"),
+        ("work_package_schema_key", "work_package_schema_key"),
+        ("work_package_node_id", "work_package_node_id"),
+        ("work_package_label", "work_package_label"),
+    ),
 }
 
 
@@ -123,8 +162,13 @@ def mapping_field_origin(
     included: bool,
     source_intent: str,
     value: str,
+    session_origin: str = "",
 ) -> str:
-    """Return provenance token for a mapping field."""
+    """Return provenance token for a mapping field.
+
+    When ``session_origin`` is ``manual_session_schema_node`` and the field is a
+    filled manual_field value, prefer that over free-text ``manual_session``.
+    """
     if not included:
         return "not_applicable"
     if source_intent == "not_mapped":
@@ -132,39 +176,37 @@ def mapping_field_origin(
     if source_intent == "future_modify_handoff":
         return "deferred_modify"
     if source_intent == "manual_field":
-        return "manual_session" if value else "empty"
+        if not value:
+            return "empty"
+        origin = (session_origin or "").strip()
+        if origin == ORIGIN_MANUAL_SESSION_SCHEMA_NODE:
+            return ORIGIN_MANUAL_SESSION_SCHEMA_NODE
+        if origin == ORIGIN_MANUAL_SESSION:
+            return ORIGIN_MANUAL_SESSION
+        return ORIGIN_MANUAL_SESSION
     return "not_applicable"
 
 
-def _prep_config_ref(loaded_config: Any) -> dict[str, str] | None:
-    if loaded_config is None:
-        return None
-    if isinstance(loaded_config, Mapping):
-        cfg_id = str(loaded_config.get("id") or loaded_config.get("pk") or "").strip()
-        name = str(loaded_config.get("name") or "").strip()
-        if cfg_id or name:
-            return {"id": cfg_id, "name": name}
-        return None
-    cfg_id = str(getattr(loaded_config, "pk", "") or getattr(loaded_config, "id", "") or "")
-    name = str(getattr(loaded_config, "name", "") or "")
-    if not cfg_id and not name:
-        return None
-    return {"id": cfg_id, "name": name}
+def session_origin_from_prep_row(row: Mapping[str, Any], field: str) -> str:
+    """Resolve overlay session origin for a Quantities mapping field."""
+    origin_attr = _ROW_ORIGIN_ATTR.get(field)
+    backed_attr = _ROW_SCHEMA_BACKED_ATTR.get(field)
+    if not origin_attr:
+        return ""
+    origin = str(row.get(origin_attr) or "").strip()
+    if origin:
+        return origin
+    if backed_attr and row.get(backed_attr):
+        return ORIGIN_MANUAL_SESSION_SCHEMA_NODE
+    return ""
 
 
-def _filter_session_annotations(
-    annotations: Mapping[str, Mapping[str, Any]],
-    known_keys: set[str],
-) -> dict[str, dict[str, Any]]:
-    out: dict[str, dict[str, Any]] = {}
-    for key, value in annotations.items():
-        key_s = str(key or "").strip()
-        if key_s not in known_keys:
-            continue
-        if not isinstance(value, Mapping):
-            continue
-        out[key_s] = {str(k): v for k, v in value.items()}
-    return out
+def _append_schema_meta(out: dict[str, Any], row: Mapping[str, Any], field: str) -> None:
+    """Copy optional schema metadata onto the export row when present."""
+    for export_key, row_attr in _SCHEMA_META_EXPORT.get(field) or ():
+        val = str(row.get(row_attr) or "").strip()
+        if val:
+            out[export_key] = val
 
 
 def serialize_export_row(row: Mapping[str, Any], *, show: Mapping[str, bool]) -> dict[str, Any]:
@@ -206,12 +248,48 @@ def serialize_export_row(row: Mapping[str, Any], *, show: Mapping[str, bool]) ->
         out[f"{field}_source_intent"] = source
         out[f"{field}_hint"] = str(row.get(_HINT_ATTR[field]) or "")
         out[f"{field}_origin"] = mapping_field_origin(
-            included=True, source_intent=source, value=value
+            included=True,
+            source_intent=source,
+            value=value,
+            session_origin=session_origin_from_prep_row(row, field) if eligible else "",
         )
         out[f"missing_{field}"] = bool(row.get(_MISSING_ATTR[field]))
+        if eligible and value:
+            _append_schema_meta(out, row, field)
 
     out["manual_mapping_applied"] = bool(row.get("manual_mapping"))
     out["manual_mapping_fields"] = list(row.get("manual_mapping_fields") or [])
+    return out
+
+
+def _prep_config_ref(loaded_config: Any) -> dict[str, str] | None:
+    if loaded_config is None:
+        return None
+    if isinstance(loaded_config, Mapping):
+        cfg_id = str(loaded_config.get("id") or loaded_config.get("pk") or "").strip()
+        name = str(loaded_config.get("name") or "").strip()
+        if cfg_id or name:
+            return {"id": cfg_id, "name": name}
+        return None
+    cfg_id = str(getattr(loaded_config, "pk", "") or getattr(loaded_config, "id", "") or "")
+    name = str(getattr(loaded_config, "name", "") or "")
+    if not cfg_id and not name:
+        return None
+    return {"id": cfg_id, "name": name}
+
+
+def _filter_session_annotations(
+    annotations: Mapping[str, Mapping[str, Any]],
+    known_keys: set[str],
+) -> dict[str, dict[str, Any]]:
+    out: dict[str, dict[str, Any]] = {}
+    for key, value in annotations.items():
+        key_s = str(key or "").strip()
+        if key_s not in known_keys:
+            continue
+        if not isinstance(value, Mapping):
+            continue
+        out[key_s] = {str(k): v for k, v in value.items()}
     return out
 
 
@@ -249,7 +327,8 @@ def build_export_document(
                 source_intent=str(intents.get(field) or ""),
             ):
                 continue
-            val = sanitize_mapping_value(fields.get(field))
+            norm = normalize_mapping_field_value(fields.get(field))
+            val = sanitize_mapping_value(norm.get("value"))
             if val:
                 cleaned[field] = val
         if cleaned:

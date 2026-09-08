@@ -326,8 +326,10 @@ def test_c3b_boundaries_no_assignment_or_writeback_models():
     export_src = (root / "takeoff" / "services" / "quantity_prep_export.py").read_text(
         encoding="utf-8"
     )
-    assert "manual_session_schema_node" not in export_src
+    # Contract remains v1; C3c may add schema-node origin (additive).
     assert "qty-prep-export-v1" in export_src or "CONTRACT_VERSION" in export_src
+    assert "QTOExportView" not in export_src
+    assert "ClassificationAssignment" not in export_src
 
     # Seed creates nodes only — C3b path does not create assignment-like models.
     project = ProjectFactory()

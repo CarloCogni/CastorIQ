@@ -22,7 +22,10 @@ from fived.models import (
     FiveDModelRow,
     FiveDModelVersion,
 )
-from takeoff.services.quantity_prep_export import mapping_field_origin
+from takeoff.services.quantity_prep_export import (
+    mapping_field_origin,
+    session_origin_from_prep_row,
+)
 from takeoff.services.quantity_prep_runtime import build_qty_prep_session_ui
 
 logger = logging.getLogger(__name__)
@@ -45,7 +48,34 @@ BOUNDARY_SNAPSHOT_F2: dict[str, Any] = {
     "no_unit_costs": True,
     "session_annotations_weak_provenance": True,
     "package_mapping_is_schema_field_copy_only": True,
+    "schema_session_is_not_approved": True,
 }
+
+
+def _mapping_slot_meta(
+    raw: Mapping[str, Any],
+    *,
+    code: str,
+    origin: str,
+    label_key: str,
+    schema_id_key: str,
+    schema_key_key: str,
+    node_id_key: str,
+) -> dict[str, str] | None:
+    """Build optional quantity_provenance.mapping slot dict when a value exists."""
+    if not str(code or "").strip():
+        return None
+    meta: dict[str, str] = {"origin": str(origin or "")}
+    for out_key, row_key in (
+        ("schema_id", schema_id_key),
+        ("schema_key", schema_key_key),
+        ("node_id", node_id_key),
+        ("label", label_key),
+    ):
+        val = str(raw.get(row_key) or "").strip()
+        if val:
+            meta[out_key] = val
+    return meta
 
 
 def _query_as_dict(query: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -197,8 +227,9 @@ class FiveDPrepSnapshotService:
             "row_reviews": reviews,
             "manual_mappings": mappings,
             "provenance_note": (
-                "Manual session mapping values are weak provenance only — "
-                "not official classification authority."
+                "Manual session mapping values (free-text or schema-node) are "
+                "preparation provenance only — not official classification authority "
+                "and not approved/certified."
             ),
         }
         unresolved = _unresolved_register_export(
@@ -305,6 +336,67 @@ class FiveDPrepSnapshotService:
         package_val = str(raw.get("package_boq_mapping") or "")
         work_val = str(raw.get("work_package") or "")
 
+        class_origin = mapping_field_origin(
+            included=True,
+            source_intent=class_intent,
+            value=class_val,
+            session_origin=session_origin_from_prep_row(raw, "classification_code"),
+        )
+        package_origin = mapping_field_origin(
+            included=True,
+            source_intent=package_intent,
+            value=package_val,
+            session_origin=session_origin_from_prep_row(raw, "package_boq_mapping"),
+        )
+        work_origin = mapping_field_origin(
+            included=True,
+            source_intent=work_intent,
+            value=work_val,
+            session_origin=session_origin_from_prep_row(raw, "work_package"),
+        )
+
+        mapping_prov: dict[str, Any] = {}
+        class_meta = _mapping_slot_meta(
+            raw,
+            code=class_val,
+            origin=class_origin,
+            label_key="classification_label",
+            schema_id_key="classification_schema_id",
+            schema_key_key="classification_schema_key",
+            node_id_key="classification_node_id",
+        )
+        if class_meta:
+            mapping_prov["classification"] = class_meta
+        pkg_meta = _mapping_slot_meta(
+            raw,
+            code=package_val,
+            origin=package_origin,
+            label_key="package_mapping_label",
+            schema_id_key="package_mapping_schema_id",
+            schema_key_key="package_mapping_schema_key",
+            node_id_key="package_mapping_node_id",
+        )
+        if pkg_meta:
+            mapping_prov["package_mapping"] = pkg_meta
+        wp_meta = _mapping_slot_meta(
+            raw,
+            code=work_val,
+            origin=work_origin,
+            label_key="work_package_label",
+            schema_id_key="work_package_schema_id",
+            schema_key_key="work_package_schema_key",
+            node_id_key="work_package_node_id",
+        )
+        if wp_meta:
+            mapping_prov["work_package"] = wp_meta
+
+        quantity_provenance: dict[str, Any] = {
+            "basis_unresolved": bool(raw.get("basis_unresolved")),
+            "missing_quantity_source": bool(raw.get("missing_quantity_source")),
+        }
+        if mapping_prov:
+            quantity_provenance["mapping"] = mapping_prov
+
         return {
             "source_row_key": str(raw.get("row_key") or ""),
             "model_group": str(raw.get("model_group") or ""),
@@ -315,28 +407,19 @@ class FiveDPrepSnapshotService:
             "unit_basis": str(raw.get("unit_basis") or ""),
             "total_quantity": _normalize_total(raw.get("total")),
             "total_quantity_display": str(raw.get("total_display") or ""),
-            "quantity_provenance": {
-                "basis_unresolved": bool(raw.get("basis_unresolved")),
-                "missing_quantity_source": bool(raw.get("missing_quantity_source")),
-            },
+            "quantity_provenance": quantity_provenance,
             "basis_unresolved": bool(raw.get("basis_unresolved")),
             "missing_quantity_source": bool(raw.get("missing_quantity_source")),
             "classification_code": class_val,
-            "classification_origin": mapping_field_origin(
-                included=True, source_intent=class_intent, value=class_val
-            ),
+            "classification_origin": class_origin,
             "classification_source_intent": class_intent,
             "missing_classification": bool(raw.get("missing_classification")),
             "package_mapping": package_val,
-            "package_mapping_origin": mapping_field_origin(
-                included=True, source_intent=package_intent, value=package_val
-            ),
+            "package_mapping_origin": package_origin,
             "package_mapping_source_intent": package_intent,
             "missing_package_mapping": bool(raw.get("missing_package")),
             "work_package": work_val,
-            "work_package_origin": mapping_field_origin(
-                included=True, source_intent=work_intent, value=work_val
-            ),
+            "work_package_origin": work_origin,
             "work_package_source_intent": work_intent,
             "missing_work_package": bool(raw.get("missing_work_package")),
             "manual_mapping_applied": bool(raw.get("manual_mapping")),
