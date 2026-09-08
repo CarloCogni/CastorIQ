@@ -228,7 +228,9 @@ def test_quantities_page_sections_and_honesty(client):
     ):
         assert phrase not in cleaned, phrase
 
-    assert len(response.content) < 200_000
+    # Quantities grew intentionally with prep builder + schema mapping + 5D Review entry.
+    # Keep a hard ceiling against accidental payload dumps, but do not punish approved UX.
+    assert len(response.content) < 300_000
 
 
 @pytest.mark.django_db

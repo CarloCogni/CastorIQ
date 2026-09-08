@@ -149,4 +149,6 @@ def test_slice2b_page_section_order_and_honesty(client):
     assert 'data-testid="qty-generate-prep-model"' in html
     assert "Generate Preparation Data Model" in html
     assert "not editable in this slice" not in html
+    assert "Quantity and mapping cells are review-only here" in html
+    assert "Use Review row to adjust session mapping" in html
     assert 'data-qty-basis-unresolved="1"' in html
