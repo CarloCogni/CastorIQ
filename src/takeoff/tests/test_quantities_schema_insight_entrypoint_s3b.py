@@ -139,10 +139,9 @@ def test_entrypoint_follow_through_opens_s3_report(client):
     report = client.get(url)
     assert report.status_code == 200
     body = report.content.decode("utf-8")
-    assert "5D Schema Quantity Insight" in body
-    assert "fived-schema-quantity-insight-s2-v1" in body
+    assert "5D Quantity Review" in body
     assert "This report is not" not in body
-    assert "not_boq" not in body
+    assert "not_boq" not in body.split('data-testid="s3g-advanced-details"', 1)[0]
     assert "Read-only" in body
     assert "Snapshot-based" in body
 

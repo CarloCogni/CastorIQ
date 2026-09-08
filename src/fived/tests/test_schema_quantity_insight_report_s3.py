@@ -1,5 +1,5 @@
 # fived/tests/test_schema_quantity_insight_report_s3.py
-"""5D-S3/S3d/S3e/S3f schema quantity insight report page tests."""
+"""5D Quantity Review report page tests (S3–S3g)."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from django.urls import reverse
 from fived.models import FiveDDataModel, FiveDModelRow, FiveDModelVersion
 from fived.services.schema_insight_screen_presentation import (
     build_schema_insight_screen_summary,
+    resolve_unit_display,
 )
 from fived.tests.factories import (
     FiveDModelRowFactory,
@@ -47,6 +48,18 @@ RAW_NON_CLAIM_FLAGS = (
     "mixed_bases_are_not_coerced",
 )
 
+MAIN_FORBIDDEN_STRINGS = (
+    "model volume units",
+    "blank basis",
+    "blank unit",
+    "manual_session_schema_node",
+    "manual_field",
+    "fived-schema-quantity-insight-s2-v1",
+    "This report is not",
+    "BOQ-ready",
+    "schedule cost loading",
+)
+
 
 def _url(project_id, version_id) -> str:
     return reverse(
@@ -55,17 +68,19 @@ def _url(project_id, version_id) -> str:
     )
 
 
-def _main_without_help(html: str) -> str:
-    """Strip help modal body so main-page assertions ignore modal copy."""
-    start = html.find('id="schemaQuantityInsightHelpModal"')
-    if start < 0:
+def _main_without_advanced(html: str) -> str:
+    """Strip Advanced details + help modal from main-page assertions."""
+    cut = html.find('data-testid="s3g-advanced-details"')
+    if cut < 0:
+        cut = html.find('id="schemaQuantityInsightHelpModal"')
+    if cut < 0:
         return html
-    return html[:start]
+    return html[:cut]
 
 
 @pytest.mark.django_db
 def test_report_route_200_with_title_contract_and_sections(client):
-    """Product screen: summary cards, friendly rollups, no defensive block."""
+    """v4 dashboard: summary, tabs, attention panel, no technical dump on main."""
     version = FiveDModelVersionFactory(
         settings_snapshot={
             "schema_includes": {
@@ -87,7 +102,7 @@ def test_report_route_200_with_title_contract_and_sections(client):
         missing_work_package=True,
         total_quantity=2.5,
         quantity_basis="NetVolume",
-        unit_basis="m3",
+        unit_basis="model volume units",
         quantity_source="Qto_WallBaseQuantities",
         quantity_provenance={
             "mapping": {
@@ -95,7 +110,7 @@ def test_report_route_200_with_title_contract_and_sections(client):
                     "origin": ORIGIN_MANUAL_SESSION_SCHEMA_NODE,
                     "node_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
                     "schema_key": "nbkch-demo-elements",
-                    "label": "Demo Wall",
+                    "label": "Wall elements",
                 },
                 "package_mapping": {
                     "origin": ORIGIN_MANUAL_SESSION_SCHEMA_NODE,
@@ -126,101 +141,150 @@ def test_report_route_200_with_title_contract_and_sections(client):
     resp = client.get(_url(project.pk, version.pk))
     assert resp.status_code == 200
     html = resp.content.decode("utf-8")
-    main = _main_without_help(html)
+    main = _main_without_advanced(html)
 
-    assert "5D Schema Quantity Insight" in main
-    assert "fived-schema-quantity-insight-s2-v1" in main
-    assert "Read-only" in main
-    assert "Snapshot-based" in main
-    assert 'data-testid="s3-product-badges"' in main
-
+    assert "5D Quantity Review" in main
+    assert 'data-testid="s3-report-title"' in main
     assert "Schema insight summary" in main
     assert 'data-testid="s3-insight-summary"' in main
-    assert 'data-testid="s3-summary-total-rows"' in main
-    assert 'data-testid="s3-summary-mapped-classification"' in main
-    assert 'data-testid="s3-summary-unmapped-rows"' in main
-    assert 'data-testid="s3-summary-basis-gaps"' in main
-    assert 'data-testid="s3-schema-insight-scroll-root"' in html
-    assert "Mapped" in main
-    assert "Unmapped" in main
-    assert "Needs review" in main or "rows need mapping" in main
-    assert "Quantity basis gaps" in main
-    assert 'data-testid="s3-plain-language"' in main
-    assert "IFC-derived quantity rows" in main
-
+    assert 'data-testid="s3-summary-schema-coverage"' in main
+    assert 'data-testid="s3-summary-quantity-readiness"' in main
+    assert 'data-testid="s3-summary-mapped-netvolume"' in main
+    assert "Mapped NetVolume" in main
+    assert 'data-testid="s3-summary-recommended-action"' in main
+    assert 'data-testid="s3-coverage-bar"' in main
+    assert 'data-testid="s3g-rollup-tabs"' in main
+    assert 'data-testid="s3g-tab-classification"' in main
+    assert 'data-testid="s3g-tab-package"' in main
+    assert 'data-testid="s3g-tab-work-package"' in main
+    assert 'aria-selected="true"' in main
     assert 'data-testid="s3-classification-rollup"' in main
-    assert 'data-testid="s3-package-rollup"' in main
-    assert 'data-testid="s3-work-package-rollup"' in main
     assert "Classification rollup" in main
-    assert "Package rollup" in main
-    assert "Work package rollup" in main
-    assert 'data-testid="s3-classification-rollup-scroll"' in main
-    assert 'data-testid="s3-classification-rollup-list"' in main
-    assert "s3-rollup-scroll" in main
-    assert 'data-testid="s3-gaps-summary"' in main
-    assert "Gaps" in main
-    assert "Basis" in main
-    assert 'data-testid="s3-basis-unit-buckets"' in main
-    assert 'data-testid="s3-issue-sample"' in main
-    assert "Issue sample" in main
-    assert 'data-testid="s3-user-value"' in main
-    assert 'data-testid="s3-external-input-note"' in main
-    assert 'data-testid="s3-help-pill"' in main
-    assert "EL-DEMO-WALL" in main or "Demo Wall" in main
-    assert "Details" in main
+    assert "Package rollup" in html  # present in inactive tab pane
+    assert "Work package rollup" in html
+    assert "Wall elements" in main
+    assert "EL-DEMO-WALL" in main
+    assert main.find("Wall elements") < main.find("EL-DEMO-WALL")
+    assert "Unit not resolved" in main
+    assert "Mapped" in main
+    assert 'data-testid="s3g-attention-panel"' in main
+    assert "What needs attention" in main
+    assert 'data-testid="s3g-later-inputs"' in main
+    assert "Later inputs" in main
+    assert 'data-testid="s3g-advanced-details"' in html
+    assert "Advanced details" in html
+    assert 'data-testid="s3-schema-insight-scroll-root"' in html
+    assert "Snapshot-based" in main
+    assert "Read-only" in main
 
-    assert "This report is not" not in main
-    assert 'data-testid="s3-non-claims"' not in html
-    assert "Not BOQ" not in main
-    assert "Not cost estimate" not in main
-    assert "No rate calculation" not in main
+    for bad in MAIN_FORBIDDEN_STRINGS:
+        assert bad not in main
     for flag in RAW_NON_CLAIM_FLAGS:
         assert flag not in main
-
-    assert 'data-testid="s3-help-boundary-note"' in html
-    for flag in RAW_NON_CLAIM_FLAGS:
-        assert flag not in html
-
-    lower = main.lower()
     for term in FORBIDDEN_TERMS:
-        assert term not in lower
+        assert term not in main.lower()
+    assert "EVM" not in main
+
+    # Contract id only in Advanced details, not main chrome.
+    assert "fived-schema-quantity-insight-s2-v1" in html
+    assert 'data-testid="s3-contract-version"' in html
+    assert 'data-testid="s3-help-boundary-note"' in html
 
 
 def test_screen_summary_uses_payload_values_only():
-    """Summary cards derive mapped/unmapped counts from insight payload."""
+    """Summary cards derive coverage/readiness/NetVolume from insight payload."""
     insight = {
         "row_count": 50,
         "quantity_totals_by_classification": [
-            {"is_unmapped": False, "row_count": 1, "code": "A"},
-            {"is_unmapped": False, "row_count": 1, "code": "B"},
-            {"is_unmapped": False, "row_count": 1, "code": "C"},
-            {"is_unmapped": True, "row_count": 47, "code": ""},
+            {
+                "is_unmapped": False,
+                "row_count": 1,
+                "code": "EL-DEMO-WALL",
+                "quantity_buckets": [
+                    {
+                        "quantity_basis": "NetVolume",
+                        "unit_basis": "model volume units",
+                        "total_sum": 3409.55,
+                        "row_count": 1,
+                    }
+                ],
+            },
+            {
+                "is_unmapped": False,
+                "row_count": 1,
+                "code": "EL-DEMO-BEAM",
+                "quantity_buckets": [
+                    {
+                        "quantity_basis": "NetVolume",
+                        "unit_basis": "model volume units",
+                        "total_sum": 960.29,
+                        "row_count": 1,
+                    }
+                ],
+            },
+            {
+                "is_unmapped": False,
+                "row_count": 1,
+                "code": "EL-DEMO-COLUMN",
+                "quantity_buckets": [
+                    {
+                        "quantity_basis": "NetVolume",
+                        "unit_basis": "model volume units",
+                        "total_sum": 10.57,
+                        "row_count": 1,
+                    }
+                ],
+            },
+            {"is_unmapped": True, "row_count": 47, "code": "", "quantity_buckets": []},
         ],
         "quantity_totals_by_package": [
-            {"is_unmapped": False, "row_count": 2},
-            {"is_unmapped": False, "row_count": 1},
-            {"is_unmapped": True, "row_count": 47},
+            {"is_unmapped": False, "row_count": 2, "quantity_buckets": []},
+            {"is_unmapped": False, "row_count": 1, "quantity_buckets": []},
+            {"is_unmapped": True, "row_count": 47, "quantity_buckets": []},
         ],
         "quantity_totals_by_work_package": [
-            {"is_unmapped": False, "row_count": 3},
-            {"is_unmapped": True, "row_count": 47},
+            {"is_unmapped": False, "row_count": 3, "quantity_buckets": []},
+            {"is_unmapped": True, "row_count": 47, "quantity_buckets": []},
         ],
         "unmapped_counts": {"classification": 47, "package_mapping": 47, "work_package": 47},
-        "quantity_basis_gap_counts": {
-            "basis_unresolved_or_blank": 10,
-            "missing_quantity_source": 5,
-            "non_numeric_total": 2,
-        },
+        "basis_unit_buckets": [
+            {
+                "quantity_basis": "",
+                "unit_basis": "",
+                "row_count": 11,
+                "total_sum": 0,
+                "non_numeric_count": 11,
+            },
+            {
+                "quantity_basis": "NetVolume",
+                "unit_basis": "model volume units",
+                "row_count": 39,
+                "total_sum": 9846.38,
+                "non_numeric_count": 0,
+            },
+        ],
+        "quantity_basis_gap_counts": {"basis_unresolved_or_blank": 11},
     }
     summary = build_schema_insight_screen_summary(insight)
     assert summary["total_rows"] == 50
-    assert summary["mapped_classification_groups"] == 3
     assert summary["mapped_classification_rows"] == 3
     assert summary["unmapped_classification_rows"] == 47
-    assert summary["quantity_basis_source_gaps"] == 17
+    assert summary["usable_quantity_rows"] == 39
+    assert summary["need_basis_source_rows"] == 11
+    assert summary["mapped_netvolume_display"] == "4,380.41"
+    assert summary["mapped_netvolume_unit_status"] == "Unit not resolved"
+    assert summary["recommended_action_value"] == "Map 47"
+    assert summary["coverage_percent"] == 6
+    assert summary["needs_mapping_percent"] == 94
     assert summary["package_groups"] == 2
     assert summary["work_package_groups"] == 1
-    assert "47 rows need mapping" in summary["unmapped_label"]
+
+
+def test_resolve_unit_display_hides_model_volume_units():
+    """Product unit label never surfaces model volume units."""
+    assert resolve_unit_display("model volume units")["label"] == "Unit not resolved"
+    assert resolve_unit_display("m3")["label"] == "m³"
+    assert resolve_unit_display("m³")["resolved"] is True
 
 
 @pytest.mark.django_db
