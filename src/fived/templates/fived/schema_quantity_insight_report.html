@@ -1,0 +1,243 @@
+{% extends "core/base.html" %}
+<!-- fived/schema_quantity_insight_report.html — 5D-S3 thin schema quantity insight report -->
+
+{% block title %}5D Schema Quantity Insight — {{ project.name }} — Castor{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3 px-3 px-lg-4" data-testid="s3-schema-insight-report">
+  <nav aria-label="breadcrumb" class="mb-2">
+    <ol class="breadcrumb small mb-0">
+      <li class="breadcrumb-item"><a href="{{ project_url }}">{{ project.name }}</a></li>
+      <li class="breadcrumb-item"><a href="{{ quantities_url }}">Quantities</a></li>
+      <li class="breadcrumb-item active" aria-current="page">Schema Quantity Insight</li>
+    </ol>
+  </nav>
+
+  <div class="d-flex align-items-start justify-content-between gap-3 flex-wrap mb-3">
+    <div>
+      <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+        <h1 class="h4 mb-0" data-testid="s3-report-title">5D Schema Quantity Insight</h1>
+        <button type="button"
+                class="help-pill"
+                data-bs-toggle="modal"
+                data-bs-target="#schemaQuantityInsightHelpModal"
+                title="How Schema Quantity Insight works"
+                aria-label="How Schema Quantity Insight works"
+                data-testid="s3-help-pill">
+          <i class="bi bi-question-circle"></i>
+        </button>
+      </div>
+      <p class="text-secondary small mb-2" data-testid="s3-report-subtitle">
+        Schema-driven IFC quantity insight from a frozen 5D snapshot.
+      </p>
+      <div class="d-flex flex-wrap gap-1" data-testid="s3-boundary-badges">
+        <span class="badge text-bg-secondary">Read-only</span>
+        <span class="badge text-bg-secondary">Not BOQ</span>
+        <span class="badge text-bg-secondary">Not cost estimate</span>
+        <span class="badge text-bg-secondary">No rate calculation</span>
+        <span class="badge text-bg-secondary">Snapshot-based</span>
+      </div>
+    </div>
+    <div class="text-end">
+      <a href="{{ quantities_url }}" class="btn btn-sm btn-outline-secondary" data-testid="s3-back-quantities">
+        Back to Quantities
+      </a>
+    </div>
+  </div>
+
+  <!-- 1. Snapshot summary -->
+  <section class="card border mb-3" data-testid="s3-snapshot-summary">
+    <div class="card-body py-3">
+      <h2 class="h6 mb-3">Snapshot summary</h2>
+      <div class="row g-2 small">
+        <div class="col-md-4"><span class="text-secondary">Project</span><div class="fw-semibold">{{ insight.project.name }}</div></div>
+        <div class="col-md-4"><span class="text-secondary">Data model</span><div class="fw-semibold">{{ insight.data_model.name }}</div></div>
+        <div class="col-md-4"><span class="text-secondary">Version</span><div class="fw-semibold">{{ insight.version.version_label }}</div></div>
+        <div class="col-md-4"><span class="text-secondary">Status / source</span><div>{{ insight.version.status }} / {{ insight.version.source }}</div></div>
+        <div class="col-md-4"><span class="text-secondary">Row count</span><div data-testid="s3-row-count">{{ insight.row_count }}</div></div>
+        <div class="col-md-4"><span class="text-secondary">Generated at</span><div>{{ insight.generated_at }}</div></div>
+        <div class="col-md-8"><span class="text-secondary">Contract</span>
+          <div class="font-monospace" data-testid="s3-contract-version">{{ insight.contract_version }}</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. Boundary / non-claims -->
+  <section class="alert alert-warning border mb-4" role="status" data-testid="s3-non-claims">
+    <div class="fw-semibold mb-1">This report is not</div>
+    <ul class="mb-0 small">
+      <li>BOQ</li>
+      <li>QS certified estimate</li>
+      <li>cost calculation</li>
+      <li>EVM</li>
+      <li>schedule cost loading</li>
+      <li>approval / writeback</li>
+    </ul>
+    {% if insight.non_claims %}
+    <div class="mt-2 small text-secondary" data-testid="s3-non-claims-flags">
+      Flags:
+      {% for key, val in insight.non_claims.items %}
+        {% if val %}<code class="me-1">{{ key }}</code>{% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
+  </section>
+
+  <!-- 3–5. Rollups -->
+  {% include "fived/components/schema_quantity_insight_rollup_table.html" with rollup_title="Classification rollup" rollup_testid="s3-classification-rollup" groups=insight.quantity_totals_by_classification %}
+  {% include "fived/components/schema_quantity_insight_rollup_table.html" with rollup_title="Package rollup" rollup_testid="s3-package-rollup" groups=insight.quantity_totals_by_package %}
+  {% include "fived/components/schema_quantity_insight_rollup_table.html" with rollup_title="Work package rollup" rollup_testid="s3-work-package-rollup" groups=insight.quantity_totals_by_work_package %}
+
+  <!-- 6. Gaps summary -->
+  <section class="mb-4" data-testid="s3-gaps-summary">
+    <h2 class="h6 mb-2">Gaps summary</h2>
+    <div class="row g-3">
+      <div class="col-md-6 col-lg-3">
+        <div class="border rounded p-3 h-100">
+          <div class="text-secondary small mb-2">Unmapped counts</div>
+          <ul class="small mb-0" data-testid="s3-unmapped-counts">
+            {% for k, v in insight.unmapped_counts.items %}
+            <li><code>{{ k }}</code>: {{ v }}</li>
+            {% empty %}
+            <li class="text-secondary">—</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+      <div class="col-md-6 col-lg-3">
+        <div class="border rounded p-3 h-100">
+          <div class="text-secondary small mb-2">Missing mapping counts</div>
+          <ul class="small mb-0" data-testid="s3-missing-mapping-counts">
+            {% for k, v in insight.missing_mapping_counts.items %}
+            <li><code>{{ k }}</code>: {{ v }}</li>
+            {% empty %}
+            <li class="text-secondary">—</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+      <div class="col-md-6 col-lg-3">
+        <div class="border rounded p-3 h-100">
+          <div class="text-secondary small mb-2">Quantity basis gaps</div>
+          <ul class="small mb-0" data-testid="s3-basis-gap-counts">
+            {% for k, v in insight.quantity_basis_gap_counts.items %}
+            <li><code>{{ k }}</code>: {{ v }}</li>
+            {% empty %}
+            <li class="text-secondary">—</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+      <div class="col-md-6 col-lg-3">
+        <div class="border rounded p-3 h-100">
+          <div class="text-secondary small mb-2">Provenance counts</div>
+          <ul class="small mb-0" data-testid="s3-provenance-counts">
+            {% for k, v in insight.provenance_counts.items %}
+            <li><code>{{ k }}</code>: {{ v }}</li>
+            {% empty %}
+            <li class="text-secondary">—</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7. Basis / unit / source buckets -->
+  <section class="mb-4" data-testid="s3-basis-unit-buckets">
+    <h2 class="h6 mb-2">Basis / unit / source buckets</h2>
+    <div class="table-responsive border rounded">
+      <table class="table table-sm mb-0 small">
+        <thead class="table-light">
+          <tr>
+            <th>Basis</th>
+            <th>Unit</th>
+            <th>Source</th>
+            <th class="text-end">Rows</th>
+            <th class="text-end">Total sum</th>
+            <th class="text-end">Non-numeric</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for b in insight.basis_unit_buckets %}
+          <tr>
+            <td>{{ b.quantity_basis|default:"(blank)" }}</td>
+            <td>{{ b.unit_basis|default:"(blank)" }}</td>
+            <td>{{ b.quantity_source|default:"(blank)" }}</td>
+            <td class="text-end">{{ b.row_count }}</td>
+            <td class="text-end">{{ b.total_sum }}</td>
+            <td class="text-end">{{ b.non_numeric_count }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="6" class="text-secondary">No buckets.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 8. Issue sample -->
+  <section class="mb-4" data-testid="s3-issue-sample">
+    <h2 class="h6 mb-2">Issue sample <span class="text-secondary fw-normal">(capped)</span></h2>
+    {% if insight.issue_sample %}
+    <div class="table-responsive border rounded">
+      <table class="table table-sm mb-0 small">
+        <thead class="table-light">
+          <tr>
+            <th>Row key</th>
+            <th>IFC class</th>
+            <th>Type</th>
+            <th>Issues</th>
+            <th>Mapping summary</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in insight.issue_sample %}
+          <tr>
+            <td class="font-monospace" style="max-width:14rem; word-break:break-all;">{{ row.source_row_key }}</td>
+            <td>{{ row.ifc_class }}</td>
+            <td>{{ row.type_name }}</td>
+            <td>
+              {% for issue in row.issues %}
+              <span class="badge text-bg-light border me-1">{{ issue }}</span>
+              {% endfor %}
+            </td>
+            <td class="text-secondary">
+              C={{ row.classification_code|default:"—" }} ·
+              P={{ row.package_mapping|default:"—" }} ·
+              W={{ row.work_package|default:"—" }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-secondary small mb-0">No issue rows in this sample.</p>
+    {% endif %}
+  </section>
+
+  <!-- 9. User value -->
+  <section class="border rounded p-3 mb-3 bg-body-tertiary" data-testid="s3-user-value">
+    <h2 class="h6 mb-2">How to use this report</h2>
+    <p class="small mb-0 text-secondary">
+      Use this report to see how IFC quantities are being interpreted through the project schema.
+      Mapped groups can be reviewed, unmapped rows show where setup is incomplete, and basis/source
+      gaps show what must be fixed before future cost/rate work.
+    </p>
+  </section>
+
+  <!-- 10. External input note -->
+  <section class="border rounded p-3 mb-4" data-testid="s3-external-input-note">
+    <h2 class="h6 mb-2">External inputs</h2>
+    <p class="small mb-0 text-secondary">
+      External classification/rate Excel and Ask-assisted document extraction are future workflows.
+      Today, external data does not automatically update this 5D schema. Mapping is still
+      manual/session-backed unless a reviewed import/assignment flow is added later.
+    </p>
+  </section>
+
+  {% include "fived/components/schema_quantity_insight_help_modal.html" %}
+</div>
+{% endblock %}

@@ -1,0 +1,63 @@
+<!-- Expects: rollup_title, rollup_testid, groups (list) -->
+<section class="mb-4" data-testid="{{ rollup_testid }}">
+  <h2 class="h6 mb-2">{{ rollup_title }}</h2>
+  {% if not groups %}
+  <p class="text-secondary small mb-0" data-testid="{{ rollup_testid }}-empty">No groups for this rollup.</p>
+  {% else %}
+  <div class="table-responsive border rounded">
+    <table class="table table-sm table-hover align-middle mb-0 small">
+      <thead class="table-light">
+        <tr>
+          <th scope="col">Code / label</th>
+          <th scope="col">Schema key</th>
+          <th scope="col">Origin</th>
+          <th scope="col" class="text-end">Rows</th>
+          <th scope="col">Quantity buckets</th>
+          <th scope="col">Unmapped</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for g in groups %}
+        <tr {% if g.is_unmapped %}class="table-warning"{% endif %}
+            data-testid="{{ rollup_testid }}-row"
+            data-group-key="{{ g.group_key }}">
+          <td>
+            <div class="fw-semibold">{{ g.code|default:"—" }}</div>
+            <div class="text-secondary">{{ g.label|default:"" }}</div>
+            <div class="text-muted font-monospace" style="font-size:0.7rem;">{{ g.group_key }}</div>
+          </td>
+          <td class="font-monospace">{{ g.schema_key|default:"—" }}</td>
+          <td>{{ g.origin_bucket|default:"—" }}</td>
+          <td class="text-end">{{ g.row_count }}</td>
+          <td>
+            {% if g.quantity_buckets %}
+            <ul class="list-unstyled mb-0">
+              {% for b in g.quantity_buckets %}
+              <li class="mb-1">
+                <span class="badge text-bg-secondary">{{ b.quantity_basis|default:"(blank basis)" }}</span>
+                <span class="badge text-bg-light border">{{ b.unit_basis|default:"(blank unit)" }}</span>
+                <span class="text-secondary">src={{ b.quantity_source|default:"—" }}</span>
+                · rows {{ b.row_count }}
+                · sum {{ b.total_sum }}
+                · non-numeric {{ b.non_numeric_count }}
+              </li>
+              {% endfor %}
+            </ul>
+            {% else %}
+            <span class="text-secondary">—</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if g.is_unmapped %}
+            <span class="badge text-bg-warning" data-testid="unmapped-marker">Unmapped</span>
+            {% else %}
+            <span class="text-secondary">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
