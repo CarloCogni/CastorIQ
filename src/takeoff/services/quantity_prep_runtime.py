@@ -12,6 +12,9 @@ import logging
 from collections.abc import Mapping, MutableMapping
 from typing import Any
 
+from classification.services.quantity_mapping_selectors import (
+    get_mapping_selector_options,
+)
 from takeoff.services.model_quantities import ModelQuantitiesService
 from takeoff.services.quantity_prep_config import (
     PREP_CONFIG_QUERY_PARAM,
@@ -97,6 +100,9 @@ def build_qty_prep_session_ui(
     mapping_svc = QuantityPrepRowMappingService(project, user, session)
     mapping_annotations = mapping_svc.get_annotations()
     apply_session_mapping_values_to_ui(qty_prep, mapping_annotations)
+
+    # C3a: selector packs for later drawer UI (not rendered yet).
+    qty_prep["mapping_selectors"] = get_mapping_selector_options(project)
 
     review_svc = QuantityPrepRowReviewService(project, user, session)
     review_annotations = review_svc.get_annotations()

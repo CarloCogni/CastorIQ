@@ -1,10 +1,14 @@
 # takeoff/services/quantity_prep_row_mapping.py
-"""Session-only manual preparation mapping values (Slice 5b).
+"""Session-only manual preparation mapping values (Slice 5b / C3a).
 
-Stores classification / package / work-package text only when the field is
+Stores classification / package / work-package values when the field is
 included and source intent is ``manual_field``. Never persists to DB or
 QuantityPreparationConfig. Does not edit quantities or create Modify proposals.
 Not BOQ, not approval/certification, not writeback.
+
+C3a: dual-supports legacy string annotations and structured schema-node dicts
+under the same contract ``qty-prep-row-mapping-v1``. Overlay still sets
+``row[field]`` to the display code string and attaches additive metadata.
 """
 
 from __future__ import annotations
@@ -32,6 +36,10 @@ CONTRACT_VERSION_V1 = "qty-prep-row-mapping-v1"
 SESSION_KEY_PREFIX = "qty_prep_row_mapping"
 VALUE_MAX_LENGTH = 120
 
+ORIGIN_MANUAL_SESSION = "manual_session"
+ORIGIN_MANUAL_SESSION_SCHEMA_NODE = "manual_session_schema_node"
+SOURCE_INTENT_MANUAL_FIELD = "manual_field"
+
 MAPPING_FIELD_KEYS: tuple[str, ...] = EDITABLE_SOURCE_MAPPING_KEYS
 
 MAPPING_FIELD_LABELS: dict[str, str] = {
@@ -52,6 +60,34 @@ _SOURCE_ATTR: dict[str, str] = {
     "work_package": "work_package_source",
 }
 
+# Additive overlay metadata prefixes (package uses package_mapping_* clarity).
+_FIELD_META: dict[str, dict[str, str]] = {
+    "classification_code": {
+        "label": "classification_label",
+        "schema_id": "classification_schema_id",
+        "schema_key": "classification_schema_key",
+        "node_id": "classification_node_id",
+        "origin": "classification_mapping_origin",
+        "is_schema_backed": "classification_is_schema_backed",
+    },
+    "package_boq_mapping": {
+        "label": "package_mapping_label",
+        "schema_id": "package_mapping_schema_id",
+        "schema_key": "package_mapping_schema_key",
+        "node_id": "package_mapping_node_id",
+        "origin": "package_mapping_origin",
+        "is_schema_backed": "package_mapping_is_schema_backed",
+    },
+    "work_package": {
+        "label": "work_package_label",
+        "schema_id": "work_package_schema_id",
+        "schema_key": "work_package_schema_key",
+        "node_id": "work_package_node_id",
+        "origin": "work_package_mapping_origin",
+        "is_schema_backed": "work_package_is_schema_backed",
+    },
+}
+
 _ROW_KEY_SAFE = re.compile(r"^v1\|[^|]{1,120}\|[^|]{1,200}\|[^|]{1,200}\|[^|]{1,80}$")
 
 
@@ -69,13 +105,137 @@ def sanitize_mapping_value(raw: str | None) -> str:
     return text.strip()[:VALUE_MAX_LENGTH]
 
 
+def empty_normalized_mapping_value() -> dict[str, Any]:
+    """Return an empty normalized mapping field value."""
+    return {
+        "value": "",
+        "label": "",
+        "schema_id": "",
+        "schema_key": "",
+        "node_id": "",
+        "origin": "",
+        "source_intent": "",
+        "is_schema_backed": False,
+        "is_free_text": False,
+    }
+
+
+def normalize_mapping_field_value(raw: Any) -> dict[str, Any]:
+    """Normalize a session field value (legacy string or structured dict).
+
+    Never raises on malformed input. Schema-backed when node/schema metadata is
+    present with a usable code/value; otherwise free-text when a value exists.
+    """
+    empty = empty_normalized_mapping_value()
+    if raw is None:
+        return empty
+
+    if isinstance(raw, str):
+        value = sanitize_mapping_value(raw)
+        if not value:
+            return empty
+        return {
+            "value": value,
+            "label": "",
+            "schema_id": "",
+            "schema_key": "",
+            "node_id": "",
+            "origin": ORIGIN_MANUAL_SESSION,
+            "source_intent": SOURCE_INTENT_MANUAL_FIELD,
+            "is_schema_backed": False,
+            "is_free_text": True,
+        }
+
+    if isinstance(raw, Mapping):
+        value = sanitize_mapping_value(
+            str(raw.get("value") if raw.get("value") is not None else raw.get("code") or "")
+        )
+        label = sanitize_mapping_value(str(raw.get("label") or ""))
+        schema_id = str(raw.get("schema_id") or "").strip()
+        schema_key = sanitize_mapping_value(str(raw.get("schema_key") or ""))
+        node_id = str(raw.get("node_id") or "").strip()
+        raw_origin = str(raw.get("origin") or "").strip()
+        raw_intent = str(raw.get("source_intent") or "").strip()
+
+        if not value:
+            return empty
+
+        has_schema_meta = bool(node_id or schema_id or schema_key)
+        if has_schema_meta:
+            origin = raw_origin or ORIGIN_MANUAL_SESSION_SCHEMA_NODE
+            if origin not in {ORIGIN_MANUAL_SESSION_SCHEMA_NODE, ORIGIN_MANUAL_SESSION}:
+                origin = ORIGIN_MANUAL_SESSION_SCHEMA_NODE
+            return {
+                "value": value,
+                "label": label,
+                "schema_id": schema_id,
+                "schema_key": schema_key,
+                "node_id": node_id,
+                "origin": origin,
+                "source_intent": raw_intent or SOURCE_INTENT_MANUAL_FIELD,
+                "is_schema_backed": True,
+                "is_free_text": False,
+            }
+
+        # Malformed dict with a usable value → free-text (no crash).
+        logger.info("qty mapping structured value missing schema meta; treating as free text")
+        return {
+            "value": value,
+            "label": label,
+            "schema_id": "",
+            "schema_key": "",
+            "node_id": "",
+            "origin": ORIGIN_MANUAL_SESSION,
+            "source_intent": raw_intent or SOURCE_INTENT_MANUAL_FIELD,
+            "is_schema_backed": False,
+            "is_free_text": True,
+        }
+
+    # Unexpected type: coerce via string sanitizer.
+    value = sanitize_mapping_value(str(raw))
+    if not value:
+        return empty
+    return {
+        "value": value,
+        "label": "",
+        "schema_id": "",
+        "schema_key": "",
+        "node_id": "",
+        "origin": ORIGIN_MANUAL_SESSION,
+        "source_intent": SOURCE_INTENT_MANUAL_FIELD,
+        "is_schema_backed": False,
+        "is_free_text": True,
+    }
+
+
+def _session_store_value(norm: Mapping[str, Any]) -> str | dict[str, str]:
+    """Compact normalized value for session storage (string or structured dict)."""
+    value = str(norm.get("value") or "")
+    if not value:
+        return ""
+    if norm.get("is_schema_backed"):
+        return {
+            "value": value,
+            "label": str(norm.get("label") or ""),
+            "schema_id": str(norm.get("schema_id") or ""),
+            "schema_key": str(norm.get("schema_key") or ""),
+            "node_id": str(norm.get("node_id") or ""),
+            "origin": str(norm.get("origin") or ORIGIN_MANUAL_SESSION_SCHEMA_NODE),
+            "source_intent": str(norm.get("source_intent") or SOURCE_INTENT_MANUAL_FIELD),
+        }
+    return value
+
+
 def empty_payload() -> dict[str, Any]:
     """Return an empty session contract payload."""
     return {"contract_version": CONTRACT_VERSION_V1, "annotations": {}}
 
 
 def load_payload(session: MutableMapping[str, Any], project_id: UUID | str) -> dict[str, Any]:
-    """Load and sanitize the session mapping payload for a project."""
+    """Load and sanitize the session mapping payload for a project.
+
+    Field values may be legacy strings or structured dicts (C3a).
+    """
     raw = session.get(session_key_for_project(project_id))
     if not isinstance(raw, dict):
         return empty_payload()
@@ -86,20 +246,21 @@ def load_payload(session: MutableMapping[str, Any], project_id: UUID | str) -> d
     annotations_in = raw.get("annotations")
     if not isinstance(annotations_in, dict):
         return empty_payload()
-    cleaned: dict[str, dict[str, str]] = {}
+    cleaned: dict[str, dict[str, Any]] = {}
     for key, value in annotations_in.items():
         key_s = str(key or "").strip()
         if not _ROW_KEY_SAFE.match(key_s):
             continue
         if not isinstance(value, Mapping):
             continue
-        fields: dict[str, str] = {}
+        fields: dict[str, Any] = {}
         for field in MAPPING_FIELD_KEYS:
             if field not in value:
                 continue
-            cleaned_val = sanitize_mapping_value(value.get(field))
-            if cleaned_val:
-                fields[field] = cleaned_val
+            norm = normalize_mapping_field_value(value.get(field))
+            stored = _session_store_value(norm)
+            if stored:
+                fields[field] = stored
         if fields:
             cleaned[key_s] = fields
     return {"contract_version": CONTRACT_VERSION_V1, "annotations": cleaned}
@@ -145,6 +306,36 @@ def eligible_mapping_fields(
     return rows
 
 
+def _clear_row_field_metadata(row: MutableMapping[str, Any], field: str) -> None:
+    """Clear additive C3a metadata keys for one mapping field."""
+    meta = _FIELD_META.get(field)
+    if not meta:
+        return
+    row[meta["label"]] = ""
+    row[meta["schema_id"]] = ""
+    row[meta["schema_key"]] = ""
+    row[meta["node_id"]] = ""
+    row[meta["origin"]] = ""
+    row[meta["is_schema_backed"]] = False
+
+
+def _apply_row_field_metadata(
+    row: MutableMapping[str, Any],
+    field: str,
+    norm: Mapping[str, Any],
+) -> None:
+    """Attach additive C3a metadata for one mapping field."""
+    meta = _FIELD_META.get(field)
+    if not meta:
+        return
+    row[meta["label"]] = str(norm.get("label") or "")
+    row[meta["schema_id"]] = str(norm.get("schema_id") or "")
+    row[meta["schema_key"]] = str(norm.get("schema_key") or "")
+    row[meta["node_id"]] = str(norm.get("node_id") or "")
+    row[meta["origin"]] = str(norm.get("origin") or "")
+    row[meta["is_schema_backed"]] = bool(norm.get("is_schema_backed"))
+
+
 class QuantityPrepRowMappingService:
     """Apply / clear session-only manual mapping values for one project."""
 
@@ -153,7 +344,7 @@ class QuantityPrepRowMappingService:
         self.user = user
         self.session = session
 
-    def get_annotations(self) -> dict[str, dict[str, str]]:
+    def get_annotations(self) -> dict[str, dict[str, Any]]:
         """Return current mapping annotations map for the project session."""
         return dict(load_payload(self.session, self.project.pk)["annotations"])
 
@@ -161,11 +352,14 @@ class QuantityPrepRowMappingService:
         self,
         *,
         row_key: str,
-        values: Mapping[str, str],
+        values: Mapping[str, Any],
         eligible_keys: set[str],
         known_row_keys: set[str] | None = None,
     ) -> dict[str, Any]:
-        """Store mapping values for one row; only eligible keys accepted."""
+        """Store mapping values for one row; only eligible keys accepted.
+
+        Values may be legacy strings or structured mapping dicts (C3a).
+        """
         key = (row_key or "").strip()
         if not _ROW_KEY_SAFE.match(key):
             return {"result": None, "error": "Invalid row key."}
@@ -178,26 +372,30 @@ class QuantityPrepRowMappingService:
                 "configured as Manual field.",
             }
 
-        incoming: dict[str, str] = {}
+        incoming: dict[str, Any] = {}
         for field in MAPPING_FIELD_KEYS:
             if field not in values:
                 continue
             if field not in eligible_keys:
-                # Ignore non-eligible posted fields (form may post empty siblings).
                 continue
-            incoming[field] = sanitize_mapping_value(values.get(field))
+            norm = normalize_mapping_field_value(values.get(field))
+            stored = _session_store_value(norm)
+            if stored:
+                incoming[field] = stored
 
         payload = load_payload(self.session, self.project.pk)
         annotations = dict(payload["annotations"])
         existing = dict(annotations.get(key) or {})
-        # Replace only eligible keys from this apply; omitted eligible = clear.
         for field in eligible_keys:
-            if field in incoming and incoming[field]:
+            if field in incoming:
                 existing[field] = incoming[field]
             else:
                 existing.pop(field, None)
-        # Drop any ineligible leftovers for safety.
-        existing = {f: v for f, v in existing.items() if f in MAPPING_FIELD_KEYS and v}
+        existing = {
+            f: v
+            for f, v in existing.items()
+            if f in MAPPING_FIELD_KEYS and normalize_mapping_field_value(v).get("value")
+        }
         if existing:
             annotations[key] = existing
         else:
@@ -234,12 +432,15 @@ class QuantityPrepRowMappingService:
 
 def apply_session_mapping_values_to_ui(
     qty_prep: dict[str, Any],
-    annotations: Mapping[str, Mapping[str, str]],
+    annotations: Mapping[str, Mapping[str, Any]],
 ) -> dict[str, Any]:
     """Overlay eligible manual mapping values and rebuild gap-driven summaries.
 
     Must run before session review overlay. Adjusts missing_* flags, then rebuilds
     unresolved_register, visual_summary, and preparation_insights.
+
+    C3a: sets ``row[field]`` to normalized code/value string and attaches additive
+    schema/node metadata without changing drawer/table templates yet.
     """
     rows = list(qty_prep.get("prep_rows") or [])
     grain = str(qty_prep.get("prep_row_grain") or "ifc_class")
@@ -272,28 +473,27 @@ def apply_session_mapping_values_to_ui(
             included = bool(show.get(field))
             eligible = field_is_eligible(included=included, source_intent=source)
             missing_attr = _MISSING_FLAG[field]
-            # Reset display value; rebuild from eligible annotation only.
             if not eligible:
-                # Keep empty value; do not clear missing flags set by builder for
-                # future_modify / etc. Ignore any stored session value.
+                _clear_row_field_metadata(row, field)
                 continue
-            raw_val = sanitize_mapping_value(hit.get(field)) if hit else ""
+            norm = normalize_mapping_field_value(hit.get(field) if hit else None)
+            raw_val = str(norm.get("value") or "")
             if raw_val:
                 row[field] = raw_val
                 row[missing_attr] = False
                 row["manual_mapping"] = True
                 row["manual_mapping_fields"].append(field)
+                _apply_row_field_metadata(row, field, norm)
                 value_count += 1
                 row_had_value = True
             else:
                 row[field] = ""
-                # Eligible empty keeps gap (builder already set missing True for manual_field).
                 row[missing_attr] = True
+                _clear_row_field_metadata(row, field)
 
         if row_had_value:
             matched_rows += 1
 
-        # Recompute gap-derived review / handoff after mapping adjustments.
         row["review_status"] = _review_status(row)
         row["computed_review_status"] = row["review_status"]
         row["review_status_display"] = row["review_status"]
